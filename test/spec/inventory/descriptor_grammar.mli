@@ -22,7 +22,10 @@ type row = {
 *)
 
 val rows : row list
-(** Every [@font-face] descriptor this project has spec vectors for. *)
+(** Every [@font-face] descriptor a current specification defines. A descriptor
+    a specification has REMOVED has no row: there is no grammar left to check a
+    browser against, and writing one from the section that used to define it
+    would put a harness in the position of testing a browser's leftovers. *)
 
 val descriptors : string list
 (** [descriptors] is the descriptor names {!rows} covers. *)

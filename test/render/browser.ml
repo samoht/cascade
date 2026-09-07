@@ -88,6 +88,49 @@ let node_binary () =
   | Some n when executable n -> Some n
   | Some _ | None -> on_path "node"
 
+let chrome_version chrome =
+  let read_lines ic =
+    let rec loop acc =
+      match input_line ic with
+      | line -> loop (line :: acc)
+      | exception End_of_file -> List.rev acc
+    in
+    loop []
+  in
+  let ic =
+    Unix.open_process_in
+      (String.concat " " [ Filename.quote chrome; "--version"; "2>/dev/null" ])
+  in
+  let lines = read_lines ic in
+  ignore (Unix.close_process_in ic);
+  let leading_int s =
+    let n = String.length s in
+    let rec upto i =
+      if i < n && s.[i] >= '0' && s.[i] <= '9' then upto (i + 1) else i
+    in
+    let stop = upto 0 in
+    if stop = 0 then None else int_of_string_opt (String.sub s 0 stop)
+  in
+  let of_word w =
+    match String.split_on_char '.' w with
+    | major :: minor :: _ -> (
+        match (leading_int major, leading_int minor) with
+        | Some a, Some b -> Some (a, b)
+        | _ -> None)
+    | _ -> None
+  in
+  List.fold_left
+    (fun found line ->
+      match found with
+      | Some _ -> found
+      | None ->
+          List.fold_left
+            (fun found word ->
+              match found with Some _ -> found | None -> of_word word)
+            None
+            (String.split_on_char ' ' line))
+    None lines
+
 let skip harness reason =
   print_endline (String.concat "" [ "SKIP: "; harness; " ("; reason; ")" ]);
   exit 0

@@ -19,6 +19,12 @@ val node_binary : unit -> string option
 (** [node_binary ()] is node: [NODE] when that names an executable, [PATH]
     otherwise. *)
 
+val chrome_version : string -> (int * int) option
+(** [chrome_version chrome] is the [(major, minor)] the binary reports. The
+    support dataset is keyed by version, so a harness that looks a production up
+    has to say which build it measured rather than assume the one the default
+    contract names. *)
+
 val skip : string -> string -> 'a
 (** [skip harness reason] prints a skip line naming [harness] and exits with
     status 0, so a machine without a browser does not fail the suite. *)

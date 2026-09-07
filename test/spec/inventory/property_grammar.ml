@@ -358,12 +358,18 @@ let matrix =
       negatives = [ "1 2 3 4"; "red" ];
     };
     {
+      (* CSS Transitions 1 (ED) sec. 2.5 spells the shorthand
+         [<single-transition>#] over [<single-transition> = [ none |
+         <single-transition-property> ] || <time> || <easing-function> ||
+         <time>], so [none] is one entry of the list wherever it stands and not
+         a whole-value keyword. *)
       property = "transition";
       positives =
         [
           "opacity 1s ease-in .2s";
           "all .2s linear .1s";
           "opacity calc(500ms + .5s)";
+          "opacity 1s, none";
         ];
       negatives = [ "1s 2s 3s"; "ease opacity ease" ];
     };

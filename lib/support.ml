@@ -38,6 +38,610 @@ type measurement = {
 let measured =
   [
     {
+      key = "css.properties.width.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.height.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.min-width.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.min-height.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.max-width.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.max-height.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.inline-size.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.min-inline-size.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.max-inline-size.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.block-size.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.min-block-size.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.max-block-size.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.flex-basis.contain";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
+         property takes; Chrome has not implemented it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.text-box-edge.ideographic-ink";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Inline 3 sec. 4.4: <text-edge> = [ text | ideographic | \
+         ideographic-ink ] | [ text | ideographic | ideographic-ink | cap | ex \
+         ] [ text | ideographic | ideographic-ink | alphabetic ]";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.dominant-baseline.text_bottom";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Inline 3 sec. 5.2: auto | <baseline-metric>, and sec. 5.1 gives \
+         <baseline-metric> = text-bottom | alphabetic | ideographic | middle | \
+         central | mathematical | hanging | text-top";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.column-rule.trailing_comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
+         rule line, so a comma between two entries is theirs to read. The list \
+         has no empty entry, and Chrome reads a trailing comma and drops it on \
+         serialising";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.column-rule-width.trailing_comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
+         rule line, so a comma between two entries is theirs to read. The list \
+         has no empty entry, and Chrome reads a trailing comma and drops it on \
+         serialising";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.column-rule-style.trailing_comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
+         rule line, so a comma between two entries is theirs to read. The list \
+         has no empty entry, and Chrome reads a trailing comma and drops it on \
+         serialising";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.column-rule-color.trailing_comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
+         rule line, so a comma between two entries is theirs to read. The list \
+         has no empty entry, and Chrome reads a trailing comma and drops it on \
+         serialising";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-block.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-inline.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-block-start.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-block-end.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-inline-start.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-inline-end.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-top.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-right.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-bottom.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.border-left.comma";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
+         from a [||] of a width, a style and a colour, and no arm of either is \
+         a comma. Chrome reads one between two components as the whitespace \
+         separating them, so the declaration sets what the same value without \
+         the comma sets";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.baseline-shift.number";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
+         center | bottom, and no arm is a bare <number>. Chrome reads one as \
+         the unitless length SVG presentation attributes take";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.transition.negative";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
+         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
+         lone negative fills no slot. Chrome takes it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.-webkit-transition.negative";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
+         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
+         lone negative fills no slot. Chrome takes it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.-moz-transition.negative";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
+         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
+         lone negative fills no slot. Chrome takes it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.-o-transition.negative";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
+         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
+         lone negative fills no slot. Chrome takes it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.font-family.default";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 2.1.1 gives an unquoted family a <custom-ident>+ and \
+         excludes an identifier that could be misinterpreted as a pre-defined \
+         keyword or a CSS-wide keyword, and CSS Values 4 sec. 4.2 reserves \
+         default. Chrome applies the exclusion to a family of one identifier \
+         and reads a reserved word inside a longer name";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.break-before.all";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Break 4 sec. 3.1 writes break-before and break-after as auto | \
+         avoid | always | all | avoid-page | page | left | right | recto | \
+         verso | avoid-column | column | avoid-region | region, and the \
+         module's change list says it adds exactly always and all over CSS \
+         Fragmentation 3. web-features records the always key for both \
+         properties and none for all";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.break-after.all";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why = "CSS Break 4 sec. 3.1 lists all among break-after's values";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.transition.none_in_a_list";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Transitions 1 sec. 2.5 spells the shorthand \
+         <single-transition>#,          and sec. 2.3 gives <single-transition> \
+         a [ none |          <single-transition-property> ] slot, so none is \
+         one entry of the list          wherever it stands. Chrome reads \
+         transition: none alone and refuses          every list holding one. \
+         web-features records          css.properties.transition-property.none \
+         for the longhand and nothing          for the shorthand's list";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.background-blend-mode.plus-lighter";
       support =
         {
@@ -360,7 +964,7 @@ let measured =
       key = "css.properties.resize.auto";
       support =
         {
-          Baseline.chrome = None;
+          Baseline.chrome = Some (153, 0);
           firefox = None;
           safari = None;
           safari_ios = None;
@@ -374,7 +978,7 @@ let measured =
       key = "css.properties.text-orientation.sideways_right";
       support =
         {
-          Baseline.chrome = None;
+          Baseline.chrome = Some (153, 0);
           firefox = None;
           safari = None;
           safari_ios = None;
@@ -389,7 +993,7 @@ let measured =
       key = "css.properties.alignment-baseline.auto";
       support =
         {
-          Baseline.chrome = None;
+          Baseline.chrome = Some (153, 0);
           firefox = None;
           safari = None;
           safari_ios = None;
@@ -447,8 +1051,16 @@ let implemented targets key =
 
 type engine = Chrome | Firefox | Safari | Ios_safari
 
+(* The generated table first and the measurements second, as {!implemented}:
+   asking about one engine is the same question asked of one column, so a fact
+   this project measured has to be visible to both or a caller gets a different
+   answer for the same key depending on which it called. *)
 let engine_implements engine version key =
-  match Hashtbl.find_opt (Lazy.force table) key with
+  match
+    match Hashtbl.find_opt (Lazy.force table) key with
+    | Some s -> Some s
+    | None -> Hashtbl.find_opt (Lazy.force measured_table) key
+  with
   | None -> None
   | Some (support : Baseline.support) ->
       let shipped =
@@ -459,6 +1071,29 @@ let engine_implements engine version key =
         | Ios_safari -> support.safari_ios
       in
       Some (engine_has shipped version)
+
+let last_segment key =
+  match String.rindex_opt key '.' with
+  | None -> key
+  | Some i -> String.sub key (i + 1) (String.length key - i - 1)
+
+let keys_named segment =
+  let of_table t =
+    Hashtbl.fold
+      (fun key _ acc ->
+        if String.equal (last_segment key) segment then key :: acc else acc)
+      (Lazy.force t) []
+  in
+  List.sort_uniq String.compare (of_table table @ of_table measured_table)
+
+let keys_under prefix =
+  let of_table t =
+    Hashtbl.fold
+      (fun key _ acc ->
+        if String.starts_with ~prefix key then key :: acc else acc)
+      (Lazy.force t) []
+  in
+  List.sort_uniq String.compare (of_table table @ of_table measured_table)
 
 let unimplemented_by targets key =
   match implemented targets key with

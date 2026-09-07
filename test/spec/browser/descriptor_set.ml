@@ -35,7 +35,7 @@
    a fact about browsers rather than about this run, so it is looked up in
    Cascade.Support under the BCD key web-features carries. A descriptor the
    dataset says this build ships, that then takes none of the manifest's
-   positives, is a failure and not an excuse.
+   positives, is a failure and not something to look past.
 
    Both directions are exercised rather than quiet. Making the CSS-wide refusal
    in read_descriptor_value a no-op reports 25 values cascade would keep and the
@@ -435,6 +435,10 @@ let () =
   let bump t k =
     Hashtbl.replace t k (1 + Option.value ~default:0 (Hashtbl.find_opt t k))
   in
+  (* A descriptor no current specification defines has no grammar to judge a
+     generated value against, so the browser's answer about one says nothing: it
+     is the leftovers of a removed section either way. *)
+  let ungoverned descriptor = Option.is_none (Grammar.row_for descriptor) in
   let pending = ref [] in
   List.iter
     (fun job ->
@@ -489,9 +493,23 @@ let () =
                        ": the row refuses this value and cascade reads it";
                      ])
             (* No row covers a generated value, so the browser is the only
-               oracle there is, and closing a finding means writing the value
-               into the row with the section that decides it. *)
+               oracle there is. A disagreement the support dataset explains is
+               the browser's, looked up the way the property harnesses look one
+               up: BCD files a descriptor under css.at-rules.font-face. *)
             | Generated, r, p when Bool.equal r p -> incr arbitrated
+            | Generated, true, false
+              when Option.is_some
+                     (Chrome_gaps.explains_rejection
+                        ~prefix:"css.at-rules.font-face" ~chrome:version
+                        ~property:job.descriptor ~value:job.value ()) ->
+                incr behind
+            | Generated, false, true
+              when Option.is_some
+                     (Chrome_gaps.explains_acceptance
+                        ~prefix:"css.at-rules.font-face" ~chrome:version
+                        ~property:job.descriptor ~value:job.value ()) ->
+                incr lenient
+            | Generated, _, _ when ungoverned job.descriptor -> ()
             | Generated, _, _ -> pending := (job, reads) :: !pending
           end)
     jobs;

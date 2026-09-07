@@ -192,68 +192,6 @@ type outcome =
   | Split  (** the two browser oracles disagree, so neither is the answer *)
   | Unanswered of string  (** the browser did not answer *)
 
-(* A generated value the browser rejects and a specification grants. Each entry
-   restates a Chrome_gaps entry for another value of the production that entry
-   quotes: the generator writes strings the manifest did not, and the fact
-   behind them is the one already cited there. An entry that stops excusing
-   anything is reported, so a browser that catches up takes its excuse with
-   it. *)
-let spec_ahead_here : Chrome_gaps.excuse list =
-  List.concat_map
-    (fun (properties, values, why) ->
-      List.map
-        (fun value -> { Chrome_gaps.properties; key = None; value; why })
-        values)
-    [
-      ( [
-          "width";
-          "height";
-          "min-width";
-          "min-height";
-          "max-width";
-          "max-height";
-          "inline-size";
-          "min-inline-size";
-          "max-inline-size";
-          "block-size";
-          "min-block-size";
-          "max-block-size";
-          "flex-basis";
-        ],
-        [ "contain" ],
-        "CSS Sizing 4 sec. 3.2 adds contain to <box-size>, which every sizing \
-         property takes; Chrome has not implemented it" );
-      ( [ "text-box-edge" ],
-        [ "ideographic-ink" ],
-        "CSS Inline 3 sec. 4.4: <text-edge> = [ text | ideographic | \
-         ideographic-ink ] | [ text | ideographic | ideographic-ink | cap | ex \
-         ] [ text | ideographic | ideographic-ink | alphabetic ]" );
-      ( [ "dominant-baseline" ],
-        [ "text-bottom" ],
-        "CSS Inline 3 sec. 5.2: auto | <baseline-metric>, and sec. 5.1 gives \
-         <baseline-metric> = text-bottom | alphabetic | ideographic | middle | \
-         central | mathematical | hanging | text-top" );
-    ]
-
-(* The same, for a value Chrome reads that no specification grants: an entry
-   here restates a {!Chrome_gaps.lenient} fact for a value the generator wrote
-   and the manifest did not. *)
-let lenient_here : Chrome_gaps.excuse list =
-  List.concat_map
-    (fun (properties, values, why) ->
-      List.map
-        (fun value -> { Chrome_gaps.properties; key = None; value; why })
-        values)
-    [
-      ( [ "column-rule"; "column-rule-width" ],
-        [ "10px," ],
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising. The border shorthands, which have no list at all, answer \
-         for a comma through a shape entry" );
-    ]
-
 (* Every value the spec-derived manifest declares valid for a property. A row is
    written from a specification's own grammar, so this is that grammar in the
    form the harness can ask. *)
@@ -269,92 +207,56 @@ let manifest_positive ~property ~value =
   Hashtbl.mem manifest_positives (property, value)
 
 let hits = Hashtbl.create 64
-let shape_hits : (string, unit) Hashtbl.t = Hashtbl.create 8
 
-(* The excuse is the whole reason a difference is not a defect, so it is a
-   citation or it is nothing. Chrome_gaps carries the shared lists and the spec
-   text behind each entry. *)
-let judge ~property ~value ~cascade verdict =
+(* Why a difference is not a defect is a lookup, not a sentence someone wrote.
+   Chrome_gaps derives the BCD compat key naming the production and asks
+   Cascade.Support whether this browser has shipped it, so an entry cannot
+   outlive the gap it describes and a resample cannot strand it: the key is
+   derived from the pair in front of the harness. *)
+let judge ~chrome ~property ~value ~cascade verdict =
   match verdict.error with
   | Some e -> Unanswered e
   | None when not (Bool.equal verdict.set_property verdict.supports) -> Split
   | None -> (
-      let excuse table =
-        match Chrome_gaps.find table ~property ~value with
-        | None -> None
-        | Some e -> Some e.why
-      in
-      (* Only this run's own entries are tracked: the shared ones answer to the
-         manifest run, which has its own tally. *)
-      let excuse_here table =
-        match Chrome_gaps.find table ~property ~value with
-        | None -> None
-        | Some e ->
-            Hashtbl.replace hits (String.concat "\000" [ property; value ]) ();
-            Some e.why
+      let cite explanation =
+        let key = Chrome_gaps.explanation_key explanation in
+        Hashtbl.replace hits key ();
+        Some key
       in
       match (cascade, verdict.supports) with
       | true, true | false, false -> Agree
       (* Chrome takes it. Either the reader is short of the grammar, or Chrome
-         is past it and an entry says which specification says so. *)
+         ships a production no specification grants and the library has measured
+         it. *)
       | false, true -> (
-          match excuse Chrome_gaps.lenient with
-          | Some why -> Rejects_valid (Some why)
-          | None -> (
-              (* A shape entry answers for every value of its shape, so a
-                 resample cannot strand it the way a literal is stranded. *)
-              match
-                Chrome_gaps.shape_covering Chrome_gaps.lenient_shapes ~property
-                  ~value
-              with
-              | Some s ->
-                  Hashtbl.replace shape_hits s.shape_name ();
-                  Rejects_valid (Some s.shape_why)
-              | None -> Rejects_valid (excuse_here lenient_here)))
+          match Chrome_gaps.explains_acceptance ~chrome ~property ~value () with
+          | Some e -> Rejects_valid (cite e)
+          | None -> Rejects_valid None)
       (* The reader takes it. Either it is loose, or the grammar is real and
          Chrome has not caught up. *)
       | true, false -> (
-          (* The shape comes first: it answers for a CLASS, so where one covers
-             the value a literal naming that same value is the narrower and
-             staler statement, and letting the literal win would leave the shape
-             looking unused. *)
-          match
-            Chrome_gaps.shape_covering Chrome_gaps.spec_ahead_shapes ~property
-              ~value
-          with
-          | Some s ->
-              Hashtbl.replace shape_hits s.shape_name ();
-              Accepts_invalid (Some s.shape_why)
-          | None -> (
-              match excuse Chrome_gaps.spec_ahead with
-              | Some why -> Accepts_invalid (Some why)
-              | None -> (
-                  (* The manifest is spec-derived, so a row declaring this value
-                     a POSITIVE already says the specification grants it.
-                     Cascade agreeing with that row and the browser refusing is
-                     a browser gap by construction, and writing a prose entry to
-                     say so again is the treadmill this harness kept paying for:
-                     a hand-written excuse names one value, a resample strands
-                     it, and the class keeps producing findings. The row is the
-                     citation.
+          match Chrome_gaps.explains_rejection ~chrome ~property ~value () with
+          | Some e -> Accepts_invalid (cite e)
+          | None ->
+              (* The manifest is spec-derived, so a row declaring this value a
+                 POSITIVE already says the specification grants it. Cascade
+                 agreeing with that row and the browser refusing is a browser
+                 gap by construction.
 
-                     This is right HERE and wrong in property_vectors, which
-                     puts the row itself under test: there a browser rejecting a
-                     positive is the question, and answering it from the row
-                     would be circular. That harness keeps its entries. *)
-                  match manifest_positive ~property ~value with
-                  | true ->
-                      Accepts_invalid
-                        (Some
-                           (String.concat ""
-                              [
-                                "the spec-derived manifest lists this as a \
-                                 positive for ";
-                                property;
-                                ", so the specification grants it and the \
-                                 browser has not shipped it";
-                              ]))
-                  | false -> Accepts_invalid (excuse_here spec_ahead_here)))))
+                 This is right HERE and wrong in property_vectors, which puts
+                 the row itself under test: there a browser rejecting a positive
+                 is the question, and answering it from the row would be
+                 circular. *)
+              if manifest_positive ~property ~value then
+                Accepts_invalid
+                  (Some
+                     (String.concat ""
+                        [
+                          "the spec-derived manifest lists this as a positive \
+                           for ";
+                          property;
+                        ]))
+              else Accepts_invalid None))
 
 (* ===== The classifier, checked against itself ===== *)
 
@@ -366,9 +268,9 @@ let answer ~set_property ~supports = { set_property; supports; error = None }
 let outcome_name = function
   | Agree -> "agree"
   | Rejects_valid None -> "rejects-valid"
-  | Rejects_valid (Some _) -> "rejects-valid (excused)"
+  | Rejects_valid (Some _) -> "rejects-valid (explained)"
   | Accepts_invalid None -> "accepts-invalid"
-  | Accepts_invalid (Some _) -> "accepts-invalid (excused)"
+  | Accepts_invalid (Some _) -> "accepts-invalid (explained)"
   | Split -> "split"
   | Unanswered _ -> "unanswered"
 
@@ -395,7 +297,7 @@ let check_classifier () =
     (fun (what, cascade, verdict, expected) ->
       let got =
         outcome_name
-          (judge ~property:"cascade-no-such-property"
+          (judge ~chrome:(0, 0) ~property:"cascade-no-such-property"
              ~value:"cascade-no-such-value" ~cascade verdict)
       in
       if not (String.equal got expected) then (
@@ -419,11 +321,11 @@ type calibration = { on : string; put : string; must_be : string }
 let calibration =
   [
     { on = "color"; put = "red"; must_be = "agree" };
-    { on = "resize"; put = "auto"; must_be = "rejects-valid (excused)" };
+    { on = "resize"; put = "auto"; must_be = "rejects-valid (explained)" };
     {
       on = "text-decoration-thickness";
       put = "thin";
-      must_be = "accepts-invalid (excused)";
+      must_be = "accepts-invalid (explained)";
     };
   ]
 
@@ -449,7 +351,7 @@ let unanswered : (finding * string) list ref = ref []
    agrees about everything and asks nothing. *)
 let agreed_accept = ref 0
 let agreed_reject = ref 0
-let excused = ref 0
+let explained = ref 0
 
 (* Grouped by the value, because the value is the cause: one loose arm of the
    reader shows up as the same text under twenty property names. *)
@@ -595,88 +497,23 @@ let check_unimplemented implemented =
              ]))
     properties
 
-(* An excuse this run wrote for itself and no longer uses is a claim nobody
-   checks any more. Only the default seed can say so: another seed draws another
-   sample, and a value it did not draw is not a value the browser caught up
-   with. The shared Chrome_gaps lists are not checked here either; they answer
-   to the manifest run, whose population decides which of them apply. *)
-(* A keyed entry answers to the dataset rather than to this run's sample: when
-   Chrome ships the production, the entry is stale however the seeded stream
-   happens to draw. That is the check a literal cannot have, and it fires
-   whether or not the value was drawn. *)
-let check_overtaken () =
-  List.iter
-    (fun (e : Chrome_gaps.excuse) ->
-      fail
-        (String.concat ""
-           [
-             "Chrome now ships what this entry excuses: ";
-             e.value;
-             " (";
-             String.concat ", " e.properties;
-             ")";
-           ]))
-    (Chrome_gaps.overtaken
-       (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
-      @ lenient_here))
-
-(* The reverse of the staleness check: a measurement in the library that no
-   entry here names. It is dead data, and the library is where a fact goes to be
-   ACTED on, so one nothing reads is a fact that stopped being true or an entry
-   that was deleted without it. Either way it should not sit there. *)
-let check_unnamed_measurements () =
-  let named =
-    List.filter_map
-      (fun (e : Chrome_gaps.excuse) -> e.key)
-      (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
-     @ lenient_here)
-  in
+(* A measurement in the library the generated dataset has caught up with. The
+   library carries a fact only while web-features does not, so a key that has
+   arrived in the generated table is a measurement to delete, and one the
+   dataset now says Chrome ships is a gap that has closed. Neither depends on
+   what this seed drew, which is what a hand-written entry could never say. *)
+let check_measurements () =
   List.iter
     (fun (m : Cascade.Support.measurement) ->
-      if not (List.exists (String.equal m.key) named) then
+      if not (Cascade.Support.self_measured m.key) then
         fail
           (String.concat ""
-             [ "no entry names this measurement, so nothing reads it: "; m.key ]))
+             [
+               "web-features now carries this key, so the measurement beside \
+                it is redundant: ";
+               m.key;
+             ]))
     Cascade.Support.measured
-
-let check_unused () =
-  check_overtaken ();
-  check_unnamed_measurements ();
-  List.iter
-    (fun (e : Chrome_gaps.excuse) ->
-      let used =
-        List.exists
-          (fun property ->
-            Hashtbl.mem hits (String.concat "\000" [ property; e.value ]))
-          e.properties
-      in
-      if not used then
-        fail
-          (String.concat ""
-             [
-               "an entry of this run excuses nothing any more: ";
-               e.value;
-               " (";
-               String.concat ", " e.properties;
-               ")";
-             ]))
-    (spec_ahead_here @ lenient_here);
-  (* A shape answers for a whole class, so it going quiet is the same signal a
-     stranded literal is: the browser agreed, or the generator stopped writing
-     anything of the shape. *)
-  List.iter
-    (fun (s : Chrome_gaps.shape) ->
-      if not (Hashtbl.mem shape_hits s.shape_name) then
-        fail
-          (String.concat ""
-             [
-               "a shape of this run excuses nothing any more: ";
-               s.shape_name;
-               " (";
-               String.concat ", " s.shape_properties;
-               ")";
-             ]))
-    (Chrome_gaps.lenient_shapes @ Chrome_gaps.spec_ahead_shapes)
 
 let check_calibration outcomes =
   List.iter
@@ -724,7 +561,7 @@ let record ~property ~value ~accepted outcome =
   let f = { property; value } in
   match outcome with
   | Agree -> if accepted then incr agreed_accept else incr agreed_reject
-  | Rejects_valid (Some _) | Accepts_invalid (Some _) -> incr excused
+  | Rejects_valid (Some _) | Accepts_invalid (Some _) -> incr explained
   | Rejects_valid None -> rejects_valid := f :: !rejects_valid
   | Accepts_invalid None -> accepts_invalid := f :: !accepts_invalid
   | Split -> splits := f :: !splits
@@ -769,6 +606,17 @@ let () =
     | Some c -> c
     | None -> Browser.skip "accept_set" "no headless browser"
   in
+  (* The support dataset is keyed by version, so the run says which build it
+     measured rather than assuming the one the default contract names. *)
+  let chrome_version =
+    match Browser.chrome_version chrome with
+    | Some v -> v
+    | None ->
+        prerr_endline
+          "accept_set: the browser did not report a version, so no support \
+           fact can be keyed to this run";
+        exit 1
+  in
   let script_dir = Filename.dirname Sys.executable_name in
   let work = Filename.get_temp_dir_name () // "cascade-accept-set" in
   (try Unix.mkdir work 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
@@ -811,7 +659,8 @@ let () =
                 cascade_accepts ~property:job.property ~value:job.value
               in
               let outcome =
-                judge ~property:job.property ~value:job.value ~cascade verdict
+                judge ~chrome:chrome_version ~property:job.property
+                  ~value:job.value ~cascade verdict
               in
               Hashtbl.replace outcomes
                 (describe job.property job.value)
@@ -821,27 +670,26 @@ let () =
     jobs;
   let vectors = summarise ~jobs ~elapsed in
   Fmt.pr
-    "  agree: %d accepted and %d rejected, excused: %d, rejects-valid: %d, \
+    "  agree: %d accepted and %d rejected, explained: %d, rejects-valid: %d, \
      accepts-invalid: %d@."
-    !agreed_accept !agreed_reject !excused
+    !agreed_accept !agreed_reject !explained
     (List.length !rejects_valid)
     (List.length !accepts_invalid);
-  (* Every excuse in play, grouped by which side the dataset says is wrong. The
-     three verdicts are what this harness computes and used to discard, so a
-     browser-bug candidate was only ever noticed by a human reading the output:
-     [cascade right, the browser has not shipped it] is a candidate to report
-     upstream, [cascade wrong] is a defect an entry is hiding, and [needs
-     measuring] is the honest answer for a production web-features does not
-     model. *)
+  (* Every disagreement the dataset explained, grouped by which side it says is
+     wrong. The three verdicts are what this harness computes and used to
+     discard, so a browser-bug candidate was only ever noticed by a human
+     reading the output: [cascade right, the browser has not shipped it] is a
+     candidate to report upstream, [cascade wrong] is a defect the lookup would
+     be hiding, and [needs measuring] is the honest answer for a production
+     web-features does not model. *)
   let tally = Hashtbl.create 4 in
-  List.iter
-    (fun (e : Chrome_gaps.excuse) ->
-      let v = Chrome_gaps.verdict_of Cascade.Support.evergreen e in
+  Hashtbl.iter
+    (fun key () ->
+      let v = Chrome_gaps.verdict_of Cascade.Support.evergreen key in
       Hashtbl.replace tally v
         (1 + Option.value ~default:0 (Hashtbl.find_opt tally v)))
-    (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
-   @ lenient_here);
-  Fmt.pr "  excuses by verdict:@.";
+    hits;
+  Fmt.pr "  explained by verdict:@.";
   List.iter
     (fun v ->
       match Hashtbl.find_opt tally v with
@@ -856,38 +704,26 @@ let () =
      project's own measurement. A self-measured fact can drift from the browser
      and a generated one cannot, so the split is worth seeing. *)
   let ours =
-    List.length
-      (List.filter
-         (fun (e : Chrome_gaps.excuse) ->
-           match e.key with
-           | Some k -> Cascade.Support.self_measured k
-           | None -> false)
-         (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
-        @ lenient_here))
+    Hashtbl.fold
+      (fun key () n -> if Cascade.Support.self_measured key then n + 1 else n)
+      hits 0
   in
   if ours > 0 then
     Fmt.pr
       "    (%d of those answered by our own measurement, not the dataset)@."
       ours;
-  (* An excuse the dataset says every target ships is not an excuse: the
-     browser's answer is the specification's there, so the entry is covering a
-     defect rather than citing a fact. *)
-  List.iter
-    (fun (e : Chrome_gaps.excuse) ->
-      match Chrome_gaps.verdict_of Cascade.Support.evergreen e with
+  (* A key the dataset says every target ships explains nothing: the browser's
+     answer is the specification's there, so a disagreement it covered would be
+     a defect rather than a fact. *)
+  Hashtbl.iter
+    (fun key () ->
+      match Chrome_gaps.verdict_of Cascade.Support.evergreen key with
       | Chrome_gaps.Cascade_wrong ->
           fail
             (String.concat ""
-               [
-                 "every target ships what this entry excuses: ";
-                 e.value;
-                 " (";
-                 String.concat ", " e.properties;
-                 ")";
-               ])
+               [ "every target ships what this key explained away: "; key ])
       | Chrome_gaps.Browser_behind | Chrome_gaps.Needs_measurement -> ())
-    (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
-   @ lenient_here);
+    hits;
 
   (* A run over an empty or shrunken population is a green run that asks
      nothing, which is worse than a red one. *)
@@ -925,7 +761,7 @@ let () =
                " expected; a population of nonsense agrees about everything";
              ]);
       check_unimplemented implemented;
-      if !seed = default_seed then check_unused ();
+      check_measurements ();
       check_calibration outcomes;
       check_witnesses outcomes);
   report_direction "REJECTS VALID (the browser accepts it, cascade drops it)"

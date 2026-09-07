@@ -66,6 +66,18 @@ val self_measured : string -> bool
     because a fact this project measured can drift from the browser and a
     generated one cannot. *)
 
+val keys_named : string -> string list
+(** [keys_named segment] is every key in the dataset whose last [.]-separated
+    segment is [segment]. BCD names one production the same way wherever it
+    files it, so a value type shared by several properties is recorded under one
+    of them; a caller that has the production's name but not the property it was
+    filed under finds it here. *)
+
+val keys_under : string -> string list
+(** [keys_under prefix] is every key in the dataset starting with [prefix]. BCD
+    names a shorthand slot [<longhand>_included], so a caller holding the
+    shorthand and not the slot finds the candidates here. *)
+
 val measured : measurement list
 (** [measured] is what this project measured for productions web-features gives
     no key. Every entry names the specification that grants the grammar and the

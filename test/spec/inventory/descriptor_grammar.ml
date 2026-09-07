@@ -86,14 +86,6 @@ let rows =
         "\"text\"";
         "\"liga\" off";
       ];
-    (* CSS Fonts 4 removed this descriptor per WG resolution and Chrome 153
-       still reads it, so it stays modelled and the row cites the last section
-       that spelled it. *)
-    row "font-variant"
-      "CSS Fonts 3 sec. 7.3, the sec. 6.9 font-variant property values inside \
-       the rule; CSS Fonts 4 removed the descriptor"
-      [ "normal"; "none"; "small-caps"; "common-ligatures small-caps" ]
-      [ "bogus-variant"; "1"; "small-caps 1" ];
     row "size-adjust" "CSS Fonts 5 (ED) sec. 4.10 <percentage [0,inf]>"
       [ "0%"; "92%"; "100%"; "300%" ]
       [ "-1%"; "100"; "normal" ];
