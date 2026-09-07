@@ -4693,6 +4693,10 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "border-image: none, none";
+      "border-image: url(a.png), none";
+      "border-image-source: none, none";
+      "mask-border: none, none";
       "font-language-override: \"default\"";
       "font-language-override: \"ENGLISH\"";
       "font-language-override: \"\"";
