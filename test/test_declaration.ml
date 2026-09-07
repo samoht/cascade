@@ -2214,6 +2214,19 @@ let animations_timing () =
     ~optimized:"animation-delay:.1s" "animation-delay:mod(1.1s,.5s)";
   check_declaration ~expected:"animation-delay:rem(1.1s,.5s)"
     ~optimized:"animation-delay:.1s" "animation-delay:rem(1.1s,.5s)";
+  (* CSS Values 4 (ED) sec. 10.8 Syntax: "<calc-value> = <number> | <dimension>
+     | <percentage> | <calc-keyword> | ( <calc-sum> )" over "<calc-keyword> = e
+     | pi | infinity | -infinity | NaN". A CSS-wide keyword is none of those, so
+     it is a whole <time> and never an operand of one. *)
+  check_declaration ~expected:"animation-delay:revert" "animation-delay: revert";
+  neg_cursor read_declaration "animation-delay: calc(revert)";
+  neg_cursor read_declaration "animation-delay: calc(revert + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(1s + revert)";
+  neg_cursor read_declaration "animation-delay: calc(revert * 2)";
+  neg_cursor read_declaration "animation-delay: calc(revert-layer + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(inherit + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(initial + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(unset + 1s)";
   check_declaration ~expected:"transition-duration:var(--d,.5s)"
     ~optimized:"transition-duration:var(--d,.5s)"
     "transition-duration:var(--d,500ms)";
