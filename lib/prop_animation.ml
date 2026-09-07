@@ -2105,7 +2105,7 @@ let read_animation_range_offset t : length_percentage option =
   if Cursor.is_done t || Cursor.peek_comma t then
     (None : length_percentage option)
   else
-    match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
+    match Cursor.peek_keyword t with
     | Some "normal" -> (None : length_percentage option)
     | Some next when List.mem next Keyframe.timeline_range_names ->
         (None : length_percentage option)
@@ -2116,7 +2116,7 @@ let read_animation_range_offset t : length_percentage option =
    [normal] names one end among others rather than the whole value. *)
 let read_animation_range_one t : animation_range_item =
   Cursor.ws t;
-  match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
+  match Cursor.peek_keyword t with
   | Some "normal" ->
       let _ = Cursor.ident t in
       (Normal : animation_range_item)

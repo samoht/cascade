@@ -1012,7 +1012,7 @@ let read_rotate_axis_angle t : rotate_value =
   Axis (first, second, third, angle)
 
 let read_rotate_angle_axis_tail angle t =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "x" ->
       Cursor.skip t;
       (X angle : rotate_value)
@@ -1308,14 +1308,14 @@ let read_offset_path_path t =
   | None -> Cursor.err_expected inner "path string"
 
 let read_offset_path_ray_contain inner =
-  match Cursor.peek_ident inner with
+  match Cursor.peek_keyword inner with
   | Some "contain" ->
       let _ = Cursor.ident inner in
       true
   | _ -> false
 
 let read_offset_path_ray_position inner =
-  match Cursor.peek_ident inner with
+  match Cursor.peek_keyword inner with
   | Some "at" ->
       let _ = Cursor.ident inner in
       Cursor.ws inner;
@@ -1395,7 +1395,7 @@ let read_ray t : ray =
   let size = Cursor.option read_ray_size inner in
   Cursor.ws inner;
   let contain =
-    match Cursor.peek_ident inner with
+    match Cursor.peek_keyword inner with
     | Some "contain" ->
         let _ = Cursor.ident inner in
         true
@@ -1403,7 +1403,7 @@ let read_ray t : ray =
   in
   Cursor.ws inner;
   let position =
-    match Cursor.peek_ident inner with
+    match Cursor.peek_keyword inner with
     | Some "at" ->
         let _ = Cursor.ident inner in
         Cursor.ws inner;

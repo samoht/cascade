@@ -1154,7 +1154,7 @@ let read_image_resolution_dimension t (parts : [ `From_image | `Snap ] list)
 
 let read_image_resolution_step t parts resolution =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "from-image" -> read_image_resolution_from_image t parts resolution
   | Some "snap" -> read_image_resolution_snap t parts resolution
   | _ when image_resolution_has_dimension t ->
@@ -1397,25 +1397,25 @@ module Position_value = struct
 
   (* Read 3-value syntax: keyword offset keyword *)
   let read_3_value t : position_value =
-    let edge1 = Cursor.ident t in
+    let edge1 = Cursor.ident ~keep_case:false t in
     Cursor.ws t;
     let offset = read_length_percentage ~with_keywords:false t in
     Cursor.ws t;
-    let axis = Cursor.ident t in
+    let axis = Cursor.ident ~keep_case:false t in
     if valid_edge_axis edge1 axis then Edge_offset_axis (edge1, offset, axis)
     else Cursor.err_invalid t "invalid three-value position"
 
   let read_axis_edge_offset t : position_value =
-    let axis = Cursor.ident t in
+    let axis = Cursor.ident ~keep_case:false t in
     Cursor.ws t;
-    let edge = Cursor.ident t in
+    let edge = Cursor.ident ~keep_case:false t in
     Cursor.ws t;
     let offset = read_length_percentage ~with_keywords:false t in
     if valid_edge_axis edge axis then Axis_edge_offset (axis, edge, offset)
     else Cursor.err_invalid t "invalid position axis edge offset"
 
   let read_horizontal_keyword_length t : position_value =
-    let keyword = Cursor.ident t in
+    let keyword = Cursor.ident ~keep_case:false t in
     Cursor.ws t;
     let y = read_length ~with_keywords:false t in
     match keyword with
@@ -1432,7 +1432,7 @@ module Position_value = struct
   let read_length_keyword t : position_value =
     let offset = read_length ~with_keywords:false t in
     Cursor.ws t;
-    match Cursor.ident t with
+    match Cursor.ident ~keep_case:false t with
     | "center" -> Single offset
     | "top" -> XY (offset, (Pct 0. : length))
     | "bottom" -> XY (offset, (Pct 100. : length))
@@ -1440,11 +1440,11 @@ module Position_value = struct
 
   (* Read 4-value syntax: keyword offset keyword offset *)
   let read_4_value t : position_value =
-    let edge1 = Cursor.ident t in
+    let edge1 = Cursor.ident ~keep_case:false t in
     Cursor.ws t;
     let offset1 = read_length_percentage ~with_keywords:false t in
     Cursor.ws t;
-    let edge2 = Cursor.ident t in
+    let edge2 = Cursor.ident ~keep_case:false t in
     Cursor.ws t;
     let offset2 = read_length_percentage ~with_keywords:false t in
     if
@@ -1568,7 +1568,7 @@ let read_conic_gradient_config t : conic_gradient_config =
   let position : position_value option ref = ref Option.None in
   let interpolation : color_interpolation option ref = ref Option.None in
   let read_from t =
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "from" ->
         let _ = Cursor.ident t in
         Cursor.ws t;
@@ -1576,7 +1576,7 @@ let read_conic_gradient_config t : conic_gradient_config =
     | _ -> Cursor.err_expected t "from"
   in
   let read_at t =
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "at" ->
         let _ = Cursor.ident t in
         Cursor.ws t;
@@ -1656,7 +1656,7 @@ let rec read_gradient_position t : gradient_position =
     when String.lowercase_ascii_preserve name = "var" ->
       (Var (Values.read_var read_gradient_position t) : gradient_position)
   | _ -> (
-      match Cursor.peek_ident t with
+      match Cursor.peek_keyword t with
       | Some "from" -> Conic_position (read_conic_gradient_config t)
       | Some
           ( "circle" | "ellipse" | "closest-side" | "closest-corner"

@@ -341,7 +341,7 @@ let read_flex_wrap_balance_pair t : flex_wrap =
   let direction = ref Option.None and balance = ref false in
   let rec loop seen =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "balance" when not !balance ->
         let _ = Cursor.ident t in
         balance := true;

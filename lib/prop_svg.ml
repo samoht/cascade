@@ -311,14 +311,14 @@ let vector_effect_space_of = function
 let read_vector_effect_keyword t : vector_effect_keyword =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
-  match vector_effect_keyword_of name with
+  match vector_effect_keyword_of (String.lowercase_ascii_preserve name) with
   | Some k -> k
   | Option.None -> err_invalid_value ~loc t "vector-effect" name
 
 let read_vector_effect_space t : vector_effect_space =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
-  match vector_effect_space_of name with
+  match vector_effect_space_of (String.lowercase_ascii_preserve name) with
   | Some s -> s
   | Option.None -> err_invalid_value ~loc t "vector-effect" name
 
@@ -338,7 +338,7 @@ let rec read_vector_effect t : vector_effect =
     ~default:(fun t ->
       let rec go acc =
         Cursor.ws t;
-        match Option.map vector_effect_keyword_of (Cursor.peek_ident t) with
+        match Option.map vector_effect_keyword_of (Cursor.peek_keyword t) with
         | Some (Some k) ->
             let _ = Cursor.ident t in
             go (k :: acc)
@@ -347,7 +347,7 @@ let rec read_vector_effect t : vector_effect =
       let effects = go [ read_vector_effect_keyword t ] in
       Cursor.ws t;
       let space =
-        match Option.map vector_effect_space_of (Cursor.peek_ident t) with
+        match Option.map vector_effect_space_of (Cursor.peek_keyword t) with
         | Some (Some _) -> Some (read_vector_effect_space t)
         | _ -> Option.None
       in
@@ -363,7 +363,7 @@ let paint_order_keyword_of = function
 let read_paint_order_keyword t : paint_order_keyword =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
-  match paint_order_keyword_of name with
+  match paint_order_keyword_of (String.lowercase_ascii_preserve name) with
   | Some k -> k
   | None -> err_invalid_value ~loc t "paint-order" name
 
@@ -385,7 +385,7 @@ let rec read_paint_order t : paint_order =
         if List.length acc = 3 then List.rev acc
         else begin
           Cursor.ws t;
-          match Option.map paint_order_keyword_of (Cursor.peek_ident t) with
+          match Option.map paint_order_keyword_of (Cursor.peek_keyword t) with
           | Some (Some k) when not (List.mem k acc) ->
               let _ = Cursor.ident t in
               go (k :: acc)

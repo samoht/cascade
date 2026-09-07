@@ -887,7 +887,7 @@ let rec read_clip t : clip =
 
 let read_clip_path_round t : border_radius option =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "round" ->
       let _ = Cursor.ident t in
       Cursor.ws t;
@@ -896,7 +896,7 @@ let read_clip_path_round t : border_radius option =
 
 let read_clip_path_inset_side t : length_percentage option =
   Cursor.ws t;
-  match (Cursor.is_done t, Cursor.peek_ident t) with
+  match (Cursor.is_done t, Cursor.peek_keyword t) with
   | true, _ | _, Some "round" -> None
   | false, _ -> Some (read_length_percentage t)
 
@@ -913,7 +913,7 @@ let read_clip_path_inset t =
       Clip_path_inset { top; right; bottom; left; rounded })
 
 let read_clip_path_extent inner : clip_path_extent =
-  match Cursor.peek_ident inner with
+  match Cursor.peek_keyword inner with
   | Some "closest-side" ->
       Cursor.skip inner;
       Closest_side
@@ -929,7 +929,7 @@ let read_clip_path_fill_rule t =
 
 let read_clip_path_position_clause inner =
   Cursor.ws inner;
-  match Cursor.peek_ident inner with
+  match Cursor.peek_keyword inner with
   | Some "at" ->
       Cursor.skip inner;
       Cursor.ws inner;
@@ -949,7 +949,8 @@ let read_clip_path_circle t : clip_path =
       Cursor.call "circle" t @@ fun inner ->
       Cursor.ws inner;
       let radius : clip_path_extent option =
-        if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
+        if Cursor.is_done inner || Cursor.peek_keyword inner = Some "at" then
+          None
         else Some (read_clip_path_extent inner)
       in
       let position = read_clip_path_position_clause inner in
@@ -962,14 +963,15 @@ let read_clip_path_ellipse t : clip_path =
       Cursor.call "ellipse" t @@ fun inner ->
       Cursor.ws inner;
       let rx : clip_path_extent option =
-        if Cursor.is_done inner || Cursor.peek_ident inner = Some "at" then None
+        if Cursor.is_done inner || Cursor.peek_keyword inner = Some "at" then
+          None
         else Some (read_clip_path_extent inner)
       in
       Cursor.ws inner;
       let ry : clip_path_extent option =
         if
           Option.is_none rx || Cursor.is_done inner
-          || Cursor.peek_ident inner = Some "at"
+          || Cursor.peek_keyword inner = Some "at"
         then None
         else Some (read_clip_path_extent inner)
       in
@@ -979,7 +981,7 @@ let read_clip_path_ellipse t : clip_path =
       Clip_path_ellipse { rx; ry; position })
 
 let read_polygon_fill_rule inner : clip_path_fill_rule option =
-  match Cursor.peek_ident inner with
+  match Cursor.peek_keyword inner with
   | Some "nonzero" ->
       Cursor.skip inner;
       Cursor.ws inner;
@@ -1063,7 +1065,7 @@ let read_clip_path_shape t =
       Clip_path_shape (Cursor.consume_remaining_as_string ~trim:true inner))
 
 let read_clip_geometry_box_opt t : clip_geometry_box option =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "margin-box" ->
       Cursor.skip t;
       Some Margin_box

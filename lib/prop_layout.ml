@@ -554,14 +554,14 @@ let read_contain_intrinsic_size_item t : contain_intrinsic_size_item =
   in
   let none_or_size t ~auto : contain_intrinsic_size_item =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "none" ->
         let _ = Cursor.ident t in
         if auto then Auto_none else None
     | _ -> if auto then Auto (size t) else Length (size t)
   in
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "auto" ->
       let _ = Cursor.ident t in
       none_or_size t ~auto:true
@@ -620,7 +620,7 @@ let rec read_contain_intrinsic_longhand (t : Cursor.t) :
    keyword before the slash is a name: [container: inline-size] names a
    container, it does not type one. *)
 let read_container_shorthand_name t : container_name =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "none" ->
       let _ = Cursor.ident t in
       (None : container_name)
@@ -741,7 +741,7 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
 
 let read_position_try_fallback t =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) -> (
       let _ = Cursor.ident t in
       match keyword with
@@ -970,7 +970,7 @@ let rec read_position_try t : position_try =
          order keyword is optional and never collides with a fallback, and the
          fallbacks are not, so an order on its own is no value. *)
       let order : position_try_order =
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some
             ( "normal" | "most-width" | "most-height" | "most-block-size"
             | "most-inline-size" ) ->
@@ -1183,7 +1183,7 @@ let read_margin_trim_axes t : margin_trim option =
   let axes = [ "block"; "inline" ] in
   let rec loop acc =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some s
       when List.mem s axes && not (List.mem (margin_trim_axis_of_ident t s) acc)
       ->
@@ -1211,7 +1211,7 @@ let read_margin_trim_edges t =
   let edges = [ "block-start"; "inline-start"; "block-end"; "inline-end" ] in
   let rec loop acc =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some s
       when List.mem s edges
            && not (List.mem (margin_trim_edge_of_ident t s) acc) ->

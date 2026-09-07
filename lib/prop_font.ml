@@ -483,7 +483,7 @@ let read_feature_value_names t =
 
 let read_font_variant_alternates_item t : font_variant_alternates_item =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "historical-forms" ->
       let _ = Cursor.ident t in
       Historical_forms
@@ -1899,8 +1899,8 @@ let read_font_shorthand r : font_shorthand =
   let rec consume_prefix () =
     Cursor.ws r;
     if Cursor.is_done r then ()
-    else if font_shorthand_prefix_ident (Cursor.peek_ident r) then (
-      assign (font_prefix_slot_of (Cursor.ident r));
+    else if font_shorthand_prefix_ident (Cursor.peek_keyword r) then (
+      assign (font_prefix_slot_of (Cursor.ident ~keep_case:false r));
       consume_prefix ())
     else if try_numeric_font_weight r weight then consume_prefix ()
   in
@@ -2561,7 +2561,7 @@ let rec read_font_size_adjust t : font_size_adjust =
   let read_metric_value t =
     let metric = read_font_size_adjust_metric t in
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "from-font" ->
         let _ = Cursor.ident t in
         Metric_from_font metric

@@ -94,7 +94,7 @@ let read_display_two_value t : display =
      reject so the caller can fall back to the legacy single-value form. *)
   let outside = Cursor.enum "display-outside" display_outside_idents t in
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some s when List.mem_assoc s display_inside_idents ->
       let inside = Cursor.enum "display-inside" display_inside_idents t in
       Multi (outside, inside)
@@ -106,7 +106,7 @@ let read_display_list_item t : display =
   let list_item = ref false in
   let consume_slot () =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "list-item" when not !list_item ->
         ignore (Cursor.ident t : string);
         list_item := true;
@@ -961,14 +961,14 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_number_or_ratio t : aspect_ratio =
     let w, h = read_ratio t in
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "auto" ->
         Cursor.skip t;
         aspect_ratio_of_numbers ~auto:true w h
     | _ -> aspect_ratio_of_numbers ~auto:false w h
   in
   let read_auto t : aspect_ratio =
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "auto" -> (
         Cursor.skip t;
         (* [auto] may stand alone or be followed by a [<ratio>]. Only treat a

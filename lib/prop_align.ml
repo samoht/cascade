@@ -20,7 +20,7 @@ let read_flat_baseline ~what ~baseline ~first ~last t =
     [ ("baseline", baseline) ]
     ~default:(fun t ->
       let tok = Cursor.ident t in
-      match tok with
+      match Common.String.lowercase_ascii_preserve tok with
       | "first" ->
           Cursor.ws t;
           Cursor.expect_string "baseline" t;
@@ -330,7 +330,7 @@ let rec read_justify_items t : justify_items =
   let read_legacy t =
     Cursor.expect_string "legacy" t;
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "center" ->
         let _ = Cursor.ident t in
         Legacy_center

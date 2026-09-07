@@ -438,6 +438,11 @@ let peek_ident t =
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> Some s
   | _ -> None
 
+let peek_keyword t =
+  match peek_ident t with
+  | Some s -> Some (String.lowercase_ascii_preserve s)
+  | None -> None
+
 let peek_hash t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->

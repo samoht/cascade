@@ -325,7 +325,7 @@ let rec read_text_combine_upright t : text_combine_upright =
     ]
     ~var:(fun t -> Var (read_var read_text_combine_upright t))
     ~default:(fun t ->
-      match Cursor.peek_ident t with
+      match Cursor.peek_keyword t with
       | Some "digits" ->
           let _ = Cursor.ident t in
           Cursor.ws t;

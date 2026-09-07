@@ -2510,7 +2510,7 @@ let read_list_style_shorthand r : list_style_shorthand =
     if Cursor.is_done r then ()
     else
       let saved = Cursor.save r in
-      let kw = Cursor.peek_ident r in
+      let kw = Cursor.peek_keyword r in
       if kw = Some "none" then begin
         let _ = Cursor.ident r in
         saw_none := true;

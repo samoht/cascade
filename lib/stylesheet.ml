@@ -1975,8 +1975,8 @@ let read_import_layer (r : Cursor.t) =
   with
   | Some _ as some -> some
   | None -> (
-      match Cursor.peek_ident r with
-      | Some s when String.lowercase_ascii s = "layer" ->
+      match Cursor.peek_keyword r with
+      | Some "layer" ->
           let _ = Cursor.ident r in
           Some []
       | _ -> None)
@@ -2798,7 +2798,7 @@ let read_counter_validated_descriptor ~what ~check constructor r =
 (* sec. 3.5: [[<integer> | infinite]{2}]# | auto. *)
 let check_counter_range c =
   let bound c =
-    match Cursor.peek_ident c with
+    match Cursor.peek_keyword c with
     | Some "infinite" -> ignore (Cursor.ident c)
     | Some _ | None -> ignore (Cursor.int c)
   in
@@ -2807,7 +2807,7 @@ let check_counter_range c =
     Cursor.ws c;
     bound c
   in
-  match Cursor.peek_ident c with
+  match Cursor.peek_keyword c with
   | Some "auto" -> ignore (Cursor.ident c)
   | Some _ | None -> ignore (Cursor.list ~at_least:1 ~sep:Cursor.comma pair c)
 
@@ -2839,7 +2839,7 @@ let check_counter_additive_symbols c =
 (* sec. 3.8: auto | bullets | numbers | words | spell-out |
    <counter-style-name>. *)
 let check_counter_speak_as c =
-  match Cursor.peek_ident c with
+  match Cursor.peek_keyword c with
   | Some ("auto" | "bullets" | "numbers" | "words" | "spell-out") ->
       ignore (Cursor.ident c)
   | Some _ | None -> ignore (read_counter_style_name c)
@@ -3641,12 +3641,6 @@ let conditional_atom r ~at_rule (fn : Component.func Component.node) =
       Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
 
 let conditional_components ~at_rule cursor =
-  let peek_ident () =
-    match Cursor.peek cursor with
-    | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
-        Some (String.lowercase_ascii name)
-    | _ -> None
-  in
   let read_atom () =
     Cursor.ws cursor;
     match Cursor.peek cursor with
@@ -3659,7 +3653,7 @@ let conditional_components ~at_rule cursor =
   let mixed op = Cursor.err_condition cursor ~at_rule ("cannot mix " ^ op) in
   let rec chain op acc =
     Cursor.ws cursor;
-    match peek_ident () with
+    match Cursor.peek_keyword cursor with
     | Some "and" ->
         (match op with Some `Or -> mixed "or and and" | _ -> ());
         Cursor.skip cursor;

@@ -338,6 +338,11 @@ val peek_colon : t -> bool
 val peek_ident : t -> string option
 (** [peek_ident t] is [Some s] when the next component is [Ident s]. *)
 
+val peek_keyword : t -> string option
+(** [peek_keyword t] is the next identifier folded to ASCII lower case, for
+    matching against a keyword. CSS Values 4 sec. 4.1. Use {!peek_ident} for an
+    author-defined name, which sec. 4.2 keeps case-sensitive. *)
+
 val peek_hash : t -> string option
 (** [peek_hash t] is [Some s] when the next component is [Hash s]. *)
 

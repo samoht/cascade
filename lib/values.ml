@@ -5229,7 +5229,7 @@ let read_math_constant_or_number t =
    [up], [down], [to-zero]); when omitted the default is [nearest]. *)
 let read_round_strategy inner =
   let snap = Cursor.save inner in
-  match Cursor.peek_ident inner with
+  match Cursor.peek_keyword inner with
   | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
       Cursor.skip inner;
       Cursor.ws inner;
@@ -6266,7 +6266,7 @@ let read_rgb_comma_separated t : color =
 (** Read color space identifier *)
 let read_color_space t : color_space =
   let space_ident = Cursor.ident t in
-  match space_ident with
+  match Common.String.lowercase_ascii_preserve space_ident with
   | "srgb" -> Srgb
   | "srgb-linear" -> Srgb_linear
   | "display-p3" -> Display_p3

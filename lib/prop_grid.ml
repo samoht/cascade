@@ -920,7 +920,7 @@ module Grid_template = struct
   let read_fr t : grid_template =
     (* [1fr] lexes as a single [Dimension] with unit "fr". *)
     match Cursor.dimension_opt t with
-    | Some (n, "fr") -> Fr n
+    | Some (n, unit_) when String.lowercase_ascii_preserve unit_ = "fr" -> Fr n
     | _ -> Cursor.err_expected t "<fr>"
 
   type math_kind = Number | Dimension | Flex | Unknown | Invalid
@@ -1480,7 +1480,7 @@ let read_grid_auto_tracks t : grid_template =
 let read_grid_auto_flow_clause side t =
   let rec loop seen_auto_flow seen_dense =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "auto-flow" when not seen_auto_flow ->
         let _ = Cursor.ident t in
         loop true seen_dense
@@ -1504,7 +1504,7 @@ let read_grid_auto_flow_tracks t : grid_template option =
   | Some _ -> Cursor.option read_grid_template_tracks t
 
 let grid_starts_auto_flow t =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some ("auto-flow" | "dense") -> true
   | _ -> false
 

@@ -1946,7 +1946,7 @@ let read_background_position_axis ~label ~start_edge ~end_edge =
       ]
       ~var:(fun t -> Var (Values.read_var read t))
       ~default:(fun t : background_position_axis ->
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some "center" ->
             ignore (Cursor.ident_opt t);
             Center
@@ -2389,7 +2389,7 @@ let read_border_image_slice_step t values has_fill =
   Cursor.ws t;
   if Cursor.is_done t || Cursor.peek_delim t = Some '/' then `Stop
   else
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "fill" ->
         if has_fill then
           Cursor.err_invalid t "duplicate border-image fill keyword";
@@ -2412,7 +2412,7 @@ let read_border_image_slice_offsets t : border_image_slice_offsets =
 (* CSS Cascade 5 sec. 7.3 gives the longhand the CSS-wide keywords; the
    shorthand takes offsets alone. *)
 let rec read_border_image_slice t : border_image_slice =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some ("initial" | "inherit" | "unset" | "revert" | "revert-layer" | "var")
     ->
       Cursor.enum_or_var "border-image-slice"

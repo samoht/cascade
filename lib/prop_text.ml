@@ -299,7 +299,7 @@ let rec read_text_indent_value t : text_indent_value =
       let each_line = ref false in
       while not (Cursor.is_done t) do
         Cursor.ws t;
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some "hanging" when not !hanging ->
             Cursor.skip t;
             hanging := true
@@ -689,7 +689,7 @@ let rec read_text_transform t : text_transform =
       while !consumed do
         consumed := false;
         Cursor.ws t;
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some "uppercase" when Option.is_none !case ->
             Cursor.skip t;
             case := Option.Some Uppercase;
@@ -1671,7 +1671,7 @@ let read_text_box_edge_keyword t : text_box_edge_keyword =
    is a value of the property rather than a CSS-wide keyword and reaches the
    [text-box] shorthand along with the rest. *)
 let read_text_box_edge_value t : text_box_edge =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "auto" ->
       let _ = Cursor.ident t in
       (Auto : text_box_edge)
@@ -1931,7 +1931,7 @@ let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
 
 let rec read_white_space t : white_space =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "preserve" ->
       ignore (Cursor.ident t : string);
       Cursor.ws t;
@@ -2021,7 +2021,7 @@ let read_webkit_text_stroke t : webkit_text_stroke =
     slot := Some value
   in
   let read_one t =
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some ("thin" | "medium" | "thick") -> fill width (read_border_width t)
     | _ -> (
         let snap = Cursor.save t in

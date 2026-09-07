@@ -887,7 +887,7 @@ let touch_action_is_var t =
   | _ -> false
 
 let touch_action_starts_keyword t =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some
       ( "auto" | "none" | "manipulation" | "inherit" | "initial" | "unset"
       | "revert" | "revert-layer" ) ->
@@ -1051,7 +1051,7 @@ let rec read_scrollbar_gutter (t : Cursor.t) : scrollbar_gutter =
      ~default:(fun t ->
        Cursor.expect_string "stable" t;
        Cursor.ws t;
-       match Cursor.peek_ident t with
+       match Cursor.peek_keyword t with
        | Some "both-edges" ->
            let _ = Cursor.ident t in
            Stable_both_edges
@@ -1176,8 +1176,11 @@ let rec read_appearance t : appearance =
     ~var:(fun t -> (Var (Values.read_var read_appearance t) : appearance))
     t
 
+(* Only the [<custom-ident>] alternative of the grammar below keeps its case;
+   every other ident in it is a keyword. *)
 let color_scheme_of_idents t names : color_scheme =
-  match names with
+  let keywords = List.map String.lowercase_ascii_preserve names in
+  match keywords with
   | [ "normal" ] -> Normal
   | [ "light" ] -> Light
   | [ "dark" ] -> Dark
@@ -1200,13 +1203,13 @@ let color_scheme_of_idents t names : color_scheme =
          dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive with
          the list form; [only] is a modifier that must accompany a non-empty
          list; CSS-wide keywords can only stand alone. *)
-      let has_normal = List.mem "normal" names in
+      let has_normal = List.mem "normal" keywords in
       let has_css_wide =
         List.exists
           (fun n ->
-            List.mem (String.lowercase_ascii n)
+            List.mem n
               [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ])
-          names
+          keywords
       in
       if has_normal then
         Cursor.err_invalid t
@@ -1214,12 +1217,12 @@ let color_scheme_of_idents t names : color_scheme =
       if has_css_wide then
         Cursor.err_invalid t
           "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
-      let is_only n = String.equal (String.lowercase_ascii n) "only" in
-      let non_only_names = List.filter (fun n -> not (is_only n)) names in
+      let is_only n = String.equal n "only" in
+      let non_only_names = List.filter (fun n -> not (is_only n)) keywords in
       if non_only_names = [] then
         Cursor.err_invalid t
           "color-scheme: [only] must be combined with a color scheme";
-      if List.length (List.filter is_only names) > 1 then
+      if List.length (List.filter is_only keywords) > 1 then
         Cursor.err_invalid t "color-scheme: [only] cannot be repeated";
       Custom names
 
