@@ -3986,13 +3986,16 @@ and read_supports (r : Cursor.t) : statement =
   Supports (Supports.read query, content)
 
 and read_scope (r : Cursor.t) : statement =
-  (* CSS Cascade 6 sec. 3.5.2: [@scope <start> to <end> { ... }]. The two
-     selectors are kept as raw strings; the block is consumed normally. *)
+  (* CSS Cascade 6 sec. 3.5.2 spells it [@scope <scope-boundaries>? {
+     <block-contents> }], and [<block-contents>] holds declarations as well as
+     rules: a declaration written straight into the body applies to the scoping
+     root, which Chrome reports as a [CSSNestedDeclarations]. The two selectors
+     are kept as raw strings. *)
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
   let prelude_components = Cursor.drain_until_block r in
   let scope_start, scope_end = scope_prelude r prelude_components in
-  let content = Cursor.braces (fun inner -> read_block inner) r in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   Scope (scope_start, scope_end, content)
 
 and read_container (r : Cursor.t) : statement =

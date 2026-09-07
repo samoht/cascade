@@ -859,6 +859,11 @@ to lose a whole rule over one bad piece. Both are gone.
   sec. 6.1 answers a declaration feature by running that exact declaration
   through the rendering browser's parser, so the text is the question (#1067)
 
+- `@scope { color: green }` reads, where the whole at-rule used to be dropped
+  with a warning. CSS Cascade 6 sec. 3.5.2 gives `@scope` a `<block-contents>`
+  body, so a declaration written straight into it applies to the scoping root;
+  cascade read the body as rules only (#1068)
+
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor
