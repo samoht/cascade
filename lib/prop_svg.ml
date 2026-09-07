@@ -66,7 +66,9 @@ let normalize_stroke_width ~ctx (value : stroke_width) : stroke_width =
 
 let normalize_dash_length ~ctx (value : dash_length) : dash_length =
   match value with
-  | Number _ -> value
+  | Number n ->
+      let n' = Values.normalize_number ~ctx n in
+      if n' == n then value else Number n'
   | Length lp ->
       let lp' = Values.normalize_length_percentage ~ctx lp in
       if lp' == lp then value else Length lp'
@@ -165,7 +167,7 @@ let rec pp_stroke_width : stroke_width Pp.t =
 
 let pp_dash_length : dash_length Pp.t =
  fun ctx -> function
-  | Number n -> Pp.float ctx n
+  | Number n -> Values.pp_number ctx n
   | Length lp -> Values.pp_length_percentage ctx lp
 
 let rec pp_stroke_dashoffset : stroke_dashoffset Pp.t =
@@ -393,20 +395,38 @@ let rec read_paint_order t : paint_order =
       (Order (go [ read_paint_order_keyword t ]) : paint_order))
     t
 
+(* Sec. 13.5.6 leaves the number half at [0,inf] when the caller asks. A
+   [calc()] holds no value to compare, so only a literal is turned away here.
+   Each dash is one component of a list, and the whole-value number reader
+   refuses a number after the one it read, so the component is handed to it on
+   its own. *)
+let read_dash_number ~allow_negative t : number =
+  let value : number =
+    match Cursor.peek t with
+    | Some (Component.Func _ as component) ->
+        let _ = Cursor.next t in
+        Values.read_number (Cursor.of_components [ component ])
+    | _ -> Num (Cursor.number t)
+  in
+  (match value with
+  | (Num n : number) when (not allow_negative) && n < 0. ->
+      Cursor.err_invalid t "stroke-dasharray cannot be negative"
+  | _ -> ());
+  value
+
 (* A bare number is user units; anything with a unit or a percent sign is a
    <length-percentage>. *)
 let read_dash_length ?(allow_negative = true) t : dash_length =
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-      let n = Cursor.number t in
-      if (not allow_negative) && n < 0. then
-        Cursor.err_invalid t "stroke-dasharray cannot be negative";
-      Number n
-  (* The grammar is <length-percentage> | <number>, with no keyword branch, so
-     the intrinsic-sizing keywords a bare length would accept are out. *)
-  | _ ->
-      Length
-        (Values.read_length_percentage ~allow_negative ~with_keywords:false t)
+  Cursor.one_of
+    [
+      (fun t -> (Number (read_dash_number ~allow_negative t) : dash_length));
+      (* The grammar is <length-percentage> | <number>, with no keyword branch,
+         so the intrinsic-sizing keywords a bare length would accept are out. *)
+      (fun t ->
+        Length
+          (Values.read_length_percentage ~allow_negative ~with_keywords:false t));
+    ]
+    t
 
 let rec read_stroke_dashoffset t : stroke_dashoffset =
   Cursor.enum_or_calls "stroke-dashoffset"

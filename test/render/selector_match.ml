@@ -48,12 +48,16 @@ type element = {
   tag : string;
   attrs : (string * string) list;
   text : string list;
+  comments : string list;
+      (** A comment is a child node and not a text child, so an element holding
+          only comments is still [:empty]. NODE has no comment case, which is
+          the claim this side of the harness puts to the browser. *)
   mutable up : element option;
   kids : element list;
 }
 
-let elt ?(attrs = []) ?(text = []) tag kids =
-  let e = { tag; attrs; text; up = None; kids } in
+let elt ?(attrs = []) ?(text = []) ?(comments = []) tag kids =
+  let e = { tag; attrs; text; comments; up = None; kids } in
   List.iter (fun k -> k.up <- Some e) kids;
   e
 
@@ -96,6 +100,9 @@ module Node = struct
 end
 
 module R = Resolve.Make (Node)
+
+(* The pass that deletes rules, over the same element model the matcher uses. *)
+module P = Cascade.Prune.Make (Node)
 
 type doc = { did : string; body : element list; root : element }
 
@@ -160,7 +167,8 @@ let rec json_of_element e =
     :: (field "a"
           (List.map (fun (n, v) -> Json.Arr [ Json.Str n; Json.Str v ]) e.attrs)
        @ field "k" (List.map json_of_element e.kids)
-       @ field "x" (List.map (fun t -> Json.Str t) e.text)))
+       @ field "x" (List.map (fun t -> Json.Str t) e.text)
+       @ field "c" (List.map (fun t -> Json.Str t) e.comments)))
 
 (* ===== The documents =====
 
@@ -326,6 +334,22 @@ let doc_empty =
       elt "div" [ elt "span" [] ];
       elt "div" ~text:[ " " ] [ elt "span" [] ];
       elt "span" ~attrs:[ ("class", "a") ] [];
+    ]
+
+(* Selectors 4 sec. 13.2 counts element nodes and non-empty text as children and
+   a comment as neither, so an element holding only comments is [:empty]. This
+   document carries no white-space-only element on purpose: that is the one
+   shape cascade declines, and a declined element takes the whole pair out of
+   the match-set comparison with it. *)
+let doc_comment =
+  document "comment"
+    [
+      elt "div" ~comments:[ " c " ] [];
+      elt "div" ~comments:[ " c "; " d " ] [];
+      elt "div" ~comments:[ " c " ] ~text:[ "x" ] [];
+      elt "div" ~comments:[ " c " ] [ elt "span" [] ];
+      elt "div" [];
+      elt "div" ~text:[ "x" ] [];
     ]
 
 (* Generated documents keep the run from only ever asking about the shapes the
@@ -830,15 +854,7 @@ let controls =
    real and it is not cascade's, so it is named here with the text that settles
    it, and an entry that stops excusing anything is reported the way a stale
    control is: a browser that fixes its bug takes its excuse with it. *)
-let browser_disagrees =
-  [
-    ( ":nth-child(0)",
-      "Selectors 4 sec. 9.3 reads An+B as the index i = A*n + B for a \
-       non-negative n over a 1-indexed sibling list, so 0n+0 names index 0, \
-       which no element has. Chrome 151 matches every element instead, and \
-       matches none for :nth-last-child(0) and for :nth-child(0 of *), so the \
-       fast path without an S is the one that reads the expression wrong" );
-  ]
+let browser_disagrees = []
 
 (* ===== What each side answers ===== *)
 
@@ -1058,6 +1074,7 @@ let () =
       doc_deep;
       doc_has;
       doc_empty;
+      doc_comment;
     ]
     @ List.init !generated (fun i -> generated_document rng (i + 1))
   in
@@ -1158,6 +1175,63 @@ let () =
     trees;
   let adapter_report = Buffer.contents buf in
   Buffer.clear buf;
+
+  (* --- What prune would delete, against what the browser matches ---
+
+     [Cascade.Prune] removes a rule every element answered no to, and nothing
+     else measures it, though it is the one pass that DELETES. The matcher it
+     rests on is what the rest of this run checks; what is unchecked is the
+     removal around it, so this asks the narrow question the browser settles: a
+     rule prune dropped that the browser matches is CSS a page needed and no
+     longer has.
+
+     The other direction is counted rather than reported, and is not a defect.
+     Prune keeps a rule whose selector [Resolve.supported] declines, and keeps
+     one the documents happen not to exercise, so a rule it kept that matched
+     nothing is the pass being conservative, which is the safe side of a
+     deletion. *)
+  let prune_deleted_a_match = ref [] and prune_kept_an_unmatched = ref 0 in
+  List.iter
+    (fun (d, _els) ->
+      List.iter
+        (fun p ->
+          if not (is_control p) then
+            match
+              ( read_selector p.read,
+                Hashtbl.find_opt r.answers (key d.did p.sid) )
+            with
+            | Ok _, Some (Matched hits) -> (
+                let css = String.concat "" [ p.read; "{color:red}" ] in
+                match Cascade.Css.of_string css with
+                | Error _ | (exception _) -> ()
+                | Ok { stylesheet; _ } -> (
+                    match P.analyse ~sheet:stylesheet [ d.root ] with
+                    | exception _ -> ()
+                    | analysis ->
+                        let kept =
+                          Cascade.Css.statements analysis.sheet <> []
+                        in
+                        if hits <> [] && not kept then
+                          prune_deleted_a_match :=
+                            {
+                              probe = p;
+                              doc_id = d.did;
+                              detail =
+                                [
+                                  String.concat ""
+                                    [
+                                      "    the browser matched ";
+                                      string_of_int (List.length hits);
+                                      " element(s), prune removed the rule";
+                                    ];
+                                ];
+                            }
+                            :: !prune_deleted_a_match
+                        else if hits = [] && kept then
+                          incr prune_kept_an_unmatched))
+            | _ -> ())
+        probes)
+    trees;
 
   (* --- Classify every pair --- *)
   let wrong = ref [] and rejected = ref [] and undecided = ref [] in
@@ -1399,6 +1473,15 @@ let () =
     !conservative;
   section "BROWSER (the browser answers against its own specification)"
     !browser_excused;
+  section "PRUNE DELETED A RULE THE BROWSER MATCHES" !prune_deleted_a_match;
+  line "";
+  line
+    (String.concat ""
+       [
+         "prune: kept ";
+         string_of_int !prune_kept_an_unmatched;
+         " rule(s) the browser matched nothing for, which is the safe side";
+       ]);
   line "";
   line "calibration:";
   List.iter

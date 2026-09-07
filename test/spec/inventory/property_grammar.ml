@@ -273,6 +273,11 @@ let matrix =
           ",";
           "default";
           "system-ui default";
+          (* Chrome reads a reserved word inside a longer unquoted name, which
+             sec. 2.1.1 excludes; a generic family in one (system-ui above) it
+             refuses as the section says. Pinned here so the shape excusing the
+             first is checked against the fixed population. *)
+          "none default";
           "revert-layer, serif";
           "system-ui revert-layer, serif";
         ];
@@ -353,12 +358,18 @@ let matrix =
       negatives = [ "1 2 3 4"; "red" ];
     };
     {
+      (* CSS Transitions 1 (ED) sec. 2.5 spells the shorthand
+         [<single-transition>#] over [<single-transition> = [ none |
+         <single-transition-property> ] || <time> || <easing-function> ||
+         <time>], so [none] is one entry of the list wherever it stands and not
+         a whole-value keyword. *)
       property = "transition";
       positives =
         [
           "opacity 1s ease-in .2s";
           "all .2s linear .1s";
           "opacity calc(500ms + .5s)";
+          "opacity 1s, none";
         ];
       negatives = [ "1s 2s 3s"; "ease opacity ease" ];
     };
@@ -378,6 +389,7 @@ let matrix =
           "none";
           "fade calc(1s * 2)";
           "infinite infinite";
+          "--x x";
         ];
       negatives = [ "1s 2s 3s"; "2 3" ];
     };
@@ -1074,7 +1086,10 @@ let matrix =
       };
       {
         property = "hyphenate-limit-chars";
-        positives = [ "auto"; "6"; "6 3"; "6 3 2" ];
+        positives =
+          [
+            "auto"; "6"; "6 3"; "6 3 2"; "auto 3"; "3 auto auto"; "calc(1 + 2)";
+          ];
         negatives = [ "1 2 3 4"; "red" ];
       };
       {
@@ -1912,7 +1927,11 @@ let matrix =
       };
       {
         property = "background-blend-mode";
-        positives = [ "normal"; "multiply"; "screen, overlay" ];
+        (* Compositing 2 sec. 3.4.3 spells this <'mix-blend-mode'>#, and sec.
+           3.4.1 gives mix-blend-mode plus-lighter, so the value is granted here
+           too; Chrome takes it on mix-blend-mode alone. Pinned so the excuse
+           for that answers to the fixed population. *)
+        positives = [ "normal"; "multiply"; "screen, overlay"; "plus-lighter" ];
         negatives = [ "normal multiply"; "foo" ];
       };
       {
@@ -1957,8 +1976,23 @@ let matrix =
       };
       {
         property = "-webkit-mask-composite";
-        positives = [ "source-over"; "xor"; "source-in, source-out" ];
-        negatives = [ "add"; "source-over xor" ];
+        positives =
+          [
+            "source-over";
+            "source-in";
+            "source-out";
+            "source-atop";
+            "destination-over";
+            "destination-in";
+            "destination-out";
+            "destination-atop";
+            "xor";
+            "plus-lighter";
+            "clear";
+            "copy";
+            "source-in, source-out";
+          ];
+        negatives = [ "add"; "plus-darker"; "source-over xor" ];
       };
       {
         property = "-webkit-mask-source-type";
@@ -1967,15 +2001,43 @@ let matrix =
       };
       {
         property = "-webkit-mask-clip";
-        positives = [ "border-box"; "padding-box"; "content-box"; "no-clip" ];
+        positives =
+          [
+            "border";
+            "border-box";
+            "content";
+            "content-box";
+            "padding";
+            "padding-box";
+            "text";
+          ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "no-clip";
+            "fill-box";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "-webkit-mask-origin";
-        positives = [ "border-box"; "padding-box"; "content-box" ];
+        positives =
+          [
+            "border";
+            "border-box";
+            "content";
+            "content-box";
+            "padding";
+            "padding-box";
+          ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "text";
+            "no-clip";
+            "fill-box";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "mask-composite";
@@ -1986,13 +2048,23 @@ let matrix =
         property = "mask-clip";
         positives = [ "border-box"; "padding-box"; "content-box"; "no-clip" ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "text";
+            "content";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "mask-origin";
         positives = [ "border-box"; "padding-box"; "content-box" ];
         negatives =
-          [ "margin-box"; "border-box padding-box content-box content-box" ];
+          [
+            "no-clip";
+            "content";
+            "margin-box";
+            "border-box padding-box content-box content-box";
+          ];
       };
       {
         property = "mask-type";

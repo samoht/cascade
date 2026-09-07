@@ -89,7 +89,7 @@ let of_reader ?(meta = Loc.default_meta_level) r =
   }
 
 let is_ws_cv : Component.t -> bool = function
-  | Preserved { kind = Token.Whitespace; _ } -> true
+  | Preserved { kind = Token.Whitespace _; _ } -> true
   | _ -> false
 
 let rec drop_ws t =
@@ -140,6 +140,12 @@ let remaining t = t.cvs
 
 let string_of_components ?(trim = false) cvs =
   let s = Parser.string_of_components cvs in
+  if trim then String.trim s else s
+
+(* A conditional group's prelude is the question the rendering browser is asked,
+   so the escape the author wrote survives; see {!Parser.to_string_verbatim}. *)
+let string_of_components_verbatim ?(trim = false) cvs =
+  let s = Parser.to_string_verbatim cvs in
   if trim then String.trim s else s
 
 let string_of_remaining ?(trim = false) t =
@@ -387,8 +393,8 @@ let string_repr_with_quote_opt t =
   match peek t with
   | Some
       (Component.Preserved
-         ({ kind = Token.String { value; quote; terminated }; loc } : Token.t))
-    ->
+         ({ kind = Token.String { value; quote; terminated }; loc; _ } :
+           Token.t)) ->
       skip t;
       Some (value, quote, if terminated then source_slice t loc else None)
   | _ -> None
@@ -495,8 +501,13 @@ let is_semicolon_cv = function
   | Component.Preserved { kind = Token.Semicolon; _ } -> true
   | _ -> false
 
+(* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of a
+   custom property's value, and this is what captures it, so the run each
+   whitespace token carries is written back rather than the single space Syntax
+   3 sec. 9.1 gives a reserialized stream. *)
 let consume_until_semicolon ?(trim = false) t =
-  string_of_components ~trim (drain_until_raw is_semicolon_cv t)
+  let s = Parser.to_string_verbatim (drain_until_raw is_semicolon_cv t) in
+  if trim then String.trim s else s
 
 let rec skip_past_semicolon t =
   match next_raw t with
@@ -511,8 +522,11 @@ let rec skip_past_semicolon t =
 let ends_declaration_value cv =
   match component_head_shape cv with `Semicolon | `Bang -> true | _ -> false
 
+(* An unknown property's value is a stream cascade keeps rather than one it
+   respells, the same as a custom property's, so it writes back the text it was
+   read from; see {!string_of_components_verbatim}. *)
 let consume_to_decl_end ?(trim = false) t =
-  string_of_components ~trim (drain_until_raw ends_declaration_value t)
+  string_of_components_verbatim ~trim (drain_until_raw ends_declaration_value t)
 
 let drain_to_decl_end t = drain_until_raw ends_declaration_value t
 

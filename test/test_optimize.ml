@@ -1290,6 +1290,40 @@ let test_lossless_declaration_order () =
     ".a{border-top:1px solid red;border-color:#00f}"
     (opt ~lossless:true ".a{border-top:1px solid red;border-color:blue}")
 
+(* CSS Color 4 sec. 5 writes the alpha of the hex forms as a byte, so a hex
+   spelling exists only where the alpha IS one. [--lossless] therefore folds an
+   alpha that lands on a whole byte and leaves the rest functional: .6 is 153
+   and folds, .5 is 127.5 and does not. Rounding it would emit a different
+   colour under the mode whose whole promise is that it does not. *)
+let test_lossless_alpha_folds_only_on_a_whole_byte () =
+  let opt css =
+    match Css.of_string css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize ~lossless:true p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (opt input))
+    [
+      (* Whole bytes: 153, 51, 204, 255. *)
+      (".a{color:rgb(0 0 0/.6)}", ".a{color:#0009}");
+      (".a{color:rgb(0 0 0/.2)}", ".a{color:#0003}");
+      (".a{color:rgb(0 0 0/.8)}", ".a{color:#000c}");
+      (".a{color:rgb(0 0 0/1)}", ".a{color:#000}");
+      (* 127.5 is not a byte, so the functional spelling stays. *)
+      (".a{color:rgb(0 0 0/.5)}", ".a{color:rgb(0 0 0/.5)}");
+      (".a{color:rgb(0 0 0/.3)}", ".a{color:rgb(0 0 0/.3)}");
+      (* A percentage alpha is the same question asked of a second arm, and 100%
+         of 255 is a byte where 33% of it is 84.15. The percentage itself prints
+         as the shorter <number> CSS Color 4 sec. 4.1 makes equal to it. *)
+      (".a{color:rgb(0 0 0/100%)}", ".a{color:#000}");
+      (".a{color:rgb(0 0 0/20%)}", ".a{color:#0003}");
+      (".a{color:rgb(0 0 0/33%)}", ".a{color:rgb(0 0 0/.33)}");
+      (".a{color:rgb(0 0 0/1%)}", ".a{color:rgb(0 0 0/.01)}");
+    ]
+
 let test_lossless_keeps_unknown_property_order () =
   let opt css =
     match Css.of_string ~strict:false css with
@@ -1713,6 +1747,65 @@ let unknown_at_rule_body_is_compacted () =
     "@foo{ .a { color: red } }"
     (minified "@foo{ .a { color: red } }")
 
+(* A shorthand resets every longhand of its family, so one written before it is
+   dead and minify drops it. The two families here are the ones whose reset
+   table entry no other test reaches: their longhands survive a mutation of the
+   table and the suite stays green. *)
+(* CSS Backgrounds 3 (ED) sec. 3.4: "The border shorthand also resets
+   border-image to its initial value." Contracting the border longhands beside a
+   border-image longhand would reset the rest of that family, which the
+   longhands the rule wrote did not. Each border-image longhand carries its own
+   hazard bit for this: sharing one makes a rule holding the slice answer for a
+   neighbour holding the source. *)
+let test_border_keeps_longhands_beside_a_border_image () =
+  let minify_str css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* A NEIGHBOUR holding one is the hazard, and each longhand needs its OWN bit
+     for it: with the source and slice sharing one, the rule holding the slice
+     answers for the rule holding the source and both contract. *)
+  Alcotest.(check string)
+    "the border longhands stay where the family is spread over four rules"
+    "c,f{border-width:1px;border-style:solid;border-color:red}a,f{border-image-slice:2}b,c{border-image-source:url(x.png)}"
+    (minify_str
+       "a{border-image-slice:2}c{border-image-source:url(x.png);border-width:1px;border-style:solid;border-color:red}b{border-image-source:url(x.png)}f{border-image-slice:2;border-width:1px;border-style:solid;border-color:red}");
+  (* With no border-image longhand anywhere there is nothing to reset, so the
+     contraction is the shorter spelling of the same cascade. *)
+  Alcotest.(check string)
+    "and contracts with none of them present" "a{border:1px solid red}"
+    (minify_str "a{border-width:1px;border-style:solid;border-color:red}")
+
+let test_shorthand_drops_the_longhand_it_resets () =
+  let minify_str css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* CSS Transitions 1 (ED) sec. 2.5: the shorthand sets all four longhands, so
+     [transition: 1s] gives transition-property its initial [all] and the
+     earlier declaration cannot be seen. *)
+  Alcotest.(check string)
+    "transition resets the property longhand before it" "a{transition:all 1s}"
+    (minify_str "a{transition-property:opacity;transition:1s}");
+  Alcotest.(check string)
+    "and keeps one written after it"
+    "a{transition:all 1s;transition-property:opacity}"
+    (minify_str "a{transition:1s;transition-property:opacity}");
+  (* CSS Fonts 4 (ED) sec. 6.10: font-variant resets its seven longhands, of
+     which font-variant-ligatures is one. *)
+  Alcotest.(check string)
+    "font-variant resets the ligatures longhand before it"
+    "a{font-variant:normal}"
+    (minify_str "a{font-variant-ligatures:none;font-variant:normal}");
+  Alcotest.(check string)
+    "and keeps one written after it"
+    "a{font-variant:normal;font-variant-ligatures:none}"
+    (minify_str "a{font-variant:normal;font-variant-ligatures:none}")
+
 let optimize_tests =
   [
     ( "unknown at-rule body is compacted",
@@ -1735,9 +1828,18 @@ let optimize_tests =
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
     ("color property folds", `Quick, test_color_property_folds);
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
+    ( "lossless alpha folds only on a whole byte",
+      `Quick,
+      test_lossless_alpha_folds_only_on_a_whole_byte );
     ( "lossless keeps unknown property order",
       `Quick,
       test_lossless_keeps_unknown_property_order );
+    ( "shorthand drops the longhand it resets",
+      `Quick,
+      test_shorthand_drops_the_longhand_it_resets );
+    ( "border keeps longhands beside a border-image",
+      `Quick,
+      test_border_keeps_longhands_beside_a_border_image );
     ( "lossless keeps shorthand longhand order",
       `Quick,
       test_lossless_keeps_shorthand_longhand_order );

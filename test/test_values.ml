@@ -1687,6 +1687,54 @@ let spec_math_function_edges () =
   check_length ~expected:"abs(-10px)" "abs(-10px)";
   decl_optimizes ~prop:"margin" ~held:"abs(-10px)" ~into:"10px" "abs(-10px)";
   check_length ~expected:"sign(10px)" "sign(10px)";
+  (* CSS Color 4 (ED) sec. 5.1 gives rgb() and rgba() the same grammar and its
+     Changes section calls them aliases of each other, and sec. 16.2.2 uses the
+     rgb() form wherever the alpha is implicit. A var() standing for the whole
+     component list carries no alpha of its own, so the two spellings are one
+     value and rgb() is the shorter. *)
+  decl_optimizes ~prop:"color" ~held:"rgb(var(--x))" ~into:"rgb(var(--x))"
+    "rgba(var(--x))";
+
+  (* CSS Values 4 (ED) sec. 10.3: "round(<rounding-strategy>?, A, B)", and the
+     strategy defaults to [nearest], so that one alone is the spelling the
+     shorter form already carries and the other three have to be printed. Every
+     round() the suite prints elsewhere folds to a literal first, so the printer
+     only ever sees [nearest]: these keep a var() in the value so the call
+     survives to the output. *)
+  check_length "round(up,var(--x),1px)";
+  check_length "round(down,var(--x),1px)";
+  check_length "round(to-zero,var(--x),1px)";
+  check_length ~expected:"round(var(--x),1px)" "round(nearest,var(--x),1px)";
+  (* Each numeric type prints round() itself, so each needs its own case: the
+     length, duration and angle printers all default the strategy away. *)
+  check_duration "round(up,var(--x),1s)";
+  check_duration ~expected:"round(var(--x),1s)" "round(nearest,var(--x),1s)";
+  check_angle "round(to-zero,var(--x),1deg)";
+  check_angle ~expected:"round(var(--x),1deg)" "round(nearest,var(--x),1deg)";
+
+  (* The printer serialises a dimension to six significant digits, so a fold
+     whose result needs more of them would print as a value the input did not
+     carry: [1px / 512] is [.001953125px] exactly, and the literal
+     [0.001953125px] prints [.00195313px]. CSS Values 4 (ED) sec. 10.13 asks a
+     math function to serialise its own arguments, so keeping the call is what
+     keeps the value, and the fold's precision budget has to be the printer's
+     rather than a number of its own. *)
+  decl_optimizes ~prop:"width" ~held:"calc(1px/512)" ~into:"calc(1px/512)"
+    "calc(1px / 512)";
+  decl_optimizes ~prop:"width" ~held:"calc(1px/64)" ~into:".015625px"
+    "calc(1px / 64)";
+
+  (* CSS Values 4 (ED) sec. 10.6: "The sign(A) function ... returns -1 if A's
+     numeric value is negative, +1 if A's numeric value is positive, 0+ if A's
+     numeric value is 0+, and 0- if A's numeric value is 0-." Zero is its own
+     answer rather than the negative one, and margin takes the result either
+     way, so the fold is visible where a non-negative property would hide it. *)
+  decl_optimizes ~prop:"margin" ~held:"calc(sign(0)*1px)" ~into:"0"
+    "calc(sign(0) * 1px)";
+  decl_optimizes ~prop:"margin" ~held:"calc(sign(5)*1px)" ~into:"1px"
+    "calc(sign(5) * 1px)";
+  decl_optimizes ~prop:"margin" ~held:"calc(sign(-5)*1px)" ~into:"-1px"
+    "calc(sign(-5) * 1px)";
   check_number ~expected:"round(up,1.2,1)" "round(up, 1.2, 1)";
   check_number ~expected:"mod(10,3)" "mod(10, 3)";
   check_number ~expected:"hypot(3,4)" "hypot(3, 4)";

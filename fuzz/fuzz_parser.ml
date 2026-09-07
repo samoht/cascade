@@ -26,7 +26,7 @@ let bracket_shape = function
   | Token.Square -> "[]"
 
 let rec shape = function
-  | Component.Preserved { kind = Token.Whitespace; _ } -> None
+  | Component.Preserved { kind = Token.Whitespace _; _ } -> None
   | Component.Preserved tok -> Some (Css.Pp.to_string Token.pp_kind tok.kind)
   | Component.Block { node = { opening; value; _ }; _ } ->
       let inner = value |> List.filter_map shape |> String.concat "," in

@@ -15,20 +15,14 @@ type scope = Ctx.scope
 type objective = [ `Raw | `Transfer ]
 type browser_version = int * int
 
-type targets = {
+type targets = Support.targets = {
   chrome : browser_version;
   firefox : browser_version;
   safari : browser_version;
   ios_safari : browser_version;
 }
 
-let evergreen_targets =
-  {
-    chrome = (111, 0);
-    firefox = (128, 0);
-    safari = (16, 4);
-    ios_safari = (16, 4);
-  }
+let evergreen_targets = Support.evergreen
 
 (* Optimisation context threaded from the entry points to the shorthand
    composers. [scope] drives fragment-vs-stylesheet decisions; [registered]
@@ -186,10 +180,10 @@ let normalize_font_face_descriptor (desc : font_face_descriptor) :
       let high' = stretch high in
       if low' == low && high' == high then desc
       else Font_stretch_range (low', high')
-  | Font_family _ | Src _ | Font_style _ | Font_style_range _ | Font_display _
-  | Unicode_range _ | Font_variant _ | Font_feature_settings _
-  | Font_variation_settings _ | Font_tech _ | Size_adjust _ | Ascent_override _
-  | Descent_override _ | Line_gap_override _ ->
+  | Font_family _ | Src _ | Font_style _ | Font_display _ | Unicode_range _
+  | Font_variant _ | Font_feature_settings _ | Font_variation_settings _
+  | Size_adjust _ | Ascent_override _ | Descent_override _ | Line_gap_override _
+  | Font_style_auto | Font_weight_auto | Font_stretch_auto ->
       desc
 
 (* [stmt] is returned unchanged when no descriptor moved: the factoring fixpoint
@@ -673,7 +667,8 @@ type webkit_fallback_spec =
   | Typed_fallback : {
       kind : webkit_fallback;
       property : 'a Properties.property;
-      webkit_property : 'a Properties.property;
+      webkit_property : 'b Properties.property;
+      convert : 'a -> 'b option;
       name : string;
       webkit_name : string;
       condition : fallback_condition;
@@ -684,7 +679,45 @@ type webkit_fallback_spec =
 let typed_fallback ?(condition = Any_value) kind property webkit_property name
     webkit_name =
   Typed_fallback
-    { kind; property; webkit_property; name; webkit_name; condition }
+    {
+      kind;
+      property;
+      webkit_property;
+      convert = Option.some;
+      name;
+      webkit_name;
+      condition;
+    }
+
+(* The same, where the prefixed property does not take the standard one's
+   vocabulary and a value outside the overlap gets no fallback. *)
+let converted_fallback ?(condition = Any_value) ~convert kind property
+    webkit_property name webkit_name =
+  Typed_fallback
+    { kind; property; webkit_property; convert; name; webkit_name; condition }
+
+(* The prefixed mask box properties take WebKit's older vocabulary, which meets
+   the [<coord-box>] of CSS Masking 1 sec. 6.4 and 6.5 on the three CSS box
+   names alone. A value with no prefixed spelling gets no fallback rather than
+   one the browser drops. *)
+let rec prefixed_mask_box :
+    Properties.mask_box -> Properties.webkit_mask_box option = function
+  | Border_box -> Some Border_box
+  | Content_box -> Some Content_box
+  | Padding_box -> Some Padding_box
+  | Inherit -> Some Inherit
+  | Initial -> Some Initial
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
+  | Layers layers ->
+      (* One layer outside the overlap costs the whole fallback: the prefixed
+         property reads the list or none of it. *)
+      let mapped = List.filter_map prefixed_mask_box layers in
+      if List.length mapped = List.length layers then
+        Some (Layers mapped : Properties.webkit_mask_box)
+      else None
+  | Fill_box | Stroke_box | View_box | No_clip | Var _ -> None
 
 let webkit_fallback_specs =
   [
@@ -706,10 +739,10 @@ let webkit_fallback_specs =
       "-webkit-mask-size";
     typed_fallback Mask_repeat_fallback Mask_repeat Webkit_mask_repeat
       "mask-repeat" "-webkit-mask-repeat";
-    typed_fallback Mask_clip_fallback Mask_clip Webkit_mask_clip "mask-clip"
-      "-webkit-mask-clip";
-    typed_fallback Mask_origin_fallback Mask_origin Webkit_mask_origin
-      "mask-origin" "-webkit-mask-origin";
+    converted_fallback ~convert:prefixed_mask_box Mask_clip_fallback Mask_clip
+      Webkit_mask_clip "mask-clip" "-webkit-mask-clip";
+    converted_fallback ~convert:prefixed_mask_box Mask_origin_fallback
+      Mask_origin Webkit_mask_origin "mask-origin" "-webkit-mask-origin";
   ]
 
 let fallback_spec_kind = function
@@ -736,40 +769,35 @@ let fallback_spec_by_name select_name name =
 
 let fallback_spec_by_standard_name = fallback_spec_by_name fst
 
-let version_compare (major_a, minor_a) (major_b, minor_b) =
-  match Int.compare major_a major_b with
-  | 0 -> Int.compare minor_a minor_b
-  | order -> order
-
-let version_at_most version maximum = version_compare version maximum <= 0
-let version_before version minimum = version_compare version minimum < 0
-
 (* The target contract is deliberately owned here rather than by the printer:
    adding a fallback changes the AST and must therefore be explicit to API
-   callers. Safari/iOS still require [-webkit-user-select] at the declared
-   baseline, while unprefixed [backdrop-filter] arrived after 17.6, unprefixed
-   [hyphens] arrived in 17, and Chrome needs the compatible [-webkit-mask]
-   shorthand and longhands through 119. [mask-mode] and [mask-composite] are
-   excluded because their prefixed forms have different grammars. Safari/iOS
-   answer [text-decoration-color] under both spellings through 26.1, so it pairs
-   this boundary with [Unresolved_value]: a settled colour is served by the
-   standard longhand on every declared target. *)
+   callers. Which of these the targets read unprefixed is a fact about browsers,
+   so {!Support} answers it from the generated web-features table and a browser
+   that catches up moves the answer at the next regeneration. [mask-mode] and
+   [mask-composite] are excluded because their prefixed forms have different
+   grammars. *)
 let required_fallback kind targets =
+  let lacks key = Support.unimplemented_by targets key in
   match kind with
-  | User_select_fallback -> true
-  | Backdrop_filter_fallback ->
-      version_at_most targets.safari (17, 6)
-      || version_at_most targets.ios_safari (17, 6)
-  | Hyphens_fallback ->
-      version_before targets.safari (17, 0)
-      || version_before targets.ios_safari (17, 0)
+  | User_select_fallback -> lacks "css.properties.user-select"
+  | Backdrop_filter_fallback -> lacks "css.properties.backdrop-filter"
+  | Hyphens_fallback -> lacks "css.properties.hyphens"
   | Text_decoration_color_fallback ->
-      version_at_most targets.safari (26, 1)
-      || version_at_most targets.ios_safari (26, 1)
-  | Mask_fallback | Mask_image_fallback | Mask_position_fallback
-  | Mask_size_fallback | Mask_repeat_fallback | Mask_clip_fallback
-  | Mask_origin_fallback ->
-      version_at_most targets.chrome (119, 0)
+      (* Not a support gap: Safari/iOS answer the standard property under both
+         spellings through 26.1, which no dataset records, so this stays a
+         measured boundary. It pairs with [Unresolved_value], since a settled
+         colour is served by the standard longhand on every declared target. *)
+      let at_most (major, minor) (target_major, target_minor) =
+        target_major < major || (target_major = major && target_minor <= minor)
+      in
+      at_most (26, 1) targets.safari || at_most (26, 1) targets.ios_safari
+  | Mask_fallback -> lacks "css.properties.mask"
+  | Mask_image_fallback -> lacks "css.properties.mask-image"
+  | Mask_position_fallback -> lacks "css.properties.mask-position"
+  | Mask_size_fallback -> lacks "css.properties.mask-size"
+  | Mask_repeat_fallback -> lacks "css.properties.mask-repeat"
+  | Mask_clip_fallback -> lacks "css.properties.mask-clip"
+  | Mask_origin_fallback -> lacks "css.properties.mask-origin"
 
 let webkit_compatible_mask : Properties.mask -> Properties.mask =
   let strip_layer (layer : Properties.mask_layer) =
@@ -811,10 +839,13 @@ let webkit_fallback_of_declaration targets decl : Declaration.declaration option
   in
   let fallback_from_spec spec =
     match (spec, decl) with
-    | ( Typed_fallback { kind; property; webkit_property; _ },
+    | ( Typed_fallback { kind; property; webkit_property; convert; _ },
         Declaration { property = actual; value; important; _ } ) -> (
         match Properties.eq_property actual property with
-        | Some Equal -> fallback kind webkit_property value important
+        | Some Equal -> (
+            match convert value with
+            | Some value -> fallback kind webkit_property value important
+            | None -> None)
         | None -> None)
     | ( Mask_fallback_spec { webkit_name; _ },
         Declaration { property = Mask; value; important; _ } ) ->
@@ -881,7 +912,7 @@ let add_declaration_prefixes ~targets decls =
   loop false [] decls
 
 let rec condition_has_webkit kind = function
-  | Supports.Property (Supports.Declaration decl) ->
+  | Supports.Property (Supports.Declaration (_, decl)) ->
       is_webkit_fallback kind decl
   | Supports.Property _ | Supports.Function _ | Supports.General_enclosed _ ->
       false
@@ -892,13 +923,19 @@ let rec condition_has_webkit kind = function
 let add_condition_prefixes ~targets condition =
   let author_owns kind = condition_has_webkit kind condition in
   let rec map = function
-    | Supports.Property (Supports.Declaration decl) as original -> (
+    | Supports.Property (Supports.Declaration (_, decl)) as original -> (
         match fallback_kind decl with
         | Some kind when not (author_owns kind) -> (
             match webkit_fallback_of_declaration targets decl with
             | Some prefixed ->
+                (* Cascade writes this one, so it carries no authored
+                   spelling. *)
+                let name =
+                  Supports.property_name (Declaration.property_name prefixed)
+                in
                 Supports.Or
-                  (Supports.Property (Supports.Declaration prefixed), original)
+                  ( Supports.Property (Supports.Declaration (name, prefixed)),
+                    original )
             | None -> original)
         | Some _ | None -> original)
     | (Supports.Property _ | Supports.Function _ | Supports.General_enclosed _)

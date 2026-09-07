@@ -56,6 +56,9 @@ type font_weight =
   | Bold
   | Bolder
   | Lighter
+  | Calc of font_weight calc
+      (** CSS Values 4 sec. 10 allows a math function wherever a [<number>] is
+          allowed, and one that does not fold to a constant stays here. *)
   | Inherit
   | Initial
   | Unset
@@ -203,6 +206,7 @@ type opacity =
 
 type shape_image_threshold =
   | Number of float
+  | Calc of shape_image_threshold calc
   | Inherit
   | Initial
   | Unset
@@ -210,8 +214,10 @@ type shape_image_threshold =
   | Revert_layer
   | Var of shape_image_threshold var
 
+(** CSS Text 4 sec. 4.4 [tab-size]: [<number [0,inf]> | <length [0,inf]>], the
+    tab stop measured in advance widths or in a length. *)
 type tab_size =
-  | Int of int
+  | Number of number
   | Length of length
   | Initial
   | Inherit
@@ -225,6 +231,7 @@ type zoom =
   | Reset
   | Num of float
   | Pct of float
+  | Calc of zoom calc
   | Initial
   | Inherit
   | Unset
@@ -837,6 +844,15 @@ type grid_template =
   | Template of string
   | Subgrid
   | Masonry
+      (** CSS Grid 3 (ED) REMOVED this value, replacing the masonry track
+          vocabulary with a single [flow-tolerance] property, and web-features
+          records no compat key for it, so no target set can arbitrate it
+          either. It stays because Firefox ships it behind a pref: refusing it
+          would drop a declaration a shipping browser renders, which is the
+          destructive direction. The four [masonry-*] and [item-flow] properties
+          of the same draft are not modelled here at all, and survive on the
+          generic unknown-property path that keeps any property cascade does not
+          know. *)
   | Var of grid_template var
 
 type grid_template_areas =
@@ -858,6 +874,9 @@ type grid_line =
   | Span_name of string
   | Span_num_name of int * string
   | Calc of grid_line calc
+  | Calc_name of grid_line calc * string
+      (** CSS Values 4 sec. 10 allows a math function wherever an [<integer>] is
+          allowed, so the index of a named line may be one. *)
   | Var of grid_line var
 
 type grid_line_pair =
@@ -1475,11 +1494,22 @@ type text_spacing_trim =
   | Revert_layer
   | Var of text_spacing_trim var
 
+(** CSS Text 4 sec. 6.3.4: one slot of [hyphenate-limit-chars], a minimum
+    character count or [auto] for the count the UA picks. CSS Values 4 sec. 10.1
+    puts a math function where the count is. *)
+type hyphenate_limit_chars_item = Auto | Chars of number
+
+(** CSS Text 4 sec. 6.3.4 [hyphenate-limit-chars]: the minimum characters in a
+    hyphenated word, then before the hyphen, then after it. A missing third slot
+    repeats the second and a missing second is [auto], so [One Auto] is the
+    initial value. *)
 type hyphenate_limit_chars =
-  | Auto
-  | One of int
-  | Two of int * int
-  | Three of int * int * int
+  | One of hyphenate_limit_chars_item
+  | Two of hyphenate_limit_chars_item * hyphenate_limit_chars_item
+  | Three of
+      hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
   | Inherit
   | Initial
   | Unset
@@ -1552,8 +1582,11 @@ type ruby_align =
   | Revert_layer
   | Var of ruby_align var
 
+(* CSS Ruby 1 sec. 5.1: [auto | spaces]. [None] is the older spelling Chrome and
+   Firefox still read, and serialise as [spaces]. *)
 type ruby_overhang =
   | Auto
+  | Spaces
   | None
   | Inherit
   | Initial
@@ -1748,6 +1781,10 @@ type table_layout =
   | Revert_layer
   | Var of table_layout var
 
+(** CSS Inline 3 sec. 4.2 [vertical-align]: the keywords, or a
+    [<length-percentage>] raising the box by that much. Every length unit is one
+    of them, which is why this is not a list of the four the property is usually
+    written with. *)
 type vertical_align =
   | Baseline
   | Top
@@ -1757,12 +1794,7 @@ type vertical_align =
   | Text_bottom
   | Sub
   | Super
-  | Zero
-  | Px of float
-  | Rem of float
-  | Em of float
-  | Pct of float
-  | Calc of vertical_align calc
+  | Length of length_percentage
   | Inherit
   | Initial
   | Unset
@@ -2384,7 +2416,7 @@ type animation_fill_mode =
   | Var of animation_fill_mode var
 
 type animation_iteration_count =
-  | Num of float
+  | Count of number
   | Infinite
   | Counts of animation_iteration_count list
   | Initial
@@ -2447,6 +2479,7 @@ and animation_timeline =
   | Name of string
   | Scroll of string
   | View of string
+  | Timelines of animation_timeline list
   | Initial
   | Inherit
   | Unset
@@ -2919,9 +2952,17 @@ type background =
 (** Webkit-prefixed mask-composite values *)
 type webkit_mask_composite =
   | Source_over
-  | Xor
   | Source_in
   | Source_out
+  | Source_atop
+  | Destination_over
+  | Destination_in
+  | Destination_out
+  | Destination_atop
+  | Xor
+  | Plus_lighter
+  | Clear
+  | Copy
   | Composites of webkit_mask_composite list
   | Inherit
   | Initial
@@ -2995,6 +3036,26 @@ type mask_box =
   | Revert_layer
   | Var of mask_box var
 
+(** The box vocabulary of [-webkit-mask-origin] and [-webkit-mask-clip], which
+    is WebKit's older set rather than the [<coord-box>] CSS Masking 1 sec. 6.4
+    and 6.5 give the unprefixed pair: the three CSS box names in both their bare
+    and [-box] spellings, none of the SVG boxes, and [text] on the clip. *)
+type webkit_mask_box =
+  | Border
+  | Border_box
+  | Content
+  | Content_box
+  | Padding
+  | Padding_box
+  | Text  (** Only valid for -webkit-mask-clip *)
+  | Layers of webkit_mask_box list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of webkit_mask_box var
+
 type mask_layer = {
   image : background_image option;
   position : position_value option;
@@ -3017,10 +3078,17 @@ type mask =
   | Revert_layer
   | Var of mask var
 
+(* CSS Backgrounds 3 sec. 5.2 gives each offset a [<number [0,inf]>] or a
+   [<percentage [0,inf]>]. [Number] carries the math on the number side; [Calc]
+   carries it on the percentage side, which has no other home. *)
+
 (** CSS Backgrounds 3 sec. 5.2 to 5.4 write the numeric halves of the
     border-image slots as [<number [0,inf]>], which a [calc()] satisfies, so
     each carries a {!type-number} rather than a float. *)
-type border_image_slice_item = Number of number | Pct of float
+type border_image_slice_item =
+  | Number of number
+  | Pct of float
+  | Calc of border_image_slice_item calc
 
 type border_image_slice_offsets = {
   offsets : border_image_slice_item list;
@@ -3192,9 +3260,13 @@ type caret =
   | Revert_layer
   | Var of caret var
 
+(** One slot of an interest delay: CSS UI 4 sec. 6.4 gives
+    [interest-delay-start] and [interest-delay-end] the value [normal | <time>].
+*)
+type interest_delay_item = Normal | Time of duration
+
 type interest_delay =
-  | Normal
-  | Durations of duration list
+  | Delays of interest_delay_item list
   | Inherit
   | Initial
   | Unset
@@ -3653,6 +3725,7 @@ type animation_range_name =
 
 type animation_range_item =
   | Normal
+  | Items of animation_range_item list
   | Offset of length_percentage
   | Named of animation_range_name * length_percentage option
   | Initial
@@ -3664,6 +3737,7 @@ type animation_range_item =
 
 type animation_range =
   | Range of animation_range_item * animation_range_item option
+  | Ranges of animation_range list
   | Initial
   | Inherit
   | Unset
@@ -3731,7 +3805,13 @@ type image_resolution =
   | Revert_layer
   | Var of image_resolution var
 
-type contain_intrinsic_size_item = Length of length | Auto of length
+(** CSS Sizing 4 sec. 6 spells one slot [auto? [ none | <length [0,inf]> ]], so
+    the keyword takes the [auto] prefix as a length does. *)
+type contain_intrinsic_size_item =
+  | None
+  | Length of length
+  | Auto_none
+  | Auto of length
 
 type contain_intrinsic_size =
   | None
@@ -4227,6 +4307,7 @@ type timeline_axis =
   | Inline
   | X
   | Y
+  | Axes of timeline_axis list
   | Initial
   | Inherit
   | Unset
@@ -4234,9 +4315,12 @@ type timeline_axis =
   | Revert_layer
   | Var of timeline_axis var
 
+(** Scroll-driven Animations 1 secs. 4.1 and 5.1: one timeline name, [none] or a
+    [<dashed-ident>]. *)
+type timeline_ident = None | Name of string
+
 type timeline_name =
-  | None
-  | Names of string list
+  | Names of timeline_ident list
   | Initial
   | Inherit
   | Unset
@@ -4244,10 +4328,25 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand_item = { name : string; axis : timeline_axis option }
+(** Scroll-driven Animations 1 sec. 6 [timeline-scope]: [none] or a list of the
+    names an element makes visible to its descendants. [none] stands for the
+    whole value here, unlike the name of one timeline. *)
+type timeline_scope =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_scope var
+
+type timeline_shorthand_item = {
+  name : timeline_ident;
+  axis : timeline_axis option;
+}
 
 type timeline_shorthand =
-  | None
   | Timelines of timeline_shorthand_item list
   | Initial
   | Inherit
@@ -4260,6 +4359,7 @@ type timeline_inset_item = Auto | Length of length_percentage
 
 type timeline_inset =
   | Inset of timeline_inset_item * timeline_inset_item option
+  | Insets of timeline_inset list
   | Initial
   | Inherit
   | Unset
@@ -4268,13 +4368,12 @@ type timeline_inset =
   | Var of timeline_inset var
 
 type view_timeline_shorthand_item = {
-  name : string;
+  name : timeline_ident;
   axis : timeline_axis option;
   inset : timeline_inset option;
 }
 
 type view_timeline_shorthand =
-  | None
   | Timelines of view_timeline_shorthand_item list
   | Initial
   | Inherit
@@ -4378,8 +4477,10 @@ type stroke_miterlimit =
   | Var of stroke_miterlimit var
 
 (** SVG 2 sec. 13.5.6: one dash length. A bare [<number>] is in user units,
-    which is why this is not plain [length_percentage]. *)
-type dash_length = Number of float | Length of length_percentage
+    which is why this is not plain [length_percentage]. CSS Values 4 sec. 10.1
+    puts a math function wherever a number is, so that half is a {!type-number}.
+*)
+type dash_length = Number of number | Length of length_percentage
 
 (** SVG 2 sec. 13.5.6 [stroke-dashoffset]. *)
 type stroke_dashoffset =
@@ -4565,6 +4666,10 @@ type moz_orient =
 type webkit_line_clamp =
   | None
   | Lines of int
+  | Calc of webkit_line_clamp calc
+      (** CSS Values 4 sec. 10 allows a math function wherever an [<integer>] is
+          allowed, and sec. 10.12 rounds its result, so a fractional call is a
+          line count where the bare fraction is not. *)
   | Inherit
   | Initial
   | Unset
@@ -5184,7 +5289,7 @@ type 'a property =
   | View_timeline_axis : timeline_axis property
   | View_timeline_inset : timeline_inset property
   | View_timeline : view_timeline_shorthand property
-  | Timeline_scope : timeline_name property
+  | Timeline_scope : timeline_scope property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
   | Transform_style : transform_style property
@@ -5212,7 +5317,7 @@ type 'a property =
   | Column_height : column_height property
   | Column_wrap : column_wrap property
   | Column_count : column_count property
-  | Column_rule : border property
+  | Column_rule : border list property
       (** CSS Gaps 1 sec. 4 gives the three longhands below a comma-separated
           list, one entry per gap decoration line. *)
   | Column_rule_width : border_width list property
@@ -5287,8 +5392,8 @@ type 'a property =
   | Webkit_mask_size : background_size property
   | Webkit_mask_position : background_position property
   | Webkit_mask_repeat : background_repeat property
-  | Webkit_mask_clip : mask_box property
-  | Webkit_mask_origin : mask_box property
+  | Webkit_mask_clip : webkit_mask_box property
+  | Webkit_mask_origin : webkit_mask_box property
   | Mask_image : background_image property
   | Mask_composite : mask_composite property
   | Mask_mode : mask_mode property

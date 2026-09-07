@@ -52,11 +52,23 @@ let a = elt ~id:"a" "div" [ s1 ]
 let b = elt ~id:"b" "div" [ s2 ]
 let section = elt "section" [ a; b ]
 
+let match_result =
+  Alcotest.testable
+    (fun ppf -> function
+      | Resolve.Matches -> Fmt.string ppf "Matches"
+      | Resolve.No_match -> Fmt.string ppf "No_match"
+      | Resolve.Unsupported -> Fmt.string ppf "Unsupported")
+    ( = )
+
 let yes ?reading name s n =
   Alcotest.(check bool) name true (R.matches ?reading (sel s) n)
 
+(* [matches] folds [Unsupported] in with [No_match], so a negative written with
+   it also passes for a selector the matcher has no model for, which is not what
+   any of these mean to assert. Naming [No_match] keeps the two apart. *)
 let no ?reading name s n =
-  Alcotest.(check bool) name false (R.matches ?reading (sel s) n)
+  Alcotest.check match_result name Resolve.No_match
+    (R.match_selector ?reading (sel s) n)
 
 let test_simple () =
   yes "element" "span" s1;
@@ -83,14 +95,6 @@ let test_sibling_then_descendant () =
   yes "sibling then descendant" "div+div span" s2;
   no "descendant of first div" "div+div span" s1;
   yes "subsequent-sibling then child" "div~div>span" s2
-
-let match_result =
-  Alcotest.testable
-    (fun ppf -> function
-      | Resolve.Matches -> Fmt.string ppf "Matches"
-      | Resolve.No_match -> Fmt.string ppf "No_match"
-      | Resolve.Unsupported -> Fmt.string ppf "Unsupported")
-    ( = )
 
 let answers ?reading name expected s n =
   Alcotest.check match_result name expected

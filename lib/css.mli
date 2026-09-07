@@ -2729,6 +2729,7 @@ type ruby_align = Properties.ruby_align =
 
 type ruby_overhang = Properties.ruby_overhang =
   | Auto
+  | Spaces
   | None
   | Inherit
   | Initial
@@ -2764,11 +2765,17 @@ type text_spacing_trim = Properties.text_spacing_trim =
   | Revert_layer
   | Var of text_spacing_trim var
 
-type hyphenate_limit_chars = Properties.hyphenate_limit_chars =
+type hyphenate_limit_chars_item = Properties.hyphenate_limit_chars_item =
   | Auto
-  | One of int
-  | Two of int * int
-  | Three of int * int * int
+  | Chars of number
+
+type hyphenate_limit_chars = Properties.hyphenate_limit_chars =
+  | One of hyphenate_limit_chars_item
+  | Two of hyphenate_limit_chars_item * hyphenate_limit_chars_item
+  | Three of
+      hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
+      * hyphenate_limit_chars_item
   | Inherit
   | Initial
   | Unset
@@ -3261,11 +3268,35 @@ type background_box = Properties.background_box =
   | Var of background_box var
 
 (* Mask-related types *)
+type webkit_mask_box = Properties.webkit_mask_box =
+  | Border
+  | Border_box
+  | Content
+  | Content_box
+  | Padding
+  | Padding_box
+  | Text
+  | Layers of webkit_mask_box list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of webkit_mask_box var
+
 type webkit_mask_composite = Properties.webkit_mask_composite =
   | Source_over
-  | Xor
   | Source_in
   | Source_out
+  | Source_atop
+  | Destination_over
+  | Destination_in
+  | Destination_out
+  | Destination_atop
+  | Xor
+  | Plus_lighter
+  | Clear
+  | Copy
   | Composites of webkit_mask_composite list
   | Inherit
   | Initial
@@ -4074,6 +4105,9 @@ type grid_template = Properties.grid_template =
   | Template of string
   | Subgrid
   | Masonry
+      (** CSS Grid 3 (ED) removed this value, and it stays because Firefox ships
+          it behind a pref: refusing it would drop a declaration a shipping
+          browser renders. *)
   | Var of grid_template var
 
 (** CSS grid-template-areas values *)
@@ -4097,6 +4131,7 @@ type grid_line = Properties.grid_line =
   | Span_name of string  (** span <custom-ident> *)
   | Span_num_name of int * string  (** span <integer> <custom-ident> *)
   | Calc of grid_line calc  (** calc(12 * -1), etc. *)
+  | Calc_name of grid_line calc * string  (** calc(2) <custom-ident> *)
   | Var of grid_line var
 
 type grid_line_pair = Properties.grid_line_pair =
@@ -4287,6 +4322,7 @@ type font_weight = Properties.font_weight =
   | Bold
   | Bolder
   | Lighter
+  | Calc of font_weight calc
   | Inherit
   | Initial
   | Unset
@@ -5663,6 +5699,7 @@ val initial_letter_wrap : initial_letter_wrap -> declaration
     is inside the shape. *)
 type shape_image_threshold = Properties.shape_image_threshold =
   | Number of float
+  | Calc of shape_image_threshold calc
   | Inherit
   | Initial
   | Unset
@@ -6069,7 +6106,7 @@ val border :
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border} border}
     shorthand property. *)
 
-val column_rule : border -> declaration
+val column_rule : border list -> declaration
 (** [column_rule v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-rule}
      column-rule} shorthand property. *)
@@ -6120,6 +6157,7 @@ val column_rule_color : color list -> declaration
 type border_image_slice_item = Properties.border_image_slice_item =
   | Number of number
   | Pct of float
+  | Calc of border_image_slice_item calc
 
 type border_image_slice_offsets = Properties.border_image_slice_offsets = {
   offsets : border_image_slice_item list;
@@ -6833,7 +6871,7 @@ type animation_play_state = Properties.animation_play_state =
 
 (** CSS animation iteration count values *)
 type animation_iteration_count = Properties.animation_iteration_count =
-  | Num of float
+  | Count of number
   | Infinite
   | Counts of animation_iteration_count list
   | Initial
@@ -6875,6 +6913,7 @@ and animation_timeline = Properties.animation_timeline =
   | Name of string
   | Scroll of string
   | View of string
+  | Timelines of animation_timeline list
   | Initial
   | Inherit
   | Unset
@@ -7221,13 +7260,13 @@ val webkit_mask_repeat : background_repeat -> declaration
 val mask_repeat : background_repeat -> declaration
 (** [mask_repeat v] is the [mask-repeat] property. *)
 
-val webkit_mask_clip : mask_box -> declaration
+val webkit_mask_clip : webkit_mask_box -> declaration
 (** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)
 
 val mask_clip : mask_box -> declaration
 (** [mask_clip v] is the [mask-clip] property. *)
 
-val webkit_mask_origin : mask_box -> declaration
+val webkit_mask_origin : webkit_mask_box -> declaration
 (** [webkit_mask_origin v] is the [-webkit-mask-origin] property. *)
 
 val mask_origin : mask_box -> declaration
@@ -7400,9 +7439,12 @@ type caret = Properties.caret =
 val caret : caret -> declaration
 (** [caret caret] is the CSS [caret] property. *)
 
-type interest_delay = Properties.interest_delay =
+type interest_delay_item = Properties.interest_delay_item =
   | Normal
-  | Durations of duration list
+  | Time of duration
+
+type interest_delay = Properties.interest_delay =
+  | Delays of interest_delay_item list
   | Inherit
   | Initial
   | Unset
@@ -7904,7 +7946,9 @@ val container_type : container_type -> declaration
      [contain-intrinsic-size]}, a length that the [auto] prefix lets a
     remembered size override. *)
 type contain_intrinsic_size_item = Properties.contain_intrinsic_size_item =
+  | None
   | Length of length
+  | Auto_none
   | Auto of length
 
 (** CSS Sizing 4
@@ -8202,6 +8246,7 @@ type webkit_box_orient = Properties.webkit_box_orient =
 type webkit_line_clamp = Properties.webkit_line_clamp =
   | None
   | Lines of int
+  | Calc of webkit_line_clamp calc
   | Inherit
   | Initial
   | Unset
@@ -8468,12 +8513,7 @@ type vertical_align = Properties.vertical_align =
   | Text_bottom
   | Sub
   | Super
-  | Zero
-  | Px of float
-  | Rem of float
-  | Em of float
-  | Pct of float
-  | Calc of vertical_align calc
+  | Length of length_percentage
   | Inherit
   | Initial
   | Unset
@@ -8637,7 +8677,7 @@ val stroke_miterlimit : stroke_miterlimit -> declaration
      [stroke-dasharray]} writes each dash as a [<length-percentage>] or a bare
     number in user units, the way {!type-stroke_width} does. *)
 type dash_length = Properties.dash_length =
-  | Number of float
+  | Number of number
   | Length of length_percentage
 
 (** SVG 2
@@ -8905,6 +8945,7 @@ type timeline_axis = Properties.timeline_axis =
   | Inline
   | X
   | Y
+  | Axes of timeline_axis list
   | Initial
   | Inherit
   | Unset
@@ -8912,13 +8953,41 @@ type timeline_axis = Properties.timeline_axis =
   | Revert_layer
   | Var of timeline_axis var
 
+(** [none | <dashed-ident>#], shared by [scroll-timeline-name],
+    [view-timeline-name] and Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
+     [timeline-scope]}. *)
+type timeline_ident = Properties.timeline_ident = None | Name of string
+
+type timeline_name = Properties.timeline_name =
+  | Names of timeline_ident list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_name var
+
+(** Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
+     [timeline-scope]}: [none | <dashed-ident>#], where [none] stands for the
+    whole value. *)
+type timeline_scope = Properties.timeline_scope =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_scope var
+
 type timeline_shorthand_item = Properties.timeline_shorthand_item = {
-  name : string;
+  name : timeline_ident;
   axis : timeline_axis option;
 }
 
 type timeline_shorthand = Properties.timeline_shorthand =
-  | None
   | Timelines of timeline_shorthand_item list
   | Initial
   | Inherit
@@ -8928,13 +8997,12 @@ type timeline_shorthand = Properties.timeline_shorthand =
   | Var of timeline_shorthand var
 
 type view_timeline_shorthand_item = Properties.view_timeline_shorthand_item = {
-  name : string;
+  name : timeline_ident;
   axis : timeline_axis option;
   inset : Properties.timeline_inset option;
 }
 
 type view_timeline_shorthand = Properties.view_timeline_shorthand =
-  | None
   | Timelines of view_timeline_shorthand_item list
   | Initial
   | Inherit
@@ -8942,20 +9010,6 @@ type view_timeline_shorthand = Properties.view_timeline_shorthand =
   | Revert
   | Revert_layer
   | Var of view_timeline_shorthand var
-
-(** [none | <dashed-ident>#], shared by [scroll-timeline-name],
-    [view-timeline-name] and Scroll-driven Animations 1
-    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-timeline-scope}
-     [timeline-scope]}. *)
-type timeline_name = Properties.timeline_name =
-  | None
-  | Names of string list
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of timeline_name var
 
 (** One edge of Scroll-driven Animations 1
     {{:https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-inset}
@@ -8967,6 +9021,7 @@ type timeline_inset_item = Properties.timeline_inset_item =
 (** Sec. 5.2 [view-timeline-inset]: the start edge then the end edge. *)
 type timeline_inset = Properties.timeline_inset =
   | Inset of timeline_inset_item * timeline_inset_item option
+  | Insets of timeline_inset list
   | Initial
   | Inherit
   | Unset
@@ -8987,6 +9042,7 @@ type animation_range_name = Properties.animation_range_name =
 (** Sec. 6.2: one end of [animation-range]. *)
 type animation_range_item = Properties.animation_range_item =
   | Normal
+  | Items of animation_range_item list
   | Offset of length_percentage
   | Named of animation_range_name * length_percentage option
   | Initial
@@ -8999,6 +9055,7 @@ type animation_range_item = Properties.animation_range_item =
 (** Sec. 6.2 [animation-range]: the start then the end. *)
 type animation_range = Properties.animation_range =
   | Range of animation_range_item * animation_range_item option
+  | Ranges of animation_range list
   | Initial
   | Inherit
   | Unset
@@ -9039,7 +9096,7 @@ val view_timeline_axis : timeline_axis -> declaration
 val view_timeline_inset : timeline_inset -> declaration
 (** [view_timeline_inset v] is the [view-timeline-inset] property. *)
 
-val timeline_scope : timeline_name -> declaration
+val timeline_scope : timeline_scope -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
 val touch_action : touch_action -> declaration
@@ -9298,7 +9355,7 @@ val moz_appearance : appearance -> declaration
 (** [moz_appearance v] is the [-moz-appearance] property. *)
 
 type tab_size = Properties.tab_size =
-  | Int of int
+  | Number of number
   | Length of length
   | Initial
   | Inherit
@@ -9362,6 +9419,7 @@ type zoom = Properties.zoom =
   | Reset
   | Num of float
   | Pct of float
+  | Calc of zoom calc
   | Initial
   | Inherit
   | Unset
@@ -9953,8 +10011,13 @@ val pp_gradient_direction : gradient_direction Pp.t
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)
 
-val pp_calc : 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc pp_value] is the pretty printer for calc expressions. *)
+val pp_calc :
+  ?unwrap_num:bool -> ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
+(** [pp_calc ?unwrap_num ?unwrap pp_value] is the pretty printer for calc
+    expressions. Minified output drops the call around a single leaf, and
+    [unwrap] says which leaves that is safe for. [unwrap_num] is the same
+    question for a bare number leaf, which a property taking an [<integer>]
+    answers no to. *)
 
 val pp_font_style : font_style Pp.t
 (** [pp_font_style] is the pretty printer for font-style values. *)

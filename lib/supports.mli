@@ -5,13 +5,20 @@
 
 type property_name
 
+val property_name : ?repr:string -> string -> property_name
+(** [property_name ?repr name] is the name of a declaration feature. [repr] is
+    the spelling the author wrote when it differs from [name], which is how an
+    escape survives the round trip; a name cascade generates has none. *)
+
 type declaration_feature =
-  | Declaration of Declaration.t
-      (** The declaration the feature tests. Its value is the component stream
-          the author wrote, read through
+  | Declaration of property_name * Declaration.t
+      (** The declaration the feature tests, with the name as the author spelled
+          it. Its value is the component stream the author wrote, read through
           {!Declaration.parse_opaque_declaration}: a browser answers the feature
-          by parsing that exact declaration, so the property's typed grammar
-          never re-spells it. *)
+          by parsing that exact declaration, so neither half is re-spelled. The
+          name is carried beside the declaration because a typed property is a
+          constructor, which cannot hold the escape [colo\r] was written with.
+      *)
   | Empty of property_name
   | Unsupported of property_name * string
   | Vendor_flag_enabled
@@ -80,13 +87,24 @@ val func : string -> string -> t
 (** [func name args] parses [args] as CSS component values for a supports
     function feature. *)
 
-val to_string : t -> string
-(** [to_string cond] renders the condition as a CSS [\@supports] string. *)
+val to_string : ?minify:bool -> ?verbatim:bool -> t -> string
+(** [to_string ?minify ?verbatim cond] renders the condition as a CSS
+    [\@supports] string. [verbatim] (default [true]) keeps the spelling the
+    author used, as {!pp} does. Pass [false] for an identity: two spellings of
+    one condition then render alike, which is what a comparator keying a block
+    by its condition needs. *)
 
-val pp : t Pp.t
-(** [pp ctx cond] prints the condition with context-aware spacing. *)
+val pp : ?verbatim:bool -> Pp.ctx -> t -> unit
+(** [pp ?verbatim ctx cond] serialises a condition. [verbatim] (default [true])
+    writes back the spelling the author used for a property name, which CSS
+    Conditional 3 (ED) sec. 7.4 asks for by returning "the condition that was
+    specified": the simplifications it allows are permitted rather than
+    required, so only minified output takes them. Pass [false] where the result
+    is an identity for a condition rather than output, so two spellings of one
+    condition agree. *)
 
-val pp_declaration_feature : declaration_feature Pp.t
+val pp_declaration_feature :
+  ?verbatim:bool -> Pp.ctx -> declaration_feature -> unit
 (** [pp_declaration_feature ctx feature] prints a supports declaration feature
     without the surrounding condition parentheses. *)
 

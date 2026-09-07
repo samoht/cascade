@@ -28,6 +28,14 @@ val pp_property : 'a Properties.property Pp.t
 val pp : t Pp.t
 (** [pp] is the pretty-printer for declarations. *)
 
+val pp_opaque_value : ?verbatim:bool -> t Pp.t
+(** [pp_opaque_value ?verbatim] is the value half of {!pp_opaque}, for a caller
+    writing the property name itself. An [\@supports] feature does, because it
+    keeps the name the author spelled and the typed property behind it cannot
+    reproduce that. [verbatim] (default [true]) writes the value as the author
+    spelled it; [false] takes the canonical spelling in either mode, for a
+    caller building an identity rather than output. *)
+
 val pp_opaque : t Pp.t
 (** [pp_opaque] minifies separators but preserves authored numeric token
     spellings in an opaque declaration value. It serves declaration feature
@@ -1147,7 +1155,7 @@ val view_timeline_axis : timeline_axis -> declaration
 val view_timeline_inset : timeline_inset -> declaration
 (** [view_timeline_inset v] is the [view-timeline-inset] property. *)
 
-val timeline_scope : timeline_name -> declaration
+val timeline_scope : timeline_scope -> declaration
 (** [timeline_scope v] is the [timeline-scope] property. *)
 
 val shape_image_threshold : shape_image_threshold -> declaration
@@ -1961,13 +1969,13 @@ val webkit_mask_repeat : background_repeat -> declaration
 val mask_repeat : background_repeat -> declaration
 (** [mask_repeat v] is the [mask-repeat] property. *)
 
-val webkit_mask_clip : mask_box -> declaration
+val webkit_mask_clip : webkit_mask_box -> declaration
 (** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)
 
 val mask_clip : mask_box -> declaration
 (** [mask_clip v] is the [mask-clip] property. *)
 
-val webkit_mask_origin : mask_box -> declaration
+val webkit_mask_origin : webkit_mask_box -> declaration
 (** [webkit_mask_origin v] is the [-webkit-mask-origin] property. *)
 
 val mask_origin : mask_box -> declaration
@@ -2369,7 +2377,7 @@ val page_break_inside : page_break_inside_value -> declaration
 val columns : columns_value -> declaration
 (** [columns v] is the CSS [columns] property for multi-column layout. *)
 
-val column_rule : border -> declaration
+val column_rule : border list -> declaration
 (** [column_rule v] is the CSS [column-rule] shorthand property. *)
 
 val border_block : border -> declaration

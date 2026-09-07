@@ -435,7 +435,7 @@ let format_attribute_number n (unit : string option) =
 
 let read_attribute_value_unquoted t =
   match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident s; loc }) ->
+  | Some (Component.Preserved { kind = Token.Ident s; loc; _ }) ->
       read_attribute_value_ident t s loc
   | Some (Component.Preserved { kind = Token.Number_tok _; _ })
   | Some (Component.Preserved { kind = Token.Dimension _; _ })
@@ -806,7 +806,7 @@ let read_an_tail t =
    between the [+] and [n]. *)
 let ensure_no_ws_after_plus t =
   match Cursor.peek_raw t with
-  | Some (Component.Preserved { kind = Token.Whitespace; _ }) ->
+  | Some (Component.Preserved { kind = Token.Whitespace _; _ }) ->
       Cursor.err_invalid t "whitespace after '+'"
   | _ -> ()
 
@@ -1899,7 +1899,7 @@ and read_compound t =
   Cursor.ws t;
   let can_start () =
     match Cursor.peek_raw t with
-    | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> false
+    | Some (Component.Preserved { kind = Token.Whitespace _; _ }) -> false
     | _ ->
         (match Cursor.peek_delim t with
           | Some ('.' | '*' | '&') -> true

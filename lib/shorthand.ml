@@ -2589,7 +2589,6 @@ let duo_scroll_timeline idx i =
     in
     let value : Properties.timeline_shorthand option =
       match (name : Properties.timeline_name option) with
-      | Some None when Option.is_none axis -> Some None
       | Some (Names [ n ]) -> Some (Timelines [ { name = n; axis } ])
       | _ -> Option.None
     in
@@ -3703,7 +3702,7 @@ let column_rule_part = function
       Some (line_of_color color)
   | _ -> None
 
-let try_compose_line_at ~part_of ~property idx i =
+let try_compose_line_at ~part_of ~build idx i =
   let n = Rule_index.length idx in
   if i + 2 >= n then None
   else
@@ -3718,9 +3717,8 @@ let try_compose_line_at ~part_of ~property idx i =
         | [ Some (p1, s1); Some (p2, s2); Some (p3, s3) ]
           when List.length (List.sort_uniq compare [ p1; p2; p3 ]) = 3 ->
             Some
-              (Declaration.v
+              (build
                  ~important:(is_important (List.hd raw))
-                 property
                  (Shorthand (merge_line s1 (merge_line s2 s3))
                    : Properties.border))
         | _ -> None
@@ -3749,26 +3747,32 @@ let border_inline_axis_part = function
   | _ -> None
 
 let line_families =
+  let one property ~important value = Declaration.v ~important property value in
+  (* Sec. 4.4 writes [column-rule] as a [<gap-rule>#], so one composed line is a
+     one-entry list rather than a bare value. *)
+  let listed property ~important value =
+    Declaration.v ~important property [ value ]
+  in
   Properties.
     [
-      (border_top_part, Border_top);
-      (border_right_part, Border_right);
-      (border_bottom_part, Border_bottom);
-      (border_left_part, Border_left);
-      (border_block_start_part, Border_block_start);
-      (border_block_end_part, Border_block_end);
-      (border_inline_start_part, Border_inline_start);
-      (border_inline_end_part, Border_inline_end);
-      (column_rule_part, Column_rule);
-      (border_block_axis_part, Border_block);
-      (border_inline_axis_part, Border_inline);
+      (border_top_part, one Border_top);
+      (border_right_part, one Border_right);
+      (border_bottom_part, one Border_bottom);
+      (border_left_part, one Border_left);
+      (border_block_start_part, one Border_block_start);
+      (border_block_end_part, one Border_block_end);
+      (border_inline_start_part, one Border_inline_start);
+      (border_inline_end_part, one Border_inline_end);
+      (column_rule_part, listed Column_rule);
+      (border_block_axis_part, one Border_block);
+      (border_inline_axis_part, one Border_inline);
     ]
 
 let compose_line_via_index idx =
   List.iter
-    (fun (part_of, property) ->
+    (fun (part_of, build) ->
       compose_fixed3_via_index idx
-        ~try_compose:(try_compose_line_at ~part_of ~property))
+        ~try_compose:(try_compose_line_at ~part_of ~build))
     line_families
 
 (* CSS Scroll Animations 1 sec. 5.2: [view-timeline] is [<name> <axis>?
@@ -3809,8 +3813,6 @@ let view_timeline_item parts : Properties.view_timeline_shorthand_item option =
   in
   match (name : Properties.timeline_name option) with
   | Some (Names [ n ]) -> Some { name = n; axis; inset }
-  | Some None when Option.is_none axis && Option.is_none inset ->
-      Some { name = "none"; axis; inset }
   | _ -> Option.None
 
 let view_timeline_of_run raw =
@@ -4460,6 +4462,18 @@ let mask_position_part : declaration -> Properties.position_value option =
       background_position_singleton value
   | _ -> None
 
+(* The prefixed pair's own vocabulary meets the unprefixed [<coord-box>] on the
+   three CSS box names alone, so a bare legacy name or [text] keeps its longhand
+   rather than contracting into a slot that cannot spell it. *)
+let mask_box_of_webkit :
+    Properties.webkit_mask_box -> Properties.mask_box option = function
+  | Border_box -> Some Border_box
+  | Content_box -> Some Content_box
+  | Padding_box -> Some Padding_box
+  | Border | Content | Padding | Text | Layers _ | Inherit | Initial | Unset
+  | Revert | Revert_layer | Var _ ->
+      None
+
 let mask_origin_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_origin; value; _ } -> (
       match value with
@@ -4470,7 +4484,7 @@ let mask_origin_part : declaration -> Properties.mask_box option = function
       match value with
       | Inherit | Unset -> None
       | Initial -> Some (Border_box : Properties.mask_box)
-      | v -> Some v)
+      | v -> mask_box_of_webkit v)
   | _ -> None
 
 let mask_clip_part : declaration -> Properties.mask_box option = function
@@ -4483,7 +4497,7 @@ let mask_clip_part : declaration -> Properties.mask_box option = function
       match value with
       | Inherit | Unset -> None
       | Initial -> Some (Border_box : Properties.mask_box)
-      | v -> Some v)
+      | v -> mask_box_of_webkit v)
   | _ -> None
 
 let mask_mode_part : declaration -> Properties.mask_mode option = function

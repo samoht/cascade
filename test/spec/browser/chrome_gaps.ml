@@ -1,24 +1,13 @@
-(* What a headless Chrome cannot arbitrate, and the vectors where it and the
-   specifications disagree.
+(* Which productions the browser in front of these harnesses implements.
 
-   Shared by the harnesses in this directory. Both ask the same browser the same
-   question, so a browser that catches up, or a specification that moves, is
-   recorded once and both runs see it. Every entry carries the spec text that
-   justifies it: without one an entry is a place for a mistake to hide.
+   The tables of hand-written entries this module used to carry are gone. They
+   answered a question Cascade.Support answers from the web-features dataset,
+   and answered it in prose that nothing could invalidate: an entry stayed true
+   until a person reread it, where a lookup goes stale the day the browser ships
+   the grammar. What is left is the derivation of the BCD compat key from the
+   property and the value, which is the only part a dataset lookup cannot do for
+   itself. *)
 
-   The two lists are the two directions. [spec_ahead] is grammar a specification
-   defines and Chrome has not implemented, so Chrome rejecting it says nothing
-   about the value. [lenient] is a value Chrome accepts that no specification
-   grants, so Chrome accepting it says nothing either. *)
-
-(* Chrome answers nothing about these, so the spec is their only oracle. Most
-   are grammar it has not implemented; a few are names it has retired or never
-   had, and [src] is a descriptor rather than a property, so asking about it as
-   one gets a rejection that says nothing.
-
-   Each harness checks the list against its own population in both directions: a
-   name that becomes implemented, and a name that stops being, are both reported
-   rather than skipped in silence. *)
 let unimplemented =
   [
     "caret";
@@ -83,302 +72,197 @@ let unimplemented =
     "-webkit-text-decoration-color";
   ]
 
-(* One vector the browser and the manifest disagree about, and the spec text
-   that decides it. Every entry has to be used: an entry that excuses nothing is
-   reported, so a browser that catches up, or a row that drops the value, takes
-   its excuse with it. *)
-type excuse = { properties : string list; value : string; why : string }
-
-let sizing =
-  [
-    "width";
-    "height";
-    "min-width";
-    "min-height";
-    "max-width";
-    "max-height";
-    "inline-size";
-    "min-inline-size";
-    "max-inline-size";
-    "block-size";
-    "min-block-size";
-    "max-block-size";
-    "flex-basis";
-  ]
-
-(* Positives Chrome rejects. Each is grammar a specification defines and Chrome
-   has not implemented, so the manifest is ahead of the browser rather than
-   wrong. The citation is the whole justification: without it an entry is a
-   place for a mistaken row to hide. *)
-let spec_ahead : excuse list =
-  [
-    {
-      properties = sizing;
-      value = "fit-content(20rem)";
-      why =
-        "CSS Sizing 4 sec. 3.2 adds fit-content() to <box-size>, which every \
-         sizing property takes; Chrome has only the bare fit-content keyword";
-    };
-    {
-      properties =
-        [
-          "background";
-          "background-image";
-          "border-image";
-          "border-image-source";
-          "mask-image";
-          "-webkit-mask-image";
-        ];
-      value = "cross-fade(url(a.png) 40%, url(b.png))";
-      why =
-        "CSS Images 4 sec. 2.6: cross-fade() = cross-fade( <cf-image># ); \
-         Chrome ships only -webkit-cross-fade()";
-    };
-    {
-      properties = [ "text-decoration-thickness" ];
-      value = "hairline";
-      why =
-        "CSS Text Decoration 4 sec. 2.4 takes <line-width>, and CSS Borders 4 \
-         sec. 2.3 defines <line-width> = <length [0,inf]> | hairline | thin | \
-         medium | thick";
-    };
-    {
-      properties = [ "text-decoration-thickness" ];
-      value = "thin";
-      why = "CSS Borders 4 sec. 2.3: thin is a <line-width>";
-    };
-    {
-      properties = [ "text-decoration-thickness" ];
-      value = "thick";
-      why = "CSS Borders 4 sec. 2.3: thick is a <line-width>";
-    };
-    {
-      properties = [ "overflow-clip-margin" ];
-      value = "0";
-      why =
-        "CSS Overflow 4 sec. 3.2: <visual-box> || <length>, and a unitless \
-         zero is a <length>; Chrome takes only a dimension";
-    };
-    {
-      properties = [ "overflow-clip-margin" ];
-      value = "calc(1rem + 2px)";
-      why =
-        "CSS Values 4 sec. 10.1 admits a math function wherever a <length> is \
-         accepted, which CSS Overflow 4 sec. 3.2 is; Chrome takes only a \
-         dimension";
-    };
-    {
-      properties = [ "text-align" ];
-      value = "match-parent";
-      why =
-        "CSS Text 4 sec. 7.1 lists match-parent; Chrome ships only \
-         -webkit-match-parent";
-    };
-    {
-      properties = [ "text-transform" ];
-      value = "full-width";
-      why =
-        "CSS Text 4 sec. 2.1: none | [ capitalize | uppercase | lowercase ] || \
-         full-width || full-size-kana | math-auto";
-    };
-    {
-      properties = [ "text-overflow" ];
-      value = "\"...\"";
-      why =
-        "CSS Overflow 4 sec. 4.1: [ clip | ellipsis | <string> | fade | \
-         <fade()> ]{1,2}";
-    };
-    {
-      properties = [ "text-overflow" ];
-      value = "clip ellipsis";
-      why = "CSS Overflow 4 sec. 4.1: the production repeats {1,2}";
-    };
-    {
-      properties = [ "text-combine-upright" ];
-      value = "digits";
-      why =
-        "CSS Writing Modes 4 sec. 9.1: none | all | [ digits <integer [2,4]>? \
-         ]; Chrome has only none and all";
-    };
-    {
-      properties = [ "text-combine-upright" ];
-      value = "digits 2";
-      why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
-    };
-    {
-      properties = [ "text-combine-upright" ];
-      value = "digits 4";
-      why = "CSS Writing Modes 4 sec. 9.1: the integer ranges over [2,4]";
-    };
-    {
-      properties = [ "alignment-baseline" ];
-      value = "text-bottom";
-      why =
-        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and \
-         <baseline-metric> begins text-bottom | alphabetic | ideographic; \
-         Chrome implements the SVG 1.1 keyword set";
-    };
-    {
-      properties = [ "baseline-shift" ];
-      value = "top";
-      why =
-        "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
-         center | bottom";
-    };
-    {
-      properties = [ "baseline-shift" ];
-      value = "center";
-      why = "CSS Inline 3 sec. 4.2.3 lists center";
-    };
-    {
-      properties = [ "baseline-shift" ];
-      value = "bottom";
-      why = "CSS Inline 3 sec. 4.2.3 lists bottom";
-    };
-    {
-      properties = [ "grid-template-rows" ];
-      value = "masonry";
-      why =
-        "the CSS Grid 3 Working Draft of 2024 added masonry to \
-         grid-template-rows, and Firefox ships it; the current draft has \
-         replaced it with display: grid-lanes, so this row is the one entry \
-         here that wants a decision rather than a browser";
-    };
-    {
-      properties = [ "outline-color" ];
-      value = "auto";
-      why =
-        "CSS UI 4 sec. 3.4: auto | <'border-top-color'>, and auto is the \
-         initial value; Chrome computes that initial value without accepting \
-         the keyword";
-    };
-    {
-      properties = [ "user-select"; "-webkit-user-select" ];
-      value = "contain";
-      why =
-        "CSS UI 4 sec. 6.1: auto | text | none | contain | all; \
-         -webkit-user-select is the browser's legacy name for the same \
-         property";
-    };
-    {
-      properties = [ "font-synthesis" ];
-      value = "style small-caps position";
-      why =
-        "CSS Fonts 4 sec. 2.8.5: none | [ weight || style || small-caps || \
-         position ]; Chrome has no font-synthesis-position";
-    };
-    {
-      properties = [ "font-synthesis-style" ];
-      value = "oblique-only";
-      why = "CSS Fonts 4 sec. 2.8.2: auto | none | oblique-only";
-    };
-    {
-      properties = [ "ruby-position" ];
-      value = "alternate";
-      why =
-        "CSS Ruby 1 sec. 4.1: [ alternate || [ over | under ] ] | \
-         inter-character; Chrome has only over and under";
-    };
-    {
-      properties = [ "ruby-position" ];
-      value = "alternate over";
-      why = "CSS Ruby 1 sec. 4.1: alternate combines with over under ||";
-    };
-    {
-      properties = [ "ruby-position" ];
-      value = "inter-character";
-      why = "CSS Ruby 1 sec. 4.1 lists inter-character";
-    };
-    {
-      properties = [ "image-rendering" ];
-      value = "smooth";
-      why =
-        "CSS Images 3 sec. 5.2: auto | smooth | high-quality | pixelated | \
-         crisp-edges";
-    };
-    {
-      properties = [ "-webkit-mask-clip" ];
-      value = "no-clip";
-      why =
-        "CSS Masking 1 sec. 7.5: [ <coord-box> | no-clip ]#; Chrome takes \
-         no-clip on mask-clip but not on its own -webkit- alias of it";
-    };
-    {
-      properties = [ "stroke-linejoin" ];
-      value = "miter-clip";
-      why =
-        "SVG Strokes sec. 2.6: miter | miter-clip | round | bevel | arcs; \
-         Chrome has miter, round and bevel";
-    };
-    {
-      properties = [ "stroke-linejoin" ];
-      value = "arcs";
-      why = "SVG Strokes sec. 2.6 lists arcs";
-    };
-    {
-      properties = [ "vector-effect" ];
-      value = "non-scaling-size";
-      why =
-        "SVG 2 sec. 8.13: none | [ non-scaling-stroke | non-scaling-size | \
-         non-rotation | fixed-position ]+ [ viewport | screen ]?; Chrome has \
-         only non-scaling-stroke";
-    };
-    {
-      properties = [ "vector-effect" ];
-      value = "non-rotation";
-      why = "SVG 2 sec. 8.13 lists non-rotation";
-    };
-    {
-      properties = [ "vector-effect" ];
-      value = "fixed-position";
-      why = "SVG 2 sec. 8.13 lists fixed-position";
-    };
-    {
-      properties = [ "vector-effect" ];
-      value = "non-scaling-stroke screen";
-      why = "SVG 2 sec. 8.13: the effect list is followed by viewport | screen";
-    };
-    {
-      properties = [ "vector-effect" ];
-      value = "non-scaling-stroke fixed-position";
-      why = "SVG 2 sec. 8.13: the effects themselves repeat with +";
-    };
-  ]
-
-(* Negatives Chrome accepts. Each is a value no specification grants, kept
-   invalid on purpose. *)
-let lenient : excuse list =
-  [
-    {
-      properties = [ "resize" ];
-      value = "auto";
-      why =
-        "CSS UI 4 sec. 4.1: none | both | horizontal | vertical | block | \
-         inline. Chrome accepts auto, no specification defines it";
-    };
-    {
-      properties = [ "text-orientation" ];
-      value = "sideways-right";
-      why =
-        "CSS Writing Modes 4 sec. 5.1: mixed | upright | sideways. \
-         sideways-right is a compatibility alias browsers may keep, not \
-         grammar";
-    };
-    {
-      properties = [ "alignment-baseline" ];
-      value = "auto";
-      why =
-        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
-         auto. Chrome accepts it from the SVG 1.1 grammar";
-    };
-  ]
-
 let unimplemented_property name = List.exists (String.equal name) unimplemented
 
-(* The entry covering [property]: [value], when one exists. *)
-let find table ~property ~value =
-  let covers (e : excuse) =
-    String.equal e.value value
-    && List.exists (String.equal property) e.properties
+(* ===== Naming a production the way BCD names it ===== *)
+
+let split_ws s =
+  List.filter
+    (fun w -> not (String.equal w ""))
+    (String.split_on_char ' ' (String.trim s))
+
+let underscored s = String.map (function '-' -> '_' | c -> c) s
+
+let is_quoted p =
+  String.length p >= 2
+  && (Char.equal p.[0] '"' || Char.equal p.[0] '\'')
+  && Char.equal p.[String.length p - 1] p.[0]
+
+(* The function name of [f(...)], when the value is one call. *)
+let call_name s =
+  let s = String.trim s in
+  match String.index_opt s '(' with
+  | Some i when i > 0 && String.length s > i && s.[String.length s - 1] = ')' ->
+      let name = String.sub s 0 i in
+      if String.for_all (fun c -> (c >= 'a' && c <= 'z') || c = '-') name then
+        Some name
+      else None
+  | Some _ | None -> None
+
+(* BCD writes a keyword arm as css.properties.<property>.<value>, some of them
+   with [_] where CSS writes [-]; a multi-slot value under the slot that carries
+   it, so each word is a candidate; a <string> arm as [.string]; and a value
+   type under css.types. Every spelling is a candidate and the dataset decides
+   which one exists, so a production BCD names in a way this does not reach is a
+   measurement in the library rather than a table entry here. *)
+(* A vendor-prefixed property is the same production under another name, and
+   BCD files it under the unprefixed one. *)
+let unprefixed property =
+  List.find_map
+    (fun prefix ->
+      if String.starts_with ~prefix property then
+        Some
+          (String.sub property (String.length prefix)
+             (String.length property - String.length prefix))
+      else None)
+    [ "-webkit-"; "-moz-"; "-ms-"; "-o-" ]
+
+let keys_for ?(prefix = "css.properties") ~property ~value () =
+  let value = String.trim value in
+  let properties = property :: Option.to_list (unprefixed property) in
+  let prop k =
+    List.map (fun p -> String.concat "" [ prefix; "."; p; "."; k ]) properties
   in
-  List.find_opt covers table
+  let words = split_ws value in
+  let whole = prop value @ prop (underscored value) in
+  let joined =
+    match words with
+    | [] | [ _ ] -> []
+    | ws -> prop (String.concat "_" (List.map underscored ws))
+  in
+  (* BCD names an arm a property takes only in its multi-value form after the
+     shape rather than the value: two slots are [two_value_syntax]. *)
+  let arity =
+    match words with [ _; _ ] -> prop "two_value_syntax" | _ -> []
+  in
+  let per_word =
+    match words with
+    | [] | [ _ ] -> []
+    | ws -> List.concat_map (fun w -> prop w @ prop (underscored w)) ws
+  in
+  (* A value that is one entry of a comma-separated list is the same keyword
+     doing a different job, and BCD names the job. *)
+  let in_a_list =
+    if String.contains value ',' then
+      List.concat_map
+        (fun entry ->
+          List.concat_map
+            (fun w -> prop (String.concat "" [ underscored w; "_in_a_list" ]))
+            (split_ws entry))
+        (String.split_on_char ',' value)
+    else []
+  in
+  let strings = if is_quoted value then prop "string" else [] in
+  (* Productions web-features does not model still have to be named, and a name
+     nothing derives is a name only a table can reach. These are the shapes a
+     value has rather than the value itself, so they are one name each however
+     the generator spells the member it drew. *)
+  let is_number w =
+    w <> ""
+    && String.for_all
+         (fun c -> (c >= '0' && c <= '9') || c = '.' || c = '-' || c = '+')
+         w
+    && String.exists (fun c -> c >= '0' && c <= '9') w
+  in
+  let shapes =
+    (match words with [ w ] when is_number w -> prop "number" | _ -> [])
+    @ (if String.length value > 0 && value.[String.length value - 1] = ',' then
+         prop "trailing_comma"
+       else [])
+    @ (if String.contains value ',' then prop "comma" else [])
+    @
+    (* A negative of any dimension, not only a bare number: the sign is what the
+       range excludes, whatever unit follows it. *)
+    match words with
+    | [ w ]
+      when String.length w > 1 && w.[0] = '-' && w.[1] >= '0' && w.[1] <= '9' ->
+        prop "negative"
+    | _ -> []
+  in
+  (* A function is filed under the property BCD happened to pick, and named the
+     same way wherever that is, so the whole dataset is searched by name. *)
+  let calls =
+    match call_name value with
+    | None -> []
+    | Some name ->
+        (* An arm a grammar spells as a value TYPE is named after the type, not
+           the function that wrote it: [url(a.png)] and [linear-gradient(...)]
+           are both the <image> arm. *)
+        prop "image"
+        @ prop (String.concat "" [ underscored name; "_function" ])
+        @ [
+            String.concat "" [ "css.types."; name ];
+            String.concat "" [ "css.types.image."; name ];
+            String.concat "" [ "css.types.color."; name ];
+          ]
+        @ Cascade.Support.keys_named (String.concat "" [ name; "_function" ])
+        @ Cascade.Support.keys_named
+            (String.concat "" [ underscored name; "_function" ])
+  in
+  (* BCD names a slot the shorthand accepts [<longhand>_included], and which
+     slot a value fills is grammar this harness does not have, so every slot the
+     dataset records for the property is a candidate. *)
+  let included =
+    List.concat_map
+      (fun p ->
+        List.filter
+          (fun k -> String.ends_with ~suffix:"_included" k)
+          (Cascade.Support.keys_under
+             (String.concat "" [ prefix; "."; p; "." ])))
+      properties
+  in
+  let bare =
+    List.map (fun p -> String.concat "" [ prefix; "."; p ]) properties
+  in
+  List.fold_left
+    (fun acc k -> if List.exists (String.equal k) acc then acc else acc @ [ k ])
+    []
+    (whole @ joined @ in_a_list @ arity @ strings @ shapes @ calls @ per_word
+   @ included @ bare)
+
+(* ===== What the dataset says about a disagreement ===== *)
+
+type explanation = Not_shipped of string | Shipped_beyond_spec of string
+
+let explanation_key = function
+  | Not_shipped key | Shipped_beyond_spec key -> key
+
+let explains_rejection ?prefix ~chrome ~property ~value () =
+  List.find_map
+    (fun key ->
+      match
+        Cascade.Support.engine_implements Cascade.Support.Chrome chrome key
+      with
+      | Some false -> Some (Not_shipped key)
+      | Some true | None -> None)
+    (keys_for ?prefix ~property ~value ())
+
+(* Only a measured key answers here: the generated table records what browsers
+   ship, which cannot say whether a specification grants it. That judgement is a
+   measurement, and it lives in the library beside the specification text that
+   decided it. *)
+let explains_acceptance ?prefix ~chrome ~property ~value () =
+  List.find_map
+    (fun key ->
+      if
+        Cascade.Support.self_measured key
+        && Cascade.Support.engine_implements Cascade.Support.Chrome chrome key
+           = Some true
+      then Some (Shipped_beyond_spec key)
+      else None)
+    (keys_for ?prefix ~property ~value ())
+
+(* ===== Reporting which side is wrong ===== *)
+
+type verdict = Browser_behind | Cascade_wrong | Needs_measurement
+
+let verdict_of targets key =
+  match Cascade.Support.implemented targets key with
+  | None -> Needs_measurement
+  | Some true -> Cascade_wrong
+  | Some false -> Browser_behind
+
+let verdict_name = function
+  | Browser_behind -> "cascade right, the browser has not shipped it"
+  | Cascade_wrong -> "every target ships it, so cascade is wrong"
+  | Needs_measurement -> "not modelled, needs measuring"

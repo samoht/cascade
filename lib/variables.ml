@@ -1011,6 +1011,7 @@ let vars_of_shape_image_threshold (value : Properties.shape_image_threshold) :
     any_var list =
   match value with
   | Var v -> [ V v ]
+  | Calc c -> vars_of_calc c
   | Number _ | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_overflow_clip_margin (value : Properties.overflow_clip_margin) :
@@ -1023,7 +1024,7 @@ let vars_of_overflow_clip_margin (value : Properties.overflow_clip_margin) :
 
 let vars_of_tab_size (value : Properties.tab_size) : any_var list =
   match value with
-  | Int _ -> []
+  | Number n -> vars_of_number_value n
   | Length len -> vars_of_length len
   | Var v -> [ V v ]
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
@@ -1031,6 +1032,7 @@ let vars_of_tab_size (value : Properties.tab_size) : any_var list =
 let vars_of_zoom (value : Properties.zoom) : any_var list =
   match value with
   | Var v -> [ V v ]
+  | Calc c -> vars_of_calc c
   | Normal | Reset | Num _ | Pct _ | Initial | Inherit | Unset | Revert
   | Revert_layer ->
       []
@@ -1163,20 +1165,25 @@ let vars_of_font_palette (value : Properties.font_palette) =
 let vars_of_font_synthesis (value : Properties.font_synthesis) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_animation_timeline (value : Properties.animation_timeline) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_animation_timeline (value : Properties.animation_timeline) =
+  match value with
+  | Var v -> [ V v ]
+  | Timelines timelines -> List.concat_map vars_of_animation_timeline timelines
+  | _ -> []
 
-let vars_of_animation_range_item (value : Properties.animation_range_item) =
+let rec vars_of_animation_range_item (value : Properties.animation_range_item) =
   match value with
   | Var v -> [ V v ]
   | Normal -> []
+  | Items items -> List.concat_map vars_of_animation_range_item items
   | Offset lp | Named (_, Some lp) -> vars_of_length_percentage lp
   | Named (_, None) -> []
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
-let vars_of_animation_range (value : Properties.animation_range) =
+let rec vars_of_animation_range (value : Properties.animation_range) =
   match value with
   | Var v -> [ V v ]
+  | Ranges ranges -> List.concat_map vars_of_animation_range ranges
   | Range (first, second) ->
       vars_of_animation_range_item first
       @ Option.fold ~none:[] ~some:vars_of_animation_range_item second
@@ -1199,7 +1206,9 @@ let vars_of_image_resolution (value : Properties.image_resolution) =
 
 let vars_of_intrinsic_size_item (value : Properties.contain_intrinsic_size_item)
     =
-  match value with Length len | Auto len -> vars_of_length len
+  match value with
+  | Length len | Auto len -> vars_of_length len
+  | None | Auto_none -> []
 
 let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
   match value with
@@ -1445,7 +1454,15 @@ let vars_of_text_spacing_trim (value : Properties.text_spacing_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_hyphenate_limit_chars (value : Properties.hyphenate_limit_chars) =
-  match value with Var v -> [ V v ] | _ -> []
+  let slot (item : Properties.hyphenate_limit_chars_item) =
+    match item with Auto -> [] | Chars n -> vars_of_number_value n
+  in
+  match value with
+  | Var v -> [ V v ]
+  | One a -> slot a
+  | Two (a, b) -> slot a @ slot b
+  | Three (a, b, c) -> slot a @ slot b @ slot c
+  | _ -> []
 
 let vars_of_initial_letter (value : Properties.initial_letter) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1569,6 +1586,7 @@ let rec vars_of_animation_iteration_count
   match value with
   | Var v -> [ V v ]
   | Counts counts -> List.concat_map vars_of_animation_iteration_count counts
+  | Count n -> vars_of_number_value n
   | _ -> []
 
 let vars_of_transition_behavior (value : Properties.transition_behavior) =
@@ -1776,6 +1794,9 @@ let vars_of_object_view_box (value : Properties.object_view_box) =
 let vars_of_mask_box (value : Properties.mask_box) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_webkit_mask_box (value : Properties.webkit_mask_box) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let rec vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite)
     =
   match value with
@@ -1824,6 +1845,9 @@ let vars_of_user_select (value : Properties.user_select) =
 let vars_of_timeline_axis (value : Properties.timeline_axis) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_timeline_scope (value : Properties.timeline_scope) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_timeline_name (value : Properties.timeline_name) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1840,12 +1864,13 @@ let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
 let vars_of_timeline_inset_item (value : Properties.timeline_inset_item) =
   match value with Auto -> [] | Length lp -> vars_of_length_percentage lp
 
-let vars_of_timeline_inset (value : Properties.timeline_inset) =
+let rec vars_of_timeline_inset (value : Properties.timeline_inset) =
   match value with
   | Var v -> [ V v ]
   | Inset (first, second) ->
       vars_of_timeline_inset_item first
       @ Option.value ~default:[] (Option.map vars_of_timeline_inset_item second)
+  | Insets insets -> List.concat_map vars_of_timeline_inset insets
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_view_timeline_shorthand (value : Properties.view_timeline_shorthand)
@@ -1881,11 +1906,22 @@ let vars_of_stroke_width (value : Properties.stroke_width) =
   | Length lp -> vars_of_length_percentage lp
   | _ -> []
 
+let vars_of_dash_length (value : Properties.dash_length) =
+  match value with
+  | Number n -> vars_of_number_value n
+  | Length lp -> vars_of_length_percentage lp
+
 let vars_of_stroke_dashoffset (value : Properties.stroke_dashoffset) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Dash d -> vars_of_dash_length d
+  | _ -> []
 
 let vars_of_stroke_dasharray (value : Properties.stroke_dasharray) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Dashes ds -> List.concat_map vars_of_dash_length ds
+  | _ -> []
 
 let vars_of_paint_order (value : Properties.paint_order) =
   match value with Var v -> [ V v ] | _ -> []
@@ -2271,7 +2307,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Column_height, value -> vars_of_column_height value
   | Column_wrap, value -> vars_of_column_wrap value
   | Column_count, value -> vars_of_column_count value
-  | Column_rule, value -> vars_of_border value
+  | Column_rule, value -> List.concat_map vars_of_border value
   | Column_rule_color, value -> List.concat_map vars_of_color value
   | Column_rule_width, value -> List.concat_map vars_of_border_width value
   | Column_rule_style, value -> List.concat_map vars_of_border_style value
@@ -2542,7 +2578,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | View_timeline_axis, value -> vars_of_timeline_axis value
   | View_timeline_inset, value -> vars_of_timeline_inset value
   | View_timeline, value -> vars_of_view_timeline_shorthand value
-  | Timeline_scope, value -> vars_of_timeline_name value
+  | Timeline_scope, value -> vars_of_timeline_scope value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value
   | Webkit_box_decoration_break, value -> vars_of_box_decoration_break value
@@ -2550,9 +2586,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_box_orient, value -> vars_of_webkit_box_orient value
   | Webkit_font_smoothing, value -> vars_of_webkit_font_smoothing value
   | Webkit_line_clamp, value -> vars_of_webkit_line_clamp value
-  | Webkit_mask_clip, value -> vars_of_mask_box value
+  | Webkit_mask_clip, value -> vars_of_webkit_mask_box value
   | Webkit_mask_composite, value -> vars_of_webkit_mask_composite value
-  | Webkit_mask_origin, value -> vars_of_mask_box value
+  | Webkit_mask_origin, value -> vars_of_webkit_mask_box value
   | Webkit_mask_repeat, value -> vars_of_background_repeat value
   | Webkit_mask_source_type, value -> vars_of_mask_source_type value
   | Webkit_text_size_adjust, value -> vars_of_text_size_adjust value

@@ -674,6 +674,9 @@ let check_field_sizing =
 let check_font_size = check_value_cursor "font_size" read_font_size pp_font_size
 let check_mask_box = check_value_cursor "mask_box" read_mask_box pp_mask_box
 
+let check_webkit_mask_box =
+  check_value_cursor "webkit_mask_box" read_webkit_mask_box pp_webkit_mask_box
+
 let check_mask_composite =
   check_value_cursor "mask_composite" read_mask_composite pp_mask_composite
 
@@ -915,6 +918,10 @@ let check_grid_template_areas =
   check_value_cursor "grid_template_areas" read_grid_template_areas
     pp_grid_template_areas
 
+let check_hyphenate_limit_chars_item =
+  check_value_cursor "hyphenate_limit_chars_item"
+    read_hyphenate_limit_chars_item pp_hyphenate_limit_chars_item
+
 let check_hyphenate_limit_chars =
   check_value_cursor "hyphenate_limit_chars" read_hyphenate_limit_chars
     pp_hyphenate_limit_chars
@@ -953,6 +960,10 @@ let check_interactivity =
 
 let check_interest_delay =
   check_value_cursor "interest_delay" read_interest_delay pp_interest_delay
+
+let check_interest_delay_item =
+  check_value_cursor "interest_delay_item" read_interest_delay_item
+    pp_interest_delay_item
 
 let check_interpolate_size =
   check_value_cursor "interpolate_size" read_interpolate_size
@@ -1222,8 +1233,14 @@ let check_timeline_inset_item =
   check_value_cursor "timeline_inset_item" read_timeline_inset_item
     pp_timeline_inset_item
 
+let check_timeline_ident =
+  check_value_cursor "timeline_ident" read_timeline_ident pp_timeline_ident
+
 let check_timeline_name =
   check_value_cursor "name" read_timeline_name pp_timeline_name
+
+let check_timeline_scope =
+  check_value_cursor "timeline_scope" read_timeline_scope pp_timeline_scope
 
 let check_timeline_shorthand_item =
   check_value_cursor "timeline_shorthand_item" read_timeline_shorthand_item
@@ -2413,7 +2430,17 @@ let test_vertical_align () =
   (* A unitless 0 is the valid zero <length> and stays unitless; any other
      unitless number is not a length. *)
   check_vertical_align "0";
+  (* Every length unit is a [<length-percentage>], so the reader takes no list
+     of its own: [ch], [vh] and [cap] read like [px], and a math function over
+     them does too. Chrome 153 takes all four. *)
+  check_vertical_align "2ch";
+  check_vertical_align "2vh";
+  check_vertical_align "2cap";
+  check_vertical_align "max(1rem,2vw)";
   neg_cursor read_vertical_align "5";
+  (* The grammar has no keyword branch, so the intrinsic sizes a bare length
+     reader would take are out. *)
+  neg_cursor read_vertical_align "min-content";
   neg_cursor read_vertical_align "invalid-align"
 
 let test_font_family () =
@@ -2780,6 +2807,9 @@ let test_animation_iteration_count () =
   check_animation_iteration_count "1";
   check_animation_iteration_count "infinite";
   check_animation_iteration_count "2.5";
+  (* CSS Values 4 sec. 10.1: a math function stands where a [<number>] does. *)
+  check_animation_iteration_count "calc(1 + 2)";
+  check_animation_iteration_count "1,calc(2*2)";
   neg_cursor read_animation_iteration_count "invalid-count"
 
 let test_animation_play_state () =
@@ -3732,6 +3762,10 @@ let test_stroke_dashoffset () =
   check_stroke_dashoffset "10%";
   check_stroke_dashoffset "var(--o)";
   check_stroke_dashoffset "-2px";
+  (* CSS Values 4 sec. 10.1 puts a math function wherever its type is, and both
+     halves of the dash grammar are a type. *)
+  check_stroke_dashoffset "calc(1 + 2)";
+  check_stroke_dashoffset "calc(1px + 2px)";
   neg_cursor read_stroke_dashoffset "none"
 
 let test_stroke_dasharray () =
@@ -3743,6 +3777,8 @@ let test_stroke_dasharray () =
   (* Comma and whitespace are the same separator here. *)
   check_stroke_dasharray ~expected:"4 2" "4, 2";
   check_stroke_dasharray "var(--d)";
+  check_stroke_dasharray "calc(1 + 2) 4";
+  check_stroke_dasharray "calc(1px + 2px) 4%";
   neg_cursor read_stroke_dasharray "red";
   (* SVG 2 sec. 13.3 gives each dash a non-negative value; only
      [stroke-dashoffset] takes a signed one. *)
@@ -4065,6 +4101,19 @@ let test_flex () =
      constant calc to 3 is an optimize+minify transform, asserted there. *)
   check_flex "var(--f)";
   check_flex "calc(1 + 2) 1 0";
+  (* CSS Flexbox 1 sec. 7.1.1 joins the factor group and the basis with a [||],
+     so the basis may lead; an omitted shrink is 1. Chrome 153 computes each of
+     these to the same three longhands as the factor-first spelling. *)
+  check_flex ~expected:"1 50%" "50% 1";
+  check_flex ~expected:"1 2 50%" "50% 1 2";
+  check_flex ~expected:"2 10px" "10px 2";
+  check_flex ~expected:"1 auto" "auto 1";
+  check_flex ~expected:"1 content" "content 1";
+  (* The basis sits on one side of the [||] or the other, never between the two
+     factors, and [none] is the whole value on its own. *)
+  neg_cursor ~allow_partial:true read_flex "1 50% 2";
+  neg_cursor ~allow_partial:true read_flex "50% 1 2 3";
+  neg_cursor ~allow_partial:true read_flex "none 1";
   neg_cursor read_flex "invalid-flex"
 
 let test_font_variant_css21 () =
@@ -4596,8 +4645,13 @@ let test_timeline_axis () =
   check_timeline_axis "inline";
   check_timeline_axis "x";
   check_timeline_axis "y";
+  (* Scroll-driven Animations 1 secs. 4.2 and 5.2 spell the axis [[ block |
+     inline | x | y ]#], one entry per timeline. *)
+  check_timeline_axis "block,inline";
+  check_timeline_axis "x,y,block";
   neg_cursor read_timeline_axis "z";
-  neg_cursor read_timeline_axis "auto"
+  neg_cursor read_timeline_axis "auto";
+  neg_cursor ~allow_partial:true read_timeline_axis "block inline"
 
 let test_timeline_shorthand () =
   check_timeline_shorthand "--main block";
@@ -4659,7 +4713,15 @@ let test_columns_value () =
   (* CSS Multicol 2 sec. 4.1 spells [column-width] as [auto | <length [0,inf]>],
      so a percentage and a negative are no column width. *)
   neg_cursor read_columns_value "-1px";
-  neg_cursor read_columns_value "50%"
+  neg_cursor read_columns_value "50%";
+  (* A percentage nested in math is still a percentage, so the width slot takes
+     no math whose own type is one. Chrome 153 refuses each of these three and
+     takes the two below. *)
+  neg_cursor read_columns_value "calc(50% + 25%)";
+  neg_cursor read_columns_value "calc(50% - 25%)";
+  neg_cursor read_columns_value "clamp(1px,50%,2px)";
+  check_columns_value "calc(1px + 2em)";
+  check_columns_value "min(1px,2px)"
 
 (* CSS Values 4 (ED) sec. 10.9: a math function that resolves to <number> is
    valid wherever an <integer> is, so every integer position reads a calc(). The
@@ -4670,8 +4732,11 @@ let test_columns_value () =
    not one of them: sec. 7.2.1 admits a <length-percentage> or a <flex> there,
    never a bare <number>. *)
 let math_function_at_integer_positions () =
-  check_tab_size ~expected:"3" "calc(1 + 2)";
+  (* [tab-size] keeps the authored call because its value is a {!number}; the
+     positions below still hold an [int], so their reader folds to reach it. *)
+  check_tab_size "calc(1 + 2)";
   check_tab_size "4";
+  check_tab_size "10.5";
   check_tab_size "2px";
   check_column_count ~expected:"3" "calc(1 + 2)";
   check_column_count "3";
@@ -4712,11 +4777,23 @@ let test_mask_box () =
   check_mask_box "padding-box";
   check_mask_box "fill-box";
   check_mask_box "inherit";
+  (* Measured on Chrome 153: -webkit-mask-clip is WebKit's own property, not an
+     alias of mask-clip, and takes neither fill-box nor no-clip. One layer it
+     cannot spell costs the whole fallback. *)
+  decl_optimizes_to ~into:"mask-clip:border-box,fill-box,no-clip"
+    "mask-clip:border-box,fill-box,no-clip";
   decl_optimizes_to
     ~into:
-      "-webkit-mask-clip:border-box,fill-box,no-clip;mask-clip:border-box,fill-box,no-clip"
-    "mask-clip:border-box,fill-box,no-clip";
+      "-webkit-mask-clip:border-box,content-box;mask-clip:border-box,content-box"
+    "mask-clip:border-box,content-box";
   neg_cursor read_mask_box "invalid-mask-box"
+
+let test_webkit_mask_box () =
+  check_webkit_mask_box "content";
+  check_webkit_mask_box "padding";
+  check_webkit_mask_box "border";
+  check_webkit_mask_box "border-box";
+  neg_cursor read_webkit_mask_box "fill-box"
 
 let test_mask_composite () =
   check_mask_composite "add";
@@ -4901,6 +4978,14 @@ let spec_generated_animation_font_edges () =
   check_animation_name ~expected:"fade,slide" "fade, slide";
   check_animation_range ~expected:"entry 0%exit 100%" "entry 0% exit 100%";
   check_animation_range "entry";
+  (* Scroll-driven Animations 1 secs. 3.1 to 3.3 put a [#] on both ends and on
+     the shorthand, one entry per animation. *)
+  check_animation_range "normal,normal";
+  check_animation_range "cover,contain";
+  check_animation_range ~expected:"entry 10%exit 90%,cover"
+    "entry 10% exit 90%, cover";
+  check_animation_range_item ~expected:"10%,normal" "10%, normal";
+  check_animation_range_item ~expected:"cover,contain" "cover, contain";
   (* Scroll Animations 1 sec. 5.1 names [normal], a length-percentage and a
      range name, so the intrinsic-sizing keywords a bare length would accept are
      out. *)
@@ -4997,6 +5082,17 @@ let spec_generated_box_layout_edges () =
   check_contain_intrinsic_longhand "auto 10px";
   check_contain_intrinsic_size "auto 10px 20px";
   check_contain_intrinsic_size_item "auto 10px";
+  (* CSS Sizing 4 sec. 6 spells a slot [auto? [ none | <length [0,inf]> ]], so
+     [none] is one of the two things the optional [auto] may precede and it sits
+     in a slot rather than standing for the whole value. Chrome 153 takes each
+     of these. *)
+  check_contain_intrinsic_longhand "auto none";
+  check_contain_intrinsic_longhand "none";
+  check_contain_intrinsic_size "none 2ch";
+  check_contain_intrinsic_size "auto none";
+  check_contain_intrinsic_size "none";
+  check_contain_intrinsic_size_item "none";
+  check_contain_intrinsic_size_item "auto none";
   check_counter_item "section 2";
   check_counter_set "section 2 subsection";
   check_dominant_baseline "text-bottom";
@@ -5011,7 +5107,16 @@ let spec_generated_box_layout_edges () =
   check_flex_flow "row wrap";
   check_grid_line_pair ~expected:"1/span 2" "1 / span 2";
   check_grid_template_areas ~expected:"\"a a\"\"b c\"" "\"a a\" \"b c\"";
+  check_hyphenate_limit_chars_item "auto";
+  check_hyphenate_limit_chars_item "6";
   check_hyphenate_limit_chars "3 4 5";
+  (* CSS Text 4 sec. 6.3.4 gives every slot [auto | <integer>], and CSS Values 4
+     sec. 10.1 puts a math function where the integer is. *)
+  check_hyphenate_limit_chars "auto";
+  check_hyphenate_limit_chars "auto 3";
+  check_hyphenate_limit_chars "3 auto auto";
+  check_hyphenate_limit_chars "calc(1 + 2)";
+  check_hyphenate_limit_chars "auto calc(1 + 2)";
   check_initial_letter "2 3";
   check_initial_letter_align "border-box alphabetic";
   check_initial_letter_align_keyword "hanging";
@@ -5038,6 +5143,13 @@ let spec_generated_box_layout_edges () =
   check_shape_image_threshold "2";
   check_value_cursor "shape_image_threshold" read_shape_image_threshold
     pp_shape_image_threshold ~expected:".5" "50%";
+  (* CSS Values 4 sec. 10.1 puts a math function wherever its type is, and
+     [opacity] reads the same [<opacity-value>] that way already. Chrome 153
+     takes each of these. *)
+  check_shape_image_threshold "calc(.2 + .3)";
+  check_value_cursor "shape_image_threshold" read_shape_image_threshold
+    pp_shape_image_threshold ~expected:"calc(.5 + .25)" "calc(50% + 25%)";
+  check_shape_image_threshold ~expected:".2" "min(.2,.8)";
   neg_cursor read_shape_image_threshold "2px";
   check_tab_size "4";
   check_zoom "50%";
@@ -5064,6 +5176,8 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_grid_line_pair "span";
   neg_cursor read_grid_template_areas "\"a .\" \". a\"";
   neg_cursor read_hyphenate_limit_chars "3 4 5 6";
+  neg_cursor read_hyphenate_limit_chars "3.0";
+  neg_cursor read_hyphenate_limit_chars "calc(2px)";
   neg_cursor read_initial_letter ".5";
   neg_cursor read_initial_letter_align "alphabetic alphabetic";
   neg_cursor read_initial_letter_align_keyword "cap-height";
@@ -5095,6 +5209,9 @@ let spec_generated_position_interaction_edges () =
   check_container_name "main sidebar";
   check_interactivity "inert";
   check_interest_delay "100ms 200ms";
+  check_interest_delay "normal 120ms";
+  check_interest_delay_item "normal";
+  check_interest_delay_item "120ms";
   check_margin_trim "block-start inline-end";
   check_margin_trim_axis "inline";
   check_margin_trim_edge "block-end";
@@ -5335,13 +5452,28 @@ let spec_generated_text_timeline_edges () =
   check_text_wrap_mode "nowrap";
   check_text_wrap_style "stable";
   check_timeline_inset "auto 100%";
+  (* Sec. 5.3 spells the inset [[ [ auto | <length-percentage> ]{1,2} ]#]. *)
+  check_timeline_inset "auto,1rem";
+  check_timeline_inset "auto 1rem,2px";
   check_timeline_inset_item "100%";
   (* timeline-inset takes [ auto | <length-percentage> ], so a held calc()
      too. *)
   check_timeline_inset_item "calc(50% + 10px)";
   check_timeline_name ~expected:"--main,--alt" "--main, --alt";
+  check_timeline_ident "none";
+  check_timeline_ident "--main";
+  (* Scroll-driven Animations 1 secs. 4.1 and 5.1 spell the name [[ none |
+     <dashed-ident> ]#], so [none] names one timeline among others. *)
+  check_timeline_name "none,none";
+  check_timeline_name ~expected:"--main,none" "--main, none";
+  (* Sec. 6 keeps [timeline-scope] at [none | <dashed-ident>#], where the
+     keyword stands for the whole value. *)
+  check_timeline_scope "none";
+  check_timeline_scope ~expected:"--main,--alt" "--main, --alt";
+  neg_cursor ~allow_partial:true read_timeline_scope "none,--main";
   check_timeline_shorthand_item "--main block";
   check_timeline_shorthand_item "--main";
+  check_timeline_shorthand_item "none";
   check_view_transition_class "card active";
   check_view_transition_name "match-element";
   neg_cursor ~allow_partial:true read_text_box "trim-start trim-end";
@@ -5795,6 +5927,7 @@ let additional_tests =
     test_case "field_sizing" `Quick test_field_sizing;
     test_case "font_size" `Quick test_font_size;
     test_case "mask_box" `Quick test_mask_box;
+    test_case "webkit_mask_box" `Quick test_webkit_mask_box;
     test_case "mask_composite" `Quick test_mask_composite;
     test_case "mask_mode" `Quick test_mask_mode;
     test_case "mask_type" `Quick test_mask_type;

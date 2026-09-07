@@ -248,7 +248,12 @@ let rec pp_position_area : position_area Pp.t =
 
 let pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t =
  fun ctx -> function
+  | None -> Pp.string ctx "none"
   | Length len -> pp_length ~always:true ctx len
+  | Auto_none ->
+      Pp.string ctx "auto";
+      Pp.space ctx ();
+      Pp.string ctx "none"
   | Auto len ->
       Pp.string ctx "auto";
       Pp.space ctx ();
@@ -540,24 +545,35 @@ let rec read_position_anchor (t : Cursor.t) : position_anchor =
 
 (* CSS Sizing 4 sec. 5: [contain-intrinsic-size] takes [<length>], and no
    percentage, which Chrome 146 refuses. *)
+(* Sec. 6: [auto? [ none | <length [0,inf]> ]], so [none] is one of the two
+   things the optional [auto] may precede. *)
 let read_contain_intrinsic_size_item t : contain_intrinsic_size_item =
   let size t =
     Values.read_length ~allow_negative:false ~with_keywords:false
       ~length_only:true t
   in
+  let none_or_size t ~auto : contain_intrinsic_size_item =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "none" ->
+        let _ = Cursor.ident t in
+        if auto then Auto_none else None
+    | _ -> if auto then Auto (size t) else Length (size t)
+  in
   Cursor.ws t;
   match Cursor.peek_ident t with
   | Some "auto" ->
       let _ = Cursor.ident t in
-      Cursor.ws t;
-      (Auto (size t) : contain_intrinsic_size_item)
-  | _ -> Length (size t)
+      none_or_size t ~auto:true
+  | _ -> none_or_size t ~auto:false
 
 let rec read_contain_intrinsic_size (t : Cursor.t) : contain_intrinsic_size =
+  (* [none] is not a whole-value keyword here: sec. 6 puts it inside each of the
+     one or two slots, so [none 2ch] is a pair and a lone [none] is a one-slot
+     value that prints the same. *)
   let keywords : (string * contain_intrinsic_size) list =
     [
-      ("none", None);
-      ("initial", Initial);
+      ("initial", (Initial : contain_intrinsic_size));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);

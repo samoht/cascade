@@ -51,7 +51,8 @@ let format_rem f =
   if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
   else s
 
-let string_of_components cvs = Cursor.string_of_components ~trim:true cvs
+let string_of_components cvs =
+  Cursor.string_of_components_verbatim ~trim:true cvs
 
 let string_of_range_operator = function
   | Lt -> "<"
@@ -388,7 +389,7 @@ let is_reserved_container_name name =
 let split_named_components components =
   match drop_leading_whitespace components with
   | Component.Preserved { kind = Token.Ident name; _ }
-    :: (Component.Preserved { kind = Token.Whitespace; _ } :: _ as after)
+    :: (Component.Preserved { kind = Token.Whitespace _; _ } :: _ as after)
     when not (is_reserved_container_name name) ->
       let query = trim_components after in
       if starts_query query then Some (name, query) else None
@@ -403,7 +404,7 @@ let has_semicolon_component =
 
 let style_strip_ws =
   List.filter (function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> false
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> false
     | _ -> true)
 
 (* CSS Conditional Rules 5 sec. 5.4 builds <style-range> out of <mf-comparison>
@@ -650,13 +651,15 @@ let range_direction_of_component = function
   | _ -> None
 
 let rec strip_ws = function
-  | Component.Preserved { kind = Token.Whitespace; _ } :: rest -> strip_ws rest
+  | Component.Preserved { kind = Token.Whitespace _; _ } :: rest ->
+      strip_ws rest
   | cvs -> cvs
 
 let non_ws cvs =
   List.filter
     (function
-      | Component.Preserved { kind = Token.Whitespace; _ } -> false | _ -> true)
+      | Component.Preserved { kind = Token.Whitespace _; _ } -> false
+      | _ -> true)
     cvs
 
 let has_opposing_interval_components cvs =

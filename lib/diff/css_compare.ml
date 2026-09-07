@@ -36,7 +36,11 @@ type stats = {
 let supports_path_and_inner stmt =
   match Css.as_supports stmt with
   | Some (cond, inner) ->
-      Some ("@supports " ^ Css.Supports.to_string cond, inner)
+      (* The key folds two spellings of one condition: CSS Conditional 3 (ED)
+         sec. 7.4 allows a token stream simplification, so [(colo\r:x)] and
+         [(color:x)] ask the same question and only the printer keeps them
+         apart. *)
+      Some ("@supports " ^ Css.Supports.to_string ~verbatim:false cond, inner)
   | None -> None
 
 let media_path_and_inner stmt =

@@ -13,18 +13,11 @@ open Properties_intf
 open Prop_common
 open Prop_background
 
+(* CSS Inline 3 sec. 4.2 gives the property a [<length-percentage>], so every
+   length unit is valid here and the intrinsic-sizing keywords a bare length
+   reader would take are not. *)
 let read_vertical_align_length t : vertical_align =
-  let n, unit = Cursor.number_with_unit t in
-  match unit with
-  | Some "px" -> Px n
-  | Some "rem" -> Rem n
-  | Some "em" -> Em n
-  | Some "%" -> Pct n
-  (* A unitless [0] is the valid zero <length> (CSS Values 4 sec. 6); any other
-     unitless number is not a length and is rejected. *)
-  | None when n = 0. -> Zero
-  | None -> Cursor.err_invalid t "vertical-align requires a unit"
-  | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)
+  Length (read_length_percentage ~with_keywords:false t)
 
 let rec read_text_align t : text_align =
   Cursor.enum_or_var "text-align"
@@ -108,7 +101,16 @@ module Text_decoration = struct
         (fun t -> Line (read_text_decoration_line t));
         (fun t -> Style (read_text_decoration_style t));
         (fun t -> Color (read_color t));
-        (fun t -> Thickness (read_length t));
+        (* CSS Text Decoration 4 sec. 3 fills this slot with a
+           [<'text-decoration-thickness'>], which sec. 2.3 spells [auto |
+           from-font | <length-percentage>], so no sizing function belongs here.
+           The longhand already reads it that way. *)
+        (fun t ->
+          Thickness
+            (Cursor.enum "text-decoration-thickness"
+               [ ("auto", (Auto : length)); ("from-font", From_font) ]
+               ~default:(read_length ~with_keywords:false)
+               t));
       ]
       t
 
@@ -772,6 +774,31 @@ let normalize_text_indent : text_indent_value -> text_indent_value =
    the shorter spelling. Written on its own the initial is the whole value, and
    dropping it drains the shorthand: what is left declares the four initials and
    nothing else, which is what [none] declares. *)
+let normalize_hyphenate_limit_chars_item ~ctx :
+    hyphenate_limit_chars_item -> hyphenate_limit_chars_item =
+ fun item ->
+  match item with
+  | Auto -> item
+  | Chars n ->
+      let n' = Values.normalize_number ~ctx n in
+      if n' == n then item else Chars n'
+
+let normalize_hyphenate_limit_chars ~ctx :
+    hyphenate_limit_chars -> hyphenate_limit_chars =
+ fun value ->
+  let item = normalize_hyphenate_limit_chars_item ~ctx in
+  match value with
+  | One a ->
+      let a' = item a in
+      if a' == a then value else One a'
+  | Two (a, b) ->
+      let a' = item a and b' = item b in
+      if a' == a && b' == b then value else Two (a', b')
+  | Three (a, b, c) ->
+      let a' = item a and b' = item b and c' = item c in
+      if a' == a && b' == b && c' == c then value else Three (a', b', c')
+  | other -> other
+
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
@@ -836,16 +863,28 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
            {
              h_offset = Values.normalize_length s.h_offset;
              v_offset = Values.normalize_length s.v_offset;
+             (* The blur has a floor, so unwrapping a math function there could
+                turn a value browsers take into one they drop. *)
              blur =
                drop_default ~is_default:is_zero_length
-                 (option_map_preserve Values.normalize_length s.blur);
+                 (option_map_preserve
+                    (Values.normalize_length ~non_negative:true)
+                    s.blur);
              color = option_map_preserve (normalize_color ~lossless) s.color;
            })
   | other -> other
 
+let normalize_tab_size ~ctx : tab_size -> tab_size =
+ fun value ->
+  match value with
+  | Number n ->
+      let n' = Values.normalize_number ~ctx n in
+      if n' == n then value else Number n'
+  | other -> other
+
 let rec pp_tab_size : tab_size Pp.t =
  fun ctx -> function
-  | Int i -> Pp.int ctx i
+  | Number n -> Values.pp_number ctx n
   | Length len -> pp_length ~always:true ctx len
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -1210,21 +1249,25 @@ let rec pp_text_spacing_trim : text_spacing_trim Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_hyphenate_limit_chars_item : hyphenate_limit_chars_item Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Chars n -> Values.pp_number ctx n
+
 let rec pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_hyphenate_limit_chars ctx v
-  | Auto -> Pp.string ctx "auto"
-  | One a -> Pp.int ctx a
+  | One a -> pp_hyphenate_limit_chars_item ctx a
   | Two (a, b) ->
-      Pp.int ctx a;
+      pp_hyphenate_limit_chars_item ctx a;
       Pp.space ctx ();
-      Pp.int ctx b
+      pp_hyphenate_limit_chars_item ctx b
   | Three (a, b, c) ->
-      Pp.int ctx a;
+      pp_hyphenate_limit_chars_item ctx a;
       Pp.space ctx ();
-      Pp.int ctx b;
+      pp_hyphenate_limit_chars_item ctx b;
       Pp.space ctx ();
-      Pp.int ctx c
+      pp_hyphenate_limit_chars_item ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1309,6 +1352,7 @@ let rec pp_ruby_align : ruby_align Pp.t =
 let rec pp_ruby_overhang : ruby_overhang Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
+  | Spaces -> Pp.string ctx "spaces"
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -1401,12 +1445,7 @@ let rec pp_vertical_align : vertical_align Pp.t =
   | Text_bottom -> Pp.string ctx "text-bottom"
   | Sub -> Pp.string ctx "sub"
   | Super -> Pp.string ctx "super"
-  | Zero -> Pp.string ctx "0"
-  | Px f -> Pp.unit ctx f "px"
-  | Rem f -> Pp.unit ctx f "rem"
-  | Em f -> Pp.unit ctx f "em"
-  | Pct p -> Pp.pct ctx p
-  | Calc c -> pp_calc pp_vertical_align ctx c
+  | Length lp -> pp_length_percentage ~always:true ctx lp
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1779,6 +1818,7 @@ let rec read_ruby_overhang t : ruby_overhang =
   Cursor.enum_or_var "ruby-overhang"
     [
       ("auto", (Auto : ruby_overhang));
+      ("spaces", Spaces);
       ("none", None);
       ("inherit", Inherit);
       ("initial", Initial);
@@ -1845,34 +1885,49 @@ let rec read_text_spacing_trim t : text_spacing_trim =
     ~var:(fun t -> Var (read_var read_text_spacing_trim t))
     t
 
+(* Sec. 6.3.4 writes each slot [auto | <integer [0,inf]>]; Chrome 152 refuses
+   the zero the range grants, so the literal floor stays at one. A math function
+   holds no value to compare, and the whole-value number reader refuses anything
+   after the number it read, so the component is handed to it on its own. *)
+let read_hyphenate_limit_chars_item t : hyphenate_limit_chars_item =
+  Cursor.enum "hyphenate-limit-chars"
+    [ ("auto", (Auto : hyphenate_limit_chars_item)) ]
+    ~default:(fun t ->
+      match Cursor.peek t with
+      | Some (Component.Func _ as component) ->
+          let _ = Cursor.next t in
+          Chars (Values.read_number (Cursor.of_components [ component ]))
+      | _ ->
+          let n = Cursor.int t in
+          if n < 1 then
+            Cursor.err_invalid t "hyphenate-limit-chars must be >= 1";
+          Chars (Num (float_of_int n)))
+    t
+
 let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
-  let read_counts t =
-    let counts =
-      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:3 Cursor.int t
+  let read_slots t =
+    let slots =
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:3
+        read_hyphenate_limit_chars_item t
     in
-    let check_count n =
-      if n < 1 then Cursor.err_invalid t "hyphenate-limit-chars must be >= 1"
-    in
-    List.iter check_count counts;
     Cursor.ws t;
     Cursor.expect_eof t;
-    match counts with
+    match slots with
     | [ a ] -> (One a : hyphenate_limit_chars)
     | [ a; b ] -> Two (a, b)
     | [ a; b; c ] -> Three (a, b, c)
-    | _ -> Cursor.err_invalid t "expected one to three integers"
+    | _ -> Cursor.err_invalid t "expected one to three slots"
   in
   Cursor.enum_or_calls "hyphenate-limit-chars"
     [
-      ("auto", (Auto : hyphenate_limit_chars));
-      ("inherit", Inherit);
+      ("inherit", (Inherit : hyphenate_limit_chars));
       ("initial", Initial);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_hyphenate_limit_chars t)) ]
-    ~default:read_counts t
+    ~default:read_slots t
 
 let rec read_white_space t : white_space =
   Cursor.ws t;
@@ -1955,18 +2010,26 @@ let pp_webkit_text_stroke : webkit_text_stroke Pp.t =
     s.color;
   if not !wrote then Pp.string ctx "currentColor"
 
+(* The property is a [||] of one width and one colour, and CSS Values 4 sec. 2.2
+   takes each option of a [||] at most once, so a second width fills no slot
+   rather than replacing the first. *)
 let read_webkit_text_stroke t : webkit_text_stroke =
   let width = ref Option.None and color = ref Option.None in
+  let fill slot value =
+    if Option.is_some !slot then
+      Cursor.err_invalid t "-webkit-text-stroke names a component twice";
+    slot := Some value
+  in
   let read_one t =
     match Cursor.peek_ident t with
-    | Some ("thin" | "medium" | "thick") -> width := Some (read_border_width t)
+    | Some ("thin" | "medium" | "thick") -> fill width (read_border_width t)
     | _ -> (
         let snap = Cursor.save t in
         match read_border_width t with
-        | w -> width := Some w
+        | w -> fill width w
         | exception Cursor.Parse_error _ ->
             Cursor.restore t snap;
-            color := Some (Values.read_color t))
+            fill color (Values.read_color t))
   in
   read_one t;
   Cursor.ws t;
@@ -2043,25 +2106,26 @@ let rec read_text_size_adjust t : text_size_adjust =
         t
 
 let rec read_tab_size (t : Cursor.t) : tab_size =
-  let number_value t i =
-    if i < 0 then Cursor.err_invalid t "negative tab-size integer";
-    (Int i : tab_size)
+  let checked t (n : number) : tab_size =
+    (match n with
+    | Num f when f < 0. -> Cursor.err_invalid t "negative tab-size"
+    | _ -> ());
+    Number n
   in
+  (* CSS Text 4 sec. 4.4: [<number [0,inf]> | <length [0,inf]>], so a math
+     function lands in whichever slot its result type names, and only a literal
+     has a value to turn away. The measure is a count of advance widths rather
+     than an integer, so a fraction is one. *)
   let read_value t =
-    match Cursor.integer_opt t with
-    | Some i -> number_value t i
-    | None ->
-        (* CSS Text 4 (ED) sec. 4.4: [<number> | <length>], so a math function
-           lands in whichever slot its result type names. *)
-        Cursor.one_of
-          [
-            (fun t -> number_value t (Values.read_integer "tab-size" t));
-            (fun t ->
-              Length
-                (Values.read_length ~allow_negative:false ~with_keywords:false
-                   ~length_only:true t));
-          ]
-          t
+    Cursor.one_of
+      [
+        (fun t -> checked t (Values.read_number t));
+        (fun t ->
+          Length
+            (Values.read_length ~allow_negative:false ~with_keywords:false
+               ~length_only:true t));
+      ]
+      t
   in
   Cursor.enum_or_var "tab-size"
     [
@@ -2091,9 +2155,6 @@ let rec read_text_decoration_skip_ink t : text_decoration_skip_ink =
 
 let rec read_vertical_align t : vertical_align =
   let read_var t : vertical_align = Var (read_var read_vertical_align t) in
-  let read_calc t : vertical_align =
-    Calc (read_calc ~result_type:`Value read_vertical_align t)
-  in
   Cursor.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
@@ -2110,7 +2171,7 @@ let rec read_vertical_align t : vertical_align =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~calls:[ ("var", read_var) ]
     ~default:read_vertical_align_length t
 
 module Text_shadow = struct
@@ -2131,6 +2192,32 @@ module Text_shadow = struct
     (lengths, color)
 end
 
+(* The run is offsets then blur, and CSS Backgrounds 3 sec. 6.2 gives the
+   [<shadow>] this one shares its slots a plain length in each, with a floor on
+   the blur alone. A math function holds no value to compare, so only a literal
+   is turned away there. The run caps at three: there is no spread slot to hold
+   a fourth. *)
+let read_shadow_lengths t =
+  let lengths_rev = ref [] in
+  let rec loop n =
+    if n >= 3 then ()
+    else
+      let allow_negative = n <> 2 in
+      match
+        Cursor.option
+          (fun t ->
+            read_length ~allow_negative ~with_keywords:false ~length_only:true t)
+          t
+      with
+      | Option.Some l ->
+          lengths_rev := l :: !lengths_rev;
+          Cursor.ws t;
+          loop (n + 1)
+      | Option.None -> ()
+  in
+  loop 0;
+  List.rev !lengths_rev
+
 let rec read_text_shadow t : text_shadow =
   let read_var t : text_shadow = Var (read_var read_text_shadow t) in
   Cursor.enum_or_calls "text-shadow"
@@ -2145,8 +2232,7 @@ let rec read_text_shadow t : text_shadow =
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       (* CSS Text Decoration 3 sec. 5: [<color>? && <length>{2,3}]. The && puts
-         the colour on either side of the length run but never inside it, and
-         caps the run at three: there is no spread slot to hold a fourth. *)
+         the colour on either side of the length run but never inside it. *)
       let color : color option ref = ref (Option.None : color option) in
       let try_color () =
         match !color with
@@ -2159,20 +2245,9 @@ let rec read_text_shadow t : text_shadow =
             | Option.None -> ())
       in
       try_color ();
-      let lengths_rev = ref [] in
-      let rec read_lengths_loop n =
-        if n >= 3 then ()
-        else
-          match Cursor.option (fun t -> read_length t) t with
-          | Option.Some l ->
-              lengths_rev := l :: !lengths_rev;
-              Cursor.ws t;
-              read_lengths_loop (n + 1)
-          | Option.None -> ()
-      in
-      read_lengths_loop 0;
+      let lengths = read_shadow_lengths t in
       try_color ();
-      match List.rev !lengths_rev with
+      match lengths with
       | h :: v :: rest ->
           let blur =
             match rest with b :: _ -> Option.Some b | _ -> Option.None
@@ -2191,8 +2266,9 @@ let text_decoration_shorthand ?lines ?style ?color ?thickness () :
 
 let normalize_vertical_align (va : vertical_align) : vertical_align =
   match va with
-  | Calc c -> (
-      match Values.eval_calc c with Values.Val v -> v | folded -> Calc folded)
+  | Length lp ->
+      let lp' = Values.normalize_length_percentage lp in
+      if lp' == lp then va else Length lp'
   | _ -> va
 
 let read_initial_letter_align_keyword t : initial_letter_align_keyword =

@@ -25,10 +25,10 @@
 
 open Syntax
 
-type property_name = Property_name of string
+type property_name = Property_name of { name : string; repr : string option }
 
 type declaration_feature =
-  | Declaration of Declaration.t
+  | Declaration of property_name * Declaration.t
   | Empty of property_name
   | Unsupported of property_name * string
   | Vendor_flag_enabled
@@ -127,7 +127,7 @@ let string_of_font_tech = function
    serializes to (CSS Syntax 3 (ED) sec. 9) rather than against its own bytes:
    read raw, such a name ends the declaration early and never looks like the
    single ident it is. *)
-let property_name name =
+let property_name ?repr name =
   let reader = Cursor.of_string (Parser.escape_ident name) in
   let parsed =
     try Cursor.ident ~keep_case:true reader
@@ -140,13 +140,13 @@ let property_name name =
     if Custom_property_name.has_prefix parsed then parsed
     else String.lowercase_ascii parsed
   in
-  Property_name name
+  Property_name { name; repr }
 
-let string_of_property_name (Property_name name) = name
+let string_of_property_name (Property_name { name; _ }) = name
 
-let declaration_feature prop value =
+let declaration_feature ?repr prop value =
   match (String.lowercase_ascii prop, String.lowercase_ascii value) with
-  | _, "" -> Empty (property_name prop)
+  | _, "" -> Empty (property_name ?repr prop)
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
       (* The name and the value stay apart: read as one text, a name carrying a
@@ -159,9 +159,9 @@ let declaration_feature prop value =
          reading would hand back a different one: [rgba(0,0,0,.5)] and
          [#ff0000ff] name grammars a browser can accept one of and refuse the
          other. *)
-      let name = property_name prop in
+      let name = property_name ?repr prop in
       match Declaration.parse_opaque_declaration prop value with
-      | Some decl -> Declaration decl
+      | Some decl -> Declaration (name, decl)
       | None -> Unsupported (name, String.trim value))
 
 (* [property] takes authored CSS text and writes it between the feature's own
@@ -186,7 +186,7 @@ let property prop value =
   let value =
     if String.equal value "" then value
     else
-      Cursor.string_of_components ~trim:true
+      Cursor.string_of_components_verbatim ~trim:true
         (Cursor.remaining (Cursor.of_string value))
   in
   Property (declaration_feature prop value)
@@ -235,16 +235,28 @@ let func name args =
 
 (* ===== Pretty printing ===== *)
 
-let escaped_property_name name =
-  Parser.escape_ident (string_of_property_name name)
+(* CSS Conditional 3 (ED) sec. 7.4 has [conditionText] return "the condition
+   that was specified", allowing "token stream simplifications" and forbidding
+   logical ones. An escape decodes to the same [<ident-token>] in every
+   conformant implementation, so re-spelling one is a simplification the section
+   permits rather than requires: pretty output writes back the bytes the author
+   wrote, and minified output takes the shortest spelling the section allows. *)
+let escaped_property_name ~verbatim ctx (Property_name { name; repr }) =
+  match repr with
+  | Some repr when verbatim && not (Pp.minified ctx) -> repr
+  | Some _ | None -> Parser.escape_ident name
 
-let pp_declaration_feature ctx = function
-  | Declaration decl -> Declaration.pp_opaque ctx decl
+let pp_declaration_feature ?(verbatim = true) ctx = function
+  | Declaration (name, decl) ->
+      Pp.string ctx (escaped_property_name ~verbatim ctx name);
+      Pp.char ctx ':';
+      Pp.space_if_pretty ctx ();
+      Declaration.pp_opaque_value ~verbatim ctx decl
   | Empty name ->
-      Pp.string ctx (escaped_property_name name);
+      Pp.string ctx (escaped_property_name ~verbatim ctx name);
       Pp.char ctx ':'
   | Unsupported (name, value) ->
-      Pp.string ctx (escaped_property_name name);
+      Pp.string ctx (escaped_property_name ~verbatim ctx name);
       Pp.char ctx ':';
       Pp.space_if_pretty ctx ();
       Pp.string ctx value
@@ -269,69 +281,75 @@ let pp_function_feature ctx = function
   | Env name -> Pp.call "env" Pp.string ctx name
   | General (name, args) -> Pp.call name Pp.string ctx args
 
-let rec pp_aux ~in_and ctx = function
+let rec pp_aux ~verbatim ~in_and ctx = function
   | Property feature ->
       Pp.char ctx '(';
-      pp_declaration_feature ctx feature;
+      pp_declaration_feature ~verbatim ctx feature;
       Pp.char ctx ')'
   | Function feature -> pp_function_feature ctx feature
   | General_enclosed text -> Pp.string ctx text
-  | Not cond -> pp_not ~in_and ctx cond
-  | And (a, b) -> pp_and ctx a b
-  | Or (a, b) -> pp_or ctx a b
+  | Not cond -> pp_not ~verbatim ~in_and ctx cond
+  | And (a, b) -> pp_and ~verbatim ctx a b
+  | Or (a, b) -> pp_or ~verbatim ctx a b
 
-and pp_not ~in_and ctx cond =
+and pp_not ~verbatim ~in_and ctx cond =
   if in_and then Pp.char ctx '(';
   Pp.string ctx "not ";
   (match cond with
   | And _ | Or _ ->
       Pp.char ctx '(';
-      pp_aux ~in_and ctx cond;
+      pp_aux ~verbatim ~in_and ctx cond;
       Pp.char ctx ')'
-  | _ -> pp_aux ~in_and ctx cond);
+  | _ -> pp_aux ~verbatim ~in_and ctx cond);
   if in_and then Pp.char ctx ')'
 
-and pp_and_branch ctx = function
+and pp_and_branch ~verbatim ctx = function
   | Or _ as branch ->
       Pp.char ctx '(';
-      pp_aux ~in_and:true ctx branch;
+      pp_aux ~verbatim ~in_and:true ctx branch;
       Pp.char ctx ')'
-  | branch -> pp_aux ~in_and:true ctx branch
+  | branch -> pp_aux ~verbatim ~in_and:true ctx branch
 
-and pp_and ctx a b =
-  pp_and_branch ctx a;
+and pp_and ~verbatim ctx a b =
+  pp_and_branch ~verbatim ctx a;
   (* CSS Conditional 3 sec. 6: a [)and ] sequence is unambiguous so the leading
      space is droppable under minify; the trailing space is required to keep
      [and(] from re-tokenising as a function call. *)
   Pp.sp ctx ();
   Pp.string ctx "and ";
-  pp_and_branch ctx b
+  pp_and_branch ~verbatim ctx b
 
-and pp_or_branch ~is_left ctx = function
+and pp_or_branch ~verbatim ~is_left ctx = function
   | And (a, b) ->
       Pp.char ctx '(';
-      pp_or_and_left ~is_left ctx a;
+      pp_or_and_left ~verbatim ~is_left ctx a;
       Pp.string ctx " and ";
-      pp_aux ~in_and:true ctx b;
+      pp_aux ~verbatim ~in_and:true ctx b;
       Pp.char ctx ')'
-  | Not _ as branch -> pp_aux ~in_and:true ctx branch
-  | branch -> pp_aux ~in_and:false ctx branch
+  | Not _ as branch -> pp_aux ~verbatim ~in_and:true ctx branch
+  | branch -> pp_aux ~verbatim ~in_and:false ctx branch
 
-and pp_or_and_left ~is_left ctx = function
+and pp_or_and_left ~verbatim ~is_left ctx = function
   | Property _ as branch when Pp.minified ctx && is_left ->
       Pp.char ctx '(';
-      pp_aux ~in_and:true ctx branch;
+      pp_aux ~verbatim ~in_and:true ctx branch;
       Pp.char ctx ')'
-  | branch -> pp_aux ~in_and:true ctx branch
+  | branch -> pp_aux ~verbatim ~in_and:true ctx branch
 
-and pp_or ctx a b =
-  pp_or_branch ~is_left:true ctx a;
+and pp_or ~verbatim ctx a b =
+  pp_or_branch ~verbatim ~is_left:true ctx a;
   Pp.sp ctx ();
   Pp.string ctx "or ";
-  pp_or_branch ~is_left:false ctx b
+  pp_or_branch ~verbatim ~is_left:false ctx b
 
-let pp ctx t = pp_aux ~in_and:false ctx t
-let to_string t = Pp.to_string ~minify:false pp t
+(* [verbatim] writes back the spelling the author used; the default serialises a
+   stylesheet, so it does. {!to_string} turns it off because its callers use the
+   result as an identity for a condition rather than as output, and two
+   spellings of one condition must key together there. *)
+let pp ?(verbatim = true) ctx t = pp_aux ~verbatim ~in_and:false ctx t
+
+let to_string ?(minify = false) ?(verbatim = true) t =
+  Pp.to_string ~minify (pp ~verbatim) t
 
 (* ===== Component parser ===== *)
 
@@ -349,7 +367,8 @@ let contains_top_level_semicolon =
     | _ -> false)
 
 let property_ident = function
-  | [ Component.Preserved { kind = Token.Ident name; _ } ] -> Some name
+  | [ Component.Preserved { kind = Token.Ident name; repr; _ } ] ->
+      Some (name, repr)
   | _ -> None
 
 (* Anchoring a failure on the components that failed puts the caret on that
@@ -363,11 +382,11 @@ let declaration_of_components t prop value =
   if contains_top_level_semicolon value then
     err t value "Invalid declaration in @supports";
   match property_ident (strip_components prop) with
-  | Some name -> (
-      let text = Cursor.string_of_components ~trim:true value in
+  | Some (name, repr) -> (
+      let text = Cursor.string_of_components_verbatim ~trim:true value in
       (* [declaration_feature] is the shared constructor, so it reports through
          [Failure]; re-raise it against the declaration's own components. *)
-      match declaration_feature name text with
+      match declaration_feature ?repr name text with
       | feature -> Property feature
       | exception Failure msg -> err t (prop @ value) msg)
   | None -> err t prop "Invalid declaration in @supports"
@@ -378,13 +397,13 @@ let function_call t (fn : Component.func Component.node) =
   if not (Component.is_any_value [ Component.Func fn ]) then
     err t [ Component.Func fn ] "Invalid general-enclosed function in @supports";
   (* The feature grammar has priority over the general-enclosed fallback. *)
-  match func name (Cursor.string_of_components ~trim:true args) with
+  match func name (Cursor.string_of_components_verbatim ~trim:true args) with
   | feature -> feature
   | exception (Failure _ | Cursor.Parse_error _) ->
       Function
         (General
            ( String.lowercase_ascii name,
-             Cursor.string_of_components ~trim:true args ))
+             Cursor.string_of_components_verbatim ~trim:true args ))
 
 let peek_ident t =
   match Cursor.peek t with
@@ -464,7 +483,8 @@ and paren_components t value =
         condition
   with Cursor.Parse_error _ ->
     General_enclosed
-      (String.concat "" [ "("; Cursor.string_of_components value; ")" ])
+      (String.concat ""
+         [ "("; Cursor.string_of_components_verbatim value; ")" ])
 
 let read ?(allow_unwrapped_decl = false) t =
   let cond =
@@ -509,7 +529,7 @@ let compare_declaration_feature d1 d2 =
   | Empty n1, Empty n2 ->
       String.compare (string_of_property_name n1) (string_of_property_name n2)
   | Vendor_flag_enabled, Vendor_flag_enabled -> 0
-  | Declaration d1, Declaration d2 -> compare_declaration d1 d2
+  | Declaration (_, d1), Declaration (_, d2) -> compare_declaration d1 d2
   | Unsupported (n1, v1), Unsupported (n2, v2) ->
       let c =
         String.compare (string_of_property_name n1) (string_of_property_name n2)

@@ -54,6 +54,7 @@ function smBuild(doc, spec) {
     (n.a || []).forEach(function (a) { e.setAttribute(a[0], a[1]); });
     (n.k || []).forEach(function (k) { e.appendChild(node(k)); });
     (n.x || []).forEach(function (t) { e.appendChild(doc.createTextNode(t)); });
+    (n.c || []).forEach(function (t) { e.appendChild(doc.createComment(t)); });
     return e;
   }
   (spec.body || []).forEach(function (k) { doc.body.appendChild(node(k)); });

@@ -761,10 +761,11 @@ let test_timeline_range_composes () =
     ".x{scroll-timeline-name:--t;scroll-timeline-axis:block}";
   sheet_optimizes_to ~into:".x{scroll-timeline:none}"
     ".x{scroll-timeline-name:none;scroll-timeline-axis:block}";
-  (* [scroll-timeline: none] sets the axis to [block], so a named axis beside an
-     unnamed timeline has no shorthand spelling. *)
-  sheet_optimizes_to
-    ~into:".x{scroll-timeline-name:none;scroll-timeline-axis:inline}"
+  (* Sec. 4.3 spells the shorthand [<name> <axis>?], and the name half is [none
+     | <dashed-ident>], so [none] pairs with an axis of its own. Chrome 153
+     computes [scroll-timeline: none inline] to the same two longhands and
+     serialises them back into it. *)
+  sheet_optimizes_to ~into:".x{scroll-timeline:none inline}"
     ".x{scroll-timeline-name:none;scroll-timeline-axis:inline}";
   (* Mixed importance is not one declaration. *)
   sheet_optimizes_to
@@ -994,6 +995,39 @@ let test_font_composes_the_whole_run () =
   sheet_optimizes_to ~scope:`Stylesheet
     ~into:".x{font:12px serif;font-stretch:110%}"
     ".x{font-family:serif;font-size:12px;font-stretch:110%}"
+
+(* CSS Cascade 5 sec. 2.1 makes [!important] a property of one declaration, and
+   sec. 8 gives an important declaration its own origin in the cascade, so a
+   shorthand carries the flag for every longhand it writes or for none. A run
+   whose importance is not uniform therefore contracts only over the part that
+   agrees, and the odd declaration stays a longhand ahead of it, where it says
+   what it said. *)
+let test_font_importance_must_be_uniform () =
+  let run ?(style = "italic") ?(family = "serif") () =
+    String.concat ""
+      [
+        ".x{font-style:";
+        style;
+        ";font-weight:bold;font-size:12px;line-height:1.5;font-family:";
+        family;
+        "}";
+      ]
+  in
+  (* Uniform, both ways: the shorthand carries the flag or does not. *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif}" (run ());
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font:italic 700 12px/1.5 serif!important}"
+    ".x{font-style:italic!important;font-weight:bold!important;font-size:12px!important;line-height:1.5!important;font-family:serif!important}";
+  (* Mixed: the important slot cannot ride a shorthand the others need
+     unimportant, so it stays a longhand and the rest contract behind it. *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{font-style:italic!important;font:700 12px/1.5 serif}"
+    ".x{font-style:italic!important;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif}";
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:
+      ".x{font-style:italic;font-weight:700;font-size:12px;line-height:1.5;font-family:serif!important}"
+    ".x{font-style:italic;font-weight:bold;font-size:12px;line-height:1.5;font-family:serif!important}"
 
 (* CSS Fonts 4 (ED) sec. 6.10: [font-variant] writes its seven longhands, and a
    longhand at [normal] is the component the shorthand leaves out. Chrome 146
@@ -1938,6 +1972,8 @@ let suite =
         test_webkit_text_stroke_composes;
       Alcotest.test_case "font composes the whole run" `Quick
         test_font_composes_the_whole_run;
+      Alcotest.test_case "font importance must be uniform" `Quick
+        test_font_importance_must_be_uniform;
       Alcotest.test_case "font-variant composes" `Quick
         test_font_variant_composes;
       Alcotest.test_case "grid composes" `Quick test_grid_composes;

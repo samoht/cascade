@@ -166,6 +166,37 @@ let () =
   Fmt.pr "\u{2713} All %d properties are properly mapped in read_property@."
     (StringSet.cardinal all_set);
 
+  (* How much of the reader the grammar manifest covers. The manifest is the
+     population every browser oracle samples from, so a name with no row is a
+     property no oracle asks about, and counting rows cannot say that: a count
+     is what let one row stand in for three grammars.
+
+     Reported rather than fatal, because the gap is real and closing it is its
+     own work. The comparison is against the CSS names [read_property] matches
+     on, so a manifest row for a name it reaches by another route counts as
+     uncovered rather than as a stray row. *)
+  (* Read the EVALUATED rows rather than the source text: [rows_for] expands one
+     source entry into a row per property, so counting [property = "..."]
+     occurrences undercounts, which is the same mistake in miniature. *)
+  let manifest_set =
+    StringSet.of_list
+      (List.map
+         (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
+           row.property)
+         Cascade_spec_inventory.Property_grammar.rows)
+  in
+  let css_names = StringSet.of_list (List.map fst name_table) in
+  let unrowed = StringSet.diff css_names manifest_set in
+  Fmt.pr "\u{2713} the grammar manifest has %d row(s), covering %d of the %d@."
+    (StringSet.cardinal manifest_set)
+    (StringSet.cardinal (StringSet.inter css_names manifest_set))
+    (StringSet.cardinal css_names);
+  if not (StringSet.is_empty unrowed) then
+    Fmt.pr "  %d readable propert(ies) have no row, first 10: %s@."
+      (StringSet.cardinal unrowed)
+      (String.concat ", "
+         (List.filteri (fun i _ -> i < 10) (StringSet.elements unrowed)));
+
   (* The tag table covers every constructor, [Custom_property] and
      [Unknown_property] included, so it is checked against the full list rather
      than the static one [read_any_property] answers for. *)

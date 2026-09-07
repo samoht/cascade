@@ -1279,10 +1279,6 @@ let pp_font_variant_descriptor_value ctx = function
   | Numeric value -> Properties.pp_font_variant_numeric_token ctx value
   | East_asian value -> Properties.pp_east_asian_feature ctx value
 
-let rec pp_font_tech_descriptor ctx : font_tech_descriptor -> unit = function
-  | Tech tech -> Pp.string ctx (Supports.string_of_font_tech tech)
-  | Var var -> Values.pp_var pp_font_tech_descriptor ctx var
-
 let rec pp_font_variant_descriptor ctx = function
   | Normal -> Pp.string ctx "normal"
   | None -> Pp.string ctx "none"
@@ -1307,13 +1303,6 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
-  | Font_style_range (min_style, max_style) ->
-      pp_descriptor "font-style"
-        (fun ctx (min_style, max_style) ->
-          Properties.pp_font_style ctx min_style;
-          Pp.space ctx ();
-          Properties.pp_font_style ctx max_style)
-        (min_style, max_style)
   | Font_weight weight ->
       pp_descriptor "font-weight" Properties.pp_font_weight weight
   | Font_weight_range (min_weight, max_weight) ->
@@ -1323,6 +1312,9 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
           Pp.space ctx ();
           Properties.pp_font_weight ctx max_weight)
         (min_weight, max_weight)
+  | Font_style_auto -> pp_descriptor "font-style" Pp.string "auto"
+  | Font_weight_auto -> pp_descriptor "font-weight" Pp.string "auto"
+  | Font_stretch_auto -> pp_descriptor "font-stretch" Pp.string "auto"
   | Font_stretch stretch ->
       pp_descriptor "font-stretch" Properties.pp_font_stretch stretch
   | Font_stretch_range (min_stretch, max_stretch) ->
@@ -1346,7 +1338,6 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Font_variation_settings value ->
       pp_descriptor "font-variation-settings"
         Properties.pp_font_variation_settings value
-  | Font_tech value -> pp_descriptor "font-tech" pp_font_tech_descriptor value
   | Size_adjust value ->
       pp_descriptor "size-adjust" Font_face.pp_size_adjust value
   | Ascent_override value ->
@@ -2119,16 +2110,17 @@ let skip_invalid_item r =
    only itself and the items around it are kept. CSS Syntax 3 (ED) sec. 5.5.5
    keeps what a block's contents already yielded when one item fails to parse,
    and CSS Paged Media 3 sec. 4.1 says as much of a page or a margin context in
-   so many words: "valid declarations within the block are applied". Strict mode
-   ([not (Cursor.recover r)]) still raises, so [~strict:true] rejects exactly
-   what the lenient parse warns about. [skip] discards the item that failed, and
-   which one it is depends on the body: {!skip_invalid_item} for a body of
-   declarations, {!skip_past_rule} for a body of rules, where an item that opens
-   a block ends at that block rather than at a [;] it does not have. [construct]
-   names the same two bodies: the dropped item is a declaration in the first and
-   a rule in the second. The warning is pushed after the skip, which is what
-   fixes how far the loss reaches: the item is dropped from [start] to wherever
-   [skip] leaves the cursor. *)
+   so many words: "valid declarations within the block are applied". Every
+   statement of a sheet is read from a recovering cursor ({!cursor_of_rule}
+   passes [~recover:true]), and [Css.of_string ~strict:true] filters the
+   warnings that parse pushed rather than selecting another one. [skip] discards
+   the item that failed, and which one it is depends on the body:
+   {!skip_invalid_item} for a body of declarations, {!skip_past_rule} for a body
+   of rules, where an item that opens a block ends at that block rather than at
+   a [;] it does not have. [construct] names the same two bodies: the dropped
+   item is a declaration in the first and a rule in the second. The warning is
+   pushed after the skip, which is what fixes how far the loss reaches: the item
+   is dropped from [start] to wherever [skip] leaves the cursor. *)
 let read_items_with_recovery ~skip ~construct step r init =
   let rec loop state =
     if Cursor.recover r then recovering state else continue (step r state)
@@ -2259,10 +2251,32 @@ let read_moz_document_condition r : moz_document_condition =
 
 (* Read a font-face descriptor *)
 (* Helper to read descriptor value after colon *)
+(* CSS Fonts 4 (ED) sec. 4.4 writes each font property descriptor's grammar out
+   in full, and sec. 4.6 gives the settings descriptors the corresponding
+   property's values "except that the CSS-wide keywords are omitted". No
+   descriptor grammar takes one. The shared property readers a descriptor
+   delegates to do take them, so the refusal belongs at this boundary, next to
+   the var() one. *)
+let refuse_css_wide_descriptor r =
+  let save = Cursor.save r in
+  (match Cursor.peek r with
+  | Some (Component.Preserved { kind = Token.Ident name; _ })
+    when Properties.is_css_wide_keyword name ->
+      Cursor.skip r;
+      Cursor.ws r;
+      let alone = Cursor.is_done r || Cursor.peek_semicolon r in
+      Cursor.restore r save;
+      if alone then
+        Cursor.err_invalid r
+          ("CSS-wide keyword in @font-face descriptor: " ^ name)
+  | _ -> ());
+  Cursor.restore r save
+
 let read_descriptor_value read_fn constructor r =
   Cursor.ws r;
   if not (Cursor.colon r) then Cursor.err_expected r "':'";
   Cursor.ws r;
+  refuse_css_wide_descriptor r;
   constructor (read_fn r)
 
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
@@ -2325,32 +2339,47 @@ let read_descriptor_block normalize inner =
    endpoint is well defined, the user agent swapping the two endpoints for font
    matching. The swap is on the computed value, so the descriptor keeps the
    order it was written in. *)
+(* CSS Fonts 4 (ED) sec. 4.4 opens font-style, font-weight and font-width with
+   [auto] and gives it as their initial value, outside the [{1,2}] the rest of
+   the grammar allows: it is the whole value or it is not there. The properties
+   of the same name have no [auto], so the shared readers cannot answer for
+   it. *)
+let descriptor_is_auto value =
+  String.equal (String.lowercase_ascii (String.trim value)) "auto"
+
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
-      let c = Cursor.of_string value in
-      let first = Properties.read_font_weight c in
-      Cursor.ws c;
-      if Cursor.is_done c then Font_weight first
+      if descriptor_is_auto value then Font_weight_auto
       else
-        let second = Properties.read_font_weight c in
+        let c = Cursor.of_string value in
+        let absolute () =
+          match Properties.read_font_weight c with
+          | Bolder | Lighter ->
+              Cursor.err_invalid c
+                "relative weight in an @font-face font-weight descriptor"
+          | weight -> weight
+        in
+        let first = absolute () in
         Cursor.ws c;
-        Cursor.expect_eof c;
-        Font_weight_range (first, second))
+        if Cursor.is_done c then Font_weight first
+        else
+          let second = absolute () in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_weight_range (first, second))
     r
 
 let read_font_style_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
-      let c = Cursor.of_string value in
-      let first = Properties.read_font_style c in
-      Cursor.ws c;
-      if Cursor.is_done c then Font_style first
+      if descriptor_is_auto value then Font_style_auto
       else
-        let second = Properties.read_font_style c in
+        let c = Cursor.of_string value in
+        let style = Properties.read_font_style c in
         Cursor.ws c;
         Cursor.expect_eof c;
-        Font_style_range (first, second))
+        Font_style style)
     r
 
 let validate_nonempty_descriptor r name value =
@@ -2371,15 +2400,17 @@ let read_font_family_descriptor r =
 let read_font_stretch_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
-      let c = Cursor.of_string value in
-      let first = Properties.read_font_stretch c in
-      Cursor.ws c;
-      if Cursor.is_done c then Font_stretch first
+      if descriptor_is_auto value then Font_stretch_auto
       else
-        let second = Properties.read_font_stretch c in
+        let c = Cursor.of_string value in
+        let first = Properties.read_font_stretch c in
         Cursor.ws c;
-        Cursor.expect_eof c;
-        Font_stretch_range (first, second))
+        if Cursor.is_done c then Font_stretch first
+        else
+          let second = Properties.read_font_stretch c in
+          Cursor.ws c;
+          Cursor.expect_eof c;
+          Font_stretch_range (first, second))
     r
 
 (* CSS Syntax 3 (ED) sec. 4.3.14: this descriptor's value is the one place in
@@ -2496,19 +2527,6 @@ let read_font_variant_descriptor_value r =
   | Some value -> value
   | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
 
-(* CSS Fonts 4 sec. 11.1 spells [<font-tech>] as a keyword, so an unknown ident
-   is a parse error rather than text to carry through. *)
-let rec read_font_tech_descriptor r : font_tech_descriptor =
-  match Cursor.peek r with
-  | Some (Component.Func { node = { name; _ }; _ })
-    when String.lowercase_ascii name = "var" ->
-      Var (Values.read_var read_font_tech_descriptor r)
-  | Some _ | Option.None -> (
-      let ident = Cursor.ident r in
-      match Supports.font_tech_of_string (String.lowercase_ascii ident) with
-      | Some tech -> Tech tech
-      | Option.None -> Cursor.err_invalid r ("font-tech descriptor: " ^ ident))
-
 let read_font_variant_keywords r : font_variant_descriptor =
   let at_value_end () = Cursor.is_done r || Cursor.peek_semicolon r in
   let snap = Cursor.save r in
@@ -2539,6 +2557,7 @@ let rec read_font_variant_descriptor r : font_variant_descriptor =
 
 let read_font_face_desc name r =
   match name with
+  (* FONT_FACE_DESCRIPTOR_START - Used by test/spec/browser *)
   | "font-family" -> read_font_family_descriptor r
   | "src" -> read_descriptor_value Font_face.read_src (fun v -> Src v) r
   | "font-style" -> read_font_style_descriptor r
@@ -2561,8 +2580,6 @@ let read_font_face_desc name r =
       read_descriptor_value Properties.read_font_variation_settings
         (fun v -> Font_variation_settings v)
         r
-  | "font-tech" ->
-      read_descriptor_value read_font_tech_descriptor (fun v -> Font_tech v) r
   | "size-adjust" ->
       read_descriptor_value Font_face.read_size_adjust
         (fun v -> Size_adjust v)
@@ -2579,6 +2596,7 @@ let read_font_face_desc name r =
       read_descriptor_value Font_face.read_metric_override
         (fun v -> Line_gap_override v)
         r
+  (* FONT_FACE_DESCRIPTOR_END - Used by test/spec/browser *)
   | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
 
 let rec components_upto_semicolon = function
@@ -2609,8 +2627,7 @@ let descriptor_resolves_var name =
            ~font_family:Fun.id ~font_style:Fun.id ~font_weight:Fun.id
            ~font_stretch:Fun.id ~font_display:Fun.id ~font_variant:Fun.id
            ~font_feature_settings:Fun.id ~font_variation_settings:Fun.id
-           ~metric_override:Fun.id ~font_tech:Fun.id ~size_adjust:Fun.id
-           descriptor)
+           ~metric_override:Fun.id ~size_adjust:Fun.id descriptor)
   | exception Error.Parse_error _ -> false
 
 (* CSS Syntax 3 (ED) sec. 5.5.5 gives an [<at-keyword-token>] to "consume an
@@ -2713,10 +2730,19 @@ let read_counter_style_system_descriptor r =
       System system)
     r
 
+(* CSS Counter Styles 3 (ED) sec. 3.2: <symbol> = <string> | <image> |
+   <custom-ident>. The image arm is read for its grammar and kept as the text it
+   was written with, as the string and ident arms are. *)
 let read_counter_symbol r =
   match Cursor.string_opt r with
   | Some symbol -> symbol
-  | None -> Cursor.ident ~keep_case:true r
+  | None -> (
+      match Cursor.peek r with
+      | Some (Component.Func _)
+      | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+          Pp.to_string ~minify:true Properties.pp_background_image
+            (Properties.read_background_image r)
+      | Some _ | None -> Cursor.ident ~keep_case:true r)
 
 let read_counter_symbols_descriptor r =
   read_descriptor_value Declaration.read_property_value
@@ -2740,13 +2766,83 @@ let read_counter_symbol_descriptor constructor r =
       constructor symbol)
     r
 
-let read_counter_string_descriptor constructor r =
+(* CSS Counter Styles 3 (ED) sec. 3.7: <counter-style-name> is a <custom-ident>,
+   which CSS Values 4 sec. 4.2 excludes the CSS-wide keywords and [default]
+   from, and sec. 3.7 excludes [none] as well. *)
+let read_counter_style_name c =
+  let name = Cursor.ident ~keep_case:true c in
+  let lower = String.lowercase_ascii name in
+  if
+    Properties.is_css_wide_keyword lower
+    || List.exists (String.equal lower) [ "default"; "none" ]
+  then Cursor.err_invalid c ("reserved counter style name: " ^ name)
+  else name
+
+(* Validates the value against the descriptor's grammar and keeps the text: the
+   AST carries the authored spelling, and what this adds is the refusal of a
+   value no section grants. Each reader names the section that decides it. *)
+let read_counter_validated_descriptor ~what ~check constructor r =
   read_descriptor_value
     (fun r ->
       let value = Declaration.read_property_value r in
       validate_nonempty_descriptor r "counter-style" value;
+      let c = Cursor.of_string value in
+      check c;
+      Cursor.ws c;
+      if not (Cursor.is_done c) then
+        Cursor.err_invalid r
+          (String.concat "" [ "trailing tokens in @counter-style "; what ]);
       value)
     constructor r
+
+(* sec. 3.5: [[<integer> | infinite]{2}]# | auto. *)
+let check_counter_range c =
+  let bound c =
+    match Cursor.peek_ident c with
+    | Some "infinite" -> ignore (Cursor.ident c)
+    | Some _ | None -> ignore (Cursor.int c)
+  in
+  let pair c =
+    bound c;
+    Cursor.ws c;
+    bound c
+  in
+  match Cursor.peek_ident c with
+  | Some "auto" -> ignore (Cursor.ident c)
+  | Some _ | None -> ignore (Cursor.list ~at_least:1 ~sep:Cursor.comma pair c)
+
+(* sec. 3.6: <integer [0,inf]> && <symbol>, so the two come in either order. *)
+let check_counter_pad c =
+  let non_negative c =
+    let n = Cursor.int c in
+    if n < 0 then Cursor.err_invalid c "@counter-style pad takes no negative"
+  in
+  match Cursor.option non_negative c with
+  | Some () ->
+      Cursor.ws c;
+      ignore (read_counter_symbol c)
+  | None ->
+      ignore (read_counter_symbol c);
+      Cursor.ws c;
+      non_negative c
+
+(* sec. 3.4: <symbol> <symbol>?. *)
+let check_counter_negative c =
+  ignore (read_counter_symbol c);
+  Cursor.ws c;
+  if not (Cursor.is_done c) then ignore (read_counter_symbol c)
+
+(* sec. 3.3: [<integer [0,inf]> && <symbol>]#. *)
+let check_counter_additive_symbols c =
+  ignore (Cursor.list ~at_least:1 ~sep:Cursor.comma check_counter_pad c)
+
+(* sec. 3.8: auto | bullets | numbers | words | spell-out |
+   <counter-style-name>. *)
+let check_counter_speak_as c =
+  match Cursor.peek_ident c with
+  | Some ("auto" | "bullets" | "numbers" | "words" | "spell-out") ->
+      ignore (Cursor.ident c)
+  | Some _ | None -> ignore (read_counter_style_name c)
 
 (* CSS Counter Styles 3 sec. 3: "unknown descriptors are invalid and ignored".
    One descriptor of the body, the caller looping over the rest, so a descriptor
@@ -2758,17 +2854,41 @@ let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
   let name = Cursor.ident ~keep_case:false r in
   let descriptor =
     match name with
+    (* COUNTER_STYLE_DESCRIPTOR_START - Used by test/spec/browser *)
     | "system" -> read_counter_style_system_descriptor r
     | "symbols" -> read_counter_symbols_descriptor r
     | "suffix" -> read_counter_symbol_descriptor (fun s -> Suffix s) r
     | "prefix" -> read_counter_symbol_descriptor (fun s -> Prefix s) r
-    | "fallback" -> read_counter_string_descriptor (fun s -> Fallback s) r
-    | "range" -> read_counter_string_descriptor (fun s -> Range s) r
-    | "pad" -> read_counter_string_descriptor (fun s -> Pad s) r
-    | "negative" -> read_counter_string_descriptor (fun s -> Negative s) r
+    | "fallback" ->
+        read_counter_validated_descriptor ~what:"fallback"
+          ~check:(fun c -> ignore (read_counter_style_name c))
+          (fun s -> Fallback s)
+          r
+    | "range" ->
+        read_counter_validated_descriptor ~what:"range"
+          ~check:check_counter_range
+          (fun s -> Range s)
+          r
+    | "pad" ->
+        read_counter_validated_descriptor ~what:"pad" ~check:check_counter_pad
+          (fun s -> Pad s)
+          r
+    | "negative" ->
+        read_counter_validated_descriptor ~what:"negative"
+          ~check:check_counter_negative
+          (fun s -> Negative s)
+          r
     | "additive-symbols" ->
-        read_counter_string_descriptor (fun s -> Additive_symbols s) r
-    | "speak-as" -> read_counter_string_descriptor (fun s -> Speak_as s) r
+        read_counter_validated_descriptor ~what:"additive-symbols"
+          ~check:check_counter_additive_symbols
+          (fun s -> Additive_symbols s)
+          r
+    | "speak-as" ->
+        read_counter_validated_descriptor ~what:"speak-as"
+          ~check:check_counter_speak_as
+          (fun s -> Speak_as s)
+          r
+    (* COUNTER_STYLE_DESCRIPTOR_END - Used by test/spec/browser *)
     | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
   in
   Cursor.ws r;
@@ -3393,7 +3513,7 @@ let tail_closer text last n =
     match last with
     | Some { Token.kind = Token.String { quote; terminated = false; _ }; _ } ->
         [ String.make 1 quote ]
-    | Some { Token.kind = Token.Url _ | Token.Bad_url; loc }
+    | Some { Token.kind = Token.Url _ | Token.Bad_url; loc; _ }
       when loc.Loc.end_pos = String.length text ->
         [ ")" ]
     | _ -> [ "*/" ]
@@ -3686,6 +3806,7 @@ let read_property_descriptor (r : Cursor.t) state =
   Cursor.ws r;
   let state =
     match key with
+    (* PROPERTY_DESCRIPTOR_START - Used by test/spec/browser *)
     | "syntax" -> { state with syntax = Some (Variables.read_syntax r) }
     | "inherits" -> { state with inherits = Some (Cursor.bool r) }
     | "initial-value" ->
@@ -3693,6 +3814,7 @@ let read_property_descriptor (r : Cursor.t) state =
           state with
           initial_value = Some (Cursor.consume_until_semicolon ~trim:true r);
         }
+    (* PROPERTY_DESCRIPTOR_END - Used by test/spec/browser *)
     | _ -> Cursor.err_invalid r "unknown property descriptor"
   in
   Cursor.ws r;
@@ -3839,7 +3961,7 @@ let read_else ~body (r : Cursor.t) : statement =
     match
       List.filter
         (function
-          | Component.Preserved { kind = Token.Whitespace; _ } -> false
+          | Component.Preserved { kind = Token.Whitespace _; _ } -> false
           | _ -> true)
         prelude
     with
@@ -3942,7 +4064,8 @@ and read_block (r : Cursor.t) : block =
       (* CSS Syntax 3 (ED) sec. 5.5.1: a rule that fails to parse (e.g. an
          invalid selector) is dropped, and parsing resumes at the next rule -
          one bad rule must not take the rest of the [@layer] / [@media] block
-         with it. Strict mode ([not (Cursor.recover r)]) still raises. *)
+         with it. The guard leaves the exception to a caller reading from a
+         non-recovering cursor; no statement parse builds one. *)
       | exception Error.Parse_error e when Cursor.recover r ->
           Cursor.restore r snap;
           Cursor.push_warning r ~recovery:Error.Recovery.(dropped Rule) e;
@@ -3984,13 +4107,16 @@ and read_supports (r : Cursor.t) : statement =
   Supports (Supports.read query, content)
 
 and read_scope (r : Cursor.t) : statement =
-  (* CSS Cascade 6 sec. 3.5.2: [@scope <start> to <end> { ... }]. The two
-     selectors are kept as raw strings; the block is consumed normally. *)
+  (* CSS Cascade 6 sec. 3.5.2 spells it [@scope <scope-boundaries>? {
+     <block-contents> }], and [<block-contents>] holds declarations as well as
+     rules: a declaration written straight into the body applies to the scoping
+     root, which Chrome reports as a [CSSNestedDeclarations]. The two selectors
+     are kept as raw strings. *)
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
   let prelude_components = Cursor.drain_until_block r in
   let scope_start, scope_end = scope_prelude r prelude_components in
-  let content = Cursor.braces (fun inner -> read_block inner) r in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   Scope (scope_start, scope_end, content)
 
 and read_container (r : Cursor.t) : statement =
@@ -4077,8 +4203,8 @@ and read_nesting_block (r : Cursor.t) : block =
      counting as one component value of the value being skipped. A nested
      at-rule's body is <block-contents> like a style rule's, so it recovers the
      same way and one bad declaration takes neither the group rule holding it
-     nor the rest of the sheet. Strict mode ([not (Cursor.recover r)]) still
-     raises. *)
+     nor the rest of the sheet. The guard leaves the failure to a caller reading
+     from a non-recovering cursor; no statement parse builds one. *)
   and read_recovering_item acc =
     let start = Cursor.save r in
     match read_nesting_item ~prev:acc r with

@@ -33,6 +33,18 @@ let normalize_animation_range : animation_range -> animation_range =
              option_map_preserve normalize_animation_range_item b ))
   | other -> other
 
+(* Sec. 3.4 gives the count a plain [<number>], so a static math function on it
+   folds like any other. *)
+let rec normalize_animation_iteration_count ~ctx :
+    animation_iteration_count -> animation_iteration_count =
+ fun value ->
+  match value with
+  | Count n -> preserve_if_equal value (Count (Values.normalize_number ~ctx n))
+  | Counts counts ->
+      preserve_if_equal value
+        (Counts (map_preserve (normalize_animation_iteration_count ~ctx) counts))
+  | other -> other
+
 let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
  fun value ->
   match value with
@@ -40,7 +52,7 @@ let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
       preserve_if_equal value (Length (Values.normalize_length_percentage lp))
   | other -> other
 
-let normalize_timeline_inset : timeline_inset -> timeline_inset =
+let rec normalize_timeline_inset : timeline_inset -> timeline_inset =
  fun value ->
   match value with
   | Inset (a, b) ->
@@ -48,6 +60,9 @@ let normalize_timeline_inset : timeline_inset -> timeline_inset =
         (Inset
            ( normalize_timeline_inset_item a,
              option_map_preserve normalize_timeline_inset_item b ))
+  | Insets insets ->
+      let insets' = map_preserve normalize_timeline_inset insets in
+      if insets' == insets then value else Insets insets'
   | other -> other
 
 let rec pp_animation_direction : animation_direction Pp.t =
@@ -85,7 +100,7 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Counts counts ->
       Pp.list ~sep:Pp.comma pp_animation_iteration_count ctx counts
   | Infinite -> Pp.string ctx "infinite"
-  | Num n -> Pp.float ctx n
+  | Count n -> Values.pp_number ctx n
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -211,6 +226,8 @@ let canonical_view_timeline_args args =
 let rec pp_animation_timeline : animation_timeline Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_timeline ctx v
+  | Timelines timelines ->
+      Pp.list ~sep:Pp.comma pp_animation_timeline ctx timelines
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Name name -> pp_ident ctx name
@@ -240,6 +257,7 @@ let pp_animation_range_name : animation_range_name Pp.t =
 let rec pp_animation_range_item : animation_range_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
+  | Items items -> Pp.list ~sep:Pp.comma pp_animation_range_item ctx items
   | Offset lp -> pp_length_percentage ~always:true ctx lp
   | Named (name, None) -> pp_animation_range_name ctx name
   | Named (name, Some lp) ->
@@ -267,6 +285,7 @@ let animation_range_needs_space ctx =
 let rec pp_animation_range : animation_range Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_range ctx v
+  | Ranges ranges -> Pp.list ~sep:Pp.comma pp_animation_range ctx ranges
   | Range (first, None) -> pp_animation_range_item ctx first
   | Range (first, Some Normal) -> pp_animation_range_item ctx first
   | Range
@@ -318,6 +337,23 @@ let rec pp_timeline_axis : timeline_axis Pp.t =
   | Inline -> Pp.string ctx "inline"
   | X -> Pp.string ctx "x"
   | Y -> Pp.string ctx "y"
+  | Axes axes -> Pp.list ~sep:Pp.comma pp_timeline_axis ctx axes
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let pp_timeline_ident : timeline_ident Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Name name -> pp_ident ctx name
+
+let rec pp_timeline_scope : timeline_scope Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_timeline_scope ctx v
+  | None -> Pp.string ctx "none"
+  | Names names -> Pp.list ~sep:Pp.comma pp_ident ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -327,8 +363,7 @@ let rec pp_timeline_axis : timeline_axis Pp.t =
 let rec pp_timeline_name : timeline_name Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_timeline_name ctx v
-  | None -> Pp.string ctx "none"
-  | Names names -> Pp.list ~sep:Pp.comma pp_ident ctx names
+  | Names names -> Pp.list ~sep:Pp.comma pp_timeline_ident ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -337,7 +372,7 @@ let rec pp_timeline_name : timeline_name Pp.t =
 
 let pp_timeline_shorthand_item : timeline_shorthand_item Pp.t =
  fun ctx { name; axis } ->
-  pp_ident ctx name;
+  pp_timeline_ident ctx name;
   match axis with
   | None -> ()
   | Some axis ->
@@ -386,7 +421,6 @@ let normalize_view_timeline_shorthand :
 
 let rec pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx -> function
-  | None -> Pp.string ctx "none"
   | Timelines items ->
       Pp.list ~sep:Pp.comma pp_timeline_shorthand_item ctx items
   | Initial -> Pp.string ctx "initial"
@@ -411,6 +445,7 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
           Pp.space ctx ();
           pp_timeline_inset_item ctx item)
         second
+  | Insets insets -> Pp.list ~sep:Pp.comma pp_timeline_inset ctx insets
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -419,7 +454,7 @@ let rec pp_timeline_inset : timeline_inset Pp.t =
 
 let pp_view_timeline_shorthand_item : view_timeline_shorthand_item Pp.t =
  fun ctx { name; axis; inset } ->
-  pp_ident ctx name;
+  pp_timeline_ident ctx name;
   Option.iter
     (fun axis ->
       Pp.space ctx ();
@@ -433,7 +468,6 @@ let pp_view_timeline_shorthand_item : view_timeline_shorthand_item Pp.t =
 
 let rec pp_view_timeline_shorthand : view_timeline_shorthand Pp.t =
  fun ctx -> function
-  | None -> Pp.string ctx "none"
   | Timelines items ->
       Pp.list ~sep:Pp.comma pp_view_timeline_shorthand_item ctx items
   | Initial -> Pp.string ctx "initial"
@@ -623,7 +657,18 @@ let rec pp_transition : transition Pp.t =
   | Var v -> pp_var pp_transition ctx v
   | Shorthand s -> pp_transition_shorthand ctx s
 
+(* CSS Animations 2 sec. 5 spells the property [<single-animation-timeline>#],
+   one entry per animation. A [var()] and the CSS-wide keywords stand for the
+   whole value, which is why they are read inside the entry rather than beside
+   the list: an entry that is one of them is the only entry. *)
 let rec read_animation_timeline (t : Cursor.t) : animation_timeline =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_animation_timeline_one t
+  with
+  | [ timeline ] -> timeline
+  | timelines -> Timelines timelines
+
+and read_animation_timeline_one (t : Cursor.t) : animation_timeline =
   Cursor.ws t;
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })
@@ -714,27 +759,46 @@ let rec read_view_transition_class t : view_transition_class =
      t
     : view_transition_class)
 
+(* Secs. 4.2 and 5.2 spell the axis [[ block | inline | x | y ]#], one entry per
+   timeline. A CSS-wide keyword and a [var()] stand for the whole value, so they
+   are not list entries and a shorthand slot takes neither. *)
+let read_timeline_axis_keyword t : timeline_axis =
+  Cursor.enum "timeline-axis"
+    [
+      ("block", (Block : timeline_axis)); ("inline", Inline); ("x", X); ("y", Y);
+    ]
+    t
+
 let rec read_timeline_axis t : timeline_axis =
   Cursor.enum_or_var "timeline-axis"
     [
-      ("block", (Block : timeline_axis));
-      ("inline", (Inline : timeline_axis));
-      ("x", (X : timeline_axis));
-      ("y", (Y : timeline_axis));
-      ("initial", Initial);
+      ("initial", (Initial : timeline_axis));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_timeline_axis t))
+    ~default:(fun t ->
+      match
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_axis_keyword t
+      with
+      | [ axis ] -> axis
+      | axes -> Axes axes)
+    t
+
+(* Secs. 4.1 and 5.1 spell the name [[ none | <dashed-ident> ]#], so [none]
+   names one timeline among others rather than the whole value. *)
+let read_timeline_ident t : timeline_ident =
+  Cursor.enum "timeline-name"
+    [ ("none", (None : timeline_ident)) ]
+    ~default:(fun t -> (Name (read_dashed_ident t) : timeline_ident))
     t
 
 let rec read_timeline_name t : timeline_name =
   Cursor.enum_or_var "timeline-name"
     [
-      ("none", (None : timeline_name));
-      ("initial", Initial);
+      ("initial", (Initial : timeline_name));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
@@ -742,24 +806,40 @@ let rec read_timeline_name t : timeline_name =
     ]
     ~var:(fun t -> (Var (Values.read_var read_timeline_name t) : timeline_name))
     ~default:(fun t ->
-      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
+      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_ident t)
         : timeline_name))
+    t
+
+(* Sec. 6 keeps [none] out of the list here: [timeline-scope] is [none |
+   <dashed-ident>#], so the keyword stands for the whole value. *)
+let rec read_timeline_scope t : timeline_scope =
+  Cursor.enum_or_var "timeline-scope"
+    [
+      ("none", (None : timeline_scope));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_timeline_scope t) : timeline_scope))
+    ~default:(fun t ->
+      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
+        : timeline_scope))
     t
 
 let read_timeline_shorthand_item t : timeline_shorthand_item =
   Cursor.ws t;
-  let name = Cursor.ident ~keep_case:true t in
-  if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid t "timeline name";
+  let name = read_timeline_ident t in
   Cursor.ws t;
-  let axis = Cursor.option read_timeline_axis t in
+  let axis = Cursor.option read_timeline_axis_keyword t in
   { name; axis }
 
 let rec read_timeline_shorthand t : timeline_shorthand =
   Cursor.enum_or_var "timeline"
     [
-      ("none", (None : timeline_shorthand));
-      ("initial", Initial);
+      ("initial", (Initial : timeline_shorthand));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
@@ -783,6 +863,14 @@ let read_timeline_inset_item t : timeline_inset_item =
         : timeline_inset_item))
     t
 
+(* Sec. 5.3 spells the inset [[ [ auto | <length-percentage> ]{1,2} ]#]: one or
+   two items per timeline, and one entry per timeline. *)
+let read_timeline_inset_pair t : timeline_inset =
+  match Cursor.list ~at_least:1 ~at_most:2 read_timeline_inset_item t with
+  | [ first ] -> (Inset (first, None) : timeline_inset)
+  | [ first; second ] -> Inset (first, Some second)
+  | _ -> Cursor.err_expected t "timeline-inset"
+
 let rec read_timeline_inset t : timeline_inset =
   Cursor.enum_or_var "timeline-inset"
     [
@@ -795,10 +883,11 @@ let rec read_timeline_inset t : timeline_inset =
     ~var:(fun t ->
       (Var (Values.read_var read_timeline_inset t) : timeline_inset))
     ~default:(fun t ->
-      match Cursor.list ~at_least:1 ~at_most:2 read_timeline_inset_item t with
-      | [ first ] -> (Inset (first, None) : timeline_inset)
-      | [ first; second ] -> (Inset (first, Some second) : timeline_inset)
-      | _ -> Cursor.err_expected t "timeline-inset")
+      match
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_timeline_inset_pair t
+      with
+      | [ inset ] -> inset
+      | insets -> Insets insets)
     t
 
 let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
@@ -806,15 +895,13 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
      [<'view-timeline-axis'> || <'view-timeline-inset'>]?, so try each missing
      slot until neither consumes input. *)
   Cursor.ws t;
-  let name = Cursor.ident ~keep_case:true t in
-  if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid t "timeline name";
+  let name = read_timeline_ident t in
   let axis = ref Option.None in
   let inset = ref Option.None in
   let try_axis () =
     if !axis <> Option.None then false
     else
-      match Cursor.option read_timeline_axis t with
+      match Cursor.option read_timeline_axis_keyword t with
       | Some value ->
           axis := Some value;
           true
@@ -823,7 +910,7 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
   let try_inset () =
     if !inset <> Option.None then false
     else
-      match Cursor.option read_timeline_inset t with
+      match Cursor.option read_timeline_inset_pair t with
       | Some value ->
           inset := Some value;
           true
@@ -839,8 +926,7 @@ let read_view_timeline_shorthand_item t : view_timeline_shorthand_item =
 let rec read_view_timeline_shorthand t : view_timeline_shorthand =
   Cursor.enum_or_var "view-timeline"
     [
-      ("none", (None : view_timeline_shorthand));
-      ("initial", Initial);
+      ("initial", (Initial : view_timeline_shorthand));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
@@ -1072,11 +1158,18 @@ let read_transition_behavior_part parts t =
     read_transition_part t read_transition_behavior (fun v ->
         parts.behavior <- Option.Some v)
 
+(* CSS Transitions 1 (ED) sec. 2.5 assigns the first <time> of a
+   <single-transition> to transition-duration and the second to
+   transition-delay. Only the duration is [0s,inf]: sec. 2.4 lets a delay be
+   negative, starting the transition partway through, so the second slot reads
+   the wider grammar. *)
 let read_transition_time_part parts t =
-  if List.length parts.times >= 2 then false
-  else
-    read_transition_part t read_duration (fun v ->
-        parts.times <- v :: parts.times)
+  match parts.times with
+  | [] -> read_transition_part t read_duration (fun v -> parts.times <- [ v ])
+  | [ _ ] ->
+      read_transition_part t read_time (fun v ->
+          parts.times <- v :: parts.times)
+  | _ :: _ :: _ -> false
 
 let transition_duration_delay parts =
   match List.rev parts.times with
@@ -1210,16 +1303,25 @@ let rec read_animation_fill_mode t : animation_fill_mode =
       | values -> Fill_modes values)
     t
 
-let read_animation_count_number t =
-  let n, unit = Cursor.number_with_unit t in
-  match unit with
-  | Some u ->
-      Cursor.err_invalid t
-        ("animation-iteration-count must be unitless, got: " ^ u)
-  | None ->
-      if n < 0. then
-        Cursor.err_invalid t "animation-iteration-count cannot be negative";
-      Num n
+(* Sec. 3.4 gives the count a [<number [0,inf]>]. A [calc()] holds no value to
+   compare, so only a literal is turned away here. Each count is one component
+   of a comma list, and the whole-value number reader refuses anything after the
+   number it read, so the component is handed to it on its own. *)
+let read_animation_count_number t : animation_iteration_count =
+  match Cursor.peek t with
+  | Some (Component.Func _ as component) ->
+      let _ = Cursor.next t in
+      Count (Values.read_number (Cursor.of_components [ component ]))
+  | _ ->
+      let n, unit = Cursor.number_with_unit t in
+      (match unit with
+      | Some u ->
+          Cursor.err_invalid t
+            ("animation-iteration-count must be unitless, got: " ^ u)
+      | None ->
+          if n < 0. then
+            Cursor.err_invalid t "animation-iteration-count cannot be negative");
+      Count (Num n)
 
 let read_animation_count_item t =
   Cursor.enum "animation-iteration-count-item"
@@ -1447,7 +1549,7 @@ module Animation = struct
       (* CSS default: ease *)
       delay = Some (S 0.0);
       (* CSS default: 0s *)
-      iteration_count = Some (Num 1.0);
+      iteration_count = Some (Count (Num 1.0));
       (* CSS default: 1 *)
       direction = Some Normal;
       (* CSS default: normal *)
@@ -1651,7 +1753,7 @@ module Animation = struct
     | Some tf -> not (is_default_timing tf)
 
   let is_iteration : animation_iteration_count option -> bool = function
-    | Some (Num 1.) | None -> false
+    | Some (Count (Num 1.)) | None -> false
     | Some _ -> true
 
   let is_direction : animation_direction option -> bool = function
@@ -1728,8 +1830,8 @@ module Animation = struct
   let iteration ?(quote_name = false) (anim : animation_shorthand) :
       animation_iteration_count option =
     match (anim.iteration_count, effective_ambiguous_kind ~quote_name anim) with
-    | (Some (Num 1.) | None), Some Iteration -> Some (Num 1.)
-    | Some (Num 1.), _ | None, _ -> None
+    | (Some (Count (Num 1.)) | None), Some Iteration -> Some (Count (Num 1.))
+    | Some (Count (Num 1.)), _ | None, _ -> None
     | Some c, _ -> Some c
 
   let direction ?(quote_name = false) (anim : animation_shorthand) :
@@ -2000,7 +2102,8 @@ let read_range_length_percentage t =
 
 let read_animation_range_offset t : length_percentage option =
   Cursor.ws t;
-  if Cursor.is_done t then (None : length_percentage option)
+  if Cursor.is_done t || Cursor.peek_comma t then
+    (None : length_percentage option)
   else
     match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
     | Some "normal" -> (None : length_percentage option)
@@ -2008,32 +2111,41 @@ let read_animation_range_offset t : length_percentage option =
         (None : length_percentage option)
     | _ -> (Some (read_range_length_percentage t) : length_percentage option)
 
+(* Secs. 3.1 and 3.2 spell each end [[ normal | <length-percentage> |
+   <timeline-range-name> <length-percentage>? ]#], one entry per animation, so
+   [normal] names one end among others rather than the whole value. *)
+let read_animation_range_one t : animation_range_item =
+  Cursor.ws t;
+  match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
+  | Some "normal" ->
+      let _ = Cursor.ident t in
+      (Normal : animation_range_item)
+  | Some name when is_animation_range_name name ->
+      let name : animation_range_name = read_animation_range_name t in
+      let lp = read_animation_range_offset t in
+      Named (name, lp)
+  | _ -> Offset (read_range_length_percentage t)
+
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =
     [
-      ("normal", (Normal : animation_range_item));
-      ("initial", Initial);
+      ("initial", (Initial : animation_range_item));
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
   in
-  let read_item t =
-    Cursor.ws t;
-    match Cursor.peek_ident t with
-    | Some name when is_animation_range_name name ->
-        let name : animation_range_name = read_animation_range_name t in
-        let lp = read_animation_range_offset t in
-        (Named (name, lp) : animation_range_item)
-    | _ ->
-        let lp = read_range_length_percentage t in
-        Offset lp
-  in
   Cursor.enum_or_var "animation-range-item" keywords
     ~var:(fun t ->
       (Var (Values.read_var read_animation_range_item t) : animation_range_item))
-    ~default:read_item t
+    ~default:(fun t ->
+      match
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_animation_range_one t
+      with
+      | [ item ] -> item
+      | items -> Items items)
+    t
 
 let rec read_animation_range t : animation_range =
   let keywords : (string * animation_range) list =
@@ -2045,32 +2157,22 @@ let rec read_animation_range t : animation_range =
       ("revert-layer", Revert_layer);
     ]
   in
+  (* Sec. 3.3 spells the shorthand [[ <start> <end>? ]#], so a comma ends one
+     entry the way the end of the value does. *)
   let read_range t =
-    let read_single t =
-      Cursor.ws t;
-      match
-        Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t)
-      with
-      | Some "normal" ->
-          let _ = Cursor.ident t in
-          (Normal : animation_range_item)
-      | Some name when List.mem name Keyframe.timeline_range_names ->
-          let name : animation_range_name = read_animation_range_name t in
-          let lp = read_animation_range_offset t in
-          (Named (name, lp) : animation_range_item)
-      | _ ->
-          let lp = read_range_length_percentage t in
-          Offset lp
-    in
-    let first = read_single t in
+    let first = read_animation_range_one t in
     Cursor.ws t;
-    if Cursor.is_done t then Range (first, None)
+    if Cursor.is_done t || Cursor.peek_comma t then Range (first, None)
     else
-      let second = read_single t in
+      let second = read_animation_range_one t in
       Range (first, Some second)
   in
   (Cursor.enum_or_var "animation-range" keywords
      ~var:(fun t ->
        (Var (Values.read_var read_animation_range t) : animation_range))
-     ~default:read_range t
+     ~default:(fun t ->
+       match Cursor.list ~sep:Cursor.comma ~at_least:1 read_range t with
+       | [ range ] -> range
+       | ranges -> Ranges ranges)
+     t
     : animation_range)

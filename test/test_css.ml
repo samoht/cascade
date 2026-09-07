@@ -2436,7 +2436,7 @@ let svg_longhand_builders () =
   check "stroke-dashoffset:2px"
     (Css.stroke_dashoffset (Dash (Length (Length (Px 2.)))));
   check "stroke-dasharray:4 2"
-    (Css.stroke_dasharray (Dashes [ Number 4.; Number 2. ]));
+    (Css.stroke_dasharray (Dashes [ Number (Num 4.); Number (Num 2.) ]));
   check "paint-order:stroke fill" (Css.paint_order (Order [ Stroke; Fill ]));
   check "vector-effect:non-scaling-stroke"
     (Css.vector_effect (Effects ([ Non_scaling_stroke ], None)));
@@ -2619,13 +2619,15 @@ let scroll_driven_animation_builders () =
   check "animation-range-end:cover 100%"
     (Css.animation_range_end (Named (Cover, Some (Pct 100.))));
   check "scroll-timeline:--a block"
-    (Css.scroll_timeline (Timelines [ { name = "--a"; axis = Some Block } ]));
-  check "scroll-timeline-name:--a" (Css.scroll_timeline_name (Names [ "--a" ]));
+    (Css.scroll_timeline
+       (Timelines [ { name = Name "--a"; axis = Some Block } ]));
+  check "scroll-timeline-name:--a"
+    (Css.scroll_timeline_name (Names [ Name "--a" ]));
   check "scroll-timeline-axis:inline" (Css.scroll_timeline_axis Inline);
   check "view-timeline:--a"
     (Css.view_timeline
-       (Timelines [ { name = "--a"; axis = None; inset = None } ]));
-  check "view-timeline-name:--a" (Css.view_timeline_name (Names [ "--a" ]));
+       (Timelines [ { name = Name "--a"; axis = None; inset = None } ]));
+  check "view-timeline-name:--a" (Css.view_timeline_name (Names [ Name "--a" ]));
   check "view-timeline-axis:y" (Css.view_timeline_axis Y);
   check "view-timeline-inset:auto"
     (Css.view_timeline_inset (Inset (Auto, None)));

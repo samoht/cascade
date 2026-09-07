@@ -324,8 +324,9 @@ let rec read_page_break_inside_value t : page_break_inside_value =
    neither takes a percentage or a sizing keyword. *)
 let is_plain_length (l : length) =
   match l with
-  (* A math function, a substitution and [zero] are lengths this reader cannot
-     measure and the grammar holds. *)
+  (* A substitution and [zero] are lengths this reader cannot measure and the
+     grammar holds. A math function reaches here only once [length_only] has had
+     it, so its own type is settled. *)
   | Zero | Clamp _ | Min _ | Max _ | Minmax _ | Round _ | Mod _ | Rem_fn _
   | Hypot _ | Abs _ | Sign _ | Calc_size _ | Anchor_size _ | Anchor _ | Attr _
   | Env _ | Var _ | Calc _ ->
@@ -336,7 +337,9 @@ let is_plain_length (l : length) =
   | other -> Option.is_some (Values.calc_length_unit other)
 
 let read_plain_length t =
-  let l = read_length ~allow_negative:false ~with_keywords:false t in
+  let l =
+    read_length ~allow_negative:false ~with_keywords:false ~length_only:true t
+  in
   if is_plain_length l then l else Cursor.err_expected t "length"
 
 let read_columns_count t =

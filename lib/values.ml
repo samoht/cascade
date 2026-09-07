@@ -527,12 +527,14 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
+(* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
+   the streams this prints, so the runs come back as they were read. *)
 let pp_component_values ctx values =
   let value =
     if Pp.minified ctx then
       Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
         values
-    else Parser.string_of_components values
+    else Parser.to_string_verbatim values
   in
   Pp.string ctx value
 
@@ -1371,7 +1373,8 @@ let pp_calc_with : type a.
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc pp_value ctx calc = pp_calc_with pp_value ctx calc
+let pp_calc ?unwrap_num ?unwrap pp_value ctx calc =
+  pp_calc_with ?unwrap_num ?unwrap pp_value ctx calc
 
 (* Small helpers *)
 
@@ -1751,20 +1754,6 @@ type length_unit =
 
 let length_unit_is_pct = function Pct -> true | _ -> false
 
-let length_unit_is_viewport = function
-  | Vw | Vh | Vmin | Vmax | Vi | Vb | Dvh | Dvw | Dvmin | Dvmax | Lvh | Lvw
-  | Lvmin | Lvmax | Svh | Svw | Svmin | Svmax ->
-      true
-  | _ -> false
-
-let length_unit_is_font_relative = function
-  | Rem | Em | Ex | Cap | Ic | Ric | Rlh | Ch | Lh -> true
-  | _ -> false
-
-let length_unit_negative_rank = function
-  | unit when length_unit_is_font_relative unit -> 0
-  | _ -> 1
-
 let unit_of_string = function
   | "px" -> Some Px
   | "cm" -> Some Cm
@@ -1917,31 +1906,26 @@ type linear_term = {
   count : int;
 }
 
+(* CSS Values 4 sec. 10.13 sorts a sum's children before serialising them, so
+   the order carries no meaning and the shortest spelling wins. A positive term
+   leads: [b - a] against [-a + b] spends one byte fewer. Ties keep the authored
+   order. *)
 let linear_term_priority ~first_pos term =
   match (term.value > 0., length_unit_is_pct term.unit) with
   | true, true -> 0
   | true, false when term.first_pos = first_pos && term.count = 1 -> 1
-  | false, false when not (length_unit_is_viewport term.unit) -> 2
-  | true, false when term.count = 1 -> 3
-  | true, false -> 4
-  | false, false -> 5
-  | false, true -> 6
-
-let compare_negative_linear_term a b =
-  let c =
-    compare
-      (length_unit_negative_rank a.unit)
-      (length_unit_negative_rank b.unit)
-  in
-  if c <> 0 then c else compare a.first_pos b.first_pos
+  | true, false when term.count = 1 -> 2
+  | true, false -> 3
+  | false, false -> 4
+  | false, true -> 5
 
 let compare_linear_term ~first_pos a b =
-  let a_priority = linear_term_priority ~first_pos a in
-  let b_priority = linear_term_priority ~first_pos b in
-  let c = compare a_priority b_priority in
-  if c <> 0 then c
-  else if a_priority = 2 then compare_negative_linear_term a b
-  else compare a.first_pos b.first_pos
+  let c =
+    compare
+      (linear_term_priority ~first_pos a)
+      (linear_term_priority ~first_pos b)
+  in
+  if c <> 0 then c else compare a.first_pos b.first_pos
 
 let ordered_linear_terms terms =
   let table = Hashtbl.create 8 in
@@ -1964,13 +1948,7 @@ let ordered_linear_terms terms =
   in
   List.sort (compare_linear_term ~first_pos) terms
 
-let linear_calc_op first_unit first_value unit n =
-  if
-    n < 0. && first_value > 0. && first_unit = Px
-    && length_unit_is_font_relative unit
-  then (Add, n)
-  else if n < 0. then (Sub, -.n)
-  else (Add, n)
+let linear_calc_op n = if n < 0. then (Sub, -.n) else (Add, n)
 
 let linear_terms_with unit_of_value calc =
   let scale factor terms =
@@ -2011,11 +1989,9 @@ let linear_length_calc calc =
       match terms with
       | [] -> Val Zero
       | { unit; value = n; _ } :: rest ->
-          let first_unit = unit in
-          let first_value = n in
           List.fold_left
             (fun acc { unit; value = n; _ } ->
-              let op, n = linear_calc_op first_unit first_value unit n in
+              let op, n = linear_calc_op n in
               Expr (acc, op, Val (length_of_calc_unit unit n)))
             (Val (length_of_calc_unit unit n))
             rest)
@@ -2129,11 +2105,9 @@ let linear_lp_calc calc =
       match terms with
       | [] -> Val (Length Zero)
       | { unit; value = n; _ } :: rest ->
-          let first_unit = unit in
-          let first_value = n in
           List.fold_left
             (fun acc { unit; value = n; _ } ->
-              let op, n = linear_calc_op first_unit first_value unit n in
+              let op, n = linear_calc_op n in
               Expr (acc, op, Val (lp_of_unit unit n)))
             (Val (lp_of_unit unit n))
             rest)
@@ -3558,6 +3532,9 @@ let color_mix_percentages (percent1 : percentage option)
   | Some _, Some _ -> (
       match (f1, f2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None)
 
+(* [value] is the six or eight hex digits [hex_string_of_bytes] builds, never
+   the shortened form: a four-digit input would be its own output. *)
+
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
 let shorten_hex value =
@@ -3603,10 +3580,6 @@ let shorten_hex value =
     && (value.[6] = 'f' || value.[6] = 'F')
     && (value.[7] = 'f' || value.[7] = 'F')
   then String.sub value 0 6
-  else if
-    (* #RGBA -> #RGB when A=f (fully opaque) *)
-    len = 4 && (value.[3] = 'f' || value.[3] = 'F')
-  then String.sub value 0 3
   else value
 
 (* Shortest hex spelling (no [#]) of decoded sRGB byte components: the opaque
@@ -5784,12 +5757,12 @@ let read_integer_calc : type a.
           (String.concat "" [ "unexpected value in "; name; " calc" ]))
       t
   in
+  (* CSS Values 4 sec. 10.12 rounds a math function at an [<integer>] to the
+     nearest integer rather than refusing it, so a fractional result keeps the
+     call and rounds where the value is used. *)
   match eval_numeric_calc expr with
   | Some f when Float.is_integer f -> `Int (int_of_float f)
-  | Some _ ->
-      Cursor.err_invalid t
-        (String.concat "" [ name; " calc must evaluate to integer" ])
-  | None -> `Calc expr
+  | Some _ | None -> `Calc expr
 
 let read_integer name t =
   if Cursor.looking_at_calc t then
@@ -6752,11 +6725,6 @@ let read_full_hue_interpolation t : hue_interpolation =
   Cursor.ws t;
   hue
 
-let trim_trailing_space buf =
-  let blen = Buffer.length buf in
-  if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
-    Buffer.truncate buf (blen - 1)
-
 let add_pending_space buf last_was_space =
   if last_was_space && Buffer.length buf > 0 then Buffer.add_char buf ' '
 
@@ -6772,8 +6740,10 @@ let normalize_relative_color_tail tail =
     else
       match tail.[i] with
       | ' ' | '\n' | '\t' | '\r' | '\012' -> loop (i + 1) true
+      (* A pending space is dropped rather than trimmed: [add_pending_space]
+         writes one only just before a non-space character, so the buffer never
+         ends in one. *)
       | '/' ->
-          trim_trailing_space buf;
           Buffer.add_char buf '/';
           loop (skip_spaces (i + 1)) false
       | c ->
@@ -6791,7 +6761,7 @@ let normalize_relative_color_tail tail =
    number. *)
 let relative_color_channel_count cvs =
   let is_ws = function
-    | Component.Preserved { Token.kind = Whitespace; _ } -> true
+    | Component.Preserved { Token.kind = Whitespace _; _ } -> true
     | _ -> false
   in
   let is_alpha_sep = function
@@ -6808,7 +6778,7 @@ let relative_color_channel_count cvs =
 
 let relative_color_has_empty_alpha cvs =
   let is_ws = function
-    | Component.Preserved { Token.kind = Whitespace; _ } -> true
+    | Component.Preserved { Token.kind = Whitespace _; _ } -> true
     | _ -> false
   in
   let rec only_ws = function
@@ -6841,6 +6811,101 @@ let relative_origin_srgb_bytes origin : (int * int * int * int) option =
           | Option.None -> Option.None)
       | Option.None -> Option.None)
 
+(* The call names no alpha of its own, so the origin's carries through. *)
+let folded_srgb_color origin (alpha : alpha) : color option =
+  match relative_origin_srgb_bytes origin with
+  | None -> Option.None
+  | Some (r, g, b, origin_a_byte) ->
+      let a : alpha =
+        match alpha with
+        | None when origin_a_byte = 255 -> None
+        | None -> Num (Float.of_int origin_a_byte /. 255.)
+        | a -> a
+      in
+      Option.Some
+        (Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a })
+
+(* CSS Color 5 secs. 4.3 to 4.9 and 5.1 name the channel keywords each relative
+   colour function binds; [alpha] is bound by all of them. *)
+let relative_channel_keywords name =
+  let channels =
+    match name with
+    | "rgb" -> [ "r"; "g"; "b" ]
+    | "hsl" -> [ "h"; "s"; "l" ]
+    | "hwb" -> [ "h"; "w"; "b" ]
+    | "lab" | "oklab" -> [ "l"; "a"; "b" ]
+    | "lch" | "oklch" -> [ "l"; "c"; "h" ]
+    | "color" -> [ "r"; "g"; "b"; "x"; "y"; "z" ]
+    | _ -> []
+  in
+  "alpha" :: channels
+
+(* Sec. 4.1 substitutes each keyword with the origin's channel as a [<number>],
+   so a channel expression is typed like any other math: [calc(w + 10%)] adds a
+   number to a percentage and [calc(h + 90deg)] a number to an angle, neither of
+   which a browser takes, while [calc(w * 1%)] multiplies and is fine.
+   Substituting a literal number is what lets the ordinary calc inference answer
+   that, rather than a second type system written for this one place. *)
+let rec substitute_channel_numbers keywords (c : Component.t) : Component.t =
+  match c with
+  | Component.Preserved ({ kind = Token.Ident id; _ } as tok)
+    when List.mem (String.lowercase_ascii id) keywords ->
+      Component.Preserved
+        {
+          tok with
+          kind =
+            Token.Number_tok { value = 1.; repr = "1"; number_flag = Integer };
+        }
+  | Component.Func ({ node; _ } as n) ->
+      Component.Func
+        {
+          n with
+          node =
+            {
+              node with
+              Component.arguments =
+                List.map (substitute_channel_numbers keywords) node.arguments;
+            };
+        }
+  | Component.Block ({ node; _ } as n) ->
+      Component.Block
+        {
+          n with
+          node =
+            {
+              node with
+              Component.value =
+                List.map (substitute_channel_numbers keywords) node.value;
+            };
+        }
+  | other -> other
+
+(* Any dimension or percentage is the contextual value the inference weighs
+   against a bare number; which dimension it is does not change the answer. *)
+let read_relative_channel_unit t : unit =
+  match Cursor.peek t with
+  | Some
+      (Component.Preserved { kind = Token.Percentage _ | Token.Dimension _; _ })
+    ->
+      Cursor.skip t
+  | _ -> Cursor.err t "relative colour channel"
+
+let check_relative_channel_math name components =
+  let keywords = relative_channel_keywords name in
+  if keywords <> [ "alpha" ] then
+    List.iter
+      (fun component ->
+        match substitute_channel_numbers keywords component with
+        | Component.Func { node = { name = fn; _ }; _ } as substituted
+          when String.lowercase_ascii fn = "calc" ->
+            ignore
+              (read_calc ~result_type:`Number_or_value
+                 read_relative_channel_unit
+                 (Cursor.of_components [ substituted ])
+                : unit calc)
+        | _ -> ())
+      components
+
 let try_fold_color_function_static origin t : color option =
   Cursor.ws t;
   let read_keyword kw =
@@ -6855,25 +6920,14 @@ let try_fold_color_function_static origin t : color option =
   else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
     Option.None
   else
-    let alpha = read_optional_alpha t in
-    Cursor.ws t;
-    if not (Cursor.is_done t) then Option.None
-    else
-      match relative_origin_srgb_bytes origin with
-      | Some (r, g, b, origin_a_byte) ->
-          let final_alpha : alpha =
-            match alpha with
-            | None when origin_a_byte = 255 -> None
-            | None -> Num (Float.of_int origin_a_byte /. 255.)
-            | a -> a
-          in
-          Option.Some
-            (Rgba
-               {
-                 rgb = Channels { r = Int r; g = Int g; b = Int b };
-                 a = final_alpha;
-               })
-      | None -> Option.None
+    (* The fold is best effort, so an alpha it cannot read is not an error: sec.
+       4.1 puts the origin's [alpha] keyword, and math over it, in that slot,
+       and the caller keeps the call as written when this answers [None]. *)
+    match Cursor.option read_optional_alpha t with
+    | Option.None -> Option.None
+    | Option.Some alpha ->
+        Cursor.ws t;
+        if Cursor.is_done t then folded_srgb_color origin alpha else Option.None
 
 let try_fold_relative_color_static name origin t : color option =
   match name with
@@ -6962,6 +7016,7 @@ and read_relative_rgb t : color =
   let origin = read_color t in
   Cursor.ws t;
   let tail_components = Cursor.remaining t in
+  check_relative_channel_math "rgb" tail_components;
   if relative_color_has_empty_alpha tail_components then
     Cursor.err_expected t "relative rgb alpha";
   let tail =
@@ -7022,6 +7077,7 @@ and read_relative_color name t : color =
   Cursor.ws t;
   let origin = read_color t in
   Cursor.ws t;
+  check_relative_channel_math name (Cursor.remaining t);
   let snap = Cursor.save t in
   match try_fold_relative_color_static name origin t with
   | Some folded -> folded
@@ -8029,21 +8085,37 @@ let read_padding_shorthand t : length list =
         t)
     t
 
+(* CSS Box 4 sec. 3.1 gives a margin [<length-percentage> | auto], so no sizing
+   function reaches it. [global] adds the CSS-wide keywords of CSS Cascade 5
+   sec. 7.3, which a longhand takes as its whole value and a shorthand component
+   cannot; a [var()] fallback stands for a whole value, so it takes them too. *)
+
 (** Read margin shorthand property (1-4 values). CSS Box 4 (ED) sec. 3.2 gives
     [margin] the value [<'margin-top'>{1,4}] and sec. 3.1 gives [margin-top] the
     value [<length-percentage> | auto], so [auto] is a component of the box and
     stands in any slot beside any length. Only the CSS-wide keywords of CSS
     Cascade 5 sec. 6 own the whole value. *)
+let rec read_margin_length ?(global = false) t : length =
+  if Cursor.looking_at_func "var" t then
+    Var (read_var (read_margin_length ~global:true) t)
+  else
+    Cursor.enum "margin component"
+      (("auto", (Auto : length))
+      ::
+      (if global then
+         [
+           ("inherit", (Inherit : length));
+           ("initial", Initial);
+           ("unset", Unset);
+           ("revert", Revert);
+           ("revert-layer", Revert_layer);
+         ]
+       else []))
+      ~default:(read_length ~with_keywords:false)
+      t
+
 let read_margin_shorthand t : length list =
-  let rec read_margin_component t : length =
-    if Cursor.looking_at_func "var" t then
-      Var (read_var read_margin_component t)
-    else
-      Cursor.enum "margin component"
-        [ ("auto", (Auto : length)) ]
-        ~default:(read_length ~with_keywords:false)
-        t
-  in
+  let read_margin_component = read_margin_length in
   Cursor.enum "margin"
     [
       ("inherit", [ (Inherit : length) ]);

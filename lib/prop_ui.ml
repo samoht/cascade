@@ -229,11 +229,14 @@ let read_non_negative_duration t =
   | S f when f < 0. -> Cursor.err_invalid t "negative duration"
   | duration -> duration
 
+let read_interest_delay_item t : interest_delay_item =
+  if Cursor.try_ident "normal" t then Normal
+  else Time (read_non_negative_duration t)
+
 let rec read_interest_delay ?(longhand = false) t : interest_delay =
   Cursor.enum_or_var "interest-delay"
     [
-      ("normal", (Normal : interest_delay));
-      ("inherit", Inherit);
+      ("inherit", (Inherit : interest_delay));
       ("initial", Initial);
       ("unset", Unset);
       ("revert", Revert);
@@ -242,20 +245,27 @@ let rec read_interest_delay ?(longhand = false) t : interest_delay =
     ~var:(fun t -> Var (Values.read_var (read_interest_delay ~longhand) t))
     ~default:(fun t ->
       let at_most = if longhand then 1 else 2 in
-      Durations
+      Delays
         (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most
-           read_non_negative_duration t))
+           read_interest_delay_item t))
     t
+
+let normalize_interest_delay_item : interest_delay_item -> interest_delay_item =
+ fun item ->
+  match item with
+  | Normal -> item
+  | Time duration ->
+      let duration' =
+        Values.normalize_duration ~canonicalize_ms:false duration
+      in
+      if duration' == duration then item else Time duration'
 
 let rec normalize_interest_delay : interest_delay -> interest_delay =
  fun value ->
   match value with
-  | Durations durations ->
+  | Delays delays ->
       preserve_if_equal value
-        (Durations
-           (map_preserve
-              (Values.normalize_duration ~canonicalize_ms:false)
-              durations))
+        (Delays (map_preserve normalize_interest_delay_item delays))
   | Var v ->
       let v' = map_var_preserve normalize_interest_delay v in
       if v' == v then value else Var v'
@@ -571,11 +581,14 @@ let rec pp_caret : caret Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_caret ctx v
 
-let rec pp_interest_delay : interest_delay Pp.t =
+let pp_interest_delay_item : interest_delay_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Durations durations ->
-      Pp.list ~sep:Pp.space pp_duration_preserve_ms ctx durations
+  | Time duration -> pp_duration_preserve_ms ctx duration
+
+let rec pp_interest_delay : interest_delay Pp.t =
+ fun ctx -> function
+  | Delays delays -> Pp.list ~sep:Pp.space pp_interest_delay_item ctx delays
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -789,12 +802,44 @@ let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Lines n -> Pp.int ctx n
+  (* An [<integer>] slot: sec. 10.12 rounds the call and refuses the fraction
+     written on its own, and the count has to be positive, so the wrapper comes
+     off only around a leaf that is a line count by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:
+          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+        pp_webkit_line_clamp ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_webkit_line_clamp ctx v
+
+(* CSS Values 4 sec. 10.12 rounds a math function in an [<integer>] slot and
+   clamps it to the range, so a call that folds to a line count is that count
+   and one that does not keeps its wrapper. *)
+let rec numeric_line_clamp_calc_leaves :
+    webkit_line_clamp calc -> webkit_line_clamp calc = function
+  | Val (Lines n) -> Num (float_of_int n)
+  | Nested inner -> Nested (numeric_line_clamp_calc_leaves inner)
+  | Parens inner -> Parens (numeric_line_clamp_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_line_clamp_calc_leaves left,
+          op,
+          numeric_line_clamp_calc_leaves right )
+  | other -> other
+
+let normalize_webkit_line_clamp (value : webkit_line_clamp) : webkit_line_clamp
+    =
+  match value with
+  | Calc c -> (
+      match eval_calc (numeric_line_clamp_calc_leaves c) with
+      | Num n when Float.is_integer n && n >= 1. -> Lines (int_of_float n)
+      | folded -> if folded == c then value else Calc folded)
+  | value -> value
 
 let rec read_user_select t : user_select =
   Cursor.enum_or_var "user-select"
@@ -1082,7 +1127,15 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:
+      [
+        ("var", read_var);
+        (* CSS Values 4 sec. 10 allows a math function wherever an [<integer>]
+           is allowed. *)
+        ( "calc",
+          fun t ->
+            Calc (read_calc ~result_type:`Number read_webkit_line_clamp t) );
+      ]
     ~default:(fun t ->
       let n = Cursor.int t in
       if n <= 0 then Cursor.err_invalid t "-webkit-line-clamp must be positive";

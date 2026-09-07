@@ -65,10 +65,21 @@ module Shadow = struct
     let _ : bool = try_color () in
     let _ : bool = try_inset () in
     let lengths_rev = ref [] in
+    (* Sec. 6.2 writes the run [<length>{2} [ <length [0,inf]> <length>? ]?], so
+       every slot is a plain length - no percentage, nested in math or not, and
+       no keyword - and the blur is the one slot with a floor. A math function
+       holds no value to compare, so only a literal is turned away there. *)
     let rec read_lengths_loop n =
       if n >= 4 then ()
       else
-        match Cursor.option (fun t -> read_length t) t with
+        let allow_negative = n <> 2 in
+        match
+          Cursor.option
+            (fun t ->
+              read_length ~allow_negative ~with_keywords:false ~length_only:true
+                t)
+            t
+        with
         | Some l ->
             lengths_rev := l :: !lengths_rev;
             Cursor.ws t;
@@ -386,7 +397,11 @@ let normalize_logical_border_color ?(lossless = false) :
 let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
  fun value ->
   let normalize_body (s : shadow_body) : shadow_body =
-    let blur = option_map_preserve Values.normalize_length s.blur in
+    (* The blur is the one slot with a floor, so unwrapping a math function
+       there could turn a value browsers take into one they drop. *)
+    let blur =
+      option_map_preserve (Values.normalize_length ~non_negative:true) s.blur
+    in
     let spread = option_map_preserve Values.normalize_length s.spread in
     let color = option_map_preserve (normalize_color ~lossless) s.color in
     (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths
@@ -765,6 +780,37 @@ let normalize_border_width_clamp lower value upper : border_width =
           normalize_border_width_calc_arg value,
           normalize_border_width_calc_arg upper )
 
+(* CSS Values 4 sec. 10.12 keeps a math function valid where its range is
+   exceeded and clamps at used-value time, so [calc(-1px)] is a border width
+   Chrome computes as [0] and [-1px] one it drops. Unwrapping the call would
+   turn the first into the second, which is why {!pp_length} guards its own
+   unwrap the same way. *)
+let negative_border_width : border_width -> bool = function
+  | Px f
+  | Cm f
+  | Mm f
+  | Q f
+  | In f
+  | Pt f
+  | Pc f
+  | Rem f
+  | Em f
+  | Ex f
+  | Cap f
+  | Ic f
+  | Ric f
+  | Rlh f
+  | Ch f
+  | Lh f
+  | Vh f
+  | Vw f
+  | Vmin f
+  | Vmax f
+  | Pct f
+  | Dimension { value = f; _ } ->
+      f < 0.
+  | _ -> false
+
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
   | Thin -> Pp.string ctx "thin"
@@ -802,7 +848,10 @@ let rec pp_border_width : border_width Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | Fit_content -> Pp.string ctx "fit-content"
   | From_font -> Pp.string ctx "from-font"
-  | Calc cv -> pp_calc pp_border_width ctx cv
+  | Calc cv ->
+      pp_calc
+        ~unwrap:(fun v -> not (negative_border_width v))
+        pp_border_width ctx cv
   | Min args -> pp_border_width_minmax "min" ctx args
   | Max args -> pp_border_width_minmax "max" ctx args
   | Clamp (lower, value, upper) -> pp_border_width_clamp ctx lower value upper
@@ -1067,8 +1116,19 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
       pp_background_size ctx size
   | None -> ()
 
-let pp_border_image_slice_item ctx (value : border_image_slice_item) =
-  match value with Number n -> Values.pp_number ctx n | Pct n -> Pp.pct ctx n
+let rec pp_border_image_slice_item ctx (value : border_image_slice_item) =
+  match value with
+  | Number n -> Values.pp_number ctx n
+  | Pct n -> Pp.pct ctx n
+  | Calc c ->
+      (* CSS Values 4 sec. 10.13 keeps the call valid where the [0,inf] range is
+         exceeded, so [calc(-10%)] computes and a bare [-10%] is dropped. *)
+      Values.pp_calc ~unwrap_num:false
+        ~unwrap:(fun v ->
+          match (v : border_image_slice_item) with
+          | Pct f -> f >= 0.
+          | _ -> true)
+        pp_border_image_slice_item ctx c
 
 let pp_border_image_slice_offsets ctx { offsets; fill } =
   Pp.list ~sep:Pp.space pp_border_image_slice_item ctx offsets;
@@ -1342,8 +1402,11 @@ let ensure_non_negative_border_width t value =
    one. The units [border_width] names get their own arm; the rest keep their
    value and spelling in [Dimension], the way [length] itself does, so a unit
    [length] learns needs no second table here. *)
-let length_to_border_width t (length : length) : border_width =
-  let non_neg = ensure_non_negative_border_width t in
+let length_to_border_width ?(allow_negative = false) t (length : length) :
+    border_width =
+  let non_neg v =
+    if allow_negative then v else ensure_non_negative_border_width t v
+  in
   let typed_dimension ?repr value unit : border_width =
     let value = non_neg value in
     match String.lowercase_ascii unit with
@@ -1385,16 +1448,26 @@ let length_to_border_width t (length : length) : border_width =
 (* CSS Backgrounds 3 (ED) sec. 3.3: [<line-width>] is [<length [0,inf]> | thin |
    medium | thick] and takes no percentage, which Chrome 146 refuses.
    [length_only] refuses one nested in math as well. *)
-let read_length_as_border_width t =
-  let length = read_length ~with_keywords:false ~length_only:true t in
-  length_to_border_width t length
-
-let rec read_border_width t : border_width =
-  let read_var t : border_width = Var (read_var read_border_width t) in
-  let read_calc t : border_width =
-    Calc (read_calc ~result_type:`Value read_border_width t)
+let read_length_as_border_width ?(allow_negative = false) t =
+  let length =
+    read_length ~allow_negative ~with_keywords:false ~length_only:true t
   in
-  let read_math_arg t = read_calc_expr read_border_width t in
+  length_to_border_width ~allow_negative t length
+
+(* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
+   the [0,inf] range of [<line-width>] is checked on the value it resolves to,
+   not on each operand. So [calc(-1px)] reads and a literal [-1px] does not. *)
+let rec read_border_width_in_math t : border_width =
+  read_border_width_with ~allow_negative:true t
+
+and read_border_width_with ~allow_negative t : border_width =
+  let read_var t : border_width =
+    Var (read_var (read_border_width_with ~allow_negative) t)
+  in
+  let read_calc t : border_width =
+    Calc (read_calc ~result_type:`Value read_border_width_in_math t)
+  in
+  let read_math_arg t = read_calc_expr read_border_width_in_math t in
   let read_min t : border_width =
     Min
       (Cursor.call "min" t
@@ -1432,7 +1505,11 @@ let rec read_border_width t : border_width =
         ("max", read_max);
         ("clamp", read_clamp);
       ]
-    ~default:read_length_as_border_width t
+    ~default:(read_length_as_border_width ~allow_negative)
+    t
+
+let read_border_width t : border_width =
+  read_border_width_with ~allow_negative:false t
 
 module Border = struct
   type component =
@@ -2036,8 +2113,21 @@ let rec read_background t : background =
     ~default:(read_background_default read_background)
     t
 
+(* CSS Backgrounds 3 sec. 2.1 gives the [background] shorthand a [<bg-layer># ,
+   <final-bg-layer>]: only the LAST layer carries a [<background-color>],
+   because the colour paints once behind every layer rather than per layer. A
+   colour in an earlier one fills no slot. *)
 let read_backgrounds t : background list =
-  Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
+  let layers = Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t in
+  let count = List.length layers in
+  List.iteri
+    (fun i (layer : background) ->
+      match layer with
+      | Shorthand { color = Some _; _ } when i < count - 1 ->
+          Cursor.err_invalid t "only the final background layer takes a colour"
+      | _ -> ())
+    layers;
+  layers
 
 (* CSS Backgrounds 3 sec. 5.1: [border-radius = <length-percentage [0,inf]>{1,4}
    [ / <length-percentage [0,inf]>{1,4} ]?]. Reads 1-4 horizontal radii then,
@@ -2105,7 +2195,10 @@ let normalize_border_width (bw : border_width) : border_width =
   match bw with
   | Calc c -> (
       match normalize_border_width_calc c with
-      | Val v -> v
+      (* The call stays around a negative for the reason {!pp_border_width}
+         keeps it: sec. 10.12 clamps [calc(-1px)] at used-value time and drops a
+         bare [-1px]. *)
+      | Val v when not (negative_border_width v) -> v
       | folded -> Calc folded)
   | Min args -> normalize_border_width_minmax `Min args
   | Max args -> normalize_border_width_minmax `Max args
@@ -2257,11 +2350,27 @@ let read_border_image_number t =
   | _ -> ());
   value
 
+let read_slice_percentage_leaf t : border_image_slice_item =
+  Cursor.ws t;
+  Pct (Cursor.pct t)
+
 let read_border_image_slice_item t : border_image_slice_item =
   match Cursor.percentage_opt t with
   | Some n when n >= 0. -> Pct n
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
-  | None -> Number (read_border_image_number t)
+  | None ->
+      (* The number side reads its own math; a percentage one reaches the second
+         arm only because [read_border_image_number] refuses it. *)
+      Cursor.one_of
+        [
+          (fun t ->
+            (Number (read_border_image_number t) : border_image_slice_item));
+          (fun t ->
+            Calc
+              (Values.read_calc ~result_type:`Number_or_value
+                 read_slice_percentage_leaf t));
+        ]
+        t
 
 let read_border_image_slice_value t values has_fill =
   match Cursor.option read_border_image_slice_item t with
@@ -2438,52 +2547,85 @@ let read_mask_border_mode t =
    the two grammars apart, so [mask_mode] is what says which one the reader is
    holding. CSS Values 4 (ED) sec. 2.2 has [||] ask for one or more of its
    options, so a value that fills no slot matches neither grammar. *)
-let read_border_image_shorthand ~mask_mode t : border_image =
-  let read_mode t =
-    if mask_mode then Cursor.option read_mask_border_mode t
-    else (None : mask_border_mode option)
-  in
-  let source = Cursor.option read_background_image t in
+(* CSS Backgrounds 3 sec. 5.1 gives border-image-source a single [<image>],
+   and CSS Masking 1 (ED) sec. 8.2 gives mask-border-source the same, where
+   background-image takes a comma-separated list of them. *)
+let read_border_image_source t : background_image = read_bg_image t
+
+(* The slice carries its slash-separated width and outset, so the three read as
+   one member of the [||] rather than three that could be reordered apart. *)
+let read_border_image_slice_group t =
+  let slice = read_border_image_slice_offsets t in
   Cursor.ws t;
-  (* sec. 8.7 puts [mask-border-mode] in [||] combination with the other slots,
-     so the keyword may appear after [<source>] (before the slice) or after
-     [<repeat>]. Try the early slot first; combine with the trailing slot
-     below. *)
-  let mode_early = read_mode t in
-  Cursor.ws t;
-  let slice = Cursor.option read_border_image_slice_offsets t in
-  let width, outset =
+  if Cursor.slash_opt t then (
+    let width =
+      Some
+        (read_border_image_box_values ~what:"width" read_border_image_width_item
+           t)
+    in
     Cursor.ws t;
-    if Cursor.slash_opt t then (
-      let width =
+    if Cursor.slash_opt t then
+      ( slice,
+        width,
         Some
-          (read_border_image_box_values ~what:"width"
-             read_border_image_width_item t)
-      in
-      Cursor.ws t;
-      if Cursor.slash_opt t then
-        ( width,
-          Some
-            (read_border_image_box_values ~what:"outset"
-               read_border_image_outset_item t) )
-      else (width, None))
-    else (None, None)
+          (read_border_image_box_values ~what:"outset"
+             read_border_image_outset_item t) )
+    else (slice, width, None))
+  else (slice, None, None)
+
+let read_border_image_shorthand ~mask_mode t : border_image =
+  let source : background_image option ref = ref Option.None
+  and slice : border_image_slice_offsets option ref = ref Option.None
+  and width : border_image_width_item list option ref = ref Option.None
+  and outset : border_image_outset_item list option ref = ref Option.None
+  and repeat : border_image_repeat_keyword list option ref = ref Option.None
+  and mode : mask_border_mode option ref = ref Option.None in
+  let fill : 'a. filled:bool -> (Cursor.t -> 'a) -> ('a -> unit) -> bool =
+   fun ~filled read set ->
+    (not filled)
+    &&
+    match Cursor.option read t with
+    | Some value ->
+        set value;
+        true
+    | None -> false
   in
-  Cursor.ws t;
-  let repeat = Cursor.option read_border_image_repeat_keywords t in
-  Cursor.ws t;
-  let mode_late : mask_border_mode option =
-    if Option.is_some mode_early then (None : mask_border_mode option)
-    else read_mode t
+  (* Sec. 6.1 combines the source, the slice group and the repeat with [||], and
+     CSS Masking 1 (ED) sec. 8.7 adds [mask-border-mode] to the same group, so
+     each fills its slot wherever the author wrote it. *)
+  let rec loop () =
+    Cursor.ws t;
+    let filled =
+      fill ~filled:(Option.is_some !source) read_border_image_source (fun v ->
+          source := Option.Some v)
+      || fill ~filled:(Option.is_some !slice) read_border_image_slice_group
+           (fun (s, w, o) ->
+             slice := Option.Some s;
+             width := w;
+             outset := o)
+      || fill ~filled:(Option.is_some !repeat) read_border_image_repeat_keywords
+           (fun v -> repeat := Option.Some v)
+      || mask_mode
+         && fill ~filled:(Option.is_some !mode) read_mask_border_mode (fun v ->
+             mode := Option.Some v)
+    in
+    if filled then loop ()
   in
-  let mode = match mode_early with Some _ -> mode_early | None -> mode_late in
-  (match (source, slice, repeat, mode) with
-  | None, None, None, None ->
+  loop ();
+  (match (!source, !slice, !repeat, !mode) with
+  | Option.None, Option.None, Option.None, Option.None ->
       Cursor.err_expected t
         (if mask_mode then "mask-border source, slice, repeat, or mode"
          else "border-image source, slice, or repeat")
   | _ -> ());
-  { source; slice; width; outset; repeat; mode }
+  {
+    source = !source;
+    slice = !slice;
+    width = !width;
+    outset = !outset;
+    repeat = !repeat;
+    mode = !mode;
+  }
 
 let read_border_image t : border_image =
   read_border_image_shorthand ~mask_mode:false t

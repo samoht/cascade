@@ -687,12 +687,12 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face{font-family:Brand;src:local(Brand),url(brand.woff2)format(woff2)tech(variations);font-weight:400 \
-       700;font-style:normal italic;font-stretch:75% \
+       700;font-style:oblique 0deg 10deg;font-stretch:75% \
        125%;font-display:optional;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
      url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: 400 \
-     700; font-style: normal italic; font-stretch: 75% 125%; font-display: \
-     optional; unicode-range: U+0025-00FF; }";
+     700; font-style: oblique 0deg 10deg; font-stretch: 75% 125%; \
+     font-display: optional; unicode-range: U+0025-00FF; }";
   check_stylesheet
     ~expected:
       "@font-face{font-family:MetricAdjusted;src:url(metric.woff2);size-adjust:92%;ascent-override:90%;descent-override:25%;line-gap-override:normal}"
@@ -725,6 +725,112 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
   check_stylesheet ~expected:"" "@font-face { font-family: Brand; }";
   check_stylesheet ~expected:"" "@font-face { font-display: swap; }";
+  (* CSS Fonts 4 (ED) sec. 4.4 writes the font property descriptors' grammars
+     out in full, and sec. 4.6 gives the settings descriptors the corresponding
+     property's values "except that the CSS-wide keywords are omitted". No
+     descriptor grammar takes one, so the declaration goes and the rest of the
+     rule stays. The descriptors below delegate to the property readers, which
+     take them legitimately in property position. *)
+  List.iter
+    (fun keyword ->
+      List.iter
+        (fun descriptor ->
+          check_stylesheet
+            ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+            (String.concat ""
+               [
+                 "@font-face { font-family: Brand; src: url(font.woff2); ";
+                 descriptor;
+                 ": ";
+                 keyword;
+                 "; }";
+               ]))
+        [
+          "font-style";
+          "font-weight";
+          "font-stretch";
+          "font-feature-settings";
+          "font-variation-settings";
+          "font-variant";
+          "font-display";
+          "size-adjust";
+          "ascent-override";
+          "descent-override";
+          "line-gap-override";
+          "unicode-range";
+        ])
+    [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ];
+  (* CSS Fonts 4 (ED) sec. 4.4 opens each of the three font property descriptors
+     with [auto] and gives it as their initial value, so a variable font is
+     asked for its own range rather than told one. Chrome 153 keeps all
+     three. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-style:auto}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: auto; }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-weight:auto}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: auto; \
+     }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:auto}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     auto; }";
+  (* [auto] is the whole value: sec. 4.4 puts it outside the {1,2} range, so it
+     pairs with nothing. *)
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: auto \
+     400; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: normal \
+     auto; }";
+  (* sec. 4.4 spells the font-style descriptor [auto | normal | italic | left |
+     right | oblique [<angle>{1,2}]?], so the only range it grants is a pair of
+     oblique angles. Two keywords are two values of a grammar that takes one,
+     and Chrome 153 drops them. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-style:oblique \
+       0deg 10deg}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: \
+     oblique 0deg 10deg; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: normal \
+     italic; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: italic \
+     oblique; }";
+  (* sec. 4.4 writes the weight descriptor [auto | <font-weight-absolute>{1,2}]
+     over [<font-weight-absolute> = normal | bold | <number [1,1000]>], so the
+     relative keywords the property takes are not values here: there is no
+     inherited weight for them to be relative to. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-weight:normal \
+       bold}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     normal bold; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     lighter; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     bolder; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: 400 \
+     lighter; }";
+  (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
+     in either costs the whole rule the way any other missing one does. *)
+  check_stylesheet ~expected:""
+    "@font-face { font-family: inherit; src: url(font.woff2); }";
+  check_stylesheet ~expected:"" "@font-face { font-family: Brand; src: unset; }";
+  (* A family name that merely starts with one is a name, not a keyword: sec.
+     2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:inherited Sans;src:url(font.woff2)}"
+    "@font-face { font-family: inherited Sans; src: url(font.woff2); }";
   (* An unknown descriptor (e.g. Fontsource's non-standard font-named-instance)
      is dropped; the rest of the @font-face is kept, like browsers. *)
   check_stylesheet
@@ -1411,6 +1517,14 @@ let spec_strict_accepts_valid_stylesheets () =
       ("empty page margin box", "@page { @top-center { } }");
       ( "scope with end boundary",
         "@scope (.card) to (.footer) { .title { color: red } }" );
+      (* CSS Cascade 6 sec. 3.5.2 gives [@scope] a [<block-contents>] body, so a
+         declaration written straight into it applies to the scoping root.
+         Chrome 153 reports one as a [CSSNestedDeclarations] inside the
+         [CSSScopeRule]; cascade used to read the body as rules only and drop
+         the whole at-rule. *)
+      ("scope with a bare declaration", "@scope (.s) { color: green }");
+      ( "scope mixing a declaration and a rule",
+        "@scope (.s) { color: green; .a { color: red } }" );
       ( "font-face wildcard unicode range",
         "@font-face { font-family: Icons; src: url(icons.woff2); \
          unicode-range: U+4?? }" );
@@ -2284,6 +2398,15 @@ let spec_lenient_recovery_keyframes_at_rule () =
        "from { color: red } @zzz [a] { to { color: pink } } 50% { background: \
         lime }")
     recovered 1;
+  (* Sec. 5.5.5 consumes an AT-RULE when a block's contents meet an at-keyword,
+     so it ends at its own block rather than at the next [;]: a keyframe's
+     declarations after one survive. Chrome 153 keeps both frames here. *)
+  lenient_recover "an at-rule inside a keyframe block costs only itself"
+    "@keyframes k { from { y: 0 } to { @e {} opacity: 1 } }"
+    "@keyframes k{0%{y:0}to{opacity:1}}" 1;
+  lenient_recover "an at-rule inside a descriptor block costs only itself"
+    "@font-face { font-family: X; @e {} src: url(a.woff2) }"
+    "@font-face{font-family:X;src:url(a.woff2)}" 1;
   lenient_recover "two at-rules in @keyframes are dropped one at a time"
     (body
        "from { color: red } @media print { a: b } @supports (display: grid) { \
@@ -3861,9 +3984,14 @@ let spec_current_at_rules () =
        --brand{font-family:Brand;base-palette:1;override-colors:0 red}"
     "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
      override-colors: 0 red; }";
+  (* CSS Fonts 4 (ED) sec. 4 lists the @font-face descriptors and [font-tech] is
+     not one: [<font-tech>] is the keyword sec. 11.1 defines for [tech()] inside
+     [src] and for [font-tech()] in @supports. Chrome 153 drops the declaration,
+     and BCD carries a css.at-rules.font-face key for every real descriptor and
+     none for this one. *)
   check_stylesheet
     ~expected:
-      "@font-face{font-family:ColorFont;src:url(color.woff2)tech(color-COLRv1);font-tech:color-COLRv1}"
+      "@font-face{font-family:ColorFont;src:url(color.woff2)tech(color-COLRv1)}"
     "@font-face { font-family: ColorFont; src: url(color.woff2) \
      tech(color-COLRv1); font-tech: color-COLRv1; }";
   check_stylesheet ~expected:"@view-transition{navigation:auto}"
@@ -6987,17 +7115,29 @@ let bg321_multi_layer_kept () =
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
+  (* Sec. 2.10 spells the shorthand [<bg-layer>#? , <final-bg-layer>], and only
+     the final layer carries a [<background-color>]: sec. 2.1 paints the colour
+     once below every layer rather than per layer. So the colour goes LAST, and
+     a colour in an earlier layer is no background at all. Chrome 153 agrees: it
+     drops [background: red, url(x.png)] and keeps the reverse. *)
   Alcotest.(check bool)
     "multi-layer background preserves both layers" true
-    (let out = normalize ".x { background: red, url(x.png) }" in
+    (let out = normalize ".x { background: url(x.png), red }" in
      Astring.String.is_infix ~affix:"red" out
-     && Astring.String.is_infix ~affix:"url(x.png)" out)
+     && Astring.String.is_infix ~affix:"url(x.png)" out);
+  Alcotest.(check bool)
+    "a colour in an earlier layer is dropped" true
+    (match Css.of_string ~strict:true ".x { background: red, url(x.png) }" with
+    | Ok _ -> false
+    | Error _ -> true)
 
 let fidelity_background_preserved () =
   pretty_preserves ".x { background: red 0% 0% }" [ "0% 0%" ];
   pretty_preserves ".x { background: red 50% 50% / cover no-repeat }"
     [ "50% 50%"; "cover"; "no-repeat" ];
-  pretty_preserves ".x { background: red, url(x.png) }" [ "red"; "url(x.png)" ]
+  (* The colour belongs to the final layer (sec. 2.10), so the round trip is
+     asked of the spelling that has one. *)
+  pretty_preserves ".x { background: url(x.png), red }" [ "red"; "url(x.png)" ]
 
 (* {2 Strings and escapes (CSS Syntax L3 sec. 4.3.7)} *)
 
@@ -7232,11 +7372,47 @@ let s4370_supports_property_name_escapes () =
         "@supports(--x\\;y:red)and (color:red){.a{color:red}}" );
       ( "@supports not (--x\\3b y:red){.a{color:red}}",
         "@supports not (--x\\;y:red){.a{color:red}}" );
+      (* Sec. 7.4 allows a token stream simplification and forbids a logical
+         one. An escape decodes to the same [<ident-token>] in every conformant
+         implementation, so minified output may take the shortest spelling of a
+         name however the author wrote it, and the name of a typed property
+         answers to that as a custom property's does. What the author wrote
+         survives unminified; see the pretty check below. *)
+      ( "@supports (colo\\r:green){.a{color:red}}",
+        "@supports(color:green){.a{color:red}}" );
+      ("@supports (colo\\r:){.a{color:red}}", "@supports(color:){.a{color:red}}");
+      ( "@supports (unknown\\-prop:x){.a{color:red}}",
+        "@supports(unknown-prop:x){.a{color:red}}" );
+      (* Both halves take their canonical spelling under minify, and each is
+         independent of the other. *)
+      ( "@supports (colo\\r:gre\\en){.a{color:red}}",
+        "@supports(color:gre\\E n){.a{color:red}}" );
+      ( "@supports (color:gre\\en){.a{color:red}}",
+        "@supports(color:gre\\E n){.a{color:red}}" );
       (* A name needing no escape keeps its spelling. *)
       ( "@supports (--xy:red){.a{color:red}}",
         "@supports(--xy:red){.a{color:red}}" );
       ( "@supports (color:red){.a{color:red}}",
         "@supports(color:red){.a{color:red}}" );
+    ]
+
+(* Sec. 7.4 has [conditionText] return "the condition that was specified", and
+   the token stream simplifications it allows are permitted rather than
+   required, so unminified output writes back the bytes the author wrote.
+   Measured on Chrome 153: conditionText echoes those same bytes, normalising
+   neither [colo\r] to [color] nor [--x\3b y] to [--x\;y]. *)
+let s4370_supports_property_name_pretty_verbatim () =
+  List.iter
+    (fun (css, fragment) -> pretty_preserves css [ fragment ])
+    [
+      ("@supports (colo\\r:green){.a{color:red}}", "colo\\r");
+      ("@supports (colo\\r:){.a{color:red}}", "colo\\r");
+      ("@supports (--x\\3b y:red){.a{color:red}}", "--x\\3b y");
+      ("@supports (unknown\\-prop:x){.a{color:red}}", "unknown\\-prop");
+      ("@supports not (colo\\r:green){.a{color:red}}", "colo\\r");
+      (* The value half keeps the author's spelling on the same terms. *)
+      ("@supports (color:gre\\en){.a{color:red}}", "gre\\en");
+      ("@supports (colo\\r:gre\\en){.a{color:red}}", "gre\\en");
     ]
 
 let fidelity_string_escape_preserved () =
@@ -9672,6 +9848,9 @@ let additional_tests =
     ( "spec conditional 3 2.2 supports property name escapes",
       `Quick,
       s4370_supports_property_name_escapes );
+    ( "spec conditional 3 7.4 supports property name pretty verbatim",
+      `Quick,
+      s4370_supports_property_name_pretty_verbatim );
     ("spec cascade 5 6.4.1 layer name parts", `Quick, s641_layer_name_parts);
     ( "fidelity string escape preserved",
       `Quick,

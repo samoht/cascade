@@ -39,7 +39,6 @@ let font_face_descriptors =
     ("font-variant", "normal");
     ("font-feature-settings", "normal");
     ("font-variation-settings", "normal");
-    ("font-tech", "variations");
     ("size-adjust", "100%");
     ("ascent-override", "normal");
     ("descent-override", "normal");
@@ -100,7 +99,6 @@ let test_inline_font_face_var_descriptors () =
       "font-variant";
       "font-feature-settings";
       "font-variation-settings";
-      "font-tech";
       "size-adjust";
       "ascent-override";
       "descent-override";
@@ -146,7 +144,6 @@ let test_inline_font_face_var_resolves () =
       ("ascent-override", "normal");
       ("descent-override", "90%");
       ("line-gap-override", "10%");
-      ("font-tech", "variations");
       ("size-adjust", "100%");
     ]
 

@@ -9,8 +9,9 @@
 
    This run gives the manifest a source of truth that is not cascade. Every
    positive must be valid CSS to a browser and every negative must be invalid to
-   it, and the exceptions are enumerated below with the spec text that justifies
-   each one, so an excuse cannot be added without saying what it is for.
+   it, and a difference stands unless the support dataset names a production
+   this browser has not shipped, which is a lookup rather than a sentence
+   somebody wrote.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER silences the run, and a silenced gate is not a pass: only
@@ -18,18 +19,11 @@
 
 let ( // ) = Filename.concat
 
-(* The browser's own gaps live in Chrome_gaps, shared with the accept-set
-   differential next door: both ask the same browser the same question, so a
-   browser that catches up is recorded once. *)
-
-type excuse = Chrome_gaps.excuse = {
-  properties : string list;
-  value : string;
-  why : string;
-}
-
-let spec_ahead = Chrome_gaps.spec_ahead
-let lenient = Chrome_gaps.lenient
+(* Why a browser's answer differs from the manifest is a lookup, not a sentence
+   someone wrote: Chrome_gaps derives the BCD compat key naming the production
+   and asks Cascade.Support whether this build has shipped it. Shared with the
+   accept-set differential next door, so a browser that catches up moves both
+   answers at the next dataset run. *)
 
 (* ===== Jobs ===== *)
 
@@ -137,22 +131,20 @@ let parse_driver_output lines =
 
 type outcome =
   | Confirmed  (** the browser and the manifest agree *)
-  | Excused of string  (** they differ, and an entry above says why *)
+  | Explained of string
+      (** they differ, and the support dataset names the production *)
   | Wrong of string  (** they differ, and nothing says why *)
   | Split  (** the two oracles disagree, so neither is the answer *)
   | Unanswered of string  (** the browser did not answer *)
 
 let hits = Hashtbl.create 64
-let excuse_key property value = String.concat "\000" [ property; value ]
 
-let excuse table property value =
-  match Chrome_gaps.find table ~property ~value with
-  | None -> None
-  | Some e ->
-      Hashtbl.replace hits (excuse_key property value) ();
-      Some e.why
+let cite explanation =
+  let key = Chrome_gaps.explanation_key explanation in
+  Hashtbl.replace hits key ();
+  Explained key
 
-let judge job verdict =
+let judge ~chrome job verdict =
   match verdict.error with
   | Some e -> Unanswered e
   | None when not (Bool.equal verdict.set_property verdict.supports) -> Split
@@ -163,19 +155,25 @@ let judge job verdict =
       | Positive when accepted -> Confirmed
       | Negative when not accepted -> Confirmed
       | Positive -> (
-          match excuse spec_ahead job.property job.value with
-          | Some why -> Excused why
+          match
+            Chrome_gaps.explains_rejection ~chrome ~property:job.property
+              ~value:job.value ()
+          with
+          | Some e -> cite e
           | None -> Wrong "the browser rejects this positive")
       | Negative -> (
-          match excuse lenient job.property job.value with
-          | Some why -> Excused why
+          match
+            Chrome_gaps.explains_acceptance ~chrome ~property:job.property
+              ~value:job.value ()
+          with
+          | Some e -> cite e
           | None -> Wrong "the browser accepts this negative"))
 
 (* ===== Reporting ===== *)
 
 let failures = ref 0
 let confirmed = ref 0
-let excused = ref 0
+let explained = ref 0
 
 let fail line =
   incr failures;
@@ -196,7 +194,7 @@ let record job outcome =
       match job.kind with
       | Probe -> ()
       | Positive | Negative -> incr confirmed)
-  | Excused _ -> incr excused
+  | Explained _ -> incr explained
   | Wrong why -> fail (String.concat "" [ describe job; ": "; why ])
   | Split ->
       fail
@@ -208,28 +206,6 @@ let record job outcome =
            ])
   | Unanswered e ->
       fail (String.concat "" [ describe job; ": the browser raised: "; e ])
-
-(* An entry that excuses nothing is a claim nobody checks any more. *)
-let check_unused table label =
-  List.iter
-    (fun (e : excuse) ->
-      let used =
-        List.exists
-          (fun property -> Hashtbl.mem hits (excuse_key property e.value))
-          e.properties
-      in
-      if not used then
-        fail
-          (String.concat ""
-             [
-               label;
-               " excuses nothing any more: ";
-               e.value;
-               " (";
-               String.concat ", " e.properties;
-               ")";
-             ]))
-    table
 
 (* The skip list has to describe the browser in front of it, in both
    directions. *)
@@ -317,6 +293,17 @@ let () =
     | Some c -> c
     | None -> Browser.skip "property_vectors" "no headless browser"
   in
+  (* The support dataset is keyed by version, so the run says which build it
+     measured rather than assuming the one the default contract names. *)
+  let chrome_version =
+    match Browser.chrome_version chrome with
+    | Some v -> v
+    | None ->
+        prerr_endline
+          "property_vectors: the browser did not report a version, so no \
+           support fact can be keyed to this run";
+        exit 1
+  in
   let jobs = jobs () in
   let script_dir = Filename.dirname Sys.executable_name in
   let work = Filename.get_temp_dir_name () // "cascade-property-vectors" in
@@ -353,11 +340,9 @@ let () =
               Hashtbl.replace implemented job.property
                 (verdict.supports && verdict.set_property)
           | Positive | Negative -> ());
-          record job (judge job verdict))
+          record job (judge ~chrome:chrome_version job verdict))
     jobs;
   check_unarbitrable implemented;
-  check_unused spec_ahead "a spec-ahead-of-the-browser entry";
-  check_unused lenient "a browser-leniency entry";
   let is_probe job =
     match job.kind with Probe -> true | Positive | Negative -> false
   in
@@ -377,8 +362,31 @@ let () =
     (List.length jobs - probes)
     (List.length Cascade_spec_inventory.Property_grammar.rows)
     skipped elapsed;
-  Fmt.pr "  confirmed: %d, excused: %d, failures: %d@." !confirmed !excused
+  Fmt.pr "  confirmed: %d, explained: %d, failures: %d@." !confirmed !explained
     !failures;
+  (* The same grouping accept_set reports: which side of each explained
+     divergence the generated support table blames. A key the dataset says every
+     target ships would be covering a defect rather than citing a fact, and
+     accept_set fails on one, so this reports the split without repeating that
+     check. *)
+  let tally = Hashtbl.create 4 in
+  Hashtbl.iter
+    (fun key () ->
+      let v = Chrome_gaps.verdict_of Cascade.Support.evergreen key in
+      Hashtbl.replace tally v
+        (1 + Option.value ~default:0 (Hashtbl.find_opt tally v)))
+    hits;
+  Fmt.pr "  explained by verdict:@.";
+  List.iter
+    (fun v ->
+      match Hashtbl.find_opt tally v with
+      | None | Some 0 -> ()
+      | Some n -> Fmt.pr "    %3d  %s@." n (Chrome_gaps.verdict_name v))
+    [
+      Chrome_gaps.Cascade_wrong;
+      Chrome_gaps.Browser_behind;
+      Chrome_gaps.Needs_measurement;
+    ];
   (* A run that confirms nothing is not a clean run, it is a blind one. *)
   if !confirmed = 0 then fail "not one vector was confirmed against the browser";
   if !failures > 0 then exit 1

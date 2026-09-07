@@ -12,10 +12,11 @@ open Values
 open Properties_intf
 open Prop_common
 
-let read_line_height_length t : line_height =
+let read_line_height_length ?(allow_negative = false) t : line_height =
   let n, repr, unit = Cursor.number_repr_with_unit t in
   let n, repr = normalize_signed_zero n repr in
-  if n < 0. then Cursor.err_invalid t "line-height cannot be negative"
+  if n < 0. && not allow_negative then
+    Cursor.err_invalid t "line-height cannot be negative"
   else
     let authored () : line_height = Number { value = n; unit; repr } in
     match unit with
@@ -58,7 +59,15 @@ let rec read_font_weight t : font_weight =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:
+      [
+        ("var", read_var);
+        (* CSS Values 4 sec. 10 allows a math function wherever a [<number>] is
+           allowed. One that folds to a constant becomes that weight and is
+           range-checked with it; one that does not stays a calc. *)
+        ( "calc",
+          fun t -> Calc (read_calc ~result_type:`Number read_font_weight t) );
+      ]
     ~default:(fun t ->
       let weight = Cursor.number t in
       if weight >= 1. && weight <= 1000. then (Weight weight : font_weight)
@@ -197,6 +206,24 @@ let rec pp_font_language_override : font_language_override Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_language_override ctx v
 
+(* An OpenType tag is four printable ASCII characters. CSS Fonts 4 sec. 6.13
+   pads a shorter font-language-override tag with spaces before matching it, so
+   there the tag may be one to four. *)
+let read_opentype_tag ?(padded = false) t =
+  let tag = Cursor.string t in
+  let printable_ascii c =
+    let code = Char.code c in
+    code >= 0x20 && code <= 0x7E
+  in
+  let length = String.length tag in
+  let fits = if padded then length >= 1 && length <= 4 else length = 4 in
+  if (not fits) || not (String.for_all printable_ascii tag) then
+    Cursor.err t
+      (if padded then
+         "OpenType tag must contain one to four printable ASCII characters"
+       else "OpenType tag must contain exactly four printable ASCII characters");
+  tag
+
 let rec read_font_language_override t : font_language_override =
   Cursor.enum_or_calls "font-language-override"
     [
@@ -208,7 +235,8 @@ let rec read_font_language_override t : font_language_override =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_font_language_override t)) ]
-    ~default:(fun t -> (String (Cursor.string t) : font_language_override))
+    ~default:(fun t ->
+      (String (read_opentype_tag ~padded:true t) : font_language_override))
     t
 
 let rec pp_font_synthesis_style : font_synthesis_style Pp.t =
@@ -740,14 +768,14 @@ let unquote_font_family_strings components =
     | [ w ] -> [ Component.Preserved (Token.v ~kind:(Token.Ident w) ~loc) ]
     | w :: rest ->
         Component.Preserved (Token.v ~kind:(Token.Ident w) ~loc)
-        :: Component.Preserved (Token.v ~kind:Token.Whitespace ~loc)
+        :: Component.Preserved (Token.v ~kind:(Token.Whitespace " ") ~loc)
         :: interleave loc rest
   in
   let result =
     List.concat_map
       (fun c ->
         match c with
-        | Component.Preserved { kind = Token.String { value; _ }; loc }
+        | Component.Preserved { kind = Token.String { value; _ }; loc; _ }
           when can_unquote_font_family_name value ->
             changed := true;
             interleave loc (words_of value)
@@ -1291,6 +1319,14 @@ let rec pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* CSS Values 4 sec. 10.12 keeps a math function valid past the [0,inf] range
+   CSS Inline 3 sec. 5.1 gives line-height, and clamps at used-value time, so
+   [calc(-10%)] computes and a bare [-10%] is dropped. The call stays on a
+   negative for that reason. *)
+let negative_line_height : line_height -> bool = function
+  | Num f | Px f | Rem f | Em f | Pct f | Number { value = f; _ } -> f < 0.
+  | _ -> false
+
 let rec pp_line_height : line_height Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
@@ -1314,7 +1350,10 @@ let rec pp_line_height : line_height Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_line_height ctx v
-  | Calc c -> pp_calc pp_line_height ctx c
+  | Calc c ->
+      pp_calc
+        ~unwrap:(fun v -> not (negative_line_height v))
+        pp_line_height ctx c
 
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
@@ -1323,6 +1362,16 @@ let rec pp_font_weight : font_weight Pp.t =
   | Bold -> Pp.string ctx "bold"
   | Bolder -> Pp.string ctx "bolder"
   | Lighter -> Pp.string ctx "lighter"
+  (* CSS Values 4 sec. 10.12 clamps a math function's result to the range at
+     computed-value time, so [calc(0)] is a weight where the bare [0] is not:
+     the wrapper comes off only when what is inside is a value on its own. *)
+  | Calc c ->
+      let in_range n = n >= 1. && n <= 1000. in
+      pp_calc
+        ~unwrap_num:(match c with Num n -> in_range n | _ -> true)
+        ~unwrap:(fun (v : font_weight) ->
+          match v with Weight n -> in_range n | _ -> true)
+        pp_font_weight ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1409,11 +1458,34 @@ let rec pp_font : font Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font ctx v
 
+(* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
+   the [0,inf] range of sec. 5.1 is checked on the value it resolves to, not on
+   each operand, so [calc(-10%)] reads where a literal [-10%] does not. *)
+let rec read_line_height_in_math t : line_height =
+  let read_var t : line_height = Var (read_var read_line_height_in_math t) in
+  let read_calc t : line_height =
+    Calc
+      (read_calc ~result_type:`Number_or_value read_line_height_in_math t
+      |> numeric_line_height_calc_leaves)
+  in
+  Cursor.enum_or_calls "line-height"
+    [
+      ("normal", Normal);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~default:(read_line_height_length ~allow_negative:true)
+    t
+
 let rec read_line_height t : line_height =
   let read_var t : line_height = Var (read_var read_line_height t) in
   let read_calc t : line_height =
     Calc
-      (read_calc ~result_type:`Number_or_value read_line_height t
+      (read_calc ~result_type:`Number_or_value read_line_height_in_math t
       |> numeric_line_height_calc_leaves)
   in
   Cursor.enum_or_calls "line-height"
@@ -1723,7 +1795,7 @@ let components_have_generic_family components =
 
 let long_generic_family_start r =
   let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> true
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
     | _ -> false
   in
   let is_comma = function
@@ -2199,17 +2271,6 @@ let rec pp_font_variant : font_variant Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_variant ctx v
 
-let read_opentype_tag t =
-  let tag = Cursor.string t in
-  let printable_ascii c =
-    let code = Char.code c in
-    code >= 0x20 && code <= 0x7E
-  in
-  if String.length tag <> 4 || not (String.for_all printable_ascii tag) then
-    Cursor.err t
-      "OpenType tag must contain exactly four printable ASCII characters";
-  tag
-
 let read_font_feature_value t : font_feature_value =
   match Cursor.option Cursor.int t with
   | Some value ->
@@ -2337,17 +2398,37 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
       | Option.Some f -> Num f
       | Option.None -> (
           match Values.eval_calc c with
-          | Values.Num f -> Num f
-          | Values.Val v -> v
+          | Values.Num f when f >= 0. -> Num f
+          | Values.Val v when not (negative_line_height v) -> v
           | folded -> Calc folded))
   | _ -> lh
 
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so each keyword and its number name one weight and the number
    is the shorter spelling. *)
-let normalize_font_weight : font_weight -> font_weight = function
+let rec numeric_font_weight_calc_leaves : font_weight calc -> font_weight calc =
+  function
+  | Val (Weight n) -> Num n
+  | Nested inner -> Nested (numeric_font_weight_calc_leaves inner)
+  | Parens inner -> Parens (numeric_font_weight_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_font_weight_calc_leaves left,
+          op,
+          numeric_font_weight_calc_leaves right )
+  | other -> other
+
+let rec normalize_font_weight : font_weight -> font_weight = function
   | Normal -> Weight 400.
   | Bold -> Weight 700.
+  (* CSS Values 4 sec. 10.12 clamps a math function's result to the range at
+     computed-value time, so [calc(0)] is a weight and the literal [0] is not:
+     unwrapping one outside [1,1000] would write CSS a browser drops. *)
+  | Calc c as value -> (
+      match eval_calc (numeric_font_weight_calc_leaves c) with
+      | Num n when n >= 1. && n <= 1000. -> Weight n
+      | Val v -> normalize_font_weight v
+      | folded -> if folded == c then value else Calc folded)
   | value -> value
 
 (* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()

@@ -22,6 +22,13 @@ let test_string_output () =
   Alcotest.(check string)
     "raw" "(width > 0px)"
     (to_string (of_string "(width > 0px)"));
+  (* A container condition is the question the rendering browser is asked, so
+     the escape the author wrote survives. CSS Syntax 3 sec. 4.3.7 decodes [\\0]
+     to U+FFFD, and writing that code point back raw is a different spelling of
+     the same query; Chrome 153 keeps the escape in [conditionText]. *)
+  Alcotest.(check string)
+    "an escape in a general-enclosed feature" "(min-width: 1\\0px)"
+    (to_string (of_string "(min-width: 1\\0px)"));
   Alcotest.(check string)
     "style query raw" "style(--theme: dark)"
     (to_string (of_string "style(--theme: dark)"));

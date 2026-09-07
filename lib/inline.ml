@@ -384,7 +384,7 @@ let lookup_visible_custom_components visible name =
 
 let trim_components components =
   let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> true
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
     | _ -> false
   in
   let rec drop = function hd :: tl when is_ws hd -> drop tl | xs -> xs in
@@ -787,11 +787,6 @@ let simplify_metric_override_descriptor visible =
     ~as_var:(function Font_face.Var v -> Some v | _ -> Option.None)
     ~of_var:(fun v -> (Font_face.Var v : Font_face.metric_override))
 
-let simplify_font_tech_descriptor visible =
-  simplify_typed_var visible ~read:read_font_tech_descriptor
-    ~as_var:(function Var v -> Some v | Tech _ -> Option.None)
-    ~of_var:(fun v -> (Var v : font_tech_descriptor))
-
 let simplify_size_adjust_descriptor visible =
   simplify_typed_var visible ~read:Font_face.read_size_adjust
     ~as_var:(function
@@ -817,7 +812,6 @@ let simplify_font_face_descriptor visible descriptor =
       ~font_variation_settings:
         (simplify_font_variation_settings_descriptor visible)
       ~metric_override:(simplify_metric_override_descriptor visible)
-      ~font_tech:(simplify_font_tech_descriptor visible)
       ~size_adjust:(simplify_size_adjust_descriptor visible)
       descriptor
   with
@@ -923,7 +917,7 @@ and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
 
 let strip_component_ws =
   List.filter (function
-    | Component.Preserved { kind = Token.Whitespace; _ } -> false
+    | Component.Preserved { kind = Token.Whitespace _; _ } -> false
     | _ -> true)
 
 let rec split_var_fallback acc = function
@@ -1015,7 +1009,8 @@ let rec refs_of_media : Media.t -> string list = function
 
 let refs_of_supports_feature : Supports.declaration_feature -> string list =
   function
-  | Declaration decl -> names_of_vars (Variables.vars_of_declarations [ decl ])
+  | Declaration (_, decl) ->
+      names_of_vars (Variables.vars_of_declarations [ decl ])
   | Empty _ | Unsupported _ | Vendor_flag_enabled -> []
 
 let rec refs_of_supports : Supports.t -> string list = function

@@ -27,6 +27,11 @@
    failing at baseline is opaque, and a mutant that only changes what it prints
    scores SURVIVED. The baseline is listed on every run for that reason.
 
+   A rule that PRINTS is listed there too, which is not the same as failing: the
+   browser harnesses summarise every run, so dune names them whether they pass
+   or not. What makes their failures count is that [signature] reads the [FAIL
+   <what>] lines they write themselves.
+
    [--list] enumerates the sites and stops, [--sample N] with [--seed S] draws a
    campaign, and [--only ID] replays one site. scripts/dune spells the
    invocations out.
@@ -411,15 +416,26 @@ let test_argv ~work ~jobs =
 
 (* The failing rules and test cases, as a sorted set. Everything else dune
    prints carries a run id, a timing or a temporary path, none of which say
-   anything about the mutant. *)
+   anything about the mutant.
+
+   Three markers, because the suite reports a failure three ways. Alcotest
+   writes [FAIL]. A rule that produces output at all makes dune print its
+   location, which is a header rather than a failure, but it cancels out of the
+   set diff and pins WHICH rule the run reached. And the browser-backed
+   harnesses print their own [FAIL <what>] lines: without that marker their
+   failures add nothing to the signature, so a mutant only they catch scores
+   SURVIVED, and they are the strongest oracles in the suite. *)
 let signature log =
   let ic = open_in log in
   let acc = ref [] in
   (try
      while true do
        let l = String.trim (input_line ic) in
-       if String.starts_with ~prefix:"File \"" l || contains l "[FAIL]" then
-         acc := l :: !acc
+       if
+         String.starts_with ~prefix:"File \"" l
+         || String.starts_with ~prefix:"FAIL " l
+         || contains l "[FAIL]"
+       then acc := l :: !acc
      done
    with End_of_file -> ());
   close_in ic;
@@ -636,9 +652,20 @@ let capture_baseline ~work ~jobs ~timeout ~log =
       exit 1);
   ignore (run ~timeout ~log (test_argv ~work ~jobs));
   let b = signature log in
-  Fmt.pr "baseline: %d failing rules or cases@." (List.length b);
-  List.iter (fun l -> Fmt.pr "  %s@." l) b;
-  if not (List.is_empty b) then
+  (* A rule dune names is a rule that produced OUTPUT, which is not the same as
+     one that failed: the browser harnesses summarise every run, so they are
+     listed whether they pass or not. Calling them failures cost this project a
+     day of believing the browser oracles were switched off in a worktree, so
+     the two are counted apart. Only the second kind makes a mutant's change
+     invisible. *)
+  let printed, failed =
+    List.partition (fun l -> String.starts_with ~prefix:"File \"" l) b
+  in
+  Fmt.pr "baseline: %d rule(s) printing, %d failing@." (List.length printed)
+    (List.length failed);
+  List.iter (fun l -> Fmt.pr "  printed  %s@." l) printed;
+  List.iter (fun l -> Fmt.pr "  FAILING  %s@." l) failed;
+  if not (List.is_empty failed) then
     Fmt.pr
       "warning: those already fail, so a mutant that only changes what they \
        print scores SURVIVED@.";

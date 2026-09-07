@@ -553,7 +553,7 @@ let property_value_uses_color (type a) (p : Values.color -> bool)
   | Border_bottom -> border_uses_color p value
   | Border_left -> border_uses_color p value
   | Border_block -> border_uses_color p value
-  | Column_rule -> border_uses_color p value
+  | Column_rule -> List.exists (border_uses_color p) value
   | Outline -> outline_uses_color p value
   | Background_image -> List.exists (background_image_uses_color p) value
   | Webkit_mask_image -> background_image_uses_color p value
@@ -728,17 +728,19 @@ let validate_no_extra_tokens t =
         Cursor.err_invalid ~loc t
           ("unexpected tokens after property value: " ^ trimmed)
 
-let read_length_box ?(allow_negative = true) t =
-  let values =
-    Cursor.list ~at_least:1 ~at_most:4
-      (fun r -> read_length ~allow_negative r)
-      t
-  in
+(* CSS Position 3 sec. 3.1 gives every inset property [auto |
+   <length-percentage>] and sec. 3.2 builds [inset] from it, so no sizing
+   function reaches any of them. That is the same production CSS Box 4 sec. 3.1
+   gives a margin, so they share its component reader. *)
+let read_inset_length t = Values.read_margin_length ~global:true t
+
+let read_length_box t =
+  let values = Cursor.list ~at_least:1 ~at_most:4 read_inset_length t in
   if values = [] then Cursor.err_expected t "length value";
   values
 
-let read_inset_longhand t = [ read_length t ]
-let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_length t
+let read_inset_longhand t = [ read_inset_length t ]
+let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_inset_length t
 
 let read_border_width_box t =
   Cursor.list ~at_least:1 ~at_most:4 read_border_width t
@@ -868,6 +870,11 @@ let read_lp_or_global t =
     ~default:(Values.read_length_percentage ~with_keywords:false)
     t
 
+(* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
+   CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
+   longhand takes as its whole value where a shorthand component cannot. *)
+let read_margin_length_or_global t = Values.read_margin_length ~global:true t
+
 let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
     [
@@ -977,7 +984,7 @@ let read_padding_logical_shorthand t =
 (* CSS Scroll Snap 1 sec. 5.1: the [scroll-margin] longhands are [<length>] - an
    unrestricted range, so an outset may be negative just as a margin may. Only
    [scroll-padding] (sec. 4.2) says "Negative values are invalid". "Percentages:
-   n/a" still rules a percentage out. *)
+   n/a" rules a percentage out, nested in math as much as written on its own. *)
 let read_scroll_margin_length t =
   Cursor.enum "scroll-margin length"
     [
@@ -987,10 +994,7 @@ let read_scroll_margin_length t =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~default:(fun t ->
-      match read_length ~with_keywords:false t with
-      | Pct _ -> Cursor.err_invalid t "scroll-margin percentage"
-      | length -> length)
+    ~default:(fun t -> read_length ~with_keywords:false ~length_only:true t)
     t
 
 let read_scroll_padding_length t =
@@ -1562,22 +1566,32 @@ let read_spacing_value : type a. a property -> Cursor.t -> declaration option =
   | Padding_block_start ->
       Some (v Padding_block_start (read_nn_length_or_global t))
   | Padding_block_end -> Some (v Padding_block_end (read_nn_length_or_global t))
-  | Margin_left -> Some (v Margin_left (read_length t))
-  | Margin_right -> Some (v Margin_right (read_length t))
-  | Margin_top -> Some (v Margin_top (read_length t))
-  | Margin_bottom -> Some (v Margin_bottom (read_length t))
+  (* CSS Box 4 sec. 3.1 gives every margin longhand [<length-percentage> |
+     auto], and CSS Logical 1 sec. 4.2 builds the flow-relative pair from that
+     same production, so a sizing function reaches none of them. The shorthand
+     already read its components this way. *)
+  | Margin_left -> Some (v Margin_left (read_margin_length_or_global t))
+  | Margin_right -> Some (v Margin_right (read_margin_length_or_global t))
+  | Margin_top -> Some (v Margin_top (read_margin_length_or_global t))
+  | Margin_bottom -> Some (v Margin_bottom (read_margin_length_or_global t))
   | Margin_inline ->
       Some
         (v Margin_inline
-           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t))
-  | Margin_inline_start -> Some (v Margin_inline_start (read_length t))
-  | Margin_inline_end -> Some (v Margin_inline_end (read_length t))
+           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+              read_margin_length_or_global t))
+  | Margin_inline_start ->
+      Some (v Margin_inline_start (read_margin_length_or_global t))
+  | Margin_inline_end ->
+      Some (v Margin_inline_end (read_margin_length_or_global t))
   | Margin_block ->
       Some
         (v Margin_block
-           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t))
-  | Margin_block_start -> Some (v Margin_block_start (read_length t))
-  | Margin_block_end -> Some (v Margin_block_end (read_length t))
+           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+              read_margin_length_or_global t))
+  | Margin_block_start ->
+      Some (v Margin_block_start (read_margin_length_or_global t))
+  | Margin_block_end ->
+      Some (v Margin_block_end (read_margin_length_or_global t))
   | _ -> None
 
 let read_list_align_value : type a. a property -> Cursor.t -> declaration option
@@ -1808,7 +1822,7 @@ let read_motion_value : type a. a property -> Cursor.t -> declaration option =
   | View_timeline_axis -> Some (v View_timeline_axis (read_timeline_axis t))
   | View_timeline_inset -> Some (v View_timeline_inset (read_timeline_inset t))
   | View_timeline -> Some (v View_timeline (read_view_timeline_shorthand t))
-  | Timeline_scope -> Some (v Timeline_scope (read_timeline_name t))
+  | Timeline_scope -> Some (v Timeline_scope (read_timeline_scope t))
   | Perspective_origin ->
       Some (v Perspective_origin (read_perspective_origin t))
   | Transform_style -> Some (v Transform_style (read_transform_style t))
@@ -1852,7 +1866,12 @@ let read_object_transition_value : type a.
   | Column_height -> Some (v Column_height (read_column_height t))
   | Column_wrap -> Some (v Column_wrap (read_column_wrap t))
   | Column_count -> Some (v Column_count (read_column_count t))
-  | Column_rule -> Some (v Column_rule (read_border t))
+  (* CSS Gaps 1 sec. 4.4 spells [column-rule] as a [<gap-rule>#], one entry per
+     rule line, the same list its longhands carry. *)
+  | Column_rule ->
+      Some
+        (v Column_rule
+           (Cursor.list ~sep:Cursor.comma ~at_least:1 read_border t))
   (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
      list, one entry per rule line. *)
   | Column_rule_color ->
@@ -1925,14 +1944,10 @@ let read_scroll_value : type a. a property -> Cursor.t -> declaration option =
   | Scroll_margin_inline_end ->
       Some (v Scroll_margin_inline_end (read_scroll_margin_length t))
   | Scroll_margin_block ->
-      let lengths =
-        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
-          read_scroll_margin_length t
-      in
-      (match lengths with
-      | [ Zero; Zero ] -> Cursor.err_invalid t "duplicate zero scroll margin"
-      | _ -> ());
-      Some (v Scroll_margin_block lengths)
+      Some
+        (v Scroll_margin_block
+           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+              read_scroll_margin_length t))
   | Scroll_margin_block_start ->
       Some (v Scroll_margin_block_start (read_scroll_margin_length t))
   | Scroll_margin_block_end ->
@@ -2068,10 +2083,12 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
       Some (v Webkit_mask_position (read_background_position t))
   | Webkit_mask_repeat ->
       Some (v Webkit_mask_repeat (read_background_repeat_list t))
-  | Webkit_mask_clip -> Some (v Webkit_mask_clip (read_mask_box_list t))
-  | Webkit_mask_origin -> Some (v Webkit_mask_origin (read_mask_box_list t))
+  | Webkit_mask_clip ->
+      Some (v Webkit_mask_clip (read_webkit_mask_box_list ~clip:true t))
+  | Webkit_mask_origin ->
+      Some (v Webkit_mask_origin (read_webkit_mask_box_list t))
   | Border_image_source ->
-      Some (v Border_image_source (read_background_image t))
+      Some (v Border_image_source (read_border_image_source t))
   | Border_image_slice ->
       Some (v Border_image_slice (read_border_image_slice t))
   | Border_image_repeat ->
@@ -2087,7 +2104,7 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
   | Mask_size -> Some (v Mask_size (read_background_size_list t))
   | Mask_position -> Some (v Mask_position (read_background_position t))
   | Mask_repeat -> Some (v Mask_repeat (read_background_repeat_list t))
-  | Mask_clip -> Some (v Mask_clip (read_mask_box_list t))
+  | Mask_clip -> Some (v Mask_clip (read_mask_box_list ~clip:true t))
   | Mask_origin -> Some (v Mask_origin (read_mask_box_list t))
   | Mask_type -> Some (v Mask_type (read_mask_type t))
   | All -> Some (v All (Properties.read_css_wide t))
@@ -2201,7 +2218,7 @@ let read_custom_property_payload name value_str =
   else read_custom_property_value (Cursor.of_string value_str)
 
 let whitespace_only_custom_property_value =
-  Tokens [ Component.Preserved (Token.synthetic Token.Whitespace) ]
+  Tokens [ Component.Preserved (Token.synthetic (Token.Whitespace " ")) ]
 
 (* Keep a single space when the raw declaration value was whitespace-only - that
    one space is the spec-required token sequence (CSS Custom Properties for
@@ -2272,7 +2289,7 @@ let components_are_lone_css_wide cvs =
   let non_ws =
     List.filter
       (function
-        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
         | _ -> true)
       cvs
   in
@@ -2691,10 +2708,39 @@ let recover_declaration_step t acc e ~from =
     e;
   acc
 
+(* CSS Syntax 3 (ED) sec. 5.5.5 consumes an AT-RULE when a block's contents meet
+   an at-keyword, so it ends at its own block or [;], not at the next [;] the
+   way an invalid declaration does. A keyframe or descriptor block has no
+   grammar for one, so it is dropped - but only it: [@keyframes
+   k{to{@e{}opacity:1}}] keeps the opacity, which is what the browser keeps
+   too. *)
+let skip_at_rule t =
+  Cursor.skip t;
+  let rec go () =
+    match Cursor.peek_head_shape t with
+    | `Eof -> ()
+    | `Curly_block | `Semicolon -> Cursor.skip t
+    | _ ->
+        Cursor.skip t;
+        go ()
+  in
+  go ()
+
 let rec read_declarations_loop t acc =
   Cursor.ws t;
   match Cursor.peek t with
   | None -> List.rev acc
+  | Some _ when Option.is_some (Cursor.peek_at_keyword t) ->
+      let from = Cursor.save t in
+      let error =
+        try Cursor.err t "at-rule in a declaration block"
+        with Cursor.Parse_error e -> e
+      in
+      skip_at_rule t;
+      Cursor.push_warning t
+        ~recovery:(Cursor.dropped_since t from Error.Recovery.Rule)
+        error;
+      read_declarations_loop t acc
   | _ -> (
       match read_declaration_step t acc with
       | Done decls -> decls
@@ -2853,15 +2899,49 @@ let rec pp : declaration Pp.t =
 (* A declaration feature query hands the authored declaration to another parser.
    Minify its separators, but keep opaque numeric token spellings: the spelling
    itself is the compatibility question. *)
+(* The value half of {!pp_opaque}, for a caller writing the property name
+   itself: an [\@supports] feature keeps the name the author spelled, which the
+   typed property behind it cannot reproduce. *)
+let rec pp_opaque_value ?(verbatim = true) : declaration Pp.t =
+ fun ctx decl ->
+  let pp_components components important =
+    Pp.string ctx
+      (if verbatim && not (Pp.minified ctx) then
+         Parser.to_string_verbatim components
+       else Parser.to_string_minified components);
+    if important then
+      Pp.string ctx (if ctx.minify then "!important" else " !important")
+  in
+  match decl with
+  | Declaration { property = Unknown_property _; value; important; _ } ->
+      pp_components value important
+  | Declaration
+      {
+        property = Custom_property _;
+        value = Custom_value { value = Tokens components; _ };
+        important;
+        _;
+      } ->
+      pp_components components important
+  | Declaration { property; value; important; _ } ->
+      pp_property_value ctx (property, value);
+      if important then
+        Pp.string ctx (if ctx.minify then "!important" else " !important")
+  | Theme_guarded { decl; _ } -> pp_opaque_value ~verbatim ctx decl
+
 let rec pp_opaque : declaration Pp.t =
  fun ctx decl ->
+  (* Every caller of this is an [@supports] condition, and CSS Conditional Rules
+     3 sec. 6.1 answers a declaration feature by running that exact declaration
+     through the rendering browser's parser. The text is the question, so it is
+     written back as read rather than respelled. *)
   let pp_components property components important =
     pp_property ctx property;
     Pp.char ctx ':';
     Pp.space_if_pretty ctx ();
     Pp.string ctx
       (if Pp.minified ctx then Parser.to_string_minified components
-       else Parser.string_of_components components);
+       else Parser.to_string_verbatim components);
     if important then
       Pp.string ctx (if ctx.minify then "!important" else " !important")
   in
@@ -3352,7 +3432,7 @@ let border ?width ?style ?color () =
   v Border border_value
 
 let border_block value = v Border_block value
-let tab_size value = v Tab_size (Int value : tab_size)
+let tab_size value = v Tab_size (Number (Num (float_of_int value)) : tab_size)
 let tab_size_value value = v Tab_size (value : tab_size)
 let scrollbar_width value = v Scrollbar_width value
 let scrollbar_color value = v Scrollbar_color value

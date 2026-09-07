@@ -712,31 +712,15 @@ let rec pp_align_content : align_content Pp.t =
 (* CSS Box Alignment 3 sec. 8.3: each half is a [<'row-gap'>], which is
    [normal | <length-percentage [0,inf]>]. The keyword is read here rather than
    taken from the length grammar, which does not carry it. *)
+(* CSS Box Alignment 3 sec. 8.1 spells every gap [normal | <length-percentage
+   [0,inf]>], so the range is the grammar's and not a list of units: reading it
+   through the length reader's own [allow_negative] keeps the percentage in the
+   check, which an enumerated list of unit constructors had left out. *)
 let read_gap_half t =
-  let len =
-    Cursor.enum "gap" [ ("normal", (Normal : length)) ] ~default:read_length t
-  in
-  match len with
-  | Px v
-  | Rem v
-  | Em v
-  | Ch v
-  | Ex v
-  | Vw v
-  | Vh v
-  | Vmin v
-  | Vmax v
-  | Pt v
-  | Pc v
-  | In v
-  | Cm v
-  | Mm v
-  | Q v
-    when v < 0.0 ->
-      Cursor.err t "gap values cannot be negative"
-  | Auto | Inherit | Initial | Unset | Revert | Revert_layer | Fit_content ->
-      Cursor.err t "gap values must be explicit lengths, not keywords"
-  | _ -> len
+  Cursor.enum "gap"
+    [ ("normal", (Normal : length)) ]
+    ~default:(read_length ~allow_negative:false ~with_keywords:false)
+    t
 
 let rec read_gap t : gap =
   Cursor.enum_or_whole_value_var "gap"

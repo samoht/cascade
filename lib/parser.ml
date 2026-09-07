@@ -292,7 +292,10 @@ let add_token_kind buf : Token.kind -> unit = function
   | Token.Dimension { number; unit_ } ->
       Buffer.add_string buf number.repr;
       add_dimension_unit buf unit_
-  | Token.Whitespace -> Buffer.add_char buf ' '
+  (* CSS Syntax 3 (ED) sec. 9.1 serializes a whitespace token as one space,
+     whatever run produced it. A custom property's value is not a reserialized
+     token stream and does not go through here; see {!to_string_custom}. *)
+  | Token.Whitespace _ -> Buffer.add_char buf ' '
   | Token.Unicode_range { start_value; end_value; _ } ->
       add_unicode_range buf ~start_value ~end_value
   | Token.Cdo -> Buffer.add_string buf "<!--"
@@ -358,7 +361,7 @@ let is_backslash_delim = function
   | _ -> false
 
 let is_whitespace = function
-  | Preserved { kind = Token.Whitespace; _ } -> true
+  | Preserved { kind = Token.Whitespace _; _ } -> true
   | _ -> false
 
 let numeric_repr ~minify number =
@@ -481,7 +484,7 @@ let rec cv_to_buffer buf : Component.t -> unit = function
       Buffer.add_char buf ')'
 
 (* The serialised [Delim "\\"] is "\\\n", which already supplies a separator;
-   eat the next whitespace so [Delim "\\"; Whitespace] round-trips cleanly. *)
+   eat the next whitespace so [Delim "\\"; Whitespace _] round-trips cleanly. *)
 and cvs_to_buffer buf cvs =
   let rec loop prev = function
     | [] -> ()
@@ -513,7 +516,7 @@ let word_like_end : Component.t -> bool = function
   | Preserved
       {
         kind =
-          ( Whitespace | Open _ | Close _ | Colon | Semicolon | Comma | Cdo
+          ( Whitespace _ | Open _ | Close _ | Colon | Semicolon | Comma | Cdo
           | Cdc | Bad_string | Bad_url | Eof
           (* Self-delimiting at the end: [%] closes its percentage token and
              these delims close themselves, so nothing that follows merges into
@@ -539,7 +542,7 @@ let word_like_start : Component.t -> bool = function
   | Preserved
       {
         kind =
-          ( Whitespace | Close _ | Colon | Semicolon | Comma | Cdo | Cdc
+          ( Whitespace _ | Close _ | Colon | Semicolon | Comma | Cdo | Cdc
           | Bad_string | Bad_url | Eof
           | Delim
               ( "!" | "*" | "/" | ">" | "?" | "|" | "&" | "^" | "$" | "=" | "~"
@@ -749,6 +752,50 @@ and cvs_to_buffer_min ~minify_numbers ~in_math buf cvs =
   in
   loop None false false cvs
 
+(* CSS Custom Properties 1 (ED) sec. 4.1: a custom property's value "must not"
+   have its whitespace normalized, so the stream a var() substitutes keeps the
+   runs the author wrote. Syntax 3 sec. 9.1's one-space serialization is the
+   right answer for a reserialized token stream and the wrong one here, which is
+   why this is its own entry point rather than a flag on that one. The boundary
+   space {!cvs_to_buffer} inserts between components that would otherwise merge
+   is NOT whitespace normalization and is kept: dropping it turns [a/**/b] into
+   the single ident [ab]. *)
+let rec cv_to_buffer_verbatim buf : Component.t -> unit = function
+  | Preserved { kind = Token.Whitespace run; _ } -> Buffer.add_string buf run
+  | Preserved { repr = Some repr; _ } -> Buffer.add_string buf repr
+  | Preserved t -> add_token_kind buf t.kind
+  | Block { node = { opening; value; _ }; _ } ->
+      Buffer.add_char buf (opening_char opening);
+      cvs_to_buffer_verbatim buf value;
+      Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments; _ }; _ } ->
+      Buffer.add_string buf (escape_ident name);
+      Buffer.add_char buf '(';
+      cvs_to_buffer_verbatim buf arguments;
+      Buffer.add_char buf ')'
+
+and cvs_to_buffer_verbatim buf cvs =
+  let rec loop prev = function
+    | [] -> ()
+    | cv :: rest
+      when is_whitespace cv
+           && match prev with Some p -> is_backslash_delim p | None -> false ->
+        loop prev rest
+    | cv :: rest ->
+        (match prev with
+        | Some p when normal_pair_needs_token_boundary p cv ->
+            Buffer.add_char buf ' '
+        | _ -> ());
+        cv_to_buffer_verbatim buf cv;
+        loop (Some cv) rest
+  in
+  loop None cvs
+
+let to_string_verbatim cvs =
+  let buf = Buffer.create 32 in
+  cvs_to_buffer_verbatim buf cvs;
+  Buffer.contents buf
+
 let to_string_minified_with ~minify_numbers cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
@@ -775,7 +822,7 @@ let url_args_as_bare_string args =
   let stripped =
     List.filter
       (function
-        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
         | _ -> true)
       args
   in
@@ -957,7 +1004,7 @@ let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
    leaking the loop body. *)
 let rec skip_whitespace_tokens lexer =
   match (Lexer.peek lexer).Token.kind with
-  | Token.Whitespace ->
+  | Token.Whitespace _ ->
       let _ = Lexer.next lexer in
       skip_whitespace_tokens lexer
   | _ -> ()
@@ -1021,7 +1068,8 @@ let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
    prelude is held reversed, as [consume_qualified_rule] accumulates it. *)
 let is_custom_property_shape prelude =
   let rec drop_ws = function
-    | Component.Preserved { kind = Token.Whitespace; _ } :: rest -> drop_ws rest
+    | Component.Preserved { kind = Token.Whitespace _; _ } :: rest ->
+        drop_ws rest
     | other -> other
   in
   match drop_ws (List.rev prelude) with
@@ -1085,7 +1133,7 @@ let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
     let tok = Lexer.next lexer in
     match tok.Token.kind with
     | Token.Eof -> List.rev acc
-    | Token.Whitespace -> loop acc
+    | Token.Whitespace _ -> loop acc
     | (Token.Cdo | Token.Cdc) when top_level -> loop acc
     | Token.Cdo | Token.Cdc -> (
         Lexer.reconsume lexer tok;
@@ -1241,7 +1289,7 @@ let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
 let consume_decl_list_item ~meta lexer ~warnings tok =
   match tok.Token.kind with
   | Token.Eof -> `Done
-  | Token.Whitespace | Token.Semicolon | Token.Close Curly -> `Skip
+  | Token.Whitespace _ | Token.Semicolon | Token.Close Curly -> `Skip
   | Token.At_keyword name ->
       let ar = consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings in
       `Item (`At ar)
@@ -1345,7 +1393,7 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
     | Token.Eof | Token.Close Curly ->
         flush ();
         List.rev !result
-    | Token.Whitespace | Token.Semicolon -> loop ()
+    | Token.Whitespace _ | Token.Semicolon -> loop ()
     | Token.At_keyword name ->
         flush ();
         let ar =
@@ -1436,13 +1484,13 @@ let list_of_component_values r =
 
 let rec next_non_ws p =
   match next p with
-  | Preserved { kind = Token.Whitespace; _ } -> next_non_ws p
+  | Preserved { kind = Token.Whitespace _; _ } -> next_non_ws p
   | cv -> cv
 
 let rec rest_is_ws_then_eof p =
   match next p with
   | Preserved { kind = Token.Eof; _ } -> true
-  | Preserved { kind = Token.Whitespace; _ } -> rest_is_ws_then_eof p
+  | Preserved { kind = Token.Whitespace _; _ } -> rest_is_ws_then_eof p
   | _ -> false
 
 let component_value r =
@@ -1473,7 +1521,7 @@ let csv_component_values r =
 
 let trim_component_value_whitespace cvs =
   let is_ws = function
-    | Preserved { kind = Token.Whitespace; _ } -> true
+    | Preserved { kind = Token.Whitespace _; _ } -> true
     | _ -> false
   in
   let rec drop_leading = function
@@ -1484,7 +1532,7 @@ let trim_component_value_whitespace cvs =
 
 let component_values_are_whitespace_only cvs =
   List.for_all
-    (function Preserved { kind = Token.Whitespace; _ } -> true | _ -> false)
+    (function Preserved { kind = Token.Whitespace _; _ } -> true | _ -> false)
     cvs
 
 let matches_grammar r grammar =

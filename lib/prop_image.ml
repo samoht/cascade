@@ -1424,11 +1424,18 @@ module Position_value = struct
     | "center" -> XY ((Pct 50. : length), y)
     | _ -> Cursor.err_invalid t "invalid horizontal position keyword length"
 
+  (* CSS Values 4 (ED) sec. 8.3 spells one alternative [[ left | center | right
+     | <length-percentage> ] [ top | center | bottom | <length-percentage> ]],
+     so the second slot takes any vertical edge and not only [center]. The
+     reverse order is no alternative of the production, so a keyword there is
+     still refused. *)
   let read_length_keyword t : position_value =
     let offset = read_length ~with_keywords:false t in
     Cursor.ws t;
     match Cursor.ident t with
     | "center" -> Single offset
+    | "top" -> XY (offset, (Pct 0. : length))
+    | "bottom" -> XY (offset, (Pct 100. : length))
     | _ -> Cursor.err_invalid t "invalid position length keyword"
 
   (* Read 4-value syntax: keyword offset keyword offset *)

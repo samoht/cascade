@@ -172,11 +172,24 @@ val pp_timeline_axis : timeline_axis Pp.t
 val read_timeline_axis : Cursor.t -> timeline_axis
 (** [read_timeline_axis t] parses a timeline axis. *)
 
+val pp_timeline_ident : timeline_ident Pp.t
+(** [pp_timeline_ident] pretty-prints one timeline name. *)
+
+val read_timeline_ident : Cursor.t -> timeline_ident
+(** [read_timeline_ident t] parses one timeline name. *)
+
 val pp_timeline_name : timeline_name Pp.t
 (** [pp_timeline_name] pretty-prints a timeline name list. *)
 
 val read_timeline_name : Cursor.t -> timeline_name
-(** [read_timeline_name t] parses [view-timeline-name] and [timeline-scope]. *)
+(** [read_timeline_name t] parses [scroll-timeline-name] and
+    [view-timeline-name]. *)
+
+val pp_timeline_scope : timeline_scope Pp.t
+(** [pp_timeline_scope] pretty-prints a [timeline-scope]. *)
+
+val read_timeline_scope : Cursor.t -> timeline_scope
+(** [read_timeline_scope t] parses [timeline-scope]. *)
 
 val pp_timeline_inset : timeline_inset Pp.t
 (** [pp_timeline_inset] pretty-prints [view-timeline-inset]. *)
@@ -1196,6 +1209,14 @@ val pp_text_spacing_trim : text_spacing_trim Pp.t
 val read_text_spacing_trim : Cursor.t -> text_spacing_trim
 (** [read_text_spacing_trim t] is the [text_spacing_trim] parsed from [t]. *)
 
+val pp_hyphenate_limit_chars_item : hyphenate_limit_chars_item Pp.t
+(** [pp_hyphenate_limit_chars_item] pretty-prints one [hyphenate-limit-chars]
+    slot. *)
+
+val read_hyphenate_limit_chars_item : Cursor.t -> hyphenate_limit_chars_item
+(** [read_hyphenate_limit_chars_item t] parses one [hyphenate-limit-chars] slot.
+*)
+
 val pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t
 (** [pp_hyphenate_limit_chars] pretty-prints a [hyphenate_limit_chars]. *)
 
@@ -1781,6 +1802,10 @@ val read_background_images : Cursor.t -> background_image list
 (** [read_background_images t] parses a comma-separated list of
     [background_image]s. *)
 
+val read_border_image_source : Cursor.t -> background_image
+(** [read_border_image_source t] is the single image a border-image or
+    mask-border source takes, where {!read_background_image} takes a list. *)
+
 val minify_background_image : background_image -> background_image
 (** [minify_background_image img] converts named colors in gradient stops to
     their shortest hex form, matching Lightning CSS behavior. *)
@@ -1833,11 +1858,23 @@ val read_mask_type : Cursor.t -> mask_type
 val pp_mask_type : mask_type Pp.t
 (** [pp_mask_type] pretty-prints a mask-type value. *)
 
-val read_mask_box : Cursor.t -> mask_box
+val read_mask_box : ?clip:bool -> Cursor.t -> mask_box
 (** [read_mask_box t] parses a single-layer mask-clip or mask-origin value (used
     by the shorthand). *)
 
-val read_mask_box_list : Cursor.t -> mask_box
+val pp_webkit_mask_box : webkit_mask_box Pp.t
+(** [pp_webkit_mask_box] pretty-prints a [-webkit-mask-clip] /
+    [-webkit-mask-origin] box. *)
+
+val read_webkit_mask_box : ?clip:bool -> Cursor.t -> webkit_mask_box
+(** [read_webkit_mask_box ?clip t] parses one prefixed mask box. [clip] admits
+    the [text] keyword, which only [-webkit-mask-clip] takes. *)
+
+val read_webkit_mask_box_list : ?clip:bool -> Cursor.t -> webkit_mask_box
+(** [read_webkit_mask_box_list ?clip t] parses the standalone
+    [-webkit-mask-clip] / [-webkit-mask-origin] value, one box per layer. *)
+
+val read_mask_box_list : ?clip:bool -> Cursor.t -> mask_box
 (** [read_mask_box_list t] parses the standalone mask-clip / mask-origin
     longhand: a comma-separated layer list. *)
 
@@ -1913,6 +1950,13 @@ val pp_interest_delay : interest_delay Pp.t
 
 val read_interest_delay : ?longhand:bool -> Cursor.t -> interest_delay
 (** [read_interest_delay t] is the [interest_delay] parsed from [t]. *)
+
+val pp_interest_delay_item : interest_delay_item Pp.t
+(** [pp_interest_delay_item] is the pretty-printer for [interest_delay_item]. *)
+
+val read_interest_delay_item : Cursor.t -> interest_delay_item
+(** [read_interest_delay_item t] is the one slot of an [interest_delay] parsed
+    from [t]. *)
 
 val pp_nav_scope : nav_scope Pp.t
 (** [pp_nav_scope] is the pretty-printer for [nav_scope]. *)

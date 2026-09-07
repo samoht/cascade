@@ -25,7 +25,7 @@ type kind =
   | Number_tok of number
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
-  | Whitespace
+  | Whitespace of string
   | Unicode_range of {
       start_value : int;
       end_value : int;
@@ -40,7 +40,7 @@ type kind =
   | Close of bracket
   | Eof
 
-type t = { kind : kind; loc : Loc.t }
+type t = { kind : kind; loc : Loc.t; repr : string option }
 
 let equal_hash_flag (a : hash_flag) b = a = b
 let equal_number_flag (a : number_flag) b = a = b
@@ -55,8 +55,9 @@ let bracket_rank = function Curly -> 0 | Paren -> 1 | Square -> 2
 let compare_bracket a b = Int.compare (bracket_rank a) (bracket_rank b)
 let equal_kind (a : kind) b = a = b
 let compare_kind (a : kind) b = Stdlib.compare a b
-let v ~kind ~loc = { kind; loc }
-let synthetic kind = { kind; loc = Loc.dummy }
+let v ~kind ~loc = { kind; loc; repr = None }
+let of_source ~repr ~kind ~loc = { kind; loc; repr }
+let synthetic kind = { kind; loc = Loc.dummy; repr = None }
 
 let pp_kind : kind Pp.t =
  fun ctx -> function
@@ -103,7 +104,7 @@ let pp_kind : kind Pp.t =
       Pp.string ctx number.repr;
       Pp.string ctx unit_;
       Pp.char ctx '>'
-  | Whitespace -> Pp.string ctx "<ws>"
+  | Whitespace _ -> Pp.string ctx "<ws>"
   | Unicode_range { start_value; end_value; _ } ->
       Pp.string ctx "<unicode-range U+";
       Pp.hex ctx start_value;
@@ -125,7 +126,7 @@ let pp_kind : kind Pp.t =
   | Eof -> Pp.string ctx "<eof>"
 
 let pp : t Pp.t =
- fun ctx { kind; loc } ->
+ fun ctx { kind; loc; _ } ->
   pp_kind ctx kind;
   Pp.char ctx '@';
   Loc.pp ctx loc

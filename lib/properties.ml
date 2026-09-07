@@ -3599,11 +3599,14 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Number_percentage -> pp pp_number_percentage
   | Opacity -> pp pp_opacity
   | Value ->
+      (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the
+         whitespace of the stream a [var()] substitutes, so the runs come back
+         as they were read. *)
       let rendered =
         if Pp.minified ctx then
           Parser.to_string_custom_minified
             ~fold_ident:Values.fold_custom_value_ident value
-        else Parser.string_of_components value
+        else Parser.to_string_verbatim value
       in
       Pp.string ctx rendered
   | Shadow -> pp pp_shadow
@@ -3933,10 +3936,11 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Font_variant_alternates, value -> value
   | Font_variant, value -> value
   | ( ( Border | Border_block | Border_block_start | Border_block_end
-      | Border_inline | Border_inline_start | Border_inline_end | Column_rule
-      | Border_top | Border_right | Border_bottom | Border_left ),
+      | Border_inline | Border_inline_start | Border_inline_end | Border_top
+      | Border_right | Border_bottom | Border_left ),
       value ) ->
       value
+  | Column_rule, value -> value
   | Background, value -> value
   | Tab_size, value -> value
   | Zoom, value -> value
@@ -4186,7 +4190,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
 let strip_math_whitespace comps =
   let rec aux acc = function
     | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+    | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
         let prev_pm =
           match acc with
           | [] -> false
@@ -4213,7 +4217,7 @@ let is_mul_or_div_delim = function
 let strip_mul_div_whitespace comps =
   let rec aux acc = function
     | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+    | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
         let prev_md =
           match acc with [] -> false | p :: _ -> is_mul_or_div_delim p
         in
@@ -4251,7 +4255,7 @@ let strip_after_close_paren ~in_math comps =
   in
   let rec aux acc = function
     | [] -> List.rev acc
-    | (Component.Preserved { kind = Token.Whitespace; _ } as ws) :: rest ->
+    | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
         let prev_hard =
           match acc with [] -> false | p :: _ -> closes_hard p
         in
@@ -4389,6 +4393,14 @@ let normalize_property_value : type a.
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
+  | Shape_image_threshold -> normalize_shape_image_threshold value
+  | Tab_size -> normalize_tab_size ~ctx value
+  | Hyphenate_limit_chars -> normalize_hyphenate_limit_chars ~ctx value
+  | Animation_iteration_count -> normalize_animation_iteration_count ~ctx value
+  | Webkit_animation_iteration_count ->
+      normalize_animation_iteration_count ~ctx value
+  | Moz_animation_iteration_count ->
+      normalize_animation_iteration_count ~ctx value
   | Scroll_timeline -> normalize_timeline_shorthand value
   | View_timeline -> normalize_view_timeline_shorthand value
   | View_timeline_inset -> normalize_timeline_inset value
@@ -4437,7 +4449,7 @@ let normalize_property_value : type a.
   | Border_right -> normalize_border ~lossless value
   | Border_bottom -> normalize_border ~lossless value
   | Border_left -> normalize_border ~lossless value
-  | Column_rule -> normalize_border ~lossless value
+  | Column_rule -> List.map (normalize_border ~lossless) value
   | Outline -> normalize_outline ~lossless value
   | Box_shadow -> normalize_shadow ~lossless value
   | Text_shadow -> map_preserve (normalize_text_shadow ~lossless) value
@@ -4477,6 +4489,7 @@ let normalize_property_value : type a.
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value
   | Font_weight -> normalize_font_weight value
+  | Webkit_line_clamp -> normalize_webkit_line_clamp value
   | Font_family -> normalize_font_family value
   | Font_stretch -> normalize_font_stretch value
   | Font -> normalize_font value
@@ -4836,7 +4849,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Column_height -> pp pp_column_height
   | Column_wrap -> pp pp_column_wrap
   | Column_count -> pp pp_column_count
-  | Column_rule -> pp pp_border
+  | Column_rule -> pp (Pp.list ~sep:Pp.comma pp_border)
   | Column_span -> pp pp_column_span
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
@@ -4992,8 +5005,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_mask_size -> pp pp_background_size
   | Webkit_mask_position -> pp pp_background_position
   | Webkit_mask_repeat -> pp pp_background_repeat
-  | Webkit_mask_clip -> pp pp_mask_box
-  | Webkit_mask_origin -> pp pp_mask_box
+  | Webkit_mask_clip -> pp pp_webkit_mask_box
+  | Webkit_mask_origin -> pp pp_webkit_mask_box
   | Border_image_source -> pp pp_background_image
   | Border_image_slice -> pp pp_border_image_slice
   | Border_image_repeat -> pp pp_border_image_repeat
@@ -5079,7 +5092,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | View_timeline_axis -> pp pp_timeline_axis
   | View_timeline_inset -> pp pp_timeline_inset
   | View_timeline -> pp pp_view_timeline_shorthand
-  | Timeline_scope -> pp pp_timeline_name
+  | Timeline_scope -> pp pp_timeline_scope
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_rotate_value

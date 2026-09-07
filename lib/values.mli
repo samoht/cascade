@@ -346,8 +346,16 @@ val pp_number_percentage : ?always:bool -> number_percentage Pp.t
 (** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-val pp_calc : 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
+val pp_calc :
+  ?unwrap_num:bool -> ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
+(** [pp_calc ?unwrap_num ?unwrap pp] pretty-prints [calc] expressions using [pp]
+    for leaf values. Minified output drops the call around a single leaf;
+    [unwrap] says which leaves that is safe for, and defaults to all of them. A
+    leaf outside the property's range is not one: CSS Values 4 sec. 10.12 keeps
+    the call valid there and clamps at used-value time, where the bare value is
+    dropped instead. [unwrap_num] is the same question for a bare number leaf,
+    which a property taking an [<integer>] answers no to: sec. 10.12 rounds the
+    call and drops the fraction written on its own. *)
 
 val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!type-color_name} values. *)
@@ -484,6 +492,13 @@ val read_non_negative_length :
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties, whose CSS Box 4 sec. 4.1 grammar
     excludes negative values. *)
+
+val read_margin_length : ?global:bool -> Cursor.t -> length
+(** [read_margin_length ?global t] parses one margin component: CSS Box 4 sec.
+    3.1 gives a margin longhand [<length-percentage> | auto], so this takes
+    [auto] and a length and no sizing function. [global] (default [false]) also
+    takes the CSS-wide keywords, which a longhand may be but a shorthand
+    component may not. *)
 
 val read_padding_shorthand : Cursor.t -> length list
 (** [read_padding_shorthand reader] parses a padding shorthand property

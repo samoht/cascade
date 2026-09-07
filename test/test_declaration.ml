@@ -271,7 +271,21 @@ let custom_properties_basic () =
   check_declaration ~expected:"--complex:var(--other,10px)"
     "--complex: var(--other, 10px);";
   check_declaration ~expected:"--important:value!important"
-    "--important: value !important;"
+    "--important: value !important;";
+  (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
+     a custom property's value, and Chrome 153 returns [a b] for the first of
+     these and [a] for the second, so a run survives and the ends are trimmed.
+     The boundary space between two components that would otherwise merge is not
+     whitespace normalization: without it [a/**/b] becomes the ident [ab]. *)
+  check_declaration ~minify:false ~expected:"--x: a  b" "--x:a  b";
+  check_declaration ~minify:false ~expected:"--sp: a" "--sp:  a  ";
+  check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b";
+  (* Section 9.1 serializes an ident by escaping only what must be, so an escape
+     the author wrote otherwise does not come back. A custom property's value is
+     not a reserialized stream, so its tokens keep the text they were read
+     from. *)
+  check_declaration ~minify:false ~expected:"--v: gre\\en" "--v: gre\\en";
+  check_declaration ~minify:false ~expected:"--w: colo\\r" "--w: colo\\r"
 
 let vendor_prefixes () =
   check_declaration ~expected:"-webkit-transform:rotate(45deg)"
@@ -481,6 +495,26 @@ let special_cases () =
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"background-position:var(--x) 20%"
     "background-position: var(--x) 20%;";
+  (* CSS Values 4 (ED) sec. 8.3 spells one alternative of <position> as "[ left
+     | center | right | <length-percentage> ] [ top | center | bottom |
+     <length-percentage> ]", so an offset in the first slot pairs with an edge
+     keyword in the second. Chrome 153 keeps every one of these and refuses the
+     reverse order, which no alternative grants. *)
+  check_declaration ~expected:"background-position:50%100%"
+    ~optimized:"background-position:bottom" "background-position: 50% bottom";
+  check_declaration ~expected:"background-position:50%0%"
+    ~optimized:"background-position:top" "background-position: 50% top";
+  check_declaration ~expected:"background-position:10px 100%"
+    ~optimized:"background-position:10px 100%"
+    "background-position: 10px bottom";
+  check_declaration ~expected:"object-position:50%100%"
+    ~optimized:"object-position:bottom" "object-position: 50% bottom";
+  check_declaration ~expected:"transform-origin:50% 100%"
+    ~optimized:"transform-origin:50% 100%" "transform-origin: 50% bottom";
+  check_declaration ~expected:"background:url(a.png)50%100%"
+    ~optimized:"background:url(a.png)bottom" "background: url(a.png) 50% bottom";
+  neg_cursor read_declaration "background-position: bottom 50%";
+  neg_cursor read_declaration "object-position: bottom 50%";
   check_declaration ~expected:"mask-position:0 0,10px 10px"
     "mask-position: 0 0, 10px 10px;";
 
@@ -544,6 +578,16 @@ let special_cases () =
     ~optimized:"scroll-padding-inline:6px" "scroll-padding-inline: 6px 6px";
   check_declaration ~expected:"scroll-padding-block:7px 7px"
     ~optimized:"scroll-padding-block:7px" "scroll-padding-block: 7px 7px";
+  (* Sec. 5.1 writes [scroll-margin] as [<length>{1,4}] with "Percentages: n/a",
+     and a percentage nested in math is still a percentage. Sec. 4.2 gives
+     [scroll-padding] a [<length-percentage>], so only the margin turns one
+     away. Chrome 153 agrees on all four. *)
+  neg_cursor read_declaration "scroll-margin-top: 10%";
+  neg_cursor read_declaration "scroll-margin-top: calc(50% + 25%)";
+  neg_cursor read_declaration "scroll-margin-inline: calc(10% + 1px) 20px";
+  check_declaration ~expected:"scroll-margin-top:calc(1px + 2em)"
+    "scroll-margin-top: calc(1px + 2em)";
+  check_declaration ~expected:"scroll-padding-top:10%" "scroll-padding-top: 10%";
   (* CSS Position 3 (ED) sec. 3.2 defines [inset] as [<'top'>{1,4}], and CSS
      Backgrounds 3 (ED) sec. 3.1 defines [border-color] over the same
      one-to-four side assignment. *)
@@ -1317,6 +1361,19 @@ let border_line_width () =
     ~optimized:"border:solid red" "border: medium solid red";
   check_declaration ~expected:"border-top:medium dashed blue"
     ~optimized:"border-top:dashed#00f" "border-top: medium dashed blue";
+  (* CSS Values 4 sec. 10.12 checks the [0,inf] range of a <line-width> and of
+     line-height on the value the math function resolves to, not on each
+     operand, so a negative inside calc() reads and a literal one does not. *)
+  check_declaration ~expected:"border-right-width:calc(-1px)"
+    "border-right-width: calc(-1px)";
+  check_declaration ~expected:"outline-width:calc(-1px)"
+    "outline-width: calc(-1px)";
+  check_declaration ~expected:"border-right:calc(-1px) solid red"
+    "border-right: calc(-1px) solid red";
+  check_declaration ~expected:"line-height:calc(-10%)" "line-height: calc(-10%)";
+  neg_cursor read_declaration "border-right-width: -1px";
+  neg_cursor read_declaration "outline-width: -1px";
+  neg_cursor read_declaration "line-height: -10%";
   check_declaration ~expected:"column-rule:medium solid red"
     ~optimized:"column-rule:solid red" "column-rule: medium solid red";
   (* CSS Gaps 1 sec. 4 gives each gap decoration longhand a comma-separated
@@ -1327,6 +1384,20 @@ let border_line_width () =
     "column-rule-width: 1px, 2px";
   check_declaration ~expected:"column-rule-color:red,blue"
     ~optimized:"column-rule-color:red,#00f" "column-rule-color: red, blue";
+  (* CSS Animations 2 sec. 5 spells [animation-timeline] as
+     [<single-animation-timeline>#], one entry per animation. Chrome 153 takes
+     each of these. *)
+  check_declaration ~expected:"animation-timeline:none,auto"
+    "animation-timeline: none, auto";
+  check_declaration ~expected:"animation-timeline:--a,none"
+    "animation-timeline: --a, none";
+  check_declaration ~expected:"animation-timeline:scroll(),view()"
+    "animation-timeline: scroll(), view()";
+  (* Sec. 4.4 writes the shorthand [<gap-rule>#] over the same list. *)
+  check_declaration ~expected:"column-rule:0,0" "column-rule: 0, 0";
+  check_declaration ~expected:"column-rule:1px solid red,2px dashed blue"
+    ~optimized:"column-rule:1px solid red,2px dashed#00f"
+    "column-rule: 1px solid red, 2px dashed blue";
   neg_cursor read_declaration "column-rule-style: dotted dashed";
   check_declaration ~expected:"border-inline-start:medium dotted red"
     ~optimized:"border-inline-start:dotted red"
@@ -1686,6 +1757,14 @@ let component_var_keeps_typed_value () =
     "border-image-outset: 1PX var(--outset)" "1px var(--outset)";
   check_visible_var "border-image-outset component var stays visible"
     "border-image-outset:var(--outset) 1px" "--outset";
+  check_visible_var "stroke-dasharray math var stays visible"
+    "stroke-dasharray:calc(1 + var(--d)) 2" "--d";
+  check_visible_var "stroke-dashoffset length var stays visible"
+    "stroke-dashoffset:calc(1px + var(--o))" "--o";
+  check_visible_var "animation-iteration-count math var stays visible"
+    "animation-iteration-count:calc(1 + var(--n))" "--n";
+  check_visible_var "hyphenate-limit-chars slot var stays visible"
+    "hyphenate-limit-chars:var(--n) 3" "--n";
   check_specified_value "overflow slots are unchanged"
     "overflow: var(--o) HIDDEN" "var(--o) hidden"
 
@@ -2155,6 +2234,84 @@ let animations_timing () =
     ~optimized:"animation-delay:.1s" "animation-delay:mod(1.1s,.5s)";
   check_declaration ~expected:"animation-delay:rem(1.1s,.5s)"
     ~optimized:"animation-delay:.1s" "animation-delay:rem(1.1s,.5s)";
+  (* CSS Values 4 (ED) sec. 10.8 Syntax: "<calc-value> = <number> | <dimension>
+     | <percentage> | <calc-keyword> | ( <calc-sum> )" over "<calc-keyword> = e
+     | pi | infinity | -infinity | NaN". A CSS-wide keyword is none of those, so
+     it is a whole <time> and never an operand of one. *)
+  check_declaration ~expected:"animation-delay:revert" "animation-delay: revert";
+  neg_cursor read_declaration "animation-delay: calc(revert)";
+  neg_cursor read_declaration "animation-delay: calc(revert + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(1s + revert)";
+  neg_cursor read_declaration "animation-delay: calc(revert * 2)";
+  neg_cursor read_declaration "animation-delay: calc(revert-layer + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(inherit + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(initial + 1s)";
+  neg_cursor read_declaration "animation-delay: calc(unset + 1s)";
+  (* CSS Grid 2 sec. 8.3 spells a <grid-line> index and its name with [&&], so
+     the name sits on either side of the index, and sec. 10 puts a math function
+     wherever an <integer> goes. Chrome 153 keeps all four and serialises them
+     index-first. *)
+  check_declaration ~expected:"grid-row-start:2 center"
+    ~optimized:"grid-row-start:2 center" "grid-row-start: center calc(2)";
+  check_declaration ~expected:"grid-row-start:2 center"
+    ~optimized:"grid-row-start:2 center" "grid-row-start: calc(2) center";
+  check_declaration ~expected:"grid-row-start:calc(.5) center"
+    ~optimized:"grid-row-start:calc(.5) center"
+    "grid-row-start: center calc(.5)";
+  check_declaration ~expected:"grid-area:2 center"
+    ~optimized:"grid-area:2 center" "grid-area: center calc(2)";
+  (* sec. 8.3 writes the index [<integer [-inf,-1]> | <integer [1,inf]>], and
+     zero is in neither range whichever way it is spelled. Chrome refuses both
+     of these too. *)
+  neg_cursor read_declaration "grid-row-start: calc(0)";
+  neg_cursor read_declaration "grid-row-start: center calc(0)";
+  neg_cursor read_declaration "grid-row-start: center 0";
+
+  (* sec. 10 allows a math function wherever an <integer> is allowed, and sec.
+     10.12 rounds the call and clamps it, so a fractional or out-of-range call
+     keeps its wrapper where the bare literal is refused. Chrome 153 agrees on
+     each of these. *)
+  check_declaration ~expected:"-webkit-line-clamp:2"
+    ~optimized:"-webkit-line-clamp:2" "-webkit-line-clamp: calc(2)";
+  check_declaration ~expected:"-webkit-line-clamp:calc(1 + 1)"
+    ~optimized:"-webkit-line-clamp:2" "-webkit-line-clamp: calc(1 + 1)";
+  check_declaration ~expected:"-webkit-line-clamp:calc(.5)"
+    ~optimized:"-webkit-line-clamp:calc(.5)" "-webkit-line-clamp: calc(.5)";
+  check_declaration ~expected:"-webkit-line-clamp:calc(0)"
+    ~optimized:"-webkit-line-clamp:calc(0)" "-webkit-line-clamp: calc(0)";
+  neg_cursor read_declaration "-webkit-line-clamp: 0";
+  neg_cursor read_declaration "-webkit-line-clamp: .5";
+  (* CSS Values 4 (ED) sec. 10: "Math functions can be used ... wherever
+     <length>, <frequency>, <angle>, <time>, <percentage>, <number>, or
+     <integer> values are allowed", and CSS Fonts 4 sec. 2.2 spells font-weight
+     over <number [1,1000]>. Chrome 153 keeps these. *)
+  check_declaration ~expected:"font-weight:400" ~optimized:"font-weight:400"
+    "font-weight: calc(400)";
+  check_declaration ~expected:"font-weight:calc(100 + 300)"
+    ~optimized:"font-weight:400" "font-weight: calc(100 + 300)";
+  check_declaration ~expected:"font-weight:calc(var(--w))"
+    ~optimized:"font-weight:calc(var(--w))" "font-weight: calc(var(--w))";
+  (* sec. 10.12 clamps the call's result rather than dropping the declaration,
+     so the wrapper is what makes an out-of-range weight a weight: unwrapping it
+     would write the literal a browser refuses. *)
+  check_declaration ~expected:"font-weight:calc(0)"
+    ~optimized:"font-weight:calc(0)" "font-weight: calc(0)";
+  check_declaration ~expected:"font-weight:calc(1001)"
+    ~optimized:"font-weight:calc(1001)" "font-weight: calc(1001)";
+  neg_cursor read_declaration "font-weight: 0";
+  neg_cursor read_declaration "font-weight: 1001";
+  (* CSS Transitions 1 (ED) sec. 2.5 assigns the first <time> of a
+     <single-transition> to transition-duration and the second to
+     transition-delay, and only the duration is [0s,inf]: a negative delay
+     starts the transition partway through. Chrome 153 keeps all three. *)
+  check_declaration ~expected:"transition:all 1s -1s" "transition: 1s -1s";
+  check_declaration ~expected:"transition:opacity 1s -1s"
+    "transition: opacity 1s -1s";
+  check_declaration ~expected:"transition:opacity 1s ease-in -1s"
+    "transition: opacity 1s ease-in -1s";
+  (* The duration slot keeps its range, so a lone negative has nowhere to go. *)
+  neg_cursor read_declaration "transition: -1s";
+  neg_cursor read_declaration "transition: -1s 1s";
   check_declaration ~expected:"transition-duration:var(--d,.5s)"
     ~optimized:"transition-duration:var(--d,.5s)"
     "transition-duration:var(--d,500ms)";
@@ -2525,6 +2682,29 @@ let list_properties () =
   neg_cursor read_declaration "box-shadow: 0";
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+  (* Sec. 6.2 writes the run [<length>{2} [ <length [0,inf]> <length>? ]?]: a
+     plain length in every slot, and a floor on the blur alone. Chrome 153
+     agrees on each of these. *)
+  neg_cursor read_declaration "box-shadow: 10% 20%";
+  neg_cursor read_declaration "box-shadow: 20px 10%";
+  neg_cursor read_declaration "box-shadow: auto 10%";
+  neg_cursor read_declaration "text-shadow: 10px 20%";
+  neg_cursor read_declaration "text-shadow: auto 10px";
+  neg_cursor read_declaration "box-shadow: 10px 20px -5px";
+  neg_cursor read_declaration "text-shadow: 10px 20px -5px";
+  check_declaration ~expected:"box-shadow:10px 20px 5px -3px"
+    "box-shadow: 10px 20px 5px -3px";
+  (* A math function holds no value to compare, so the blur takes one and keeps
+     it: unwrapping [calc(-5px)] would emit the literal the reader refuses. *)
+  check_declaration ~expected:"box-shadow:10px 20px calc(-5px)"
+    ~optimized:"box-shadow:10px 20px calc(-5px)"
+    "box-shadow: 10px 20px calc(-5px)";
+  check_declaration ~expected:"text-shadow:10px 20px calc(-5px)"
+    ~optimized:"text-shadow:10px 20px calc(-5px)"
+    "text-shadow: 10px 20px calc(-5px)";
+  check_declaration ~expected:"box-shadow:10px 20px calc(2px + 3px)"
+    ~optimized:"box-shadow:10px 20px 5px"
+    "box-shadow: 10px 20px calc(2px + 3px)";
 
   (* CSS Transitions 1 sec. 3: the shorthand takes a
      <single-transition-property>, and none is one of them, so it is the whole
@@ -2778,8 +2958,8 @@ let animation_infinite_name () =
       ("infinite infinite", "infinite", Infinite);
       ("infinite INFINITE", "INFINITE", Infinite);
       ("INFINITE infinite", "infinite", Infinite);
-      ("2 infinite", "infinite", Num 2.);
-      ("2 InFiNiTe", "InFiNiTe", Num 2.);
+      ("2 infinite", "infinite", Count (Num 2.));
+      ("2 InFiNiTe", "InFiNiTe", Count (Num 2.));
     ];
   List.iter
     (fun value -> none_cursor read_declaration ("animation:" ^ value))
@@ -3109,6 +3289,18 @@ let custom_properties () =
      its whole sub-cursor, so [var(--x 10px)] silently dropped [ 10px] and
      answered [var(--x)]. *)
   neg_cursor read_declaration "color:var(--x 10px)";
+  (* CSS Color 5 sec. 4.1 substitutes a relative colour's channel keyword as a
+     [<number>], so adding a percentage or an angle to one is the same type
+     error it is anywhere else in a math function. Chrome 153 refuses every one
+     of these and takes the multiplying forms above. *)
+  neg_cursor read_declaration "color: rgb(from red calc(r + 10%) g b)";
+  neg_cursor read_declaration "color: hsl(from red calc(h + 90deg) s l)";
+  neg_cursor read_declaration "color: hsl(from red h calc(s + 10%) l)";
+  neg_cursor read_declaration "color: hwb(from red h calc(w + 10%) b)";
+  neg_cursor read_declaration "color: lab(from red calc(l + 10%) a b)";
+  neg_cursor read_declaration "color: lch(from red l c calc(h + 90deg))";
+  neg_cursor read_declaration "color: oklab(from red calc(l + 10%) a b)";
+  neg_cursor read_declaration "color: color(from red srgb calc(r + 10%) g b)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
 (* A numeric token's source spelling is not part of its value. Opaque custom-
@@ -4497,6 +4689,59 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      (* CSS Grid 3 (ED) removed the masonry track vocabulary, and Firefox ships
+         this value behind a pref, so cascade keeps reading it rather than
+         dropping author CSS a browser renders. The other properties of that
+         draft are not modelled, and ride the unknown-property path any unknown
+         name rides. *)
+      ("grid-template-rows: masonry", "grid-template-rows:masonry");
+      ("grid-template-columns: masonry", "grid-template-columns:masonry");
+      ("masonry-direction: row", "masonry-direction:row");
+      ("item-flow: row", "item-flow:row");
+      (* Sec. 6.1 lists the slots source, slice, width, outset then repeat, so
+         the canonical serialisation reorders what the author interleaved. *)
+      ("border-image: 50% none", "border-image:none 50%");
+      ("border-image: 1 none", "border-image:none 1");
+      ("border-image: round none 30", "border-image:none 30 round");
+      ("border-image: 30 / 2 url(a.png)", "border-image:url(a.png)30/2");
+      ("ruby-overhang: spaces", "ruby-overhang:spaces");
+      ("-webkit-mask-origin: content", "-webkit-mask-origin:content");
+      ("-webkit-mask-origin: padding", "-webkit-mask-origin:padding");
+      ("-webkit-mask-origin: border", "-webkit-mask-origin:border");
+      ("-webkit-mask-clip: content", "-webkit-mask-clip:content");
+      ("-webkit-mask-clip: text", "-webkit-mask-clip:text");
+      ("zoom: calc(.5)", "zoom:calc(.5)");
+      ("zoom: calc(50%)", "zoom:50%");
+      ("border-image-slice: calc(10%)", "border-image-slice:10%");
+      ("border-image-slice: calc(-10%)", "border-image-slice:calc(-10%)");
+      ("interest-delay: normal 120ms", "interest-delay:normal 120ms");
+      ("interest-delay: 120ms normal", "interest-delay:120ms normal");
+      ("interest-delay: 1s 2s", "interest-delay:1s 2s");
+      ("interest-delay: normal", "interest-delay:normal");
+      ("scroll-margin-block: 0 0", "scroll-margin-block:0 0");
+      ("scroll-margin-inline: 0 0", "scroll-margin-inline:0 0");
+      ("grid-row-end: calc(.5)", "grid-row-end:calc(.5)");
+      ("grid-column-start: calc(1.4)", "grid-column-start:calc(1.4)");
+      ("z-index: calc(.5)", "z-index:calc(.5)");
+      ("order: calc(1.4)", "order:calc(1.4)");
+      ("font-language-override: \"ENG\"", "font-language-override:\"ENG\"");
+      ("font-language-override: \"A\"", "font-language-override:\"A\"");
+      ("-webkit-mask-composite: clear", "-webkit-mask-composite:clear");
+      ("-webkit-mask-composite: copy", "-webkit-mask-composite:copy");
+      ( "-webkit-mask-composite: source-atop",
+        "-webkit-mask-composite:source-atop" );
+      ( "-webkit-mask-composite: destination-over",
+        "-webkit-mask-composite:destination-over" );
+      ( "-webkit-mask-composite: destination-in",
+        "-webkit-mask-composite:destination-in" );
+      ( "-webkit-mask-composite: destination-out",
+        "-webkit-mask-composite:destination-out" );
+      ( "-webkit-mask-composite: destination-atop",
+        "-webkit-mask-composite:destination-atop" );
+      ( "-webkit-mask-composite: plus-lighter",
+        "-webkit-mask-composite:plus-lighter" );
+      ( "-webkit-mask-composite: copy, destination-in",
+        "-webkit-mask-composite:copy,destination-in" );
       ("offset-path: path('M 0 0 L 1 1')", "offset-path:path(\"M 0 0 L 1 1\")");
       ("offset-distance: 50%", "offset-distance:50%");
       ("font-size-adjust: from-font", "font-size-adjust:from-font");
@@ -4597,6 +4842,67 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      (* CSS Box 4 sec. 3.1 gives every margin longhand [<length-percentage> |
+         auto], so a sizing function reaches none of them; the shorthand already
+         refused one. CSS Logical 1 sec. 4.2 spells the flow-relative pair from
+         the same production. *)
+      "margin-right: fit-content(20rem)";
+      (* The prefixed stroke is a [||] of one width and one colour, so a second
+         width fills no slot; cascade kept the last and dropped the first, which
+         is a miscompile rather than a loose read. *)
+      "-webkit-text-stroke: 100px 200px";
+      (* CSS Backgrounds 3 sec. 2.1 gives the colour to the FINAL layer alone,
+         so a colour in an earlier one is no background. *)
+      "background: red, currentcolor";
+      "background: red, url(a.png)";
+      (* CSS Box Alignment 3 sec. 8.1 gives every gap a [0,inf] range, and the
+         row-gap and column-gap longhands already refused a negative one. CSS
+         Text Decoration 4 sec. 3 builds the shorthand from its own longhands,
+         so a sizing function reaches neither. *)
+      "gap: -10%";
+      "gap: 1px -10%";
+      "text-decoration: fit-content(20rem)";
+      (* CSS Position 3 sec. 3.1 gives every inset longhand the same [auto |
+         <length-percentage>], and sec. 3.2 builds the shorthand from it, so no
+         sizing function reaches those either. *)
+      "bottom: fit-content(20rem)";
+      "top: calc-size(auto, size)";
+      "inset: fit-content(20rem)";
+      "inset-inline-start: fit-content(20rem)";
+      "inset-block: fit-content(20rem)";
+      "margin-left: fit-content(20rem)";
+      "margin-block-end: fit-content(20rem)";
+      "margin-inline: fit-content(20rem)";
+      "margin-top: calc-size(auto, size)";
+      "mask-origin: no-clip";
+      "-webkit-mask-origin: fill-box";
+      "-webkit-mask-origin: view-box";
+      "-webkit-mask-clip: no-clip";
+      "-webkit-mask-origin: text";
+      "mask-clip: text";
+      "zoom: -50%";
+      "border-image-slice: -10%";
+      "interest-delay: normal normal normal";
+      "interest-delay-start: normal 1s";
+      "grid-row-end: calc(0)";
+      "grid-column-start: balance 0";
+      "grid-row-end: balance 0";
+      "border-image: none, none";
+      "border-image: url(a.png), none";
+      "border-image-source: none, none";
+      "mask-border: none, none";
+      "font-language-override: \"default\"";
+      "font-language-override: \"ENGLISH\"";
+      "font-language-override: \"\"";
+      "grid: \"<\" \">\"";
+      "grid: \"\"";
+      "grid: \"a\" \"b c\"";
+      "grid: \"a b\" \"b a\"";
+      "grid-template: \"nav/main\"";
+      "grid-template: \"a\" \"a a\"";
+      "grid-template: \"a .\" \". a\"";
+      "-webkit-mask-composite: plus-darker";
+      "-webkit-mask-composite: add";
       "offset-distance: -10% -10%";
       "font-size-adjust: from-font 1";
       "font-variant-emoji: smile";
@@ -4645,6 +4951,21 @@ let spec_values_l45_edges () =
         "color:rgb(from red r calc(g * 2)10)" );
       ( "color: rgb(from red r calc(g * 2) 10)",
         "color:rgb(from red r calc(g * 2)10)" );
+      (* CSS Color 5 sec. 4.1 puts the origin's [alpha] keyword, and math over
+         it, wherever the function takes an [<alpha-value>], [color()] included.
+         The sRGB self-substitution folds only a numeric alpha, so the keyword
+         forms keep the call. *)
+      ( "color: color(from red srgb r g b / alpha)",
+        "color:color(from red srgb r g b/alpha)" );
+      ( "color: color(from red srgb r g b / calc(alpha * 2))",
+        "color:color(from red srgb r g b/calc(alpha * 2))" );
+      (* Sec. 4.1 substitutes a channel keyword as a [<number>], so the ordinary
+         math typing decides the rest: multiplying by a percentage gives a
+         percentage, which the slot takes. *)
+      ( "color: hwb(from red h calc(w * 1%) b)",
+        "color:hwb(from red h calc(w * 1%) b)" );
+      ( "color: lch(from red l c calc(h + 90))",
+        "color:lch(from red l c calc(h + 90))" );
       (* pp holds the authored node for the Named blue, the rgb()/alpha, and the
          turn unit. The colour cross-fold and angle conversion are optimize
          transforms. *)
@@ -5359,6 +5680,10 @@ let check_property_row (row : property_grammar_row) =
     [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
   check_property_var row
 
+(* Every row is checked and every failure reported. Alcotest raises on the first
+   one, so iterating the matrix directly makes a 2643-vector check report one
+   finding standing for however many there are, and the size of the gap is the
+   thing this manifest exists to measure. *)
 let spec_property_grammar_manifest () =
   let unique_properties =
     List.sort_uniq String.compare
@@ -5368,10 +5693,26 @@ let spec_property_grammar_manifest () =
   in
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
-  Alcotest.(check int)
-    "property grammar manifest covers every tracked spec property name" 455
-    (List.length unique_properties);
-  List.iter check_property_row property_grammar_matrix
+  (* No count here. How much of the reader this manifest covers is derived from
+     the reader's own name table by scripts/check_properties.ml, which reports
+     it every run; a literal here says only that the file did not shrink, and
+     counting rows is what let one row stand in for three grammars. *)
+  if unique_properties = [] then
+    Alcotest.fail "property grammar manifest is empty";
+  let failures =
+    List.filter_map
+      (fun (row : property_grammar_row) ->
+        match check_property_row row with
+        | () -> None
+        | exception e ->
+            Some (String.concat "" [ row.property; ": "; Printexc.to_string e ]))
+      property_grammar_matrix
+  in
+  match failures with
+  | [] -> ()
+  | failures ->
+      Alcotest.failf "%d manifest row(s) failed:@.%s" (List.length failures)
+        (String.concat "\n" failures)
 
 let parse_declaration_case () =
   (* A known property parses to a typed declaration. *)
@@ -6570,10 +6911,40 @@ let multi_value_grammars () =
   neg_cursor read_declaration "border-top-left-radius: -1px";
   neg_cursor read_declaration "border-top-left-radius: 1px 2px 3px"
 
+(* ignore-test: a calc() sum spans every length property, not one. *)
+let test_calc_sum_shortest_spelling () =
+  (* CSS Values 4 (ED) sec. 10.13 Serialization sorts a sum's children before
+     serialising them, so the order the author wrote carries no meaning and
+     every order is the same value. Minify takes the shortest of them: a
+     leading negative term spends a byte on its own sign and another on the [+]
+     that joins the next, where a leading positive term spends neither. *)
+  (* [held] is the input itself: pp serialises what it was given, and picking
+     between two spellings of one value is the optimizer's job. *)
+  let shortest ~into input =
+    decl_optimizes ~prop:"width" ~held:input ~into input
+  in
+  shortest ~into:"calc(100vw - 10px)" "calc(-10px + 100vw)";
+  shortest ~into:"calc(100vw - 10px)" "calc(100vw - 10px)";
+  shortest ~into:"calc(50vmin - 2em)" "calc(-2em + 50vmin)";
+  shortest ~into:"calc(3px - 2em)" "calc(-2em + 3px)";
+  (* The join reads the same whichever unit leads: a negative term is [- 2em],
+     never [+ -2em]. *)
+  shortest ~into:"calc(3px - 2em)" "calc(3px - 2em)";
+  shortest ~into:"calc(3em - 2px)" "calc(3em - 2px)";
+  (* With no positive term to lead, the authored order stands: every spelling is
+     the same length. *)
+  shortest ~into:"calc(-1px - 2em)" "calc(-1px - 2em)";
+  shortest ~into:"calc(-2em - 1px)" "calc(-2em - 1px)";
+  (* A percentage leads what it is mixed with, and still only when positive. *)
+  shortest ~into:"calc(10% - 5vw)" "calc(-5vw + 10%)";
+  shortest ~into:"calc(5vw - 10%)" "calc(-10% + 5vw)"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
     test_case "declaration" `Quick test_declaration;
+    test_case "calc sum shortest spelling" `Quick
+      test_calc_sum_shortest_spelling;
     test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;
     test_case "caret auto has one node" `Quick caret_auto_has_one_node;
     test_case "radial gradient var has one node" `Quick
