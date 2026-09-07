@@ -146,12 +146,20 @@ type outcome =
 let hits = Hashtbl.create 64
 let excuse_key property value = String.concat "\000" [ property; value ]
 
-let excuse table property value =
+(* A shape answers for a class of values rather than one, so a manifest row
+   pinning a member of the class is excused by it the way a literal entry
+   excuses its own value. *)
+let excuse ?(shapes = []) table property value =
   match Chrome_gaps.find table ~property ~value with
-  | None -> None
   | Some e ->
       Hashtbl.replace hits (excuse_key property value) ();
       Some e.why
+  | None -> (
+      match Chrome_gaps.shape_covering shapes ~property ~value with
+      | Some s ->
+          Hashtbl.replace hits (excuse_key property value) ();
+          Some s.shape_why
+      | None -> None)
 
 let judge job verdict =
   match verdict.error with
@@ -164,11 +172,17 @@ let judge job verdict =
       | Positive when accepted -> Confirmed
       | Negative when not accepted -> Confirmed
       | Positive -> (
-          match excuse spec_ahead job.property job.value with
+          match
+            excuse ~shapes:Chrome_gaps.spec_ahead_shapes spec_ahead job.property
+              job.value
+          with
           | Some why -> Excused why
           | None -> Wrong "the browser rejects this positive")
       | Negative -> (
-          match excuse lenient job.property job.value with
+          match
+            excuse ~shapes:Chrome_gaps.lenient_shapes lenient job.property
+              job.value
+          with
           | Some why -> Excused why
           | None -> Wrong "the browser accepts this negative"))
 

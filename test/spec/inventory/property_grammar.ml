@@ -273,6 +273,11 @@ let matrix =
           ",";
           "default";
           "system-ui default";
+          (* Chrome reads a reserved word inside a longer unquoted name, which
+             sec. 2.1.1 excludes; a generic family in one (system-ui above) it
+             refuses as the section says. Pinned here so the shape excusing the
+             first is checked against the fixed population. *)
+          "none default";
           "revert-layer, serif";
           "system-ui revert-layer, serif";
         ];

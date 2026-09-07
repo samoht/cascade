@@ -392,6 +392,48 @@ let spec_ahead : excuse list =
 
 (* Negatives Chrome accepts. Each is a value no specification grants, kept
    invalid on purpose. *)
+(* An unquoted font family is a [<custom-ident>+], and CSS Fonts 4 sec. 2.1.1
+   excludes an identifier that "could be misinterpreted as a pre-defined
+   keyword ... or the CSS-wide keywords". Measured on Chrome 153: it applies
+   that only to a family of ONE identifier ([default] alone is refused), and
+   reads a reserved word inside a longer name ([default Arial], [x default],
+   [none default] all compute as one quoted family). No specification grants
+   that, so the reader is right and Chrome is lenient. *)
+let unquoted_family_reserved_word s =
+  let words = String.split_on_char ' ' (String.trim s) in
+  let reserved =
+    [
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+      "default";
+      "none";
+      "currentcolor";
+    ]
+  in
+  (* A generic family is a different exclusion and Chrome does apply that one,
+     refusing [system-ui default], so a name holding one is not this shape. *)
+  let generic =
+    [
+      "serif";
+      "sans-serif";
+      "monospace";
+      "cursive";
+      "fantasy";
+      "system-ui";
+      "math";
+      "ui-serif";
+      "ui-sans-serif";
+      "ui-monospace";
+      "ui-rounded";
+    ]
+  in
+  List.length words > 1
+  && List.exists (fun w -> List.exists (String.equal w) reserved) words
+  && not (List.exists (fun w -> List.exists (String.equal w) generic) words)
+
 let lenient : excuse list =
   [
     {
@@ -512,8 +554,21 @@ let unimplemented_text_overflow s =
   | [] | [ "clip" ] | [ "ellipsis" ] -> false
   | parts -> List.length parts <= 2 && List.for_all arm parts
 
+let lenient_family_shape =
+  {
+    shape_properties = [ "font-family"; "font" ];
+    shape_name = "a reserved word inside a longer unquoted family";
+    matches = unquoted_family_reserved_word;
+    shape_why =
+      "CSS Fonts 4 sec. 2.1.1 gives an unquoted family a <custom-ident>+ and \
+       excludes an identifier that could be misinterpreted as a pre-defined \
+       keyword or a CSS-wide keyword. Chrome applies that to a one-identifier \
+       family alone and reads a reserved word inside a longer name";
+  }
+
 let lenient_shapes =
   [
+    lenient_family_shape;
     {
       (* Measured on Chrome 153: [border: 1px, dashed, red] sets the same twelve
          longhands [border: 1px dashed red] does, so both sides of each comma
