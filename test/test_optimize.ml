@@ -1740,6 +1740,42 @@ let unknown_at_rule_body_is_compacted () =
     "@foo{ .a { color: red } }"
     (minified "@foo{ .a { color: red } }")
 
+(* A shorthand resets every longhand of its family, so one written before it is
+   dead and minify drops it. The two families here are the ones whose reset
+   table entry no other test reaches: their longhands survive a mutation of the
+   table and the suite stays green. *)
+(* A shorthand resets every longhand of its family, so one written before it is
+   dead and minify drops it. The two families here are the ones whose reset
+   table entry no other test reaches: their longhands survive a mutation of the
+   table and the suite stays green. *)
+let test_shorthand_drops_the_longhand_it_resets () =
+  let minify_str css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* CSS Transitions 1 (ED) sec. 2.5: the shorthand sets all four longhands, so
+     [transition: 1s] gives transition-property its initial [all] and the
+     earlier declaration cannot be seen. *)
+  Alcotest.(check string)
+    "transition resets the property longhand before it" "a{transition:all 1s}"
+    (minify_str "a{transition-property:opacity;transition:1s}");
+  Alcotest.(check string)
+    "and keeps one written after it"
+    "a{transition:all 1s;transition-property:opacity}"
+    (minify_str "a{transition:1s;transition-property:opacity}");
+  (* CSS Fonts 4 (ED) sec. 6.10: font-variant resets its seven longhands, of
+     which font-variant-ligatures is one. *)
+  Alcotest.(check string)
+    "font-variant resets the ligatures longhand before it"
+    "a{font-variant:normal}"
+    (minify_str "a{font-variant-ligatures:none;font-variant:normal}");
+  Alcotest.(check string)
+    "and keeps one written after it"
+    "a{font-variant:normal;font-variant-ligatures:none}"
+    (minify_str "a{font-variant:normal;font-variant-ligatures:none}")
+
 let optimize_tests =
   [
     ( "unknown at-rule body is compacted",
@@ -1768,6 +1804,9 @@ let optimize_tests =
     ( "lossless keeps unknown property order",
       `Quick,
       test_lossless_keeps_unknown_property_order );
+    ( "shorthand drops the longhand it resets",
+      `Quick,
+      test_shorthand_drops_the_longhand_it_resets );
     ( "lossless keeps shorthand longhand order",
       `Quick,
       test_lossless_keeps_shorthand_longhand_order );
