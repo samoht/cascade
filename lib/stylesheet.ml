@@ -1307,13 +1307,6 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
   | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
-  | Font_style_range (min_style, max_style) ->
-      pp_descriptor "font-style"
-        (fun ctx (min_style, max_style) ->
-          Properties.pp_font_style ctx min_style;
-          Pp.space ctx ();
-          Properties.pp_font_style ctx max_style)
-        (min_style, max_style)
   | Font_weight weight ->
       pp_descriptor "font-weight" Properties.pp_font_weight weight
   | Font_weight_range (min_weight, max_weight) ->
@@ -2365,11 +2358,18 @@ let read_font_weight_descriptor r =
       if descriptor_is_auto value then Font_weight_auto
       else
         let c = Cursor.of_string value in
-        let first = Properties.read_font_weight c in
+        let absolute () =
+          match Properties.read_font_weight c with
+          | Bolder | Lighter ->
+              Cursor.err_invalid c
+                "relative weight in an @font-face font-weight descriptor"
+          | weight -> weight
+        in
+        let first = absolute () in
         Cursor.ws c;
         if Cursor.is_done c then Font_weight first
         else
-          let second = Properties.read_font_weight c in
+          let second = absolute () in
           Cursor.ws c;
           Cursor.expect_eof c;
           Font_weight_range (first, second))
@@ -2381,14 +2381,10 @@ let read_font_style_descriptor r =
       if descriptor_is_auto value then Font_style_auto
       else
         let c = Cursor.of_string value in
-        let first = Properties.read_font_style c in
+        let style = Properties.read_font_style c in
         Cursor.ws c;
-        if Cursor.is_done c then Font_style first
-        else
-          let second = Properties.read_font_style c in
-          Cursor.ws c;
-          Cursor.expect_eof c;
-          Font_style_range (first, second))
+        Cursor.expect_eof c;
+        Font_style style)
     r
 
 let validate_nonempty_descriptor r name value =

@@ -809,7 +809,8 @@ let spec_fontface_descriptors () =
      inherited weight for them to be relative to. *)
   check_stylesheet
     ~expected:
-      "@font-face{font-family:Brand;src:url(font.woff2);font-weight:400 700}"
+      "@font-face{font-family:Brand;src:url(font.woff2);font-weight:normal \
+       bold}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
      normal bold; }";
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"

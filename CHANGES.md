@@ -30,6 +30,13 @@ entry points both moved.
   comma-separated list, one entry per rule line. A caller writing one line
   passes a one-element list (#1024)
 
+- `Cascade.Stylesheet.font_face_descriptor` loses `Font_style_range`, so
+  `@font-face { font-style: normal italic }` is dropped where it was read. CSS
+  Fonts 4 sec. 4.4 grants one style range only, a pair of `oblique` angles,
+  which `Cascade.Properties.font_style` carries in a single value. The same
+  section makes the weight descriptor absolute, so `font-weight: lighter` is
+  dropped too (#1117)
+
 - `Cascade.Stylesheet.font_face_descriptor` gains `Font_style_auto`,
   `Font_weight_auto` and `Font_stretch_auto`, so `@font-face { font-style: auto }`
   and its two siblings read where they were dropped. CSS Fonts 4 sec. 4.4 gives

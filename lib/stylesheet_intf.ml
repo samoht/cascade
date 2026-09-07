@@ -305,9 +305,10 @@ and page_margin_rule = {
 and font_face_descriptor =
   | Font_family of Properties.font_family list  (** Font family name *)
   | Src of Font_face.src  (** Font source (url(), local(), etc.) *)
-  | Font_style of Properties.font_style  (** normal, italic, oblique *)
-  | Font_style_range of Properties.font_style * Properties.font_style
-      (** variable font style range, e.g. [normal italic] *)
+  | Font_style of Properties.font_style
+      (** CSS Fonts 4 sec. 4.4 [normal | italic | oblique [<angle>{1,2}]?]. The
+          only range the descriptor grants is a pair of oblique angles, which
+          {!Properties.font_style} carries in one value. *)
   | Font_style_auto
       (** CSS Fonts 4 sec. 4.4 [auto], the initial value: the face is asked for
           its own range rather than told one. *)
@@ -375,8 +376,6 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
   | Font_family values -> Some (Font_family (font_family values))
   | Font_style value -> Some (Font_style (font_style value))
-  | Font_style_range (low, high) ->
-      Some (Font_style_range (font_style low, font_style high))
   | Font_weight value -> Some (Font_weight (font_weight value))
   | Font_weight_range (low, high) ->
       Some (Font_weight_range (font_weight low, font_weight high))
