@@ -3542,12 +3542,82 @@ let invalid () =
   neg "border-width: calc(thick)";
   neg "outline-width: calc(thin)";
   neg "outline-width: min(thin,1px)";
+  (* The same rule over the properties that hand their own value reader to the
+     calc leaf: the sizing keywords of [flex-basis] and [flex], the absolute
+     sizes of [font-size], the [normal] of [line-height] and the CSS-wide
+     keywords all five [<opacity-value>] properties take. *)
+  neg "flex-basis: calc(auto)";
+  neg "flex-basis: calc(content)";
+  neg "flex-basis: calc(min-content)";
+  neg "flex-basis: calc(1px + initial)";
+  neg "flex: calc(auto)";
+  neg "flex: calc(content)";
+  neg "flex: calc(inherit)";
+  neg "flex: calc(1px + initial)";
+  neg "font-size: calc(inherit)";
+  neg "font-size: calc(1px + initial)";
+  neg "line-height: calc(normal)";
+  neg "line-height: calc(inherit)";
+  neg "line-height: calc(1px + initial)";
+  neg "opacity: calc(inherit)";
+  neg "fill-opacity: calc(inherit)";
+  neg "flood-opacity: calc(inherit)";
+  neg "stop-opacity: calc(inherit)";
+  neg "stroke-opacity: calc(inherit)";
+  neg "shape-image-threshold: calc(inherit)";
+  (* A keyword operand is no more valid for being arithmetic: sec. 10.9 fails
+     the whole calculation's type, not just the bare-keyword spelling. *)
+  neg "font-size: calc(medium)";
+  neg "font-size: calc(2 * medium)";
+  neg "font-size: calc(medium * 2)";
+  neg "font-size: calc(medium / 2)";
+  neg "font-size: calc(medium + 0px)";
+  neg "font-size: calc(medium + 1em)";
+  neg "font-size: calc((medium) + (1px))";
+  (* Each keyword still reads on its own, and a well-typed operand still folds:
+     [line-height] takes a unitless [<number>], so [calc(1.5)] stays valid where
+     [calc(normal)] does not. *)
+  check ~expected:"flex-basis:auto" "flex-basis: auto";
+  check ~expected:"flex-basis:content" "flex-basis: content";
+  check ~expected:"flex-basis:min-content" "flex-basis: min-content";
+  check ~expected:"font-size:medium" "font-size: medium";
+  check ~expected:"font-size:inherit" "font-size: inherit";
+  check ~expected:"line-height:normal" "line-height: normal";
+  check ~expected:"line-height:1.5" "line-height: calc(1.5)";
+  check ~expected:"flex-basis:calc(50% - 10px)" "flex-basis: calc(50% - 10px)";
+  check ~expected:"opacity:inherit" "opacity: inherit";
+  check ~expected:"opacity:.5" "opacity: 0.5";
+  check ~expected:"fill-opacity:.5" "fill-opacity: 50%";
 
   (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
      "must have a consistent type or else the function is invalid", and sec.
      10.9 gives a unitless zero inside a math function the [<number>] type. *)
   neg "width: min(0,1px)";
   neg "width: clamp(0px,0,100px)";
+  (* [<line-width>] runs the same check: without it a mistyped argument folds to
+     a wrong value rather than dropping, so [min(0,1px)] became [0]. The
+     longhands, the shorthands that carry one and a nested math argument all
+     read through the same leaf. *)
+  neg "border-width: min(0,1px)";
+  neg "border-width: max(0,1px)";
+  neg "outline-width: clamp(0px,0,3px)";
+  neg "column-rule-width: min(1,1px)";
+  neg "column-rule-width: clamp(0px,1,100px)";
+  neg "column-rule-width: calc(min(1,1px) + max(1px,2px))";
+  neg "-webkit-text-stroke-width: min(1,1px)";
+  neg "-webkit-text-stroke-width: clamp(0px,1,100px)";
+  neg "outline: min(0,1px) solid red";
+  neg "border-right: min(0,1px) solid red";
+  neg "border-inline-end: min(0,1px) solid red";
+  neg "outline: calc(min(0,1px) + max(1px,2px)) solid red";
+  check ~expected:"border-width:min(1px,2em)" "border-width: min(1px,2em)";
+  check ~expected:"column-rule-width:min(1px,2em)"
+    "column-rule-width: min(1px,2em)";
+  check ~expected:"-webkit-text-stroke-width:2px"
+    "-webkit-text-stroke-width: 2px";
+  check ~expected:"outline:min(1px,2em) solid red"
+    "outline: min(1px,2em) solid red";
+  check ~expected:"border-right:1px solid red" "border-right: 1px solid red";
 
   (* CSS Sizing 3 sec. 5 gives the intrinsic sizes to the sizing properties, so
      a property reading a plain length does not take them. Chrome 146 refuses
