@@ -128,6 +128,9 @@ let spec_ahead : excuse list =
           "border-image-source";
           "mask-image";
           "-webkit-mask-image";
+          "list-style";
+          "list-style-image";
+          "content";
         ];
       value = "cross-fade(url(a.png) 40%, url(b.png))";
       why =
