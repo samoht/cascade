@@ -4591,6 +4591,10 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("zoom: calc(.5)", "zoom:calc(.5)");
+      ("zoom: calc(50%)", "zoom:calc(50%)");
+      ("border-image-slice: calc(10%)", "border-image-slice:calc(10%)");
+      ("border-image-slice: calc(-10%)", "border-image-slice:calc(-10%)");
       ("interest-delay: normal 120ms", "interest-delay:normal 120ms");
       ("interest-delay: 120ms normal", "interest-delay:120ms normal");
       ("interest-delay: 1s 2s", "interest-delay:1s 2s");
@@ -4719,6 +4723,8 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "zoom: -50%";
+      "border-image-slice: -10%";
       "interest-delay: normal normal normal";
       "interest-delay-start: normal 1s";
       "grid-row-end: calc(0)";
