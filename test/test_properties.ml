@@ -2423,7 +2423,17 @@ let test_vertical_align () =
   (* A unitless 0 is the valid zero <length> and stays unitless; any other
      unitless number is not a length. *)
   check_vertical_align "0";
+  (* Every length unit is a [<length-percentage>], so the reader takes no list
+     of its own: [ch], [vh] and [cap] read like [px], and a math function over
+     them does too. Chrome 153 takes all four. *)
+  check_vertical_align "2ch";
+  check_vertical_align "2vh";
+  check_vertical_align "2cap";
+  check_vertical_align "max(1rem,2vw)";
   neg_cursor read_vertical_align "5";
+  (* The grammar has no keyword branch, so the intrinsic sizes a bare length
+     reader would take are out. *)
+  neg_cursor read_vertical_align "min-content";
   neg_cursor read_vertical_align "invalid-align"
 
 let test_font_family () =
