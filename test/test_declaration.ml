@@ -4591,6 +4591,11 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("-webkit-mask-origin: content", "-webkit-mask-origin:content");
+      ("-webkit-mask-origin: padding", "-webkit-mask-origin:padding");
+      ("-webkit-mask-origin: border", "-webkit-mask-origin:border");
+      ("-webkit-mask-clip: content", "-webkit-mask-clip:content");
+      ("-webkit-mask-clip: text", "-webkit-mask-clip:text");
       ("zoom: calc(.5)", "zoom:calc(.5)");
       ("zoom: calc(50%)", "zoom:50%");
       ("border-image-slice: calc(10%)", "border-image-slice:10%");
@@ -4723,6 +4728,12 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      "mask-origin: no-clip";
+      "-webkit-mask-origin: fill-box";
+      "-webkit-mask-origin: view-box";
+      "-webkit-mask-clip: no-clip";
+      "-webkit-mask-origin: text";
+      "mask-clip: text";
       "zoom: -50%";
       "border-image-slice: -10%";
       "interest-delay: normal normal normal";
