@@ -3168,6 +3168,18 @@ let custom_properties () =
      its whole sub-cursor, so [var(--x 10px)] silently dropped [ 10px] and
      answered [var(--x)]. *)
   neg_cursor read_declaration "color:var(--x 10px)";
+  (* CSS Color 5 sec. 4.1 substitutes a relative colour's channel keyword as a
+     [<number>], so adding a percentage or an angle to one is the same type
+     error it is anywhere else in a math function. Chrome 153 refuses every one
+     of these and takes the multiplying forms above. *)
+  neg_cursor read_declaration "color: rgb(from red calc(r + 10%) g b)";
+  neg_cursor read_declaration "color: hsl(from red calc(h + 90deg) s l)";
+  neg_cursor read_declaration "color: hsl(from red h calc(s + 10%) l)";
+  neg_cursor read_declaration "color: hwb(from red h calc(w + 10%) b)";
+  neg_cursor read_declaration "color: lab(from red calc(l + 10%) a b)";
+  neg_cursor read_declaration "color: lch(from red l c calc(h + 90deg))";
+  neg_cursor read_declaration "color: oklab(from red calc(l + 10%) a b)";
+  neg_cursor read_declaration "color: color(from red srgb calc(r + 10%) g b)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
 (* A numeric token's source spelling is not part of its value. Opaque custom-
@@ -4712,6 +4724,13 @@ let spec_values_l45_edges () =
         "color:color(from red srgb r g b/alpha)" );
       ( "color: color(from red srgb r g b / calc(alpha * 2))",
         "color:color(from red srgb r g b/calc(alpha * 2))" );
+      (* Sec. 4.1 substitutes a channel keyword as a [<number>], so the ordinary
+         math typing decides the rest: multiplying by a percentage gives a
+         percentage, which the slot takes. *)
+      ( "color: hwb(from red h calc(w * 1%) b)",
+        "color:hwb(from red h calc(w * 1%) b)" );
+      ( "color: lch(from red l c calc(h + 90))",
+        "color:lch(from red l c calc(h + 90))" );
       (* pp holds the authored node for the Named blue, the rgb()/alpha, and the
          turn unit. The colour cross-fold and angle conversion are optimize
          transforms. *)

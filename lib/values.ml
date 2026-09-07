@@ -6855,6 +6855,87 @@ let folded_srgb_color origin (alpha : alpha) : color option =
       Option.Some
         (Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a })
 
+(* CSS Color 5 secs. 4.3 to 4.9 and 5.1 name the channel keywords each relative
+   colour function binds; [alpha] is bound by all of them. *)
+let relative_channel_keywords name =
+  let channels =
+    match name with
+    | "rgb" -> [ "r"; "g"; "b" ]
+    | "hsl" -> [ "h"; "s"; "l" ]
+    | "hwb" -> [ "h"; "w"; "b" ]
+    | "lab" | "oklab" -> [ "l"; "a"; "b" ]
+    | "lch" | "oklch" -> [ "l"; "c"; "h" ]
+    | "color" -> [ "r"; "g"; "b"; "x"; "y"; "z" ]
+    | _ -> []
+  in
+  "alpha" :: channels
+
+(* Sec. 4.1 substitutes each keyword with the origin's channel as a [<number>],
+   so a channel expression is typed like any other math: [calc(w + 10%)] adds a
+   number to a percentage and [calc(h + 90deg)] a number to an angle, neither of
+   which a browser takes, while [calc(w * 1%)] multiplies and is fine.
+   Substituting a literal number is what lets the ordinary calc inference answer
+   that, rather than a second type system written for this one place. *)
+let rec substitute_channel_numbers keywords (c : Component.t) : Component.t =
+  match c with
+  | Component.Preserved ({ kind = Token.Ident id; _ } as tok)
+    when List.mem (String.lowercase_ascii id) keywords ->
+      Component.Preserved
+        {
+          tok with
+          kind =
+            Token.Number_tok { value = 1.; repr = "1"; number_flag = Integer };
+        }
+  | Component.Func ({ node; _ } as n) ->
+      Component.Func
+        {
+          n with
+          node =
+            {
+              node with
+              Component.arguments =
+                List.map (substitute_channel_numbers keywords) node.arguments;
+            };
+        }
+  | Component.Block ({ node; _ } as n) ->
+      Component.Block
+        {
+          n with
+          node =
+            {
+              node with
+              Component.value =
+                List.map (substitute_channel_numbers keywords) node.value;
+            };
+        }
+  | other -> other
+
+(* Any dimension or percentage is the contextual value the inference weighs
+   against a bare number; which dimension it is does not change the answer. *)
+let read_relative_channel_unit t : unit =
+  match Cursor.peek t with
+  | Some
+      (Component.Preserved { kind = Token.Percentage _ | Token.Dimension _; _ })
+    ->
+      Cursor.skip t
+  | _ -> Cursor.err t "relative colour channel"
+
+let check_relative_channel_math name components =
+  let keywords = relative_channel_keywords name in
+  if keywords <> [ "alpha" ] then
+    List.iter
+      (fun component ->
+        match substitute_channel_numbers keywords component with
+        | Component.Func { node = { name = fn; _ }; _ } as substituted
+          when String.lowercase_ascii fn = "calc" ->
+            ignore
+              (read_calc ~result_type:`Number_or_value
+                 read_relative_channel_unit
+                 (Cursor.of_components [ substituted ])
+                : unit calc)
+        | _ -> ())
+      components
+
 let try_fold_color_function_static origin t : color option =
   Cursor.ws t;
   let read_keyword kw =
@@ -6965,6 +7046,7 @@ and read_relative_rgb t : color =
   let origin = read_color t in
   Cursor.ws t;
   let tail_components = Cursor.remaining t in
+  check_relative_channel_math "rgb" tail_components;
   if relative_color_has_empty_alpha tail_components then
     Cursor.err_expected t "relative rgb alpha";
   let tail =
@@ -7025,6 +7107,7 @@ and read_relative_color name t : color =
   Cursor.ws t;
   let origin = read_color t in
   Cursor.ws t;
+  check_relative_channel_math name (Cursor.remaining t);
   let snap = Cursor.save t in
   match try_fold_relative_color_static name origin t with
   | Some folded -> folded
