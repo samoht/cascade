@@ -1927,14 +1927,10 @@ let read_scroll_value : type a. a property -> Cursor.t -> declaration option =
   | Scroll_margin_inline_end ->
       Some (v Scroll_margin_inline_end (read_scroll_margin_length t))
   | Scroll_margin_block ->
-      let lengths =
-        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
-          read_scroll_margin_length t
-      in
-      (match lengths with
-      | [ Zero; Zero ] -> Cursor.err_invalid t "duplicate zero scroll margin"
-      | _ -> ());
-      Some (v Scroll_margin_block lengths)
+      Some
+        (v Scroll_margin_block
+           (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+              read_scroll_margin_length t))
   | Scroll_margin_block_start ->
       Some (v Scroll_margin_block_start (read_scroll_margin_length t))
   | Scroll_margin_block_end ->

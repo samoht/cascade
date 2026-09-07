@@ -597,6 +597,11 @@ to lose a whole rule over one bad piece. Both are gone.
   `grid-column-start: balance 0` are dropped as `0` already was
   (#1080)
 
+- `scroll-margin-block: 0 0` and `scroll-margin-inline: 0 0` are declarations
+  where a pair of zeroes alone was dropped with a warning. CSS Scroll Snap 1
+  sec. 6.1 spells the logical shorthands `<length>{1,2}` with no rule about
+  what the two lengths may be (#1082)
+
 - `line-height` takes a length unit and no other, so `line-height: 1s`,
   `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
   the property `normal | <number [0,inf]> | <length-percentage [0,inf]>`, and
