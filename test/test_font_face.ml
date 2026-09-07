@@ -429,7 +429,6 @@ let spec_fontface_var_descriptor_kept () =
         "ascent-override";
         "descent-override";
         "line-gap-override";
-        "font-tech";
         "size-adjust";
       ]
   with

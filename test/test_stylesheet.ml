@@ -753,7 +753,6 @@ let spec_fontface_descriptors () =
           "font-variation-settings";
           "font-variant";
           "font-display";
-          "font-tech";
           "size-adjust";
           "ascent-override";
           "descent-override";
@@ -3985,9 +3984,14 @@ let spec_current_at_rules () =
        --brand{font-family:Brand;base-palette:1;override-colors:0 red}"
     "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
      override-colors: 0 red; }";
+  (* CSS Fonts 4 (ED) sec. 4 lists the @font-face descriptors and [font-tech] is
+     not one: [<font-tech>] is the keyword sec. 11.1 defines for [tech()] inside
+     [src] and for [font-tech()] in @supports. Chrome 153 drops the declaration,
+     and BCD carries a css.at-rules.font-face key for every real descriptor and
+     none for this one. *)
   check_stylesheet
     ~expected:
-      "@font-face{font-family:ColorFont;src:url(color.woff2)tech(color-COLRv1);font-tech:color-COLRv1}"
+      "@font-face{font-family:ColorFont;src:url(color.woff2)tech(color-COLRv1)}"
     "@font-face { font-family: ColorFont; src: url(color.woff2) \
      tech(color-COLRv1); font-tech: color-COLRv1; }";
   check_stylesheet ~expected:"@view-transition{navigation:auto}"
