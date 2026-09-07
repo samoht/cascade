@@ -257,10 +257,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `range: bogus`, `pad: 3`, `negative: 1` and `fallback: "decimal"` are dropped
   where each was kept as an opaque string, and a counter symbol may be an image
   (#1130)
-- An `@property` syntax rejects a component with two multipliers, a multiplied
-  `<transform-list>` and a `*` combined with anything, so the registration
-  drops rather than typing values by a grammar it cannot honour. Two syntaxes
-  that used to hang the parser are read (#398, #707, #710, #713)
+- An `@property` registration drops rather than typing values by a grammar it
+  cannot honour. Its syntax rejects a component with two multipliers, a
+  multiplied `<transform-list>` and a `*` combined with anything, and its
+  `initial-value` rejects a `var()`, `attr()` or `env()` at any depth, which
+  has nothing to substitute from at registration time. Two syntaxes that used
+  to hang the parser are read (#398, #707, #710, #713, #1142)
 - A bad piece is dropped on its own and the rule around it survives. A nested
   rule, a descriptor, a stray `;`, a margin at-rule, an `@counter-style` with
   no descriptor, an `@media` condition, an `@font-face` descriptor name, an

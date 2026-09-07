@@ -3613,9 +3613,24 @@ let css_wide_keyword s =
   | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
   | _ -> false
 
+(* An [initial-value] is registered before any element is styled, so one
+   carrying an arbitrary substitution function has nothing to substitute from
+   and cannot become the value the registration stores. Chrome 153 drops the
+   whole rule at every syntax, the universal one included. That is the revision
+   of Properties and Values API 1 this reader follows throughout, the one that
+   also makes syntax, inherits and a non-universal initial-value required;
+   today's ED sec. 3.3 ignores the descriptor alone instead. Not computational
+   independence, which is sec. 4.1 and binds registerProperty: Chrome keeps
+   [3em] here at the universal syntax. *)
 let read_property_initial_value r syntax str =
   if css_wide_keyword str then
     Cursor.err_invalid r "@property: initial-value cannot be CSS-wide keyword";
+  (match Variables.substitution_fn_in_value_string str with
+  | Some fn ->
+      Cursor.err_invalid r
+        (String.concat ""
+           [ "@property: initial-value cannot contain "; fn; "()" ])
+  | None -> ());
   let value_reader = Cursor.of_string str in
   let value = Variables.read_value value_reader syntax in
   Cursor.ws value_reader;

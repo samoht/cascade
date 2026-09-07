@@ -58,14 +58,38 @@ let rec var_refs_in_components acc (components : Component.t list) =
       | Component.Preserved _ -> acc)
     acc components
 
-let var_refs_in_value_string value =
+let components_of_value_string value =
   let p = Parser.of_string value in
   let rec collect acc =
     match Parser.next p with
     | Component.Preserved { Token.kind = Token.Eof; _ } -> List.rev acc
     | c -> collect (c :: acc)
   in
-  var_refs_in_components [] (collect [])
+  collect []
+
+let var_refs_in_value_string value =
+  var_refs_in_components [] (components_of_value_string value)
+
+(* CSS Values 5 calls var(), attr() and env() arbitrary substitution functions:
+   what each stands for is known only while an element is being styled. Walks
+   into arguments and blocks, so one nested in another's fallback still counts,
+   and a [var(] inside a string or url stays an atomic [Preserved] token rather
+   than a [Func], as it does for the reference walk above. *)
+let rec substitution_fn_in_components (components : Component.t list) =
+  List.find_map
+    (fun (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } -> (
+          match String.lowercase_ascii name with
+          | ("var" | "attr" | "env") as fn -> Option.Some fn
+          | _ -> substitution_fn_in_components arguments)
+      | Component.Block { node = { value; _ }; _ } ->
+          substitution_fn_in_components value
+      | Component.Preserved _ -> Option.None)
+    components
+
+let substitution_fn_in_value_string value =
+  substitution_fn_in_components (components_of_value_string value)
 
 (** Pretty-print a syntax descriptor to CSS syntax string *)
 let rec pp_syntax_inner : type a. a syntax Pp.t =
