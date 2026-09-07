@@ -588,6 +588,15 @@ to lose a whole rule over one bad piece. Both are gone.
   and it borrowed the comma-separated reader `background-image` uses. This
   release adds `Cascade.Properties.read_border_image_source` (#1078)
 
+- A math function at an `<integer>` is read and kept, so `z-index: calc(.5)`,
+  `order: calc(1.4)` and `grid-row-end: calc(.5)` are declarations where they
+  were dropped with a warning, and minified output keeps the call rather than
+  unwrapping it to a fraction the browser drops. CSS Values 4 sec. 10.12 rounds
+  the result to the nearest integer instead of refusing it. A grid line index
+  is checked against its range wherever it sits, so `grid-row-end: calc(0)` and
+  `grid-column-start: balance 0` are dropped as `0` already was
+  (#1080)
+
 - `line-height` takes a length unit and no other, so `line-height: 1s`,
   `45deg` and `10zz` are dropped with a warning. CSS Inline 3 sec. 5.1 spells
   the property `normal | <number [0,inf]> | <length-percentage [0,inf]>`, and

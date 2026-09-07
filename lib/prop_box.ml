@@ -392,7 +392,7 @@ let rec pp_z_index : z_index Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Index i -> Pp.int ctx i
-  | Calc c -> pp_calc pp_z_index ctx c
+  | Calc c -> pp_calc ~unwrap_num:false pp_z_index ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"

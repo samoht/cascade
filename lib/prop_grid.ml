@@ -71,7 +71,7 @@ let rec pp_grid_line : grid_line Pp.t =
       Pp.int ctx n;
       Pp.char ctx ' ';
       pp_ident ctx name
-  | Calc c -> pp_calc pp_grid_line ctx c
+  | Calc c -> pp_calc ~unwrap_num:false pp_grid_line ctx c
   | Var v -> pp_var pp_grid_line ctx v
 
 let rec pp_grid_line_pair : grid_line_pair Pp.t =
@@ -746,9 +746,14 @@ let read_grid_span t : grid_line =
   if not span_first then Cursor.expect_string "span" t;
   value
 
-let read_grid_line_number t : grid_line =
-  let n = Cursor.int t in
+(* CSS Grid 2 sec. 8.3 spells the index [ <integer [-inf,-1]> | <integer
+   [1,inf]> ], so zero is no line however the value reaches the slot. *)
+let check_grid_line_index t n =
   if n = 0 then Cursor.err_invalid t "grid line index cannot be zero";
+  n
+
+let read_grid_line_number t : grid_line =
+  let n = check_grid_line_index t (Cursor.int t) in
   Cursor.ws t;
   let name : string option =
     if grid_line_at_end t then None else Some (read_grid_line_name t)
@@ -771,13 +776,14 @@ let read_grid_line_name_value t : grid_line =
       let name = read_grid_line_name t in
       Cursor.ws t;
       let n : int option =
-        if grid_line_at_end t then None else Cursor.option Cursor.int t
+        if grid_line_at_end t then None
+        else Cursor.option (fun t -> check_grid_line_index t (Cursor.int t)) t
       in
       match n with Some n -> Num_name (n, name) | None -> Name name)
 
 let read_grid_line_calc t : grid_line =
   match read_integer_calc "grid-line" t with
-  | `Int n -> Num n
+  | `Int n -> Num (check_grid_line_index t n)
   | `Calc expr -> Calc expr
 
 let rec read_grid_line t : grid_line =

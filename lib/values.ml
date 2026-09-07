@@ -1373,7 +1373,8 @@ let pp_calc_with : type a.
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc ?unwrap pp_value ctx calc = pp_calc_with ?unwrap pp_value ctx calc
+let pp_calc ?unwrap_num ?unwrap pp_value ctx calc =
+  pp_calc_with ?unwrap_num ?unwrap pp_value ctx calc
 
 (* Small helpers *)
 
@@ -5786,12 +5787,12 @@ let read_integer_calc : type a.
           (String.concat "" [ "unexpected value in "; name; " calc" ]))
       t
   in
+  (* CSS Values 4 sec. 10.12 rounds a math function at an [<integer>] to the
+     nearest integer rather than refusing it, so a fractional result keeps the
+     call and rounds where the value is used. *)
   match eval_numeric_calc expr with
   | Some f when Float.is_integer f -> `Int (int_of_float f)
-  | Some _ ->
-      Cursor.err_invalid t
-        (String.concat "" [ name; " calc must evaluate to integer" ])
-  | None -> `Calc expr
+  | Some _ | None -> `Calc expr
 
 let read_integer name t =
   if Cursor.looking_at_calc t then
