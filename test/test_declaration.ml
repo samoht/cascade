@@ -4591,6 +4591,7 @@ let spec_platform_property_vectors () =
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
+      ("ruby-overhang: spaces", "ruby-overhang:spaces");
       ("-webkit-mask-origin: content", "-webkit-mask-origin:content");
       ("-webkit-mask-origin: padding", "-webkit-mask-origin:padding");
       ("-webkit-mask-origin: border", "-webkit-mask-origin:border");
