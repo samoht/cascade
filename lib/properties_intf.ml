@@ -56,6 +56,9 @@ type font_weight =
   | Bold
   | Bolder
   | Lighter
+  | Calc of font_weight calc
+      (** CSS Values 4 sec. 10 allows a math function wherever a [<number>] is
+          allowed, and one that does not fold to a constant stays here. *)
   | Inherit
   | Initial
   | Unset

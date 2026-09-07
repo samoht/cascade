@@ -59,7 +59,15 @@ let rec read_font_weight t : font_weight =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:
+      [
+        ("var", read_var);
+        (* CSS Values 4 sec. 10 allows a math function wherever a [<number>] is
+           allowed. One that folds to a constant becomes that weight and is
+           range-checked with it; one that does not stays a calc. *)
+        ( "calc",
+          fun t -> Calc (read_calc ~result_type:`Number read_font_weight t) );
+      ]
     ~default:(fun t ->
       let weight = Cursor.number t in
       if weight >= 1. && weight <= 1000. then (Weight weight : font_weight)
@@ -1354,6 +1362,16 @@ let rec pp_font_weight : font_weight Pp.t =
   | Bold -> Pp.string ctx "bold"
   | Bolder -> Pp.string ctx "bolder"
   | Lighter -> Pp.string ctx "lighter"
+  (* CSS Values 4 sec. 10.12 clamps a math function's result to the range at
+     computed-value time, so [calc(0)] is a weight where the bare [0] is not:
+     the wrapper comes off only when what is inside is a value on its own. *)
+  | Calc c ->
+      let in_range n = n >= 1. && n <= 1000. in
+      pp_calc
+        ~unwrap_num:(match c with Num n -> in_range n | _ -> true)
+        ~unwrap:(fun (v : font_weight) ->
+          match v with Weight n -> in_range n | _ -> true)
+        pp_font_weight ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -2388,9 +2406,29 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as
    "Same as 700", so each keyword and its number name one weight and the number
    is the shorter spelling. *)
-let normalize_font_weight : font_weight -> font_weight = function
+let rec numeric_font_weight_calc_leaves : font_weight calc -> font_weight calc =
+  function
+  | Val (Weight n) -> Num n
+  | Nested inner -> Nested (numeric_font_weight_calc_leaves inner)
+  | Parens inner -> Parens (numeric_font_weight_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_font_weight_calc_leaves left,
+          op,
+          numeric_font_weight_calc_leaves right )
+  | other -> other
+
+let rec normalize_font_weight : font_weight -> font_weight = function
   | Normal -> Weight 400.
   | Bold -> Weight 700.
+  (* CSS Values 4 sec. 10.12 clamps a math function's result to the range at
+     computed-value time, so [calc(0)] is a weight and the literal [0] is not:
+     unwrapping one outside [1,1000] would write CSS a browser drops. *)
+  | Calc c as value -> (
+      match eval_calc (numeric_font_weight_calc_leaves c) with
+      | Num n when n >= 1. && n <= 1000. -> Weight n
+      | Val v -> normalize_font_weight v
+      | folded -> if folded == c then value else Calc folded)
   | value -> value
 
 (* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()

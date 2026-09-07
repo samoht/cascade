@@ -30,6 +30,12 @@ entry points both moved.
   comma-separated list, one entry per rule line. A caller writing one line
   passes a one-element list (#1024)
 
+- `Cascade.Properties.font_weight` gains `Calc`, so `font-weight: calc(400)`
+  reads where it was dropped. CSS Values 4 sec. 10 allows a math function
+  wherever a `<number>` is allowed, and sec. 10.12 clamps its result rather
+  than dropping the declaration, so `calc(0)` keeps its wrapper where the bare
+  `0` is still refused. Exhaustive visitors must handle the new arm (#1124)
+
 - `Cascade.Stylesheet.font_face_descriptor` loses `Font_tech`, and
   `Cascade.Stylesheet.font_tech_descriptor` and `read_font_tech_descriptor` go
   with it, so `@font-face { font-tech: variations }` is dropped where it was

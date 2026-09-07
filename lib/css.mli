@@ -4321,6 +4321,7 @@ type font_weight = Properties.font_weight =
   | Bold
   | Bolder
   | Lighter
+  | Calc of font_weight calc
   | Inherit
   | Initial
   | Unset
