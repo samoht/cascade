@@ -4744,6 +4744,15 @@ let spec_platform_property_vectors () =
       "margin-trim: block inline block";
       "field-sizing: auto";
       "mask-composite: plus";
+      (* CSS Box 4 sec. 3.1 gives every margin longhand [<length-percentage> |
+         auto], so a sizing function reaches none of them; the shorthand already
+         refused one. CSS Logical 1 sec. 4.2 spells the flow-relative pair from
+         the same production. *)
+      "margin-right: fit-content(20rem)";
+      "margin-left: fit-content(20rem)";
+      "margin-block-end: fit-content(20rem)";
+      "margin-inline: fit-content(20rem)";
+      "margin-top: calc-size(auto, size)";
       "mask-origin: no-clip";
       "-webkit-mask-origin: fill-box";
       "-webkit-mask-origin: view-box";
