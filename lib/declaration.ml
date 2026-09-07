@@ -728,17 +728,19 @@ let validate_no_extra_tokens t =
         Cursor.err_invalid ~loc t
           ("unexpected tokens after property value: " ^ trimmed)
 
-let read_length_box ?(allow_negative = true) t =
-  let values =
-    Cursor.list ~at_least:1 ~at_most:4
-      (fun r -> read_length ~allow_negative r)
-      t
-  in
+(* CSS Position 3 sec. 3.1 gives every inset property [auto |
+   <length-percentage>] and sec. 3.2 builds [inset] from it, so no sizing
+   function reaches any of them. That is the same production CSS Box 4 sec. 3.1
+   gives a margin, so they share its component reader. *)
+let read_inset_length t = Values.read_margin_length ~global:true t
+
+let read_length_box t =
+  let values = Cursor.list ~at_least:1 ~at_most:4 read_inset_length t in
   if values = [] then Cursor.err_expected t "length value";
   values
 
-let read_inset_longhand t = [ read_length t ]
-let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_length t
+let read_inset_longhand t = [ read_inset_length t ]
+let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_inset_length t
 
 let read_border_width_box t =
   Cursor.list ~at_least:1 ~at_most:4 read_border_width t
