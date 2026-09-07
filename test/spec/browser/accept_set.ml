@@ -37,7 +37,7 @@ let ( // ) = Filename.concat
 
 (* The value generator lives in the inventory library, so this harness and the
    read-back sweep draw the same population. *)
-let values_for = Cascade_spec_inventory.Value_gen.values_for
+let vectors_for = Cascade_spec_inventory.Value_gen.vectors_for
 
 (* ===== The population ===== *)
 
@@ -57,7 +57,18 @@ let minimum_accepted = 2000
 (* ===== Jobs ===== *)
 
 type kind = Probe | Vector
-type job = { id : string; property : string; value : string; kind : kind }
+(* [respells] is the value this one is a respelling of, when it is one. CSS
+   Syntax 3 sec. 4 and CSS Values 4 sec. 4.1 make the two the same value, so a
+   difference the support dataset explains about the original is that same
+   difference, not a second one. *)
+
+type job = {
+  id : string;
+  property : string;
+  value : string;
+  respells : string option;
+  kind : kind;
+}
 
 (* Any implemented property takes a CSS-wide keyword, so this says whether the
    browser has the property at all without asking about a grammar. *)
@@ -84,15 +95,27 @@ let jobs ~seed ~only =
       if not (selected name) then []
       else
         let probe =
-          { id = fresh (); property = name; value = probe_value; kind = Probe }
+          {
+            id = fresh ();
+            property = name;
+            value = probe_value;
+            respells = None;
+            kind = Probe;
+          }
         in
         if Chrome_gaps.unimplemented_property name then [ probe ]
         else
           probe
           :: List.map
-               (fun value ->
-                 { id = fresh (); property = name; value; kind = Vector })
-               (values_for ~seed name))
+               (fun (v : Cascade_spec_inventory.Value_gen.vector) ->
+                 {
+                   id = fresh ();
+                   property = name;
+                   value = v.value;
+                   respells = v.respells;
+                   kind = Vector;
+                 })
+               (vectors_for ~seed name))
     properties
 
 (* ===== The reader ===== *)
@@ -213,7 +236,7 @@ let hits = Hashtbl.create 64
    Cascade.Support whether this browser has shipped it, so an entry cannot
    outlive the gap it describes and a resample cannot strand it: the key is
    derived from the pair in front of the harness. *)
-let judge ~chrome ~property ~value ~cascade verdict =
+let judge ~chrome ~property ~value ~respells ~cascade verdict =
   match verdict.error with
   | Some e -> Unanswered e
   | None when not (Bool.equal verdict.set_property verdict.supports) -> Split
@@ -223,19 +246,38 @@ let judge ~chrome ~property ~value ~cascade verdict =
         Hashtbl.replace hits key ();
         Some key
       in
+      (* A respelling is the value it respells, so the dataset answers about it
+         through the original. Asking twice rather than normalising the text
+         keeps the derivation in one place: BCD names a production, and the
+         production is named by the value somebody wrote, not by the whitespace,
+         letter case or escapes it was written with. *)
+      let ask lookup =
+        match lookup ~value () with
+        | Some e -> Some e
+        | None -> (
+            match respells with
+            | None -> None
+            | Some origin -> lookup ~value:origin ())
+      in
       match (cascade, verdict.supports) with
       | true, true | false, false -> Agree
       (* Chrome takes it. Either the reader is short of the grammar, or Chrome
          ships a production no specification grants and the library has measured
          it. *)
       | false, true -> (
-          match Chrome_gaps.explains_acceptance ~chrome ~property ~value () with
+          match
+            ask (fun ~value () ->
+                Chrome_gaps.explains_acceptance ~chrome ~property ~value ())
+          with
           | Some e -> Rejects_valid (cite e)
           | None -> Rejects_valid None)
       (* The reader takes it. Either it is loose, or the grammar is real and
          Chrome has not caught up. *)
       | true, false -> (
-          match Chrome_gaps.explains_rejection ~chrome ~property ~value () with
+          match
+            ask (fun ~value () ->
+                Chrome_gaps.explains_rejection ~chrome ~property ~value ())
+          with
           | Some e -> Accepts_invalid (cite e)
           | None ->
               (* The manifest is spec-derived, so a row declaring this value a
@@ -298,7 +340,7 @@ let check_classifier () =
       let got =
         outcome_name
           (judge ~chrome:(0, 0) ~property:"cascade-no-such-property"
-             ~value:"cascade-no-such-value" ~cascade verdict)
+             ~value:"cascade-no-such-value" ~respells:None ~cascade verdict)
       in
       if not (String.equal got expected) then (
         Fmt.pr "FAIL the classifier calls %s %s, not %s@." what got expected;
@@ -660,7 +702,7 @@ let () =
               in
               let outcome =
                 judge ~chrome:chrome_version ~property:job.property
-                  ~value:job.value ~cascade verdict
+                  ~value:job.value ~respells:job.respells ~cascade verdict
               in
               Hashtbl.replace outcomes
                 (describe job.property job.value)

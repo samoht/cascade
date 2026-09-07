@@ -6,6 +6,10 @@
    {!Cascade_spec_inventory.Value_gen}, the generator the accept-set harness
    uses, so the population moves with the seed instead of with the repository.
 
+   Every value the generator draws, not a sample of them: the sweep costs under
+   a second over the whole population, and a prefix of a sorted list is a sample
+   of the values whose text sorts first rather than a sample of the values.
+
    No browser is involved. The question is entirely about cascade: a value it
    ACCEPTED, printed, and then could not read, or read as something else, is a
    defect whatever any browser thinks of the value. A value it rejected is not
@@ -22,14 +26,12 @@
    of one AST, so reading either back and minifying must give the same text. *)
 
 let seed = ref 0
-let full = ref false
 let one_css = ref None
 
 let usage () =
   prerr_endline
-    "readback [--seed N] [--full] [--css 'a{color:red}']\n\
+    "readback [--seed N] [--css 'a{color:red}']\n\
     \  --seed N   the generator seed (default 0)\n\
-    \  --full     every generated value, rather than a sample per property\n\
     \  --css S    run one sheet and print what each step did";
   exit 2
 
@@ -39,9 +41,6 @@ let rec parse_args i =
     | "--seed" when i + 1 < Array.length Sys.argv ->
         seed := int_of_string Sys.argv.(i + 1);
         parse_args (i + 2)
-    | "--full" ->
-        full := true;
-        parse_args (i + 1)
     | "--css" when i + 1 < Array.length Sys.argv ->
         one_css := Some Sys.argv.(i + 1);
         parse_args (i + 2)
@@ -102,8 +101,6 @@ let properties =
        (fun (r : Cascade_spec_inventory.Property_grammar.row) -> r.property)
        Cascade_spec_inventory.Property_grammar.rows)
 
-let sample_per_property = 12
-
 (* A run that reports nothing has to be a run that could have. These put a
    known-bad printer through the same check and require it to be caught, so a
    green sweep means the population was examined rather than that the check went
@@ -153,10 +150,6 @@ let () =
         (fun property ->
           let values =
             Cascade_spec_inventory.Value_gen.values_for ~seed:!seed property
-          in
-          let values =
-            if !full then values
-            else List.filteri (fun i _ -> i < sample_per_property) values
           in
           List.iter
             (fun value ->

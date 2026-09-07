@@ -154,15 +154,34 @@ let universe =
 (* ===== Generating a property's values ===== *)
 
 (* A value has to survive being written into a declaration block, so anything
-   carrying the block's own punctuation is not a value this run can ask
-   about. *)
+   carrying the block's own punctuation is not a value this run can ask about.
+
+   Unbalanced brackets are the same problem one step further in. CSS Syntax 3
+   sec. 5.4.6 lets a simple block swallow the [}] that would have closed the
+   rule, so [color: var(--x] is one declaration to a browser asked about the
+   value alone and a truncated stylesheet to anything asked about
+   [a{color:var(--x}]. The two sides would not be looking at the same CSS. *)
+let balanced value =
+  let depth = ref 0 and bad = ref false in
+  String.iter
+    (fun c ->
+      match c with
+      | '(' | '[' -> incr depth
+      | ')' | ']' ->
+          decr depth;
+          if !depth < 0 then bad := true
+      | _ -> ())
+    value;
+  (not !bad) && !depth = 0
+
 let writable value =
-  not
-    (String.exists
-       (fun c ->
-         Char.equal c ';' || Char.equal c '{' || Char.equal c '}'
-         || Char.equal c '\n')
-       value)
+  (not
+     (String.exists
+        (fun c ->
+          Char.equal c ';' || Char.equal c '{' || Char.equal c '}'
+          || Char.equal c '\n')
+        value))
+  && balanced value
 
 let single_component value =
   (not (String.equal value ""))
@@ -183,10 +202,306 @@ let repetitions s pool =
     let join n = String.concat " " (List.init n (fun _ -> pick ())) in
     [ join 2; join 3; join 4; String.concat ", " [ pick (); pick () ] ]
 
+(* ===== Respellings ===== *)
+
+(* CSS Syntax 3 sec. 4 turns escapes, comments and letter case into tokens
+   before any grammar sees them, so a respelling of a value the property's own
+   grammar grants is the same value to a conforming reader. A reader that splits
+   from the browser here has a tokenizer defect rather than a grammar one, which
+   no vector written in canonical form can reach. *)
+
+let split_on_spaces value = String.split_on_char ' ' value
+
+(* CSS Syntax 3 sec. 4.3.2: a comment is consumed and discarded, leaving the
+   tokens on either side of it adjacent with no whitespace token between
+   them. *)
+let commented value = String.concat "/**/" (split_on_spaces value)
+let padded value = String.concat "" [ "/**/"; value; "/**/" ]
+let widened value = String.concat "  " (split_on_spaces value)
+let tabbed value = String.concat "\t" (split_on_spaces value)
+
+let comma_tight value =
+  String.concat "," (List.map String.trim (String.split_on_char ',' value))
+
+let comma_loose value =
+  String.concat " , " (List.map String.trim (String.split_on_char ',' value))
+
+let hex_digits = "0123456789abcdef"
+
+(* CSS Syntax 3 sec. 4.3.7: a backslash, up to six hex digits and one whitespace
+   is the code point those digits name, and the whitespace belongs to the
+   escape. So this is the property's own value with its first letter respelled,
+   and nothing else. *)
+let escaped value =
+  if String.length value = 0 then None
+  else
+    match value.[0] with
+    | ('a' .. 'z' | 'A' .. 'Z') as c ->
+        let n = Char.code c in
+        Some
+          (String.concat ""
+             [
+               "\\";
+               String.make 1 hex_digits.[n / 16];
+               String.make 1 hex_digits.[n mod 16];
+               " ";
+               String.sub value 1 (String.length value - 1);
+             ])
+    | _ -> None
+
+(* A quoted string is not a token sequence: CSS Syntax 3 sec. 4.3.5 consumes it
+   whole, so respacing one rewrites its contents rather than the value around
+   it. Those belong to whatever grammar reads the string, not to this. *)
+let quoted value =
+  String.exists (fun c -> Char.equal c '"' || Char.equal c '\'') value
+
+let respellings value =
+  if quoted value then []
+  else
+    let forms =
+      [
+        String.uppercase_ascii value;
+        commented value;
+        padded value;
+        widened value;
+        tabbed value;
+        comma_tight value;
+        comma_loose value;
+      ]
+    in
+    match escaped value with None -> forms | Some e -> e :: forms
+
+(* ===== Numbers respelled ===== *)
+
+(* CSS Values 4 sec. 5: "many syntactic variations can exist in expressing the
+   quantity in a given numeric value ... they represent the value's abstract
+   quantity, not its syntactic representation". So every spelling below names
+   one value, and a reader that takes one and drops another is reading the
+   spelling rather than the number. *)
+
+let numeric value =
+  let n = String.length value in
+  let start = if n > 0 && (value.[0] = '+' || value.[0] = '-') then 1 else 0 in
+  let rec scan i dots seen =
+    if i >= n then (i, seen)
+    else
+      match value.[i] with
+      | '0' .. '9' -> scan (i + 1) dots true
+      | '.' when dots = 0 -> scan (i + 1) 1 seen
+      | _ -> (i, seen)
+  in
+  let stop, seen = scan start 0 false in
+  let unit = String.sub value stop (n - stop) in
+  let plain_unit =
+    String.equal unit "" || String.equal unit "%"
+    || String.for_all
+         (fun c -> match c with 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false)
+         unit
+  in
+  if seen && stop > start && plain_unit then Some (String.sub value 0 stop, unit)
+  else None
+
+let respell_number number unit =
+  let with_unit text = String.concat "" [ text; unit ] in
+  let signed =
+    if String.length number > 0 && (number.[0] = '+' || number.[0] = '-') then
+      []
+    else [ with_unit (String.concat "" [ "+"; number ]) ]
+  in
+  let zero =
+    if String.length number > 1 && String.equal (String.sub number 0 2) "0."
+    then [ with_unit (String.sub number 1 (String.length number - 1)) ]
+    else if String.length number > 0 && number.[0] = '.' then
+      [ with_unit (String.concat "" [ "0"; number ]) ]
+    else []
+  in
+  List.concat
+    [
+      signed;
+      zero;
+      [
+        with_unit (String.concat "" [ number; "e0" ]);
+        with_unit (String.concat "" [ number; "E0" ]);
+        with_unit (String.concat "" [ number; ".0" ]);
+        with_unit (String.concat "" [ "00"; number ]);
+      ];
+    ]
+
+(* CSS Values 4 sec. 10.9: a math function "can be used anywhere a value of that
+   type is allowed", so wrapping the property's own value keeps it inside the
+   same grammar. The unit-mismatch arms are the other direction: sec. 10.9 makes
+   a sum of two different types a failure and sec. 10.2 makes a min() of them
+   invalid, so a reader that adds before it type-checks takes them. *)
+let math value =
+  let around before after = String.concat "" [ before; value; after ] in
+  [
+    around "calc(" ")";
+    around "calc(" " + 0px)";
+    around "calc(" " + 1em)";
+    around "calc(" " * 2)";
+    around "calc(2 * " ")";
+    around "calc(" " / 2)";
+    around "min(" ", 1px)";
+    around "clamp(0px, " ", 100px)";
+    around "calc(min(" ", 1px) + max(1px, 2px))";
+    around "calc((" ") + (1px))";
+  ]
+
+(* CSS Variables 1 sec. 3: a declaration whose value contains a var() is valid
+   at parse time whatever the property and whatever surrounds the reference,
+   because substitution happens afterwards. Putting one beside a value the
+   property does take is the slot no canonical vector reaches. *)
+let substituted value =
+  [
+    String.concat "" [ value; " var(--x)" ];
+    String.concat "" [ "var(--x) "; value ];
+    String.concat "" [ "var(--x, "; value; ")" ];
+  ]
+
+(* Repetition past every bound a grammar sets. A reader that counts components
+   loosely, or not at all, takes these. *)
+let long_lists value =
+  [
+    String.concat "," (List.init 20 (fun _ -> value));
+    String.concat " " (List.init 12 (fun _ -> value));
+  ]
+
+(* ===== Shapes asked of every property ===== *)
+
+(* The math grammar of CSS Values 4 sec. 10.8, the stepped, exponential and sign
+   families of sec. 10.3, 10.5 and 10.6, and the numeric keywords of sec. 10.7.
+   Half of these are type-invalid on purpose. Nothing here claims any property
+   takes any of them. *)
+let math_shapes =
+  [
+    "calc(1px + 2em)";
+    "calc(100% - 10px)";
+    "calc(1px*2)";
+    "calc(1px/2)";
+    "calc(2/1px)";
+    "calc(1px + 1)";
+    "calc(1px + 1s)";
+    "calc(1deg + 1rad)";
+    "calc(1)";
+    "calc(50%)";
+    "calc(1e2px)";
+    "calc(infinity * 1px)";
+    "calc(nan * 1px)";
+    "calc(pi)";
+    "calc(e * 1px)";
+    "calc()";
+    "calc(1px +)";
+    "calc(1px + 2px";
+    "min()";
+    "clamp(1px, 2em, 3%)";
+    "round(1.5px, 1px)";
+    "mod(5px, 2px)";
+    "abs(-1px)";
+    "sign(-1px)";
+    "hypot(3px, 4px)";
+    "pow(2, 3)";
+    "sqrt(4)";
+  ]
+
+(* CSS Variables 1 sec. 3 for the reference grammar, CSS Values 5 sec. 3 for
+   attr() and Environment Variables 1 sec. 2 for env(). *)
+let substitution_shapes =
+  [
+    "var(--x,)";
+    "var(--x, )";
+    "var(--x, inherit)";
+    "var(--x, var(--y, 1px))";
+    "var(--X)";
+    "var()";
+    "var(x)";
+    "var(--x";
+    "calc(var(--x) + 1px)";
+    "rgb(var(--x))";
+    "attr(data-x)";
+    "attr(data-x type(<length>))";
+    "env(safe-area-inset-top)";
+    "env(--cascade-no-such-var, 1px)";
+  ]
+
+(* CSS Values 4 sec. 4.1.1: every property takes a CSS-wide keyword "as the sole
+   component of their property value", and combining one with anything else
+   "results in an invalid declaration". Sec. 10.8 leaves it out of <calc-value>
+   too. So every compound below is invalid however the property is spelled, and
+   the four case variants are the same keywords by sec. 4.1. *)
+let wide_keyword_shapes =
+  [
+    "INHERIT";
+    "Initial";
+    "UnSet";
+    "REVERT-LAYER";
+    "calc(inherit)";
+    "calc(1px + initial)";
+    "min(unset, 1px)";
+    "inherit inherit";
+    "initial 1px";
+    "1px initial";
+    "default";
+  ]
+
 let neighbour_count = 10
 let universe_count = 8
 
-let values_for ~seed name =
+(* How many of the property's own values get respelled, wrapped in math, put
+   beside a var() and repeated past every bound. Held down because each one
+   turns into a handful of vectors and the population is every property. *)
+let respell_count = 3
+let math_count = 2
+let substitute_count = 2
+let list_count = 1
+
+(* The property's own values, and only those: a respelling is only interesting
+   where the original is CSS the property takes, and a value borrowed from
+   another grammar says nothing about this reader's tokenizer.
+
+   A respelling carries the value it respells. CSS Syntax 3 sec. 4 and CSS
+   Values 4 sec. 4.1 make the two the same value, so whatever a browser does
+   about one it does about the other, and an oracle that already knows why the
+   two implementations differ about the original knows why they differ here. The
+   wrapped, substituted and repeated forms carry nothing: those are different
+   values, not the same one spelled differently. *)
+let mutated s own =
+  let usable =
+    List.filter (fun v -> not (String.equal (String.trim v) "")) own
+  in
+  let respelled =
+    List.concat_map
+      (fun v -> List.map (fun w -> (w, Some v)) (respellings v))
+      (sample s respell_count usable)
+  in
+  let numbers =
+    List.concat_map
+      (fun v ->
+        match numeric v with
+        | Some (number, unit) ->
+            List.map (fun w -> (w, Some v)) (respell_number number unit)
+        | None -> [])
+      usable
+  in
+  let wrapped =
+    List.concat_map
+      (fun v -> List.map (fun w -> (w, None)) (math v))
+      (sample s math_count usable)
+  in
+  let beside =
+    List.concat_map
+      (fun v -> List.map (fun w -> (w, None)) (substituted v))
+      (sample s substitute_count usable)
+  in
+  let repeated =
+    List.concat_map
+      (fun v -> List.map (fun w -> (w, None)) (long_lists v))
+      (sample s list_count (List.filter single_component usable))
+  in
+  List.concat [ respelled; numbers; wrapped; beside; repeated ]
+
+type vector = { value : string; respells : string option }
+
+let vectors_for ~seed name =
   let s = stream (seed_of ~seed name) in
   let own =
     match row_of name with
@@ -196,7 +511,11 @@ let values_for ~seed name =
   let near = sample s neighbour_count (neighbours name) in
   let far = sample s universe_count universe in
   let pool = List.concat [ own; near; far; wildcards ] in
-  let generated =
+  (* Bound before the list they go into: both draw from [s], and the order the
+     draws happen in is the order the seed means. *)
+  let repeated = repetitions s pool in
+  let respelled = mutated s (if own = [] then wildcards else own) in
+  let plain =
     List.concat
       [
         wildcards;
@@ -204,10 +523,33 @@ let values_for ~seed name =
         substitutions;
         degenerate;
         malformed;
+        math_shapes;
+        substitution_shapes;
+        wide_keyword_shapes;
         own;
         near;
         far;
-        repetitions s pool;
+        repeated;
       ]
   in
-  List.sort_uniq String.compare (List.filter writable generated)
+  let generated =
+    List.concat [ List.map (fun v -> (v, None)) plain; respelled ]
+  in
+  (* Sorted and de-duplicated on the value, so the population is a function of
+     the seed and the property alone. A value reached both plainly and as a
+     respelling keeps the plain reading: it is in the population on its own
+     account, and nothing about it needs a origin. *)
+  let table = Hashtbl.create 512 in
+  List.iter
+    (fun (value, respells) ->
+      if writable value then
+        match Hashtbl.find_opt table value with
+        | Some None -> ()
+        | Some (Some _) ->
+            if Option.is_none respells then Hashtbl.replace table value None
+        | None -> Hashtbl.replace table value respells)
+    generated;
+  Hashtbl.fold (fun value respells acc -> { value; respells } :: acc) table []
+  |> List.sort (fun a b -> String.compare a.value b.value)
+
+let values_for ~seed name = List.map (fun v -> v.value) (vectors_for ~seed name)
