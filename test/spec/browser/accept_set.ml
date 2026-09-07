@@ -254,6 +254,20 @@ let lenient_here : Chrome_gaps.excuse list =
          for a comma through a shape entry" );
     ]
 
+(* Every value the spec-derived manifest declares valid for a property. A row is
+   written from a specification's own grammar, so this is that grammar in the
+   form the harness can ask. *)
+let manifest_positives =
+  let table = Hashtbl.create 512 in
+  List.iter
+    (fun (r : Cascade_spec_inventory.Property_grammar.row) ->
+      List.iter (fun v -> Hashtbl.replace table (r.property, v) ()) r.positives)
+    Cascade_spec_inventory.Property_grammar.rows;
+  table
+
+let manifest_positive ~property ~value =
+  Hashtbl.mem manifest_positives (property, value)
+
 let hits = Hashtbl.create 64
 let shape_hits : (string, unit) Hashtbl.t = Hashtbl.create 8
 
@@ -300,17 +314,47 @@ let judge ~property ~value ~cascade verdict =
       (* The reader takes it. Either it is loose, or the grammar is real and
          Chrome has not caught up. *)
       | true, false -> (
-          match excuse Chrome_gaps.spec_ahead with
-          | Some why -> Accepts_invalid (Some why)
+          (* The shape comes first: it answers for a CLASS, so where one covers
+             the value a literal naming that same value is the narrower and
+             staler statement, and letting the literal win would leave the shape
+             looking unused. *)
+          match
+            Chrome_gaps.shape_covering Chrome_gaps.spec_ahead_shapes ~property
+              ~value
+          with
+          | Some s ->
+              Hashtbl.replace shape_hits s.shape_name ();
+              Accepts_invalid (Some s.shape_why)
           | None -> (
-              match
-                Chrome_gaps.shape_covering Chrome_gaps.spec_ahead_shapes
-                  ~property ~value
-              with
-              | Some s ->
-                  Hashtbl.replace shape_hits s.shape_name ();
-                  Accepts_invalid (Some s.shape_why)
-              | None -> Accepts_invalid (excuse_here spec_ahead_here))))
+              match excuse Chrome_gaps.spec_ahead with
+              | Some why -> Accepts_invalid (Some why)
+              | None -> (
+                  (* The manifest is spec-derived, so a row declaring this value
+                     a POSITIVE already says the specification grants it.
+                     Cascade agreeing with that row and the browser refusing is
+                     a browser gap by construction, and writing a prose entry to
+                     say so again is the treadmill this harness kept paying for:
+                     a hand-written excuse names one value, a resample strands
+                     it, and the class keeps producing findings. The row is the
+                     citation.
+
+                     This is right HERE and wrong in property_vectors, which
+                     puts the row itself under test: there a browser rejecting a
+                     positive is the question, and answering it from the row
+                     would be circular. That harness keeps its entries. *)
+                  match manifest_positive ~property ~value with
+                  | true ->
+                      Accepts_invalid
+                        (Some
+                           (String.concat ""
+                              [
+                                "the spec-derived manifest lists this as a \
+                                 positive for ";
+                                property;
+                                ", so the specification grants it and the \
+                                 browser has not shipped it";
+                              ]))
+                  | false -> Accepts_invalid (excuse_here spec_ahead_here)))))
 
 (* ===== The classifier, checked against itself ===== *)
 

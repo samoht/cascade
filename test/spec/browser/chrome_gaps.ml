@@ -168,6 +168,17 @@ let spec_ahead : excuse list =
     {
       properties = [ "overflow-clip-margin" ];
       key = Some "css.properties.overflow-clip-margin.border-box";
+      value = "calc(1rem + 2px)";
+      why =
+        "CSS Values 4 sec. 10.1 admits a math function wherever a <length> is \
+         accepted, which CSS Overflow 4 sec. 3.2 is. Measured on Chrome 153: \
+         it takes a literal length and refuses every math function there, \
+         calc(1px) and min(1px,2px) included, so this is not about the \
+         negative a value happens to carry";
+    };
+    {
+      properties = [ "overflow-clip-margin" ];
+      key = Some "css.properties.overflow-clip-margin.border-box";
       value = "0";
       why =
         "CSS Overflow 4 sec. 3.2: <visual-box> || <length>, and a unitless \
@@ -659,6 +670,15 @@ let math_function s =
 let spec_ahead_shapes =
   [
     {
+      shape_properties = [ "overflow-clip-margin" ];
+      shape_name = "a math function in an overflow clip margin";
+      matches = math_function;
+      shape_why =
+        "CSS Values 4 sec. 10.1 puts a math function wherever its type is, and \
+         CSS Overflow 4 sec. 3.2 gives the property a <length>. Chrome takes a \
+         literal length and refuses every math function there";
+    };
+    {
       shape_properties = [ "animation"; "-webkit-animation" ];
       shape_name = "a keyframes name beside a dashed-ident timeline";
       matches = animation_name_beside_timeline;
@@ -667,15 +687,6 @@ let spec_ahead_shapes =
          <keyframes-name> ] || <single-animation-timeline>, so the two fill \
          two slots of one [||]. Chrome takes the timeline alone and refuses it \
          beside a name";
-    };
-    {
-      shape_properties = [ "overflow-clip-margin" ];
-      shape_name = "a math function in an overflow clip margin";
-      matches = math_function;
-      shape_why =
-        "CSS Values 4 sec. 10.1 puts a math function wherever its type is, and \
-         CSS Overflow 4 sec. 3.2 gives the property a <length>. Chrome takes a \
-         literal length and refuses every math function there";
     };
     {
       shape_properties = [ "text-overflow" ];
