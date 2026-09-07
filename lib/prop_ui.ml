@@ -802,12 +802,44 @@ let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Lines n -> Pp.int ctx n
+  (* An [<integer>] slot: sec. 10.12 rounds the call and refuses the fraction
+     written on its own, and the count has to be positive, so the wrapper comes
+     off only around a leaf that is a line count by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:
+          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+        pp_webkit_line_clamp ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_webkit_line_clamp ctx v
+
+(* CSS Values 4 sec. 10.12 rounds a math function in an [<integer>] slot and
+   clamps it to the range, so a call that folds to a line count is that count
+   and one that does not keeps its wrapper. *)
+let rec numeric_line_clamp_calc_leaves :
+    webkit_line_clamp calc -> webkit_line_clamp calc = function
+  | Val (Lines n) -> Num (float_of_int n)
+  | Nested inner -> Nested (numeric_line_clamp_calc_leaves inner)
+  | Parens inner -> Parens (numeric_line_clamp_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_line_clamp_calc_leaves left,
+          op,
+          numeric_line_clamp_calc_leaves right )
+  | other -> other
+
+let normalize_webkit_line_clamp (value : webkit_line_clamp) : webkit_line_clamp
+    =
+  match value with
+  | Calc c -> (
+      match eval_calc (numeric_line_clamp_calc_leaves c) with
+      | Num n when Float.is_integer n && n >= 1. -> Lines (int_of_float n)
+      | folded -> if folded == c then value else Calc folded)
+  | value -> value
 
 let rec read_user_select t : user_select =
   Cursor.enum_or_var "user-select"
@@ -1095,7 +1127,15 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:
+      [
+        ("var", read_var);
+        (* CSS Values 4 sec. 10 allows a math function wherever an [<integer>]
+           is allowed. *)
+        ( "calc",
+          fun t ->
+            Calc (read_calc ~result_type:`Number read_webkit_line_clamp t) );
+      ]
     ~default:(fun t ->
       let n = Cursor.int t in
       if n <= 0 then Cursor.err_invalid t "-webkit-line-clamp must be positive";

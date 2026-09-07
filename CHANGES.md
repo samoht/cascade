@@ -30,6 +30,12 @@ entry points both moved.
   comma-separated list, one entry per rule line. A caller writing one line
   passes a one-element list (#1024)
 
+- `Cascade.Properties.webkit_line_clamp` gains `Calc`, so
+  `-webkit-line-clamp: calc(2)` reads where it was dropped. CSS Values 4 sec.
+  10 allows a math function wherever an `<integer>` is allowed, and sec. 10.12
+  rounds and clamps its result, so `calc(.5)` keeps its wrapper where the bare
+  `.5` is still refused. Exhaustive visitors must handle the new arm (#1125)
+
 - `Cascade.Properties.font_weight` gains `Calc`, so `font-weight: calc(400)`
   reads where it was dropped. CSS Values 4 sec. 10 allows a math function
   wherever a `<number>` is allowed, and sec. 10.12 clamps its result rather

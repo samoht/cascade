@@ -8245,6 +8245,7 @@ type webkit_box_orient = Properties.webkit_box_orient =
 type webkit_line_clamp = Properties.webkit_line_clamp =
   | None
   | Lines of int
+  | Calc of webkit_line_clamp calc
   | Inherit
   | Initial
   | Unset

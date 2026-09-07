@@ -4663,6 +4663,10 @@ type moz_orient =
 type webkit_line_clamp =
   | None
   | Lines of int
+  | Calc of webkit_line_clamp calc
+      (** CSS Values 4 sec. 10 allows a math function wherever an [<integer>] is
+          allowed, and sec. 10.12 rounds its result, so a fractional call is a
+          line count where the bare fraction is not. *)
   | Inherit
   | Initial
   | Unset

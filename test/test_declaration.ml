@@ -2247,6 +2247,20 @@ let animations_timing () =
   neg_cursor read_declaration "animation-delay: calc(inherit + 1s)";
   neg_cursor read_declaration "animation-delay: calc(initial + 1s)";
   neg_cursor read_declaration "animation-delay: calc(unset + 1s)";
+  (* sec. 10 allows a math function wherever an <integer> is allowed, and sec.
+     10.12 rounds the call and clamps it, so a fractional or out-of-range call
+     keeps its wrapper where the bare literal is refused. Chrome 153 agrees on
+     each of these. *)
+  check_declaration ~expected:"-webkit-line-clamp:2"
+    ~optimized:"-webkit-line-clamp:2" "-webkit-line-clamp: calc(2)";
+  check_declaration ~expected:"-webkit-line-clamp:calc(1 + 1)"
+    ~optimized:"-webkit-line-clamp:2" "-webkit-line-clamp: calc(1 + 1)";
+  check_declaration ~expected:"-webkit-line-clamp:calc(.5)"
+    ~optimized:"-webkit-line-clamp:calc(.5)" "-webkit-line-clamp: calc(.5)";
+  check_declaration ~expected:"-webkit-line-clamp:calc(0)"
+    ~optimized:"-webkit-line-clamp:calc(0)" "-webkit-line-clamp: calc(0)";
+  neg_cursor read_declaration "-webkit-line-clamp: 0";
+  neg_cursor read_declaration "-webkit-line-clamp: .5";
   (* CSS Values 4 (ED) sec. 10: "Math functions can be used ... wherever
      <length>, <frequency>, <angle>, <time>, <percentage>, <number>, or
      <integer> values are allowed", and CSS Fonts 4 sec. 2.2 spells font-weight

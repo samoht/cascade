@@ -4489,6 +4489,7 @@ let normalize_property_value : type a.
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value
   | Font_weight -> normalize_font_weight value
+  | Webkit_line_clamp -> normalize_webkit_line_clamp value
   | Font_family -> normalize_font_family value
   | Font_stretch -> normalize_font_stretch value
   | Font -> normalize_font value
