@@ -7,39 +7,15 @@ open Declaration
    important-split that prepends a non-important shorthand and re-states an
    important side). *)
 type slot = Live | Absorbed | Shorthand of declaration list
-
-type t = {
-  decls : declaration array;
-  slots : slot array;
-  by_prop : (Declaration.prop_key, int list) Hashtbl.t;
-}
-
-let prop_key_of d =
-  match d with
-  | Declaration { property; _ } -> Declaration.Key property
-  | Theme_guarded _ as d -> Declaration.property_key d
+type t = { decls : declaration array; slots : slot array }
 
 let build decls =
   let decls = Array.of_list decls in
-  let n = Array.length decls in
-  let slots = Array.make n Live in
-  let by_prop : (Declaration.prop_key, int list) Hashtbl.t =
-    Hashtbl.create (max 16 n)
-  in
-  (* Walk back-to-front so the per-property positions list ends up in cascade
-     order without a final reverse. *)
-  for i = n - 1 downto 0 do
-    let k = prop_key_of decls.(i) in
-    let prev = try Hashtbl.find by_prop k with Not_found -> [] in
-    Hashtbl.replace by_prop k (i :: prev)
-  done;
-  { decls; slots; by_prop }
+  let slots = Array.make (Array.length decls) Live in
+  { decls; slots }
 
 let length t = Array.length t.decls
 let decl_at t i = t.decls.(i)
-
-let positions (type a) t (p : a Properties.property) =
-  try Hashtbl.find t.by_prop (Declaration.Key p) with Not_found -> []
 
 let is_absorbed t i =
   match t.slots.(i) with Live | Shorthand _ -> false | Absorbed -> true

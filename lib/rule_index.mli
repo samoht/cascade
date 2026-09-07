@@ -24,10 +24,6 @@ val length : t -> int
 val decl_at : t -> int -> Declaration.declaration
 (** [decl_at t i] returns the declaration at position [i]. *)
 
-val positions : t -> 'a Properties.property -> int list
-(** [positions t p] is the cascade-ordered list of positions at which the typed
-    property [p] appears in the rule. *)
-
 val absorb :
   t -> at:int -> absorbed:int list -> shorthand:Declaration.declaration -> bool
 (** [absorb t ~at ~absorbed ~shorthand] records that [shorthand] should appear

@@ -29,18 +29,6 @@ let test_empty_index () =
     "to_list of empty is empty" 0
     (List.length (Rule_index.to_list t))
 
-let test_positions_in_cascade_order () =
-  let t = Rule_index.build [ red; solid_outline_width; blue ] in
-  Alcotest.(check (list int))
-    "Color positions in cascade order" [ 0; 2 ]
-    (Rule_index.positions t Properties.Color);
-  Alcotest.(check (list int))
-    "Outline_width position" [ 1 ]
-    (Rule_index.positions t Properties.Outline_width);
-  Alcotest.(check (list int))
-    "absent property returns empty" []
-    (Rule_index.positions t Properties.Background_color)
-
 let test_absorb_marks_positions () =
   let t = Rule_index.build [ red; blue ] in
   Alcotest.(check bool)
@@ -99,8 +87,6 @@ let suite =
   ( "rule_index",
     [
       Alcotest.test_case "empty" `Quick test_empty_index;
-      Alcotest.test_case "positions cascade order" `Quick
-        test_positions_in_cascade_order;
       Alcotest.test_case "absorb marks positions" `Quick
         test_absorb_marks_positions;
       Alcotest.test_case "to_list emits shorthand in place" `Quick
