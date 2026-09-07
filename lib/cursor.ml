@@ -142,6 +142,12 @@ let string_of_components ?(trim = false) cvs =
   let s = Parser.string_of_components cvs in
   if trim then String.trim s else s
 
+(* A conditional group's prelude is the question the rendering browser is asked,
+   so the escape the author wrote survives; see {!Parser.to_string_verbatim}. *)
+let string_of_components_verbatim ?(trim = false) cvs =
+  let s = Parser.to_string_verbatim cvs in
+  if trim then String.trim s else s
+
 let string_of_remaining ?(trim = false) t =
   string_of_components ~trim (remaining t)
 

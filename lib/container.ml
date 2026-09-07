@@ -51,7 +51,8 @@ let format_rem f =
   if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
   else s
 
-let string_of_components cvs = Cursor.string_of_components ~trim:true cvs
+let string_of_components cvs =
+  Cursor.string_of_components_verbatim ~trim:true cvs
 
 let string_of_range_operator = function
   | Lt -> "<"

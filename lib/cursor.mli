@@ -98,6 +98,12 @@ val string_of_components : ?trim:bool -> Component.t list -> string
     useful for at-rule preludes that must be split structurally before being
     preserved as raw CSS text. *)
 
+val string_of_components_verbatim : ?trim:bool -> Component.t list -> string
+(** [string_of_components_verbatim cvs] is {!string_of_components} except that a
+    whitespace run and an escaped token write back the text they were read from.
+    A conditional group's prelude is the question the rendering browser is
+    asked, so its spelling survives. *)
+
 val string_of_remaining : ?trim:bool -> t -> string
 (** [string_of_remaining t] serializes the unconsumed tail without advancing
     [t]. *)

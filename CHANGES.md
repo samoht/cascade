@@ -849,6 +849,11 @@ to lose a whole rule over one bad piece. Both are gone.
   normalized. `Cascade.Token.t` gains `repr`, the source text of a token whose
   spelling that serialization does not give back (#1065)
 
+- A container or media query keeps the escapes the author wrote, so
+  `@container (min-width: 1\0px)` no longer reaches the output with a raw
+  U+FFFD where the escape was. The condition is the question the rendering
+  browser is asked, not a value to respell (#1066)
+
 - `Css.inline_vars` sees every place a `var()` can be written: an `@font-face`
   descriptor, `@page` and its margin boxes, a `@keyframes` frame,
   `@position-try`, a `@supports` condition and a nested rule. A descriptor

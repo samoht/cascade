@@ -547,8 +547,10 @@ let non_whitespace_components = List.filter (Fun.negate Component.is_whitespace)
 let components_empty components =
   match trim_components components with [] -> true | _ :: _ -> false
 
+(* A media or container query is the question the rendering browser is asked, so
+   a general-enclosed feature keeps the spelling the author wrote. *)
 let string_of_components components =
-  Cursor.string_of_components ~trim:true components
+  Cursor.string_of_components_verbatim ~trim:true components
 
 let ident_component = function
   | Component.Preserved { kind = Token.Ident name; _ } -> Some name

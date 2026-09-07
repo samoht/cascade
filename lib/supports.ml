@@ -186,7 +186,7 @@ let property prop value =
   let value =
     if String.equal value "" then value
     else
-      Cursor.string_of_components ~trim:true
+      Cursor.string_of_components_verbatim ~trim:true
         (Cursor.remaining (Cursor.of_string value))
   in
   Property (declaration_feature prop value)
@@ -364,7 +364,7 @@ let declaration_of_components t prop value =
     err t value "Invalid declaration in @supports";
   match property_ident (strip_components prop) with
   | Some name -> (
-      let text = Cursor.string_of_components ~trim:true value in
+      let text = Cursor.string_of_components_verbatim ~trim:true value in
       (* [declaration_feature] is the shared constructor, so it reports through
          [Failure]; re-raise it against the declaration's own components. *)
       match declaration_feature name text with
@@ -378,13 +378,13 @@ let function_call t (fn : Component.func Component.node) =
   if not (Component.is_any_value [ Component.Func fn ]) then
     err t [ Component.Func fn ] "Invalid general-enclosed function in @supports";
   (* The feature grammar has priority over the general-enclosed fallback. *)
-  match func name (Cursor.string_of_components ~trim:true args) with
+  match func name (Cursor.string_of_components_verbatim ~trim:true args) with
   | feature -> feature
   | exception (Failure _ | Cursor.Parse_error _) ->
       Function
         (General
            ( String.lowercase_ascii name,
-             Cursor.string_of_components ~trim:true args ))
+             Cursor.string_of_components_verbatim ~trim:true args ))
 
 let peek_ident t =
   match Cursor.peek t with
@@ -464,7 +464,8 @@ and paren_components t value =
         condition
   with Cursor.Parse_error _ ->
     General_enclosed
-      (String.concat "" [ "("; Cursor.string_of_components value; ")" ])
+      (String.concat ""
+         [ "("; Cursor.string_of_components_verbatim value; ")" ])
 
 let read ?(allow_unwrapped_decl = false) t =
   let cond =
