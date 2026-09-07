@@ -652,9 +652,20 @@ let capture_baseline ~work ~jobs ~timeout ~log =
       exit 1);
   ignore (run ~timeout ~log (test_argv ~work ~jobs));
   let b = signature log in
-  Fmt.pr "baseline: %d failing rules or cases@." (List.length b);
-  List.iter (fun l -> Fmt.pr "  %s@." l) b;
-  if not (List.is_empty b) then
+  (* A rule dune names is a rule that produced OUTPUT, which is not the same as
+     one that failed: the browser harnesses summarise every run, so they are
+     listed whether they pass or not. Calling them failures cost this project a
+     day of believing the browser oracles were switched off in a worktree, so
+     the two are counted apart. Only the second kind makes a mutant's change
+     invisible. *)
+  let printed, failed =
+    List.partition (fun l -> String.starts_with ~prefix:"File \"" l) b
+  in
+  Fmt.pr "baseline: %d rule(s) printing, %d failing@." (List.length printed)
+    (List.length failed);
+  List.iter (fun l -> Fmt.pr "  printed  %s@." l) printed;
+  List.iter (fun l -> Fmt.pr "  FAILING  %s@." l) failed;
+  if not (List.is_empty failed) then
     Fmt.pr
       "warning: those already fail, so a mutant that only changes what they \
        print scores SURVIVED@.";
