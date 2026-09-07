@@ -761,6 +761,32 @@ let spec_fontface_descriptors () =
           "unicode-range";
         ])
     [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ];
+  (* CSS Fonts 4 (ED) sec. 4.4 opens each of the three font property descriptors
+     with [auto] and gives it as their initial value, so a variable font is
+     asked for its own range rather than told one. Chrome 153 keeps all
+     three. *)
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-style:auto}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: auto; }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-weight:auto}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: auto; \
+     }";
+  check_stylesheet
+    ~expected:
+      "@font-face{font-family:Brand;src:url(font.woff2);font-stretch:auto}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     auto; }";
+  (* [auto] is the whole value: sec. 4.4 puts it outside the {1,2} range, so it
+     pairs with nothing. *)
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: auto \
+     400; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-style: normal \
+     auto; }";
   (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
      in either costs the whole rule the way any other missing one does. *)
   check_stylesheet ~expected:""
