@@ -382,3 +382,47 @@ let find table ~property ~value =
     && List.exists (String.equal property) e.properties
   in
   List.find_opt covers table
+
+type shape = {
+  shape_properties : string list;
+  shape_name : string;
+  matches : string -> bool;
+  shape_why : string;
+}
+
+(* A bare [<number>] in any spelling. The generator writes these from a seeded
+   stream, so [-1], [1], [.5], [4] and [1000] are one fact about the browser
+   sampled five ways, not five facts. *)
+let is_bare_number s =
+  let s = String.trim s in
+  s <> ""
+  &&
+  let ok = ref true and digits = ref false in
+  String.iteri
+    (fun i c ->
+      match c with
+      | '0' .. '9' -> digits := true
+      | '.' -> ()
+      | ('-' | '+') when i = 0 -> ()
+      | _ -> ok := false)
+    s;
+  !ok && !digits
+
+let lenient_shapes =
+  [
+    {
+      shape_properties = [ "baseline-shift" ];
+      shape_name = "a bare <number>";
+      matches = is_bare_number;
+      shape_why =
+        "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | \
+         center | bottom, and no arm is a bare <number>. Chrome reads one as \
+         the unitless length SVG presentation attributes take";
+    };
+  ]
+
+let shape_covering table ~property ~value =
+  let covers (s : shape) =
+    List.exists (String.equal property) s.shape_properties && s.matches value
+  in
+  List.find_opt covers table

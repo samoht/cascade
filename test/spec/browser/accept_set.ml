@@ -445,11 +445,6 @@ let spec_ahead_here : Chrome_gaps.excuse list =
 (* The same, for a value Chrome reads that no specification grants: an entry
    here restates a {!Chrome_gaps.lenient} fact for a value the generator wrote
    and the manifest did not. *)
-let baseline_shift_takes_no_number =
-  "CSS Inline 3 sec. 4.2.3: <length-percentage> | sub | super | top | center | \
-   bottom, and no arm is a bare <number>. Chrome reads one as the unitless \
-   length SVG presentation attributes take"
-
 let lenient_here : Chrome_gaps.excuse list =
   List.concat_map
     (fun (properties, values, why) ->
@@ -468,12 +463,10 @@ let lenient_here : Chrome_gaps.excuse list =
          comma. Chrome stops at the comma and drops the rest on serialising: \
          [border: red, none] computes a red border-color and serialises back \
          as [border: red]" );
-      ( [ "baseline-shift" ],
-        [ "-1"; "1"; "99999999999" ],
-        baseline_shift_takes_no_number );
     ]
 
 let hits = Hashtbl.create 64
+let shape_hits : (string, unit) Hashtbl.t = Hashtbl.create 8
 
 (* The excuse is the whole reason a difference is not a defect, so it is a
    citation or it is nothing. Chrome_gaps carries the shared lists and the spec
@@ -504,7 +497,17 @@ let judge ~property ~value ~cascade verdict =
       | false, true -> (
           match excuse Chrome_gaps.lenient with
           | Some why -> Rejects_valid (Some why)
-          | None -> Rejects_valid (excuse_here lenient_here))
+          | None -> (
+              (* A shape entry answers for every value of its shape, so a
+                 resample cannot strand it the way a literal is stranded. *)
+              match
+                Chrome_gaps.shape_covering Chrome_gaps.lenient_shapes ~property
+                  ~value
+              with
+              | Some s ->
+                  Hashtbl.replace shape_hits s.shape_name ();
+                  Rejects_valid (Some s.shape_why)
+              | None -> Rejects_valid (excuse_here lenient_here)))
       (* The reader takes it. Either it is loose, or the grammar is real and
          Chrome has not caught up. *)
       | true, false -> (
@@ -775,7 +778,23 @@ let check_unused () =
                String.concat ", " e.properties;
                ")";
              ]))
-    (spec_ahead_here @ lenient_here)
+    (spec_ahead_here @ lenient_here);
+  (* A shape answers for a whole class, so it going quiet is the same signal a
+     stranded literal is: the browser agreed, or the generator stopped writing
+     anything of the shape. *)
+  List.iter
+    (fun (s : Chrome_gaps.shape) ->
+      if not (Hashtbl.mem shape_hits s.shape_name) then
+        fail
+          (String.concat ""
+             [
+               "a shape of this run excuses nothing any more: ";
+               s.shape_name;
+               " (";
+               String.concat ", " s.shape_properties;
+               ")";
+             ]))
+    Chrome_gaps.lenient_shapes
 
 let check_calibration outcomes =
   List.iter

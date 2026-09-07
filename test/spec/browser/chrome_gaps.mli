@@ -25,3 +25,23 @@ val lenient : excuse list
 
 val find : excuse list -> property:string -> value:string -> excuse option
 (** [find table ~property ~value] is the entry of [table] covering that pair. *)
+
+type shape = {
+  shape_properties : string list;
+  shape_name : string;
+  matches : string -> bool;
+  shape_why : string;
+}
+(** A disagreement that is about a SHAPE of value rather than one value, for the
+    cases where naming every value is not possible: the generator draws from a
+    seeded stream, so a literal list is a fact about one sample rather than
+    about the browser. [shape_name] names the shape for the report and for the
+    staleness check. *)
+
+val lenient_shapes : shape list
+(** [lenient_shapes] is {!lenient} keyed by a predicate. *)
+
+val shape_covering :
+  shape list -> property:string -> value:string -> shape option
+(** [shape_covering table ~property ~value] is the entry of [table] whose
+    predicate covers that pair. *)
