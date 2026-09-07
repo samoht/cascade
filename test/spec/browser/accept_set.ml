@@ -620,8 +620,28 @@ let check_overtaken () =
        (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
       @ lenient_here))
 
+(* The reverse of the staleness check: a measurement in the library that no
+   entry here names. It is dead data, and the library is where a fact goes to be
+   ACTED on, so one nothing reads is a fact that stopped being true or an entry
+   that was deleted without it. Either way it should not sit there. *)
+let check_unnamed_measurements () =
+  let named =
+    List.filter_map
+      (fun (e : Chrome_gaps.excuse) -> e.key)
+      (Chrome_gaps.spec_ahead @ Chrome_gaps.lenient @ spec_ahead_here
+     @ lenient_here)
+  in
+  List.iter
+    (fun (m : Cascade.Support.measurement) ->
+      if not (List.exists (String.equal m.key) named) then
+        fail
+          (String.concat ""
+             [ "no entry names this measurement, so nothing reads it: "; m.key ]))
+    Cascade.Support.measured
+
 let check_unused () =
   check_overtaken ();
+  check_unnamed_measurements ();
   List.iter
     (fun (e : Chrome_gaps.excuse) ->
       let used =

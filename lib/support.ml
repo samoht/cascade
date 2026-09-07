@@ -54,22 +54,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.transition.none_in_a_list";
-      support =
-        {
-          Baseline.chrome = None;
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Transitions 1 sec. 2.4 spells the shorthand <single-transition>#, \
-         and sec. 2.3 gives <single-transition> a [ none | \
-         <single-transition-property> ], so none is one entry of the list. \
-         Chrome reads it alone and refuses every list holding one";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.properties.text-decoration-thickness.hairline";
       support =
         {

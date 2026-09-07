@@ -134,7 +134,10 @@ let spec_ahead : excuse list =
   [
     {
       properties = sizing;
-      key = None;
+      (* web-features records the two-argument form per property, with an empty
+         support map: no engine ships it. The key names width because these
+         properties share one <box-size> and the dataset agrees across them. *)
+      key = Some "css.properties.width.fit-content_function";
       value = "fit-content(20rem)";
       why =
         "CSS Sizing 4 sec. 3.2 adds fit-content() to <box-size>, which every \
@@ -153,7 +156,7 @@ let spec_ahead : excuse list =
           "list-style-image";
           "content";
         ];
-      key = None;
+      key = Some "css.types.image.cross-fade";
       value = "cross-fade(url(a.png) 40%, url(b.png))";
       why =
         "CSS Images 4 sec. 2.6: cross-fade() = cross-fade( <cf-image># ); \
