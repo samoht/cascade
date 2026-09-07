@@ -70,6 +70,11 @@ let positive =
     row "keyframes" "invalid-selector-list-block-dropped" "@keyframes bad{}"
       "@keyframes bad { 50%, { opacity: 1 } from, 120% { opacity: 1 } 50px { \
        opacity: 1 } }";
+    (* CSS Counter Styles 3 sec. 2: the prelude is a <counter-style-name>, so
+       CSS Values 4 sec. 4.2 keeps the reserved [default] out of it. *)
+    row "counter-style" "named-prelude"
+      "@counter-style thumbs{system:cyclic;symbols:\"x\"}"
+      "@counter-style thumbs { system: cyclic; symbols: \"x\" }";
     row "font-palette-values" "duplicate-descriptor"
       "@font-palette-values \
        --brand{font-family:Brand;base-palette:2;override-colors:0 red}"
@@ -154,6 +159,8 @@ let negative =
     invalid "page" "bad-margin-descriptor-value"
       "@page { @top-center { display: 1px } }";
     invalid "keyframes" "missing-block" "@keyframes missing-block";
+    invalid "counter-style" "reserved-prelude"
+      "@counter-style default { system: cyclic; symbols: \"x\" }";
     invalid "font-palette-values" "bad-name"
       "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
     invalid "font-palette-values" "nested-rule"

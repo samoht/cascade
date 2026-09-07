@@ -1470,6 +1470,34 @@ let font_family_descriptor_grammar () =
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
+(* CSS Counter Styles 3 (ED) sec. 3.2 spells [<symbol>] as [<string> | <image> |
+   <custom-ident>], and CSS Values 4 sec. 4.2 reserves [default] from every
+   [<custom-ident>], so a symbol descriptor takes the string and refuses the
+   bare ident. Blink 151 drops each of the rejections below. *)
+let counter_style_symbol_reserved_default () =
+  let body rest =
+    "@counter-style c { system: cyclic; symbols: \"a\"; " ^ rest ^ " }"
+  in
+  strict_accept "quoted default as a counter-style prefix"
+    (body "prefix: \"default\"");
+  strict_accept "unreserved ident as a counter-style prefix" (body "prefix: a");
+  strict_accept "quoted default as a counter-style symbol"
+    "@counter-style c { system: cyclic; symbols: \"default\" }";
+  strict_reject "reserved default as a counter-style prefix"
+    (body "prefix: default");
+  strict_reject "reserved default as a counter-style suffix"
+    (body "suffix: default");
+  strict_reject "reserved default as a counter-style negative"
+    (body "negative: default");
+  strict_reject "reserved default as the second counter-style negative"
+    (body "negative: a default");
+  strict_reject "reserved default as a counter-style pad symbol"
+    (body "pad: 3 default");
+  strict_reject "reserved default as a counter-style symbol"
+    "@counter-style c { system: cyclic; symbols: default }";
+  strict_reject "reserved default in counter-style additive-symbols"
+    "@counter-style c { system: additive; additive-symbols: 3 default }"
+
 let lenient_recover name css expected min_warnings =
   let { Css.stylesheet; warnings; _ } =
     match Css.of_string ~strict:false css with
@@ -2549,6 +2577,9 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
+    ( "counter-style symbol reserves default",
+      `Quick,
+      counter_style_symbol_reserved_default );
     ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
     ("spec keyframes shadow colour var", `Quick, spec_keyframes_shadow_color_var);
     ("page", `Quick, page_case);

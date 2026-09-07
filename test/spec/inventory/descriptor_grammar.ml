@@ -102,7 +102,8 @@ let rows =
     row "font-face" "line-gap-override" "sec. 4.9 normal | <percentage [0,inf]>"
       [ "normal"; "0%"; "10%" ] [ "-1%"; "10"; "auto" ];
     (* CSS Counter Styles 3 (ED). <symbol> = <string> | <image> | <custom-ident>
-       (sec. 3.2). *)
+       (sec. 3.2), and CSS Values 4 sec. 4.2 reserves [default] from the ident
+       arm of every one of them, leaving it the string. *)
     row "counter-style" "system"
       "sec. 3.1 cyclic | numeric | alphabetic | symbolic | additive | [fixed \
        <integer>?] | [extends <counter-style-name>]"
@@ -118,25 +119,26 @@ let rows =
       ]
       [ "bogus"; "fixed extends"; "extends" ];
     row "counter-style" "symbols" "sec. 3.2 <symbol>+"
-      [ "\"a\""; "\"a\" \"b\""; "a"; "url(a.png)" ]
-      [ "1"; "\"a\", \"b\"" ];
+      [ "\"a\""; "\"a\" \"b\""; "a"; "url(a.png)"; "\"default\"" ]
+      [ "1"; "\"a\", \"b\""; "default" ];
     row "counter-style" "additive-symbols"
       "sec. 3.3 [<integer [0,inf]> && <symbol>]#"
       [ "3 \"a\""; "\"a\" 3"; "3 \"a\", 1 \"b\"" ]
-      [ "-1 \"a\""; "\"a\""; "3" ];
+      [ "-1 \"a\""; "\"a\""; "3"; "3 default" ];
     row "counter-style" "negative" "sec. 3.4 <symbol> <symbol>?"
       [ "\"-\""; "\"(\" \")\""; "a" ]
-      [ "1"; "\"a\" \"b\" \"c\"" ];
-    row "counter-style" "prefix" "sec. 3.4 <symbol>" [ "\"(\""; "a" ]
-      [ "1"; "\"a\" \"b\"" ];
+      [ "1"; "\"a\" \"b\" \"c\""; "default"; "a default" ];
+    row "counter-style" "prefix" "sec. 3.4 <symbol>"
+      [ "\"(\""; "a"; "\"default\"" ]
+      [ "1"; "\"a\" \"b\""; "default" ];
     row "counter-style" "suffix" "sec. 3.4 <symbol>" [ "\".\""; "a" ]
-      [ "1"; "\"a\" \"b\"" ];
+      [ "1"; "\"a\" \"b\""; "default" ];
     row "counter-style" "range" "sec. 3.5 [[<integer> | infinite]{2}]# | auto"
       [ "auto"; "1 5"; "infinite 5"; "1 infinite"; "1 5, 8 10" ]
       [ "1"; "5 1 3"; "bogus" ];
     row "counter-style" "pad" "sec. 3.6 <integer [0,inf]> && <symbol>"
       [ "3 \"0\""; "\"0\" 3"; "0 \"0\"" ]
-      [ "-1 \"0\""; "3"; "\"0\"" ];
+      [ "-1 \"0\""; "3"; "\"0\""; "3 default" ];
     row "counter-style" "fallback" "sec. 3.7 <counter-style-name>"
       [ "decimal"; "my-style" ] [ "\"decimal\""; "1" ];
     row "counter-style" "speak-as"

@@ -3047,9 +3047,13 @@ let list_style_custom_names () =
   (* CSS Lists 3 sections 3.4 and 3.6 allow custom counter-style names,
      including names that collide with an already-filled position slot. The
      referenced counter style need not be defined in this stylesheet. *)
+  (* CSS Values 4 sec. 4.2 reserves [default] from the <custom-ident> arm in
+     every ASCII case permutation, leaving the string spelling. *)
   List.iter
     (fun name -> check_declaration ~roundtrip:true ("list-style-type:" ^ name))
-    [ "footsteps"; "FootSteps"; "inside"; "OUTSIDE"; "--markers" ];
+    [
+      "footsteps"; "FootSteps"; "inside"; "OUTSIDE"; "--markers"; "\"default\"";
+    ];
   List.iter
     (fun (value, expected) ->
       check_declaration ~roundtrip:true ~expected:("list-style:" ^ expected)
@@ -3066,6 +3070,7 @@ let list_style_custom_names () =
     (none_cursor read_declaration)
     [
       "list-style-type:default";
+      "list-style-type:DEFAULT";
       "list-style-type:FootSteps Other";
       "list-style:inside outside outside";
       "list-style:inside FootSteps Other";
