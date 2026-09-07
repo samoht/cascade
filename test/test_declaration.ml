@@ -5567,6 +5567,10 @@ let check_property_row (row : property_grammar_row) =
     [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
   check_property_var row
 
+(* Every row is checked and every failure reported. Alcotest raises on the first
+   one, so iterating the matrix directly makes a 2643-vector check report one
+   finding standing for however many there are, and the size of the gap is the
+   thing this manifest exists to measure. *)
 let spec_property_grammar_manifest () =
   let unique_properties =
     List.sort_uniq String.compare
@@ -5579,7 +5583,20 @@ let spec_property_grammar_manifest () =
   Alcotest.(check int)
     "property grammar manifest covers every tracked spec property name" 455
     (List.length unique_properties);
-  List.iter check_property_row property_grammar_matrix
+  let failures =
+    List.filter_map
+      (fun (row : property_grammar_row) ->
+        match check_property_row row with
+        | () -> None
+        | exception e ->
+            Some (String.concat "" [ row.property; ": "; Printexc.to_string e ]))
+      property_grammar_matrix
+  in
+  match failures with
+  | [] -> ()
+  | failures ->
+      Alcotest.failf "%d manifest row(s) failed:@.%s" (List.length failures)
+        (String.concat "\n" failures)
 
 let parse_declaration_case () =
   (* A known property parses to a typed declaration. *)
