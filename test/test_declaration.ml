@@ -4603,6 +4603,22 @@ let spec_platform_property_vectors () =
       ("order: calc(1.4)", "order:calc(1.4)");
       ("font-language-override: \"ENG\"", "font-language-override:\"ENG\"");
       ("font-language-override: \"A\"", "font-language-override:\"A\"");
+      ("-webkit-mask-composite: clear", "-webkit-mask-composite:clear");
+      ("-webkit-mask-composite: copy", "-webkit-mask-composite:copy");
+      ( "-webkit-mask-composite: source-atop",
+        "-webkit-mask-composite:source-atop" );
+      ( "-webkit-mask-composite: destination-over",
+        "-webkit-mask-composite:destination-over" );
+      ( "-webkit-mask-composite: destination-in",
+        "-webkit-mask-composite:destination-in" );
+      ( "-webkit-mask-composite: destination-out",
+        "-webkit-mask-composite:destination-out" );
+      ( "-webkit-mask-composite: destination-atop",
+        "-webkit-mask-composite:destination-atop" );
+      ( "-webkit-mask-composite: plus-lighter",
+        "-webkit-mask-composite:plus-lighter" );
+      ( "-webkit-mask-composite: copy, destination-in",
+        "-webkit-mask-composite:copy,destination-in" );
       ("offset-path: path('M 0 0 L 1 1')", "offset-path:path(\"M 0 0 L 1 1\")");
       ("offset-distance: 50%", "offset-distance:50%");
       ("font-size-adjust: from-font", "font-size-adjust:from-font");
@@ -4722,6 +4738,8 @@ let spec_platform_property_vectors () =
       "grid-template: \"nav/main\"";
       "grid-template: \"a\" \"a a\"";
       "grid-template: \"a .\" \". a\"";
+      "-webkit-mask-composite: plus-darker";
+      "-webkit-mask-composite: add";
       "offset-distance: -10% -10%";
       "font-size-adjust: from-font 1";
       "font-variant-emoji: smile";

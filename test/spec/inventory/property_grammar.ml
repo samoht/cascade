@@ -1961,8 +1961,23 @@ let matrix =
       };
       {
         property = "-webkit-mask-composite";
-        positives = [ "source-over"; "xor"; "source-in, source-out" ];
-        negatives = [ "add"; "source-over xor" ];
+        positives =
+          [
+            "source-over";
+            "source-in";
+            "source-out";
+            "source-atop";
+            "destination-over";
+            "destination-in";
+            "destination-out";
+            "destination-atop";
+            "xor";
+            "plus-lighter";
+            "clear";
+            "copy";
+            "source-in, source-out";
+          ];
+        negatives = [ "add"; "plus-darker"; "source-over xor" ];
       };
       {
         property = "-webkit-mask-source-type";
