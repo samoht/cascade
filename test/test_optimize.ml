@@ -1744,10 +1744,33 @@ let unknown_at_rule_body_is_compacted () =
    dead and minify drops it. The two families here are the ones whose reset
    table entry no other test reaches: their longhands survive a mutation of the
    table and the suite stays green. *)
-(* A shorthand resets every longhand of its family, so one written before it is
-   dead and minify drops it. The two families here are the ones whose reset
-   table entry no other test reaches: their longhands survive a mutation of the
-   table and the suite stays green. *)
+(* CSS Backgrounds 3 (ED) sec. 3.4: "The border shorthand also resets
+   border-image to its initial value." Contracting the border longhands beside a
+   border-image longhand would reset the rest of that family, which the
+   longhands the rule wrote did not. Each border-image longhand carries its own
+   hazard bit for this: sharing one makes a rule holding the slice answer for a
+   neighbour holding the source. *)
+let test_border_keeps_longhands_beside_a_border_image () =
+  let minify_str css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  (* A NEIGHBOUR holding one is the hazard, and each longhand needs its OWN bit
+     for it: with the source and slice sharing one, the rule holding the slice
+     answers for the rule holding the source and both contract. *)
+  Alcotest.(check string)
+    "the border longhands stay where the family is spread over four rules"
+    "c,f{border-width:1px;border-style:solid;border-color:red}a,f{border-image-slice:2}b,c{border-image-source:url(x.png)}"
+    (minify_str
+       "a{border-image-slice:2}c{border-image-source:url(x.png);border-width:1px;border-style:solid;border-color:red}b{border-image-source:url(x.png)}f{border-image-slice:2;border-width:1px;border-style:solid;border-color:red}");
+  (* With no border-image longhand anywhere there is nothing to reset, so the
+     contraction is the shorter spelling of the same cascade. *)
+  Alcotest.(check string)
+    "and contracts with none of them present" "a{border:1px solid red}"
+    (minify_str "a{border-width:1px;border-style:solid;border-color:red}")
+
 let test_shorthand_drops_the_longhand_it_resets () =
   let minify_str css =
     match Css.of_string ~strict:false css with
@@ -1807,6 +1830,9 @@ let optimize_tests =
     ( "shorthand drops the longhand it resets",
       `Quick,
       test_shorthand_drops_the_longhand_it_resets );
+    ( "border keeps longhands beside a border-image",
+      `Quick,
+      test_border_keeps_longhands_beside_a_border_image );
     ( "lossless keeps shorthand longhand order",
       `Quick,
       test_lossless_keeps_shorthand_longhand_order );
