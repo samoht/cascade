@@ -279,7 +279,13 @@ let custom_properties_basic () =
      whitespace normalization: without it [a/**/b] becomes the ident [ab]. *)
   check_declaration ~minify:false ~expected:"--x: a  b" "--x:a  b";
   check_declaration ~minify:false ~expected:"--sp: a" "--sp:  a  ";
-  check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b"
+  check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b";
+  (* Section 9.1 serializes an ident by escaping only what must be, so an escape
+     the author wrote otherwise does not come back. A custom property's value is
+     not a reserialized stream, so its tokens keep the text they were read
+     from. *)
+  check_declaration ~minify:false ~expected:"--v: gre\\en" "--v: gre\\en";
+  check_declaration ~minify:false ~expected:"--w: colo\\r" "--w: colo\\r"
 
 let vendor_prefixes () =
   check_declaration ~expected:"-webkit-transform:rotate(45deg)"
