@@ -182,6 +182,15 @@ let spec_ahead : excuse list =
          full-width || full-size-kana | math-auto";
     };
     {
+      properties = [ "animation"; "-webkit-animation" ];
+      value = "--x x";
+      why =
+        "CSS Animations 2 sec. 4.12: <single-animation> ends in [ none | \
+         <keyframes-name> ] || <single-animation-timeline>, so a dashed-ident \
+         timeline and a keyframes name fill two slots of one [||]. Chrome took \
+         the timeline back out of the shorthand";
+    };
+    {
       properties = [ "text-overflow" ];
       value = "\"...\"";
       why =

@@ -378,6 +378,7 @@ let matrix =
           "none";
           "fade calc(1s * 2)";
           "infinite infinite";
+          "--x x";
         ];
       negatives = [ "1s 2s 3s"; "2 3" ];
     };

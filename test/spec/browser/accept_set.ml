@@ -430,12 +430,6 @@ let spec_ahead_here : Chrome_gaps.excuse list =
         "CSS Inline 3 sec. 5.2: auto | <baseline-metric>, and sec. 5.1 gives \
          <baseline-metric> = text-bottom | alphabetic | ideographic | middle | \
          central | mathematical | hanging | text-top" );
-      ( [ "animation"; "-webkit-animation" ],
-        [ "--x x, --y y" ],
-        "CSS Animations 2 sec. 4: <single-animation> ends in [ none | \
-         <keyframes-name> ] || <single-animation-timeline>, so a dashed-ident \
-         timeline and a keyframes name fill two slots of one [||]. Chrome took \
-         the timeline back out of the shorthand" );
     ]
 
 (* The same, for a value Chrome reads that no specification grants: an entry
