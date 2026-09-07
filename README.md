@@ -761,6 +761,19 @@ The [SatCSS benchmark](bench/satcss/) (Hague-Lin-Hong's CSS minification
 corpus) is regenerated locally and not part of normal tests: the upstream
 repository carries no licence for redistributing the website CSS snapshots.
 
+### Profiling with `obs`
+
+`Observe.setup` wires the CLI's logging terms and makes the binary
+instrumentable: it honours `MEMTRACE` for an allocation trace and streams
+runtime events to an `obs` collector. To capture and read a run:
+
+<!-- $MDX skip -->
+```sh
+dune build
+obs run -- _build/default/bin/main.exe fmt --minify stylesheet.css
+obs report latest
+```
+
 ## References
 
 **Other CSS tooling.** [Lightning CSS](https://github.com/parcel-bundler/lightningcss)

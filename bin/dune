@@ -9,7 +9,6 @@
   fmt
   fmt.cli
   fmt.tty
-  logs
-  logs.fmt
   unix
-  markup))
+  markup
+  observe))

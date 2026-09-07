@@ -32,4 +32,5 @@
   uri
   psq
   logs
+  observe
   (cmdliner (>= 2.0.0))))
