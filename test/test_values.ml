@@ -2066,6 +2066,10 @@ let spec_math_range_keeps_the_call () =
   decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1),2"
     "sign(-1px),2";
   decl_optimizes ~prop:"animation-iteration-count" ~into:"2" "calc(2)";
+  (* The shorthand normalises the slots it holds, so the count folds where the
+     longhand folds instead of waiting for a second pass over the output. *)
+  decl_optimizes ~prop:"animation" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"animation" ~into:"2s linear 3" "2s linear calc(1 + 2)";
   (* SVG 2 sec. 13.5.4 makes a negative dash length an error, so each item
      carries the range whichever branch of [<length-percentage> | <number>] it
      took. *)
@@ -2122,6 +2126,7 @@ let spec_minified_output_reads_back () =
   reads_back "tab-size" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)" ];
   reads_back "animation-iteration-count"
     [ "sign(-1px)"; "calc(-1)"; "sign(-1px),2" ];
+  reads_back "animation" [ "sign(-1px)"; "calc(-1)"; "2s linear calc(1 + 2)" ];
   reads_back "stroke-dasharray" [ "calc(-1px)"; "sign(-1px)"; "calc(1px)" ];
   reads_back "hyphenate-limit-chars" [ "sign(-1px)"; "calc(-1)"; "calc(4)" ];
   (* The durations the sibling range guard already keeps, pinned here so the
