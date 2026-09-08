@@ -2076,6 +2076,10 @@ let spec_math_range_keeps_the_call () =
   decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1px)" "calc(-1px)";
   decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"stroke-dasharray" ~into:"1px" "calc(1px)";
+  (* SVG 2 sec. 13.5.3 calls a negative [stroke-width] invalid, and the number
+     branch already kept its call: the length branch carries the same range. *)
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(-1px)" "calc(-1px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(2px - 3px)" "calc(2px - 3px)";
   (* CSS Text 4 sec. 6.2 gives the three [hyphenate-limit-chars] counts a
      [1,inf] [<integer>]. *)
   decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "sign(-1px)";
@@ -2128,6 +2132,7 @@ let spec_minified_output_reads_back () =
     [ "sign(-1px)"; "calc(-1)"; "sign(-1px),2" ];
   reads_back "animation" [ "sign(-1px)"; "calc(-1)"; "2s linear calc(1 + 2)" ];
   reads_back "stroke-dasharray" [ "calc(-1px)"; "sign(-1px)"; "calc(1px)" ];
+  reads_back "stroke-width" [ "calc(-1px)"; "calc(2px - 3px)"; "sign(-1px)" ];
   reads_back "hyphenate-limit-chars" [ "sign(-1px)"; "calc(-1)"; "calc(4)" ];
   (* The durations the sibling range guard already keeps, pinned here so the
      fixed-point half of the property covers them too. *)
