@@ -5084,7 +5084,7 @@ let spec_generated_box_layout_edges () =
   check_contain_intrinsic_longhand "auto 10px";
   check_contain_intrinsic_size "auto 10px 20px";
   check_contain_intrinsic_size_item "auto 10px";
-  (* CSS Sizing 4 sec. 6 spells a slot [auto? [ none | <length [0,inf]> ]], so
+  (* CSS Sizing 4 sec. 5.2 spells a slot [auto? [ none | <length [0,inf]> ]], so
      [none] is one of the two things the optional [auto] may precede and it sits
      in a slot rather than standing for the whole value. Chrome 153 takes each
      of these. *)

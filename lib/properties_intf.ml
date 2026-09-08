@@ -3817,8 +3817,8 @@ type image_resolution =
   | Revert_layer
   | Var of image_resolution var
 
-(** CSS Sizing 4 sec. 6 spells one slot [auto? [ none | <length [0,inf]> ]], so
-    the keyword takes the [auto] prefix as a length does. *)
+(** CSS Sizing 4 sec. 5.2 spells one slot [auto? [ none | <length [0,inf]> ]],
+    so the keyword takes the [auto] prefix as a length does. *)
 type contain_intrinsic_size_item =
   | None
   | Length of length

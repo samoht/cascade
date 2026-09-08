@@ -695,6 +695,38 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.properties.font-family.inherit";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from \
+         <custom-ident> itself, so no word of a family sequence is one \
+         wherever it stands. Chrome reads inherit as a family name once \
+         another word stands beside it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.contain-intrinsic-size.auto_none_auto";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 (ED) sec. 5.2 spells contain-intrinsic-size [ auto? [ \
+         none | <length [0,inf]> ] ]{1,2}, so auto none is one whole slot and \
+         the auto after it is no slot at all. Chrome takes the trailing bare \
+         auto";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.break-before.all";
       support =
         {
