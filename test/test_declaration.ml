@@ -2695,6 +2695,16 @@ let list_properties () =
   neg_cursor read_declaration "box-shadow: 0";
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+  (* Sec. 6.1 and CSS Text Decoration 4 sec. 6.2 both spell the property [none |
+     <shadow>#], so [none] is the whole value and never one item of the list. *)
+  neg_cursor read_declaration "box-shadow: none, none";
+  neg_cursor read_declaration "text-shadow: none, none";
+  neg_cursor read_declaration "box-shadow: 1px 1px red, none";
+  neg_cursor read_declaration "text-shadow: none, 1px 1px red";
+  check_declaration ~expected:"text-shadow:none" "text-shadow: none";
+  check_declaration ~expected:"box-shadow:1px 1px red" "box-shadow: 1px 1px red";
+  check_declaration ~expected:"text-shadow:1px 1px red,2px 2px blue"
+    "text-shadow: 1px 1px red, 2px 2px blue";
   (* Sec. 6.2 writes the run [<length>{2} [ <length [0,inf]> <length>? ]?]: a
      plain length in every slot, and a floor on the blur alone. Chrome 153
      agrees on each of these. *)
