@@ -6971,6 +6971,69 @@ let hex_spellings_have_one_node () =
   distinct_value "#fff vs #fff8" short_lower
     (sole_declaration ".e{color:#FFF8}")
 
+(* CSS Syntax 3 (ED) sec. 4.3.12 builds a <number-token>'s value from an
+   optional sign, a digit run, an optional fraction and an optional exponent, so
+   [1px], [1.0px], [+1px], [01px] and [1e0px] are one length, as [1e3px] and
+   [1000px] are. The AST keeps the authored spelling for the unminified
+   round-trip only; once optimisation has canonicalised it away the spellings
+   are one declaration, they hash alike, and the rules holding them merge in the
+   single pass the optimizer's fixpoint promises. *)
+let number_spellings_have_one_node () =
+  let canonical = sole_declaration ".a{width:1px}" in
+  List.iter
+    (fun spelling ->
+      let d =
+        sole_declaration (String.concat "" [ ".b{width:"; spelling; "}" ])
+      in
+      Alcotest.(check string)
+        (spelling ^ ": the fold spells 1px")
+        "width:1px"
+        (Css.Declaration.to_string ~minify:true d);
+      same_text_same_hash (spelling ^ " vs 1px") d canonical)
+    [ "1.0px"; "1.00px"; "+1px"; "01px"; "1e0px"; "1E0px" ];
+  (* An exponent the printer does not keep names the number it stands for. *)
+  same_text_same_hash "1e3px vs 1000px"
+    (sole_declaration ".a{width:1e3px}")
+    (sole_declaration ".b{width:1000px}");
+  Alcotest.(check string)
+    "the spellings merge in one pass" ".a,.b{width:1px}"
+    (minified ".a{width:1.0px}.b{width:1px}");
+  Alcotest.(check string)
+    "an exponent merges in one pass" ".a,.b{width:1000px}"
+    (minified ".a{width:1e3px}.b{width:1000px}");
+  (* The same node feeds the box contraction: a side spelled differently held
+     the shorthand open until a second pass re-read it. *)
+  Alcotest.(check string)
+    "the box contracts in one pass" ".a{padding:1px}"
+    (minified ".a{padding:1px;padding-bottom:1E0px}")
+
+(* What the fold above must not reach. A unit or a type carries a value the
+   number alone does not, and CSS Variables 1 sec. 4.1 forbids normalizing a
+   custom property at all, so its authored spelling stays a value of its own. *)
+let number_spellings_keep_their_value () =
+  let px = sole_declaration ".a{width:1px}" in
+  distinct_value "1px vs 1pt" px (sole_declaration ".b{width:1pt}");
+  distinct_value "1px vs 1%" px (sole_declaration ".c{width:1%}");
+  distinct_value "1px vs 2px" px (sole_declaration ".d{width:2px}");
+  (* Sec. 6 of CSS Values 4 drops a zero length's unit, so these two already
+     were one declaration. *)
+  same_text_same_hash "0 vs 0px"
+    (sole_declaration ".a{width:0}")
+    (sole_declaration ".b{width:0px}");
+  (* CSS Color 4 sec. 5.2: the hex and the name are one colour, and already
+     were. *)
+  same_text_same_hash "red vs #f00"
+    (sole_declaration ".a{color:red}")
+    (sole_declaration ".b{color:#f00}");
+  (* A custom property holds the token stream the author wrote, so its two
+     spellings stay two declarations even where the printer gives them one
+     text. *)
+  let custom = sole_declaration ".a{--x:1.0px}" in
+  let custom' = sole_declaration ".b{--x:1px}" in
+  Alcotest.(check bool)
+    "a custom property is not folded" false
+    (Css.Declaration.equal_declaration custom custom')
+
 (* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
    its typed values alone: reading the print back has to land on the node that
    printed it, not merely on the same text. *)
@@ -7137,6 +7200,10 @@ let declaration_tests =
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
+    test_case "number spellings have one node" `Quick
+      number_spellings_have_one_node;
+    test_case "number spellings keep their value" `Quick
+      number_spellings_keep_their_value;
     test_case "parse_declaration" `Quick parse_declaration_case;
     (* Parsing basics *)
     test_case "simple" `Quick simple;
