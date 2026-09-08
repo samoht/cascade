@@ -2105,7 +2105,7 @@ let rec read_hyphens t : hyphens =
     ~var:(fun t -> Var (Values.read_var read_hyphens t))
     t
 
-let rec read_text_size_adjust t : text_size_adjust =
+let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
   Cursor.ws t;
   match Cursor.percentage_opt t with
   | Some n ->
@@ -2113,27 +2113,43 @@ let rec read_text_size_adjust t : text_size_adjust =
         Cursor.err t "text-size-adjust percentages cannot be negative"
       else Pct n
   | _ ->
-      (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
-         stands, [calc()] being one of them rather than the gate to the rest,
-         and sec. 10.12 checks the [0,inf] range on the value it resolves to. *)
+      (* Sec. 10.1 puts a math function wherever the [<percentage>] stands,
+         [calc()] being one of them rather than the gate to the rest, and sec.
+         10.12 checks the [0,inf] range on the value it resolves to. CSS Size
+         Adjustment 1 sec. 3 spells the adjustment a [<percentage>] with no
+         [<number>] beside it, so a call answering a [<length>] or a bare
+         coefficient is none of its types. Sec. 10.8 gives an operand no
+         keyword, so [calc(inherit)] and [calc(2 * auto)] fail the way the
+         browser drops them rather than surviving as a [Calc] the printer
+         unwraps into a live value. *)
       let read_math t : text_size_adjust =
-        Calc (Values.read_calc ~result_type:`Value read_text_size_adjust t)
+        Calc
+          (Values.read_calc ~result_type:`Percentage
+             (read_text_size_adjust_with ~keywords:false)
+             t)
       in
       Cursor.enum_or_calls "text-size-adjust"
-        [
-          ("none", (None : text_size_adjust));
-          ("auto", Auto);
-          ("inherit", Inherit);
-          ("initial", Initial);
-          ("unset", Unset);
-          ("revert", Revert);
-          ("revert-layer", Revert_layer);
-        ]
+        (if keywords then
+           [
+             ("none", (None : text_size_adjust));
+             ("auto", Auto);
+             ("inherit", Inherit);
+             ("initial", Initial);
+             ("unset", Unset);
+             ("revert", Revert);
+             ("revert-layer", Revert_layer);
+           ]
+         else [])
         ~calls:
-          (("var", fun t -> Var (Values.read_var read_text_size_adjust t))
+          (( "var",
+             fun t ->
+               Var (Values.read_var (read_text_size_adjust_with ~keywords) t) )
           :: ("calc", read_math)
           :: Values.math_function_calls read_math)
         t
+
+let read_text_size_adjust t : text_size_adjust =
+  read_text_size_adjust_with ~keywords:true t
 
 let rec read_tab_size (t : Cursor.t) : tab_size =
   let checked t (n : number) : tab_size =

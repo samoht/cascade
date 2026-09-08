@@ -31,6 +31,11 @@ entry points both moved.
   Values 4 sec. 10.9 fails the whole calculation when adding the types of a
   `+` or `-` fails; an angle-valued call still adds to an angle, so
   `rotate: calc(atan(1) + 10deg)` reads (#1151)
+- A percentage slot refuses a length-valued math call, so `scale: abs(-1px)`,
+  `font-stretch: hypot(3px, 4px)` and `text-size-adjust: round(1.5px, 1px)` are
+  dropped, and `font-stretch: calc(inherit)` no longer prints a live `inherit`.
+  A keyword is not a `<calc-value>` there either, so `calc(normal)` and
+  `calc(none)` are dropped (#1153)
 - A math function reads wherever the grammar allows its type, with no `calc()`
   wrapper needed, so `font-weight: calc(400)`, `zoom: calc(.5)`,
   `grid-row-start: calc(2) center`, `width: abs(-1px)`, `opacity: pow(2, 3)`

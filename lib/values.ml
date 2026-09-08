@@ -5867,14 +5867,19 @@ let validate_calc_type t result_type calc =
     | _, Deferred -> true
     (* A call answering its arguments' type stands where that type stands: at a
        [<number>] slot it does not, and at an [<opacity-value>] only the
-       [<percentage>] the slot resolves against its number does. *)
+       [<percentage>] the slot resolves against its number does. [`Value] is the
+       slot whose contextual dimension the leaf reader already vouched for, so
+       the unit is that one; a [<percentage>] slot names its own. *)
     | `Number, Result_unit _ -> false
-    | `Number_or_percentage, Result_unit unit -> String.equal unit "%"
+    | (`Number_or_percentage | `Percentage), Result_unit unit ->
+        String.equal unit "%"
     | (`Value | `Number_or_value), Result_unit _ -> true
-    | `Number, Dimension 0 | `Value, Dimension 1 -> true
+    | `Number, Dimension 0 -> true
+    | (`Value | `Percentage), Dimension 1 -> true
     | (`Number_or_value | `Number_or_percentage), (Dimension 0 | Dimension 1) ->
         true
-    | ( (`Number | `Value | `Number_or_value | `Number_or_percentage),
+    | ( ( `Number | `Value | `Number_or_value | `Number_or_percentage
+        | `Percentage ),
         (Invalid | Dimension _) ) ->
         false
   in
@@ -5923,7 +5928,12 @@ let typed_math_function_calls read =
   List.map (fun n -> (n, read)) typed_math_function_names
 
 let read_calc : type a.
-    ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+    ?result_type:
+      [ `Number
+      | `Number_or_percentage
+      | `Number_or_value
+      | `Percentage
+      | `Value ] ->
     (Cursor.t -> a) ->
     Cursor.t ->
     a calc =
@@ -7815,9 +7825,11 @@ let rec read_number_percentage t : number_percentage =
     (* CSS Values 4 sec. 10.1 puts every math function where [calc()] stands,
        and sec. 10.12 checks the property's range on what the call resolves to,
        so the call is held rather than folded to a literal the reader would then
-       refuse. *)
+       refuse. Sec. 10.9 admits only what the slot's two types name: a call
+       answering a [<length>] is neither. *)
     Calc
-      (read_calc ~result_type:`Number_or_value read_number_percentage_dim_only t)
+      (read_calc ~result_type:`Number_or_percentage
+         read_number_percentage_dim_only t)
   else
     (* Try to read as percentage or number *)
     Cursor.one_of

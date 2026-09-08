@@ -652,7 +652,8 @@ val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
 val read_calc :
-  ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+  ?result_type:
+    [ `Number | `Number_or_percentage | `Number_or_value | `Percentage | `Value ] ->
   (Cursor.t -> 'a) ->
   Cursor.t ->
   'a calc
@@ -664,7 +665,11 @@ val read_calc :
 
     [`Number_or_percentage] is the [<number> | <percentage>] slot of an
     [<opacity-value>]: it parts with [`Number_or_value] on a math function
-    answering its arguments' type, which stands there only as a percentage. *)
+    answering its arguments' type, which stands there only as a percentage.
+    [`Percentage] is the slot that spells a [<percentage>] and no [<number>]
+    beside it, so it parts with [`Value] on the same call: [`Value] takes
+    whatever unit its leaf reader vouched for, and a [<percentage>] slot takes
+    only [%]. *)
 
 val looking_at_math_function : Cursor.t -> bool
 (** [looking_at_math_function t] is [true] on a call to a math function other
@@ -702,7 +707,7 @@ val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 
 val validate_calc_type :
   Cursor.t ->
-  [ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+  [ `Number | `Number_or_percentage | `Number_or_value | `Percentage | `Value ] ->
   'a calc ->
   unit
 (** [validate_calc_type t result_type calc] raises unless [calc] infers to

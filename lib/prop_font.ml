@@ -2016,42 +2016,54 @@ let rec read_font t : font =
         in
         Shorthand body
 
-let rec read_font_stretch t : font_stretch =
+let rec read_font_stretch_with ~keywords t : font_stretch =
   let read_percentage t : font_stretch =
     let n = Cursor.pct t in
     (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. *)
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
-  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
-     stands, [calc()] being one of them rather than the gate to the rest, and
-     sec. 10.12 checks the [0,inf] range on the value it resolves to: the call
-     keeps out of [read_percentage], which is the literal's range check. *)
+  (* Sec. 10.1 puts a math function wherever the [<percentage>] stands, [calc()]
+     being one of them rather than the gate to the rest, and sec. 10.12 checks
+     the [0,inf] range on the value it resolves to: the call keeps out of
+     [read_percentage], which is the literal's range check. Sec. 2.3.1 spells
+     the width a [<percentage>] with no [<number>] beside it, so a call
+     answering a [<length>] or a bare coefficient is none of its types. Sec.
+     10.8 gives an operand no keyword, so [calc(inherit)] and [calc(condensed)]
+     fail the way the browser drops them rather than surviving as a [Calc] the
+     printer unwraps into a live value. *)
   let read_math t : font_stretch =
-    Calc (read_calc ~result_type:`Value read_font_stretch t)
+    Calc
+      (read_calc ~result_type:`Percentage
+         (read_font_stretch_with ~keywords:false)
+         t)
   in
   Cursor.enum_or_calls "font-stretch"
-    [
-      ("ultra-condensed", Ultra_condensed);
-      ("extra-condensed", Extra_condensed);
-      ("condensed", Condensed);
-      ("semi-condensed", Semi_condensed);
-      ("normal", Normal);
-      ("semi-expanded", Semi_expanded);
-      ("expanded", Expanded);
-      ("extra-expanded", Extra_expanded);
-      ("ultra-expanded", Ultra_expanded);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("ultra-condensed", (Ultra_condensed : font_stretch));
+         ("extra-condensed", Extra_condensed);
+         ("condensed", Condensed);
+         ("semi-condensed", Semi_condensed);
+         ("normal", Normal);
+         ("semi-expanded", Semi_expanded);
+         ("expanded", Expanded);
+         ("extra-expanded", Extra_expanded);
+         ("ultra-expanded", Ultra_expanded);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:
-      (("var", fun t -> Var (read_var read_font_stretch t))
+      (("var", fun t -> Var (read_var (read_font_stretch_with ~keywords) t))
       :: ("calc", read_math)
       :: Values.math_function_calls read_math)
     ~default:read_percentage t
+
+let read_font_stretch t : font_stretch = read_font_stretch_with ~keywords:true t
 
 let rec read_font_display t : font_display =
   Cursor.enum_or_var "font-display"
