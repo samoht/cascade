@@ -709,16 +709,14 @@ let is_font_family_ident_word s =
   in
   starts_ident && String.for_all is_name_char s
 
-(* CSS Fonts 4 sec. 2.1.1: in an unquoted [<font-family-name>] "any identifier
-   which could be misinterpreted as a pre-defined keyword in the font-family
-   value definition, or the CSS-wide keywords, is not allowed", and a user agent
-   "must not consider these keywords as matching the [<font-family-name>] type".
-   Sec. 2.1.2 spells the pre-defined keywords out: the bare
-   [<generic-font-family>] names listed below, the script-specific generics
-   being functional instead ([generic(fangsong)]). CSS Values 4 sec. 4.2 adds
-   the CSS-wide keywords and the reserved [default], and excludes every entry in
-   all ASCII case permutations. *)
-let font_family_reserved_words =
+(* CSS Fonts 4 sec. 2.1.2 spells the bare [<generic-font-family>] names, the
+   script-specific generics being functional instead ([generic(fangsong)]). Sec.
+   2.1.1 keeps them out of [<font-family-name>], and the property reads a
+   [<generic-font-family>] only where the alternative starts, so a generic is
+   turned away as the first word of a sequence and is an ordinary
+   [<custom-ident>] after it: Chrome 153 refuses [serif serif] and [serif Foo]
+   and takes [Foo serif] and [Cambria Math], which are installed font names. *)
+let font_family_generic_words =
   [
     "serif";
     "sans-serif";
@@ -731,17 +729,25 @@ let font_family_reserved_words =
     "ui-sans-serif";
     "ui-monospace";
     "ui-rounded";
-    "inherit";
-    "initial";
-    "unset";
-    "revert";
-    "revert-layer";
-    "default";
   ]
+
+(* CSS Values 4 sec. 4.2 excludes the CSS-wide keywords and the reserved
+   [default] from [<custom-ident>] itself, so no word of a sequence is one
+   wherever it stands. Chrome takes [inherit inherit] as a name; the exclusion
+   is on the type rather than on the position, so cascade is the strict side. *)
+let font_family_css_wide_words =
+  [ "inherit"; "initial"; "unset"; "revert"; "revert-layer"; "default" ]
+
+let font_family_reserved_words =
+  font_family_generic_words @ font_family_css_wide_words
 
 let is_font_family_reserved_word w =
   let w = String.lowercase_ascii w in
   List.exists (String.equal w) font_family_reserved_words
+
+let is_font_family_css_wide w =
+  let w = String.lowercase_ascii w in
+  List.exists (String.equal w) font_family_css_wide_words
 
 (* A lone word has to clear more than the excluded idents: [read_font_family]
    below also maps a bare [emoji], [fangsong] or [none] to a keyword rather than
@@ -762,10 +768,11 @@ let can_unquote_font_family_name s =
          words only a lone position reads as a keyword are excluded too. *)
       is_font_family_ident_word w && not (is_font_family_keyword_name w)
   | _ :: _ :: _ as words ->
-      (* The exclusion is stated per identifier, so it holds at every word of a
-         [<custom-ident>+] sequence and not only at a lone one: [inherit test]
-         and [Foo serif] are no more valid family names than [inherit] and
-         [serif] are, and quoting is their only spelling. *)
+      (* A reserved word anywhere in the sequence keeps the quotes, which is
+         stricter than what the reader takes back: sec. 2.1.1 reads flat as
+         excluding [Cambria Math], and only some browsers go on to take it, so
+         the quoted spelling is the one every UA reads. Unquoting is a size win
+         the printer declines rather than a spelling it owes. *)
       List.for_all
         (fun w ->
           is_font_family_ident_word w && not (is_font_family_reserved_word w))
@@ -1697,27 +1704,33 @@ let is_font_family_name_value : font_family -> bool = function
   | Victor_mono | Inconsolata | Hack | Name _ | Var _ ->
       true
 
-let rec read_font_family_single t : font_family =
-  let read_var t : font_family = Var (read_var read_font_family t) in
-  (* CSS Fonts 4 sec. 2.1.1 / CSS Cascade 5 sec. 7.3: the CSS-wide keywords and
-     the reserved [default] are excluded from [<custom-ident>], so none may
-     appear as any word of an unquoted family name. *)
-  let is_reserved_word word =
-    List.mem
-      (String.lowercase_ascii word)
-      [ "inherit"; "initial"; "unset"; "revert"; "revert-layer"; "default" ]
-  in
-  (* Read unquoted multi-word font names, e.g., "arial rounded" *)
-  let rec read_unquoted_name_words acc =
+(* An unquoted multi-word family name, e.g. [arial rounded]. The two exclusions
+   have different reaches. A [<generic-font-family>] is the alternative the
+   property reads instead of a name, so it is turned away where that alternative
+   starts, at the first word, and reads as an ordinary [<custom-ident>] after
+   it: [Cambria Math] and [Foo serif] are installed font names, [serif Foo] is
+   not. A CSS-wide keyword or [default] is excluded from [<custom-ident>] itself
+   (CSS Values 4 sec. 4.2), so it is turned away at every word. *)
+let read_unquoted_family_name t =
+  let rec loop acc =
     let word = Cursor.ident ~keep_case:true t in
-    if is_reserved_word word then
+    let reserved =
+      match acc with
+      | [] -> is_font_family_reserved_word word
+      | _ :: _ -> is_font_family_css_wide word
+    in
+    if reserved then
       Cursor.err_invalid t
         "font-family: reserved word cannot appear in an unquoted family name";
     let acc = word :: acc in
     Cursor.ws t;
-    if Option.is_some (Cursor.peek_ident t) then read_unquoted_name_words acc
+    if Option.is_some (Cursor.peek_ident t) then loop acc
     else String.concat " " (List.rev acc)
   in
+  loop []
+
+let rec read_font_family_single t : font_family =
+  let read_var t : font_family = Var (read_var read_font_family t) in
   let read_single_word t : font_family =
     (* A single word is a keyword before it is a name *)
     (Cursor.enum_or_calls "font-family" font_family_keywords
@@ -1747,10 +1760,7 @@ let rec read_font_family_single t : font_family =
             Option.is_some (Cursor.peek_ident t))
           t
       in
-      if is_multi_word then
-        (* Multi-word unquoted name; [read_unquoted_name_words] rejects any
-           reserved word in the sequence. *)
-        Name (read_unquoted_name_words [])
+      if is_multi_word then Name (read_unquoted_family_name t)
       else
         (* Single word - try the keyword match *)
         read_single_word t

@@ -219,6 +219,14 @@ to lose a whole rule over one bad piece. Both are gone.
   `animation-name: "default"` still reads. Six productions each carried their
   own exclusion list, five of which had forgotten `default`; they now share
   `Cascade.Cursor.custom_ident` (#1143)
+- A value list carries the number of items its grammar grants, so
+  `mask: none, none` and `transition-behavior: normal, normal` read where they
+  were dropped, while `text-shadow: none, none`, `box-shadow: none, none` and
+  `list-style: none none none` are dropped with a warning: `none` is a whole
+  value there, not a list item, and CSS Values 4 sec. 2.2 takes each option of
+  a `||` at most once. An unquoted `font-family` name refuses a generic keyword
+  only where it heads the sequence, so `font-family: serif serif` is dropped
+  and `font-family: Cambria Math` reads (#1147)
 - A `@keyframes` name is spelled the way its value requires, so
   `@keyframes "default"` keeps its quotes where it used to print as
   `@keyframes default`, which every browser drops, and `@keyframes "none"` is
