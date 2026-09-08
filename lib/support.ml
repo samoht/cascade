@@ -967,6 +967,23 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.properties.outline.auto";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "The colour slot of the shorthand is the sec. 3.4 <'outline-color'> \
+         above, so outline: solid auto fills style and colour and CSS Values 4 \
+         sec. 2.2 takes each option of the || once. Chrome reads auto only as \
+         the style, so a second style keyword beside it leaves the value with \
+         two, and it drops the declaration";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.user-select.contain";
       support =
         {
