@@ -130,10 +130,19 @@ let rec read_shadow_single t : shadow =
         ~calls:[ ("var", read_var_shadow) ]
         ~default:Shadow.read t
 
+(* CSS Backgrounds 3 sec. 6.1 spells the property [none | <shadow>#], so [none]
+   names the whole value and is no item of the list. *)
 let read_shadow t : shadow =
   match Cursor.list ~sep:Cursor.comma ~at_least:1 read_shadow_single t with
   | [ x ] -> x
-  | l -> List l
+  | l ->
+      let whole_value : shadow -> bool = function
+        | None | Inherit | Initial | Unset | Revert | Revert_layer -> true
+        | Shadow _ | Inset _ | List _ | Var _ -> false
+      in
+      if List.exists whole_value l then
+        Cursor.err_invalid t "box-shadow keyword beside another shadow";
+      List l
 
 let pp_color_after_length ctx color =
   Pp.space ctx ();
@@ -230,9 +239,11 @@ let rec pp_border_radius : border_radius Pp.t =
    horizontal one says what omitting it says. *)
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
+  (* Sec. 4.1 gives each radius a [0,inf] range, and the shorthand carries what
+     its longhands carry: a call folding below it keeps its wrapper. *)
   let group =
     normalize_box_shorthand ~is_substitution:is_lp_substitution
-      (Values.normalize_length_percentage ~strip)
+      (Values.normalize_length_percentage ~strip ~non_negative:true)
   in
   match value with
   | Radius { horizontal; vertical } ->
@@ -1456,18 +1467,29 @@ let read_length_as_border_width ?(allow_negative = false) t =
 
 (* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
    the [0,inf] range of [<line-width>] is checked on the value it resolves to,
-   not on each operand. So [calc(-1px)] reads and a literal [-1px] does not. *)
+   not on each operand. So [calc(-1px)] reads and a literal [-1px] does not.
+   Sec. 10.8 gives an operand no keyword either: [thin], [medium], [thick] and
+   the CSS-wide keywords are not [<calc-value>]s, so [keywords] is off here and
+   [calc(medium)] fails the way the browser drops it. *)
 let rec read_border_width_in_math t : border_width =
-  read_border_width_with ~allow_negative:true t
+  read_border_width_with ~keywords:false ~allow_negative:true t
 
-and read_border_width_with ~allow_negative t : border_width =
+(* CSS Values 4 sec. 10.2 requires the arguments of [min()], [max()] and
+   [clamp()] to "have a consistent type or else the function is invalid", and
+   sec. 10.9 gives a unitless zero inside a math function the [<number>] type.
+   Without the check [min(0,1px)] folded to [0] rather than dropping. *)
+and read_math_arg t =
+  let expr = read_calc_expr read_border_width_in_math t in
+  validate_calc_type t `Value expr;
+  expr
+
+and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
   let read_var t : border_width =
-    Var (read_var (read_border_width_with ~allow_negative) t)
+    Var (read_var (read_border_width_with ~keywords ~allow_negative) t)
   in
   let read_calc t : border_width =
     Calc (read_calc ~result_type:`Value read_border_width_in_math t)
   in
-  let read_math_arg t = read_calc_expr read_border_width_in_math t in
   let read_min t : border_width =
     Min
       (Cursor.call "min" t
@@ -1487,24 +1509,22 @@ and read_border_width_with ~allow_negative t : border_width =
     | _ -> Cursor.err_invalid t "invalid clamp"
   in
   Cursor.enum_or_calls "border-width"
-    [
-      ("thin", (Thin : border_width));
-      ("medium", Medium);
-      ("thick", Thick);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("thin", (Thin : border_width));
+         ("medium", Medium);
+         ("thick", Thick);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:
-      [
-        ("var", read_var);
-        ("calc", read_calc);
-        ("min", read_min);
-        ("max", read_max);
-        ("clamp", read_clamp);
-      ]
+      (("var", read_var) :: ("calc", read_calc) :: ("min", read_min)
+     :: ("max", read_max) :: ("clamp", read_clamp)
+      :: Values.typed_math_function_calls read_calc)
     ~default:(read_length_as_border_width ~allow_negative)
     t
 
@@ -1941,7 +1961,7 @@ let read_background_position_axis ~label ~start_edge ~end_edge =
       ]
       ~var:(fun t -> Var (Values.read_var read t))
       ~default:(fun t : background_position_axis ->
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some "center" ->
             ignore (Cursor.ident_opt t);
             Center
@@ -2360,14 +2380,16 @@ let read_border_image_slice_item t : border_image_slice_item =
   | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
   | None ->
       (* The number side reads its own math; a percentage one reaches the second
-         arm only because [read_border_image_number] refuses it. *)
+         arm only because [read_border_image_number] refuses it. Sec. 6.2 spells
+         the slot [<number> | <percentage>] with no length in it, so a call
+         answering its arguments' type stands here only as a percentage. *)
       Cursor.one_of
         [
           (fun t ->
             (Number (read_border_image_number t) : border_image_slice_item));
           (fun t ->
             Calc
-              (Values.read_calc ~result_type:`Number_or_value
+              (Values.read_calc ~result_type:`Number_or_percentage
                  read_slice_percentage_leaf t));
         ]
         t
@@ -2384,7 +2406,7 @@ let read_border_image_slice_step t values has_fill =
   Cursor.ws t;
   if Cursor.is_done t || Cursor.peek_delim t = Some '/' then `Stop
   else
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "fill" ->
         if has_fill then
           Cursor.err_invalid t "duplicate border-image fill keyword";
@@ -2407,7 +2429,7 @@ let read_border_image_slice_offsets t : border_image_slice_offsets =
 (* CSS Cascade 5 sec. 7.3 gives the longhand the CSS-wide keywords; the
    shorthand takes offsets alone. *)
 let rec read_border_image_slice t : border_image_slice =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some ("initial" | "inherit" | "unset" | "revert" | "revert-layer" | "var")
     ->
       Cursor.enum_or_var "border-image-slice"

@@ -487,6 +487,63 @@ let test_property_missing_descriptors () =
   check_stylesheet ~expected:"@property --x{syntax:\"*\";inherits:false}"
     "@property --x { syntax: \"*\"; inherits: false }"
 
+(* An [initial-value] carrying var(), attr() or env() has nothing to substitute
+   from at registration time, so Chrome 153 drops the
+   whole rule at every syntax, the universal one included. The values below the
+   substitution cases are the other side of the same filter: they stay readable,
+   including the ones cascade knowingly keeps that Chrome drops for
+   computational independence ([3em] at a non-universal syntax). *)
+(* Not a roundtrip test *)
+let test_property_initial_value_substitution () =
+  let expect_error what syntax value =
+    expect_property_error what
+      (String.concat ""
+         [
+           "@property --x { syntax: \"";
+           syntax;
+           "\"; inherits: false; initial-value: ";
+           value;
+           " }";
+         ])
+  in
+  let substitutions =
+    [
+      "var(--y)";
+      "var(--y, 1px)";
+      "attr(data-x)";
+      "attr(data-x type(<length>))";
+      "env(safe-area-inset-top)";
+      "env(--x, 1px)";
+      "calc(var(--y) + 1px)";
+    ]
+  in
+  List.iter
+    (fun value ->
+      expect_error "substitution at <length>" "<length>" value;
+      expect_error "substitution at universal" "*" value)
+    substitutions;
+  (* A substitution function nested in the fallback of another one still counts,
+     and a [var(] written inside a string is data rather than a reference. *)
+  expect_error "nested substitution" "*" "var(--y, env(safe-area-inset-top))";
+  check_stylesheet
+    ~expected:
+      "@property --x{syntax:\"*\";inherits:false;initial-value:\"var(--y)\"}"
+    "@property --x { syntax: \"*\"; inherits: false; initial-value: \
+     \"var(--y)\" }";
+  check_stylesheet
+    ~expected:
+      "@property --x{syntax:\"<length>\";inherits:false;initial-value:5px}"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 5px \
+     }";
+  check_stylesheet
+    ~expected:
+      "@property --x{syntax:\"<length>\";inherits:false;initial-value:3em}"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 3em \
+     }";
+  check_stylesheet
+    ~expected:"@property --x{syntax:\"*\";inherits:false;initial-value:red}"
+    "@property --x { syntax: \"*\"; inherits: false; initial-value: red }"
+
 (* Not a roundtrip test *)
 let test_property_invalid_inherits () =
   expect_property_error "invalid inherits value"
@@ -1412,6 +1469,82 @@ let font_family_descriptor_grammar () =
     "@font-palette-values --brand { font-family: Brand serif }";
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
+
+(* CSS Counter Styles 3 (ED) sec. 3.2 spells [<symbol>] as [<string> | <image> |
+   <custom-ident>], and CSS Values 4 sec. 4.2 reserves [default] from every
+   [<custom-ident>], so a symbol descriptor takes the string and refuses the
+   bare ident. Blink 151 drops each of the rejections below. *)
+let counter_style_symbol_reserved_default () =
+  let body rest =
+    "@counter-style c { system: cyclic; symbols: \"a\"; " ^ rest ^ " }"
+  in
+  strict_accept "quoted default as a counter-style prefix"
+    (body "prefix: \"default\"");
+  strict_accept "unreserved ident as a counter-style prefix" (body "prefix: a");
+  strict_accept "quoted default as a counter-style symbol"
+    "@counter-style c { system: cyclic; symbols: \"default\" }";
+  strict_reject "reserved default as a counter-style prefix"
+    (body "prefix: default");
+  strict_reject "reserved default as a counter-style suffix"
+    (body "suffix: default");
+  strict_reject "reserved default as a counter-style negative"
+    (body "negative: default");
+  strict_reject "reserved default as the second counter-style negative"
+    (body "negative: a default");
+  strict_reject "reserved default as a counter-style pad symbol"
+    (body "pad: 3 default");
+  strict_reject "reserved default as a counter-style symbol"
+    "@counter-style c { system: cyclic; symbols: default }";
+  strict_reject "reserved default in counter-style additive-symbols"
+    "@counter-style c { system: additive; additive-symbols: 3 default }"
+
+(* CSS Animations 1 sec. 3: [<keyframes-name> = <custom-ident> | <string>], the
+   two arms name the same animation, and only the ident arm excludes [none], the
+   CSS-wide keywords and the [default] of CSS Values 4 sec. 4.2; the string arm
+   takes all of those and excludes the empty string instead. The section
+   serializes the name as an ident "unless it's a disallowed keyword, in which
+   case it's serialized as a <string>", so a reserved name keeps its quotes:
+   dropping them writes a rule Blink 153 refuses. Blink 153 answers every case
+   below the same way. *)
+let spec_keyframes_name_arms () =
+  check_stylesheet "@keyframes \"default\"{0%{opacity:0}}";
+  check_stylesheet "@keyframes \"none\"{0%{opacity:0}}";
+  check_stylesheet "@keyframes \"initial\"{0%{opacity:0}}";
+  check_stylesheet "@-webkit-keyframes \"default\"{0%{opacity:0}}";
+  check_stylesheet "@-moz-keyframes \"revert-layer\"{0%{opacity:0}}";
+  check_stylesheet "@keyframes slide{0%{opacity:0}}";
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}}"
+    "@keyframes \"slide\"{0%{opacity:0}}";
+  strict_accept "quoted default as a keyframes name"
+    "@keyframes \"default\" { from { opacity: 0 } }";
+  strict_accept "quoted none as a keyframes name"
+    "@keyframes \"none\" { from { opacity: 0 } }";
+  strict_reject "reserved default as a keyframes name"
+    "@keyframes default { from { opacity: 0 } }";
+  strict_reject "folded reserved default as a keyframes name"
+    "@keyframes Default { from { opacity: 0 } }";
+  strict_reject "reserved default as a -webkit- keyframes name"
+    "@-webkit-keyframes default { from { opacity: 0 } }";
+  strict_reject "reserved default as a -moz- keyframes name"
+    "@-moz-keyframes default { from { opacity: 0 } }";
+  strict_reject "empty string as a keyframes name"
+    "@keyframes \"\" { from { opacity: 0 } }";
+  (* Sec. 3: "the following two @keyframes rules have the same name, so the
+     first will be ignored". *)
+  assert_minify_and_optimize
+    "@keyframes foo { from { opacity: 0 } } @keyframes \"foo\" { from { \
+     opacity: 1 } }"
+    ~minified:"@keyframes foo{0%{opacity:0}}@keyframes foo{0%{opacity:1}}"
+    ~optimized:"@keyframes foo{0%{opacity:1}}";
+  (* An animation named through the string arm is the one [animation-name]
+     reaches through the same arm. *)
+  assert_minify_and_optimize
+    "@keyframes \"default\" { from { opacity: 0 } } .a { animation-name: \
+     \"default\" }"
+    ~minified:
+      "@keyframes \"default\"{0%{opacity:0}}.a{animation-name:\"default\"}"
+    ~optimized:
+      "@keyframes \"default\"{0%{opacity:0}}.a{animation-name:\"default\"}"
 
 let lenient_recover name css expected min_warnings =
   let { Css.stylesheet; warnings; _ } =
@@ -2468,6 +2601,9 @@ let stylesheet_tests =
     (* Additional property tests *)
     ("property permutations", `Quick, test_property_permutations);
     ("property missing descriptors", `Quick, test_property_missing_descriptors);
+    ( "property initial-value substitution",
+      `Quick,
+      test_property_initial_value_substitution );
     ("property invalid inherits", `Quick, test_property_invalid_inherits);
     ("property unknown descriptor", `Quick, test_property_unknown_descriptor);
     ( "property duplicate descriptors",
@@ -2489,6 +2625,10 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
+    ( "counter-style symbol reserves default",
+      `Quick,
+      counter_style_symbol_reserved_default );
+    ("spec keyframes name arms", `Quick, spec_keyframes_name_arms);
     ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
     ("spec keyframes shadow colour var", `Quick, spec_keyframes_shadow_color_var);
     ("page", `Quick, page_case);

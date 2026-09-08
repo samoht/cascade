@@ -57,20 +57,42 @@ let normalize_paint_order (value : paint_order) : paint_order =
       shortest 0
   | _ -> value
 
-let normalize_stroke_width ~ctx (value : stroke_width) : stroke_width =
+let rec numeric_stroke_width_calc_leaves :
+    stroke_width calc -> stroke_width calc = function
+  | Val (Number n) -> Num n
+  | Nested inner -> Nested (numeric_stroke_width_calc_leaves inner)
+  | Parens inner -> Parens (numeric_stroke_width_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_stroke_width_calc_leaves left,
+          op,
+          numeric_stroke_width_calc_leaves right )
+  | other -> other
+
+let rec normalize_stroke_width ~ctx (value : stroke_width) : stroke_width =
   match value with
   | Length lp ->
-      let lp' = Values.normalize_length_percentage ~ctx lp in
+      let lp' = Values.normalize_length_percentage ~ctx ~non_negative:true lp in
       if lp' == lp then value else Length lp'
+  (* Sec. 13.5.3 calls a negative width invalid, and CSS Values 4 sec. 10.12
+     clamps a math function past that range at computed-value time: unwrapping a
+     negative one would write CSS a browser drops. *)
+  | Calc c -> (
+      match eval_calc (numeric_stroke_width_calc_leaves c) with
+      | Num n when n >= 0. -> Number n
+      | Val v -> normalize_stroke_width ~ctx v
+      | folded -> if folded == c then value else Calc folded)
   | _ -> value
 
+(* Sec. 13.5.4 calls a negative dash length an error, so the [0,inf] range holds
+   whichever branch of the production the value took. *)
 let normalize_dash_length ~ctx (value : dash_length) : dash_length =
   match value with
   | Number n ->
-      let n' = Values.normalize_number ~ctx n in
+      let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then value else Number n'
   | Length lp ->
-      let lp' = Values.normalize_length_percentage ~ctx lp in
+      let lp' = Values.normalize_length_percentage ~ctx ~non_negative:true lp in
       if lp' == lp then value else Length lp'
 
 let normalize_stroke_dashoffset ~ctx (value : stroke_dashoffset) :
@@ -94,7 +116,11 @@ let rec normalize_stroke_miterlimit (value : stroke_miterlimit) :
   match value with
   | Calc c -> (
       match eval_calc (numeric_miterlimit_calc_leaves c) with
-      | Num f -> Number f
+      (* Sec. 13.5.5 makes a negative miterlimit illegal, and CSS Values 4 sec.
+         10.12 clamps a math function past the property's range at
+         computed-value time instead of invalidating it: folding one to a
+         literal the reader then refuses would drop the declaration. *)
+      | Num f when f >= 0. -> Number f
       | Val v -> normalize_stroke_miterlimit v
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
@@ -158,6 +184,12 @@ let rec pp_stroke_width : stroke_width Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_stroke_width ctx v
   | Number n -> Pp.float ctx n
+  (* Sec. 13.5.3 refuses a negative width written on its own, so the wrapper
+     comes off only around a leaf that is a width by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:(match c with Num n -> n >= 0. | _ -> true)
+        pp_stroke_width ctx c
   | Length lp -> Values.pp_length_percentage ctx lp
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -196,7 +228,12 @@ let rec pp_stroke_miterlimit : stroke_miterlimit Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_stroke_miterlimit ctx v
   | Number value -> Pp.float ctx value
-  | Calc c -> pp_calc pp_stroke_miterlimit ctx c
+  (* Sec. 13.5.5 refuses a negative miterlimit written on its own, so the
+     wrapper comes off only around a leaf that is a miterlimit by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:(match c with Num n -> n >= 0. | _ -> true)
+        pp_stroke_miterlimit ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -311,14 +348,14 @@ let vector_effect_space_of = function
 let read_vector_effect_keyword t : vector_effect_keyword =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
-  match vector_effect_keyword_of name with
+  match vector_effect_keyword_of (String.lowercase_ascii_preserve name) with
   | Some k -> k
   | Option.None -> err_invalid_value ~loc t "vector-effect" name
 
 let read_vector_effect_space t : vector_effect_space =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
-  match vector_effect_space_of name with
+  match vector_effect_space_of (String.lowercase_ascii_preserve name) with
   | Some s -> s
   | Option.None -> err_invalid_value ~loc t "vector-effect" name
 
@@ -338,7 +375,7 @@ let rec read_vector_effect t : vector_effect =
     ~default:(fun t ->
       let rec go acc =
         Cursor.ws t;
-        match Option.map vector_effect_keyword_of (Cursor.peek_ident t) with
+        match Option.map vector_effect_keyword_of (Cursor.peek_keyword t) with
         | Some (Some k) ->
             let _ = Cursor.ident t in
             go (k :: acc)
@@ -347,7 +384,7 @@ let rec read_vector_effect t : vector_effect =
       let effects = go [ read_vector_effect_keyword t ] in
       Cursor.ws t;
       let space =
-        match Option.map vector_effect_space_of (Cursor.peek_ident t) with
+        match Option.map vector_effect_space_of (Cursor.peek_keyword t) with
         | Some (Some _) -> Some (read_vector_effect_space t)
         | _ -> Option.None
       in
@@ -363,7 +400,7 @@ let paint_order_keyword_of = function
 let read_paint_order_keyword t : paint_order_keyword =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
-  match paint_order_keyword_of name with
+  match paint_order_keyword_of (String.lowercase_ascii_preserve name) with
   | Some k -> k
   | None -> err_invalid_value ~loc t "paint-order" name
 
@@ -385,7 +422,7 @@ let rec read_paint_order t : paint_order =
         if List.length acc = 3 then List.rev acc
         else begin
           Cursor.ws t;
-          match Option.map paint_order_keyword_of (Cursor.peek_ident t) with
+          match Option.map paint_order_keyword_of (Cursor.peek_keyword t) with
           | Some (Some k) when not (List.mem k acc) ->
               let _ = Cursor.ident t in
               go (k :: acc)
@@ -487,6 +524,11 @@ let rec read_stroke_dasharray t : stroke_dasharray =
       (Dashes (go []) : stroke_dasharray))
     t
 
+(* The grammar has no keyword branch, so the intrinsic-sizing keywords a bare
+   length would accept are out. *)
+let read_stroke_width_length t =
+  Values.read_length_percentage ~allow_negative:false ~with_keywords:false t
+
 (* SVG 2 sec. 13.5.3: "A <number> value represents a value in user units", and
    "A negative value is invalid", so both branches of the production refuse one.
    Only a literal can be checked here; calc() and var() resolve later. *)
@@ -496,14 +538,23 @@ let read_stroke_width_value t : stroke_width =
       let n = Cursor.number t in
       if n < 0. then Cursor.err_invalid t "negative stroke-width";
       Number n
-  (* The grammar has no keyword branch, so the intrinsic-sizing keywords a bare
-     length would accept are out. *)
-  | _ ->
-      Length
-        (Values.read_length_percentage ~allow_negative:false
-           ~with_keywords:false t)
+  | _ -> Length (read_stroke_width_length t)
 
 let rec read_stroke_width t : stroke_width =
+  (* CSS Values 4 sec. 10.1 puts a math function wherever either branch of the
+     production stands, so the call is offered the [<length-percentage>] first
+     and the [<number>] after: sec. 10.6 gives [abs(-1px)] a length and
+     [sign(-1px)] a number, and each lands in the branch its own type names.
+     Sec. 10.12 checks the [0,inf] range on the value it resolves to, which is
+     why the number branch here is not [read_stroke_width_value]. *)
+  let read_math t : stroke_width =
+    Cursor.one_of
+      [
+        (fun t -> (Length (read_stroke_width_length t) : stroke_width));
+        (fun t -> Calc (read_calc ~result_type:`Number read_stroke_width t));
+      ]
+      t
+  in
   Cursor.enum_or_calls "stroke-width"
     [
       ("inherit", (Inherit : stroke_width));
@@ -512,7 +563,10 @@ let rec read_stroke_width t : stroke_width =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_stroke_width t)) ]
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_stroke_width t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_stroke_width_value t
 
 (* SVG 2 sec. 13.5.5: "A negative value for stroke-miterlimit must be treated as
@@ -529,6 +583,14 @@ let read_miterlimit_number t =
   value
 
 let rec read_stroke_miterlimit t : stroke_miterlimit =
+  (* CSS Values 4 sec. 10.1 puts a math function wherever a [<number>] stands,
+     [calc()] being one of them rather than the gate to the rest, and sec. 10.12
+     checks the property's [0,inf] range on the value the call resolves to. So
+     the call keeps out of [read_miterlimit_number], which is the literal's
+     range check. *)
+  let read_math t : stroke_miterlimit =
+    Calc (read_calc ~result_type:`Number read_stroke_miterlimit t)
+  in
   Cursor.enum_or_calls "stroke-miterlimit"
     [
       ("inherit", (Inherit : stroke_miterlimit));
@@ -538,12 +600,9 @@ let rec read_stroke_miterlimit t : stroke_miterlimit =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", fun t -> Var (Values.read_var read_stroke_miterlimit t));
-        ( "calc",
-          fun t ->
-            Calc (read_calc ~result_type:`Number read_stroke_miterlimit t) );
-      ]
+      (("var", fun t -> Var (Values.read_var read_stroke_miterlimit t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t -> (Number (read_miterlimit_number t) : stroke_miterlimit))
     t
 

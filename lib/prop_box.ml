@@ -94,7 +94,7 @@ let read_display_two_value t : display =
      reject so the caller can fall back to the legacy single-value form. *)
   let outside = Cursor.enum "display-outside" display_outside_idents t in
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some s when List.mem_assoc s display_inside_idents ->
       let inside = Cursor.enum "display-inside" display_inside_idents t in
       Multi (outside, inside)
@@ -106,7 +106,7 @@ let read_display_list_item t : display =
   let list_item = ref false in
   let consume_slot () =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "list-item" when not !list_item ->
         ignore (Cursor.ident t : string);
         list_item := true;
@@ -250,17 +250,17 @@ let aspect_ratio_of_numbers ~auto (a : number) (b : number) : aspect_ratio =
   | false, a, b -> Ratio_calc (a, b)
   | true, a, b -> Auto_ratio_calc (a, b)
 
+(* CSS Sizing 4 sec. 5 spells the value [<ratio>], whose CSS Values 4 sec. 6.5
+   numbers carry a [0,inf] range, so a call folding below it keeps its wrapper:
+   the literal underneath is one [read_aspect_ratio_number] refuses. *)
 let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
  fun value ->
+  let number = Values.normalize_number ~non_negative:true in
   match value with
   | Auto_ratio_calc (a, b) ->
-      aspect_ratio_of_numbers ~auto:true
-        (Values.normalize_number a)
-        (Values.normalize_number b)
+      aspect_ratio_of_numbers ~auto:true (number a) (number b)
   | Ratio_calc (a, b) ->
-      aspect_ratio_of_numbers ~auto:false
-        (Values.normalize_number a)
-        (Values.normalize_number b)
+      aspect_ratio_of_numbers ~auto:false (number a) (number b)
   | other -> other
 
 let rec pp_display : display Pp.t =
@@ -427,8 +427,6 @@ let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
   | Calc c -> pp_calc pp_opacity ctx c
-  | Abs v -> Pp.call "abs" pp_opacity ctx v
-  | Sign v -> Pp.call "sign" pp_opacity ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -450,14 +448,11 @@ let rec read_opacity_dim_only t : opacity =
          [read_calc] falls through to its own [Num] path. *)
       (fun t -> (Opacity_number (Cursor.pct t /. 100.) : opacity));
       (fun t ->
+        (* CSS Values 4 sec. 10.8 gives an operand no keyword, so the CSS-wide
+           keywords are left out and [calc(inherit)] fails the way the browser
+           drops it rather than unwrapping to a live [inherit]. *)
         Cursor.enum_or_calls "opacity"
-          [
-            ("inherit", (Inherit : opacity));
-            ("initial", Initial);
-            ("unset", Unset);
-            ("revert", Revert);
-            ("revert-layer", Revert_layer);
-          ]
+          ([] : (string * opacity) list)
           ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
           ~default:(fun t ->
             Cursor.err_expected t "opacity (var/calc inside calc)")
@@ -468,7 +463,7 @@ let rec read_opacity_dim_only t : opacity =
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
   let read_numeric_math t : opacity =
-    Opacity_number (Values.read_numeric_expression t)
+    Opacity_number (Values.read_number_percentage_expression t)
   in
   let read_number_or_percentage t =
     let n, unit = Cursor.number_with_unit t in
@@ -489,25 +484,13 @@ let rec read_opacity t : opacity =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", read_var);
-        ( "calc",
-          fun t ->
-            Calc
-              (Values.read_calc ~result_type:`Number_or_value
-                 read_opacity_dim_only t) );
-        ("min", read_numeric_math);
-        ("max", read_numeric_math);
-        ("clamp", read_numeric_math);
-        ( "abs",
-          fun t ->
-            Cursor.call "abs" t (fun inner ->
-                (Abs (read_opacity inner) : opacity)) );
-        ( "sign",
-          fun t ->
-            Cursor.call "sign" t (fun inner ->
-                (Sign (read_opacity inner) : opacity)) );
-      ]
+      (("var", read_var)
+      :: ( "calc",
+           fun t ->
+             Calc
+               (Values.read_calc ~result_type:`Number_or_percentage
+                  read_opacity_dim_only t) )
+      :: Values.math_function_calls read_numeric_math)
     ~default:read_number_or_percentage t
 
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
@@ -530,14 +513,9 @@ let rec read_threshold_dim_only t : shape_image_threshold =
     [
       (fun t -> (Number (Cursor.pct t /. 100.) : shape_image_threshold));
       (fun t ->
+        (* Sec. 10.8 again: no keyword is a [<calc-value>]. *)
         Cursor.enum_or_calls "shape-image-threshold"
-          [
-            ("inherit", (Inherit : shape_image_threshold));
-            ("initial", Initial);
-            ("unset", Unset);
-            ("revert", Revert);
-            ("revert-layer", Revert_layer);
-          ]
+          ([] : (string * shape_image_threshold) list)
           ~calls:
             [
               ("var", fun t -> Var (Values.read_var read_threshold_dim_only t));
@@ -551,7 +529,7 @@ let rec read_shape_image_threshold t : shape_image_threshold =
     Var (read_var read_shape_image_threshold t)
   in
   let read_numeric_math t : shape_image_threshold =
-    Number (Values.read_numeric_expression t)
+    Number (Values.read_number_percentage_expression t)
   in
   (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
      [<number> | <percentage>], and computes it "clamped to the range [0,1]":
@@ -572,17 +550,13 @@ let rec read_shape_image_threshold t : shape_image_threshold =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", read_var);
-        ( "calc",
-          fun t ->
-            Calc
-              (Values.read_calc ~result_type:`Number_or_value
-                 read_threshold_dim_only t) );
-        ("min", read_numeric_math);
-        ("max", read_numeric_math);
-        ("clamp", read_numeric_math);
-      ]
+      (("var", read_var)
+      :: ( "calc",
+           fun t ->
+             Calc
+               (Values.read_calc ~result_type:`Number_or_percentage
+                  read_threshold_dim_only t) )
+      :: Values.math_function_calls read_numeric_math)
     ~default:read_number t
 
 let rec pp_overflow : overflow Pp.t =
@@ -757,9 +731,11 @@ let rec pp_table_layout : table_layout Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* Sec. 6.5 refuses a negative ratio number written on its own, so the fold
+   comes off only where its result is a ratio number by itself. *)
 let pp_aspect_ratio_number ctx value =
   match (Pp.minified ctx, eval_number_value value) with
-  | true, Some value -> Pp.float ctx value
+  | true, Some value when value >= 0. -> Pp.float ctx value
   | _ -> pp_number ctx value
 
 let pp_aspect_ratio_pair ctx a b =
@@ -930,7 +906,9 @@ let rec read_z_index t : z_index =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
+    ~calls:
+      (("calc", read_calc_z) :: ("var", read_var_z)
+      :: Values.math_function_calls read_calc_z)
     ~default:(fun t -> (Index (Cursor.int t) : z_index))
     t
 
@@ -961,14 +939,14 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_number_or_ratio t : aspect_ratio =
     let w, h = read_ratio t in
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "auto" ->
         Cursor.skip t;
         aspect_ratio_of_numbers ~auto:true w h
     | _ -> aspect_ratio_of_numbers ~auto:false w h
   in
   let read_auto t : aspect_ratio =
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "auto" -> (
         Cursor.skip t;
         (* [auto] may stand alone or be followed by a [<ratio>]. Only treat a
@@ -1195,7 +1173,9 @@ let rec read_zoom (t : Cursor.t) : zoom =
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
   in
-  let read_numeric_math t : zoom = Num (Values.read_numeric_expression t) in
+  let read_numeric_math t : zoom =
+    Num (Values.read_number_percentage_expression t)
+  in
   Cursor.enum_or_calls "zoom"
     [
       ("normal", (Normal : zoom));
@@ -1207,17 +1187,13 @@ let rec read_zoom (t : Cursor.t) : zoom =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", fun t -> Var (Values.read_var read_zoom t));
-        ( "calc",
-          fun t ->
-            Calc
-              (Values.read_calc ~result_type:`Number_or_value read_zoom_dim_only
-                 t) );
-        ("min", read_numeric_math);
-        ("max", read_numeric_math);
-        ("clamp", read_numeric_math);
-      ]
+      (("var", fun t -> Var (Values.read_var read_zoom t))
+      :: ( "calc",
+           fun t ->
+             Calc
+               (Values.read_calc ~result_type:`Number_or_percentage
+                  read_zoom_dim_only t) )
+      :: Values.math_function_calls read_numeric_math)
     ~default:read_value t
 
 let read_object_view_box_inset t =

@@ -659,6 +659,15 @@ let special_cases () =
   (* A non-initial position stands. *)
   check_declaration ~expected:"list-style:square inside"
     ~optimized:"list-style:square inside" "list-style: square inside";
+  (* One [none] beside a position still lands on both the image and the type,
+     which is the node all three slots print. *)
+  check_declaration ~expected:"list-style:none inside none"
+    ~optimized:"list-style:none inside" "list-style: none inside";
+  (* CSS Values 4 sec. 2.2 takes each option of a [||] at most once, so the
+     image and the type hold two [none] between them and no more. Sec. 3.6
+     spells the third out as a syntax error itself. *)
+  neg_cursor read_declaration "list-style: none none none";
+  neg_cursor read_declaration "list-style: none disc url(bullet.png)";
 
   (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
      same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
@@ -993,6 +1002,24 @@ let font_properties () =
   check_declaration ~expected:"font-family:revert" "font-family: revert";
   check_declaration ~expected:"font-family:revert-layer"
     "font-family: revert-layer";
+  (* Sec. 2.1.1 keeps a [<generic-font-family>] out of [<font-family-name>], and
+     the property reads the generic only where that alternative starts, so one
+     is turned away as the first word of a sequence and reads as an ordinary
+     [<custom-ident>] after it. Chrome 153 takes each of these as a name, and
+     they are installed fonts, so dropping them changes what a page renders. *)
+  check_declaration ~expected:"font-family:\"Cambria Math\""
+    "font-family: Cambria Math";
+  check_declaration ~expected:"font-family:\"Cambria math\""
+    "font-family: Cambria math";
+  check_declaration ~expected:"font-family:\"Foo serif\""
+    "font-family: Foo serif";
+  check_declaration ~expected:"font-family:\"system-ui system-ui\""
+    "font-family: 'system-ui system-ui'";
+  check_declaration ~expected:"font-family:My Font" "font-family: My Font";
+  check_declaration ~expected:"font-family:Noto Color Emoji"
+    "font-family: Noto Color Emoji";
+  check_declaration ~expected:"font-family:system-ui" "font-family: system-ui";
+  check_declaration ~expected:"font-family:math" "font-family: Math";
 
   (* Line height *)
   check_declaration ~expected:"line-height:1.5" "line-height: 1.5";
@@ -1843,6 +1870,19 @@ let mask_drained_layer () =
     ~optimized:"-webkit-mask:url(a.png),none;mask:url(a.png),none"
     "mask: url(a.png), none"
 
+(* CSS Masking 1 (ED) sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1
+   puts [none] in the [<mask-reference>] of one layer, so it names the whole
+   value only where no layer follows it and no slot of its own layer does. *)
+let mask_none_is_a_layer_reference () =
+  check_declaration ~expected:"mask:none,none"
+    ~optimized:"-webkit-mask:none,none;mask:none,none" "mask: none, none";
+  check_declaration ~expected:"mask:none luminance" "mask: none luminance";
+  (* Controls: a lone [none] is still the property keyword, and a layer list
+     that never spells [none] reads as before. *)
+  check_declaration ~expected:"mask:none" "mask: none";
+  check_declaration ~expected:"mask:url(a.png),url(b.png)"
+    "mask: url(a.png), url(b.png)"
+
 (* CSS Values 4 (ED) sec. 10.3 keeps a [calc()] valid where its range is
    exceeded and clamps at used-value time, so a property whose range starts at
    zero reads [calc(-10px)] and drops [-10px]. Chrome 146 computes the first as
@@ -2682,6 +2722,16 @@ let list_properties () =
   neg_cursor read_declaration "box-shadow: 0";
   neg_cursor read_declaration "text-shadow: 1px";
   neg_cursor read_declaration "box-shadow: inset inset 0 0 1px";
+  (* Sec. 6.1 and CSS Text Decoration 4 sec. 6.2 both spell the property [none |
+     <shadow>#], so [none] is the whole value and never one item of the list. *)
+  neg_cursor read_declaration "box-shadow: none, none";
+  neg_cursor read_declaration "text-shadow: none, none";
+  neg_cursor read_declaration "box-shadow: 1px 1px red, none";
+  neg_cursor read_declaration "text-shadow: none, 1px 1px red";
+  check_declaration ~expected:"text-shadow:none" "text-shadow: none";
+  check_declaration ~expected:"box-shadow:1px 1px red" "box-shadow: 1px 1px red";
+  check_declaration ~expected:"text-shadow:1px 1px red,2px 2px blue"
+    "text-shadow: 1px 1px red, 2px 2px blue";
   (* Sec. 6.2 writes the run [<length>{2} [ <length [0,inf]> <length>? ]?]: a
      plain length in every slot, and a floor on the blur alone. Chrome 153
      agrees on each of these. *)
@@ -3047,9 +3097,13 @@ let list_style_custom_names () =
   (* CSS Lists 3 sections 3.4 and 3.6 allow custom counter-style names,
      including names that collide with an already-filled position slot. The
      referenced counter style need not be defined in this stylesheet. *)
+  (* CSS Values 4 sec. 4.2 reserves [default] from the <custom-ident> arm in
+     every ASCII case permutation, leaving the string spelling. *)
   List.iter
     (fun name -> check_declaration ~roundtrip:true ("list-style-type:" ^ name))
-    [ "footsteps"; "FootSteps"; "inside"; "OUTSIDE"; "--markers" ];
+    [
+      "footsteps"; "FootSteps"; "inside"; "OUTSIDE"; "--markers"; "\"default\"";
+    ];
   List.iter
     (fun (value, expected) ->
       check_declaration ~roundtrip:true ~expected:("list-style:" ^ expected)
@@ -3066,6 +3120,7 @@ let list_style_custom_names () =
     (none_cursor read_declaration)
     [
       "list-style-type:default";
+      "list-style-type:DEFAULT";
       "list-style-type:FootSteps Other";
       "list-style:inside outside outside";
       "list-style:inside FootSteps Other";
@@ -3472,6 +3527,21 @@ let invalid () =
   neg "font-weight: green";
   neg "font-family: default";
   neg "font-family: system-ui default";
+  (* CSS Fonts 4 sec. 2.1.1: a generic family heads the alternative the property
+     reads instead of a [<font-family-name>], so it is turned away as the first
+     word of a sequence. WPT css-fonts/parsing/font-family-invalid pins the
+     first of these, and Chrome 153 refuses all four. *)
+  neg "font-family: cursive serif";
+  neg "font-family: system-ui system-ui";
+  neg "font-family: serif serif";
+  neg "font-family: serif Foo";
+  (* CSS Values 4 sec. 4.2 excludes a CSS-wide keyword and [default] from
+     [<custom-ident>] itself, so those are turned away at every word rather than
+     only at the first. Chrome takes [Foo inherit] as a name; the exclusion is
+     on the type, and cascade holds the strict side. *)
+  neg "font-family: inherit inherit";
+  neg "font-family: Foo inherit";
+  neg "font-family: Foo default";
   typed_invalid "font-family: Arial, inherit";
   typed_invalid "font-family: revert-layer, serif";
   neg "font-family: system-ui revert-layer, serif";
@@ -3514,6 +3584,105 @@ let invalid () =
   neg "column-rule-width: 10%";
   neg "-webkit-text-stroke-width: 20%";
   neg "border-width: calc(50%)";
+
+  (* CSS Values 4 sec. 10.8 gives [<calc-value>] a number, a dimension, a
+     percentage, a [<calc-keyword>] or a parenthesised [<calc-sum>], and sec.
+     10.9 makes the calculation's type failure for anything else. A CSS-wide
+     keyword, a sizing keyword or a sizing function is none of those, so a math
+     operand takes none of them. Chrome 153 drops each of these declarations;
+     unwrapping one to its bare keyword would make a live [width: inherit] out
+     of a value the browser ignores. *)
+  neg "width: calc(inherit)";
+  neg "height: calc(auto)";
+  neg "width: calc(initial)";
+  neg "width: calc(unset)";
+  neg "width: calc(revert)";
+  neg "width: calc(1px + initial)";
+  neg "width: calc(calc(auto))";
+  neg "width: calc(fit-content(20rem))";
+  neg "width: min(unset,1px)";
+  neg "width: min(1px,auto)";
+  neg "border-width: calc(medium)";
+  neg "border-width: calc(thin)";
+  neg "border-width: calc(thick)";
+  neg "outline-width: calc(thin)";
+  neg "outline-width: min(thin,1px)";
+  (* The same rule over the properties that hand their own value reader to the
+     calc leaf: the sizing keywords of [flex-basis] and [flex], the absolute
+     sizes of [font-size], the [normal] of [line-height] and the CSS-wide
+     keywords all five [<opacity-value>] properties take. *)
+  neg "flex-basis: calc(auto)";
+  neg "flex-basis: calc(content)";
+  neg "flex-basis: calc(min-content)";
+  neg "flex-basis: calc(1px + initial)";
+  neg "flex: calc(auto)";
+  neg "flex: calc(content)";
+  neg "flex: calc(inherit)";
+  neg "flex: calc(1px + initial)";
+  neg "font-size: calc(inherit)";
+  neg "font-size: calc(1px + initial)";
+  neg "line-height: calc(normal)";
+  neg "line-height: calc(inherit)";
+  neg "line-height: calc(1px + initial)";
+  neg "opacity: calc(inherit)";
+  neg "fill-opacity: calc(inherit)";
+  neg "flood-opacity: calc(inherit)";
+  neg "stop-opacity: calc(inherit)";
+  neg "stroke-opacity: calc(inherit)";
+  neg "shape-image-threshold: calc(inherit)";
+  (* A keyword operand is no more valid for being arithmetic: sec. 10.9 fails
+     the whole calculation's type, not just the bare-keyword spelling. *)
+  neg "font-size: calc(medium)";
+  neg "font-size: calc(2 * medium)";
+  neg "font-size: calc(medium * 2)";
+  neg "font-size: calc(medium / 2)";
+  neg "font-size: calc(medium + 0px)";
+  neg "font-size: calc(medium + 1em)";
+  neg "font-size: calc((medium) + (1px))";
+  (* Each keyword still reads on its own, and a well-typed operand still folds:
+     [line-height] takes a unitless [<number>], so [calc(1.5)] stays valid where
+     [calc(normal)] does not. *)
+  check ~expected:"flex-basis:auto" "flex-basis: auto";
+  check ~expected:"flex-basis:content" "flex-basis: content";
+  check ~expected:"flex-basis:min-content" "flex-basis: min-content";
+  check ~expected:"font-size:medium" "font-size: medium";
+  check ~expected:"font-size:inherit" "font-size: inherit";
+  check ~expected:"line-height:normal" "line-height: normal";
+  check ~expected:"line-height:1.5" "line-height: calc(1.5)";
+  check ~expected:"flex-basis:calc(50% - 10px)" "flex-basis: calc(50% - 10px)";
+  check ~expected:"opacity:inherit" "opacity: inherit";
+  check ~expected:"opacity:.5" "opacity: 0.5";
+  check ~expected:"fill-opacity:.5" "fill-opacity: 50%";
+
+  (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
+     "must have a consistent type or else the function is invalid", and sec.
+     10.9 gives a unitless zero inside a math function the [<number>] type. *)
+  neg "width: min(0,1px)";
+  neg "width: clamp(0px,0,100px)";
+  (* [<line-width>] runs the same check: without it a mistyped argument folds to
+     a wrong value rather than dropping, so [min(0,1px)] became [0]. The
+     longhands, the shorthands that carry one and a nested math argument all
+     read through the same leaf. *)
+  neg "border-width: min(0,1px)";
+  neg "border-width: max(0,1px)";
+  neg "outline-width: clamp(0px,0,3px)";
+  neg "column-rule-width: min(1,1px)";
+  neg "column-rule-width: clamp(0px,1,100px)";
+  neg "column-rule-width: calc(min(1,1px) + max(1px,2px))";
+  neg "-webkit-text-stroke-width: min(1,1px)";
+  neg "-webkit-text-stroke-width: clamp(0px,1,100px)";
+  neg "outline: min(0,1px) solid red";
+  neg "border-right: min(0,1px) solid red";
+  neg "border-inline-end: min(0,1px) solid red";
+  neg "outline: calc(min(0,1px) + max(1px,2px)) solid red";
+  check ~expected:"border-width:min(1px,2em)" "border-width: min(1px,2em)";
+  check ~expected:"column-rule-width:min(1px,2em)"
+    "column-rule-width: min(1px,2em)";
+  check ~expected:"-webkit-text-stroke-width:2px"
+    "-webkit-text-stroke-width: 2px";
+  check ~expected:"outline:min(1px,2em) solid red"
+    "outline: min(1px,2em) solid red";
+  check ~expected:"border-right:1px solid red" "border-right: 1px solid red";
 
   (* CSS Sizing 3 sec. 5 gives the intrinsic sizes to the sizing properties, so
      a property reading a plain length does not take them. Chrome 146 refuses
@@ -4651,6 +4820,13 @@ let spec_platform_property_vectors () =
       ("animation-range: Cover 10%", "animation-range:cover 10%");
       ( "transition-behavior: allow-discrete",
         "transition-behavior:allow-discrete" );
+      (* CSS Transitions 2 sec. 2 spells the property
+         [<transition-behavior-value>#], so it takes one behaviour per
+         transition the way every other transition longhand does. *)
+      ( "transition-behavior: normal, normal",
+        "transition-behavior:normal,normal" );
+      ( "transition-behavior: allow-discrete, normal",
+        "transition-behavior:allow-discrete,normal" );
       ("view-transition-name: card", "view-transition-name:card");
       ("image-orientation: from-image", "image-orientation:from-image");
       ("background-clip: text", "background-clip:text");
@@ -4686,6 +4862,7 @@ let spec_platform_property_vectors () =
       ("margin-trim: block", "margin-trim:block");
       ("field-sizing: content", "field-sizing:content");
       ("color-scheme: light dark", "color-scheme:light dark");
+      ("color-scheme: light mytheme", "color-scheme:light mytheme");
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
@@ -4759,7 +4936,7 @@ let spec_platform_property_vectors () =
       ("width: clamp(10px, 5vw, 100px)", "width:clamp(10px,5vw,100px)");
       ( "width: calc-size(auto, size + 1rem)",
         "width:calc-size(auto,size + 1rem)" );
-      ("opacity: abs(-0.5)", "opacity:abs(-.5)");
+      ("opacity: abs(-0.5)", "opacity:.5");
       ("opacity: sign(var(--delta))", "opacity:sign(var(--delta))");
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
          url(a.png) type(\"image/png\") 1x)",
@@ -5322,6 +5499,12 @@ let spec_remaining_prop_vectors () =
       "color-scheme: only only";
       "color-scheme: only light only";
       "color-scheme: only dark only";
+      (* CSS Color Adjust 1 sec. 2.2 spells the list item [light | dark |
+         <custom-ident>], and CSS Values 4 sec. 4.2 keeps [default] out of every
+         one of those in all ASCII case permutations. *)
+      "color-scheme: default";
+      "color-scheme: DEFAULT";
+      "color-scheme: light default";
       "forced-color-adjust: auto none";
       "print-color-adjust: exact economy";
       "isolation: isolate auto";
@@ -6788,6 +6971,69 @@ let hex_spellings_have_one_node () =
   distinct_value "#fff vs #fff8" short_lower
     (sole_declaration ".e{color:#FFF8}")
 
+(* CSS Syntax 3 (ED) sec. 4.3.12 builds a <number-token>'s value from an
+   optional sign, a digit run, an optional fraction and an optional exponent, so
+   [1px], [1.0px], [+1px], [01px] and [1e0px] are one length, as [1e3px] and
+   [1000px] are. The AST keeps the authored spelling for the unminified
+   round-trip only; once optimisation has canonicalised it away the spellings
+   are one declaration, they hash alike, and the rules holding them merge in the
+   single pass the optimizer's fixpoint promises. *)
+let number_spellings_have_one_node () =
+  let canonical = sole_declaration ".a{width:1px}" in
+  List.iter
+    (fun spelling ->
+      let d =
+        sole_declaration (String.concat "" [ ".b{width:"; spelling; "}" ])
+      in
+      Alcotest.(check string)
+        (spelling ^ ": the fold spells 1px")
+        "width:1px"
+        (Css.Declaration.to_string ~minify:true d);
+      same_text_same_hash (spelling ^ " vs 1px") d canonical)
+    [ "1.0px"; "1.00px"; "+1px"; "01px"; "1e0px"; "1E0px" ];
+  (* An exponent the printer does not keep names the number it stands for. *)
+  same_text_same_hash "1e3px vs 1000px"
+    (sole_declaration ".a{width:1e3px}")
+    (sole_declaration ".b{width:1000px}");
+  Alcotest.(check string)
+    "the spellings merge in one pass" ".a,.b{width:1px}"
+    (minified ".a{width:1.0px}.b{width:1px}");
+  Alcotest.(check string)
+    "an exponent merges in one pass" ".a,.b{width:1000px}"
+    (minified ".a{width:1e3px}.b{width:1000px}");
+  (* The same node feeds the box contraction: a side spelled differently held
+     the shorthand open until a second pass re-read it. *)
+  Alcotest.(check string)
+    "the box contracts in one pass" ".a{padding:1px}"
+    (minified ".a{padding:1px;padding-bottom:1E0px}")
+
+(* What the fold above must not reach. A unit or a type carries a value the
+   number alone does not, and CSS Variables 1 sec. 4.1 forbids normalizing a
+   custom property at all, so its authored spelling stays a value of its own. *)
+let number_spellings_keep_their_value () =
+  let px = sole_declaration ".a{width:1px}" in
+  distinct_value "1px vs 1pt" px (sole_declaration ".b{width:1pt}");
+  distinct_value "1px vs 1%" px (sole_declaration ".c{width:1%}");
+  distinct_value "1px vs 2px" px (sole_declaration ".d{width:2px}");
+  (* Sec. 6 of CSS Values 4 drops a zero length's unit, so these two already
+     were one declaration. *)
+  same_text_same_hash "0 vs 0px"
+    (sole_declaration ".a{width:0}")
+    (sole_declaration ".b{width:0px}");
+  (* CSS Color 4 sec. 5.2: the hex and the name are one colour, and already
+     were. *)
+  same_text_same_hash "red vs #f00"
+    (sole_declaration ".a{color:red}")
+    (sole_declaration ".b{color:#f00}");
+  (* A custom property holds the token stream the author wrote, so its two
+     spellings stay two declarations even where the printer gives them one
+     text. *)
+  let custom = sole_declaration ".a{--x:1.0px}" in
+  let custom' = sole_declaration ".b{--x:1px}" in
+  Alcotest.(check bool)
+    "a custom property is not folded" false
+    (Css.Declaration.equal_declaration custom custom')
+
 (* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
    its typed values alone: reading the print back has to land on the node that
    printed it, not merely on the same text. *)
@@ -6954,6 +7200,10 @@ let declaration_tests =
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
+    test_case "number spellings have one node" `Quick
+      number_spellings_have_one_node;
+    test_case "number spellings keep their value" `Quick
+      number_spellings_keep_their_value;
     test_case "parse_declaration" `Quick parse_declaration_case;
     (* Parsing basics *)
     test_case "simple" `Quick simple;
@@ -7031,6 +7281,8 @@ let declaration_tests =
     test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "negative calc keeps the call" `Quick negative_calc_keeps_the_call;
     test_case "mask drained layer" `Quick mask_drained_layer;
+    test_case "mask none is a layer reference" `Quick
+      mask_none_is_a_layer_reference;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
     test_case "empty shorthand value" `Quick empty_shorthand_value;

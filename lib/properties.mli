@@ -1524,6 +1524,10 @@ val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] is the [transition_behavior] parsed from [t].
 *)
 
+val read_transition_behavior_list : Cursor.t -> transition_behavior
+(** [read_transition_behavior_list t] is the [<transition-behavior-value>#] the
+    property takes, one behaviour per transition. *)
+
 val pp_overlay : overlay Pp.t
 (** [pp_overlay] is the pretty-printer for [overlay]. *)
 

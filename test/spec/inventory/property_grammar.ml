@@ -380,8 +380,10 @@ let matrix =
     };
     {
       (* CSS Animations 1 sec. 3: <keyframes-name> = <custom-ident> | <string>,
-         and the exclusion covers none and the CSS-wide keywords only, so
-         [infinite] names a keyframe set after an iteration count. *)
+         and the only name the section excludes on top of what <custom-ident>
+         already does is none, so [infinite] names a keyframe set after an
+         iteration count. CSS Values 4 sec. 4.2 keeps the reserved [default] out
+         of the ident arm, leaving it the string. *)
       property = "animation";
       positives =
         [
@@ -391,7 +393,7 @@ let matrix =
           "infinite infinite";
           "--x x";
         ];
-      negatives = [ "1s 2s 3s"; "2 3" ];
+      negatives = [ "1s 2s 3s"; "2 3"; "default 1s"; "1s default" ];
     };
     {
       property = "grid-auto-flow";
@@ -429,14 +431,25 @@ let matrix =
       negatives = [ "square disc"; "inside outside outside" ];
     };
     {
+      (* CSS Lists 3 sec. 2.1 spells a counter name [<custom-ident>], so CSS
+         Values 4 sec. 4.2 keeps the reserved [default] out of it in every ASCII
+         case permutation. *)
       property = "counter-reset";
       positives = [ "none"; "section"; "section 2"; "section 2 page -1" ];
-      negatives = [ "none section"; "section 1.5"; "section none" ];
+      negatives =
+        [
+          "none section";
+          "section 1.5";
+          "section none";
+          "default";
+          "DEFAULT";
+          "section default";
+        ];
     };
     {
       property = "counter-increment";
       positives = [ "none"; "section"; "section 2"; "section 2 page -1" ];
-      negatives = [ "none section"; "section 1.5"; "section none" ];
+      negatives = [ "none section"; "section 1.5"; "section none"; "default" ];
     };
     {
       property = "content";
@@ -871,7 +884,7 @@ let matrix =
       {
         property = "list-style-type";
         positives = [ "disc"; "square"; "decimal"; "\"-\"" ];
-        negatives = [ "disc square"; "url(marker.png)" ];
+        negatives = [ "disc square"; "url(marker.png)"; "default" ];
       };
       {
         property = "list-style-position";
@@ -1670,12 +1683,12 @@ let matrix =
       {
         property = "view-transition-name";
         positives = [ "none"; "card"; "match-element" ];
-        negatives = [ "card card"; "auto" ];
+        negatives = [ "card card"; "auto"; "default"; "DEFAULT" ];
       };
       {
         property = "view-transition-class";
         positives = [ "none"; "card"; "card primary" ];
-        negatives = [ "none card"; "card, primary" ];
+        negatives = [ "none card"; "card, primary"; "default"; "card default" ];
       };
       {
         property = "image-orientation";
@@ -1903,7 +1916,8 @@ let matrix =
       {
         property = "animation-name";
         positives = [ "none"; "fade"; "fade, slide" ];
-        negatives = [ "initial fade"; "," ];
+        negatives =
+          [ "initial fade"; ","; "default"; "DEFAULT"; "fade, default" ];
       };
       {
         property = "animation-iteration-count";
@@ -2102,9 +2116,20 @@ let matrix =
         negatives = [ "contain cover"; "auto" ];
       };
       {
+        (* CSS Color Adjust 1 sec. 2.2 spells the list item [light | dark |
+           <custom-ident>], so CSS Values 4 sec. 4.2 keeps the reserved
+           [default] out of it in every ASCII case permutation. *)
         property = "color-scheme";
         positives = [ "normal"; "light"; "dark"; "only light" ];
-        negatives = [ "normal light"; "light normal"; "only" ];
+        negatives =
+          [
+            "normal light";
+            "light normal";
+            "only";
+            "default";
+            "DEFAULT";
+            "light default";
+          ];
       };
       {
         property = "print-color-adjust";

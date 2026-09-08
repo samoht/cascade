@@ -231,6 +231,12 @@ let read_non_negative_duration t =
 
 let read_interest_delay_item t : interest_delay_item =
   if Cursor.try_ident "normal" t then Normal
+  else if Cursor.looking_at_calc t || Values.looking_at_math_function t then
+    (* CSS Values 4 sec. 10.12 checks the [0s,inf] range on the value a math
+       function resolves to, at computed-value time, and clamps rather than
+       invalidating: [interest-delay: calc(-1s)] is a delay Chrome computes as
+       [0s] where the literal [-1s] is one it drops. *)
+    Time (Values.read_duration_preserve_ms ~allow_negative:true t)
   else Time (read_non_negative_duration t)
 
 let rec read_interest_delay ?(longhand = false) t : interest_delay =
@@ -256,7 +262,8 @@ let normalize_interest_delay_item : interest_delay_item -> interest_delay_item =
   | Normal -> item
   | Time duration ->
       let duration' =
-        Values.normalize_duration ~canonicalize_ms:false duration
+        Values.normalize_duration ~canonicalize_ms:false ~non_negative:true
+          duration
       in
       if duration' == duration then item else Time duration'
 
@@ -887,7 +894,7 @@ let touch_action_is_var t =
   | _ -> false
 
 let touch_action_starts_keyword t =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some
       ( "auto" | "none" | "manipulation" | "inherit" | "initial" | "unset"
       | "revert" | "revert-layer" ) ->
@@ -1051,7 +1058,7 @@ let rec read_scrollbar_gutter (t : Cursor.t) : scrollbar_gutter =
      ~default:(fun t ->
        Cursor.expect_string "stable" t;
        Cursor.ws t;
-       match Cursor.peek_ident t with
+       match Cursor.peek_keyword t with
        | Some "both-edges" ->
            let _ = Cursor.ident t in
            Stable_both_edges
@@ -1118,6 +1125,11 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
   let read_var t : webkit_line_clamp =
     Var (read_var read_webkit_line_clamp t)
   in
+  (* CSS Values 4 sec. 10.1 allows a math function wherever an [<integer>] is
+     allowed, [calc()] being one of them rather than the gate to the rest. *)
+  let read_math t : webkit_line_clamp =
+    Calc (read_calc ~result_type:`Number read_webkit_line_clamp t)
+  in
   Cursor.enum_or_calls "-webkit-line-clamp"
     [
       ("none", (None : webkit_line_clamp));
@@ -1128,14 +1140,8 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", read_var);
-        (* CSS Values 4 sec. 10 allows a math function wherever an [<integer>]
-           is allowed. *)
-        ( "calc",
-          fun t ->
-            Calc (read_calc ~result_type:`Number read_webkit_line_clamp t) );
-      ]
+      (("var", read_var) :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       let n = Cursor.int t in
       if n <= 0 then Cursor.err_invalid t "-webkit-line-clamp must be positive";
@@ -1176,8 +1182,11 @@ let rec read_appearance t : appearance =
     ~var:(fun t -> (Var (Values.read_var read_appearance t) : appearance))
     t
 
+(* Only the [<custom-ident>] alternative of the grammar below keeps its case;
+   every other ident in it is a keyword. *)
 let color_scheme_of_idents t names : color_scheme =
-  match names with
+  let keywords = List.map String.lowercase_ascii_preserve names in
+  match keywords with
   | [ "normal" ] -> Normal
   | [ "light" ] -> Light
   | [ "dark" ] -> Dark
@@ -1200,13 +1209,13 @@ let color_scheme_of_idents t names : color_scheme =
          dark | <custom-ident>]+ && only?]. [normal] is mutually exclusive with
          the list form; [only] is a modifier that must accompany a non-empty
          list; CSS-wide keywords can only stand alone. *)
-      let has_normal = List.mem "normal" names in
+      let has_normal = List.mem "normal" keywords in
       let has_css_wide =
         List.exists
           (fun n ->
-            List.mem (String.lowercase_ascii n)
+            List.mem n
               [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ])
-          names
+          keywords
       in
       if has_normal then
         Cursor.err_invalid t
@@ -1214,20 +1223,40 @@ let color_scheme_of_idents t names : color_scheme =
       if has_css_wide then
         Cursor.err_invalid t
           "color-scheme: CSS-wide keyword cannot be mixed with other keywords";
-      let is_only n = String.equal (String.lowercase_ascii n) "only" in
-      let non_only_names = List.filter (fun n -> not (is_only n)) names in
+      let is_only n = String.equal n "only" in
+      let non_only_names = List.filter (fun n -> not (is_only n)) keywords in
       if non_only_names = [] then
         Cursor.err_invalid t
           "color-scheme: [only] must be combined with a color scheme";
-      if List.length (List.filter is_only names) > 1 then
+      if List.length (List.filter is_only keywords) > 1 then
         Cursor.err_invalid t "color-scheme: [only] cannot be repeated";
       Custom names
 
+(* Every ident of the grammar above that is not the [<custom-ident>]: sec. 2.2
+   names the four keywords the property spells, and a CSS-wide keyword stands
+   alone, which [color_scheme_of_idents] answers once it has the list. *)
+let color_scheme_keywords =
+  [
+    "normal";
+    "light";
+    "dark";
+    "only";
+    "inherit";
+    "initial";
+    "unset";
+    "revert";
+    "revert-layer";
+  ]
+
 let rec read_color_scheme t : color_scheme =
+  let read_name t =
+    match Cursor.peek_keyword t with
+    | Some k when List.mem k color_scheme_keywords -> Cursor.ident t
+    | Some _ | None -> Cursor.custom_ident "color scheme" t
+  in
   let rec read_idents acc =
     Cursor.ws t;
-    if Cursor.is_done t then List.rev acc
-    else read_idents (Cursor.ident t :: acc)
+    if Cursor.is_done t then List.rev acc else read_idents (read_name t :: acc)
   in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })

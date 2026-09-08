@@ -33,13 +33,16 @@ let normalize_animation_range : animation_range -> animation_range =
              option_map_preserve normalize_animation_range_item b ))
   | other -> other
 
-(* Sec. 3.4 gives the count a plain [<number>], so a static math function on it
-   folds like any other. *)
+(* Sec. 3.4 gives the count a [0,inf] [<number>], so a static math function on
+   it folds like any other, and one folding below the range keeps its wrapper
+   rather than becoming a literal the reader refuses. *)
 let rec normalize_animation_iteration_count ~ctx :
     animation_iteration_count -> animation_iteration_count =
  fun value ->
   match value with
-  | Count n -> preserve_if_equal value (Count (Values.normalize_number ~ctx n))
+  | Count n ->
+      preserve_if_equal value
+        (Count (Values.normalize_number ~ctx ~non_negative:true n))
   | Counts counts ->
       preserve_if_equal value
         (Counts (map_preserve (normalize_animation_iteration_count ~ctx) counts))
@@ -108,13 +111,10 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 (* The names a [<custom-ident>] may not spell, so the string arm is the only one
-   that carries them and the quotes are part of the value. *)
+   that carries them and the quotes are part of the value. CSS Animations 1 sec.
+   3 adds [none] to what CSS Values 4 sec. 4.2 reserves. *)
 let keyframes_name_needs_quotes name =
-  match String.lowercase_ascii name with
-  | "none" | "default" | "inherit" | "initial" | "unset" | "revert"
-  | "revert-layer" ->
-      true
-  | _ -> false
+  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
 
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
@@ -563,6 +563,7 @@ let rec pp_transition_behavior : transition_behavior Pp.t =
   | Var v -> pp_var pp_transition_behavior ctx v
   | Normal -> Pp.string ctx "normal"
   | Allow_discrete -> Pp.string ctx "allow-discrete"
+  | Behaviors l -> Pp.list ~sep:Pp.comma pp_transition_behavior ctx l
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -715,10 +716,8 @@ let rec read_view_transition_name (t : Cursor.t) : view_transition_name =
     ]
   in
   let read_name t =
-    let name = Cursor.ident ~keep_case:true t in
-    if String.lowercase_ascii name = "auto" then
-      Cursor.err_invalid t "invalid view-transition-name: auto";
-    (Name name : view_transition_name)
+    (Name (Cursor.custom_ident ~reserved:[ "auto" ] "view-transition-name" t)
+      : view_transition_name)
   in
   (Cursor.enum_or_var "view-transition-name" keywords
      ~var:(fun t ->
@@ -727,14 +726,8 @@ let rec read_view_transition_name (t : Cursor.t) : view_transition_name =
      ~default:read_name t
     : view_transition_name)
 
-let view_transition_class_reserved =
-  [ "none"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
-
 let read_view_transition_class_ident t =
-  let ident = Cursor.ident ~keep_case:true t in
-  if List.mem (String.lowercase_ascii ident) view_transition_class_reserved then
-    Cursor.err_invalid t ("reserved view-transition-class ident: " ^ ident)
-  else ident
+  Cursor.custom_ident ~reserved:[ "none" ] "view-transition-class ident" t
 
 let rec read_view_transition_class t : view_transition_class =
   let keywords : (string * view_transition_class) list =
@@ -1097,6 +1090,16 @@ let rec read_transition_behavior t : transition_behavior =
     ~var:(fun t -> Var (read_var read_transition_behavior t))
     t
 
+(* CSS Transitions 2 sec. 2 spells the property [<transition-behavior-value>#],
+   one behaviour per transition. The single reader stays the [<single-
+   transition>] slot of the [transition] shorthand. *)
+let read_transition_behavior_list t : transition_behavior =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_transition_behavior t
+  with
+  | [ one ] -> one
+  | many -> Behaviors many
+
 let rec read_overlay t : overlay =
   Cursor.enum_or_var "overlay"
     [
@@ -1400,7 +1403,7 @@ let rec read_animation_name t : animation_name =
       ~default:(fun t ->
         match Cursor.string_opt t with
         | Some s -> (animation_quoted_or_name s : animation_name)
-        | None -> Name (Cursor.ident t))
+        | None -> Name (Cursor.custom_ident "keyframes name" t))
       t
   in
   Cursor.enum_or_var "animation-name"
@@ -1680,7 +1683,7 @@ module Animation = struct
       | None -> Cursor.err t "expected animation-name string"
     in
     let read_name t =
-      let v = Cursor.ident t in
+      let v = Cursor.custom_ident "keyframes name" t in
       if Option.is_some (animation_shorthand_kind (String.lowercase_ascii v))
       then
         (* This identifier is for another property, not animation-name *)
@@ -1991,26 +1994,33 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   if ambiguous_name_last then
     pp_animation_name_slot ctx state ~quote_ambiguous_name anim
 
-(* The animation reader fills every slot with its longhand initial, so only the
-   easing needs canonicalising here: its keyword and curve spellings are the
-   same node question [normalize_timing_function] answers. *)
-let normalize_animation_shorthand (a : animation_shorthand) :
+(* The animation reader fills every slot with its longhand initial, so each slot
+   answers here the question its own longhand answers: the easing's keyword and
+   curve spellings are one node, and the count carries the [0,inf] range that
+   keeps a call wrapped. A slot left out folds only on a second pass over the
+   output, which is a pass too late for output that is input. *)
+let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
     animation_shorthand =
-  let duration = option_map_preserve Values.normalize_duration a.duration in
-  let delay = option_map_preserve Values.normalize_duration a.delay in
-  let timing_function =
+  let duration = option_map_preserve (Values.normalize_duration ~ctx) a.duration
+  and delay = option_map_preserve (Values.normalize_duration ~ctx) a.delay
+  and timing_function =
     option_map_preserve normalize_timing_function a.timing_function
+  and iteration_count =
+    option_map_preserve
+      (normalize_animation_iteration_count ~ctx)
+      a.iteration_count
   in
   if
     option_is_phys_same duration a.duration
     && option_is_phys_same delay a.delay
     && option_is_phys_same timing_function a.timing_function
+    && option_is_phys_same iteration_count a.iteration_count
   then a
-  else { a with duration; timing_function; delay }
+  else { a with duration; timing_function; delay; iteration_count }
 
-let normalize_animation : animation -> animation = function
+let normalize_animation ~ctx : animation -> animation = function
   | Shorthand a as value ->
-      let a' = normalize_animation_shorthand a in
+      let a' = normalize_animation_shorthand ~ctx a in
       if a' == a then value else Shorthand a'
   | value -> value
 
@@ -2105,7 +2115,7 @@ let read_animation_range_offset t : length_percentage option =
   if Cursor.is_done t || Cursor.peek_comma t then
     (None : length_percentage option)
   else
-    match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
+    match Cursor.peek_keyword t with
     | Some "normal" -> (None : length_percentage option)
     | Some next when List.mem next Keyframe.timeline_range_names ->
         (None : length_percentage option)
@@ -2116,7 +2126,7 @@ let read_animation_range_offset t : length_percentage option =
    [normal] names one end among others rather than the whole value. *)
 let read_animation_range_one t : animation_range_item =
   Cursor.ws t;
-  match Option.map String.lowercase_ascii_preserve (Cursor.peek_ident t) with
+  match Cursor.peek_keyword t with
   | Some "normal" ->
       let _ = Cursor.ident t in
       (Normal : animation_range_item)

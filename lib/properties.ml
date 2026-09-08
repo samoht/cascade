@@ -2436,10 +2436,8 @@ let rec read_list_style_type t : list_style_type =
            (fun t -> Cursor.call "symbols" t read_symbols_body);
            (fun t -> (String (Cursor.string t) : list_style_type));
            (fun t ->
-             let name = Cursor.ident t in
-             if String.lowercase_ascii name = "default" then
-               Cursor.err_invalid t "reserved counter-style name";
-             (Name name : list_style_type));
+             (Name (Cursor.custom_ident "counter style name" t)
+               : list_style_type));
          ])
     t
 
@@ -2495,11 +2493,26 @@ let try_list_style_slot r read_fn (slot : 'a option ref) =
         Cursor.restore r pos;
         false
 
+(* CSS Values 4 sec. 2.2 takes each option of a [||] at most once, and sec. 3.6
+   lands a [none] on whichever of the image and the type the shorthand does not
+   otherwise set, so the two of them hold every [none] there is. *)
+let resolve_list_style_nones r nones (type_ : list_style_type option ref)
+    (image : list_style_image option ref) =
+  let free =
+    (if !type_ = Option.None then 1 else 0)
+    + if !image = Option.None then 1 else 0
+  in
+  if nones > free then Cursor.err_invalid r "too many none in list-style";
+  if nones > 0 then begin
+    if !type_ = Option.None then type_ := Some (None : list_style_type);
+    if !image = Option.None then image := Some (None : list_style_image)
+  end
+
 let read_list_style_shorthand r : list_style_shorthand =
   let type_ : list_style_type option ref = ref Option.None in
   let position : list_style_position option ref = ref Option.None in
   let image : list_style_image option ref = ref Option.None in
-  let saw_none = ref false in
+  let nones = ref 0 in
   let try_one () =
     try_list_style_slot r read_list_style_position position
     || try_list_style_slot r read_list_style_image image
@@ -2510,10 +2523,10 @@ let read_list_style_shorthand r : list_style_shorthand =
     if Cursor.is_done r then ()
     else
       let saved = Cursor.save r in
-      let kw = Cursor.peek_ident r in
+      let kw = Cursor.peek_keyword r in
       if kw = Some "none" then begin
         let _ = Cursor.ident r in
-        saw_none := true;
+        incr nones;
         consume ()
       end
       else if try_one () then consume ()
@@ -2523,13 +2536,10 @@ let read_list_style_shorthand r : list_style_shorthand =
   Cursor.ws r;
   if not (Cursor.is_done r) then
     Cursor.err_invalid r "invalid list-style shorthand";
-  if !saw_none then begin
-    if !type_ = Option.None then type_ := Some (None : list_style_type);
-    if !image = Option.None then image := Some (None : list_style_image)
-  end;
+  resolve_list_style_nones r !nones type_ image;
   if
     !type_ = Option.None && !position = Option.None && !image = Option.None
-    && not !saw_none
+    && !nones = 0
   then Cursor.err_invalid r "invalid list-style shorthand";
   { type_ = !type_; position = !position; image = !image }
 
@@ -2671,14 +2681,10 @@ and read_content t : content =
       then Cursor.err_invalid t "none/normal cannot be combined in content";
       Content_list items
 
-let counter_name_reserved =
-  [ "none"; "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
-
+(* CSS Lists 3 sec. 2.1 spells a counter name [<custom-ident>] and excludes
+   [none] from it. *)
 let read_counter_name t =
-  let name = Cursor.ident t in
-  if List.mem name counter_name_reserved then
-    Cursor.err_invalid t ("reserved counter name: " ^ name);
-  name
+  Cursor.custom_ident ~reserved:[ "none" ] "counter name" t
 
 let read_counter_item t =
   let name = read_counter_name t in
@@ -4492,6 +4498,10 @@ let normalize_property_value : type a.
   | Webkit_line_clamp -> normalize_webkit_line_clamp value
   | Font_family -> normalize_font_family value
   | Font_stretch -> normalize_font_stretch value
+  | Font_size_adjust -> normalize_font_size_adjust value
+  | Initial_letter -> normalize_initial_letter value
+  | Text_size_adjust -> normalize_text_size_adjust value
+  | Webkit_text_size_adjust -> normalize_text_size_adjust value
   | Font -> normalize_font value
   | Display -> normalize_display value
   | Overflow -> normalize_overflow value
@@ -4501,9 +4511,9 @@ let normalize_property_value : type a.
   | O_transition -> map_preserve normalize_transition value
   | List_style -> normalize_list_style value
   | Transition_timing_function -> normalize_timing_function value
-  | Animation -> map_preserve normalize_animation value
-  | Webkit_animation -> map_preserve normalize_animation value
-  | Moz_animation -> map_preserve normalize_animation value
+  | Animation -> map_preserve (normalize_animation ~ctx) value
+  | Webkit_animation -> map_preserve (normalize_animation ~ctx) value
+  | Moz_animation -> map_preserve (normalize_animation ~ctx) value
   | Animation_timing_function -> normalize_timing_function value
   | Padding_left -> Values.normalize_length ~non_negative:true ~ctx value
   | Padding_right -> Values.normalize_length ~non_negative:true ~ctx value
@@ -4613,6 +4623,7 @@ let normalize_property_value : type a.
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
   | Columns -> normalize_columns_value value
+  | Column_count -> normalize_column_count value
   | Border_width ->
       normalize_box_shorthand ~is_substitution:is_border_width_substitution
         normalize_border_width value

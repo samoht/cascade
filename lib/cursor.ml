@@ -438,6 +438,11 @@ let peek_ident t =
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> Some s
   | _ -> None
 
+let peek_keyword t =
+  match peek_ident t with
+  | Some s -> Some (String.lowercase_ascii_preserve s)
+  | None -> None
+
 let peek_hash t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
@@ -563,6 +568,24 @@ let ident ?(keep_case = true) t =
   match ident_opt t with
   | Some s -> if keep_case then s else String.lowercase_ascii_preserve s
   | None -> err_expected t "identifier"
+
+(* CSS Values 4 sec. 4.2 again: no <custom-ident> is a CSS-wide keyword, and
+   [default] is reserved from every one of them too. The exclusions hold in all
+   ASCII case permutations, which is why the author's spelling is matched
+   folded. *)
+let custom_ident_reserved =
+  [ "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+
+let is_reserved_custom_ident ?(reserved = []) name =
+  let folded = String.lowercase_ascii_preserve name in
+  List.mem folded custom_ident_reserved || List.mem folded reserved
+
+let custom_ident ?reserved label t =
+  let loc = position t in
+  let name = ident ~keep_case:true t in
+  if is_reserved_custom_ident ?reserved name then
+    err_invalid ~loc t (String.concat "" [ "reserved "; label; ": "; name ])
+  else name
 
 let number ?(allow_negative = true) t =
   match number_opt t with
@@ -742,6 +765,13 @@ let looking_at_func name t =
   | Component.Func { node = { name = n; _ }; _ } :: _ ->
       String.lowercase_ascii_preserve n = name
   | _ -> false
+
+let peek_function_name t =
+  drop_ws t;
+  match t.cvs with
+  | Component.Func { node = { name; _ }; _ } :: _ ->
+      Some (String.lowercase_ascii_preserve name)
+  | _ -> None
 
 let looking_at_calc t =
   looking_at_func "calc" t || looking_at_func "-webkit-calc" t

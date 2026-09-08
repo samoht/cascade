@@ -405,15 +405,9 @@ let function_call t (fn : Component.func Component.node) =
            ( String.lowercase_ascii name,
              Cursor.string_of_components_verbatim ~trim:true args ))
 
-let peek_ident t =
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
-      Some (String.lowercase_ascii name)
-  | _ -> None
-
 let rec condition t =
   Cursor.ws t;
-  match peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "not" ->
       Cursor.skip t;
       Not (in_parens ~allow_unwrapped_decl:false t)
@@ -423,7 +417,7 @@ let rec condition t =
 
 and chain t op acc =
   Cursor.ws t;
-  match peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "and" ->
       (match op with
       | Some `Or ->

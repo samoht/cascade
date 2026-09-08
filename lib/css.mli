@@ -735,6 +735,10 @@ and math_fn = Values.math_fn =
   | Hypot of math_arg list
   | Sign_n of math_arg
   | Abs_n of math_arg
+  | Round_n of string * math_arg * math_arg
+      (** Sec. 10.9 [round(<rounding-strategy>?, A, B)]. *)
+  | Mod_n of math_arg * math_arg
+  | Rem_n of math_arg * math_arg
 
 (** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians).
     {!constructor-Operation} and {!constructor-Grouped} support arithmetic over
@@ -907,7 +911,6 @@ type length = Values.length =
   | Rem_fn of length * length  (** CSS [rem()] math function *)
   | Hypot of length list  (** CSS [hypot()] math function *)
   | Abs of length  (** CSS [abs()] math function *)
-  | Sign of length  (** CSS [sign()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)
   | Anchor_size of string
       (** CSS [anchor-size()] function, from
@@ -2005,8 +2008,6 @@ type z_index = Properties.z_index =
 type opacity = Properties.opacity =
   | Opacity_number of float
   | Calc of opacity calc
-  | Abs of opacity  (** [abs(<opacity>)] *)
-  | Sign of opacity  (** [sign(<opacity>)] *)
   | Inherit
   | Initial
   | Unset
@@ -2248,6 +2249,8 @@ type columns_value = Properties.columns_value =
   | Width of length
   | Both of length * int
   | Auto_count of int
+  | Count_calc of columns_value calc
+      (** A count given as a math function, with no width beside it *)
   | Inherit
   | Initial
   | Unset
@@ -2308,6 +2311,7 @@ val column_width : column_width -> declaration
 type column_count = Properties.column_count =
   | Auto
   | Count of int
+  | Calc of column_count calc  (** A math function answering an [<integer>] *)
   | Inherit
   | Initial
   | Unset
@@ -2789,6 +2793,8 @@ type initial_letter = Properties.initial_letter =
   | Raise
   | Size of float
   | Size_sink of float * int
+  | Calc of initial_letter calc * int option
+      (** A math function in the size slot *)
   | Inherit
   | Initial
   | Unset
@@ -4522,6 +4528,8 @@ type text_size_adjust = Properties.text_size_adjust =
   | None
   | Auto
   | Pct of float
+  | Calc of text_size_adjust calc
+      (** A math function answering a [<percentage>] *)
   | Inherit
   | Initial
   | Unset
@@ -4875,6 +4883,7 @@ val hyphens : hyphens -> declaration
 (** CSS font-stretch values *)
 type font_stretch = Properties.font_stretch =
   | Pct of float  (** Percentage values from 50% to 200% *)
+  | Calc of font_stretch calc  (** A math function answering a [<percentage>] *)
   | Ultra_condensed
   | Extra_condensed
   | Condensed
@@ -5130,6 +5139,7 @@ type font_size_adjust_metric = Properties.font_size_adjust_metric =
 type font_size_adjust = Properties.font_size_adjust =
   | None
   | Number of float
+  | Calc of font_size_adjust calc
   | From_font
   | Metric_number of font_size_adjust_metric * float
   | Metric_from_font of font_size_adjust_metric
@@ -6752,6 +6762,8 @@ type transition_property = transition_property_value list
 type transition_behavior = Properties.transition_behavior =
   | Normal
   | Allow_discrete
+  | Behaviors of transition_behavior list
+      (** The [<transition-behavior-value>#] list of two or more behaviours. *)
   | Inherit
   | Initial
   | Unset
@@ -8580,6 +8592,7 @@ val stroke : svg_paint -> declaration
     width in user units rather than a CSS [<length>]. *)
 type stroke_width = Properties.stroke_width =
   | Number of float  (** A width in user units *)
+  | Calc of stroke_width calc  (** A math function answering a [<number>] *)
   | Length of length_percentage
   | Inherit
   | Initial

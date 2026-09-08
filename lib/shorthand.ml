@@ -4790,12 +4790,14 @@ let tr_delay_part : declaration -> Values.duration option = function
 (* [transition-behavior] is a [<single-transition>] component, so a run can
    carry it into the shorthand. A CSS-wide keyword has no component spelling,
    and a [var()] there reads back into the property slot, which the reader tries
-   first. *)
+   first. A [#] list of behaviours spans several transitions and fills no one
+   slot. *)
 let behavior_singleton :
     Properties.transition_behavior -> Properties.transition_behavior option =
   function
-  | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
-  | b -> Some b
+  | Inherit | Initial | Unset | Revert | Revert_layer | Var _ | Behaviors _ ->
+      None
+  | (Normal | Allow_discrete) as b -> Some b
 
 let tr_behavior_part : declaration -> Properties.transition_behavior option =
   function

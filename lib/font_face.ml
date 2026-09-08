@@ -176,7 +176,8 @@ let valid_percentage p = Float.is_finite p && p >= 0.
    than whatever follows it. *)
 let rec read_metric_override t : metric_override =
   match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident "normal"; _ }) ->
+  | Some (Component.Preserved { kind = Token.Ident name; _ })
+    when Common.String.lowercase_ascii_preserve name = "normal" ->
       Cursor.skip t;
       Normal
   | Some (Component.Preserved { kind = Token.Percentage number; _ })

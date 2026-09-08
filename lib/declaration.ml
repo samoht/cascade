@@ -1848,7 +1848,7 @@ let read_object_transition_value : type a.
   | Transition_property ->
       Some (v Transition_property (read_transition_property t))
   | Transition_behavior ->
-      Some (v Transition_behavior (Properties.read_transition_behavior t))
+      Some (v Transition_behavior (Properties.read_transition_behavior_list t))
   | Overlay -> Some (v Overlay (read_overlay t))
   | Will_change -> Some (v Will_change (read_will_change t))
   | Contain -> Some (v Contain (read_contain t))

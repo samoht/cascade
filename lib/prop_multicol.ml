@@ -118,11 +118,32 @@ let break_inside_of_page_break (value : page_break_inside_value) :
   | Revert_layer -> Some Revert_layer
   | Var _ -> None
 
+let rec numeric_columns_calc_leaves : columns_value calc -> columns_value calc =
+  function
+  | Val (Count n) -> Num (float_of_int n)
+  | Nested inner -> Nested (numeric_columns_calc_leaves inner)
+  | Parens inner -> Parens (numeric_columns_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        (numeric_columns_calc_leaves left, op, numeric_columns_calc_leaves right)
+  | other -> other
+
 (* CSS Multicol 2 sec. 4.5 leaves an omitted component at its longhand's
    initial, and [auto] is the width's (sec. 4.1), so [auto <count>] names what
-   [<count>] names and the shorter spelling wins. *)
+   [<count>] names and the shorter spelling wins. Sec. 4.2 spells the count
+   [<integer [1,inf]>], and CSS Values 4 sec. 10.12 rounds a math function at an
+   [<integer>] slot and clamps it to the range at computed-value time: a call
+   that folds to a count is that count, and one that does not keeps its wrapper
+   rather than becoming CSS a browser drops. *)
 let normalize_columns_value : columns_value -> columns_value =
- fun value -> match value with Auto_count n -> Count n | other -> other
+ fun value ->
+  match value with
+  | Auto_count n -> Count n
+  | Count_calc c as value -> (
+      match eval_calc (numeric_columns_calc_leaves c) with
+      | Num n when Float.is_integer n && n >= 1. -> Count (int_of_float n)
+      | folded -> if folded == c then value else Count_calc folded)
+  | other -> other
 
 let rec pp_columns_value : columns_value Pp.t =
  fun ctx -> function
@@ -137,6 +158,11 @@ let rec pp_columns_value : columns_value Pp.t =
       Pp.string ctx "auto";
       Pp.space ctx ();
       Pp.int ctx n
+  | Count_calc c ->
+      pp_calc
+        ~unwrap_num:
+          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+        pp_columns_value ctx c
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -179,10 +205,36 @@ let rec pp_column_wrap : column_wrap Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let rec numeric_column_count_calc_leaves :
+    column_count calc -> column_count calc = function
+  | Val (Count n) -> Num (float_of_int n)
+  | Nested inner -> Nested (numeric_column_count_calc_leaves inner)
+  | Parens inner -> Parens (numeric_column_count_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_column_count_calc_leaves left,
+          op,
+          numeric_column_count_calc_leaves right )
+  | other -> other
+
+let normalize_column_count : column_count -> column_count =
+ fun value ->
+  match value with
+  | Calc c -> (
+      match eval_calc (numeric_column_count_calc_leaves c) with
+      | Num n when Float.is_integer n && n >= 1. -> Count (int_of_float n)
+      | folded -> if folded == c then value else Calc folded)
+  | other -> other
+
 let rec pp_column_count : column_count Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Count n -> Pp.int ctx n
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:
+          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+        pp_column_count ctx c
   | Var v -> pp_var pp_column_count ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -328,8 +380,8 @@ let is_plain_length (l : length) =
      grammar holds. A math function reaches here only once [length_only] has had
      it, so its own type is settled. *)
   | Zero | Clamp _ | Min _ | Max _ | Minmax _ | Round _ | Mod _ | Rem_fn _
-  | Hypot _ | Abs _ | Sign _ | Calc_size _ | Anchor_size _ | Anchor _ | Attr _
-  | Env _ | Var _ | Calc _ ->
+  | Hypot _ | Abs _ | Calc_size _ | Anchor_size _ | Anchor _ | Attr _ | Env _
+  | Var _ | Calc _ ->
       true
   | Pct _ -> false
   (* The dimension table decides the rest, so a sizing keyword answers
@@ -390,7 +442,21 @@ let rec read_columns_value t : columns_value =
      length to the width slot and the integer to the count slot. An explicit
      [auto] keeps the width unset; [columns: auto 3] therefore differs from the
      bare [columns: 3] only in spelling, captured by [Auto_count]. *)
-  Cursor.enum_or_var "columns"
+  (* A math function stands in either slot, so the pair is read first and the
+     count-only call after: sec. 10.12 checks the count's [1,inf] range on the
+     value the call resolves to, which is what [read_columns_components]
+     refuses. *)
+  let read_math t : columns_value =
+    Cursor.one_of
+      [
+        read_columns_components;
+        (fun t ->
+          (Count_calc (read_calc ~result_type:`Number read_columns_value t)
+            : columns_value));
+      ]
+      t
+  in
+  Cursor.enum_or_calls "columns"
     [
       ("inherit", (Inherit : columns_value));
       ("initial", Initial);
@@ -398,7 +464,10 @@ let rec read_columns_value t : columns_value =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_columns_value t))
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_columns_value t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_columns_components t
 
 let rec read_column_width t : column_width =
@@ -457,7 +526,19 @@ let rec read_column_wrap t : column_wrap =
     t
 
 let rec read_column_count t : column_count =
-  Cursor.enum_or_var "column-count"
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<integer>]
+     stands, [calc()] being one of them rather than the gate to the rest, and
+     sec. 10.12 checks the [1,inf] range on the value it resolves to: the call
+     keeps out of [read_columns_count], which is the literal's range check. *)
+  let read_math t : column_count =
+    Cursor.one_of
+      [
+        (fun t -> (Count (read_columns_count t) : column_count));
+        (fun t -> Calc (read_calc ~result_type:`Number read_column_count t));
+      ]
+      t
+  in
+  Cursor.enum_or_calls "column-count"
     [
       ("auto", (Auto : column_count));
       ("inherit", Inherit);
@@ -466,7 +547,10 @@ let rec read_column_count t : column_count =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_column_count t))
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_column_count t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t -> (Count (read_columns_count t) : column_count))
     t
 

@@ -754,10 +754,13 @@ let pp_property_rule : 'a property_rule Pp.t =
     ctx ()
 
 (* CSS Animations 1 sec. 3 [<keyframes-name>] is [<custom-ident> | <string>].
-   The reader normalizes either form to a plain OCaml string; on output we
-   prefer the bare identifier when the value is a syntactically valid CSS ident
-   (shorter than the quoted form), falling back to a double-quoted string when
-   the name contains characters that would otherwise need escaping. *)
+   The two arms give the same name, so the reader keeps the name alone and sec.
+   3 settles the arm on output: "the value is serialized as an <ident> unless
+   it's a disallowed keyword, in which case it's serialized as a <string>". A
+   name an escape would rewrite takes the string too, which is no longer. *)
+let keyframes_name_reserved name =
+  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
+
 let pp_keyframes_name ctx name =
   let len = String.length name in
   let is_ident_continue c =
@@ -780,7 +783,8 @@ let pp_keyframes_name ctx name =
     String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
     !ok
   in
-  if is_safe_ident then Pp.string ctx name else Pp.quoted_string ctx name
+  if is_safe_ident && not (keyframes_name_reserved name) then Pp.string ctx name
+  else Pp.quoted_string ctx name
 
 let pp_keyframe_position : Keyframe.position Pp.t =
  fun ctx pos ->
@@ -1975,8 +1979,8 @@ let read_import_layer (r : Cursor.t) =
   with
   | Some _ as some -> some
   | None -> (
-      match Cursor.peek_ident r with
-      | Some s when String.lowercase_ascii s = "layer" ->
+      match Cursor.peek_keyword r with
+      | Some "layer" ->
           let _ = Cursor.ident r in
           Some []
       | _ -> None)
@@ -2172,15 +2176,16 @@ let read_keyframes_block inner =
     read_keyframes_step inner []
 
 (* CSS Animations 1 sec. 3: [@keyframes <keyframes-name>], [<keyframes-name> =
-   <custom-ident> | <string>]. The reserved spellings ([none], CSS-wide
-   keywords, [default]) are excluded from [<custom-ident>], but every mainstream
-   minifier accepts them as [<string>], so cascade keeps them too rather than
-   leak input that downstream tools preserve verbatim. *)
+   <custom-ident> | <string>]. The ident arm loses [none] on top of what sec.
+   4.2 already keeps out of a [<custom-ident>]; the string arm takes every one
+   of those names and loses the empty string instead. *)
 let read_keyframes_name r =
   Cursor.ws r;
+  let loc = Cursor.position r in
   match Cursor.string_opt r with
+  | Some "" -> Cursor.err_invalid ~loc r "empty keyframes name"
   | Some s -> s
-  | None -> Cursor.ident ~keep_case:true r
+  | None -> Cursor.custom_ident ~reserved:[ "none" ] "keyframes name" r
 
 let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
   Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
@@ -2742,7 +2747,7 @@ let read_counter_symbol r =
       | Some (Component.Preserved { kind = Token.Url _; _ }) ->
           Pp.to_string ~minify:true Properties.pp_background_image
             (Properties.read_background_image r)
-      | Some _ | None -> Cursor.ident ~keep_case:true r)
+      | Some _ | None -> Cursor.custom_ident "counter style symbol" r)
 
 let read_counter_symbols_descriptor r =
   read_descriptor_value Declaration.read_property_value
@@ -2766,17 +2771,12 @@ let read_counter_symbol_descriptor constructor r =
       constructor symbol)
     r
 
-(* CSS Counter Styles 3 (ED) sec. 3.7: <counter-style-name> is a <custom-ident>,
-   which CSS Values 4 sec. 4.2 excludes the CSS-wide keywords and [default]
-   from, and sec. 3.7 excludes [none] as well. *)
+(* CSS Counter Styles 3 (ED) sec. 3.7: <counter-style-name> is a <custom-ident>
+   excluding [none], on top of what CSS Values 4 sec. 4.2 excludes from every
+   one of them. Blink 151 refuses [revert-rule] here too, though it takes it as
+   a [list-style-type] name. *)
 let read_counter_style_name c =
-  let name = Cursor.ident ~keep_case:true c in
-  let lower = String.lowercase_ascii name in
-  if
-    Properties.is_css_wide_keyword lower
-    || List.exists (String.equal lower) [ "default"; "none" ]
-  then Cursor.err_invalid c ("reserved counter style name: " ^ name)
-  else name
+  Cursor.custom_ident ~reserved:[ "none"; "revert-rule" ] "counter style name" c
 
 (* Validates the value against the descriptor's grammar and keeps the text: the
    AST carries the authored spelling, and what this adds is the refusal of a
@@ -2798,7 +2798,7 @@ let read_counter_validated_descriptor ~what ~check constructor r =
 (* sec. 3.5: [[<integer> | infinite]{2}]# | auto. *)
 let check_counter_range c =
   let bound c =
-    match Cursor.peek_ident c with
+    match Cursor.peek_keyword c with
     | Some "infinite" -> ignore (Cursor.ident c)
     | Some _ | None -> ignore (Cursor.int c)
   in
@@ -2807,7 +2807,7 @@ let check_counter_range c =
     Cursor.ws c;
     bound c
   in
-  match Cursor.peek_ident c with
+  match Cursor.peek_keyword c with
   | Some "auto" -> ignore (Cursor.ident c)
   | Some _ | None -> ignore (Cursor.list ~at_least:1 ~sep:Cursor.comma pair c)
 
@@ -2839,7 +2839,7 @@ let check_counter_additive_symbols c =
 (* sec. 3.8: auto | bullets | numbers | words | spell-out |
    <counter-style-name>. *)
 let check_counter_speak_as c =
-  match Cursor.peek_ident c with
+  match Cursor.peek_keyword c with
   | Some ("auto" | "bullets" | "numbers" | "words" | "spell-out") ->
       ignore (Cursor.ident c)
   | Some _ | None -> ignore (read_counter_style_name c)
@@ -2942,7 +2942,9 @@ let read_counter_style (r : Cursor.t) : statement =
   Cursor.with_context r "@counter-style" @@ fun () ->
   Cursor.expect_at_keyword "counter-style" r;
   Cursor.ws r;
-  let name = Cursor.ident ~keep_case:true r in
+  (* Sec. 2: the prelude is the same <counter-style-name> the fallback and
+     speak-as descriptors take. *)
+  let name = read_counter_style_name r in
   Cursor.ws r;
   let descriptors =
     read_counter_style_descriptors r
@@ -3613,9 +3615,24 @@ let css_wide_keyword s =
   | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
   | _ -> false
 
+(* An [initial-value] is registered before any element is styled, so one
+   carrying an arbitrary substitution function has nothing to substitute from
+   and cannot become the value the registration stores. Chrome 153 drops the
+   whole rule at every syntax, the universal one included. That is the revision
+   of Properties and Values API 1 this reader follows throughout, the one that
+   also makes syntax, inherits and a non-universal initial-value required;
+   today's ED sec. 3.3 ignores the descriptor alone instead. Not computational
+   independence, which is sec. 4.1 and binds registerProperty: Chrome keeps
+   [3em] here at the universal syntax. *)
 let read_property_initial_value r syntax str =
   if css_wide_keyword str then
     Cursor.err_invalid r "@property: initial-value cannot be CSS-wide keyword";
+  (match Variables.substitution_fn_in_value_string str with
+  | Some fn ->
+      Cursor.err_invalid r
+        (String.concat ""
+           [ "@property: initial-value cannot contain "; fn; "()" ])
+  | None -> ());
   let value_reader = Cursor.of_string str in
   let value = Variables.read_value value_reader syntax in
   Cursor.ws value_reader;
@@ -3641,12 +3658,6 @@ let conditional_atom r ~at_rule (fn : Component.func Component.node) =
       Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
 
 let conditional_components ~at_rule cursor =
-  let peek_ident () =
-    match Cursor.peek cursor with
-    | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
-        Some (String.lowercase_ascii name)
-    | _ -> None
-  in
   let read_atom () =
     Cursor.ws cursor;
     match Cursor.peek cursor with
@@ -3659,7 +3670,7 @@ let conditional_components ~at_rule cursor =
   let mixed op = Cursor.err_condition cursor ~at_rule ("cannot mix " ^ op) in
   let rec chain op acc =
     Cursor.ws cursor;
-    match peek_ident () with
+    match Cursor.peek_keyword cursor with
     | Some "and" ->
         (match op with Some `Or -> mixed "or and and" | _ -> ());
         Cursor.skip cursor;
@@ -4566,14 +4577,6 @@ let validate_partial_statement loc = function
       Some
         (Error.bad_value loc ~property:"@font-palette-values"
            ~reason:"missing font-family descriptor")
-  | (Keyframes (name, _) | Webkit_keyframes (name, _) | Moz_keyframes (name, _))
-    when List.mem
-           (String.lowercase_ascii name)
-           [ "none"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
-    ->
-      Some
-        (Error.bad_value loc ~property:"@keyframes"
-           ~reason:"forbidden keyframes name")
   | _ -> None
 
 let rec statement_has_invalid_declaration = function

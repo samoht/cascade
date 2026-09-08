@@ -41,11 +41,14 @@ let rec numeric_flex_factor_calc_leaves : flex_factor calc -> flex_factor calc =
           numeric_flex_factor_calc_leaves right )
   | other -> other
 
+(* Sec. 7.2 gives both factors a [0,inf] [<number>], and CSS Values 4 sec. 10.12
+   clamps a math function past that range at computed-value time: unwrapping a
+   negative one would write CSS a browser drops. *)
 let rec normalize_flex_factor (value : flex_factor) : flex_factor =
   match value with
   | Calc c -> (
       match eval_calc (numeric_flex_factor_calc_leaves c) with
-      | Num f -> Number f
+      | Num f when f >= 0. -> Number f
       | Val v -> normalize_flex_factor v
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
@@ -198,7 +201,14 @@ let rec pp_flex_factor : flex_factor Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_flex_factor ctx v
   | Number value -> Pp.float ctx value
-  | Calc c -> pp_calc pp_flex_factor ctx c
+  (* Sec. 7.2 refuses a negative factor written on its own, so the wrapper comes
+     off only around a leaf that is a factor by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
+        ~unwrap:(fun (v : flex_factor) ->
+          match v with Number f -> f >= 0. | _ -> true)
+        pp_flex_factor ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -330,7 +340,9 @@ let rec read_order t : order =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
+    ~calls:
+      (("calc", read_calc_order) :: ("var", read_var)
+      :: Values.math_function_calls read_calc_order)
     ~default:(fun t -> (Int (Cursor.int t) : order))
     t
 
@@ -341,7 +353,7 @@ let read_flex_wrap_balance_pair t : flex_wrap =
   let direction = ref Option.None and balance = ref false in
   let rec loop seen =
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "balance" when not !balance ->
         let _ = Cursor.ident t in
         balance := true;
@@ -479,6 +491,15 @@ let rec read_flex_factor t : flex_factor =
   let read_number t =
     (Number (read_non_negative_flex_number t) : flex_factor)
   in
+  (* A bare call carries no [calc()] wrapper for a printer to put back, so one
+     that folds to a factor the literal grammar takes is that factor. CSS Values
+     4 sec. 10.12 keeps a call whose value leaves the [0,inf] range instead of
+     invalidating it, and only the call round-trips. *)
+  let read_math t : flex_factor =
+    match read_calc ~result_type:`Number read_flex_factor t with
+    | Num n when n >= 0. -> Number n
+    | expr -> Calc expr
+  in
   Cursor.enum_or_calls "flex factor"
     [
       ("inherit", (Inherit : flex_factor));
@@ -488,11 +509,9 @@ let rec read_flex_factor t : flex_factor =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", fun t -> Var (Values.read_var read_flex_factor t));
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Number read_flex_factor t) );
-      ]
+      (("var", fun t -> Var (Values.read_var read_flex_factor t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_number t
 
 let flex_basis_of_length t (length : length) : flex_basis =
@@ -598,27 +617,38 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Dimension { value; unit; repr } -> Dimension { value; unit; repr }
   | _ -> Cursor.err_invalid t "unsupported flex-basis value"
 
-let rec read_flex_basis t : flex_basis =
+(* CSS Values 4 sec. 10.8 gives an operand no keyword: [auto], [content], the
+   intrinsic sizes and the CSS-wide keywords are not [<calc-value>]s, so
+   [keywords] is off here and [calc(auto)] fails the way the browser drops
+   it. *)
+let rec read_flex_basis_in_math t : flex_basis =
+  read_flex_basis_with ~keywords:false t
+
+and read_flex_basis_with ?(keywords = true) t : flex_basis =
   Cursor.enum_or_calls "flex-basis"
-    [
-      ("auto", (Auto : flex_basis));
-      ("content", Content);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("auto", (Auto : flex_basis));
+         ("content", Content);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:
       [
-        ("var", fun t -> Var (read_var read_flex_basis t));
-        ("calc", fun t -> Calc (read_calc ~result_type:`Value read_flex_basis t));
+        ("var", fun t -> Var (read_var (read_flex_basis_with ~keywords) t));
+        ( "calc",
+          fun t ->
+            Calc (read_calc ~result_type:`Value read_flex_basis_in_math t) );
       ]
       (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], so it takes
          the intrinsic sizes the box sizes take. *)
     ~default:(fun t ->
       let size t =
-        read_length ~allow_negative:false ~sizing:true t
+        read_length ~allow_negative:false ~sizing:true ~with_keywords:keywords t
         |> flex_basis_of_length t
       in
       let pos = Cursor.save t in
@@ -630,6 +660,8 @@ let rec read_flex_basis t : flex_basis =
       | None -> size t)
     t
 
+let read_flex_basis t : flex_basis = read_flex_basis_with t
+
 module Flex = struct
   (* Helper functions for flex parsing *)
   (* [flex: auto] is [1 1 auto], which the flex value spells [Auto] rather than
@@ -640,12 +672,12 @@ module Flex = struct
     | basis -> Basis basis
 
   let read_factor t : flex_factor =
-    (* A flex factor is a [<number>]: a [var()], a [calc()] (held unfolded; the
-       optimize+minify pass folds a constant calc to a literal), or a literal
+    (* A flex factor is a [<number>]: a [var()], a math function (held unfolded;
+       the optimize+minify pass folds a constant one to a literal), or a literal
        number. *)
     if Cursor.looking_at_func "var" t then Var (read_var read_flex_factor t)
-    else if Cursor.looking_at_func "calc" t then
-      Calc (read_calc ~result_type:`Number read_flex_factor t)
+    else if Cursor.looking_at_func "calc" t || Values.looking_at_math_function t
+    then Calc (read_calc ~result_type:`Number read_flex_factor t)
     else Number (read_non_negative_flex_number t)
 
   let read_grow_shrink_basis t =

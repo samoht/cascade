@@ -4834,10 +4834,12 @@ let test_opacity () =
   (* CSS Values 4 sec. 11.4 gives [abs()]/[sign()] exactly one [<calc-sum>]
      argument; [Cursor.call] did not require the reader to consume its whole
      sub-cursor, so e.g. [abs(.5 .5)] read only the first [.5] and answered
-     [abs(.5)] instead of invalidating the declaration. *)
-  check_opacity "abs(.5)";
-  check_opacity "sign(.5)";
-  check_opacity "abs( .5 )" ~expected:"abs(.5)";
+     [abs(.5)] instead of invalidating the declaration. An [<opacity-value>]
+     math function resolves to its number as it reads, the way [min()] and
+     [calc(abs())] already do here. *)
+  check_opacity ~expected:".5" "abs(.5)";
+  check_opacity ~expected:"1" "sign(.5)";
+  check_opacity ~expected:".5" "abs( .5 )";
   neg_cursor read_opacity "abs(.5 .5)";
   neg_cursor read_opacity "sign(.5 red)"
 

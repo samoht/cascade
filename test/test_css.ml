@@ -2213,6 +2213,67 @@ let spec_keyword_case_insensitive () =
     ~lower:
       ".a{background:-webkit-gradient(linear,left top,left \
        bottom,from(red),color-stop(50%,green),to(blue))}";
+  (* A guard predicate that decides which reader a value goes to reads its ident
+     raw, so sec. 4.1 has to reach the guard and not only the reader behind it.
+     Each of these is a distinct guard. *)
+  pins "touch-action none" ~upper:".a{touch-action:NONE}"
+    ~lower:".a{touch-action:none}" ~expect:".a{touch-action:none}";
+  pins "touch-action manipulation" ~upper:".a{touch-action:MANIPULATION}"
+    ~lower:".a{touch-action:manipulation}"
+    ~expect:".a{touch-action:manipulation}";
+  pins "touch-action CSS-wide keyword" ~upper:".a{touch-action:INHERIT}"
+    ~lower:".a{touch-action:inherit}" ~expect:".a{touch-action:inherit}";
+  pins "text-transform uppercase" ~upper:".a{text-transform:UPPERCASE}"
+    ~lower:".a{text-transform:uppercase}" ~expect:".a{text-transform:uppercase}";
+  agrees "white-space shorthand" ~upper:".a{white-space:PRESERVE NOWRAP}"
+    ~lower:".a{white-space:preserve nowrap}";
+  pins "paint-order stroke" ~upper:".a{paint-order:STROKE}"
+    ~lower:".a{paint-order:stroke}" ~expect:".a{paint-order:stroke}";
+  pins "vector-effect" ~upper:".a{vector-effect:NON-SCALING-STROKE}"
+    ~lower:".a{vector-effect:non-scaling-stroke}"
+    ~expect:".a{vector-effect:non-scaling-stroke}";
+  agrees "display two-keyword form" ~upper:".a{display:LIST-ITEM FLOW-ROOT}"
+    ~lower:".a{display:list-item flow-root}";
+  agrees "align-items baseline qualifier"
+    ~upper:".a{align-items:FIRST BASELINE}"
+    ~lower:".a{align-items:first baseline}";
+  agrees "perspective-origin position keywords"
+    ~upper:".a{perspective-origin:LEFT 10PX TOP 20PX}"
+    ~lower:".a{perspective-origin:left 10px top 20px}";
+  pins "contain-intrinsic-size auto"
+    ~upper:".a{contain-intrinsic-size:AUTO 300PX}"
+    ~lower:".a{contain-intrinsic-size:auto 300px}"
+    ~expect:".a{contain-intrinsic-size:auto 300px}";
+  agrees "aspect-ratio auto" ~upper:".a{aspect-ratio:AUTO 1/1}"
+    ~lower:".a{aspect-ratio:auto 1/1}";
+  pins "text-indent each-line" ~upper:".a{text-indent:2EM EACH-LINE}"
+    ~lower:".a{text-indent:2em each-line}"
+    ~expect:".a{text-indent:2em each-line}";
+  pins "grid repeat()" ~upper:".a{grid-template-columns:REPEAT(3, 1FR)}"
+    ~lower:".a{grid-template-columns:repeat(3, 1fr)}"
+    ~expect:".a{grid-template-columns:repeat(3,1fr)}";
+  pins "grid minmax()" ~upper:".a{grid-auto-rows:MINMAX(0, 1FR)}"
+    ~lower:".a{grid-auto-rows:minmax(0, 1fr)}"
+    ~expect:".a{grid-auto-rows:minmax(0,1fr)}";
+  agrees "color() colour space" ~upper:".a{color:COLOR(DISPLAY-P3 1 0 0)}"
+    ~lower:".a{color:color(display-p3 1 0 0)}";
+  agrees "font shorthand"
+    ~upper:".a{font:ITALIC SMALL-CAPS BOLD 16PX/1.5 SERIF}"
+    ~lower:".a{font:italic small-caps bold 16px/1.5 serif}";
+  pins "scrollbar-gutter modifier"
+    ~upper:".a{scrollbar-gutter:STABLE BOTH-EDGES}"
+    ~lower:".a{scrollbar-gutter:stable both-edges}"
+    ~expect:".a{scrollbar-gutter:stable both-edges}";
+  pins "color-scheme CSS-wide keyword" ~upper:".a{color-scheme:Initial}"
+    ~lower:".a{color-scheme:initial}" ~expect:".a{color-scheme:initial}";
+  pins "border-image-slice CSS-wide keyword"
+    ~upper:".a{border-image-slice:UnSet}" ~lower:".a{border-image-slice:unset}"
+    ~expect:".a{border-image-slice:unset}";
+  agrees "@font-face metric overrides"
+    ~upper:
+      "@font-face{font-family:F;src:url(a.woff);ascent-override:NORMAL;descent-override:NORMAL}"
+    ~lower:
+      "@font-face{font-family:F;src:url(a.woff);ascent-override:normal;descent-override:normal}";
   (* An empty [var()] is invalid regardless of case (CSS Custom Properties 1
      sec. 3); the diagnosis must agree, not just the rejection. *)
   let empty_var_diagnostic input =

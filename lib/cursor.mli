@@ -250,6 +250,20 @@ val ident : ?keep_case:bool -> t -> string
     4 sec. 4.2). [~keep_case:false] lowercases it, which is what a keyword is
     (sec. 4.1). *)
 
+val custom_ident : ?reserved:string list -> string -> t -> string
+(** [custom_ident label t] consumes a [<custom-ident>] in the author's spelling
+    and raises on one sec. 4.2 excludes: a CSS-wide keyword or the reserved
+    [default]. [reserved] names what the production excludes on top of those,
+    such as [none] for a [<counter-style-name>]. Every exclusion is matched in
+    all ASCII case permutations, and [label] names the production in the error.
+*)
+
+val is_reserved_custom_ident : ?reserved:string list -> string -> bool
+(** [is_reserved_custom_ident name] is whether {!custom_ident} refuses [name],
+    over the same exclusions and the same [reserved] extension. A printer asks
+    it where a grammar spells the same name as an ident or a string, since a
+    reserved name has no ident spelling and has to keep its quotes. *)
+
 val number : ?allow_negative:bool -> t -> float
 (** [number t] consumes the next numeric token. *)
 
@@ -337,6 +351,11 @@ val peek_colon : t -> bool
 
 val peek_ident : t -> string option
 (** [peek_ident t] is [Some s] when the next component is [Ident s]. *)
+
+val peek_keyword : t -> string option
+(** [peek_keyword t] is the next identifier folded to ASCII lower case, for
+    matching against a keyword. CSS Values 4 sec. 4.1. Use {!peek_ident} for an
+    author-defined name, which sec. 4.2 keeps case-sensitive. *)
 
 val peek_hash : t -> string option
 (** [peek_hash t] is [Some s] when the next component is [Hash s]. *)
@@ -462,6 +481,11 @@ val looking_at_func : string -> t -> bool
 val looking_at_calc : t -> bool
 (** [looking_at_calc t] is [true] if the next component is [calc()] or the
     legacy [-webkit-calc()] spelling. *)
+
+val peek_function_name : t -> string option
+(** [peek_function_name t] is the name of the function call the cursor is on,
+    lowercased (CSS Values 4 sec. 4.1), without consuming it. Use it where the
+    caller decides on a set of names rather than on one. *)
 
 (** {1 Expectations} *)
 

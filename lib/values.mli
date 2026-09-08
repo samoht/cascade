@@ -302,10 +302,12 @@ val normalize_number_percentage :
     stay opaque - inside a [calc()], the two spellings are not interchangeable.
 *)
 
-val normalize_number : ?ctx:calc_ctx -> number -> number
+val normalize_number : ?ctx:calc_ctx -> ?non_negative:bool -> number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
-    nested calls; an operand with a [var()] keeps the call. *)
+    nested calls; an operand with a [var()] keeps the call. [non_negative] says
+    the property refuses a negative literal, so a call folding to one keeps its
+    wrapper rather than becoming CSS the reader drops. *)
 
 val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
 (** [normalize_percentage p] folds the value-independent parts of a
@@ -313,11 +315,17 @@ val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
     keeping any [var()]. *)
 
 val normalize_duration :
-  ?ctx:calc_ctx -> ?canonicalize_ms:bool -> duration -> duration
+  ?ctx:calc_ctx ->
+  ?canonicalize_ms:bool ->
+  ?non_negative:bool ->
+  duration ->
+  duration
 (** [normalize_duration d] folds the value-independent parts of a [<time>]
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
     [var()]. It chooses the shorter seconds spelling by default;
-    [canonicalize_ms:false] preserves millisecond units. *)
+    [canonicalize_ms:false] preserves millisecond units. [non_negative] says the
+    property refuses a negative literal, so a call folding to one keeps its
+    wrapper rather than becoming CSS the reader drops. *)
 
 val normalize_color :
   ?lossless:bool -> ?exact_srgb:bool -> ?resolve_missing:bool -> color -> color
@@ -613,9 +621,12 @@ val read_angle_unit_required : Cursor.t -> angle
 val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
 
-val read_duration_preserve_ms : Cursor.t -> duration
+val read_duration_preserve_ms : ?allow_negative:bool -> Cursor.t -> duration
 (** [read_duration_preserve_ms t] parses a CSS duration without canonicalizing
-    milliseconds to seconds. *)
+    milliseconds to seconds. [allow_negative] lifts the [0s,inf] range the
+    literal grammar carries, for the caller reading a math function: CSS Values
+    4 sec. 10.12 checks that range on the value the call resolves to, at
+    computed-value time, and clamps rather than invalidating. *)
 
 val read_time : Cursor.t -> duration
 (** [read_time t] parses a CSS time value (can be negative). *)
@@ -641,7 +652,7 @@ val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
 val read_calc :
-  ?result_type:[ `Number | `Number_or_value | `Value ] ->
+  ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
   (Cursor.t -> 'a) ->
   Cursor.t ->
   'a calc
@@ -649,7 +660,30 @@ val read_calc :
     promotable value and checks that its statically knowable result type matches
     the property's numeric grammar. Expressions containing [var()] remain
     deferred until substitution. Omitting [result_type] retains the generic AST
-    reader behaviour. *)
+    reader behaviour.
+
+    [`Number_or_percentage] is the [<number> | <percentage>] slot of an
+    [<opacity-value>]: it parts with [`Number_or_value] on a math function
+    answering its arguments' type, which stands there only as a percentage. *)
+
+val looking_at_math_function : Cursor.t -> bool
+(** [looking_at_math_function t] is [true] on a call to a math function other
+    than [calc()]. CSS Values 4 sec. 10.1 makes such a call usable "wherever a
+    [<number>], [<dimension>], or [<percentage>] is allowed", so a reader that
+    guards its math path on [Cursor.looking_at_calc] guards it on this too. *)
+
+val math_function_calls : (Cursor.t -> 'a) -> (string * (Cursor.t -> 'a)) list
+(** [math_function_calls read] pairs every math-function name other than
+    [calc()] with [read], for the [~calls] of a {!Cursor.enum_or_calls} whose
+    [calc()] entry already reads one. For a [<number>] slot: it includes the
+    functions of CSS Values 4 sec. 10.4 to 10.6 that answer a [<number>]
+    whatever their arguments were. *)
+
+val typed_math_function_calls :
+  (Cursor.t -> 'a) -> (string * (Cursor.t -> 'a)) list
+(** [typed_math_function_calls read] is {!math_function_calls} restricted to the
+    functions that answer the type of their arguments, for a slot that takes a
+    [<length>] or another dimension rather than a [<number>]. *)
 
 val read_integer_calc : string -> Cursor.t -> [ `Int of int | `Calc of 'a calc ]
 (** [read_integer_calc name t] parses the math function at an [<integer>]
@@ -666,6 +700,18 @@ val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc_expr read t] parses a calc expression body -- the contents of a
     [calc(...)] form without the surrounding [calc(] and [)]. *)
 
+val validate_calc_type :
+  Cursor.t ->
+  [ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+  'a calc ->
+  unit
+(** [validate_calc_type t result_type calc] raises unless [calc] infers to
+    [result_type], the check CSS Values 4 sec. 10.9 makes on a calculation's
+    type. {!val-read_calc} runs it for a whole [calc()]; a caller reading the
+    arguments of [min()], [max()] or [clamp()] with {!val-read_calc_expr} runs
+    it per argument, which is what sec. 10.2 asks for when it requires them to
+    "have a consistent type or else the function is invalid". *)
+
 val eval_numeric_calc : 'a calc -> float option
 (** [eval_numeric_calc calc] tries to evaluate a calc expression containing only
     numbers to a float. Returns [None] if the expression contains variables or
@@ -680,6 +726,13 @@ val read_numeric_expression : Cursor.t -> float
 (** [read_numeric_expression t] parses and evaluates a numeric math expression,
     including top-level math functions such as [min()], [max()], and [clamp()].
 *)
+
+val read_number_percentage_expression : Cursor.t -> float
+(** [read_number_percentage_expression t] is {!read_numeric_expression} at a
+    [<number> | <percentage>] slot, where a percentage resolves against the
+    number it denotes. CSS Values 4 sec. 10.5 [hypot()] and sec. 10.6 [abs()]
+    answer the type of their arguments, so a call carrying any other unit is
+    rejected here rather than shedding it. *)
 
 val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
 (** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc

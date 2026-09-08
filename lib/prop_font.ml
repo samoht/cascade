@@ -46,6 +46,15 @@ let rec numeric_line_height_calc_leaves : line_height calc -> line_height calc =
 
 let rec read_font_weight t : font_weight =
   let read_var t : font_weight = Var (read_var read_font_weight t) in
+  (* A bare call carries no [calc()] wrapper for a printer to put back, so one
+     that folds to a weight the literal grammar takes is that weight. CSS Values
+     4 sec. 10.12 keeps a call whose value leaves [1,1000] instead of
+     invalidating it, and only the call round-trips. *)
+  let read_math t : font_weight =
+    match read_calc ~result_type:`Number read_font_weight t with
+    | Num n when n >= 1. && n <= 1000. -> Weight n
+    | expr -> Calc expr
+  in
   Cursor.ws t;
   Cursor.enum_or_calls "font-weight"
     [
@@ -59,15 +68,13 @@ let rec read_font_weight t : font_weight =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
+    (* CSS Values 4 sec. 10.1 allows a math function wherever a [<number>] is
+       allowed, [calc()] being one of them rather than the gate to the rest. One
+       that folds to a constant becomes that weight and is range-checked with
+       it; one that does not stays a calc. *)
     ~calls:
-      [
-        ("var", read_var);
-        (* CSS Values 4 sec. 10 allows a math function wherever a [<number>] is
-           allowed. One that folds to a constant becomes that weight and is
-           range-checked with it; one that does not stays a calc. *)
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Number read_font_weight t) );
-      ]
+      (("var", read_var) :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       let weight = Cursor.number t in
       if weight >= 1. && weight <= 1000. then (Weight weight : font_weight)
@@ -104,10 +111,18 @@ let rec read_font_style t : font_style =
           Oblique_range (first, second))
     t
 
-let rec read_font_size t : font_size =
-  let read_var t : font_size = Var (read_var read_font_size t) in
+(* CSS Values 4 sec. 10.8 gives an operand no keyword: the absolute and relative
+   sizes and the CSS-wide keywords are not [<calc-value>]s, so [keywords] is off
+   here and [calc(medium)] fails the way the browser drops it. *)
+let rec read_font_size_in_math t : font_size =
+  read_font_size_with ~keywords:false t
+
+and read_font_size_with ?(keywords = true) t : font_size =
+  let read_var t : font_size =
+    Var (read_var (read_font_size_with ~keywords) t)
+  in
   let read_calc t : font_size =
-    Calc (read_calc ~result_type:`Value read_font_size t)
+    Calc (read_calc ~result_type:`Value read_font_size_in_math t)
   in
   let read_length t : font_size =
     let len = read_non_negative_length ~with_keywords:false t in
@@ -119,29 +134,33 @@ let rec read_font_size t : font_size =
     Pct n
   in
   Cursor.enum_or_calls "font-size"
-    [
-      ("xx-small", (Xx_small : font_size));
-      ("x-small", X_small);
-      ("small", Small);
-      ("medium", Medium);
-      ("large", Large);
-      ("x-large", X_large);
-      ("xx-large", Xx_large);
-      ("xxx-large", Xxx_large);
-      ("larger", Larger);
-      ("smaller", Smaller);
-      ("math", Math);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("xx-small", (Xx_small : font_size));
+         ("x-small", X_small);
+         ("small", Small);
+         ("medium", Medium);
+         ("large", Large);
+         ("x-large", X_large);
+         ("xx-large", Xx_large);
+         ("xxx-large", Xxx_large);
+         ("larger", Larger);
+         ("smaller", Smaller);
+         ("math", Math);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:(fun t ->
       (* Try percentage first, then length *)
       Cursor.one_of [ read_pct; read_length ] t)
     t
+
+let read_font_size t : font_size = read_font_size_with t
 
 let rec pp_font_optical_sizing : font_optical_sizing Pp.t =
  fun ctx -> function
@@ -483,7 +502,7 @@ let read_feature_value_names t =
 
 let read_font_variant_alternates_item t : font_variant_alternates_item =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "historical-forms" ->
       let _ = Cursor.ident t in
       Historical_forms
@@ -690,16 +709,14 @@ let is_font_family_ident_word s =
   in
   starts_ident && String.for_all is_name_char s
 
-(* CSS Fonts 4 sec. 2.1.1: in an unquoted [<font-family-name>] "any identifier
-   which could be misinterpreted as a pre-defined keyword in the font-family
-   value definition, or the CSS-wide keywords, is not allowed", and a user agent
-   "must not consider these keywords as matching the [<font-family-name>] type".
-   Sec. 2.1.2 spells the pre-defined keywords out: the bare
-   [<generic-font-family>] names listed below, the script-specific generics
-   being functional instead ([generic(fangsong)]). CSS Values 4 sec. 4.2 adds
-   the CSS-wide keywords and the reserved [default], and excludes every entry in
-   all ASCII case permutations. *)
-let font_family_reserved_words =
+(* CSS Fonts 4 sec. 2.1.2 spells the bare [<generic-font-family>] names, the
+   script-specific generics being functional instead ([generic(fangsong)]). Sec.
+   2.1.1 keeps them out of [<font-family-name>], and the property reads a
+   [<generic-font-family>] only where the alternative starts, so a generic is
+   turned away as the first word of a sequence and is an ordinary
+   [<custom-ident>] after it: Chrome 153 refuses [serif serif] and [serif Foo]
+   and takes [Foo serif] and [Cambria Math], which are installed font names. *)
+let font_family_generic_words =
   [
     "serif";
     "sans-serif";
@@ -712,17 +729,25 @@ let font_family_reserved_words =
     "ui-sans-serif";
     "ui-monospace";
     "ui-rounded";
-    "inherit";
-    "initial";
-    "unset";
-    "revert";
-    "revert-layer";
-    "default";
   ]
+
+(* CSS Values 4 sec. 4.2 excludes the CSS-wide keywords and the reserved
+   [default] from [<custom-ident>] itself, so no word of a sequence is one
+   wherever it stands. Chrome takes [inherit inherit] as a name; the exclusion
+   is on the type rather than on the position, so cascade is the strict side. *)
+let font_family_css_wide_words =
+  [ "inherit"; "initial"; "unset"; "revert"; "revert-layer"; "default" ]
+
+let font_family_reserved_words =
+  font_family_generic_words @ font_family_css_wide_words
 
 let is_font_family_reserved_word w =
   let w = String.lowercase_ascii w in
   List.exists (String.equal w) font_family_reserved_words
+
+let is_font_family_css_wide w =
+  let w = String.lowercase_ascii w in
+  List.exists (String.equal w) font_family_css_wide_words
 
 (* A lone word has to clear more than the excluded idents: [read_font_family]
    below also maps a bare [emoji], [fangsong] or [none] to a keyword rather than
@@ -743,10 +768,11 @@ let can_unquote_font_family_name s =
          words only a lone position reads as a keyword are excluded too. *)
       is_font_family_ident_word w && not (is_font_family_keyword_name w)
   | _ :: _ :: _ as words ->
-      (* The exclusion is stated per identifier, so it holds at every word of a
-         [<custom-ident>+] sequence and not only at a lone one: [inherit test]
-         and [Foo serif] are no more valid family names than [inherit] and
-         [serif] are, and quoting is their only spelling. *)
+      (* A reserved word anywhere in the sequence keeps the quotes, which is
+         stricter than what the reader takes back: sec. 2.1.1 reads flat as
+         excluding [Cambria Math], and only some browsers go on to take it, so
+         the quoted spelling is the one every UA reads. Unquoting is a size win
+         the printer declines rather than a spelling it owes. *)
       List.for_all
         (fun w ->
           is_font_family_ident_word w && not (is_font_family_reserved_word w))
@@ -1052,6 +1078,13 @@ let rec pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_font_stretch ctx v
   | Pct f -> Pp.pct ctx f
+  (* Sec. 2.3 refuses a negative width written on its own, so the wrapper comes
+     off only around a leaf that is a width by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap:(fun (v : font_stretch) ->
+          match v with Pct f -> f >= 0. | _ -> true)
+        pp_font_stretch ctx c
   | Ultra_condensed -> Pp.string ctx "ultra-condensed"
   | Extra_condensed -> Pp.string ctx "extra-condensed"
   | Condensed -> Pp.string ctx "condensed"
@@ -1079,6 +1112,12 @@ let rec pp_font_size_adjust : font_size_adjust Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Number f -> Pp.float ctx f
+  (* CSS Fonts 5 sec. 2.5 refuses a negative aspect value written on its own, so
+     the wrapper comes off only around a leaf that is one by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:(match c with Num n -> n >= 0. | _ -> true)
+        pp_font_size_adjust ctx c
   | From_font -> Pp.string ctx "from-font"
   | Metric_number (metric, f) ->
       pp_font_size_adjust_metric ctx metric;
@@ -1352,6 +1391,7 @@ let rec pp_line_height : line_height Pp.t =
   | Var v -> pp_var pp_line_height ctx v
   | Calc c ->
       pp_calc
+        ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_line_height v))
         pp_line_height ctx c
 
@@ -1406,7 +1446,9 @@ let font_width_css3 : font_stretch -> font_stretch option = function
   | Pct 125. | Expanded -> Some Expanded
   | Pct 150. | Extra_expanded -> Some Extra_expanded
   | Pct 200. | Ultra_expanded -> Some Ultra_expanded
-  | Pct _ | Var _ | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | Pct _ | Calc _ | Var _ | Inherit | Initial | Unset | Revert | Revert_layer
+    ->
+      None
 
 let pp_font_width_css3 : font_stretch Pp.t =
  fun ctx width ->
@@ -1460,7 +1502,19 @@ let rec pp_font : font Pp.t =
 
 (* CSS Values 4 sec. 10.12: a math function is valid wherever its type is, and
    the [0,inf] range of sec. 5.1 is checked on the value it resolves to, not on
-   each operand, so [calc(-10%)] reads where a literal [-10%] does not. *)
+   each operand, so [calc(-10%)] reads where a literal [-10%] does not. Sec.
+   10.8 gives an operand no keyword, so [normal] and the CSS-wide keywords are
+   left out and [calc(normal)] fails the way the browser drops it; the unitless
+   [<number>] of sec. 5.1 is a [<calc-value>] and [calc(1.5)] still reads. *)
+(* A bare call carries no [calc()] wrapper for a printer to put back, so one
+   that folds to a factor the literal grammar takes is that factor. CSS Values 4
+   sec. 10.12 keeps a call whose value leaves the [0,inf] range of sec. 5.1
+   instead of invalidating it, and only the call round-trips. *)
+let read_bare_math read t : line_height =
+  match (read t : line_height) with
+  | Calc (Num n) when n >= 0. -> Num n
+  | value -> value
+
 let rec read_line_height_in_math t : line_height =
   let read_var t : line_height = Var (read_var read_line_height_in_math t) in
   let read_calc t : line_height =
@@ -1468,16 +1522,10 @@ let rec read_line_height_in_math t : line_height =
       (read_calc ~result_type:`Number_or_value read_line_height_in_math t
       |> numeric_line_height_calc_leaves)
   in
-  Cursor.enum_or_calls "line-height"
-    [
-      ("normal", Normal);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+  Cursor.enum_or_calls "line-height" []
+    ~calls:
+      (("var", read_var) :: ("calc", read_calc)
+      :: Values.math_function_calls (read_bare_math read_calc))
     ~default:(read_line_height_length ~allow_negative:true)
     t
 
@@ -1497,7 +1545,9 @@ let rec read_line_height t : line_height =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~calls:
+      (("var", read_var) :: ("calc", read_calc)
+      :: Values.math_function_calls (read_bare_math read_calc))
     ~default:read_line_height_length t
 
 let rec read_font_palette (t : Cursor.t) : font_palette =
@@ -1670,27 +1720,33 @@ let is_font_family_name_value : font_family -> bool = function
   | Victor_mono | Inconsolata | Hack | Name _ | Var _ ->
       true
 
-let rec read_font_family_single t : font_family =
-  let read_var t : font_family = Var (read_var read_font_family t) in
-  (* CSS Fonts 4 sec. 2.1.1 / CSS Cascade 5 sec. 7.3: the CSS-wide keywords and
-     the reserved [default] are excluded from [<custom-ident>], so none may
-     appear as any word of an unquoted family name. *)
-  let is_reserved_word word =
-    List.mem
-      (String.lowercase_ascii word)
-      [ "inherit"; "initial"; "unset"; "revert"; "revert-layer"; "default" ]
-  in
-  (* Read unquoted multi-word font names, e.g., "arial rounded" *)
-  let rec read_unquoted_name_words acc =
+(* An unquoted multi-word family name, e.g. [arial rounded]. The two exclusions
+   have different reaches. A [<generic-font-family>] is the alternative the
+   property reads instead of a name, so it is turned away where that alternative
+   starts, at the first word, and reads as an ordinary [<custom-ident>] after
+   it: [Cambria Math] and [Foo serif] are installed font names, [serif Foo] is
+   not. A CSS-wide keyword or [default] is excluded from [<custom-ident>] itself
+   (CSS Values 4 sec. 4.2), so it is turned away at every word. *)
+let read_unquoted_family_name t =
+  let rec loop acc =
     let word = Cursor.ident ~keep_case:true t in
-    if is_reserved_word word then
+    let reserved =
+      match acc with
+      | [] -> is_font_family_reserved_word word
+      | _ :: _ -> is_font_family_css_wide word
+    in
+    if reserved then
       Cursor.err_invalid t
         "font-family: reserved word cannot appear in an unquoted family name";
     let acc = word :: acc in
     Cursor.ws t;
-    if Option.is_some (Cursor.peek_ident t) then read_unquoted_name_words acc
+    if Option.is_some (Cursor.peek_ident t) then loop acc
     else String.concat " " (List.rev acc)
   in
+  loop []
+
+let rec read_font_family_single t : font_family =
+  let read_var t : font_family = Var (read_var read_font_family t) in
   let read_single_word t : font_family =
     (* A single word is a keyword before it is a name *)
     (Cursor.enum_or_calls "font-family" font_family_keywords
@@ -1720,10 +1776,7 @@ let rec read_font_family_single t : font_family =
             Option.is_some (Cursor.peek_ident t))
           t
       in
-      if is_multi_word then
-        (* Multi-word unquoted name; [read_unquoted_name_words] rejects any
-           reserved word in the sequence. *)
-        Name (read_unquoted_name_words [])
+      if is_multi_word then Name (read_unquoted_family_name t)
       else
         (* Single word - try the keyword match *)
         read_single_word t
@@ -1899,8 +1952,8 @@ let read_font_shorthand r : font_shorthand =
   let rec consume_prefix () =
     Cursor.ws r;
     if Cursor.is_done r then ()
-    else if font_shorthand_prefix_ident (Cursor.peek_ident r) then (
-      assign (font_prefix_slot_of (Cursor.ident r));
+    else if font_shorthand_prefix_ident (Cursor.peek_keyword r) then (
+      assign (font_prefix_slot_of (Cursor.ident ~keep_case:false r));
       consume_prefix ())
     else if try_numeric_font_weight r weight then consume_prefix ()
   in
@@ -1970,7 +2023,14 @@ let rec read_font_stretch t : font_stretch =
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
-  Cursor.enum_or_var "font-stretch"
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
+     stands, [calc()] being one of them rather than the gate to the rest, and
+     sec. 10.12 checks the [0,inf] range on the value it resolves to: the call
+     keeps out of [read_percentage], which is the literal's range check. *)
+  let read_math t : font_stretch =
+    Calc (read_calc ~result_type:`Value read_font_stretch t)
+  in
+  Cursor.enum_or_calls "font-stretch"
     [
       ("ultra-condensed", Ultra_condensed);
       ("extra-condensed", Extra_condensed);
@@ -1987,7 +2047,10 @@ let rec read_font_stretch t : font_stretch =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (read_var read_font_stretch t))
+    ~calls:
+      (("var", fun t -> Var (read_var read_font_stretch t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_percentage t
 
 let rec read_font_display t : font_display =
@@ -2395,7 +2458,10 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
         if lossless || calc_has_computed_input c then Option.None
         else Option.map (Pp.round_sig 6) (Values.eval_numeric_calc c)
       with
-      | Option.Some f -> Num f
+      (* The [0,inf] range is checked on what the call resolves to, so the
+         six-figure result takes the same guard the exact fold below takes. *)
+      | Option.Some f when f >= 0. -> Num f
+      | Option.Some f -> Calc (Num f)
       | Option.None -> (
           match Values.eval_calc c with
           | Values.Num f when f >= 0. -> Num f
@@ -2431,12 +2497,46 @@ let rec normalize_font_weight : font_weight -> font_weight = function
       | folded -> if folded == c then value else Calc folded)
   | value -> value
 
+let rec numeric_size_adjust_calc_leaves :
+    font_size_adjust calc -> font_size_adjust calc = function
+  | Val (Number n) -> Num n
+  | Nested inner -> Nested (numeric_size_adjust_calc_leaves inner)
+  | Parens inner -> Parens (numeric_size_adjust_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_size_adjust_calc_leaves left,
+          op,
+          numeric_size_adjust_calc_leaves right )
+  | other -> other
+
+let rec normalize_font_size_adjust : font_size_adjust -> font_size_adjust =
+  function
+  (* CSS Fonts 5 sec. 2.5 spells the aspect value [<number [0,inf]>], and CSS
+     Values 4 sec. 10.12 clamps a math function past that range at
+     computed-value time: unwrapping a negative one would write CSS a browser
+     drops. *)
+  | Calc c as value -> (
+      match eval_calc (numeric_size_adjust_calc_leaves c) with
+      | Num n when n >= 0. -> Number n
+      | Val v -> normalize_font_size_adjust v
+      | folded -> if folded == c then value else Calc folded)
+  | value -> value
+
 (* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()
    serializes the property as a percentage however the value was written, so the
    keyword and its percentage name one width and the percentage is never
    longer. *)
-let normalize_font_stretch (value : font_stretch) : font_stretch =
-  match font_stretch_pct value with Some pct -> Pct pct | None -> value
+let rec normalize_font_stretch (value : font_stretch) : font_stretch =
+  match value with
+  (* Sec. 2.3 spells the width [<percentage [0,inf]>], and CSS Values 4 sec.
+     10.12 clamps a math function past that range at computed-value time:
+     unwrapping a negative one would write CSS a browser drops. *)
+  | Calc c -> (
+      match eval_calc c with
+      | Val (Pct p as leaf) when p >= 0. -> normalize_font_stretch leaf
+      | folded -> if folded == c then value else Calc folded)
+  | value -> (
+      match font_stretch_pct value with Some pct -> Pct pct | None -> value)
 
 (* sec. 2.1 has the user agent walk the family list until one matches, so an
    entry repeating an earlier one is never reached and names nothing: drop it,
@@ -2561,13 +2661,20 @@ let rec read_font_size_adjust t : font_size_adjust =
   let read_metric_value t =
     let metric = read_font_size_adjust_metric t in
     Cursor.ws t;
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some "from-font" ->
         let _ = Cursor.ident t in
         Metric_from_font metric
     | _ -> Metric_number (metric, read_non_negative_number t)
   in
-  Cursor.enum_or_var "font-size-adjust"
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<number>] stands,
+     [calc()] being one of them rather than the gate to the rest, and sec. 10.12
+     checks the [0,inf] range on the value it resolves to: the call keeps out of
+     [read_non_negative_number], which is the literal's range check. *)
+  let read_math t : font_size_adjust =
+    Calc (read_calc ~result_type:`Number read_font_size_adjust t)
+  in
+  Cursor.enum_or_calls "font-size-adjust"
     [
       ("none", (None : font_size_adjust));
       ("from-font", From_font);
@@ -2577,7 +2684,10 @@ let rec read_font_size_adjust t : font_size_adjust =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_font_size_adjust t))
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_font_size_adjust t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       match Cursor.peek_ident t with
       | Some _ -> read_metric_value t

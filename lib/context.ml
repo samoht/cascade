@@ -982,7 +982,12 @@ module Calc_residual = struct
     | Values.Sign_n a
     | Values.Abs_n a ->
         math_arg_contains_var a
-    | Values.Atan2 (a, b) | Values.Log (a, Some b) | Values.Pow (a, b) ->
+    | Values.Atan2 (a, b)
+    | Values.Log (a, Some b)
+    | Values.Pow (a, b)
+    | Values.Round_n (_, a, b)
+    | Values.Mod_n (a, b)
+    | Values.Rem_n (a, b) ->
         math_arg_contains_var a || math_arg_contains_var b
     | Values.Log (a, None) -> math_arg_contains_var a
     | Values.Hypot args -> List.exists math_arg_contains_var args
@@ -1413,7 +1418,6 @@ module Length = struct
       | Values.Hypot values ->
           Values.Hypot (List.map (simplify ~visited) values)
       | Values.Abs value -> Values.Abs (simplify ~visited value)
-      | Values.Sign value -> Values.Sign (simplify ~visited value)
       | Values.Calc_size (basis, calc) ->
           Values.Calc_size (simplify ~visited basis, simplify_calc ~visited calc)
       | Values.Anchor (name, side, fallback) ->
@@ -2142,13 +2146,7 @@ let simplify_opacity ?layer_order ?layer cascade value =
     | Properties.Opacity_number n -> Some n
     | _ -> None
   in
-  let simplify_leaf simplify _simplify_calc ~visited (leaf : Properties.opacity)
-      : Properties.opacity =
-    match leaf with
-    | Abs value -> Abs (simplify ~visited value)
-    | Sign value -> Sign (simplify ~visited value)
-    | value -> value
-  in
+  let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in
   let ops : Properties.opacity Calc_residual.ops =
     let of_number n = Properties.Opacity_number n in
     {

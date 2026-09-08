@@ -299,7 +299,7 @@ let rec read_text_indent_value t : text_indent_value =
       let each_line = ref false in
       while not (Cursor.is_done t) do
         Cursor.ws t;
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some "hanging" when not !hanging ->
             Cursor.skip t;
             hanging := true
@@ -689,7 +689,7 @@ let rec read_text_transform t : text_transform =
       while !consumed do
         consumed := false;
         Cursor.ws t;
-        match Cursor.peek_ident t with
+        match Cursor.peek_keyword t with
         | Some "uppercase" when Option.is_none !case ->
             Cursor.skip t;
             case := Option.Some Uppercase;
@@ -779,8 +779,10 @@ let normalize_hyphenate_limit_chars_item ~ctx :
  fun item ->
   match item with
   | Auto -> item
+  (* Sec. 6.2 counts characters, so each slot is a [1,inf] [<integer>] and a
+     call folding below it keeps its wrapper. *)
   | Chars n ->
-      let n' = Values.normalize_number ~ctx n in
+      let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then item else Chars n'
 
 let normalize_hyphenate_limit_chars ~ctx :
@@ -874,11 +876,13 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
            })
   | other -> other
 
+(* Sec. 4.2 gives the number a [0,inf] range, so a call folding below it keeps
+   its wrapper rather than becoming a literal the reader refuses. *)
 let normalize_tab_size ~ctx : tab_size -> tab_size =
  fun value ->
   match value with
   | Number n ->
-      let n' = Values.normalize_number ~ctx n in
+      let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then value else Number n'
   | other -> other
 
@@ -1285,6 +1289,17 @@ let rec pp_initial_letter : initial_letter Pp.t =
       Pp.float ctx size;
       Pp.space ctx ();
       Pp.int ctx sink
+  (* CSS Inline 3 sec. 5.1 refuses a size below 1 written on its own, so the
+     wrapper comes off only around a leaf that is a size by itself. *)
+  | Calc (c, sink) ->
+      pp_calc
+        ~unwrap_num:(match c with Num n -> n >= 1. | _ -> true)
+        pp_initial_letter ctx c;
+      Option.iter
+        (fun sink ->
+          Pp.space ctx ();
+          Pp.int ctx sink)
+        sink
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1479,6 +1494,13 @@ let rec pp_text_size_adjust : text_size_adjust Pp.t =
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Pct n -> Pp.pct ctx n
+  (* CSS Size Adjustment 1 sec. 3 refuses a negative percentage written on its
+     own, so the wrapper comes off only around a leaf that is one by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap:(fun (v : text_size_adjust) ->
+          match v with Pct n -> n >= 0. | _ -> true)
+        pp_text_size_adjust ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1671,7 +1693,7 @@ let read_text_box_edge_keyword t : text_box_edge_keyword =
    is a value of the property rather than a CSS-wide keyword and reaches the
    [text-box] shorthand along with the rest. *)
 let read_text_box_edge_value t : text_box_edge =
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "auto" ->
       let _ = Cursor.ident t in
       (Auto : text_box_edge)
@@ -1931,7 +1953,7 @@ let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
 
 let rec read_white_space t : white_space =
   Cursor.ws t;
-  match Cursor.peek_ident t with
+  match Cursor.peek_keyword t with
   | Some "preserve" ->
       ignore (Cursor.ident t : string);
       Cursor.ws t;
@@ -2021,7 +2043,7 @@ let read_webkit_text_stroke t : webkit_text_stroke =
     slot := Some value
   in
   let read_one t =
-    match Cursor.peek_ident t with
+    match Cursor.peek_keyword t with
     | Some ("thin" | "medium" | "thick") -> fill width (read_border_width t)
     | _ -> (
         let snap = Cursor.save t in
@@ -2091,8 +2113,13 @@ let rec read_text_size_adjust t : text_size_adjust =
         Cursor.err t "text-size-adjust percentages cannot be negative"
       else Pct n
   | _ ->
-      (* Keyword *)
-      Cursor.enum_or_var "text-size-adjust"
+      (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
+         stands, [calc()] being one of them rather than the gate to the rest,
+         and sec. 10.12 checks the [0,inf] range on the value it resolves to. *)
+      let read_math t : text_size_adjust =
+        Calc (Values.read_calc ~result_type:`Value read_text_size_adjust t)
+      in
+      Cursor.enum_or_calls "text-size-adjust"
         [
           ("none", (None : text_size_adjust));
           ("auto", Auto);
@@ -2102,7 +2129,10 @@ let rec read_text_size_adjust t : text_size_adjust =
           ("revert", Revert);
           ("revert-layer", Revert_layer);
         ]
-        ~var:(fun t -> Var (Values.read_var read_text_size_adjust t))
+        ~calls:
+          (("var", fun t -> Var (Values.read_var read_text_size_adjust t))
+          :: ("calc", read_math)
+          :: Values.math_function_calls read_math)
         t
 
 let rec read_tab_size (t : Cursor.t) : tab_size =
@@ -2257,8 +2287,19 @@ let rec read_text_shadow t : text_shadow =
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
     t
 
+(* CSS Text Decoration 4 sec. 6.2 spells the property [none | <shadow>#], so
+   [none] names the whole value and is no item of the list. *)
 let read_text_shadows t : text_shadow list =
-  Cursor.list ~sep:Cursor.comma ~at_least:1 read_text_shadow t
+  let shadows = Cursor.list ~sep:Cursor.comma ~at_least:1 read_text_shadow t in
+  let whole_value : text_shadow -> bool = function
+    | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
+    | Text_shadow _ | Var _ -> false
+  in
+  (match shadows with
+  | _ :: _ :: _ when List.exists whole_value shadows ->
+      Cursor.err_invalid t "text-shadow keyword beside another shadow"
+  | _ -> ());
+  shadows
 
 let text_decoration_shorthand ?lines ?style ?color ?thickness () :
     text_decoration =
@@ -2270,6 +2311,43 @@ let normalize_vertical_align (va : vertical_align) : vertical_align =
       let lp' = Values.normalize_length_percentage lp in
       if lp' == lp then va else Length lp'
   | _ -> va
+
+let rec numeric_initial_letter_calc_leaves :
+    initial_letter calc -> initial_letter calc = function
+  | Val (Size n) -> Num n
+  | Nested inner -> Nested (numeric_initial_letter_calc_leaves inner)
+  | Parens inner -> Parens (numeric_initial_letter_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_initial_letter_calc_leaves left,
+          op,
+          numeric_initial_letter_calc_leaves right )
+  | other -> other
+
+(* CSS Inline 3 sec. 5.1 spells the size [<number [1,inf]>], and CSS Values 4
+   sec. 10.12 clamps a math function past that range at computed-value time:
+   unwrapping one below 1 would write CSS a browser drops. *)
+let normalize_initial_letter (value : initial_letter) : initial_letter =
+  match value with
+  | Calc (c, sink) -> (
+      match (eval_calc (numeric_initial_letter_calc_leaves c), sink) with
+      | Num n, Option.None when n >= 1. -> Size n
+      | Num n, Option.Some sink when n >= 1. -> Size_sink (n, sink)
+      | folded, _ -> if folded == c then value else Calc (folded, sink))
+  | value -> value
+
+(* CSS Size Adjustment 1 sec. 3 spells the adjustment [<percentage [0,inf]>],
+   and CSS Values 4 sec. 10.12 clamps a math function past that range at
+   computed-value time: unwrapping a negative one would write CSS a browser
+   drops. *)
+let rec normalize_text_size_adjust (value : text_size_adjust) : text_size_adjust
+    =
+  match value with
+  | Calc c -> (
+      match eval_calc c with
+      | Val (Pct n as leaf) when n >= 0. -> normalize_text_size_adjust leaf
+      | folded -> if folded == c then value else Calc folded)
+  | value -> value
 
 let read_initial_letter_align_keyword t : initial_letter_align_keyword =
   Cursor.enum "initial-letter-align"
@@ -2283,17 +2361,30 @@ let read_initial_letter_align_keyword t : initial_letter_align_keyword =
     t
 
 let rec read_initial_letter t : initial_letter =
-  let read_number t =
-    let size = Cursor.number t in
-    if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1";
+  let read_sink t =
     Cursor.ws t;
-    if Cursor.is_done t then (Size size : initial_letter)
+    if Cursor.is_done t then Option.none
     else
       let sink = Cursor.int t in
       if sink < 1 then Cursor.err_invalid t "initial-letter sink must be >= 1";
       Cursor.ws t;
       Cursor.expect_eof t;
-      Size_sink (size, sink)
+      Option.some sink
+  in
+  let read_number t =
+    let size = Cursor.number t in
+    if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1";
+    match read_sink t with
+    | Option.None -> (Size size : initial_letter)
+    | Option.Some sink -> Size_sink (size, sink)
+  in
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the size [<number>]
+     stands, [calc()] being one of them rather than the gate to the rest, and
+     sec. 10.12 checks the [1,inf] range on the value it resolves to: the call
+     keeps out of [read_number], which is the literal's range check. *)
+  let read_math t : initial_letter =
+    let size = read_calc ~result_type:`Number read_initial_letter t in
+    Calc (size, read_sink t)
   in
   Cursor.enum_or_calls "initial-letter"
     [
@@ -2306,7 +2397,10 @@ let rec read_initial_letter t : initial_letter =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", fun t -> Var (Values.read_var read_initial_letter t)) ]
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_initial_letter t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_number t
 
 let rec read_initial_letter_align t : initial_letter_align =

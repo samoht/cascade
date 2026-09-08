@@ -249,6 +249,37 @@ let test_length () =
   neg_cursor read_length "calc((1px 2px))";
   neg_cursor read_length "min((1px 2px))";
 
+  (* CSS Values 4 sec. 10.8: [<calc-value>] is a number, a dimension, a
+     percentage, a [<calc-keyword>] or a parenthesised [<calc-sum>], and sec.
+     10.7 limits [<calc-keyword>] to [e], [pi], [infinity], [-infinity] and
+     [NaN]. A CSS-wide keyword (sec. 4.1.1 gives it the whole declaration value
+     alone) and a sizing keyword or function are none of those, so a math
+     operand takes none of them. *)
+  neg_cursor read_length "calc(auto)";
+  neg_cursor read_length "calc(inherit)";
+  neg_cursor read_length "calc(initial)";
+  neg_cursor read_length "calc(unset)";
+  neg_cursor read_length "calc(revert)";
+  neg_cursor read_length "calc(revert-layer)";
+  neg_cursor read_length "calc(calc(auto))";
+  neg_cursor read_length "calc(1px + initial)";
+  neg_cursor read_length "calc(fit-content(20rem))";
+  neg_cursor read_length "min(unset,1px)";
+  neg_cursor read_length "min(1px,auto)";
+  neg_cursor read_length "clamp(1px,inherit,3px)";
+  neg_cursor read_length "abs(auto)";
+  neg_cursor read_length "round(auto,1px)";
+  neg_cursor read_length "hypot(auto)";
+  neg_cursor read_length "mod(auto,1px)";
+  neg_cursor read_length "rem(auto,1px)";
+
+  (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
+     "must have a consistent type or else the function is invalid", and sec.
+     10.9 makes a unitless zero a [<number>], not a length. *)
+  neg_cursor read_length "min(0,1px)";
+  neg_cursor read_length "max(0,1px)";
+  neg_cursor read_length "clamp(0px,0,100px)";
+
   neg_cursor read_length "invalid";
   neg_cursor read_length "abc";
   neg_cursor read_length "10";
@@ -1686,7 +1717,6 @@ let spec_math_function_edges () =
     "hypot(3px, 4px)";
   check_length ~expected:"abs(-10px)" "abs(-10px)";
   decl_optimizes ~prop:"margin" ~held:"abs(-10px)" ~into:"10px" "abs(-10px)";
-  check_length ~expected:"sign(10px)" "sign(10px)";
   (* CSS Color 4 (ED) sec. 5.1 gives rgb() and rgba() the same grammar and its
      Changes section calls them aliases of each other, and sec. 16.2.2 uses the
      rgb() form wherever the alpha is implicit. A var() standing for the whole
@@ -1746,6 +1776,412 @@ let spec_math_function_edges () =
   neg_cursor read_number "pow(2)";
   neg_cursor read_number "sqrt()";
   neg_cursor read_number "sin()"
+
+(* CSS Values 4 (ED) sec. 10.12 checks a property's range on the value a math
+   function resolves to rather than on each operand, the exception [calc()]
+   already had: a negative operand under a non-negative property is fine. *)
+let spec_math_operand_range () =
+  (* <length> and <length-percentage>, all at properties whose range is
+     [0,inf]. *)
+  decl_optimizes ~prop:"width" ~held:"abs(-1px)" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"padding-top" ~held:"abs(-1px)" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"font-size" ~held:"abs(-1px)" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"border-top-left-radius" ~held:"abs(-1px)" ~into:"1px"
+    "abs(-1px)";
+  decl_optimizes ~prop:"width" ~held:"mod(-5px,2px)" ~into:"1px"
+    "mod(-5px, 2px)";
+  (* Sec. 10.6 gives [abs(A)] the type of its argument and [sign(A)] a <number>
+     whatever the argument is, so [abs()] stands at a <length> and [sign()]
+     never does. *)
+  neg_cursor read_length "sign(10px)";
+  neg_cursor read_length "sign(-1px)";
+  neg_cursor read_length_percentage "sign(-1px)"
+
+(* Sec. 10.1: a math function "can be used wherever a <number>, <dimension>, or
+   <percentage> is allowed", so a bare call reads wherever the same call wrapped
+   in [calc()] does; [calc()] is one math function among several, not the gate
+   to the others. *)
+let spec_bare_math_functions () =
+  (* The [sign()] sec. 10.6 keeps out of a <length> is exactly what an
+     <opacity-value> takes. *)
+  decl_optimizes ~prop:"opacity" ~into:"-1" "sign(-1px)";
+  decl_optimizes ~prop:"opacity" ~into:"8" "pow(2,3)";
+  decl_optimizes ~prop:"opacity" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"opacity" ~into:"5" "hypot(3,4)";
+  (* A bare call and a [calc()]-wrapped one agree on acceptance and on the value
+     they fold to. *)
+  decl_optimizes ~prop:"opacity" ~into:".5" "abs(-.5)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "calc(abs(-.5))";
+  decl_optimizes ~prop:"zoom" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"flex-grow" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"font-weight" ~into:"8" "pow(2,3)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"2" "sqrt(4)";
+  (* Sec. 10.9: a math function resolving to <number> stands wherever an
+     <integer> is accepted. *)
+  decl_optimizes ~prop:"z-index" ~into:"1" "abs(-1)";
+  decl_optimizes ~prop:"order" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"grid-row-start" ~into:"1" "abs(-1)";
+  (* CSS Backgrounds 3 sec. 3.3 spells <line-width> without a percentage, which
+     is a narrower slot than <length> but still one a math function stands
+     in. *)
+  decl_optimizes ~prop:"border-top-width" ~into:"5px" "hypot(3px,4px)";
+  decl_optimizes ~prop:"outline-width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"column-rule-width" ~into:"1px" "abs(-1px)"
+
+(* Sec. 10.5 [hypot()] and sec. 10.6 [abs()] return "the same type as the
+   input", and sec. 10.2 gives the comparison and stepped-value functions their
+   arguments' type too: what the call answers, not the name it is spelled with,
+   decides the slots it stands in. Both directions are pinned per function, a
+   <number> argument at a <number> slot and a <length> one. *)
+let spec_math_result_type () =
+  let module P = Css.Properties in
+  (* <number> in, <number> out: the call is the number it resolves to. *)
+  decl_optimizes ~prop:"opacity" ~into:".2" "min(.2,.5)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "max(.2,.5)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "clamp(.1,.5,.9)";
+  decl_optimizes ~prop:"opacity" ~into:"2" "round(1.5,1)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "mod(5,2)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "rem(5,2)";
+  decl_optimizes ~prop:"opacity" ~into:"5" "hypot(3,4)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "abs(-.5)";
+  (* <length> in, <length> out: the same call is no longer a <number>, so the
+     <number> slot refuses it rather than shedding the unit. *)
+  neg_cursor P.read_opacity "min(1px,2px)";
+  neg_cursor P.read_opacity "max(1px,2px)";
+  neg_cursor P.read_opacity "clamp(1px,2px,3px)";
+  neg_cursor P.read_opacity "round(1.5px,1px)";
+  neg_cursor P.read_opacity "mod(5px,2px)";
+  neg_cursor P.read_opacity "rem(5px,2px)";
+  neg_cursor P.read_opacity "hypot(3px,4px)";
+  neg_cursor P.read_opacity "abs(-1px)";
+  (* The same pair at the <integer> slots of sec. 10.9. *)
+  decl_optimizes ~prop:"z-index" ~into:"1" "min(1,2)";
+  decl_optimizes ~prop:"order" ~into:"5" "hypot(3,4)";
+  decl_optimizes ~prop:"grid-row-end" ~into:"1" "abs(-1)";
+  neg_cursor P.read_z_index "abs(-1px)";
+  neg_cursor P.read_order "abs(-1px)";
+  neg_cursor P.read_order "hypot(3px,4px)";
+  neg_cursor P.read_grid_line "abs(-1px)";
+  neg_cursor P.read_column_count "abs(-1px)";
+  neg_cursor P.read_zoom "abs(-1px)";
+  neg_cursor P.read_shape_image_threshold "abs(-1px)";
+  neg_cursor P.read_flex_factor "abs(-1px)";
+  neg_cursor P.read_font_weight "abs(-1px)";
+  (* Sec. 10.6 gives [sign(A)] a <number> "whatever the input calculation's
+     type", the mirror of [abs()]: it narrows to a number where [abs()]
+     preserves, so a <length> argument reads at the <number> slot and the call
+     itself never stands at a <length> one. *)
+  decl_optimizes ~prop:"opacity" ~into:"-1" "sign(-1px)";
+  neg_cursor read_length "sign(-1px)";
+  (* An <opacity-value> is <number> | <percentage>, so a call answering a
+     <percentage> is one of the two types the slot takes and resolves against
+     the number the way the literal does. *)
+  decl_optimizes ~prop:"opacity" ~into:".5" "abs(-50%)";
+  decl_optimizes ~prop:"shape-image-threshold" ~into:".5" "abs(-50%)";
+  (* CSS Backgrounds 3 sec. 6.2 spells <border-image-slice> over [<number> |
+     <percentage>] with no length among them, so the slot answers the same way
+     an <opacity-value> does, longhand and shorthand alike. *)
+  decl_optimizes ~prop:"border-image-slice" ~into:"abs(-1)" "abs(-1)";
+  decl_optimizes ~prop:"border-image-slice" ~into:"30%" "30%";
+  decl_optimizes ~prop:"border-image-slice" ~into:"calc(abs(-30%))" "abs(-30%)";
+  neg_cursor P.read_border_image_slice "abs(-1px)";
+  neg_cursor P.read_border_image_slice "hypot(3px,4px)";
+  neg_cursor P.read_border_image_slice "calc(abs(-1px))";
+  neg_cursor P.read_border_image "abs(-1px)";
+  (* Sec. 6.3 and 6.4 give <border-image-width> and <border-image-outset> a
+     length, so the call the slice slot refuses stands at both. *)
+  decl_optimizes ~prop:"border-image-width" ~into:"abs(-1px)" "abs(-1px)";
+  decl_optimizes ~prop:"border-image-outset" ~into:"abs(-1px)" "abs(-1px)";
+  (* A <length> slot takes what it refuses at a <number> one. *)
+  decl_optimizes ~prop:"width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"width" ~into:"5px" "hypot(3px,4px)";
+  (* [line-height] is <number> | <length-percentage>, so the length the call
+     answers is one of its types and the call stands, where the same call at an
+     <opacity-value> does not. *)
+  decl_optimizes ~prop:"line-height" ~into:"calc(abs(-1px))" "abs(-1px)";
+  decl_optimizes ~prop:"line-height" ~into:"2" "abs(-2)";
+  (* Sec. 10.1 puts [calc()] among the math functions rather than above them, so
+     the wrapped spelling answers the same type and lands the same way. *)
+  neg_cursor P.read_z_index "calc(abs(-1px))";
+  neg_cursor P.read_opacity "calc(abs(-1px))";
+  neg_cursor P.read_opacity "calc(hypot(3px,4px))";
+  decl_optimizes ~prop:"z-index" ~into:"1" "calc(abs(-1))";
+  decl_optimizes ~prop:"opacity" ~into:".5" "calc(abs(-.5))";
+  decl_optimizes ~prop:"width" ~into:"1px" "calc(abs(-1px))"
+
+(* CSS Values 4 (ED) sec. 10.9 Type Checking: at a [+] or [-] sub-expression the
+   two argument types are added, and "if this returns failure, the entire
+   calculation's type is failure". A call answering a [<number>] therefore fails
+   the whole sum beside a dimension, and stands nowhere a [<number>] does not.
+   Chrome 153 rejects every row here, cascade's own [calc(2 - 1px)] among
+   them. *)
+let spec_math_sum_type_check () =
+  let module P = Css.Properties in
+  (* A [<number>] call on either side of a [<length>] sum fails the sum. *)
+  neg_cursor read_length "calc(sqrt(4) - 1px)";
+  neg_cursor read_length "calc(1px - sqrt(4))";
+  neg_cursor read_length "calc(sqrt(4) + 1px)";
+  neg_cursor read_length "calc(sign(-1px) - 1px)";
+  (* The failure is the sum's, not the call's: the same call multiplied by a
+     dimension is the dimension sec. 10.9 gives a product. *)
+  check_length ~minify:false "calc(sqrt(4) * 1px)";
+  check_length ~minify:false ~expected:"calc(sqrt(4) * 1px)" "calc(sqrt(4)*1px)";
+  (* A [<number>] call standing alone at a [<length>] slot fails the same way,
+     wrapped in [calc()] or not. *)
+  neg_cursor read_length "abs(-1)";
+  neg_cursor read_length "calc(abs(-1))";
+  neg_cursor read_length "calc(sign(-1px))";
+  neg_cursor P.read_border_width "abs(-1)";
+  neg_cursor P.read_border_width "calc(sign(-1px))";
+  (* Sec. 10.4 gives the inverse trigonometric functions an [<angle>], so they
+     are the one scalar-folding family that is not a [<number>]: the sum they
+     sit in keeps them where the [<number>] families fail it. *)
+  decl_optimizes ~prop:"rotate" ~into:"55deg" "calc(atan(1) + 10deg)";
+  decl_optimizes ~prop:"rotate" ~into:"40deg" "calc(atan2(1,1) - 5deg)";
+  decl_optimizes ~prop:"rotate" ~into:"45deg" "atan(1)";
+  (* Sec. 10.4 [sin()], [cos()] and [tan()] answer a [<number>] whatever went
+     in, so they fail the [<angle>] sum the inverse family holds. *)
+  neg_cursor read_angle "calc(sin(0) + 10deg)";
+  neg_cursor read_angle "calc(sqrt(4) + 10deg)";
+  (* Sec. 10.9 checks a [<time>] sum the same way. *)
+  neg_cursor read_duration "calc(sqrt(4) + 1s)";
+  check_duration ~minify:false "calc(sqrt(4) * 1s)";
+  (* A [<number>] sum stays a [<number>] and lands where one lands. *)
+  decl_optimizes ~prop:"opacity" ~into:"1" "calc(sqrt(4) - 1)";
+  decl_optimizes ~prop:"z-index" ~into:"2" "calc(2)";
+  (* A dimension sum is untouched by the check. *)
+  decl_optimizes ~prop:"width" ~into:"3px" "calc(1px + 2px)";
+  decl_optimizes ~prop:"width" ~into:"calc(100% - 10px)" "calc(100% - 10px)"
+
+(* CSS Values 4 (ED) sec. 10.9 spells the arguments of [round()], [mod()] and
+   [rem()] as [<calc-sum>], so a dimension is one of them, and sec. 10.2 gives
+   the call the type its arguments have. The stepped-value functions therefore
+   stand wherever sec. 10.5 [hypot()] does, at a [<line-width>] as at a
+   [<length>], and answer the [<number>] slot the same way it does. *)
+let spec_stepped_value_dimensions () =
+  let module P = Css.Properties in
+  decl_optimizes ~prop:"border-top-width" ~into:"2px" "round(1.5px,1px)";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "mod(5px,2px)";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "rem(5px,2px)";
+  decl_optimizes ~prop:"outline-width" ~into:"2px" "round(1.5px,1px)";
+  decl_optimizes ~prop:"column-rule-width" ~into:"1px" "mod(5px,2px)";
+  decl_optimizes ~prop:"-webkit-text-stroke-width" ~into:"1px" "rem(5px,2px)";
+  (* Sec. 10.1 puts [calc()] among the math functions rather than above them, so
+     the wrapped spelling lands the same way the bare one does. *)
+  decl_optimizes ~prop:"border-top-width" ~into:"2px" "calc(round(1.5px,1px))";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "calc(mod(5px,2px))";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "calc(rem(5px,2px))";
+  (* A [<number>] argument keeps answering a [<number>], which is what the
+     [<line-width>] slot refuses and an [<opacity-value>] takes. *)
+  decl_optimizes ~prop:"opacity" ~into:"2" "round(1.5,1)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "mod(5,2)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "rem(5,2)";
+  neg_cursor P.read_opacity "round(1.5px,1px)";
+  neg_cursor P.read_opacity "mod(5px,2px)";
+  neg_cursor P.read_opacity "rem(5px,2px)";
+  neg_cursor P.read_border_width "round(1.5,1)";
+  (* Sec. 10.2 requires the arguments to have a consistent type, so a step in
+     one type and a value in another is no calculation at all. *)
+  neg_cursor P.read_border_width "round(1.5px,1)";
+  neg_cursor P.read_border_width "mod(5px,2)"
+
+(* Sec. 10.1 makes a math function usable wherever a [<number>], [<dimension>]
+   or [<percentage>] is, so a reader that takes a literal there takes a call
+   too, and sec. 10.12 checks the property's range on the value the call
+   resolves to rather than refusing it: a call folding outside the range keeps
+   its wrapper, which is the only spelling the value has left. Chrome 153 reads
+   every row below and computes the call's own value.
+
+   Sec. 10.7.1 keeps [pi] shorter than the coefficient it names, so a call that
+   reduces to the constant keeps it. *)
+let spec_math_at_the_remaining_readers () =
+  let module P = Css.Properties in
+  (* SVG 2 sec. 13.5.3 [stroke-width] is [<length-percentage> | <number>]: the
+     call lands in the branch its own type names, and the [0,inf] range keeps
+     the negative one wrapped. *)
+  decl_optimizes ~prop:"stroke-width" ~into:"1" "calc(1)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(pi)" "calc(pi)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"8" "pow(2,3)";
+  decl_optimizes ~prop:"stroke-width" ~into:"1px" "abs(-1px)";
+  (* SVG 2 sec. 13.5.5 [stroke-miterlimit], [0,inf]. *)
+  decl_optimizes ~prop:"stroke-miterlimit" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"stroke-miterlimit" ~into:"calc(-1)" "sign(-1px)";
+  (* CSS Inline 3 sec. 5.1 [initial-letter], [1,inf] on the size. *)
+  decl_optimizes ~prop:"initial-letter" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"initial-letter" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"initial-letter" ~into:"2 3" "calc(1 + 1) 3";
+  (* CSS Fonts 5 sec. 2.5 [font-size-adjust], [0,inf]. *)
+  decl_optimizes ~prop:"font-size-adjust" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"font-size-adjust" ~into:"calc(-1)" "sign(-1px)";
+  (* SVG 2 sec. 11.3 reads a bare coefficient at [baseline-shift] as a length in
+     user units, so the slot takes a call of either type. *)
+  decl_optimizes ~prop:"baseline-shift" ~into:"calc(2)" "sqrt(4)";
+  decl_optimizes ~prop:"baseline-shift" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"baseline-shift" ~into:"1px" "min(1px,2px)";
+  (* CSS Transforms 2 sec. 5 [scale] takes any [<number-percentage>], so no
+     range keeps a call wrapped here. *)
+  decl_optimizes ~prop:"scale" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"scale" ~into:"-1" "sign(-1px)";
+  (* The [<integer>] slots of CSS Multicol 2 sec. 4.2 and the [-webkit-line-
+     clamp] alias, all [1,inf]. *)
+  decl_optimizes ~prop:"-webkit-line-clamp" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"-webkit-line-clamp" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"column-count" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"column-count" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"column-count" ~into:"calc(pi)" "calc(pi)";
+  decl_optimizes ~prop:"columns" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"columns" ~into:"calc(-1)" "sign(-1px)";
+  (* The [<percentage>] slots: CSS Fonts 4 sec. 2.3 and CSS Size Adjustment 1
+     sec. 3. The [@font-face] descriptor reads through the same
+     [font-stretch]. *)
+  decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"-webkit-text-size-adjust" ~into:"50%" "calc(50%)";
+  (* CSS UI 5 sec. 7.2 [interest-delay] is [<time [0s,inf]>], so the negative
+     one Chrome computes as [0s] keeps its wrapper where the literal is
+     dropped. *)
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-1s)" "calc(-1s)";
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-2s)" "calc(-1s * 2)";
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-.5s)" "calc(-1s / 2)";
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-2s)" "calc(2 * -1s)";
+  decl_optimizes ~prop:"interest-delay" ~into:"1s" "calc(1s)";
+  (* Sec. 10.8 gives a math operand no keyword, and the literal keeps the range
+     the call is exempt from. *)
+  neg_cursor P.read_stroke_width "calc(inherit)";
+  neg_cursor P.read_stroke_width "-1";
+  neg_cursor P.read_column_count "calc(inherit)";
+  neg_cursor P.read_font_size_adjust "-1";
+  neg_cursor P.read_initial_letter "calc(inherit)";
+  neg_cursor P.read_interest_delay "-1s";
+  (* Sec. 10.12 does not lift the range off a neighbouring property: the two
+     durations Chrome refuses whatever the spelling stay refused. *)
+  neg_cursor read_duration "calc(-1s)"
+
+(* Sec. 9.1 is explicit that "width: -5px is not equivalent to width:
+   calc(-5px)", because "out-of-range values specified literally are invalid at
+   parse-time", and sec. 10.13 drops the wrapper only "of a computed value or
+   later". A minifier serialises specified values, so a call folding outside the
+   property's [0,inf] range keeps its wrapper: the literal underneath is a
+   spelling the property's own grammar refuses. The arithmetic still folds, so
+   what is kept is the shortest call, not the authored one. Chrome 153 reads
+   every wrapped row below and drops every unwrapped one. *)
+let spec_math_range_keeps_the_call () =
+  (* CSS Sizing 4 sec. 5 gives [<ratio>] the [0,inf] numbers of sec. 6.5. *)
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"1" "calc(1)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"1" "1";
+  (* CSS Backgrounds 3 sec. 4.1 gives each radius a [0,inf]
+     [<length-percentage>]; the shorthand carries the range its longhands
+     carry. *)
+  decl_optimizes ~prop:"border-radius" ~into:"calc(-1px)" "calc(-1px)";
+  (* The [<length>] guard keeps the call as authored rather than the folded one
+     ([width: calc(-5px - 5px)] is the same shape), so the arithmetic under a
+     kept wrapper stays where the author put it. *)
+  decl_optimizes ~prop:"border-radius" ~into:"calc(-1px*2)" "calc(-1px * 2)";
+  decl_optimizes ~prop:"border-radius" ~into:"1px" "calc(1px)";
+  (* CSS Flexbox 1 sec. 7.2 gives both factors a [0,inf] [<number>], through the
+     shorthand and the two longhands alike. *)
+  decl_optimizes ~prop:"flex" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"flex" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"flex" ~into:"1" "calc(1)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"flex-grow" ~into:"2" "calc(2)";
+  decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"flex-shrink" ~into:"2" "calc(2)";
+  (* CSS Inline 3 sec. 2.2 gives [line-height] a [0,inf] number and length. *)
+  decl_optimizes ~prop:"line-height" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"line-height" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"line-height" ~into:"1.5" "calc(1.5)";
+  (* CSS Text 4 sec. 4.2 [tab-size], [0,inf]. *)
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"tab-size" ~into:"4" "calc(4)";
+  (* CSS Animations 1 sec. 3.4 [animation-iteration-count], [0,inf], and the
+     shorthand slot that reads through it. *)
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1),2"
+    "sign(-1px),2";
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"2" "calc(2)";
+  (* The shorthand normalises the slots it holds, so the count folds where the
+     longhand folds instead of waiting for a second pass over the output. *)
+  decl_optimizes ~prop:"animation" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"animation" ~into:"2s linear 3" "2s linear calc(1 + 2)";
+  (* SVG 2 sec. 13.5.4 makes a negative dash length an error, so each item
+     carries the range whichever branch of [<length-percentage> | <number>] it
+     took. *)
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1px)" "calc(-1px)";
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"1px" "calc(1px)";
+  (* SVG 2 sec. 13.5.3 calls a negative [stroke-width] invalid, and the number
+     branch already kept its call: the length branch carries the same range. *)
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(-1px)" "calc(-1px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(2px - 3px)" "calc(2px - 3px)";
+  (* CSS Text 4 sec. 6.2 gives the three [hyphenate-limit-chars] counts a
+     [1,inf] [<integer>]. *)
+  decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"4" "calc(4)";
+  (* The folds that stay folds: a call landing inside the range has no reason to
+     keep a wrapper, and a property with no lower bound never grows one. *)
+  decl_optimizes ~prop:"width" ~into:"3px" "calc(1px + 2px)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "calc(.5)";
+  decl_optimizes ~prop:"width" ~into:"3.14159px" "calc(pi * 1px)";
+  decl_optimizes ~prop:"z-index" ~into:"2" "calc(2)";
+  decl_optimizes ~prop:"width" ~into:"calc(-10px)" "calc(-10px)";
+  decl_optimizes ~prop:"border-width" ~into:"calc(-1px)" "calc(-1px)";
+  decl_optimizes ~prop:"width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"margin" ~into:"-10px" "calc(-10px)";
+  decl_optimizes ~prop:"scale" ~into:"-1" "sign(-1px)"
+
+(* Minified output is input: every declaration Cascade writes has to read back
+   through Cascade's own grammar, with no warning and no second fold. The ten
+   properties below each folded a math function to a literal their own reader
+   refuses, so each one wrote CSS it could not read. *)
+let decl_reads_back ~prop input =
+  let wrap v = String.concat "" [ ".x{"; prop; ":"; v; "}" ] in
+  let minify p = Css.to_string ~minify:true (Css.optimize p) |> String.trim in
+  match Css.of_string ~strict:false (wrap input) with
+  | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
+  | Ok p -> (
+      let out = minify p.stylesheet in
+      match Css.of_string ~strict:true out with
+      | Error e ->
+          Alcotest.failf "%s wrote %S, which it refuses to read: %s"
+            (wrap input) out (Error.to_string e)
+      | Ok back ->
+          (* A second pass must not move: a value that folds again was never
+             minified, it was only half-folded. *)
+          Alcotest.(check string)
+            (String.concat "" [ wrap input; " is a fixed point" ])
+            out (minify back.stylesheet))
+
+let spec_minified_output_reads_back () =
+  let reads_back prop = List.iter (decl_reads_back ~prop) in
+  reads_back "aspect-ratio" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)"; "1" ];
+  reads_back "border-radius" [ "calc(-1px)"; "calc(-1px * 2)"; "1px" ];
+  reads_back "flex" [ "sign(-1px)"; "calc(-1)"; "calc(1)" ];
+  reads_back "flex-grow" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)" ];
+  reads_back "flex-shrink" [ "sign(-1px)"; "calc(-1)"; "calc(2)" ];
+  reads_back "line-height" [ "sign(-1px)"; "calc(-1)"; "calc(1.5)" ];
+  reads_back "tab-size" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)" ];
+  reads_back "animation-iteration-count"
+    [ "sign(-1px)"; "calc(-1)"; "sign(-1px),2" ];
+  reads_back "animation" [ "sign(-1px)"; "calc(-1)"; "2s linear calc(1 + 2)" ];
+  reads_back "stroke-dasharray" [ "calc(-1px)"; "sign(-1px)"; "calc(1px)" ];
+  reads_back "stroke-width" [ "calc(-1px)"; "calc(2px - 3px)"; "sign(-1px)" ];
+  reads_back "hyphenate-limit-chars" [ "sign(-1px)"; "calc(-1)"; "calc(4)" ];
+  (* The durations the sibling range guard already keeps, pinned here so the
+     fixed-point half of the property covers them too. *)
+  reads_back "transition-duration" [ "calc(120ms)"; "calc(1s + 200ms)" ];
+  reads_back "interest-delay" [ "calc(-1s)" ]
 
 let test_attr_syntax () =
   check_attr_syntax "<length>";
@@ -1850,7 +2286,12 @@ let test_calc_operator_whitespace () =
   check_length ~minify:false "calc((1px) - (2px))";
   check_length ~minify:false "calc((1px + 2px) - 3px)";
   check_length ~minify:false "calc(min(1px, 2px) - 3px)";
-  check_length ~minify:false "calc(sqrt(4) - 1px)";
+  (* [calc(sqrt(4) - 1px)] is the one rejection above whose spaced spelling does
+     not come back: sec. 10.9 Type Checking adds the types at a [-], and a
+     [<number>] beside a [<length>] returns failure, which is the whole
+     calculation's type. The whitespace rule keeps its math-function operand in
+     the [min(1px, 2px)] row above. *)
+  neg_cursor read_length "calc(sqrt(4) - 1px)";
   check_length ~minify:false "calc(sqrt(4 - 1) * 1px)";
   check_length ~minify:false "calc(1px * 2 - 1px)";
   check_length ~minify:false ~expected:"calc(100% - 10px)"
@@ -1927,6 +2368,18 @@ let value_tests =
     test_case "spec color invalid mutation matrix" `Quick
       spec_color_invalid_mutation_matrix;
     test_case "spec math function edges" `Quick spec_math_function_edges;
+    test_case "spec math operand range" `Quick spec_math_operand_range;
+    test_case "spec bare math functions" `Quick spec_bare_math_functions;
+    test_case "spec math result type" `Quick spec_math_result_type;
+    test_case "spec math sum type check" `Quick spec_math_sum_type_check;
+    test_case "spec stepped value dimensions" `Quick
+      spec_stepped_value_dimensions;
+    test_case "spec math at the remaining readers" `Quick
+      spec_math_at_the_remaining_readers;
+    test_case "spec math range keeps the call" `Quick
+      spec_math_range_keeps_the_call;
+    test_case "spec minified output reads back" `Quick
+      spec_minified_output_reads_back;
   ]
 
 let suite = ("values", value_tests)

@@ -58,14 +58,38 @@ let rec var_refs_in_components acc (components : Component.t list) =
       | Component.Preserved _ -> acc)
     acc components
 
-let var_refs_in_value_string value =
+let components_of_value_string value =
   let p = Parser.of_string value in
   let rec collect acc =
     match Parser.next p with
     | Component.Preserved { Token.kind = Token.Eof; _ } -> List.rev acc
     | c -> collect (c :: acc)
   in
-  var_refs_in_components [] (collect [])
+  collect []
+
+let var_refs_in_value_string value =
+  var_refs_in_components [] (components_of_value_string value)
+
+(* CSS Values 5 calls var(), attr() and env() arbitrary substitution functions:
+   what each stands for is known only while an element is being styled. Walks
+   into arguments and blocks, so one nested in another's fallback still counts,
+   and a [var(] inside a string or url stays an atomic [Preserved] token rather
+   than a [Func], as it does for the reference walk above. *)
+let rec substitution_fn_in_components (components : Component.t list) =
+  List.find_map
+    (fun (c : Component.t) ->
+      match c with
+      | Component.Func { node = { name; arguments; _ }; _ } -> (
+          match String.lowercase_ascii name with
+          | ("var" | "attr" | "env") as fn -> Option.Some fn
+          | _ -> substitution_fn_in_components arguments)
+      | Component.Block { node = { value; _ }; _ } ->
+          substitution_fn_in_components value
+      | Component.Preserved _ -> Option.None)
+    components
+
+let substitution_fn_in_value_string value =
+  substitution_fn_in_components (components_of_value_string value)
 
 (** Pretty-print a syntax descriptor to CSS syntax string *)
 let rec pp_syntax_inner : type a. a syntax Pp.t =
@@ -399,7 +423,7 @@ let rec vars_of_length (value : Values.length) : any_var list =
   | Round (_, value, step) -> vars_of_length value @ vars_of_length step
   | Mod (a, b) | Rem_fn (a, b) -> vars_of_length a @ vars_of_length b
   | Hypot values -> List.concat_map vars_of_length values
-  | Abs value | Sign value -> vars_of_length value
+  | Abs value -> vars_of_length value
   | Calc_size (basis, calc) -> vars_of_length basis @ vars_of_calc calc
   | Anchor (_, _, Some fallback) -> vars_of_length fallback
   | _ -> []
@@ -999,11 +1023,10 @@ let vars_of_vertical_align (value : Properties.vertical_align) : any_var list =
 let vars_of_will_change (value : Properties.will_change) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
-let rec vars_of_opacity (value : Properties.opacity) : any_var list =
+let vars_of_opacity (value : Properties.opacity) : any_var list =
   match value with
   | Opacity_number _ -> []
   | Calc calc -> vars_of_calc calc
-  | Abs v | Sign v -> vars_of_opacity v
   | Var v -> [ V v ]
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
@@ -1589,8 +1612,11 @@ let rec vars_of_animation_iteration_count
   | Count n -> vars_of_number_value n
   | _ -> []
 
-let vars_of_transition_behavior (value : Properties.transition_behavior) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_transition_behavior (value : Properties.transition_behavior) =
+  match value with
+  | Var v -> [ V v ]
+  | Behaviors l -> List.concat_map vars_of_transition_behavior l
+  | _ -> []
 
 let vars_of_overlay (value : Properties.overlay) =
   match value with Var v -> [ V v ] | _ -> []
