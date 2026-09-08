@@ -4561,7 +4561,16 @@ let test_place_items () =
   (* The && is order-free, but the modifier is only read before the keyword. *)
   neg_cursor ~allow_partial:true read_place_items "baseline first";
   neg_cursor ~allow_partial:true read_place_items "baseline last";
-  neg_cursor read_place_items "invalid-place"
+  neg_cursor read_place_items "invalid-place";
+  (* sec. 5.2 spells the shorthand [<'align-items'> <'justify-items'>?], and
+     [stretch] is one value of each, so the slot after it is an ordinary
+     justify-items value rather than a repeat of the keyword. Chrome 153 reads
+     each of these and computes align-items: stretch beside the second half. *)
+  check_place_items "stretch center";
+  check_place_items "stretch normal";
+  check_place_items "stretch safe center";
+  check_place_items ~expected:"stretch" "stretch stretch";
+  check_place_items "center stretch"
 
 let test_box_decoration_break () =
   check_box_decoration_break "clone";
