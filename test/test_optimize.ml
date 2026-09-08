@@ -2212,6 +2212,19 @@ let test_authored_dimension_reaches_fixpoint () =
       "a{columns:+12em}b{columns:12em}";
     ]
 
+let test_unwrapped_calc_leaf_reaches_fixpoint () =
+  (* [pp_min] prints without running a pass, which is the mode that asks whether
+     the printer is a serialiser. Dropping a [calc()] wrapper there leaves a
+     leaf that is no longer a calc operand, so the next reader gives it the
+     spelling a leaf takes on its own, and for [animation] the unwrapped [1] is
+     the slot's initial and the whole shorthand collapses. *)
+  assert_emission_is_a_fixed_point ~emit:pp_min "pp minify"
+    [
+      "a{transition-duration:calc(120ms)}";
+      "a{animation-duration:calc(120ms)}";
+      "a{animation:calc(1)}";
+    ]
+
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
      wins). The later .y carries the first .x's value, but grouping it with that
@@ -5568,6 +5581,9 @@ let selector_merging_tests =
     ( "authored dimension reaches fixpoint in one pass",
       `Quick,
       test_authored_dimension_reaches_fixpoint );
+    ( "unwrapped calc leaf reaches fixpoint in one pass",
+      `Quick,
+      test_unwrapped_calc_leaf_reaches_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,
