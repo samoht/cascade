@@ -673,6 +673,25 @@ let rec minify_angle_arg : angle_arg -> angle_arg = function
       | inner -> inner)
   | arg -> arg
 
+let round_to_step strategy value step =
+  if step = 0. then value
+  else
+    let q = value /. step in
+    let q =
+      match strategy with
+      | "up" -> Float.ceil q
+      | "down" -> Float.floor q
+      | "to-zero" -> Float.trunc q
+      | _ -> Float.round q
+    in
+    q *. step
+
+let mod_value a b =
+  if b = 0. then a
+  else
+    let q = Float.floor (a /. b) in
+    a -. (q *. b)
+
 let rec pp_math_arg ctx = function
   | Lit f -> pp_calc_number ctx f
   | Dim (f, unit_) -> Pp.unit ctx f unit_
@@ -720,6 +739,19 @@ and pp_math_fn ctx fn =
   | Hypot args -> call "hypot" args
   | Sign_n a -> call "sign" [ a ]
   | Abs_n a -> call "abs" [ a ]
+  | Round_n (strategy, value, step) ->
+      (* Sec. 10.9 defaults the strategy to [nearest], so the keyword is the
+         longer spelling of the same call and is dropped. *)
+      Pp.string ctx "round(";
+      if not (String.equal strategy "nearest") then (
+        Pp.string ctx strategy;
+        Pp.comma ctx ());
+      pp_math_arg ctx value;
+      Pp.comma ctx ();
+      pp_math_arg ctx step;
+      Pp.char ctx ')'
+  | Mod_n (a, b) -> call "mod" [ a; b ]
+  | Rem_n (a, b) -> call "rem" [ a; b ]
 
 and pp_angle_arg ctx arg =
   match if Pp.minified ctx then minify_angle_arg arg else arg with
@@ -812,6 +844,10 @@ and eval_math_fn fn =
           else v)
         a
   | Abs_n a -> unary Float.abs a
+  | Round_n (strategy, value, step) ->
+      binary (round_to_step strategy) value step
+  | Mod_n (a, b) -> binary mod_value a b
+  | Rem_n (a, b) -> binary Float.rem a b
 
 (* What a static math function reduces to: a plain coefficient, or one that
    carries a unit. CSS Values 4 sec. 10.7 gives [abs()] and [hypot()] the type
@@ -888,10 +924,23 @@ and math_fn_result (fn : math_fn) : math_result option =
             | Some unit -> United (root, unit)
             | None -> Scalar root)
       | _ -> Option.none)
+  | Round_n (strategy, value, step) ->
+      stepped_result (round_to_step strategy) value step
+  | Mod_n (a, b) -> stepped_result mod_value a b
+  | Rem_n (a, b) -> stepped_result Float.rem a b
   (* Every other math function is typed [<number>] in, [<number>] out, bar the
      inverse trig functions, whose [<angle>] result only the angle evaluator can
      place. *)
   | _ -> Option.map (fun v -> Scalar v) (eval_math_fn fn)
+
+(* Sec. 10.9 gives the stepped-value functions arguments of one type and answers
+   with that type, so two units have to match and the result keeps theirs. *)
+and stepped_result f a b =
+  match (math_arg_result a, math_arg_result b) with
+  | Some (Scalar a), Some (Scalar b) -> Option.some (Scalar (f a b))
+  | Some (United (a, u)), Some (United (b, v)) when String.equal u v ->
+      Option.some (United (f a b, u))
+  | _ -> Option.none
 
 (* CSS Values 4 (ED) sec. 10.9.2: NaN belongs to a calculation tree and has no
    leaf spelling outside one, so folding a math function down to a NaN would
@@ -936,7 +985,12 @@ and math_fn_contains_var = function
   | Sin a | Cos a | Tan a -> angle_arg_contains_var a
   | Asin a | Acos a | Atan a | Sqrt a | Exp a | Sign_n a | Abs_n a ->
       math_arg_contains_var a
-  | Atan2 (a, b) | Log (a, Some b) | Pow (a, b) ->
+  | Atan2 (a, b)
+  | Log (a, Some b)
+  | Pow (a, b)
+  | Round_n (_, a, b)
+  | Mod_n (a, b)
+  | Rem_n (a, b) ->
       math_arg_contains_var a || math_arg_contains_var b
   | Log (a, None) -> math_arg_contains_var a
   | Hypot args -> List.exists math_arg_contains_var args
@@ -2634,25 +2688,6 @@ let alpha_is_full = function
   | Num 1.0 -> true
   | Pct 100.0 -> true
   | _ -> false
-
-let round_to_step strategy value step =
-  if step = 0. then value
-  else
-    let q = value /. step in
-    let q =
-      match strategy with
-      | "up" -> Float.ceil q
-      | "down" -> Float.floor q
-      | "to-zero" -> Float.trunc q
-      | _ -> Float.round q
-    in
-    q *. step
-
-let mod_value a b =
-  if b = 0. then a
-  else
-    let q = Float.floor (a /. b) in
-    a -. (q *. b)
 
 (* Byte value [0..255] for an alpha component, when the alpha is a static number
    or percentage. Returns [None] for symbolic forms ([Var] / [Calc]) that can't
@@ -5271,14 +5306,6 @@ let read_binary_call name make read_x t =
       Cursor.expect_eof inner;
       make a b)
 
-let read_numeric_arg inner = Cursor.number inner
-
-let read_numeric_round : type a. Cursor.t -> a calc =
- fun t -> Num (read_round_call round_to_step read_numeric_arg t)
-
-let read_numeric_rem : type a. Cursor.t -> a calc =
- fun t -> Num (read_binary_call "rem" Float.rem read_numeric_arg t)
-
 let read_var_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   if Cursor.looking_at_func "var" t then Var (read_var read_a t)
@@ -5334,6 +5361,24 @@ let skip_sum_operator t ~ws_before =
   Cursor.skip t;
   if not (Cursor.skip_ws t) then
     Cursor.err t "expected whitespace after '+' or '-'"
+
+(* Sec. 10.9 requires the arguments of a stepped-value function to "have a
+   consistent type or else the function is invalid" and answers with that type,
+   so a pair whose units do not combine is no calculation at all. A [var()] is
+   substituted before the type check, so it defers rather than fails.
+
+   A [<number>] result is the coefficient itself: folding it here keeps the call
+   out of the calculation tree, where it would read as a type the inference
+   cannot place and would then stand at a [<length>] slot that takes no number.
+   A result carrying a unit is the one the tree has to hold. *)
+let checked_stepped_call : type a. Cursor.t -> math_fn -> a calc =
+ fun t fn ->
+  match math_fn_result fn with
+  | Some (Scalar v) -> Num v
+  | Some (United _) -> Math_fn fn
+  | None ->
+      if math_fn_contains_var fn then Math_fn fn
+      else Cursor.err_invalid t "inconsistent stepped-value arguments"
 
 let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -5412,9 +5457,13 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
       match String.lowercase_ascii name with
-      | "round" -> read_numeric_round t
-      | "rem" -> read_numeric_rem t
-      | "mod" -> read_numeric_binary_call "mod" mod_value t
+      (* CSS Values 4 (ED) sec. 10.9 spells all three arguments [<calc-sum>], so
+         a dimension is one, and answers with the arguments' own type: the call
+         is read into the typed [Math_fn] AST rather than folded to a
+         coefficient, which is what kept it out of a [<length>] slot. *)
+      | "round" -> read_stepped_round t
+      | "mod" -> read_stepped_binary "mod" (fun a b -> Mod_n (a, b)) t
+      | "rem" -> read_stepped_binary "rem" (fun a b -> Rem_n (a, b)) t
       | "min" -> read_numeric_list_call "min" Float.min Float.infinity t
       | "max" -> read_numeric_list_call "max" Float.max Float.neg_infinity t
       | "clamp" -> read_numeric_clamp t
@@ -5594,18 +5643,21 @@ and read_angle_call_arg name t : angle_arg =
       Cursor.expect_eof inner;
       arg)
 
-and read_numeric_binary_call : type a.
-    string -> (float -> float -> float) -> Cursor.t -> a calc =
- fun name fn t ->
-  Num
-    (Cursor.call name t (fun inner ->
-         let a = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let b = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         fn a b))
+and read_math_arg_ws t =
+  Cursor.ws t;
+  read_math_arg t
+
+and read_stepped_round : type a. Cursor.t -> a calc =
+ fun t ->
+  checked_stepped_call t
+    (read_round_call
+       (fun strategy value step -> (Round_n (strategy, value, step) : math_fn))
+       read_math_arg_ws t)
+
+and read_stepped_binary : type a.
+    string -> (math_arg -> math_arg -> math_fn) -> Cursor.t -> a calc =
+ fun name mk t ->
+  checked_stepped_call t (read_binary_call name mk read_math_arg_ws t)
 
 and read_numeric_list_call : type a.
     string -> (float -> float -> float) -> float -> Cursor.t -> a calc =

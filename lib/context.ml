@@ -982,7 +982,12 @@ module Calc_residual = struct
     | Values.Sign_n a
     | Values.Abs_n a ->
         math_arg_contains_var a
-    | Values.Atan2 (a, b) | Values.Log (a, Some b) | Values.Pow (a, b) ->
+    | Values.Atan2 (a, b)
+    | Values.Log (a, Some b)
+    | Values.Pow (a, b)
+    | Values.Round_n (_, a, b)
+    | Values.Mod_n (a, b)
+    | Values.Rem_n (a, b) ->
         math_arg_contains_var a || math_arg_contains_var b
     | Values.Log (a, None) -> math_arg_contains_var a
     | Values.Hypot args -> List.exists math_arg_contains_var args

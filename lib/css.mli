@@ -735,6 +735,10 @@ and math_fn = Values.math_fn =
   | Hypot of math_arg list
   | Sign_n of math_arg
   | Abs_n of math_arg
+  | Round_n of string * math_arg * math_arg
+      (** Sec. 10.9 [round(<rounding-strategy>?, A, B)]. *)
+  | Mod_n of math_arg * math_arg
+  | Rem_n of math_arg * math_arg
 
 (** [sin] / [cos] / [tan] arg: an [<angle>] or unitless [<number>] (radians).
     {!constructor-Operation} and {!constructor-Grouped} support arithmetic over

@@ -77,6 +77,11 @@ and math_fn =
   | Hypot of math_arg list
   | Sign_n of math_arg
   | Abs_n of math_arg
+  | Round_n of string * math_arg * math_arg
+      (** Sec. 10.9 [round(<rounding-strategy>?, A, B)]. The strategy is a
+          keyword rather than an operand; the default is [nearest]. *)
+  | Mod_n of math_arg * math_arg
+  | Rem_n of math_arg * math_arg
 
 (** [sin] / [cos] / [tan] accept an [<angle>] or unitless [<number>] expression
     (treated as radians). Arithmetic over angles ([22deg + 23deg]) and
