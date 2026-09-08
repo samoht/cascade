@@ -1510,6 +1510,27 @@ let background_initial_slots () =
   check_declaration ~expected:"background:url(a.png)red"
     ~optimized:"background:url(a.png)red" "background: url(a.png) red"
 
+(* CSS Backgrounds 3 (ED) sec. 2.1 orders a layer's slots, not the author's
+   words, so pp writes the image before the colour whichever way round they were
+   read. [background: red var(--x)] therefore prints [var(--x)red], and that
+   emission is only readable as the layer it came from if a leading [var()] with
+   more behind it fills the image slot rather than standing for the whole
+   value. *)
+let background_leading_var_slot () =
+  check_declaration ~expected:"background:var(--x)red"
+    "background: red var(--x)";
+  check_declaration ~expected:"background:var(--x)red"
+    "background: var(--x) red";
+  check_declaration ~expected:"background:var(--x)no-repeat"
+    "background: no-repeat var(--x)";
+  check_declaration ~expected:"background:var(--x)no-repeat"
+    "background: var(--x) no-repeat";
+  (* Controls: a [var()] that reaches the value boundary is still the whole
+     value, and a run of them is still the run. *)
+  check_declaration ~expected:"background:var(--x)" "background: var(--x)";
+  check_declaration ~expected:"background:var(--a) var(--b)"
+    "background: var(--a) var(--b)"
+
 (* CSS Backgrounds 3 (ED) sec. 2.6 gives background-position the initial value
    [0% 0%], which [0 0] and [left top] both name, so the slot drops with the
    rest. It also reads a lone value as "the second value is assumed to be
@@ -7268,6 +7289,7 @@ let declaration_tests =
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
     test_case "background initial slots" `Quick background_initial_slots;
+    test_case "background leading var slot" `Quick background_leading_var_slot;
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
