@@ -47,6 +47,14 @@ type line_height =
   | Unset
   | Revert
   | Revert_layer
+  (* CSS Values 4 sec. 10.2 comparison functions over the [<length-percentage>]
+     half of the grammar. A comparison answers with one of its arguments, and a
+     length beside a percentage resolves only at used-value time, so the call
+     stands here rather than folding; the arguments reuse [line_height], which
+     already carries [Pct], the way [length] carries its own. *)
+  | Min of line_height list
+  | Max of line_height list
+  | Clamp of line_height * line_height * line_height
   | Calc of line_height calc
   | Var of line_height var
 

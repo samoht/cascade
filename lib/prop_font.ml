@@ -1393,6 +1393,12 @@ let rec pp_line_height : line_height Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_line_height ctx v
+  | Min args -> Pp.call "min" (Pp.list ~sep:Pp.comma pp_line_height) ctx args
+  | Max args -> Pp.call "max" (Pp.list ~sep:Pp.comma pp_line_height) ctx args
+  | Clamp (low, value, high) ->
+      Pp.call "clamp"
+        (Pp.list ~sep:Pp.comma pp_line_height)
+        ctx [ low; value; high ]
   | Calc c ->
       pp_calc
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
@@ -1519,6 +1525,61 @@ let read_bare_math read t : line_height =
   | Calc (Num n) when n >= 0. -> Num n
   | value -> value
 
+(* CSS Values 4 sec. 10.2 gives min(), max() and clamp() their arguments' own
+   type, so they read at either half of sec. 5.1's [<number> |
+   <length-percentage>]. Over numbers the calc path folds the call to the
+   coefficient it answers; over a length there is no coefficient to fold to,
+   since a percentage resolves only at used-value time, so the call stands the
+   way it does at a [<length>] slot.
+
+   Sec. 10.2 also requires the arguments to have a consistent type. The number
+   path answers for a comparison of numbers, so an argument here carries a unit
+   and a bare number beside one is a mix of the two types. *)
+let read_line_height_comparison_arg t : line_height =
+  match read_line_height_length ~allow_negative:true t with
+  | Num _ | Number { unit = Option.None; _ } ->
+      Cursor.err_expected t "length or percentage"
+  | value -> value
+
+let read_line_height_list_call name mk t : line_height =
+  Cursor.call name t (fun inner ->
+      let args =
+        Cursor.list ~sep:Cursor.comma ~at_least:1
+          read_line_height_comparison_arg inner
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      mk args)
+
+let read_line_height_clamp t : line_height =
+  Cursor.call "clamp" t (fun inner ->
+      let low = read_line_height_comparison_arg inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let value = read_line_height_comparison_arg inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let high = read_line_height_comparison_arg inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Clamp (low, value, high) : line_height))
+
+(* The number path first, so a comparison whose arguments are all numbers keeps
+   folding to the coefficient it always did. *)
+let line_height_math_calls number =
+  ( "min",
+    fun t ->
+      Cursor.one_of
+        [ number; read_line_height_list_call "min" (fun a -> Min a) ]
+        t )
+  :: ( "max",
+       fun t ->
+         Cursor.one_of
+           [ number; read_line_height_list_call "max" (fun a -> Max a) ]
+           t )
+  :: ("clamp", fun t -> Cursor.one_of [ number; read_line_height_clamp ] t)
+  :: Values.math_function_calls_beside_comparisons number
+
 let rec read_line_height_in_math t : line_height =
   let read_var t : line_height = Var (read_var read_line_height_in_math t) in
   let read_calc t : line_height =
@@ -1529,7 +1590,7 @@ let rec read_line_height_in_math t : line_height =
   Cursor.enum_or_calls "line-height" []
     ~calls:
       (("var", read_var) :: ("calc", read_calc)
-      :: Values.math_function_calls (read_bare_math read_calc))
+      :: line_height_math_calls (read_bare_math read_calc))
     ~default:(read_line_height_length ~allow_negative:true)
     t
 
@@ -1551,7 +1612,7 @@ let rec read_line_height t : line_height =
     ]
     ~calls:
       (("var", read_var) :: ("calc", read_calc)
-      :: Values.math_function_calls (read_bare_math read_calc))
+      :: line_height_math_calls (read_bare_math read_calc))
     ~default:read_line_height_length t
 
 let rec read_font_palette (t : Cursor.t) : font_palette =

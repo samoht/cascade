@@ -708,6 +708,14 @@ val typed_math_function_calls :
     functions that answer the type of their arguments, for a slot that takes a
     [<length>] or another dimension rather than a [<number>]. *)
 
+val math_function_calls_beside_comparisons :
+  (Cursor.t -> 'a) -> (string * (Cursor.t -> 'a)) list
+(** [math_function_calls_beside_comparisons read] is {!math_function_calls}
+    without [min()], [max()] and [clamp()], for a slot reading those three
+    itself. CSS Values 4 sec. 10.2 answers a comparison with one of its
+    arguments, so a slot whose leaf can hold that argument reads it at its own
+    type where the shared path would fold it to a coefficient. *)
+
 val percentage_math_function_calls :
   pct:(Cursor.t -> float -> 'a) ->
   (Cursor.t -> 'a) ->

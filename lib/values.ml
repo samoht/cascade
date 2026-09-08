@@ -5982,15 +5982,18 @@ let read_percentage_clamp t =
       Cursor.expect_eof inner;
       Float.max low (Float.min value high))
 
+let math_function_calls_beside_comparisons read =
+  List.map
+    (fun n -> (n, read))
+    (computed_typed_math_function_names @ number_math_function_names)
+
 let percentage_math_function_calls ~pct read =
   ("min", fun t -> pct t (read_percentage_list_call "min" Float.min infinity t))
   :: ( "max",
        fun t -> pct t (read_percentage_list_call "max" Float.max neg_infinity t)
      )
   :: ("clamp", fun t -> pct t (read_percentage_clamp t))
-  :: List.map
-       (fun n -> (n, read))
-       (computed_typed_math_function_names @ number_math_function_names)
+  :: math_function_calls_beside_comparisons read
 
 (* Sec. 10.1 puts a math function wherever the [<percentage>] stands and makes
    [calc()] one of them rather than the gate to the rest, so both spellings

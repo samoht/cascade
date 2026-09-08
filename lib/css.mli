@@ -4695,6 +4695,13 @@ type line_height = Properties.line_height =
   | Unset
   | Revert
   | Revert_layer
+  | Min of line_height list
+  | Max of line_height list
+  | Clamp of line_height * line_height * line_height
+      (** CSS Values 4 sec. 10.2 comparison functions over the
+          [<length-percentage>] half of the grammar. A length beside a
+          percentage resolves only at used-value time, so the call stands here
+          rather than folding to one of its arguments. *)
   | Calc of line_height calc
   | Var of line_height var
 
