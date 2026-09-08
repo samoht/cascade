@@ -1673,6 +1673,17 @@ let test_line_height () =
      does. *)
   check_line_height "2ch";
   check_line_height "3cqw";
+  (* CSS Values 4 sec. 10.2 gives a comparison its arguments' own type, so it
+     reads at either half of sec. 5.1's [<number> | <length-percentage>]. A
+     comparison over numbers folds to the coefficient it answers, one over a
+     length and a percentage resolves at used-value time and keeps its call, the
+     way it does at [width]. Chrome 153 reads every row. *)
+  check_line_height ~expected:"min(120%,1px)" "min(120%, 1px)";
+  check_line_height ~expected:"clamp(0px,120%,100px)" "clamp(0px, 120%, 100px)";
+  check_line_height ~expected:"clamp(1px,2em,3%)" "clamp(1px, 2em, 3%)";
+  check_line_height ~expected:"max(1px,2px)" "max(1px, 2px)";
+  decl_optimizes ~prop:"line-height" ~into:"1" "min(1, 2)";
+  neg_cursor read_line_height "min(1px, 2)";
   neg_cursor read_line_height "0s";
   neg_cursor read_line_height "45deg";
   neg_cursor read_line_height "10zz";
