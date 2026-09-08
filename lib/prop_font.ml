@@ -1078,6 +1078,13 @@ let rec pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_font_stretch ctx v
   | Pct f -> Pp.pct ctx f
+  (* Sec. 2.3 refuses a negative width written on its own, so the wrapper comes
+     off only around a leaf that is a width by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap:(fun (v : font_stretch) ->
+          match v with Pct f -> f >= 0. | _ -> true)
+        pp_font_stretch ctx c
   | Ultra_condensed -> Pp.string ctx "ultra-condensed"
   | Extra_condensed -> Pp.string ctx "extra-condensed"
   | Condensed -> Pp.string ctx "condensed"
@@ -1105,6 +1112,12 @@ let rec pp_font_size_adjust : font_size_adjust Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Number f -> Pp.float ctx f
+  (* CSS Fonts 5 sec. 2.5 refuses a negative aspect value written on its own, so
+     the wrapper comes off only around a leaf that is one by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:(match c with Num n -> n >= 0. | _ -> true)
+        pp_font_size_adjust ctx c
   | From_font -> Pp.string ctx "from-font"
   | Metric_number (metric, f) ->
       pp_font_size_adjust_metric ctx metric;
@@ -1432,7 +1445,9 @@ let font_width_css3 : font_stretch -> font_stretch option = function
   | Pct 125. | Expanded -> Some Expanded
   | Pct 150. | Extra_expanded -> Some Extra_expanded
   | Pct 200. | Ultra_expanded -> Some Ultra_expanded
-  | Pct _ | Var _ | Inherit | Initial | Unset | Revert | Revert_layer -> None
+  | Pct _ | Calc _ | Var _ | Inherit | Initial | Unset | Revert | Revert_layer
+    ->
+      None
 
 let pp_font_width_css3 : font_stretch Pp.t =
  fun ctx width ->
@@ -2007,7 +2022,14 @@ let rec read_font_stretch t : font_stretch =
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
-  Cursor.enum_or_var "font-stretch"
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
+     stands, [calc()] being one of them rather than the gate to the rest, and
+     sec. 10.12 checks the [0,inf] range on the value it resolves to: the call
+     keeps out of [read_percentage], which is the literal's range check. *)
+  let read_math t : font_stretch =
+    Calc (read_calc ~result_type:`Value read_font_stretch t)
+  in
+  Cursor.enum_or_calls "font-stretch"
     [
       ("ultra-condensed", Ultra_condensed);
       ("extra-condensed", Extra_condensed);
@@ -2024,7 +2046,10 @@ let rec read_font_stretch t : font_stretch =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (read_var read_font_stretch t))
+    ~calls:
+      (("var", fun t -> Var (read_var read_font_stretch t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:read_percentage t
 
 let rec read_font_display t : font_display =
@@ -2468,12 +2493,46 @@ let rec normalize_font_weight : font_weight -> font_weight = function
       | folded -> if folded == c then value else Calc folded)
   | value -> value
 
+let rec numeric_size_adjust_calc_leaves :
+    font_size_adjust calc -> font_size_adjust calc = function
+  | Val (Number n) -> Num n
+  | Nested inner -> Nested (numeric_size_adjust_calc_leaves inner)
+  | Parens inner -> Parens (numeric_size_adjust_calc_leaves inner)
+  | Expr (left, op, right) ->
+      Expr
+        ( numeric_size_adjust_calc_leaves left,
+          op,
+          numeric_size_adjust_calc_leaves right )
+  | other -> other
+
+let rec normalize_font_size_adjust : font_size_adjust -> font_size_adjust =
+  function
+  (* CSS Fonts 5 sec. 2.5 spells the aspect value [<number [0,inf]>], and CSS
+     Values 4 sec. 10.12 clamps a math function past that range at
+     computed-value time: unwrapping a negative one would write CSS a browser
+     drops. *)
+  | Calc c as value -> (
+      match eval_calc (numeric_size_adjust_calc_leaves c) with
+      | Num n when n >= 0. -> Number n
+      | Val v -> normalize_font_size_adjust v
+      | folded -> if folded == c then value else Calc folded)
+  | value -> value
+
 (* sec. 2.3 maps each width keyword onto a percentage, and getComputedStyle()
    serializes the property as a percentage however the value was written, so the
    keyword and its percentage name one width and the percentage is never
    longer. *)
-let normalize_font_stretch (value : font_stretch) : font_stretch =
-  match font_stretch_pct value with Some pct -> Pct pct | None -> value
+let rec normalize_font_stretch (value : font_stretch) : font_stretch =
+  match value with
+  (* Sec. 2.3 spells the width [<percentage [0,inf]>], and CSS Values 4 sec.
+     10.12 clamps a math function past that range at computed-value time:
+     unwrapping a negative one would write CSS a browser drops. *)
+  | Calc c -> (
+      match eval_calc c with
+      | Val (Pct p as leaf) when p >= 0. -> normalize_font_stretch leaf
+      | folded -> if folded == c then value else Calc folded)
+  | value -> (
+      match font_stretch_pct value with Some pct -> Pct pct | None -> value)
 
 (* sec. 2.1 has the user agent walk the family list until one matches, so an
    entry repeating an earlier one is never reached and names nothing: drop it,
@@ -2604,7 +2663,14 @@ let rec read_font_size_adjust t : font_size_adjust =
         Metric_from_font metric
     | _ -> Metric_number (metric, read_non_negative_number t)
   in
-  Cursor.enum_or_var "font-size-adjust"
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<number>] stands,
+     [calc()] being one of them rather than the gate to the rest, and sec. 10.12
+     checks the [0,inf] range on the value it resolves to: the call keeps out of
+     [read_non_negative_number], which is the literal's range check. *)
+  let read_math t : font_size_adjust =
+    Calc (read_calc ~result_type:`Number read_font_size_adjust t)
+  in
+  Cursor.enum_or_calls "font-size-adjust"
     [
       ("none", (None : font_size_adjust));
       ("from-font", From_font);
@@ -2614,7 +2680,10 @@ let rec read_font_size_adjust t : font_size_adjust =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_font_size_adjust t))
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_font_size_adjust t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       match Cursor.peek_ident t with
       | Some _ -> read_metric_value t

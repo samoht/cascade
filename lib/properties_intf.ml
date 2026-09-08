@@ -1521,6 +1521,10 @@ type initial_letter =
   | Raise
   | Size of float
   | Size_sink of float * int
+  | Calc of initial_letter calc * int option
+      (** A math function in the size slot. CSS Values 4 sec. 10.12 checks the
+          [1,inf] range on what it resolves to, so a call the literal grammar
+          refuses is still a declaration. *)
   | Inherit
   | Initial
   | Unset
@@ -2017,6 +2021,10 @@ type font_family =
 
 type font_stretch =
   | Pct of float
+  | Calc of font_stretch calc
+      (** CSS Values 4 sec. 10.1 puts a math function where the [<percentage>]
+          stands, and sec. 10.12 checks the [0,inf] range on what it resolves
+          to. *)
   | Ultra_condensed
   | Extra_condensed
   | Condensed
@@ -2075,6 +2083,10 @@ type font_size_adjust_metric =
 type font_size_adjust =
   | None
   | Number of float
+  | Calc of font_size_adjust calc
+      (** CSS Values 4 sec. 10.1 puts a math function where the [<number>]
+          stands, and sec. 10.12 checks the [0,inf] range on what it resolves
+          to, so a call the literal grammar refuses is still a declaration. *)
   | From_font
   | Metric_number of font_size_adjust_metric * float
   | Metric_from_font of font_size_adjust_metric
@@ -4179,6 +4191,10 @@ type columns_value =
       (** [auto <column-count>]: an explicit [auto] column-width paired with a
           count, e.g. [columns: auto 3]. Distinct from [Count] (bare
           [columns: 3]) so the explicit-[auto] spelling round-trips. *)
+  | Count_calc of columns_value calc
+      (** A count given as a math function with no width beside it. CSS Values 4
+          sec. 10.12 checks the [1,inf] range on what it resolves to, so a call
+          the literal grammar refuses is still a declaration. *)
   | Inherit
   | Initial
   | Unset
@@ -4201,6 +4217,10 @@ type column_width =
 type column_count =
   | Auto
   | Count of int
+  | Calc of column_count calc
+      (** CSS Values 4 sec. 10.1 puts a math function where the [<integer>]
+          stands, and sec. 10.12 checks the [1,inf] range on what it resolves
+          to, so a call the literal grammar refuses is still a declaration. *)
   | Inherit
   | Initial
   | Unset
@@ -4428,6 +4448,10 @@ type fill_rule =
     gives the dash lengths the same shape. A negative width is invalid. *)
 type stroke_width =
   | Number of float
+  | Calc of stroke_width calc
+      (** A math function answering the [<number>] branch. CSS Values 4 sec.
+          10.12 checks the [0,inf] range on what it resolves to, so a call the
+          literal grammar refuses is still a declaration. *)
   | Length of length_percentage
   | Inherit
   | Initial
@@ -4681,6 +4705,10 @@ type text_size_adjust =
   | None
   | Auto
   | Pct of float
+  | Calc of text_size_adjust calc
+      (** CSS Values 4 sec. 10.1 puts a math function where the [<percentage>]
+          stands, and sec. 10.12 checks the [0,inf] range on what it resolves
+          to. *)
   | Inherit
   | Initial
   | Unset

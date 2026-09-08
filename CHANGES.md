@@ -30,10 +30,15 @@ entry points both moved.
   and `border-top-width: hypot(3px, 4px)` read where they were dropped. CSS
   Values 4 sec. 10.6 gives `abs()` the type of its input and `sign()` a
   `<number>` whatever goes in, so `width: sign(-1px)` is dropped where
-  `opacity: sign(-1px)` reads. `Cascade.Properties.font_weight`,
+  `opacity: sign(-1px)` reads, and `round()`, `mod()` and `rem()` take the
+  dimension arguments sec. 10.9 grants them, so `border-top-width:
+  round(1.5px, 1px)` reads where only `width` did. Thirteen readers that
+  admitted no math at all now do, among them `stroke-width`, `initial-letter`,
+  `font-size-adjust`, `baseline-shift`, `columns`, `font-stretch` and
+  `interest-delay`. `Cascade.Properties.font_weight`,
   `webkit_line_clamp`, `zoom`, `border_image_slice_item` and
   `shape_image_threshold` gain `Calc`, and `grid_line` gains `Calc_name`
-  (#1072, #1086, #1124, #1125, #1126, #1145)
+  (#1072, #1086, #1124, #1125, #1126, #1145, #1148)
 - A math function takes only the operands CSS Values 4 sec. 10.8 grants, so
   `width: calc(inherit)`, `height: calc(auto)`, `border-width: calc(medium)`,
   `width: calc(fit-content(20rem))` and `width: min(unset, 1px)` are dropped

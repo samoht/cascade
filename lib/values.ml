@@ -4049,11 +4049,17 @@ let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     ~zero:(Val (S 0.) : duration calc)
     ~ctx c
 
+(* The [<time>] counterpart of [negative_length]: a duration a property whose
+   range starts at [0s] refuses when it is written as a literal. *)
+let negative_duration : duration -> bool = function
+  | Ms f | S f -> f < 0.
+  | _ -> false
+
 (* Choose equivalent time units and evaluate static stepped functions in the
    AST, before declaration hashes are compared. *)
 let rec normalize_duration ?(ctx = default_calc_ctx) ?(canonicalize_ms = true)
-    (d : duration) : duration =
-  let normalize = normalize_duration ~ctx ~canonicalize_ms in
+    ?(non_negative = false) (d : duration) : duration =
+  let normalize = normalize_duration ~ctx ~canonicalize_ms ~non_negative in
   let preserve rebuilt = if rebuilt = d then d else rebuilt in
   match d with
   | Ms f when canonicalize_ms ->
@@ -4085,6 +4091,11 @@ let rec normalize_duration ?(ctx = default_calc_ctx) ?(canonicalize_ms = true)
       | _ -> preserve (Mod (a, b)))
   | Calc c -> (
       match eval_time_calc ~ctx c with
+      (* CSS Values 4 sec. 10.12 clamps a math function past the property's
+         range at computed-value time and keeps the declaration, so folding one
+         to a literal the reader then refuses would drop it: keep the call. *)
+      | Val v when non_negative && negative_duration v ->
+          preserve (Calc (Val v))
       | Val v -> normalize v
       | folded -> preserve (Calc folded))
   | Var v ->
@@ -4983,8 +4994,14 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
      output stay as authored - a [var()] fallback among them. Shortening one
      here would print two unequal declarations alike and lose them a
      factoring. *)
+  (* A negative time has no spelling at a property whose range starts at [0s],
+     and which properties those are is not knowable here, so the wrapper stays
+     on a leaf that reads back differently without it. *)
   | Calc c ->
-      pp_calc_with ~unwrap_num:false (pp_duration_with ~shorten_ms:false) ctx c
+      pp_calc_with ~unwrap_num:false
+        ~unwrap:(fun d -> not (negative_duration d))
+        (pp_duration_with ~shorten_ms:false)
+        ctx c
 
 let pp_duration : duration Pp.t = pp_duration_with ~shorten_ms:true
 let pp_duration_preserve_ms : duration Pp.t = pp_duration_with ~shorten_ms:false
@@ -7421,9 +7438,10 @@ let duration_css_wide =
 (* CSS Values 4 (ED) sec. 6.2: "the unit may be omitted [...] only for zero
    lengths", so a bare [0] is not a time. Reading one as [0s] turned input a
    browser refuses into a declaration that works. *)
-let read_duration_number ~canonicalize_ms:_ t : duration =
+let read_duration_number ~allow_negative t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
-  if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
+  if (not allow_negative) && n < 0.0 then
+    Cursor.err_invalid t "negative durations are not allowed"
   else
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
@@ -7446,39 +7464,45 @@ let read_duration_round read_duration_self t =
     (fun s v step -> (Round (s, v, step) : duration))
     read_duration_self t
 
-let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
-  let read_duration_self t = read_duration_with ~css_wide ~canonicalize_ms t in
+let rec read_duration_with ?(css_wide = true) ?(allow_negative = false)
+    ~canonicalize_ms t : duration =
+  (* CSS Values 4 sec. 10.8 gives a math operand no keyword, and sec. 10.12
+     checks the property's range on the value the whole calculation resolves to
+     rather than on each operand: whether a negative one stands is the caller's
+     [allow_negative], not the operand reader's. *)
+  let read_operand t =
+    read_duration_with ~css_wide:false ~allow_negative ~canonicalize_ms:false t
+  in
   Cursor.enum_or_calls
-    ~default:(read_duration_number ~canonicalize_ms)
+    ~default:(read_duration_number ~allow_negative)
     "duration"
     (if css_wide then duration_css_wide else [])
     ~calls:
       [
-        ("var", fun t -> Var (read_var read_duration_self t));
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Value read_duration_in_calc t)
-        );
-        ("round", read_duration_round read_duration_self);
+        ( "var",
+          fun t ->
+            Var
+              (read_var
+                 (read_duration_with ~css_wide ~allow_negative ~canonicalize_ms)
+                 t) );
+        ("calc", fun t -> Calc (read_calc ~result_type:`Value read_operand t));
+        ("round", read_duration_round read_operand);
         ( "rem",
           read_binary_call "rem"
             (fun a b -> (Rem (a, b) : duration))
-            read_duration_self );
+            read_operand );
         ( "mod",
           read_binary_call "mod"
             (fun a b -> (Mod (a, b) : duration))
-            read_duration_self );
+            read_operand );
       ]
     t
 
 (** Read a duration value *)
-and read_duration_in_calc t : duration =
-  read_duration_with ~css_wide:false ~canonicalize_ms:false t
-
-(** Read a duration value *)
 let read_duration t : duration = read_duration_with ~canonicalize_ms:true t
 
-let read_duration_preserve_ms t : duration =
-  read_duration_with ~canonicalize_ms:false t
+let read_duration_preserve_ms ?allow_negative t : duration =
+  read_duration_with ?allow_negative ~canonicalize_ms:false t
 
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
@@ -7730,14 +7754,13 @@ let rec read_number_percentage_dim_only t : number_percentage =
 let rec read_number_percentage t : number_percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
-  else if Cursor.looking_at_calc t then
+  else if Cursor.looking_at_calc t || looking_at_math_function t then
+    (* CSS Values 4 sec. 10.1 puts every math function where [calc()] stands,
+       and sec. 10.12 checks the property's range on what the call resolves to,
+       so the call is held rather than folded to a literal the reader would then
+       refuse. *)
     Calc
       (read_calc ~result_type:`Number_or_value read_number_percentage_dim_only t)
-  else if
-    Cursor.looking_at_func "min" t
-    || Cursor.looking_at_func "max" t
-    || Cursor.looking_at_func "clamp" t
-  then Num (read_numeric_expression t)
   else
     (* Try to read as percentage or number *)
     Cursor.one_of

@@ -4498,6 +4498,10 @@ let normalize_property_value : type a.
   | Webkit_line_clamp -> normalize_webkit_line_clamp value
   | Font_family -> normalize_font_family value
   | Font_stretch -> normalize_font_stretch value
+  | Font_size_adjust -> normalize_font_size_adjust value
+  | Initial_letter -> normalize_initial_letter value
+  | Text_size_adjust -> normalize_text_size_adjust value
+  | Webkit_text_size_adjust -> normalize_text_size_adjust value
   | Font -> normalize_font value
   | Display -> normalize_display value
   | Overflow -> normalize_overflow value
@@ -4619,6 +4623,7 @@ let normalize_property_value : type a.
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
   | Columns -> normalize_columns_value value
+  | Column_count -> normalize_column_count value
   | Border_width ->
       normalize_box_shorthand ~is_substitution:is_border_width_substitution
         normalize_border_width value

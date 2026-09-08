@@ -231,6 +231,12 @@ let read_non_negative_duration t =
 
 let read_interest_delay_item t : interest_delay_item =
   if Cursor.try_ident "normal" t then Normal
+  else if Cursor.looking_at_calc t || Values.looking_at_math_function t then
+    (* CSS Values 4 sec. 10.12 checks the [0s,inf] range on the value a math
+       function resolves to, at computed-value time, and clamps rather than
+       invalidating: [interest-delay: calc(-1s)] is a delay Chrome computes as
+       [0s] where the literal [-1s] is one it drops. *)
+    Time (Values.read_duration_preserve_ms ~allow_negative:true t)
   else Time (read_non_negative_duration t)
 
 let rec read_interest_delay ?(longhand = false) t : interest_delay =
@@ -256,7 +262,8 @@ let normalize_interest_delay_item : interest_delay_item -> interest_delay_item =
   | Normal -> item
   | Time duration ->
       let duration' =
-        Values.normalize_duration ~canonicalize_ms:false duration
+        Values.normalize_duration ~canonicalize_ms:false ~non_negative:true
+          duration
       in
       if duration' == duration then item else Time duration'
 
@@ -1118,6 +1125,11 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
   let read_var t : webkit_line_clamp =
     Var (read_var read_webkit_line_clamp t)
   in
+  (* CSS Values 4 sec. 10.1 allows a math function wherever an [<integer>] is
+     allowed, [calc()] being one of them rather than the gate to the rest. *)
+  let read_math t : webkit_line_clamp =
+    Calc (read_calc ~result_type:`Number read_webkit_line_clamp t)
+  in
   Cursor.enum_or_calls "-webkit-line-clamp"
     [
       ("none", (None : webkit_line_clamp));
@@ -1128,14 +1140,8 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
       ("revert-layer", Revert_layer);
     ]
     ~calls:
-      [
-        ("var", read_var);
-        (* CSS Values 4 sec. 10 allows a math function wherever an [<integer>]
-           is allowed. *)
-        ( "calc",
-          fun t ->
-            Calc (read_calc ~result_type:`Number read_webkit_line_clamp t) );
-      ]
+      (("var", read_var) :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       let n = Cursor.int t in
       if n <= 0 then Cursor.err_invalid t "-webkit-line-clamp must be positive";

@@ -313,11 +313,17 @@ val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
     keeping any [var()]. *)
 
 val normalize_duration :
-  ?ctx:calc_ctx -> ?canonicalize_ms:bool -> duration -> duration
+  ?ctx:calc_ctx ->
+  ?canonicalize_ms:bool ->
+  ?non_negative:bool ->
+  duration ->
+  duration
 (** [normalize_duration d] folds the value-independent parts of a [<time>]
     [calc()] ([calc(var(--d) * 1)] becomes [calc(var(--d))]), keeping any
     [var()]. It chooses the shorter seconds spelling by default;
-    [canonicalize_ms:false] preserves millisecond units. *)
+    [canonicalize_ms:false] preserves millisecond units. [non_negative] says the
+    property refuses a negative literal, so a call folding to one keeps its
+    wrapper rather than becoming CSS the reader drops. *)
 
 val normalize_color :
   ?lossless:bool -> ?exact_srgb:bool -> ?resolve_missing:bool -> color -> color
@@ -613,9 +619,12 @@ val read_angle_unit_required : Cursor.t -> angle
 val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
 
-val read_duration_preserve_ms : Cursor.t -> duration
+val read_duration_preserve_ms : ?allow_negative:bool -> Cursor.t -> duration
 (** [read_duration_preserve_ms t] parses a CSS duration without canonicalizing
-    milliseconds to seconds. *)
+    milliseconds to seconds. [allow_negative] lifts the [0s,inf] range the
+    literal grammar carries, for the caller reading a math function: CSS Values
+    4 sec. 10.12 checks that range on the value the call resolves to, at
+    computed-value time, and clamps rather than invalidating. *)
 
 val read_time : Cursor.t -> duration
 (** [read_time t] parses a CSS time value (can be negative). *)

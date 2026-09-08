@@ -239,7 +239,26 @@ let rec read_alignment_baseline t : alignment_baseline =
     t
 
 let rec read_baseline_shift t : baseline_shift =
-  Cursor.enum_or_var "baseline-shift"
+  (* CSS Values 4 sec. 10.1 puts a math function wherever the shift stands, and
+     SVG 2 sec. 11.3 reads a bare coefficient here as a length in user units, so
+     the call answers on either type: [sqrt(4)] is a shift where a length-typed
+     [abs(-1px)] is one too. Sec. 10.8 gives an operand no keyword. *)
+  let read_math t : baseline_shift =
+    Cursor.one_of
+      [
+        (fun t ->
+          (Shift (Values.read_length_percentage ~with_keywords:false t)
+            : baseline_shift));
+        (fun t ->
+          Shift
+            (Calc
+               (Values.read_calc ~result_type:`Number
+                  (Values.read_length_percentage ~with_keywords:false)
+                  t)));
+      ]
+      t
+  in
+  Cursor.enum_or_calls "baseline-shift"
     [
       ("sub", (Sub : baseline_shift));
       ("super", Super);
@@ -252,7 +271,10 @@ let rec read_baseline_shift t : baseline_shift =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_baseline_shift t))
+    ~calls:
+      (("var", fun t -> Var (Values.read_var read_baseline_shift t))
+      :: ("calc", read_math)
+      :: Values.math_function_calls read_math)
     ~default:(fun t ->
       Shift (Values.read_length_percentage ~with_keywords:false t))
     t
