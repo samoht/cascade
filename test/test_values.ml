@@ -1941,6 +1941,79 @@ let spec_stepped_value_dimensions () =
   neg_cursor P.read_border_width "round(1.5px,1)";
   neg_cursor P.read_border_width "mod(5px,2)"
 
+(* Sec. 10.1 makes a math function usable wherever a [<number>], [<dimension>]
+   or [<percentage>] is, so a reader that takes a literal there takes a call
+   too, and sec. 10.12 checks the property's range on the value the call
+   resolves to rather than refusing it: a call folding outside the range keeps
+   its wrapper, which is the only spelling the value has left. Chrome 153 reads
+   every row below and computes the call's own value.
+
+   Sec. 10.7.1 keeps [pi] shorter than the coefficient it names, so a call that
+   reduces to the constant keeps it. *)
+let spec_math_at_the_remaining_readers () =
+  let module P = Css.Properties in
+  (* SVG 2 sec. 13.5.3 [stroke-width] is [<length-percentage> | <number>]: the
+     call lands in the branch its own type names, and the [0,inf] range keeps
+     the negative one wrapped. *)
+  decl_optimizes ~prop:"stroke-width" ~into:"1" "calc(1)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(pi)" "calc(pi)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"8" "pow(2,3)";
+  decl_optimizes ~prop:"stroke-width" ~into:"1px" "abs(-1px)";
+  (* SVG 2 sec. 13.5.5 [stroke-miterlimit], [0,inf]. *)
+  decl_optimizes ~prop:"stroke-miterlimit" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"stroke-miterlimit" ~into:"calc(-1)" "sign(-1px)";
+  (* CSS Inline 3 sec. 5.1 [initial-letter], [1,inf] on the size. *)
+  decl_optimizes ~prop:"initial-letter" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"initial-letter" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"initial-letter" ~into:"2 3" "calc(1 + 1) 3";
+  (* CSS Fonts 5 sec. 2.5 [font-size-adjust], [0,inf]. *)
+  decl_optimizes ~prop:"font-size-adjust" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"font-size-adjust" ~into:"calc(-1)" "sign(-1px)";
+  (* SVG 2 sec. 11.3 reads a bare coefficient at [baseline-shift] as a length in
+     user units, so the slot takes a call of either type. *)
+  decl_optimizes ~prop:"baseline-shift" ~into:"calc(2)" "sqrt(4)";
+  decl_optimizes ~prop:"baseline-shift" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"baseline-shift" ~into:"1px" "min(1px,2px)";
+  (* CSS Transforms 2 sec. 5 [scale] takes any [<number-percentage>], so no
+     range keeps a call wrapped here. *)
+  decl_optimizes ~prop:"scale" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"scale" ~into:"-1" "sign(-1px)";
+  (* The [<integer>] slots of CSS Multicol 2 sec. 4.2 and the [-webkit-line-
+     clamp] alias, all [1,inf]. *)
+  decl_optimizes ~prop:"-webkit-line-clamp" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"-webkit-line-clamp" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"column-count" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"column-count" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"column-count" ~into:"calc(pi)" "calc(pi)";
+  decl_optimizes ~prop:"columns" ~into:"2" "sqrt(4)";
+  decl_optimizes ~prop:"columns" ~into:"calc(-1)" "sign(-1px)";
+  (* The [<percentage>] slots: CSS Fonts 4 sec. 2.3 and CSS Size Adjustment 1
+     sec. 3. The [@font-face] descriptor reads through the same
+     [font-stretch]. *)
+  decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"-webkit-text-size-adjust" ~into:"50%" "calc(50%)";
+  (* CSS UI 5 sec. 7.2 [interest-delay] is [<time [0s,inf]>], so the negative
+     one Chrome computes as [0s] keeps its wrapper where the literal is
+     dropped. *)
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-1s)" "calc(-1s)";
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-2s)" "calc(-1s * 2)";
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-.5s)" "calc(-1s / 2)";
+  decl_optimizes ~prop:"interest-delay" ~into:"calc(-2s)" "calc(2 * -1s)";
+  decl_optimizes ~prop:"interest-delay" ~into:"1s" "calc(1s)";
+  (* Sec. 10.8 gives a math operand no keyword, and the literal keeps the range
+     the call is exempt from. *)
+  neg_cursor P.read_stroke_width "calc(inherit)";
+  neg_cursor P.read_stroke_width "-1";
+  neg_cursor P.read_column_count "calc(inherit)";
+  neg_cursor P.read_font_size_adjust "-1";
+  neg_cursor P.read_initial_letter "calc(inherit)";
+  neg_cursor P.read_interest_delay "-1s";
+  (* Sec. 10.12 does not lift the range off a neighbouring property: the two
+     durations Chrome refuses whatever the spelling stay refused. *)
+  neg_cursor read_duration "calc(-1s)"
+
 let test_attr_syntax () =
   check_attr_syntax "<length>";
   check_attr_syntax "<length-percentage>";
@@ -2126,6 +2199,8 @@ let value_tests =
     test_case "spec math result type" `Quick spec_math_result_type;
     test_case "spec stepped value dimensions" `Quick
       spec_stepped_value_dimensions;
+    test_case "spec math at the remaining readers" `Quick
+      spec_math_at_the_remaining_readers;
   ]
 
 let suite = ("values", value_tests)
