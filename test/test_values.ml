@@ -2038,6 +2038,19 @@ let spec_math_at_the_remaining_readers () =
   decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
   decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
   decl_optimizes ~prop:"-webkit-text-size-adjust" ~into:"50%" "calc(50%)";
+  (* Sec. 10.7 gives [min()], [max()] and [clamp()] [<calc-sum>] arguments and
+     the arguments' own type, exactly as sec. 10.9 does for the stepped
+     functions, so a percentage slot takes them where it takes [calc()]. Chrome
+     153 reads each of these and computes the comparison. *)
+  decl_optimizes ~prop:"font-stretch" ~into:"50%" "min(50%,75%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"75%" "max(50%,75%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"60%" "clamp(50%,60%,75%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "clamp(10%,50%,90%)";
+  decl_optimizes ~prop:"-webkit-text-size-adjust" ~into:"10%" "min(10%,50%)";
+  (* The same call over lengths, which the typed length readers already took, so
+     the two paths agree rather than one admitting what the other refuses. *)
+  decl_optimizes ~prop:"width" ~into:"1px" "min(1px,2px)";
+  decl_optimizes ~prop:"width" ~into:"2px" "max(1px,2px)";
   (* CSS UI 5 sec. 7.2 [interest-delay] is [<time [0s,inf]>], so the negative
      one Chrome computes as [0s] keeps its wrapper where the literal is
      dropped. *)
