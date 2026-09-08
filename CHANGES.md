@@ -373,6 +373,10 @@ to lose a whole rule over one bad piece. Both are gone.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
   of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
+- A comparison function's operand is printed as it was written, so
+  `border-width: min(var(--x), 1px)` no longer collects a `calc()` around the
+  reference and `min(calc(var(--x) + 1px), 2px)` no longer collects a second
+  one. CSS Values 4 sec. 10.1 makes a lone `var()` a whole `<calc-sum>` (#1175)
 - Cascade reads back everything it writes. Minified `@scope to (...)`, `rotate`
   with a negative axis, a relative colour's channels, a `-webkit-gradient`
   `color-stop()` and `center` point, `text-decoration: none solid`,

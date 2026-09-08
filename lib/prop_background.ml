@@ -879,7 +879,15 @@ let rec pp_border_width : border_width Pp.t =
 and pp_border_width_calc_contents ctx calc =
   match length_of_border_width_calc calc with
   | Some lc -> pp_length_calc_contents ctx lc
-  | None -> pp_calc pp_border_width ctx calc
+  | None -> (
+      (* Sec. 10.2 spells the operand slot [<calc-sum>], and sec. 10.1 makes a
+         lone [var()] one, so the reference stands as authored; an operand that
+         already carries its own [calc()] keeps that one rather than collecting
+         a second. *)
+      match calc with
+      | Var v -> pp_var pp_border_width ctx v
+      | Nested inner -> pp_calc pp_border_width ctx inner
+      | calc -> pp_calc pp_border_width ctx calc)
 
 and pp_border_width_minmax name ctx args =
   Pp.call name (Pp.list ~sep:Pp.comma pp_border_width_calc_contents) ctx args
