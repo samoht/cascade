@@ -2188,6 +2188,30 @@ let test_prefix_synthesis_reaches_fixpoint () =
        1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
     ]
 
+let test_authored_dimension_reaches_fixpoint () =
+  (* The reader keeps [2e0ch] as a dimension carrying its own text, and the
+     printer drops that text under [--minify]. Two spellings then reach one
+     minified text through two nodes, which the rule merge reads as two values
+     until a second pass re-reads them as one. *)
+  assert_emission_is_a_fixed_point ~emit:minify_str "minify"
+    [
+      "a{tab-size:2e0ch}b{tab-size:2ch}";
+      "a{tab-size:2ch}b{tab-size:2e0ch}";
+      "a{overflow-clip-margin:1E0px}b{overflow-clip-margin:1px}";
+      "a{line-height:+120%}b{line-height:120%}";
+      "a{line-height:12.0px}b{line-height:12px}";
+      "a{grid-auto-rows:100.0px}b{grid-auto-rows:100px}";
+      "a{grid-auto-rows:+100px}b{grid-auto-rows:100px}";
+      "a{grid-auto-columns:00100px}b{grid-auto-columns:100px}";
+      "a{grid-auto-columns:100e0px}b{grid-auto-columns:100px}";
+      "a{contain-intrinsic-width:100.0px}b{contain-intrinsic-width:100px}";
+      "a{contain-intrinsic-height:00100px}b{contain-intrinsic-height:100px}";
+      "a{contain-intrinsic-inline-size:100E0px}b{contain-intrinsic-inline-size:100px}";
+      "a{contain-intrinsic-block-size:00100px}b{contain-intrinsic-block-size:100px}";
+      "a{columns:12E0em}b{columns:12em}";
+      "a{columns:+12em}b{columns:12em}";
+    ]
+
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
      wins). The later .y carries the first .x's value, but grouping it with that
@@ -5541,6 +5565,9 @@ let selector_merging_tests =
     ( "prefix synthesis reaches fixpoint in one pass",
       `Quick,
       test_prefix_synthesis_reaches_fixpoint );
+    ( "authored dimension reaches fixpoint in one pass",
+      `Quick,
+      test_authored_dimension_reaches_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,
