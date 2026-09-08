@@ -659,6 +659,15 @@ let special_cases () =
   (* A non-initial position stands. *)
   check_declaration ~expected:"list-style:square inside"
     ~optimized:"list-style:square inside" "list-style: square inside";
+  (* One [none] beside a position still lands on both the image and the type,
+     which is the node all three slots print. *)
+  check_declaration ~expected:"list-style:none inside none"
+    ~optimized:"list-style:none inside" "list-style: none inside";
+  (* CSS Values 4 sec. 2.2 takes each option of a [||] at most once, so the
+     image and the type hold two [none] between them and no more. Sec. 3.6
+     spells the third out as a syntax error itself. *)
+  neg_cursor read_declaration "list-style: none none none";
+  neg_cursor read_declaration "list-style: none disc url(bullet.png)";
 
   (* clip-path/object-view-box inset() and margin-inline/margin-block hit the
      same CSS Syntax 3 sec. 4.3.3 percentage-token boundary as margin/padding
