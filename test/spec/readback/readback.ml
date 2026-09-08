@@ -19,7 +19,9 @@
 
    Three failures are reported apart: an emission that does not parse, one that
    parses and moves when it is printed again, and one the comparator does not
-   call the sheet it was given.
+   call the sheet it was given. The last takes one excuse, the vendor-prefix
+   policy the emitter applies and the comparator declines to; it is modelled
+   under "The vendor-prefix policy" below rather than reported.
 
    Every emission mode the CLI offers is swept, because each runs a different
    set of passes and only the plain formatter runs none of them. Idempotence is
@@ -119,6 +121,69 @@ let emit mode stylesheet =
   Cascade.Css.to_string ~minify:mode.minify ~lossless:mode.lossless
     ~enforce_spec:mode.enforce_spec stylesheet
 
+(* ===== The vendor-prefix policy ===== *)
+
+(* [-webkit-user-select] beside [user-select] with the same value is one
+   declaration written twice, and which of the two spellings a sheet carries is
+   a fact about browsers rather than something the sheet says. Default
+   minification writes the twin its targets still need and drops the one they
+   all read unprefixed, both answered from {!Cascade.Support}. The comparator
+   takes neither: deleting a prefixed declaration erases the only one an engine
+   needing the prefix reads, so its projection keeps it (test_css_compare's
+   "canonical keeps target-gated content"). The two sides therefore disagree by
+   construction, and an oracle comparing a sheet against its emission has to
+   model that rewrite rather than report it.
+
+   No family is listed here. The synthesis is the optimizer's own pass, called
+   below, so the table and its target gates stay in one place; the twin relation
+   is the one its drop side uses, a name that extends another with a vendor
+   prefix. Everything else is left alone: a twin carrying a different value or a
+   different importance, and a prefixed declaration with no twin at all, survive
+   the model, so an emission that changed a value is still a finding. *)
+
+let targets = Cascade.Optimize.evergreen_targets
+
+(* The name a vendor-prefixed property extends: [-webkit-user-select] extends
+   [user-select]. A custom property extends nothing. *)
+let extended name =
+  let len = String.length name in
+  if len < 2 || (not (Char.equal name.[0] '-')) || Char.equal name.[1] '-' then
+    None
+  else
+    match String.index_from_opt name 1 '-' with
+    | Some i when i + 1 < len -> Some (String.sub name (i + 1) (len - i - 1))
+    | Some _ | None -> None
+
+let drop_prefixed_twins decls =
+  let value decl = Cascade.Declaration.string_of_value ~minify:true decl in
+  let twinned decl name =
+    List.exists
+      (fun other ->
+        String.equal (Cascade.Declaration.property_name other) name
+        && Bool.equal
+             (Cascade.Declaration.is_important other)
+             (Cascade.Declaration.is_important decl)
+        && String.equal (value other) (value decl))
+      decls
+  in
+  List.filter
+    (fun decl ->
+      match extended (Cascade.Declaration.property_name decl) with
+      | None -> true
+      | Some name -> not (twinned decl name))
+    decls
+
+(* A sheet with the prefix policy taken out of it. The optimizer's pass runs
+   first because the guard the synthesis emits lives in an [@supports] condition
+   rather than in a declaration list: it rewrites the test into the [or] of the
+   two spellings, and is idempotent, so a sheet that already carries the guard
+   and one that does not both reach the same condition. The erasure then settles
+   the declaration lists, whichever side wrote the prefix. *)
+let without_prefix_policy sheet =
+  Cascade.Css.to_string ~minify:true
+    (Cascade.Stylesheet.map_declarations drop_prefixed_twins
+       (Cascade.Optimize.add_compatibility_prefixes ~targets sheet))
+
 (* ===== Findings ===== *)
 
 type kind = Unreadable | Unstable | Unequal
@@ -146,6 +211,16 @@ let record ~css ~mode ~kind ~got =
    over the same sheet would report as real. *)
 let compares mode = String.equal mode.label minified.label
 
+(* The comparator on the text, and where it disagrees, on the two sheets with
+   the prefix policy taken out of both. The second question is only asked of a
+   pair the first already separated, so a sheet the comparator calls its own
+   emission stays one whatever the model would do to it. *)
+let agrees ~css ~once ~sheet ~again =
+  Cascade_diff.Css_compare.equal ~mode:`Canonical css once
+  || Cascade_diff.Css_compare.equal ~mode:`Canonical
+       (without_prefix_policy sheet)
+       (without_prefix_policy again)
+
 let check_mode ~css mode =
   match accepted mode css with
   | None -> ()
@@ -158,10 +233,8 @@ let check_mode ~css mode =
           if not (String.equal once twice) then
             record ~css ~mode:mode.label ~kind:Unstable
               ~got:(String.concat "" [ once; "  ->  "; twice ])
-          else if
-            compares mode
-            && not (Cascade_diff.Css_compare.equal ~mode:`Canonical css once)
-          then record ~css ~mode:mode.label ~kind:Unequal ~got:once)
+          else if compares mode && not (agrees ~css ~once ~sheet ~again) then
+            record ~css ~mode:mode.label ~kind:Unequal ~got:once)
 
 (* Pretty and minified are two spellings of one AST, so reading either back and
    minifying has to give the same text. *)
@@ -256,6 +329,37 @@ let calibrate () =
       (Cascade_diff.Css_compare.equal ~mode:`Canonical "a{color:red}"
          "a{color:#f00}")
   then fail "the comparator called one sheet two";
+  (* The prefix model is the only excuse this sweep makes, so it is put through
+     both directions: it has to take the synthesis out, in a declaration list
+     and in the [@supports] guard beside it, or the unequal check reports every
+     sheet the optimizer writes a fallback into; and it has to leave alone a
+     prefixed declaration standing on its own, and a value that moved, or it
+     excuses the rewrites the check exists for. *)
+  let read what =
+    match accepted minified what with
+    | Some s -> s
+    | None -> fail (String.concat "" [ "cascade cannot read "; what ])
+  in
+  let modelled a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical
+      (without_prefix_policy (read a))
+      (without_prefix_policy (read b))
+  in
+  if
+    not
+      (modelled "a{user-select:none}"
+         "a{-webkit-user-select:none;user-select:none}")
+  then fail "the prefix model kept a synthesised twin apart from its sheet";
+  if
+    not
+      (modelled "@supports (user-select:none){a{color:red}}"
+         "@supports ((-webkit-user-select:none) or \
+          (user-select:none)){a{color:red}}")
+  then fail "the prefix model kept a synthesised guard apart from its sheet";
+  if modelled "a{-webkit-user-select:none}" "a{user-select:none}" then
+    fail "the prefix model erased a prefixed declaration with no twin";
+  if modelled "a{user-select:none}" "a{user-select:text}" then
+    fail "the prefix model equated two values";
   (* The optimizer has to run in the modes that ask for it: a mode that emitted
      its input would pass every check here without exercising a pass. *)
   match accepted minified "a{margin-top:1px;margin:2px}" with
@@ -385,11 +489,14 @@ let explain css =
               let verdict =
                 if not (String.equal once twice) then
                   String.concat "" [ "  [UNSTABLE -> "; twice; "]" ]
+                else if not (compares mode) then ""
+                else if not (agrees ~css ~once ~sheet ~again) then "  [UNEQUAL]"
                 else if
-                  compares mode
-                  && not
-                       (Cascade_diff.Css_compare.equal ~mode:`Canonical css once)
-                then "  [UNEQUAL]"
+                  not (Cascade_diff.Css_compare.equal ~mode:`Canonical css once)
+                then
+                  (* Named, because a reader reproducing a finding on a
+                     neighbouring sheet needs to see which rewrite moved it. *)
+                  "  [prefix policy]"
                 else ""
               in
               Fmt.pr "%-28s %s%s@." mode.label flat verdict))
