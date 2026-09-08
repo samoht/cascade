@@ -5557,6 +5557,14 @@ let spec_remaining_prop_vectors () =
       "color-scheme: only only";
       "color-scheme: only light only";
       "color-scheme: only dark only";
+      (* CSS Values 4 sec. 2.2 makes each operand of a [&&] a contiguous run, so
+         sec. 2.2's [[light | dark | <custom-ident>]+ && only?] puts [only] at
+         one end of the list and never inside it. Chrome 153 drops each of these
+         and reads [light dark only] and [only light dark]. *)
+      "color-scheme: light only light";
+      "color-scheme: dark only dark";
+      "color-scheme: both only both";
+      "color-scheme: light only dark";
       (* CSS Color Adjust 1 sec. 2.2 spells the list item [light | dark |
          <custom-ident>], and CSS Values 4 sec. 4.2 keeps [default] out of every
          one of those in all ASCII case permutations. *)
