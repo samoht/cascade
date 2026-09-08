@@ -1498,6 +1498,54 @@ let counter_style_symbol_reserved_default () =
   strict_reject "reserved default in counter-style additive-symbols"
     "@counter-style c { system: additive; additive-symbols: 3 default }"
 
+(* CSS Animations 1 sec. 3: [<keyframes-name> = <custom-ident> | <string>], the
+   two arms name the same animation, and only the ident arm excludes [none], the
+   CSS-wide keywords and the [default] of CSS Values 4 sec. 4.2; the string arm
+   takes all of those and excludes the empty string instead. The section
+   serializes the name as an ident "unless it's a disallowed keyword, in which
+   case it's serialized as a <string>", so a reserved name keeps its quotes:
+   dropping them writes a rule Blink 153 refuses. Blink 153 answers every case
+   below the same way. *)
+let spec_keyframes_name_arms () =
+  check_stylesheet "@keyframes \"default\"{0%{opacity:0}}";
+  check_stylesheet "@keyframes \"none\"{0%{opacity:0}}";
+  check_stylesheet "@keyframes \"initial\"{0%{opacity:0}}";
+  check_stylesheet "@-webkit-keyframes \"default\"{0%{opacity:0}}";
+  check_stylesheet "@-moz-keyframes \"revert-layer\"{0%{opacity:0}}";
+  check_stylesheet "@keyframes slide{0%{opacity:0}}";
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}}"
+    "@keyframes \"slide\"{0%{opacity:0}}";
+  strict_accept "quoted default as a keyframes name"
+    "@keyframes \"default\" { from { opacity: 0 } }";
+  strict_accept "quoted none as a keyframes name"
+    "@keyframes \"none\" { from { opacity: 0 } }";
+  strict_reject "reserved default as a keyframes name"
+    "@keyframes default { from { opacity: 0 } }";
+  strict_reject "folded reserved default as a keyframes name"
+    "@keyframes Default { from { opacity: 0 } }";
+  strict_reject "reserved default as a -webkit- keyframes name"
+    "@-webkit-keyframes default { from { opacity: 0 } }";
+  strict_reject "reserved default as a -moz- keyframes name"
+    "@-moz-keyframes default { from { opacity: 0 } }";
+  strict_reject "empty string as a keyframes name"
+    "@keyframes \"\" { from { opacity: 0 } }";
+  (* Sec. 3: "the following two @keyframes rules have the same name, so the
+     first will be ignored". *)
+  assert_minify_and_optimize
+    "@keyframes foo { from { opacity: 0 } } @keyframes \"foo\" { from { \
+     opacity: 1 } }"
+    ~minified:"@keyframes foo{0%{opacity:0}}@keyframes foo{0%{opacity:1}}"
+    ~optimized:"@keyframes foo{0%{opacity:1}}";
+  (* An animation named through the string arm is the one [animation-name]
+     reaches through the same arm. *)
+  assert_minify_and_optimize
+    "@keyframes \"default\" { from { opacity: 0 } } .a { animation-name: \
+     \"default\" }"
+    ~minified:
+      "@keyframes \"default\"{0%{opacity:0}}.a{animation-name:\"default\"}"
+    ~optimized:
+      "@keyframes \"default\"{0%{opacity:0}}.a{animation-name:\"default\"}"
+
 let lenient_recover name css expected min_warnings =
   let { Css.stylesheet; warnings; _ } =
     match Css.of_string ~strict:false css with
@@ -2580,6 +2628,7 @@ let stylesheet_tests =
     ( "counter-style symbol reserves default",
       `Quick,
       counter_style_symbol_reserved_default );
+    ("spec keyframes name arms", `Quick, spec_keyframes_name_arms);
     ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
     ("spec keyframes shadow colour var", `Quick, spec_keyframes_shadow_color_var);
     ("page", `Quick, page_case);
