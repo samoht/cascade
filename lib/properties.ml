@@ -4511,9 +4511,9 @@ let normalize_property_value : type a.
   | O_transition -> map_preserve normalize_transition value
   | List_style -> normalize_list_style value
   | Transition_timing_function -> normalize_timing_function value
-  | Animation -> map_preserve normalize_animation value
-  | Webkit_animation -> map_preserve normalize_animation value
-  | Moz_animation -> map_preserve normalize_animation value
+  | Animation -> map_preserve (normalize_animation ~ctx) value
+  | Webkit_animation -> map_preserve (normalize_animation ~ctx) value
+  | Moz_animation -> map_preserve (normalize_animation ~ctx) value
   | Animation_timing_function -> normalize_timing_function value
   | Padding_left -> Values.normalize_length ~non_negative:true ~ctx value
   | Padding_right -> Values.normalize_length ~non_negative:true ~ctx value

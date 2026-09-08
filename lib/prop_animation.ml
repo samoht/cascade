@@ -1994,26 +1994,33 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   if ambiguous_name_last then
     pp_animation_name_slot ctx state ~quote_ambiguous_name anim
 
-(* The animation reader fills every slot with its longhand initial, so only the
-   easing needs canonicalising here: its keyword and curve spellings are the
-   same node question [normalize_timing_function] answers. *)
-let normalize_animation_shorthand (a : animation_shorthand) :
+(* The animation reader fills every slot with its longhand initial, so each slot
+   answers here the question its own longhand answers: the easing's keyword and
+   curve spellings are one node, and the count carries the [0,inf] range that
+   keeps a call wrapped. A slot left out folds only on a second pass over the
+   output, which is a pass too late for output that is input. *)
+let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
     animation_shorthand =
-  let duration = option_map_preserve Values.normalize_duration a.duration in
-  let delay = option_map_preserve Values.normalize_duration a.delay in
-  let timing_function =
+  let duration = option_map_preserve (Values.normalize_duration ~ctx) a.duration
+  and delay = option_map_preserve (Values.normalize_duration ~ctx) a.delay
+  and timing_function =
     option_map_preserve normalize_timing_function a.timing_function
+  and iteration_count =
+    option_map_preserve
+      (normalize_animation_iteration_count ~ctx)
+      a.iteration_count
   in
   if
     option_is_phys_same duration a.duration
     && option_is_phys_same delay a.delay
     && option_is_phys_same timing_function a.timing_function
+    && option_is_phys_same iteration_count a.iteration_count
   then a
-  else { a with duration; timing_function; delay }
+  else { a with duration; timing_function; delay; iteration_count }
 
-let normalize_animation : animation -> animation = function
+let normalize_animation ~ctx : animation -> animation = function
   | Shorthand a as value ->
-      let a' = normalize_animation_shorthand a in
+      let a' = normalize_animation_shorthand ~ctx a in
       if a' == a then value else Shorthand a'
   | value -> value
 
