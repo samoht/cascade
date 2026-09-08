@@ -2116,9 +2116,20 @@ let matrix =
         negatives = [ "contain cover"; "auto" ];
       };
       {
+        (* CSS Color Adjust 1 sec. 2.2 spells the list item [light | dark |
+           <custom-ident>], so CSS Values 4 sec. 4.2 keeps the reserved
+           [default] out of it in every ASCII case permutation. *)
         property = "color-scheme";
         positives = [ "normal"; "light"; "dark"; "only light" ];
-        negatives = [ "normal light"; "light normal"; "only" ];
+        negatives =
+          [
+            "normal light";
+            "light normal";
+            "only";
+            "default";
+            "DEFAULT";
+            "light default";
+          ];
       };
       {
         property = "print-color-adjust";

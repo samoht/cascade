@@ -4790,6 +4790,7 @@ let spec_platform_property_vectors () =
       ("margin-trim: block", "margin-trim:block");
       ("field-sizing: content", "field-sizing:content");
       ("color-scheme: light dark", "color-scheme:light dark");
+      ("color-scheme: light mytheme", "color-scheme:light mytheme");
       ("accent-color: auto", "accent-color:auto");
       ("mask-mode: alpha", "mask-mode:alpha");
       ("mask-composite: add", "mask-composite:add");
@@ -5426,6 +5427,12 @@ let spec_remaining_prop_vectors () =
       "color-scheme: only only";
       "color-scheme: only light only";
       "color-scheme: only dark only";
+      (* CSS Color Adjust 1 sec. 2.2 spells the list item [light | dark |
+         <custom-ident>], and CSS Values 4 sec. 4.2 keeps [default] out of every
+         one of those in all ASCII case permutations. *)
+      "color-scheme: default";
+      "color-scheme: DEFAULT";
+      "color-scheme: light default";
       "forced-color-adjust: auto none";
       "print-color-adjust: exact economy";
       "isolation: isolate auto";
