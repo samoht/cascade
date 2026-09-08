@@ -585,14 +585,17 @@ let read_place_items_safe t =
   | "center" -> Center_safe
   | kw -> Cursor.err_invalid t ("place-items safe " ^ kw)
 
-let read_place_items_stretch t =
+(* css-align-3 (ED) sec. 5.2 spells [place-items] as [<'align-items'>
+   <'justify-items'>?], and [stretch] is one value of each, so the slot after it
+   is an ordinary justify-items value rather than a repeat of the keyword.
+   [Stretch_stretch] keeps the pair the printer folds back to one word. *)
+let read_place_items_stretch t : place_items =
   Cursor.expect_string "stretch" t;
   Cursor.ws t;
-  if
-    Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
-    |> Option.is_some
-  then Stretch_stretch
-  else Stretch
+  match Cursor.option read_justify_items t with
+  | None -> Stretch
+  | Some (Stretch : justify_items) -> Stretch_stretch
+  | Some justify -> Align_justify (Stretch, justify)
 
 let place_items_align : place_items -> align_items option = function
   | Normal -> Some (Normal : align_items)
