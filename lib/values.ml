@@ -5808,6 +5808,17 @@ type inferred_calc_type =
   | Deferred
   | Invalid
 
+(* The type a call folding to a bare coefficient answers. Sec. 10.4 gives the
+   inverse trigonometric functions an [<angle>] that [math_fn_result] carries as
+   a bare degree count, so the coefficient names no type to check and they stay
+   deferred. Every other function here is [<number>] out, so sec. 10.9 types the
+   sum it sits in. *)
+let math_fn_scalar_type = function
+  | Asin _ | Acos _ | Atan _ | Atan2 _ -> Deferred
+  | Sin _ | Cos _ | Tan _ | Sqrt _ | Exp _ | Log _ | Pow _ | Hypot _ | Sign_n _
+  | Abs_n _ | Round_n _ | Mod_n _ | Rem_n _ ->
+      Dimension 0
+
 (* Inside an operand tree a call that answers its arguments' type is the
    contextual dimension: the leaf reader beside it has already vouched for the
    unit. Only a whole calculation keeps the unit for the slot to judge. *)
@@ -5826,7 +5837,9 @@ and infer_calc_type : type a. a calc -> inferred_calc_type = function
   | Math_fn fn -> (
       match math_fn_result fn with
       | Some (United (_, unit)) -> Result_unit unit
-      | Some (Scalar _) | None -> Deferred)
+      | Some (Scalar _) -> math_fn_scalar_type fn
+      (* A call that does not fold keeps no type to check against. *)
+      | None -> Deferred)
   | Nested inner | Parens inner -> infer_calc_type inner
   | Expr (left, (Add | Sub), right) -> (
       match (infer_calc_operand left, infer_calc_operand right) with

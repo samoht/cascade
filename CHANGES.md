@@ -24,6 +24,13 @@ entry points both moved.
 
 ### Breaking
 
+- A calculation whose sum has no consistent type is dropped, so
+  `width: calc(sqrt(4) - 1px)`, `border-width: abs(-1)` and
+  `width: calc(sign(-1px))` are refused where they were written back as
+  `calc(2 - 1px)` and the like, which cascade's own reader also refuses. CSS
+  Values 4 sec. 10.9 fails the whole calculation when adding the types of a
+  `+` or `-` fails; an angle-valued call still adds to an angle, so
+  `rotate: calc(atan(1) + 10deg)` reads (#1151)
 - A math function reads wherever the grammar allows its type, with no `calc()`
   wrapper needed, so `font-weight: calc(400)`, `zoom: calc(.5)`,
   `grid-row-start: calc(2) center`, `width: abs(-1px)`, `opacity: pow(2, 3)`

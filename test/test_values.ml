@@ -1909,6 +1909,50 @@ let spec_math_result_type () =
   decl_optimizes ~prop:"opacity" ~into:".5" "calc(abs(-.5))";
   decl_optimizes ~prop:"width" ~into:"1px" "calc(abs(-1px))"
 
+(* CSS Values 4 (ED) sec. 10.9 Type Checking: at a [+] or [-] sub-expression the
+   two argument types are added, and "if this returns failure, the entire
+   calculation's type is failure". A call answering a [<number>] therefore fails
+   the whole sum beside a dimension, and stands nowhere a [<number>] does not.
+   Chrome 153 rejects every row here, cascade's own [calc(2 - 1px)] among
+   them. *)
+let spec_math_sum_type_check () =
+  let module P = Css.Properties in
+  (* A [<number>] call on either side of a [<length>] sum fails the sum. *)
+  neg_cursor read_length "calc(sqrt(4) - 1px)";
+  neg_cursor read_length "calc(1px - sqrt(4))";
+  neg_cursor read_length "calc(sqrt(4) + 1px)";
+  neg_cursor read_length "calc(sign(-1px) - 1px)";
+  (* The failure is the sum's, not the call's: the same call multiplied by a
+     dimension is the dimension sec. 10.9 gives a product. *)
+  check_length ~minify:false "calc(sqrt(4) * 1px)";
+  check_length ~minify:false ~expected:"calc(sqrt(4) * 1px)" "calc(sqrt(4)*1px)";
+  (* A [<number>] call standing alone at a [<length>] slot fails the same way,
+     wrapped in [calc()] or not. *)
+  neg_cursor read_length "abs(-1)";
+  neg_cursor read_length "calc(abs(-1))";
+  neg_cursor read_length "calc(sign(-1px))";
+  neg_cursor P.read_border_width "abs(-1)";
+  neg_cursor P.read_border_width "calc(sign(-1px))";
+  (* Sec. 10.4 gives the inverse trigonometric functions an [<angle>], so they
+     are the one scalar-folding family that is not a [<number>]: the sum they
+     sit in keeps them where the [<number>] families fail it. *)
+  decl_optimizes ~prop:"rotate" ~into:"55deg" "calc(atan(1) + 10deg)";
+  decl_optimizes ~prop:"rotate" ~into:"40deg" "calc(atan2(1,1) - 5deg)";
+  decl_optimizes ~prop:"rotate" ~into:"45deg" "atan(1)";
+  (* Sec. 10.4 [sin()], [cos()] and [tan()] answer a [<number>] whatever went
+     in, so they fail the [<angle>] sum the inverse family holds. *)
+  neg_cursor read_angle "calc(sin(0) + 10deg)";
+  neg_cursor read_angle "calc(sqrt(4) + 10deg)";
+  (* Sec. 10.9 checks a [<time>] sum the same way. *)
+  neg_cursor read_duration "calc(sqrt(4) + 1s)";
+  check_duration ~minify:false "calc(sqrt(4) * 1s)";
+  (* A [<number>] sum stays a [<number>] and lands where one lands. *)
+  decl_optimizes ~prop:"opacity" ~into:"1" "calc(sqrt(4) - 1)";
+  decl_optimizes ~prop:"z-index" ~into:"2" "calc(2)";
+  (* A dimension sum is untouched by the check. *)
+  decl_optimizes ~prop:"width" ~into:"3px" "calc(1px + 2px)";
+  decl_optimizes ~prop:"width" ~into:"calc(100% - 10px)" "calc(100% - 10px)"
+
 (* CSS Values 4 (ED) sec. 10.9 spells the arguments of [round()], [mod()] and
    [rem()] as [<calc-sum>], so a dimension is one of them, and sec. 10.2 gives
    the call the type its arguments have. The stepped-value functions therefore
@@ -2242,7 +2286,12 @@ let test_calc_operator_whitespace () =
   check_length ~minify:false "calc((1px) - (2px))";
   check_length ~minify:false "calc((1px + 2px) - 3px)";
   check_length ~minify:false "calc(min(1px, 2px) - 3px)";
-  check_length ~minify:false "calc(sqrt(4) - 1px)";
+  (* [calc(sqrt(4) - 1px)] is the one rejection above whose spaced spelling does
+     not come back: sec. 10.9 Type Checking adds the types at a [-], and a
+     [<number>] beside a [<length>] returns failure, which is the whole
+     calculation's type. The whitespace rule keeps its math-function operand in
+     the [min(1px, 2px)] row above. *)
+  neg_cursor read_length "calc(sqrt(4) - 1px)";
   check_length ~minify:false "calc(sqrt(4 - 1) * 1px)";
   check_length ~minify:false "calc(1px * 2 - 1px)";
   check_length ~minify:false ~expected:"calc(100% - 10px)"
@@ -2322,6 +2371,7 @@ let value_tests =
     test_case "spec math operand range" `Quick spec_math_operand_range;
     test_case "spec bare math functions" `Quick spec_bare_math_functions;
     test_case "spec math result type" `Quick spec_math_result_type;
+    test_case "spec math sum type check" `Quick spec_math_sum_type_check;
     test_case "spec stepped value dimensions" `Quick
       spec_stepped_value_dimensions;
     test_case "spec math at the remaining readers" `Quick
