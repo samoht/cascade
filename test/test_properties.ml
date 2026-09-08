@@ -5228,6 +5228,18 @@ let spec_generated_position_interaction_edges () =
   check_margin_trim_edge "block-end";
   check_mask "url(mask.png)";
   check_mask_layer "url(mask.png)";
+  (* CSS Masking 1 sec. 8.7 spells [mask] as [<mask-layer>#], so a comma in the
+     shorthand separates layers and the image slot of a layer holds one image:
+     the comma list belongs to the [mask-image] longhand. A layer after one that
+     opened with an image is an ordinary layer, so it need not open with one.
+     Chrome 153 reads each of these and gives the second layer the initial
+     image. *)
+  check_mask "none,50%";
+  check_mask "url(a.png),50%";
+  check_mask "url(a.png),50%,url(b.png)";
+  check_mask "none,alpha";
+  check_mask "50%,none";
+  check_mask "none,url(b.png)";
   check_nav "#next current";
   check_nav_scope "root";
   check_object_view_box "inset(10px 20px)";
