@@ -100,14 +100,18 @@ let rec read_font_style t : font_style =
       Cursor.ws t;
       if Cursor.is_done t then Oblique
       else
-        let first = read_angle t in
+        (* CSS Values 4 sec. 6 drops the unit on a zero [<length>] and on
+           nothing else, so an angle slot that takes a bare zero spells it
+           [<angle> | <zero>] the way Transforms 1 sec. 11 does. CSS Fonts 4
+           sec. 2.4 writes [oblique <angle [-90deg,90deg]>?] and grants none. *)
+        let first = read_angle_unit_required t in
         Cursor.ws t;
         if Cursor.is_done t then Oblique_angle first
         else
           (* CSS Fonts 4 sec. 4.4 swaps the endpoints of a descending [oblique
              <angle> <angle>] range rather than rejecting it, so the reader
              keeps the order it was written in. *)
-          let second = read_angle t in
+          let second = read_angle_unit_required t in
           Oblique_range (first, second))
     t
 
