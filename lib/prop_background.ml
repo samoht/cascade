@@ -130,10 +130,19 @@ let rec read_shadow_single t : shadow =
         ~calls:[ ("var", read_var_shadow) ]
         ~default:Shadow.read t
 
+(* CSS Backgrounds 3 sec. 6.1 spells the property [none | <shadow>#], so [none]
+   names the whole value and is no item of the list. *)
 let read_shadow t : shadow =
   match Cursor.list ~sep:Cursor.comma ~at_least:1 read_shadow_single t with
   | [ x ] -> x
-  | l -> List l
+  | l ->
+      let whole_value : shadow -> bool = function
+        | None | Inherit | Initial | Unset | Revert | Revert_layer -> true
+        | Shadow _ | Inset _ | List _ | Var _ -> false
+      in
+      if List.exists whole_value l then
+        Cursor.err_invalid t "box-shadow keyword beside another shadow";
+      List l
 
 let pp_color_after_length ctx color =
   Pp.space ctx ();

@@ -2257,8 +2257,19 @@ let rec read_text_shadow t : text_shadow =
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
     t
 
+(* CSS Text Decoration 4 sec. 6.2 spells the property [none | <shadow>#], so
+   [none] names the whole value and is no item of the list. *)
 let read_text_shadows t : text_shadow list =
-  Cursor.list ~sep:Cursor.comma ~at_least:1 read_text_shadow t
+  let shadows = Cursor.list ~sep:Cursor.comma ~at_least:1 read_text_shadow t in
+  let whole_value : text_shadow -> bool = function
+    | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
+    | Text_shadow _ | Var _ -> false
+  in
+  (match shadows with
+  | _ :: _ :: _ when List.exists whole_value shadows ->
+      Cursor.err_invalid t "text-shadow keyword beside another shadow"
+  | _ -> ());
+  shadows
 
 let text_decoration_shorthand ?lines ?style ?color ?thickness () :
     text_decoration =
