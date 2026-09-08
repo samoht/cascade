@@ -2479,6 +2479,18 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
           | Values.Num f when f >= 0. -> Num f
           | Values.Val v when not (negative_line_height v) -> v
           | folded -> Calc folded))
+  (* The reader keeps [+120%] and [12.0px] in [Number] so an unminified print
+     gives the bytes back, and [pp_line_height] writes the constructor's own
+     spelling under [--minify]. Fold onto the constructor where there is one, or
+     the two spellings reach one minified text through two nodes. *)
+  | Number { value; unit; _ } -> (
+      match unit with
+      | Option.None -> Num value
+      | Option.Some "%" -> Pct value
+      | Option.Some "px" -> Px value
+      | Option.Some "rem" -> Rem value
+      | Option.Some "em" -> Em value
+      | Option.Some _ -> lh)
   | _ -> lh
 
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as

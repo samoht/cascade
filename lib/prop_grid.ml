@@ -338,6 +338,25 @@ let rec normalize_grid_template (value : grid_template) : grid_template =
           tracks
       in
       if tracks' == tracks then value else Named_tracks tracks'
+  (* A track breadth keeps the spelling the author wrote for the unminified
+     round-trip and the printer drops it under [--minify], so the two reach one
+     minified text through two nodes unless the spelling folds here. Folding it
+     is two steps rather than one: [Length] is where a breadth the eight
+     unit-specific arms above cannot hold goes, so a spelling of one they CAN
+     hold has to come back out of it, or [100.0px] settles at [Length (Px 100.)]
+     beside the [Px 100.] that [100px] reads as. [canonical_dimension] leaves a
+     zero alone, so nothing lands here that the [Zero] arms above want. *)
+  | Length length -> (
+      match Values.canonical_dimension length with
+      | Px f -> Px f
+      | Rem f -> Rem f
+      | Em f -> Em f
+      | Pct f -> Pct f
+      | Vw f -> Vw f
+      | Vh f -> Vh f
+      | Vmin f -> Vmin f
+      | Vmax f -> Vmax f
+      | length' -> if length' == length then value else Length length')
   | _ -> value
 
 let grid_area_row_ws = function

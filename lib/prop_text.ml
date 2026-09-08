@@ -884,6 +884,12 @@ let normalize_tab_size ~ctx : tab_size -> tab_size =
   | Number n ->
       let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then value else Number n'
+  (* The unit carries the meaning here: CSS Text 4 sec. 6.2 reads a bare number
+     as a count of spaces and a length as a distance, so the spelling folds but
+     no zero strip may reach this. *)
+  | Length len ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Length len'
   | other -> other
 
 let rec pp_tab_size : tab_size Pp.t =

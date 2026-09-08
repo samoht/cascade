@@ -422,6 +422,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- `--minify` merges two rules whose values were written with different spellings
+  of one number, so `a{tab-size:2e0ch}b{tab-size:2ch}` groups on the first pass
+  rather than the second. `line-height`, `overflow-clip-margin`, the grid track
+  breadths, the `contain-intrinsic-*` family and `columns` each kept the
+  authored spelling past the fold that `width` already had (#1159)
 - `--minify` runs the compatibility-prefix synthesis inside its own pipeline
   rather than after it, so a sheet no longer minifies smaller the second time it
   is run: the prefixed declarations are a rule's shared subset for the factoring

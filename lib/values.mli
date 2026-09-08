@@ -262,6 +262,17 @@ val default_calc_ctx : calc_ctx
 (** [default_calc_ctx] knows of no single-valued variables, so every
     context-dependent calc rewrite is a no-op. *)
 
+val canonical_dimension : length -> length
+(** [canonical_dimension l] folds a length written as a spelling of a value the
+    constructors already hold back onto the constructor: [1.0px], [+1px], [01px]
+    and [1e3px] all become [Px]. The reader keeps such a spelling for the
+    unminified round-trip and the printer drops it under [--minify], so two
+    spellings otherwise reach one minified text through two nodes, and anything
+    keyed on the node reads them as two values. Only a unit the constructor
+    prints back verbatim folds, so no byte moves; a zero keeps its unit, whose
+    strip is a separate question. Belongs in a normalize pass, which only the
+    optimizer runs: the unminified round-trip still needs the spelling. *)
+
 val normalize_length_percentage :
   ?strip:bool ->
   ?non_negative:bool ->

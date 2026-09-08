@@ -591,6 +591,17 @@ let pp_overflow_clip_box : overflow_clip_box Pp.t =
   | Padding_box -> Pp.string ctx "padding-box"
   | Border_box -> Pp.string ctx "border-box"
 
+(* The clip distance keeps the spelling the author wrote for the unminified
+   round-trip, and [pp_length] drops it under [--minify]. Fold it, or two
+   spellings of one distance reach one minified text through two nodes and
+   anything keyed on the node reads them as two values. *)
+let normalize_overflow_clip_margin :
+    overflow_clip_margin -> overflow_clip_margin = function
+  | Clip_margin (box, Some length) as value ->
+      let length' = Values.canonical_dimension length in
+      if length' == length then value else Clip_margin (box, Some length')
+  | value -> value
+
 let rec pp_overflow_clip_margin : overflow_clip_margin Pp.t =
  fun ctx -> function
   | Clip_margin (Some box, Some length) ->

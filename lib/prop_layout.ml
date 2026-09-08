@@ -274,6 +274,36 @@ let rec pp_contain_intrinsic_size : contain_intrinsic_size Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* The same fold as everywhere else a length carries its authored spelling: the
+   reader keeps it for the unminified round-trip and the printer drops it under
+   [--minify], so it has to go before anything keyed on the node compares two
+   spellings of one size. *)
+let normalize_contain_intrinsic_size_item :
+    contain_intrinsic_size_item -> contain_intrinsic_size_item = function
+  | Length length as value ->
+      let length' = Values.canonical_dimension length in
+      if length' == length then value else Length length'
+  | Auto length as value ->
+      let length' = Values.canonical_dimension length in
+      if length' == length then value else Auto length'
+  | value -> value
+
+let normalize_contain_intrinsic_longhand :
+    contain_intrinsic_longhand -> contain_intrinsic_longhand = function
+  | Size size as value ->
+      let size' = normalize_contain_intrinsic_size_item size in
+      if size' == size then value else Size size'
+  | value -> value
+
+let normalize_contain_intrinsic_size :
+    contain_intrinsic_size -> contain_intrinsic_size = function
+  | Intrinsic (first, second) as value ->
+      let first' = normalize_contain_intrinsic_size_item first in
+      let second' = Option.map normalize_contain_intrinsic_size_item second in
+      if first' == first && second' == second then value
+      else Intrinsic (first', second')
+  | value -> value
+
 let rec pp_contain_intrinsic_longhand : contain_intrinsic_longhand Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_contain_intrinsic_longhand ctx v

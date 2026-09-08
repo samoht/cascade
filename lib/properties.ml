@@ -4639,6 +4639,12 @@ let normalize_property_value : type a.
   | Border_block_width -> normalize_logical_border_width value
   | Border_inline_style -> normalize_logical_border_style value
   | Border_block_style -> normalize_logical_border_style value
+  | Overflow_clip_margin -> normalize_overflow_clip_margin value
+  | Contain_intrinsic_size -> normalize_contain_intrinsic_size value
+  | Contain_intrinsic_width -> normalize_contain_intrinsic_longhand value
+  | Contain_intrinsic_height -> normalize_contain_intrinsic_longhand value
+  | Contain_intrinsic_inline_size -> normalize_contain_intrinsic_longhand value
+  | Contain_intrinsic_block_size -> normalize_contain_intrinsic_longhand value
   | Transition_duration -> Values.normalize_duration ~ctx value
   | Transition_delay -> Values.normalize_duration ~ctx value
   | Animation_duration -> Values.normalize_duration ~ctx value
