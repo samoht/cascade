@@ -1843,6 +1843,19 @@ let mask_drained_layer () =
     ~optimized:"-webkit-mask:url(a.png),none;mask:url(a.png),none"
     "mask: url(a.png), none"
 
+(* CSS Masking 1 (ED) sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1
+   puts [none] in the [<mask-reference>] of one layer, so it names the whole
+   value only where no layer follows it and no slot of its own layer does. *)
+let mask_none_is_a_layer_reference () =
+  check_declaration ~expected:"mask:none,none"
+    ~optimized:"-webkit-mask:none,none;mask:none,none" "mask: none, none";
+  check_declaration ~expected:"mask:none luminance" "mask: none luminance";
+  (* Controls: a lone [none] is still the property keyword, and a layer list
+     that never spells [none] reads as before. *)
+  check_declaration ~expected:"mask:none" "mask: none";
+  check_declaration ~expected:"mask:url(a.png),url(b.png)"
+    "mask: url(a.png), url(b.png)"
+
 (* CSS Values 4 (ED) sec. 10.3 keeps a [calc()] valid where its range is
    exceeded and clamps at used-value time, so a property whose range starts at
    zero reads [calc(-10px)] and drops [-10px]. Chrome 146 computes the first as
@@ -7142,6 +7155,8 @@ let declaration_tests =
     test_case "background repeat axes" `Quick background_repeat_axes;
     test_case "negative calc keeps the call" `Quick negative_calc_keeps_the_call;
     test_case "mask drained layer" `Quick mask_drained_layer;
+    test_case "mask none is a layer reference" `Quick
+      mask_none_is_a_layer_reference;
     test_case "background drained layer" `Quick background_drained_layer;
     test_case "border line-color" `Quick border_line_color;
     test_case "empty shorthand value" `Quick empty_shorthand_value;
