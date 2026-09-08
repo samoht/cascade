@@ -384,8 +384,12 @@ let test_custom_prop_empty_edges _buf =
         if serialized <> expected then
           failf "%s custom property changed: %S -> %S" label input serialized
   in
-  assert_serializes "browser-compatible empty value" "--x:" "--x:";
-  assert_serializes "spec whitespace-token value" "--x: " "--x: "
+  (* CSS Syntax 3 sec. 5.5.6 discards whitespace before a declaration value and
+     removes it from the end, so the two spellings name one value: the empty
+     value CSS Custom Properties 1 sec. 2 grants the [--*] family through
+     [<declaration-value>?]. Both therefore write back the same way. *)
+  assert_serializes "empty value" "--x:" "--x:";
+  assert_serializes "whitespace-only value" "--x: " "--x:"
 
 let suite =
   ( "declaration",

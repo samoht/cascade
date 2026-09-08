@@ -280,6 +280,13 @@ let custom_properties_basic () =
   check_declaration ~minify:false ~expected:"--x: a  b" "--x:a  b";
   check_declaration ~minify:false ~expected:"--sp: a" "--sp:  a  ";
   check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b";
+  (* Trimming the ends is that same step with nothing left between them: CSS
+     Custom Properties 1 (ED) sec. 2 gives the [--*] family [Value:
+     <declaration-value>?], and sec. 2.2 calls an empty value written into a
+     custom property valid, so a whitespace-only value is the empty value and
+     not a one-token stream. *)
+  check_declaration ~expected:"--e:" "--e: ";
+  check_declaration ~expected:"--e:" "--e:";
   (* Section 9.1 serializes an ident by escaping only what must be, so an escape
      the author wrote otherwise does not come back. A custom property's value is
      not a reserialized stream, so its tokens keep the text they were read
@@ -4386,7 +4393,10 @@ let parse_custom_property_guard () =
       ("\"a;b\"", "--x:\"a;b\"");
       ("{a:b;}", "--x:{a:b;}");
       ("red/*", "--x:red");
-      (" ", "--x: ");
+      (* Sec. 5.5.6 discards whitespace at both ends of a declaration value, so
+         a whitespace-only one is the empty value sec. 2.2 of CSS Custom
+         Properties 1 (ED) calls valid. *)
+      (" ", "--x:");
       (* CSS Syntax 3 (ED) sec. 4.3.5 ends a string at EOF as the string it
          read, so this is one declaration value and writes back closed. *)
       ("\"abc", "--x:\"abc\"");

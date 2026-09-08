@@ -8566,11 +8566,15 @@ let customprops13_declaration () =
   Alcotest.(check string)
     "--x: red blue preserved" ".x{--x:red blue}"
     (normalize ".x { --x: red blue }");
+  (* CSS Syntax 3 (ED) sec. 5.5.6 discards whitespace before a declaration's
+     value and again from its end, and CSS Custom Properties 1 (ED) sec. 2
+     writes the [--*] family's value [<declaration-value>?], so what is left of
+     a whitespace-only value is the empty value sec. 2.2 calls valid. *)
   Alcotest.(check string)
-    "--x: before block close preserves whitespace-token value" ".x{--x: }"
+    "--x: before block close is the empty value" ".x{--x:}"
     (normalize ".x { --x: }");
   Alcotest.(check string)
-    "--x: ; preserves the whitespace-token value" ".x{--x: }"
+    "--x: ; is the empty value" ".x{--x:}"
     (normalize ".x { --x: ; }")
 
 let customprops13_color_keyword_case_fold () =

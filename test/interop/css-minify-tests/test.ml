@@ -552,6 +552,16 @@ let normalize_expected ~category ~id expected =
          [#000] is the shortest spelling. *)
       fixture ~category ~id ~upstream:"a{--brand-color: rgb(0 0 0)}"
         ~cascade:"a{--brand-color:#000}" upstream
+  | "values", "0058" ->
+      (* The upstream oracle keeps the space after the colon, which every
+         minifier in the corpus does. CSS Syntax 3 sec. 5.5.6 discards
+         whitespace before a declaration value and removes it from the end, so
+         nothing of a whitespace-only value survives, and CSS Custom Properties
+         1 sec. 2 writes the [--*] family's value [<declaration-value>?], whose
+         [?] is the empty value sec. 2 calls valid. The space is therefore a
+         separator the emitter may drop rather than a token the value holds. *)
+      fixture ~category ~id ~upstream:"a{--foo: ;color:var(--foo,red)}"
+        ~cascade:"a{--foo:;color:var(--foo,red)}" upstream
   | "whitespace", "0012" ->
       (* The upstream fixture is scoped to whitespace around multiplication in
          calc() and keeps the calc() wrapper. Exact constant math may fold:
