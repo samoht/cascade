@@ -4768,6 +4768,13 @@ let spec_platform_property_vectors () =
       ("animation-range: Cover 10%", "animation-range:cover 10%");
       ( "transition-behavior: allow-discrete",
         "transition-behavior:allow-discrete" );
+      (* CSS Transitions 2 sec. 2 spells the property
+         [<transition-behavior-value>#], so it takes one behaviour per
+         transition the way every other transition longhand does. *)
+      ( "transition-behavior: normal, normal",
+        "transition-behavior:normal,normal" );
+      ( "transition-behavior: allow-discrete, normal",
+        "transition-behavior:allow-discrete,normal" );
       ("view-transition-name: card", "view-transition-name:card");
       ("image-orientation: from-image", "image-orientation:from-image");
       ("background-clip: text", "background-clip:text");
