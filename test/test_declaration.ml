@@ -502,6 +502,16 @@ let special_cases () =
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"background-position:var(--x) 20%"
     "background-position: var(--x) 20%;";
+  (* CSS Backgrounds 4 sec. 3.6 spells each axis longhand with the same [#] the
+     pair carries, so it names one position per layer too. Chrome 153 reads each
+     of these and gives them back comma-separated. *)
+  check_declaration ~expected:"background-position-x:center,10px"
+    "background-position-x: center, 10px;";
+  check_declaration ~expected:"background-position-y:center,10px"
+    "background-position-y: center, 10px;";
+  check_declaration
+    ~expected:"background-position-x:left 10px,right 20px,center"
+    "background-position-x: left 10px, right 20px, center;";
   (* CSS Values 4 (ED) sec. 8.3 spells one alternative of <position> as "[ left
      | center | right | <length-percentage> ] [ top | center | bottom |
      <length-percentage> ]", so an offset in the first slot pairs with an edge
