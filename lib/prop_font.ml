@@ -1692,7 +1692,21 @@ let rec read_font_family_name t : font_family =
         match Cursor.peek_ident t with
         | Some _ ->
             let word = Cursor.ident ~keep_case:true t in
-            if is_font_family_reserved_word word then
+            (* A generic family name is the alternative the grammar reads
+               instead of a name, so it is turned away where that alternative
+               starts, at the first word, and is an ordinary [<custom-ident>]
+               after it: [Cambria Math] and [Foo serif] are installed fonts,
+               [serif Foo] is not. A CSS-wide keyword or [default] is excluded
+               from [<custom-ident>] itself (CSS Values 4 sec. 4.2), so it is
+               turned away at every word. This is the rule
+               [read_unquoted_family_name] applies to the property, over the
+               same production. *)
+            let reserved =
+              match acc with
+              | [] -> is_font_family_reserved_word word
+              | _ :: _ -> is_font_family_css_wide word
+            in
+            if reserved then
               Cursor.err_invalid t
                 "reserved word in an unquoted font-family name";
             Cursor.ws t;

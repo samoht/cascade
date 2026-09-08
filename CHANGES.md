@@ -249,7 +249,8 @@ to lose a whole rule over one bad piece. Both are gone.
   value there, not a list item, and CSS Values 4 sec. 2.2 takes each option of
   a `||` at most once. An unquoted `font-family` name refuses a generic keyword
   only where it heads the sequence, so `font-family: serif serif` is dropped
-  and `font-family: Cambria Math` reads (#1147)
+  and `font-family: Cambria Math` reads, at the `@font-face` and
+  `@font-palette-values` descriptors as at the property (#1147, #1167)
 - A `@keyframes` name is spelled the way its value requires, so
   `@keyframes "default"` keeps its quotes where it used to print as
   `@keyframes default`, which every browser drops, and `@keyframes "none"` is
