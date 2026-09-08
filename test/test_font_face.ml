@@ -145,15 +145,48 @@ let test_spec_metric_parsing_edges () =
     (size_adjust_of_string "87.5%" |> string_of_size_adjust)
 
 let test_spec_metric_negative_vectors () =
-  List.iter expect_metric_rejected [ "-1%"; "auto"; "100"; "calc(1%)" ];
+  List.iter expect_metric_rejected [ "-1%"; "auto"; "100" ];
   Alcotest.(check string)
     "over 100 metric override still parses" "120%"
     (metric_override_of_string "120%" |> string_of_metric_override);
-  List.iter expect_size_adjust_rejected
-    [ "-10%"; "normal"; "auto"; "100"; "calc(100%)" ];
+  List.iter expect_size_adjust_rejected [ "-10%"; "normal"; "auto"; "100" ];
   Alcotest.(check string)
     "zero size adjust parses" "0%"
     (size_adjust_of_string "0%" |> string_of_size_adjust)
+
+(* CSS Values 4 sec. 10.1 puts a math function wherever a [<percentage>] is
+   allowed, and CSS Fonts 4 sec. 4.10 and Fonts 5 sec. 4.4 spell these four
+   descriptors with one, so a call reads here exactly as it does at a percentage
+   property. The descriptor has a percentage leaf and no calculation node, so a
+   call that resolves stands for the percentage it answers and one that answers
+   another type is no value for the slot. Chrome 153 reads every accepted row
+   and drops every rejected one. *)
+let spec_fontface_metric_math () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (metric_override_of_string input |> string_of_metric_override))
+    [
+      ("calc(50%)", "50%");
+      ("calc(50% + 10%)", "60%");
+      ("min(50%,75%)", "50%");
+      ("clamp(10%,50%,90%)", "50%");
+      ("abs(-50%)", "50%");
+    ];
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (size_adjust_of_string input |> string_of_size_adjust))
+    [
+      ("calc(50%)", "50%");
+      ("calc(50% + 10%)", "60%");
+      ("max(50%,75%)", "75%");
+      ("abs(-50%)", "50%");
+    ];
+  List.iter expect_metric_rejected [ "calc(1px)"; "calc(50)"; "min(1px,2px)" ];
+  List.iter expect_size_adjust_rejected [ "calc(1px)"; "calc(50)" ]
 
 let spec_fontface_source_edges () =
   let check_normalized name input expected =
@@ -750,6 +783,7 @@ let suite =
         test_spec_metric_parsing_edges;
       test_case "spec metric negative vectors" `Quick
         test_spec_metric_negative_vectors;
+      test_case "spec font-face metric math" `Quick spec_fontface_metric_math;
       test_case "spec font-face level 4/5 source edges" `Quick
         spec_fontface_source_edges;
       test_case "spec font-face metric descriptor edges" `Quick
