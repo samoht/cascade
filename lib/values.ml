@@ -1959,6 +1959,24 @@ let length_of_unit unit n =
 let length_of_calc_unit (unit : length_unit) n : length =
   match unit with Px -> Px n | _ -> length_of_unit unit n
 
+(* CSS Syntax 3 (ED) sec. 4.3.12 builds a number's value from its sign, digits,
+   fraction and exponent, so [1.0px], [+1px], [01px] and [1e3px] name lengths
+   the constructors above already hold. The reader keeps such a spelling in a
+   [Dimension] for the unminified round-trip, and the printer drops it under
+   [--minify]: two spellings then reach one minified text through two nodes,
+   which anything keyed on the node reads as two values. Fold back to the
+   constructor once the round-trip no longer needs the spelling. Only a unit the
+   constructor prints back verbatim folds, so no byte moves; a zero is left to
+   [strip_zero_length], whose unit strip is a type change this is not. *)
+let canonical_dimension (l : length) : length =
+  match l with
+  | Dimension { value; unit; _ }
+    when value <> 0. && String.equal (String.lowercase_ascii unit) unit -> (
+      match unit_of_string unit with
+      | Some unit -> length_of_unit unit value
+      | None -> l)
+  | _ -> l
+
 type linear_term = {
   unit : length_unit;
   value : float;
@@ -3882,7 +3900,7 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
           |> eval_length_calc ~ctx
         with
         | folded -> Calc_size (basis, folded))
-    | _ -> l
+    | _ -> canonical_dimension l
   in
   (* CSS Values 4 sec. 10.12 clamps a math function whose value falls outside
      the property's range at computed-value time and keeps the declaration, so
