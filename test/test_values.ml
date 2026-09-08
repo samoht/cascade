@@ -2058,6 +2058,58 @@ let spec_math_at_the_remaining_readers () =
      durations Chrome refuses whatever the spelling stay refused. *)
   neg_cursor read_duration "calc(-1s)"
 
+(* Sec. 10.9 types a calculation and sec. 10.1 admits it only where that type
+   stands, so a call answering its arguments' type reaches a [<number>] or
+   [<percentage>] slot only when those arguments were numbers or percentages:
+   sec. 10.5 [hypot()], sec. 10.6 [abs()] and the sec. 10.2 stepped functions
+   over lengths name a [<length>] and belong to none of the slots below. Sec.
+   10.8 spells a [<calc-value>] as a number, a dimension, a percentage, a
+   [<calc-keyword>] or a parenthesised sum, so no keyword of the property's own
+   grammar is an operand either. Chrome 153 drops every row here. *)
+let spec_math_type_at_the_number_percentage_readers () =
+  let module P = Css.Properties in
+  (* CSS Transforms 2 sec. 5 [scale] is [none | [ <number> | <percentage>
+     ]{1,3}] and names no length. *)
+  neg_cursor P.read_scale "abs(-1px)";
+  neg_cursor P.read_scale "hypot(3px,4px)";
+  neg_cursor P.read_scale "mod(5px,2px)";
+  neg_cursor P.read_scale "round(1.5px,1px)";
+  neg_cursor P.read_scale "calc(abs(-1px))";
+  (* CSS Fonts 4 sec. 2.3.1 [font-stretch] is the [font-width] alias, [normal |
+     <percentage [0,inf]> | <keyword>], and names no length. *)
+  neg_cursor P.read_font_stretch "abs(-1px)";
+  neg_cursor P.read_font_stretch "hypot(3px,4px)";
+  neg_cursor P.read_font_stretch "mod(5px,2px)";
+  neg_cursor P.read_font_stretch "round(1.5px,1px)";
+  neg_cursor P.read_font_stretch "calc(abs(-1px))";
+  (* CSS Size Adjustment 1 sec. 3 [text-size-adjust] is [none | auto |
+     <percentage [0,inf]>], and names no length. The [-webkit-] twin reads
+     through the same reader. *)
+  neg_cursor P.read_text_size_adjust "abs(-1px)";
+  neg_cursor P.read_text_size_adjust "hypot(3px,4px)";
+  neg_cursor P.read_text_size_adjust "mod(5px,2px)";
+  neg_cursor P.read_text_size_adjust "round(1.5px,1px)";
+  neg_cursor P.read_text_size_adjust "calc(abs(-1px))";
+  (* A keyword operand is no [<calc-value>]. Unwrapping one wrote back a live
+     [inherit] where the browser had dropped the declaration outright. *)
+  neg_cursor P.read_font_stretch "calc(inherit)";
+  neg_cursor P.read_font_stretch "calc(normal)";
+  neg_cursor P.read_font_stretch "calc(condensed)";
+  neg_cursor P.read_text_size_adjust "calc(inherit)";
+  neg_cursor P.read_text_size_adjust "calc(none)";
+  neg_cursor P.read_text_size_adjust "calc(2 * auto)";
+  neg_cursor P.read_text_size_adjust "calc(auto * 2)";
+  (* The types each slot does take. A percentage-typed call stands at all three,
+     and the [<number>] one only where the grammar spells a [<number>]. *)
+  decl_optimizes ~prop:"scale" ~into:"2" "calc(2)";
+  decl_optimizes ~prop:"scale" ~into:"1%" "abs(-1%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"calc(abs(-1%))" "abs(-1%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"calc(abs(-1%))" "abs(-1%)";
+  neg_cursor P.read_font_stretch "calc(2)";
+  neg_cursor P.read_text_size_adjust "calc(2)"
+
 (* Sec. 9.1 is explicit that "width: -5px is not equivalent to width:
    calc(-5px)", because "out-of-range values specified literally are invalid at
    parse-time", and sec. 10.13 drops the wrapper only "of a computed value or
@@ -2376,6 +2428,8 @@ let value_tests =
       spec_stepped_value_dimensions;
     test_case "spec math at the remaining readers" `Quick
       spec_math_at_the_remaining_readers;
+    test_case "spec math type at the number percentage readers" `Quick
+      spec_math_type_at_the_number_percentage_readers;
     test_case "spec math range keeps the call" `Quick
       spec_math_range_keeps_the_call;
     test_case "spec minified output reads back" `Quick
