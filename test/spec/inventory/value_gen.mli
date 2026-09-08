@@ -31,7 +31,10 @@ val values_for : seed:int -> string -> string list
     (the last hyphen-separated segment names the grammar far more often than the
     first does), a sample of every value the manifest writes anywhere, and
     shapes no grammar shares: CSS-wide keywords, substitutions, degenerate text
-    and malformed values. Every value is writable into a declaration block, so
+    and malformed values. A grammar whose value is a sequence of identifiers
+    reserves a name by position rather than by presence, so a reserved name of
+    the property's own grammar is also written beside a name from somebody
+    else's, in both orders. Every value is writable into a declaration block, so
     none carries a [;], a brace or a newline. *)
 
 val wildcards : string list

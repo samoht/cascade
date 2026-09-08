@@ -202,6 +202,61 @@ let repetitions s pool =
     let join n = String.concat " " (List.init n (fun _ -> pick ())) in
     [ join 2; join 3; join 4; String.concat ", " [ pick (); pick () ] ]
 
+(* A grammar whose value is a SEQUENCE of identifiers reserves a name by
+   POSITION, not by presence. CSS Fonts 4 sec. 2.2 writes <family-name> as
+   [<string> | <custom-ident>+], and CSS Values 4 sec. 4.2 excludes a
+   <custom-ident> only where the enclosing grammar reserves it, so [serif] is a
+   generic where it stands alone and an ordinary name token where it follows
+   another: [Cambria Math] and [Foo serif] are both one family name.
+
+   The same holds one level up, across a comma. CSS Values 4 sec. 2.3 writes a
+   comma-separated repetition as [#], and each item is a full value of the
+   item's grammar, so a list whose items are [<position>] takes a keyword in one
+   item and a length in the next. A reader that types the list from its first
+   item takes [center, center] and drops [center, 10px].
+
+   [repetitions] draws each slot independently, so it reaches both shapes by
+   luck and only for a property whose pool happens to hold both kinds of token.
+   This reaches them on purpose: a reserved name from the property's own
+   grammar, beside a name from somebody else's and beside a value that is not a
+   name at all, in both orders. A reader that scans the whole sequence for a
+   reserved word rather than the slot that reserves it takes every repetition
+   and still drops the mixed pair. *)
+
+let bare_ident value =
+  (not (String.equal value ""))
+  && String.for_all
+       (fun c ->
+         match c with 'a' .. 'z' | 'A' .. 'Z' | '-' -> true | _ -> false)
+       value
+
+let sequence_keyword_count = 3
+let sequence_name_count = 3
+
+let sequences s ~own ~pool =
+  let singles = List.filter single_component pool in
+  let keywords = sample s sequence_keyword_count (List.filter bare_ident own) in
+  let names = sample s sequence_name_count (List.filter bare_ident singles) in
+  let others =
+    sample s sequence_name_count
+      (List.filter (fun v -> not (bare_ident v)) singles)
+  in
+  List.concat_map
+    (fun keyword ->
+      List.concat_map
+        (fun other ->
+          if String.equal keyword other then []
+          else
+            [
+              String.concat " " [ other; keyword ];
+              String.concat " " [ keyword; other ];
+              String.concat " " [ other; keyword; other ];
+              String.concat ", " [ other; keyword ];
+              String.concat ", " [ keyword; other ];
+            ])
+        (List.rev_append names others))
+    keywords
+
 (* ===== Respellings ===== *)
 
 (* CSS Syntax 3 sec. 4 turns escapes, comments and letter case into tokens
@@ -515,6 +570,11 @@ let vectors_for ~seed name =
      draws happen in is the order the seed means. *)
   let repeated = repetitions s pool in
   let respelled = mutated s (if own = [] then wildcards else own) in
+  (* Drawn last, so adding this shape leaves every draw above it where the seed
+     had already put it. *)
+  let sequenced =
+    sequences s ~own:(if own = [] then wildcards else own) ~pool
+  in
   let plain =
     List.concat
       [
@@ -530,6 +590,7 @@ let vectors_for ~seed name =
         near;
         far;
         repeated;
+        sequenced;
       ]
   in
   let generated =
