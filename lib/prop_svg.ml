@@ -72,7 +72,7 @@ let rec numeric_stroke_width_calc_leaves :
 let rec normalize_stroke_width ~ctx (value : stroke_width) : stroke_width =
   match value with
   | Length lp ->
-      let lp' = Values.normalize_length_percentage ~ctx lp in
+      let lp' = Values.normalize_length_percentage ~ctx ~non_negative:true lp in
       if lp' == lp then value else Length lp'
   (* Sec. 13.5.3 calls a negative width invalid, and CSS Values 4 sec. 10.12
      clamps a math function past that range at computed-value time: unwrapping a

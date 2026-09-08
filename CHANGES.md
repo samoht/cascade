@@ -452,10 +452,14 @@ to lose a whole rule over one bad piece. Both are gone.
   zero keeps its call on a property whose range starts there, since CSS Values
   4 sec. 10.3 clamps at used-value time: `width: calc(-10px)` computes to `0px`
   where `width: -10px` is dropped, and folding the call away turned a working
-  declaration into one browsers throw out. A sum leads with a positive term
-  where it has one, so `calc(-10px + 100vw)` minifies to `calc(100vw - 10px)`
-  rather than growing a sign into `calc(3px + -2em)` (#350, #354, #362, #367,
-  #676, #731, #967, #1113)
+  declaration into one browsers throw out. That now holds for a `<number>` as
+  well as a length, so `aspect-ratio: sign(-1px)` keeps `calc(-1)` where it
+  wrote `-1`, output its own reader then refused, at eleven properties among
+  them `flex-grow`, `line-height`, `tab-size`, `stroke-width` and
+  `border-radius`. A sum leads with a positive term where it has one, so
+  `calc(-10px + 100vw)` minifies to `calc(100vw - 10px)` rather than growing a
+  sign into `calc(3px + -2em)` (#350, #354, #362, #367, #676, #731, #967,
+  #1113, #1149)
 - `--minify` folds a value's spelling before two rules are compared, so a hex
   colour, a NaN, an unreduced `min()`, a same-unit `calc()`, a shorthand
   component at its longhand's initial, a repeated `font-family` entry, a
