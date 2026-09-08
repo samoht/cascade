@@ -84,13 +84,15 @@ let rec normalize_stroke_width ~ctx (value : stroke_width) : stroke_width =
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
 
+(* Sec. 13.5.4 calls a negative dash length an error, so the [0,inf] range holds
+   whichever branch of the production the value took. *)
 let normalize_dash_length ~ctx (value : dash_length) : dash_length =
   match value with
   | Number n ->
-      let n' = Values.normalize_number ~ctx n in
+      let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then value else Number n'
   | Length lp ->
-      let lp' = Values.normalize_length_percentage ~ctx lp in
+      let lp' = Values.normalize_length_percentage ~ctx ~non_negative:true lp in
       if lp' == lp then value else Length lp'
 
 let normalize_stroke_dashoffset ~ctx (value : stroke_dashoffset) :

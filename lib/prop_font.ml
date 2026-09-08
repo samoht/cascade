@@ -1391,6 +1391,7 @@ let rec pp_line_height : line_height Pp.t =
   | Var v -> pp_var pp_line_height ctx v
   | Calc c ->
       pp_calc
+        ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_line_height v))
         pp_line_height ctx c
 
@@ -2457,7 +2458,10 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
         if lossless || calc_has_computed_input c then Option.None
         else Option.map (Pp.round_sig 6) (Values.eval_numeric_calc c)
       with
-      | Option.Some f -> Num f
+      (* The [0,inf] range is checked on what the call resolves to, so the
+         six-figure result takes the same guard the exact fold below takes. *)
+      | Option.Some f when f >= 0. -> Num f
+      | Option.Some f -> Calc (Num f)
       | Option.None -> (
           match Values.eval_calc c with
           | Values.Num f when f >= 0. -> Num f

@@ -239,9 +239,11 @@ let rec pp_border_radius : border_radius Pp.t =
    horizontal one says what omitting it says. *)
 let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
  fun value ->
+  (* Sec. 4.1 gives each radius a [0,inf] range, and the shorthand carries what
+     its longhands carry: a call folding below it keeps its wrapper. *)
   let group =
     normalize_box_shorthand ~is_substitution:is_lp_substitution
-      (Values.normalize_length_percentage ~strip)
+      (Values.normalize_length_percentage ~strip ~non_negative:true)
   in
   match value with
   | Radius { horizontal; vertical } ->

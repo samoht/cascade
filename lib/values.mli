@@ -302,10 +302,12 @@ val normalize_number_percentage :
     stay opaque - inside a [calc()], the two spellings are not interchangeable.
 *)
 
-val normalize_number : ?ctx:calc_ctx -> number -> number
+val normalize_number : ?ctx:calc_ctx -> ?non_negative:bool -> number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
-    nested calls; an operand with a [var()] keeps the call. *)
+    nested calls; an operand with a [var()] keeps the call. [non_negative] says
+    the property refuses a negative literal, so a call folding to one keeps its
+    wrapper rather than becoming CSS the reader drops. *)
 
 val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
 (** [normalize_percentage p] folds the value-independent parts of a

@@ -33,13 +33,16 @@ let normalize_animation_range : animation_range -> animation_range =
              option_map_preserve normalize_animation_range_item b ))
   | other -> other
 
-(* Sec. 3.4 gives the count a plain [<number>], so a static math function on it
-   folds like any other. *)
+(* Sec. 3.4 gives the count a [0,inf] [<number>], so a static math function on
+   it folds like any other, and one folding below the range keeps its wrapper
+   rather than becoming a literal the reader refuses. *)
 let rec normalize_animation_iteration_count ~ctx :
     animation_iteration_count -> animation_iteration_count =
  fun value ->
   match value with
-  | Count n -> preserve_if_equal value (Count (Values.normalize_number ~ctx n))
+  | Count n ->
+      preserve_if_equal value
+        (Count (Values.normalize_number ~ctx ~non_negative:true n))
   | Counts counts ->
       preserve_if_equal value
         (Counts (map_preserve (normalize_animation_iteration_count ~ctx) counts))

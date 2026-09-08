@@ -250,17 +250,17 @@ let aspect_ratio_of_numbers ~auto (a : number) (b : number) : aspect_ratio =
   | false, a, b -> Ratio_calc (a, b)
   | true, a, b -> Auto_ratio_calc (a, b)
 
+(* CSS Sizing 4 sec. 5 spells the value [<ratio>], whose CSS Values 4 sec. 6.5
+   numbers carry a [0,inf] range, so a call folding below it keeps its wrapper:
+   the literal underneath is one [read_aspect_ratio_number] refuses. *)
 let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
  fun value ->
+  let number = Values.normalize_number ~non_negative:true in
   match value with
   | Auto_ratio_calc (a, b) ->
-      aspect_ratio_of_numbers ~auto:true
-        (Values.normalize_number a)
-        (Values.normalize_number b)
+      aspect_ratio_of_numbers ~auto:true (number a) (number b)
   | Ratio_calc (a, b) ->
-      aspect_ratio_of_numbers ~auto:false
-        (Values.normalize_number a)
-        (Values.normalize_number b)
+      aspect_ratio_of_numbers ~auto:false (number a) (number b)
   | other -> other
 
 let rec pp_display : display Pp.t =
@@ -731,9 +731,11 @@ let rec pp_table_layout : table_layout Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* Sec. 6.5 refuses a negative ratio number written on its own, so the fold
+   comes off only where its result is a ratio number by itself. *)
 let pp_aspect_ratio_number ctx value =
   match (Pp.minified ctx, eval_number_value value) with
-  | true, Some value -> Pp.float ctx value
+  | true, Some value when value >= 0. -> Pp.float ctx value
   | _ -> pp_number ctx value
 
 let pp_aspect_ratio_pair ctx a b =

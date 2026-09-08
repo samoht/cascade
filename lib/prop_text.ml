@@ -779,8 +779,10 @@ let normalize_hyphenate_limit_chars_item ~ctx :
  fun item ->
   match item with
   | Auto -> item
+  (* Sec. 6.2 counts characters, so each slot is a [1,inf] [<integer>] and a
+     call folding below it keeps its wrapper. *)
   | Chars n ->
-      let n' = Values.normalize_number ~ctx n in
+      let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then item else Chars n'
 
 let normalize_hyphenate_limit_chars ~ctx :
@@ -874,11 +876,13 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
            })
   | other -> other
 
+(* Sec. 4.2 gives the number a [0,inf] range, so a call folding below it keeps
+   its wrapper rather than becoming a literal the reader refuses. *)
 let normalize_tab_size ~ctx : tab_size -> tab_size =
  fun value ->
   match value with
   | Number n ->
-      let n' = Values.normalize_number ~ctx n in
+      let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then value else Number n'
   | other -> other
 

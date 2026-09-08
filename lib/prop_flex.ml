@@ -41,11 +41,14 @@ let rec numeric_flex_factor_calc_leaves : flex_factor calc -> flex_factor calc =
           numeric_flex_factor_calc_leaves right )
   | other -> other
 
+(* Sec. 7.2 gives both factors a [0,inf] [<number>], and CSS Values 4 sec. 10.12
+   clamps a math function past that range at computed-value time: unwrapping a
+   negative one would write CSS a browser drops. *)
 let rec normalize_flex_factor (value : flex_factor) : flex_factor =
   match value with
   | Calc c -> (
       match eval_calc (numeric_flex_factor_calc_leaves c) with
-      | Num f -> Number f
+      | Num f when f >= 0. -> Number f
       | Val v -> normalize_flex_factor v
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
@@ -198,7 +201,14 @@ let rec pp_flex_factor : flex_factor Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_flex_factor ctx v
   | Number value -> Pp.float ctx value
-  | Calc c -> pp_calc pp_flex_factor ctx c
+  (* Sec. 7.2 refuses a negative factor written on its own, so the wrapper comes
+     off only around a leaf that is a factor by itself. *)
+  | Calc c ->
+      pp_calc
+        ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
+        ~unwrap:(fun (v : flex_factor) ->
+          match v with Number f -> f >= 0. | _ -> true)
+        pp_flex_factor ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
