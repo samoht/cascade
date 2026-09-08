@@ -219,6 +219,14 @@ to lose a whole rule over one bad piece. Both are gone.
   `animation-name: "default"` still reads. Six productions each carried their
   own exclusion list, five of which had forgotten `default`; they now share
   `Cascade.Cursor.custom_ident` (#1143)
+- A `@keyframes` name is spelled the way its value requires, so
+  `@keyframes "default"` keeps its quotes where it used to print as
+  `@keyframes default`, which every browser drops, and `@keyframes "none"` is
+  read where it was refused. CSS Animations 1 sec. 3 makes the two syntaxes
+  equivalent and the name the value of the ident or string, serialised as an
+  ident unless it is a disallowed keyword. `color-scheme` reads its list items
+  as `<custom-ident>`, so `color-scheme: default` is dropped with a warning
+  (#1146)
 - A property whose grammar names a `<length>` takes neither a percentage nor an
   intrinsic-sizing keyword, and a `<time>` or `<angle>` needs its unit. Cascade
   read them wherever it read a length, so `border-width: 50%`, `top:

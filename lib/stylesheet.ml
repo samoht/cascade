@@ -754,10 +754,13 @@ let pp_property_rule : 'a property_rule Pp.t =
     ctx ()
 
 (* CSS Animations 1 sec. 3 [<keyframes-name>] is [<custom-ident> | <string>].
-   The reader normalizes either form to a plain OCaml string; on output we
-   prefer the bare identifier when the value is a syntactically valid CSS ident
-   (shorter than the quoted form), falling back to a double-quoted string when
-   the name contains characters that would otherwise need escaping. *)
+   The two arms give the same name, so the reader keeps the name alone and sec.
+   3 settles the arm on output: "the value is serialized as an <ident> unless
+   it's a disallowed keyword, in which case it's serialized as a <string>". A
+   name an escape would rewrite takes the string too, which is no longer. *)
+let keyframes_name_reserved name =
+  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
+
 let pp_keyframes_name ctx name =
   let len = String.length name in
   let is_ident_continue c =
@@ -780,7 +783,8 @@ let pp_keyframes_name ctx name =
     String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
     !ok
   in
-  if is_safe_ident then Pp.string ctx name else Pp.quoted_string ctx name
+  if is_safe_ident && not (keyframes_name_reserved name) then Pp.string ctx name
+  else Pp.quoted_string ctx name
 
 let pp_keyframe_position : Keyframe.position Pp.t =
  fun ctx pos ->
@@ -2172,15 +2176,16 @@ let read_keyframes_block inner =
     read_keyframes_step inner []
 
 (* CSS Animations 1 sec. 3: [@keyframes <keyframes-name>], [<keyframes-name> =
-   <custom-ident> | <string>]. The reserved spellings ([none], CSS-wide
-   keywords, [default]) are excluded from [<custom-ident>], but every mainstream
-   minifier accepts them as [<string>], so cascade keeps them too rather than
-   leak input that downstream tools preserve verbatim. *)
+   <custom-ident> | <string>]. The ident arm loses [none] on top of what sec.
+   4.2 already keeps out of a [<custom-ident>]; the string arm takes every one
+   of those names and loses the empty string instead. *)
 let read_keyframes_name r =
   Cursor.ws r;
+  let loc = Cursor.position r in
   match Cursor.string_opt r with
+  | Some "" -> Cursor.err_invalid ~loc r "empty keyframes name"
   | Some s -> s
-  | None -> Cursor.ident ~keep_case:true r
+  | None -> Cursor.custom_ident ~reserved:[ "none" ] "keyframes name" r
 
 let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
   Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
@@ -4572,14 +4577,6 @@ let validate_partial_statement loc = function
       Some
         (Error.bad_value loc ~property:"@font-palette-values"
            ~reason:"missing font-family descriptor")
-  | (Keyframes (name, _) | Webkit_keyframes (name, _) | Moz_keyframes (name, _))
-    when List.mem
-           (String.lowercase_ascii name)
-           [ "none"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
-    ->
-      Some
-        (Error.bad_value loc ~property:"@keyframes"
-           ~reason:"forbidden keyframes name")
   | _ -> None
 
 let rec statement_has_invalid_declaration = function

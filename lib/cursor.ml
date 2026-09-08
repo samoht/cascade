@@ -576,11 +576,14 @@ let ident ?(keep_case = true) t =
 let custom_ident_reserved =
   [ "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
 
-let custom_ident ?(reserved = []) label t =
+let is_reserved_custom_ident ?(reserved = []) name =
+  let folded = String.lowercase_ascii_preserve name in
+  List.mem folded custom_ident_reserved || List.mem folded reserved
+
+let custom_ident ?reserved label t =
   let loc = position t in
   let name = ident ~keep_case:true t in
-  let folded = String.lowercase_ascii_preserve name in
-  if List.mem folded custom_ident_reserved || List.mem folded reserved then
+  if is_reserved_custom_ident ?reserved name then
     err_invalid ~loc t (String.concat "" [ "reserved "; label; ": "; name ])
   else name
 

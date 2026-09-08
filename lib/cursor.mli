@@ -258,6 +258,12 @@ val custom_ident : ?reserved:string list -> string -> t -> string
     all ASCII case permutations, and [label] names the production in the error.
 *)
 
+val is_reserved_custom_ident : ?reserved:string list -> string -> bool
+(** [is_reserved_custom_ident name] is whether {!custom_ident} refuses [name],
+    over the same exclusions and the same [reserved] extension. A printer asks
+    it where a grammar spells the same name as an ident or a string, since a
+    reserved name has no ident spelling and has to keep its quotes. *)
+
 val number : ?allow_negative:bool -> t -> float
 (** [number t] consumes the next numeric token. *)
 

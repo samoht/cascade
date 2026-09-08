@@ -108,13 +108,10 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
 
 (* The names a [<custom-ident>] may not spell, so the string arm is the only one
-   that carries them and the quotes are part of the value. *)
+   that carries them and the quotes are part of the value. CSS Animations 1 sec.
+   3 adds [none] to what CSS Values 4 sec. 4.2 reserves. *)
 let keyframes_name_needs_quotes name =
-  match String.lowercase_ascii name with
-  | "none" | "default" | "inherit" | "initial" | "unset" | "revert"
-  | "revert-layer" ->
-      true
-  | _ -> false
+  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
 
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
