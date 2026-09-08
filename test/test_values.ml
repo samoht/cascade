@@ -1909,6 +1909,38 @@ let spec_math_result_type () =
   decl_optimizes ~prop:"opacity" ~into:".5" "calc(abs(-.5))";
   decl_optimizes ~prop:"width" ~into:"1px" "calc(abs(-1px))"
 
+(* CSS Values 4 (ED) sec. 10.9 spells the arguments of [round()], [mod()] and
+   [rem()] as [<calc-sum>], so a dimension is one of them, and sec. 10.2 gives
+   the call the type its arguments have. The stepped-value functions therefore
+   stand wherever sec. 10.5 [hypot()] does, at a [<line-width>] as at a
+   [<length>], and answer the [<number>] slot the same way it does. *)
+let spec_stepped_value_dimensions () =
+  let module P = Css.Properties in
+  decl_optimizes ~prop:"border-top-width" ~into:"2px" "round(1.5px,1px)";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "mod(5px,2px)";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "rem(5px,2px)";
+  decl_optimizes ~prop:"outline-width" ~into:"2px" "round(1.5px,1px)";
+  decl_optimizes ~prop:"column-rule-width" ~into:"1px" "mod(5px,2px)";
+  decl_optimizes ~prop:"-webkit-text-stroke-width" ~into:"1px" "rem(5px,2px)";
+  (* Sec. 10.1 puts [calc()] among the math functions rather than above them, so
+     the wrapped spelling lands the same way the bare one does. *)
+  decl_optimizes ~prop:"border-top-width" ~into:"2px" "calc(round(1.5px,1px))";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "calc(mod(5px,2px))";
+  decl_optimizes ~prop:"border-top-width" ~into:"1px" "calc(rem(5px,2px))";
+  (* A [<number>] argument keeps answering a [<number>], which is what the
+     [<line-width>] slot refuses and an [<opacity-value>] takes. *)
+  decl_optimizes ~prop:"opacity" ~into:"2" "round(1.5,1)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "mod(5,2)";
+  decl_optimizes ~prop:"opacity" ~into:"1" "rem(5,2)";
+  neg_cursor P.read_opacity "round(1.5px,1px)";
+  neg_cursor P.read_opacity "mod(5px,2px)";
+  neg_cursor P.read_opacity "rem(5px,2px)";
+  neg_cursor P.read_border_width "round(1.5,1)";
+  (* Sec. 10.2 requires the arguments to have a consistent type, so a step in
+     one type and a value in another is no calculation at all. *)
+  neg_cursor P.read_border_width "round(1.5px,1)";
+  neg_cursor P.read_border_width "mod(5px,2)"
+
 let test_attr_syntax () =
   check_attr_syntax "<length>";
   check_attr_syntax "<length-percentage>";
@@ -2092,6 +2124,8 @@ let value_tests =
     test_case "spec math operand range" `Quick spec_math_operand_range;
     test_case "spec bare math functions" `Quick spec_bare_math_functions;
     test_case "spec math result type" `Quick spec_math_result_type;
+    test_case "spec stepped value dimensions" `Quick
+      spec_stepped_value_dimensions;
   ]
 
 let suite = ("values", value_tests)
