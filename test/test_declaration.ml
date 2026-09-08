@@ -2334,6 +2334,19 @@ let animations_timing () =
   neg_cursor read_declaration "grid-row-start: calc(0)";
   neg_cursor read_declaration "grid-row-start: center calc(0)";
   neg_cursor read_declaration "grid-row-start: center 0";
+  (* sec. 10.12 rounds a call at an <integer> slot to the nearest integer, ties
+     toward positive infinity, so a call that resolves reaches sec. 8.3's range
+     as the integer it rounds to and the ones rounding to zero are no line.
+     Chrome 153 refuses each of these and keeps calc(-.6), which rounds to
+     -1. *)
+  neg_cursor read_declaration "grid-area: calc(1/2/3/4/5)";
+  neg_cursor read_declaration "grid-area: calc(2 * 1/2/3/4/5)";
+  neg_cursor read_declaration "grid-row-start: calc(-1/2)";
+  neg_cursor read_declaration "grid-row-start: calc(.4)";
+  neg_cursor read_declaration "grid-row-start: calc(-.4)";
+  neg_cursor read_declaration "grid-row-start: calc(-.5)";
+  check_declaration ~expected:"grid-row-start:calc(-.6)"
+    ~optimized:"grid-row-start:calc(-.6)" "grid-row-start: calc(-.6)";
 
   (* sec. 10 allows a math function wherever an <integer> is allowed, and sec.
      10.12 rounds the call and clamps it, so a fractional or out-of-range call
