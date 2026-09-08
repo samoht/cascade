@@ -72,9 +72,42 @@ let test_unknown_is_not_a_gap () =
     (Support.unimplemented_by Support.evergreen
        "css.properties.animation.animation-timeline_included")
 
+(* A production Chrome takes and no specification grants: cascade turns the
+   value away, and the browser-backed harness can only tell that apart from a
+   reader gap through a measured key. The pair is the contract, so both halves
+   are asked here.
+
+   CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from [<custom-ident>]
+   itself, so no word of a font family sequence is one. CSS Sizing 4 (ED) sec.
+   5.2 spells [contain-intrinsic-size] as [[ auto? [ none | <length [0,inf]> ] ]
+   {1,2}], so a trailing bare [auto] is no slot. *)
+let test_measured_beyond_the_grammar () =
+  List.iter
+    (fun (key, css) ->
+      Alcotest.(check bool)
+        (key ^ " is measured here")
+        true
+        (Support.self_measured key);
+      answer
+        (key ^ " is what Chrome ships")
+        (Some true)
+        (Support.engine_implements Support.Chrome (153, 0) key);
+      Alcotest.(check bool)
+        (css ^ " is no declaration")
+        true
+        (Result.is_error
+           (Css.of_string ~strict:true (String.concat "" [ "x{"; css; "}" ]))))
+    [
+      ("css.properties.font-family.inherit", "font-family:inherit inherit");
+      ( "css.properties.contain-intrinsic-size.auto_none_auto",
+        "contain-intrinsic-size:auto none auto" );
+    ]
+
 let suite =
   ( "support",
     [
+      Alcotest.test_case "measured beyond the grammar" `Quick
+        test_measured_beyond_the_grammar;
       Alcotest.test_case "known and unknown" `Quick test_known_and_unknown;
       Alcotest.test_case "unimplemented everywhere" `Quick
         test_unimplemented_everywhere;
