@@ -1,14 +1,15 @@
 ; Does cascade read back everything it writes, over generated input? No browser
-; is involved: a value cascade accepted, printed, and then could not read is a
-; defect whatever a browser thinks of the value.
+; is involved: CSS cascade accepted, printed, and then could not read is a
+; defect whatever a browser thinks of it.
 ;
 ; test/fixpoint asks the same question over the corpora the repo ships. This one
 ; draws from the seeded generator the accept-set harness uses, so the population
-; moves with the seed rather than with the repository.
+; moves with the seed rather than with the repository, and reaches past the one
+; declaration a value generator can write.
 
 (executable
  (name readback)
- (libraries cascade cascade_spec_inventory fmt unix))
+ (libraries cascade cascade_diff cascade_spec_inventory fmt unix))
 
 (rule
  (alias runtest)
