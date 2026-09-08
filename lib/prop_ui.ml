@@ -1226,11 +1226,31 @@ let color_scheme_of_idents t names : color_scheme =
         Cursor.err_invalid t "color-scheme: [only] cannot be repeated";
       Custom names
 
+(* Every ident of the grammar above that is not the [<custom-ident>]: sec. 2.2
+   names the four keywords the property spells, and a CSS-wide keyword stands
+   alone, which [color_scheme_of_idents] answers once it has the list. *)
+let color_scheme_keywords =
+  [
+    "normal";
+    "light";
+    "dark";
+    "only";
+    "inherit";
+    "initial";
+    "unset";
+    "revert";
+    "revert-layer";
+  ]
+
 let rec read_color_scheme t : color_scheme =
+  let read_name t =
+    match Cursor.peek_keyword t with
+    | Some k when List.mem k color_scheme_keywords -> Cursor.ident t
+    | Some _ | None -> Cursor.custom_ident "color scheme" t
+  in
   let rec read_idents acc =
     Cursor.ws t;
-    if Cursor.is_done t then List.rev acc
-    else read_idents (Cursor.ident t :: acc)
+    if Cursor.is_done t then List.rev acc else read_idents (read_name t :: acc)
   in
   match Cursor.peek t with
   | Some (Component.Func { node = { name; _ }; _ })
