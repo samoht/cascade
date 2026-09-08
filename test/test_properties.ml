@@ -2092,6 +2092,13 @@ let test_border_width () =
   check_border_width "min(3dvh,4px)";
   check_border_width "max(3dvh,4px)";
   check_border_width "clamp(1dvh,3dvh,4px)";
+  (* Sec. 10.2 spells a comparison's argument [<calc-sum>], and sec. 10.1 makes
+     a lone [var()] one, so the operand needs no [calc()] around it: the value
+     is printed back as it was written, which is what [width] over the same
+     production already does. *)
+  check_border_width "min(var(--x),1px)";
+  check_border_width "max(var(--x),1px)";
+  check_border_width "clamp(var(--x),2px,3px)";
   (* One unit does compare with itself, and a container-query length grows with
      its multiplier, so the smaller multiple is the minimum. The fold is a
      node-changing rewrite (two different ASTs would otherwise print the same
