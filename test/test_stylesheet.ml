@@ -906,6 +906,21 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:""
     "@font-face { font-family: inherit; src: url(font.woff2); }";
   check_stylesheet ~expected:"" "@font-face { font-family: Brand; src: unset; }";
+  (* Sec. 2.1.1 turns a generic family name away where it could be read as the
+     keyword rather than as a name, which is where the name starts: [Foo serif]
+     and [Cambria Math] are installed fonts and [serif Foo] is not. The
+     [font-family] property reads them that way; the descriptor held every word
+     of the sequence to the whole exclusion list, so it dropped a real font
+     name. Chrome 153 reads the first two at both and drops the third at
+     both. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:\"Cambria Math\";src:url(font.woff2)}"
+    "@font-face { font-family: Cambria Math; src: url(font.woff2); }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:\"Foo serif\";src:url(font.woff2)}"
+    "@font-face { font-family: Foo serif; src: url(font.woff2); }";
+  check_stylesheet ~expected:""
+    "@font-face { font-family: serif Foo; src: url(font.woff2); }";
   (* A family name that merely starts with one is a name, not a keyword: sec.
      2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
   check_stylesheet
@@ -1478,8 +1493,15 @@ let font_family_descriptor_grammar () =
     "@font-face { font-family: Brand, Other; src: url(brand.woff2) }";
   strict_reject "generic @font-face family"
     "@font-face { font-family: serif; src: url(serif.woff2) }";
-  strict_reject "generic word in an unquoted @font-face family"
+  (* Sec. 2.1.1 turns the identifier away where it could be read as the generic
+     keyword rather than as a name, which is where the name starts. After the
+     first word it is an ordinary <custom-ident>, so [Brand serif] is a name and
+     [serif Brand] is not; the font-family property already reads them that way
+     and Chrome 153 reads both descriptors that way. *)
+  strict_accept "generic word after the first in an unquoted @font-face family"
     "@font-face { font-family: Brand serif; src: url(brand.woff2) }";
+  strict_reject "generic word heading an unquoted @font-face family"
+    "@font-face { font-family: serif Brand; src: url(brand.woff2) }";
   strict_reject "CSS-wide @font-face family"
     "@font-face { font-family: inherit; src: url(brand.woff2) }";
   strict_reject "empty @font-palette-values font-family"
@@ -1488,8 +1510,10 @@ let font_family_descriptor_grammar () =
     "@font-palette-values --serif { font-family: serif }";
   strict_reject "generic in an @font-palette-values family list"
     "@font-palette-values --brand { font-family: Brand, serif }";
-  strict_reject "generic word in an unquoted palette family"
+  strict_accept "generic word after the first in an unquoted palette family"
     "@font-palette-values --brand { font-family: Brand serif }";
+  strict_reject "generic word heading an unquoted palette family"
+    "@font-palette-values --brand { font-family: serif Brand }";
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
