@@ -1168,11 +1168,11 @@ let test_vendor_prefix_strip () =
    properties that are not, which is exactly the set whose prefix a maintained
    browser may still need. *)
 let test_vendor_prefix_baseline_gate () =
-  let opt ?targets ?(enforce_spec = false) css =
+  let opt ?targets ?(enforce_spec = false) ?(scope = `Fragment) css =
     match Css.of_string css with
     | Ok p ->
         Css.to_string ~minify:true
-          (Css.optimize ?targets ~enforce_spec p.stylesheet)
+          (Css.optimize ?targets ~scope ~enforce_spec p.stylesheet)
         |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
@@ -1212,6 +1212,22 @@ let test_vendor_prefix_baseline_gate () =
     "enforce-spec keeps the mask-image prefix"
     ".a{-webkit-mask-image:none;mask-image:none}"
     (opt ~enforce_spec:true ".a{-webkit-mask-image:none;mask-image:none}");
+  (* The pair is the same pair however it got here: cascade synthesising the
+     prefix beside a lone [mask-image] and an author writing both must settle on
+     one emission, or the second pass over the first one's output moves. The
+     twin test asks whether the two spell the same value, which a [var()]
+     fallback the slot cannot type answers the same way wherever it was
+     written. *)
+  let sheet css = opt ~scope:`Stylesheet css in
+  Alcotest.(check string)
+    "an authored mask-image prefix pair settles where a synthesised one does"
+    (sheet ".a{mask-image:var(--x,10px)}")
+    (sheet ".a{-webkit-mask-image:var(--x,10px);mask-image:var(--x,10px)}");
+  Alcotest.(check string)
+    "the same pair over a fallback the slot can type"
+    (sheet ".a{mask-image:var(--x,url(a.png))}")
+    (sheet
+       ".a{-webkit-mask-image:var(--x,url(a.png));mask-image:var(--x,url(a.png))}");
   Alcotest.(check string)
     "enforce-spec keeps the box-sizing prefix"
     ".a{-webkit-box-sizing:border-box;box-sizing:border-box}"
