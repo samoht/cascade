@@ -346,8 +346,53 @@ let live_rules g =
 let rules_with_ids g ids =
   List.map (fun id -> (id, Rule_graph.node_rule g id)) ids
 
+(* Each declaration of [r] paired with a later one that is the other half of a
+   compatibility fallback. Almost every rule has none, and the scan below only
+   reaches the produced rules for a rule that has one. *)
+let fallback_pairs (r : rule) =
+  let rec walk acc = function
+    | [] -> acc
+    | decl :: rest ->
+        let acc =
+          List.fold_left
+            (fun acc other ->
+              if Webkit_fallback.is_pair decl other then (decl, other) :: acc
+              else acc)
+            acc rest
+        in
+        walk acc rest
+  in
+  if Webkit_fallback.holds_a_prefixed_spelling r.declarations then
+    walk [] r.declarations
+  else []
+
+(* The prefix synthesis reads one rule at a time and asks only whether THAT rule
+   already carries the prefixed spelling. So a rewrite that leaves the two
+   halves of a pair in two rules has the missing half written back beside the
+   one it kept, even though the group rule above already serves it: the element
+   ends up carrying the prefixed declaration twice and the emission is longer
+   than the rules the rewrite replaced. Keep the pair in one rule or leave it
+   alone. *)
+let splits_a_fallback_pair g ~consume ~produce =
+  let together (a, b) =
+    let holds decl (r : rule) = List.exists (same_decl decl) r.declarations in
+    (* A rewrite that keeps neither half has not separated them: the shorthand
+       contraction writes both as their shorthands, which is one pair again
+       under two other names. Only a half that outlives its partner is a
+       split. *)
+    (not (List.exists (holds a) produce || List.exists (holds b) produce))
+    || List.exists (fun r -> holds a r && holds b r) produce
+  in
+  List.exists
+    (fun id ->
+      List.exists
+        (fun pair -> not (together pair))
+        (fallback_pairs (Rule_graph.node_rule g id)))
+    consume
+
 let candidate ?size_cache ~kind ~finalize g ~consume ~produce =
-  Rule_rewrite.v ?size_cache ~kind ~finalize g ~consume ~produce
+  if splits_a_fallback_pair g ~consume ~produce then Option.None
+  else Rule_rewrite.v ?size_cache ~kind ~finalize g ~consume ~produce
 
 let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
 let decls_inline_cost decls = decls_size decls + List.length decls

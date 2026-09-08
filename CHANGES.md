@@ -422,6 +422,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- `--minify` runs the compatibility-prefix synthesis inside its own pipeline
+  rather than after it, so a sheet no longer minifies smaller the second time it
+  is run: the prefixed declarations are a rule's shared subset for the factoring
+  like any other, and `a{user-select:all}b{-webkit-user-select:ALL}` reached its
+  factored form only on a caller's next pass (#1158)
 - `--minify` contracts every shorthand family from the longhands that name it.
   This release adds the four-sided box families (`border-width`, `border-style`,
   `border-color`, `scroll-margin`, `scroll-padding`), the eight border sides and

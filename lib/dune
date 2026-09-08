@@ -38,6 +38,7 @@
   loop
   rule_candidate
   rule_rewrite
+  webkit_fallback
   factor_safe
   gzip_size
   index
