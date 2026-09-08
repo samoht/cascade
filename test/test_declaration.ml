@@ -971,6 +971,20 @@ let font_properties () =
   check_declaration ~expected:"font-style:normal" "font-style: normal";
   check_declaration ~expected:"font-style:italic" "font-style: italic";
   check_declaration ~expected:"font-style:oblique" "font-style: oblique";
+  (* CSS Values 4 sec. 6 drops the unit on a zero <length> and on nothing else.
+     A slot taking a bare zero angle says so, as Transforms 1 sec. 11 and Filter
+     Effects 1 sec. 8 do with [<angle> | <zero>]; CSS Fonts 4 sec. 2.4 writes
+     [oblique <angle [-90deg,90deg]>?] and grants no zero, so the unit is
+     required here. Chrome 153 drops the bare zero and keeps the other three. *)
+  neg_cursor read_declaration "font-style: oblique 0";
+  neg_cursor read_declaration "font-style: oblique 0 10deg";
+  check_declaration ~expected:"font-style:oblique 0deg"
+    "font-style: oblique 0deg";
+  check_declaration ~expected:"transform:rotate(0deg)" "transform: rotate(0)";
+  (* Sec. 8 makes [hue-rotate()]'s argument optional and zero by default, so the
+     shortest spelling of a zero rotation is the empty call, which Chrome reads
+     back as the same filter. *)
+  check_declaration ~expected:"filter:hue-rotate()" "filter: hue-rotate(0)";
 
   (* Font family - list type *)
   check_declaration ~expected:"font-family:Arial" "font-family: Arial";
