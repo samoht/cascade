@@ -2014,6 +2014,121 @@ let spec_math_at_the_remaining_readers () =
      durations Chrome refuses whatever the spelling stay refused. *)
   neg_cursor read_duration "calc(-1s)"
 
+(* Sec. 9.1 is explicit that "width: -5px is not equivalent to width:
+   calc(-5px)", because "out-of-range values specified literally are invalid at
+   parse-time", and sec. 10.13 drops the wrapper only "of a computed value or
+   later". A minifier serialises specified values, so a call folding outside the
+   property's [0,inf] range keeps its wrapper: the literal underneath is a
+   spelling the property's own grammar refuses. The arithmetic still folds, so
+   what is kept is the shortest call, not the authored one. Chrome 153 reads
+   every wrapped row below and drops every unwrapped one. *)
+let spec_math_range_keeps_the_call () =
+  (* CSS Sizing 4 sec. 5 gives [<ratio>] the [0,inf] numbers of sec. 6.5. *)
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"1" "calc(1)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"1" "1";
+  (* CSS Backgrounds 3 sec. 4.1 gives each radius a [0,inf]
+     [<length-percentage>]; the shorthand carries the range its longhands
+     carry. *)
+  decl_optimizes ~prop:"border-radius" ~into:"calc(-1px)" "calc(-1px)";
+  (* The [<length>] guard keeps the call as authored rather than the folded one
+     ([width: calc(-5px - 5px)] is the same shape), so the arithmetic under a
+     kept wrapper stays where the author put it. *)
+  decl_optimizes ~prop:"border-radius" ~into:"calc(-1px*2)" "calc(-1px * 2)";
+  decl_optimizes ~prop:"border-radius" ~into:"1px" "calc(1px)";
+  (* CSS Flexbox 1 sec. 7.2 gives both factors a [0,inf] [<number>], through the
+     shorthand and the two longhands alike. *)
+  decl_optimizes ~prop:"flex" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"flex" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"flex" ~into:"1" "calc(1)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"flex-grow" ~into:"2" "calc(2)";
+  decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"flex-shrink" ~into:"2" "calc(2)";
+  (* CSS Inline 3 sec. 2.2 gives [line-height] a [0,inf] number and length. *)
+  decl_optimizes ~prop:"line-height" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"line-height" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"line-height" ~into:"1.5" "calc(1.5)";
+  (* CSS Text 4 sec. 4.2 [tab-size], [0,inf]. *)
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"tab-size" ~into:"4" "calc(4)";
+  (* CSS Animations 1 sec. 3.4 [animation-iteration-count], [0,inf], and the
+     shorthand slot that reads through it. *)
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"calc(-1),2"
+    "sign(-1px),2";
+  decl_optimizes ~prop:"animation-iteration-count" ~into:"2" "calc(2)";
+  (* SVG 2 sec. 13.5.4 makes a negative dash length an error, so each item
+     carries the range whichever branch of [<length-percentage> | <number>] it
+     took. *)
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1px)" "calc(-1px)";
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"stroke-dasharray" ~into:"1px" "calc(1px)";
+  (* CSS Text 4 sec. 6.2 gives the three [hyphenate-limit-chars] counts a
+     [1,inf] [<integer>]. *)
+  decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "sign(-1px)";
+  decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "calc(-1)";
+  decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"4" "calc(4)";
+  (* The folds that stay folds: a call landing inside the range has no reason to
+     keep a wrapper, and a property with no lower bound never grows one. *)
+  decl_optimizes ~prop:"width" ~into:"3px" "calc(1px + 2px)";
+  decl_optimizes ~prop:"opacity" ~into:".5" "calc(.5)";
+  decl_optimizes ~prop:"width" ~into:"3.14159px" "calc(pi * 1px)";
+  decl_optimizes ~prop:"z-index" ~into:"2" "calc(2)";
+  decl_optimizes ~prop:"width" ~into:"calc(-10px)" "calc(-10px)";
+  decl_optimizes ~prop:"border-width" ~into:"calc(-1px)" "calc(-1px)";
+  decl_optimizes ~prop:"width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"margin" ~into:"-10px" "calc(-10px)";
+  decl_optimizes ~prop:"scale" ~into:"-1" "sign(-1px)"
+
+(* Minified output is input: every declaration Cascade writes has to read back
+   through Cascade's own grammar, with no warning and no second fold. The ten
+   properties below each folded a math function to a literal their own reader
+   refuses, so each one wrote CSS it could not read. *)
+let decl_reads_back ~prop input =
+  let wrap v = String.concat "" [ ".x{"; prop; ":"; v; "}" ] in
+  let minify p = Css.to_string ~minify:true (Css.optimize p) |> String.trim in
+  match Css.of_string ~strict:false (wrap input) with
+  | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
+  | Ok p -> (
+      let out = minify p.stylesheet in
+      match Css.of_string ~strict:true out with
+      | Error e ->
+          Alcotest.failf "%s wrote %S, which it refuses to read: %s"
+            (wrap input) out (Error.to_string e)
+      | Ok back ->
+          (* A second pass must not move: a value that folds again was never
+             minified, it was only half-folded. *)
+          Alcotest.(check string)
+            (String.concat "" [ wrap input; " is a fixed point" ])
+            out (minify back.stylesheet))
+
+let spec_minified_output_reads_back () =
+  let reads_back prop = List.iter (decl_reads_back ~prop) in
+  reads_back "aspect-ratio" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)"; "1" ];
+  reads_back "border-radius" [ "calc(-1px)"; "calc(-1px * 2)"; "1px" ];
+  reads_back "flex" [ "sign(-1px)"; "calc(-1)"; "calc(1)" ];
+  reads_back "flex-grow" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)" ];
+  reads_back "flex-shrink" [ "sign(-1px)"; "calc(-1)"; "calc(2)" ];
+  reads_back "line-height" [ "sign(-1px)"; "calc(-1)"; "calc(1.5)" ];
+  reads_back "tab-size" [ "sign(-1px)"; "calc(-1)"; "round(-3,2)" ];
+  reads_back "animation-iteration-count"
+    [ "sign(-1px)"; "calc(-1)"; "sign(-1px),2" ];
+  reads_back "stroke-dasharray" [ "calc(-1px)"; "sign(-1px)"; "calc(1px)" ];
+  reads_back "hyphenate-limit-chars" [ "sign(-1px)"; "calc(-1)"; "calc(4)" ];
+  (* The durations the sibling range guard already keeps, pinned here so the
+     fixed-point half of the property covers them too. *)
+  reads_back "transition-duration" [ "calc(120ms)"; "calc(1s + 200ms)" ];
+  reads_back "interest-delay" [ "calc(-1s)" ]
+
 let test_attr_syntax () =
   check_attr_syntax "<length>";
   check_attr_syntax "<length-percentage>";
@@ -2201,6 +2316,10 @@ let value_tests =
       spec_stepped_value_dimensions;
     test_case "spec math at the remaining readers" `Quick
       spec_math_at_the_remaining_readers;
+    test_case "spec math range keeps the call" `Quick
+      spec_math_range_keeps_the_call;
+    test_case "spec minified output reads back" `Quick
+      spec_minified_output_reads_back;
   ]
 
 let suite = ("values", value_tests)
