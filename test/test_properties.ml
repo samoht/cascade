@@ -3019,6 +3019,28 @@ let test_color_interpolation () =
   check_color_interpolation "in hsl";
   check_color_interpolation "in lab";
   check_color_interpolation "in lch";
+  (* CSS Color 5 sec. 9.1 writes the method [in [ <rectangular-color-space> |
+     <polar-color-space> <hue-interpolation-method>? ]], and sec. 9 gives the
+     same fifteen spaces [color-mix()] takes. Chrome 153 reads each of these,
+     serialising [xyz] as [xyz-d65], and drops a hue method after a rectangular
+     space. *)
+  check_color_interpolation "in srgb-linear";
+  check_color_interpolation "in display-p3";
+  check_color_interpolation "in a98-rgb";
+  check_color_interpolation "in prophoto-rgb";
+  check_color_interpolation "in rec2020";
+  check_color_interpolation "in xyz-d50";
+  (* CSS Color 4 sec. 10.2 makes [xyz] and [xyz-d65] two names for one space, so
+     the shorter one is the spelling of both. *)
+  check_color_interpolation ~expected:"in xyz" "in xyz-d65";
+  check_color_interpolation "in xyz";
+  check_color_interpolation "in hwb";
+  check_color_interpolation "in hwb longer hue";
+  check_color_interpolation "in oklch increasing hue";
+  (* A rectangular space never looks for the hue method, so the two words are
+     left standing and the declaration around them is dropped. *)
+  neg_cursor ~allow_partial:true read_color_interpolation "in srgb shorter hue";
+  neg_cursor ~allow_partial:true read_color_interpolation "in oklab longer hue";
   neg_cursor read_color_interpolation "oklab";
   neg_cursor read_color_interpolation "in unknown";
   neg_cursor read_color_interpolation "in"
