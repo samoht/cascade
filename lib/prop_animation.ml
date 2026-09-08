@@ -560,6 +560,7 @@ let rec pp_transition_behavior : transition_behavior Pp.t =
   | Var v -> pp_var pp_transition_behavior ctx v
   | Normal -> Pp.string ctx "normal"
   | Allow_discrete -> Pp.string ctx "allow-discrete"
+  | Behaviors l -> Pp.list ~sep:Pp.comma pp_transition_behavior ctx l
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1085,6 +1086,16 @@ let rec read_transition_behavior t : transition_behavior =
     ]
     ~var:(fun t -> Var (read_var read_transition_behavior t))
     t
+
+(* CSS Transitions 2 sec. 2 spells the property [<transition-behavior-value>#],
+   one behaviour per transition. The single reader stays the [<single-
+   transition>] slot of the [transition] shorthand. *)
+let read_transition_behavior_list t : transition_behavior =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_transition_behavior t
+  with
+  | [ one ] -> one
+  | many -> Behaviors many
 
 let rec read_overlay t : overlay =
   Cursor.enum_or_var "overlay"

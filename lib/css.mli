@@ -6749,6 +6749,8 @@ type transition_property = transition_property_value list
 type transition_behavior = Properties.transition_behavior =
   | Normal
   | Allow_discrete
+  | Behaviors of transition_behavior list
+      (** The [<transition-behavior-value>#] list of two or more behaviours. *)
   | Inherit
   | Initial
   | Unset

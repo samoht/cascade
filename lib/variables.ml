@@ -1612,8 +1612,11 @@ let rec vars_of_animation_iteration_count
   | Count n -> vars_of_number_value n
   | _ -> []
 
-let vars_of_transition_behavior (value : Properties.transition_behavior) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_transition_behavior (value : Properties.transition_behavior) =
+  match value with
+  | Var v -> [ V v ]
+  | Behaviors l -> List.concat_map vars_of_transition_behavior l
+  | _ -> []
 
 let vars_of_overlay (value : Properties.overlay) =
   match value with Var v -> [ V v ] | _ -> []
