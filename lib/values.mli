@@ -708,6 +708,18 @@ val typed_math_function_calls :
     functions that answer the type of their arguments, for a slot that takes a
     [<length>] or another dimension rather than a [<number>]. *)
 
+val percentage_math_function_calls :
+  pct:(Cursor.t -> float -> 'a) ->
+  (Cursor.t -> 'a) ->
+  (string * (Cursor.t -> 'a)) list
+(** [percentage_math_function_calls ~pct read] is {!math_function_calls} for a
+    slot spelling a [<percentage>] and no [<number>] beside it. CSS Values 4
+    sec. 10.2 answers a comparison with one of its arguments, which is a
+    percentage the slot has a leaf for, so [min()], [max()] and [clamp()] fold
+    to their coefficient and [pct] builds that leaf, applying whatever range the
+    property puts on it. Every other math function keeps [read], which holds the
+    call to the slot's type. *)
+
 val read_integer_calc : string -> Cursor.t -> [ `Int of int | `Calc of 'a calc ]
 (** [read_integer_calc name t] parses the math function at an [<integer>]
     position, which CSS Values 4 sec. 10.9 accepts wherever a literal integer

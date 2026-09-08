@@ -2134,6 +2134,13 @@ let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
              (read_text_size_adjust_with ~keywords:false)
              t)
       in
+      (* Sec. 10.12 puts the [0,inf] range on the value a math function resolves
+         to, so a folded comparison answers to it the way a literal does. *)
+      let checked t n : text_size_adjust =
+        if n < 0.0 then
+          Cursor.err t "text-size-adjust percentages cannot be negative"
+        else Pct n
+      in
       Cursor.enum_or_calls "text-size-adjust"
         (if keywords then
            [
@@ -2151,7 +2158,7 @@ let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
              fun t ->
                Var (Values.read_var (read_text_size_adjust_with ~keywords) t) )
           :: ("calc", read_math)
-          :: Values.math_function_calls read_math)
+          :: Values.percentage_math_function_calls ~pct:checked read_math)
         t
 
 let read_text_size_adjust t : text_size_adjust =

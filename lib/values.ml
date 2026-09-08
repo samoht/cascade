@@ -5898,11 +5898,21 @@ let validate_calc_type t result_type calc =
   in
   if not accepted then Cursor.err_invalid t "incompatible calc types"
 
-(* CSS Values 4 sec. 10.2 comparison and stepped-value functions, sec. 10.5
-   [hypot()] and sec. 10.6 [abs()]: each answers the type of its arguments, so a
-   [<length>] slot takes them as readily as a [<number>] one. *)
+(* CSS Values 4 sec. 10.2 comparison functions. Their answer is one of their
+   arguments, so a slot spelling the arguments' type already has a leaf for the
+   result and the call folds to it rather than standing as a calculation. *)
+let comparison_math_function_names = [ "min"; "max"; "clamp" ]
+
+(* Sec. 10.9 stepped-value functions, sec. 10.5 [hypot()] and sec. 10.6 [abs()]:
+   each answers the type of its arguments too, and each computes a value none of
+   them spelled, so the call stays in the calculation. *)
+let computed_typed_math_function_names =
+  [ "round"; "mod"; "rem"; "hypot"; "abs" ]
+
+(* Together they are the functions a [<length>] slot takes as readily as a
+   [<number>] one. *)
 let typed_math_function_names =
-  [ "min"; "max"; "clamp"; "round"; "mod"; "rem"; "hypot"; "abs" ]
+  comparison_math_function_names @ computed_typed_math_function_names
 
 (* Sec. 10.5 exponential functions, sec. 10.4 trigonometric ones and sec. 10.6
    [sign()]: all answer a [<number>] whatever went in, so only a [<number>] slot
@@ -5939,6 +5949,48 @@ let math_function_calls read =
 
 let typed_math_function_calls read =
   List.map (fun n -> (n, read)) typed_math_function_names
+
+(* Sec. 10.2 requires a comparison function's arguments to have a consistent
+   type and answers with that type, so at a [<percentage>] slot every argument
+   is a [<calc-sum>] resolving to a percentage: a bare coefficient is a
+   [<number>] the slot does not spell, and a length is a type of its own. *)
+let read_percentage_argument t =
+  let arg = read_math_arg t in
+  match math_arg_result arg with
+  | Some (United (v, unit)) when String.equal unit "%" -> v
+  | Some (Scalar _ | United _) | None -> Cursor.err_expected t "percentage"
+
+let read_percentage_list_call name pick initial t =
+  Cursor.call name t (fun inner ->
+      let args =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_percentage_argument inner
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      List.fold_left pick initial args)
+
+let read_percentage_clamp t =
+  Cursor.call "clamp" t (fun inner ->
+      let low = read_percentage_argument inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let value = read_percentage_argument inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let high = read_percentage_argument inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Float.max low (Float.min value high))
+
+let percentage_math_function_calls ~pct read =
+  ("min", fun t -> pct t (read_percentage_list_call "min" Float.min infinity t))
+  :: ( "max",
+       fun t -> pct t (read_percentage_list_call "max" Float.max neg_infinity t)
+     )
+  :: ("clamp", fun t -> pct t (read_percentage_clamp t))
+  :: List.map
+       (fun n -> (n, read))
+       (computed_typed_math_function_names @ number_math_function_names)
 
 let read_calc : type a.
     ?result_type:

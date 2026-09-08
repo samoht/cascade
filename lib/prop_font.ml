@@ -2017,12 +2017,14 @@ let rec read_font t : font =
         Shorthand body
 
 let rec read_font_stretch_with ~keywords t : font_stretch =
-  let read_percentage t : font_stretch =
-    let n = Cursor.pct t in
-    (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. *)
+  (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. Sec. 10.12
+     puts the range on the value a math function resolves to, so a folded
+     comparison answers to it the way a literal does. *)
+  let checked t n : font_stretch =
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
+  let read_percentage t : font_stretch = checked t (Cursor.pct t) in
   (* Sec. 10.1 puts a math function wherever the [<percentage>] stands, [calc()]
      being one of them rather than the gate to the rest, and sec. 10.12 checks
      the [0,inf] range on the value it resolves to: the call keeps out of
@@ -2060,7 +2062,7 @@ let rec read_font_stretch_with ~keywords t : font_stretch =
     ~calls:
       (("var", fun t -> Var (read_var (read_font_stretch_with ~keywords) t))
       :: ("calc", read_math)
-      :: Values.math_function_calls read_math)
+      :: Values.percentage_math_function_calls ~pct:checked read_math)
     ~default:read_percentage t
 
 let read_font_stretch t : font_stretch = read_font_stretch_with ~keywords:true t
