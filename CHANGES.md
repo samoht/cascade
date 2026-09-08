@@ -580,6 +580,9 @@ to lose a whole rule over one bad piece. Both are gone.
 - `--minify` keeps the quotes on a `<string>` written to a custom property whose
   `@property` syntax accepts only an ident, and the space between the
   repetitions of a `<type>+` initial value (#626, #704)
+- A custom property whose value is only whitespace holds the empty value, so
+  `--x: ` minifies to `--x:` rather than growing a space on every formatting
+  pass, and `Css.Declaration.custom_property` trims to match (#1157)
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and a `@supports` condition carry, builds each
   `theme_defaults` binding with `parse_custom_property` rather than reparsing
