@@ -2188,6 +2188,13 @@ let assert_emission_is_a_fixed_point ~emit label vectors =
         once (emit once))
     vectors
 
+let minify_stylesheet_scope css =
+  match Css.of_string ~strict:false css with
+  | Ok { Css.stylesheet; _ } ->
+      Css.to_string ~minify:true (Css.optimize ~scope:`Stylesheet stylesheet)
+      |> String.trim
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
 let test_prefix_synthesis_reaches_fixpoint () =
   (* The compatibility-prefix pass writes declarations the rest of the pipeline
      decides about: a prefixed twin is a rule's shared subset for the factoring,
@@ -2202,6 +2209,18 @@ let test_prefix_synthesis_reaches_fixpoint () =
       "a{mask-position:10% 20%}b{-webkit-mask-position:10%\t20%}";
       "a{backdrop-filter:blur(max(0px, \
        1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
+    ]
+
+let test_prefixed_longhand_contracts_in_one_pass () =
+  (* [`Stylesheet] licenses the partial-coverage shorthand, so the synthesised
+     [-webkit-mask-image] contracts with its unprefixed twin. That contraction
+     runs in the pipeline the prefix pass follows, so it never sees them. *)
+  assert_emission_is_a_fixed_point ~emit:minify_stylesheet_scope
+    "minify --scope=stylesheet"
+    [
+      "a{mask-image:var(--x, 10px)}";
+      "a{mask-image:var(--x, image-set())}";
+      "a{mask-image:var(--x, var(--y, 1px))}";
     ]
 
 let test_authored_dimension_reaches_fixpoint () =
@@ -5594,6 +5613,9 @@ let selector_merging_tests =
     ( "prefix synthesis reaches fixpoint in one pass",
       `Quick,
       test_prefix_synthesis_reaches_fixpoint );
+    ( "prefixed longhand contracts in one pass",
+      `Quick,
+      test_prefixed_longhand_contracts_in_one_pass );
     ( "authored dimension reaches fixpoint in one pass",
       `Quick,
       test_authored_dimension_reaches_fixpoint );
