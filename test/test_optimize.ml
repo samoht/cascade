@@ -2159,6 +2159,35 @@ let test_large_stylesheet_factoring_reaches_fixpoint () =
     "large-sheet factoring converges in one scheduler run" once
     (minify_str once)
 
+(* A second pass that moves is a first pass that stopped early, so each vector
+   is checked by re-emitting what the first pass wrote. [emit] is the mode's own
+   emitter, and the name carries the vector so a failure says which one
+   moved. *)
+let assert_emission_is_a_fixed_point ~emit label vectors =
+  List.iter
+    (fun css ->
+      let once = emit css in
+      Alcotest.(check string)
+        (String.concat "" [ label; " is a fixed point on "; css ])
+        once (emit once))
+    vectors
+
+let test_prefix_synthesis_reaches_fixpoint () =
+  (* The compatibility-prefix pass writes declarations the rest of the pipeline
+     decides about: a prefixed twin is a rule's shared subset for the factoring,
+     and a prefixed longhand run is a shorthand for the contraction. Synthesised
+     after the pipeline settled, neither pass ever sees it. *)
+  assert_emission_is_a_fixed_point ~emit:minify_str "minify"
+    [
+      "a{user-select:all}b{-webkit-user-select:ALL}";
+      "a{-webkit-user-select:all}b{user-select:ALL}";
+      "a{mask-size:auto}b{-webkit-mask-size:AUTO}";
+      "a{mask-clip:content-box}b{-webkit-mask-clip:CONTENT-BOX}";
+      "a{mask-position:10% 20%}b{-webkit-mask-position:10%\t20%}";
+      "a{backdrop-filter:blur(max(0px, \
+       1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
+    ]
+
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
      wins). The later .y carries the first .x's value, but grouping it with that
@@ -5509,6 +5538,9 @@ let selector_merging_tests =
     ( "large stylesheet factoring reaches fixpoint",
       `Quick,
       test_large_stylesheet_factoring_reaches_fixpoint );
+    ( "prefix synthesis reaches fixpoint in one pass",
+      `Quick,
+      test_prefix_synthesis_reaches_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,
