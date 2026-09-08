@@ -2691,13 +2691,13 @@ type background_size =
     polar color space (lch / oklch / hsl / hwb). *)
 type hue_interpolation_method = Shorter | Longer | Increasing | Decreasing
 
+(** CSS Color 5 sec. 9 spells one [<color-interpolation-method>] wherever one
+    appears, over the same fifteen spaces [color-mix()] takes, so the space is
+    carried rather than named in a constructor of its own. Sec. 9.1 puts the
+    [<hue-interpolation-method>] after a polar space only, which is why the
+    reader answers [None] for every other space. *)
 type color_interpolation =
-  | In_oklab
-  | In_oklch of hue_interpolation_method option
-  | In_srgb
-  | In_hsl of hue_interpolation_method option
-  | In_lab
-  | In_lch of hue_interpolation_method option
+  | In of color_space * hue_interpolation_method option
   | Var of color_interpolation var
 
 type gradient_direction =

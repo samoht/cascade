@@ -375,6 +375,12 @@ to lose a whole rule over one bad piece. Both are gone.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
   of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
+- A gradient's `<color-interpolation-method>` takes the fifteen colour spaces
+  `color-mix()` takes, so `linear-gradient(in srgb-linear, red, blue)` and
+  `in hwb longer hue` read where they were dropped, and a hue method after a
+  rectangular space is refused. `Cascade.Properties.color_interpolation`
+  carries the space: its six `In_*` constructors are now one `In` of a
+  `color_space` and an optional hue method (#1177)
 - A comparison function's operand is printed as it was written, so
   `border-width: min(var(--x), 1px)` no longer collects a `calc()` around the
   reference and `min(calc(var(--x) + 1px), 2px)` no longer collects a second
