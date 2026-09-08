@@ -835,23 +835,36 @@ let read_mask_layer t : mask_layer =
     Cursor.err_expected t "mask value";
   layer
 
+let read_mask_layers t : mask =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_layer t with
+  | [ layer ] -> Layer layer
+  | layers -> Layers layers
+
+(* CSS Masking 1 sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1 puts
+   [none] in the [<mask-reference>] of a layer, so it names the whole value only
+   where it is the whole value: anything after it belongs to the layer list. *)
 let rec read_mask t : mask =
-  Cursor.enum_or_var "mask"
-    [
-      ("none", (None : mask));
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-    ~var:(fun t -> Var (Values.read_var read_mask t))
-    ~default:(fun t ->
-      let layers =
-        Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_layer t
-      in
-      match layers with [ layer ] -> Layer layer | layers -> Layers layers)
-    t
+  Cursor.ws t;
+  let snap = Cursor.save t in
+  match Cursor.peek_keyword t with
+  | Some "none" ->
+      ignore (Cursor.ident t : string);
+      Cursor.ws t;
+      if Cursor.is_done t then (None : mask)
+      else (
+        Cursor.restore t snap;
+        read_mask_layers t)
+  | _ ->
+      Cursor.enum_or_var "mask"
+        [
+          ("initial", (Initial : mask));
+          ("inherit", Inherit);
+          ("unset", Unset);
+          ("revert", Revert);
+          ("revert-layer", Revert_layer);
+        ]
+        ~var:(fun t -> Var (Values.read_var read_mask t))
+        ~default:read_mask_layers t
 
 (* Reader for clip property (deprecated) *)
 let rec read_clip t : clip =
