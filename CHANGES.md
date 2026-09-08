@@ -250,13 +250,15 @@ to lose a whole rule over one bad piece. Both are gone.
   `transition-behavior: normal, normal` read where they were dropped, while `text-shadow: none, none`, `box-shadow: none, none` and
   `list-style: none none none` are dropped with a warning: `none` is a whole
   value there, not a list item, and CSS Values 4 sec. 2.2 takes each option of
-  a `||` at most once, while `place-items: stretch center` reads: `stretch` is
+  a `||` at most once, while `background-position-x: center, 10px` reads, one
+  position per background layer as the pair has, and `place-items: stretch
+  center` reads: `stretch` is
   a value of both halves of that shorthand, so the slot after it is an ordinary
   `justify-items` value. An unquoted `font-family` name refuses a generic keyword
   only where it heads the sequence, so `font-family: serif serif` is dropped
   and `font-family: Cambria Math` reads, at the `@font-face` and
   `@font-palette-values` descriptors as at the property
-  (#1147, #1167, #1171, #1173)
+  (#1147, #1167, #1171, #1173, #1176)
 - A `@keyframes` name is spelled the way its value requires, so
   `@keyframes "default"` keeps its quotes where it used to print as
   `@keyframes default`, which every browser drops, and `@keyframes "none"` is

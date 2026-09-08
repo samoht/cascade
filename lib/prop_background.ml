@@ -1108,6 +1108,8 @@ let rec pp_background_position_axis : background_position_axis Pp.t =
       pp_position_axis_edge ctx e;
       Pp.space ctx ();
       pp_length_percentage ctx lp
+  | Layers positions ->
+      Pp.list ~sep:Pp.comma pp_background_position_axis ctx positions
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1921,7 +1923,7 @@ let read_background_box_list t : background_box =
    [left 10px] and [10px] name the same position and the shorter wins. The zero
    percentage of the start edge is what [left] / [top] names, and the hundred
    percent is [right] / [bottom]. *)
-let normalize_background_position_axis :
+let rec normalize_background_position_axis :
     background_position_axis -> background_position_axis =
  fun value ->
   let lp = Values.normalize_length_percentage in
@@ -1933,6 +1935,12 @@ let normalize_background_position_axis :
   | Offset o -> preserve_if_equal value (Offset (lp o))
   | Edge_offset (e, o) when start_edge e -> Offset (lp o)
   | Edge_offset (e, o) -> preserve_if_equal value (Edge_offset (e, lp o))
+  (* Each layer holds a position of its own, so the fold reaches every one of
+     them: a list left alone is a second node printing what the folded one
+     prints. *)
+  | Layers positions ->
+      preserve_if_equal value
+        (Layers (List.map normalize_background_position_axis positions))
   | other -> other
 
 let read_background_position t : background_position =
@@ -1984,13 +1992,24 @@ let read_background_position_axis ~label ~start_edge ~end_edge =
   in
   read
 
+(* Sec. 3.6 spells the longhand with the same [#] the pair carries, so a comma
+   separates one layer's position from the next. One position is the bare
+   constructor: a lone [Layers [p]] would be a second node printing the same
+   text. A CSS-wide keyword is the whole value, which the reader below answers
+   before this sees a comma. *)
+let read_background_position_axis_list ~label ~start_edge ~end_edge t =
+  let read t = read_background_position_axis ~label ~start_edge ~end_edge t in
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read t with
+  | [ position ] -> position
+  | positions -> (Layers positions : background_position_axis)
+
 let read_background_position_x t =
-  read_background_position_axis ~label:"background-position-x" ~start_edge:Left
-    ~end_edge:Right t
+  read_background_position_axis_list ~label:"background-position-x"
+    ~start_edge:Left ~end_edge:Right t
 
 let read_background_position_y t =
-  read_background_position_axis ~label:"background-position-y" ~start_edge:Top
-    ~end_edge:Bottom t
+  read_background_position_axis_list ~label:"background-position-y"
+    ~start_edge:Top ~end_edge:Bottom t
 
 module Background_shorthand = struct
   let read_image_item t =

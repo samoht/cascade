@@ -5931,6 +5931,9 @@ type background_position_axis = Properties.background_position_axis =
   | Edge of position_axis_edge
   | Offset of length_percentage
   | Edge_offset of position_axis_edge * length_percentage
+  | Layers of background_position_axis list
+      (** CSS Backgrounds 4 sec. 3.6 spells the axis longhand with the same [#]
+          the pair carries, so it names one position per background layer. *)
   | Inherit
   | Initial
   | Unset

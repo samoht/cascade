@@ -2770,6 +2770,11 @@ type background_position_axis =
   | Edge of position_axis_edge
   | Offset of length_percentage
   | Edge_offset of position_axis_edge * length_percentage
+  | Layers of background_position_axis list
+      (** CSS Backgrounds 4 sec. 3.6 spells the axis longhand with the same [#]
+          the pair carries, so it names one position per background layer. A
+          single position is the bare constructor, the way [mask] holds one
+          layer beside its list. *)
   | Inherit
   | Initial
   | Unset
