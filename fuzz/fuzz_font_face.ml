@@ -183,6 +183,10 @@ let test_spec_metric_vectors buf =
         ("0%", Css.Font_face.Percent 0.);
         ("100%", Css.Font_face.Percent 100.);
         ("125.5%", Css.Font_face.Percent 125.5);
+        (* Sec. 10.1 puts a math function wherever the percentage stands, and
+           the descriptor holds the percentage it answers. *)
+        ("calc(50%)", Css.Font_face.Percent 50.);
+        ("min(50%,75%)", Css.Font_face.Percent 50.);
       ]
       buf 3
   in
@@ -194,7 +198,7 @@ let test_spec_metric_vectors buf =
   | None -> failf "valid font metric vector rejected: %S" input
 
 let test_invalid_metric_vectors buf =
-  let input = pick [ "-1%"; "auto"; "100"; "calc(1%)" ] buf 4 in
+  let input = pick [ "-1%"; "auto"; "100"; "calc(1px)"; "calc(1)" ] buf 4 in
   match parse_metric input with
   | None -> ()
   | Some metric ->
@@ -208,6 +212,7 @@ let test_spec_size_adjust_vectors buf =
         ("0%", Css.Font_face.Pct 0.);
         ("100%", Css.Font_face.Pct 100.);
         ("125.5%", Css.Font_face.Pct 125.5);
+        ("calc(50%)", Css.Font_face.Pct 50.);
       ]
       buf 5
   in
@@ -219,7 +224,7 @@ let test_spec_size_adjust_vectors buf =
   | None -> failf "valid font size-adjust vector rejected: %S" input
 
 let test_invalid_size_adjust_vectors buf =
-  let input = pick [ "-1%"; "normal"; "auto"; "100"; "calc(100%)" ] buf 6 in
+  let input = pick [ "-1%"; "normal"; "auto"; "100"; "calc(1px)" ] buf 6 in
   match parse_size_adjust input with
   | None -> ()
   | Some size_adjust ->

@@ -5992,6 +5992,33 @@ let percentage_math_function_calls ~pct read =
        (fun n -> (n, read))
        (computed_typed_math_function_names @ number_math_function_names)
 
+(* Sec. 10.1 puts a math function wherever the [<percentage>] stands and makes
+   [calc()] one of them rather than the gate to the rest, so both spellings
+   answer the same percentage. A slot holding a percentage and no calculation
+   node takes the answer and nothing else: a call this cannot reduce -- a
+   [var()] among its operands, or a result of another type -- is no value for
+   it. *)
+let read_folded_percentage_math t =
+  let body name =
+    Cursor.call name t (fun inner ->
+        let value = read_percentage_argument inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        value)
+  in
+  if Cursor.looking_at_func "calc" t then body "calc"
+  else if Cursor.looking_at_func "-webkit-calc" t then body "-webkit-calc"
+  else
+    match Cursor.peek_function_name t with
+    | Some "min" -> read_percentage_list_call "min" Float.min infinity t
+    | Some "max" -> read_percentage_list_call "max" Float.max neg_infinity t
+    | Some "clamp" -> read_percentage_clamp t
+    | Some _ when looking_at_math_function t -> read_percentage_argument t
+    | Some _ | None -> Cursor.err_expected t "percentage"
+
+let looking_at_percentage_math t =
+  Cursor.looking_at_calc t || looking_at_math_function t
+
 let read_calc : type a.
     ?result_type:
       [ `Number

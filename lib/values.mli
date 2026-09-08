@@ -720,6 +720,19 @@ val percentage_math_function_calls :
     property puts on it. Every other math function keeps [read], which holds the
     call to the slot's type. *)
 
+val looking_at_percentage_math : Cursor.t -> bool
+(** [looking_at_percentage_math t] is [true] on a [calc()] or on any other math
+    function, the two spellings {!read_folded_percentage_math} reads. *)
+
+val read_folded_percentage_math : Cursor.t -> float
+(** [read_folded_percentage_math t] reads a math function at a slot spelling a
+    [<percentage>] and answers the percentage it resolves to. CSS Values 4 sec.
+    10.1 puts such a function wherever the [<percentage>] stands and makes
+    [calc()] one of them rather than the gate to the rest, so both spellings
+    read here. It is for a slot that holds a percentage and has no calculation
+    node to park an unresolved call in: a call carrying a [var()], or one
+    answering another type, is refused rather than kept. *)
+
 val read_integer_calc : string -> Cursor.t -> [ `Int of int | `Calc of 'a calc ]
 (** [read_integer_calc name t] parses the math function at an [<integer>]
     position, which CSS Values 4 sec. 10.9 accepts wherever a literal integer
