@@ -878,6 +878,29 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-weight: 400 \
      lighter; }";
+  (* Sec. 4.6 gives these descriptors the property's values "except that the
+     CSS-wide keywords are omitted", and an endpoint of the range is one of
+     those values, so a keyword is no more a value there than it is alone. The
+     one alone is already refused; a pair of them, or one beside a real
+     endpoint, was written back as a declaration Chrome 153 drops. *)
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     inherit inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: 400 \
+     inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     initial unset; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     inherit inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     normal inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     inherit normal; }";
   (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
      in either costs the whole rule the way any other missing one does. *)
   check_stylesheet ~expected:""
