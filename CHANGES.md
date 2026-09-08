@@ -365,9 +365,10 @@ to lose a whole rule over one bad piece. Both are gone.
   `transition: none 1s`, an unterminated string, a quoted `animation-name`, a
   keyword-shaped keyframe name, an at-rule body ending on a backslash, a `u+a`
   selector outside `unicode-range`, an explicit `animation: spin 0s`, a `url(`
-  at end of input and a repeating gradient built from a `var()` each survive
-  the round trip (#558, #656, #875, #876, #894, #896, #898, #899, #900, #901,
-  #902, #903, #910, #911, #912, #913)
+  at end of input and a `background` layer whose `var()` stands ahead of another
+  slot each survive the round trip
+  (#558, #656, #875, #876, #894, #896, #898, #899, #900, #901, #902, #903,
+  #910, #911, #912, #913, #1155)
 - A colour is read as the closed production CSS Color 5 sec. 3 defines. A
   relative colour's channel expressions are type-checked, so
   `rgb(from red calc(r + 10%) g b)` is dropped as every browser drops it while

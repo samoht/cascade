@@ -2079,12 +2079,6 @@ let read_background_vars read_self t =
   in
   loop []
 
-let read_background_var_call read_self t : background =
-  let first = read_var read_self t in
-  match read_background_vars read_self t with
-  | [] -> Var first
-  | rest -> Vars (first :: rest)
-
 let read_background_var_sequence read_self t : background =
   let snap = Cursor.save t in
   match read_background_vars read_self t with
@@ -2108,6 +2102,20 @@ let background_value_boundary t =
 let read_background_shorthand_from t snap : background =
   Cursor.restore t snap;
   Shorthand (read_background_shorthand t)
+
+(* CSS Backgrounds 3 (ED) sec. 2.1 orders a layer's slots rather than the
+   author's words, so pp writes the image before the colour and [background: red
+   var(--x)] comes out as [var(--x)red]. A leading var() therefore only stands
+   for the whole value when it reaches the value boundary; with a slot behind it
+   the layer is what was written, and reading it as the whole value would leave
+   pp's own emission unreadable. *)
+let read_background_var_call read_self t : background =
+  let snap = Cursor.save t in
+  let first = read_var read_self t in
+  let rest = read_background_vars read_self t in
+  if not (background_value_boundary t) then
+    read_background_shorthand_from t snap
+  else match rest with [] -> Var first | rest -> Vars (first :: rest)
 
 let read_background_keyword_or_shorthand t : background =
   let snap = Cursor.save t in
