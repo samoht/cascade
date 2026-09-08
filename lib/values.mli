@@ -747,6 +747,13 @@ val validate_calc_type :
     it per argument, which is what sec. 10.2 asks for when it requires them to
     "have a consistent type or else the function is invalid". *)
 
+val calc_integer_value : 'a calc -> int option
+(** [calc_integer_value calc] is the integer a math function stands for at an
+    [<integer>] slot: CSS Values 4 sec. 10.12 rounds it to the nearest integer,
+    a tie going toward positive infinity. It is [None] for a call that does not
+    resolve here, a [var()] among its operands or an infinite result, so a slot
+    checking its own range against it leaves such a call alone. *)
+
 val eval_numeric_calc : 'a calc -> float option
 (** [eval_numeric_calc calc] tries to evaluate a calc expression containing only
     numbers to a float. Returns [None] if the expression contains variables or

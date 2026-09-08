@@ -778,6 +778,16 @@ let check_grid_line_index t n =
   if n = 0 then Cursor.err_invalid t "grid line index cannot be zero";
   n
 
+(* CSS Values 4 sec. 10.12 rounds a call at an [<integer>] slot to the nearest
+   integer, so the range above answers for the integer it rounds to rather than
+   for the call: [calc(1/2/3/4/5)] is the zero line as surely as [0] is. A call
+   that does not resolve here has no index yet and keeps its wrapper. *)
+let check_grid_line_calc t expr =
+  Option.iter
+    (fun n -> ignore (check_grid_line_index t n))
+    (Values.calc_integer_value expr);
+  expr
+
 let read_grid_line_number t : grid_line =
   let n = check_grid_line_index t (Cursor.int t) in
   Cursor.ws t;
@@ -810,7 +820,7 @@ let read_grid_line_name_value t : grid_line =
           if Cursor.looking_at_calc t || Values.looking_at_math_function t then
             match read_integer_calc "grid-line" t with
             | `Int n -> Num_name (check_grid_line_index t n, name)
-            | `Calc expr -> Calc_name (expr, name)
+            | `Calc expr -> Calc_name (check_grid_line_calc t expr, name)
           else Num_name (check_grid_line_index t (Cursor.int t), name)
         in
         match Cursor.option index t with Some line -> line | None -> Name name)
@@ -819,7 +829,7 @@ let read_grid_line_calc t : grid_line =
   let line =
     match read_integer_calc "grid-line" t with
     | `Int n -> `Int (check_grid_line_index t n)
-    | `Calc expr -> `Calc expr
+    | `Calc expr -> `Calc (check_grid_line_calc t expr)
   in
   Cursor.ws t;
   (* sec. 8.3's [&&] puts the name on either side of the index, so a call in

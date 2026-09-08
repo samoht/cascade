@@ -221,14 +221,16 @@ to lose a whole rule over one bad piece. Both are gone.
   `padding-bottom: anchor-size(width)`, `translate: auto`,
   `border-top-color: calc(2px - 3px)`, `border-image: none, none`,
   `font-language-override: "default"`, `grid-template-rows: -2px`,
-  `grid-template: 10px`, `quotes:`, `border:` and a `@page size` given a
-  percentage. Ranges, units, sizing functions and the closed `<color>`
-  production are each checked, where the reader carried any dimension or any
-  well-formed token run through, and an empty value is a declaration only for a
-  custom property. This release adds
+  `grid-template: 10px`, `grid-area: calc(1/2/3/4/5)`, `quotes:`, `border:` and
+  a `@page size` given a percentage. Ranges, units, sizing functions and the
+  closed `<color>` production are each checked, where the reader carried any
+  dimension or any well-formed token run through, and a range now answers for
+  the integer a math call rounds to rather than letting the call past, so a
+  line index rounding to zero is no line. An empty value is a declaration only
+  for a custom property. This release adds
   `Cascade.Properties.read_border_image_source`
   (#640, #982, #1000, #1001, #1002, #1003, #1004, #1005, #1006, #1007, #1009,
-  #1010, #1015, #1077, #1078)
+  #1010, #1015, #1077, #1078, #1163)
 - A `<custom-ident>` refuses the names CSS Values 4 sec. 4.2 reserves, in every
   ASCII case permutation, so `animation-name: default`, `counter-reset: DEFAULT`,
   `view-transition-name: default` and a `default` counter-style symbol are

@@ -6055,6 +6055,18 @@ let read_integer_calc : type a.
   | Some f when Float.is_integer f -> `Int (int_of_float f)
   | Some _ | None -> `Calc expr
 
+(* Sec. 10.12 rounds to the nearest integer with a tie going toward positive
+   infinity, so this is the integer a slot's own range has to answer for: a call
+   that rounds outside the range is as invalid as the literal would be. One
+   holding a [var()] does not resolve here and has no integer yet, and an
+   infinity or a NaN has none at all. *)
+let calc_integer_value : type a. a calc -> int option =
+ fun expr ->
+  match eval_numeric_calc expr with
+  | Some f when Float.is_finite f ->
+      Option.some (int_of_float (Float.floor (f +. 0.5)))
+  | Some _ | None -> Option.none
+
 let read_integer name t =
   if Cursor.looking_at_calc t || looking_at_math_function t then
     match
