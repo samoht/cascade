@@ -1002,6 +1002,24 @@ let font_properties () =
   check_declaration ~expected:"font-family:revert" "font-family: revert";
   check_declaration ~expected:"font-family:revert-layer"
     "font-family: revert-layer";
+  (* Sec. 2.1.1 keeps a [<generic-font-family>] out of [<font-family-name>], and
+     the property reads the generic only where that alternative starts, so one
+     is turned away as the first word of a sequence and reads as an ordinary
+     [<custom-ident>] after it. Chrome 153 takes each of these as a name, and
+     they are installed fonts, so dropping them changes what a page renders. *)
+  check_declaration ~expected:"font-family:\"Cambria Math\""
+    "font-family: Cambria Math";
+  check_declaration ~expected:"font-family:\"Cambria math\""
+    "font-family: Cambria math";
+  check_declaration ~expected:"font-family:\"Foo serif\""
+    "font-family: Foo serif";
+  check_declaration ~expected:"font-family:\"system-ui system-ui\""
+    "font-family: 'system-ui system-ui'";
+  check_declaration ~expected:"font-family:My Font" "font-family: My Font";
+  check_declaration ~expected:"font-family:Noto Color Emoji"
+    "font-family: Noto Color Emoji";
+  check_declaration ~expected:"font-family:system-ui" "font-family: system-ui";
+  check_declaration ~expected:"font-family:math" "font-family: Math";
 
   (* Line height *)
   check_declaration ~expected:"line-height:1.5" "line-height: 1.5";
@@ -3509,6 +3527,21 @@ let invalid () =
   neg "font-weight: green";
   neg "font-family: default";
   neg "font-family: system-ui default";
+  (* CSS Fonts 4 sec. 2.1.1: a generic family heads the alternative the property
+     reads instead of a [<font-family-name>], so it is turned away as the first
+     word of a sequence. WPT css-fonts/parsing/font-family-invalid pins the
+     first of these, and Chrome 153 refuses all four. *)
+  neg "font-family: cursive serif";
+  neg "font-family: system-ui system-ui";
+  neg "font-family: serif serif";
+  neg "font-family: serif Foo";
+  (* CSS Values 4 sec. 4.2 excludes a CSS-wide keyword and [default] from
+     [<custom-ident>] itself, so those are turned away at every word rather than
+     only at the first. Chrome takes [Foo inherit] as a name; the exclusion is
+     on the type, and cascade holds the strict side. *)
+  neg "font-family: inherit inherit";
+  neg "font-family: Foo inherit";
+  neg "font-family: Foo default";
   typed_invalid "font-family: Arial, inherit";
   typed_invalid "font-family: revert-layer, serif";
   neg "font-family: system-ui revert-layer, serif";
