@@ -354,11 +354,12 @@ to lose a whole rule over one bad piece. Both are gone.
 - Keyword, at-rule and function names match without regard to case, so
   `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)`, `:dir(LTR)`,
   `touch-action: NONE`, `display: LIST-ITEM FLOW-ROOT`, `align-items: FIRST
-  BASELINE`, `grid-template-columns: REPEAT(3, 1FR)` and `color: COLOR(DISPLAY-P3
-  1 0 0)` read, while an author-defined name keeps the case it was written in.
+  BASELINE`, `grid-template-columns: REPEAT(3, 1FR)`, `color: COLOR(DISPLAY-P3
+  1 0 0)` and `linear-gradient(IN OKLAB, red, blue)` read, while an
+  author-defined name keeps the case it was written in.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
-  of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141)
+  of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
 - Cascade reads back everything it writes. Minified `@scope to (...)`, `rotate`
   with a negative axis, a relative colour's channels, a `-webkit-gradient`
   `color-stop()` and `center` point, `text-decoration: none solid`,

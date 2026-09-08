@@ -45,10 +45,13 @@ let rec pp_color_interpolation : color_interpolation Pp.t =
    [<hue-interpolation-method>] followed by [hue]. *)
 let read_hue_interpolation_method t =
   let snap = Cursor.save t in
-  match Cursor.ident_opt t with
+  let keyword t =
+    Option.map String.lowercase_ascii_preserve (Cursor.ident_opt t)
+  in
+  match keyword t with
   | Some (("shorter" | "longer" | "increasing" | "decreasing") as kw) -> (
       Cursor.ws t;
-      match Cursor.ident_opt t with
+      match keyword t with
       | Some "hue" ->
           Some
             (match kw with
@@ -70,7 +73,7 @@ let read_color_interpolation (t : Cursor.t) : color_interpolation =
       (* At the component-value level, [in oklab] lexes as two separate idents;
          [inoklab] lexes as a single ident and would fail [expect_string "in"]
          above, so no extra whitespace check is needed here. *)
-      let space = Cursor.ident t in
+      let space = String.lowercase_ascii_preserve (Cursor.ident t) in
       let hue () =
         Cursor.ws t;
         read_hue_interpolation_method t
