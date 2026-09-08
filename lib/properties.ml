@@ -2493,11 +2493,26 @@ let try_list_style_slot r read_fn (slot : 'a option ref) =
         Cursor.restore r pos;
         false
 
+(* CSS Values 4 sec. 2.2 takes each option of a [||] at most once, and sec. 3.6
+   lands a [none] on whichever of the image and the type the shorthand does not
+   otherwise set, so the two of them hold every [none] there is. *)
+let resolve_list_style_nones r nones (type_ : list_style_type option ref)
+    (image : list_style_image option ref) =
+  let free =
+    (if !type_ = Option.None then 1 else 0)
+    + if !image = Option.None then 1 else 0
+  in
+  if nones > free then Cursor.err_invalid r "too many none in list-style";
+  if nones > 0 then begin
+    if !type_ = Option.None then type_ := Some (None : list_style_type);
+    if !image = Option.None then image := Some (None : list_style_image)
+  end
+
 let read_list_style_shorthand r : list_style_shorthand =
   let type_ : list_style_type option ref = ref Option.None in
   let position : list_style_position option ref = ref Option.None in
   let image : list_style_image option ref = ref Option.None in
-  let saw_none = ref false in
+  let nones = ref 0 in
   let try_one () =
     try_list_style_slot r read_list_style_position position
     || try_list_style_slot r read_list_style_image image
@@ -2511,7 +2526,7 @@ let read_list_style_shorthand r : list_style_shorthand =
       let kw = Cursor.peek_keyword r in
       if kw = Some "none" then begin
         let _ = Cursor.ident r in
-        saw_none := true;
+        incr nones;
         consume ()
       end
       else if try_one () then consume ()
@@ -2521,13 +2536,10 @@ let read_list_style_shorthand r : list_style_shorthand =
   Cursor.ws r;
   if not (Cursor.is_done r) then
     Cursor.err_invalid r "invalid list-style shorthand";
-  if !saw_none then begin
-    if !type_ = Option.None then type_ := Some (None : list_style_type);
-    if !image = Option.None then image := Some (None : list_style_image)
-  end;
+  resolve_list_style_nones r !nones type_ image;
   if
     !type_ = Option.None && !position = Option.None && !image = Option.None
-    && not !saw_none
+    && !nones = 0
   then Cursor.err_invalid r "invalid list-style shorthand";
   { type_ = !type_; position = !position; image = !image }
 
