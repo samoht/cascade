@@ -422,6 +422,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- `--minify` writes a `calc()` it unwraps as the leaf it became, so
+  `transition-duration: calc(120ms)` is `.12s` and not the `120ms` an operand is
+  spelled, and `animation: calc(1)` is the `none` the bare `1` already gave.
+  Both used to need a second pass to settle (#1160)
 - `--minify` merges two rules whose values were written with different spellings
   of one number, so `a{tab-size:2e0ch}b{tab-size:2ch}` groups on the first pass
   rather than the second. `line-height`, `overflow-clip-margin`, the grid track

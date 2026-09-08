@@ -1407,8 +1407,13 @@ let negative_length : length -> bool = function
   | _ -> false
 
 let pp_calc_with : type a.
-    ?unwrap_num:bool -> ?unwrap:(a -> bool) -> a Pp.t -> a calc Pp.t =
- fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) pp_value ctx calc ->
+    ?unwrap_num:bool ->
+    ?unwrap:(a -> bool) ->
+    ?pp_unwrapped:a Pp.t ->
+    a Pp.t ->
+    a calc Pp.t =
+ fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) ?pp_unwrapped pp_value ctx
+     calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1421,14 +1426,21 @@ let pp_calc_with : type a.
      those are is not knowable here, so the wrapper stays on a value that reads
      back differently without it; [Declaration.normalize] unwraps the rest,
      where the property is in hand. *)
-  | Val v when Pp.minified ctx && unwrap v -> pp_value ctx v
+  (* A leaf that comes out of the call is no longer an operand, so it is written
+     the way a leaf on its own is written. [pp_value] is the operand printer,
+     which a caller whose two spellings differ passes [pp_unwrapped] beside: a
+     duration operand keeps [ms] so two unequal calls do not print alike, while
+     [120ms] on its own is [.12s], and printing the operand spelling here left
+     an emission the next reader shortened. *)
+  | Val v when Pp.minified ctx && unwrap v ->
+      Option.value pp_unwrapped ~default:pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc ?unwrap_num ?unwrap pp_value ctx calc =
-  pp_calc_with ?unwrap_num ?unwrap pp_value ctx calc
+let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =
+  pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc
 
 (* Small helpers *)
 
@@ -5036,6 +5048,7 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
   | Calc c ->
       pp_calc_with ~unwrap_num:false
         ~unwrap:(fun d -> not (negative_duration d))
+        ~pp_unwrapped:(pp_duration_with ~shorten_ms)
         (pp_duration_with ~shorten_ms:false)
         ctx c
 

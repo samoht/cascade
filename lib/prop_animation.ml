@@ -1755,9 +1755,18 @@ module Animation = struct
     | Some Ease | None -> false
     | Some tf -> not (is_default_timing tf)
 
+  (* [calc(1)] is the initial count written the long way, and CSS Values 4 sec.
+     10.12 gives it the same computed value, so the slot answers for it as it
+     already answers for the bare [1] the shorthand drops. Reading it as a value
+     of its own left [animation: calc(1)] emitting [animation: 1], which is
+     every slot at its initial and so reads back as [animation: none]. *)
+  let is_default_count : animation_iteration_count -> bool = function
+    | Count (Num 1.) | Count (Calc (Num 1.)) -> true
+    | _ -> false
+
   let is_iteration : animation_iteration_count option -> bool = function
-    | Some (Count (Num 1.)) | None -> false
-    | Some _ -> true
+    | Some c -> not (is_default_count c)
+    | None -> false
 
   let is_direction : animation_direction option -> bool = function
     | Some Normal | None -> false
@@ -1833,8 +1842,10 @@ module Animation = struct
   let iteration ?(quote_name = false) (anim : animation_shorthand) :
       animation_iteration_count option =
     match (anim.iteration_count, effective_ambiguous_kind ~quote_name anim) with
-    | (Some (Count (Num 1.)) | None), Some Iteration -> Some (Count (Num 1.))
-    | Some (Count (Num 1.)), _ | None, _ -> None
+    | Some c, Some Iteration when is_default_count c -> Some (Count (Num 1.))
+    | None, Some Iteration -> Some (Count (Num 1.))
+    | Some c, _ when is_default_count c -> None
+    | None, _ -> None
     | Some c, _ -> Some c
 
   let direction ?(quote_name = false) (anim : animation_shorthand) :

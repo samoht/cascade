@@ -10025,12 +10025,17 @@ val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)
 
 val pp_calc :
-  ?unwrap_num:bool -> ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc ?unwrap_num ?unwrap pp_value] is the pretty printer for calc
-    expressions. Minified output drops the call around a single leaf, and
-    [unwrap] says which leaves that is safe for. [unwrap_num] is the same
-    question for a bare number leaf, which a property taking an [<integer>]
-    answers no to. *)
+  ?unwrap_num:bool ->
+  ?unwrap:('a -> bool) ->
+  ?pp_unwrapped:'a Pp.t ->
+  'a Pp.t ->
+  'a calc Pp.t
+(** [pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value] is the pretty printer
+    for calc expressions. [pp_unwrapped] writes the one leaf that comes out of
+    the call, which is no longer an operand; it defaults to [pp_value]. Minified
+    output drops the call around a single leaf, and [unwrap] says which leaves
+    that is safe for. [unwrap_num] is the same question for a bare number leaf,
+    which a property taking an [<integer>] answers no to. *)
 
 val pp_font_style : font_style Pp.t
 (** [pp_font_style] is the pretty printer for font-style values. *)
