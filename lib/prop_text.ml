@@ -1331,6 +1331,17 @@ let rec pp_initial_letter_align : initial_letter_align Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_initial_letter_align ctx v
 
+(* The wrap length is the one part of this value the printer respells under
+   [--minify], so leaving the authored spelling here costs the merge that two
+   rules writing one width should get on the first pass. *)
+let normalize_initial_letter_wrap : initial_letter_wrap -> initial_letter_wrap =
+ fun value ->
+  match value with
+  | Length (Length len) ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Length (Length len')
+  | _ -> value
+
 let rec pp_initial_letter_wrap : initial_letter_wrap Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"

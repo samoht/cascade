@@ -1066,6 +1066,24 @@ let rec pp_background_box : background_box Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* [background-size] and the two [mask-size] spellings share this value, and
+   nothing folded the length inside it, so an authored [10.0px] stayed a node of
+   its own beside the [10px] the canonical spelling reads as. *)
+let rec normalize_background_size : background_size -> background_size =
+ fun value ->
+  match value with
+  | Length len ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Length len'
+  | Size (a, b) ->
+      let a' = Values.canonical_dimension a in
+      let b' = Values.canonical_dimension b in
+      if a' == a && b' == b then value else Size (a', b')
+  | Layers layers ->
+      let layers' = List.map normalize_background_size layers in
+      if List.equal ( == ) layers layers' then value else Layers layers'
+  | _ -> value
+
 let rec pp_background_size : background_size Pp.t =
  fun ctx -> function
   | Layers layers -> Pp.list ~sep:Pp.comma pp_background_size ctx layers

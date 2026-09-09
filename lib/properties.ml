@@ -4623,6 +4623,13 @@ let normalize_property_value : type a.
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
   | Columns -> normalize_columns_value value
+  | Column_width -> normalize_column_width value
+  | Page_size -> normalize_page_size value
+  | Initial_letter_wrap -> normalize_initial_letter_wrap value
+  | Background_size -> normalize_background_size value
+  | Webkit_background_size -> normalize_background_size value
+  | Mask_size -> normalize_background_size value
+  | Webkit_mask_size -> normalize_background_size value
   | Column_count -> normalize_column_count value
   | Border_width ->
       normalize_box_shorthand ~is_substitution:is_border_width_substitution
