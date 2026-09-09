@@ -2694,6 +2694,21 @@ let relative_color_space_elidable body i =
         || (next >= 'a' && next <= 'z')
     | _ -> false
 
+(* The reading [relative_color_space_elidable] owes. Where the printer drops a
+   separator the reader has to put one back, or one channel list written the two
+   ways it may be written is two tails that print alike: CSS Syntax 3 (ED) sec.
+   4.3.3 ends a percentage at its [%] and sec. 4.3.5 ends a block at its [)], so
+   [20%g] carries the channels [20%] and [g] exactly as [20% g] does. The two
+   answers have to name the same positions or a tail stops round-tripping. *)
+let relative_color_splits_tokens prev body i =
+  match prev with
+  | '%' ->
+      body_starts_number body i
+      || (body.[i] >= 'A' && body.[i] <= 'Z')
+      || (body.[i] >= 'a' && body.[i] <= 'z')
+  | ')' -> body_starts_number body i || body.[i] = '.'
+  | _ -> false
+
 let minify_relative_color_spaces body =
   let len = String.length body in
   let buf = Buffer.create len in
@@ -7203,6 +7218,12 @@ let normalize_relative_color_tail tail =
           loop (skip_spaces (i + 1)) false
       | c ->
           add_pending_space buf last_was_space;
+          if
+            Buffer.length buf > 0
+            && relative_color_splits_tokens
+                 (Buffer.nth buf (Buffer.length buf - 1))
+                 tail i
+          then Buffer.add_char buf ' ';
           Buffer.add_char buf c;
           loop (i + 1) false
   in

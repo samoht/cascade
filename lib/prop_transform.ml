@@ -965,14 +965,15 @@ let rec pp_rotate_value : rotate_value Pp.t =
   | Axis (x, y, z, a) ->
       (* CSS Transforms 2 sec. 5 [rotate] [<angle> <number>{3}] is shorter under
          minify when the angle leads (csso convention) and a following number
-         drops the separator if it starts with a sign. The first number keeps
-         it: the angle ends in its unit, so [0deg-1] is the one dimension
-         [0deg-1] rather than an angle and a number. *)
+         drops the separator if it starts with a sign. The boundary after the
+         angle is [token_sp]'s to judge: an angle ending in its unit is an ident
+         sequence a [-] continues, so [0deg-1] would be the one dimension
+         [0deg-1], while one ending in [)] delimits itself. *)
       let pp_sep ctx (next : float) =
         if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
       in
       pp_required_unit_angle ctx a;
-      Pp.space ctx ();
+      Pp.token_sp ctx ();
       Pp.float ctx x;
       pp_sep ctx y;
       Pp.float ctx y;
