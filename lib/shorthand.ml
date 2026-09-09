@@ -6409,43 +6409,51 @@ let decoration_color_alias_twin vendor twin =
       v1 = v2 && Bool.equal i1 i2
   | _ -> false
 
+(* Two declarations spell one value when their value text is the same. A
+   structural [=] on the two answers a different question: a [var()] fallback
+   the slot cannot type keeps the component values it was written as, source
+   spans included, so a prefix cascade synthesised beside its twin shares that
+   node and compares equal where an authored pair sat at two offsets and does
+   not. The drop below then depended on where the pair came from, and a
+   [mask-image: var(--x, 10px)] settled one way when synthesised and another
+   when read back. *)
+let same_value_text vendor twin =
+  String.equal
+    (Declaration.string_of_value ~minify:true vendor)
+    (Declaration.string_of_value ~minify:true twin)
+
 let vendor_alias_twin vendor twin =
   match (vendor, twin) with
-  | ( Declaration { property = Webkit_transform; value = v1; important = i1; _ },
-      Declaration { property = Transform; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_box_sizing; value = v1; important = i1; _ },
-      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_box_sizing; value = v1; important = i1; _ },
-      Declaration { property = Box_sizing; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_transform; important = i1; _ },
+      Declaration { property = Transform; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_box_sizing; important = i1; _ },
+      Declaration { property = Box_sizing; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Moz_box_sizing; important = i1; _ },
+      Declaration { property = Box_sizing; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
   | ( Declaration { property = Webkit_text_decoration_color; _ },
       Declaration { property = Text_decoration_color; _ } ) ->
       decoration_color_alias_twin vendor twin
-  | ( Declaration { property = Webkit_mask_image; value = v1; important = i1; _ },
-      Declaration { property = Mask_image; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_user_select; value = v1; important = i1; _ },
-      Declaration { property = User_select; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Moz_user_select; value = v1; important = i1; _ },
-      Declaration { property = User_select; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration { property = Webkit_hyphens; value = v1; important = i1; _ },
-      Declaration { property = Hyphens; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_text_size_adjust; value = v1; important = i1; _ },
-      Declaration { property = Text_size_adjust; value = v2; important = i2; _ }
-    ) ->
-      v1 = v2 && Bool.equal i1 i2
-  | ( Declaration
-        { property = Webkit_print_color_adjust; value = v1; important = i1; _ },
-      Declaration
-        { property = Print_color_adjust; value = v2; important = i2; _ } ) ->
-      v1 = v2 && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_mask_image; important = i1; _ },
+      Declaration { property = Mask_image; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_user_select; important = i1; _ },
+      Declaration { property = User_select; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Moz_user_select; important = i1; _ },
+      Declaration { property = User_select; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_hyphens; important = i1; _ },
+      Declaration { property = Hyphens; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_text_size_adjust; important = i1; _ },
+      Declaration { property = Text_size_adjust; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
+  | ( Declaration { property = Webkit_print_color_adjust; important = i1; _ },
+      Declaration { property = Print_color_adjust; important = i2; _ } ) ->
+      same_value_text vendor twin && Bool.equal i1 i2
   | _ ->
       vendor_alias_twin_animation vendor twin
       || vendor_alias_twin_transition vendor twin

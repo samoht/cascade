@@ -385,6 +385,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `border-width: min(var(--x), 1px)` no longer collects a `calc()` around the
   reference and `min(calc(var(--x) + 1px), 2px)` no longer collects a second
   one. CSS Values 4 sec. 10.1 makes a lone `var()` a whole `<calc-sum>` (#1175)
+- A vendor prefix beside its unprefixed twin is recognised by the value the two
+  spell rather than by the nodes they were parsed into, so a `mask-image` given
+  a `var()` fallback its slot cannot type settles on one emission whether
+  cascade synthesised the prefix or an author wrote it. Minifying that output
+  again used to move it. Output grows 718 gzip bytes over the 504-file corpus
+  (0.01%) and the sweep is within timing noise (#1178)
 - Cascade reads back everything it writes. Minified `@scope to (...)`, `rotate`
   with a negative axis, a relative colour's channels, a `-webkit-gradient`
   `color-stop()` and `center` point, `text-decoration: none solid`,
