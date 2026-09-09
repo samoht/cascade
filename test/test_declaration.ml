@@ -1971,7 +1971,33 @@ let negative_calc_keeps_the_call () =
   (* The record this was found on: the sign is known but the result is not a
      length any of these properties reads as a literal. *)
   check_declaration ~expected:"width:calc(10px*sign(-1vw))"
-    ~optimized:"width:calc(10px*sign(-1vw))" "width: calc(10px * sign(-1vw))"
+    ~optimized:"width:calc(10px*sign(-1vw))" "width: calc(10px * sign(-1vw))";
+  (* CSS Values 4 sec. 10.6 makes [sign()] answer -1, 0 or +1, so the answer
+     turns on whether the argument is zero. A relative unit's reference can be:
+     a zero font-size, a zero viewport, a zero container, a percentage of zero.
+     So the sign of the coefficient is not the sign of the value and the call
+     waits for the reference, where an absolute unit has no reference to wait
+     for. Chrome 153 keeps every row of the first list and folds every row of
+     the second, at a property that takes a negative length so the fold is the
+     only thing under test. *)
+  List.iter
+    (fun unit ->
+      let value = String.concat "" [ "calc(10px * sign(-1"; unit; "))" ] in
+      let held =
+        String.concat "" [ "margin-left:calc(10px*sign(-1"; unit; "))" ]
+      in
+      check_declaration ~expected:held ~optimized:held
+        (String.concat "" [ "margin-left: "; value ]))
+    [ "em"; "rem"; "ex"; "ch"; "vw"; "vh"; "vmin"; "dvw"; "cqw"; "%" ];
+  List.iter
+    (fun unit ->
+      let value = String.concat "" [ "calc(10px * sign(-1"; unit; "))" ] in
+      check_declaration
+        ~expected:
+          (String.concat "" [ "margin-left:calc(10px*sign(-1"; unit; "))" ])
+        ~optimized:"margin-left:-10px"
+        (String.concat "" [ "margin-left: "; value ]))
+    [ "px"; "cm"; "pt"; "s"; "deg" ]
 
 (* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
    so a layer that fills no slot declares what [background: none] declares. [0
