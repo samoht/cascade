@@ -166,5 +166,10 @@ LC_ALL=C awk -F'\t' -v top="$TOP" -v ab="${BASELINE:+1}" '
       for (j = i + 1; j <= k; j++)
         if (time[order[j]] + 0 > time[order[i]] + 0) { t = order[i]; order[i] = order[j]; order[j] = t }
     for (i = 1; i <= k && i <= top; i++) printf "%8.2fs  %s\n", time[order[i]], order[i]
+    # A fixture cascade cannot minify is not a slow file, it is a hole in the
+    # gate: the sweep still prints totals, and a byte-identity A/B calls the
+    # pair identical because both binaries failed alike. One corrupted fixture
+    # went unnoticed for six days that way. Exit non-zero so it cannot.
+    if (nfail) exit 1
   }
 ' "$RESULTS"
