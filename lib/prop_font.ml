@@ -1386,7 +1386,13 @@ let rec pp_line_height : line_height Pp.t =
           Pp.string ctx unit
       | true, None -> Pp.float ctx value
       | true, Some "%" -> Pp.pct ctx value
-      | true, Some unit -> Pp.unit ctx value unit)
+      (* Values 4 sec. 6.7.2 serialises a unit lowercase, as the constructors
+         above print it, so the author's case ends at the unminified branch. A
+         unit none of them names has no other spelling to agree with. *)
+      | true, Some unit ->
+          Pp.unit ctx value
+            (if Values.is_length_unit unit then String.lowercase_ascii unit
+             else unit))
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -2565,7 +2571,7 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
      spelling under [--minify]. Fold onto the constructor where there is one, or
      the two spellings reach one minified text through two nodes. *)
   | Number { value; unit; _ } -> (
-      match unit with
+      match Option.map String.lowercase_ascii unit with
       | Option.None -> Num value
       | Option.Some "%" -> Pct value
       | Option.Some "px" -> Px value

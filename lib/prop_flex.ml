@@ -140,7 +140,7 @@ let rec normalize_flex_basis (value : flex_basis) : flex_basis =
       | Val v -> normalize_flex_basis v
       | folded -> if folded == c then value else Calc folded)
   | Dimension { value = n; unit; _ } -> (
-      match flex_basis_of_unit n unit with
+      match flex_basis_of_unit n (String.lowercase_ascii unit) with
       | Option.Some folded -> normalize_flex_basis folded
       | Option.None -> value)
   | _ -> value

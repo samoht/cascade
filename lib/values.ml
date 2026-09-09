@@ -2029,14 +2029,14 @@ let length_of_calc_unit (unit : length_unit) n : length =
    [Dimension] for the unminified round-trip, and the printer drops it under
    [--minify]: two spellings then reach one minified text through two nodes,
    which anything keyed on the node reads as two values. Fold back to the
-   constructor once the round-trip no longer needs the spelling. Only a unit the
-   constructor prints back verbatim folds, so no byte moves; a zero is left to
-   [strip_zero_length], whose unit strip is a type change this is not. *)
+   constructor once the round-trip no longer needs the spelling. The minified
+   printer lowercases the unit, as the constructors do, so the author's case
+   moves no byte here either; a zero is left to [strip_zero_length], whose unit
+   strip is a type change this is not. *)
 let canonical_dimension (l : length) : length =
   match l with
-  | Dimension { value; unit; _ }
-    when value <> 0. && String.equal (String.lowercase_ascii unit) unit -> (
-      match unit_of_string unit with
+  | Dimension { value; unit; _ } when value <> 0. -> (
+      match unit_of_string (String.lowercase_ascii unit) with
       | Some unit -> length_of_unit unit value
       | None -> l)
   | _ -> l
@@ -2425,7 +2425,15 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
   | Dimension { value; unit; repr } ->
-      if ctx.minify then pp_unit_fn value unit
+      (* CSS Values 4 sec. 6.7.2 serialises a dimension's unit in lowercase, and
+         the unit constructors print that way, so a dimension naming one of them
+         has to as well or the same width reads back two ways. A unit no
+         constructor covers is a future or [calc()]-only dimension token this
+         arm alone writes, so nothing contradicts the author's case there. The
+         unminified branch round-trips what the author wrote either way. *)
+      if ctx.minify then
+        pp_unit_fn value
+          (if is_length_unit unit then String.lowercase_ascii unit else unit)
       else (
         Pp.string ctx repr;
         Pp.string ctx unit)
