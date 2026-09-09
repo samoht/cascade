@@ -87,6 +87,21 @@ val decl_lossless : prop:string -> into:string -> string -> unit
 (** [decl_lossless ~prop ~into input] checks the minify+optimize path with
     bounded approximation disabled on both optimization and printing. *)
 
+val minify_reads_back : string -> expected:string -> string -> unit
+(** [minify_reads_back name ~expected source] checks that [source] minifies to
+    [expected] and that re-reading [expected] gives back the statements [source]
+    parsed to.
+
+    Comparing the text a second pass prints is weaker: CSS Syntax 3 (ED) sec. 4
+    tokenises greedily, so an elided separator can turn one construct into
+    another that prints back byte for byte for ever - [@scope to (.a)] minified
+    to [@scopeto (.a)] is a stable unknown at-rule. *)
+
+val sheets_agree : string -> string -> string -> unit
+(** [sheets_agree name a b] checks that two spellings of one sheet parse to the
+    same statements. Use it where the two differ only in whitespace a grammar
+    allows but does not require. *)
+
 val check_parse_error_fields :
   string -> Reader.parse_error -> Reader.parse_error -> unit
 (** [check_parse_error_fields name expected actual] compares message and got

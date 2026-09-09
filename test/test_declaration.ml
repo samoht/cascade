@@ -7416,6 +7416,85 @@ let test_calc_sum_shortest_spelling () =
   shortest ~into:"calc(10% - 5vw)" "calc(-5vw + 10%)";
   shortest ~into:"calc(5vw - 10%)" "calc(-10% + 5vw)"
 
+(* CSS Syntax 3 (ED) sec. 4.2 makes [-] an ident code point and sec. 4.3.4 has a
+   dimension's unit consume an ident sequence, so [0deg-1] is the single
+   dimension [0deg-1] and the separator in front of a signed number is mandatory
+   after an angle. Only a number ends where one may follow it unseparated: sec.
+   4.3.12 stops consuming a number at a [-] no [e] or [.] precedes. A [)] ends
+   its block and separates from anything. *)
+let dimension_before_signed_number () =
+  minify_reads_back "rotate axis after a zero angle"
+    ~expected:"a{rotate:0deg -1 0 0}" "a { rotate: -1 0 0 0deg }";
+  minify_reads_back "rotate axis after an angle"
+    ~expected:"a{rotate:45deg 1-1-1}" "a { rotate: 1 -1 -1 45deg }";
+  minify_reads_back "rotate axis with an unsigned first component"
+    ~expected:"a{rotate:45deg 1 2-3}" "a { rotate: 1 2 -3 45deg }";
+  (* A [var()] angle ends on [)], which needs no separator after it. Only the
+     printed text is pinned: the reader takes the angle-first spelling of this
+     value as an opaque stream, so the emission does not carry the axis node
+     back either way. *)
+  check_declaration ~expected:"rotate:var(--a)1-1-1" "rotate:1 -1 -1 var(--a)";
+  minify_reads_back "scale number pair" ~expected:"a{scale:-1-2}"
+    "a { scale: -1 -2 }";
+  minify_reads_back "translate lengths" ~expected:"a{translate:1px -2px}"
+    "a { translate: 1px -2px }";
+  minify_reads_back "box-shadow lengths"
+    ~expected:"a{box-shadow:1px -2px 3px -4px red}"
+    "a { box-shadow: 1px -2px 3px -4px red }";
+  minify_reads_back "translate3d arguments"
+    ~expected:"a{transform:translate3d(1px,-2px,-3px)}"
+    "a { transform: translate3d(1px, -2px, -3px) }";
+  minify_reads_back "rotate3d arguments"
+    ~expected:"a{transform:rotate3d(1,-1,-1,45deg)}"
+    "a { transform: rotate3d(1, -1, -1, 45deg) }";
+  minify_reads_back "margin lengths" ~expected:"a{margin:-1px -2px}"
+    "a { margin: -1px -2px }"
+
+(* CSS Syntax 3 (ED) sec. 4.3.3 ends a percentage token at its [%] and sec.
+   4.3.5 ends a block at its [)], so neither can absorb what follows. CSS Color
+   5 sec. 4.1 gives each channel of a relative colour one component value, and
+   grammars are matched against tokens, so [20%g] carries the two channels [20%]
+   and [g] exactly as [20% g] does. The separator is droppable and the reader
+   owes the printer that reading. *)
+let relative_colour_channel_separator () =
+  minify_reads_back "percentage then keyword"
+    ~expected:"a{color:rgb(from #639 20%g b/alpha)}"
+    "a { color: rgb(from #639 20% g b / alpha) }";
+  minify_reads_back "keyword then percentage"
+    ~expected:"a{color:rgb(from #639 r 20%b/alpha)}"
+    "a { color: rgb(from #639 r 20% b / alpha) }";
+  minify_reads_back "percentage then number"
+    ~expected:"a{color:rgb(from #639 r 20%10)}"
+    "a { color: rgb(from #639 r 20% 10) }";
+  minify_reads_back "leading percentage then numbers"
+    ~expected:"a{color:rgb(from #639 0%10 10)}"
+    "a { color: rgb(from #639 0% 10 10) }";
+  minify_reads_back "math function then number"
+    ~expected:"a{color:rgb(from #639 r calc(g * 2)10)}"
+    "a { color: rgb(from #639 r calc(g * 2) 10) }"
+
+(* The same channel list is the same value in every relative colour function,
+   whichever of the two spellings the author wrote. *)
+let relative_colour_spellings_agree () =
+  sheets_agree "rgb" "a{color:rgb(from #639 20% g b)}"
+    "a{color:rgb(from #639 20%g b)}";
+  sheets_agree "hsl" "a{color:hsl(from #639 20% s l)}"
+    "a{color:hsl(from #639 20%s l)}";
+  sheets_agree "hwb" "a{color:hwb(from #639 20% w b)}"
+    "a{color:hwb(from #639 20%w b)}";
+  sheets_agree "lab" "a{color:lab(from #639 20% a b)}"
+    "a{color:lab(from #639 20%a b)}";
+  sheets_agree "lch" "a{color:lch(from #639 20% c h)}"
+    "a{color:lch(from #639 20%c h)}";
+  sheets_agree "oklab" "a{color:oklab(from #639 20% a b)}"
+    "a{color:oklab(from #639 20%a b)}";
+  sheets_agree "oklch" "a{color:oklch(from #639 20% c h)}"
+    "a{color:oklch(from #639 20%c h)}";
+  sheets_agree "color" "a{color:color(from #639 srgb 20% g b)}"
+    "a{color:color(from #639 srgb 20%g b)}";
+  sheets_agree "alpha slash" "a{color:rgb(from #639 r g b / alpha)}"
+    "a{color:rgb(from #639 r g b/alpha)}"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -7622,6 +7701,12 @@ let declaration_tests =
     test_case "property name case" `Quick property_case;
     test_case "special cases" `Quick special_cases;
     test_case "edge cases" `Quick edge_cases;
+    test_case "dimension before a signed number" `Quick
+      dimension_before_signed_number;
+    test_case "relative colour channel separator" `Quick
+      relative_colour_channel_separator;
+    test_case "relative colour spellings agree" `Quick
+      relative_colour_spellings_agree;
   ]
 
 let suite = ("declaration", declaration_tests)

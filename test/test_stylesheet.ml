@@ -4259,6 +4259,48 @@ let spec_current_at_rules () =
     "@container () { .x { color: red } }";
   neg_cursor read "@page : { margin: 1cm }"
 
+(* CSS Syntax 3 (ED) sec. 4.3.1 consumes an ident sequence into the at-keyword,
+   so the space in front of an ident prelude is the only thing naming the rule:
+   [@scope to (...)] printed as [@scopeto (...)] is a different at-rule, and one
+   every browser drops. A [(] and a [)] each end their token, so a prelude that
+   opens or closes on one needs no separator; sec. 4.3.4 turns [to(] into a
+   function token, so [to] keeps the space after it either way. *)
+let at_keyword_prelude_separator () =
+  minify_reads_back "scope end only"
+    ~expected:"@scope to (.content>*){a{color:red}}"
+    "@scope to (.content > *) { a { color: red } }";
+  minify_reads_back "scope start and end"
+    ~expected:"@scope(.card)to (.footer){a{color:red}}"
+    "@scope (.card) to (.footer) { a { color: red } }";
+  minify_reads_back "scope start only" ~expected:"@scope(.card){a{color:red}}"
+    "@scope (.card) { a { color: red } }";
+  minify_reads_back "scope with neither" ~expected:"@scope{a{color:red}}"
+    "@scope { a { color: red } }";
+  minify_reads_back "media type" ~expected:"@media screen{a{color:red}}"
+    "@media screen { a { color: red } }";
+  minify_reads_back "media not" ~expected:"@media not all{a{color:red}}"
+    "@media not all { a { color: red } }";
+  minify_reads_back "supports not"
+    ~expected:"@supports not (display:grid){a{color:red}}"
+    "@supports not (display: grid) { a { color: red } }";
+  minify_reads_back "supports selector"
+    ~expected:"@supports selector(a){a{color:red}}"
+    "@supports selector(a) { a { color: red } }";
+  minify_reads_back "container name"
+    ~expected:"@container card (width>0px){a{color:red}}"
+    "@container card (width > 0px) { a { color: red } }";
+  minify_reads_back "container not"
+    ~expected:"@container not (width>0px){a{color:red}}"
+    "@container not (width > 0px) { a { color: red } }";
+  minify_reads_back "page name" ~expected:"@page toc{margin:1cm}"
+    "@page toc { margin: 1cm }";
+  minify_reads_back "layer name" ~expected:"@layer a{b{color:red}}"
+    "@layer a { b { color: red } }";
+  (* An unknown at-rule keeps its block byte for byte, so this source is written
+     minified: only the prelude separator is under test. *)
+  minify_reads_back "unknown at-rule" ~expected:"@foo bar{a{color:red}}"
+    "@foo bar{a{color:red}}"
+
 let font_palette_values_descriptor_matrix () =
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
@@ -10485,6 +10527,7 @@ let additional_tests =
       `Quick,
       custom_property_boundary );
     ("spec current-work at-rules", `Quick, spec_current_at_rules);
+    ("spec at-keyword prelude separator", `Quick, at_keyword_prelude_separator);
     ( "spec font-palette-values descriptor matrix",
       `Quick,
       font_palette_values_descriptor_matrix );
