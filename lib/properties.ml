@@ -2291,6 +2291,20 @@ let rec pp_content : content Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_content ctx v
 
+(* CSS Values 4 sec. 6.7.2 gives a string one serialisation, and [--minify]
+   writes that one whichever quote the author chose: the quote and the authored
+   spelling survive only in the round-trip the printer keeps for unminified
+   output. Fold onto [String] once that round-trip is gone, or [content:'x'] and
+   [content:"x"] reach one minified text through two nodes, which anything keyed
+   on the node reads as two values. *)
+let rec normalize_content (c : content) : content =
+  match c with
+  | Quoted { value; _ } -> String value
+  | Content_list items ->
+      let items' = List.map normalize_content items in
+      if List.equal ( == ) items items' then c else Content_list items'
+  | _ -> c
+
 let pp_counter_item ctx { name; value } =
   pp_ident ctx name;
   match value with
@@ -4623,6 +4637,7 @@ let normalize_property_value : type a.
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
   | Columns -> normalize_columns_value value
+  | Content -> normalize_content value
   | Column_width -> normalize_column_width value
   | Page_size -> normalize_page_size value
   | Initial_letter_wrap -> normalize_initial_letter_wrap value
