@@ -6501,6 +6501,18 @@ let declaration_value_end_negatives () =
       "animation-range:normal normal normal";
     ]
 
+(* CSS Syntax 3 (ED) sec. 7.2 excludes a [<bad-string-token>], a
+   [<bad-url-token>] and an unmatched [)], []] or [}] from a
+   [<declaration-value>], and a custom property takes [<declaration-value>?] and
+   nothing wider. The exclusion reaches inside a block, so ONE such token among
+   the components of a block is enough to refuse the value: the question asked
+   of a block's components is whether any of them leaves the grammar, not
+   whether all of them do. An empty block leaves nothing, so it is a value. *)
+let custom_property_block_components () =
+  List.iter (neg_cursor read_declaration) [ "--x:(red ])"; "--x:[a}b]" ];
+  check_declaration ~expected:"--x:()" "--x: ()";
+  check_declaration ~expected:"--x:(red)" "--x: (red)"
+
 (* A cursor over a function's arguments is asking a different question: its
    grammar ends at the closing paren, where neither a [;] nor an [!] can stand,
    so it must still be read to true end of input. Widening it would accept an
@@ -7693,6 +7705,8 @@ let declaration_tests =
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
       declaration_value_end_negatives;
+    test_case "custom property block components" `Quick
+      custom_property_block_components;
     test_case "function argument end negatives" `Quick
       function_argument_end_negatives;
     test_case "shape-outside grammar" `Quick shape_outside_grammar;
