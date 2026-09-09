@@ -6970,6 +6970,28 @@ let quoted_content_is_one_node () =
       ("a{content:'a\"b'}b{content:\"a\\\"b\"}", "a,b{content:\"a\\\"b\"}");
     ]
 
+(* CSS Animations 1 (ED) sec. 4.9: what an [animation] whose every slot holds
+   its initial declares is the eight initials, which is what [animation:none]
+   declares, and the printer writes [none] for both. The two stayed separate
+   nodes, so the same declaration optimised two ways: the reset-only longhands
+   the shorthand covers were dropped after one spelling and kept after the
+   other, which made the result depend on whether the sheet had been through
+   [fmt] on the way. *)
+let all_initial_animation_is_none () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string) css minified_css (minified css))
+    [
+      ("a{animation:normal}b{animation:none}", "a,b{animation:none}");
+      ("a{animation:none;animation-range:normal}", "a{animation:none}");
+      ("a{animation:none;animation-timeline:auto}", "a{animation:none}");
+      (* A slot that is not the initial keeps the shorthand it was written
+         in. *)
+      ("a{animation:reverse}", "a{animation:reverse}");
+      ( "a{animation:none;animation-range:1px}",
+        "a{animation:none;animation-range:1px}" );
+    ]
+
 let unfolded_lengths_are_one_value () =
   let case (property, merged) =
     let css =
@@ -7516,6 +7538,8 @@ let declaration_tests =
       uppercase_units_minify_lowercase;
     test_case "printed units are lowercase" `Quick printed_units_are_lowercase;
     test_case "quoted content is one node" `Quick quoted_content_is_one_node;
+    test_case "all-initial animation is none" `Quick
+      all_initial_animation_is_none;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "number spellings have one node" `Quick
