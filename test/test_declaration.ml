@@ -6912,6 +6912,33 @@ let minified css =
    in could not merge until a second pass re-read that text. One [--minify] has
    to reach the stable answer: CSS Values 4 sec. 6.7.2 gives the two spellings
    one serialisation, so they are one value and one node. *)
+(* The same defect in the properties whose values hold a length the property's
+   own normaliser never reaches. [10.0px] and [10px] are one value under CSS
+   Values 4 sec. 6.7.2 and print alike once the sheet is optimised, so the rules
+   holding them have to merge in that pass rather than the one after. *)
+let unfolded_lengths_are_one_value () =
+  let case (property, merged) =
+    let css =
+      Pp.to_string
+        (fun ctx () ->
+          Pp.string ctx "a{";
+          Pp.string ctx property;
+          Pp.string ctx ":10.0px}b{";
+          Pp.string ctx property;
+          Pp.string ctx ":10px}")
+        ()
+    in
+    Alcotest.(check string) property merged (minified css)
+  in
+  List.iter case
+    [
+      ("column-width", "a,b{column-width:10px}");
+      ("initial-letter-wrap", "a,b{initial-letter-wrap:10px}");
+      ("size", "a,b{size:10px}");
+      ("background-size", "a,b{background-size:10px}");
+      ("mask-size", "a,b{-webkit-mask-size:10px;mask-size:10px}");
+    ]
+
 let flex_basis_spellings_are_one_value () =
   let a = sole_declaration ".a{flex-basis:10.0px}" in
   let b = sole_declaration ".b{flex-basis:10px}" in
@@ -7350,6 +7377,8 @@ let declaration_tests =
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
     test_case "flex-basis spellings are one value" `Quick
       flex_basis_spellings_are_one_value;
+    test_case "unfolded lengths are one value" `Quick
+      unfolded_lengths_are_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "number spellings have one node" `Quick
