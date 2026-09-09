@@ -375,6 +375,14 @@ to lose a whole rule over one bad piece. Both are gone.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
   of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
+- An `@property` `initial-value` at a non-universal `syntax` refuses a length
+  that resolves against an element, so `initial-value: 3em`, `3rem`, `3cqw` and
+  `calc(1px + 2em)` drop the rule where `3px`, `3vw` and `calc(1px + 2px)` read.
+  The registration happens before any element exists, so there is nothing for
+  such a length to resolve against; the universal syntax stores the value as
+  written and still takes every unit. This is CSS Properties and Values API 1
+  sec. 4.1 as Chrome enforces it, the reading #1142 already followed for the
+  substitution half (#1179)
 - A gradient's `<color-interpolation-method>` takes the fifteen colour spaces
   `color-mix()` takes, so `linear-gradient(in srgb-linear, red, blue)` and
   `in hwb longer hue` read where they were dropped, and a hue method after a

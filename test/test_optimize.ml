@@ -4178,9 +4178,9 @@ let c61_no_named_atrule_merge () =
      fade{0%{opacity:0}to{opacity:1}}.theme{display:flex}";
   check_case "property registration boundary"
     ".theme{color:red}@property \
-     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.theme{display:flex}"
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1px}.theme{display:flex}"
     ".theme{color:red}@property \
-     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.theme{display:flex}";
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1px}.theme{display:flex}";
   check_case "view-transition boundary"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"

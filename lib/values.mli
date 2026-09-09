@@ -728,6 +728,13 @@ val percentage_math_function_calls :
     property puts on it. Every other math function keeps [read], which holds the
     call to the slot's type. *)
 
+val is_element_relative_unit : string -> bool
+(** [is_element_relative_unit u] is whether [u] is one of CSS Values 4 sec.
+    5.1.1's font-relative or sec. 5.1.4's container-relative length units, the
+    ones that resolve against something an element is given. Sec. 5.1.3's
+    viewport lengths and sec. 5.2's absolute ones answer [false]: they resolve
+    against the viewport, which every element shares, and against nothing. *)
+
 val looking_at_percentage_math : Cursor.t -> bool
 (** [looking_at_percentage_math t] is [true] on a [calc()] or on any other math
     function, the two spellings {!read_folded_percentage_math} reads. *)

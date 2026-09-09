@@ -472,23 +472,23 @@ view-transition behavior outside local declaration dead-code analysis.
   $ cat > name-defining.css <<EOF
   > @font-face { font-family: Brand; src: url("brand.woff2") }
   > @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
-  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1px }
   > @view-transition { navigation: auto }
   > .x { color: red }
   > EOF
   $ cascade --minify name-defining.css
-  @font-face{font-family:Brand;src:url(brand.woff2)}@keyframes fade{0%{opacity:0}to{opacity:1}}@property --gap{syntax:"<length>";inherits:false;initial-value:1rem}@view-transition{navigation:auto}.x{color:red}
+  @font-face{font-family:Brand;src:url(brand.woff2)}@keyframes fade{0%{opacity:0}to{opacity:1}}@property --gap{syntax:"<length>";inherits:false;initial-value:1px}@view-transition{navigation:auto}.x{color:red}
 
 Registered custom properties are not dead even when the only local use
 is a var() reference. Registration changes syntax, inheritance, and the
 initial value at computed-value time.
 
   $ cat > registered-var.css <<EOF
-  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1px }
   > .x { padding: var(--gap) }
   > EOF
   $ cascade --minify registered-var.css
-  @property --gap{syntax:"<length>";inherits:false;initial-value:1rem}.x{padding:var(--gap)}
+  @property --gap{syntax:"<length>";inherits:false;initial-value:1px}.x{padding:var(--gap)}
 
 Rules must not merge across name-defining at-rules. Their source
 position can be observable through animation, property registration,
@@ -500,11 +500,11 @@ font loading, and future stylesheet APIs.
   > .theme { display: flex }
   > @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
   > .theme { padding: 1rem }
-  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1px }
   > .theme { margin: 1rem }
   > EOF
   $ cascade --minify opaque-at-rules.css
-  .theme{color:red}@font-face{font-family:Brand;src:url(brand.woff2)}.theme{display:flex}@keyframes fade{0%{opacity:0}to{opacity:1}}.theme{padding:1rem}@property --gap{syntax:"<length>";inherits:false;initial-value:1rem}.theme{margin:1rem}
+  .theme{color:red}@font-face{font-family:Brand;src:url(brand.woff2)}.theme{display:flex}@keyframes fade{0%{opacity:0}to{opacity:1}}.theme{padding:1rem}@property --gap{syntax:"<length>";inherits:false;initial-value:1px}.theme{margin:1rem}
 
 Nested rules must not merge across a nested @scope boundary either.
 

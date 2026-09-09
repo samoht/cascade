@@ -91,6 +91,26 @@ let rec substitution_fn_in_components (components : Component.t list) =
 let substitution_fn_in_value_string value =
   substitution_fn_in_components (components_of_value_string value)
 
+(* The same walk for a dimension whose unit resolves against an element. Goes
+   into arguments and blocks, so one inside a [calc()] counts as much as one
+   written on its own. *)
+let rec element_relative_in_components (components : Component.t list) =
+  List.find_map
+    (fun (c : Component.t) ->
+      match c with
+      | Component.Preserved { Token.kind = Token.Dimension { unit_; _ }; _ }
+        when Values.is_element_relative_unit unit_ ->
+          Option.Some unit_
+      | Component.Preserved _ -> Option.None
+      | Component.Func { node = { arguments; _ }; _ } ->
+          element_relative_in_components arguments
+      | Component.Block { node = { value; _ }; _ } ->
+          element_relative_in_components value)
+    components
+
+let element_relative_in_value_string value =
+  element_relative_in_components (components_of_value_string value)
+
 (** Pretty-print a syntax descriptor to CSS syntax string *)
 let rec pp_syntax_inner : type a. a syntax Pp.t =
  fun ctx syn ->

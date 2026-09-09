@@ -5219,6 +5219,37 @@ let read_env : type a. (Cursor.t -> a) -> Cursor.t -> a env =
    never carries a negative-zero float, which breaks structural equality) and
    regenerate the repr from that value rather than echo the authored sign, so
    [-0px] / [+0px] serialise as [0px]. *)
+(* CSS Values 4 sec. 5.1.1 font-relative and sec. 5.1.4 container-relative
+   lengths resolve against something an element is given -- its font, its query
+   container -- so a value carrying one has no computed form until an element
+   has it. Sec. 5.1.3's viewport lengths resolve against the viewport, which
+   every element shares, and sec. 5.2's absolute lengths against nothing, so
+   neither depends on an element. *)
+let element_relative_units =
+  [
+    "em";
+    "rem";
+    "ex";
+    "rex";
+    "cap";
+    "rcap";
+    "ch";
+    "rch";
+    "ic";
+    "ric";
+    "lh";
+    "rlh";
+    "cqw";
+    "cqh";
+    "cqi";
+    "cqb";
+    "cqmin";
+    "cqmax";
+  ]
+
+let is_element_relative_unit unit =
+  List.mem (String.lowercase_ascii unit) element_relative_units
+
 let normalize_signed_zero n repr =
   if n = 0.0 then (0.0, Pp.string_of_float 0.0) else (n, repr)
 

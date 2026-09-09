@@ -1092,7 +1092,7 @@ let serialization_invariants () =
        format(\"woff2\"); unicode-range: U+0025-00FF }";
       "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }";
       "@property --gap { syntax: \"<length>\"; inherits: false; initial-value: \
-       1rem }";
+       1px }";
     ]
 
 let minified_shortest_spec_edges () =
