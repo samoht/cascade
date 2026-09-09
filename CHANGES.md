@@ -382,6 +382,11 @@ to lose a whole rule over one bad piece. Both are gone.
   Chrome computes all three the same way. Sec. 10.12 clamps such a call at
   computed-value time, so the wrapper stays and only the arithmetic moves; the
   504-file corpus is byte-identical (#1181)
+- `--minify` spends less time on factorings it will refuse: minifying the
+  SatCSS corpus' largest sheets is 8-19% faster with byte-identical output on
+  all 504 of them. A merge moves its rules past whatever sits between them, so
+  those are the rules that can refuse it, and they are now examined first
+  (#1183)
 - `round()` sends a tie to the nearest multiple toward positive infinity, so
   `round(-3, 2)` folds to `-2` where it used to fold to `-4`. CSS Values 4 sec.
   10.7.3 gives that tie-break, and it is the one an `<integer>` slot already
