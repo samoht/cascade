@@ -199,25 +199,44 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
    shorthand takes its longhand initial - [outside] (sec. 3.5), [none] (sec.
    3.3) and [disc] (sec. 3.4). Writing an initial out names what leaving it out
    names, and leaving it out is the shorter spelling. *)
+(* CSS Variables 1 sec. 3 syntax-checks a shorthand carrying a [var()] only
+   after substitution, so which slot the substituted tokens fill is not known
+   until computed-value time and a slot holding its initial is not spare. The
+   reasoning above holds for a value with no [var()] in it and fails here:
+   [list-style: disc outside var(--x)] with [--x: circle] substitutes to two
+   [<list-style-type>] values and is invalid at computed-value time, leaving the
+   longhands unset, where dropping the initials leaves [list-style: var(--x)],
+   which substitutes to a valid [circle] and sets the type. Reordering stays
+   sound -- CSS Lists 3 sec. 2 spells the shorthand with [||], so its components
+   commute -- but nothing may leave. *)
+let list_style_slot_is_var (s : list_style_shorthand) =
+  (match s.type_ with Some (Var _ : list_style_type) -> true | _ -> false)
+  || (match s.position with
+    | Some (Var _ : list_style_position) -> true
+    | _ -> false)
+  || match s.image with Some (Var _ : list_style_image) -> true | _ -> false
+
 let normalize_list_style_shorthand (s : list_style_shorthand) :
     list_style_shorthand =
-  let type_ =
-    drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
-  in
-  let position =
-    drop_default
-      ~is_default:(fun (p : list_style_position) -> p = Outside)
-      s.position
-  in
-  let image =
-    drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
-  in
-  if
-    option_is_phys_same type_ s.type_
-    && option_is_phys_same position s.position
-    && option_is_phys_same image s.image
-  then s
-  else { type_; position; image }
+  if list_style_slot_is_var s then s
+  else
+    let type_ =
+      drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
+    in
+    let position =
+      drop_default
+        ~is_default:(fun (p : list_style_position) -> p = Outside)
+        s.position
+    in
+    let image =
+      drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
+    in
+    if
+      option_is_phys_same type_ s.type_
+      && option_is_phys_same position s.position
+      && option_is_phys_same image s.image
+    then s
+    else { type_; position; image }
 
 let normalize_list_style : list_style -> list_style = function
   | Shorthand s as value ->

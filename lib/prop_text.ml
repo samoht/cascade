@@ -801,10 +801,29 @@ let normalize_hyphenate_limit_chars ~ctx :
       if a' == a && b' == b && c' == c then value else Three (a', b', c')
   | other -> other
 
+(* CSS Variables 1 sec. 3 syntax-checks a shorthand carrying a [var()] only
+   after substitution, so which slot the substituted tokens fill is unknown
+   until computed-value time and a slot holding its initial is not spare.
+   [text-decoration: solid var(--x)] with [--x: dotted] substitutes to two
+   [<text-decoration-style>] values and is invalid at computed-value time,
+   leaving the longhands unset, where dropping the [solid] leaves
+   [text-decoration: var(--x)], which substitutes to a valid [dotted] and sets
+   the style. *)
+let text_decoration_slot_is_var (s : text_decoration_shorthand) =
+  List.exists
+    (function (Var _ : text_decoration_line) -> true | _ -> false)
+    s.lines
+  || (match s.style with
+    | Some (Var _ : text_decoration_style) -> true
+    | _ -> false)
+  || (match s.color with Some (Values.Var _) -> true | _ -> false)
+  || match s.thickness with Some (Values.Var _) -> true | _ -> false
+
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
   match value with
+  | Shorthand s when text_decoration_slot_is_var s -> value
   | Shorthand s -> (
       let style =
         drop_default
