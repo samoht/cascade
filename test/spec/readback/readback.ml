@@ -156,6 +156,21 @@ let extended name =
 
 let drop_prefixed_twins decls =
   let value decl = Cascade.Declaration.string_of_value ~minify:true decl in
+  (* The twin is synthesised from the value the optimizer would write while the
+     authored declaration still carries the spelling the author chose, so the
+     pair can differ as text and name one value: [mask:ADD] beside a
+     [-webkit-mask:none] the synthesis produced, because [add] is
+     [mask-composite]'s initial. Comparing the text left that twin in place on
+     one side only, and the model then reported the prefix policy it exists to
+     erase. Ask the value-level comparator instead. The guard itself stays: a
+     twin carrying a genuinely different value is still a finding, and
+     [equivalent_value] is the same canonical question mode [`Canonical] asks of
+     a whole sheet. *)
+  let same_value decl other name =
+    String.equal (value other) (value decl)
+    || Cascade_diff.Css_compare.equivalent_value ~property:name (value other)
+         (value decl)
+  in
   let twinned decl name =
     List.exists
       (fun other ->
@@ -163,7 +178,7 @@ let drop_prefixed_twins decls =
         && Bool.equal
              (Cascade.Declaration.is_important other)
              (Cascade.Declaration.is_important decl)
-        && String.equal (value other) (value decl))
+        && same_value decl other name)
       decls
   in
   List.filter
