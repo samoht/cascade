@@ -475,6 +475,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `;` before the sibling that follows. Both printed CSS browsers and cascade's
   own reader reject, losing the block or running two declarations together
   (#319, #370)
+- A relative colour's channel list reads back as the sheet it was printed from.
+  `rgb(from #639 20% g b)` minifies to `rgb(from #639 20%g b)`, which CSS Syntax
+  3 sec. 4.3.3 reads as the same two channels, but the reader kept the tighter
+  spelling as a value of its own, so the sheet did not survive its own emission.
+  A `rotate` axis after a `var()` angle drops the separator the `)` already
+  provides (#1189)
 - A `calc()` printed without `--minify` keeps the parentheses the author wrote,
   redundant ones included, while `--minify` removes those and keeps a
   precedence-sensitive `calc((1px - var(--a)) * 3)` (#721)
