@@ -6953,6 +6953,23 @@ let printed_units_are_lowercase () =
       ("a{border-width:10.0PX}", "a{border-width:10px}");
     ]
 
+(* CSS Values 4 sec. 6.7.2 gives a string one serialisation, and [--minify]
+   writes that one, so the quote the author picked is a round-trip detail rather
+   than part of the value. It was kept as a node of its own, so [content:'x']
+   and [content:"x"] reached one minified text through two nodes and the rules
+   holding them could not merge until a second pass re-read that text. *)
+let quoted_content_is_one_node () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string) css minified_css (minified css))
+    [
+      ("a{content:'x'}b{content:\"x\"}", "a,b{content:\"x\"}");
+      ("a{content:'x' 'y'}b{content:\"x\" \"y\"}", "a,b{content:\"x\" \"y\"}");
+      (* A quote the serialisation has to escape is still one answer, so the two
+         spellings of it are still one node. *)
+      ("a{content:'a\"b'}b{content:\"a\\\"b\"}", "a,b{content:\"a\\\"b\"}");
+    ]
+
 let unfolded_lengths_are_one_value () =
   let case (property, merged) =
     let css =
@@ -7419,6 +7436,7 @@ let declaration_tests =
     test_case "uppercase units minify lowercase" `Quick
       uppercase_units_minify_lowercase;
     test_case "printed units are lowercase" `Quick printed_units_are_lowercase;
+    test_case "quoted content is one node" `Quick quoted_content_is_one_node;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "number spellings have one node" `Quick
