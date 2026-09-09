@@ -6905,6 +6905,29 @@ let sole_declaration css =
 let minified css =
   Css.to_string ~minify:true (Css.optimize (Css.of_string_exn css))
 
+(* A [<length>] reaches [flex-basis] through the property's own mirror of the
+   length variants, and that mirror's normaliser folds only a zero and a
+   [calc()]. So [10.0px] stayed the dimension the reader built while [10px] was
+   the folded [Px 10.], the printer spelled both [10px], and the rules they sat
+   in could not merge until a second pass re-read that text. One [--minify] has
+   to reach the stable answer: CSS Values 4 sec. 6.7.2 gives the two spellings
+   one serialisation, so they are one value and one node. *)
+let flex_basis_spellings_are_one_value () =
+  let a = sole_declaration ".a{flex-basis:10.0px}" in
+  let b = sole_declaration ".b{flex-basis:10px}" in
+  Alcotest.(check string)
+    "the authored spelling folds" "flex-basis:10px"
+    (Css.Declaration.to_string ~minify:true a);
+  Alcotest.(check int)
+    "hash reads the two as one value" (Css.Declaration.hash a)
+    (Css.Declaration.hash b);
+  Alcotest.(check bool)
+    "the two spellings are equal" true
+    (Css.Declaration.equal_declaration a b);
+  Alcotest.(check string)
+    "one pass merges the rules" "a,b{flex-basis:10px}"
+    (minified "a{flex-basis:10.0px}b{flex-basis:10px}")
+
 let nan_declaration_is_one_value () =
   (* Parsed apart so the two are distinct heap blocks: a physical-equality
      short-circuit must not stand in for the answer. *)
@@ -7325,6 +7348,8 @@ let declaration_tests =
     test_case "conic gradient var has one node" `Quick
       conic_gradient_var_has_one_node;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
+    test_case "flex-basis spellings are one value" `Quick
+      flex_basis_spellings_are_one_value;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "number spellings have one node" `Quick
