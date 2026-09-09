@@ -609,10 +609,10 @@ to lose a whole rule over one bad piece. Both are gone.
   `revert` or `revert-layer` for every typed property, and whether a property
   inherits is decided in one place from the typed property (#763, #764)
 - A length reaching one minified text through two nodes is one node, so
-  `a{width:1.0px}b{width:1px}` merges in the pass that minifies it rather than
-  the one after. `Declaration.hash` keys the structural value and short-circuits
-  `Declaration.same_minified`, and the reader kept an authored spelling the
-  printer already discards, so one text arrived through two nodes (#1150)
+  `a{width:1.0px}b{width:1px}` and `a{flex-basis:10.0px}b{flex-basis:10px}`
+  merge in the pass that minifies them rather than the one after. An authored
+  spelling the printer discards was kept as a node of its own, so one text
+  arrived through two of them (#1150, #1185)
 - `--minify` and `cascade diff` are faster on a large stylesheet, for
   byte-identical output. The slowest corpus stylesheet drops sharply, a long run
   of rules sharing one selector no longer allocates quadratically, a 4,000

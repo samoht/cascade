@@ -53,6 +53,51 @@ let rec normalize_flex_factor (value : flex_factor) : flex_factor =
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
 
+(* [read_length] hands every authored spelling that is not already the canonical
+   one - [10.0px], [1e1px], [+10px] among them - to [Dimension], which keeps the
+   text so that printing a sheet nobody optimised gives it back. Optimising
+   drops that text from the output, so a node left apart from the [Px 10.] the
+   canonical spelling reads as costs a merge: the two print alike and still hash
+   apart, and the rules holding them only join on a second pass. Fold a known
+   unit back onto its own variant and leave an unknown one alone. *)
+let flex_basis_of_unit n : string -> flex_basis option = function
+  | "%" -> Option.Some (Pct n : flex_basis)
+  | "px" -> Option.Some (Px n : flex_basis)
+  | "cm" -> Option.Some (Cm n : flex_basis)
+  | "mm" -> Option.Some (Mm n : flex_basis)
+  | "q" -> Option.Some (Q n : flex_basis)
+  | "in" -> Option.Some (In n : flex_basis)
+  | "pt" -> Option.Some (Pt n : flex_basis)
+  | "pc" -> Option.Some (Pc n : flex_basis)
+  | "rem" -> Option.Some (Rem n : flex_basis)
+  | "em" -> Option.Some (Em n : flex_basis)
+  | "ex" -> Option.Some (Ex n : flex_basis)
+  | "cap" -> Option.Some (Cap n : flex_basis)
+  | "ic" -> Option.Some (Ic n : flex_basis)
+  | "ric" -> Option.Some (Ric n : flex_basis)
+  | "rlh" -> Option.Some (Rlh n : flex_basis)
+  | "vw" -> Option.Some (Vw n : flex_basis)
+  | "vh" -> Option.Some (Vh n : flex_basis)
+  | "vmin" -> Option.Some (Vmin n : flex_basis)
+  | "vmax" -> Option.Some (Vmax n : flex_basis)
+  | "vi" -> Option.Some (Vi n : flex_basis)
+  | "vb" -> Option.Some (Vb n : flex_basis)
+  | "dvh" -> Option.Some (Dvh n : flex_basis)
+  | "dvw" -> Option.Some (Dvw n : flex_basis)
+  | "dvmin" -> Option.Some (Dvmin n : flex_basis)
+  | "dvmax" -> Option.Some (Dvmax n : flex_basis)
+  | "lvh" -> Option.Some (Lvh n : flex_basis)
+  | "lvw" -> Option.Some (Lvw n : flex_basis)
+  | "lvmin" -> Option.Some (Lvmin n : flex_basis)
+  | "lvmax" -> Option.Some (Lvmax n : flex_basis)
+  | "svh" -> Option.Some (Svh n : flex_basis)
+  | "svw" -> Option.Some (Svw n : flex_basis)
+  | "svmin" -> Option.Some (Svmin n : flex_basis)
+  | "svmax" -> Option.Some (Svmax n : flex_basis)
+  | "ch" -> Option.Some (Ch n : flex_basis)
+  | "lh" -> Option.Some (Lh n : flex_basis)
+  | _ -> Option.None
+
 let rec normalize_flex_basis (value : flex_basis) : flex_basis =
   match value with
   | Px 0.
@@ -94,6 +139,10 @@ let rec normalize_flex_basis (value : flex_basis) : flex_basis =
       match eval_calc c with
       | Val v -> normalize_flex_basis v
       | folded -> if folded == c then value else Calc folded)
+  | Dimension { value = n; unit; _ } -> (
+      match flex_basis_of_unit n unit with
+      | Option.Some folded -> normalize_flex_basis folded
+      | Option.None -> value)
   | _ -> value
 
 let normalize_flex (value : flex) : flex =
