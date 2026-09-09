@@ -2135,7 +2135,7 @@ let spec_math_range_keeps_the_call () =
   (* CSS Sizing 4 sec. 5 gives [<ratio>] the [0,inf] numbers of sec. 6.5. *)
   decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "calc(-1)";
-  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-2)" "round(-3,2)";
   decl_optimizes ~prop:"aspect-ratio" ~into:"1" "calc(1)";
   decl_optimizes ~prop:"aspect-ratio" ~into:"1" "1";
   (* CSS Backgrounds 3 sec. 4.1 gives each radius a [0,inf]
@@ -2159,7 +2159,7 @@ let spec_math_range_keeps_the_call () =
   decl_optimizes ~prop:"flex" ~into:"1" "calc(1)";
   decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "calc(-1)";
-  decl_optimizes ~prop:"flex-grow" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-2)" "round(-3,2)";
   decl_optimizes ~prop:"flex-grow" ~into:"2" "calc(2)";
   decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "calc(-1)";
@@ -2171,7 +2171,7 @@ let spec_math_range_keeps_the_call () =
   (* CSS Text 4 sec. 4.2 [tab-size], [0,inf]. *)
   decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "calc(-1)";
-  decl_optimizes ~prop:"tab-size" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-2)" "round(-3,2)";
   decl_optimizes ~prop:"tab-size" ~into:"4" "calc(4)";
   (* CSS Animations 1 sec. 3.4 [animation-iteration-count], [0,inf], and the
      shorthand slot that reads through it. *)

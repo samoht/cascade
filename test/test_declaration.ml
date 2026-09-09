@@ -1972,6 +1972,31 @@ let negative_calc_keeps_the_call () =
      length any of these properties reads as a literal. *)
   check_declaration ~expected:"width:calc(10px*sign(-1vw))"
     ~optimized:"width:calc(10px*sign(-1vw))" "width: calc(10px * sign(-1vw))";
+  (* Sec. 10.7.3 rounds to the nearest multiple of the step and sends a tie
+     toward positive infinity, which is the rule sec. 10.12 gives an <integer>
+     slot and #1163 gave the grid line index. The other three strategies name
+     their own direction, so only [nearest] has a tie to break. Chrome 153
+     agrees on every row. *)
+  List.iter
+    (fun (value, folded) ->
+      check_declaration
+        ~expected:(String.concat "" [ "margin-left:"; value ])
+        ~optimized:(String.concat "" [ "margin-left:"; folded ])
+        (String.concat "" [ "margin-left: "; value ]))
+    [
+      ("round(-3px,2px)", "-2px");
+      ("round(3px,2px)", "4px");
+      ("round(-5px,2px)", "-4px");
+      ("round(5px,2px)", "6px");
+      (* A zero length drops its unit at the top level, which is the zero strip
+         the optimizer already does everywhere. *)
+      ("round(-1px,2px)", "0");
+      ("round(-3.5px,1px)", "-3px");
+      ("round(3.5px,1px)", "4px");
+      ("round(up,-3px,2px)", "-2px");
+      ("round(down,-3px,2px)", "-4px");
+      ("round(to-zero,-3px,2px)", "-2px");
+    ];
   (* CSS Values 4 sec. 10.6 makes [sign()] answer -1, 0 or +1, so the answer
      turns on whether the argument is zero. A relative unit's reference can be:
      a zero font-size, a zero viewport, a zero container, a percentage of zero.
