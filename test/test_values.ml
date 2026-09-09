@@ -2142,10 +2142,15 @@ let spec_math_range_keeps_the_call () =
      [<length-percentage>]; the shorthand carries the range its longhands
      carry. *)
   decl_optimizes ~prop:"border-radius" ~into:"calc(-1px)" "calc(-1px)";
-  (* The [<length>] guard keeps the call as authored rather than the folded one
-     ([width: calc(-5px - 5px)] is the same shape), so the arithmetic under a
-     kept wrapper stays where the author put it. *)
-  decl_optimizes ~prop:"border-radius" ~into:"calc(-1px*2)" "calc(-1px * 2)";
+  (* Sec. 10.12 clamps a call past the range at computed-value time and keeps
+     the declaration, so the arithmetic folds and the wrapper stays around the
+     result: the length family answers here the way the number and time families
+     already do at [tab-size] and [interest-delay]. Chrome 153 gives
+     [calc(-2px)] for both rows below and [calc(-10px)] for [width: calc(-5px -
+     5px)], and drops the bare literal [-10px]. *)
+  decl_optimizes ~prop:"border-radius" ~into:"calc(-2px)" "calc(-1px * 2)";
+  decl_optimizes ~prop:"padding" ~into:"calc(-2px)" "calc(-1px * 2)";
+  decl_optimizes ~prop:"width" ~into:"calc(-10px)" "calc(-5px - 5px)";
   decl_optimizes ~prop:"border-radius" ~into:"1px" "calc(1px)";
   (* CSS Flexbox 1 sec. 7.2 gives both factors a [0,inf] [<number>], through the
      shorthand and the two longhands alike. *)
@@ -2185,10 +2190,11 @@ let spec_math_range_keeps_the_call () =
   decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1px)" "calc(-1px)";
   decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"stroke-dasharray" ~into:"1px" "calc(1px)";
-  (* SVG 2 sec. 13.5.3 calls a negative [stroke-width] invalid, and the number
-     branch already kept its call: the length branch carries the same range. *)
+  (* SVG 2 sec. 13.5.3 calls a negative [stroke-width] invalid, so the call
+     stays around the folded result the way it does at every other length slot.
+     Chrome 153 gives [calc(-1px)] for both rows. *)
   decl_optimizes ~prop:"stroke-width" ~into:"calc(-1px)" "calc(-1px)";
-  decl_optimizes ~prop:"stroke-width" ~into:"calc(2px - 3px)" "calc(2px - 3px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(-1px)" "calc(2px - 3px)";
   (* CSS Text 4 sec. 6.2 gives the three [hyphenate-limit-chars] counts a
      [1,inf] [<integer>]. *)
   decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "sign(-1px)";
