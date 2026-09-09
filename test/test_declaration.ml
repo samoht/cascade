@@ -6916,6 +6916,43 @@ let minified css =
    own normaliser never reaches. [10.0px] and [10px] are one value under CSS
    Values 4 sec. 6.7.2 and print alike once the sheet is optimised, so the rules
    holding them have to merge in that pass rather than the one after. *)
+(* CSS Values 4 sec. 6.7.2 serialises a dimension's unit in lowercase, and the
+   reader folds a canonically spelled number onto the unit constructor, which
+   prints that way. An authored number the printer respells kept the unit as the
+   author cased it instead, so one input was minified two ways: [10PX] came back
+   [10px] and [10.0PX] came back [10PX], and the two never merged. *)
+let uppercase_units_minify_lowercase () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string) css minified_css (minified css))
+    [
+      ("a{width:10.0PX}", "a{width:10px}");
+      ("a{width:10.0Q}", "a{width:10q}");
+      ("a{width:10.0VMIN}", "a{width:10vmin}");
+      ("a{width:10.0PX}b{width:10PX}", "a,b{width:10px}");
+      ("a{width:10.0PX}b{width:10px}", "a,b{width:10px}");
+      (* The two values holding their own mirror of the length constructors
+         decide the unit's case themselves, so they need the same answer. *)
+      ("a{line-height:10.0PX}", "a{line-height:10px}");
+      ("a{line-height:10.0PX}b{line-height:10PX}", "a,b{line-height:10px}");
+      ("a{flex-basis:10.0PX}b{flex-basis:10PX}", "a,b{flex-basis:10px}");
+    ]
+
+(* The printer is public without the optimizer, so a value holding its own
+   [Dimension] arm has to lowercase the unit there rather than lean on a
+   normaliser having folded the dimension away first. *)
+let printed_units_are_lowercase () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string)
+        css minified_css
+        (Css.to_string ~minify:true (Css.of_string_exn css)))
+    [
+      ("a{width:10.0PX}", "a{width:10px}");
+      ("a{line-height:10.0PX}", "a{line-height:10px}");
+      ("a{border-width:10.0PX}", "a{border-width:10px}");
+    ]
+
 let unfolded_lengths_are_one_value () =
   let case (property, merged) =
     let css =
@@ -7379,6 +7416,9 @@ let declaration_tests =
       flex_basis_spellings_are_one_value;
     test_case "unfolded lengths are one value" `Quick
       unfolded_lengths_are_one_value;
+    test_case "uppercase units minify lowercase" `Quick
+      uppercase_units_minify_lowercase;
+    test_case "printed units are lowercase" `Quick printed_units_are_lowercase;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "number spellings have one node" `Quick
