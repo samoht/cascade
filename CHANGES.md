@@ -375,6 +375,13 @@ to lose a whole rule over one bad piece. Both are gone.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
   of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
+- A math call a property's range makes it keep folds its arithmetic first, so
+  `border-radius: calc(-1px * 2)` prints `calc(-2px)` and
+  `width: calc(-5px - 5px)` prints `calc(-10px)`. The length family returned the
+  authored call where the number and time families already folded and kept, and
+  Chrome computes all three the same way. Sec. 10.12 clamps such a call at
+  computed-value time, so the wrapper stays and only the arithmetic moves; the
+  504-file corpus is byte-identical (#1181)
 - `sign()` folds only where its argument's sign is settled, so
   `margin-left: calc(10px * sign(-1em))` keeps its call where
   `sign(-1px)` still folds to `-10px`. The answer turns on whether the argument

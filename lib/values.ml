@@ -3964,11 +3964,12 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
   in
   (* CSS Values 4 sec. 10.12 clamps a math function whose value falls outside
      the property's range at computed-value time and keeps the declaration, so
-     folding one to a literal the reader then refuses would drop it: keep the
-     call. A literal that was already negative is the reader's business, not
-     this fold's. *)
+     folding one to a literal the reader then refuses would drop it: the
+     arithmetic still folds, and the call stays around the result. A literal
+     that was already negative is the reader's business, not this fold's. *)
   let result =
-    if non_negative && negative_length result && not (negative_length l) then l
+    if non_negative && negative_length result && not (negative_length l) then
+      (Calc (Val result) : length)
     else result
   in
   if strip then strip_zero_length result else result
@@ -3981,7 +3982,13 @@ let normalize_length_percentage ?(strip = true) ?(non_negative = false)
   match lp with
   | Calc c -> (
       match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
-      | Val (Length v) when non_negative && negative_length v -> lp
+      (* Sec. 10.12 clamps a call past the property's range at computed-value
+         time and keeps the declaration, so folding one to a literal the reader
+         then refuses would drop it: the arithmetic still folds, and the call
+         stays around the result. This is what [normalize_number] does for the
+         number and time families. *)
+      | Val (Length v) when non_negative && negative_length v ->
+          Calc (Val (Length v))
       | Val v -> v
       | folded -> Calc folded)
   | Length l ->
