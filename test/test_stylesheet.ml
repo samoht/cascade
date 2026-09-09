@@ -490,9 +490,17 @@ let test_property_missing_descriptors () =
 (* An [initial-value] carrying var(), attr() or env() has nothing to substitute
    from at registration time, so Chrome 153 drops the
    whole rule at every syntax, the universal one included. The values below the
-   substitution cases are the other side of the same filter: they stay readable,
-   including the ones cascade knowingly keeps that Chrome drops for
-   computational independence ([3em] at a non-universal syntax). *)
+   substitution cases are the other side of the same filter.
+
+   Sec. 4.1's computational independence is the second filter, and Thomas
+   settled on 2026-09-09 that cascade follows Chrome here as it does for the
+   substitution half: a non-universal syntax registers its initial value before
+   any element exists, so a length that resolves against one cannot be computed.
+   Chrome 153 refuses the font-relative units of CSS Values 4 sec. 5.1.1 and the
+   container-relative ones of sec. 5.1.4 there, and takes sec. 5.1.3's viewport
+   lengths and sec. 5.2's absolute ones, which resolve against the viewport and
+   against nothing. The universal syntax stores the value as written and keeps
+   every unit. *)
 (* Not a roundtrip test *)
 let test_property_initial_value_substitution () =
   let expect_error what syntax value =
@@ -535,11 +543,36 @@ let test_property_initial_value_substitution () =
       "@property --x{syntax:\"<length>\";inherits:false;initial-value:5px}"
     "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 5px \
      }";
+  List.iter
+    (fun unit ->
+      expect_error "element-relative unit at <length>" "<length>"
+        (String.concat "" [ "3"; unit ]))
+    [ "em"; "rem"; "ex"; "cap"; "ch"; "ic"; "lh"; "rlh"; "cqw"; "cqi"; "cqmax" ];
+  expect_error "element-relative unit inside a calc" "<length>"
+    "calc(1px + 2em)";
+  expect_error "element-relative unit at <length-percentage>"
+    "<length-percentage>" "3em";
+  List.iter
+    (fun value ->
+      check_stylesheet
+        ~expected:
+          (String.concat ""
+             [
+               "@property --x{syntax:\"<length>\";inherits:false;initial-value:";
+               value;
+               "}";
+             ])
+        (String.concat ""
+           [
+             "@property --x { syntax: \"<length>\"; inherits: false; \
+              initial-value: ";
+             value;
+             " }";
+           ]))
+    [ "3vw"; "3vmin"; "3dvw"; "calc(1px + 2px)" ];
   check_stylesheet
-    ~expected:
-      "@property --x{syntax:\"<length>\";inherits:false;initial-value:3em}"
-    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 3em \
-     }";
+    ~expected:"@property --x{syntax:\"*\";inherits:false;initial-value:3em}"
+    "@property --x { syntax: \"*\"; inherits: false; initial-value: 3em }";
   check_stylesheet
     ~expected:"@property --x{syntax:\"*\";inherits:false;initial-value:red}"
     "@property --x { syntax: \"*\"; inherits: false; initial-value: red }"
