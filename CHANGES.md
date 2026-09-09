@@ -492,6 +492,17 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- A shorthand carrying a `var()` keeps every component the author wrote, where
+  `--minify` dropped one holding its initial: `list-style: disc outside
+  var(--x)` became `list-style: var(--x)` and `text-decoration: solid var(--x)`
+  became `text-decoration: var(--x)`. CSS Variables 1 sec. 3 syntax-checks such
+  a declaration only after substitution, so the drop changed what it means
+  rather than only how it is spelled. With `--x: circle` the first substitutes
+  to two `<list-style-type>` values and is invalid at computed-value time,
+  leaving the longhands unset, while the minified form substitutes to a valid
+  `circle` that sets the type, so a page using this pattern rendered
+  differently. Re-run any minified output that puts a `var()` in one of these
+  two shorthands (#1194)
 - `--minify` writes a `calc()` it unwraps as the leaf it became, so
   `transition-duration: calc(120ms)` is `.12s` and not the `120ms` an operand is
   spelled, and `animation: calc(1)` is the `none` the bare `1` already gave.
