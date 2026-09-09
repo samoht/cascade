@@ -619,8 +619,10 @@ to lose a whole rule over one bad piece. Both are gone.
   after. `a{width:1.0px}b{width:1px}` folds, and so do `flex-basis`,
   `column-width`, `size`, `initial-letter-wrap`, `background-size` and
   `mask-size`; a unit minifies lowercase whatever its case, so `width:10.0PX`
-  is `10px`; and `content:'x'` and `content:"x"` are one string (#1150, #1185,
-  #1186, #1187, #1188)
+  is `10px`; `content:'x'` and `content:"x"` are one string; and an `animation`
+  holding nothing but initials is the `animation:none` it prints as, so
+  `animation-range:normal` is dropped after either spelling rather than after
+  one of them (#1150, #1185, #1186, #1187, #1188, #1190)
 - `--minify` and `cascade diff` are faster on a large stylesheet, for
   byte-identical output. The slowest corpus stylesheet drops sharply, a long run
   of rules sharing one selector no longer allocates quadratically, a 4,000
