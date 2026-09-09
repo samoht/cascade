@@ -884,6 +884,37 @@ let combine_math_result op l r =
 (* CSS Values 4 sec. 10.11 types an operand tree: [+] and [-] need matching
    units, [*] takes at most one dimensioned operand and [/] a unitless divisor.
    Anything else is not an operand Cascade can reduce to a single value. *)
+(* CSS Values 4 sec. 5.2 absolute lengths, and the canonical units of the other
+   dimensions: each denotes the same quantity wherever it is written. Every
+   other unit -- sec. 5.1's relative lengths, the container ones, a percentage
+   -- resolves against something an element is given, and that reference can be
+   zero. *)
+let absolute_units =
+  [
+    "px";
+    "cm";
+    "mm";
+    "q";
+    "in";
+    "pt";
+    "pc";
+    "s";
+    "ms";
+    "deg";
+    "rad";
+    "grad";
+    "turn";
+    "hz";
+    "khz";
+    "dpi";
+    "dpcm";
+    "dppx";
+    "x";
+  ]
+
+let is_absolute_unit unit =
+  List.mem (String.lowercase_ascii unit) absolute_units
+
 let rec math_arg_result (arg : math_arg) : math_result option =
   match arg with
   | Lit f -> Option.some (Scalar f)
@@ -928,6 +959,23 @@ and math_fn_result (fn : math_fn) : math_result option =
       stepped_result (round_to_step strategy) value step
   | Mod_n (a, b) -> stepped_result mod_value a b
   | Rem_n (a, b) -> stepped_result Float.rem a b
+  (* Sec. 10.6: the answer turns on whether the argument is zero, and a relative
+     unit has a reference that can be -- a zero font-size, a zero viewport, a
+     zero container, a percentage of zero -- so the coefficient's sign is not
+     the value's and the call waits for the reference. An absolute unit has none
+     to wait for. *)
+  | Sign_n a -> (
+      let sign v =
+        if Float.is_nan v then Float.nan
+        else if v > 0. then 1.
+        else if v < 0. then -1.
+        else v
+      in
+      match math_arg_result a with
+      | Some (Scalar v) -> Option.some (Scalar (sign v))
+      | Some (United (v, unit)) when is_absolute_unit unit ->
+          Option.some (Scalar (sign v))
+      | Some (United _) | None -> Option.none)
   (* Every other math function is typed [<number>] in, [<number>] out, bar the
      inverse trig functions, whose [<angle>] result only the angle evaluator can
      place. *)

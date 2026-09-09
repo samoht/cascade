@@ -375,6 +375,11 @@ to lose a whole rule over one bad piece. Both are gone.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
   of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
+- `sign()` folds only where its argument's sign is settled, so
+  `margin-left: calc(10px * sign(-1em))` keeps its call where
+  `sign(-1px)` still folds to `-10px`. The answer turns on whether the argument
+  is zero and a relative unit's reference can be one: a zero font-size, a zero
+  viewport, a zero container, a percentage of zero (#1180)
 - An `@property` `initial-value` at a non-universal `syntax` refuses a length
   that resolves against an element, so `initial-value: 3em`, `3rem`, `3cqw` and
   `calc(1px + 2em)` drop the rule where `3px`, `3vw` and `calc(1px + 2px)` read.
