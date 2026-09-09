@@ -2029,10 +2029,31 @@ let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
   then a
   else { a with duration; timing_function; delay; iteration_count }
 
+(* [pp_animation_initial_none] writes [none] for a shorthand holding nothing but
+   initials, on the ground CSS Animations 1 (ED) sec. 4.9 gives: what such a
+   value declares is the eight initials, which is what [animation:none]
+   declares. Fold onto the constructor the printer names, or the two reach one
+   minified text through two nodes, which anything keyed on the node reads as
+   two values -- the pass dropping a reset-only longhand the shorthand already
+   covers included, so one declaration optimised two ways.
+
+   Only a name that is the keyword [none] folds. A quoted ["none"] names a
+   keyframes rule rather than the absent name, and the printer equates the two
+   under [--minify] alone, so folding it here would change what the unminified
+   round-trip says. *)
+let animation_is_all_initial (a : animation_shorthand) =
+  (not (Animation.has_non_defaults a))
+  &&
+  match a.name with
+  | Option.None | Option.Some (None : animation_name) -> true
+  | Option.Some _ -> false
+
 let normalize_animation ~ctx : animation -> animation = function
   | Shorthand a as value ->
       let a' = normalize_animation_shorthand ~ctx a in
-      if a' == a then value else Shorthand a'
+      if animation_is_all_initial a' then (None : animation)
+      else if a' == a then value
+      else Shorthand a'
   | value -> value
 
 let rec pp_animation : animation Pp.t =

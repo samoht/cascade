@@ -6719,14 +6719,23 @@ let implied_longhand covering covered : Declaration.declaration option =
       (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
          make the timeline and the two range ends reset-only sub-properties: the
          shorthand has no slot for a range, so it always writes [normal] there.
-         Single animation only; a comma list assigns per-item values. *)
-      match (value : Properties.animation list) with
-      | [ Properties.Shorthand s ] -> (
+         [animation:none] is the same assignment with every slot left at its
+         initial, so it implies the same longhands as the shorthand spelling of
+         it and a later one of them is as redundant. Single animation only; a
+         comma list assigns per-item values. *)
+      let timeline : Properties.animation_timeline option =
+        match (value : Properties.animation list) with
+        | [ Properties.Shorthand s ] ->
+            Some (Option.value s.timeline ~default:Properties.Auto)
+        | [ Properties.None ] -> Some Properties.Auto
+        | _ -> Option.none
+      in
+      match timeline with
+      | Option.None -> None
+      | Some timeline -> (
           match unwrap_theme_guard covered with
           | Declaration { property = Properties.Animation_timeline; _ } ->
-              Some
-                (Declaration.v Animation_timeline
-                   (Option.value s.timeline ~default:Properties.Auto))
+              Some (Declaration.v Animation_timeline timeline)
           | Declaration { property = Properties.Animation_range_start; _ } ->
               Some
                 (Declaration.v Animation_range_start
@@ -6739,8 +6748,7 @@ let implied_longhand covering covered : Declaration.declaration option =
               Some
                 (Declaration.v Animation_range
                    (Range (Normal, None) : Properties.animation_range))
-          | _ -> None)
-      | _ -> None)
+          | _ -> None))
   | Declaration { property = Properties.Font; value; _ } -> (
       (* [font] resets style/weight/stretch/line-height to [normal] unless set;
          font-variant uses a narrower type in the shorthand, so leave it. *)
