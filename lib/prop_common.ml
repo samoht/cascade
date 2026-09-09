@@ -245,15 +245,7 @@ let rec eval_number_value : number -> float option = function
   | Round (strategy, value, step) -> (
       match (eval_number_value value, eval_number_value step) with
       | Some value, Some step when step <> 0. ->
-          let quotient = value /. step in
-          let rounded =
-            match strategy with
-            | "up" -> Float.ceil quotient
-            | "down" -> Float.floor quotient
-            | "to-zero" -> Float.trunc quotient
-            | _ -> Float.round quotient
-          in
-          Some (rounded *. step)
+          Some (Values.round_to_step strategy value step)
       | _ -> None)
   | Mod (a, b) -> (
       match (eval_number_value a, eval_number_value b) with

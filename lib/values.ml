@@ -682,7 +682,11 @@ let round_to_step strategy value step =
       | "up" -> Float.ceil q
       | "down" -> Float.floor q
       | "to-zero" -> Float.trunc q
-      | _ -> Float.round q
+      (* Sec. 10.7.3 sends a tie to the nearest multiple toward positive
+         infinity, the rule sec. 10.12 gives an [<integer>] slot too.
+         [Float.round] sends it away from zero, which answers the other way for
+         a negative value. *)
+      | _ -> Float.floor (q +. 0.5)
     in
     q *. step
 
@@ -2250,12 +2254,10 @@ let linear_lp_calc calc =
             (Val (lp_of_unit unit n))
             rest)
 
-let round_length_step strategy value step =
-  match strategy with
-  | "up" -> Float.ceil (value /. step) *. step
-  | "down" -> Float.floor (value /. step) *. step
-  | "to-zero" -> Float.trunc (value /. step) *. step
-  | _ -> Float.round (value /. step) *. step
+(* One rounding rule, written once: the strategy and its tie-break are sec.
+   10.7.3's whatever the argument's type, and three copies of it is how a tie
+   came to be broken two different ways. *)
+let round_length_step = round_to_step
 
 (* Typed math-call printer: emit [name(arg1,arg2,...)] from a typed list of
    length values, deferring to [pp_length] for each component (so nested

@@ -728,6 +728,12 @@ val percentage_math_function_calls :
     property puts on it. Every other math function keeps [read], which holds the
     call to the slot's type. *)
 
+val round_to_step : string -> float -> float -> float
+(** [round_to_step strategy value step] is CSS Values 4 sec. 10.7.3's [round()]:
+    the multiple of [step] the strategy names, and for the default [nearest] the
+    closest one with a tie going toward positive infinity. A zero [step] has no
+    multiples, so the value comes back unchanged. *)
+
 val is_element_relative_unit : string -> bool
 (** [is_element_relative_unit u] is whether [u] is one of CSS Values 4 sec.
     5.1.1's font-relative or sec. 5.1.4's container-relative length units, the
