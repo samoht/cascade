@@ -6917,6 +6917,41 @@ let sole_declaration css =
 let minified css =
   Css.to_string ~minify:true (Css.optimize (Css.of_string_exn css))
 
+(* CSS Variables 1 sec. 3 makes a shorthand carrying a [var()] a
+   pending-substitution value: it is syntax-checked only after substitution, and
+   which slot the substituted tokens fill is not known before then. So a slot
+   holding its initial is not spare there, and dropping it changes what the
+   declaration means. [list-style: disc outside var(--x)] with [--x: circle]
+   substitutes to [disc outside circle], two [<list-style-type>] values, which
+   is invalid at computed-value time and leaves the longhands unset; dropping
+   the initials leaves [list-style: var(--x)], which substitutes to the valid
+   [circle] and sets the type. Every component the author wrote has to survive
+   once a [var()] is in the value. The order may change: sec. 2 of CSS Lists 3
+   spells the shorthand with [||], so the components commute. *)
+let var_shorthand_keeps_every_slot () =
+  let case (css, parts) =
+    let out = minified css in
+    List.iter
+      (fun part ->
+        Alcotest.(check bool)
+          (String.concat "" [ css; " keeps "; part ])
+          true
+          (Astring.String.is_infix ~affix:part out))
+      parts
+  in
+  List.iter case
+    [
+      ("a{list-style:disc outside var(--x)}", [ "disc"; "outside"; "var(--x)" ]);
+      ( "a{list-style:url(marker.png) outside var(--x)}",
+        [ "url(marker.png)"; "outside"; "var(--x)" ] );
+      (* [text-decoration] reaches the same drop through its own normaliser:
+         [solid] is [text-decoration-style]'s initial, and [--x: dotted] makes
+         the substituted value two styles rather than one. *)
+      ("a{text-decoration:solid var(--x)}", [ "solid"; "var(--x)" ]);
+      ( "a{text-decoration:underline solid var(--x)}",
+        [ "underline"; "solid"; "var(--x)" ] );
+    ]
+
 (* A [<length>] reaches [flex-basis] through the property's own mirror of the
    length variants, and that mirror's normaliser folds only a zero and a
    [calc()]. So [10.0px] stayed the dimension the reader built while [10px] was
@@ -7549,6 +7584,8 @@ let declaration_tests =
     test_case "uppercase units minify lowercase" `Quick
       uppercase_units_minify_lowercase;
     test_case "printed units are lowercase" `Quick printed_units_are_lowercase;
+    test_case "a var shorthand keeps every slot" `Quick
+      var_shorthand_keeps_every_slot;
     test_case "quoted content is one node" `Quick quoted_content_is_one_node;
     test_case "all-initial animation is none" `Quick
       all_initial_animation_is_none;
