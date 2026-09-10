@@ -51,6 +51,24 @@ than staying a live var(). For normal declarations the later layer wins.
   $ cascade --minify --inline-vars layer-order.css
   .z{width:2px}
 
+The winner is only statically decidable when every definition sits on the
+same element. Definitions on different selectors leave it to which element
+is being styled, so the variable stays live instead of folding to whichever
+one the layer order picks: [.x] computes green and [.y] computes blue, and no
+single value stands for both.
+
+  $ cat > layer-selectors.css <<EOF
+  > @layer a, b;
+  > @layer a { .x { --c: red } }
+  > @layer b { .x { --c: green } }
+  > @layer b { .y { --c: blue } }
+  > .x { color: var(--c) }
+  > .y { color: var(--c) }
+  > EOF
+  $ cascade --minify --inline-vars layer-selectors.css 2>&1
+  Warning: --c is redefined in a different scope; kept live (cannot inline safely)
+  .x{--c:green}.y{--c:blue}.x,.y{color:var(--c)}
+
 An unlayered definition wins over a layered one, whatever the document
 order.
 
