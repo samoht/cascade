@@ -126,6 +126,31 @@ let test_rules_preserves_competing_outside_selector () =
     "outside competitor prevents nesting" (rule_strings original)
     (rule_strings (Nest.rules original))
 
+(* The same rule read by [drop_dead_nested], which keeps the rule and edits its
+   selector list where [merge_lone] above folds the whole thing away. A branch
+   composing to a combinator after the pseudo-element goes ([& b] under
+   [a::before] is [a::before b]); a branch putting the combinator before it
+   stays ([.x &] is [.x a::before]). Dropping the nested rule outright would
+   take the live branch with it, and keeping it whole would leave a branch no
+   engine matches. *)
+let test_drop_dead_nested_keeps_live_branches () =
+  let dropped css =
+    Pp.to_string ~minify:true Stylesheet.pp_rule
+      (Nest.drop_dead_nested (rule css))
+  in
+  Alcotest.(check string)
+    "the dead branch goes and the live one stays"
+    {|a:before{content:"";.x &{color:red}}|}
+    (dropped {|a::before{content:"";.x &,& b{color:red}}|});
+  Alcotest.(check string)
+    "a nested rule whose every branch is dead goes with its body"
+    {|a:before{content:""}|}
+    (dropped {|a::before{content:"";& b,& i{color:red}}|});
+  (* Control: no pseudo-element, so no branch is dead and both stay. *)
+  Alcotest.(check string)
+    "a plain parent keeps both branches" ".a{color:red;.x &,& b{width:1px}}"
+    (dropped ".a{color:red;.x &,& b{width:1px}}")
+
 let suite =
   ( "nest",
     [
@@ -136,6 +161,8 @@ let suite =
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
       Alcotest.test_case "merge_lone pseudo-element parent" `Quick
         test_merge_lone_pseudo_element_parent;
+      Alcotest.test_case "drop_dead_nested keeps live branches" `Quick
+        test_drop_dead_nested_keeps_live_branches;
       Alcotest.test_case "hoist declaration runs" `Quick
         test_hoist_declaration_runs;
       Alcotest.test_case "rules synthesizes isolated chain" `Quick
