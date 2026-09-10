@@ -4796,7 +4796,15 @@ let unicode_range_only_in_its_descriptor () =
     ~expected:
       "@font-face{font-family:X;src:url(a.woff2);unicode-range:U+26,U+0-7F}"
     "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+26, \
-     U+0-7F }"
+     U+0-7F }";
+  (* Sec. 4.3.14 writes the range's second half as one to six hex digits, so a
+     one-digit tail is a whole tail. Every case above ends its range on two
+     digits or more, which lets the lexer decide there is a tail by looking one
+     code point too far and still answer right; the shortest tail is where that
+     stops working. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:X;src:url(a.woff2);unicode-range:U+0-7}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+0-7 }"
 
 (* A nested @layer holds nesting content: bare declarations belong to the parent
    selector, exactly as in @media/@supports. Blink and WebKit both read
