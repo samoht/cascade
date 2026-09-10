@@ -767,13 +767,34 @@ let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
                (canonical_missing_component_colors ~lossless))
     stmts
 
-(* The normal optimizer drops this typed alias under its maintained-browser
-   policy, but the canonical optimizer runs spec-literally so it does not erase
-   other compatibility content. Apply only the alias equivalence promised by
-   canonical comparison, at every declaration site. *)
+(* [decl] is the prefixed spelling {!Webkit_fallback} synthesises beside
+   [standard], carrying its value and importance. {!Webkit_fallback.is_pair}
+   already asks that question with no targets to consult, and {!kind_of} names
+   which half is the prefixed one, so the family table is read rather than
+   restated. *)
+let synthesised_webkit_twin decl standard =
+  match Webkit_fallback.kind_of standard with
+  | Some kind ->
+      Webkit_fallback.is_prefixed kind decl
+      && Webkit_fallback.is_pair standard decl
+  | None -> false
+
+(* The canonical optimizer runs spec-literally, so it neither adds a prefixed
+   twin nor drops one and would report a sheet's own minified output as a
+   change. Both prefix passes own a table of which spellings alias which, and
+   both gate the rewrite on the declared targets; a projection cannot know the
+   targets a sheet was written or minified for, so it reads the two tables with
+   their gates open and folds the twin into the declaration it mirrors. A
+   prefixed declaration standing alone is the only spelling an engine that needs
+   the prefix reads, and stays. *)
 let canonical_vendor_aliases (stmts : statement list) : statement list =
-  Stylesheet.map_declarations Shorthand.drop_redundant_decoration_color_aliases
-    stmts
+  let drop_twins decls =
+    Shorthand.drop_redundant_vendor_aliases
+      (Common.List.filter_preserve
+         (fun decl -> not (List.exists (synthesised_webkit_twin decl) decls))
+         decls)
+  in
+  Stylesheet.map_declarations drop_twins stmts
 
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
    property names are order-independent, and for the same name the last one

@@ -6542,23 +6542,6 @@ let legacy_name_alias_twin vendor twin =
            (Declaration.is_important vendor)
            (Declaration.is_important twin)
 
-(* Canonical comparison follows the aliasing the specs prove on their own,
-   without enabling every target-dependent optimizer rewrite. Sec. 3.4.1 above
-   settles the [-webkit-] list; [-webkit-text-decoration-color] is not on it but
-   every engine that ships the prefix aliases it, and Cascade normalizes it
-   whatever the target. A differing fallback, mismatched importance, or prefix
-   without a standard twin remains observable and is kept. *)
-let drop_redundant_decoration_color_aliases declarations =
-  filter_preserve
-    (fun declaration ->
-      not
-        (List.exists
-           (fun twin ->
-             decoration_color_alias_twin declaration twin
-             || legacy_name_alias_twin declaration twin)
-           declarations))
-    declarations
-
 (* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
    [-o-]) return the unprefixed remainder; otherwise [None]. *)
 let strip_vendor_prefix name =
@@ -6630,6 +6613,26 @@ let unprefixed_is_widely_available twin =
     | key -> key
   in
   not (Hashtbl.mem greenfield_keys key)
+
+(* The same relation {!drop_vendor_aliases} reads, with the Baseline gate open,
+   for canonical comparison. Sec. 3.4.1 above settles the [-webkit-] legacy
+   names on its own; the rest of the table is aliasing Cascade asserts, and
+   whether a run keeps or drops such a twin turns on the declared targets. A
+   projection that has to read a sheet and its own minified output as one sheet
+   cannot ask that question, so it folds every twin the drop could reach. A
+   differing value, mismatched importance, or a prefix with no unprefixed twin
+   beside it is still content and stays. *)
+let drop_redundant_vendor_aliases declarations =
+  filter_preserve
+    (fun declaration ->
+      not
+        (List.exists
+           (fun twin ->
+             vendor_alias_twin declaration twin
+             || text_vendor_alias_twin declaration twin
+             || legacy_name_alias_twin declaration twin)
+           declarations))
+    declarations
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
    same rule with the same value and importance and is widely available. The

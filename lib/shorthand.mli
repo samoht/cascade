@@ -85,11 +85,15 @@ val declarations_commute :
     a different value. Selectors are not read, so two runs that could never meet
     on one element still count as constrained when their properties clash. *)
 
-val drop_redundant_decoration_color_aliases :
+val drop_redundant_vendor_aliases :
   Declaration.declaration list -> Declaration.declaration list
-(** Drop an identical WebKit [text-decoration-color] compatibility alias when
-    its unprefixed twin is present. Differing values or importance, and a
-    prefixed-only declaration, are kept. *)
+(** Drop every vendor-prefixed compatibility alias whose unprefixed twin stands
+    in the same list with the same value and importance. This is the alias
+    relation the optimizer's own prefix drop reads, with that pass's
+    browser-target gate open: which of the two spellings a run emits is a fact
+    about the declared targets, so a comparison projection has to read them
+    alike. Differing values or importance, and a prefixed declaration with no
+    unprefixed twin beside it, are kept. *)
 
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)

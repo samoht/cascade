@@ -176,16 +176,21 @@ gate that treated 2 as 0 would pass while the files differ. The report and the
   Cascade-significant order is kept distinct (two writes of the same
   property, a shorthand and its longhand, a load-bearing vendor-prefixed
   fallback, `@layer` blocks). A prefixed
-  declaration the [WHATWG Compatibility Standard](https://compat.spec.whatwg.org/#css-legacy-name-aliases)
-  section 3.4.1 names a legacy name alias is the same property as its
-  unprefixed twin, so an identical pair of them normalizes to the twin alone,
-  `-webkit-transform`/`transform` and the rest of that list. A prefix the
-  section does not name is a property of its own, `-moz-` spellings and
-  `-webkit-user-select` among them, and stays distinct; so does a differing
-  value or importance, or a prefix with no unprefixed twin.
-  `-webkit-text-decoration-color` is not on the list but every engine shipping
-  the prefix aliases it, and Cascade normalizes it too. Equivalent
-  shorthand decompositions are still not modelled.
+  declaration standing beside an identical unprefixed twin normalizes to the
+  twin alone, for either of two reasons. The
+  [WHATWG Compatibility Standard](https://compat.spec.whatwg.org/#css-legacy-name-aliases)
+  section 3.4.1 names 58 properties that must be supported as legacy name
+  aliases, and CSS Cascade 5 section 2.3 makes such an alias the same property
+  under a second name, so `-webkit-transform`/`transform` and the rest of that
+  list fold on the specifications alone, under `--enforce-spec` too. Every
+  other prefixed twin folds because minification itself moves it: `--minify`
+  writes `-webkit-backdrop-filter` beside `backdrop-filter` for a target that
+  needs it and drops `-moz-box-sizing` beside `box-sizing` for one that does
+  not, and which spelling a run emits is a fact about the declared targets
+  rather than about the sheet, so a comparison that has to hold a sheet equal
+  to its own minified output reads the two alike. A differing value or
+  importance, and a prefix with no unprefixed twin beside it, stay distinct.
+  Equivalent shorthand decompositions are still not modelled.
   Numeric arithmetic follows the same precision mode as minification: an exact
   quotient such as `calc(28/14)` compares equal to `2` in either mode. By
   default, `calc(28/18)` compares equal to Cascade's six-significant-figure
