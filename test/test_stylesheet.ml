@@ -1550,6 +1550,26 @@ let font_family_descriptor_grammar () =
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
+(* CSS Conditional 3 sec. 6 writes [<supports-condition>] as [not
+   <supports-in-parens> | <supports-in-parens> [ and <supports-in-parens> ]* |
+   <supports-in-parens> [ or <supports-in-parens> ]*], so every operand of
+   [and], [or] and [not] is parenthesised and a bare declaration is one nowhere.
+   The reader carries a flag saying whether the operand it is about to read may
+   be an unwrapped declaration, and only the outermost call sets it; nothing
+   pinned that the operands do not. *)
+let supports_operand_needs_its_parens () =
+  strict_reject "unwrapped declaration on the right of and"
+    "@supports (display:grid) and display:flex { a { color: red } }";
+  strict_reject "unwrapped declaration on the right of or"
+    "@supports (display:grid) or display:flex { a { color: red } }";
+  strict_reject "unwrapped declaration under not"
+    "@supports not display:grid { a { color: red } }";
+  strict_reject "unwrapped declaration as the whole condition"
+    "@supports display:grid { a { color: red } }";
+  (* Control: the same condition with its parentheses reads. *)
+  strict_accept "parenthesised operands on both sides of and"
+    "@supports (display:grid) and (display:flex) { a { color: red } }"
+
 (* A descriptor whose grammar the reader validates but whose text the AST keeps
    verbatim, so the space inside one [<integer> && <symbol>] pair survives while
    the space around the value does not. That outer white space is css-syntax-3
@@ -2718,6 +2738,9 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
+    ( "supports operand needs its parens",
+      `Quick,
+      supports_operand_needs_its_parens );
     ( "counter-style descriptor value is trimmed",
       `Quick,
       counter_style_descriptor_value_is_trimmed );
