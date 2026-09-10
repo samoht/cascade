@@ -7002,7 +7002,20 @@ let var_shorthand_keeps_every_slot () =
       ("a{text-decoration:solid var(--x)}", [ "solid"; "var(--x)" ]);
       ( "a{text-decoration:underline solid var(--x)}",
         [ "underline"; "solid"; "var(--x)" ] );
-    ]
+    ];
+  (* A box shorthand reaches the same conclusion by counting sides rather than
+     slots, so it needs the same guard. CSS Values 5 sec. 3 substitutes a
+     [var()] at computed-value time and lets it expand to several tokens, so two
+     sides that read alike in the source need not be alike after substitution:
+     with [--w: 1px 2px 3px] the pair below is six values and invalid where the
+     fold would leave three and valid. The plain case folds and pins that the
+     fold is there to be prevented. *)
+  Alcotest.(check string)
+    "a repeated plain side folds" "a{border-width:1px}"
+    (minified "a{border-width:1px 1px}");
+  Alcotest.(check string)
+    "a repeated substituted side does not" "a{border-width:var(--w) var(--w)}"
+    (minified "a{border-width:var(--w) var(--w)}")
 
 (* A [<length>] reaches [flex-basis] through the property's own mirror of the
    length variants, and that mirror's normaliser folds only a zero and a
