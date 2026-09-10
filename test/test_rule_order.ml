@@ -93,6 +93,30 @@ let custom_property_font_name_quoting_converges () =
     "a single-word string stays opaque" true
     (canonical {|.a{--x:"foo"}|} <> canonical ".a{--x:foo}")
 
+(* A custom property is an opaque token stream and the AST keeps the spelling
+   the author wrote, so a run of spaces after a comma survives pretty-printing
+   and a comparison meets two spellings of one value wherever two minifiers
+   wrote the inputs. The projection settles that by re-serialising every custom
+   value through its minified form, which is what
+   {!Declaration.map_custom_value} does on the way in. A comma inside a string
+   is text rather than a token separator, so the space beside it is content. *)
+let custom_property_comma_spacing_normalizes () =
+  let projected css =
+    Pp.to_string ~minify:false Stylesheet.pp_stylesheet
+      (Rule_order.canonicalize (statements css))
+  in
+  Alcotest.(check string)
+    "the space after a top-level comma goes"
+    (projected ":root{--a:var(--b),var(--c)}")
+    (projected ":root{--a:var(--b), var(--c)}");
+  Alcotest.(check string)
+    "and so does a run of them"
+    (projected ":root{--a:foo,bar}")
+    (projected ":root{--a:foo,   bar}");
+  Alcotest.(check bool)
+    "a comma inside a string is text, not a separator" true
+    (projected {|:root{--a:"x, y"}|} <> projected {|:root{--a:"x,y"}|})
+
 (* Every block at-rule that holds a statement list, each as the CSS text that
    opens and closes it. [@else] has no standalone form (css-conditional-5 sec. 3
    binds it to the [@when] before it), so its opener carries the antecedent.
@@ -514,6 +538,8 @@ let suite =
         custom_property_layer_and_meta_survive;
       Alcotest.test_case "custom-property font-name quoting converges" `Quick
         custom_property_font_name_quoting_converges;
+      Alcotest.test_case "custom-property comma spacing normalizes" `Quick
+        custom_property_comma_spacing_normalizes;
       Alcotest.test_case
         "custom-property font-name quoting converges under every wrapper" `Quick
         custom_font_quoting_converges_under_every_wrapper;
