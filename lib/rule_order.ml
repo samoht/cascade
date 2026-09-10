@@ -955,9 +955,14 @@ let fold_layer_pins (stmts : statement list) : statement list =
 let canonical_media : Media.t -> Media.t = Media.lower_for_minify
 
 (* An [@container] prelude carries a media condition of its own, and the same
-   respellings hold inside it. *)
-let canonical_container : Container.t -> Container.t =
-  Container.lower_for_minify
+   respellings hold inside it, plus one the emitter cannot take: CSS Values 4
+   sec. 9 makes a function name ASCII case-insensitive, so [style(] and [STYLE(]
+   open one query. The AST keeps the case the author wrote and
+   {!Container.lower_for_minify} leaves it alone for that reason, since emission
+   round-trips it. A comparison has the opposite job, and {!Container.normalize}
+   is the spelling its own equivalence class is compared by -- what
+   {!Container.equal} already reads these two as. *)
+let canonical_container : Container.t -> Container.t = Container.normalize
 
 (* [@media] and [@container] are the only statements whose prelude this
    rewrites, so they are the only ones named; the descent below them is
