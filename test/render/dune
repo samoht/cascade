@@ -44,6 +44,20 @@
   custom_property)
  (libraries cascade cascade_diff fmt unix))
 
+; The generator's declaration pool is drawn from the library's own property
+; table rather than a list kept here, so a property added to lib/ cannot escape
+; the sweep.
+
+(rule
+ (target property_names.ml)
+ (deps
+  (:gen ../../scripts/gen_property_names.exe)
+  (:properties ../../lib/properties.ml))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{gen} %{properties}))))
+
 ; The executables read their driver scripts at run time, so those have to sit
 ; next to them in the build directory.
 
