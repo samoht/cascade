@@ -1550,6 +1550,25 @@ let font_family_descriptor_grammar () =
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
+(* CSS Properties and Values API 1 sec. 3 gives a syntax component either a
+   [<syntax-type-name>] or an [<ident>] the value has to match literally, and
+   sec. 5 parses the initial value against that syntax. The keyword arm is the
+   one the reader answers by comparing text, and only its printing side was
+   covered: a keyword syntax whose initial value matches, and one whose does
+   not, are the two answers that comparison has. *)
+let property_keyword_syntax_reads_its_own_value () =
+  check_stylesheet
+    ~expected:"@property --x{syntax:\"auto\";inherits:false;initial-value:auto}"
+    "@property --x { syntax: \"auto\"; inherits: false; initial-value: auto }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --y{syntax:\"<length>|auto\";inherits:false;initial-value:auto}"
+    "@property --y { syntax: \"<length> | auto\"; inherits: false; \
+     initial-value: auto }";
+  strict_reject "an initial value the keyword syntax does not name"
+    "@property --w { syntax: \"auto\"; inherits: false; initial-value: none }"
+
 (* CSS Conditional 3 sec. 6 writes [<supports-condition>] as [not
    <supports-in-parens> | <supports-in-parens> [ and <supports-in-parens> ]* |
    <supports-in-parens> [ or <supports-in-parens> ]*], so every operand of
@@ -2738,6 +2757,9 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
+    ( "property keyword syntax reads its own value",
+      `Quick,
+      property_keyword_syntax_reads_its_own_value );
     ( "supports operand needs its parens",
       `Quick,
       supports_operand_needs_its_parens );
