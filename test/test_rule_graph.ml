@@ -104,6 +104,30 @@ let try_rewrite_safe_factoring () =
         true
         (Astring.String.is_infix ~affix:".a,.b{color:red}" out)
 
+(* A node number the graph never issued is rejected like a stale one, rather
+   than reaching the liveness array and indexing it out of bounds. [consume]
+   comes from a caller that names nodes by number, so the bound is the graph's
+   to check: a rewrite naming a node past the end has to fail the transaction,
+   and the graph has to survive to answer the next one. *)
+let try_rewrite_rejects_out_of_range () =
+  let g = Rule_graph.of_rules (rules_of ".a{color:red}.b{color:blue}") in
+  (match Rule_graph.try_rewrite g ~consume:(nids [ 5 ]) ~produce:[] with
+  | None -> ()
+  | Some _ -> Alcotest.fail "a node past the end should not rewrite");
+  (* The graph is untouched by the refusal and still commits a real rewrite. *)
+  match
+    Rule_graph.try_rewrite g
+      ~consume:(nids [ 0; 1 ])
+      ~produce:(rules_of ".a,.b{color:red}")
+  with
+  | None -> Alcotest.fail "the graph should still accept a valid rewrite"
+  | Some g' ->
+      let out = graph_to_string g' in
+      Alcotest.(check bool)
+        ("grouped node emitted: " ^ out)
+        true
+        (Astring.String.is_infix ~affix:".a,.b{color:red}" out)
+
 (* A node consumed by a committed rewrite is dead; reusing it is rejected. *)
 let try_rewrite_rejects_stale () =
   let g = Rule_graph.of_rules (rules_of ".a{color:red}.b{color:blue}") in
@@ -723,6 +747,8 @@ let suite =
         try_rewrite_safe_factoring;
       Alcotest.test_case "try_rewrite rejects a stale consumed node" `Quick
         try_rewrite_rejects_stale;
+      Alcotest.test_case "try_rewrite rejects an out-of-range node" `Quick
+        try_rewrite_rejects_out_of_range;
       Alcotest.test_case "try_rewrite rejects an unsafe cross-merge" `Quick
         try_rewrite_rejects_unsafe_cross;
       Alcotest.test_case "try_rewrite preserves residual source slots" `Quick

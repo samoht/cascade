@@ -31,6 +31,11 @@ entry points both moved.
   Values 4 sec. 10.9 fails the whole calculation when adding the types of a
   `+` or `-` fails; an angle-valued call still adds to an angle, so
   `rotate: calc(atan(1) + 10deg)` reads (#1151)
+- A percentage slot refuses a length-valued math call, so `scale: abs(-1px)`,
+  `font-stretch: hypot(3px, 4px)` and `text-size-adjust: round(1.5px, 1px)` are
+  dropped, and `font-stretch: calc(inherit)` no longer prints a live `inherit`.
+  A keyword is not a `<calc-value>` there either, so `calc(normal)` and
+  `calc(none)` are dropped (#1153)
 - A math function reads wherever the grammar allows its type, with no `calc()`
   wrapper needed, so `font-weight: calc(400)`, `zoom: calc(.5)`,
   `grid-row-start: calc(2) center`, `width: abs(-1px)`, `opacity: pow(2, 3)`
@@ -42,10 +47,15 @@ entry points both moved.
   round(1.5px, 1px)` reads where only `width` did. Thirteen readers that
   admitted no math at all now do, among them `stroke-width`, `initial-letter`,
   `font-size-adjust`, `baseline-shift`, `columns`, `font-stretch` and
-  `interest-delay`. `Cascade.Properties.font_weight`,
+  `interest-delay`, and the `@font-face` descriptors `ascent-override`,
+  `descent-override`, `line-gap-override` and `size-adjust`, which hold the
+  percentage the call resolves to. `line-height: min(120%, 1px)` reads too: a
+  comparison there answers a `<length-percentage>` that resolves only at
+  used-value time, so `Cascade.Properties.line_height` gains `Min`, `Max` and
+  `Clamp` beside `Calc`. `Cascade.Properties.font_weight`,
   `webkit_line_clamp`, `zoom`, `border_image_slice_item` and
   `shape_image_threshold` gain `Calc`, and `grid_line` gains `Calc_name`
-  (#1072, #1086, #1124, #1125, #1126, #1145, #1148)
+  (#1072, #1086, #1124, #1125, #1126, #1145, #1148, #1161, #1164, #1174)
 - A math function takes only the operands CSS Values 4 sec. 10.8 grants, so
   `width: calc(inherit)`, `height: calc(auto)`, `border-width: calc(medium)`,
   `width: calc(fit-content(20rem))` and `width: min(unset, 1px)` are dropped
@@ -216,14 +226,18 @@ to lose a whole rule over one bad piece. Both are gone.
   `padding-bottom: anchor-size(width)`, `translate: auto`,
   `border-top-color: calc(2px - 3px)`, `border-image: none, none`,
   `font-language-override: "default"`, `grid-template-rows: -2px`,
-  `grid-template: 10px`, `quotes:`, `border:` and a `@page size` given a
-  percentage. Ranges, units, sizing functions and the closed `<color>`
-  production are each checked, where the reader carried any dimension or any
-  well-formed token run through, and an empty value is a declaration only for a
-  custom property. This release adds
+  `grid-template: 10px`, `grid-area: calc(1/2/3/4/5)`,
+  `font-style: oblique 0`, `color-scheme: light only dark`, an `@font-face`
+  `font-weight` or `font-stretch` range with a CSS-wide keyword for an
+  endpoint, `quotes:`, `border:` and a `@page size` given a percentage. Ranges, units, sizing functions and the
+  closed `<color>` production are each checked, where the reader carried any
+  dimension or any well-formed token run through, and a range now answers for
+  the integer a math call rounds to rather than letting the call past, so a
+  line index rounding to zero is no line. An empty value is a declaration only
+  for a custom property. This release adds
   `Cascade.Properties.read_border_image_source`
   (#640, #982, #1000, #1001, #1002, #1003, #1004, #1005, #1006, #1007, #1009,
-  #1010, #1015, #1077, #1078)
+  #1010, #1015, #1077, #1078, #1163, #1165, #1166, #1169)
 - A `<custom-ident>` refuses the names CSS Values 4 sec. 4.2 reserves, in every
   ASCII case permutation, so `animation-name: default`, `counter-reset: DEFAULT`,
   `view-transition-name: default` and a `default` counter-style symbol are
@@ -232,13 +246,19 @@ to lose a whole rule over one bad piece. Both are gone.
   own exclusion list, five of which had forgotten `default`; they now share
   `Cascade.Cursor.custom_ident` (#1143)
 - A value list carries the number of items its grammar grants, so
-  `mask: none, none` and `transition-behavior: normal, normal` read where they
-  were dropped, while `text-shadow: none, none`, `box-shadow: none, none` and
+  `mask: none, none`, `mask: none, 50%` and
+  `transition-behavior: normal, normal` read where they were dropped, while `text-shadow: none, none`, `box-shadow: none, none` and
   `list-style: none none none` are dropped with a warning: `none` is a whole
   value there, not a list item, and CSS Values 4 sec. 2.2 takes each option of
-  a `||` at most once. An unquoted `font-family` name refuses a generic keyword
+  a `||` at most once, while `background-position-x: center, 10px` reads, one
+  position per background layer as the pair has, and `place-items: stretch
+  center` reads: `stretch` is
+  a value of both halves of that shorthand, so the slot after it is an ordinary
+  `justify-items` value. An unquoted `font-family` name refuses a generic keyword
   only where it heads the sequence, so `font-family: serif serif` is dropped
-  and `font-family: Cambria Math` reads (#1147)
+  and `font-family: Cambria Math` reads, at the `@font-face` and
+  `@font-palette-values` descriptors as at the property
+  (#1147, #1167, #1171, #1173, #1176)
 - A `@keyframes` name is spelled the way its value requires, so
   `@keyframes "default"` keeps its quotes where it used to print as
   `@keyframes default`, which every browser drops, and `@keyframes "none"` is
@@ -349,20 +369,70 @@ to lose a whole rule over one bad piece. Both are gone.
 - Keyword, at-rule and function names match without regard to case, so
   `grid-column: SPAN 2`, `@MEDIA`, `RGB()`, `VAR(--x)`, `:dir(LTR)`,
   `touch-action: NONE`, `display: LIST-ITEM FLOW-ROOT`, `align-items: FIRST
-  BASELINE`, `grid-template-columns: REPEAT(3, 1FR)` and `color: COLOR(DISPLAY-P3
-  1 0 0)` read, while an author-defined name keeps the case it was written in.
+  BASELINE`, `grid-template-columns: REPEAT(3, 1FR)`, `color: COLOR(DISPLAY-P3
+  1 0 0)` and `linear-gradient(IN OKLAB, red, blue)` read, while an
+  author-defined name keeps the case it was written in.
   An escaped name reads as the name it spells: `@supports (--x\3b y: red)` is
   read, and `@layer a\2e b` names the layer `a.b` rather than the sublayer `b`
-  of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141)
+  of `a` (#437, #442, #602, #603, #604, #620, #622, #767, #1141, #1162)
+- A math call a property's range makes it keep folds its arithmetic first, so
+  `border-radius: calc(-1px * 2)` prints `calc(-2px)` and
+  `width: calc(-5px - 5px)` prints `calc(-10px)`. The length family returned the
+  authored call where the number and time families already folded and kept, and
+  Chrome computes all three the same way. Sec. 10.12 clamps such a call at
+  computed-value time, so the wrapper stays and only the arithmetic moves; the
+  504-file corpus is byte-identical (#1181)
+- `--minify` is several times faster on a large stylesheet, for byte-identical
+  output: the SatCSS corpus' worst sheet drops from 3.5s to 0.6s. The rule
+  conflict graph recorded every conflicting pair as its own edge, where the
+  relation is really a union of cliques, so most of those edges and the selector
+  comparisons behind them only restated an ordering the rest already imply; and
+  a merge is now offered first to the rules that sit between the ones it moves,
+  which are the rules that can refuse it (#1183, #1184)
+- `round()` sends a tie to the nearest multiple toward positive infinity, so
+  `round(-3, 2)` folds to `-2` where it used to fold to `-4`. CSS Values 4 sec.
+  10.7.3 gives that tie-break, and it is the one an `<integer>` slot already
+  used. The rule had three copies, one per argument type, and they disagreed;
+  there is now one (#1182)
+- `sign()` folds only where its argument's sign is settled, so
+  `margin-left: calc(10px * sign(-1em))` keeps its call where
+  `sign(-1px)` still folds to `-10px`. The answer turns on whether the argument
+  is zero and a relative unit's reference can be one: a zero font-size, a zero
+  viewport, a zero container, a percentage of zero (#1180)
+- An `@property` `initial-value` at a non-universal `syntax` refuses a length
+  that resolves against an element, so `initial-value: 3em`, `3rem`, `3cqw` and
+  `calc(1px + 2em)` drop the rule where `3px`, `3vw` and `calc(1px + 2px)` read.
+  The registration happens before any element exists, so there is nothing for
+  such a length to resolve against; the universal syntax stores the value as
+  written and still takes every unit. This is CSS Properties and Values API 1
+  sec. 4.1 as Chrome enforces it, the reading #1142 already followed for the
+  substitution half (#1179)
+- A gradient's `<color-interpolation-method>` takes the fifteen colour spaces
+  `color-mix()` takes, so `linear-gradient(in srgb-linear, red, blue)` and
+  `in hwb longer hue` read where they were dropped, and a hue method after a
+  rectangular space is refused. `Cascade.Properties.color_interpolation`
+  carries the space: its six `In_*` constructors are now one `In` of a
+  `color_space` and an optional hue method (#1177)
+- A comparison function's operand is printed as it was written, so
+  `border-width: min(var(--x), 1px)` no longer collects a `calc()` around the
+  reference and `min(calc(var(--x) + 1px), 2px)` no longer collects a second
+  one. CSS Values 4 sec. 10.1 makes a lone `var()` a whole `<calc-sum>` (#1175)
+- A vendor prefix beside its unprefixed twin is recognised by the value the two
+  spell rather than by the nodes they were parsed into, so a `mask-image` given
+  a `var()` fallback its slot cannot type settles on one emission whether
+  cascade synthesised the prefix or an author wrote it. Minifying that output
+  again used to move it. Output grows 718 gzip bytes over the 504-file corpus
+  (0.01%) and the sweep is within timing noise (#1178)
 - Cascade reads back everything it writes. Minified `@scope to (...)`, `rotate`
   with a negative axis, a relative colour's channels, a `-webkit-gradient`
   `color-stop()` and `center` point, `text-decoration: none solid`,
   `transition: none 1s`, an unterminated string, a quoted `animation-name`, a
   keyword-shaped keyframe name, an at-rule body ending on a backslash, a `u+a`
   selector outside `unicode-range`, an explicit `animation: spin 0s`, a `url(`
-  at end of input and a repeating gradient built from a `var()` each survive
-  the round trip (#558, #656, #875, #876, #894, #896, #898, #899, #900, #901,
-  #902, #903, #910, #911, #912, #913)
+  at end of input and a `background` layer whose `var()` stands ahead of another
+  slot each survive the round trip
+  (#558, #656, #875, #876, #894, #896, #898, #899, #900, #901, #902, #903,
+  #910, #911, #912, #913, #1155)
 - A colour is read as the closed production CSS Color 5 sec. 3 defines. A
   relative colour's channel expressions are type-checked, so
   `rgb(from red calc(r + 10%) g b)` is dropped as every browser drops it while
@@ -405,6 +475,12 @@ to lose a whole rule over one bad piece. Both are gone.
   `;` before the sibling that follows. Both printed CSS browsers and cascade's
   own reader reject, losing the block or running two declarations together
   (#319, #370)
+- A relative colour's channel list reads back as the sheet it was printed from.
+  `rgb(from #639 20% g b)` minifies to `rgb(from #639 20%g b)`, which CSS Syntax
+  3 sec. 4.3.3 reads as the same two channels, but the reader kept the tighter
+  spelling as a value of its own, so the sheet did not survive its own emission.
+  A `rotate` axis after a `var()` angle drops the separator the `)` already
+  provides (#1189)
 - A `calc()` printed without `--minify` keeps the parentheses the author wrote,
   redundant ones included, while `--minify` removes those and keeps a
   precedence-sensitive `calc((1px - var(--a)) * 3)` (#721)
@@ -416,6 +492,31 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- A shorthand carrying a `var()` keeps every component the author wrote, where
+  `--minify` dropped one holding its initial: `list-style: disc outside
+  var(--x)` became `list-style: var(--x)` and `text-decoration: solid var(--x)`
+  became `text-decoration: var(--x)`. CSS Variables 1 sec. 3 syntax-checks such
+  a declaration only after substitution, so the drop changed what it means
+  rather than only how it is spelled. With `--x: circle` the first substitutes
+  to two `<list-style-type>` values and is invalid at computed-value time,
+  leaving the longhands unset, while the minified form substitutes to a valid
+  `circle` that sets the type, so a page using this pattern rendered
+  differently. Re-run any minified output that puts a `var()` in one of these
+  two shorthands (#1194)
+- `--minify` writes a `calc()` it unwraps as the leaf it became, so
+  `transition-duration: calc(120ms)` is `.12s` and not the `120ms` an operand is
+  spelled, and `animation: calc(1)` is the `none` the bare `1` already gave.
+  Both used to need a second pass to settle (#1160)
+- `--minify` merges two rules whose values were written with different spellings
+  of one number, so `a{tab-size:2e0ch}b{tab-size:2ch}` groups on the first pass
+  rather than the second. `line-height`, `overflow-clip-margin`, the grid track
+  breadths, the `contain-intrinsic-*` family and `columns` each kept the
+  authored spelling past the fold that `width` already had (#1159)
+- `--minify` runs the compatibility-prefix synthesis inside its own pipeline
+  rather than after it, so a sheet no longer minifies smaller the second time it
+  is run: the prefixed declarations are a rule's shared subset for the factoring
+  like any other, and `a{user-select:all}b{-webkit-user-select:ALL}` reached its
+  factored form only on a caller's next pass (#1158)
 - `--minify` contracts every shorthand family from the longhands that name it.
   This release adds the four-sided box families (`border-width`, `border-style`,
   `border-color`, `scroll-margin`, `scroll-padding`), the eight border sides and
@@ -524,11 +625,15 @@ to lose a whole rule over one bad piece. Both are gone.
 - Computed-value evaluation resolves a direct `inherit`, `initial`, `unset`,
   `revert` or `revert-layer` for every typed property, and whether a property
   inherits is decided in one place from the typed property (#763, #764)
-- A length reaching one minified text through two nodes is one node, so
-  `a{width:1.0px}b{width:1px}` merges in the pass that minifies it rather than
-  the one after. `Declaration.hash` keys the structural value and short-circuits
-  `Declaration.same_minified`, and the reader kept an authored spelling the
-  printer already discards, so one text arrived through two nodes (#1150)
+- A value reaching one minified text through two nodes is one node, so rules
+  writing one of them merge in the pass that minifies them rather than the one
+  after. `a{width:1.0px}b{width:1px}` folds, and so do `flex-basis`,
+  `column-width`, `size`, `initial-letter-wrap`, `background-size` and
+  `mask-size`; a unit minifies lowercase whatever its case, so `width:10.0PX`
+  is `10px`; `content:'x'` and `content:"x"` are one string; and an `animation`
+  holding nothing but initials is the `animation:none` it prints as, so
+  `animation-range:normal` is dropped after either spelling rather than after
+  one of them (#1150, #1185, #1186, #1187, #1188, #1190)
 - `--minify` and `cascade diff` are faster on a large stylesheet, for
   byte-identical output. The slowest corpus stylesheet drops sharply, a long run
   of rules sharing one selector no longer allocates quadratically, a 4,000
@@ -574,6 +679,9 @@ to lose a whole rule over one bad piece. Both are gone.
 - `--minify` keeps the quotes on a `<string>` written to a custom property whose
   `@property` syntax accepts only an ident, and the space between the
   repetitions of a `<type>+` initial value (#626, #704)
+- A custom property whose value is only whitespace holds the empty value, so
+  `--x: ` minifies to `--x:` rather than growing a space on every formatting
+  pass, and `Css.Declaration.custom_property` trims to match (#1157)
 - `Css.resolve_theme` accounts for the declarations `@keyframes`, `@page`,
   `@position-try` and a `@supports` condition carry, builds each
   `theme_defaults` binding with `parse_custom_property` rather than reparsing

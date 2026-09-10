@@ -658,9 +658,77 @@ let rec add_rule_overlaps bucket decls selectors summaries specificities value =
       add_rule_overlaps bucket decls selectors summaries specificities value
   | _ -> invalid_arg "Rule_graph.add_rule_overlaps"
 
+(* A run of [n] nodes closes into [n * n / 8] bytes. Past this length each
+   question walks the edges again and the graph holds nothing. *)
+let closure_node_limit = 16384
+
+(* A node's reachable set, one bit per node. The union below runs once per edge
+   of the cone being closed, so it goes a word at a time. *)
+module Reach = struct
+  let v count = Bytes.make ((count + 7) / 8) '\000'
+  let is_set set = Bytes.length set > 0
+
+  let mem set i =
+    Char.code (Bytes.get set (i lsr 3)) land (1 lsl (i land 7)) <> 0
+
+  let add set i =
+    let byte = i lsr 3 in
+    Bytes.set set byte
+      (Char.chr (Char.code (Bytes.get set byte) lor (1 lsl (i land 7))))
+
+  let union ~into set =
+    let len = Bytes.length into in
+    let words = len / 8 in
+    for w = 0 to words - 1 do
+      let at = w * 8 in
+      Bytes.set_int64_ne into at
+        (Int64.logor (Bytes.get_int64_ne into at) (Bytes.get_int64_ne set at))
+    done;
+    for at = words * 8 to len - 1 do
+      Bytes.set into at
+        (Char.chr
+           (Char.code (Bytes.get into at) lor Char.code (Bytes.get set at)))
+    done
+end
+
+(* Every conflicting pair as its own edge stores the same order twice over: on a
+   real sheet the relation is a union of dense cliques, and a clique over nodes
+   that already sit in source order has the same reachability as the chain
+   through it. So walk the candidates nearest first and keep [covered], the
+   ancestors of everything already linked: a candidate in there already reaches
+   [j] through an edge we hold, so its own edge adds no constraint and - the
+   point of doing this here - it never reaches [nodes_conflict_reason]. The
+   reduction is exact rather than a narrowing: reachability is identical and
+   only the redundant edges are gone. [covered] is [anc.(j)], so it ends the
+   walk holding [j]'s ancestors for a later target to read. *)
+let link_candidates t succ anc ~reduce j candidates =
+  let link i reason = succ.(i) <- (j, reason) :: succ.(i) in
+  if not reduce then
+    List.iter
+      (fun i ->
+        match nodes_conflict_reason t i j with
+        | Option.None -> ()
+        | Option.Some reason -> link i reason)
+      candidates
+  else begin
+    let covered = anc.(j) in
+    List.iter
+      (fun i ->
+        if not (Reach.mem covered i) then
+          match nodes_conflict_reason t i j with
+          | Option.None -> ()
+          | Option.Some reason ->
+              link i reason;
+              Reach.union ~into:covered anc.(i);
+              Reach.add covered i)
+      (List.sort (fun a b -> Int.compare b a) candidates)
+  end
+
 let source_order_edges t =
   let n = t.count in
   let succ = Array.make n [] in
+  let reduce = n <= closure_node_limit in
+  let anc = if reduce then Array.init n (fun _ -> Reach.v n) else [||] in
   let by_decl_key = Overlap_key_table.create 256 in
   let by_branch = String_table.create 256 in
   (* every prior node, bucketed by specificity: what a node carrying the broad
@@ -688,12 +756,7 @@ let source_order_edges t =
         (fun acc branch -> collect_string_bucket by_branch branch j seen acc)
         candidates t.branches.(j)
     in
-    List.iter
-      (fun i ->
-        match nodes_conflict_reason t i j with
-        | Option.None -> ()
-        | Option.Some reason -> succ.(i) <- (j, reason) :: succ.(i))
-      candidates;
+    link_candidates t succ anc ~reduce j candidates;
     add_rule_overlaps by_decl_key t.decl_overlaps.(j) t.selectors.(j)
       t.selector_summaries.(j) t.specificities.(j) j;
     List.iter
@@ -804,39 +867,6 @@ let walk_to t source target =
         end
   in
   visit [ source ]
-
-(* A node's reachable set, one bit per node. The union below runs once per edge
-   of the cone being closed, so it goes a word at a time. *)
-module Reach = struct
-  let v count = Bytes.make ((count + 7) / 8) '\000'
-  let is_set set = Bytes.length set > 0
-
-  let mem set i =
-    Char.code (Bytes.get set (i lsr 3)) land (1 lsl (i land 7)) <> 0
-
-  let add set i =
-    let byte = i lsr 3 in
-    Bytes.set set byte
-      (Char.chr (Char.code (Bytes.get set byte) lor (1 lsl (i land 7))))
-
-  let union ~into set =
-    let len = Bytes.length into in
-    let words = len / 8 in
-    for w = 0 to words - 1 do
-      let at = w * 8 in
-      Bytes.set_int64_ne into at
-        (Int64.logor (Bytes.get_int64_ne into at) (Bytes.get_int64_ne set at))
-    done;
-    for at = words * 8 to len - 1 do
-      Bytes.set into at
-        (Char.chr
-           (Char.code (Bytes.get into at) lor Char.code (Bytes.get set at)))
-    done
-end
-
-(* A run of [n] nodes closes into [n * n / 8] bytes. Past this length each
-   question walks the edges again and the graph holds nothing. *)
-let closure_node_limit = 16384
 
 (* One step of the closure walk: [Open] descends into a node, [Close] unions the
    sets of its successors - by then settled - into its own. *)
@@ -1347,6 +1377,16 @@ let add_inherited_edge t graph consume succ p k reason =
    nodes. [seen] is stamped with [p] (each produced node has a distinct index)
    to dedupe without re-clearing. A produced node carrying the broad key
    conflicts with everything, so it falls back to a full scan (rare: [all]). *)
+(* A merge moves its rules past everything that sits between them, so a node in
+   that span is the one that can refuse the move: 93% of the rejections on a
+   real sheet are blocked by one. The order the candidates are visited in does
+   not change whether the rewrite is accepted, only how soon a refusal is found,
+   so putting the span first turns a rejection from a walk of the whole
+   neighbourhood into a walk of the part that can block it. *)
+let span_first ~lo ~hi candidates =
+  let within, outside = List.partition (fun k -> k > lo && k < hi) candidates in
+  List.rev_append (List.rev within) outside
+
 let external_candidates graph ~total ~consumed ~seen p =
   let acc = ref [] in
   let push k =
@@ -1397,6 +1437,10 @@ let external_candidates graph ~total ~consumed ~seen p =
 
 let add_external_edges t ~consume ~consumed ~total ~produced_count graph succ =
   let seen = Array.make (max total 1) (-1) in
+  let lo =
+    List.fold_left (fun a c -> min a (Node_id.to_int c)) max_int consume
+  in
+  let hi = List.fold_left (fun a c -> max a (Node_id.to_int c)) (-1) consume in
   let rec loop_produced pi =
     if pi = produced_count then Ok ()
     else
@@ -1412,7 +1456,9 @@ let add_external_edges t ~consume ~consumed ~total ~produced_count graph succ =
                 | Error _ as e -> e))
       in
       match
-        loop_candidates (external_candidates graph ~total ~consumed ~seen p)
+        loop_candidates
+          (span_first ~lo ~hi
+             (external_candidates graph ~total ~consumed ~seen p))
       with
       | Ok () -> loop_produced (pi + 1)
       | Error _ as e -> e

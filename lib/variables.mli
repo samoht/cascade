@@ -25,6 +25,11 @@ val var_refs_in_value_string : string -> string list
     walks them, so a [var(] inside a string or [url()] is recognised as data,
     not a reference - unlike a textual scan. *)
 
+val element_relative_in_value_string : string -> string option
+(** [element_relative_in_value_string value] is the first unit in [value] that
+    {!Values.is_element_relative_unit} answers for, looking inside functions and
+    blocks so one written in a [calc()] counts. *)
+
 val substitution_fn_in_value_string : string -> string option
 (** [substitution_fn_in_value_string value] is the name of the first arbitrary
     substitution function ([var()], [attr()] or [env()]) anywhere in [value],

@@ -695,6 +695,53 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.properties.font-family.inherit";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from \
+         <custom-ident> itself, so no word of a family sequence is one \
+         wherever it stands. Chrome reads inherit as a family name once \
+         another word stands beside it";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.contain-intrinsic-size.auto_none_auto";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Sizing 4 (ED) sec. 5.2 spells contain-intrinsic-size [ auto? [ \
+         none | <length [0,inf]> ] ]{1,2}, so auto none is one whole slot and \
+         the auto after it is no slot at all. Chrome takes the trailing bare \
+         auto";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.contain-intrinsic-size.none_auto";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "The same sec. 5.2 grammar puts auto before the none or length of its \
+         own slot and never after one, so none auto is a slot and a keyword \
+         with no slot to open. Chrome takes the trailing bare auto here too";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.break-before.all";
       support =
         {
@@ -935,6 +982,23 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.properties.outline.auto";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "The colour slot of the shorthand is the sec. 3.4 <'outline-color'> \
+         above, so outline: solid auto fills style and colour and CSS Values 4 \
+         sec. 2.2 takes each option of the || once. Chrome reads auto only as \
+         the style, so a second style keyword beside it leaves the value with \
+         two, and it drops the declaration";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.user-select.contain";
       support =
         {
@@ -1103,6 +1167,84 @@ let measured =
       why =
         "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
          auto. Chrome accepts it from the SVG 1.1 grammar";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.default";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Values 4 sec. 4.2 reserves default from <custom-ident> itself, so \
+         no word of a family sequence is one wherever it stands. Chrome reads \
+         default as a family word once another word stands beside it, at the \
+         descriptor as at the property";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.inherit";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from \
+         <custom-ident> itself, so no word of a family sequence is one \
+         wherever it stands. Chrome reads inherit as a family word once \
+         another word stands beside it, at the descriptor as at the property";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.font-face.font-weight.two_value_syntax";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.4 writes the descriptor auto | \
+         <font-weight-absolute>{1,2}, so a pair of endpoints is the range a \
+         variable font is asked for. Chrome takes only one value";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.font-face.font-stretch.two_value_syntax";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.5 writes the descriptor auto | \
+         <font-stretch-css3>{1,2}, so a pair of endpoints is the range a \
+         variable font is asked for. Chrome takes only one value";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.at-rules.font-face.font-variation-settings.string";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 6.6 writes each entry <opentype-tag> <number>, so a \
+         bare tag names an axis and sets it to nothing. Chrome takes the tag \
+         alone at the descriptor and gives it 1, where it refuses the same \
+         entry at the property";
       measured = "Chrome 153";
     };
   ]

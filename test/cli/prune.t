@@ -109,7 +109,7 @@ they are reached. Only [.gone] is decided here.
   > @layer base, theme;
   > @font-face { font-family: Brand; src: url("brand.woff2") }
   > @keyframes fade { from { opacity: 0 } }
-  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1px }
   > .gone { color: red }
   > EOF
   $ cascade prune page.html atrules.css
@@ -129,7 +129,7 @@ they are reached. Only [.gone] is decided here.
   @property --gap {
     syntax: "<length>";
     inherits: false;
-    initial-value: 1rem;
+    initial-value: 1px;
   }
 
 

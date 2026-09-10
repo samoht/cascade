@@ -645,266 +645,17 @@ let flatten_nesting = Flatten.block
 
 (** {1 Stylesheet Optimization} *)
 
-type webkit_fallback =
-  | User_select_fallback
-  | Backdrop_filter_fallback
-  | Hyphens_fallback
-  | Text_decoration_color_fallback
-  | Mask_fallback
-  | Mask_image_fallback
-  | Mask_position_fallback
-  | Mask_size_fallback
-  | Mask_repeat_fallback
-  | Mask_clip_fallback
-  | Mask_origin_fallback
-
-(* A target that cannot read the standard property at all needs the fallback for
-   every value of it. A target that reads both spellings needs it only where the
-   value is not settled at parse time. *)
-type fallback_condition = Any_value | Unresolved_value
-
-type webkit_fallback_spec =
-  | Typed_fallback : {
-      kind : webkit_fallback;
-      property : 'a Properties.property;
-      webkit_property : 'b Properties.property;
-      convert : 'a -> 'b option;
-      name : string;
-      webkit_name : string;
-      condition : fallback_condition;
-    }
-      -> webkit_fallback_spec
-  | Mask_fallback_spec of { name : string; webkit_name : string }
-
-let typed_fallback ?(condition = Any_value) kind property webkit_property name
-    webkit_name =
-  Typed_fallback
-    {
-      kind;
-      property;
-      webkit_property;
-      convert = Option.some;
-      name;
-      webkit_name;
-      condition;
-    }
-
-(* The same, where the prefixed property does not take the standard one's
-   vocabulary and a value outside the overlap gets no fallback. *)
-let converted_fallback ?(condition = Any_value) ~convert kind property
-    webkit_property name webkit_name =
-  Typed_fallback
-    { kind; property; webkit_property; convert; name; webkit_name; condition }
-
-(* The prefixed mask box properties take WebKit's older vocabulary, which meets
-   the [<coord-box>] of CSS Masking 1 sec. 6.4 and 6.5 on the three CSS box
-   names alone. A value with no prefixed spelling gets no fallback rather than
-   one the browser drops. *)
-let rec prefixed_mask_box :
-    Properties.mask_box -> Properties.webkit_mask_box option = function
-  | Border_box -> Some Border_box
-  | Content_box -> Some Content_box
-  | Padding_box -> Some Padding_box
-  | Inherit -> Some Inherit
-  | Initial -> Some Initial
-  | Unset -> Some Unset
-  | Revert -> Some Revert
-  | Revert_layer -> Some Revert_layer
-  | Layers layers ->
-      (* One layer outside the overlap costs the whole fallback: the prefixed
-         property reads the list or none of it. *)
-      let mapped = List.filter_map prefixed_mask_box layers in
-      if List.length mapped = List.length layers then
-        Some (Layers mapped : Properties.webkit_mask_box)
-      else None
-  | Fill_box | Stroke_box | View_box | No_clip | Var _ -> None
-
-let webkit_fallback_specs =
-  [
-    typed_fallback User_select_fallback User_select Webkit_user_select
-      "user-select" "-webkit-user-select";
-    typed_fallback Backdrop_filter_fallback Backdrop_filter
-      Webkit_backdrop_filter "backdrop-filter" "-webkit-backdrop-filter";
-    typed_fallback Hyphens_fallback Hyphens Webkit_hyphens "hyphens"
-      "-webkit-hyphens";
-    typed_fallback ~condition:Unresolved_value Text_decoration_color_fallback
-      Text_decoration_color Webkit_text_decoration_color "text-decoration-color"
-      "-webkit-text-decoration-color";
-    Mask_fallback_spec { name = "mask"; webkit_name = "-webkit-mask" };
-    typed_fallback Mask_image_fallback Mask_image Webkit_mask_image "mask-image"
-      "-webkit-mask-image";
-    typed_fallback Mask_position_fallback Mask_position Webkit_mask_position
-      "mask-position" "-webkit-mask-position";
-    typed_fallback Mask_size_fallback Mask_size Webkit_mask_size "mask-size"
-      "-webkit-mask-size";
-    typed_fallback Mask_repeat_fallback Mask_repeat Webkit_mask_repeat
-      "mask-repeat" "-webkit-mask-repeat";
-    converted_fallback ~convert:prefixed_mask_box Mask_clip_fallback Mask_clip
-      Webkit_mask_clip "mask-clip" "-webkit-mask-clip";
-    converted_fallback ~convert:prefixed_mask_box Mask_origin_fallback
-      Mask_origin Webkit_mask_origin "mask-origin" "-webkit-mask-origin";
-  ]
-
-let fallback_spec_kind = function
-  | Typed_fallback { kind; _ } -> kind
-  | Mask_fallback_spec _ -> Mask_fallback
-
-let fallback_spec_condition = function
-  | Typed_fallback { condition; _ } -> condition
-  | Mask_fallback_spec _ -> Any_value
-
-let fallback_spec_names = function
-  | Typed_fallback { name; webkit_name; _ } -> (name, webkit_name)
-  | Mask_fallback_spec { name; webkit_name } -> (name, webkit_name)
-
-let fallback_spec_by_kind kind =
-  List.find_opt
-    (fun spec -> fallback_spec_kind spec = kind)
-    webkit_fallback_specs
-
-let fallback_spec_by_name select_name name =
-  List.find_opt
-    (fun spec -> String.equal (select_name (fallback_spec_names spec)) name)
-    webkit_fallback_specs
-
-let fallback_spec_by_standard_name = fallback_spec_by_name fst
-
-(* The target contract is deliberately owned here rather than by the printer:
-   adding a fallback changes the AST and must therefore be explicit to API
-   callers. Which of these the targets read unprefixed is a fact about browsers,
-   so {!Support} answers it from the generated web-features table and a browser
-   that catches up moves the answer at the next regeneration. [mask-mode] and
-   [mask-composite] are excluded because their prefixed forms have different
-   grammars. *)
-let required_fallback kind targets =
-  let lacks key = Support.unimplemented_by targets key in
-  match kind with
-  | User_select_fallback -> lacks "css.properties.user-select"
-  | Backdrop_filter_fallback -> lacks "css.properties.backdrop-filter"
-  | Hyphens_fallback -> lacks "css.properties.hyphens"
-  | Text_decoration_color_fallback ->
-      (* Not a support gap: Safari/iOS answer the standard property under both
-         spellings through 26.1, which no dataset records, so this stays a
-         measured boundary. It pairs with [Unresolved_value], since a settled
-         colour is served by the standard longhand on every declared target. *)
-      let at_most (major, minor) (target_major, target_minor) =
-        target_major < major || (target_major = major && target_minor <= minor)
-      in
-      at_most (26, 1) targets.safari || at_most (26, 1) targets.ios_safari
-  | Mask_fallback -> lacks "css.properties.mask"
-  | Mask_image_fallback -> lacks "css.properties.mask-image"
-  | Mask_position_fallback -> lacks "css.properties.mask-position"
-  | Mask_size_fallback -> lacks "css.properties.mask-size"
-  | Mask_repeat_fallback -> lacks "css.properties.mask-repeat"
-  | Mask_clip_fallback -> lacks "css.properties.mask-clip"
-  | Mask_origin_fallback -> lacks "css.properties.mask-origin"
-
-let webkit_compatible_mask : Properties.mask -> Properties.mask =
-  let strip_layer (layer : Properties.mask_layer) =
-    { layer with mode = Option.none; composite = Option.none }
-  in
-  function
-  | Layer layer -> Layer (strip_layer layer)
-  | Layers layers -> Layers (List.map strip_layer layers)
-  | value -> value
-
-let webkit_fallback_of_declaration targets decl : Declaration.declaration option
-    =
-  let fallback : type a.
-      webkit_fallback ->
-      a Properties.property ->
-      a ->
-      bool ->
-      Declaration.declaration option =
-   fun kind property value important ->
-    if required_fallback kind targets then
-      Some (Declaration.v ~important property value)
-    else None
-  in
-  let opaque_fallback kind property source important =
-    if required_fallback kind targets then
-      match
-        Declaration.parse_opaque_declaration property
-          (Declaration.string_of_value ~minify:true source)
-      with
-      | Some prefixed ->
-          Some (if important then Declaration.important prefixed else prefixed)
-      | None -> None
-    else None
-  in
-  let condition_holds spec =
-    match fallback_spec_condition spec with
-    | Any_value -> true
-    | Unresolved_value -> Variables.declaration_uses_var decl
-  in
-  let fallback_from_spec spec =
-    match (spec, decl) with
-    | ( Typed_fallback { kind; property; webkit_property; convert; _ },
-        Declaration { property = actual; value; important; _ } ) -> (
-        match Properties.eq_property actual property with
-        | Some Equal -> (
-            match convert value with
-            | Some value -> fallback kind webkit_property value important
-            | None -> None)
-        | None -> None)
-    | ( Mask_fallback_spec { webkit_name; _ },
-        Declaration { property = Mask; value; important; _ } ) ->
-        let source = Declaration.v Mask (webkit_compatible_mask value) in
-        opaque_fallback Mask_fallback webkit_name source important
-    | _, (Theme_guarded _ | Declaration _) -> None
-  in
-  match decl with
-  | Theme_guarded _ -> None
-  | Declaration
-      { property = Unknown_property name; value = components; important; _ }
-    -> (
-      match fallback_spec_by_standard_name name with
-      | Some (Mask_fallback_spec { webkit_name; _ }) -> (
-          let source = Declaration.v (Unknown_property name) components in
-          let rendered = Declaration.string_of_value ~minify:false source in
-          match Declaration.parse_declaration "mask" rendered with
-          | Some (Declaration { property = Mask; value; _ }) ->
-              let source = Declaration.v Mask (webkit_compatible_mask value) in
-              opaque_fallback Mask_fallback webkit_name source important
-          | Some _ | None ->
-              fallback Mask_fallback (Unknown_property webkit_name) components
-                important)
-      | Some spec when condition_holds spec ->
-          let kind = fallback_spec_kind spec in
-          let _, webkit_name = fallback_spec_names spec in
-          fallback kind (Unknown_property webkit_name) components important
-      | Some _ | None -> None)
-  | Declaration _ -> (
-      match fallback_spec_by_standard_name (Declaration.property_name decl) with
-      | Some spec when condition_holds spec -> fallback_from_spec spec
-      | Some _ | None -> None)
-
-let is_webkit_fallback kind decl =
-  match (fallback_spec_by_kind kind, decl) with
-  | Some spec, Declaration _ ->
-      let _, webkit_name = fallback_spec_names spec in
-      String.equal (Declaration.property_name decl) webkit_name
-  | None, Declaration _ -> false
-  | (None | Some _), Theme_guarded _ -> false
-
-let fallback_kind decl : webkit_fallback option =
-  match decl with
-  | Theme_guarded _ -> None
-  | Declaration _ ->
-      Option.map fallback_spec_kind
-        (fallback_spec_by_standard_name (Declaration.property_name decl))
-
 (* Once an author supplied a prefix for a property, that spelling is theirs:
    synthesising another value could change what WebKit sees. Otherwise mirror
    every standard declaration so source-order fallback semantics stay intact. *)
 let add_declaration_prefixes ~targets decls =
-  let author_owns kind = List.exists (is_webkit_fallback kind) decls in
+  let author_owns kind = List.exists (Webkit_fallback.is_prefixed kind) decls in
   let rec loop changed acc = function
     | [] -> if changed then List.rev acc else decls
     | decl :: rest -> (
-        match fallback_kind decl with
+        match Webkit_fallback.kind_of decl with
         | Some kind when not (author_owns kind) -> (
-            match webkit_fallback_of_declaration targets decl with
+            match Webkit_fallback.of_declaration targets decl with
             | Some prefixed -> loop true (decl :: prefixed :: acc) rest
             | None -> loop changed (decl :: acc) rest)
         | Some _ | None -> loop changed (decl :: acc) rest)
@@ -913,7 +664,7 @@ let add_declaration_prefixes ~targets decls =
 
 let rec condition_has_webkit kind = function
   | Supports.Property (Supports.Declaration (_, decl)) ->
-      is_webkit_fallback kind decl
+      Webkit_fallback.is_prefixed kind decl
   | Supports.Property _ | Supports.Function _ | Supports.General_enclosed _ ->
       false
   | Supports.Not condition -> condition_has_webkit kind condition
@@ -924,9 +675,9 @@ let add_condition_prefixes ~targets condition =
   let author_owns kind = condition_has_webkit kind condition in
   let rec map = function
     | Supports.Property (Supports.Declaration (_, decl)) as original -> (
-        match fallback_kind decl with
+        match Webkit_fallback.kind_of decl with
         | Some kind when not (author_owns kind) -> (
-            match webkit_fallback_of_declaration targets decl with
+            match Webkit_fallback.of_declaration targets decl with
             | Some prefixed ->
                 (* Cascade writes this one, so it carries no authored
                    spelling. *)
@@ -1292,7 +1043,7 @@ let rec statement_rule_count = function
 let stylesheet_rule_count stmts =
   List.fold_left (fun count stmt -> count + statement_rule_count stmt) 0 stmts
 
-let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
+let run_pipeline ~ctx ~targets ~enforce_spec ~aggressive stylesheet =
   (* Re-run the top-level pipeline until the AST stops changing or a small cap
      fires. A pass may shrink the input again because an earlier one
      (vendor-alias drop, shorthand composition, media/support merging) exposed a
@@ -1304,10 +1055,25 @@ let run_pipeline ~ctx ~enforce_spec ~aggressive stylesheet =
     else 5
   in
   let factor_cache = Factor.cache () in
+  (* Inside the loop, not after it: a synthesised prefix is a declaration the
+     rest of the pipeline decides about. It is a rule's shared subset for the
+     factoring and a longhand for the shorthand contraction, and a pass that
+     runs once the loop has settled leaves both to the next caller, whose
+     emission then differs from this one.
+
+     It runs last in the body because the vendor-alias drop reads {!Baseline}
+     where this reads [targets]. The two disagree wherever a target trails
+     Baseline, and a prefix synthesised into the next pass's input would be
+     dropped there as dead. *)
+  let prefixes stmts =
+    if enforce_spec then stmts else add_compatibility_prefixes ~targets stmts
+  in
   let rec loop n stmts =
     if n <= 0 then stmts
     else
-      let next = statements_top_level ~factor_cache ~ctx ~enforce_spec stmts in
+      let next =
+        prefixes (statements_top_level ~factor_cache ~ctx ~enforce_spec stmts)
+      in
       if next == stmts || Stylesheet.equal next stmts then stmts
       else loop (n - 1) next
   in
@@ -1385,14 +1151,11 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?(flatten_nesting = false)
   let result =
     run_pipeline
       ~ctx:(Ctx.with_extend_lists true ctx)
-      ~enforce_spec ~aggressive stylesheet
+      ~targets ~enforce_spec ~aggressive stylesheet
   in
   let result =
     if prune_unused_custom_props then drop_unused_custom_props result
     else result
-  in
-  let result =
-    if enforce_spec then result else add_compatibility_prefixes ~targets result
   in
   let result = if flatten_nesting then Flatten.block result else result in
   Log.debug (fun m ->

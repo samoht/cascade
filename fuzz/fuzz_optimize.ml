@@ -712,7 +712,7 @@ let test_name_defining_atrules_preserved buf =
         "@font-face{font-family:Brand;src:url(brand.woff2)}.x{color:red}";
         "@keyframes fade{from{opacity:0}to{opacity:1}}.x{color:red}";
         "@property \
-         --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.x{padding:var(--gap)}";
+         --gap{syntax:\"<length>\";inherits:false;initial-value:1px}.x{padding:var(--gap)}";
         "@view-transition{navigation:auto}.x{view-transition-name:card}";
       ]
       buf 0

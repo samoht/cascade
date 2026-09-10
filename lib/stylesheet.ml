@@ -2352,6 +2352,18 @@ let read_descriptor_block normalize inner =
 let descriptor_is_auto value =
   String.equal (String.lowercase_ascii (String.trim value)) "auto"
 
+(* Sec. 4.6's "except that the CSS-wide keywords are omitted" answers for an
+   endpoint of the [{1,2}] range as much as for the whole value.
+   [refuse_css_wide_descriptor] cannot: it stands at the boundary, where a
+   [<family-name>] sequence reads a keyword as an ordinary ident, so it fires
+   only on one standing alone. *)
+let refuse_css_wide_endpoint c =
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Ident name; _ })
+    when Properties.is_css_wide_keyword name ->
+      Cursor.err_invalid c ("CSS-wide keyword in @font-face descriptor: " ^ name)
+  | Some _ | None -> ()
+
 let read_font_weight_descriptor r =
   read_descriptor_value Declaration.read_property_value
     (fun value ->
@@ -2359,6 +2371,7 @@ let read_font_weight_descriptor r =
       else
         let c = Cursor.of_string value in
         let absolute () =
+          refuse_css_wide_endpoint c;
           match Properties.read_font_weight c with
           | Bolder | Lighter ->
               Cursor.err_invalid c
@@ -2408,11 +2421,15 @@ let read_font_stretch_descriptor r =
       if descriptor_is_auto value then Font_stretch_auto
       else
         let c = Cursor.of_string value in
-        let first = Properties.read_font_stretch c in
+        let endpoint () =
+          refuse_css_wide_endpoint c;
+          Properties.read_font_stretch c
+        in
+        let first = endpoint () in
         Cursor.ws c;
         if Cursor.is_done c then Font_stretch first
         else
-          let second = Properties.read_font_stretch c in
+          let second = endpoint () in
           Cursor.ws c;
           Cursor.expect_eof c;
           Font_stretch_range (first, second))
@@ -3621,10 +3638,16 @@ let css_wide_keyword s =
    whole rule at every syntax, the universal one included. That is the revision
    of Properties and Values API 1 this reader follows throughout, the one that
    also makes syntax, inherits and a non-universal initial-value required;
-   today's ED sec. 3.3 ignores the descriptor alone instead. Not computational
-   independence, which is sec. 4.1 and binds registerProperty: Chrome keeps
-   [3em] here at the universal syntax. *)
-let read_property_initial_value r syntax str =
+   today's ED sec. 3.3 ignores the descriptor alone instead.
+
+   Sec. 4.1's computational independence is the second filter and reads the same
+   way. A non-universal syntax registers its initial value before any element
+   exists, so a length that resolves against one has nothing to resolve against;
+   the universal syntax stores the value as written and takes every unit. The ED
+   binds sec. 4.1 to registerProperty alone, and Chrome enforces it on the CSS
+   path too: the maintainer settled on 2026-09-09 that cascade follows Chrome
+   here, as it already does for the substitution half above. *)
+let read_property_initial_value ~universal r syntax str =
   if css_wide_keyword str then
     Cursor.err_invalid r "@property: initial-value cannot be CSS-wide keyword";
   (match Variables.substitution_fn_in_value_string str with
@@ -3633,6 +3656,17 @@ let read_property_initial_value r syntax str =
         (String.concat ""
            [ "@property: initial-value cannot contain "; fn; "()" ])
   | None -> ());
+  (if not universal then
+     match Variables.element_relative_in_value_string str with
+     | Some unit ->
+         Cursor.err_invalid r
+           (String.concat ""
+              [
+                "@property: initial-value cannot resolve against an element (";
+                unit;
+                ") at a non-universal syntax";
+              ])
+     | None -> ());
   let value_reader = Cursor.of_string str in
   let value = Variables.read_value value_reader syntax in
   Cursor.ws value_reader;
@@ -3870,7 +3904,10 @@ let read_property_rule (r : Cursor.t) : statement =
             Cursor.err_invalid r
               "@property: initial-value is required for non-universal syntax"
         | None -> Option.None
-        | Some str -> Some (read_property_initial_value r syntax str)
+        | Some str ->
+            Some
+              (read_property_initial_value ~universal:is_universal_syntax r
+                 syntax str)
       in
       Property { name; syntax; inherits; initial_value }
 

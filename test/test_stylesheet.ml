@@ -490,9 +490,17 @@ let test_property_missing_descriptors () =
 (* An [initial-value] carrying var(), attr() or env() has nothing to substitute
    from at registration time, so Chrome 153 drops the
    whole rule at every syntax, the universal one included. The values below the
-   substitution cases are the other side of the same filter: they stay readable,
-   including the ones cascade knowingly keeps that Chrome drops for
-   computational independence ([3em] at a non-universal syntax). *)
+   substitution cases are the other side of the same filter.
+
+   Sec. 4.1's computational independence is the second filter, and Thomas
+   settled on 2026-09-09 that cascade follows Chrome here as it does for the
+   substitution half: a non-universal syntax registers its initial value before
+   any element exists, so a length that resolves against one cannot be computed.
+   Chrome 153 refuses the font-relative units of CSS Values 4 sec. 5.1.1 and the
+   container-relative ones of sec. 5.1.4 there, and takes sec. 5.1.3's viewport
+   lengths and sec. 5.2's absolute ones, which resolve against the viewport and
+   against nothing. The universal syntax stores the value as written and keeps
+   every unit. *)
 (* Not a roundtrip test *)
 let test_property_initial_value_substitution () =
   let expect_error what syntax value =
@@ -535,11 +543,36 @@ let test_property_initial_value_substitution () =
       "@property --x{syntax:\"<length>\";inherits:false;initial-value:5px}"
     "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 5px \
      }";
+  List.iter
+    (fun unit ->
+      expect_error "element-relative unit at <length>" "<length>"
+        (String.concat "" [ "3"; unit ]))
+    [ "em"; "rem"; "ex"; "cap"; "ch"; "ic"; "lh"; "rlh"; "cqw"; "cqi"; "cqmax" ];
+  expect_error "element-relative unit inside a calc" "<length>"
+    "calc(1px + 2em)";
+  expect_error "element-relative unit at <length-percentage>"
+    "<length-percentage>" "3em";
+  List.iter
+    (fun value ->
+      check_stylesheet
+        ~expected:
+          (String.concat ""
+             [
+               "@property --x{syntax:\"<length>\";inherits:false;initial-value:";
+               value;
+               "}";
+             ])
+        (String.concat ""
+           [
+             "@property --x { syntax: \"<length>\"; inherits: false; \
+              initial-value: ";
+             value;
+             " }";
+           ]))
+    [ "3vw"; "3vmin"; "3dvw"; "calc(1px + 2px)" ];
   check_stylesheet
-    ~expected:
-      "@property --x{syntax:\"<length>\";inherits:false;initial-value:3em}"
-    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: 3em \
-     }";
+    ~expected:"@property --x{syntax:\"*\";inherits:false;initial-value:3em}"
+    "@property --x { syntax: \"*\"; inherits: false; initial-value: 3em }";
   check_stylesheet
     ~expected:"@property --x{syntax:\"*\";inherits:false;initial-value:red}"
     "@property --x { syntax: \"*\"; inherits: false; initial-value: red }"
@@ -878,11 +911,49 @@ let spec_fontface_descriptors () =
   check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
     "@font-face { font-family: Brand; src: url(font.woff2); font-weight: 400 \
      lighter; }";
+  (* Sec. 4.6 gives these descriptors the property's values "except that the
+     CSS-wide keywords are omitted", and an endpoint of the range is one of
+     those values, so a keyword is no more a value there than it is alone. The
+     one alone is already refused; a pair of them, or one beside a real
+     endpoint, was written back as a declaration Chrome 153 drops. *)
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     inherit inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: 400 \
+     inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-weight: \
+     initial unset; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     inherit inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     normal inherit; }";
+  check_stylesheet ~expected:"@font-face{font-family:Brand;src:url(font.woff2)}"
+    "@font-face { font-family: Brand; src: url(font.woff2); font-stretch: \
+     inherit normal; }";
   (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
      in either costs the whole rule the way any other missing one does. *)
   check_stylesheet ~expected:""
     "@font-face { font-family: inherit; src: url(font.woff2); }";
   check_stylesheet ~expected:"" "@font-face { font-family: Brand; src: unset; }";
+  (* Sec. 2.1.1 turns a generic family name away where it could be read as the
+     keyword rather than as a name, which is where the name starts: [Foo serif]
+     and [Cambria Math] are installed fonts and [serif Foo] is not. The
+     [font-family] property reads them that way; the descriptor held every word
+     of the sequence to the whole exclusion list, so it dropped a real font
+     name. Chrome 153 reads the first two at both and drops the third at
+     both. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:\"Cambria Math\";src:url(font.woff2)}"
+    "@font-face { font-family: Cambria Math; src: url(font.woff2); }";
+  check_stylesheet
+    ~expected:"@font-face{font-family:\"Foo serif\";src:url(font.woff2)}"
+    "@font-face { font-family: Foo serif; src: url(font.woff2); }";
+  check_stylesheet ~expected:""
+    "@font-face { font-family: serif Foo; src: url(font.woff2); }";
   (* A family name that merely starts with one is a name, not a keyword: sec.
      2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
   check_stylesheet
@@ -1455,8 +1526,15 @@ let font_family_descriptor_grammar () =
     "@font-face { font-family: Brand, Other; src: url(brand.woff2) }";
   strict_reject "generic @font-face family"
     "@font-face { font-family: serif; src: url(serif.woff2) }";
-  strict_reject "generic word in an unquoted @font-face family"
+  (* Sec. 2.1.1 turns the identifier away where it could be read as the generic
+     keyword rather than as a name, which is where the name starts. After the
+     first word it is an ordinary <custom-ident>, so [Brand serif] is a name and
+     [serif Brand] is not; the font-family property already reads them that way
+     and Chrome 153 reads both descriptors that way. *)
+  strict_accept "generic word after the first in an unquoted @font-face family"
     "@font-face { font-family: Brand serif; src: url(brand.woff2) }";
+  strict_reject "generic word heading an unquoted @font-face family"
+    "@font-face { font-family: serif Brand; src: url(brand.woff2) }";
   strict_reject "CSS-wide @font-face family"
     "@font-face { font-family: inherit; src: url(brand.woff2) }";
   strict_reject "empty @font-palette-values font-family"
@@ -1465,8 +1543,10 @@ let font_family_descriptor_grammar () =
     "@font-palette-values --serif { font-family: serif }";
   strict_reject "generic in an @font-palette-values family list"
     "@font-palette-values --brand { font-family: Brand, serif }";
-  strict_reject "generic word in an unquoted palette family"
+  strict_accept "generic word after the first in an unquoted palette family"
     "@font-palette-values --brand { font-family: Brand serif }";
+  strict_reject "generic word heading an unquoted palette family"
+    "@font-palette-values --brand { font-family: serif Brand }";
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
@@ -4178,6 +4258,48 @@ let spec_current_at_rules () =
   check_stylesheet ~expected:"@container(){.x{color:red}}"
     "@container () { .x { color: red } }";
   neg_cursor read "@page : { margin: 1cm }"
+
+(* CSS Syntax 3 (ED) sec. 4.3.1 consumes an ident sequence into the at-keyword,
+   so the space in front of an ident prelude is the only thing naming the rule:
+   [@scope to (...)] printed as [@scopeto (...)] is a different at-rule, and one
+   every browser drops. A [(] and a [)] each end their token, so a prelude that
+   opens or closes on one needs no separator; sec. 4.3.4 turns [to(] into a
+   function token, so [to] keeps the space after it either way. *)
+let at_keyword_prelude_separator () =
+  minify_reads_back "scope end only"
+    ~expected:"@scope to (.content>*){a{color:red}}"
+    "@scope to (.content > *) { a { color: red } }";
+  minify_reads_back "scope start and end"
+    ~expected:"@scope(.card)to (.footer){a{color:red}}"
+    "@scope (.card) to (.footer) { a { color: red } }";
+  minify_reads_back "scope start only" ~expected:"@scope(.card){a{color:red}}"
+    "@scope (.card) { a { color: red } }";
+  minify_reads_back "scope with neither" ~expected:"@scope{a{color:red}}"
+    "@scope { a { color: red } }";
+  minify_reads_back "media type" ~expected:"@media screen{a{color:red}}"
+    "@media screen { a { color: red } }";
+  minify_reads_back "media not" ~expected:"@media not all{a{color:red}}"
+    "@media not all { a { color: red } }";
+  minify_reads_back "supports not"
+    ~expected:"@supports not (display:grid){a{color:red}}"
+    "@supports not (display: grid) { a { color: red } }";
+  minify_reads_back "supports selector"
+    ~expected:"@supports selector(a){a{color:red}}"
+    "@supports selector(a) { a { color: red } }";
+  minify_reads_back "container name"
+    ~expected:"@container card (width>0px){a{color:red}}"
+    "@container card (width > 0px) { a { color: red } }";
+  minify_reads_back "container not"
+    ~expected:"@container not (width>0px){a{color:red}}"
+    "@container not (width > 0px) { a { color: red } }";
+  minify_reads_back "page name" ~expected:"@page toc{margin:1cm}"
+    "@page toc { margin: 1cm }";
+  minify_reads_back "layer name" ~expected:"@layer a{b{color:red}}"
+    "@layer a { b { color: red } }";
+  (* An unknown at-rule keeps its block byte for byte, so this source is written
+     minified: only the prelude separator is under test. *)
+  minify_reads_back "unknown at-rule" ~expected:"@foo bar{a{color:red}}"
+    "@foo bar{a{color:red}}"
 
 let font_palette_values_descriptor_matrix () =
   List.iter
@@ -8566,11 +8688,15 @@ let customprops13_declaration () =
   Alcotest.(check string)
     "--x: red blue preserved" ".x{--x:red blue}"
     (normalize ".x { --x: red blue }");
+  (* CSS Syntax 3 (ED) sec. 5.5.6 discards whitespace before a declaration's
+     value and again from its end, and CSS Custom Properties 1 (ED) sec. 2
+     writes the [--*] family's value [<declaration-value>?], so what is left of
+     a whitespace-only value is the empty value sec. 2.2 calls valid. *)
   Alcotest.(check string)
-    "--x: before block close preserves whitespace-token value" ".x{--x: }"
+    "--x: before block close is the empty value" ".x{--x:}"
     (normalize ".x { --x: }");
   Alcotest.(check string)
-    "--x: ; preserves the whitespace-token value" ".x{--x: }"
+    "--x: ; is the empty value" ".x{--x:}"
     (normalize ".x { --x: ; }")
 
 let customprops13_color_keyword_case_fold () =
@@ -10401,6 +10527,7 @@ let additional_tests =
       `Quick,
       custom_property_boundary );
     ("spec current-work at-rules", `Quick, spec_current_at_rules);
+    ("spec at-keyword prelude separator", `Quick, at_keyword_prelude_separator);
     ( "spec font-palette-values descriptor matrix",
       `Quick,
       font_palette_values_descriptor_matrix );

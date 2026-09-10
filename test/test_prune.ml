@@ -142,7 +142,7 @@ let keeps_a_statement_with_no_selector () =
   let source =
     "@font-face{font-family:Brand;src:url(b.woff2)}@keyframes \
      fade{0%{opacity:0}}@property \
-     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}"
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1px}"
   in
   let r = analyse source in
   check_verdicts "no rule was judged" [] r;

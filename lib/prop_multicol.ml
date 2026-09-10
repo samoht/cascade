@@ -143,7 +143,40 @@ let normalize_columns_value : columns_value -> columns_value =
       match eval_calc (numeric_columns_calc_leaves c) with
       | Num n when Float.is_integer n && n >= 1. -> Count (int_of_float n)
       | folded -> if folded == c then value else Count_calc folded)
+  (* The column width keeps the spelling the author wrote for the unminified
+     round-trip, and the printer drops it under [--minify]. Fold it, or two
+     spellings of one width reach one minified text through two nodes. *)
+  | Width len as value ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Width len'
+  | Both (len, count) as value ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Both (len', count)
   | other -> other
+
+(* [column-width] and [size] hold their length the way [columns] holds its own,
+   and the printer drops the authored spelling under [--minify] just the same,
+   so they fold it for the same reason: two spellings of one width otherwise
+   reach one minified text through two nodes. *)
+let normalize_column_width : column_width -> column_width =
+ fun value ->
+  match value with
+  | Width len ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Width len'
+  | _ -> value
+
+let normalize_page_size : page_size -> page_size =
+ fun value ->
+  match value with
+  | Single len ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Single len'
+  | Pair (a, b) ->
+      let a' = Values.canonical_dimension a in
+      let b' = Values.canonical_dimension b in
+      if a' == a && b' == b then value else Pair (a', b')
+  | _ -> value
 
 let rec pp_columns_value : columns_value Pp.t =
  fun ctx -> function

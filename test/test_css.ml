@@ -2190,6 +2190,18 @@ let spec_keyword_case_insensitive () =
   agrees "gradient position var()"
     ~upper:".a{background:linear-gradient(VAR(--dir),red,blue)}"
     ~lower:".a{background:linear-gradient(var(--dir),red,blue)}";
+  (* CSS Color 5 sec. 9 spells one [<color-interpolation-method>] for every
+     place it appears, so the colour space and the hue keyword fold in a
+     gradient exactly as [color-mix()]'s own reader already folds them. *)
+  agrees "gradient interpolation colour space"
+    ~upper:".a{background:linear-gradient(to right IN OKLAB,red,blue)}"
+    ~lower:".a{background:linear-gradient(to right in oklab,red,blue)}";
+  agrees "gradient interpolation hue method"
+    ~upper:".a{background:linear-gradient(IN OKLCH SHORTER HUE,red,blue)}"
+    ~lower:".a{background:linear-gradient(in oklch shorter hue,red,blue)}";
+  agrees "color-mix interpolation colour space"
+    ~upper:".a{color:color-mix(IN OKLAB,red,blue)}"
+    ~lower:".a{color:color-mix(in oklab,red,blue)}";
   (* [shape-outside] is a [string property]: a valid value is handed back as
      the raw source text, uppercase var() included, so there is no folded
      form to agree on here. Only the empty-var() rejection below is a shared

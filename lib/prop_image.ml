@@ -21,34 +21,30 @@ let pp_hue_interpolation_method ctx = function
   | Increasing -> Pp.string ctx "increasing hue"
   | Decreasing -> Pp.string ctx "decreasing hue"
 
-let pp_polar_with_hue ctx space (hue : hue_interpolation_method option) =
-  Pp.string ctx "in ";
-  Pp.string ctx space;
-  match hue with
-  | None -> ()
-  | Some hue ->
-      Pp.space ctx ();
-      pp_hue_interpolation_method ctx hue
-
 let rec pp_color_interpolation : color_interpolation Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_color_interpolation ctx v
-  | In_oklab -> Pp.string ctx "in oklab"
-  | In_oklch hue -> pp_polar_with_hue ctx "oklch" hue
-  | In_srgb -> Pp.string ctx "in srgb"
-  | In_hsl hue -> pp_polar_with_hue ctx "hsl" hue
-  | In_lab -> Pp.string ctx "in lab"
-  | In_lch hue -> pp_polar_with_hue ctx "lch" hue
+  | In (space, hue) -> (
+      Pp.string ctx "in ";
+      Values.pp_color_space ctx space;
+      match hue with
+      | None -> ()
+      | Some hue ->
+          Pp.space ctx ();
+          pp_hue_interpolation_method ctx hue)
 
 (* CSS Color 5 section 9.1: after a polar color space (lch / oklch / hsl / hwb),
    the [<color-interpolation-method>] may carry a trailing
    [<hue-interpolation-method>] followed by [hue]. *)
 let read_hue_interpolation_method t =
   let snap = Cursor.save t in
-  match Cursor.ident_opt t with
+  let keyword t =
+    Option.map String.lowercase_ascii_preserve (Cursor.ident_opt t)
+  in
+  match keyword t with
   | Some (("shorter" | "longer" | "increasing" | "decreasing") as kw) -> (
       Cursor.ws t;
-      match Cursor.ident_opt t with
+      match keyword t with
       | Some "hue" ->
           Some
             (match kw with
@@ -70,19 +66,22 @@ let read_color_interpolation (t : Cursor.t) : color_interpolation =
       (* At the component-value level, [in oklab] lexes as two separate idents;
          [inoklab] lexes as a single ident and would fail [expect_string "in"]
          above, so no extra whitespace check is needed here. *)
-      let space = Cursor.ident t in
-      let hue () =
-        Cursor.ws t;
-        read_hue_interpolation_method t
+      (* Sec. 9 gives the method the same spaces [color-mix()] takes, so it
+         reads through the one reader that answers for all fifteen. Sec. 9.1
+         puts a [<hue-interpolation-method>] after a polar space only, so a
+         rectangular one never looks for it and a hue written after it is left
+         unread, which the caller reports. *)
+      let space = Values.read_color_space t in
+      let hue =
+        match space with
+        | Hsl | Hwb | Lch | Oklch ->
+            Cursor.ws t;
+            read_hue_interpolation_method t
+        | Srgb | Srgb_linear | Display_p3 | A98_rgb | Prophoto_rgb | Rec2020
+        | Lab | Oklab | Xyz | Xyz_d50 | Xyz_d65 ->
+            None
       in
-      match space with
-      | "oklab" -> In_oklab
-      | "oklch" -> In_oklch (hue ())
-      | "srgb" -> In_srgb
-      | "hsl" -> In_hsl (hue ())
-      | "lab" -> In_lab
-      | "lch" -> In_lch (hue ())
-      | _ -> Cursor.err_invalid t "color-interpolation")
+      In (space, hue))
 
 let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function

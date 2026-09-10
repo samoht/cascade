@@ -338,6 +338,25 @@ let rec normalize_grid_template (value : grid_template) : grid_template =
           tracks
       in
       if tracks' == tracks then value else Named_tracks tracks'
+  (* A track breadth keeps the spelling the author wrote for the unminified
+     round-trip and the printer drops it under [--minify], so the two reach one
+     minified text through two nodes unless the spelling folds here. Folding it
+     is two steps rather than one: [Length] is where a breadth the eight
+     unit-specific arms above cannot hold goes, so a spelling of one they CAN
+     hold has to come back out of it, or [100.0px] settles at [Length (Px 100.)]
+     beside the [Px 100.] that [100px] reads as. [canonical_dimension] leaves a
+     zero alone, so nothing lands here that the [Zero] arms above want. *)
+  | Length length -> (
+      match Values.canonical_dimension length with
+      | Px f -> Px f
+      | Rem f -> Rem f
+      | Em f -> Em f
+      | Pct f -> Pct f
+      | Vw f -> Vw f
+      | Vh f -> Vh f
+      | Vmin f -> Vmin f
+      | Vmax f -> Vmax f
+      | length' -> if length' == length then value else Length length')
   | _ -> value
 
 let grid_area_row_ws = function
@@ -566,14 +585,17 @@ let read_place_items_safe t =
   | "center" -> Center_safe
   | kw -> Cursor.err_invalid t ("place-items safe " ^ kw)
 
-let read_place_items_stretch t =
+(* css-align-3 (ED) sec. 5.2 spells [place-items] as [<'align-items'>
+   <'justify-items'>?], and [stretch] is one value of each, so the slot after it
+   is an ordinary justify-items value rather than a repeat of the keyword.
+   [Stretch_stretch] keeps the pair the printer folds back to one word. *)
+let read_place_items_stretch t : place_items =
   Cursor.expect_string "stretch" t;
   Cursor.ws t;
-  if
-    Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
-    |> Option.is_some
-  then Stretch_stretch
-  else Stretch
+  match Cursor.option read_justify_items t with
+  | None -> Stretch
+  | Some (Stretch : justify_items) -> Stretch_stretch
+  | Some justify -> Align_justify (Stretch, justify)
 
 let place_items_align : place_items -> align_items option = function
   | Normal -> Some (Normal : align_items)
@@ -759,6 +781,16 @@ let check_grid_line_index t n =
   if n = 0 then Cursor.err_invalid t "grid line index cannot be zero";
   n
 
+(* CSS Values 4 sec. 10.12 rounds a call at an [<integer>] slot to the nearest
+   integer, so the range above answers for the integer it rounds to rather than
+   for the call: [calc(1/2/3/4/5)] is the zero line as surely as [0] is. A call
+   that does not resolve here has no index yet and keeps its wrapper. *)
+let check_grid_line_calc t expr =
+  Option.iter
+    (fun n -> ignore (check_grid_line_index t n))
+    (Values.calc_integer_value expr);
+  expr
+
 let read_grid_line_number t : grid_line =
   let n = check_grid_line_index t (Cursor.int t) in
   Cursor.ws t;
@@ -791,7 +823,7 @@ let read_grid_line_name_value t : grid_line =
           if Cursor.looking_at_calc t || Values.looking_at_math_function t then
             match read_integer_calc "grid-line" t with
             | `Int n -> Num_name (check_grid_line_index t n, name)
-            | `Calc expr -> Calc_name (expr, name)
+            | `Calc expr -> Calc_name (check_grid_line_calc t expr, name)
           else Num_name (check_grid_line_index t (Cursor.int t), name)
         in
         match Cursor.option index t with Some line -> line | None -> Name name)
@@ -800,7 +832,7 @@ let read_grid_line_calc t : grid_line =
   let line =
     match read_integer_calc "grid-line" t with
     | `Int n -> `Int (check_grid_line_index t n)
-    | `Calc expr -> `Calc expr
+    | `Calc expr -> `Calc (check_grid_line_calc t expr)
   in
   Cursor.ws t;
   (* sec. 8.3's [&&] puts the name on either side of the index, so a call in

@@ -144,6 +144,40 @@ let decl_lossless ~prop ~into input =
         |> String.trim)
   | Error _ -> Alcotest.failf "parse failed: %s" (wrap input)
 
+let statements_of name css =
+  match Css.of_string ~strict:false css with
+  | Ok p -> Css.statements p.stylesheet
+  | Error e ->
+      Alcotest.failf "%s: %s does not read: %s" name css (Error.to_string e)
+
+(** [minify_reads_back name ~expected source] checks the minified spelling and
+    then re-reads it. Comparing statements rather than the text a second pass
+    prints: an elided separator can turn one construct into another that then
+    prints back byte for byte for ever. *)
+let minify_reads_back name ~expected source =
+  let printed =
+    match Css.of_string ~strict:false source with
+    | Ok p -> p.stylesheet
+    | Error e ->
+        Alcotest.failf "%s: %s does not read: %s" name source
+          (Error.to_string e)
+  in
+  Alcotest.(check string) name expected (Css.to_string ~minify:true printed);
+  let back = statements_of name expected in
+  if not (List.equal Css.equal_statement (Css.statements printed) back) then
+    Alcotest.failf "%s: %s re-reads as another sheet\n  printed: %s" name
+      expected
+      (Css.to_string (Css.v back))
+
+(** [sheets_agree name a b] checks that two spellings of one sheet are one
+    value. *)
+let sheets_agree name a b =
+  if
+    not
+      (List.equal Css.equal_statement (statements_of name a)
+         (statements_of name b))
+  then Alcotest.failf "%s: %s and %s read as different values" name a b
+
 (** Generic check function for CSS value types. [expected] is a spec oracle, not
     a snapshot of current implementation behavior. *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)

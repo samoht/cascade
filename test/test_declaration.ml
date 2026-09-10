@@ -280,6 +280,13 @@ let custom_properties_basic () =
   check_declaration ~minify:false ~expected:"--x: a  b" "--x:a  b";
   check_declaration ~minify:false ~expected:"--sp: a" "--sp:  a  ";
   check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b";
+  (* Trimming the ends is that same step with nothing left between them: CSS
+     Custom Properties 1 (ED) sec. 2 gives the [--*] family [Value:
+     <declaration-value>?], and sec. 2.2 calls an empty value written into a
+     custom property valid, so a whitespace-only value is the empty value and
+     not a one-token stream. *)
+  check_declaration ~expected:"--e:" "--e: ";
+  check_declaration ~expected:"--e:" "--e:";
   (* Section 9.1 serializes an ident by escaping only what must be, so an escape
      the author wrote otherwise does not come back. A custom property's value is
      not a reserialized stream, so its tokens keep the text they were read
@@ -495,6 +502,16 @@ let special_cases () =
     "background-position: 30% 50%, 70% 50%;";
   check_declaration ~expected:"background-position:var(--x) 20%"
     "background-position: var(--x) 20%;";
+  (* CSS Backgrounds 4 sec. 3.6 spells each axis longhand with the same [#] the
+     pair carries, so it names one position per layer too. Chrome 153 reads each
+     of these and gives them back comma-separated. *)
+  check_declaration ~expected:"background-position-x:center,10px"
+    "background-position-x: center, 10px;";
+  check_declaration ~expected:"background-position-y:center,10px"
+    "background-position-y: center, 10px;";
+  check_declaration
+    ~expected:"background-position-x:left 10px,right 20px,center"
+    "background-position-x: left 10px, right 20px, center;";
   (* CSS Values 4 (ED) sec. 8.3 spells one alternative of <position> as "[ left
      | center | right | <length-percentage> ] [ top | center | bottom |
      <length-percentage> ]", so an offset in the first slot pairs with an edge
@@ -964,6 +981,20 @@ let font_properties () =
   check_declaration ~expected:"font-style:normal" "font-style: normal";
   check_declaration ~expected:"font-style:italic" "font-style: italic";
   check_declaration ~expected:"font-style:oblique" "font-style: oblique";
+  (* CSS Values 4 sec. 6 drops the unit on a zero <length> and on nothing else.
+     A slot taking a bare zero angle says so, as Transforms 1 sec. 11 and Filter
+     Effects 1 sec. 8 do with [<angle> | <zero>]; CSS Fonts 4 sec. 2.4 writes
+     [oblique <angle [-90deg,90deg]>?] and grants no zero, so the unit is
+     required here. Chrome 153 drops the bare zero and keeps the other three. *)
+  neg_cursor read_declaration "font-style: oblique 0";
+  neg_cursor read_declaration "font-style: oblique 0 10deg";
+  check_declaration ~expected:"font-style:oblique 0deg"
+    "font-style: oblique 0deg";
+  check_declaration ~expected:"transform:rotate(0deg)" "transform: rotate(0)";
+  (* Sec. 8 makes [hue-rotate()]'s argument optional and zero by default, so the
+     shortest spelling of a zero rotation is the empty call, which Chrome reads
+     back as the same filter. *)
+  check_declaration ~expected:"filter:hue-rotate()" "filter: hue-rotate(0)";
 
   (* Font family - list type *)
   check_declaration ~expected:"font-family:Arial" "font-family: Arial";
@@ -1510,6 +1541,27 @@ let background_initial_slots () =
   check_declaration ~expected:"background:url(a.png)red"
     ~optimized:"background:url(a.png)red" "background: url(a.png) red"
 
+(* CSS Backgrounds 3 (ED) sec. 2.1 orders a layer's slots, not the author's
+   words, so pp writes the image before the colour whichever way round they were
+   read. [background: red var(--x)] therefore prints [var(--x)red], and that
+   emission is only readable as the layer it came from if a leading [var()] with
+   more behind it fills the image slot rather than standing for the whole
+   value. *)
+let background_leading_var_slot () =
+  check_declaration ~expected:"background:var(--x)red"
+    "background: red var(--x)";
+  check_declaration ~expected:"background:var(--x)red"
+    "background: var(--x) red";
+  check_declaration ~expected:"background:var(--x)no-repeat"
+    "background: no-repeat var(--x)";
+  check_declaration ~expected:"background:var(--x)no-repeat"
+    "background: var(--x) no-repeat";
+  (* Controls: a [var()] that reaches the value boundary is still the whole
+     value, and a run of them is still the run. *)
+  check_declaration ~expected:"background:var(--x)" "background: var(--x)";
+  check_declaration ~expected:"background:var(--a) var(--b)"
+    "background: var(--a) var(--b)"
+
 (* CSS Backgrounds 3 (ED) sec. 2.6 gives background-position the initial value
    [0% 0%], which [0 0] and [left top] both name, so the slot drops with the
    rest. It also reads a lone value as "the second value is assumed to be
@@ -1919,7 +1971,58 @@ let negative_calc_keeps_the_call () =
   (* The record this was found on: the sign is known but the result is not a
      length any of these properties reads as a literal. *)
   check_declaration ~expected:"width:calc(10px*sign(-1vw))"
-    ~optimized:"width:calc(10px*sign(-1vw))" "width: calc(10px * sign(-1vw))"
+    ~optimized:"width:calc(10px*sign(-1vw))" "width: calc(10px * sign(-1vw))";
+  (* Sec. 10.7.3 rounds to the nearest multiple of the step and sends a tie
+     toward positive infinity, which is the rule sec. 10.12 gives an <integer>
+     slot and #1163 gave the grid line index. The other three strategies name
+     their own direction, so only [nearest] has a tie to break. Chrome 153
+     agrees on every row. *)
+  List.iter
+    (fun (value, folded) ->
+      check_declaration
+        ~expected:(String.concat "" [ "margin-left:"; value ])
+        ~optimized:(String.concat "" [ "margin-left:"; folded ])
+        (String.concat "" [ "margin-left: "; value ]))
+    [
+      ("round(-3px,2px)", "-2px");
+      ("round(3px,2px)", "4px");
+      ("round(-5px,2px)", "-4px");
+      ("round(5px,2px)", "6px");
+      (* A zero length drops its unit at the top level, which is the zero strip
+         the optimizer already does everywhere. *)
+      ("round(-1px,2px)", "0");
+      ("round(-3.5px,1px)", "-3px");
+      ("round(3.5px,1px)", "4px");
+      ("round(up,-3px,2px)", "-2px");
+      ("round(down,-3px,2px)", "-4px");
+      ("round(to-zero,-3px,2px)", "-2px");
+    ];
+  (* CSS Values 4 sec. 10.6 makes [sign()] answer -1, 0 or +1, so the answer
+     turns on whether the argument is zero. A relative unit's reference can be:
+     a zero font-size, a zero viewport, a zero container, a percentage of zero.
+     So the sign of the coefficient is not the sign of the value and the call
+     waits for the reference, where an absolute unit has no reference to wait
+     for. Chrome 153 keeps every row of the first list and folds every row of
+     the second, at a property that takes a negative length so the fold is the
+     only thing under test. *)
+  List.iter
+    (fun unit ->
+      let value = String.concat "" [ "calc(10px * sign(-1"; unit; "))" ] in
+      let held =
+        String.concat "" [ "margin-left:calc(10px*sign(-1"; unit; "))" ]
+      in
+      check_declaration ~expected:held ~optimized:held
+        (String.concat "" [ "margin-left: "; value ]))
+    [ "em"; "rem"; "ex"; "ch"; "vw"; "vh"; "vmin"; "dvw"; "cqw"; "%" ];
+  List.iter
+    (fun unit ->
+      let value = String.concat "" [ "calc(10px * sign(-1"; unit; "))" ] in
+      check_declaration
+        ~expected:
+          (String.concat "" [ "margin-left:calc(10px*sign(-1"; unit; "))" ])
+        ~optimized:"margin-left:-10px"
+        (String.concat "" [ "margin-left: "; value ]))
+    [ "px"; "cm"; "pt"; "s"; "deg" ]
 
 (* CSS Backgrounds 3 (ED) sec. 2.10 resets every longhand the shorthand covers,
    so a layer that fills no slot declares what [background: none] declares. [0
@@ -2306,6 +2409,19 @@ let animations_timing () =
   neg_cursor read_declaration "grid-row-start: calc(0)";
   neg_cursor read_declaration "grid-row-start: center calc(0)";
   neg_cursor read_declaration "grid-row-start: center 0";
+  (* sec. 10.12 rounds a call at an <integer> slot to the nearest integer, ties
+     toward positive infinity, so a call that resolves reaches sec. 8.3's range
+     as the integer it rounds to and the ones rounding to zero are no line.
+     Chrome 153 refuses each of these and keeps calc(-.6), which rounds to
+     -1. *)
+  neg_cursor read_declaration "grid-area: calc(1/2/3/4/5)";
+  neg_cursor read_declaration "grid-area: calc(2 * 1/2/3/4/5)";
+  neg_cursor read_declaration "grid-row-start: calc(-1/2)";
+  neg_cursor read_declaration "grid-row-start: calc(.4)";
+  neg_cursor read_declaration "grid-row-start: calc(-.4)";
+  neg_cursor read_declaration "grid-row-start: calc(-.5)";
+  check_declaration ~expected:"grid-row-start:calc(-.6)"
+    ~optimized:"grid-row-start:calc(-.6)" "grid-row-start: calc(-.6)";
 
   (* sec. 10 allows a math function wherever an <integer> is allowed, and sec.
      10.12 rounds the call and clamps it, so a fractional or out-of-range call
@@ -4365,7 +4481,10 @@ let parse_custom_property_guard () =
       ("\"a;b\"", "--x:\"a;b\"");
       ("{a:b;}", "--x:{a:b;}");
       ("red/*", "--x:red");
-      (" ", "--x: ");
+      (* Sec. 5.5.6 discards whitespace at both ends of a declaration value, so
+         a whitespace-only one is the empty value sec. 2.2 of CSS Custom
+         Properties 1 (ED) calls valid. *)
+      (" ", "--x:");
       (* CSS Syntax 3 (ED) sec. 4.3.5 ends a string at EOF as the string it
          read, so this is one declaration value and writes back closed. *)
       ("\"abc", "--x:\"abc\"");
@@ -5499,6 +5618,14 @@ let spec_remaining_prop_vectors () =
       "color-scheme: only only";
       "color-scheme: only light only";
       "color-scheme: only dark only";
+      (* CSS Values 4 sec. 2.2 makes each operand of a [&&] a contiguous run, so
+         sec. 2.2's [[light | dark | <custom-ident>]+ && only?] puts [only] at
+         one end of the list and never inside it. Chrome 153 drops each of these
+         and reads [light dark only] and [only light dark]. *)
+      "color-scheme: light only light";
+      "color-scheme: dark only dark";
+      "color-scheme: both only both";
+      "color-scheme: light only dark";
       (* CSS Color Adjust 1 sec. 2.2 spells the list item [light | dark |
          <custom-ident>], and CSS Values 4 sec. 4.2 keeps [default] out of every
          one of those in all ASCII case permutations. *)
@@ -6374,6 +6501,18 @@ let declaration_value_end_negatives () =
       "animation-range:normal normal normal";
     ]
 
+(* CSS Syntax 3 (ED) sec. 7.2 excludes a [<bad-string-token>], a
+   [<bad-url-token>] and an unmatched [)], []] or [}] from a
+   [<declaration-value>], and a custom property takes [<declaration-value>?] and
+   nothing wider. The exclusion reaches inside a block, so ONE such token among
+   the components of a block is enough to refuse the value: the question asked
+   of a block's components is whether any of them leaves the grammar, not
+   whether all of them do. An empty block leaves nothing, so it is a value. *)
+let custom_property_block_components () =
+  List.iter (neg_cursor read_declaration) [ "--x:(red ])"; "--x:[a}b]" ];
+  check_declaration ~expected:"--x:()" "--x: ()";
+  check_declaration ~expected:"--x:(red)" "--x: (red)"
+
 (* A cursor over a function's arguments is asking a different question: its
    grammar ends at the closing paren, where neither a [;] nor an [!] can stand,
    so it must still be read to true end of input. Widening it would accept an
@@ -6777,6 +6916,167 @@ let sole_declaration css =
 
 let minified css =
   Css.to_string ~minify:true (Css.optimize (Css.of_string_exn css))
+
+(* CSS Variables 1 sec. 3 makes a shorthand carrying a [var()] a
+   pending-substitution value: it is syntax-checked only after substitution, and
+   which slot the substituted tokens fill is not known before then. So a slot
+   holding its initial is not spare there, and dropping it changes what the
+   declaration means. [list-style: disc outside var(--x)] with [--x: circle]
+   substitutes to [disc outside circle], two [<list-style-type>] values, which
+   is invalid at computed-value time and leaves the longhands unset; dropping
+   the initials leaves [list-style: var(--x)], which substitutes to the valid
+   [circle] and sets the type. Every component the author wrote has to survive
+   once a [var()] is in the value. The order may change: sec. 2 of CSS Lists 3
+   spells the shorthand with [||], so the components commute. *)
+let var_shorthand_keeps_every_slot () =
+  let case (css, parts) =
+    let out = minified css in
+    List.iter
+      (fun part ->
+        Alcotest.(check bool)
+          (String.concat "" [ css; " keeps "; part ])
+          true
+          (Astring.String.is_infix ~affix:part out))
+      parts
+  in
+  List.iter case
+    [
+      ("a{list-style:disc outside var(--x)}", [ "disc"; "outside"; "var(--x)" ]);
+      ( "a{list-style:url(marker.png) outside var(--x)}",
+        [ "url(marker.png)"; "outside"; "var(--x)" ] );
+      (* [text-decoration] reaches the same drop through its own normaliser:
+         [solid] is [text-decoration-style]'s initial, and [--x: dotted] makes
+         the substituted value two styles rather than one. *)
+      ("a{text-decoration:solid var(--x)}", [ "solid"; "var(--x)" ]);
+      ( "a{text-decoration:underline solid var(--x)}",
+        [ "underline"; "solid"; "var(--x)" ] );
+    ]
+
+(* A [<length>] reaches [flex-basis] through the property's own mirror of the
+   length variants, and that mirror's normaliser folds only a zero and a
+   [calc()]. So [10.0px] stayed the dimension the reader built while [10px] was
+   the folded [Px 10.], the printer spelled both [10px], and the rules they sat
+   in could not merge until a second pass re-read that text. One [--minify] has
+   to reach the stable answer: CSS Values 4 sec. 6.7.2 gives the two spellings
+   one serialisation, so they are one value and one node. *)
+(* The same defect in the properties whose values hold a length the property's
+   own normaliser never reaches. [10.0px] and [10px] are one value under CSS
+   Values 4 sec. 6.7.2 and print alike once the sheet is optimised, so the rules
+   holding them have to merge in that pass rather than the one after. *)
+(* CSS Values 4 sec. 6.7.2 serialises a dimension's unit in lowercase, and the
+   reader folds a canonically spelled number onto the unit constructor, which
+   prints that way. An authored number the printer respells kept the unit as the
+   author cased it instead, so one input was minified two ways: [10PX] came back
+   [10px] and [10.0PX] came back [10PX], and the two never merged. *)
+let uppercase_units_minify_lowercase () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string) css minified_css (minified css))
+    [
+      ("a{width:10.0PX}", "a{width:10px}");
+      ("a{width:10.0Q}", "a{width:10q}");
+      ("a{width:10.0VMIN}", "a{width:10vmin}");
+      ("a{width:10.0PX}b{width:10PX}", "a,b{width:10px}");
+      ("a{width:10.0PX}b{width:10px}", "a,b{width:10px}");
+      (* The two values holding their own mirror of the length constructors
+         decide the unit's case themselves, so they need the same answer. *)
+      ("a{line-height:10.0PX}", "a{line-height:10px}");
+      ("a{line-height:10.0PX}b{line-height:10PX}", "a,b{line-height:10px}");
+      ("a{flex-basis:10.0PX}b{flex-basis:10PX}", "a,b{flex-basis:10px}");
+    ]
+
+(* The printer is public without the optimizer, so a value holding its own
+   [Dimension] arm has to lowercase the unit there rather than lean on a
+   normaliser having folded the dimension away first. *)
+let printed_units_are_lowercase () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string)
+        css minified_css
+        (Css.to_string ~minify:true (Css.of_string_exn css)))
+    [
+      ("a{width:10.0PX}", "a{width:10px}");
+      ("a{line-height:10.0PX}", "a{line-height:10px}");
+      ("a{border-width:10.0PX}", "a{border-width:10px}");
+    ]
+
+(* CSS Values 4 sec. 6.7.2 gives a string one serialisation, and [--minify]
+   writes that one, so the quote the author picked is a round-trip detail rather
+   than part of the value. It was kept as a node of its own, so [content:'x']
+   and [content:"x"] reached one minified text through two nodes and the rules
+   holding them could not merge until a second pass re-read that text. *)
+let quoted_content_is_one_node () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string) css minified_css (minified css))
+    [
+      ("a{content:'x'}b{content:\"x\"}", "a,b{content:\"x\"}");
+      ("a{content:'x' 'y'}b{content:\"x\" \"y\"}", "a,b{content:\"x\" \"y\"}");
+      (* A quote the serialisation has to escape is still one answer, so the two
+         spellings of it are still one node. *)
+      ("a{content:'a\"b'}b{content:\"a\\\"b\"}", "a,b{content:\"a\\\"b\"}");
+    ]
+
+(* CSS Animations 1 (ED) sec. 4.9: what an [animation] whose every slot holds
+   its initial declares is the eight initials, which is what [animation:none]
+   declares, and the printer writes [none] for both. The two stayed separate
+   nodes, so the same declaration optimised two ways: the reset-only longhands
+   the shorthand covers were dropped after one spelling and kept after the
+   other, which made the result depend on whether the sheet had been through
+   [fmt] on the way. *)
+let all_initial_animation_is_none () =
+  List.iter
+    (fun (css, minified_css) ->
+      Alcotest.(check string) css minified_css (minified css))
+    [
+      ("a{animation:normal}b{animation:none}", "a,b{animation:none}");
+      ("a{animation:none;animation-range:normal}", "a{animation:none}");
+      ("a{animation:none;animation-timeline:auto}", "a{animation:none}");
+      (* A slot that is not the initial keeps the shorthand it was written
+         in. *)
+      ("a{animation:reverse}", "a{animation:reverse}");
+      ( "a{animation:none;animation-range:1px}",
+        "a{animation:none;animation-range:1px}" );
+    ]
+
+let unfolded_lengths_are_one_value () =
+  let case (property, merged) =
+    let css =
+      Pp.to_string
+        (fun ctx () ->
+          Pp.string ctx "a{";
+          Pp.string ctx property;
+          Pp.string ctx ":10.0px}b{";
+          Pp.string ctx property;
+          Pp.string ctx ":10px}")
+        ()
+    in
+    Alcotest.(check string) property merged (minified css)
+  in
+  List.iter case
+    [
+      ("column-width", "a,b{column-width:10px}");
+      ("initial-letter-wrap", "a,b{initial-letter-wrap:10px}");
+      ("size", "a,b{size:10px}");
+      ("background-size", "a,b{background-size:10px}");
+      ("mask-size", "a,b{-webkit-mask-size:10px;mask-size:10px}");
+    ]
+
+let flex_basis_spellings_are_one_value () =
+  let a = sole_declaration ".a{flex-basis:10.0px}" in
+  let b = sole_declaration ".b{flex-basis:10px}" in
+  Alcotest.(check string)
+    "the authored spelling folds" "flex-basis:10px"
+    (Css.Declaration.to_string ~minify:true a);
+  Alcotest.(check int)
+    "hash reads the two as one value" (Css.Declaration.hash a)
+    (Css.Declaration.hash b);
+  Alcotest.(check bool)
+    "the two spellings are equal" true
+    (Css.Declaration.equal_declaration a b);
+  Alcotest.(check string)
+    "one pass merges the rules" "a,b{flex-basis:10px}"
+    (minified "a{flex-basis:10.0px}b{flex-basis:10px}")
 
 let nan_declaration_is_one_value () =
   (* Parsed apart so the two are distinct heap blocks: a physical-equality
@@ -7185,6 +7485,85 @@ let test_calc_sum_shortest_spelling () =
   shortest ~into:"calc(10% - 5vw)" "calc(-5vw + 10%)";
   shortest ~into:"calc(5vw - 10%)" "calc(-10% + 5vw)"
 
+(* CSS Syntax 3 (ED) sec. 4.2 makes [-] an ident code point and sec. 4.3.4 has a
+   dimension's unit consume an ident sequence, so [0deg-1] is the single
+   dimension [0deg-1] and the separator in front of a signed number is mandatory
+   after an angle. Only a number ends where one may follow it unseparated: sec.
+   4.3.12 stops consuming a number at a [-] no [e] or [.] precedes. A [)] ends
+   its block and separates from anything. *)
+let dimension_before_signed_number () =
+  minify_reads_back "rotate axis after a zero angle"
+    ~expected:"a{rotate:0deg -1 0 0}" "a { rotate: -1 0 0 0deg }";
+  minify_reads_back "rotate axis after an angle"
+    ~expected:"a{rotate:45deg 1-1-1}" "a { rotate: 1 -1 -1 45deg }";
+  minify_reads_back "rotate axis with an unsigned first component"
+    ~expected:"a{rotate:45deg 1 2-3}" "a { rotate: 1 2 -3 45deg }";
+  (* A [var()] angle ends on [)], which needs no separator after it. Only the
+     printed text is pinned: the reader takes the angle-first spelling of this
+     value as an opaque stream, so the emission does not carry the axis node
+     back either way. *)
+  check_declaration ~expected:"rotate:var(--a)1-1-1" "rotate:1 -1 -1 var(--a)";
+  minify_reads_back "scale number pair" ~expected:"a{scale:-1-2}"
+    "a { scale: -1 -2 }";
+  minify_reads_back "translate lengths" ~expected:"a{translate:1px -2px}"
+    "a { translate: 1px -2px }";
+  minify_reads_back "box-shadow lengths"
+    ~expected:"a{box-shadow:1px -2px 3px -4px red}"
+    "a { box-shadow: 1px -2px 3px -4px red }";
+  minify_reads_back "translate3d arguments"
+    ~expected:"a{transform:translate3d(1px,-2px,-3px)}"
+    "a { transform: translate3d(1px, -2px, -3px) }";
+  minify_reads_back "rotate3d arguments"
+    ~expected:"a{transform:rotate3d(1,-1,-1,45deg)}"
+    "a { transform: rotate3d(1, -1, -1, 45deg) }";
+  minify_reads_back "margin lengths" ~expected:"a{margin:-1px -2px}"
+    "a { margin: -1px -2px }"
+
+(* CSS Syntax 3 (ED) sec. 4.3.3 ends a percentage token at its [%] and sec.
+   4.3.5 ends a block at its [)], so neither can absorb what follows. CSS Color
+   5 sec. 4.1 gives each channel of a relative colour one component value, and
+   grammars are matched against tokens, so [20%g] carries the two channels [20%]
+   and [g] exactly as [20% g] does. The separator is droppable and the reader
+   owes the printer that reading. *)
+let relative_colour_channel_separator () =
+  minify_reads_back "percentage then keyword"
+    ~expected:"a{color:rgb(from #639 20%g b/alpha)}"
+    "a { color: rgb(from #639 20% g b / alpha) }";
+  minify_reads_back "keyword then percentage"
+    ~expected:"a{color:rgb(from #639 r 20%b/alpha)}"
+    "a { color: rgb(from #639 r 20% b / alpha) }";
+  minify_reads_back "percentage then number"
+    ~expected:"a{color:rgb(from #639 r 20%10)}"
+    "a { color: rgb(from #639 r 20% 10) }";
+  minify_reads_back "leading percentage then numbers"
+    ~expected:"a{color:rgb(from #639 0%10 10)}"
+    "a { color: rgb(from #639 0% 10 10) }";
+  minify_reads_back "math function then number"
+    ~expected:"a{color:rgb(from #639 r calc(g * 2)10)}"
+    "a { color: rgb(from #639 r calc(g * 2) 10) }"
+
+(* The same channel list is the same value in every relative colour function,
+   whichever of the two spellings the author wrote. *)
+let relative_colour_spellings_agree () =
+  sheets_agree "rgb" "a{color:rgb(from #639 20% g b)}"
+    "a{color:rgb(from #639 20%g b)}";
+  sheets_agree "hsl" "a{color:hsl(from #639 20% s l)}"
+    "a{color:hsl(from #639 20%s l)}";
+  sheets_agree "hwb" "a{color:hwb(from #639 20% w b)}"
+    "a{color:hwb(from #639 20%w b)}";
+  sheets_agree "lab" "a{color:lab(from #639 20% a b)}"
+    "a{color:lab(from #639 20%a b)}";
+  sheets_agree "lch" "a{color:lch(from #639 20% c h)}"
+    "a{color:lch(from #639 20%c h)}";
+  sheets_agree "oklab" "a{color:oklab(from #639 20% a b)}"
+    "a{color:oklab(from #639 20%a b)}";
+  sheets_agree "oklch" "a{color:oklch(from #639 20% c h)}"
+    "a{color:oklch(from #639 20%c h)}";
+  sheets_agree "color" "a{color:color(from #639 srgb 20% g b)}"
+    "a{color:color(from #639 srgb 20%g b)}";
+  sheets_agree "alpha slash" "a{color:rgb(from #639 r g b / alpha)}"
+    "a{color:rgb(from #639 r g b/alpha)}"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -7198,6 +7577,18 @@ let declaration_tests =
     test_case "conic gradient var has one node" `Quick
       conic_gradient_var_has_one_node;
     test_case "NaN is one declared value" `Quick nan_declaration_is_one_value;
+    test_case "flex-basis spellings are one value" `Quick
+      flex_basis_spellings_are_one_value;
+    test_case "unfolded lengths are one value" `Quick
+      unfolded_lengths_are_one_value;
+    test_case "uppercase units minify lowercase" `Quick
+      uppercase_units_minify_lowercase;
+    test_case "printed units are lowercase" `Quick printed_units_are_lowercase;
+    test_case "a var shorthand keeps every slot" `Quick
+      var_shorthand_keeps_every_slot;
+    test_case "quoted content is one node" `Quick quoted_content_is_one_node;
+    test_case "all-initial animation is none" `Quick
+      all_initial_animation_is_none;
     test_case "NaN has one node" `Quick nan_has_one_node;
     test_case "hex spellings have one node" `Quick hex_spellings_have_one_node;
     test_case "number spellings have one node" `Quick
@@ -7268,6 +7659,7 @@ let declaration_tests =
     test_case "border line-width" `Quick border_line_width;
     test_case "border line-style" `Quick border_line_style;
     test_case "background initial slots" `Quick background_initial_slots;
+    test_case "background leading var slot" `Quick background_leading_var_slot;
     test_case "background position slot" `Quick background_position_slot;
     test_case "background box slots" `Quick background_box_slots;
     test_case "mask-border mode slot" `Quick mask_border_mode_slot;
@@ -7350,6 +7742,8 @@ let declaration_tests =
     test_case "declaration value end (sheet)" `Quick declaration_value_end_sheet;
     test_case "declaration value end negatives" `Quick
       declaration_value_end_negatives;
+    test_case "custom property block components" `Quick
+      custom_property_block_components;
     test_case "function argument end negatives" `Quick
       function_argument_end_negatives;
     test_case "shape-outside grammar" `Quick shape_outside_grammar;
@@ -7382,6 +7776,12 @@ let declaration_tests =
     test_case "property name case" `Quick property_case;
     test_case "special cases" `Quick special_cases;
     test_case "edge cases" `Quick edge_cases;
+    test_case "dimension before a signed number" `Quick
+      dimension_before_signed_number;
+    test_case "relative colour channel separator" `Quick
+      relative_colour_channel_separator;
+    test_case "relative colour spellings agree" `Quick
+      relative_colour_spellings_agree;
   ]
 
 let suite = ("declaration", declaration_tests)

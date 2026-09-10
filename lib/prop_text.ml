@@ -801,10 +801,29 @@ let normalize_hyphenate_limit_chars ~ctx :
       if a' == a && b' == b && c' == c then value else Three (a', b', c')
   | other -> other
 
+(* CSS Variables 1 sec. 3 syntax-checks a shorthand carrying a [var()] only
+   after substitution, so which slot the substituted tokens fill is unknown
+   until computed-value time and a slot holding its initial is not spare.
+   [text-decoration: solid var(--x)] with [--x: dotted] substitutes to two
+   [<text-decoration-style>] values and is invalid at computed-value time,
+   leaving the longhands unset, where dropping the [solid] leaves
+   [text-decoration: var(--x)], which substitutes to a valid [dotted] and sets
+   the style. *)
+let text_decoration_slot_is_var (s : text_decoration_shorthand) =
+  List.exists
+    (function (Var _ : text_decoration_line) -> true | _ -> false)
+    s.lines
+  || (match s.style with
+    | Some (Var _ : text_decoration_style) -> true
+    | _ -> false)
+  || (match s.color with Some (Values.Var _) -> true | _ -> false)
+  || match s.thickness with Some (Values.Var _) -> true | _ -> false
+
 let normalize_text_decoration ?(lossless = false) :
     text_decoration -> text_decoration =
  fun value ->
   match value with
+  | Shorthand s when text_decoration_slot_is_var s -> value
   | Shorthand s -> (
       let style =
         drop_default
@@ -884,6 +903,12 @@ let normalize_tab_size ~ctx : tab_size -> tab_size =
   | Number n ->
       let n' = Values.normalize_number ~ctx ~non_negative:true n in
       if n' == n then value else Number n'
+  (* The unit carries the meaning here: CSS Text 4 sec. 6.2 reads a bare number
+     as a count of spaces and a length as a distance, so the spelling folds but
+     no zero strip may reach this. *)
+  | Length len ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Length len'
   | other -> other
 
 let rec pp_tab_size : tab_size Pp.t =
@@ -1324,6 +1349,17 @@ let rec pp_initial_letter_align : initial_letter_align Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_initial_letter_align ctx v
+
+(* The wrap length is the one part of this value the printer respells under
+   [--minify], so leaving the authored spelling here costs the merge that two
+   rules writing one width should get on the first pass. *)
+let normalize_initial_letter_wrap : initial_letter_wrap -> initial_letter_wrap =
+ fun value ->
+  match value with
+  | Length (Length len) ->
+      let len' = Values.canonical_dimension len in
+      if len' == len then value else Length (Length len')
+  | _ -> value
 
 let rec pp_initial_letter_wrap : initial_letter_wrap Pp.t =
  fun ctx -> function
@@ -2105,7 +2141,7 @@ let rec read_hyphens t : hyphens =
     ~var:(fun t -> Var (Values.read_var read_hyphens t))
     t
 
-let rec read_text_size_adjust t : text_size_adjust =
+let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
   Cursor.ws t;
   match Cursor.percentage_opt t with
   | Some n ->
@@ -2113,27 +2149,50 @@ let rec read_text_size_adjust t : text_size_adjust =
         Cursor.err t "text-size-adjust percentages cannot be negative"
       else Pct n
   | _ ->
-      (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
-         stands, [calc()] being one of them rather than the gate to the rest,
-         and sec. 10.12 checks the [0,inf] range on the value it resolves to. *)
+      (* Sec. 10.1 puts a math function wherever the [<percentage>] stands,
+         [calc()] being one of them rather than the gate to the rest, and sec.
+         10.12 checks the [0,inf] range on the value it resolves to. CSS Size
+         Adjustment 1 sec. 3 spells the adjustment a [<percentage>] with no
+         [<number>] beside it, so a call answering a [<length>] or a bare
+         coefficient is none of its types. Sec. 10.8 gives an operand no
+         keyword, so [calc(inherit)] and [calc(2 * auto)] fail the way the
+         browser drops them rather than surviving as a [Calc] the printer
+         unwraps into a live value. *)
       let read_math t : text_size_adjust =
-        Calc (Values.read_calc ~result_type:`Value read_text_size_adjust t)
+        Calc
+          (Values.read_calc ~result_type:`Percentage
+             (read_text_size_adjust_with ~keywords:false)
+             t)
+      in
+      (* Sec. 10.12 puts the [0,inf] range on the value a math function resolves
+         to, so a folded comparison answers to it the way a literal does. *)
+      let checked t n : text_size_adjust =
+        if n < 0.0 then
+          Cursor.err t "text-size-adjust percentages cannot be negative"
+        else Pct n
       in
       Cursor.enum_or_calls "text-size-adjust"
-        [
-          ("none", (None : text_size_adjust));
-          ("auto", Auto);
-          ("inherit", Inherit);
-          ("initial", Initial);
-          ("unset", Unset);
-          ("revert", Revert);
-          ("revert-layer", Revert_layer);
-        ]
+        (if keywords then
+           [
+             ("none", (None : text_size_adjust));
+             ("auto", Auto);
+             ("inherit", Inherit);
+             ("initial", Initial);
+             ("unset", Unset);
+             ("revert", Revert);
+             ("revert-layer", Revert_layer);
+           ]
+         else [])
         ~calls:
-          (("var", fun t -> Var (Values.read_var read_text_size_adjust t))
+          (( "var",
+             fun t ->
+               Var (Values.read_var (read_text_size_adjust_with ~keywords) t) )
           :: ("calc", read_math)
-          :: Values.math_function_calls read_math)
+          :: Values.percentage_math_function_calls ~pct:checked read_math)
         t
+
+let read_text_size_adjust t : text_size_adjust =
+  read_text_size_adjust_with ~keywords:true t
 
 let rec read_tab_size (t : Cursor.t) : tab_size =
   let checked t (n : number) : tab_size =

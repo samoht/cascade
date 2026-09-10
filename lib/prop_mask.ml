@@ -766,7 +766,11 @@ module Mask_shorthand = struct
     }
 
   let read_image_item t =
-    let image = read_background_image t in
+    (* A single image per layer: commas in the [mask] shorthand separate layers,
+       not images (that comma-list is the [mask-image] longhand), so reading the
+       longhand here eats the comma and then fails on a layer that does not open
+       with an image of its own. *)
+    let image = read_bg_image t in
     fun (mask : mask_layer) ->
       if mask.image = None then { mask with image = Some image } else mask
 

@@ -2038,6 +2038,19 @@ let spec_math_at_the_remaining_readers () =
   decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
   decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
   decl_optimizes ~prop:"-webkit-text-size-adjust" ~into:"50%" "calc(50%)";
+  (* Sec. 10.7 gives [min()], [max()] and [clamp()] [<calc-sum>] arguments and
+     the arguments' own type, exactly as sec. 10.9 does for the stepped
+     functions, so a percentage slot takes them where it takes [calc()]. Chrome
+     153 reads each of these and computes the comparison. *)
+  decl_optimizes ~prop:"font-stretch" ~into:"50%" "min(50%,75%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"75%" "max(50%,75%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"60%" "clamp(50%,60%,75%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "clamp(10%,50%,90%)";
+  decl_optimizes ~prop:"-webkit-text-size-adjust" ~into:"10%" "min(10%,50%)";
+  (* The same call over lengths, which the typed length readers already took, so
+     the two paths agree rather than one admitting what the other refuses. *)
+  decl_optimizes ~prop:"width" ~into:"1px" "min(1px,2px)";
+  decl_optimizes ~prop:"width" ~into:"2px" "max(1px,2px)";
   (* CSS UI 5 sec. 7.2 [interest-delay] is [<time [0s,inf]>], so the negative
      one Chrome computes as [0s] keeps its wrapper where the literal is
      dropped. *)
@@ -2058,6 +2071,58 @@ let spec_math_at_the_remaining_readers () =
      durations Chrome refuses whatever the spelling stay refused. *)
   neg_cursor read_duration "calc(-1s)"
 
+(* Sec. 10.9 types a calculation and sec. 10.1 admits it only where that type
+   stands, so a call answering its arguments' type reaches a [<number>] or
+   [<percentage>] slot only when those arguments were numbers or percentages:
+   sec. 10.5 [hypot()], sec. 10.6 [abs()] and the sec. 10.2 stepped functions
+   over lengths name a [<length>] and belong to none of the slots below. Sec.
+   10.8 spells a [<calc-value>] as a number, a dimension, a percentage, a
+   [<calc-keyword>] or a parenthesised sum, so no keyword of the property's own
+   grammar is an operand either. Chrome 153 drops every row here. *)
+let spec_math_type_at_the_number_percentage_readers () =
+  let module P = Css.Properties in
+  (* CSS Transforms 2 sec. 5 [scale] is [none | [ <number> | <percentage>
+     ]{1,3}] and names no length. *)
+  neg_cursor P.read_scale "abs(-1px)";
+  neg_cursor P.read_scale "hypot(3px,4px)";
+  neg_cursor P.read_scale "mod(5px,2px)";
+  neg_cursor P.read_scale "round(1.5px,1px)";
+  neg_cursor P.read_scale "calc(abs(-1px))";
+  (* CSS Fonts 4 sec. 2.3.1 [font-stretch] is the [font-width] alias, [normal |
+     <percentage [0,inf]> | <keyword>], and names no length. *)
+  neg_cursor P.read_font_stretch "abs(-1px)";
+  neg_cursor P.read_font_stretch "hypot(3px,4px)";
+  neg_cursor P.read_font_stretch "mod(5px,2px)";
+  neg_cursor P.read_font_stretch "round(1.5px,1px)";
+  neg_cursor P.read_font_stretch "calc(abs(-1px))";
+  (* CSS Size Adjustment 1 sec. 3 [text-size-adjust] is [none | auto |
+     <percentage [0,inf]>], and names no length. The [-webkit-] twin reads
+     through the same reader. *)
+  neg_cursor P.read_text_size_adjust "abs(-1px)";
+  neg_cursor P.read_text_size_adjust "hypot(3px,4px)";
+  neg_cursor P.read_text_size_adjust "mod(5px,2px)";
+  neg_cursor P.read_text_size_adjust "round(1.5px,1px)";
+  neg_cursor P.read_text_size_adjust "calc(abs(-1px))";
+  (* A keyword operand is no [<calc-value>]. Unwrapping one wrote back a live
+     [inherit] where the browser had dropped the declaration outright. *)
+  neg_cursor P.read_font_stretch "calc(inherit)";
+  neg_cursor P.read_font_stretch "calc(normal)";
+  neg_cursor P.read_font_stretch "calc(condensed)";
+  neg_cursor P.read_text_size_adjust "calc(inherit)";
+  neg_cursor P.read_text_size_adjust "calc(none)";
+  neg_cursor P.read_text_size_adjust "calc(2 * auto)";
+  neg_cursor P.read_text_size_adjust "calc(auto * 2)";
+  (* The types each slot does take. A percentage-typed call stands at all three,
+     and the [<number>] one only where the grammar spells a [<number>]. *)
+  decl_optimizes ~prop:"scale" ~into:"2" "calc(2)";
+  decl_optimizes ~prop:"scale" ~into:"1%" "abs(-1%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"calc(abs(-1%))" "abs(-1%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"calc(abs(-1%))" "abs(-1%)";
+  neg_cursor P.read_font_stretch "calc(2)";
+  neg_cursor P.read_text_size_adjust "calc(2)"
+
 (* Sec. 9.1 is explicit that "width: -5px is not equivalent to width:
    calc(-5px)", because "out-of-range values specified literally are invalid at
    parse-time", and sec. 10.13 drops the wrapper only "of a computed value or
@@ -2070,17 +2135,22 @@ let spec_math_range_keeps_the_call () =
   (* CSS Sizing 4 sec. 5 gives [<ratio>] the [0,inf] numbers of sec. 6.5. *)
   decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-1)" "calc(-1)";
-  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"aspect-ratio" ~into:"calc(-2)" "round(-3,2)";
   decl_optimizes ~prop:"aspect-ratio" ~into:"1" "calc(1)";
   decl_optimizes ~prop:"aspect-ratio" ~into:"1" "1";
   (* CSS Backgrounds 3 sec. 4.1 gives each radius a [0,inf]
      [<length-percentage>]; the shorthand carries the range its longhands
      carry. *)
   decl_optimizes ~prop:"border-radius" ~into:"calc(-1px)" "calc(-1px)";
-  (* The [<length>] guard keeps the call as authored rather than the folded one
-     ([width: calc(-5px - 5px)] is the same shape), so the arithmetic under a
-     kept wrapper stays where the author put it. *)
-  decl_optimizes ~prop:"border-radius" ~into:"calc(-1px*2)" "calc(-1px * 2)";
+  (* Sec. 10.12 clamps a call past the range at computed-value time and keeps
+     the declaration, so the arithmetic folds and the wrapper stays around the
+     result: the length family answers here the way the number and time families
+     already do at [tab-size] and [interest-delay]. Chrome 153 gives
+     [calc(-2px)] for both rows below and [calc(-10px)] for [width: calc(-5px -
+     5px)], and drops the bare literal [-10px]. *)
+  decl_optimizes ~prop:"border-radius" ~into:"calc(-2px)" "calc(-1px * 2)";
+  decl_optimizes ~prop:"padding" ~into:"calc(-2px)" "calc(-1px * 2)";
+  decl_optimizes ~prop:"width" ~into:"calc(-10px)" "calc(-5px - 5px)";
   decl_optimizes ~prop:"border-radius" ~into:"1px" "calc(1px)";
   (* CSS Flexbox 1 sec. 7.2 gives both factors a [0,inf] [<number>], through the
      shorthand and the two longhands alike. *)
@@ -2089,7 +2159,7 @@ let spec_math_range_keeps_the_call () =
   decl_optimizes ~prop:"flex" ~into:"1" "calc(1)";
   decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"flex-grow" ~into:"calc(-1)" "calc(-1)";
-  decl_optimizes ~prop:"flex-grow" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"flex-grow" ~into:"calc(-2)" "round(-3,2)";
   decl_optimizes ~prop:"flex-grow" ~into:"2" "calc(2)";
   decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"flex-shrink" ~into:"calc(-1)" "calc(-1)";
@@ -2101,7 +2171,7 @@ let spec_math_range_keeps_the_call () =
   (* CSS Text 4 sec. 4.2 [tab-size], [0,inf]. *)
   decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"tab-size" ~into:"calc(-1)" "calc(-1)";
-  decl_optimizes ~prop:"tab-size" ~into:"calc(-4)" "round(-3,2)";
+  decl_optimizes ~prop:"tab-size" ~into:"calc(-2)" "round(-3,2)";
   decl_optimizes ~prop:"tab-size" ~into:"4" "calc(4)";
   (* CSS Animations 1 sec. 3.4 [animation-iteration-count], [0,inf], and the
      shorthand slot that reads through it. *)
@@ -2120,10 +2190,11 @@ let spec_math_range_keeps_the_call () =
   decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1px)" "calc(-1px)";
   decl_optimizes ~prop:"stroke-dasharray" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"stroke-dasharray" ~into:"1px" "calc(1px)";
-  (* SVG 2 sec. 13.5.3 calls a negative [stroke-width] invalid, and the number
-     branch already kept its call: the length branch carries the same range. *)
+  (* SVG 2 sec. 13.5.3 calls a negative [stroke-width] invalid, so the call
+     stays around the folded result the way it does at every other length slot.
+     Chrome 153 gives [calc(-1px)] for both rows. *)
   decl_optimizes ~prop:"stroke-width" ~into:"calc(-1px)" "calc(-1px)";
-  decl_optimizes ~prop:"stroke-width" ~into:"calc(2px - 3px)" "calc(2px - 3px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"calc(-1px)" "calc(2px - 3px)";
   (* CSS Text 4 sec. 6.2 gives the three [hyphenate-limit-chars] counts a
      [1,inf] [<integer>]. *)
   decl_optimizes ~prop:"hyphenate-limit-chars" ~into:"calc(-1)" "sign(-1px)";
@@ -2376,6 +2447,8 @@ let value_tests =
       spec_stepped_value_dimensions;
     test_case "spec math at the remaining readers" `Quick
       spec_math_at_the_remaining_readers;
+    test_case "spec math type at the number percentage readers" `Quick
+      spec_math_type_at_the_number_percentage_readers;
     test_case "spec math range keeps the call" `Quick
       spec_math_range_keeps_the_call;
     test_case "spec minified output reads back" `Quick

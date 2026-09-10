@@ -47,6 +47,14 @@ type line_height =
   | Unset
   | Revert
   | Revert_layer
+  (* CSS Values 4 sec. 10.2 comparison functions over the [<length-percentage>]
+     half of the grammar. A comparison answers with one of its arguments, and a
+     length beside a percentage resolves only at used-value time, so the call
+     stands here rather than folding; the arguments reuse [line_height], which
+     already carries [Pct], the way [length] carries its own. *)
+  | Min of line_height list
+  | Max of line_height list
+  | Clamp of line_height * line_height * line_height
   | Calc of line_height calc
   | Var of line_height var
 
@@ -2683,13 +2691,13 @@ type background_size =
     polar color space (lch / oklch / hsl / hwb). *)
 type hue_interpolation_method = Shorter | Longer | Increasing | Decreasing
 
+(** CSS Color 5 sec. 9 spells one [<color-interpolation-method>] wherever one
+    appears, over the same fifteen spaces [color-mix()] takes, so the space is
+    carried rather than named in a constructor of its own. Sec. 9.1 puts the
+    [<hue-interpolation-method>] after a polar space only, which is why the
+    reader answers [None] for every other space. *)
 type color_interpolation =
-  | In_oklab
-  | In_oklch of hue_interpolation_method option
-  | In_srgb
-  | In_hsl of hue_interpolation_method option
-  | In_lab
-  | In_lch of hue_interpolation_method option
+  | In of color_space * hue_interpolation_method option
   | Var of color_interpolation var
 
 type gradient_direction =
@@ -2762,6 +2770,11 @@ type background_position_axis =
   | Edge of position_axis_edge
   | Offset of length_percentage
   | Edge_offset of position_axis_edge * length_percentage
+  | Layers of background_position_axis list
+      (** CSS Backgrounds 4 sec. 3.6 spells the axis longhand with the same [#]
+          the pair carries, so it names one position per background layer. A
+          single position is the bare constructor, the way [mask] holds one
+          layer beside its list. *)
   | Inherit
   | Initial
   | Unset
@@ -3817,8 +3830,8 @@ type image_resolution =
   | Revert_layer
   | Var of image_resolution var
 
-(** CSS Sizing 4 sec. 6 spells one slot [auto? [ none | <length [0,inf]> ]], so
-    the keyword takes the [auto] prefix as a length does. *)
+(** CSS Sizing 4 sec. 5.2 spells one slot [auto? [ none | <length [0,inf]> ]],
+    so the keyword takes the [auto] prefix as a length does. *)
 type contain_intrinsic_size_item =
   | None
   | Length of length

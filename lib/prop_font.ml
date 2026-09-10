@@ -100,14 +100,18 @@ let rec read_font_style t : font_style =
       Cursor.ws t;
       if Cursor.is_done t then Oblique
       else
-        let first = read_angle t in
+        (* CSS Values 4 sec. 6 drops the unit on a zero [<length>] and on
+           nothing else, so an angle slot that takes a bare zero spells it
+           [<angle> | <zero>] the way Transforms 1 sec. 11 does. CSS Fonts 4
+           sec. 2.4 writes [oblique <angle [-90deg,90deg]>?] and grants none. *)
+        let first = read_angle_unit_required t in
         Cursor.ws t;
         if Cursor.is_done t then Oblique_angle first
         else
           (* CSS Fonts 4 sec. 4.4 swaps the endpoints of a descending [oblique
              <angle> <angle>] range rather than rejecting it, so the reader
              keeps the order it was written in. *)
-          let second = read_angle t in
+          let second = read_angle_unit_required t in
           Oblique_range (first, second))
     t
 
@@ -1382,13 +1386,25 @@ let rec pp_line_height : line_height Pp.t =
           Pp.string ctx unit
       | true, None -> Pp.float ctx value
       | true, Some "%" -> Pp.pct ctx value
-      | true, Some unit -> Pp.unit ctx value unit)
+      (* Values 4 sec. 6.7.2 serialises a unit lowercase, as the constructors
+         above print it, so the author's case ends at the unminified branch. A
+         unit none of them names has no other spelling to agree with. *)
+      | true, Some unit ->
+          Pp.unit ctx value
+            (if Values.is_length_unit unit then String.lowercase_ascii unit
+             else unit))
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_line_height ctx v
+  | Min args -> Pp.call "min" (Pp.list ~sep:Pp.comma pp_line_height) ctx args
+  | Max args -> Pp.call "max" (Pp.list ~sep:Pp.comma pp_line_height) ctx args
+  | Clamp (low, value, high) ->
+      Pp.call "clamp"
+        (Pp.list ~sep:Pp.comma pp_line_height)
+        ctx [ low; value; high ]
   | Calc c ->
       pp_calc
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
@@ -1515,6 +1531,61 @@ let read_bare_math read t : line_height =
   | Calc (Num n) when n >= 0. -> Num n
   | value -> value
 
+(* CSS Values 4 sec. 10.2 gives min(), max() and clamp() their arguments' own
+   type, so they read at either half of sec. 5.1's [<number> |
+   <length-percentage>]. Over numbers the calc path folds the call to the
+   coefficient it answers; over a length there is no coefficient to fold to,
+   since a percentage resolves only at used-value time, so the call stands the
+   way it does at a [<length>] slot.
+
+   Sec. 10.2 also requires the arguments to have a consistent type. The number
+   path answers for a comparison of numbers, so an argument here carries a unit
+   and a bare number beside one is a mix of the two types. *)
+let read_line_height_comparison_arg t : line_height =
+  match read_line_height_length ~allow_negative:true t with
+  | Num _ | Number { unit = Option.None; _ } ->
+      Cursor.err_expected t "length or percentage"
+  | value -> value
+
+let read_line_height_list_call name mk t : line_height =
+  Cursor.call name t (fun inner ->
+      let args =
+        Cursor.list ~sep:Cursor.comma ~at_least:1
+          read_line_height_comparison_arg inner
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      mk args)
+
+let read_line_height_clamp t : line_height =
+  Cursor.call "clamp" t (fun inner ->
+      let low = read_line_height_comparison_arg inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let value = read_line_height_comparison_arg inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let high = read_line_height_comparison_arg inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      (Clamp (low, value, high) : line_height))
+
+(* The number path first, so a comparison whose arguments are all numbers keeps
+   folding to the coefficient it always did. *)
+let line_height_math_calls number =
+  ( "min",
+    fun t ->
+      Cursor.one_of
+        [ number; read_line_height_list_call "min" (fun a -> Min a) ]
+        t )
+  :: ( "max",
+       fun t ->
+         Cursor.one_of
+           [ number; read_line_height_list_call "max" (fun a -> Max a) ]
+           t )
+  :: ("clamp", fun t -> Cursor.one_of [ number; read_line_height_clamp ] t)
+  :: Values.math_function_calls_beside_comparisons number
+
 let rec read_line_height_in_math t : line_height =
   let read_var t : line_height = Var (read_var read_line_height_in_math t) in
   let read_calc t : line_height =
@@ -1525,7 +1596,7 @@ let rec read_line_height_in_math t : line_height =
   Cursor.enum_or_calls "line-height" []
     ~calls:
       (("var", read_var) :: ("calc", read_calc)
-      :: Values.math_function_calls (read_bare_math read_calc))
+      :: line_height_math_calls (read_bare_math read_calc))
     ~default:(read_line_height_length ~allow_negative:true)
     t
 
@@ -1547,7 +1618,7 @@ let rec read_line_height t : line_height =
     ]
     ~calls:
       (("var", read_var) :: ("calc", read_calc)
-      :: Values.math_function_calls (read_bare_math read_calc))
+      :: line_height_math_calls (read_bare_math read_calc))
     ~default:read_line_height_length t
 
 let rec read_font_palette (t : Cursor.t) : font_palette =
@@ -1688,7 +1759,21 @@ let rec read_font_family_name t : font_family =
         match Cursor.peek_ident t with
         | Some _ ->
             let word = Cursor.ident ~keep_case:true t in
-            if is_font_family_reserved_word word then
+            (* A generic family name is the alternative the grammar reads
+               instead of a name, so it is turned away where that alternative
+               starts, at the first word, and is an ordinary [<custom-ident>]
+               after it: [Cambria Math] and [Foo serif] are installed fonts,
+               [serif Foo] is not. A CSS-wide keyword or [default] is excluded
+               from [<custom-ident>] itself (CSS Values 4 sec. 4.2), so it is
+               turned away at every word. This is the rule
+               [read_unquoted_family_name] applies to the property, over the
+               same production. *)
+            let reserved =
+              match acc with
+              | [] -> is_font_family_reserved_word word
+              | _ :: _ -> is_font_family_css_wide word
+            in
+            if reserved then
               Cursor.err_invalid t
                 "reserved word in an unquoted font-family name";
             Cursor.ws t;
@@ -2016,42 +2101,56 @@ let rec read_font t : font =
         in
         Shorthand body
 
-let rec read_font_stretch t : font_stretch =
-  let read_percentage t : font_stretch =
-    let n = Cursor.pct t in
-    (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. *)
+let rec read_font_stretch_with ~keywords t : font_stretch =
+  (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. Sec. 10.12
+     puts the range on the value a math function resolves to, so a folded
+     comparison answers to it the way a literal does. *)
+  let checked t n : font_stretch =
     if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
     Pct n
   in
-  (* CSS Values 4 sec. 10.1 puts a math function wherever the [<percentage>]
-     stands, [calc()] being one of them rather than the gate to the rest, and
-     sec. 10.12 checks the [0,inf] range on the value it resolves to: the call
-     keeps out of [read_percentage], which is the literal's range check. *)
+  let read_percentage t : font_stretch = checked t (Cursor.pct t) in
+  (* Sec. 10.1 puts a math function wherever the [<percentage>] stands, [calc()]
+     being one of them rather than the gate to the rest, and sec. 10.12 checks
+     the [0,inf] range on the value it resolves to: the call keeps out of
+     [read_percentage], which is the literal's range check. Sec. 2.3.1 spells
+     the width a [<percentage>] with no [<number>] beside it, so a call
+     answering a [<length>] or a bare coefficient is none of its types. Sec.
+     10.8 gives an operand no keyword, so [calc(inherit)] and [calc(condensed)]
+     fail the way the browser drops them rather than surviving as a [Calc] the
+     printer unwraps into a live value. *)
   let read_math t : font_stretch =
-    Calc (read_calc ~result_type:`Value read_font_stretch t)
+    Calc
+      (read_calc ~result_type:`Percentage
+         (read_font_stretch_with ~keywords:false)
+         t)
   in
   Cursor.enum_or_calls "font-stretch"
-    [
-      ("ultra-condensed", Ultra_condensed);
-      ("extra-condensed", Extra_condensed);
-      ("condensed", Condensed);
-      ("semi-condensed", Semi_condensed);
-      ("normal", Normal);
-      ("semi-expanded", Semi_expanded);
-      ("expanded", Expanded);
-      ("extra-expanded", Extra_expanded);
-      ("ultra-expanded", Ultra_expanded);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
+    (if keywords then
+       [
+         ("ultra-condensed", (Ultra_condensed : font_stretch));
+         ("extra-condensed", Extra_condensed);
+         ("condensed", Condensed);
+         ("semi-condensed", Semi_condensed);
+         ("normal", Normal);
+         ("semi-expanded", Semi_expanded);
+         ("expanded", Expanded);
+         ("extra-expanded", Extra_expanded);
+         ("ultra-expanded", Ultra_expanded);
+         ("inherit", Inherit);
+         ("initial", Initial);
+         ("unset", Unset);
+         ("revert", Revert);
+         ("revert-layer", Revert_layer);
+       ]
+     else [])
     ~calls:
-      (("var", fun t -> Var (read_var read_font_stretch t))
+      (("var", fun t -> Var (read_var (read_font_stretch_with ~keywords) t))
       :: ("calc", read_math)
-      :: Values.math_function_calls read_math)
+      :: Values.percentage_math_function_calls ~pct:checked read_math)
     ~default:read_percentage t
+
+let read_font_stretch t : font_stretch = read_font_stretch_with ~keywords:true t
 
 let rec read_font_display t : font_display =
   Cursor.enum_or_var "font-display"
@@ -2467,6 +2566,18 @@ let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
           | Values.Num f when f >= 0. -> Num f
           | Values.Val v when not (negative_line_height v) -> v
           | folded -> Calc folded))
+  (* The reader keeps [+120%] and [12.0px] in [Number] so an unminified print
+     gives the bytes back, and [pp_line_height] writes the constructor's own
+     spelling under [--minify]. Fold onto the constructor where there is one, or
+     the two spellings reach one minified text through two nodes. *)
+  | Number { value; unit; _ } -> (
+      match Option.map String.lowercase_ascii unit with
+      | Option.None -> Num value
+      | Option.Some "%" -> Pct value
+      | Option.Some "px" -> Px value
+      | Option.Some "rem" -> Rem value
+      | Option.Some "em" -> Em value
+      | Option.Some _ -> lh)
   | _ -> lh
 
 (* CSS Fonts 4 (ED) sec. 2.2 defines [normal] as "Same as 400" and [bold] as

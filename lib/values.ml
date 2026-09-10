@@ -682,7 +682,11 @@ let round_to_step strategy value step =
       | "up" -> Float.ceil q
       | "down" -> Float.floor q
       | "to-zero" -> Float.trunc q
-      | _ -> Float.round q
+      (* Sec. 10.7.3 sends a tie to the nearest multiple toward positive
+         infinity, the rule sec. 10.12 gives an [<integer>] slot too.
+         [Float.round] sends it away from zero, which answers the other way for
+         a negative value. *)
+      | _ -> Float.floor (q +. 0.5)
     in
     q *. step
 
@@ -884,6 +888,37 @@ let combine_math_result op l r =
 (* CSS Values 4 sec. 10.11 types an operand tree: [+] and [-] need matching
    units, [*] takes at most one dimensioned operand and [/] a unitless divisor.
    Anything else is not an operand Cascade can reduce to a single value. *)
+(* CSS Values 4 sec. 5.2 absolute lengths, and the canonical units of the other
+   dimensions: each denotes the same quantity wherever it is written. Every
+   other unit -- sec. 5.1's relative lengths, the container ones, a percentage
+   -- resolves against something an element is given, and that reference can be
+   zero. *)
+let absolute_units =
+  [
+    "px";
+    "cm";
+    "mm";
+    "q";
+    "in";
+    "pt";
+    "pc";
+    "s";
+    "ms";
+    "deg";
+    "rad";
+    "grad";
+    "turn";
+    "hz";
+    "khz";
+    "dpi";
+    "dpcm";
+    "dppx";
+    "x";
+  ]
+
+let is_absolute_unit unit =
+  List.mem (String.lowercase_ascii unit) absolute_units
+
 let rec math_arg_result (arg : math_arg) : math_result option =
   match arg with
   | Lit f -> Option.some (Scalar f)
@@ -928,6 +963,23 @@ and math_fn_result (fn : math_fn) : math_result option =
       stepped_result (round_to_step strategy) value step
   | Mod_n (a, b) -> stepped_result mod_value a b
   | Rem_n (a, b) -> stepped_result Float.rem a b
+  (* Sec. 10.6: the answer turns on whether the argument is zero, and a relative
+     unit has a reference that can be -- a zero font-size, a zero viewport, a
+     zero container, a percentage of zero -- so the coefficient's sign is not
+     the value's and the call waits for the reference. An absolute unit has none
+     to wait for. *)
+  | Sign_n a -> (
+      let sign v =
+        if Float.is_nan v then Float.nan
+        else if v > 0. then 1.
+        else if v < 0. then -1.
+        else v
+      in
+      match math_arg_result a with
+      | Some (Scalar v) -> Option.some (Scalar (sign v))
+      | Some (United (v, unit)) when is_absolute_unit unit ->
+          Option.some (Scalar (sign v))
+      | Some (United _) | None -> Option.none)
   (* Every other math function is typed [<number>] in, [<number>] out, bar the
      inverse trig functions, whose [<angle>] result only the angle evaluator can
      place. *)
@@ -1407,8 +1459,13 @@ let negative_length : length -> bool = function
   | _ -> false
 
 let pp_calc_with : type a.
-    ?unwrap_num:bool -> ?unwrap:(a -> bool) -> a Pp.t -> a calc Pp.t =
- fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) pp_value ctx calc ->
+    ?unwrap_num:bool ->
+    ?unwrap:(a -> bool) ->
+    ?pp_unwrapped:a Pp.t ->
+    a Pp.t ->
+    a calc Pp.t =
+ fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) ?pp_unwrapped pp_value ctx
+     calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1421,14 +1478,21 @@ let pp_calc_with : type a.
      those are is not knowable here, so the wrapper stays on a value that reads
      back differently without it; [Declaration.normalize] unwraps the rest,
      where the property is in hand. *)
-  | Val v when Pp.minified ctx && unwrap v -> pp_value ctx v
+  (* A leaf that comes out of the call is no longer an operand, so it is written
+     the way a leaf on its own is written. [pp_value] is the operand printer,
+     which a caller whose two spellings differ passes [pp_unwrapped] beside: a
+     duration operand keeps [ms] so two unequal calls do not print alike, while
+     [120ms] on its own is [.12s], and printing the operand spelling here left
+     an emission the next reader shortened. *)
+  | Val v when Pp.minified ctx && unwrap v ->
+      Option.value pp_unwrapped ~default:pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
   | _ ->
       let ctx = { ctx with in_calc = true } in
       Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
-let pp_calc ?unwrap_num ?unwrap pp_value ctx calc =
-  pp_calc_with ?unwrap_num ?unwrap pp_value ctx calc
+let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =
+  pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc
 
 (* Small helpers *)
 
@@ -1965,14 +2029,14 @@ let length_of_calc_unit (unit : length_unit) n : length =
    [Dimension] for the unminified round-trip, and the printer drops it under
    [--minify]: two spellings then reach one minified text through two nodes,
    which anything keyed on the node reads as two values. Fold back to the
-   constructor once the round-trip no longer needs the spelling. Only a unit the
-   constructor prints back verbatim folds, so no byte moves; a zero is left to
-   [strip_zero_length], whose unit strip is a type change this is not. *)
+   constructor once the round-trip no longer needs the spelling. The minified
+   printer lowercases the unit, as the constructors do, so the author's case
+   moves no byte here either; a zero is left to [strip_zero_length], whose unit
+   strip is a type change this is not. *)
 let canonical_dimension (l : length) : length =
   match l with
-  | Dimension { value; unit; _ }
-    when value <> 0. && String.equal (String.lowercase_ascii unit) unit -> (
-      match unit_of_string unit with
+  | Dimension { value; unit; _ } when value <> 0. -> (
+      match unit_of_string (String.lowercase_ascii unit) with
       | Some unit -> length_of_unit unit value
       | None -> l)
   | _ -> l
@@ -2190,12 +2254,10 @@ let linear_lp_calc calc =
             (Val (lp_of_unit unit n))
             rest)
 
-let round_length_step strategy value step =
-  match strategy with
-  | "up" -> Float.ceil (value /. step) *. step
-  | "down" -> Float.floor (value /. step) *. step
-  | "to-zero" -> Float.trunc (value /. step) *. step
-  | _ -> Float.round (value /. step) *. step
+(* One rounding rule, written once: the strategy and its tie-break are sec.
+   10.7.3's whatever the argument's type, and three copies of it is how a tie
+   came to be broken two different ways. *)
+let round_length_step = round_to_step
 
 (* Typed math-call printer: emit [name(arg1,arg2,...)] from a typed list of
    length values, deferring to [pp_length] for each component (so nested
@@ -2363,7 +2425,15 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
   | Dimension { value; unit; repr } ->
-      if ctx.minify then pp_unit_fn value unit
+      (* CSS Values 4 sec. 6.7.2 serialises a dimension's unit in lowercase, and
+         the unit constructors print that way, so a dimension naming one of them
+         has to as well or the same width reads back two ways. A unit no
+         constructor covers is a future or [calc()]-only dimension token this
+         arm alone writes, so nothing contradicts the author's case there. The
+         unminified branch round-trips what the author wrote either way. *)
+      if ctx.minify then
+        pp_unit_fn value
+          (if is_length_unit unit then String.lowercase_ascii unit else unit)
       else (
         Pp.string ctx repr;
         Pp.string ctx unit)
@@ -2623,6 +2693,21 @@ let relative_color_space_elidable body i =
         || (next >= 'A' && next <= 'Z')
         || (next >= 'a' && next <= 'z')
     | _ -> false
+
+(* The reading [relative_color_space_elidable] owes. Where the printer drops a
+   separator the reader has to put one back, or one channel list written the two
+   ways it may be written is two tails that print alike: CSS Syntax 3 (ED) sec.
+   4.3.3 ends a percentage at its [%] and sec. 4.3.5 ends a block at its [)], so
+   [20%g] carries the channels [20%] and [g] exactly as [20% g] does. The two
+   answers have to name the same positions or a tail stops round-tripping. *)
+let relative_color_splits_tokens prev body i =
+  match prev with
+  | '%' ->
+      body_starts_number body i
+      || (body.[i] >= 'A' && body.[i] <= 'Z')
+      || (body.[i] >= 'a' && body.[i] <= 'z')
+  | ')' -> body_starts_number body i || body.[i] = '.'
+  | _ -> false
 
 let minify_relative_color_spaces body =
   let len = String.length body in
@@ -3904,11 +3989,12 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
   in
   (* CSS Values 4 sec. 10.12 clamps a math function whose value falls outside
      the property's range at computed-value time and keeps the declaration, so
-     folding one to a literal the reader then refuses would drop it: keep the
-     call. A literal that was already negative is the reader's business, not
-     this fold's. *)
+     folding one to a literal the reader then refuses would drop it: the
+     arithmetic still folds, and the call stays around the result. A literal
+     that was already negative is the reader's business, not this fold's. *)
   let result =
-    if non_negative && negative_length result && not (negative_length l) then l
+    if non_negative && negative_length result && not (negative_length l) then
+      (Calc (Val result) : length)
     else result
   in
   if strip then strip_zero_length result else result
@@ -3921,7 +4007,13 @@ let normalize_length_percentage ?(strip = true) ?(non_negative = false)
   match lp with
   | Calc c -> (
       match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
-      | Val (Length v) when non_negative && negative_length v -> lp
+      (* Sec. 10.12 clamps a call past the property's range at computed-value
+         time and keeps the declaration, so folding one to a literal the reader
+         then refuses would drop it: the arithmetic still folds, and the call
+         stays around the result. This is what [normalize_number] does for the
+         number and time families. *)
+      | Val (Length v) when non_negative && negative_length v ->
+          Calc (Val (Length v))
       | Val v -> v
       | folded -> Calc folded)
   | Length l ->
@@ -5036,6 +5128,7 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
   | Calc c ->
       pp_calc_with ~unwrap_num:false
         ~unwrap:(fun d -> not (negative_duration d))
+        ~pp_unwrapped:(pp_duration_with ~shorten_ms)
         (pp_duration_with ~shorten_ms:false)
         ctx c
 
@@ -5206,6 +5299,37 @@ let read_env : type a. (Cursor.t -> a) -> Cursor.t -> a env =
    never carries a negative-zero float, which breaks structural equality) and
    regenerate the repr from that value rather than echo the authored sign, so
    [-0px] / [+0px] serialise as [0px]. *)
+(* CSS Values 4 sec. 5.1.1 font-relative and sec. 5.1.4 container-relative
+   lengths resolve against something an element is given -- its font, its query
+   container -- so a value carrying one has no computed form until an element
+   has it. Sec. 5.1.3's viewport lengths resolve against the viewport, which
+   every element shares, and sec. 5.2's absolute lengths against nothing, so
+   neither depends on an element. *)
+let element_relative_units =
+  [
+    "em";
+    "rem";
+    "ex";
+    "rex";
+    "cap";
+    "rcap";
+    "ch";
+    "rch";
+    "ic";
+    "ric";
+    "lh";
+    "rlh";
+    "cqw";
+    "cqh";
+    "cqi";
+    "cqb";
+    "cqmin";
+    "cqmax";
+  ]
+
+let is_element_relative_unit unit =
+  List.mem (String.lowercase_ascii unit) element_relative_units
+
 let normalize_signed_zero n repr =
   if n = 0.0 then (0.0, Pp.string_of_float 0.0) else (n, repr)
 
@@ -5867,24 +5991,39 @@ let validate_calc_type t result_type calc =
     | _, Deferred -> true
     (* A call answering its arguments' type stands where that type stands: at a
        [<number>] slot it does not, and at an [<opacity-value>] only the
-       [<percentage>] the slot resolves against its number does. *)
+       [<percentage>] the slot resolves against its number does. [`Value] is the
+       slot whose contextual dimension the leaf reader already vouched for, so
+       the unit is that one; a [<percentage>] slot names its own. *)
     | `Number, Result_unit _ -> false
-    | `Number_or_percentage, Result_unit unit -> String.equal unit "%"
+    | (`Number_or_percentage | `Percentage), Result_unit unit ->
+        String.equal unit "%"
     | (`Value | `Number_or_value), Result_unit _ -> true
-    | `Number, Dimension 0 | `Value, Dimension 1 -> true
+    | `Number, Dimension 0 -> true
+    | (`Value | `Percentage), Dimension 1 -> true
     | (`Number_or_value | `Number_or_percentage), (Dimension 0 | Dimension 1) ->
         true
-    | ( (`Number | `Value | `Number_or_value | `Number_or_percentage),
+    | ( ( `Number | `Value | `Number_or_value | `Number_or_percentage
+        | `Percentage ),
         (Invalid | Dimension _) ) ->
         false
   in
   if not accepted then Cursor.err_invalid t "incompatible calc types"
 
-(* CSS Values 4 sec. 10.2 comparison and stepped-value functions, sec. 10.5
-   [hypot()] and sec. 10.6 [abs()]: each answers the type of its arguments, so a
-   [<length>] slot takes them as readily as a [<number>] one. *)
+(* CSS Values 4 sec. 10.2 comparison functions. Their answer is one of their
+   arguments, so a slot spelling the arguments' type already has a leaf for the
+   result and the call folds to it rather than standing as a calculation. *)
+let comparison_math_function_names = [ "min"; "max"; "clamp" ]
+
+(* Sec. 10.9 stepped-value functions, sec. 10.5 [hypot()] and sec. 10.6 [abs()]:
+   each answers the type of its arguments too, and each computes a value none of
+   them spelled, so the call stays in the calculation. *)
+let computed_typed_math_function_names =
+  [ "round"; "mod"; "rem"; "hypot"; "abs" ]
+
+(* Together they are the functions a [<length>] slot takes as readily as a
+   [<number>] one. *)
 let typed_math_function_names =
-  [ "min"; "max"; "clamp"; "round"; "mod"; "rem"; "hypot"; "abs" ]
+  comparison_math_function_names @ computed_typed_math_function_names
 
 (* Sec. 10.5 exponential functions, sec. 10.4 trigonometric ones and sec. 10.6
    [sign()]: all answer a [<number>] whatever went in, so only a [<number>] slot
@@ -5922,8 +6061,85 @@ let math_function_calls read =
 let typed_math_function_calls read =
   List.map (fun n -> (n, read)) typed_math_function_names
 
+(* Sec. 10.2 requires a comparison function's arguments to have a consistent
+   type and answers with that type, so at a [<percentage>] slot every argument
+   is a [<calc-sum>] resolving to a percentage: a bare coefficient is a
+   [<number>] the slot does not spell, and a length is a type of its own. *)
+let read_percentage_argument t =
+  let arg = read_math_arg t in
+  match math_arg_result arg with
+  | Some (United (v, unit)) when String.equal unit "%" -> v
+  | Some (Scalar _ | United _) | None -> Cursor.err_expected t "percentage"
+
+let read_percentage_list_call name pick initial t =
+  Cursor.call name t (fun inner ->
+      let args =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_percentage_argument inner
+      in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      List.fold_left pick initial args)
+
+let read_percentage_clamp t =
+  Cursor.call "clamp" t (fun inner ->
+      let low = read_percentage_argument inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let value = read_percentage_argument inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let high = read_percentage_argument inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Float.max low (Float.min value high))
+
+let math_function_calls_beside_comparisons read =
+  List.map
+    (fun n -> (n, read))
+    (computed_typed_math_function_names @ number_math_function_names)
+
+let percentage_math_function_calls ~pct read =
+  ("min", fun t -> pct t (read_percentage_list_call "min" Float.min infinity t))
+  :: ( "max",
+       fun t -> pct t (read_percentage_list_call "max" Float.max neg_infinity t)
+     )
+  :: ("clamp", fun t -> pct t (read_percentage_clamp t))
+  :: math_function_calls_beside_comparisons read
+
+(* Sec. 10.1 puts a math function wherever the [<percentage>] stands and makes
+   [calc()] one of them rather than the gate to the rest, so both spellings
+   answer the same percentage. A slot holding a percentage and no calculation
+   node takes the answer and nothing else: a call this cannot reduce -- a
+   [var()] among its operands, or a result of another type -- is no value for
+   it. *)
+let read_folded_percentage_math t =
+  let body name =
+    Cursor.call name t (fun inner ->
+        let value = read_percentage_argument inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        value)
+  in
+  if Cursor.looking_at_func "calc" t then body "calc"
+  else if Cursor.looking_at_func "-webkit-calc" t then body "-webkit-calc"
+  else
+    match Cursor.peek_function_name t with
+    | Some "min" -> read_percentage_list_call "min" Float.min infinity t
+    | Some "max" -> read_percentage_list_call "max" Float.max neg_infinity t
+    | Some "clamp" -> read_percentage_clamp t
+    | Some _ when looking_at_math_function t -> read_percentage_argument t
+    | Some _ | None -> Cursor.err_expected t "percentage"
+
+let looking_at_percentage_math t =
+  Cursor.looking_at_calc t || looking_at_math_function t
+
 let read_calc : type a.
-    ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+    ?result_type:
+      [ `Number
+      | `Number_or_percentage
+      | `Number_or_value
+      | `Percentage
+      | `Value ] ->
     (Cursor.t -> a) ->
     Cursor.t ->
     a calc =
@@ -5979,6 +6195,18 @@ let read_integer_calc : type a.
   match eval_numeric_calc expr with
   | Some f when Float.is_integer f -> `Int (int_of_float f)
   | Some _ | None -> `Calc expr
+
+(* Sec. 10.12 rounds to the nearest integer with a tie going toward positive
+   infinity, so this is the integer a slot's own range has to answer for: a call
+   that rounds outside the range is as invalid as the literal would be. One
+   holding a [var()] does not resolve here and has no integer yet, and an
+   infinity or a NaN has none at all. *)
+let calc_integer_value : type a. a calc -> int option =
+ fun expr ->
+  match eval_numeric_calc expr with
+  | Some f when Float.is_finite f ->
+      Option.some (int_of_float (Float.floor (f +. 0.5)))
+  | Some _ | None -> Option.none
 
 let read_integer name t =
   if Cursor.looking_at_calc t || looking_at_math_function t then
@@ -6990,6 +7218,12 @@ let normalize_relative_color_tail tail =
           loop (skip_spaces (i + 1)) false
       | c ->
           add_pending_space buf last_was_space;
+          if
+            Buffer.length buf > 0
+            && relative_color_splits_tokens
+                 (Buffer.nth buf (Buffer.length buf - 1))
+                 tail i
+          then Buffer.add_char buf ' ';
           Buffer.add_char buf c;
           loop (i + 1) false
   in
@@ -7815,9 +8049,11 @@ let rec read_number_percentage t : number_percentage =
     (* CSS Values 4 sec. 10.1 puts every math function where [calc()] stands,
        and sec. 10.12 checks the property's range on what the call resolves to,
        so the call is held rather than folded to a literal the reader would then
-       refuse. *)
+       refuse. Sec. 10.9 admits only what the slot's two types name: a call
+       answering a [<length>] is neither. *)
     Calc
-      (read_calc ~result_type:`Number_or_value read_number_percentage_dim_only t)
+      (read_calc ~result_type:`Number_or_percentage
+         read_number_percentage_dim_only t)
   else
     (* Try to read as percentage or number *)
     Cursor.one_of

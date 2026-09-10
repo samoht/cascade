@@ -1168,11 +1168,11 @@ let test_vendor_prefix_strip () =
    properties that are not, which is exactly the set whose prefix a maintained
    browser may still need. *)
 let test_vendor_prefix_baseline_gate () =
-  let opt ?targets ?(enforce_spec = false) css =
+  let opt ?targets ?(enforce_spec = false) ?(scope = `Fragment) css =
     match Css.of_string css with
     | Ok p ->
         Css.to_string ~minify:true
-          (Css.optimize ?targets ~enforce_spec p.stylesheet)
+          (Css.optimize ?targets ~scope ~enforce_spec p.stylesheet)
         |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
@@ -1212,6 +1212,22 @@ let test_vendor_prefix_baseline_gate () =
     "enforce-spec keeps the mask-image prefix"
     ".a{-webkit-mask-image:none;mask-image:none}"
     (opt ~enforce_spec:true ".a{-webkit-mask-image:none;mask-image:none}");
+  (* The pair is the same pair however it got here: cascade synthesising the
+     prefix beside a lone [mask-image] and an author writing both must settle on
+     one emission, or the second pass over the first one's output moves. The
+     twin test asks whether the two spell the same value, which a [var()]
+     fallback the slot cannot type answers the same way wherever it was
+     written. *)
+  let sheet css = opt ~scope:`Stylesheet css in
+  Alcotest.(check string)
+    "an authored mask-image prefix pair settles where a synthesised one does"
+    (sheet ".a{mask-image:var(--x,10px)}")
+    (sheet ".a{-webkit-mask-image:var(--x,10px);mask-image:var(--x,10px)}");
+  Alcotest.(check string)
+    "the same pair over a fallback the slot can type"
+    (sheet ".a{mask-image:var(--x,url(a.png))}")
+    (sheet
+       ".a{-webkit-mask-image:var(--x,url(a.png));mask-image:var(--x,url(a.png))}");
   Alcotest.(check string)
     "enforce-spec keeps the box-sizing prefix"
     ".a{-webkit-box-sizing:border-box;box-sizing:border-box}"
@@ -2158,6 +2174,72 @@ let test_large_stylesheet_factoring_reaches_fixpoint () =
   Alcotest.(check string)
     "large-sheet factoring converges in one scheduler run" once
     (minify_str once)
+
+(* A second pass that moves is a first pass that stopped early, so each vector
+   is checked by re-emitting what the first pass wrote. [emit] is the mode's own
+   emitter, and the name carries the vector so a failure says which one
+   moved. *)
+let assert_emission_is_a_fixed_point ~emit label vectors =
+  List.iter
+    (fun css ->
+      let once = emit css in
+      Alcotest.(check string)
+        (String.concat "" [ label; " is a fixed point on "; css ])
+        once (emit once))
+    vectors
+
+let test_prefix_synthesis_reaches_fixpoint () =
+  (* The compatibility-prefix pass writes declarations the rest of the pipeline
+     decides about: a prefixed twin is a rule's shared subset for the factoring,
+     and a prefixed longhand run is a shorthand for the contraction. Synthesised
+     after the pipeline settled, neither pass ever sees it. *)
+  assert_emission_is_a_fixed_point ~emit:minify_str "minify"
+    [
+      "a{user-select:all}b{-webkit-user-select:ALL}";
+      "a{-webkit-user-select:all}b{user-select:ALL}";
+      "a{mask-size:auto}b{-webkit-mask-size:AUTO}";
+      "a{mask-clip:content-box}b{-webkit-mask-clip:CONTENT-BOX}";
+      "a{mask-position:10% 20%}b{-webkit-mask-position:10%\t20%}";
+      "a{backdrop-filter:blur(max(0px, \
+       1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
+    ]
+
+let test_authored_dimension_reaches_fixpoint () =
+  (* The reader keeps [2e0ch] as a dimension carrying its own text, and the
+     printer drops that text under [--minify]. Two spellings then reach one
+     minified text through two nodes, which the rule merge reads as two values
+     until a second pass re-reads them as one. *)
+  assert_emission_is_a_fixed_point ~emit:minify_str "minify"
+    [
+      "a{tab-size:2e0ch}b{tab-size:2ch}";
+      "a{tab-size:2ch}b{tab-size:2e0ch}";
+      "a{overflow-clip-margin:1E0px}b{overflow-clip-margin:1px}";
+      "a{line-height:+120%}b{line-height:120%}";
+      "a{line-height:12.0px}b{line-height:12px}";
+      "a{grid-auto-rows:100.0px}b{grid-auto-rows:100px}";
+      "a{grid-auto-rows:+100px}b{grid-auto-rows:100px}";
+      "a{grid-auto-columns:00100px}b{grid-auto-columns:100px}";
+      "a{grid-auto-columns:100e0px}b{grid-auto-columns:100px}";
+      "a{contain-intrinsic-width:100.0px}b{contain-intrinsic-width:100px}";
+      "a{contain-intrinsic-height:00100px}b{contain-intrinsic-height:100px}";
+      "a{contain-intrinsic-inline-size:100E0px}b{contain-intrinsic-inline-size:100px}";
+      "a{contain-intrinsic-block-size:00100px}b{contain-intrinsic-block-size:100px}";
+      "a{columns:12E0em}b{columns:12em}";
+      "a{columns:+12em}b{columns:12em}";
+    ]
+
+let test_unwrapped_calc_leaf_reaches_fixpoint () =
+  (* [pp_min] prints without running a pass, which is the mode that asks whether
+     the printer is a serialiser. Dropping a [calc()] wrapper there leaves a
+     leaf that is no longer a calc operand, so the next reader gives it the
+     spelling a leaf takes on its own, and for [animation] the unwrapped [1] is
+     the slot's initial and the whole shorthand collapses. *)
+  assert_emission_is_a_fixed_point ~emit:pp_min "pp minify"
+    [
+      "a{transition-duration:calc(120ms)}";
+      "a{animation-duration:calc(120ms)}";
+      "a{animation:calc(1)}";
+    ]
 
 let test_no_factor_across_conflict () =
   (* CSS Cascade 6.1: the two .x rules conflict on color, so they merge (last
@@ -4096,9 +4178,9 @@ let c61_no_named_atrule_merge () =
      fade{0%{opacity:0}to{opacity:1}}.theme{display:flex}";
   check_case "property registration boundary"
     ".theme{color:red}@property \
-     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.theme{display:flex}"
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1px}.theme{display:flex}"
     ".theme{color:red}@property \
-     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.theme{display:flex}";
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1px}.theme{display:flex}";
   check_case "view-transition boundary"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
     ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
@@ -5509,6 +5591,15 @@ let selector_merging_tests =
     ( "large stylesheet factoring reaches fixpoint",
       `Quick,
       test_large_stylesheet_factoring_reaches_fixpoint );
+    ( "prefix synthesis reaches fixpoint in one pass",
+      `Quick,
+      test_prefix_synthesis_reaches_fixpoint );
+    ( "authored dimension reaches fixpoint in one pass",
+      `Quick,
+      test_authored_dimension_reaches_fixpoint );
+    ( "unwrapped calc leaf reaches fixpoint in one pass",
+      `Quick,
+      test_unwrapped_calc_leaf_reaches_fixpoint );
     ("no factor across conflict", `Quick, test_no_factor_across_conflict);
     ( "zero box side covered by shorthand",
       `Quick,

@@ -199,25 +199,44 @@ let pp_list_style_shorthand : list_style_shorthand Pp.t =
    shorthand takes its longhand initial - [outside] (sec. 3.5), [none] (sec.
    3.3) and [disc] (sec. 3.4). Writing an initial out names what leaving it out
    names, and leaving it out is the shorter spelling. *)
+(* CSS Variables 1 sec. 3 syntax-checks a shorthand carrying a [var()] only
+   after substitution, so which slot the substituted tokens fill is not known
+   until computed-value time and a slot holding its initial is not spare. The
+   reasoning above holds for a value with no [var()] in it and fails here:
+   [list-style: disc outside var(--x)] with [--x: circle] substitutes to two
+   [<list-style-type>] values and is invalid at computed-value time, leaving the
+   longhands unset, where dropping the initials leaves [list-style: var(--x)],
+   which substitutes to a valid [circle] and sets the type. Reordering stays
+   sound -- CSS Lists 3 sec. 2 spells the shorthand with [||], so its components
+   commute -- but nothing may leave. *)
+let list_style_slot_is_var (s : list_style_shorthand) =
+  (match s.type_ with Some (Var _ : list_style_type) -> true | _ -> false)
+  || (match s.position with
+    | Some (Var _ : list_style_position) -> true
+    | _ -> false)
+  || match s.image with Some (Var _ : list_style_image) -> true | _ -> false
+
 let normalize_list_style_shorthand (s : list_style_shorthand) :
     list_style_shorthand =
-  let type_ =
-    drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
-  in
-  let position =
-    drop_default
-      ~is_default:(fun (p : list_style_position) -> p = Outside)
-      s.position
-  in
-  let image =
-    drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
-  in
-  if
-    option_is_phys_same type_ s.type_
-    && option_is_phys_same position s.position
-    && option_is_phys_same image s.image
-  then s
-  else { type_; position; image }
+  if list_style_slot_is_var s then s
+  else
+    let type_ =
+      drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
+    in
+    let position =
+      drop_default
+        ~is_default:(fun (p : list_style_position) -> p = Outside)
+        s.position
+    in
+    let image =
+      drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
+    in
+    if
+      option_is_phys_same type_ s.type_
+      && option_is_phys_same position s.position
+      && option_is_phys_same image s.image
+    then s
+    else { type_; position; image }
 
 let normalize_list_style : list_style -> list_style = function
   | Shorthand s as value ->
@@ -2290,6 +2309,20 @@ let rec pp_content : content Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_content ctx v
+
+(* CSS Values 4 sec. 6.7.2 gives a string one serialisation, and [--minify]
+   writes that one whichever quote the author chose: the quote and the authored
+   spelling survive only in the round-trip the printer keeps for unminified
+   output. Fold onto [String] once that round-trip is gone, or [content:'x'] and
+   [content:"x"] reach one minified text through two nodes, which anything keyed
+   on the node reads as two values. *)
+let rec normalize_content (c : content) : content =
+  match c with
+  | Quoted { value; _ } -> String value
+  | Content_list items ->
+      let items' = List.map normalize_content items in
+      if List.equal ( == ) items items' then c else Content_list items'
+  | _ -> c
 
 let pp_counter_item ctx { name; value } =
   pp_ident ctx name;
@@ -4623,6 +4656,14 @@ let normalize_property_value : type a.
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
   | Columns -> normalize_columns_value value
+  | Content -> normalize_content value
+  | Column_width -> normalize_column_width value
+  | Page_size -> normalize_page_size value
+  | Initial_letter_wrap -> normalize_initial_letter_wrap value
+  | Background_size -> normalize_background_size value
+  | Webkit_background_size -> normalize_background_size value
+  | Mask_size -> normalize_background_size value
+  | Webkit_mask_size -> normalize_background_size value
   | Column_count -> normalize_column_count value
   | Border_width ->
       normalize_box_shorthand ~is_substitution:is_border_width_substitution
@@ -4639,6 +4680,12 @@ let normalize_property_value : type a.
   | Border_block_width -> normalize_logical_border_width value
   | Border_inline_style -> normalize_logical_border_style value
   | Border_block_style -> normalize_logical_border_style value
+  | Overflow_clip_margin -> normalize_overflow_clip_margin value
+  | Contain_intrinsic_size -> normalize_contain_intrinsic_size value
+  | Contain_intrinsic_width -> normalize_contain_intrinsic_longhand value
+  | Contain_intrinsic_height -> normalize_contain_intrinsic_longhand value
+  | Contain_intrinsic_inline_size -> normalize_contain_intrinsic_longhand value
+  | Contain_intrinsic_block_size -> normalize_contain_intrinsic_longhand value
   | Transition_duration -> Values.normalize_duration ~ctx value
   | Transition_delay -> Values.normalize_duration ~ctx value
   | Animation_duration -> Values.normalize_duration ~ctx value

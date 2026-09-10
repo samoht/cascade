@@ -1673,6 +1673,17 @@ let test_line_height () =
      does. *)
   check_line_height "2ch";
   check_line_height "3cqw";
+  (* CSS Values 4 sec. 10.2 gives a comparison its arguments' own type, so it
+     reads at either half of sec. 5.1's [<number> | <length-percentage>]. A
+     comparison over numbers folds to the coefficient it answers, one over a
+     length and a percentage resolves at used-value time and keeps its call, the
+     way it does at [width]. Chrome 153 reads every row. *)
+  check_line_height ~expected:"min(120%,1px)" "min(120%, 1px)";
+  check_line_height ~expected:"clamp(0px,120%,100px)" "clamp(0px, 120%, 100px)";
+  check_line_height ~expected:"clamp(1px,2em,3%)" "clamp(1px, 2em, 3%)";
+  check_line_height ~expected:"max(1px,2px)" "max(1px, 2px)";
+  decl_optimizes ~prop:"line-height" ~into:"1" "min(1, 2)";
+  neg_cursor read_line_height "min(1px, 2)";
   neg_cursor read_line_height "0s";
   neg_cursor read_line_height "45deg";
   neg_cursor read_line_height "10zz";
@@ -2081,6 +2092,13 @@ let test_border_width () =
   check_border_width "min(3dvh,4px)";
   check_border_width "max(3dvh,4px)";
   check_border_width "clamp(1dvh,3dvh,4px)";
+  (* Sec. 10.2 spells a comparison's argument [<calc-sum>], and sec. 10.1 makes
+     a lone [var()] one, so the operand needs no [calc()] around it: the value
+     is printed back as it was written, which is what [width] over the same
+     production already does. *)
+  check_border_width "min(var(--x),1px)";
+  check_border_width "max(var(--x),1px)";
+  check_border_width "clamp(var(--x),2px,3px)";
   (* One unit does compare with itself, and a container-query length grows with
      its multiplier, so the smaller multiple is the minimum. The fold is a
      node-changing rewrite (two different ASTs would otherwise print the same
@@ -3001,6 +3019,28 @@ let test_color_interpolation () =
   check_color_interpolation "in hsl";
   check_color_interpolation "in lab";
   check_color_interpolation "in lch";
+  (* CSS Color 5 sec. 9.1 writes the method [in [ <rectangular-color-space> |
+     <polar-color-space> <hue-interpolation-method>? ]], and sec. 9 gives the
+     same fifteen spaces [color-mix()] takes. Chrome 153 reads each of these,
+     serialising [xyz] as [xyz-d65], and drops a hue method after a rectangular
+     space. *)
+  check_color_interpolation "in srgb-linear";
+  check_color_interpolation "in display-p3";
+  check_color_interpolation "in a98-rgb";
+  check_color_interpolation "in prophoto-rgb";
+  check_color_interpolation "in rec2020";
+  check_color_interpolation "in xyz-d50";
+  (* CSS Color 4 sec. 10.2 makes [xyz] and [xyz-d65] two names for one space, so
+     the shorter one is the spelling of both. *)
+  check_color_interpolation ~expected:"in xyz" "in xyz-d65";
+  check_color_interpolation "in xyz";
+  check_color_interpolation "in hwb";
+  check_color_interpolation "in hwb longer hue";
+  check_color_interpolation "in oklch increasing hue";
+  (* A rectangular space never looks for the hue method, so the two words are
+     left standing and the declaration around them is dropped. *)
+  neg_cursor ~allow_partial:true read_color_interpolation "in srgb shorter hue";
+  neg_cursor ~allow_partial:true read_color_interpolation "in oklab longer hue";
   neg_cursor read_color_interpolation "oklab";
   neg_cursor read_color_interpolation "in unknown";
   neg_cursor read_color_interpolation "in"
@@ -4561,7 +4601,16 @@ let test_place_items () =
   (* The && is order-free, but the modifier is only read before the keyword. *)
   neg_cursor ~allow_partial:true read_place_items "baseline first";
   neg_cursor ~allow_partial:true read_place_items "baseline last";
-  neg_cursor read_place_items "invalid-place"
+  neg_cursor read_place_items "invalid-place";
+  (* sec. 5.2 spells the shorthand [<'align-items'> <'justify-items'>?], and
+     [stretch] is one value of each, so the slot after it is an ordinary
+     justify-items value rather than a repeat of the keyword. Chrome 153 reads
+     each of these and computes align-items: stretch beside the second half. *)
+  check_place_items "stretch center";
+  check_place_items "stretch normal";
+  check_place_items "stretch safe center";
+  check_place_items ~expected:"stretch" "stretch stretch";
+  check_place_items "center stretch"
 
 let test_box_decoration_break () =
   check_box_decoration_break "clone";
@@ -5084,7 +5133,7 @@ let spec_generated_box_layout_edges () =
   check_contain_intrinsic_longhand "auto 10px";
   check_contain_intrinsic_size "auto 10px 20px";
   check_contain_intrinsic_size_item "auto 10px";
-  (* CSS Sizing 4 sec. 6 spells a slot [auto? [ none | <length [0,inf]> ]], so
+  (* CSS Sizing 4 sec. 5.2 spells a slot [auto? [ none | <length [0,inf]> ]], so
      [none] is one of the two things the optional [auto] may precede and it sits
      in a slot rather than standing for the whole value. Chrome 153 takes each
      of these. *)
@@ -5219,6 +5268,18 @@ let spec_generated_position_interaction_edges () =
   check_margin_trim_edge "block-end";
   check_mask "url(mask.png)";
   check_mask_layer "url(mask.png)";
+  (* CSS Masking 1 sec. 8.7 spells [mask] as [<mask-layer>#], so a comma in the
+     shorthand separates layers and the image slot of a layer holds one image:
+     the comma list belongs to the [mask-image] longhand. A layer after one that
+     opened with an image is an ordinary layer, so it need not open with one.
+     Chrome 153 reads each of these and gives the second layer the initial
+     image. *)
+  check_mask "none,50%";
+  check_mask "url(a.png),50%";
+  check_mask "url(a.png),50%,url(b.png)";
+  check_mask "none,alpha";
+  check_mask "50%,none";
+  check_mask "none,url(b.png)";
   check_nav "#next current";
   check_nav_scope "root";
   check_object_view_box "inset(10px 20px)";

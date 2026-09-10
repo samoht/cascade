@@ -57,7 +57,7 @@ let ( // ) = Filename.concat
 
 (* The value generator lives in the inventory library, so this harness draws the
    same population the property sweeps do. *)
-let values_for = Cascade_spec_inventory.Value_gen.values_for
+let vectors_for = Cascade_spec_inventory.Value_gen.vectors_for
 
 (* ===== The population ===== *)
 
@@ -161,11 +161,17 @@ let minimum_arbitrated = 100
 
 type kind = Positive | Negative | Generated
 
+(* [respells] is the value this one is a respelling of, when it is one. CSS
+   Syntax 3 sec. 4 and CSS Values 4 sec. 4.1 make the two the same value, so a
+   difference the support dataset explains about the original is that same
+   difference, not a second one. *)
+
 type job = {
   id : string;
   at_rule : string;
   descriptor : string;
   value : string;
+  respells : string option;
   kind : kind;
   sheet : string;
 }
@@ -191,12 +197,13 @@ let jobs ~seed ~only =
   in
   List.concat_map
     (fun rule ->
-      let job descriptor kind value =
+      let job ?respells descriptor kind value =
         {
           id = fresh ();
           at_rule = rule.name;
           descriptor;
           value;
+          respells;
           kind;
           sheet = rule.sheet ~descriptor ~value;
         }
@@ -224,11 +231,28 @@ let jobs ~seed ~only =
                   List.exists (String.equal value) row.positives
                   || List.exists (String.equal value) row.negatives
             in
+            (* A respelling is the value it respells - CSS Syntax 3 sec. 4 and
+               CSS Values 4 sec. 4.1 - so where the row decides the original it
+               decides this one, and judging it by the browser alone would ask a
+               second question about the same value. *)
+            let kind_of (v : Cascade_spec_inventory.Value_gen.vector) =
+              match (row, v.respells) with
+              | Some (row : Grammar.row), Some origin
+                when List.exists (String.equal origin) row.positives ->
+                  Positive
+              | Some (row : Grammar.row), Some origin
+                when List.exists (String.equal origin) row.negatives ->
+                  Negative
+              | (Some _ | None), (Some _ | None) -> Generated
+            in
             manifest
-            @ List.map (job descriptor Generated)
+            @ List.map
+                (fun (v : Cascade_spec_inventory.Value_gen.vector) ->
+                  job ?respells:v.respells descriptor (kind_of v) v.value)
                 (List.filter
-                   (fun v -> drawable v && not (decided v))
-                   (values_for ~seed descriptor)))
+                   (fun (v : Cascade_spec_inventory.Value_gen.vector) ->
+                     drawable v.value && not (decided v.value))
+                   (vectors_for ~seed descriptor)))
         rule.modelled)
     at_rules
 
@@ -526,6 +550,19 @@ let () =
   let ungoverned job =
     Option.is_none (Grammar.row_for ~at_rule:job.at_rule job.descriptor)
   in
+  (* A respelling is the value it respells, so the dataset answers about it
+     through the original: BCD names a production, and the production is named
+     by the value somebody wrote rather than by the whitespace, letter case or
+     escapes it was written with. *)
+  let explained lookup job =
+    let prefix = String.concat "" [ "css.at-rules."; job.at_rule ] in
+    let ask value =
+      lookup ~prefix ~chrome:version ~property:job.descriptor ~value ()
+    in
+    match ask job.value with
+    | Some e -> Some e
+    | None -> Option.bind job.respells ask
+  in
   let pending = ref [] in
   List.iter
     (fun job ->
@@ -587,19 +624,19 @@ let () =
             | Generated, r, p when Bool.equal r p -> incr arbitrated
             | Generated, true, false
               when Option.is_some
-                     (Chrome_gaps.explains_rejection
-                        ~prefix:
-                          (String.concat "" [ "css.at-rules."; job.at_rule ])
-                        ~chrome:version ~property:job.descriptor
-                        ~value:job.value ()) ->
+                     (explained
+                        (fun ~prefix ~chrome ~property ~value () ->
+                          Chrome_gaps.explains_rejection ~prefix ~chrome
+                            ~property ~value ())
+                        job) ->
                 incr behind
             | Generated, false, true
               when Option.is_some
-                     (Chrome_gaps.explains_acceptance
-                        ~prefix:
-                          (String.concat "" [ "css.at-rules."; job.at_rule ])
-                        ~chrome:version ~property:job.descriptor
-                        ~value:job.value ()) ->
+                     (explained
+                        (fun ~prefix ~chrome ~property ~value () ->
+                          Chrome_gaps.explains_acceptance ~prefix ~chrome
+                            ~property ~value ())
+                        job) ->
                 incr lenient
             | Generated, _, _ when ungoverned job -> ()
             | Generated, _, _ -> pending := (job, reads) :: !pending

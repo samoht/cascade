@@ -115,6 +115,17 @@ let is_declaration_value value =
 let refuse name detail =
   failwith (String.concat "" [ "custom_property: "; name; ": "; detail ])
 
+(* CSS Syntax 3 (ED) sec. 5.5.6 discards whitespace before a declaration's value
+   and again from its end, so a stream built from text carries neither. Only the
+   ends go: sec. 4.1 of CSS Custom Properties 1 (ED) forbids normalizing what is
+   between them. *)
+let trim_declaration_value components =
+  let rec drop_leading = function
+    | cv :: rest when Component.is_whitespace cv -> drop_leading rest
+    | kept -> kept
+  in
+  components |> drop_leading |> List.rev |> drop_leading |> List.rev
+
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
@@ -132,7 +143,9 @@ let custom_property ?layer name value =
   (* Parse the value into a CSS Syntax 3 component stream so the declaration
      never carries a raw author string; the printer can then re-serialise with
      the active [Pp] context (handles minification). *)
-  let components = Cursor.remaining (Cursor.of_string value) in
+  let components =
+    trim_declaration_value (Cursor.remaining (Cursor.of_string value))
+  in
   v (Custom_property name)
     (Custom_value { value = Tokens components; layer; meta = None })
 
@@ -2217,39 +2230,24 @@ let read_custom_property_payload name value_str =
       read_custom_property_value ~font_family:true (Cursor.of_string value_str)
   else read_custom_property_value (Cursor.of_string value_str)
 
-let whitespace_only_custom_property_value =
-  Tokens [ Component.Preserved (Token.synthetic (Token.Whitespace " ")) ]
-
-(* Keep a single space when the raw declaration value was whitespace-only - that
-   one space is the spec-required token sequence (CSS Custom Properties for
-   Cascading Variables 1 sec. 2.1). *)
-let read_custom_value name ~raw_is_whitespace_only value_str =
-  let value_str =
-    if value_str = "" && raw_is_whitespace_only then " " else value_str
-  in
-  if value_str = " " && raw_is_whitespace_only then
-    whitespace_only_custom_property_value
-  else read_custom_property_payload name value_str
-
 (* The [name] declaration formed over the value at [t]; split from
    [read_custom_property_declaration] for a caller that already holds the
    name. *)
 let read_custom_value_declaration t name : declaration =
-  (* CSS Custom Properties 1 sec. 2.1: [<declaration-value>] matches "any
-     sequence of one or more tokens", so the whitespace after [:] IS the value
-     when nothing else follows ([--foo: ;]). Don't skip it before
-     [consume_until_semicolon], or the token count becomes input-dependent. *)
+  (* CSS Syntax 3 (ED) sec. 5.5.6 discards whitespace before a declaration's
+     value and again from its end, so [--foo: ;] carries no token at all. CSS
+     Custom Properties 1 (ED) sec. 2 writes the [--*] family's value
+     [<declaration-value>?] and sec. 2.2 calls that empty value valid, which is
+     what is left. Read the raw text untrimmed all the same: the trim belongs to
+     [split_important], which needs the [!] and the flag word together. *)
   reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
-  let raw_is_whitespace_only = raw_value <> "" && String.trim raw_value = "" in
   let value_str, is_important = split_important raw_value in
   if not (is_optional_declaration_value value_str) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
   (* custom_property may raise Failure for invalid names like "--" *)
   try
-    let custom_value =
-      read_custom_value name ~raw_is_whitespace_only value_str
-    in
+    let custom_value = read_custom_property_payload name value_str in
     let decl =
       v (Custom_property name)
         (Custom_value { value = custom_value; layer = None; meta = None })

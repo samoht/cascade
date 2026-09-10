@@ -187,6 +187,14 @@ let rec read_metric_override t : metric_override =
   | Some (Component.Func { node = { name; _ }; _ })
     when String.lowercase_ascii name = "var" ->
       Var (Values.read_var read_metric_override t)
+  (* Sec. 10.1 puts a math function wherever the [<percentage>] stands, so the
+     descriptor takes one and answers with the percentage it resolves to: there
+     is no calculation node here to park an unresolved call in. Sec. 4.10's
+     [0,inf] range then reads that percentage the way it reads a literal. *)
+  | Some (Component.Func _) when Values.looking_at_percentage_math t ->
+      let value = Values.read_folded_percentage_math t in
+      if valid_percentage value then Percent value
+      else Cursor.err_invalid t "metric override"
   | Some _ | None -> Cursor.err_invalid t "metric override"
 
 (* CSS Fonts 5 sec. 4.4: [<percentage [0,inf]>]. *)
@@ -199,6 +207,12 @@ let rec read_size_adjust t : size_adjust =
     when valid_percentage number.Token.value ->
       Cursor.skip t;
       Pct number.Token.value
+  (* Sec. 10.1 again: the descriptor takes the call and holds the percentage it
+     answers, since it has no calculation node of its own. *)
+  | Some (Component.Func _) when Values.looking_at_percentage_math t ->
+      let value = Values.read_folded_percentage_math t in
+      if valid_percentage value then Pct value
+      else Cursor.err_invalid t "size-adjust"
   | Some _ | None -> Cursor.err_invalid t "size-adjust"
 
 let read_whole read s =

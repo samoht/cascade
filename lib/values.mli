@@ -262,6 +262,17 @@ val default_calc_ctx : calc_ctx
 (** [default_calc_ctx] knows of no single-valued variables, so every
     context-dependent calc rewrite is a no-op. *)
 
+val canonical_dimension : length -> length
+(** [canonical_dimension l] folds a length written as a spelling of a value the
+    constructors already hold back onto the constructor: [1.0px], [+1px], [01px]
+    and [1e3px] all become [Px]. The reader keeps such a spelling for the
+    unminified round-trip and the printer drops it under [--minify], so two
+    spellings otherwise reach one minified text through two nodes, and anything
+    keyed on the node reads them as two values. Only a unit the constructor
+    prints back verbatim folds, so no byte moves; a zero keeps its unit, whose
+    strip is a separate question. Belongs in a normalize pass, which only the
+    optimizer runs: the unminified round-trip still needs the spelling. *)
+
 val normalize_length_percentage :
   ?strip:bool ->
   ?non_negative:bool ->
@@ -355,15 +366,22 @@ val pp_number_percentage : ?always:bool -> number_percentage Pp.t
     When [always] is true, always includes units even for 0. *)
 
 val pp_calc :
-  ?unwrap_num:bool -> ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc ?unwrap_num ?unwrap pp] pretty-prints [calc] expressions using [pp]
-    for leaf values. Minified output drops the call around a single leaf;
-    [unwrap] says which leaves that is safe for, and defaults to all of them. A
-    leaf outside the property's range is not one: CSS Values 4 sec. 10.12 keeps
-    the call valid there and clamps at used-value time, where the bare value is
-    dropped instead. [unwrap_num] is the same question for a bare number leaf,
-    which a property taking an [<integer>] answers no to: sec. 10.12 rounds the
-    call and drops the fraction written on its own. *)
+  ?unwrap_num:bool ->
+  ?unwrap:('a -> bool) ->
+  ?pp_unwrapped:'a Pp.t ->
+  'a Pp.t ->
+  'a calc Pp.t
+(** [pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp] pretty-prints [calc]
+    expressions using [pp] for leaf values, and [pp_unwrapped] for the one leaf
+    that comes out of the call, which is no longer an operand and takes the
+    spelling a leaf on its own takes; it defaults to [pp]. Minified output drops
+    the call around a single leaf; [unwrap] says which leaves that is safe for,
+    and defaults to all of them. A leaf outside the property's range is not one:
+    CSS Values 4 sec. 10.12 keeps the call valid there and clamps at used-value
+    time, where the bare value is dropped instead. [unwrap_num] is the same
+    question for a bare number leaf, which a property taking an [<integer>]
+    answers no to: sec. 10.12 rounds the call and drops the fraction written on
+    its own. *)
 
 val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!type-color_name} values. *)
@@ -652,7 +670,8 @@ val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
 val read_calc :
-  ?result_type:[ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+  ?result_type:
+    [ `Number | `Number_or_percentage | `Number_or_value | `Percentage | `Value ] ->
   (Cursor.t -> 'a) ->
   Cursor.t ->
   'a calc
@@ -664,7 +683,11 @@ val read_calc :
 
     [`Number_or_percentage] is the [<number> | <percentage>] slot of an
     [<opacity-value>]: it parts with [`Number_or_value] on a math function
-    answering its arguments' type, which stands there only as a percentage. *)
+    answering its arguments' type, which stands there only as a percentage.
+    [`Percentage] is the slot that spells a [<percentage>] and no [<number>]
+    beside it, so it parts with [`Value] on the same call: [`Value] takes
+    whatever unit its leaf reader vouched for, and a [<percentage>] slot takes
+    only [%]. *)
 
 val looking_at_math_function : Cursor.t -> bool
 (** [looking_at_math_function t] is [true] on a call to a math function other
@@ -685,6 +708,52 @@ val typed_math_function_calls :
     functions that answer the type of their arguments, for a slot that takes a
     [<length>] or another dimension rather than a [<number>]. *)
 
+val math_function_calls_beside_comparisons :
+  (Cursor.t -> 'a) -> (string * (Cursor.t -> 'a)) list
+(** [math_function_calls_beside_comparisons read] is {!math_function_calls}
+    without [min()], [max()] and [clamp()], for a slot reading those three
+    itself. CSS Values 4 sec. 10.2 answers a comparison with one of its
+    arguments, so a slot whose leaf can hold that argument reads it at its own
+    type where the shared path would fold it to a coefficient. *)
+
+val percentage_math_function_calls :
+  pct:(Cursor.t -> float -> 'a) ->
+  (Cursor.t -> 'a) ->
+  (string * (Cursor.t -> 'a)) list
+(** [percentage_math_function_calls ~pct read] is {!math_function_calls} for a
+    slot spelling a [<percentage>] and no [<number>] beside it. CSS Values 4
+    sec. 10.2 answers a comparison with one of its arguments, which is a
+    percentage the slot has a leaf for, so [min()], [max()] and [clamp()] fold
+    to their coefficient and [pct] builds that leaf, applying whatever range the
+    property puts on it. Every other math function keeps [read], which holds the
+    call to the slot's type. *)
+
+val round_to_step : string -> float -> float -> float
+(** [round_to_step strategy value step] is CSS Values 4 sec. 10.7.3's [round()]:
+    the multiple of [step] the strategy names, and for the default [nearest] the
+    closest one with a tie going toward positive infinity. A zero [step] has no
+    multiples, so the value comes back unchanged. *)
+
+val is_element_relative_unit : string -> bool
+(** [is_element_relative_unit u] is whether [u] is one of CSS Values 4 sec.
+    5.1.1's font-relative or sec. 5.1.4's container-relative length units, the
+    ones that resolve against something an element is given. Sec. 5.1.3's
+    viewport lengths and sec. 5.2's absolute ones answer [false]: they resolve
+    against the viewport, which every element shares, and against nothing. *)
+
+val looking_at_percentage_math : Cursor.t -> bool
+(** [looking_at_percentage_math t] is [true] on a [calc()] or on any other math
+    function, the two spellings {!read_folded_percentage_math} reads. *)
+
+val read_folded_percentage_math : Cursor.t -> float
+(** [read_folded_percentage_math t] reads a math function at a slot spelling a
+    [<percentage>] and answers the percentage it resolves to. CSS Values 4 sec.
+    10.1 puts such a function wherever the [<percentage>] stands and makes
+    [calc()] one of them rather than the gate to the rest, so both spellings
+    read here. It is for a slot that holds a percentage and has no calculation
+    node to park an unresolved call in: a call carrying a [var()], or one
+    answering another type, is refused rather than kept. *)
+
 val read_integer_calc : string -> Cursor.t -> [ `Int of int | `Calc of 'a calc ]
 (** [read_integer_calc name t] parses the math function at an [<integer>]
     position, which CSS Values 4 sec. 10.9 accepts wherever a literal integer
@@ -702,7 +771,7 @@ val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 
 val validate_calc_type :
   Cursor.t ->
-  [ `Number | `Number_or_percentage | `Number_or_value | `Value ] ->
+  [ `Number | `Number_or_percentage | `Number_or_value | `Percentage | `Value ] ->
   'a calc ->
   unit
 (** [validate_calc_type t result_type calc] raises unless [calc] infers to
@@ -711,6 +780,13 @@ val validate_calc_type :
     arguments of [min()], [max()] or [clamp()] with {!val-read_calc_expr} runs
     it per argument, which is what sec. 10.2 asks for when it requires them to
     "have a consistent type or else the function is invalid". *)
+
+val calc_integer_value : 'a calc -> int option
+(** [calc_integer_value calc] is the integer a math function stands for at an
+    [<integer>] slot: CSS Values 4 sec. 10.12 rounds it to the nearest integer,
+    a tie going toward positive infinity. It is [None] for a call that does not
+    resolve here, a [var()] among its operands or an infinite result, so a slot
+    checking its own range against it leaves such a call alone. *)
 
 val eval_numeric_calc : 'a calc -> float option
 (** [eval_numeric_calc calc] tries to evaluate a calc expression containing only

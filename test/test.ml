@@ -19,6 +19,7 @@ let () =
       Test_css.suite;
       Test_baseline.suite;
       Test_support.suite;
+      Test_webkit_fallback.suite;
       Test_loc.suite;
       Test_token.suite;
       Test_lexer.suite;

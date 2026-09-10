@@ -1230,6 +1230,17 @@ let color_scheme_of_idents t names : color_scheme =
           "color-scheme: [only] must be combined with a color scheme";
       if List.length (List.filter is_only keywords) > 1 then
         Cursor.err_invalid t "color-scheme: [only] cannot be repeated";
+      (* CSS Values 4 sec. 2.2 makes each operand of a [&&] a contiguous run, so
+         the keyword stands at one end of the whole value and never inside it:
+         [light only dark] splits the list into two rather than naming one. *)
+      let interior =
+        match keywords with
+        | [] -> []
+        | _ :: rest -> (
+            match List.rev rest with [] -> [] | _ :: mid -> List.rev mid)
+      in
+      if List.exists is_only interior then
+        Cursor.err_invalid t "color-scheme: [only] cannot stand inside the list";
       Custom names
 
 (* Every ident of the grammar above that is not the [<custom-ident>]: sec. 2.2

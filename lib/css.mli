@@ -3002,14 +3002,13 @@ type hue_interpolation_method = Properties.hue_interpolation_method =
   | Increasing
   | Decreasing
 
-(** Color interpolation for gradients *)
+(** Colour interpolation for gradients. CSS Color 5 sec. 9 spells one
+    [<color-interpolation-method>] wherever one appears, over the same fifteen
+    spaces [color-mix()] takes, so the space is carried rather than named in a
+    constructor of its own. Sec. 9.1 puts the [<hue-interpolation-method>] after
+    a polar space only. *)
 type color_interpolation = Properties.color_interpolation =
-  | In_oklab
-  | In_oklch of hue_interpolation_method option
-  | In_srgb
-  | In_hsl of hue_interpolation_method option
-  | In_lab
-  | In_lch of hue_interpolation_method option
+  | In of color_space * hue_interpolation_method option
   | Var of color_interpolation var
 
 (** Gradient direction values *)
@@ -4695,6 +4694,13 @@ type line_height = Properties.line_height =
   | Unset
   | Revert
   | Revert_layer
+  | Min of line_height list
+  | Max of line_height list
+  | Clamp of line_height * line_height * line_height
+      (** CSS Values 4 sec. 10.2 comparison functions over the
+          [<length-percentage>] half of the grammar. A length beside a
+          percentage resolves only at used-value time, so the call stands here
+          rather than folding to one of its arguments. *)
   | Calc of line_height calc
   | Var of line_height var
 
@@ -5924,6 +5930,9 @@ type background_position_axis = Properties.background_position_axis =
   | Edge of position_axis_edge
   | Offset of length_percentage
   | Edge_offset of position_axis_edge * length_percentage
+  | Layers of background_position_axis list
+      (** CSS Backgrounds 4 sec. 3.6 spells the axis longhand with the same [#]
+          the pair carries, so it names one position per background layer. *)
   | Inherit
   | Initial
   | Unset
@@ -10025,12 +10034,17 @@ val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)
 
 val pp_calc :
-  ?unwrap_num:bool -> ?unwrap:('a -> bool) -> 'a Pp.t -> 'a calc Pp.t
-(** [pp_calc ?unwrap_num ?unwrap pp_value] is the pretty printer for calc
-    expressions. Minified output drops the call around a single leaf, and
-    [unwrap] says which leaves that is safe for. [unwrap_num] is the same
-    question for a bare number leaf, which a property taking an [<integer>]
-    answers no to. *)
+  ?unwrap_num:bool ->
+  ?unwrap:('a -> bool) ->
+  ?pp_unwrapped:'a Pp.t ->
+  'a Pp.t ->
+  'a calc Pp.t
+(** [pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value] is the pretty printer
+    for calc expressions. [pp_unwrapped] writes the one leaf that comes out of
+    the call, which is no longer an operand; it defaults to [pp_value]. Minified
+    output drops the call around a single leaf, and [unwrap] says which leaves
+    that is safe for. [unwrap_num] is the same question for a bare number leaf,
+    which a property taking an [<integer>] answers no to. *)
 
 val pp_font_style : font_style Pp.t
 (** [pp_font_style] is the pretty printer for font-style values. *)
