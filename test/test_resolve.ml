@@ -203,6 +203,15 @@ let test_empty_is_node_dependent () =
   (* The one element Level 3 and Level 4 answer differently. *)
   answers "white space alone" Resolve.Unsupported ":empty"
     (elt ~text:[ " \t\n" ] "p" []);
+  (* Sec. 13.2 counts only content nodes "whose data has a non-zero length", so
+     a zero-length text node is not the white space the two levels part over and
+     not content either. Both levels call the element empty, and an answer is
+     what cascade owes here rather than a decline. *)
+  answers "a zero-length text child" Resolve.Matches ":empty"
+    (elt ~text:[ "" ] "p" []);
+  answers "and one beside real white space still declines" Resolve.Unsupported
+    ":empty"
+    (elt ~text:[ ""; " " ] "p" []);
   answers "white space beside text is text to both" Resolve.No_match ":empty"
     (elt ~text:[ " "; "text" ] "p" []);
   (* The combining forms carry the node's answer, decline and all. *)
