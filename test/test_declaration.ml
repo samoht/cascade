@@ -3387,6 +3387,58 @@ let gap_normal () =
     (fun value -> none_cursor read_declaration ("gap:" ^ value))
     [ "normal inherit"; "inherit normal"; "normal normal normal" ]
 
+let animation_auto_duration () =
+  (* CSS Animations 2 sections 4.1 and 4.12: auto is a duration, not zero
+     seconds on every timeline. CSS Transitions 1 sections 2.2 and 2.4 and CSS
+     Animations 2 section 4.6 restrict durations/delays to time values. *)
+  List.iter
+    (fun (input, expected) ->
+      let property value = String.concat "" [ "animation-duration:"; value ] in
+      check_declaration ~roundtrip:true ~expected:(property expected)
+        ~optimized:(property expected) (property input))
+    [
+      ("auto", "auto");
+      ("AUTO", "auto");
+      ("auto,2s,auto", "auto,2s,auto");
+      ("var(--duration,auto)", "var(--duration,auto)");
+    ];
+  List.iter
+    (none_cursor read_declaration)
+    [
+      "animation-delay:auto";
+      "animation-delay:1s,auto";
+      "transition-duration:auto";
+      "transition-duration:1s,auto";
+      "transition-delay:auto";
+      "animation-duration:calc(auto)";
+      "animation-duration:auto auto";
+    ];
+  let open Css.Properties in
+  let check_slots input =
+    let cursor = Cursor.of_string input in
+    match read_animation cursor with
+    | Shorthand value as animation when Cursor.is_done cursor ->
+        Alcotest.(check (option string))
+          "auto duration" (Some "auto")
+          (Option.map (Css.Pp.to_string Css.pp_duration) value.duration);
+        Alcotest.(check (option string))
+          "zero delay" (Some "0s")
+          (Option.map (Css.Pp.to_string Css.pp_duration) value.delay);
+        (match value.name with
+        | Some (Name "spin") -> ()
+        | _ -> Alcotest.fail "animation name changed");
+        animation
+    | _ -> Alcotest.failf "expected one animation: %s" input
+  in
+  List.iter
+    (fun input ->
+      let value = check_slots input in
+      List.iter
+        (fun minify ->
+          ignore (check_slots (Css.Pp.to_string ~minify pp_animation value)))
+        [ false; true ])
+    [ "auto spin"; "spin auto"; "AUTO spin" ]
+
 let sizing_keyword_domains () =
   (* CSS Sizing 3 sections 3.1.1-3.1.3 distinguish auto sizes from none
      maximums. CSS Logical Properties 1 section 4.1 uses the same grammars for
@@ -7728,6 +7780,7 @@ let declaration_tests =
     test_case "line-height-step length only" `Quick line_height_step_length_only;
     test_case "gap normal" `Quick gap_normal;
     test_case "sizing keyword domains" `Quick sizing_keyword_domains;
+    test_case "animation auto duration" `Quick animation_auto_duration;
     test_case "text-decoration drained shorthand" `Quick
       text_decoration_drained_shorthand;
     test_case "white-space collapse only" `Quick white_space_collapse_only;
