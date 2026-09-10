@@ -296,6 +296,30 @@ let layer_pin_over_conditional_declaration_is_kept () =
     (render (statements css))
     (canonical css)
 
+let layer_pin_over_conditional_layer_is_the_only_position () =
+  (* The test above leaves an [@layer b] block between the pin and the block
+     that repeats it, and that named position keeps the pin whatever the
+     [@media] contributes. Here the conditional block is the only thing between
+     them, so whether it raises a position at all is the whole question: with a
+     layer inside it sec. 6.4.3 puts something unreadable between [a] and [a],
+     and the pin is what says which comes first; with only plain rules inside it
+     the pin says a second time what the block after it already says. The two
+     sheets differ in nothing else. *)
+  let over_a_layer =
+    "@layer a;@media print{@layer q{x{color:red}}}@layer a{y{color:blue}}"
+  in
+  let over_plain_rules =
+    "@layer a;@media print{x{color:red}}@layer a{y{color:blue}}"
+  in
+  Alcotest.(check string)
+    "a pin over a block declaring a layer stays"
+    (render (statements over_a_layer))
+    (canonical over_a_layer);
+  Alcotest.(check string)
+    "the same pin over a block declaring none folds"
+    "@media print{x{color:red}}@layer a{y{color:blue}}"
+    (canonical over_plain_rules)
+
 let layer_pin_over_import_is_kept () =
   (* Sec. 6.4.1: an [@import] with no layer keyword puts the imported sheet's
      own layers into this order at that point, so the position between the pin
@@ -536,6 +560,8 @@ let suite =
         unblocked_layer_pin_is_kept;
       Alcotest.test_case "layer pin over conditional declaration is kept" `Quick
         layer_pin_over_conditional_declaration_is_kept;
+      Alcotest.test_case "layer pin over conditional layer is the only position"
+        `Quick layer_pin_over_conditional_layer_is_the_only_position;
       Alcotest.test_case "layer pin over import is kept" `Quick
         layer_pin_over_import_is_kept;
       Alcotest.test_case "layer pin fold is idempotent" `Quick
