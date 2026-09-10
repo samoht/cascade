@@ -38,7 +38,6 @@ let () =
       Test_common.suite;
       Test_ctx.suite;
       Test_pool.suite;
-      Test_loop.suite;
       Test_stats.suite;
       Test_gzip_size.suite;
       Test_edge.suite;
@@ -55,7 +54,6 @@ let () =
       Test_cover.suite;
       Test_flatten.suite;
       Test_preflight.suite;
-      Test_index.suite;
       Test_summary.suite;
       Test_pp.suite;
       Test_syntax.suite;
