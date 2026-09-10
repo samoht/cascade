@@ -1550,6 +1550,19 @@ let font_family_descriptor_grammar () =
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
+(* A descriptor whose grammar the reader validates but whose text the AST keeps
+   verbatim, so the space inside one [<integer> && <symbol>] pair survives while
+   the space around the value does not. That outer white space is css-syntax-3
+   declaration syntax rather than descriptor content, and only the reader's trim
+   removes it: without it the pair prints back with a trailing space that no
+   reader wrote and that a minified sheet has no reason to carry.
+   [additive-symbols] is where it shows, since every other descriptor here is
+   re-serialised from a parsed value and loses the spacing anyway. *)
+let counter_style_descriptor_value_is_trimmed () =
+  check_stylesheet
+    ~expected:"@counter-style c{system:additive;additive-symbols:1 a}"
+    "@counter-style c { system: additive; additive-symbols: 1 a }"
+
 (* CSS Counter Styles 3 (ED) sec. 3.2 spells [<symbol>] as [<string> | <image> |
    <custom-ident>], and CSS Values 4 sec. 4.2 reserves [default] from every
    [<custom-ident>], so a symbol descriptor takes the string and refuses the
@@ -2705,6 +2718,9 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
+    ( "counter-style descriptor value is trimmed",
+      `Quick,
+      counter_style_descriptor_value_is_trimmed );
     ( "counter-style symbol reserves default",
       `Quick,
       counter_style_symbol_reserved_default );
