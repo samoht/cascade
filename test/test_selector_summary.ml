@@ -126,7 +126,17 @@ let negation () =
   check_overlap "required exact attr conflicts with not exact attr" false
     "[data-state=open]" ":not([data-state=open])";
   check_overlap "different exact attr does not conflict with not exact attr"
-    true "[data-state=closed]" ":not([data-state=open])"
+    true "[data-state=closed]" ":not([data-state=open])";
+  (* Selectors 4 sec. 6.3.5: the [i] flag makes the value comparison ASCII
+     case-insensitive, so a [:not()] carrying it excludes every spelling of its
+     value and not just the one written. This is the only place the flag decides
+     anything. Between two positive attributes an unflagged value is already
+     compared case-insensitively, so the pair in {!attributes} answers the same
+     with the flag and without it and cannot tell whether it was read. *)
+  check_overlap "an insensitive not-attr excludes the other case" false
+    "[type=BUTTON]" {|:not([type="button" i])|};
+  check_overlap "a sensitive one leaves that case alone" true "[type=BUTTON]"
+    {|:not([type="button" s])|}
 
 let child_positions () =
   check_overlap "first child and even nth child are disjoint" false
