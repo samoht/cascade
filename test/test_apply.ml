@@ -52,6 +52,30 @@ let projects_static_rule_to_inline_style () =
       Alcotest.(check int) "kept count" 0 result.kept
   | _ -> Alcotest.fail "expected one inline assignment"
 
+(* CSS Syntax 3 (ED) sec. 5.5.5 consumes a block's contents by dropping the one
+   invalid declaration and resuming past the next [;], so the rest of the block
+   survives. An inline [style] attribute is such a block, and [Apply] reads it
+   with per-declaration recovery for exactly that reason. Without the recovery
+   the whole attribute is refused and the element falls back to the sheet, which
+   is a different computed style rather than a shorter one. *)
+let bad_inline_declaration_costs_only_itself () =
+  let case label attr expected =
+    let n = node ~classes:[ "card" ] ~attrs:[ ("style", attr) ] "div" in
+    let result = A.compute ~sheet:(parse ".card{color:red}") [ n ] in
+    match result.styles with
+    | [ (_, decls) ] ->
+        Alcotest.(check string) label expected (inline_style decls)
+    | _ -> Alcotest.fail "expected one inline assignment"
+  in
+  case "a junk declaration drops alone" "color:blue;@@@bad;width:1px"
+    "color:blue;width:1px";
+  case "an empty value drops alone" "color:green;width:;height:2px"
+    "color:green;height:2px";
+  (* The sheet still loses to the surviving inline declaration, which is the
+     half that shows the attribute was read rather than refused. *)
+  case "the surviving inline declaration still beats the sheet"
+    "color:blue;@@@bad" "color:blue"
+
 let keeps_stateful_rule_in_css () =
   let n = node ~classes:[ "card" ] "div" in
   let result =
@@ -611,6 +635,8 @@ let suite =
     [
       Alcotest.test_case "projects static rule to inline style" `Quick
         projects_static_rule_to_inline_style;
+      Alcotest.test_case "a bad inline declaration costs only itself" `Quick
+        bad_inline_declaration_costs_only_itself;
       Alcotest.test_case "important declaration reaches the resolved style"
         `Quick important_declaration_reaches_the_resolved_style;
       Alcotest.test_case "keeps stateful rule in css" `Quick
