@@ -2,6 +2,20 @@
 
 open Cascade
 
+(* Real DEFLATE at the level a server ships, so every claim below is scored
+   against the thing the estimator models rather than against a threshold
+   someone guessed. Each case asserts the property of [gzip] first and of
+   [Gzip_size.estimate] second: the first line says the claim is true of the
+   format, the second says the estimator answers it the same way, and a run that
+   fails on the first line is telling you the case is wrong rather than the
+   estimator. *)
+let gzip s =
+  let r = Bytesrw.Bytes.Reader.of_string s in
+  let r =
+    Bytesrw_zlib.Gzip.compress_reads ~level:Bytesrw_zlib.best_compression () r
+  in
+  String.length (Bytesrw.Bytes.Reader.to_string r)
+
 (* Deterministic byte stream with no useful LZ structure (xorshift). *)
 let noise n =
   let state = ref 0x2545F491 in
@@ -15,37 +29,47 @@ let noise n =
 
 let repeat n s = String.concat "" (List.init n (fun _ -> s))
 
-let test_empty () =
+let both name p input =
   Alcotest.(check bool)
-    "empty input costs only the wrapper" true
-    (Gzip_size.estimate "" < 32)
+    (String.concat "" [ "gzip: "; name ])
+    true
+    (p (gzip input));
+  Alcotest.(check bool)
+    (String.concat "" [ "estimate: "; name ])
+    true
+    (p (Gzip_size.estimate input))
+
+let test_empty () =
+  both "empty input costs only the wrapper" (fun n -> n < 32) ""
 
 let test_repetition_is_cheap () =
-  let block = ".card{color:red;margin:0;padding:4px}" in
-  let sheet = repeat 200 block in
-  let estimate = Gzip_size.estimate sheet in
-  Alcotest.(check bool)
-    "200 identical rules estimate under a tenth of raw size" true
-    (estimate * 10 < String.length sheet)
+  let sheet = repeat 200 ".card{color:red;margin:0;padding:4px}" in
+  both "200 identical rules cost under a tenth of raw size"
+    (fun n -> n * 10 < String.length sheet)
+    sheet
 
 let test_noise_is_incompressible () =
   let s = noise 8192 in
-  Alcotest.(check bool)
-    "random bytes estimate near raw size" true
-    (Gzip_size.estimate s * 10 > String.length s * 9)
+  both "random bytes cost near raw size"
+    (fun n -> n * 10 > String.length s * 9)
+    s
 
 let test_monotone_in_content () =
   let a = noise 4096 in
   let b = String.concat "" [ a; noise 4096 ] in
   Alcotest.(check bool)
-    "more content never estimates smaller" true
+    "gzip: more content never costs less" true
+    (gzip a <= gzip b);
+  Alcotest.(check bool)
+    "estimate: more content never costs less" true
     (Gzip_size.estimate a <= Gzip_size.estimate b)
 
 let test_repeat_beats_distinct () =
-  (* Same raw length: one declaration block repeated across rules vs distinct
-     declarations per rule; the repeated form must estimate smaller, the
-     property the factoring transfer gate relies on. [100 + i] keeps every index
-     three digits wide so both variants have equal raw length. *)
+  (* One declaration block repeated across rules against distinct declarations
+     per rule. The repeated form is the LONGER of the two raw and still the
+     cheaper compressed, which is the whole reason the factoring transfer gate
+     asks about compressed size instead of raw. [100 + i] keeps every index
+     three digits wide so neither variant wins on digit count. *)
   let sel i = String.concat "" [ ".c"; string_of_int (100 + i) ] in
   let repeated =
     String.concat ""
@@ -59,18 +83,26 @@ let test_repeat_beats_distinct () =
              [ sel i; "{margin:"; string_of_int (100 + i); "px 40em}" ]))
   in
   Alcotest.(check bool)
-    "same-length repeated declarations estimate smaller" true
+    "the repeated form is the longer one raw" true
+    (String.length repeated > String.length distinct);
+  Alcotest.(check bool)
+    "gzip: and the cheaper one compressed" true
+    (gzip repeated < gzip distinct);
+  Alcotest.(check bool)
+    "estimate: ranked the same way" true
     (Gzip_size.estimate repeated < Gzip_size.estimate distinct)
 
 let test_window_bound () =
   (* A repeat farther back than 32 KiB cannot be referenced, so two copies of an
-     incompressible block estimate about twice one copy. *)
+     incompressible block cost about twice one copy. *)
   let block = noise 40000 in
-  let one = Gzip_size.estimate block in
-  let two = Gzip_size.estimate (String.concat "" [ block; block ]) in
   Alcotest.(check bool)
-    "distant repeat pays full price" true
-    (two * 10 > one * 19)
+    "gzip: a distant repeat pays full price" true
+    (gzip (String.concat "" [ block; block ]) * 10 > gzip block * 19);
+  Alcotest.(check bool)
+    "estimate: a distant repeat pays full price" true
+    (Gzip_size.estimate (String.concat "" [ block; block ]) * 10
+    > Gzip_size.estimate block * 19)
 
 let suite =
   ( "gzip_size",

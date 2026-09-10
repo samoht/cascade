@@ -23,6 +23,8 @@
   (alcotest (and (>= 1.7.0) :with-test))
   (alcobar :with-test)
   (astring :with-test)
+  (bytesrw :with-test)
+  (conf-zlib :with-test)
   markup
   (mdx :with-test)
   (re :with-test)

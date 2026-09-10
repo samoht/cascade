@@ -6,6 +6,8 @@
   cascade
   alcotest
   astring
+  bytesrw
+  bytesrw.zlib
   fmt
   unix
   re
