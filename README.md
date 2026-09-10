@@ -175,9 +175,16 @@ gate that treated 2 as 0 would pass while the files differ. The report and the
   compare equal, since none of those moves can change a computed value.
   Cascade-significant order is kept distinct (two writes of the same
   property, a shorthand and its longhand, a load-bearing vendor-prefixed
-  fallback, `@layer` blocks). An identical
-  `-webkit-text-decoration-color`/`text-decoration-color` twin is normalized
-  away; a differing or prefixed-only declaration remains distinct. Equivalent
+  fallback, `@layer` blocks). A prefixed
+  declaration the [WHATWG Compatibility Standard](https://compat.spec.whatwg.org/#css-legacy-name-aliases)
+  section 3.4.1 names a legacy name alias is the same property as its
+  unprefixed twin, so an identical pair of them normalizes to the twin alone,
+  `-webkit-transform`/`transform` and the rest of that list. A prefix the
+  section does not name is a property of its own, `-moz-` spellings and
+  `-webkit-user-select` among them, and stays distinct; so does a differing
+  value or importance, or a prefix with no unprefixed twin.
+  `-webkit-text-decoration-color` is not on the list but every engine shipping
+  the prefix aliases it, and Cascade normalizes it too. Equivalent
   shorthand decompositions are still not modelled.
   Numeric arithmetic follows the same precision mode as minification: an exact
   quotient such as `calc(28/14)` compares equal to `2` in either mode. By

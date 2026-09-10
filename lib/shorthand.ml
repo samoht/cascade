@@ -6460,14 +6460,103 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
 
-(* Canonical comparison follows Cascade's configured normalization for this
-   typed compatibility alias without enabling every target-dependent optimizer
-   rewrite. A differing fallback, mismatched importance, or prefix without a
-   standard twin remains observable and is kept. *)
+(* WHATWG Compatibility Standard sec. 3.4.1: these [-webkit-] properties "must
+   be supported as legacy name aliases of the corresponding unprefixed
+   property", and CSS Cascade 5 sec. 2.3 makes a legacy name alias the SAME
+   property under a second name rather than a property of its own. A prefix the
+   list does not name is a private extension in the vendor's namespace, so it is
+   its own property and never an alias -- [-moz-] spellings and
+   [-webkit-user-select] among them. *)
+let legacy_name_alias_of = function
+  | "-webkit-align-content" -> Some "align-content"
+  | "-webkit-align-items" -> Some "align-items"
+  | "-webkit-align-self" -> Some "align-self"
+  | "-webkit-animation" -> Some "animation"
+  | "-webkit-animation-delay" -> Some "animation-delay"
+  | "-webkit-animation-direction" -> Some "animation-direction"
+  | "-webkit-animation-duration" -> Some "animation-duration"
+  | "-webkit-animation-fill-mode" -> Some "animation-fill-mode"
+  | "-webkit-animation-iteration-count" -> Some "animation-iteration-count"
+  | "-webkit-animation-name" -> Some "animation-name"
+  | "-webkit-animation-play-state" -> Some "animation-play-state"
+  | "-webkit-animation-timing-function" -> Some "animation-timing-function"
+  | "-webkit-backface-visibility" -> Some "backface-visibility"
+  | "-webkit-background-clip" -> Some "background-clip"
+  | "-webkit-background-origin" -> Some "background-origin"
+  | "-webkit-background-size" -> Some "background-size"
+  | "-webkit-border-bottom-left-radius" -> Some "border-bottom-left-radius"
+  | "-webkit-border-bottom-right-radius" -> Some "border-bottom-right-radius"
+  | "-webkit-border-radius" -> Some "border-radius"
+  | "-webkit-border-top-left-radius" -> Some "border-top-left-radius"
+  | "-webkit-border-top-right-radius" -> Some "border-top-right-radius"
+  | "-webkit-box-shadow" -> Some "box-shadow"
+  | "-webkit-box-sizing" -> Some "box-sizing"
+  | "-webkit-filter" -> Some "filter"
+  | "-webkit-flex" -> Some "flex"
+  | "-webkit-flex-basis" -> Some "flex-basis"
+  | "-webkit-flex-direction" -> Some "flex-direction"
+  | "-webkit-flex-flow" -> Some "flex-flow"
+  | "-webkit-flex-grow" -> Some "flex-grow"
+  | "-webkit-flex-shrink" -> Some "flex-shrink"
+  | "-webkit-flex-wrap" -> Some "flex-wrap"
+  | "-webkit-justify-content" -> Some "justify-content"
+  | "-webkit-mask" -> Some "mask"
+  | "-webkit-mask-box-image" -> Some "mask-border"
+  | "-webkit-mask-box-image-outset" -> Some "mask-border-outset"
+  | "-webkit-mask-box-image-repeat" -> Some "mask-border-repeat"
+  | "-webkit-mask-box-image-slice" -> Some "mask-border-slice"
+  | "-webkit-mask-box-image-source" -> Some "mask-border-source"
+  | "-webkit-mask-box-image-width" -> Some "mask-border-width"
+  | "-webkit-mask-clip" -> Some "mask-clip"
+  | "-webkit-mask-composite" -> Some "mask-composite"
+  | "-webkit-mask-image" -> Some "mask-image"
+  | "-webkit-mask-origin" -> Some "mask-origin"
+  | "-webkit-mask-position" -> Some "mask-position"
+  | "-webkit-mask-repeat" -> Some "mask-repeat"
+  | "-webkit-mask-size" -> Some "mask-size"
+  | "-webkit-order" -> Some "order"
+  | "-webkit-perspective" -> Some "perspective"
+  | "-webkit-perspective-origin" -> Some "perspective-origin"
+  | "-webkit-transform" -> Some "transform"
+  | "-webkit-transform-origin" -> Some "transform-origin"
+  | "-webkit-transform-style" -> Some "transform-style"
+  | "-webkit-transition" -> Some "transition"
+  | "-webkit-transition-delay" -> Some "transition-delay"
+  | "-webkit-transition-duration" -> Some "transition-duration"
+  | "-webkit-transition-property" -> Some "transition-property"
+  | "-webkit-transition-timing-function" -> Some "transition-timing-function"
+  | _ -> None
+
+(* One property written twice with one value says what writing it once says, so
+   the alias and its twin compare as the twin alone. This assumes nothing about
+   which browsers are targeted -- the two names ARE one property -- so it holds
+   where the target-dependent prefix drops do not. A differing value or
+   importance is two writes of one property and stays. *)
+let legacy_name_alias_twin vendor twin =
+  match legacy_name_alias_of (Declaration.property_name vendor) with
+  | None -> false
+  | Some unprefixed ->
+      String.equal unprefixed (Declaration.property_name twin)
+      && same_value_text vendor twin
+      && Bool.equal
+           (Declaration.is_important vendor)
+           (Declaration.is_important twin)
+
+(* Canonical comparison follows the aliasing the specs prove on their own,
+   without enabling every target-dependent optimizer rewrite. Sec. 3.4.1 above
+   settles the [-webkit-] list; [-webkit-text-decoration-color] is not on it but
+   every engine that ships the prefix aliases it, and Cascade normalizes it
+   whatever the target. A differing fallback, mismatched importance, or prefix
+   without a standard twin remains observable and is kept. *)
 let drop_redundant_decoration_color_aliases declarations =
   filter_preserve
     (fun declaration ->
-      not (List.exists (decoration_color_alias_twin declaration) declarations))
+      not
+        (List.exists
+           (fun twin ->
+             decoration_color_alias_twin declaration twin
+             || legacy_name_alias_twin declaration twin)
+           declarations))
     declarations
 
 (* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
