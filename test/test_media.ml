@@ -508,6 +508,27 @@ let spec_media_unitless_zero_length () =
   check_recovers "non-zero number is not a length" "(min-width: 1)";
   check_recovers "non-zero number in a range" "(width >= 1)"
 
+(* Media Queries 4 sec. 2.4.3 gives the interval form two bounds and two
+   comparators, and every one of the four decides which viewports match. The
+   structural cases compare an interval with itself, which says nothing about
+   any of them: an equality that reads only the lower half answers the same on
+   every one of those cases and calls two different queries one. *)
+let interval_bounds_are_all_significant () =
+  let differs name a b =
+    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+  in
+  differs "the upper bound" "(30em <= width < 60em)" "(30em <= width < 90em)";
+  differs "the upper comparator" "(30em <= width < 60em)"
+    "(30em <= width <= 60em)";
+  differs "the lower bound" "(30em <= width < 60em)" "(20em <= width < 60em)";
+  differs "the lower comparator" "(30em <= width < 60em)"
+    "(30em < width < 60em)";
+  Alcotest.(check bool)
+    "and an interval is still equal to itself" true
+    (equal
+       (of_string "(30em <= width < 60em)")
+       (of_string "(30em <= width < 60em)"))
+
 (* Media Queries 5 sec. 4.5 gives [resolution] a [<resolution>] value, which
    css-values-4 sec. 6.3 spells [<number> <resolution-unit>]. So the number is
    not an integer, and the printer has to answer both ways round: an integral
@@ -661,6 +682,8 @@ let suite =
         spec_media_error_recovery_vectors;
       test_case "spec media unitless zero length" `Quick
         spec_media_unitless_zero_length;
+      test_case "interval bounds are all significant" `Quick
+        interval_bounds_are_all_significant;
       test_case "resolution keeps its fraction" `Quick
         resolution_keeps_its_fraction;
       test_case "kind" `Quick test_kind;
