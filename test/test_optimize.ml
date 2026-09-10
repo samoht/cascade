@@ -1950,6 +1950,27 @@ let optimized_string ?scope ?targets ?(enforce_spec = false) css =
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
+(* A [:root] or [:host] rule sorts its custom properties by name, which is safe
+   because two custom properties of different names never decide each other. The
+   declarations that are not custom properties do decide things, so the sort
+   moves the custom ones AMONG THEIR OWN POSITIONS and leaves every other slot
+   where the author put it. Sorting a run that holds nothing else says nothing
+   about that: a pass that walked the other positions instead answers those
+   cases alike and drops the declaration standing in one. *)
+let root_custom_sort_keeps_other_positions () =
+  let same name expected css =
+    Alcotest.(check string) name expected (optimized_string css)
+  in
+  same "a custom run sorts by name" ":root{--a:2;--b:1}" ":root{--b:1;--a:2}";
+  same "and sorts around a declaration that is not one"
+    ":root{--a:2;color:red;--b:1}" ":root{--b:1;color:red;--a:2}";
+  same "wherever that one sits" ":root{color:red;--a:2;--b:1}"
+    ":root{color:red;--b:1;--a:2}";
+  (* The sort is [:root] and [:host] only: anywhere else the author's order is
+     the one that ships. *)
+  same "another selector keeps the authored order" ".x{--b:1;--a:2}"
+    ".x{--b:1;--a:2}"
+
 let test_merge_consecutive_identical () =
   let input =
     [
@@ -5582,6 +5603,9 @@ let test_property_source_order () =
 let selector_merging_tests =
   [
     ("property source order", `Quick, test_property_source_order);
+    ( "root custom sort keeps other positions",
+      `Quick,
+      root_custom_sort_keeps_other_positions );
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
     ( "combine identical oklab(none) rules",
       `Quick,
