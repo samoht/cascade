@@ -182,6 +182,27 @@ let canonical_drops_redundant_decoration_color_alias () =
    meaning, and cascade's own minified output writes the range form, so the fold
    has to hold on the comparison side once the projection stops taking the
    optimizer's target facts. Deleting nothing, it is a respelling and stays. *)
+(* CSS Values 4 sec. 9: a function name is ASCII case-insensitive, so
+   [style(...)] and [STYLE(...)] name one query and so do the two spellings of
+   [scroll-state(...)]. The AST keeps the case the author wrote so emission can
+   round-trip it, which leaves the projection to bring the two together, and
+   cascade's own [Container.equal] already reads them as one. *)
+let canonical_folds_container_function_case () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a style() query agrees with its uppercase spelling" true
+    (equal "@container STYLE(--x:1){.a{color:red}}"
+       "@container style(--x:1){.a{color:red}}");
+  Alcotest.(check bool)
+    "and a scroll-state() query with its own" true
+    (equal "@container SCROLL-STATE(stuck:top){.a{color:red}}"
+       "@container scroll-state(stuck:top){.a{color:red}}");
+  (* The case is all that folds: a different query is still a different one. *)
+  Alcotest.(check bool)
+    "a different style() property still differs" false
+    (equal "@container STYLE(--x:1){.a{color:red}}"
+       "@container style(--y:1){.a{color:red}}")
+
 let canonical_folds_media_range_spellings () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   Alcotest.(check bool)
@@ -2000,6 +2021,8 @@ let suite =
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
+      Alcotest.test_case "canonical folds container function case" `Quick
+        canonical_folds_container_function_case;
       Alcotest.test_case "canonical folds media range spellings" `Quick
         canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"
