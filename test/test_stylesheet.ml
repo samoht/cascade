@@ -6022,6 +6022,24 @@ let pretty_at_rule_block_bodies () =
        "@keyframes spin { from { transform: rotate(0deg) } to { transform: \
         rotate(360deg) } }")
 
+(* CSS Syntax 3 sec. 4.3.14 lets each half of a unicode-range carry leading
+   zeros up to six digits, and the two halves are padded independently: the AST
+   records a width per half so pretty output gives the author back what they
+   wrote. Minification drops the padding, since the shorter spelling names the
+   same range, so pretty printing is the only instrument here. The first two
+   cases pad one half ON ITS OWN, which a reader asking whether BOTH are padded
+   answers exactly as it answers the pair that pads neither. *)
+let fidelity_unicode_range_padding_preserved () =
+  let sheet range =
+    String.concat ""
+      [
+        "@font-face { font-family: X; src: url(a); unicode-range: "; range; " }";
+      ]
+  in
+  List.iter
+    (fun range -> pretty_preserves (sheet range) [ range ])
+    [ "U+0000-7F"; "U+0-007F"; "U+0000-007F"; "U+0-7F"; "U+0026" ]
+
 let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #ff0000 }" [ "#ff0000" ];
   pretty_preserves ".x { color: #f00 }" [ "#f00" ];
@@ -10456,6 +10474,9 @@ let additional_tests =
     (* Non-minified fidelity: pretty printer preserves the source spelling. *)
     ("pretty at-rule block bodies", `Quick, pretty_at_rule_block_bodies);
     ("fidelity hex form preserved", `Quick, fidelity_hex_form_preserved);
+    ( "fidelity unicode-range padding preserved",
+      `Quick,
+      fidelity_unicode_range_padding_preserved );
     ("fidelity color form preserved", `Quick, fidelity_color_form_preserved);
     ( "fidelity keyframe selector preserved",
       `Quick,
