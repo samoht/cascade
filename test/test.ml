@@ -57,7 +57,6 @@ let () =
       Test_preflight.suite;
       Test_index.suite;
       Test_summary.suite;
-      Test_factor_safe.suite;
       Test_pp.suite;
       Test_syntax.suite;
       Test_context.suite;

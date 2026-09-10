@@ -39,7 +39,6 @@
   rule_candidate
   rule_rewrite
   webkit_fallback
-  factor_safe
   gzip_size
   index
   prop_common
@@ -92,7 +91,6 @@
   merge.mli
   nest.mli
   optimize.mli
-  factor_safe.mli
   flatten.mli
   parser.mli
   pool.mli
