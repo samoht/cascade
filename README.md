@@ -346,11 +346,13 @@ cascade diff --diff=canonical origin/main:src/style.css src/style.css
 The exit code is 0 when the inputs are identical under the chosen mode and 1
 when they differ. It is 2 when the comparison found no difference but cascade
 could not read part of one file. Cascade therefore slots into any tool that
-branches on exit codes (`git` hooks, `make`, GitHub Actions, ...). The
-`--minify` pipeline is fast enough that a 200 KB stylesheet costs well under
-100 ms on the SatCSS corpus; `--objective=raw` trades roughly an order of
-magnitude of wall clock for the last few percent of uncompressed bytes and fits
-a release build rather than a watcher loop.
+branches on exit codes (`git` hooks, `make`, GitHub Actions, ...). On
+the SatCSS corpus `--minify` costs about 2.2 ms per KB of input, so a 200 KB
+stylesheet takes a few hundred milliseconds and the corpus's slowest 300 KB
+sheet takes about a second. Bytes are only a proxy: the cost is driven by how
+many rules can be factored together, so two sheets of a size can differ several
+fold. `--objective=raw` drives the factoring fixpoint to convergence and costs
+a further multiple, which fits a release build rather than a watcher loop.
 
 ## `--minify` policy
 
