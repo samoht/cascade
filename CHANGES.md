@@ -696,6 +696,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- `--diff=canonical` reads an `@container` `style()` or `scroll-state()`
+  query as one query whatever case its function name is written in, which CSS
+  Values 4 section 9 makes ASCII case-insensitive. `@container STYLE(--x:1)`
+  and `@container style(--x:1)` compared as a difference where cascade's own
+  container-condition equality already read them as one (#1226)
 - `--diff=canonical` reads a prefixed declaration the WHATWG Compatibility
   Standard section 3.4.1 names a legacy name alias as the same property as its
   unprefixed twin, so an identical pair normalizes to the twin alone:
