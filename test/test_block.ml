@@ -343,6 +343,22 @@ let test_rules_conflict_declarations () =
       ( "two shorthands sharing no longhand",
         ".a{margin:1px}.a{padding:2px}",
         false );
+      (* Every case above writes one declaration a side, where "some pair
+         contends" and "every pair contends" are the same question. A rule
+         carrying more than one declaration separates them: [color] contends
+         with [color] and [margin] shares no slot with it, and the element still
+         computes a different colour once the two swap, so one contending pair
+         is the whole answer. Reading it as "every pair" understates the
+         conflict, and [merge_distant_media] acts on [false] by hoisting the
+         later block over this rule. *)
+      ( "a contending declaration beside one that shares no slot",
+        ".a{color:red}.a{color:blue;margin:1px}",
+        true );
+      (* The same shape with the contending pair written last, so neither the
+         first nor the last declaration of the pair decides it alone. *)
+      ( "a contending declaration behind one that shares no slot",
+        ".a{color:red}.a{margin:1px;color:blue}",
+        true );
     ]
 
 (* One property with two values on both sides, so the declarations always
