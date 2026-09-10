@@ -425,7 +425,24 @@ let canonical_supports_hoisting () =
         50%,transparent)}}.y{display:grid}"
        ".a{color:red}.a{color:green}.b{color:blue}.y{display:grid}@supports \
         (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red \
-        50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}")
+        50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}");
+  (* CSS Custom Properties 1 sec. 3 substitutes [var()] at computed-value time.
+     The reader writes [color], not the custom property it reads, so moving it
+     cannot change which [--x] declaration wins. *)
+  Alcotest.(check bool)
+    "a competing color write prevents crossing the guard" false
+    (equal
+       ".a{--x:red;color:var(--x)}@supports (color:color-mix(in \
+        lab,red,red)){.a{color:blue}}"
+       ".a{--x:red}@supports (color:color-mix(in \
+        lab,red,red)){.a{color:blue}}.a{color:var(--x)}");
+  Alcotest.(check bool)
+    "a var reader crosses an independent guarded custom-property write" true
+    (equal
+       ".a{--x:red}.a{color:var(--x)}@supports (color:color-mix(in \
+        lab,red,red)){.a{--x:blue}}"
+       ".a{--x:red}@supports (color:color-mix(in \
+        lab,red,red)){.a{--x:blue}}.a{color:var(--x)}")
 
 (* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
    and substitute its computed value into the property containing [var()]. A
