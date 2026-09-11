@@ -696,6 +696,9 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A `var()` fallback the slot could not type compares and minifies as the typed
+  value it substitutes into, so `text-shadow:1px 1px var(--c, rgb(0 0 0 / .1))`
+  and its `rgb(0 0 0/.1)` twin are equal under `--diff=canonical` (#1231)
 - `--diff=canonical` reads an `@container` `style()` or `scroll-state()`
   query as one query whatever case its function name is written in, which CSS
   Values 4 section 9 makes ASCII case-insensitive. `@container STYLE(--x:1)`
