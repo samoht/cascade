@@ -409,12 +409,20 @@ let pp_var_fallback ctx fallback_name =
   pp_var_open ctx fallback_name;
   Pp.string ctx "))"
 
+(* A [Syntax_fallback] is the [<declaration-value>] a [var()] in a typed slot
+   falls back to, so the slot's grammar reads it once substituted and the
+   whitespace beside a [*] or [/] is spelling, not content: two shadows whose
+   colour fallbacks differ only around the alpha slash paint the same. Only a
+   custom property's own value keeps that separator, and that stream never
+   prints through here. *)
+let string_of_syntax_fallback ctx value =
+  if Pp.minified ctx then
+    Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
+      ~opaque:false value
+  else Parser.string_of_components value
+
 let pp_syntax_fallback ctx value =
-  Pp.string ctx
-    (if Pp.minified ctx then
-       Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
-         value
-     else Parser.string_of_components value)
+  Pp.string ctx (string_of_syntax_fallback ctx value)
 
 let pp_var_ref ctx name =
   pp_var_open ctx name;
@@ -5002,12 +5010,7 @@ and pp_color_var (ctx : Pp.ctx) (v : color var) =
   match v with
   | { fallback = Syntax_fallback value; default = Option.None; _ }
     when ctx.inline ->
-      let rendered =
-        if Pp.minified ctx then
-          Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
-            value
-        else Parser.string_of_components value
-      in
+      let rendered = string_of_syntax_fallback ctx value in
       Pp.string ctx (first_top_level_comma_segment rendered)
   | _ when Pp.minified ctx -> (
       match color_of_var_resolution ctx v with

@@ -871,8 +871,12 @@ let custom_min_word_boundary ~minify p next =
 (* Whitespace in a custom-property value is part of the stream a var()
    substitution receives, so a separator around [*] and [/] is collapsed to one
    space, never deleted: [16 / 9] and [16/9] are distinct streams. Around a
-   math-function [+] or [-] the space is required outright. *)
-let custom_min_needs_separator ~in_math prev next rest =
+   math-function [+] or [-] the space is required outright. The stream is
+   [opaque] when its consumer is unknown, which is what makes that separator
+   content; the fallback of a [var()] in a typed slot is read by the slot's
+   grammar once substituted, where CSS Values 4 (ED) sec. 10.8 makes it
+   optional, so there it goes the way {!to_string_minified} drops it. *)
+let custom_min_needs_separator ~in_math ~opaque prev next rest =
   match prev with
   | None -> false
   | Some p ->
@@ -881,15 +885,15 @@ let custom_min_needs_separator ~in_math prev next rest =
         || Option.is_none (numeric_leading_sign ~minify:false next)
       in
       pair_forms_multichar_token p next
-      || custom_min_is_math_delim p
-      || custom_min_is_math_delim next
+      || opaque
+         && (custom_min_is_math_delim p || custom_min_is_math_delim next)
       || math_sign_boundary ~in_math p next
       || custom_min_bang_boundary prev next rest
       || custom_min_word_boundary ~minify:minify_numeric p next
 
-let custom_min_ws_separator ~in_math buf prev separated rest =
+let custom_min_ws_separator ~in_math ~opaque buf prev separated rest =
   match rest with
-  | next :: _ when custom_min_needs_separator ~in_math prev next rest ->
+  | next :: _ when custom_min_needs_separator ~in_math ~opaque prev next rest ->
       Buffer.add_char buf ' ';
       true
   | _ -> separated
@@ -933,15 +937,15 @@ let add_custom_value_token ~fold_ident ~preserve_numeric_sign buf :
   | Token.Ident s -> Buffer.add_string buf (escape_ident (fold_ident s))
   | other -> add_minified_token_kind ~preserve_numeric_sign buf other
 
-let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~preserve_numeric_sign buf
-    : Component.t -> unit = function
+let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
+    ~preserve_numeric_sign buf : Component.t -> unit = function
   | Preserved t ->
       add_custom_value_token ~fold_ident ~preserve_numeric_sign buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom ~fold_ident
         ~in_math:(block_in_math ~in_math opening)
-        buf value;
+        ~opaque buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments; _ }; _ }
     when String.lowercase_ascii name = "url" -> (
@@ -953,25 +957,26 @@ let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~preserve_numeric_sign buf
       | None ->
           Buffer.add_string buf (escape_ident name);
           Buffer.add_char buf '(';
-          cvs_to_buffer_min_custom ~fold_ident ~in_math:false buf arguments;
+          cvs_to_buffer_min_custom ~fold_ident ~in_math:false ~opaque buf
+            arguments;
           Buffer.add_char buf ')')
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min_custom ~fold_ident ~in_math:(is_math_function name) buf
-        arguments;
+      cvs_to_buffer_min_custom ~fold_ident ~in_math:(is_math_function name)
+        ~opaque buf arguments;
       Buffer.add_char buf ')'
 
 (* Drops optional whitespace between sibling tokens (like [cvs_to_buffer_min])
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
-and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
+and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
   let rec loop prev separated after_whitespace = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
         let rest' = drop_whitespace_components rest in
         let separated' =
-          custom_min_ws_separator ~in_math buf prev separated rest'
+          custom_min_ws_separator ~in_math ~opaque buf prev separated rest'
         in
         loop prev separated' true rest'
     | cv :: rest ->
@@ -980,8 +985,8 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
             ~after_whitespace prev cv
         in
         custom_min_item_separator ~preserve_numeric_sign buf prev separated cv;
-        cv_to_buffer_custom_min ~fold_ident ~in_math ~preserve_numeric_sign buf
-          cv;
+        cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
+          ~preserve_numeric_sign buf cv;
         loop (Some cv) false false rest
   in
   loop None false false cvs
@@ -990,11 +995,12 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math buf cvs =
    [string_of_components] keeps every optional whitespace token. This minified
    rendering is for canonical output only: collapse optional whitespace in
    blocks and function args while preserving token boundaries. *)
-let to_string_custom_minified ?(fold_ident = fold_value_ident) cvs =
+let to_string_custom_minified ?(fold_ident = fold_value_ident) ?(opaque = true)
+    cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
     let buf = Buffer.create 64 in
-    cvs_to_buffer_min_custom ~fold_ident ~in_math:false buf cvs;
+    cvs_to_buffer_min_custom ~fold_ident ~in_math:false ~opaque buf cvs;
     Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)
