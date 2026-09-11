@@ -1164,6 +1164,33 @@ let canonical_typed_slot_fallback_slash_whitespace_equal () =
        ".a{color:var(--c, calc(1px - 2px))}"
        ".a{color:var(--c, calc(1px -2px))}")
 
+(* A [var()] that ends a shadow's length run with a colour for its fallback is
+   the colour slot's reference: the browser substitutes that colour wherever the
+   custom property is unset. Typed, its fallback compares as a colour, so [25%]
+   and [.25] are one alpha there as they are at a bare colour slot. *)
+let canonical_shadow_color_var_fallback_alpha_equal () =
+  let check name expected actual =
+    Alcotest.(check bool)
+      name true
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+  in
+  check "text-shadow relative oklab fallback alpha spelling"
+    ".a{text-shadow:1px 1px var(--c, oklab(from red l a b / 25%))}"
+    ".a{text-shadow:1px 1px var(--c, oklab(from red l a b/.25))}";
+  check "box-shadow rgb fallback alpha spelling"
+    ".a{box-shadow:1px 1px var(--c, rgb(1 2 3 / 25%))}"
+    ".a{box-shadow:1px 1px var(--c, rgb(1 2 3/.25))}";
+  check "box-shadow blur then fallback alpha spelling"
+    ".a{box-shadow:1px 1px 2px var(--c, rgb(1 2 3 / 25%)) inset}"
+    ".a{box-shadow:inset 1px 1px 2px var(--c, rgb(1 2 3/.25))}";
+  check "drop-shadow fallback alpha spelling"
+    ".a{filter:drop-shadow(1px 1px var(--c, rgb(1 2 3 / 25%)))}"
+    ".a{filter:drop-shadow(1px 1px var(--c, rgb(1 2 3/.25)))}";
+  check "shadow list fallback alpha spelling"
+    ".a{box-shadow:1px 1px var(--c, rgb(1 2 3 / 25%)),2px 2px var(--d, #0004)}"
+    ".a{box-shadow:1px 1px var(--c, rgb(1 2 3/.25)),2px 2px var(--d, \
+     #00000044)}"
+
 let canonical_calc_paren_whitespace_equal () =
   let expected = ".x{--v:calc( ( 1 / 2 ) * 100% )}" in
   let actual = ".x{--v:calc((1/2)*100%)}" in
@@ -1940,6 +1967,8 @@ let suite =
         canonical_calc_mul_div_whitespace_equal;
       Alcotest.test_case "canonical typed slot fallback slash whitespace" `Quick
         canonical_typed_slot_fallback_slash_whitespace_equal;
+      Alcotest.test_case "canonical shadow colour var fallback alpha" `Quick
+        canonical_shadow_color_var_fallback_alpha_equal;
       Alcotest.test_case "canonical calc paren whitespace" `Quick
         canonical_calc_paren_whitespace_equal;
       Alcotest.test_case "canonical min comma whitespace" `Quick
