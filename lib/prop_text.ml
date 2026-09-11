@@ -2336,12 +2336,13 @@ let rec read_text_shadow t : text_shadow =
       try_color ();
       let lengths = read_shadow_lengths t in
       try_color ();
+      let lengths, color = take_trailing_color_var lengths !color in
       match lengths with
       | h :: v :: rest ->
           let blur =
             match rest with b :: _ -> Option.Some b | _ -> Option.None
           in
-          (Text_shadow { h_offset = h; v_offset = v; blur; color = !color }
+          (Text_shadow { h_offset = h; v_offset = v; blur; color }
             : text_shadow)
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
     t
