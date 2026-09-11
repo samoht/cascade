@@ -232,6 +232,52 @@ let map_var_preserve f (v : 'a var) : 'a var =
   if fallback == v.fallback && default == v.default then v
   else { v with fallback; default }
 
+(* The colour a [var()] fallback holds when the whole fallback reads as one. *)
+let color_of_syntax_fallback (v : length var) : color option =
+  match v.fallback with
+  | Syntax_fallback components -> (
+      match
+        let t = Cursor.of_components components in
+        let color = read_color t in
+        Cursor.ws t;
+        Cursor.expect_eof t;
+        color
+      with
+      | color -> Some color
+      | exception Cursor.Parse_error _ -> Option.None)
+  | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> Option.None
+
+(* A shadow grammar puts its colour on either side of the length run and never
+   inside it: CSS Backgrounds 3 sec. 6.2 writes [inset? && <length>{2,4} &&
+   <color>?] and CSS Text Decoration 4 sec. 6.2 [<color>? && <length>{2,3}]. A
+   [var()] read positionally into that run is a length until its fallback says
+   otherwise, and a fallback the length reader refused but the colour reader
+   takes whole says so: wherever the custom property is unset the browser
+   substitutes that colour, so the reference is the colour slot's, and typing
+   the fallback is what lets [25%] and [.25] read as one alpha. Only the
+   reference that ends the run moves, once both offsets are read, since a colour
+   cannot stand inside the run. A length's [default] does not apply in colour
+   position. *)
+let take_trailing_color_var (lengths : length list) (color : color option) :
+    length list * color option =
+  match (color, List.rev lengths) with
+  | Option.None, Var v :: (_ :: _ :: _ as before) -> (
+      match color_of_syntax_fallback v with
+      | Some fallback ->
+          let var : color var =
+            {
+              name = v.name;
+              fallback = Fallback fallback;
+              default = Option.None;
+              layer = v.layer;
+              meta = v.meta;
+              runtime = v.runtime;
+            }
+          in
+          (List.rev before, Some (Var var : color))
+      | Option.None -> (lengths, color))
+  | _ -> (lengths, color)
+
 (* Drop a shorthand component that equals its longhand initial: a shorthand
    resets every component it leaves out to that initial, so the two spellings
    name one value. *)

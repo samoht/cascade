@@ -90,10 +90,12 @@ module Shadow = struct
     let _ : bool = try_inset () in
     let _ : bool = try_color () in
     let _ : bool = try_inset () in
-    let lengths = List.rev !lengths_rev in
+    let lengths, color =
+      take_trailing_color_var (List.rev !lengths_rev) !color
+    in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
-        let body = { h_offset; v_offset; blur; spread; color = !color } in
+        let body = { h_offset; v_offset; blur; spread; color } in
         (if !inset then Inset (Body body) else Shadow body : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
 end

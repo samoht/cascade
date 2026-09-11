@@ -3965,7 +3965,23 @@ let test_text_shadow () =
   check_text_shadow "red 2px 2px 4px" ~expected:"2px 2px 4px red";
   check_text_shadow "-2px -2px";
   check_text_shadow "0 0 10px";
-  neg_cursor read_text_shadow "invalid-shadow"
+  neg_cursor read_text_shadow "invalid-shadow";
+  (* CSS Text Decoration 4 sec. 6.2 puts the colour on either side of the length
+     run, so a [var()] ending the run with a colour for its fallback is the
+     colour slot's reference, typed. *)
+  (match
+     (read_text_shadow (Cursor.of_string "2px 2px var(--c, rgb(1 2 3 / 25%))")
+       : text_shadow)
+   with
+  | Text_shadow
+      {
+        blur = None;
+        color = Some (Values.Var { fallback = Values.Fallback _; _ });
+        _;
+      } ->
+      ()
+  | _ -> Alcotest.fail "a colour fallback ends the run as the colour");
+  check_text_shadow "2px 2px var(--c, #0004)" ~expected:"2px 2px var(--c,#0004)"
 
 let test_filter_function () =
   List.iter
@@ -4103,7 +4119,54 @@ let test_shadow () =
   in
   Alcotest.(check string)
     "an authored zero blur before a var colour survives optimization"
-    ".k{box-shadow:0 3px 0 var(--c)}" optimized
+    ".k{box-shadow:0 3px 0 var(--c)}" optimized;
+  (* CSS Backgrounds 3 sec. 6.2 puts the colour on either side of the length
+     run, so a [var()] read into that run is a length until its fallback says
+     otherwise. A fallback the colour reader takes whole says so: the reference
+     ends the run and takes the colour slot, typed, where a length fallback, a
+     bare reference or a reference another length follows all stay lengths. *)
+  let typed_color_var name value =
+    match (read_shadow (Cursor.of_string value) : shadow) with
+    | Shadow
+        {
+          blur = None;
+          spread = None;
+          color =
+            Some (Values.Var { name = "c"; fallback = Values.Fallback _; _ });
+          _;
+        } ->
+        ()
+    | _ -> Alcotest.failf "%s: %s does not end in a typed colour var" name value
+  in
+  typed_color_var "hex fallback" "2px 2px var(--c, #0004)";
+  typed_color_var "alpha fallback" "2px 2px var(--c, rgb(1 2 3 / 25%))";
+  typed_color_var "relative fallback"
+    "2px 2px var(--c, oklab(from red l a b / 25%))";
+  (match
+     (read_shadow (Cursor.of_string "inset 2px 2px 4px var(--c, red)") : shadow)
+   with
+  | Inset
+      (Body
+         {
+           blur = Some _;
+           spread = None;
+           color = Some (Values.Var { fallback = Values.Fallback _; _ });
+           _;
+         }) ->
+      ()
+  | _ -> Alcotest.fail "blur then a colour fallback under inset");
+  let length_var name value =
+    match (read_shadow (Cursor.of_string value) : shadow) with
+    | Shadow { color = None; _ } -> ()
+    | _ -> Alcotest.failf "%s: %s took a colour" name value
+  in
+  length_var "length fallback" "2px 2px var(--c, 3px)";
+  length_var "bare reference" "2px 2px var(--c)";
+  length_var "a length follows" "2px 2px var(--c, red) 1px";
+  length_var "one offset before" "2px var(--c, red)";
+  (* The reference prints where it was read, so the value round-trips. *)
+  check_shadow "2px 2px var(--c, #0004)" ~expected:"2px 2px var(--c,#0004)";
+  check_shadow "2px 2px var(--c, red) 1px" ~expected:"2px 2px var(--c,red) 1px"
 
 let test_align_items () =
   check_align_items "stretch";

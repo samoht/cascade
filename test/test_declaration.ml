@@ -3582,17 +3582,17 @@ let math_sign_whitespace () =
 (* A [var()] fallback the slot's reader could not type is still read by that
    slot's grammar once substituted, so the whitespace beside its [/] is
    spelling, and the printer drops it the way it does in any typed value. A
-   custom property's own value keeps it (above), as its consumer is unknown. The
-   shadow readers take the third slot as a length, so a colour fallback there is
-   the common case; a bare typed slot holds the same stream. *)
+   custom property's own value keeps it (above), as its consumer is unknown. A
+   shadow's length run holds such a stream where a colour fallback cannot move
+   to the colour slot, as when another length follows the reference. *)
 let typed_slot_fallback_whitespace () =
   check_declaration
-    ~expected:"text-shadow:12px 12px var(--c,oklab(59.982%-.067-.124/.25))"
-    ~optimized:"text-shadow:12px 12px var(--c,oklab(59.982%-.067-.124/.25))"
-    "text-shadow: 12px 12px var(--c, oklab(59.982% -.067 -.124 / .25))";
-  check_declaration ~expected:"box-shadow:12px 12px var(--c,rgb(1 2 3/.25))"
-    ~optimized:"box-shadow:12px 12px var(--c,rgb(1 2 3/.25))"
-    "box-shadow: 12px 12px var(--c, rgb(1 2 3 / .25))";
+    ~expected:"text-shadow:12px 12px var(--c,oklab(59.982%-.067-.124/.25)) 1px"
+    ~optimized:"text-shadow:12px 12px var(--c,oklab(59.982%-.067-.124/.25)) 1px"
+    "text-shadow: 12px 12px var(--c, oklab(59.982% -.067 -.124 / .25)) 1px";
+  check_declaration ~expected:"box-shadow:12px 12px var(--c,rgb(1 2 3/.25)) 1px"
+    ~optimized:"box-shadow:12px 12px var(--c,rgb(1 2 3/.25)) 1px"
+    "box-shadow: 12px 12px var(--c, rgb(1 2 3 / .25)) 1px";
   check_declaration ~expected:"width:var(--w,rgb(1 2 3/.5))"
     ~optimized:"width:var(--w,rgb(1 2 3/.5))" "width: var(--w, rgb(1 2 3 / .5))";
   (* Sec. 10.8 still requires the space around a math [+] or [-]. *)
