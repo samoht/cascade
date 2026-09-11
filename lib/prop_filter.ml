@@ -149,17 +149,16 @@ let rec pp_filter : filter Pp.t =
   | None -> Pp.string ctx "none"
   | Omitted fn -> Pp.call (filter_function_name fn) Pp.nop ctx ()
   | Blur l -> Pp.call "blur" pp_blur_length ctx l
-  | Brightness n ->
-      Pp.call "brightness" (pp_number_percentage ~always:true) ctx n
-  | Contrast n -> Pp.call "contrast" (pp_number_percentage ~always:true) ctx n
+  | Brightness n -> Pp.call "brightness" pp_number_percentage ctx n
+  | Contrast n -> Pp.call "contrast" pp_number_percentage ctx n
   | Drop_shadow s -> Pp.call "drop-shadow" pp_shadow ctx s
-  | Grayscale n -> Pp.call "grayscale" (pp_number_percentage ~always:true) ctx n
+  | Grayscale n -> Pp.call "grayscale" pp_number_percentage ctx n
   | Hue_rotate (Deg 0.) when Pp.minified ctx -> Pp.string ctx "hue-rotate()"
   | Hue_rotate a -> Pp.call "hue-rotate" pp_angle ctx a
-  | Invert n -> Pp.call "invert" (pp_number_percentage ~always:true) ctx n
-  | Opacity n -> Pp.call "opacity" (pp_number_percentage ~always:true) ctx n
-  | Saturate n -> Pp.call "saturate" (pp_number_percentage ~always:true) ctx n
-  | Sepia n -> Pp.call "sepia" (pp_number_percentage ~always:true) ctx n
+  | Invert n -> Pp.call "invert" pp_number_percentage ctx n
+  | Opacity n -> Pp.call "opacity" pp_number_percentage ctx n
+  | Saturate n -> Pp.call "saturate" pp_number_percentage ctx n
+  | Sepia n -> Pp.call "sepia" pp_number_percentage ctx n
   | Url url -> Pp.url ctx url
   | List filters ->
       let sep = if Pp.minified ctx then Pp.nop else Pp.space in

@@ -25,6 +25,18 @@ let test_string_output () =
             property "contain-intrinsic-size" "1px" ),
         "(not (-webkit-appearance: -apple-pay-button)) or \
          (contain-intrinsic-size: 1px)" );
+      (* CSS Conditional 3 sec. 6 makes every operand of [and] and [or] a
+         [<supports-in-parens>], and a [not] condition is not one, so it takes
+         parentheses of its own on either side of either operator. The [or] row
+         above and this [and] row are printed by two different arms. *)
+      ( And
+          ( Not (property "display" "grid"),
+            property "contain-intrinsic-size" "1px" ),
+        "(not (display: grid)) and (contain-intrinsic-size: 1px)" );
+      ( And
+          ( property "contain-intrinsic-size" "1px",
+            Not (property "display" "grid") ),
+        "(contain-intrinsic-size: 1px) and (not (display: grid))" );
     ]
   in
   List.iter

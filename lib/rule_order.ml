@@ -630,51 +630,24 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
 (* A custom property is an opaque token stream, so a minifier that treats it as
    text keeps the spacing the author wrote while one that re-serialises a typed
    value drops it: [var(--a, var(--b), var(--c))] against
-   [var(--a,var(--b),var(--c))]. The two are the same value, so the projection
-   normalises the space after a top-level comma. Text inside quotes is left
-   alone. *)
-let normalize_custom_value v =
-  let len = String.length v in
-  let buf = Buffer.create len in
-  let rec go i quote =
-    if i >= len then ()
-    else
-      let c = v.[i] in
-      match quote with
-      | Some q ->
-          Buffer.add_char buf c;
-          go (i + 1) (if c = q then None else quote)
-      | None ->
-          if c = '"' || c = '\'' then begin
-            Buffer.add_char buf c;
-            go (i + 1) (Some c)
-          end
-          else if c = ',' then begin
-            Buffer.add_char buf ',';
-            let rec skip j =
-              if j < len && v.[j] = ' ' then skip (j + 1) else j
-            in
-            go (skip (i + 1)) None
-          end
-          else begin
-            Buffer.add_char buf c;
-            go (i + 1) None
-          end
-  in
-  go 0 None;
-  Buffer.contents buf
+   [var(--a,var(--b),var(--c))]. The two are the same value, and
+   {!Declaration.map_custom_value} settles it by construction: it rebuilds the
+   declaration from the MINIFIED serialisation of its value, so the identity
+   below is a re-serialisation and not a no-op. Rewriting that text is what a
+   caller would reach for and there is nothing left to rewrite.
 
-(* A font name spells the same family quoted or as the bare ident sequence it
-   unquotes to, one word or several (CSS Fonts 4 sec. 2.1.1). A bare generic
-   family in the stream is what proves the custom property holds a font stack;
-   with that proof either form substitutes identically into [font-family], and
-   without it the stream is arbitrary tokens and neither form may move. Emission
-   keeps whichever the author wrote, so the projection folds the quoted form
-   onto the ident sequence - the same normalisation the structural comparator
-   applies through {!Css.declaration_value_for_equivalence}. *)
+   A font name is the other half, and does need a rewrite: it spells the same
+   family quoted or as the bare ident sequence it unquotes to, one word or
+   several (CSS Fonts 4 sec. 2.1.1). A bare generic family in the stream is what
+   proves the custom property holds a font stack; with that proof either form
+   substitutes identically into [font-family], and without it the stream is
+   arbitrary tokens and neither form may move. Emission keeps whichever the
+   author wrote, so the projection folds the quoted form onto the ident sequence
+   - the same normalisation the structural comparator applies through
+   {!Css.declaration_value_for_equivalence}. *)
 let normalize_custom_declaration d =
   Declaration.unquote_custom_font_strings
-    (Declaration.map_custom_value normalize_custom_value d)
+    (Declaration.map_custom_value Fun.id d)
 
 (* The fold reads one declaration, so it holds wherever the declaration sits: a
    [@keyframes] frame and a [@page] box spell a custom property exactly as a
@@ -982,9 +955,14 @@ let fold_layer_pins (stmts : statement list) : statement list =
 let canonical_media : Media.t -> Media.t = Media.lower_for_minify
 
 (* An [@container] prelude carries a media condition of its own, and the same
-   respellings hold inside it. *)
-let canonical_container : Container.t -> Container.t =
-  Container.lower_for_minify
+   respellings hold inside it, plus one the emitter cannot take: CSS Values 4
+   sec. 9 makes a function name ASCII case-insensitive, so [style(] and [STYLE(]
+   open one query. The AST keeps the case the author wrote and
+   {!Container.lower_for_minify} leaves it alone for that reason, since emission
+   round-trips it. A comparison has the opposite job, and {!Container.normalize}
+   is the spelling its own equivalence class is compared by -- what
+   {!Container.equal} already reads these two as. *)
+let canonical_container : Container.t -> Container.t = Container.normalize
 
 (* [@media] and [@container] are the only statements whose prelude this
    rewrites, so they are the only ones named; the descent below them is

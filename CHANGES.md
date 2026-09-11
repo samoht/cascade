@@ -696,6 +696,21 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- `--diff=canonical` reads an `@container` `style()` or `scroll-state()`
+  query as one query whatever case its function name is written in, which CSS
+  Values 4 section 9 makes ASCII case-insensitive. `@container STYLE(--x:1)`
+  and `@container style(--x:1)` compared as a difference where cascade's own
+  container-condition equality already read them as one (#1226)
+- `--diff=canonical` reads a prefixed declaration the WHATWG Compatibility
+  Standard section 3.4.1 names a legacy name alias as the same property as its
+  unprefixed twin, so an identical pair normalizes to the twin alone:
+  `a{-webkit-transform:none;transform:none}` and `a{transform:none}` compare
+  equal, and so do the other 57 properties on that list. Only
+  `-webkit-text-decoration-color` did, which is not on the list at all. A prefix
+  the section does not name stays a property of its own, `-moz-` spellings and
+  `-webkit-user-select` among them, as does a differing value or importance. A
+  check comparing a sheet against a minified form that dropped or synthesised
+  one of those aliases changes answer (#1200)
 - A browser-backed sweep checks the guarantee itself: every pair
   `--diff=canonical` reports identical is rendered in headless Chrome and every
   computed-style difference is a conflation

@@ -175,9 +175,16 @@ gate that treated 2 as 0 would pass while the files differ. The report and the
   compare equal, since none of those moves can change a computed value.
   Cascade-significant order is kept distinct (two writes of the same
   property, a shorthand and its longhand, a load-bearing vendor-prefixed
-  fallback, `@layer` blocks). An identical
-  `-webkit-text-decoration-color`/`text-decoration-color` twin is normalized
-  away; a differing or prefixed-only declaration remains distinct. Equivalent
+  fallback, `@layer` blocks). A prefixed
+  declaration the [WHATWG Compatibility Standard](https://compat.spec.whatwg.org/#css-legacy-name-aliases)
+  section 3.4.1 names a legacy name alias is the same property as its
+  unprefixed twin, so an identical pair of them normalizes to the twin alone,
+  `-webkit-transform`/`transform` and the rest of that list. A prefix the
+  section does not name is a property of its own, `-moz-` spellings and
+  `-webkit-user-select` among them, and stays distinct; so does a differing
+  value or importance, or a prefix with no unprefixed twin.
+  `-webkit-text-decoration-color` is not on the list but every engine shipping
+  the prefix aliases it, and Cascade normalizes it too. Equivalent
   shorthand decompositions are still not modelled.
   Numeric arithmetic follows the same precision mode as minification: an exact
   quotient such as `calc(28/14)` compares equal to `2` in either mode. By
@@ -339,11 +346,13 @@ cascade diff --diff=canonical origin/main:src/style.css src/style.css
 The exit code is 0 when the inputs are identical under the chosen mode and 1
 when they differ. It is 2 when the comparison found no difference but cascade
 could not read part of one file. Cascade therefore slots into any tool that
-branches on exit codes (`git` hooks, `make`, GitHub Actions, ...). The
-`--minify` pipeline is fast enough that a 200 KB stylesheet costs well under
-100 ms on the SatCSS corpus; `--objective=raw` trades roughly an order of
-magnitude of wall clock for the last few percent of uncompressed bytes and fits
-a release build rather than a watcher loop.
+branches on exit codes (`git` hooks, `make`, GitHub Actions, ...). On
+the SatCSS corpus `--minify` costs about 2.2 ms per KB of input, so a 200 KB
+stylesheet takes a few hundred milliseconds and the corpus's slowest 300 KB
+sheet takes about a second. Bytes are only a proxy: the cost is driven by how
+many rules can be factored together, so two sheets of a size can differ several
+fold. `--objective=raw` drives the factoring fixpoint to convergence and costs
+a further multiple, which fits a release build rather than a watcher loop.
 
 ## `--minify` policy
 

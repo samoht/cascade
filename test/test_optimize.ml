@@ -1950,6 +1950,27 @@ let optimized_string ?scope ?targets ?(enforce_spec = false) css =
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
+(* A [:root] or [:host] rule sorts its custom properties by name, which is safe
+   because two custom properties of different names never decide each other. The
+   declarations that are not custom properties do decide things, so the sort
+   moves the custom ones AMONG THEIR OWN POSITIONS and leaves every other slot
+   where the author put it. Sorting a run that holds nothing else says nothing
+   about that: a pass that walked the other positions instead answers those
+   cases alike and drops the declaration standing in one. *)
+let root_custom_sort_keeps_other_positions () =
+  let same name expected css =
+    Alcotest.(check string) name expected (optimized_string css)
+  in
+  same "a custom run sorts by name" ":root{--a:2;--b:1}" ":root{--b:1;--a:2}";
+  same "and sorts around a declaration that is not one"
+    ":root{--a:2;color:red;--b:1}" ":root{--b:1;color:red;--a:2}";
+  same "wherever that one sits" ":root{color:red;--a:2;--b:1}"
+    ":root{color:red;--b:1;--a:2}";
+  (* The sort is [:root] and [:host] only: anywhere else the author's order is
+     the one that ships. *)
+  same "another selector keeps the authored order" ".x{--b:1;--a:2}"
+    ".x{--b:1;--a:2}"
+
 let test_merge_consecutive_identical () =
   let input =
     [
@@ -2188,6 +2209,13 @@ let assert_emission_is_a_fixed_point ~emit label vectors =
         once (emit once))
     vectors
 
+let minify_stylesheet_scope css =
+  match Css.of_string ~strict:false css with
+  | Ok { Css.stylesheet; _ } ->
+      Css.to_string ~minify:true (Css.optimize ~scope:`Stylesheet stylesheet)
+      |> String.trim
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
 let test_prefix_synthesis_reaches_fixpoint () =
   (* The compatibility-prefix pass writes declarations the rest of the pipeline
      decides about: a prefixed twin is a rule's shared subset for the factoring,
@@ -2202,6 +2230,18 @@ let test_prefix_synthesis_reaches_fixpoint () =
       "a{mask-position:10% 20%}b{-webkit-mask-position:10%\t20%}";
       "a{backdrop-filter:blur(max(0px, \
        1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
+    ]
+
+let test_prefixed_longhand_contracts_in_one_pass () =
+  (* [`Stylesheet] licenses the partial-coverage shorthand, so the synthesised
+     [-webkit-mask-image] contracts with its unprefixed twin. That contraction
+     runs in the pipeline the prefix pass follows, so it never sees them. *)
+  assert_emission_is_a_fixed_point ~emit:minify_stylesheet_scope
+    "minify --scope=stylesheet"
+    [
+      "a{mask-image:var(--x, 10px)}";
+      "a{mask-image:var(--x, image-set())}";
+      "a{mask-image:var(--x, var(--y, 1px))}";
     ]
 
 let test_authored_dimension_reaches_fixpoint () =
@@ -5563,6 +5603,9 @@ let test_property_source_order () =
 let selector_merging_tests =
   [
     ("property source order", `Quick, test_property_source_order);
+    ( "root custom sort keeps other positions",
+      `Quick,
+      root_custom_sort_keeps_other_positions );
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
     ( "combine identical oklab(none) rules",
       `Quick,
@@ -5594,6 +5637,9 @@ let selector_merging_tests =
     ( "prefix synthesis reaches fixpoint in one pass",
       `Quick,
       test_prefix_synthesis_reaches_fixpoint );
+    ( "prefixed longhand contracts in one pass",
+      `Quick,
+      test_prefixed_longhand_contracts_in_one_pass );
     ( "authored dimension reaches fixpoint in one pass",
       `Quick,
       test_authored_dimension_reaches_fixpoint );

@@ -35,13 +35,10 @@
   ctx
   cover
   edge
-  loop
   rule_candidate
   rule_rewrite
   webkit_fallback
-  factor_safe
   gzip_size
-  index
   prop_common
   prop_svg
   prop_multicol
@@ -83,16 +80,13 @@
   factor.mli
   font_face.mli
   inline.mli
-  index.mli
   keyframe.mli
   lexer.mli
   loc.mli
-  loop.mli
   media.mli
   merge.mli
   nest.mli
   optimize.mli
-  factor_safe.mli
   flatten.mli
   parser.mli
   pool.mli

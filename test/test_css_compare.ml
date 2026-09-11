@@ -138,12 +138,15 @@ let canonical_keeps_target_gated_content () =
     "so do they with the guard written at the top level" false
     (equal ".a{color:red}@supports (display:grid){.a{color:blue}}"
        ".a{color:green}@supports (display:grid){.a{color:blue}}");
-  (* A vendor-prefixed declaration is the only one an engine that needs the
-     prefix reads, so dropping it is not dropping a spelling. *)
+  (* A vendor-prefixed declaration the WHATWG Compatibility Standard sec. 3.4.1
+     does not name is a private extension in the vendor's namespace and the only
+     declaration an engine that reads it sees, so dropping it is not dropping a
+     spelling. A prefix the section DOES name is the same property as its twin
+     and folds; [canonical_legacy_name_alias] covers that side. *)
   Alcotest.(check bool)
-    "a vendor-prefixed twin is not nothing" false
-    (equal ".a{-webkit-transition:all 1s;transition:all 1s}"
-       ".a{transition:all 1s}");
+    "an unlisted vendor-prefixed twin is not nothing" false
+    (equal ".a{-webkit-user-select:none;user-select:none}"
+       ".a{user-select:none}");
   (* CSS Cascade 5 sec. 3.1: [supports()] on an [@import] decides whether the
      sheet loads at all. *)
   Alcotest.(check bool)
@@ -179,6 +182,27 @@ let canonical_drops_redundant_decoration_color_alias () =
    meaning, and cascade's own minified output writes the range form, so the fold
    has to hold on the comparison side once the projection stops taking the
    optimizer's target facts. Deleting nothing, it is a respelling and stays. *)
+(* CSS Values 4 sec. 9: a function name is ASCII case-insensitive, so
+   [style(...)] and [STYLE(...)] name one query and so do the two spellings of
+   [scroll-state(...)]. The AST keeps the case the author wrote so emission can
+   round-trip it, which leaves the projection to bring the two together, and
+   cascade's own [Container.equal] already reads them as one. *)
+let canonical_folds_container_function_case () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a style() query agrees with its uppercase spelling" true
+    (equal "@container STYLE(--x:1){.a{color:red}}"
+       "@container style(--x:1){.a{color:red}}");
+  Alcotest.(check bool)
+    "and a scroll-state() query with its own" true
+    (equal "@container SCROLL-STATE(stuck:top){.a{color:red}}"
+       "@container scroll-state(stuck:top){.a{color:red}}");
+  (* The case is all that folds: a different query is still a different one. *)
+  Alcotest.(check bool)
+    "a different style() property still differs" false
+    (equal "@container STYLE(--x:1){.a{color:red}}"
+       "@container style(--y:1){.a{color:red}}")
+
 let canonical_folds_media_range_spellings () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   Alcotest.(check bool)
@@ -425,7 +449,64 @@ let canonical_supports_hoisting () =
         50%,transparent)}}.y{display:grid}"
        ".a{color:red}.a{color:green}.b{color:blue}.y{display:grid}@supports \
         (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red \
-        50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}")
+        50%,transparent)}.b{color:color-mix(in oklab,blue 50%,transparent)}}");
+  (* CSS Custom Properties 1 sec. 3 substitutes [var()] at computed-value time.
+     The reader writes [color], not the custom property it reads, so moving it
+     cannot change which [--x] declaration wins. *)
+  Alcotest.(check bool)
+    "a competing color write prevents crossing the guard" false
+    (equal
+       ".a{--x:red;color:var(--x)}@supports (color:color-mix(in \
+        lab,red,red)){.a{color:blue}}"
+       ".a{--x:red}@supports (color:color-mix(in \
+        lab,red,red)){.a{color:blue}}.a{color:var(--x)}");
+  Alcotest.(check bool)
+    "a var reader crosses an independent guarded custom-property write" true
+    (equal
+       ".a{--x:red}.a{color:var(--x)}@supports (color:color-mix(in \
+        lab,red,red)){.a{--x:blue}}"
+       ".a{--x:red}@supports (color:color-mix(in \
+        lab,red,red)){.a{--x:blue}}.a{color:var(--x)}")
+
+(* WHATWG Compatibility Standard sec. 3.4.1 lists the [-webkit-] properties that
+   "must be supported as legacy name aliases of the corresponding unprefixed
+   property", and CSS Cascade 5 sec. 2.3 makes a legacy name alias the SAME
+   property under a second name. So a listed prefixed declaration and its
+   unprefixed twin carrying one value declare that property twice with that
+   value, which is what declaring it once says: the pair compares equal to the
+   twin alone, whatever engine reads it. Nothing about a browser target is
+   assumed, so this holds under [~enforce_spec:true] too.
+
+   A prefix the list does NOT name is a private extension in the vendor's own
+   namespace and a property of its own, so it stays distinct however its value
+   reads. A differing value or importance is two writes of one property and
+   stays distinct as well. *)
+let canonical_legacy_name_alias () =
+  let case label expected a b =
+    Alcotest.(check bool)
+      label expected
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical a b)
+  in
+  case "a listed alias with one value is the twin alone" true
+    "a{-webkit-transform:none;transform:none}" "a{transform:none}";
+  case "the listed alias holds for box-shadow" true
+    "a{-webkit-box-shadow:1px 1px red;box-shadow:1px 1px red}"
+    "a{box-shadow:1px 1px red}";
+  case "the listed alias holds for flex-wrap" true
+    "a{-webkit-flex-wrap:wrap;flex-wrap:wrap}" "a{flex-wrap:wrap}";
+  case "the listed alias holds for animation-delay" true
+    "a{-webkit-animation-delay:1s;animation-delay:1s}" "a{animation-delay:1s}";
+  case "a differing value is two writes of one property" false
+    "a{-webkit-transform:none;transform:scale(2)}" "a{transform:scale(2)}";
+  case "a listed alias alone is not the unprefixed property dropped" false
+    "a{-webkit-transform:none}" "a{}";
+  (* [-moz-] prefixes are named nowhere in the list, and neither is
+     [-webkit-user-select]: each is its own property. *)
+  case "an unlisted -moz- prefix stays distinct" false
+    "a{-moz-box-sizing:border-box;box-sizing:border-box}"
+    "a{box-sizing:border-box}";
+  case "an unlisted -webkit- prefix stays distinct" false
+    "a{-webkit-user-select:none;user-select:none}" "a{user-select:none}"
 
 (* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
    and substitute its computed value into the property containing [var()]. A
@@ -1924,6 +2005,8 @@ let suite =
         `Quick canonical_declaration_after_nested_rule;
       Alcotest.test_case "canonical supports hoisting" `Quick
         canonical_supports_hoisting;
+      Alcotest.test_case "canonical legacy name alias" `Quick
+        canonical_legacy_name_alias;
       Alcotest.test_case "canonical var reader crosses guarded writer" `Quick
         canonical_var_reader_crosses_guarded_writer;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
@@ -1938,6 +2021,8 @@ let suite =
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
+      Alcotest.test_case "canonical folds container function case" `Quick
+        canonical_folds_container_function_case;
       Alcotest.test_case "canonical folds media range spellings" `Quick
         canonical_folds_media_range_spellings;
       Alcotest.test_case "canonical lossless equates exact srgb spellings"

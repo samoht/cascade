@@ -4413,15 +4413,14 @@ let rec pp_length_percentage ?(always = false) : length_percentage Pp.t =
          else Parser.string_of_components tokens)
 
 (* Pure serialiser: the [Pct] <-> [Num] shortest-spelling choice ([Pct 0. -> 0]
-   included) is a node-changing fold in [normalize_number_percentage], not here.
-   [~always] is kept for caller signature parity but has no effect on top-level
-   emission. *)
-let rec pp_number_percentage ?(always = false) : number_percentage Pp.t =
+   included) is a node-changing fold in [normalize_number_percentage], not
+   here. *)
+let rec pp_number_percentage : number_percentage Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
-  | Var v -> pp_var (pp_number_percentage ~always) ctx v
-  | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
+  | Var v -> pp_var pp_number_percentage ctx v
+  | Calc c -> pp_calc pp_number_percentage ctx c
 
 (* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
    12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and

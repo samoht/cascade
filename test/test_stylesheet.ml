@@ -1550,6 +1550,58 @@ let font_family_descriptor_grammar () =
   strict_reject "CSS-wide @font-palette-values family"
     "@font-palette-values --brand { font-family: inherit }"
 
+(* CSS Properties and Values API 1 sec. 3 gives a syntax component either a
+   [<syntax-type-name>] or an [<ident>] the value has to match literally, and
+   sec. 5 parses the initial value against that syntax. The keyword arm is the
+   one the reader answers by comparing text, and only its printing side was
+   covered: a keyword syntax whose initial value matches, and one whose does
+   not, are the two answers that comparison has. *)
+let property_keyword_syntax_reads_its_own_value () =
+  check_stylesheet
+    ~expected:"@property --x{syntax:\"auto\";inherits:false;initial-value:auto}"
+    "@property --x { syntax: \"auto\"; inherits: false; initial-value: auto }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --y{syntax:\"<length>|auto\";inherits:false;initial-value:auto}"
+    "@property --y { syntax: \"<length> | auto\"; inherits: false; \
+     initial-value: auto }";
+  strict_reject "an initial value the keyword syntax does not name"
+    "@property --w { syntax: \"auto\"; inherits: false; initial-value: none }"
+
+(* CSS Conditional 3 sec. 6 writes [<supports-condition>] as [not
+   <supports-in-parens> | <supports-in-parens> [ and <supports-in-parens> ]* |
+   <supports-in-parens> [ or <supports-in-parens> ]*], so every operand of
+   [and], [or] and [not] is parenthesised and a bare declaration is one nowhere.
+   The reader carries a flag saying whether the operand it is about to read may
+   be an unwrapped declaration, and only the outermost call sets it; nothing
+   pinned that the operands do not. *)
+let supports_operand_needs_its_parens () =
+  strict_reject "unwrapped declaration on the right of and"
+    "@supports (display:grid) and display:flex { a { color: red } }";
+  strict_reject "unwrapped declaration on the right of or"
+    "@supports (display:grid) or display:flex { a { color: red } }";
+  strict_reject "unwrapped declaration under not"
+    "@supports not display:grid { a { color: red } }";
+  strict_reject "unwrapped declaration as the whole condition"
+    "@supports display:grid { a { color: red } }";
+  (* Control: the same condition with its parentheses reads. *)
+  strict_accept "parenthesised operands on both sides of and"
+    "@supports (display:grid) and (display:flex) { a { color: red } }"
+
+(* A descriptor whose grammar the reader validates but whose text the AST keeps
+   verbatim, so the space inside one [<integer> && <symbol>] pair survives while
+   the space around the value does not. That outer white space is css-syntax-3
+   declaration syntax rather than descriptor content, and only the reader's trim
+   removes it: without it the pair prints back with a trailing space that no
+   reader wrote and that a minified sheet has no reason to carry.
+   [additive-symbols] is where it shows, since every other descriptor here is
+   re-serialised from a parsed value and loses the spacing anyway. *)
+let counter_style_descriptor_value_is_trimmed () =
+  check_stylesheet
+    ~expected:"@counter-style c{system:additive;additive-symbols:1 a}"
+    "@counter-style c { system: additive; additive-symbols: 1 a }"
+
 (* CSS Counter Styles 3 (ED) sec. 3.2 spells [<symbol>] as [<string> | <image> |
    <custom-ident>], and CSS Values 4 sec. 4.2 reserves [default] from every
    [<custom-ident>], so a symbol descriptor takes the string and refuses the
@@ -2705,6 +2757,15 @@ let stylesheet_tests =
       `Quick,
       spec_font_face_descriptor_matrix );
     ("font-family descriptor grammar", `Quick, font_family_descriptor_grammar);
+    ( "property keyword syntax reads its own value",
+      `Quick,
+      property_keyword_syntax_reads_its_own_value );
+    ( "supports operand needs its parens",
+      `Quick,
+      supports_operand_needs_its_parens );
+    ( "counter-style descriptor value is trimmed",
+      `Quick,
+      counter_style_descriptor_value_is_trimmed );
     ( "counter-style symbol reserves default",
       `Quick,
       counter_style_symbol_reserved_default );
@@ -4735,7 +4796,15 @@ let unicode_range_only_in_its_descriptor () =
     ~expected:
       "@font-face{font-family:X;src:url(a.woff2);unicode-range:U+26,U+0-7F}"
     "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+26, \
-     U+0-7F }"
+     U+0-7F }";
+  (* Sec. 4.3.14 writes the range's second half as one to six hex digits, so a
+     one-digit tail is a whole tail. Every case above ends its range on two
+     digits or more, which lets the lexer decide there is a tail by looking one
+     code point too far and still answer right; the shortest tail is where that
+     stops working. *)
+  check_stylesheet
+    ~expected:"@font-face{font-family:X;src:url(a.woff2);unicode-range:U+0-7}"
+    "@font-face { font-family: X; src: url(a.woff2); unicode-range: U+0-7 }"
 
 (* A nested @layer holds nesting content: bare declarations belong to the parent
    selector, exactly as in @media/@supports. Blink and WebKit both read
@@ -5952,6 +6021,24 @@ let pretty_at_rule_block_bodies () =
     (pretty
        "@keyframes spin { from { transform: rotate(0deg) } to { transform: \
         rotate(360deg) } }")
+
+(* CSS Syntax 3 sec. 4.3.14 lets each half of a unicode-range carry leading
+   zeros up to six digits, and the two halves are padded independently: the AST
+   records a width per half so pretty output gives the author back what they
+   wrote. Minification drops the padding, since the shorter spelling names the
+   same range, so pretty printing is the only instrument here. The first two
+   cases pad one half ON ITS OWN, which a reader asking whether BOTH are padded
+   answers exactly as it answers the pair that pads neither. *)
+let fidelity_unicode_range_padding_preserved () =
+  let sheet range =
+    String.concat ""
+      [
+        "@font-face { font-family: X; src: url(a); unicode-range: "; range; " }";
+      ]
+  in
+  List.iter
+    (fun range -> pretty_preserves (sheet range) [ range ])
+    [ "U+0000-7F"; "U+0-007F"; "U+0000-007F"; "U+0-7F"; "U+0026" ]
 
 let fidelity_hex_form_preserved () =
   pretty_preserves ".x { color: #ff0000 }" [ "#ff0000" ];
@@ -10387,6 +10474,9 @@ let additional_tests =
     (* Non-minified fidelity: pretty printer preserves the source spelling. *)
     ("pretty at-rule block bodies", `Quick, pretty_at_rule_block_bodies);
     ("fidelity hex form preserved", `Quick, fidelity_hex_form_preserved);
+    ( "fidelity unicode-range padding preserved",
+      `Quick,
+      fidelity_unicode_range_padding_preserved );
     ("fidelity color form preserved", `Quick, fidelity_color_form_preserved);
     ( "fidelity keyframe selector preserved",
       `Quick,

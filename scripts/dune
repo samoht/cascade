@@ -1,6 +1,14 @@
 (executables
- (names check_properties check_api_consistency check_unknown_properties)
- (modules check_properties check_api_consistency check_unknown_properties)
+ (names
+  check_properties
+  check_api_consistency
+  check_unknown_properties
+  gen_property_names)
+ (modules
+  check_properties
+  check_api_consistency
+  check_unknown_properties
+  gen_property_names)
  (libraries re unix cascade cascade_spec_inventory fmt))
 
 (rule

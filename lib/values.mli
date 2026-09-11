@@ -361,9 +361,10 @@ val normalize_color :
     relative-colour origin keep their [none]. Like [exact_srgb] it is for the
     canonical diff projection, and emission never sets it. *)
 
-val pp_number_percentage : ?always:bool -> number_percentage Pp.t
-(** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
-    When [always] is true, always includes units even for 0. *)
+val pp_number_percentage : number_percentage Pp.t
+(** [pp_number_percentage] pretty-prints {!number_percentage} values. A number
+    carries no unit and a percentage always carries its sign, so unlike
+    {!pp_length} there is nothing here for a zero to elide. *)
 
 val pp_calc :
   ?unwrap_num:bool ->

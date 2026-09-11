@@ -203,6 +203,15 @@ let test_empty_is_node_dependent () =
   (* The one element Level 3 and Level 4 answer differently. *)
   answers "white space alone" Resolve.Unsupported ":empty"
     (elt ~text:[ " \t\n" ] "p" []);
+  (* Sec. 13.2 counts only content nodes "whose data has a non-zero length", so
+     a zero-length text node is not the white space the two levels part over and
+     not content either. Both levels call the element empty, and an answer is
+     what cascade owes here rather than a decline. *)
+  answers "a zero-length text child" Resolve.Matches ":empty"
+    (elt ~text:[ "" ] "p" []);
+  answers "and one beside real white space still declines" Resolve.Unsupported
+    ":empty"
+    (elt ~text:[ ""; " " ] "p" []);
   answers "white space beside text is text to both" Resolve.No_match ":empty"
     (elt ~text:[ " "; "text" ] "p" []);
   (* The combining forms carry the node's answer, decline and all. *)
@@ -543,6 +552,58 @@ let test_attribute_case_flags () =
   yes "an escaped unquoted value decodes" "[frame=\\48 SIDES]" framed;
   yes "an escaped punctuation decodes" "[lang=EN\\-GB]" framed;
   yes "both ways" "[type=\"a\" i]" type_upper
+
+(* Two attributes the two matchers below read: a plain space-separated list, and
+   one separated by every code point css-syntax-3 sec. 4.2 counts as whitespace
+   - space, tab, line feed, carriage return and form feed. *)
+let listed =
+  elt
+    ~attrs:
+      [
+        ("data-list", "one two three");
+        ("data-ws", "alpha\tbeta\ngamma\rdelta\012epsilon");
+      ]
+    "div" []
+
+(* Selectors 4 sec. 6.1: [~=] reads the attribute as "a list of
+   whitespace-separated values" and matches when ONE OF THEM is the value, so a
+   value that is only part of a word does not match and a whitespace-only or
+   space-carrying value matches nothing at all. Sec. 6.2 has [*=] match a
+   substring anywhere in the value.
+
+   Every attribute case beside this one matches, which left both scans asked
+   only about positions that answer yes: the substring walk never ran off the
+   end of the haystack, and no case distinguished the whitespace set from the
+   space it is usually written with. *)
+let test_attribute_list_and_substring () =
+  yes "the first word of a list" "[data-list~=one]" listed;
+  yes "a word in the middle" "[data-list~=two]" listed;
+  yes "the last word" "[data-list~=three]" listed;
+  no "part of a word is not a word" "[data-list~=thre]" listed;
+  no "a word the list does not hold" "[data-list~=four]" listed;
+  no "a value carrying a space matches nothing" "[data-list~=\"one two\"]"
+    listed;
+  (* Each separator in turn, so the whitespace set is read rather than assumed
+     to be the space. *)
+  yes "a tab separates" "[data-ws~=alpha]" listed;
+  yes "a line feed separates" "[data-ws~=beta]" listed;
+  yes "a carriage return separates" "[data-ws~=gamma]" listed;
+  yes "a form feed separates" "[data-ws~=delta]" listed;
+  yes "and the last word of that list" "[data-ws~=epsilon]" listed;
+  yes "a substring at the start" "[data-list*=one]" listed;
+  yes "a substring in the middle" "[data-list*=\"e two t\"]" listed;
+  yes "a substring at the end" "[data-list*=ree]" listed;
+  no "a substring the value does not hold" "[data-list*=xyz]" listed;
+  no "one longer than the value" "[data-list*=\"one two three four\"]" listed;
+  (* Secs. 6.1 and 6.2 end each of these with "if 'val' is the empty string then
+     the selector does not represent anything", and an empty value is only
+     spellable quoted. The substring walk answers true for an empty needle at
+     the first position it is asked about, so the guard in front of it is what
+     holds the rule. *)
+  no "an empty substring represents nothing" "[data-list*=\"\"]" listed;
+  no "an empty prefix represents nothing" "[data-list^=\"\"]" listed;
+  no "an empty suffix represents nothing" "[data-list$=\"\"]" listed;
+  no "and an empty word is in no list" "[data-list~=\"\"]" listed
 
 (* selectors-4 sec. 8.4: ":scope represents this scoping root", and "if there is
    no scoping root then :scope represents the root of the tree the element is in
@@ -963,6 +1024,8 @@ let suite =
       Alcotest.test_case "has and not do not commute" `Quick
         test_has_ordering_against_not;
       Alcotest.test_case "attribute case flags" `Quick test_attribute_case_flags;
+      Alcotest.test_case "attribute list and substring matchers" `Quick
+        test_attribute_list_and_substring;
       Alcotest.test_case "scope is the root" `Quick test_scope_is_the_root;
       Alcotest.test_case "unsupported beats the structural forms" `Quick
         test_unsupported_beats_the_structural_forms;

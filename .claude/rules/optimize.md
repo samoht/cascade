@@ -2,7 +2,6 @@
 paths:
   - "lib/optimize.ml"
   - "lib/factor.ml"
-  - "lib/factor_safe.ml"
   - "lib/merge.ml"
   - "lib/cover.ml"
   - "lib/shorthand.ml"
