@@ -86,13 +86,20 @@ val fold_value_ident : string -> string
     {!to_string_custom_minified}. *)
 
 val to_string_custom_minified :
-  ?fold_ident:(string -> string) -> Component.t list -> string
+  ?fold_ident:(string -> string) -> ?opaque:bool -> Component.t list -> string
 (** Variant of {!string_of_components} for CSS Custom Properties Level 1 token
     streams. Optional whitespace is collapsed using the rules of
     {!to_string_minified} while preserving token boundaries. [fold_ident]
     (default {!fold_value_ident}) maps each ident token to its serialized
     spelling; callers that can recognise a wider set of case-insensitive value
-    keywords pass a stronger fold. *)
+    keywords pass a stronger fold.
+
+    [opaque] (default [true]) says the stream's consumer is unknown, as a custom
+    property's own value is: a whitespace token beside a [*] or [/] is then part
+    of the stream a [var()] substitutes and is kept as one space. The fallback
+    of a [var()] in a typed slot passes [~opaque:false]: the slot's grammar
+    reads the substituted stream, CSS Values 4 (ED) section 10.8 makes that
+    separator optional, and it is dropped as {!to_string_minified} drops it. *)
 
 val escape_ident : string -> string
 (** [escape_ident s] returns [s] with non-ident-continue code points backslash-

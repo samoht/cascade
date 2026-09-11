@@ -1520,7 +1520,7 @@ let token_printers =
     ("string_of_components", Parser.string_of_components);
     ("to_string_minified", Parser.to_string_minified);
     ( "to_string_custom_minified",
-      Parser.to_string_custom_minified ~fold_ident:Fun.id );
+      Parser.to_string_custom_minified ~fold_ident:Fun.id ~opaque:true );
   ]
 
 (* [hot] and [cold] serialise to the same byte count, so the output buffer, its
@@ -1641,6 +1641,33 @@ let spec_escaped_ident_survives_minify () =
   check_keeps_dash_digit "custom-property value" {|.x{--a:-\34 }|};
   check_keeps_dash_digit "media feature name"
     {|@media (-\34 :1){.x{color:red}}|}
+
+(* An opaque stream keeps the separator beside a [*] or [/] as one space, since
+   the consumer that will read it is unknown; a stream a typed slot's grammar
+   reads once substituted drops it, as CSS Values 4 (ED) sec. 10.8 makes it
+   optional. The separator sec. 10.8 requires around a math [+] or [-] and the
+   one two word-like tokens need stay whichever way the stream is read. *)
+let custom_minified_opaque_separators () =
+  let minify ~opaque source =
+    Parser.to_string_custom_minified ~opaque (parse_cvs source)
+  in
+  let check source ~opaque ~typed =
+    Alcotest.(check string)
+      (String.concat "" [ source; " opaque" ])
+      opaque
+      (minify ~opaque:true source);
+    Alcotest.(check string)
+      (String.concat "" [ source; " typed" ])
+      typed
+      (minify ~opaque:false source)
+  in
+  check "rgb(1 2 3 / .25)" ~opaque:"rgb(1 2 3 / .25)" ~typed:"rgb(1 2 3/.25)";
+  check "16 / 9" ~opaque:"16 / 9" ~typed:"16/9";
+  check "calc(1 * 2)" ~opaque:"calc(1 * 2)" ~typed:"calc(1*2)";
+  check "calc(1px - 2px)" ~opaque:"calc(1px - 2px)" ~typed:"calc(1px - 2px)";
+  check "a b" ~opaque:"a b" ~typed:"a b";
+  check "var(--a) var(--b)" ~opaque:"var(--a) var(--b)"
+    ~typed:"var(--a) var(--b)"
 
 let suite =
   ( "parser",
@@ -1793,6 +1820,8 @@ let suite =
         spec_escape_ident_leading_digit;
       Alcotest.test_case "spec section 4.2 escaped ident survives minify" `Quick
         spec_escaped_ident_survives_minify;
+      Alcotest.test_case "custom minified opaque separators" `Quick
+        custom_minified_opaque_separators;
     ] )
 
 (* Keep helper constructors referenced. *)
