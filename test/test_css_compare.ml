@@ -1132,6 +1132,38 @@ let canonical_calc_mul_div_whitespace_equal () =
     "calc(...) whitespace around * and / canonicalizes equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+(* A [var()] fallback the slot's reader could not type is a
+   [<declaration-value>] that slot's grammar reads once substituted, so the
+   whitespace beside the alpha slash of a colour written there is spelling, as
+   it is at a bare colour slot where the reader types it. The shadow readers
+   take the third slot as a length, which is where a colour fallback lands
+   untyped; a bare typed slot holds the same stream. Both compare the way the
+   browser paints them. *)
+let canonical_typed_slot_fallback_slash_whitespace_equal () =
+  let check name expected actual =
+    Alcotest.(check bool)
+      name true
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
+  in
+  check "text-shadow oklab fallback alpha slash whitespace"
+    ".a{text-shadow:12px 12px var(--c, oklab(59.982% -.067 -.124 / .25))}"
+    ".a{text-shadow:12px 12px var(--c, oklab(59.982% -.067 -.124/.25))}";
+  check "box-shadow rgb fallback alpha slash whitespace"
+    ".a{box-shadow:12px 12px var(--c, rgb(1 2 3 / .25))}"
+    ".a{box-shadow:12px 12px var(--c, rgb(1 2 3/.25))}";
+  check "typed colour slot fallback alpha slash whitespace"
+    ".a{color:var(--c, oklab(59.982% -.067 -.124 / .25))}"
+    ".a{color:var(--c, oklab(59.982% -.067 -.124/.25))}";
+  check "bare typed slot untyped fallback slash whitespace"
+    ".a{width:var(--w, rgb(1 2 3 / .5))}" ".a{width:var(--w, rgb(1 2 3/.5))}";
+  (* The separator sec. 10.8 requires around a math [+] or [-] stays a
+     difference: without it the fallback is a different token stream. *)
+  Alcotest.(check bool)
+    "untyped fallback math sign whitespace stays distinct" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a{color:var(--c, calc(1px - 2px))}"
+       ".a{color:var(--c, calc(1px -2px))}")
+
 let canonical_calc_paren_whitespace_equal () =
   let expected = ".x{--v:calc( ( 1 / 2 ) * 100% )}" in
   let actual = ".x{--v:calc((1/2)*100%)}" in
@@ -1906,6 +1938,8 @@ let suite =
         canonical_bare_ratio_whitespace_equal;
       Alcotest.test_case "canonical calc *,/ whitespace" `Quick
         canonical_calc_mul_div_whitespace_equal;
+      Alcotest.test_case "canonical typed slot fallback slash whitespace" `Quick
+        canonical_typed_slot_fallback_slash_whitespace_equal;
       Alcotest.test_case "canonical calc paren whitespace" `Quick
         canonical_calc_paren_whitespace_equal;
       Alcotest.test_case "canonical min comma whitespace" `Quick
