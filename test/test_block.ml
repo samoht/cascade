@@ -238,6 +238,24 @@ let test_is_layer_not_empty_with_nested () =
    selects a screen at 10px or wider. The two spell the same characters, and
    merging them would apply declarations the input never let match. Same shape
    as the escaped [@layer] dot above. *)
+(* A preference query nested in the body is not a reason to keep two
+   same-condition [@media] blocks apart. The condition compared is the outer
+   one, and concatenating the bodies preserves their order, so the merge changes
+   nothing a browser evaluates. A nested [@supports] already merges; the three
+   preference features were the one exception. *)
+let test_merge_media_combines_over_a_nested_preference () =
+  let css =
+    "@media (min-width:40rem){@media \
+     (prefers-color-scheme:dark){.x{color:red}}}@media \
+     (min-width:40rem){@media (prefers-color-scheme:dark){.y{color:blue}}}"
+  in
+  let merged =
+    Block.merge_consecutive_media ~optimize_merged_block:id (block css)
+  in
+  Alcotest.(check int)
+    "a nested preference query does not keep the outer blocks apart" 1
+    (List.length merged)
+
 let test_merge_media_keeps_an_escaped_media_type_apart () =
   let css =
     "@media screen\\ and\\ \\(min-width\\:\\ 10px\\){.x{color:red}}@media \
@@ -444,6 +462,8 @@ let suite =
         test_merge_media_combines_same_condition;
       Alcotest.test_case "keep an escaped media type out of a merge" `Quick
         test_merge_media_keeps_an_escaped_media_type_apart;
+      Alcotest.test_case "merge @media over a nested preference query" `Quick
+        test_merge_media_combines_over_a_nested_preference;
       Alcotest.test_case "merge two spellings of one bound" `Quick
         test_merge_media_joins_two_spellings_of_one_bound;
       Alcotest.test_case "merge same-condition @container" `Quick
