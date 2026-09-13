@@ -492,6 +492,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- Two adjacent `@media` blocks with one condition merge even where a body holds
+  a `prefers-color-scheme`, `prefers-contrast` or `prefers-reduced-motion`
+  query, which used to keep them apart. A nested `@supports` already merged,
+  and the bodies are concatenated in order with nothing moving past anything,
+  so the result evaluates as the input did (#1233)
 - A shorthand carrying a `var()` keeps every component the author wrote, where
   `--minify` dropped one holding its initial: `list-style: disc outside
   var(--x)` became `list-style: var(--x)` and `text-decoration: solid var(--x)`
