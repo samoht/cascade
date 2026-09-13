@@ -100,12 +100,15 @@ let merge_consecutive_layers ?(optimize_merged_block = Fun.id)
     merge_layer_blocks ~optimize_merged_block stmts
   else stmts
 
+(* Media Queries 4 sec. 2: two adjacent [@media] blocks with one condition are
+   evaluated identically, so concatenating their bodies in order is the same
+   cascade. Nothing in the bodies bears on that, preference queries included:
+   what a nested query gates is gated the same either way, and no statement
+   moves past another. [merge_distant_media] is the pass that hoists across an
+   intervening statement, and it keeps its own gate. *)
 let rec needs_media_merge = function
-  | Media (prev_cond, prev_block) :: Media (cond, block) :: _
-    when Media.equal prev_cond cond
-         && not
-              (has_nested_preference_media prev_block
-              || has_nested_preference_media block) ->
+  | Media (prev_cond, _) :: Media (cond, _) :: _ when Media.equal prev_cond cond
+    ->
       true
   | _ :: rest -> needs_media_merge rest
   | [] -> false
@@ -119,11 +122,7 @@ let merge_media_blocks ~optimize_merged_block stmts =
         | None -> List.rev acc)
     | Media (cond, block) :: rest -> (
         match prev_media with
-        | Some (prev_cond, prev_block)
-          when Media.equal prev_cond cond
-               && not
-                    (has_nested_preference_media prev_block
-                    || has_nested_preference_media block) ->
+        | Some (prev_cond, prev_block) when Media.equal prev_cond cond ->
             merge acc (Some (cond, prev_block @ block)) rest
         | Some (prev_cond, prev_block) ->
             merge
