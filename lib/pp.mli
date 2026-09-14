@@ -50,6 +50,12 @@ type ctx = {
           serialisation without evergreen-target facts, so target-dependent
           shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
           suppressed. *)
+  rename_custom_property : string -> string;
+      (** Rewrites a custom property's name, without its leading [--], wherever
+          one is written: the name a declaration declares and the name a [var()]
+          reads. Identity by default. A caller namespacing a sheet's variables
+          renames both sides with one function, where a transform over the AST
+          would have to rebuild every typed value holding a reference. *)
 }
 (** Formatter context containing output configuration *)
 
@@ -64,6 +70,7 @@ val ctx :
   ?inline:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
   Buffer.t ->
   ctx
 (** [ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf] builds a formatter
@@ -86,13 +93,15 @@ val to_buffer :
   ?inline:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
   Buffer.t ->
   'a t ->
   'a ->
   unit
-(** [to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf formatter
-     value] runs [formatter] under the context {!val-ctx} builds from the same
-    five options and writes the result into [buf]. *)
+(** [to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec
+     ?rename_custom_property buf formatter value] runs [formatter] under the
+    context {!val-ctx} builds from the same options and writes the result into
+    [buf]. *)
 
 val size :
   ?minify:bool ->
@@ -114,6 +123,7 @@ val to_string :
   ?inline:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
   'a t ->
   'a ->
   string
@@ -331,3 +341,7 @@ val call_3 : string -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 
 val url : string t
 (** [url] formats a CSS url with quotes: url("s"). *)
+
+val rename_custom_property : ctx -> string -> string
+(** [rename_custom_property ctx name] is [name] under [ctx]'s rename, for the
+    two sites that write a custom property's name. *)

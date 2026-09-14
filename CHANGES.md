@@ -754,6 +754,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css.to_string` and `Css.to_buffer` take `?rename_custom_property`, which
+  rewrites every custom property name — the one a declaration declares and the
+  one each `var()` reads, fallbacks included — from a single function. A
+  consumer namespacing a sheet's variables has no other route: a reference
+  lives inside a typed value, so a transform over the AST would have to rebuild
+  every value holding one (#1235).
 - `Cascade.Source_index` locates each at-rule and function token in a CSS
   source by byte offset, so a tool that must give back the author's own bytes
   can splice them at boundaries the parser supplied rather than by counting

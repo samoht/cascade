@@ -260,7 +260,12 @@ let pp_property : type a. a property Pp.t =
      non-name code point into a custom-property name, so the name is written
      back with the escapes that read it as the same name. Printed raw it ends
      its own declaration or closes the rule around it. *)
-  | Custom_property name -> Pp.string ctx (Parser.escape_ident name)
+  | Custom_property name ->
+      (* The payload carries the [--]; the rename sees the bare name, as it does
+         at a [var()], so one function answers for both sites. *)
+      let bare = String.sub name 2 (String.length name - 2) in
+      Pp.string ctx
+        (Parser.escape_ident ("--" ^ Pp.rename_custom_property ctx bare))
   | Unknown_property name -> Pp.string ctx name
   | All -> Pp.string ctx "all"
   | Background_color -> Pp.string ctx "background-color"

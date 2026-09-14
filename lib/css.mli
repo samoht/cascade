@@ -9687,15 +9687,20 @@ val to_string :
   ?indent:int ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
   t ->
   string
-(** [to_string ?minify ?indent ?lossless ?enforce_spec stylesheet] serialises a
-    stylesheet to CSS. Pure formatter - no optimisation, no theme resolution, no
-    [var()] substitution. Run {!optimize}, {!resolve_theme}, and {!inline_vars}
-    explicitly when those passes are needed. Spec recovery (drop invalid
-    declarations and empty rules) still applies because the parser preserved
-    those shapes for round-trip and browsers discard them during parse. Unknown
-    at-rules are preserved. Output never ends with a newline.
+(** [to_string ?minify ?indent ?lossless ?enforce_spec ?rename_custom_property
+     stylesheet] serialises a stylesheet to CSS. [rename_custom_property]
+    rewrites every custom property name, without its leading [--], wherever one
+    is written: the name a declaration declares and the name a [var()] reads.
+    That is how a sheet is namespaced without rebuilding the typed values its
+    references live in. Pure formatter - no optimisation, no theme resolution,
+    no [var()] substitution. Run {!optimize}, {!resolve_theme}, and
+    {!inline_vars} explicitly when those passes are needed. Spec recovery (drop
+    invalid declarations and empty rules) still applies because the parser
+    preserved those shapes for round-trip and browsers discard them during
+    parse. Unknown at-rules are preserved. Output never ends with a newline.
 
     - [minify] toggles compact serialisation (no insignificant whitespace).
     - [indent] sets the per-level indent width.
@@ -9715,6 +9720,7 @@ val to_buffer :
   ?indent:int ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
   t ->
   unit
 (** [to_buffer buf stylesheet] appends the serialised stylesheet to [buf]. Same
