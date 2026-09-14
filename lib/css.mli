@@ -9962,6 +9962,22 @@ val resolve_theme :
     on the element-scoped rule that happens to reference it would confine and
     shadow it. *)
 
+val add_var_fallbacks : (string -> string option) -> t -> t
+(** [add_var_fallbacks lookup stylesheet] gives every [var(--name)] reference in
+    [stylesheet] that has no fallback of its own the value [lookup "--name"]
+    answers, as its fallback, in every declaration a custom property's value
+    included. A reference that already carries a fallback keeps it, and the
+    references inside that fallback are given theirs, so [var(--a, var(--b))]
+    can become [var(--a, var(--b, 1px))]. A name [lookup] does not answer, and
+    an answer that is not a CSS Syntax 3 (ED) sec. 7.2 [<declaration-value>],
+    leave the reference as it was.
+
+    This is how a sheet whose tokens are declared somewhere else still resolves
+    each one where no declaration reaches it: CSS Variables 1 sec. 3 substitutes
+    the fallback for a custom property left at its guaranteed-invalid initial
+    value, and a declared one still wins. Unlike {!resolve_theme}, no reference
+    is inlined and no definition is emitted. *)
+
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
     quotes from an [@import] URL string as held in

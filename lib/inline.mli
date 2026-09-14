@@ -65,3 +65,8 @@ val imports :
     into nested at-rules and rule bodies, so imports declared inside them are
     inlined too; the caller is responsible for preloading [loader.imports] with
     every transitively-referenced stylesheet body. *)
+
+val var_fallbacks : (string -> string option) -> Stylesheet.t -> Stylesheet.t
+(** [var_fallbacks lookup stylesheet] gives every [var(--name)] in [stylesheet]
+    that has no fallback of its own the value [lookup "--name"] answers, as its
+    fallback. See {!Css.add_var_fallbacks}. *)
