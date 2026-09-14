@@ -1020,5 +1020,10 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
      values. *)
   emit_transitive_theme_refs ~theme_defaults stylesheet
 
+(* The answers that bind as a custom property's value, as [resolve_theme]
+   accepts them: anything else is no answer, and the reference stays. *)
+let add_var_fallbacks lookup =
+  Inline.var_fallbacks (bindable_theme_defaults lookup)
+
 let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

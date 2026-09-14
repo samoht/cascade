@@ -660,6 +660,86 @@ let substitute_declaration ~kept visible ctx decl =
   | Some _ -> fold_custom_value ~kept visible decl
   | None -> substitute_non_custom ~kept visible ctx decl
 
+(** {1 Fallbacks for references whose definition lives elsewhere} *)
+
+(* [var(--name, answer)] read back through the tokeniser, which is what decides
+   that [answer] is a [<declaration-value>]: anything that does not come back as
+   one [var()] carrying a fallback is no value for it. *)
+let var_with_fallback name answer =
+  let text =
+    String.concat ""
+      [ "var("; Custom_property_name.add_prefix name; ","; answer; ")" ]
+  in
+  match Cursor.remaining (Cursor.of_string text) with
+  | [ (Component.Func { node = { name = fn; arguments; _ }; _ } as var) ]
+    when String.lowercase_ascii fn = "var" -> (
+      match parse_var_components arguments with
+      | Some (_, Some _) -> Some var
+      | Some (_, Option.None) | Option.None -> Option.None)
+  | _ | (exception Cursor.Parse_error _) -> Option.None
+
+let rec fallback_components ~lookup components =
+  List.map
+    (function
+      | Component.Func ({ node = { name; arguments; _ }; _ } as fn)
+        when String.lowercase_ascii name = "var" -> (
+          match parse_var_components arguments with
+          | Some (var_name, Option.None) -> (
+              match lookup (Custom_property_name.add_prefix var_name) with
+              | Option.None -> Component.Func fn
+              | Some answer ->
+                  Option.value ~default:(Component.Func fn)
+                    (var_with_fallback var_name answer))
+          | Some (_, Some _) | Option.None ->
+              Component.Func
+                {
+                  fn with
+                  node =
+                    {
+                      fn.node with
+                      arguments = fallback_components ~lookup arguments;
+                    };
+                })
+      | Component.Func fn ->
+          Component.Func
+            {
+              fn with
+              node =
+                {
+                  fn.node with
+                  arguments = fallback_components ~lookup fn.node.arguments;
+                };
+            }
+      | Component.Block block ->
+          Component.Block
+            {
+              block with
+              node =
+                {
+                  block.node with
+                  value = fallback_components ~lookup block.node.value;
+                };
+            }
+      | Component.Preserved _ as cv -> cv)
+    components
+
+let declaration_with_fallbacks ~lookup decl =
+  let original =
+    match custom_value_components decl with
+    | Some components -> components
+    | Option.None ->
+        Cursor.remaining
+          (Cursor.of_string (Declaration.string_of_value ~minify:false decl))
+  in
+  let components = fallback_components ~lookup original in
+  if List.equal Component.equal components original then decl
+  else Option.value ~default:decl (declaration_with_components decl components)
+
+let var_fallbacks lookup stylesheet =
+  Stylesheet.map_declarations
+    (List.map (declaration_with_fallbacks ~lookup))
+    stylesheet
+
 let font_src_var_fallback ~simplify ~visited (var : Font_face.src Values.var) =
   match var.Values.fallback with
   | Values.Fallback value -> simplify ~visited value

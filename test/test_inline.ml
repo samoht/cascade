@@ -951,6 +951,40 @@ let test_inline_keeps_a_page_break_property_from_css () =
         ":root{--pb:avoid-page}.a{page-break-inside:var(--pb)}" );
     ]
 
+(* A sheet whose tokens are declared elsewhere carries each one's value as the
+   fallback of the reference, so it resolves where no declaration reaches. Only
+   a reference with no fallback of its own takes one, a reference inside a
+   fallback included; a name nothing answers, and an answer that is no value,
+   leave the reference alone. *)
+let test_add_var_fallbacks () =
+  let lookup = function
+    | "--text-lg" -> Some "1.125rem"
+    | "--lh" -> Some "1.5"
+    | "--spacing" -> Some ".25rem"
+    | "--c" -> Some "blue"
+    | "--y" -> Some "1px"
+    | "--bad" -> Some "1px}"
+    | _ -> None
+  in
+  let case name input expected =
+    Alcotest.(check string)
+      name expected
+      (input |> parse |> Css.add_var_fallbacks lookup |> minified)
+  in
+  case "a reference with none takes the answer" ".a{font-size:var(--text-lg)}"
+    ".a{font-size:var(--text-lg,1.125rem)}";
+  case "inside a calc()" ".a{padding:calc(var(--spacing) * 4)}"
+    ".a{padding:calc(var(--spacing,.25rem)*4)}";
+  case "a reference inside a fallback"
+    ".a{line-height:var(--tw-leading,var(--lh))}"
+    ".a{line-height:var(--tw-leading,var(--lh,1.5))}";
+  case "a fallback of its own stays" ".a{color:var(--c,red)}"
+    ".a{color:var(--c,red)}";
+  case "a custom property's value" ".a{--x:var(--y)}" ".a{--x:var(--y,1px)}";
+  case "a name nothing answers" ".a{color:var(--nope)}" ".a{color:var(--nope)}";
+  case "an answer that is no value" ".a{color:var(--bad)}"
+    ".a{color:var(--bad)}"
+
 let suite =
   ( "inline",
     [
@@ -1040,4 +1074,5 @@ let suite =
         test_inline_font_face_var_descriptors;
       Alcotest.test_case "inline vars reject @font-face family lists" `Quick
         test_inline_font_face_family_name;
+      Alcotest.test_case "add var fallbacks" `Quick test_add_var_fallbacks;
     ] )

@@ -754,6 +754,9 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Css.add_var_fallbacks` gives each `var()` with no fallback of its own the
+  value a lookup answers, so a sheet whose tokens are declared elsewhere, such
+  as Tailwind's `@reference` output, still resolves them (#1236).
 - `Css.to_string` and `Css.to_buffer` take `?rename_custom_property`, which
   rewrites every custom property name — the one a declaration declares and the
   one each `var()` reads, fallbacks included — from a single function. A
