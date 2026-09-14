@@ -629,12 +629,16 @@ let pp ctx stylesheet =
   in
   Stylesheet.pp ctx stylesheet
 
-let to_string ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
-  Pp.to_string ~minify ?indent ?lossless ?enforce_spec pp stylesheet
+let to_string ?(minify = false) ?indent ?lossless ?enforce_spec
+    ?rename_custom_property stylesheet =
+  Pp.to_string ~minify ?indent ?lossless ?enforce_spec ?rename_custom_property
+    pp stylesheet
 
 (* Append the serialised stylesheet to [buf]. *)
-let to_buffer buf ?(minify = false) ?indent ?lossless ?enforce_spec stylesheet =
-  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec buf pp stylesheet
+let to_buffer buf ?(minify = false) ?indent ?lossless ?enforce_spec
+    ?rename_custom_property stylesheet =
+  Pp.to_buffer ~minify ?indent ?lossless ?enforce_spec ?rename_custom_property
+    buf pp stylesheet
 
 let pp_inline_important ~minify ctx =
   if minify then Pp.string ctx "!important"

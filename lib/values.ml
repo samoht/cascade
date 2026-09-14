@@ -400,7 +400,7 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
    read the same name back. *)
 let pp_var_open ctx name =
   Pp.string ctx "var(--";
-  Pp.string ctx (Parser.escape_name name)
+  Pp.string ctx (Parser.escape_name (Pp.rename_custom_property ctx name))
 
 (* Prints the [var(--fallback_name)] used as another var's fallback, then the
    outer var's closing paren. Theme resolution is a transform, not a print

@@ -26,6 +26,7 @@ type ctx = {
           other colour approximations while keeping exact serialisation
           shortenings. *)
   enforce_spec : bool;
+  rename_custom_property : string -> string;
       (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
           serialisation but without evergreen-target facts, so target-dependent
           shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
@@ -68,7 +69,7 @@ let resolve_indent ~minify = function
   | None -> if minify then None else Some 2
 
 let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
-    ?(enforce_spec = false) out =
+    ?(enforce_spec = false) ?(rename_custom_property = Fun.id) out =
   {
     minify;
     level = 0;
@@ -80,18 +81,27 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
     in_style_rule = false;
     lossless;
     enforce_spec;
+    rename_custom_property;
   }
 
-let ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf =
-  v ?minify ?indent ?inline ?lossless ?enforce_spec (Buffer buf)
+let ctx ?minify ?indent ?inline ?lossless ?enforce_spec ?rename_custom_property
+    buf =
+  v ?minify ?indent ?inline ?lossless ?enforce_spec ?rename_custom_property
+    (Buffer buf)
 
-let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a =
-  let ctx = ctx ?minify ?indent ?inline ?lossless ?enforce_spec buf in
+let to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec
+    ?rename_custom_property buf pp a =
+  let ctx =
+    ctx ?minify ?indent ?inline ?lossless ?enforce_spec ?rename_custom_property
+      buf
+  in
   pp ctx a
 
-let to_string ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
+let to_string ?minify ?indent ?inline ?lossless ?enforce_spec
+    ?rename_custom_property pp a =
   let buf = Buffer.create 64 in
-  to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec buf pp a;
+  to_buffer ?minify ?indent ?inline ?lossless ?enforce_spec
+    ?rename_custom_property buf pp a;
   Buffer.contents buf
 
 (* Byte length of [pp a] with no allocation: the counter sink records only the
@@ -555,3 +565,5 @@ let url ctx s =
   in
   if needs_quotes then quoted_string ctx s else string ctx s;
   string ctx ")"
+
+let rename_custom_property ctx name = ctx.rename_custom_property name
