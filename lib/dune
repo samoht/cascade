@@ -102,6 +102,7 @@
   shorthand.mli
   size.mli
   sort.mli
+  source_index.mli
   stats.mli
   stylesheet.mli
   summary.mli
