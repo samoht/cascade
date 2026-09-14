@@ -9911,18 +9911,25 @@ val flatten_nesting : t -> t
     Transforms that assume the caller controls properties the open web cannot
     guarantee (no undeclared runtime mutation, full file resolution). *)
 
-val inline_vars : ?keep_vars:string list -> ?warn:(string -> unit) -> t -> t
-(** [inline_vars ?keep_vars ?warn stylesheet] substitutes [var(--name)]
-    references with the value of the corresponding [--name] declaration and
-    deletes the definition, but only for a variable with a single definition. A
-    variable in [keep_vars], or one redefined in a different scope (a real
-    cascade override such as dark mode), keeps its definition and stays a live
-    [var()] reference; [warn] is called with each such name. The transform
-    assumes no runtime mutation of the variables it inlines: a reference marked
-    [~runtime] on {!var_ref} also stays live, fallback included, so a
-    browser-time override point survives. A [style()] container query reads the
-    computed value of the custom property it names, so that property stays live
-    as well.
+val inline_vars :
+  ?keep_vars:string list ->
+  ?inline_runtime:bool ->
+  ?warn:(string -> unit) ->
+  t ->
+  t
+(** [inline_vars ?keep_vars ?inline_runtime ?warn stylesheet] substitutes
+    [var(--name)] references with the value of the corresponding [--name]
+    declaration and deletes the definition, but only for a variable with a
+    single definition. A variable in [keep_vars], or one redefined in a
+    different scope (a real cascade override such as dark mode), keeps its
+    definition and stays a live [var()] reference; [warn] is called with each
+    such name. The transform assumes no runtime mutation of the variables it
+    inlines: a reference marked [~runtime] on {!var_ref} also stays live,
+    fallback included, so a browser-time override point survives, unless
+    [inline_runtime] (default [false]) is [true], in which case such a reference
+    folds like any other whose variable the sheet defines once. A [style()]
+    container query reads the computed value of the custom property it names, so
+    that property stays live as well.
 
     Every [@layer] wrapper is spliced into its parent and the [@layer-decl]
     rules ordering them go with it. A [@property] registration goes only when

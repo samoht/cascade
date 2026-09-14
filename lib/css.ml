@@ -693,11 +693,11 @@ let canonicalize_rule_order = Rule_order.canonicalize
    substitute every resolvable [var()] reference, then strip the now-empty
    [@layer] wrappers, the [@layer-decl] rules ordering them, and the [@property]
    registrations whose property the substitution removed. *)
-let inline_vars ?keep_vars ?warn stylesheet =
+let inline_vars ?keep_vars ?inline_runtime ?warn stylesheet =
   let substituted =
     match keep_vars with
-    | None -> Inline.vars ?warn stylesheet
-    | Some keep_vars -> Inline.vars ?warn ~keep_vars stylesheet
+    | None -> Inline.vars ?inline_runtime ?warn stylesheet
+    | Some keep_vars -> Inline.vars ~keep_vars ?inline_runtime ?warn stylesheet
   in
   let live = Inline.mentioned_custom_names substituted in
   let keep_layers = not (Inline.flattening_layers_is_safe substituted) in

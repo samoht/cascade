@@ -7,16 +7,20 @@
 
 val vars :
   ?keep_vars:string list ->
+  ?inline_runtime:bool ->
   ?warn:(string -> unit) ->
   Stylesheet.t ->
   Stylesheet.t
-(** [vars ?keep_vars ?warn stylesheet] substitutes [var(--name)] references with
-    the value of the corresponding [--name] declaration and deletes the
-    definition, but only for a variable with a single definition (its value is
-    then unambiguous). A variable in [keep_vars], or one redefined in a
-    different scope (a real cascade override such as dark mode), keeps its
-    definition and stays a live [var()] reference. [warn] is called with each
-    name (leading [--]) that could not be inlined because it is redefined in a
+(** [vars ?keep_vars ?inline_runtime ?warn stylesheet] substitutes [var(--name)]
+    references with the value of the corresponding [--name] declaration and
+    deletes the definition, but only for a variable with a single definition
+    (its value is then unambiguous). A variable in [keep_vars], or one redefined
+    in a different scope (a real cascade override such as dark mode), keeps its
+    definition and stays a live [var()] reference. So does a variable a
+    reference marked [~runtime] reads, unless [inline_runtime] (default [false])
+    is [true]: it then folds like any other, for a caller that wants every
+    variable the sheet defines resolved away. [warn] is called with each name
+    (leading [--]) that could not be inlined because it is redefined in a
     different scope. *)
 
 val mentioned_custom_names : Stylesheet.t -> string list
