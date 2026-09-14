@@ -272,6 +272,40 @@ let combinations () =
   let pp_nested = Pp.braces (Pp.braces Pp.string) in
   check_pp_minified "nested braces" pp_nested ~expected:"{{inner}}" "inner"
 
+(* [rename_custom_property] is the one hook that answers for both sites a custom
+   property's name is written: the declaration and every [var()] that reads it,
+   fallbacks included. A rename over the AST instead would have to rebuild every
+   typed value a reference sits inside. *)
+let printed ?rename css =
+  match Cascade.Css.of_string css with
+  | Error _ -> Alcotest.failf "could not parse %S" css
+  | Ok p ->
+      Cascade.Css.to_string ~minify:true ?rename_custom_property:rename
+        p.Cascade.Css.stylesheet
+
+let rename_custom_property_case () =
+  let ns name = "ns-" ^ name in
+  check string "the declaration and the reference move together"
+    ":root{--ns-a:1px}.x{width:var(--ns-a)}"
+    (printed ~rename:ns ":root{--a:1px}.x{width:var(--a)}");
+  check string "inside calc" ".x{width:calc(var(--ns-a)*4)}"
+    (printed ~rename:ns ".x{width:calc(var(--a) * 4)}");
+  check string "a fallback reference too" ".x{color:var(--ns-a,var(--ns-b))}"
+    (printed ~rename:ns ".x{color:var(--a,var(--b))}");
+  (* The caller decides what moves: one that leaves a prefix alone keeps it. *)
+  let keep_tw name =
+    if String.length name > 3 && String.sub name 0 3 = "tw-" then name
+    else "tw-" ^ name
+  in
+  check string "a name the rename returns unchanged stays put"
+    ":root{--tw-a:1px;--tw-shadow:0 \
+     0}.x{width:var(--tw-a);box-shadow:var(--tw-shadow)}"
+    (printed ~rename:keep_tw
+       ":root{--a:1px;--tw-shadow:0 \
+        0}.x{width:var(--a);box-shadow:var(--tw-shadow)}");
+  check string "identity by default" ":root{--a:1px}.x{width:var(--a)}"
+    (printed ":root{--a:1px}.x{width:var(--a)}")
+
 let suite =
   ( "pp",
     [
@@ -300,4 +334,6 @@ let suite =
       Alcotest.test_case "cond" `Quick cond_case;
       Alcotest.test_case "space if pretty" `Quick space_if_pretty_case;
       Alcotest.test_case "combinations" `Quick combinations;
+      Alcotest.test_case "rename custom property" `Quick
+        rename_custom_property_case;
     ] )
