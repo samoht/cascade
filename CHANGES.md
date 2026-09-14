@@ -656,7 +656,7 @@ to lose a whole rule over one bad piece. Both are gone.
 - `Css.inline_vars ~inline_runtime:true` inlines a reference marked `~runtime`
   when the sheet defines its variable once. Such a reference always stayed
   live, so a caller asking for every variable resolved away, as tw's `--inline`
-  does, still printed `calc(var(--spacing)*4)` (#NNN).
+  does, still printed `calc(var(--spacing)*4)` (#1238).
 - A custom property's value, a container or media query, and an `@supports`
   condition all keep the text the author wrote. Whitespace runs survive, where
   `--x: a  b` came back as `a b`; escapes survive, where `--v: gre\en` came
