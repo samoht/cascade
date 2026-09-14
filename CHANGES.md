@@ -754,6 +754,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Cascade.Source_index` locates each at-rule and function token in a CSS
+  source by byte offset, so a tool that must give back the author's own bytes
+  can splice them at boundaries the parser supplied rather than by counting
+  braces. `at_rule` and `at_statement` are now exclusive: a blockful at-rule no
+  longer also answers as a blockless one with a prelude running to the end of
+  the source (#1234).
 - `Css` builds every property the AST models, bar `Unknown_property` and the
   `@font-face` `src` descriptor, neither of which is a plain property. This
   release adds the SVG presentation longhands, the CSS Anchor Positioning 1 and

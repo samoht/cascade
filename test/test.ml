@@ -23,6 +23,7 @@ let () =
       Test_loc.suite;
       Test_token.suite;
       Test_lexer.suite;
+      Test_source_index.suite;
       Test_component.suite;
       Test_parser.suite;
       Test_cursor.suite;
