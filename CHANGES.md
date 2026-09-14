@@ -495,7 +495,7 @@ to lose a whole rule over one bad piece. Both are gone.
 - A registered `<length>` or `<length-percentage>` zero minifies to `0` in an
   `@property` `initial-value`, as a declaration's zero already did. It kept
   `0px`, so the canonical diff reported two equivalent registrations as
-  different (#NNN).
+  different (#1237).
 - Two adjacent `@media` blocks with one condition merge even where a body holds
   a `prefers-color-scheme`, `prefers-contrast` or `prefers-reduced-motion`
   query, which used to keep them apart. A nested `@supports` already merged,
