@@ -505,6 +505,35 @@ let test_inline_runtime_var_metadata () =
     ".x{padding:var(--external,var(--fallback));cursor:var(--cursor,var(--cursor-fallback))}"
     (stylesheet |> Css.inline_vars |> minified)
 
+(* A reference marked [~runtime] stays live by default: it is what keeps
+   [calc(var(--spacing)*4)] in a sheet written the way Tailwind writes it. A
+   caller asking for every variable the sheet defines resolved away passes
+   [~inline_runtime:true], and the reference then folds like any other. A
+   runtime reference to a variable the sheet never defines has nothing to fold
+   to, and stays live either way. *)
+let test_inline_runtime_vars_option () =
+  let spacing : Css.length Css.var = Css.var_ref ~runtime:true "spacing" in
+  let external_ : Css.length Css.var = Css.var_ref ~runtime:true "external" in
+  let stylesheet =
+    Css.v
+      [
+        Css.rule ~selector:Css.Selector.Root
+          [ Css.custom_property "--spacing" ".25rem" ];
+        Css.rule ~selector:(Css.Selector.class_ "x")
+          [ Css.padding [ Css.Var spacing ] ];
+        Css.rule ~selector:(Css.Selector.class_ "y")
+          [ Css.padding [ Css.Var external_ ] ];
+      ]
+  in
+  Alcotest.(check string)
+    "a runtime reference stays live by default"
+    ":root{--spacing:.25rem}.x{padding:var(--spacing)}.y{padding:var(--external)}"
+    (stylesheet |> Css.inline_vars |> minified);
+  Alcotest.(check string)
+    "inline_runtime folds a runtime reference the sheet defines"
+    ".x{padding:.25rem}.y{padding:var(--external)}"
+    (stylesheet |> Css.inline_vars ~inline_runtime:true |> minified)
+
 let test_inline_across_layers () =
   (* A cascade layer never scopes custom-property visibility: layers only order
      competing declarations, so a variable defined in one @layer resolves for a
@@ -1037,6 +1066,8 @@ let suite =
         test_inline_vars_runtime_boundaries;
       Alcotest.test_case "inline vars honour runtime metadata" `Quick
         test_inline_runtime_var_metadata;
+      Alcotest.test_case "inline runtime vars option" `Quick
+        test_inline_runtime_vars_option;
       Alcotest.test_case "inline vars substitute across cascade layers" `Quick
         test_inline_across_layers;
       Alcotest.test_case
