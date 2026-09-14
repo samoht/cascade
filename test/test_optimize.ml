@@ -1033,6 +1033,45 @@ let test_promote_registered_keeps_unmatched_string_quoted () =
   check "a matching value is still typed-promoted" color
     ":root{--c:rgb(255 0 0)}" ":root{--c:red}"
 
+(* CSS Properties and Values API 1 (ED) sec. 2.3 reads an [initial-value]
+   against the registration's syntax, and a [<length>] accepts a unitless zero
+   for the length it names, so the registration takes the shorter [0] a
+   declaration of that type takes. Measured in headless Chromium on 2026-09-14:
+   [initial-value: 0] and [initial-value: 0px] register the same [<length>] and
+   both compute to [0px], while a bare [1] is refused. A zero [<percentage>] or
+   [<time>] keeps its unit, because a bare [0] is not one of those. *)
+let test_registered_zero_length_initial_value () =
+  let check name input expected =
+    Alcotest.(check string)
+      name expected
+      (minify (Css.of_string_exn ~strict:false input))
+  in
+  let registration syntax value =
+    String.concat ""
+      [
+        "@property --z{syntax:\"";
+        syntax;
+        "\";inherits:false;initial-value:";
+        value;
+        "}";
+      ]
+  in
+  check "a <length> zero drops its unit"
+    (registration "<length>" "0px")
+    (registration "<length>" "0");
+  check "a <length-percentage> zero length drops its unit"
+    (registration "<length-percentage>" "0px")
+    (registration "<length-percentage>" "0");
+  check "a <percentage> zero keeps its %"
+    (registration "<percentage>" "0%")
+    (registration "<percentage>" "0%");
+  check "a <time> zero keeps its unit"
+    (registration "<time>" "0s")
+    (registration "<time>" "0s");
+  check "a non-zero <length> is untouched"
+    (registration "<length>" "1px")
+    (registration "<length>" "1px")
+
 (* A colour function carrying a var() is a pending-substitution value (CSS
    Variables L1 section 3): its arity and legacy/modern separator style aren't
    known until substitution, so minify+optimize must keep it verbatim - never
@@ -1843,6 +1882,9 @@ let optimize_tests =
     ("vendor prefix strip", `Quick, test_vendor_prefix_strip);
     ("vendor prefix baseline gate", `Quick, test_vendor_prefix_baseline_gate);
     ("color property folds", `Quick, test_color_property_folds);
+    ( "a registered zero length drops its unit",
+      `Quick,
+      test_registered_zero_length_initial_value );
     ("lossless declaration order", `Quick, test_lossless_declaration_order);
     ( "lossless alpha folds only on a whole byte",
       `Quick,
@@ -4268,7 +4310,7 @@ let calc_flatten_registered_single_valued () =
      --x{syntax:\"<length>\";inherits:false;initial-value:0px}.a{width:calc(calc(var(--x)) \
      * 2)}"
     "@property \
-     --x{syntax:\"<length>\";inherits:false;initial-value:0px}.a{width:calc(var(--x)*2)}";
+     --x{syntax:\"<length>\";inherits:false;initial-value:0}.a{width:calc(var(--x)*2)}";
   (* CSS Values 4 sec. 10.10: an unregistered var() could substitute a
      multi-term value, so the grouping must stay. *)
   check "unregistered var keeps the nested calc"
