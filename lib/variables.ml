@@ -383,10 +383,10 @@ let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
      physical-equality check still reports no change. *)
   | Length ->
       let value' = Values.normalize_length value in
-      if value' = value then value else value'
+      if Values.equal_length value' value then value else value'
   | Length_percentage ->
       let value' = Values.normalize_length_percentage value in
-      if value' = value then value else value'
+      if Values.equal_length_percentage value' value then value else value'
   | Number | Integer | Percentage | Angle | Time | Resolution | Custom_ident
   | String | Url | Image | Transform_function | Transform_list | Universal
   | Ident_keyword _ ->
