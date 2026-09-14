@@ -376,9 +376,20 @@ let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
           if v' == v then value else Either.Right v')
   | Plus syntax -> list_map_preserve (normalize_value ~lossless syntax) value
   | Hash syntax -> list_map_preserve (normalize_value ~lossless syntax) value
-  | Length | Number | Integer | Percentage | Length_percentage | Angle | Time
-  | Resolution | Custom_ident | String | Url | Image | Transform_function
-  | Transform_list | Universal | Ident_keyword _ ->
+  (* A registered [<length>] or [<length-percentage>] reads a unitless zero as
+     the length it names, as a declaration of that type does, so it takes the
+     shorter [0] a declaration's zero takes; a zero [<percentage>] keeps its
+     [%]. The value comes back as it was when nothing shortens, so the caller's
+     physical-equality check still reports no change. *)
+  | Length ->
+      let value' = Values.normalize_length value in
+      if value' = value then value else value'
+  | Length_percentage ->
+      let value' = Values.normalize_length_percentage value in
+      if value' = value then value else value'
+  | Number | Integer | Percentage | Angle | Time | Resolution | Custom_ident
+  | String | Url | Image | Transform_function | Transform_list | Universal
+  | Ident_keyword _ ->
       value
 
 (** {1 Meta handling} *)
