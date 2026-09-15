@@ -120,6 +120,30 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* Media Queries 4 sec. 2.4.3: [not (width >= X)] and [(width < X)] hold for the
+   same widths, and the container form alike. Tailwind's compiled output writes
+   a [max-*] variant the second way, lightningcss and tw the first. *)
+let equal_canonical_negated_bound () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a negated lower bound is the strict upper bound" true
+    (equal "@media not all and (min-width:96rem){.a{color:red}}"
+       "@media (width < 96rem){.a{color:red}}");
+  Alcotest.(check bool)
+    "nested under a breakpoint too" true
+    (equal
+       "@media not all and (min-width:64rem){@media (width >= \
+        40rem){.a{color:red}}}"
+       "@media (width < 64rem){@media (width >= 40rem){.a{color:red}}}");
+  Alcotest.(check bool)
+    "a container query alike" true
+    (equal "@container (not (width >= 28rem)){.a{color:red}}"
+       "@container (width < 28rem){.a{color:red}}");
+  Alcotest.(check bool)
+    "a different bound still differs" false
+    (equal "@media not all and (min-width:96rem){.a{color:red}}"
+       "@media (width < 80rem){.a{color:red}}")
+
 (* CSS Conditional 3 sec. 2: a rule inside nested conditional group rules
    applies when every condition holds, so the order the [@media] blocks nest in
    is not part of what the rule matches. Tailwind writes a breakpoint around a
@@ -2261,6 +2285,8 @@ let suite =
         equal_canonical_top_level_is_unwrap;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
+      Alcotest.test_case "canonical equates a negated bound" `Quick
+        equal_canonical_negated_bound;
       Alcotest.test_case "canonical nested media order" `Quick
         equal_canonical_nested_media_order;
       Alcotest.test_case "canonical keyframe declaration order" `Quick
