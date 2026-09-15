@@ -727,6 +727,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- Two declarations that conflict and sit in the other order inside one rule
+  of the canonical form, `all: unset` crossing `content`, are reported as
+  that rule's reorder. The report dropped the swap as the projection's own
+  ordering and fell back to a byte diff of the two forms, saying nothing was
+  classified structurally (#1251)
 - A negated bound on a range feature is the opposite bound: `not (width >=
   V)` and `(width < V)` compare equal under `--diff=canonical`, in a container
   query as in a media query, and `--minify` writes the shorter form. Tailwind
