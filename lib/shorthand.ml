@@ -6050,18 +6050,28 @@ let legacy_vendor_fallback new_decl existing =
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
 (* The earlier declaration is a real cascade fallback when the later one uses
-   CSS Color 4 / 5 syntax that older browsers drop. *)
-let legacy_color_fallback new_decl existing =
+   CSS Color 4 / 5 syntax that older browsers drop. With a target contract the
+   browsers are named, and the fallback is one only where a target does not
+   parse the later colour; every target parsing it makes the earlier declaration
+   dead at cascade time. *)
+let legacy_color_fallback ?targets new_decl existing =
   same_property new_decl existing
   && (not (same_value new_decl existing))
-  && Declaration.value_uses_color_4 new_decl
+  && (match targets with
+    | Some targets ->
+        Declaration.value_uses_color_unimplemented_by targets new_decl
+    | None -> Declaration.value_uses_color_4 new_decl)
   && not (Declaration.value_uses_color_4 existing)
 
 (* Same shape: the later value uses a runtime substitution ([var()] / [env()] /
    [attr()]) and the earlier doesn't, so the earlier is a static fallback for
-   browsers that can't resolve the substitution at parse time. *)
-let legacy_runtime_subst_fallback new_decl existing =
-  same_property new_decl existing
+   browsers that can't resolve the substitution at parse time. Every target
+   resolves one, and a declaration holding a substitution is never dropped at
+   parse time, so under a target contract the later one always wins the cascade
+   and the earlier is dead. *)
+let legacy_runtime_subst_fallback ?targets new_decl existing =
+  Option.is_none targets
+  && same_property new_decl existing
   && (not (same_value new_decl existing))
   && Declaration.value_uses_runtime_subst new_decl
   && not (Declaration.value_uses_runtime_subst existing)
@@ -6071,13 +6081,13 @@ let same_property_value_declaration new_decl existing =
   && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
-let covered_by_new_declaration new_decl existing =
+let covered_by_new_declaration ?targets new_decl existing =
   (not (is_intentionally_duplicated existing))
   && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
   && (not (legacy_vendor_fallback new_decl existing))
-  && (not (legacy_color_fallback new_decl existing))
-  && not (legacy_runtime_subst_fallback new_decl existing)
+  && (not (legacy_color_fallback ?targets new_decl existing))
+  && not (legacy_runtime_subst_fallback ?targets new_decl existing)
 
 let filter_preserve = List.filter_preserve
 
@@ -6095,7 +6105,7 @@ let is_all_declaration = function
       | _ -> false)
   | _ -> false
 
-let deduplicate_step kept (idx, decl) =
+let deduplicate_step ?targets kept (idx, decl) =
   if is_intentionally_duplicated decl then
     let kept =
       filter_preserve
@@ -6108,7 +6118,7 @@ let deduplicate_step kept (idx, decl) =
   else
     let kept =
       filter_preserve
-        (fun (_, old) -> not (covered_by_new_declaration decl old))
+        (fun (_, old) -> not (covered_by_new_declaration ?targets decl old))
         kept
     in
     if is_all_declaration decl then add_all_declaration_rev idx decl kept
@@ -6898,7 +6908,12 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
   let held = held_outside held props in
   let props = drop_longhands_after_covering_shorthand props in
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
-  let kept = List.rev (List.fold_left deduplicate_step [] indexed_props) in
+  let kept =
+    List.rev
+      (List.fold_left
+         (deduplicate_step ?targets:(Ctx.judge ctx))
+         [] indexed_props)
+  in
   let kept =
     let kept = if merge_box then compose_shorthands ~held ~ctx kept else kept in
     let kept = drop_vendor_aliases ~ctx kept in

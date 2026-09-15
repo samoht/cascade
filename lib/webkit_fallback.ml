@@ -26,6 +26,8 @@ type t =
   | Mask_repeat_fallback
   | Mask_clip_fallback
   | Mask_origin_fallback
+  | Mask_composite_fallback
+  | Mask_mode_fallback
 
 (* A target that cannot read the standard property at all needs the fallback for
    every value of it. A target that reads both spellings needs it only where the
@@ -88,6 +90,45 @@ let rec prefixed_mask_box :
       else None
   | Fill_box | Stroke_box | View_box | No_clip | Var _ -> None
 
+(* CSS Masking 1 sec. 6.8 names the compositing operators over the mask layer
+   below; WebKit's prefixed property names the same four with the Compositing 1
+   sec. 10.2 operators, source over, source out, source in and xor. A list maps
+   element by element and a [var()] has no prefixed spelling. *)
+let rec prefixed_mask_composite :
+    Properties.mask_composite -> Properties.webkit_mask_composite option =
+  function
+  | Add -> Some Source_over
+  | Subtract -> Some Source_out
+  | Intersect -> Some Source_in
+  | Exclude -> Some Xor
+  | Inherit -> Some Inherit
+  | Initial -> Some Initial
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
+  | Composites layers ->
+      let mapped = List.filter_map prefixed_mask_composite layers in
+      if List.length mapped = List.length layers then
+        Some (Composites mapped : Properties.webkit_mask_composite)
+      else None
+  | Var _ -> None
+
+(* CSS Masking 1 sec. 6.3 [mask-mode] against WebKit's
+   [-webkit-mask-source-type]: [alpha] and [luminance] are the same words,
+   [match-source] is the [auto] that reads the source's own type. The prefixed
+   property takes one value, so a layer list has no prefixed spelling. *)
+let prefixed_mask_mode :
+    Properties.mask_mode -> Properties.webkit_mask_source_type option = function
+  | Alpha -> Some Alpha
+  | Luminance -> Some Luminance
+  | Match_source -> Some Auto
+  | Inherit -> Some Inherit
+  | Initial -> Some Initial
+  | Unset -> Some Unset
+  | Revert -> Some Revert
+  | Revert_layer -> Some Revert_layer
+  | Modes _ | Var _ -> None
+
 let specs =
   [
     typed_fallback User_select_fallback User_select Webkit_user_select
@@ -112,6 +153,11 @@ let specs =
       Webkit_mask_clip "mask-clip" "-webkit-mask-clip";
     converted_fallback ~convert:prefixed_mask_box Mask_origin_fallback
       Mask_origin Webkit_mask_origin "mask-origin" "-webkit-mask-origin";
+    converted_fallback ~convert:prefixed_mask_composite Mask_composite_fallback
+      Mask_composite Webkit_mask_composite "mask-composite"
+      "-webkit-mask-composite";
+    converted_fallback ~convert:prefixed_mask_mode Mask_mode_fallback Mask_mode
+      Webkit_mask_source_type "mask-mode" "-webkit-mask-source-type";
   ]
 
 let fallback_spec_kind = function
@@ -141,8 +187,8 @@ let fallback_spec_by_standard_name = fallback_spec_by_name fst
    callers. Which of these the targets read unprefixed is a fact about browsers,
    so {!Support} answers it from the generated web-features table and a browser
    that catches up moves the answer at the next regeneration. [mask-mode] and
-   [mask-composite] are excluded because their prefixed forms have different
-   grammars. *)
+   [mask-composite] take WebKit's own vocabulary, which the converters above
+   map. *)
 let required_fallback kind targets =
   let lacks key = Support.unimplemented_by targets key in
   match kind with
@@ -165,6 +211,8 @@ let required_fallback kind targets =
   | Mask_repeat_fallback -> lacks "css.properties.mask-repeat"
   | Mask_clip_fallback -> lacks "css.properties.mask-clip"
   | Mask_origin_fallback -> lacks "css.properties.mask-origin"
+  | Mask_composite_fallback -> lacks "css.properties.mask-composite"
+  | Mask_mode_fallback -> lacks "css.properties.mask-mode"
 
 let webkit_compatible_mask : Properties.mask -> Properties.mask =
   let strip_layer (layer : Properties.mask_layer) =

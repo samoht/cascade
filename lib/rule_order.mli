@@ -27,6 +27,7 @@ val canonical_declarations :
 val canonicalize :
   ?lossless:bool ->
   ?enforce_spec:bool ->
+  ?judge:Support.targets ->
   Stylesheet.statement list ->
   Stylesheet.statement list
 (** [canonicalize stmts] reorders each maximal run of consecutive reorderable
@@ -84,6 +85,7 @@ val canonicalize :
     through the CSSOM.
 
     Coalescing two same-selector rules deduplicates the declarations they
-    together hold, under the same [enforce_spec] the optimizer takes
-    ({!Optimize.stylesheet}): a prefixed declaration keeps its unprefixed twin.
-*)
+    together hold, under the same [enforce_spec] and [judge] the optimizer takes
+    ({!Optimize.stylesheet}): with [judge] set, a colour fallback every judged
+    browser parses past is dead once the rules meet; with [enforce_spec] a
+    prefixed declaration keeps its unprefixed twin. *)

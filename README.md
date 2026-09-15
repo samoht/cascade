@@ -142,7 +142,12 @@ values. Identical files exit 0 and differences exit 1, so `cascade diff` works
 as a CI check. `--diff=canonical` compares what the CSS does, not how it is
 written. Exit 0 means every element computes the same values. Two files with
 different rules can do that. Canonicalisation allows the same bounded
-approximation as `--minify`, and `--lossless` turns it off.
+approximation as `--minify`, and `--lossless` turns it off. It also judges for
+the evergreen browsers `--minify` targets: a `@supports` guard every one of
+them satisfies is unwrapped, a vendor prefix a target needs is written on both
+sides and one no target needs is dropped from both, and a colour fallback every
+target parses past is dead, so two sheets that disagree only on those compare
+equal. `--enforce-spec` holds those rewrites off and keeps the two apart.
 
 A difference cascade can see exits 1, whether or not it read everything. When it
 finds no difference but could not read part of a file, it compares the text each
@@ -203,6 +208,7 @@ carries output the other does not, an empty rule for instance. Use `tree` or
 | `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit, each one whole and never fewer than one; `none` prints every one; an integer prints exactly that many. A shortened report ends with the number left out. |
 | `--lossless` | Disable bounded colour and numeric approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within an approximation budget report as different rather than equal. Has no effect outside `--diff=canonical`. |
 | `--prune-unused-custom-props` | Drop the custom-property bindings nothing references, on both sides, before comparing under `--diff=canonical`, so two sheets that differ only by a dead binding compare equal. The comparison is then blind to dead-custom-property divergences. Has no effect outside `--diff=canonical`. |
+| `--enforce-spec` | Name no browser under `--diff=canonical`: every `@supports` guard, vendor prefix and colour fallback is kept for the engine that renders the sheet to answer, so two sheets that differ on one report as different. Has no effect outside `--diff=canonical`. |
 | `--browser --html FILE` | Render both files over the HTML document `FILE` in a headless Chromium and report every computed-style value the two disagree on, instead of comparing the CSS. The document's own `<style>` elements and stylesheet `<link>`s are removed and its inline `style` attributes kept; every element and its `::before`, `::after`, `::marker`, `::placeholder`, `::first-letter` and `::first-line` are sampled at every viewport width a media condition in either file names and under every interaction state either file names, a state applied to every element at once. Values are compared as the browser spells them, with no normalisation; each difference also says whether the two paint the same. The report records the browser version, viewports, states and how much was sampled, and `--json` writes the same as a document. Needs node and a headless Chromium (`NODE`, `CHROME`, or the usual places) and exits 2 without them, on a driver failure, or when nothing was sampled. |
 | `--color=WHEN` | `auto` (default), `always` or `never`. `CASCADE_COLOR` sets the same thing; `NO_COLOR` overrides both. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
@@ -632,11 +638,13 @@ Output:
 Properties, values, and selectors are sealed OCaml ADTs, so invalid
 constructions are caught at compile time. Structural transforms (`fold`,
 `map`, `sort`, `flatten_nesting`), `Css.inline_imports`, and
-`Css.optimize ?targets ?flatten_nesting ?aggressive ?lossless ?enforce_spec
-?scope` is the main entry point for AST-level work. Transforms that need
-information beyond CSS text take an explicit context rather than reading
-ambient runtime state; `Css.Optimize.evergreen_targets` names the default
-browser contract.
+`Css.optimize ?targets ?judge ?flatten_nesting ?aggressive ?lossless
+?enforce_spec ?scope` is the main entry point for AST-level work. Transforms
+that need information beyond CSS text take an explicit context rather than
+reading ambient runtime state; `Css.Optimize.evergreen_targets` names the
+default browser contract, and `?judge` names the browsers a run decides
+`@supports` guards and colour fallbacks for, which the minifier never does on
+its own.
 
 Structural diff lives in the separate `cascade.diff` sub-library
 (`Cascade_diff.Css_compare`, `Cascade_diff.Tree_diff`,

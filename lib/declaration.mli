@@ -215,9 +215,18 @@ val is_invalid : declaration -> bool
     which every serialisation runs, uses this predicate to remove the
     declaration. *)
 
+val value_uses_color : (Values.color -> bool) -> declaration -> bool
+(** [value_uses_color p decl] is [true] when a colour in [decl]'s typed value
+    satisfies [p]. [var()] returns [false]. *)
+
 val value_uses_color_4 : declaration -> bool
 (** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
     CSS Color 4 / 5 construct. [var()] returns [false]. *)
+
+val value_uses_color_unimplemented_by : Support.targets -> declaration -> bool
+(** [value_uses_color_unimplemented_by targets decl] is [true] when a browser in
+    [targets] does not parse a colour construct [decl]'s typed value uses, and
+    so drops the declaration and paints the one before it. *)
 
 val value_uses_runtime_subst : declaration -> bool
 (** [value_uses_runtime_subst decl] is [true] when [decl]'s typed length value

@@ -637,6 +637,12 @@ val color_has_specified_hue : color -> bool
     [specified hue] interpolation keyword. Stylesheet recovery keeps the
     declaration for compatibility, while strict parsing reports it. *)
 
+val color_uses_feature_where : (string -> bool) -> color -> bool
+(** [color_uses_feature_where lacks c] is [true] when [c] uses a CSS Color 4 / 5
+    construct whose web-features key [lacks] answers [true] for, so a caller
+    holding a target contract can ask whether a browser in it fails to parse
+    [c]. A construct with no key of its own is not asked about. *)
+
 val color_is_color_4 : color -> bool
 (** [color_is_color_4 c] is [true] when [c] uses a CSS Color 4 / 5 construct
     ([lab], {!val-lch}, {!val-oklab}, {!val-oklch}, {!val-hwb}, [color()],

@@ -9783,7 +9783,8 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val canonicalize_rule_order : ?lossless:bool -> ?enforce_spec:bool -> t -> t
+val canonicalize_rule_order :
+  ?lossless:bool -> ?enforce_spec:bool -> ?judge:Optimize.targets -> t -> t
 (** [canonicalize_rule_order t] projects cascade-equivalent stylesheets to one
     deterministic form: selector-list rules expand onto their branches,
     same-selector rules coalesce when no intervening write can observe the move
@@ -9827,6 +9828,7 @@ val canonicalize_rule_order : ?lossless:bool -> ?enforce_spec:bool -> t -> t
 val optimize :
   ?scope:Optimize.scope ->
   ?targets:Optimize.targets ->
+  ?judge:Optimize.targets ->
   ?flatten_nesting:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
@@ -9838,7 +9840,7 @@ val optimize :
   ?stats:Stats.t ->
   t ->
   t
-(** [optimize ?scope ?targets ?flatten_nesting ?lossless ?enforce_spec
+(** [optimize ?scope ?targets ?judge ?flatten_nesting ?lossless ?enforce_spec
      ?aggressive ?regroup ?closed_world ?objective ?prune_unused_custom_props
      ?stats stylesheet] applies CSS optimizations to the stylesheet, including
     merging consecutive identical selectors and combining rules with identical
@@ -9851,6 +9853,9 @@ val optimize :
 
     [targets] defaults to {!Optimize.evergreen_targets} and owns compatibility
     prefix generation. It is ignored when [enforce_spec] is [true].
+
+    [judge], unset by default, names the browsers the sheet is judged for; see
+    {!Optimize.stylesheet}.
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
     desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.

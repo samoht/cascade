@@ -441,7 +441,23 @@ and process_container_statement ?factor_cache ~ctx ~enforce_spec ~owner
 
 and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     acc stmt cond block rest =
-  match Supports.simplify_under ~context:supports cond with
+  (* A guard the enclosing context leaves open is put to the browsers the run
+     judges for, when it judges for any: one every target satisfies asks a
+     question they all answer yes to, and one none of them satisfies selects no
+     target. Otherwise the guard stays for the engine to answer. *)
+  let decision =
+    match Supports.simplify_under ~context:supports cond with
+    | `Cond cond' as open_guard -> (
+        match Ctx.judge ctx with
+        | Some targets -> (
+            match Supports.implemented_by targets cond' with
+            | Some true -> `True
+            | Some false -> `False
+            | None -> open_guard)
+        | None -> open_guard)
+    | decided -> decided
+  in
+  match decision with
   (* The guard selects no user agent, so nothing in its block is ever applied
      (CSS Conditional 3 sec. 2). Its cascade layers go with it: CSS Cascade 5
      sec. 6.4.1 keeps a layer defined inside a conditional group rule out of the
@@ -1129,10 +1145,11 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
   in
   list_map_preserve prune stmts
 
-let stylesheet ?scope ?(targets = evergreen_targets) ?(flatten_nesting = false)
-    ?(lossless = false) ?(enforce_spec = false) ?(aggressive = false)
-    ?(regroup = true) ?(closed_world = false) ?(objective = `Transfer)
-    ?(prune_unused_custom_props = false) ?stats (stylesheet : t) : t =
+let stylesheet ?scope ?(targets = evergreen_targets) ?judge
+    ?(flatten_nesting = false) ?(lossless = false) ?(enforce_spec = false)
+    ?(aggressive = false) ?(regroup = true) ?(closed_world = false)
+    ?(objective = `Transfer) ?(prune_unused_custom_props = false) ?stats
+    (stylesheet : t) : t =
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
@@ -1149,7 +1166,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?(flatten_nesting = false)
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
-      ~registered ?stats scope
+      ?judge ~registered ?stats scope
   in
   let result =
     run_pipeline

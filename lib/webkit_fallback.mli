@@ -22,6 +22,8 @@ type t =
   | Mask_repeat_fallback
   | Mask_clip_fallback
   | Mask_origin_fallback
+  | Mask_composite_fallback
+  | Mask_mode_fallback
 
 val pp : t Pp.t
 (** [pp] writes the family's standard property name, which is what names it in a

@@ -125,6 +125,16 @@ val compare : t -> t -> int
 val equal : t -> t -> bool
 (** [equal a b] tests structural equality. *)
 
+val implemented_by : Support.targets -> t -> bool option
+(** [implemented_by targets cond] is [Some true] when every browser in [targets]
+    satisfies [cond], [Some false] when none of them does, and [None] otherwise:
+    when the targets disagree, or when the web-features dataset cannot say for
+    one of them, which is a property it has no key for, a vendor-prefixed one
+    among them, a value using a construct it does not name, one cascade's reader
+    refuses, or a function or general-enclosed feature. Each engine is answered
+    on its own and combinators follow CSS Conditional 3 sec. 6's three-valued
+    logic. *)
+
 val simplify_under : context:t list -> t -> [ `True | `False | `Cond of t ]
 (** [simplify_under ~context cond] decides [cond] against the conjunction [K] of
     the conditions enclosing it. [`True] means [K and not cond] is

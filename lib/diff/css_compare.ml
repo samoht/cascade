@@ -488,6 +488,9 @@ let css_for_semantic_comparison ?property css =
 
 let canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
     stylesheet =
+  let judge =
+    if enforce_spec then None else Some Css.Optimize.evergreen_targets
+  in
   try
     let optimize stylesheet =
       (* Regrouping - factoring a shared declaration into a selector list,
@@ -496,13 +499,19 @@ let canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
          written either way would canonicalise differently. The projection skips
          it.
 
-         The projection applies the evergreen-browser rewrites [--minify]
-         applies, a prefix no target needs dropped from both sides; under
-         [~enforce_spec] it keeps every prefix, as the minifier does. The
+         The projection judges for the browsers [--minify] targets, which the
+         minifier itself never does: a [@supports] guard every target satisfies
+         is unwrapped and the declaration written before it is dead, a prefix a
+         target needs is written on both sides and one no target needs is
+         dropped from both, and a fallback every target parses past is dead. Two
+         sheets that disagree on any of those render alike on every target,
+         which is what the comparison answers for. [~enforce_spec] holds those
+         rewrites off, because each deletes content an engine outside the
+         targets reads, and the projection then keeps the two apart. The
          respellings gated with them - [min-X] into the range form, the Level 3
          [not all and (X)] - delete nothing, and {!Css.canonicalize_rule_order}
          applies those on the comparison side either way. *)
-      Css.optimize ~lossless ~regroup:false ~enforce_spec
+      Css.optimize ~lossless ~regroup:false ~enforce_spec ?judge
         ~prune_unused_custom_props stylesheet
     in
     (* A declaration run written after a nested statement first needs the
@@ -511,7 +520,7 @@ let canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
        normalization cannot synthesize the nesting the projection removes. *)
     Some
       (stylesheet |> optimize |> Css.flatten_nesting |> optimize
-      |> Css.canonicalize_rule_order ~lossless ~enforce_spec
+      |> Css.canonicalize_rule_order ~lossless ~enforce_spec ?judge
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None
 

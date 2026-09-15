@@ -4913,8 +4913,12 @@ let test_mask_composite () =
   check_mask_composite "intersect";
   check_mask_composite "exclude";
   check_mask_composite "inherit";
-  decl_optimizes ~prop:"mask-composite" ~into:"add,subtract,intersect"
-    "add,subtract,intersect";
+  (* The evergreen target adds WebKit's spelling of each operator, layer by
+     layer, ahead of the standard one. *)
+  decl_optimizes_to
+    ~into:
+      "-webkit-mask-composite:source-over,source-out,source-in;mask-composite:add,subtract,intersect"
+    "mask-composite:add,subtract,intersect";
   neg_cursor read_mask_composite "invalid-composite"
 
 let test_mask_mode () =

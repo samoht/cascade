@@ -23,6 +23,11 @@ type t = {
           vendor-prefixed declaration whose unprefixed twin modern browsers
           support. On: keep every prefix (spec-literal, maximal compatibility).
       *)
+  judge : Support.targets option;
+      (** The browsers the run judges for, when it judges for any: a guard they
+          all satisfy is decided, a fallback they all parse past is dead. [None]
+          keeps every guard and fallback for the engine to answer, and
+          [enforce_spec] forces it. *)
   stats : Stats.t;
       (** Profiling recorder for the run this context belongs to. Carried here
           because every pass that counts anything already takes a context, and a
@@ -41,12 +46,13 @@ let fragment =
     closed_world = false;
     objective = `Transfer;
     enforce_spec = false;
+    judge = None;
     stats = Stats.v ();
   }
 
 let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
-    ?(enforce_spec = false) ?stats scope =
+    ?(enforce_spec = false) ?judge ?stats scope =
   let stats = match stats with Some stats -> stats | None -> Stats.v () in
   let scope = match scope with Some scope -> scope | None -> fragment.scope in
   {
@@ -60,12 +66,13 @@ let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     closed_world;
     objective;
     enforce_spec;
+    judge = (if enforce_spec then None else judge);
     stats;
   }
 
 let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
-    ?(enforce_spec = false) ?(registered = fun _ -> false) ?stats scope =
+    ?(enforce_spec = false) ?judge ?(registered = fun _ -> false) ?stats scope =
   let stats = match stats with Some stats -> stats | None -> Stats.v () in
   {
     scope;
@@ -78,6 +85,7 @@ let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     closed_world;
     objective;
     enforce_spec;
+    judge = (if enforce_spec then None else judge);
     stats;
   }
 
@@ -91,6 +99,7 @@ let recurse_blocks t = t.recurse_blocks
 let closed_world t = t.closed_world
 let objective t = t.objective
 let enforce_spec t = t.enforce_spec
+let judge t = t.judge
 let stats t = t.stats
 let with_extend_lists extend_lists t = { t with extend_lists }
 let with_recurse_blocks recurse_blocks t = { t with recurse_blocks }

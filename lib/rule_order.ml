@@ -1197,10 +1197,10 @@ let rec canonical_keyframe_declarations (stmts : statement list) :
           Stylesheet.map_statement_children canonical_keyframe_declarations stmt)
     stmts
 
-let canonicalize ?(lossless = false) ?(enforce_spec = false)
+let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
     (stmts : statement list) : statement list =
   let changed = ref false in
-  let ctx = Ctx.of_scope ~enforce_spec None in
+  let ctx = Ctx.of_scope ~enforce_spec ?judge None in
   let normalized =
     fold_layer_pins
       (canonical_media_nesting
