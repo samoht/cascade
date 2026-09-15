@@ -157,6 +157,22 @@ let equal_canonical_nested_media_order () =
     "a condition only one side applies still differs" false
     (equal (wide ^ "{" ^ dark ^ "{.a{color:red}}}") (wide ^ "{.a{color:red}}"))
 
+(* CSS Animations 1 sec. 3: a keyframe block is a declaration block, so two
+   declarations for different properties in one frame do not observe each
+   other's order, as in a style rule. Tailwind writes [ping]'s last frame
+   transform first and tw writes it opacity first. *)
+let equal_canonical_keyframe_declaration_order () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "keyframe declaration order is not a difference" true
+    (equal "@keyframes k{75%{opacity:0;transform:scale(2)}}.a{animation:k 1s}"
+       "@keyframes k{75%{transform:scale(2);opacity:0}}.a{animation:k 1s}");
+  (* The longhand written after its shorthand is what the frame computes. *)
+  Alcotest.(check bool)
+    "a shorthand and its longhand keep their order" false
+    (equal "@keyframes k{to{margin:0;margin-top:1px}}.a{animation:k 1s}"
+       "@keyframes k{to{margin-top:1px;margin:0}}.a{animation:k 1s}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2119,6 +2135,8 @@ let suite =
         equal_canonical_media_not_all;
       Alcotest.test_case "canonical nested media order" `Quick
         equal_canonical_nested_media_order;
+      Alcotest.test_case "canonical keyframe declaration order" `Quick
+        equal_canonical_keyframe_declaration_order;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
