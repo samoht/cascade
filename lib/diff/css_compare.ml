@@ -153,9 +153,16 @@ let hide_canonical_reorder_positions (diff : D.t) =
 
 (* The canonical tree supplies normalized content changes; the source tree
    supplies authored ordering changes. Partition the two structured diffs, then
-   merge their matching container paths back into one report. *)
+   merge their matching container paths back into one report.
+
+   A reorder of the declarations inside one rule is a content change, not a
+   move: the projection sorts a rule's declarations itself and keeps two that
+   conflict in the order they were written, so two canonical forms that disagree
+   there disagree on which of the two wins. It stays with the canonical tree,
+   where a rule moved past another is the source tree's. *)
 let rule_is_reordered : D.rule_diff -> bool = function
-  | D.Reordered _ -> true
+  | D.Reordered { old_declarations = None; _ } -> true
+  | D.Reordered { old_declarations = Some _; _ }
   | D.Added _ | D.Removed _ | D.Content_changed _ | D.Selector_changed _
   | D.Rearranged _ | D.Regrouped _ ->
       false

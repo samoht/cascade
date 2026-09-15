@@ -120,6 +120,30 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* Media Queries 4 sec. 2.4.3: [not (width >= X)] and [(width < X)] hold for the
+   same widths, and the container form alike. Tailwind's compiled output writes
+   a [max-*] variant the second way, lightningcss and tw the first. *)
+let equal_canonical_negated_bound () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a negated lower bound is the strict upper bound" true
+    (equal "@media not all and (min-width:96rem){.a{color:red}}"
+       "@media (width < 96rem){.a{color:red}}");
+  Alcotest.(check bool)
+    "nested under a breakpoint too" true
+    (equal
+       "@media not all and (min-width:64rem){@media (width >= \
+        40rem){.a{color:red}}}"
+       "@media (width < 64rem){@media (width >= 40rem){.a{color:red}}}");
+  Alcotest.(check bool)
+    "a container query alike" true
+    (equal "@container (not (width >= 28rem)){.a{color:red}}"
+       "@container (width < 28rem){.a{color:red}}");
+  Alcotest.(check bool)
+    "a different bound still differs" false
+    (equal "@media not all and (min-width:96rem){.a{color:red}}"
+       "@media (width < 80rem){.a{color:red}}")
+
 (* CSS Conditional 3 sec. 2: a rule inside nested conditional group rules
    applies when every condition holds, so the order the [@media] blocks nest in
    is not part of what the rule matches. Tailwind writes a breakpoint around a
@@ -274,6 +298,66 @@ let equal_canonical_relative_color_pass_through () =
   Alcotest.(check bool)
     "a different alpha still differs" false
     (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.5)}")
+
+(* CSS Cascade 5 sec. 3.2: [all] resets [content], so which of the two a rule
+   writes last decides whether a pseudo-element has any. The projection keeps
+   both, since the earlier one is a fallback an engine without [all] reads, and
+   the tree over the two canonical forms sees them swapped inside one rule; the
+   report dropped that as the projection's own ordering churn and fell back to a
+   byte diff of the forms. *)
+let canonical_reports_reset_crossing_declaration () =
+  let result =
+    Cascade_diff.Css_compare.diff ~mode:`Canonical
+      "p::after{all:unset}p::after{content:\"OCaml\"}"
+      "p::after{content:\"OCaml\"}p::after{all:unset}"
+  in
+  match result.Cascade_diff.Css_compare.result with
+  | Cascade_diff.Css_compare.Tree_diff d -> (
+      match d.Cascade_diff.Tree_diff.rules with
+      | [
+       Cascade_diff.Tree_diff.Reordered
+         { selector; old_declarations = Some _; new_declarations = Some _; _ };
+      ] ->
+          Alcotest.(check string)
+            "the rule the reset crosses" "p:after" selector
+      | _ -> Alcotest.fail "expected one declaration-level reorder")
+  | Cascade_diff.Css_compare.String_diff _ ->
+      Alcotest.fail "fell back to a byte diff of the canonical forms"
+  | _ -> Alcotest.fail "expected a tree diff"
+
+(* A declaration a conditional group repeats from the rule with the identical
+   selector before it, value and all, changes nothing: an engine reading the
+   guard sets the same value twice, one that does not reads the first rule
+   alone. Tailwind's compiled output nests a colour twin inside its rule and
+   lightningcss flattens it carrying the colour alone, where a sheet written
+   flat repeats the [content]. A rule between the two that writes the property
+   makes the repeat the winner for an element both match, so it stays. *)
+let equal_canonical_guarded_repeat () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let guard = "@supports (color:color-mix(in lab,red,red))" in
+  Alcotest.(check bool)
+    "a repeated declaration under a guard is not a difference" true
+    (equal
+       (".a::after{content:var(--c);--x:#000}" ^ guard
+      ^ "{.a::after{content:var(--c);--x:red}}")
+       (".a::after{content:var(--c);--x:#000}" ^ guard ^ "{.a::after{--x:red}}"));
+  Alcotest.(check bool)
+    "under a media condition too" true
+    (equal ".a{color:red;top:0}@media (hover){.a{color:red;top:1px}}"
+       ".a{color:red;top:0}@media (hover){.a{top:1px}}");
+  Alcotest.(check bool)
+    "a rule between that writes the property keeps the repeat" false
+    (equal
+       (".a::after{content:var(--c)}.b::after{content:none}" ^ guard
+      ^ "{.a::after{content:var(--c);--x:red}}")
+       (".a::after{content:var(--c)}.b::after{content:none}" ^ guard
+      ^ "{.a::after{--x:red}}"));
+  Alcotest.(check bool)
+    "a different value under the guard still differs" false
+    (equal
+       (".a::after{content:var(--c)}" ^ guard
+      ^ "{.a::after{content:none;--x:red}}")
+       (".a::after{content:var(--c)}" ^ guard ^ "{.a::after{--x:red}}"))
 
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
@@ -444,7 +528,27 @@ let canonical_numeric_division_follows_precision_mode () =
   Alcotest.(check bool)
     "lossless keeps an exact numeric boundary" false
     (equal ~lossless:true ".a{line-height:calc(28/18)}"
-       ".a{line-height:1.55556}")
+       ".a{line-height:1.55556}");
+  (* The budget is one budget: a non-terminating quotient folds the same way in
+     a length or a percentage as in a number. Tailwind writes [w-1/3] as [calc(1
+     / 3 * 100%)] and lightningcss as [33.3333%], and the two render within a
+     layout unit of each other, which no display shows. *)
+  Alcotest.(check bool)
+    "a fraction of a percentage folds under the budget" true
+    (equal ".a{width:33.3333%}" ".a{width:calc(1/3 * 100%)}");
+  Alcotest.(check bool)
+    "in flex-basis and inset too" true
+    (equal ".a{flex-basis:66.6667%;top:16.6667%}"
+       ".a{flex-basis:calc(2/3 * 100%);top:calc(1/6 * 100%)}");
+  Alcotest.(check bool)
+    "a length quotient too" true
+    (equal ".a{width:3.33333px}" ".a{width:calc(10px/3)}");
+  Alcotest.(check bool)
+    "a different fraction still differs" false
+    (equal ".a{width:33.3333%}" ".a{width:calc(1/4 * 100%)}");
+  Alcotest.(check bool)
+    "lossless keeps the quotient" false
+    (equal ~lossless:true ".a{width:33.3333%}" ".a{width:calc(1/3 * 100%)}")
 
 let canonical_nested_and_flattened_selectors_are_equal () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
@@ -2261,6 +2365,12 @@ let suite =
         equal_canonical_top_level_is_unwrap;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
+      Alcotest.test_case "canonical equates a negated bound" `Quick
+        equal_canonical_negated_bound;
+      Alcotest.test_case "canonical reports a reset crossing a declaration"
+        `Quick canonical_reports_reset_crossing_declaration;
+      Alcotest.test_case "canonical guarded repeat" `Quick
+        equal_canonical_guarded_repeat;
       Alcotest.test_case "canonical nested media order" `Quick
         equal_canonical_nested_media_order;
       Alcotest.test_case "canonical keyframe declaration order" `Quick

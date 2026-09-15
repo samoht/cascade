@@ -31,9 +31,14 @@
 ; custom_property: a transform that resolves var() must compute, in the
 ; browser, what the sheet it rewrote computed. Custom properties are sampled by
 ; name, which the other computed-style harnesses here deliberately do not do.
+;
+; browser_cli: `cascade diff --browser` against the browser it drives: the
+; README's parity pair reports the pseudo-element losing its content, an
+; identical pair reports nothing, and a run with no browser fails.
 
 (executables
  (names
+  browser_cli
   render_diff
   shorthand_expand
   canonical_agree
@@ -42,7 +47,7 @@
   at_rule_conditions
   parse_recovery
   custom_property)
- (libraries cascade cascade_diff fmt unix))
+ (libraries cascade cascade_diff cascade_browser fmt unix))
 
 ; The generator's declaration pool is drawn from the library's own property
 ; table rather than a list kept here, so a property added to lib/ cannot escape
@@ -183,3 +188,12 @@
   custom_property.exe)
  (action
   (run %{exe:custom_property.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  browser_cli.exe
+  %{exe:../../bin/main.exe})
+ (action
+  (run %{exe:browser_cli.exe} %{exe:../../bin/main.exe})))

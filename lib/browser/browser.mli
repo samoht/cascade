@@ -1,5 +1,5 @@
-(** Locating the node and the headless browser the harnesses in this directory
-    drive, and reporting their absence the same way. *)
+(** Locating the node and the headless browser the render harnesses and the
+    CLI's browser comparison drive, and reporting their absence the same way. *)
 
 val getenv : string -> string option
 (** [getenv name] is the value of the environment variable [name], and [None]

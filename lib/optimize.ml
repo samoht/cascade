@@ -990,7 +990,10 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
             Hashtbl.replace tbl (bare pr.name) ()
       | _ -> ())
     stmts;
-  { Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name) }
+  {
+    Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name);
+    budget = false;
+  }
 
 let normalize_live_declarations ~ctx ~lossless decls =
   list_edit_preserve

@@ -4571,8 +4571,8 @@ let normalize_property_value : type a.
   | Paint_order -> normalize_paint_order value
   | Vector_effect -> normalize_vector_effect value
   | Flex_shrink -> normalize_flex_factor value
-  | Flex_basis -> normalize_flex_basis value
-  | Flex -> normalize_flex value
+  | Flex_basis -> normalize_flex_basis ~ctx value
+  | Flex -> normalize_flex ~ctx value
   | Grid_template_columns -> normalize_grid_template value
   | Grid_template_rows -> normalize_grid_template value
   | Grid_template -> normalize_grid_template value

@@ -438,9 +438,13 @@ let media_not_takes_media_in_parens () =
     (minified (minified negated_or));
   (* A single [<media-in-parens>] operand is already wrapped, so no second pair
      of parentheses appears. *)
-  check_modes "negated single condition"
-    "@media not (min-width:1px){a{color:red}}"
-    ~default:"@media not (width>=1px){a{color:red}}"
+  check_modes "negated single condition" "@media not (hover){a{color:red}}"
+    ~default:"@media not (hover){a{color:red}}"
+    ~spec:"@media not (hover){a{color:red}}";
+  (* A negated bound is the opposite bound (Media Queries 4 sec. 2.4.3), which
+     needs no [not] at all; spec mode keeps the Level 3 spelling. *)
+  check_modes "negated bound" "@media not (min-width:1px){a{color:red}}"
+    ~default:"@media(width<1px){a{color:red}}"
     ~spec:"@media not (min-width:1px){a{color:red}}"
 
 (* Media Queries 4 sec. 2.3: [all] is the identity media type, so [not all and
@@ -463,9 +467,12 @@ let negated_all_is_level4_not () =
       (name ^ " enforce-spec") spec
       (minified ~enforce_spec:true input)
   in
-  check_modes "negated feature"
+  check_modes "negated feature" "@media not all and (hover){a{color:red}}"
+    ~default:"@media not (hover){a{color:red}}"
+    ~spec:"@media not all and (hover){a{color:red}}";
+  check_modes "negated bound"
     "@media not all and (min-width:100px){a{color:red}}"
-    ~default:"@media not (width>=100px){a{color:red}}"
+    ~default:"@media(width<100px){a{color:red}}"
     ~spec:"@media not all and (min-width:100px){a{color:red}}";
   (* [<media-type> and <media-condition-without-or>] forbids a top-level [or],
      so the inner parentheses are what keeps the moved condition grammatical
@@ -574,6 +581,30 @@ let equal_ignores_bound_spelling () =
   differ "a lower bound is not an upper bound" "(min-width: 10px)"
     "(max-width: 10px)";
   differ "the bound value still counts" "(min-width: 10px)" "(min-width: 11px)"
+
+(* Media Queries 4 sec. 2.4.3: a range feature compares a number, so the
+   negation of one bound is the other bound the other way, [not (width >= 10px)]
+   and [(width < 10px)] holding for the same widths. Tailwind writes a [max-*]
+   variant the second way and lightningcss the first. *)
+let equal_ignores_negated_bound () =
+  let same name a b =
+    Alcotest.(check bool) name true (equal (of_string a) (of_string b))
+  in
+  same "not >= is <" "not (width >= 10px)" "(width < 10px)";
+  same "not > is <=" "not (width > 10px)" "(width <= 10px)";
+  same "not <= is >" "not (width <= 10px)" "(width > 10px)";
+  same "not < is >=" "not (width < 10px)" "(width >= 10px)";
+  same "the Level 3 spelling too" "not all and (min-width: 10px)"
+    "(width < 10px)";
+  same "and under a nested condition" "(hover) and (not (width >= 10px))"
+    "(hover) and (width < 10px)";
+  let differ name a b =
+    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+  in
+  differ "an equality has no single complement" "not (width = 10px)"
+    "(width < 10px)";
+  differ "the bound value still counts" "not (width >= 10px)" "(width < 11px)";
+  differ "a plain feature is not a bound" "not (hover)" "(hover)"
 
 (* An unknown media type never matches (Media Queries 4 sec. 3.2 error
    handling), so a query whose type is one escaped ident is not the query that
@@ -710,6 +741,8 @@ let suite =
       test_case "negated all is level 4 not" `Quick negated_all_is_level4_not;
       test_case "equal ignores bound spelling" `Quick
         equal_ignores_bound_spelling;
+      test_case "equal ignores a negated bound" `Quick
+        equal_ignores_negated_bound;
       test_case "equal separates an escaped media type" `Quick
         equal_separates_an_escaped_media_type;
       test_case "escaped identifiers survive emission" `Quick

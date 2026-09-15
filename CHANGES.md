@@ -727,6 +727,29 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A non-terminating quotient in a length or a percentage compares under the
+  six-significant-figure budget a number's already does: `calc(1/3 * 100%)`
+  and `33.3333%` are one width under `--diff=canonical`, as Tailwind's
+  `w-1/3` and lightningcss's fold are, and `--lossless` keeps them apart.
+  `--minify` still keeps the quotient as written. `Values.calc_ctx` gains a
+  `budget` field the projection sets (#1255)
+- A declaration a `@media`, `@supports` or `@container` block repeats from
+  the rule with the identical selector before it, value and all, is not a
+  difference: an engine reading the guard sets the same value twice and one
+  that does not reads the first rule alone. A rule between the two that
+  writes the property keeps the repeat. Tailwind nests a colour twin inside
+  its rule where a flat sheet repeats the `content`, and tw's site sheet had
+  ten such entries (#1254)
+- Two declarations that conflict and sit in the other order inside one rule
+  of the canonical form, `all: unset` crossing `content`, are reported as
+  that rule's reorder. The report dropped the swap as the projection's own
+  ordering and fell back to a byte diff of the two forms, saying nothing was
+  classified structurally (#1251)
+- A negated bound on a range feature is the opposite bound: `not (width >=
+  V)` and `(width < V)` compare equal under `--diff=canonical`, in a container
+  query as in a media query, and `--minify` writes the shorter form. Tailwind
+  writes a `max-*` variant one way and lightningcss the other, so every such
+  block on tw's site sheet was reported as removed and added (#1250)
 - A `<time>` token in an unregistered custom property's stream compares as
   the duration it names, so `--d:.1s` and `--d:100ms` are equal under
   `--diff=canonical`, as they were once `--d` was registered `<time>`; a
@@ -867,6 +890,17 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### CLI tools
 
+- `cascade diff --browser --html PAGE.html A.css B.css` renders both files
+  over the document in a headless Chromium and reports every computed-style
+  value the two disagree on, element and pseudo-element by property, at every
+  viewport width and interaction state either file names, with the browser
+  version and what was sampled recorded and `--json` for the same as a
+  document. Values are compared as the browser spells them, and each
+  difference says whether the two paint the same; no cascade comparison is
+  involved, so it can catch a false negative of `--diff=canonical`. Exits 2
+  without node or a browser, on a driver failure, or when nothing was
+  sampled, never claiming equivalence. The node and browser locator the render
+  harnesses use is `cascade.browser` now, shared with the CLI (#1252)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, `--dry-run` reporting instead of writing. It and
   `cascade apply` leave alone the two selector forms Selectors 4 defines and no

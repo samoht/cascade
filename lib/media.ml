@@ -1104,13 +1104,33 @@ let lower_feature : feature -> feature = function
   | Plain (Max base, v) -> Range (base, Le, v)
   | f -> f
 
+(* Media Queries 4 sec. 2.4.3: a range feature compares a number, so the
+   negation of one bound is the other bound the other way, [not (width >= V)]
+   holding exactly where [(width < V)] does. An equality has no single
+   complement and keeps its [not]. Sec. 3.1 keeps the two sides together on an
+   engine that cannot evaluate the feature as well: [unknown] negated is
+   [unknown], and both read as false. *)
+let negated_bound : condition -> condition option = function
+  | Feature (Range (name, cmp, v)) -> (
+      match cmp with
+      | Ge -> Some (Feature (Range (name, Lt, v)))
+      | Gt -> Some (Feature (Range (name, Le, v)))
+      | Le -> Some (Feature (Range (name, Gt, v)))
+      | Lt -> Some (Feature (Range (name, Ge, v)))
+      | Eq -> None)
+  | _ -> None
+
+let not_condition c = match negated_bound c with Some c -> c | None -> Not c
+
 let rec lower_condition : condition -> condition = function
   | Feature f as cond ->
       let f' = lower_feature f in
       if f' == f then cond else Feature f'
-  | Not c as cond ->
+  | Not c as cond -> (
       let c' = lower_condition c in
-      if c' == c then cond else Not c'
+      match negated_bound c' with
+      | Some flipped -> flipped
+      | None -> if c' == c then cond else Not c')
   | And (Feature a, Feature b) -> (
       match merge_interval_bounds a b with
       | Some interval -> Feature interval
@@ -1136,7 +1156,7 @@ let rec lower_for_minify : t -> t = function
      and (X)] is the Level 3 spelling of [not (X)]. Bare [not all] has no
      condition form and stays. *)
   | Type { prefix = Some Not; type_ = All; trailing = Some c } ->
-      Cond (Not (lower_condition c))
+      Cond (not_condition (lower_condition c))
   | Type ({ trailing; _ } as r) as query -> (
       match trailing with
       | None -> query
@@ -1213,9 +1233,11 @@ let rec normalize_condition (c : condition) : condition =
   | Feature f as cond ->
       let f' = normalize_feature f in
       if f' == f then cond else Feature f'
-  | Not c as cond ->
+  | Not c as cond -> (
       let c' = normalize_condition c in
-      if c' == c then cond else Not c'
+      match negated_bound c' with
+      | Some flipped -> flipped
+      | None -> if c' == c then cond else Not c')
   | And (a, b) as cond ->
       let a' = normalize_condition a and b' = normalize_condition b in
       if a' == a && b' == b then cond else And (a', b')
@@ -1234,7 +1256,7 @@ let rec normalize (query : t) : t =
   | Type { prefix = None; type_ = All; trailing = Some c } ->
       Cond (normalize_condition c)
   | Type { prefix = Some Not; type_ = All; trailing = Some c } ->
-      Cond (Not (normalize_condition c))
+      Cond (not_condition (normalize_condition c))
   | Type { trailing = None; _ } -> query
   | Type ({ trailing = Some c; _ } as r) ->
       let c' = normalize_condition c in
