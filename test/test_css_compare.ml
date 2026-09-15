@@ -299,6 +299,32 @@ let equal_canonical_relative_color_pass_through () =
     "a different alpha still differs" false
     (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.5)}")
 
+(* CSS Cascade 5 sec. 3.2: [all] resets [content], so which of the two a rule
+   writes last decides whether a pseudo-element has any. The projection keeps
+   both, since the earlier one is a fallback an engine without [all] reads, and
+   the tree over the two canonical forms sees them swapped inside one rule; the
+   report dropped that as the projection's own ordering churn and fell back to a
+   byte diff of the forms. *)
+let canonical_reports_reset_crossing_declaration () =
+  let result =
+    Cascade_diff.Css_compare.diff ~mode:`Canonical
+      "p::after{all:unset}p::after{content:\"OCaml\"}"
+      "p::after{content:\"OCaml\"}p::after{all:unset}"
+  in
+  match result.Cascade_diff.Css_compare.result with
+  | Cascade_diff.Css_compare.Tree_diff d -> (
+      match d.Cascade_diff.Tree_diff.rules with
+      | [
+       Cascade_diff.Tree_diff.Reordered
+         { selector; old_declarations = Some _; new_declarations = Some _; _ };
+      ] ->
+          Alcotest.(check string)
+            "the rule the reset crosses" "p:after" selector
+      | _ -> Alcotest.fail "expected one declaration-level reorder")
+  | Cascade_diff.Css_compare.String_diff _ ->
+      Alcotest.fail "fell back to a byte diff of the canonical forms"
+  | _ -> Alcotest.fail "expected a tree diff"
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2287,6 +2313,8 @@ let suite =
         equal_canonical_media_not_all;
       Alcotest.test_case "canonical equates a negated bound" `Quick
         equal_canonical_negated_bound;
+      Alcotest.test_case "canonical reports a reset crossing a declaration"
+        `Quick canonical_reports_reset_crossing_declaration;
       Alcotest.test_case "canonical nested media order" `Quick
         equal_canonical_nested_media_order;
       Alcotest.test_case "canonical keyframe declaration order" `Quick
