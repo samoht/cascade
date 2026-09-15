@@ -120,6 +120,43 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* CSS Conditional 3 sec. 2: a rule inside nested conditional group rules
+   applies when every condition holds, so the order the [@media] blocks nest in
+   is not part of what the rule matches. Tailwind writes a breakpoint around a
+   colour-scheme block and tw the other way round, and the two render the
+   same. *)
+let equal_canonical_nested_media_order () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let wide = "@media (width>=40rem)"
+  and dark = "@media (prefers-color-scheme:dark)" in
+  Alcotest.(check bool)
+    "nesting order is not a difference" true
+    (equal
+       (wide ^ "{" ^ dark ^ "{.a{color:red}}}")
+       (dark ^ "{" ^ wide ^ "{.a{color:red}}}"));
+  Alcotest.(check bool)
+    "a block closed and reopened around its nested blocks is not a difference"
+    true
+    (equal
+       (wide ^ "{" ^ dark ^ "{.a{color:red}}.b{color:blue}" ^ dark
+      ^ "{.c{color:green}}}")
+       (wide ^ "{" ^ dark ^ "{.a{color:red}}}" ^ wide ^ "{.b{color:blue}}"
+      ^ dark ^ "{" ^ wide ^ "{.c{color:green}}}"));
+  Alcotest.(check bool)
+    "a condition nested inside itself is the condition once" true
+    (equal "@media (hover){@media (hover){.a{color:red}}}"
+       "@media (hover){.a{color:red}}");
+  (* The blue rule applies wherever the red one does, so which comes last is
+     what an element computes. *)
+  Alcotest.(check bool)
+    "two conflicting rules keep their order" false
+    (equal
+       (wide ^ "{.a{color:red}}" ^ dark ^ "{" ^ wide ^ "{.a{color:blue}}}")
+       (dark ^ "{" ^ wide ^ "{.a{color:blue}}}" ^ wide ^ "{.a{color:red}}"));
+  Alcotest.(check bool)
+    "a condition only one side applies still differs" false
+    (equal (wide ^ "{" ^ dark ^ "{.a{color:red}}}") (wide ^ "{.a{color:red}}"))
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2080,6 +2117,8 @@ let suite =
         equal_canonical_top_level_is_unwrap;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
+      Alcotest.test_case "canonical nested media order" `Quick
+        equal_canonical_nested_media_order;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
