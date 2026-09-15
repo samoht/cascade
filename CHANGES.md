@@ -492,6 +492,9 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- A signed number in a token stream keeps its sign and drops its leading zero:
+  `calc(var(--s) * -0.5)` minifies to `calc(var(--s)*-.5)`, as lightningcss
+  writes it, and canonical mode no longer reads the two as different (#NNN).
 - A registered `<length>` or `<length-percentage>` zero minifies to `0` in an
   `@property` `initial-value`, as a declaration's zero already did. It kept
   `0px`, so the canonical diff reported two equivalent registrations as
