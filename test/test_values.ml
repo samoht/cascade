@@ -2003,7 +2003,7 @@ let spec_math_at_the_remaining_readers () =
   decl_optimizes ~prop:"stroke-width" ~into:"calc(pi)" "calc(pi)";
   decl_optimizes ~prop:"stroke-width" ~into:"calc(-1)" "sign(-1px)";
   decl_optimizes ~prop:"stroke-width" ~into:"8" "pow(2,3)";
-  decl_optimizes ~prop:"stroke-width" ~into:"1px" "abs(-1px)";
+  decl_optimizes ~prop:"stroke-width" ~into:"1" "abs(-1px)";
   (* SVG 2 sec. 13.5.5 [stroke-miterlimit], [0,inf]. *)
   decl_optimizes ~prop:"stroke-miterlimit" ~into:"2" "sqrt(4)";
   decl_optimizes ~prop:"stroke-miterlimit" ~into:"calc(-1)" "sign(-1px)";

@@ -183,6 +183,21 @@ let equal_canonical_custom_signed_leading_zero () =
        ".a{--t:calc(var(--s)*-.5);translate:var(--t)}"
        ".a{--t:calc(var(--s)*-0.5);translate:var(--t)}")
 
+(* SVG 2 sec. 13.5.3: [stroke-width] takes a [<number>] in user units, and a CSS
+   pixel is one user unit, so [1] and [1px] draw the same stroke. Tailwind
+   writes [stroke-1] unitless and tw writes [1px]. *)
+let equal_canonical_stroke_width_number () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a unitless stroke width is its pixel length" true
+    (equal ".a{stroke-width:1px}" ".a{stroke-width:1}");
+  Alcotest.(check bool)
+    "a fractional width too" true
+    (equal ".a{stroke-width:1.5px}" ".a{stroke-width:1.5}");
+  Alcotest.(check bool)
+    "a different width still differs" false
+    (equal ".a{stroke-width:1px}" ".a{stroke-width:2}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2149,6 +2164,8 @@ let suite =
         equal_canonical_keyframe_declaration_order;
       Alcotest.test_case "canonical custom signed leading zero" `Quick
         equal_canonical_custom_signed_leading_zero;
+      Alcotest.test_case "canonical stroke width number" `Quick
+        equal_canonical_stroke_width_number;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
