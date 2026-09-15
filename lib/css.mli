@@ -9783,7 +9783,7 @@ val of_string_exn :
 
     Tools for optimizing CSS output for performance and file size. *)
 
-val canonicalize_rule_order : ?lossless:bool -> t -> t
+val canonicalize_rule_order : ?lossless:bool -> ?enforce_spec:bool -> t -> t
 (** [canonicalize_rule_order t] projects cascade-equivalent stylesheets to one
     deterministic form: selector-list rules expand onto their branches,
     same-selector rules coalesce when no intervening write can observe the move

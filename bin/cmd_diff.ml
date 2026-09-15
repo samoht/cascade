@@ -30,7 +30,8 @@ let resolve_style_renderer style_renderer =
   | Some s when s <> "" -> Some `None
   | _ -> style_renderer
 
-let run_diff mode ~lossless ~prune_unused_custom_props ~css1 ~css2 =
+let run_diff mode ~lossless ~enforce_spec ~prune_unused_custom_props ~css1 ~css2
+    =
   let mode =
     match mode with
     | Auto -> `Auto
@@ -38,8 +39,8 @@ let run_diff mode ~lossless ~prune_unused_custom_props ~css1 ~css2 =
     | String -> `String
     | Canonical -> `Canonical
   in
-  Cascade_diff.Css_compare.diff ~mode ~lossless ~prune_unused_custom_props css1
-    css2
+  Cascade_diff.Css_compare.diff ~mode ~lossless ~enforce_spec
+    ~prune_unused_custom_props css1 css2
 
 (* How many top-level differences the report names. [Fit_entries] lets the
    automatic shaping decide, [All_entries] names every one, [Count n] names
@@ -551,11 +552,15 @@ let json_document ~file1 ~file2 ~mode ~css1 ~css2 ~unread result =
      ]
     @ string_diff)
 
-type canonical_opts = { lossless : bool; prune_unused_custom_props : bool }
+type canonical_opts = {
+  lossless : bool;
+  enforce_spec : bool;
+  prune_unused_custom_props : bool;
+}
 
 let print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts =
   let result =
-    run_diff mode ~lossless:opts.lossless
+    run_diff mode ~lossless:opts.lossless ~enforce_spec:opts.enforce_spec
       ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1 ~css2
   in
   let unread = unread_of result in
@@ -580,7 +585,7 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
     Ok ())
   else
     let result =
-      run_diff mode ~lossless:opts.lossless
+      run_diff mode ~lossless:opts.lossless ~enforce_spec:opts.enforce_spec
         ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1 ~css2
     in
     match result.Cascade_diff.Css_compare.result with
@@ -723,6 +728,19 @@ let lossless_arg =
   in
   Arg.(value & flag & info [ "lossless" ] ~doc)
 
+let enforce_spec_arg =
+  let doc =
+    "Judge $(b,--diff=canonical) for every engine rather than for the browsers \
+     default $(b,--minify) targets. By default a @supports guard every target \
+     satisfies is no difference and neither is the fallback written before it, \
+     a vendor prefix a target needs is written on both sides and one no target \
+     needs is dropped from both, and a fallback every target parses past is \
+     dead. With this flag each of those is kept, since an engine outside the \
+     targets reads it, so two sheets that differ there report as different. \
+     Has no effect outside $(b,--diff=canonical)."
+  in
+  Arg.(value & flag & info [ "enforce-spec" ] ~doc)
+
 let prune_unused_custom_props_arg =
   let doc =
     "Drop custom-property bindings referenced by nothing on both sides before \
@@ -766,9 +784,9 @@ let term =
       ()
   in
   let canonical_opts =
-    const (fun lossless prune_unused_custom_props ->
-        { lossless; prune_unused_custom_props })
-    $ lossless_arg $ prune_unused_custom_props_arg
+    const (fun lossless enforce_spec prune_unused_custom_props ->
+        { lossless; enforce_spec; prune_unused_custom_props })
+    $ lossless_arg $ enforce_spec_arg $ prune_unused_custom_props_arg
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
