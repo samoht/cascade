@@ -251,12 +251,17 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-type calc_ctx = { var_is_single_valued : string -> bool }
+type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
     [var_is_single_valued n] reports whether [--n] is registered with a
     single-component [@property] syntax, so its [var()] substitutes exactly one
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
-    may be unwrapped. *)
+    may be unwrapped. [budget] folds a non-terminating quotient to the
+    six-significant-figure computed-value budget, as a number's fold already
+    does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient keeps the
+    [calc()] the author wrote, which is what {!default_calc_ctx} and the
+    minifier do. The canonical comparison spends the budget, since the two
+    spellings render alike. *)
 
 val length_from_calc_unit : string -> float -> length
 (** [length_from_calc_unit unit value] is the length {!val-calc_length_unit}

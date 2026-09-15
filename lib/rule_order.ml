@@ -811,6 +811,29 @@ let canonical_color_spellings (stmts : statement list) : statement list =
     (Common.List.map_preserve canonical_color_spelling)
     stmts
 
+(* A non-terminating quotient the minifier keeps as the author's [calc()]
+   renders within the six-significant-figure budget of the number it folds to,
+   and Tailwind writes [w-1/3] as [calc(1/3 * 100%)] where lightningcss writes
+   [33.3333%]. The projection spends the budget on every typed quotient, as it
+   is spent on a number's already, so the two spellings meet; [lossless] keeps
+   the quotient and the two apart. *)
+let canonical_quotient decl =
+  let ctx = { Values.default_calc_ctx with budget = true } in
+  let folded = Declaration.normalize ~lossless:true ~ctx decl in
+  if folded == decl then decl
+  else if
+    Declaration.equal_declaration folded
+      (Declaration.normalize ~lossless:true decl)
+  then decl
+  else folded
+
+let canonical_quotients ~lossless (stmts : statement list) : statement list =
+  if lossless then stmts
+  else
+    Stylesheet.map_declarations
+      (Common.List.map_preserve canonical_quotient)
+      stmts
+
 (* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
    appropriate unit for that component", for every purpose but the ones that
    combine two colours. A minifier that reaches an achromatic colour by
@@ -1183,8 +1206,9 @@ let canonicalize ?(lossless = false) (stmts : statement list) : statement list =
            @@ sort_property_runs
                 (canonical_missing_component_colors ~lossless
                    (canonical_color_spellings
-                      (normalize_custom_values (canonical_vendor_aliases stmts))))
-           ))
+                      (canonical_quotients ~lossless
+                         (normalize_custom_values
+                            (canonical_vendor_aliases stmts)))))))
   in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized

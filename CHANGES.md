@@ -727,6 +727,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A non-terminating quotient in a length or a percentage compares under the
+  six-significant-figure budget a number's already does: `calc(1/3 * 100%)`
+  and `33.3333%` are one width under `--diff=canonical`, as Tailwind's
+  `w-1/3` and lightningcss's fold are, and `--lossless` keeps them apart.
+  `--minify` still keeps the quotient as written. `Values.calc_ctx` gains a
+  `budget` field the projection sets (#1255)
 - A declaration a `@media`, `@supports` or `@container` block repeats from
   the rule with the identical selector before it, value and all, is not a
   difference: an engine reading the guard sets the same value twice and one

@@ -1240,9 +1240,10 @@ let calc_identity : type a.
    whether [--n] has a single-component [@property] syntax, so [calc(var(--n))]
    substitutes one term and its redundant grouping may be dropped. The default
    knows nothing, so every such rewrite is a no-op. *)
-type calc_ctx = { var_is_single_valued : string -> bool }
+type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
 
-let default_calc_ctx = { var_is_single_valued = (fun _ -> false) }
+let default_calc_ctx =
+  { var_is_single_valued = (fun _ -> false); budget = false }
 
 (* A nested [calc()] or a parenthesised group around a single leaf is redundant
    grouping: drop it. A [var()] leaf is only safe to unwrap when the var is
@@ -1327,6 +1328,7 @@ let settle_computed : type a. (a -> a) -> a calc * bool -> a calc =
    typed value it produces, and an operand a kept [calc()] will print settles
    here because nothing further will fold it. *)
 let fold_typed_expr : type a.
+    budget:bool ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
     combine:(calc_op -> a -> a -> a option) ->
     round:(a -> a) ->
@@ -1337,7 +1339,7 @@ let fold_typed_expr : type a.
     calc_op ->
     a calc * bool ->
     a calc * bool =
- fun ~scale ~combine ~round ~is_zero ~zero ~computed lf op rf ->
+ fun ~budget ~scale ~combine ~round ~is_zero ~zero ~computed lf op rf ->
   let l = fst lf and r = fst rf in
   let lc = calc_operand_value l in
   let rc = calc_operand_value r in
@@ -1351,14 +1353,25 @@ let fold_typed_expr : type a.
   | Num a, Sub, Num b, _ -> (calc_num (a -. b), false)
   | Num a, Mul, Num b, _ -> (calc_num (a *. b), false)
   | Num a, Div, Num b, _ -> (
-      match exact_div a b with Some q -> (calc_num q, false) | None -> keep ())
+      match exact_div a b with
+      | Some q -> (calc_num q, false)
+      (* A quotient the budget has to round is Cascade's own digits, the same
+         six figures a number's fold spends; without the budget the author's
+         quotient stays for the browser. *)
+      | None when budget && b <> 0. && Float.is_finite (a /. b) ->
+          (calc_num (round_computed (a /. b)), false)
+      | None -> keep ())
   | _, _, _, Some folded -> (folded, false)
   | Val a, op, Val b, None -> (
       match combine op a b with Some v -> value v | None -> keep ())
   | Val _, Div, Num 0., None -> keep ()
   | Val a, ((Mul | Div) as op), Num n, None -> (
-      let exact = match r with Math_const _ -> false | _ -> true in
-      match scale ~exact op a n with Some v -> value v | None -> keep ())
+      (* An inexact quotient is Cascade's own digits and takes the budget the
+         way a computed constant does; without it only the exact fold runs. *)
+      let exact = match r with Math_const _ -> false | _ -> not budget in
+      match scale ~exact op a n with
+      | Some v -> if exact || computed then value v else (Val (round v), false)
+      | None -> keep ())
   | Num n, Mul, Val a, None -> (
       match scale ~exact:true Mul a n with Some v -> value v | None -> keep ())
   (* CSS Values 4 sec. 10.10.1: [1 / (1 / x)] cancels the double inversion. *)
@@ -1407,8 +1420,8 @@ let eval_typed_calc : type a.
     | Parens inner -> wrap (fun r -> Parens r) inner
     | Expr (left, op, right) ->
         let computed = calc_is_computed left || calc_is_computed right in
-        fold_typed_expr ~scale ~combine ~round ~is_zero ~zero ~computed
-          (reduce left) op (reduce right)
+        fold_typed_expr ~budget:ctx.budget ~scale ~combine ~round ~is_zero ~zero
+          ~computed (reduce left) op (reduce right)
   and wrap rewrap inner =
     let reduced, computed = reduce inner in
     (unwrap_grouping ~ctx ~rewrap reduced, computed)
@@ -1810,12 +1823,14 @@ and length_calc_has_runtime_subst : length calc -> bool = function
       length_calc_has_runtime_subst l || length_calc_has_runtime_subst r
 
 (* Reduce a computed coefficient to the serialised precision, returning the leaf
-   unchanged when every digit already prints. A [<percentage>] is left alone:
-   [Pp.pct] prints its coefficient in full in both modes, so there is no budget
-   to apply. *)
+   unchanged when every digit already prints. A [<percentage>] takes the same
+   budget: [Pp.pct] prints its coefficient in full, so a computed one has to be
+   reduced here or the digits the arithmetic left print with it. *)
 let length_round (l : length) : length =
   match l with
-  | Pct _ -> l
+  | Pct f ->
+      let rounded = round_computed f in
+      if rounded = f then l else Pct rounded
   | _ -> (
       match calc_length_unit l with
       | Some (unit, value) ->

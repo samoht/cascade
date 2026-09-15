@@ -143,7 +143,7 @@ let flex_basis_unit : flex_basis -> (string * float) option = function
    folds as it does in [width], so [calc(.5 * 100%)] is [50%]. The untyped fold
    cannot scale a typed leaf, so a [calc()] with no [var()] is read as a length
    calc and folded there; one holding a [var()] keeps the untyped path. *)
-let static_flex_basis_calc (c : flex_basis calc) : flex_basis option =
+let static_flex_basis_calc ~ctx (c : flex_basis calc) : flex_basis option =
   match
     map_calc_opt
       (fun b ->
@@ -152,14 +152,15 @@ let static_flex_basis_calc (c : flex_basis calc) : flex_basis option =
   with
   | None -> None
   | Some lc -> (
-      match eval_length_calc lc with
+      match eval_length_calc ~ctx lc with
       | Val l -> (
           match calc_length_unit l with
           | Some (u, v) -> flex_basis_of_unit v u
           | None -> None)
       | _ -> None)
 
-let rec normalize_flex_basis (value : flex_basis) : flex_basis =
+let rec normalize_flex_basis ?(ctx = default_calc_ctx) (value : flex_basis) :
+    flex_basis =
   match value with
   | Px 0.
   | Cm 0.
@@ -197,25 +198,25 @@ let rec normalize_flex_basis (value : flex_basis) : flex_basis =
   | Lh 0. ->
       Zero
   | Calc c -> (
-      match static_flex_basis_calc c with
-      | Some v -> normalize_flex_basis v
+      match static_flex_basis_calc ~ctx c with
+      | Some v -> normalize_flex_basis ~ctx v
       | None -> (
-          match eval_calc c with
-          | Val v -> normalize_flex_basis v
+          match eval_calc ~ctx c with
+          | Val v -> normalize_flex_basis ~ctx v
           | folded -> if folded == c then value else Calc folded))
   | Dimension { value = n; unit; _ } -> (
       match flex_basis_of_unit n (String.lowercase_ascii unit) with
-      | Option.Some folded -> normalize_flex_basis folded
+      | Option.Some folded -> normalize_flex_basis ~ctx folded
       | Option.None -> value)
   | _ -> value
 
-let normalize_flex (value : flex) : flex =
+let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
   match value with
   | Grow f ->
       let f' = normalize_flex_factor f in
       if f' == f then value else Grow f'
   | Basis b ->
-      let b' = normalize_flex_basis b in
+      let b' = normalize_flex_basis ~ctx b in
       if b' == b then value else Basis b'
   | Grow_shrink (g, s) ->
       let g' = normalize_flex_factor g in
@@ -224,7 +225,7 @@ let normalize_flex (value : flex) : flex =
   | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
-      let b' = normalize_flex_basis b in
+      let b' = normalize_flex_basis ~ctx b in
       (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
          of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
       match (g', s', b') with
