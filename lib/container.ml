@@ -922,6 +922,31 @@ let rec normalize (c : t) : t =
       let a' = normalize a in
       if a' == a then c else Not a'
 
+(* CSS Conditional 5 sec. 6.2: a [style()] query reads the property it names on
+   the query container; a range's operands may name it too. *)
+let rec queried_names (c : t) : string list =
+  let of_range_value (value : component_values) =
+    match value with
+    | [ Component.Preserved { kind = Token.Ident name; _ } ] -> [ name ]
+    | _ -> []
+  in
+  let of_range = function
+    | Compare { left; right; _ } -> of_range_value left @ of_range_value right
+    | Interval { lower; name; upper; _ } ->
+        (name :: of_range_value lower) @ of_range_value upper
+  in
+  let rec of_style = function
+    | Boolean name | Declaration { name; _ } -> [ name ]
+    | Range range -> of_range range
+    | All (a, b) | Any (a, b) -> of_style a @ of_style b
+    | Neg q -> of_style q
+  in
+  match c with
+  | Min_width_rem _ | Min_width_px _ | Feature_query _ | Scroll_state _ -> []
+  | Named (_, q) | Not q -> queried_names q
+  | Style { query; _ } -> of_style query
+  | And (a, b) | Or (a, b) -> queried_names a @ queried_names b
+
 (* Written out rather than left to the structural operators: [equal] is the gate
    on block merging, and a comparison that walks a runtime representation is how
    a spelling difference becomes a merge. *)

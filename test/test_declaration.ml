@@ -2923,6 +2923,22 @@ let list_properties () =
   check_declaration ~expected:"color:rgb(179 128 77)"
     "color: color(from color(from color(srgb .7 .5 .3) srgb r g b) srgb r g b)";
 
+  (* CSS Color 5 sec. 4.1: the lab family's own keywords in order are the origin
+     in that space, with the alpha the call names or the origin's when the slot
+     is omitted. The conversion is the browser's, so it is a value fold the
+     optimizer makes and the printer keeps the spelling. *)
+  check_declaration ~expected:"color:oklab(from #0000001a l a b/.2)"
+    ~optimized:"color:#0003" "color: oklab(from #0000001a l a b / .2)";
+  check_declaration ~expected:"color:oklab(from rgb(0 0 0/.1) l a b/.2)"
+    ~optimized:"color:#0003" "color: oklab(from rgb(0 0 0 / .1) l a b / 20%)";
+  check_declaration ~expected:"color:oklch(from #123456 l c h)"
+    ~optimized:"color:#123456" "color: oklch(from #123456 l c h)";
+  check_declaration ~expected:"color:lab(from #0000001a l a b)"
+    ~optimized:"color:#0000001a" "color: lab(from #0000001a l a b)";
+  check_declaration ~expected:"color:oklab(from #0000001a calc(l + .5) a b)"
+    ~optimized:"color:oklab(from #0000001a calc(l + .5) a b)"
+    "color: oklab(from #0000001a calc(l + .5) a b)";
+
   (* CSS Color 4 sec. 9.4: an out-of-range Oklab lightness clamps rather than
      invalidating the colour, and 0% to 100% is the same 0 to 1 a bare number
      names, so both spellings clamp alike. *)

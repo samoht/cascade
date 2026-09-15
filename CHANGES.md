@@ -492,6 +492,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- A relative colour whose channels are the lab family's own keywords in order
+  folds to its origin in that space, with the alpha the call names:
+  `oklab(from rgb(0 0 0 / .1) l a b / 20%)` minifies to `#0003`, as
+  lightningcss writes it, and canonical mode reads Tailwind's shadow colours
+  and their folded twins as one colour. The unminified and `--lossless`
+  forms keep the call as written (#1248).
 - A static `calc()` over a percentage or a length in `flex-basis` folds as it
   does in `width`, so `calc(.5 * 100%)` minifies to `50%` and canonical mode
   reads Tailwind's `basis-1/2` and lightningcss's as one basis (#1245).
@@ -721,6 +727,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A `<time>` token in an unregistered custom property's stream compares as
+  the duration it names, so `--d:.1s` and `--d:100ms` are equal under
+  `--diff=canonical`, as they were once `--d` was registered `<time>`; a
+  property a container `style()` query names keeps its tokens, since the query
+  compares them as written (#1247)
 - A reported move has to be one the cascade can see: the moved rule or block
   conflicts with a statement it crossed. A rule only one sheet has could place
   an unrelated rule on the other side of a pinned pair, and the report named

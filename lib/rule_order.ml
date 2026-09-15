@@ -645,9 +645,16 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
    author wrote, so the projection folds the quoted form onto the ident sequence
    - the same normalisation the structural comparator applies through
    {!Css.declaration_value_for_equivalence}. *)
-let normalize_custom_declaration d =
-  Declaration.unquote_custom_font_strings
-    (Declaration.map_custom_value Fun.id d)
+let normalize_custom_declaration ~queried d =
+  let d = Declaration.map_custom_value Fun.id d in
+  let d =
+    match d with
+    | Declaration.Declaration { property = Custom_property name; _ }
+      when List.mem name queried ->
+        d
+    | d -> Declaration.canonicalize_custom_time d
+  in
+  Declaration.unquote_custom_font_strings d
 
 (* The fold reads one declaration, so it holds wherever the declaration sits: a
    [@keyframes] frame and a [@page] box spell a custom property exactly as a
@@ -657,8 +664,20 @@ let normalize_custom_declaration d =
    what left [@scope] and [@starting-style] answering differently from
    [@layer]. *)
 let normalize_custom_values (stmts : statement list) : statement list =
+  (* CSS Conditional 5 sec. 6.2: a [style()] query on an unregistered property
+     compares the declared tokens as written, so a property a query anywhere in
+     the sheet names keeps its spelling. *)
+  let queried =
+    Stylesheet.fold_statements
+      (fun acc stmt ->
+        match stmt with
+        | Container (_, Some condition, _) ->
+            Container.queried_names condition @ acc
+        | _ -> acc)
+      [] stmts
+  in
   Stylesheet.map_declarations
-    (Common.List.map_preserve normalize_custom_declaration)
+    (Common.List.map_preserve (normalize_custom_declaration ~queried))
     stmts
 
 (* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so

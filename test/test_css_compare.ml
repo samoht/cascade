@@ -224,6 +224,57 @@ let equal_canonical_flex_basis_percentage_calc () =
     "a different percentage still differs" false
     (equal ".a{flex-basis:50%}" ".a{flex-basis:calc(.25 * 100%)}")
 
+(* CSS Values 4 sec. 7.2: [s] and [ms] name one quantity, so a [<time>] token in
+   an unregistered custom property's stream is the same time under either unit,
+   as it already is once the property is registered [<time>]. Tailwind writes
+   [--tw-duration:.1s] where lightningcss writes [100ms]. A container [style()]
+   query on an unregistered property compares the tokens as written, so a
+   property such a query names keeps its spelling. *)
+let equal_canonical_custom_time_units () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a time in a custom stream is one value under either unit" true
+    (equal ".a{--d:.1s}" ".a{--d:100ms}");
+  Alcotest.(check bool)
+    "a time inside a function too" true
+    (equal ".a{--t:all .15s ease}" ".a{--t:all 150ms ease}");
+  Alcotest.(check bool)
+    "a different time still differs" false
+    (equal ".a{--d:.1s}" ".a{--d:10ms}");
+  Alcotest.(check bool)
+    "a property a style() query names keeps its tokens" false
+    (equal ".a{--d:.1s}@container style(--d:100ms){.b{color:red}}"
+       ".a{--d:100ms}@container style(--d:100ms){.b{color:red}}")
+
+(* CSS Color 5 sec. 4.1: a relative colour whose channels are the origin's own
+   keywords is the origin in that space, with the alpha the call names. Tailwind
+   writes a shadow colour as [oklab(from rgb(0 0 0 / .1) l a b / 20%)] and
+   lightningcss folds it to the black it is; the projection has to read the two
+   as one colour, in a colour longhand and in a [var()] fallback of a shadow
+   stream alike. A channel the call rewrites is a different colour. *)
+let equal_canonical_relative_color_pass_through () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "pass-through channels over a hex origin are the origin" true
+    (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.2)}");
+  Alcotest.(check bool)
+    "over an rgb() origin with a percentage alpha too" true
+    (equal ".a{color:#0003}" ".a{color:oklab(from rgb(0 0 0/.1) l a b/20%)}");
+  Alcotest.(check bool)
+    "the origin's alpha carries through an omitted slot" true
+    (equal ".a{color:#0000001a}" ".a{color:oklab(from #0000001a l a b)}");
+  Alcotest.(check bool)
+    "in a shadow's var() fallback" true
+    (equal ".a{box-shadow:0 1px 2px var(--c,#0003)}"
+       ".a{box-shadow:0 1px 2px var(--c,oklab(from rgb(0 0 0/.1) l a b/20%))}");
+  Alcotest.(check bool)
+    "a rewritten channel is another colour" false
+    (equal ".a{color:#0003}"
+       ".a{color:oklab(from #0000001a calc(l + .5) a b/.2)}");
+  Alcotest.(check bool)
+    "a different alpha still differs" false
+    (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.5)}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2222,6 +2273,10 @@ let suite =
         equal_canonical_infinite_length;
       Alcotest.test_case "canonical flex-basis percentage calc" `Quick
         equal_canonical_flex_basis_percentage_calc;
+      Alcotest.test_case "canonical custom time units" `Quick
+        equal_canonical_custom_time_units;
+      Alcotest.test_case "canonical relative colour pass-through" `Quick
+        equal_canonical_relative_color_pass_through;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"

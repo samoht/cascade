@@ -181,6 +181,25 @@ let unquote_custom_font_strings = function
            })
   | decl -> decl
 
+(* Equivalence-only normalisation for structural diffing: a time token in a
+   custom stream is the same time under [s] and [ms], and emission keeps the
+   author's unit. *)
+let canonicalize_custom_time = function
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value ({ value = Tokens components; _ } as cv);
+        important;
+        _;
+      } ->
+      v ~important property
+        (Custom_value
+           {
+             cv with
+             value = Tokens (Properties.canonicalize_time_components components);
+           })
+  | decl -> decl
+
 (* Equivalence-only normalisation for structural diffing: drop the whitespace of
    a custom-property stream that CSS reads as nothing. Cascade keeps that
    whitespace verbatim on output, since the stream is opaque and the author's
