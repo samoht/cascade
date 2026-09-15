@@ -1669,6 +1669,25 @@ let custom_minified_opaque_separators () =
   check "var(--a) var(--b)" ~opaque:"var(--a) var(--b)"
     ~typed:"var(--a) var(--b)"
 
+(* A signed number keeps its sign where the stream needs it - after a [*] or a
+   [/] in a math function the [-] is the number's own - but the sign says
+   nothing about the digits that follow, so the leading zero drops as it does on
+   an unsigned number. lightningcss writes [calc(var(--s)*-.5)] for Tailwind's
+   [calc(var(--spacing) * -0.5)]. *)
+let custom_minified_signed_leading_zero () =
+  let minify source =
+    Parser.to_string_custom_minified ~opaque:false (parse_cvs source)
+  in
+  Alcotest.(check string)
+    "a negative factor" "calc(var(--s)*-.5)"
+    (minify "calc(var(--s) * -0.5)");
+  Alcotest.(check string)
+    "an explicit plus keeps its sign" "calc(var(--s)*+.5)"
+    (minify "calc(var(--s) * +0.5)");
+  Alcotest.(check string)
+    "a signed dimension" "calc(2*-.5em)"
+    (minify "calc(2 * -0.5em)")
+
 let suite =
   ( "parser",
     [
@@ -1822,6 +1841,8 @@ let suite =
         spec_escaped_ident_survives_minify;
       Alcotest.test_case "custom minified opaque separators" `Quick
         custom_minified_opaque_separators;
+      Alcotest.test_case "custom minified signed leading zero" `Quick
+        custom_minified_signed_leading_zero;
     ] )
 
 (* Keep helper constructors referenced. *)

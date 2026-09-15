@@ -173,6 +173,16 @@ let equal_canonical_keyframe_declaration_order () =
     (equal "@keyframes k{to{margin:0;margin-top:1px}}.a{animation:k 1s}"
        "@keyframes k{to{margin-top:1px;margin:0}}.a{animation:k 1s}")
 
+(* A custom property's stream substitutes the number a token holds, not the
+   digits it was written with, so [-0.5] and [-.5] are one value wherever the
+   stream lands. *)
+let equal_canonical_custom_signed_leading_zero () =
+  Alcotest.(check bool)
+    "a signed number's leading zero is not a difference" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a{--t:calc(var(--s)*-.5);translate:var(--t)}"
+       ".a{--t:calc(var(--s)*-0.5);translate:var(--t)}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2137,6 +2147,8 @@ let suite =
         equal_canonical_nested_media_order;
       Alcotest.test_case "canonical keyframe declaration order" `Quick
         equal_canonical_keyframe_declaration_order;
+      Alcotest.test_case "canonical custom signed leading zero" `Quick
+        equal_canonical_custom_signed_leading_zero;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
