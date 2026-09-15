@@ -296,6 +296,15 @@ let width_ge l : t =
     (Media.Cond
        (Media.Feature (Media.Range (Media.Width, Media.Ge, Media.Length l))))
 
+(* A container [not (X)] wraps the query rather than the condition, so the bound
+   {!Media.negated_bound} flips sits one level down. *)
+let negated_bound = function
+  | Feature_query (Media.Cond cond) -> (
+      match Media.negated_bound cond with
+      | Some flipped -> Some (Feature_query (Media.Cond flipped))
+      | None -> None)
+  | _ -> None
+
 let rec lower_for_minify c =
   match c with
   | Feature_query q ->
@@ -312,9 +321,11 @@ let rec lower_for_minify c =
   | Or (a, b) ->
       let a' = lower_for_minify a and b' = lower_for_minify b in
       if a' == a && b' == b then c else Or (a', b')
-  | Not c' ->
+  | Not c' -> (
       let c'' = lower_for_minify c' in
-      if c'' == c' then c else Not c''
+      match negated_bound c'' with
+      | Some flipped -> flipped
+      | None -> if c'' == c' then c else Not c'')
   | Style _ | Scroll_state _ -> c
 
 let rec drop_leading_whitespace = function
@@ -918,9 +929,11 @@ let rec normalize (c : t) : t =
   | Or (a, b) ->
       let a' = normalize a and b' = normalize b in
       if a' == a && b' == b then c else Or (a', b')
-  | Not a ->
+  | Not a -> (
       let a' = normalize a in
-      if a' == a then c else Not a'
+      match negated_bound a' with
+      | Some flipped -> flipped
+      | None -> if a' == a then c else Not a')
 
 (* CSS Conditional 5 sec. 6.2: a [style()] query reads the property it names on
    the query container; a range's operands may name it too. *)

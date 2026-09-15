@@ -438,9 +438,13 @@ let media_not_takes_media_in_parens () =
     (minified (minified negated_or));
   (* A single [<media-in-parens>] operand is already wrapped, so no second pair
      of parentheses appears. *)
-  check_modes "negated single condition"
-    "@media not (min-width:1px){a{color:red}}"
-    ~default:"@media not (width>=1px){a{color:red}}"
+  check_modes "negated single condition" "@media not (hover){a{color:red}}"
+    ~default:"@media not (hover){a{color:red}}"
+    ~spec:"@media not (hover){a{color:red}}";
+  (* A negated bound is the opposite bound (Media Queries 4 sec. 2.4.3), which
+     needs no [not] at all; spec mode keeps the Level 3 spelling. *)
+  check_modes "negated bound" "@media not (min-width:1px){a{color:red}}"
+    ~default:"@media(width<1px){a{color:red}}"
     ~spec:"@media not (min-width:1px){a{color:red}}"
 
 (* Media Queries 4 sec. 2.3: [all] is the identity media type, so [not all and
@@ -463,9 +467,12 @@ let negated_all_is_level4_not () =
       (name ^ " enforce-spec") spec
       (minified ~enforce_spec:true input)
   in
-  check_modes "negated feature"
+  check_modes "negated feature" "@media not all and (hover){a{color:red}}"
+    ~default:"@media not (hover){a{color:red}}"
+    ~spec:"@media not all and (hover){a{color:red}}";
+  check_modes "negated bound"
     "@media not all and (min-width:100px){a{color:red}}"
-    ~default:"@media not (width>=100px){a{color:red}}"
+    ~default:"@media(width<100px){a{color:red}}"
     ~spec:"@media not all and (min-width:100px){a{color:red}}";
   (* [<media-type> and <media-condition-without-or>] forbids a top-level [or],
      so the inner parentheses are what keeps the moved condition grammatical

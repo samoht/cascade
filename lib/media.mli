@@ -184,6 +184,13 @@ val to_string : ?minify:bool -> t -> string
 val pp : t Pp.t
 (** Pretty-printer for media queries. *)
 
+val negated_bound : condition -> condition option
+(** [negated_bound c] is the condition [not c] spells without its [not] when [c]
+    is one bound on a range feature: Media Queries 4 sec. 2.4.3 compares a
+    number, so [not (width >= V)] holds exactly where [(width < V)] does. An
+    equality has no single complement, and any other condition answers [None].
+*)
+
 val lower_for_minify : t -> t
 (** [lower_for_minify t] applies the target-fact grammar upgrades used under
     minify: [min-X]/[max-X] plain features become the range form [X>=V]/[X<=V],

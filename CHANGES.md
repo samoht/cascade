@@ -727,6 +727,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A negated bound on a range feature is the opposite bound: `not (width >=
+  V)` and `(width < V)` compare equal under `--diff=canonical`, in a container
+  query as in a media query, and `--minify` writes the shorter form. Tailwind
+  writes a `max-*` variant one way and lightningcss the other, so every such
+  block on tw's site sheet was reported as removed and added (#1250)
 - A `<time>` token in an unregistered custom property's stream compares as
   the duration it names, so `--d:.1s` and `--d:100ms` are equal under
   `--diff=canonical`, as they were once `--d` was registered `<time>`; a
