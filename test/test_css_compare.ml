@@ -213,6 +213,17 @@ let equal_canonical_infinite_length () =
     (equal ".a{margin-top:calc(infinity * 1px)}"
        ".a{margin-top:calc(-infinity * 1px)}")
 
+(* A static product over a percentage in [flex-basis] is the percentage it
+   computes, as it already is in [width]. *)
+let equal_canonical_flex_basis_percentage_calc () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a static percentage product is its percentage" true
+    (equal ".a{flex-basis:50%}" ".a{flex-basis:calc(.5 * 100%)}");
+  Alcotest.(check bool)
+    "a different percentage still differs" false
+    (equal ".a{flex-basis:50%}" ".a{flex-basis:calc(.25 * 100%)}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2183,6 +2194,8 @@ let suite =
         equal_canonical_stroke_width_number;
       Alcotest.test_case "canonical infinite length" `Quick
         equal_canonical_infinite_length;
+      Alcotest.test_case "canonical flex-basis percentage calc" `Quick
+        equal_canonical_flex_basis_percentage_calc;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
