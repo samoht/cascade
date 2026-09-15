@@ -494,7 +494,7 @@ to lose a whole rule over one bad piece. Both are gone.
 
 - A `stroke-width` in pixels minifies to the unitless number SVG reads the same
   way, `stroke-width:1px` to `stroke-width:1`, and canonical mode reads the two
-  as one width (#NNN).
+  as one width (#1243).
 - A signed number in a token stream keeps its sign and drops its leading zero:
   `calc(var(--s) * -0.5)` minifies to `calc(var(--s)*-.5)`, as lightningcss
   writes it, and canonical mode no longer reads the two as different (#1242).
