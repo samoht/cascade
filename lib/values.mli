@@ -258,6 +258,15 @@ type calc_ctx = { var_is_single_valued : string -> bool }
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
     may be unwrapped. *)
 
+val length_from_calc_unit : string -> float -> length
+(** [length_from_calc_unit unit value] is the length {!val-calc_length_unit}
+    reads back as [(unit, value)]; a zero pixel length is [Zero]. *)
+
+val eval_length_calc : ?ctx:calc_ctx -> length calc -> length calc
+(** [eval_length_calc c] reduces [c] with the typed length rules of CSS Values 4
+    sec. 10.10.1: a unitless factor scales a length or a percentage, and a
+    division folds only when it is exact. *)
+
 val default_calc_ctx : calc_ctx
 (** [default_calc_ctx] knows of no single-valued variables, so every
     context-dependent calc rewrite is a no-op. *)

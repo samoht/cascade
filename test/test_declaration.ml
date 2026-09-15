@@ -1183,6 +1183,11 @@ let flexbox_flex_and_basis () =
   check_declaration ~expected:"flex-basis:10px" "flex-basis: 10.0px";
   check_declaration ~expected:"flex:3.40282e38px" "flex: 1e999px";
   decl_optimizes ~prop:"flex-basis" ~into:"0" "0px";
+  (* CSS Values 4 sec. 10.10.1: a static product over a percentage folds as it
+     does in [width], so [calc(.5 * 100%)] is [50%]. Tailwind writes [basis-1/2]
+     with the division and lightningcss with the percentage. *)
+  decl_optimizes ~prop:"flex-basis" ~into:"50%" "calc(.5 * 100%)";
+  decl_optimizes ~prop:"flex-basis" ~into:"50%" "calc(1 / 2 * 100%)";
   check_declaration ~expected:"flex-basis:0%" "flex-basis: 0%";
   check_declaration ~expected:"flex-basis:100px" "flex-basis: 100px";
   check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%";

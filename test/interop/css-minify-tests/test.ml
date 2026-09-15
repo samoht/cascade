@@ -443,7 +443,8 @@ let normalize_expected ~category ~id expected =
       (* Four longhands with a matching [@property] each merge into one
          [padding] shorthand. A [var()] reference ends at [)], the same
          self-delimiting token boundary as [url(...)], so the space before the
-         next [var()] is not part of the value. *)
+         next [var()] is not part of the value. A registered [<length>] reads a
+         unitless zero as [0px], so the initial values take the shorter [0]. *)
       fixture ~category ~id
         ~upstream:
           "@property \
@@ -454,10 +455,27 @@ let normalize_expected ~category ~id expected =
            var(--pr) var(--pb) var(--pl)}"
         ~cascade:
           "@property \
-           --pt{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
-           --pr{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
-           --pb{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
-           --pl{syntax:\"<length>\";inherits:false;initial-value:0px}a{padding:var(--pt)var(--pr)var(--pb)var(--pl)}"
+           --pt{syntax:\"<length>\";inherits:false;initial-value:0}@property \
+           --pr{syntax:\"<length>\";inherits:false;initial-value:0}@property \
+           --pb{syntax:\"<length>\";inherits:false;initial-value:0}@property \
+           --pl{syntax:\"<length>\";inherits:false;initial-value:0}a{padding:var(--pt)var(--pr)var(--pb)var(--pl)}"
+        upstream
+  | "shorthands", "0062" ->
+      (* Same registered zero as shorthands/0061: a [<length>] initial value of
+         zero takes the shorter unitless [0]. *)
+      fixture ~category ~id
+        ~upstream:
+          "@property \
+           --bw{syntax:\"<length>\";inherits:false;initial-value:0px}@property \
+           --bs{syntax:\"<custom-ident>\";inherits:false;initial-value:none}@property \
+           --bc{syntax:\"<color>\";inherits:false;initial-value:#000}a{border:var(--bw) \
+           var(--bs) var(--bc)}"
+        ~cascade:
+          "@property \
+           --bw{syntax:\"<length>\";inherits:false;initial-value:0}@property \
+           --bs{syntax:\"<custom-ident>\";inherits:false;initial-value:none}@property \
+           --bc{syntax:\"<color>\";inherits:false;initial-value:#000}a{border:var(--bw) \
+           var(--bs) var(--bc)}"
         upstream
   | "shorthands", "0065" ->
       (* The fixture runs under stylesheet scope: [--custom] has no matching

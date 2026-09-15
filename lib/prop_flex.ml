@@ -98,6 +98,67 @@ let flex_basis_of_unit n : string -> flex_basis option = function
   | "lh" -> Option.Some (Lh n : flex_basis)
   | _ -> Option.None
 
+(* The unit and coefficient a flex-basis leaf spells, the inverse of
+   [flex_basis_of_unit], so a basis can take the typed length fold. *)
+let flex_basis_unit : flex_basis -> (string * float) option = function
+  | Zero -> Some ("px", 0.)
+  | Pct n -> Some ("%", n)
+  | Px n -> Some ("px", n)
+  | Cm n -> Some ("cm", n)
+  | Mm n -> Some ("mm", n)
+  | Q n -> Some ("q", n)
+  | In n -> Some ("in", n)
+  | Pt n -> Some ("pt", n)
+  | Pc n -> Some ("pc", n)
+  | Rem n -> Some ("rem", n)
+  | Em n -> Some ("em", n)
+  | Ex n -> Some ("ex", n)
+  | Cap n -> Some ("cap", n)
+  | Ic n -> Some ("ic", n)
+  | Ric n -> Some ("ric", n)
+  | Rlh n -> Some ("rlh", n)
+  | Vw n -> Some ("vw", n)
+  | Vh n -> Some ("vh", n)
+  | Vmin n -> Some ("vmin", n)
+  | Vmax n -> Some ("vmax", n)
+  | Vi n -> Some ("vi", n)
+  | Vb n -> Some ("vb", n)
+  | Dvh n -> Some ("dvh", n)
+  | Dvw n -> Some ("dvw", n)
+  | Dvmin n -> Some ("dvmin", n)
+  | Dvmax n -> Some ("dvmax", n)
+  | Lvh n -> Some ("lvh", n)
+  | Lvw n -> Some ("lvw", n)
+  | Lvmin n -> Some ("lvmin", n)
+  | Lvmax n -> Some ("lvmax", n)
+  | Svh n -> Some ("svh", n)
+  | Svw n -> Some ("svw", n)
+  | Svmin n -> Some ("svmin", n)
+  | Svmax n -> Some ("svmax", n)
+  | Ch n -> Some ("ch", n)
+  | Lh n -> Some ("lh", n)
+  | _ -> None
+
+(* CSS Values 4 sec. 10.10.1: a static product over a percentage or a length
+   folds as it does in [width], so [calc(.5 * 100%)] is [50%]. The untyped fold
+   cannot scale a typed leaf, so a [calc()] with no [var()] is read as a length
+   calc and folded there; one holding a [var()] keeps the untyped path. *)
+let static_flex_basis_calc (c : flex_basis calc) : flex_basis option =
+  match
+    map_calc_opt
+      (fun b ->
+        Option.map (fun (u, v) -> length_from_calc_unit u v) (flex_basis_unit b))
+      c
+  with
+  | None -> None
+  | Some lc -> (
+      match eval_length_calc lc with
+      | Val l -> (
+          match calc_length_unit l with
+          | Some (u, v) -> flex_basis_of_unit v u
+          | None -> None)
+      | _ -> None)
+
 let rec normalize_flex_basis (value : flex_basis) : flex_basis =
   match value with
   | Px 0.
@@ -136,9 +197,12 @@ let rec normalize_flex_basis (value : flex_basis) : flex_basis =
   | Lh 0. ->
       Zero
   | Calc c -> (
-      match eval_calc c with
-      | Val v -> normalize_flex_basis v
-      | folded -> if folded == c then value else Calc folded)
+      match static_flex_basis_calc c with
+      | Some v -> normalize_flex_basis v
+      | None -> (
+          match eval_calc c with
+          | Val v -> normalize_flex_basis v
+          | folded -> if folded == c then value else Calc folded))
   | Dimension { value = n; unit; _ } -> (
       match flex_basis_of_unit n (String.lowercase_ascii unit) with
       | Option.Some folded -> normalize_flex_basis folded

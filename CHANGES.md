@@ -492,6 +492,22 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- A static `calc()` over a percentage or a length in `flex-basis` folds as it
+  does in `width`, so `calc(.5 * 100%)` minifies to `50%` and canonical mode
+  reads Tailwind's `basis-1/2` and lightningcss's as one basis (#1245).
+- `calc(infinity * 1px)` minifies to `3.40282e38px`, the largest length the
+  printer spells and the form lightningcss writes, so canonical mode reads
+  Tailwind's `rounded-full` and lightningcss's as one radius (#1244).
+- A `stroke-width` in pixels minifies to the unitless number SVG reads the same
+  way, `stroke-width:1px` to `stroke-width:1`, and canonical mode reads the two
+  as one width (#1243).
+- A signed number in a token stream keeps its sign and drops its leading zero:
+  `calc(var(--s) * -0.5)` minifies to `calc(var(--s)*-.5)`, as lightningcss
+  writes it, and canonical mode no longer reads the two as different (#1242).
+- A registered `<length>` or `<length-percentage>` zero minifies to `0` in an
+  `@property` `initial-value`, as a declaration's zero already did. It kept
+  `0px`, so the canonical diff reported two equivalent registrations as
+  different (#1237).
 - Two adjacent `@media` blocks with one condition merge even where a body holds
   a `prefers-color-scheme`, `prefers-contrast` or `prefers-reduced-motion`
   query, which used to keep them apart. A nested `@supports` already merged,
@@ -649,6 +665,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Custom properties
 
+- `Css.inline_vars ~inline_runtime:true` inlines a reference marked `~runtime`
+  when the sheet defines its variable once. Such a reference always stayed
+  live, so a caller asking for every variable resolved away, as tw's `--inline`
+  does, still printed `calc(var(--spacing)*4)` (#1238).
 - A custom property's value, a container or media query, and an `@supports`
   condition all keep the text the author wrote. Whitespace runs survive, where
   `--x: a  b` came back as `a b`; escapes survive, where `--v: gre\en` came
@@ -701,6 +721,17 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A reported move has to be one the cascade can see: the moved rule or block
+  conflicts with a statement it crossed. A rule only one sheet has could place
+  an unrelated rule on the other side of a pinned pair, and the report named
+  that as a move although the two orders render the same (#1246)
+- Declarations in a `@keyframes` frame compare in the canonical order a style
+  rule's do, so two frames holding the same declarations for different
+  properties in another order are no longer a difference (#1241)
+- Nested `@media` blocks compare by the conditions around each rule rather than
+  by which block encloses which. The two nesting orders of a breakpoint and a
+  colour-scheme block were a difference, and so was a block closed and reopened
+  around the blocks nested in it (#1240)
 - A `var()` colour fallback ending a shadow's length run is read as the colour
   it is, so `text-shadow:1px 1px var(--c, oklab(from red l a b / 25%))` and
   its `l a b/.25` twin are equal under `--diff=canonical` (#1232)

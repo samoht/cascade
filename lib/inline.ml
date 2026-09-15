@@ -1879,8 +1879,13 @@ let collapse_layer_decided ~keep stylesheet =
     in
     List.map map_stmt stylesheet
 
-let vars ?(keep_vars = []) ?(warn = fun _ -> ()) stylesheet =
+let vars ?(keep_vars = []) ?(inline_runtime = false) ?(warn = fun _ -> ())
+    stylesheet =
   let _, _, runtime_refs = collect_scoped_refs stylesheet in
+  (* A runtime reference is a variable the caller expects to change after the
+     sheet is written, so it stays live - unless the caller asked for every
+     variable the sheet defines resolved away. *)
+  let runtime_refs = if inline_runtime then [] else runtime_refs in
   let keep =
     List.map normalise_var_name keep_vars @ runtime_refs
     |> List.sort_uniq compare

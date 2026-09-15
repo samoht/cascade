@@ -120,6 +120,110 @@ let equal_canonical_media_not_all () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        "@media not all{.a{color:red}}" "@media not (hover){.a{color:red}}")
 
+(* CSS Conditional 3 sec. 2: a rule inside nested conditional group rules
+   applies when every condition holds, so the order the [@media] blocks nest in
+   is not part of what the rule matches. Tailwind writes a breakpoint around a
+   colour-scheme block and tw the other way round, and the two render the
+   same. *)
+let equal_canonical_nested_media_order () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let wide = "@media (width>=40rem)"
+  and dark = "@media (prefers-color-scheme:dark)" in
+  Alcotest.(check bool)
+    "nesting order is not a difference" true
+    (equal
+       (wide ^ "{" ^ dark ^ "{.a{color:red}}}")
+       (dark ^ "{" ^ wide ^ "{.a{color:red}}}"));
+  Alcotest.(check bool)
+    "a block closed and reopened around its nested blocks is not a difference"
+    true
+    (equal
+       (wide ^ "{" ^ dark ^ "{.a{color:red}}.b{color:blue}" ^ dark
+      ^ "{.c{color:green}}}")
+       (wide ^ "{" ^ dark ^ "{.a{color:red}}}" ^ wide ^ "{.b{color:blue}}"
+      ^ dark ^ "{" ^ wide ^ "{.c{color:green}}}"));
+  Alcotest.(check bool)
+    "a condition nested inside itself is the condition once" true
+    (equal "@media (hover){@media (hover){.a{color:red}}}"
+       "@media (hover){.a{color:red}}");
+  (* The blue rule applies wherever the red one does, so which comes last is
+     what an element computes. *)
+  Alcotest.(check bool)
+    "two conflicting rules keep their order" false
+    (equal
+       (wide ^ "{.a{color:red}}" ^ dark ^ "{" ^ wide ^ "{.a{color:blue}}}")
+       (dark ^ "{" ^ wide ^ "{.a{color:blue}}}" ^ wide ^ "{.a{color:red}}"));
+  Alcotest.(check bool)
+    "a condition only one side applies still differs" false
+    (equal (wide ^ "{" ^ dark ^ "{.a{color:red}}}") (wide ^ "{.a{color:red}}"))
+
+(* CSS Animations 1 sec. 3: a keyframe block is a declaration block, so two
+   declarations for different properties in one frame do not observe each
+   other's order, as in a style rule. Tailwind writes [ping]'s last frame
+   transform first and tw writes it opacity first. *)
+let equal_canonical_keyframe_declaration_order () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "keyframe declaration order is not a difference" true
+    (equal "@keyframes k{75%{opacity:0;transform:scale(2)}}.a{animation:k 1s}"
+       "@keyframes k{75%{transform:scale(2);opacity:0}}.a{animation:k 1s}");
+  (* The longhand written after its shorthand is what the frame computes. *)
+  Alcotest.(check bool)
+    "a shorthand and its longhand keep their order" false
+    (equal "@keyframes k{to{margin:0;margin-top:1px}}.a{animation:k 1s}"
+       "@keyframes k{to{margin-top:1px;margin:0}}.a{animation:k 1s}")
+
+(* A custom property's stream substitutes the number a token holds, not the
+   digits it was written with, so [-0.5] and [-.5] are one value wherever the
+   stream lands. *)
+let equal_canonical_custom_signed_leading_zero () =
+  Alcotest.(check bool)
+    "a signed number's leading zero is not a difference" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a{--t:calc(var(--s)*-.5);translate:var(--t)}"
+       ".a{--t:calc(var(--s)*-0.5);translate:var(--t)}")
+
+(* SVG 2 sec. 13.5.3: [stroke-width] takes a [<number>] in user units, and a CSS
+   pixel is one user unit, so [1] and [1px] draw the same stroke. Tailwind
+   writes [stroke-1] unitless and tw writes [1px]. *)
+let equal_canonical_stroke_width_number () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a unitless stroke width is its pixel length" true
+    (equal ".a{stroke-width:1px}" ".a{stroke-width:1}");
+  Alcotest.(check bool)
+    "a fractional width too" true
+    (equal ".a{stroke-width:1.5px}" ".a{stroke-width:1.5}");
+  Alcotest.(check bool)
+    "a different width still differs" false
+    (equal ".a{stroke-width:1px}" ".a{stroke-width:2}")
+
+(* CSS Values 4 sec. 10.9: an infinite [calc()] result clamps to the largest
+   value the property can hold, and so does a finite length past that bound, so
+   [calc(infinity * 1px)] and [3.40282e38px] are the same radius. Tailwind
+   writes [rounded-full] with the first and lightningcss with the second. *)
+let equal_canonical_infinite_length () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "an infinite length is the largest one written out" true
+    (equal ".a{border-radius:3.40282e38px}"
+       ".a{border-radius:calc(infinity * 1px)}");
+  Alcotest.(check bool)
+    "a negative infinity is not a positive one" false
+    (equal ".a{margin-top:calc(infinity * 1px)}"
+       ".a{margin-top:calc(-infinity * 1px)}")
+
+(* A static product over a percentage in [flex-basis] is the percentage it
+   computes, as it already is in [width]. *)
+let equal_canonical_flex_basis_percentage_calc () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a static percentage product is its percentage" true
+    (equal ".a{flex-basis:50%}" ".a{flex-basis:calc(.5 * 100%)}");
+  Alcotest.(check bool)
+    "a different percentage still differs" false
+    (equal ".a{flex-basis:50%}" ".a{flex-basis:calc(.25 * 100%)}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -1580,6 +1684,30 @@ let strip_tool_header_only_header () =
   let result = Cascade_diff.Css_compare.strip_tool_header css in
   Alcotest.(check string) "only header stripped" "" result
 
+(* A move the report names has to be one the cascade can see. Two rules that
+   both write [display:none] read the same in either order, and the projection
+   finds them equal on their own; a rule only one sheet has, writing [content]
+   before them, must not turn their order into a reported move. *)
+let stats_neutral_move_beside_a_difference () =
+  let neutral_pair =
+    ".h:not(:where(.d,.d *)):not(:where(.s,.s *)){display:none}"
+  and media_twin =
+    "@media not (prefers-color-scheme:dark){.h:not(:where(.d,.d \
+     *)){display:none}}"
+  and content_rule = ".c:after{content:var(--t);--t:none;content:none}" in
+  let expected =
+    ".p:after{content:var(--t)}" ^ content_rule ^ neutral_pair ^ media_twin
+  and actual = content_rule ^ media_twin ^ neutral_pair in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
+  let s =
+    Cascade_diff.Css_compare.stats ~expected_str:expected ~actual_str:actual
+      result
+  in
+  Alcotest.(check bool)
+    "the extra rule is a difference" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual);
+  Alcotest.(check int) "no neutral move is reported" 0 s.reordered_rules
+
 (* ===== stats tests ===== *)
 
 let stats_no_diff () =
@@ -2038,6 +2166,8 @@ let suite =
       Alcotest.test_case "strip_tool_header only header" `Quick
         strip_tool_header_only_header;
       Alcotest.test_case "stats no diff" `Quick stats_no_diff;
+      Alcotest.test_case "stats neutral move beside a difference" `Quick
+        stats_neutral_move_beside_a_difference;
       Alcotest.test_case "stats with tree diff" `Quick stats_with_tree_diff;
       Alcotest.test_case "pp_stats does not crash" `Quick
         pp_stats_does_not_crash;
@@ -2080,6 +2210,18 @@ let suite =
         equal_canonical_top_level_is_unwrap;
       Alcotest.test_case "canonical equates not all and (X) with not (X)" `Quick
         equal_canonical_media_not_all;
+      Alcotest.test_case "canonical nested media order" `Quick
+        equal_canonical_nested_media_order;
+      Alcotest.test_case "canonical keyframe declaration order" `Quick
+        equal_canonical_keyframe_declaration_order;
+      Alcotest.test_case "canonical custom signed leading zero" `Quick
+        equal_canonical_custom_signed_leading_zero;
+      Alcotest.test_case "canonical stroke width number" `Quick
+        equal_canonical_stroke_width_number;
+      Alcotest.test_case "canonical infinite length" `Quick
+        equal_canonical_infinite_length;
+      Alcotest.test_case "canonical flex-basis percentage calc" `Quick
+        equal_canonical_flex_basis_percentage_calc;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"

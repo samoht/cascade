@@ -2234,7 +2234,7 @@ let spec_page_recovery_warns_once_per_descriptor () =
    registration in every case below. *)
 let spec_lenient_recovery_property_descriptors () =
   let registered =
-    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}"
+    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0}"
   in
   let body rest = "@property --x { syntax: \"<length>\"; " ^ rest ^ " }" in
   lenient_recover "unknown descriptor first in @property"
@@ -2280,14 +2280,14 @@ let spec_lenient_recovery_property_descriptors () =
     "" 1;
   lenient_recover "a later descriptor still overrides the one dropped"
     (body "inherits: false !important; initial-value: 0px; inherits: true")
-    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0px}" 1
+    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0}" 1
 
 (* CSS Syntax 3 sec. 5.4.3 "consume a block's contents" discards a [;] that no
    declaration precedes rather than validating one, so a stray semicolon in an
    [@property] body costs nothing. Blink 146 reads all three of these. *)
 let spec_property_skips_stray_semicolons () =
   let registered =
-    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0px}"
+    "@property --x{syntax:\"<length>\";inherits:false;initial-value:0}"
   in
   lenient_recover "leading semicolon in @property"
     "@property --x { ; syntax: \"<length>\"; inherits: false; initial-value: \
@@ -8920,7 +8920,7 @@ let customprops13_registered_negative_dimension_calc () =
   Alcotest.(check string)
     "registered length custom property reduces to dimension"
     "@property \
-     --tw-tracking{syntax:\"<length>\";inherits:false;initial-value:0px}.x{--tw-tracking:-.05em}"
+     --tw-tracking{syntax:\"<length>\";inherits:false;initial-value:0}.x{--tw-tracking:-.05em}"
     (normalize_minified
        "@property --tw-tracking { syntax: \"<length>\"; inherits: false; \
         initial-value: 0px } .x { --tw-tracking: calc(.05em * -1) }")

@@ -622,6 +622,97 @@ let diff_auto ~expected ~actual ~expected_parse ~actual_parse =
     | Ok _, Error e -> Actual_error e
     | Error e, Ok _ -> Expected_error e
 
+(* Two statements commute when the cascade cannot tell their order apart:
+   canonicalised together they come out the same whichever comes first. *)
+let commutes a b =
+  let canon stmts =
+    Css.to_string ~minify:true (Css.canonicalize_rule_order stmts)
+  in
+  String.equal (canon [ a; b ]) (canon [ b; a ])
+
+let statement_key stmt =
+  match Css.as_rule stmt with
+  | Some (sel, _, _) -> Some (Css.Selector.to_string sel)
+  | None -> Option.map fst (at_rule_path_and_inner stmt)
+
+let first_positions stmts =
+  let tbl = Hashtbl.create 64 in
+  List.iteri
+    (fun i stmt ->
+      match statement_key stmt with
+      | Some key when not (Hashtbl.mem tbl key) -> Hashtbl.add tbl key (i, stmt)
+      | _ -> ())
+    stmts;
+  tbl
+
+(* A move the cascade can see: the moved statement conflicts with a statement
+   both sides hold on opposite sides of it. A statement neither side can find
+   keeps its move. *)
+let visible_move ~expected ~actual key =
+  let e = first_positions expected and a = first_positions actual in
+  match (Hashtbl.find_opt e key, Hashtbl.find_opt a key) with
+  | Some (ei, moved), Some (ai, _) ->
+      Hashtbl.fold
+        (fun other (ej, stmt) visible ->
+          visible
+          || (not (String.equal other key))
+             &&
+             match Hashtbl.find_opt a other with
+             | Some (aj, _) ->
+                 (not (Bool.equal (ei < ej) (ai < aj)))
+                 && not (commutes moved stmt)
+             | None -> false)
+        e false
+  | _ -> true
+
+let container_key (info : D.container_info) =
+  match info.container_type with
+  | `Media -> Some ("@media " ^ info.condition)
+  | `Supports -> Some ("@supports " ^ info.condition)
+  | `Container -> Some ("@container " ^ info.condition)
+  | `Layer -> Some ("@layer " ^ info.condition)
+  | `Property | `Nesting | `At_rule -> None
+
+let visible_rule_changes ~expected ~actual changes =
+  List.filter
+    (fun (change : D.rule_diff) ->
+      match change with
+      | D.Reordered { selector; old_declarations = None; _ } ->
+          visible_move ~expected ~actual selector
+      | _ -> true)
+    changes
+
+let rec visible_container ~expected ~actual (change : D.container_diff) =
+  match change with
+  | D.Reordered { info; _ } -> (
+      match container_key info with
+      | Some key when not (visible_move ~expected ~actual key) -> None
+      | _ -> Some change)
+  | D.Modified m ->
+      let expected = m.info.rules and actual = m.actual_rules in
+      let rule_changes =
+        visible_rule_changes ~expected ~actual m.rule_changes
+      in
+      let container_changes =
+        List.filter_map
+          (visible_container ~expected ~actual)
+          m.container_changes
+      in
+      let had_changes = m.rule_changes <> [] || m.container_changes <> [] in
+      if had_changes && rule_changes = [] && container_changes = [] then None
+      else Some (D.Modified { m with rule_changes; container_changes })
+  | D.Added _ | D.Removed _ | D.Block_structure_changed _ -> Some change
+
+(* Only the moves the cascade can see: an ordering the projection had to pick
+   for two unrelated statements is not one. *)
+let visible_moves ~expected ~actual (diff : D.t) =
+  {
+    diff with
+    D.rules = visible_rule_changes ~expected ~actual diff.rules;
+    containers =
+      List.filter_map (visible_container ~expected ~actual) diff.containers;
+  }
+
 (* The two canonical forms already differ, so this only picks how to say it: the
    tree diff when its walk reaches the divergence, the bytes themselves when it
    does not. A tree diff that comes back empty over two differing canonical
@@ -633,6 +724,7 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
   | Ok { stylesheet = expected_ast; _ }, Ok { stylesheet = actual_ast; _ } ->
       let canonical_tree =
         tree_diff ~expected:expected_ast ~actual:actual_ast
+        |> visible_moves ~expected:expected_ast ~actual:actual_ast
       in
       let canonical_diff = without_reorders canonical_tree in
       (* A move has to be one the inputs hold and one the cascade can see. The
@@ -646,10 +738,11 @@ let diff_canonical_parsed ~expected ~actual ~expected_parse ~actual_parse
         match (expected_parse, actual_parse) with
         | ( Ok { Css.stylesheet = expected_source; _ },
             Ok { Css.stylesheet = actual_source; _ } ) ->
-            tree_diff
-              ~expected:(key_query_preludes expected_source)
-              ~actual:(key_query_preludes actual_source)
+            let expected_source = key_query_preludes expected_source
+            and actual_source = key_query_preludes actual_source in
+            tree_diff ~expected:expected_source ~actual:actual_source
             |> only_reorders |> gate_source_reorders gate
+            |> visible_moves ~expected:expected_source ~actual:actual_source
         | Error _, _ | _, Error _ ->
             { D.rules = []; containers = []; layer_order = None }
       in

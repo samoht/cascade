@@ -321,15 +321,26 @@ let is_signed_number_repr repr =
 let minified_number_repr ?(preserve_sign = false)
     ({ value; repr; _ } : Token.number) =
   let compact = Pp.string_of_float ~drop_leading_zero:true value in
-  if preserve_sign && is_signed_number_repr repr then repr
-  else if
-    String.length compact < String.length repr
+  let shorter candidate =
+    String.length candidate < String.length repr
     &&
-    match float_of_string_opt compact with
+    match float_of_string_opt candidate with
     | Some parsed -> Float.equal value parsed
     | None -> false
-  then compact
-  else repr
+  in
+  (* A sign the stream needs is the stream's to keep; the digits after it are
+     shortened as an unsigned number's are, so [-0.5] is [-.5], not [-0.5]. *)
+  let candidate =
+    if preserve_sign && is_signed_number_repr repr then
+      let digits =
+        if compact <> "" && compact.[0] = '-' then
+          String.sub compact 1 (String.length compact - 1)
+        else compact
+      in
+      String.make 1 repr.[0] ^ digits
+    else compact
+  in
+  if shorter candidate then candidate else repr
 
 let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
     Token.kind -> unit = function

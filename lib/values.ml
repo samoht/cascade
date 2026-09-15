@@ -3925,6 +3925,33 @@ let strip_zero_length (l : length) : length =
 
 (* [strip] is true for a top-level [<length>] (a direct property/shorthand
    value) and false for a calc / math-function operand, which keeps its unit. *)
+(* CSS Values 4 sec. 10.9: an infinite result clamps to the largest value the
+   property can hold, and a finite length past every such bound clamps to the
+   same one, so [calc(infinity * 1px)] is written as the largest float the
+   printer spells, [3.40282e38px], which is also what lightningcss writes. Only a
+   whole [calc()] of that one product folds: inside a sum the infinity is an
+   operand whose arithmetic ([infinity - infinity] is NaN) the [calc()] keeps. *)
+let rec infinite_length (c : length calc) : length option =
+  let sign = function
+    | Math_const Infinity -> Some 1.
+    | Math_const Neg_infinity -> Some (-1.)
+    | Num n when Float.abs n = Float.infinity -> Some (Float.copy_sign 1. n)
+    | _ -> None
+  in
+  let fold s v =
+    match calc_length_unit v with
+    | Some (unit, value) when value <> 0. && not (Float.is_nan value) ->
+        Some
+          (length_from_calc_unit unit
+             (Float.copy_sign Float.infinity (s *. value)))
+    | _ -> None
+  in
+  match c with
+  | Nested inner | Parens inner -> infinite_length inner
+  | Expr (Val v, Mul, k) | Expr (k, Mul, Val v) -> (
+      match sign k with Some s -> fold s v | None -> None)
+  | _ -> None
+
 let rec normalize_length ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (l : length) : length =
   let nf = normalize_length ~strip:false ~ctx in
@@ -3936,7 +3963,10 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
           |> eval_length_calc ~ctx
         with
         | Val v -> v
-        | folded -> Calc folded)
+        | folded -> (
+            match infinite_length folded with
+            | Some v -> v
+            | None -> Calc folded))
     | Clamp (mn, v, mx) -> (
         let mn = nf mn and v = nf v and mx = nf mx in
         if mn = v && v = mx then v
@@ -4010,6 +4040,34 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
 (* Fold the numeric parts of a length-percentage [calc()], keeping any [var()]:
    [calc(var(--x) + 1px + 2px)] -> [calc(var(--x) + 3px)], [calc(1px + 2px)] ->
    [3px]. A wrapped [<length>] folds its own math functions. *)
+(* {!infinite_length} for a [<length-percentage>] calc, whose leaf is a length
+   or a percentage: [calc(infinity * 1%)] is [3.40282e38%]. *)
+let rec infinite_length_percentage (c : length_percentage calc) :
+    length_percentage option =
+  let sign = function
+    | Math_const Infinity -> Some 1.
+    | Math_const Neg_infinity -> Some (-1.)
+    | Num n when Float.abs n = Float.infinity -> Some (Float.copy_sign 1. n)
+    | _ -> None
+  in
+  let fold s (v : length_percentage) =
+    match v with
+    | Length l -> (
+        match
+          infinite_length (Expr (Val l, Mul, Num (s *. Float.infinity)))
+        with
+        | Some l -> Some (Length l : length_percentage)
+        | None -> None)
+    | Pct p when p <> 0. && not (Float.is_nan p) ->
+        Some (Pct (Float.copy_sign Float.infinity (s *. p)))
+    | _ -> None
+  in
+  match c with
+  | Nested inner | Parens inner -> infinite_length_percentage inner
+  | Expr (Val v, Mul, k) | Expr (k, Mul, Val v) -> (
+      match sign k with Some s -> fold s v | None -> None)
+  | _ -> None
+
 let normalize_length_percentage ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (lp : length_percentage) : length_percentage =
   match lp with
@@ -4023,7 +4081,10 @@ let normalize_length_percentage ?(strip = true) ?(non_negative = false)
       | Val (Length v) when non_negative && negative_length v ->
           Calc (Val (Length v))
       | Val v -> v
-      | folded -> Calc folded)
+      | folded -> (
+          match infinite_length_percentage folded with
+          | Some v -> v
+          | None -> Calc folded))
   | Length l ->
       let l' = normalize_length ~strip ~non_negative ~ctx l in
       if l' == l then lp else Length l'
