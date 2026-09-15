@@ -513,6 +513,110 @@ let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
   if coalesced == sorted then stmts
   else settle ~canon_body ?parent changed coalesced
 
+(* A declaration a conditional group repeats from the rule with the identical
+   selector before it, value and all, changes nothing: an engine reading the
+   guard sets the same value twice and one that does not reads the first rule
+   alone, so the sheet with the repeat and the one without paint alike. The
+   repeat is dropped so the two converge, unless a rule between the two writes
+   the property: an element both match then reads the repeat as the winner. Only
+   a rule directly inside the group is read, and only a declaration neither side
+   marks [!important]. *)
+let conditional_body : statement -> statement list option = function
+  | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Option.Some b
+  | _ -> Option.None
+
+let with_conditional_body stmt body =
+  match stmt with
+  | Media (q, _) -> Media (q, body)
+  | Supports (c, _) -> Supports (c, body)
+  | Container (n, c, _) -> Container (n, c, body)
+  | stmt -> stmt
+
+let keys_written stmt =
+  Stylesheet.fold_statements
+    (fun acc stmt ->
+      match stmt with
+      | Rule r -> List.map Declaration.property_key r.declarations @ acc
+      | _ -> acc)
+    [] [ stmt ]
+
+(* Per selector, the declarations of the last unguarded rule and the property
+   keys every rule since has written. *)
+type repeats = {
+  seen :
+    ( string,
+      Declaration.declaration list * (Declaration.prop_key, unit) Hashtbl.t )
+    Hashtbl.t;
+  dropped : bool ref;
+}
+
+let selector_text sel = Pp.to_string ~minify:true Selector.pp sel
+
+let note_writes t stmt =
+  let keys = keys_written stmt in
+  Hashtbl.iter
+    (fun _ (_, written) ->
+      List.iter (fun k -> Hashtbl.replace written k ()) keys)
+    t.seen
+
+let repeated t sel d =
+  (not (Declaration.is_important d))
+  &&
+  match Hashtbl.find_opt t.seen sel with
+  | Some (decls, written) ->
+      (not (Hashtbl.mem written (Declaration.property_key d)))
+      && List.exists
+           (fun d0 ->
+             (not (Declaration.is_important d0))
+             && Declaration.equal_declaration d0 d)
+           decls
+  | None -> false
+
+let prune_guarded_rule t : statement -> statement option = function
+  | Rule r when r.nested = [] ->
+      let sel = selector_text r.selector in
+      let kept = List.filter (fun d -> not (repeated t sel d)) r.declarations in
+      if List.compare_lengths kept r.declarations = 0 then Option.Some (Rule r)
+      else (
+        t.dropped := true;
+        if kept = [] then Option.None
+        else Option.Some (Rule { r with declarations = kept }))
+  | stmt -> Option.Some stmt
+
+(* A group emptied by the pruning goes with it; one that was empty already stays
+   as it was. *)
+let prune_guard t stmt body : statement option =
+  let body' = List.filter_map (prune_guarded_rule t) body in
+  if body' = [] && body <> [] then Option.None
+  else Option.Some (with_conditional_body stmt body')
+
+let drop_guarded_repeats outer_changed stmts =
+  let t = { seen = Hashtbl.create 16; dropped = ref false } in
+  let rec go = function
+    | [] -> []
+    | (Rule r as stmt) :: rest ->
+        note_writes t stmt;
+        Hashtbl.replace t.seen (selector_text r.selector)
+          (r.declarations, Hashtbl.create 8);
+        stmt :: go rest
+    | stmt :: rest -> (
+        let pruned =
+          match conditional_body stmt with
+          | Option.Some body -> prune_guard t stmt body
+          | Option.None -> Option.Some stmt
+        in
+        match pruned with
+        | Option.Some stmt' ->
+            note_writes t stmt';
+            stmt' :: go rest
+        | Option.None -> go rest)
+  in
+  let result = go stmts in
+  if !(t.dropped) then (
+    outer_changed := true;
+    result)
+  else stmts
+
 (* A declaration a later rule with the *identical* selector also writes is dead:
    same element set, same specificity, later wins. Dropping it lets a sheet that
    hoisted the declaration into a shared group converge with one that wrote it
@@ -605,7 +709,9 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~parent changed) stmts in
   let expanded =
-    List.concat_map expand_lists stmts |> drop_shadowed_declarations
+    List.concat_map expand_lists stmts
+    |> drop_shadowed_declarations
+    |> drop_guarded_repeats changed
   in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
   let rec go = function

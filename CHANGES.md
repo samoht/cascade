@@ -727,6 +727,13 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A declaration a `@media`, `@supports` or `@container` block repeats from
+  the rule with the identical selector before it, value and all, is not a
+  difference: an engine reading the guard sets the same value twice and one
+  that does not reads the first rule alone. A rule between the two that
+  writes the property keeps the repeat. Tailwind nests a colour twin inside
+  its rule where a flat sheet repeats the `content`, and tw's site sheet had
+  ten such entries (#1254)
 - Two declarations that conflict and sit in the other order inside one rule
   of the canonical form, `all: unset` crossing `content`, are reported as
   that rule's reorder. The report dropped the swap as the projection's own
