@@ -1684,6 +1684,30 @@ let strip_tool_header_only_header () =
   let result = Cascade_diff.Css_compare.strip_tool_header css in
   Alcotest.(check string) "only header stripped" "" result
 
+(* A move the report names has to be one the cascade can see. Two rules that
+   both write [display:none] read the same in either order, and the projection
+   finds them equal on their own; a rule only one sheet has, writing [content]
+   before them, must not turn their order into a reported move. *)
+let stats_neutral_move_beside_a_difference () =
+  let neutral_pair =
+    ".h:not(:where(.d,.d *)):not(:where(.s,.s *)){display:none}"
+  and media_twin =
+    "@media not (prefers-color-scheme:dark){.h:not(:where(.d,.d \
+     *)){display:none}}"
+  and content_rule = ".c:after{content:var(--t);--t:none;content:none}" in
+  let expected =
+    ".p:after{content:var(--t)}" ^ content_rule ^ neutral_pair ^ media_twin
+  and actual = content_rule ^ media_twin ^ neutral_pair in
+  let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
+  let s =
+    Cascade_diff.Css_compare.stats ~expected_str:expected ~actual_str:actual
+      result
+  in
+  Alcotest.(check bool)
+    "the extra rule is a difference" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual);
+  Alcotest.(check int) "no neutral move is reported" 0 s.reordered_rules
+
 (* ===== stats tests ===== *)
 
 let stats_no_diff () =
@@ -2142,6 +2166,8 @@ let suite =
       Alcotest.test_case "strip_tool_header only header" `Quick
         strip_tool_header_only_header;
       Alcotest.test_case "stats no diff" `Quick stats_no_diff;
+      Alcotest.test_case "stats neutral move beside a difference" `Quick
+        stats_neutral_move_beside_a_difference;
       Alcotest.test_case "stats with tree diff" `Quick stats_with_tree_diff;
       Alcotest.test_case "pp_stats does not crash" `Quick
         pp_stats_does_not_crash;
