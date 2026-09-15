@@ -721,6 +721,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A `<time>` token in an unregistered custom property's stream compares as
+  the duration it names, so `--d:.1s` and `--d:100ms` are equal under
+  `--diff=canonical`, as they were once `--d` was registered `<time>`; a
+  property a container `style()` query names keeps its tokens, since the query
+  compares them as written (#1247)
 - A reported move has to be one the cascade can see: the moved rule or block
   conflicts with a statement it crossed. A rule only one sheet has could place
   an unrelated rule on the other side of a pinned pair, and the report named

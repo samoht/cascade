@@ -4355,6 +4355,57 @@ let rec canonicalize_math_whitespace ~in_math comps =
 let canonicalize_math_whitespace_components comps =
   canonicalize_math_whitespace ~in_math:false comps
 
+(* CSS Values 4 sec. 7.2: [s] and [ms] name one quantity, so a [<time>] token
+   spells the same duration under either unit. Emission keeps the unit the
+   author wrote, and the projection spells the token the way the typed printer
+   spells a minified [<time>], the shorter of the two: [100ms] is [.1s] and
+   [1500ms] is [1.5s]. A token inside a function or a block is a time where it
+   lands just as a top-level one is. *)
+let canonical_time_token number unit_ =
+  let ms =
+    match String.lowercase_ascii unit_ with
+    | "ms" -> Option.Some number.Token.value
+    | "s" -> Option.Some (number.Token.value *. 1000.)
+    | _ -> Option.None
+  in
+  match ms with
+  | Option.None -> Option.None
+  | Option.Some ms ->
+      let s = ms /. 1000. in
+      let spell f = Pp.string_of_float ~drop_leading_zero:true f in
+      let value, unit_ =
+        if String.length (spell s) + 1 <= String.length (spell ms) + 2 then
+          (s, "s")
+        else (ms, "ms")
+      in
+      Option.Some
+        (Token.Dimension
+           {
+             number = { value; repr = spell value; number_flag = Token.Number };
+             unit_;
+           })
+
+let rec canonicalize_time_components comps =
+  List.map
+    (fun c ->
+      match c with
+      | Component.Preserved
+          ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
+          match canonical_time_token number unit_ with
+          | Option.Some kind ->
+              Component.Preserved { token with kind; repr = Option.None }
+          | Option.None -> c)
+      | Component.Func wrapped ->
+          let func = wrapped.Component.node in
+          let arguments = canonicalize_time_components func.arguments in
+          Component.Func { wrapped with node = { func with arguments } }
+      | Component.Block wrapped ->
+          let block = wrapped.Component.node in
+          let value = canonicalize_time_components block.value in
+          Component.Block { wrapped with node = { block with value } }
+      | Component.Preserved _ -> c)
+    comps
+
 let normalize_property_value : type a.
     ?lossless:bool ->
     ?exact_srgb:bool ->

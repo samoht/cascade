@@ -97,6 +97,13 @@ val unquote_font_family_strings : custom_value -> custom_value
     that isn't a [<string>], pass through unchanged; a name of one word also
     clears [emoji], [fangsong] and [none]. *)
 
+val canonicalize_time_components : custom_value -> custom_value
+(** [canonicalize_time_components components] spells every [<time>] token of
+    [components] the way a minified typed [<time>] is spelled, the shorter of
+    its [s] and [ms] forms, which CSS Values 4 sec. 7.2 makes one quantity.
+    Equivalence-only normalisation for structural diffing; every other token
+    passes through unchanged. *)
+
 val canonicalize_math_whitespace_components : custom_value -> custom_value
 (** [canonicalize_math_whitespace_components components] drops the whitespace of
     [components] that CSS reads as nothing: around the [*] and [/] of CSS Values

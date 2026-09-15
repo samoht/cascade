@@ -148,6 +148,15 @@ val unquote_custom_font_strings : declaration -> declaration
     diffing; a stream without that proof, and any other declaration, passes
     through unchanged. *)
 
+val canonicalize_custom_time : declaration -> declaration
+(** [canonicalize_custom_time d] spells every [<time>] token of a
+    custom-property token stream as the shorter of its [s] and [ms] forms, which
+    CSS Values 4 sec. 7.2 makes one quantity. Equivalence-only normalisation for
+    structural diffing; any other declaration passes through unchanged. A
+    container [style()] query on an unregistered property compares the declared
+    tokens as written, so the caller keeps a property such a query names out of
+    this fold. *)
+
 val canonicalize_custom_whitespace : declaration -> declaration
 (** [canonicalize_custom_whitespace d] drops from a custom-property token stream
     the whitespace CSS reads as nothing: around the [*] and [/] of CSS Values 4

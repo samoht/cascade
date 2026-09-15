@@ -146,6 +146,11 @@ val normalize : t -> t
     whose text is compared verbatim. Each of those costs a merge, never
     correctness. *)
 
+val queried_names : t -> string list
+(** [queried_names t] is every property name a [style()] query in [t] reads, as
+    written: the name of a plain or boolean query, and a range operand that is a
+    bare identifier (CSS Conditional 5 sec. 6.2). *)
+
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. Ordering only needs to be
     deterministic, so a size feature that ties on every ordinal key reaches
