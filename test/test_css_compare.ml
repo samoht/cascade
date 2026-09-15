@@ -198,6 +198,21 @@ let equal_canonical_stroke_width_number () =
     "a different width still differs" false
     (equal ".a{stroke-width:1px}" ".a{stroke-width:2}")
 
+(* CSS Values 4 sec. 10.9: an infinite [calc()] result clamps to the largest
+   value the property can hold, and so does a finite length past that bound, so
+   [calc(infinity * 1px)] and [3.40282e38px] are the same radius. Tailwind
+   writes [rounded-full] with the first and lightningcss with the second. *)
+let equal_canonical_infinite_length () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "an infinite length is the largest one written out" true
+    (equal ".a{border-radius:3.40282e38px}"
+       ".a{border-radius:calc(infinity * 1px)}");
+  Alcotest.(check bool)
+    "a negative infinity is not a positive one" false
+    (equal ".a{margin-top:calc(infinity * 1px)}"
+       ".a{margin-top:calc(-infinity * 1px)}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2166,6 +2181,8 @@ let suite =
         equal_canonical_custom_signed_leading_zero;
       Alcotest.test_case "canonical stroke width number" `Quick
         equal_canonical_stroke_width_number;
+      Alcotest.test_case "canonical infinite length" `Quick
+        equal_canonical_infinite_length;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
