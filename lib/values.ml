@@ -8444,6 +8444,89 @@ let zero_missing_components (c : color) : color =
   | Oklch r -> Oklch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
   | other -> other
 
+(* CSS Color 5 sec. 4.1: a relative colour whose channel slots are the
+   function's own keywords, in order, is the origin converted to that space,
+   with the alpha the call names; an omitted or [alpha] slot carries the
+   origin's. The conversion is the one the browser makes, so it is a value fold
+   like the oklab-to-hex one and runs where that one does, outside [lossless]. A
+   tail that rewrites a channel is another colour and stays. *)
+let relative_pass_through_alpha ~origin_alpha tail_alpha : alpha option =
+  match String.trim tail_alpha with
+  | "" | "alpha" -> Some origin_alpha
+  | text -> (
+      let len = String.length text in
+      if len > 1 && text.[len - 1] = '%' then
+        match float_of_string_opt (String.sub text 0 (len - 1)) with
+        | Some f -> Some (Pct f : alpha)
+        | None -> None
+      else
+        match float_of_string_opt text with
+        | Some f -> Some (Num f : alpha)
+        | None -> None)
+
+let fold_relative_color_static_origin name origin tail : color option =
+  let channels, tail_alpha =
+    match String.index_opt tail '/' with
+    | Some i ->
+        ( String.trim (String.sub tail 0 i),
+          String.sub tail (i + 1) (String.length tail - i - 1) )
+    | None -> (String.trim tail, "")
+  in
+  let keywords =
+    match name with
+    | "lab" | "oklab" -> Some "l a b"
+    | "lch" | "oklch" -> Some "l c h"
+    | _ -> None
+  in
+  if keywords <> Some channels then None
+  else
+    match static_color_to_linear_srgb origin with
+    | None -> None
+    | Some (linear, origin_alpha_f) -> (
+        let origin_alpha : alpha =
+          if origin_alpha_f >= 1. then None else Num origin_alpha_f
+        in
+        match relative_pass_through_alpha ~origin_alpha tail_alpha with
+        | None -> None
+        | Some alpha -> (
+            let lab_d50 () =
+              Color_space.lab_of_xyz50
+                (Color_space.d50_of_xyz65
+                   (Color_space.xyz65_of_linear_srgb linear))
+            in
+            match name with
+            | "oklab" ->
+                let l, a, b = Color_space.oklab_of_linear_srgb linear in
+                Some
+                  (Oklab
+                     {
+                       l = Some (Pct (l *. 100.));
+                       a = Some a;
+                       b = Some b;
+                       alpha;
+                     })
+            | "oklch" ->
+                let l, c, h =
+                  Color_space.oklch_of_oklab
+                    (Color_space.oklab_of_linear_srgb linear)
+                in
+                Some
+                  (Oklch
+                     {
+                       l = Some (Pct (l *. 100.));
+                       c = Some c;
+                       h = Unitless h;
+                       alpha;
+                     })
+            | "lab" ->
+                let l, a, b = lab_d50 () in
+                Some (Lab { l = Some (Pct l); a = Some a; b = Some b; alpha })
+            | "lch" ->
+                let l, c, h = Color_space.lch_of_lab (lab_d50 ()) in
+                Some
+                  (Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha })
+            | _ -> None))
+
 (* AST-level color canonicalisation: the value-changing colour folds live here,
    producing a canonical [color] so [pp_color] stays a pure serialiser. The sRGB
    fold runs on the authored coefficients first; [round_lab_family_axes] then
@@ -8490,8 +8573,15 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   | Contrast_color inner -> Contrast_color (normalize_color ~lossless inner)
   | Relative_rgb (origin, tail) ->
       Relative_rgb (normalize_color ~lossless origin, tail)
-  | Relative_color (name, origin, tail) ->
-      Relative_color (name, normalize_color ~lossless origin, tail)
+  | Relative_color (name, origin, tail) -> (
+      let origin = normalize_color ~lossless origin in
+      let folded =
+        if lossless then Option.None
+        else fold_relative_color_static_origin name origin tail
+      in
+      match folded with
+      | Option.Some color -> normalize_color ~lossless color
+      | Option.None -> Relative_color (name, origin, tail))
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
