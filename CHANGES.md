@@ -492,6 +492,9 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- `calc(infinity * 1px)` minifies to `3.40282e38px`, the largest length the
+  printer spells and the form lightningcss writes, so canonical mode reads
+  Tailwind's `rounded-full` and lightningcss's as one radius (#NNN).
 - A `stroke-width` in pixels minifies to the unitless number SVG reads the same
   way, `stroke-width:1px` to `stroke-width:1`, and canonical mode reads the two
   as one width (#1243).
