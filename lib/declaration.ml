@@ -604,6 +604,14 @@ let rec value_uses_color p = function
 
 let value_uses_color_4 decl = value_uses_color Values.color_is_color_4 decl
 
+(* Whether a browser in [targets] drops [decl] at parse time for a colour it
+   does not read: the earlier declaration is a fallback for that browser and
+   dead everywhere else. *)
+let value_uses_color_unimplemented_by targets decl =
+  value_uses_color
+    (Values.color_uses_feature_where (Support.unimplemented_by targets))
+    decl
+
 let length_list_has_runtime_subst lengths =
   List.exists Values.length_has_runtime_subst lengths
 

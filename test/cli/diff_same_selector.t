@@ -11,19 +11,11 @@ blue group and the indigo group in the opposite order. That order is
 cascade-significant for an element carrying both classes, so the difference
 is real and must still be reported.
 
-The projection keeps the feature query, since the declaration before it is
-what an engine without color-mix(in lab) paints, so each selector stays
-split over three rules with another selector's rules between them. Both
-groups keep every declaration they write, so each reports as one move
-rather than as a loss and a gain.
-
-The two sides spell the feature query differently, with and without the
-spaces after the commas. CSS Conditional 3 (ED) sec. 7.4 calls that the same
-condition, allowing "reducing whitespace to a single space or omitting it in
-cases where it is known to be optional", so the comparator keys the block on
-the condition rather than on its spelling and compares INSIDE it. The move
-therefore shows twice: once for the two bare rules at the layer level, and
-once for the rule the feature query holds.
+The projection judges for the evergreen browsers, every one of which parses
+color-mix(in lab), so the feature query is unwrapped and the declaration
+written before it is dead: each selector is left split over two rules with
+another selector's rules between them. Both groups keep every declaration
+they write, so each reports as one move rather than as a loss and a gain.
 
   $ cat > ref.css <<'EOF'
   > @layer utilities{.drop-shadow-sm{--tw-drop-shadow-size:drop-shadow(0 1px 2px var(--tw-drop-shadow-color,#00000026));--tw-drop-shadow:drop-shadow(var(--drop-shadow-sm));filter:var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,)}.drop-shadow-blue-500\/50{--tw-drop-shadow-color:#3080ff80}@supports (color:color-mix(in lab, red, red)){.drop-shadow-blue-500\/50{--tw-drop-shadow-color:color-mix(in oklab, color-mix(in oklab, var(--color-blue-500) 50%, transparent) var(--tw-drop-shadow-alpha), transparent)}}.drop-shadow-blue-500\/50{--tw-drop-shadow:var(--tw-drop-shadow-size)}.drop-shadow-indigo-500{--tw-drop-shadow-color:oklch(58.5% .233 277.117)}@supports (color:color-mix(in lab, red, red)){.drop-shadow-indigo-500{--tw-drop-shadow-color:color-mix(in oklab, var(--color-indigo-500) var(--tw-drop-shadow-alpha), transparent)}}.drop-shadow-indigo-500{--tw-drop-shadow:var(--tw-drop-shadow-size)}}
@@ -32,6 +24,28 @@ once for the rule the feature query holds.
   > @layer utilities{.drop-shadow-sm{--tw-drop-shadow-size:drop-shadow(0 1px 2px var(--tw-drop-shadow-color,#00000026));--tw-drop-shadow:drop-shadow(var(--drop-shadow-sm));filter:var(--tw-blur,)var(--tw-brightness,)var(--tw-contrast,)var(--tw-grayscale,)var(--tw-hue-rotate,)var(--tw-invert,)var(--tw-saturate,)var(--tw-sepia,)var(--tw-drop-shadow,)}.drop-shadow-indigo-500{--tw-drop-shadow-color:oklch(58.5%.233 277.117)}@supports(color:color-mix(in lab,red,red)){.drop-shadow-indigo-500{--tw-drop-shadow-color:color-mix(in oklab,var(--color-indigo-500) var(--tw-drop-shadow-alpha),transparent)}}.drop-shadow-indigo-500{--tw-drop-shadow:var(--tw-drop-shadow-size)}.drop-shadow-blue-500\/50{--tw-drop-shadow-color:#3080ff80}@supports(color:color-mix(in lab,red,red)){.drop-shadow-blue-500\/50{--tw-drop-shadow-color:color-mix(in oklab,color-mix(in oklab,var(--color-blue-500) 50%,transparent) var(--tw-drop-shadow-alpha),transparent)}}.drop-shadow-blue-500\/50{--tw-drop-shadow:var(--tw-drop-shadow-size)}}
   > EOF
   $ cascade diff --diff=canonical --prune-unused-custom-props --limit=none ref.css tw.css
+  CSS: 1024 chars vs 1003 chars (2.1% diff)
+  Changes: 1 changed container
+  
+  --- ref.css
+  +++ tw.css
+  └─ @layer utilities (1 reordered)
+     └─ .drop-shadow-blue-500\/50 (moved)
+  
+  [1]
+
+Under --enforce-spec no browser is named, so the feature query stays, since
+the declaration before it is what an engine without color-mix(in lab)
+paints, and each selector stays split over three rules. The two sides spell
+the feature query differently, with and without the spaces after the
+commas. CSS Conditional 3 (ED) sec. 7.4 calls that the same condition,
+allowing "reducing whitespace to a single space or omitting it in cases
+where it is known to be optional", so the comparator keys the block on the
+condition rather than on its spelling and compares INSIDE it. The move
+therefore shows twice: once for the two bare rules at the layer level, and
+once for the rule the feature query holds.
+
+  $ cascade diff --diff=canonical --enforce-spec --prune-unused-custom-props --limit=none ref.css tw.css
   CSS: 1024 chars vs 1003 chars (2.1% diff)
   Changes: 1 changed container
   

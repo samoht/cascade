@@ -71,14 +71,15 @@ val ctx_of_scope :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?judge:targets ->
   ?stats:Stats.t ->
   scope option ->
   ctx
 (** [ctx_of_scope ?lossless ?aggressive ?regroup ?extend_lists ?closed_world
-     ?objective ?enforce_spec ?stats scope] builds the context the composers
-    take; [None] is [`Fragment]. [aggressive] forces the expensive global
-    factoring fixpoint to run even when its preflight predicts low or no gain.
-    [regroup] permits order-dependent regrouping of adjacent rules.
+     ?objective ?enforce_spec ?judge ?stats scope] builds the context the
+    composers take; [None] is [`Fragment]. [aggressive] forces the expensive
+    global factoring fixpoint to run even when its preflight predicts low or no
+    gain. [regroup] permits order-dependent regrouping of adjacent rules.
     [extend_lists] is for direct DAG-scheduler experiments; the main stylesheet
     optimizer enables guarded selector-list extension internally. [closed_world]
     asserts the caller knows the exact HTML and that no element matches two
@@ -274,6 +275,7 @@ val add_compatibility_prefixes : targets:targets -> t -> t
 val stylesheet :
   ?scope:scope ->
   ?targets:targets ->
+  ?judge:targets ->
   ?flatten_nesting:bool ->
   ?lossless:bool ->
   ?enforce_spec:bool ->
@@ -285,7 +287,7 @@ val stylesheet :
   ?stats:Stats.t ->
   t ->
   t
-(** [stylesheet ?scope ?targets ?flatten_nesting ?lossless ?enforce_spec
+(** [stylesheet ?scope ?targets ?judge ?flatten_nesting ?lossless ?enforce_spec
      ?aggressive ?regroup ?closed_world ?objective ?prune_unused_custom_props
      ?stats ss] optimizes an entire stylesheet while preserving cascade
     semantics for any DOM (with [closed_world] off, the default). When
@@ -301,6 +303,13 @@ val stylesheet :
 
     [targets] defaults to {!evergreen_targets} and owns compatibility-prefix
     generation. It is ignored when [enforce_spec] is [true].
+
+    [judge] names the browsers the sheet is judged for, and is unset by default:
+    a [@supports] guard every one of them satisfies is unwrapped, one none of
+    them satisfies is dropped, and a colour fallback every one of them parses
+    past is dead. Without it every author guard and fallback survives for the
+    engine that renders the sheet to answer (CSS Conditional 5 sec. 2). It is
+    ignored when [enforce_spec] is [true].
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.

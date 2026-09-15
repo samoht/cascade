@@ -25,7 +25,11 @@ val canonical_declarations :
     unchanged when already canonical. *)
 
 val canonicalize :
-  ?lossless:bool -> Stylesheet.statement list -> Stylesheet.statement list
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?judge:Support.targets ->
+  Stylesheet.statement list ->
+  Stylesheet.statement list
 (** [canonicalize stmts] reorders each maximal run of consecutive reorderable
     style rules into the canonical order described above. At-rules, nested
     rules, and custom-property rules are barriers: they keep their position and
@@ -78,4 +82,10 @@ val canonicalize :
     [@import] carries in, or a layer declared inside a conditional group rule,
     which sec. 6.4.3 has contribute only when the condition holds - blocks the
     fold across it. Emission keeps every pin, since the statement is visible
-    through the CSSOM. *)
+    through the CSSOM.
+
+    Coalescing two same-selector rules deduplicates the declarations they
+    together hold, under the same [enforce_spec] and [judge] the optimizer takes
+    ({!Optimize.stylesheet}): with [judge] set, a colour fallback every judged
+    browser parses past is dead once the rules meet; with [enforce_spec] a
+    prefixed declaration keeps its unprefixed twin. *)
