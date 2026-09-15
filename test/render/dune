@@ -42,7 +42,7 @@
   at_rule_conditions
   parse_recovery
   custom_property)
- (libraries cascade cascade_diff fmt unix))
+ (libraries cascade cascade_diff cascade_browser fmt unix))
 
 ; The generator's declaration pool is drawn from the library's own property
 ; table rather than a list kept here, so a property added to lib/ cannot escape

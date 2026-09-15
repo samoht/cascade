@@ -1,0 +1,9 @@
+; The node and headless-browser locator the render harnesses and the CLI's
+; browser comparison share, so both find the same browser and report its
+; absence the same way. Unwrapped: the harnesses read it as [Browser].
+
+(library
+ (name cascade_browser)
+ (public_name cascade.browser)
+ (wrapped false)
+ (libraries unix))

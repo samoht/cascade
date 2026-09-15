@@ -15,11 +15,8 @@
 ; CSS.supports and el.style both answer about properties only. The probe there
 ; is insertRule plus a read-back off CSSFontFaceRule.style.
 ;
-; The chrome and node probing is the one in test/render, shared rather than
-; rewritten.
-
-(copy_files#
- (files ../../render/browser.ml*))
+; The chrome and node probing is cascade.browser, the one library the render
+; harnesses and the CLI share rather than rewrite.
 
 (copy_files#
  (files ../../render/json.ml*))
@@ -113,9 +110,8 @@
   font_face_descriptors
   counter_style_descriptors
   property_descriptors
-  browser
   json)
- (libraries cascade cascade_spec_inventory fmt unix))
+ (libraries cascade cascade_spec_inventory cascade_browser fmt unix))
 
 ; The executables read their page script at run time, so it has to sit next to
 ; them in the build directory.

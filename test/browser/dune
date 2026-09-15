@@ -1,0 +1,7 @@
+; The locator the render harnesses and the CLI's browser comparison share,
+; checked without a browser: what it does with an environment that names one,
+; an executable that is not one, and a version banner it has to read.
+
+(test
+ (name test)
+ (libraries cascade_browser alcotest fmt unix))
