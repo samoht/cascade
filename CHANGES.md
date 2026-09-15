@@ -730,6 +730,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A nested `&:where(.dark, .dark *)` under `svg *` flattens to the selector
+  `svg :where(.dark, .dark *)` reads as, so `--diff=canonical` no longer
+  reports the pair as a selector change. `Selector.canonicalize` dropped the
+  implied universal from a compound it read but kept it on the subject it
+  lifted a spliced parent onto (#1257)
 - `--diff=canonical` judges for the evergreen browsers `--minify` targets: a
   `@supports` guard every one of them satisfies is unwrapped and the
   declaration written before it is dead, a prefix a target needs is written on

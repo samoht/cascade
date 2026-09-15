@@ -2781,24 +2781,6 @@ let canonicalize_unordered_list selectors =
   in
   List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
 
-(* Substituting [&] splices a complex parent into a compound's leading slot,
-   giving [Compound [Combined (.L, a); :where(.dark)]] where reading the same
-   selector back gives [Combined (.L, Compound [a; :where(.dark)])]. The two
-   serialise alike and only the second is a compound in the grammar's sense, a
-   sequence of simple selectors, so the trailing components move onto the
-   subject. Without this the two spellings stay structurally distinct while
-   printing identically, and every structural comparison reads them apart. *)
-let rec lift_leading_combinator = function
-  | Combined (left, comb, right) :: rest ->
-      let subject =
-        match lift_leading_combinator (right :: rest) with
-        | Some lifted -> lifted
-        | None -> (
-            match right :: rest with [ one ] -> one | cs -> Compound cs)
-      in
-      Some (Combined (left, comb, subject))
-  | _ -> None
-
 (* [map] rewrites a compound's components before the compound itself, so the
    [Is] branch below has already spliced a single-argument [:is()] into this
    list. A component the reader refuses after the pseudo-element can only have
@@ -2821,6 +2803,33 @@ let rewrap_pseudo_compound components =
   in
   if List.exists is_pseudo_element components then loop None components
   else components
+
+(* A compound in canonical form: the universal a longer compound implies is gone
+   (Selectors 4 sec. 3.5) and a pseudo-element keeps its own compound. *)
+let canonical_compound components =
+  match rewrap_pseudo_compound (drop_redundant_universal components) with
+  | [ single ] -> single
+  | components -> Compound components
+
+(* Substituting [&] splices a complex parent into a compound's leading slot,
+   giving [Compound [Combined (.L, a); :where(.dark)]] where reading the same
+   selector back gives [Combined (.L, Compound [a; :where(.dark)])]. The two
+   serialise alike and only the second is a compound in the grammar's sense, a
+   sequence of simple selectors, so the trailing components move onto the
+   subject. Without this the two spellings stay structurally distinct while
+   printing identically, and every structural comparison reads them apart. The
+   subject is a compound built here, after [map] has visited the components, so
+   it takes its canonical form here too: [svg *] under [&:where(.dark)] is [svg
+   :where(.dark)], as reading that text gives. *)
+let rec lift_leading_combinator = function
+  | Combined (left, comb, right) :: rest ->
+      let subject =
+        match lift_leading_combinator (right :: rest) with
+        | Some lifted -> lifted
+        | None -> canonical_compound (right :: rest)
+      in
+      Some (Combined (left, comb, subject))
+  | _ -> None
 
 (* CSS Selectors 4 sec. 4.2: a single-argument [:is(s)] matches the same
    elements as [s] with the same specificity, so it reduces to [s]. Sound only
@@ -2860,13 +2869,10 @@ let canonicalize_nodes sel =
           match lift_leading_combinator components with
           | Some lifted -> lifted
           | None -> (
-              match
-                rewrap_pseudo_compound (drop_redundant_universal components)
-              with
-              | [ single ] -> single
-              | components' ->
-                  if list_same components' components then node
-                  else Compound components'))
+              match canonical_compound components with
+              | Compound components' when list_same components' components ->
+                  node
+              | canonical -> canonical))
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
       | Is selectors -> canonicalize_is node selectors
