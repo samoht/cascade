@@ -528,7 +528,27 @@ let canonical_numeric_division_follows_precision_mode () =
   Alcotest.(check bool)
     "lossless keeps an exact numeric boundary" false
     (equal ~lossless:true ".a{line-height:calc(28/18)}"
-       ".a{line-height:1.55556}")
+       ".a{line-height:1.55556}");
+  (* The budget is one budget: a non-terminating quotient folds the same way in
+     a length or a percentage as in a number. Tailwind writes [w-1/3] as [calc(1
+     / 3 * 100%)] and lightningcss as [33.3333%], and the two render within a
+     layout unit of each other, which no display shows. *)
+  Alcotest.(check bool)
+    "a fraction of a percentage folds under the budget" true
+    (equal ".a{width:33.3333%}" ".a{width:calc(1/3 * 100%)}");
+  Alcotest.(check bool)
+    "in flex-basis and inset too" true
+    (equal ".a{flex-basis:66.6667%;top:16.6667%}"
+       ".a{flex-basis:calc(2/3 * 100%);top:calc(1/6 * 100%)}");
+  Alcotest.(check bool)
+    "a length quotient too" true
+    (equal ".a{width:3.33333px}" ".a{width:calc(10px/3)}");
+  Alcotest.(check bool)
+    "a different fraction still differs" false
+    (equal ".a{width:33.3333%}" ".a{width:calc(1/4 * 100%)}");
+  Alcotest.(check bool)
+    "lossless keeps the quotient" false
+    (equal ~lossless:true ".a{width:33.3333%}" ".a{width:calc(1/3 * 100%)}")
 
 let canonical_nested_and_flattened_selectors_are_equal () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
