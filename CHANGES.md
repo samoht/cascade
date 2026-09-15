@@ -724,7 +724,7 @@ to lose a whole rule over one bad piece. Both are gone.
 - A reported move has to be one the cascade can see: the moved rule or block
   conflicts with a statement it crossed. A rule only one sheet has could place
   an unrelated rule on the other side of a pinned pair, and the report named
-  that as a move although the two orders render the same (#NNN)
+  that as a move although the two orders render the same (#1246)
 - Declarations in a `@keyframes` frame compare in the canonical order a style
   rule's do, so two frames holding the same declarations for different
   properties in another order are no longer a difference (#1241)
