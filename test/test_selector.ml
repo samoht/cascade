@@ -1488,6 +1488,34 @@ let canonicalize_pseudo_compound_is () =
    whole-rule [:is(s1, ..., sn)] is the selector list [s1, ..., sn]. The split
    has to reach the AST: everything downstream that groups rules compares
    selector nodes. *)
+(* Substituting [&] splices a complex parent into the leading slot of the
+   nested compound, and [canonicalize] lifts the trailing components onto the
+   parent's subject so the spliced form and the read form compare equal. The
+   lifted subject is a compound like any other: Selectors 4 sec. 3.5 lets the
+   universal selector go when it is not the only component, so [svg *] under
+   [&:where(.dark)] has to reach [svg :where(.dark)], as reading that text
+   does. *)
+let canonicalize_lifted_subject_drops_universal () =
+  let canon expected parent child =
+    let spliced =
+      Nest.substitute ~parent:(of_string parent) (of_string child)
+    in
+    let actual = to_string ~minify:true (canonicalize spliced) in
+    Alcotest.(check string)
+      ("canonicalize " ^ parent ^ " { " ^ child ^ " }")
+      expected actual;
+    Alcotest.(check bool)
+      (parent ^ " { " ^ child ^ " } canonicalizes to the AST of " ^ expected)
+      true
+      (equal (canonicalize spliced) (canonicalize (of_string expected)))
+  in
+  canon "svg :where(.dark,.dark *)" "svg *" "&:where(.dark, .dark *)";
+  canon "svg :where(.dark,.dark *)" "svg *" "&:where(.dark,.dark *)";
+  canon ".a svg :where(.dark,.dark *)" ".a svg *" "&:where(.dark, .dark *)";
+  canon "svg :hover" "svg *" "&:hover";
+  (* A universal alone stays. *)
+  canon "svg *" "svg *" "&"
+
 let canonicalize_top_level_is_unwrap () =
   let canon expected input =
     let actual = canonicalize (of_string input) in
@@ -2934,6 +2962,8 @@ let suite =
         canonicalize_pseudo_compound_is;
       test_case "canonicalize top-level :is()" `Quick
         canonicalize_top_level_is_unwrap;
+      test_case "canonicalize lifted subject drops the universal" `Quick
+        canonicalize_lifted_subject_drops_universal;
       test_case "parse errors - nesting depth" `Quick parse_errors_nesting_depth;
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
