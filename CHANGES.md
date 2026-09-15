@@ -494,7 +494,7 @@ to lose a whole rule over one bad piece. Both are gone.
 
 - A static `calc()` over a percentage or a length in `flex-basis` folds as it
   does in `width`, so `calc(.5 * 100%)` minifies to `50%` and canonical mode
-  reads Tailwind's `basis-1/2` and lightningcss's as one basis (#NNN).
+  reads Tailwind's `basis-1/2` and lightningcss's as one basis (#1245).
 - `calc(infinity * 1px)` minifies to `3.40282e38px`, the largest length the
   printer spells and the form lightningcss writes, so canonical mode reads
   Tailwind's `rounded-full` and lightningcss's as one radius (#1244).
