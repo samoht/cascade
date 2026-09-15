@@ -203,6 +203,7 @@ carries output the other does not, an empty rule for instance. Use `tree` or
 | `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit, each one whole and never fewer than one; `none` prints every one; an integer prints exactly that many. A shortened report ends with the number left out. |
 | `--lossless` | Disable bounded colour and numeric approximation in the `--diff=canonical` canonicalisation, so two sheets that differ only by a fold within an approximation budget report as different rather than equal. Has no effect outside `--diff=canonical`. |
 | `--prune-unused-custom-props` | Drop the custom-property bindings nothing references, on both sides, before comparing under `--diff=canonical`, so two sheets that differ only by a dead binding compare equal. The comparison is then blind to dead-custom-property divergences. Has no effect outside `--diff=canonical`. |
+| `--browser --html FILE` | Render both files over the HTML document `FILE` in a headless Chromium and report every computed-style value the two disagree on, instead of comparing the CSS. The document's own `<style>` elements and stylesheet `<link>`s are removed and its inline `style` attributes kept; every element and its `::before`, `::after`, `::marker`, `::placeholder`, `::first-letter` and `::first-line` are sampled at every viewport width a media condition in either file names and under every interaction state either file names, a state applied to every element at once. Values are compared as the browser spells them, with no normalisation; each difference also says whether the two paint the same. The report records the browser version, viewports, states and how much was sampled, and `--json` writes the same as a document. Needs node and a headless Chromium (`NODE`, `CHROME`, or the usual places) and exits 2 without them, on a driver failure, or when nothing was sampled. |
 | `--color=WHEN` | `auto` (default), `always` or `never`. `CASCADE_COLOR` sets the same thing; `NO_COLOR` overrides both. |
 | `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
 
@@ -211,6 +212,7 @@ carries output the other does not, an empty rule for instance. Use `tree` or
 cascade diff reference.css output.css
 cascade diff --diff=tree reference.css output.css
 cascade diff --diff=canonical reference.css output.css
+cascade diff --browser --html page.html reference.css output.css
 NO_COLOR=1 cascade diff reference.css output.css
 ```
 

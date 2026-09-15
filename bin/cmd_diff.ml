@@ -606,27 +606,42 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
            documented, distinct from cmdliner's reserved error codes. *)
         Stdlib.exit 1
 
-let compare_files file1 file2 style_renderer mode limit json opts () =
+(* [--browser] and [--html] come together or not at all: the document is what
+   the browser renders the two files over, and means nothing to the CSS
+   comparison. *)
+let browser_document browser html =
+  match (browser, html) with
+  | true, None ->
+      Error (`Msg "--browser needs the document to render: --html FILE")
+  | false, Some _ -> Error (`Msg "--html applies to --browser only")
+  | true, Some html -> Ok (Some html)
+  | false, None -> Ok None
+
+let compare_files file1 file2 style_renderer mode limit json opts document () =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
-  (* The report is built in a plain buffer, so the diff printers cannot see the
-     tty; resolve the colour decision Fmt_tty just made (tty detection, --color,
-     CASCADE_COLOR, NO_COLOR) and pass it down. *)
-  let color =
-    match Fmt.style_renderer Fmt.stdout with
-    | `Ansi_tty -> true
-    | `None -> false
-  in
-  (* The stream is read once and cannot be rewound, so [-] on both sides has no
-     second side to compare the first against. *)
-  if file1 = "-" && file2 = "-" then
-    Error (`Msg "cannot compare standard input with itself")
-  else
-    match (read_source file1, read_source file2) with
-    | Ok source1, Ok source2 ->
-        compare_sources ~color ~mode ~limit ~json ~opts source1 source2
-    | Error e, _ | _, Error e -> Error e
+  match document with
+  | Error _ as e -> e
+  | Ok (Some html) -> Cmd_browser.compare ~json ~html ~file1 ~file2
+  | Ok None -> (
+      (* The report is built in a plain buffer, so the diff printers cannot see
+         the tty; resolve the colour decision Fmt_tty just made (tty detection,
+         --color, CASCADE_COLOR, NO_COLOR) and pass it down. *)
+      let color =
+        match Fmt.style_renderer Fmt.stdout with
+        | `Ansi_tty -> true
+        | `None -> false
+      in
+      (* The stream is read once and cannot be rewound, so [-] on both sides has
+         no second side to compare the first against. *)
+      if file1 = "-" && file2 = "-" then
+        Error (`Msg "cannot compare standard input with itself")
+      else
+        match (read_source file1, read_source file2) with
+        | Ok source1, Ok source2 ->
+            compare_sources ~color ~mode ~limit ~json ~opts source1 source2
+        | Error e, _ | _, Error e -> Error e)
 
 let file1_arg =
   let doc = "First CSS file to compare (expected/reference; use - for stdin)" in
@@ -718,6 +733,27 @@ let prune_unused_custom_props_arg =
   in
   Arg.(value & flag & info [ "prune-unused-custom-props" ] ~doc)
 
+let browser_arg =
+  let doc =
+    "Render both files over the document $(b,--html) names in a headless \
+     Chromium and report every computed-style value the two disagree on, \
+     instead of comparing the CSS. The document's own style elements and \
+     stylesheet links are removed and inline style attributes kept; every \
+     element and its ::before, ::after, ::marker, ::placeholder, \
+     ::first-letter and ::first-line are sampled at every viewport width a \
+     media condition in either file names and under every interaction state \
+     either file names, with a state applied to every element at once. Values \
+     are compared as the browser spells them, with no normalisation; the \
+     report also says whether the two paint the same. Needs node and a \
+     headless Chromium ($(b,NODE), $(b,CHROME), or the usual places) and exits \
+     2 without them."
+  in
+  Arg.(value & flag & info [ "browser" ] ~doc)
+
+let html_arg =
+  let doc = "The HTML document $(b,--browser) renders both files over." in
+  Arg.(value & opt (some file) None & info [ "html" ] ~docv:"FILE" ~doc)
+
 let term =
   let open Term in
   let style_renderer_with_env =
@@ -736,7 +772,9 @@ let term =
   in
   term_result
     (const compare_files $ file1_arg $ file2_arg $ style_renderer_with_env
-   $ mode_arg $ limit_arg $ json_arg $ canonical_opts $ Cli_log.term)
+   $ mode_arg $ limit_arg $ json_arg $ canonical_opts
+    $ (const browser_document $ browser_arg $ html_arg)
+    $ Cli_log.term)
 
 let man =
   [
@@ -756,6 +794,13 @@ let man =
     `Pre "  cascade fmt --minify src.css | cascade diff reference.css -";
     `P "Read the comparison as JSON instead of the report:";
     `Pre "  cascade diff --json reference.css output.css";
+    `P
+      "Render both files over a document in a headless browser and report the \
+       computed styles that differ, as a report or as JSON:";
+    `Pre "  cascade diff --browser --html page.html reference.css output.css";
+    `Pre
+      "  cascade diff --browser --html page.html --json reference.css \
+       output.css";
     `P "Disable colors using flag:";
     `Pre "  cascade diff --color=never reference.css output.css";
     `P "Disable colors using NO_COLOR environment variable:";
@@ -785,7 +830,9 @@ let cmd =
              a declaration or a rule one of the files holds. The reader drops \
              it from both sides, so the comparison never sees it and cannot \
              call the two files identical. The report and the $(b,--json) \
-             document count declarations and rules per side"
+             document count declarations and rules per side. Under \
+             $(b,--browser), if no browser or node was found, the driver \
+             failed, or the document gave nothing to sample"
           Cli_exit.cannot_determine;
         Cmd.Exit.info ~doc:"on command-line errors or unreadable input files"
           124;

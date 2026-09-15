@@ -877,6 +877,17 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### CLI tools
 
+- `cascade diff --browser --html PAGE.html A.css B.css` renders both files
+  over the document in a headless Chromium and reports every computed-style
+  value the two disagree on, element and pseudo-element by property, at every
+  viewport width and interaction state either file names, with the browser
+  version and what was sampled recorded and `--json` for the same as a
+  document. Values are compared as the browser spells them, and each
+  difference says whether the two paint the same; no cascade comparison is
+  involved, so it can catch a false negative of `--diff=canonical`. Exits 2
+  without node or a browser, on a driver failure, or when nothing was
+  sampled, never claiming equivalence. The node and browser locator the render
+  harnesses use is `cascade.browser` now, shared with the CLI (#1252)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, `--dry-run` reporting instead of writing. It and
   `cascade apply` leave alone the two selector forms Selectors 4 defines and no
