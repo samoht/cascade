@@ -712,7 +712,7 @@ to lose a whole rule over one bad piece. Both are gone.
 - Nested `@media` blocks compare by the conditions around each rule rather than
   by which block encloses which. The two nesting orders of a breakpoint and a
   colour-scheme block were a difference, and so was a block closed and reopened
-  around the blocks nested in it (#NNN)
+  around the blocks nested in it (#1240)
 - A `var()` colour fallback ending a shadow's length run is read as the colour
   it is, so `text-shadow:1px 1px var(--c, oklab(from red l a b / 25%))` and
   its `l a b/.25` twin are equal under `--diff=canonical` (#1232)
