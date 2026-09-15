@@ -1020,17 +1020,46 @@ and canonical_media_nesting (stmts : statement list) : statement list =
   in
   List.concat_map nest (runs [] (List.rev (media_leaves [] [] stmts)))
 
+(* CSS Animations 1 sec. 3: a keyframe block is a declaration block, so the
+   declarations of one frame commute exactly as a style rule's do, and
+   {!canonical_declarations} gives them the same order. *)
+let canonical_frames (frames : Stylesheet_intf.keyframe list) =
+  Common.List.map_preserve
+    (fun (f : Stylesheet_intf.keyframe) ->
+      let declarations = canonical_declarations f.declarations in
+      if declarations == f.declarations then f else { f with declarations })
+    frames
+
+let rec canonical_keyframe_declarations (stmts : statement list) :
+    statement list =
+  Common.List.map_preserve
+    (fun stmt ->
+      match stmt with
+      | Keyframes (n, frames) ->
+          let frames' = canonical_frames frames in
+          if frames' == frames then stmt else Keyframes (n, frames')
+      | Webkit_keyframes (n, frames) ->
+          let frames' = canonical_frames frames in
+          if frames' == frames then stmt else Webkit_keyframes (n, frames')
+      | Moz_keyframes (n, frames) ->
+          let frames' = canonical_frames frames in
+          if frames' == frames then stmt else Moz_keyframes (n, frames')
+      | stmt ->
+          Stylesheet.map_statement_children canonical_keyframe_declarations stmt)
+    stmts
+
 let canonicalize ?(lossless = false) (stmts : statement list) : statement list =
   let changed = ref false in
   let normalized =
     fold_layer_pins
       (canonical_media_nesting
       @@ canonical_query_preludes
-           (sort_property_runs
-              (canonical_missing_component_colors ~lossless
-                 (canonical_color_spellings
-                    (normalize_custom_values (canonical_vendor_aliases stmts)))))
-      )
+           (canonical_keyframe_declarations
+           @@ sort_property_runs
+                (canonical_missing_component_colors ~lossless
+                   (canonical_color_spellings
+                      (normalize_custom_values (canonical_vendor_aliases stmts))))
+           ))
   in
   let result =
     canonicalize_block ~parent:(None : Selector.t option) changed normalized

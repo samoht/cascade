@@ -709,6 +709,9 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- Declarations in a `@keyframes` frame compare in the canonical order a style
+  rule's do, so two frames holding the same declarations for different
+  properties in another order are no longer a difference (#NNN)
 - Nested `@media` blocks compare by the conditions around each rule rather than
   by which block encloses which. The two nesting orders of a breakpoint and a
   colour-scheme block were a difference, and so was a block closed and reopened
