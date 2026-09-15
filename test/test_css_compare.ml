@@ -325,6 +325,40 @@ let canonical_reports_reset_crossing_declaration () =
       Alcotest.fail "fell back to a byte diff of the canonical forms"
   | _ -> Alcotest.fail "expected a tree diff"
 
+(* A declaration a conditional group repeats from the rule with the identical
+   selector before it, value and all, changes nothing: an engine reading the
+   guard sets the same value twice, one that does not reads the first rule
+   alone. Tailwind's compiled output nests a colour twin inside its rule and
+   lightningcss flattens it carrying the colour alone, where a sheet written
+   flat repeats the [content]. A rule between the two that writes the property
+   makes the repeat the winner for an element both match, so it stays. *)
+let equal_canonical_guarded_repeat () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let guard = "@supports (color:color-mix(in lab,red,red))" in
+  Alcotest.(check bool)
+    "a repeated declaration under a guard is not a difference" true
+    (equal
+       (".a::after{content:var(--c);--x:#000}" ^ guard
+      ^ "{.a::after{content:var(--c);--x:red}}")
+       (".a::after{content:var(--c);--x:#000}" ^ guard ^ "{.a::after{--x:red}}"));
+  Alcotest.(check bool)
+    "under a media condition too" true
+    (equal ".a{color:red;top:0}@media (hover){.a{color:red;top:1px}}"
+       ".a{color:red;top:0}@media (hover){.a{top:1px}}");
+  Alcotest.(check bool)
+    "a rule between that writes the property keeps the repeat" false
+    (equal
+       (".a::after{content:var(--c)}.b::after{content:none}" ^ guard
+      ^ "{.a::after{content:var(--c);--x:red}}")
+       (".a::after{content:var(--c)}.b::after{content:none}" ^ guard
+      ^ "{.a::after{--x:red}}"));
+  Alcotest.(check bool)
+    "a different value under the guard still differs" false
+    (equal
+       (".a::after{content:var(--c)}" ^ guard
+      ^ "{.a::after{content:none;--x:red}}")
+       (".a::after{content:var(--c)}" ^ guard ^ "{.a::after{--x:red}}"))
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2315,6 +2349,8 @@ let suite =
         equal_canonical_negated_bound;
       Alcotest.test_case "canonical reports a reset crossing a declaration"
         `Quick canonical_reports_reset_crossing_declaration;
+      Alcotest.test_case "canonical guarded repeat" `Quick
+        equal_canonical_guarded_repeat;
       Alcotest.test_case "canonical nested media order" `Quick
         equal_canonical_nested_media_order;
       Alcotest.test_case "canonical keyframe declaration order" `Quick
