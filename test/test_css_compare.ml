@@ -793,6 +793,37 @@ let canonical_ignores_layer_block_position () =
     (equal "@layer c{.p{color:red}}.z{color:blue}@layer d{.p{color:blue}}"
        "@layer d{.p{color:blue}}.z{color:blue}@layer c{.p{color:red}}")
 
+(* CSS Cascade 5 sec. 6.4.3 orders layers by where each is first declared, and
+   sec. 6.1 sorts declarations by that order before order of appearance. A
+   statement pinning [a, b] and blocks written [b] then [a] give the same order
+   as blocks written [a] then [b], so the two sheets compute the same values;
+   Tailwind's compiled sheet pins its layers and writes the blocks out of that
+   order, and tw writes them in it. The order of appearance still decides
+   between two blocks of one layer, and a layer order the two sheets spell
+   differently is a difference. *)
+let canonical_ignores_how_the_layer_order_is_written () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a pin against blocks written in its order" true
+    (equal "@layer a,b;@layer b{.x{color:red}}@layer a{.y{color:blue}}"
+       "@layer a{.y{color:blue}}@layer b{.x{color:red}}");
+  Alcotest.(check bool)
+    "the same, the two layers writing one property" true
+    (equal "@layer a,b;@layer b{.p{color:red}}@layer a{.p{color:blue}}"
+       "@layer a{.p{color:blue}}@layer b{.p{color:red}}");
+  Alcotest.(check bool)
+    "two layer orders" false
+    (equal "@layer b{.p{color:red}}@layer a{.p{color:blue}}"
+       "@layer a{.p{color:blue}}@layer b{.p{color:red}}");
+  Alcotest.(check bool)
+    "two blocks of one layer swapped" false
+    (equal "@layer a{.p{color:red}}@layer a{.p{color:blue}}"
+       "@layer a{.p{color:blue}}@layer a{.p{color:red}}");
+  Alcotest.(check bool)
+    "a sublayer written as a name and as a nested block, swapped" false
+    (equal "@layer a.b{.p{color:red}}@layer a{@layer b{.p{color:blue}}}"
+       "@layer a{@layer b{.p{color:blue}}}@layer a.b{.p{color:red}}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -2562,4 +2593,6 @@ let suite =
         canonical_ignores_block_grouping;
       Alcotest.test_case "canonical ignores where a layer block stands" `Quick
         canonical_ignores_layer_block_position;
+      Alcotest.test_case "canonical ignores how the layer order is written"
+        `Quick canonical_ignores_how_the_layer_order_is_written;
     ] )
