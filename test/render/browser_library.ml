@@ -2,7 +2,9 @@
    links the library calls it: a changed declaration is a difference naming the
    element and the property, a pseudo-element's content is sampled, an identical
    pair has no difference, and a browser that answers nothing is an error rather
-   than an empty report.
+   than an empty report. A viewport width is sampled when a rule some element of
+   the page can match names it, and not when only rules no element matches do; a
+   sheet whose reader dropped a rule is sampled as written.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
@@ -57,6 +59,43 @@ let () =
            ds);
       check "a pseudo-element's content is sampled" (on "content" "::before")
   | None -> check "a changed pair runs" false);
+  (* A width named only by a rule no element of the page matches cannot change
+     what the page computes, so it is not sampled; one named by a rule that does
+     match is. A rule the reader drops leaves nothing to say whether it matches,
+     so that sheet is read as written. *)
+  let viewports sheets =
+    match Browser_compare.run ~html sheets with
+    | Ok report ->
+        Option.value ~default:"" (List.assoc_opt "viewports" report.meta)
+    | Error _ -> ""
+  in
+  let samples width vs =
+    List.exists
+      (fun v -> String.equal v (string_of_int width ^ "x768"))
+      (String.split_on_char ' ' vs)
+  in
+  let widths =
+    viewports
+      [
+        ( "first",
+          ".a{color:red}@media (width>=700px){.a{color:green}}@media \
+           (width>=900px){.not-on-the-page{color:blue}}" );
+        ("second", ".a{color:red}");
+      ]
+  in
+  check "a width a matching rule names is sampled" (samples 700 widths);
+  check "a width only an unmatched rule names is not sampled"
+    (not (samples 900 widths));
+  let dropped =
+    viewports
+      [
+        ("first", ".a{color:red}");
+        ( "second",
+          ".a{color:red}@media (width>=800px){.b:zz-unknown{color:blue}}" );
+      ]
+  in
+  check "a sheet the reader dropped a rule from is sampled as written"
+    (samples 800 dropped);
   (* A stand-in that exits without a page is what a broken browser looks like to
      the driver. *)
   let broken =
