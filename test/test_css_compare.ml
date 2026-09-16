@@ -752,6 +752,47 @@ let canonical_ignores_block_grouping () =
     "a rule moved across a block that writes its property" false
     (equal left right)
 
+(* CSS Cascade 5 sec. 6.1 sorts declarations by layer before order of
+   appearance, so where a layer block stands among unlayered rules decides no
+   tie: an unlayered declaration beats a layered one wherever the block is, and
+   an important one loses to it the same way. Tailwind's compiled sheet leaves
+   [@layer components] among the project's unlayered rules and tw writes every
+   layer first. The order of two layer blocks is the order of the layers
+   themselves, and that one is kept. *)
+let canonical_ignores_layer_block_position () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let dark = "@media (prefers-color-scheme:dark)" in
+  Alcotest.(check bool)
+    "a layer block among unlayered blocks" true
+    (equal
+       (String.concat ""
+          [
+            dark;
+            "{.a{color:red}}@layer c{.p{color:red}}";
+            dark;
+            "{.b{color:red}}";
+          ])
+       (String.concat ""
+          [
+            "@layer c{.p{color:red}}";
+            dark;
+            "{.a{color:red}}";
+            dark;
+            "{.b{color:red}}";
+          ]));
+  Alcotest.(check bool)
+    "a layer block either side of an unlayered rule it loses to" true
+    (equal "@layer c{.p{color:red}}.p{color:blue}"
+       ".p{color:blue}@layer c{.p{color:red}}");
+  Alcotest.(check bool)
+    "a layer block either side of an important rule it beats" true
+    (equal "@layer c{.p{color:red!important}}.p{color:blue!important}"
+       ".p{color:blue!important}@layer c{.p{color:red!important}}");
+  Alcotest.(check bool)
+    "two layer blocks swapped across an unlayered rule" false
+    (equal "@layer c{.p{color:red}}.z{color:blue}@layer d{.p{color:blue}}"
+       "@layer d{.p{color:blue}}.z{color:blue}@layer c{.p{color:red}}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -2519,4 +2560,6 @@ let suite =
         canonical_folds_a_factored_vendor_twin_group;
       Alcotest.test_case "canonical ignores how a block groups its rules" `Quick
         canonical_ignores_block_grouping;
+      Alcotest.test_case "canonical ignores where a layer block stands" `Quick
+        canonical_ignores_layer_block_position;
     ] )
