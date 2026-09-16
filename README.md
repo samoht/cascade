@@ -172,8 +172,9 @@ gate that treated 2 as 0 would pass while the files differ. The report and the
   applied to both projections; the comparison step itself does not interpret
   values any further and applies no tolerance. Declarations or
   rules whose footprints are disjoint (they write different properties) may
-  swap freely, a `@media`/`@supports`/`@container` block containing only
-  plain rules moves as a unit past statements its rules cannot conflict with,
+  swap freely, each rule of a `@media`/`@supports`/`@container` block
+  containing only plain rules moves past statements it cannot conflict with,
+  so how those rules are grouped into blocks is no difference,
   distinct custom properties may swap within any rule, and different
   factorings of the same content (a declaration hoisted into a shared
   selector-list group vs written inline, split vs grouped selector lists)
