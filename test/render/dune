@@ -35,10 +35,15 @@
 ; browser_cli: `cascade diff --browser` against the browser it drives: the
 ; README's parity pair reports the pseudo-element losing its content, an
 ; identical pair reports nothing, and a run with no browser fails.
+;
+; browser_library: `Browser_compare.run` the way a program linking the library
+; calls it: a changed declaration and a pseudo-element's content are reported,
+; an identical pair is not, and a browser that answers nothing is an error.
 
 (executables
  (names
   browser_cli
+  browser_library
   render_diff
   shorthand_expand
   canonical_agree
@@ -197,3 +202,11 @@
   %{exe:../../bin/main.exe})
  (action
   (run %{exe:browser_cli.exe} %{exe:../../bin/main.exe})))
+
+(rule
+ (alias runtest)
+ (deps
+  (env_var CASCADE_NO_BROWSER)
+  browser_library.exe)
+ (action
+  (run %{exe:browser_library.exe})))

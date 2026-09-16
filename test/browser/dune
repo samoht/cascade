@@ -4,4 +4,4 @@
 
 (test
  (name test)
- (libraries cascade_browser alcotest fmt unix))
+ (libraries cascade_browser alcotest astring fmt unix))

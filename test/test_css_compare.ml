@@ -709,6 +709,90 @@ let canonical_folds_a_factored_vendor_twin_group () =
        "@media (min-width:1px){.q{color:red}.p{color:blue}}@media \
         (hover){.p{color:red}.q{color:blue}.r{color:lime}}")
 
+(* The same rules, grouped into blocks differently. On the left [.b] sits in the
+   last 64rem block beside the colour-scheme block; on the right it sits in the
+   first, across the 80rem block, which nothing there observes: [.y:before]
+   writes [background-color] on a pseudo-element [.b] cannot match, and [.x]
+   writes only [color]. Tailwind writes the left, tw the right, and the two
+   render alike. A block that moves as one unit and is keyed by all its rules
+   together pairs [.x] with the [background-color] of [.y:before], so which
+   rules the input grouped decided where [.b] could go. *)
+let canonical_ignores_block_grouping () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let pair wide =
+    ( String.concat ""
+        [
+          "@media (width>=64rem){.l{color:red}}";
+          wide;
+          "@media (width>=64rem){.b{background-color:black}";
+          "@media (prefers-color-scheme:dark){.c{background-color:black}}}";
+        ],
+      String.concat ""
+        [
+          "@media (width>=64rem){.l{color:red}.b{background-color:black}}";
+          wide;
+          "@media (prefers-color-scheme:dark)";
+          "{@media (width>=64rem){.c{background-color:black}}}";
+        ] )
+  in
+  let left, right =
+    pair "@media (width>=80rem){.x{color:red}.y:before{background-color:red}}"
+  in
+  Alcotest.(check bool)
+    "a rule moved across a block that does not observe it" true
+    (equal left right);
+  (* Here [.x] does write [background-color], and an element carrying [.x] and
+     [.b] at 80rem ends black on the left and red on the right. *)
+  let left, right =
+    pair
+      "@media \
+       (width>=80rem){.x{background-color:red}.y:before{background-color:red}}"
+  in
+  Alcotest.(check bool)
+    "a rule moved across a block that writes its property" false
+    (equal left right)
+
+(* CSS Cascade 5 sec. 6.1 sorts declarations by layer before order of
+   appearance, so where a layer block stands among unlayered rules decides no
+   tie: an unlayered declaration beats a layered one wherever the block is, and
+   an important one loses to it the same way. Tailwind's compiled sheet leaves
+   [@layer components] among the project's unlayered rules and tw writes every
+   layer first. The order of two layer blocks is the order of the layers
+   themselves, and that one is kept. *)
+let canonical_ignores_layer_block_position () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let dark = "@media (prefers-color-scheme:dark)" in
+  Alcotest.(check bool)
+    "a layer block among unlayered blocks" true
+    (equal
+       (String.concat ""
+          [
+            dark;
+            "{.a{color:red}}@layer c{.p{color:red}}";
+            dark;
+            "{.b{color:red}}";
+          ])
+       (String.concat ""
+          [
+            "@layer c{.p{color:red}}";
+            dark;
+            "{.a{color:red}}";
+            dark;
+            "{.b{color:red}}";
+          ]));
+  Alcotest.(check bool)
+    "a layer block either side of an unlayered rule it loses to" true
+    (equal "@layer c{.p{color:red}}.p{color:blue}"
+       ".p{color:blue}@layer c{.p{color:red}}");
+  Alcotest.(check bool)
+    "a layer block either side of an important rule it beats" true
+    (equal "@layer c{.p{color:red!important}}.p{color:blue!important}"
+       ".p{color:blue!important}@layer c{.p{color:red!important}}");
+  Alcotest.(check bool)
+    "two layer blocks swapped across an unlayered rule" false
+    (equal "@layer c{.p{color:red}}.z{color:blue}@layer d{.p{color:blue}}"
+       "@layer d{.p{color:blue}}.z{color:blue}@layer c{.p{color:red}}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -2474,4 +2558,8 @@ let suite =
         canonical_folds_an_adjacent_same_selector_pair;
       Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
         canonical_folds_a_factored_vendor_twin_group;
+      Alcotest.test_case "canonical ignores how a block groups its rules" `Quick
+        canonical_ignores_block_grouping;
+      Alcotest.test_case "canonical ignores where a layer block stands" `Quick
+        canonical_ignores_layer_block_position;
     ] )

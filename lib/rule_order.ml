@@ -5,12 +5,13 @@ open Stylesheet
 
 (* A run element is a plain style rule, or a conditional at-rule block
    ([@media]/[@supports]/[@container]) whose transitive content is only such
-   elements; the block moves atomically and its rules supply the conflict
-   footprint. Custom properties are keyed by name in the dependency graph, so
-   two writers of one property on overlapping selectors keep order while a
-   [var()] reader (which writes its own property, not the one it reads) moves
-   freely. A named [@layer] block or declaration pins the layer order at its
-   first occurrence, so it stays a barrier. *)
+   elements; {!expand_blocks} splits a block to one rule before the sort, and a
+   block moves atomically with its rules supplying the conflict footprint.
+   Custom properties are keyed by name in the dependency graph, so two writers
+   of one property on overlapping selectors keep order while a [var()] reader
+   (which writes its own property, not the one it reads) moves freely. An
+   [@layer] statement pins the layer order at its first occurrence, so it stays
+   a barrier; a named [@layer] block only holds its place among layer blocks. *)
 let rec element_rules (stmt : statement) : rule list option =
   match stmt with
   | Rule r -> if r.nested = [] then Some [ r ] else None
@@ -449,8 +450,8 @@ let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
    the graph's, against every original occurrence already accumulated into the
    surviving element. A conditional block stands in the graph for the union of
    its interior selectors and declarations, a superset of its true edges, so the
-   same test covers a block merge. *)
-let coalesce ~canon_body ~ctx ?parent changed
+   same test covers a block merge. [blocks] says whether blocks fold at all. *)
+let coalesce ~blocks ~canon_body ~ctx ?parent changed
     (run : (statement * rule list) list) : (statement * rule list) list =
   match run with
   | [] | [ _ ] -> run
@@ -475,8 +476,13 @@ let coalesce ~canon_body ~ctx ?parent changed
         }
       in
       let last = Shape_table.create 16 in
+      let key stmt =
+        match stmt with
+        | Rule _ -> element_key stmt
+        | _ -> if blocks then element_key stmt else None
+      in
       for j = 0 to n - 1 do
-        match element_key (fst arr.(j)) with
+        match key (fst arr.(j)) with
         | None -> ()
         | Some key -> (
             match Shape_table.find_opt last key with
@@ -497,10 +503,17 @@ let coalesce ~canon_body ~ctx ?parent changed
    two same-selector occurrences apart, and a pair the input wrote adjacent has
    an empty interval and so always merges; taking it first is what makes the
    merged and unmerged spellings of that pair converge, where sorting first
-   strands the one that arrived already foldable. *)
+   strands the one that arrived already foldable.
+
+   Blocks are the exception. {!expand_blocks} has already written every block as
+   one block per rule, so the merged and unmerged spellings of a block pair
+   arrive identical and there is nothing to converge; folding them before the
+   sort would instead regroup the rules in the order the input wrote them, and
+   the block each rule landed in would decide where it sorts. They fold once the
+   sort has put the rules in canonical order. *)
 let rec settle ~canon_body ~ctx ?parent changed
     (run : (statement * rule list) list) : statement list =
-  let run = coalesce ~canon_body ~ctx ?parent changed run in
+  let run = coalesce ~blocks:false ~canon_body ~ctx ?parent changed run in
   let stmts = sort_run ?parent changed run in
   let sorted =
     List.filter_map
@@ -510,7 +523,9 @@ let rec settle ~canon_body ~ctx ?parent changed
         | None -> None)
       stmts
   in
-  let coalesced = coalesce ~canon_body ~ctx ?parent changed sorted in
+  let coalesced =
+    coalesce ~blocks:true ~canon_body ~ctx ?parent changed sorted
+  in
   if coalesced == sorted then stmts
   else settle ~canon_body ~ctx ?parent changed coalesced
 
@@ -532,6 +547,24 @@ let with_conditional_body stmt body =
   | Supports (c, _) -> Supports (c, body)
   | Container (n, c, _) -> Container (n, c, body)
   | stmt -> stmt
+
+(* A conditional block is the sequence of one block per rule it holds, the way
+   {!expand_lists} reads a selector list as one rule per branch. A block moves
+   through a run as one unit and stands in the graph for every selector it holds
+   paired with every declaration it holds, so a rule is pinned by the writes of
+   whatever the input happened to group beside it: a sheet that moved the rule
+   into another block of the same condition, across an interval that observes
+   none of its writes, could not be brought back. One rule per block gives every
+   graph node its exact footprint, and coalescing folds adjacent blocks of one
+   condition back together. *)
+let rec expand_blocks (stmt : statement) : statement list =
+  match (conditional_body stmt, element_rules stmt) with
+  | Some body, Some _ -> (
+      match List.concat_map expand_blocks body with
+      | [] | [ _ ] -> [ stmt ]
+      | pieces ->
+          List.map (fun piece -> with_conditional_body stmt [ piece ]) pieces)
+  | _ -> [ stmt ]
 
 let keys_written stmt =
   Stylesheet.fold_statements
@@ -713,24 +746,40 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
     List.concat_map expand_lists stmts
     |> drop_shadowed_declarations
     |> drop_guarded_repeats changed
+    |> List.concat_map expand_blocks
   in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
+  (* CSS Cascade 5 sec. 6.1 sorts declarations by layer before order of
+     appearance, so where a layer block stands among unlayered elements decides
+     no tie with any of them. A stretch of elements and layer blocks reads as
+     its elements, settled as one run, then its layer blocks in the order they
+     came, which is the order of the layers. Nothing else ends the stretch
+     differently: an [@layer] statement or a block declaring a layer inside it
+     is not part of one, so every position in the layer order stays put. *)
   let rec go = function
     | [] -> []
-    | stmt :: rest -> (
-        match element_rules stmt with
-        | Some rules ->
-            let rec take acc = function
-              | s :: r as l -> (
-                  match element_rules s with
-                  | Some rs -> take ((s, rs) :: acc) r
-                  | None -> (List.rev acc, l))
-              | [] -> (List.rev acc, [])
-            in
-            let run, rest = take [ (stmt, rules) ] rest in
-            let canon_body = canonicalize_block ~ctx ~parent changed in
-            settle ~canon_body ~ctx ?parent changed run @ go rest
-        | None -> stmt :: go rest)
+    | stmt :: _ as stmts
+      when (match stmt with Layer _ -> true | _ -> false)
+           || Option.is_some (element_rules stmt) ->
+        let rec take run layers moved = function
+          | (Layer _ as s) :: r -> take run (s :: layers) moved r
+          | s :: r as l -> (
+              match element_rules s with
+              | Some rs ->
+                  take ((s, rs) :: run) layers (moved || layers <> []) r
+              | None -> (List.rev run, List.rev layers, moved, l))
+          | [] -> (List.rev run, List.rev layers, moved, [])
+        in
+        let run, layers, moved, rest = take [] [] false stmts in
+        if moved then changed := true;
+        let canon_body = canonicalize_block ~ctx ~parent changed in
+        let settled =
+          match run with
+          | [] -> []
+          | run -> settle ~canon_body ~ctx ?parent changed run
+        in
+        settled @ layers @ go rest
+    | stmt :: rest -> stmt :: go rest
   in
   go expanded
 
