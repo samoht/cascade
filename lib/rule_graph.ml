@@ -438,9 +438,9 @@ let add_bucket bucket key specs value =
    means node [i] is already a candidate for the current target. The target's
    own index is a fresh monotonically increasing stamp, so no clearing is
    needed, and dedup is O(1) with no hashing or per-target allocation. *)
-let add_candidate stamp seen acc i =
+let add_candidate (stamp : int) (seen : int array) acc i =
   let idx = Node_id.to_int i in
-  if seen.(idx) = stamp then acc
+  if Int.equal seen.(idx) stamp then acc
   else begin
     seen.(idx) <- stamp;
     i :: acc
