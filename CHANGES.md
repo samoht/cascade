@@ -922,6 +922,9 @@ to lose a whole rule over one bad piece. Both are gone.
 - `cascade diff --browser` over large stylesheets finishes in minutes where it
   did not finish: it no longer samples a viewport width or interaction state
   that only rules no element of the page can match name (#1265)
+- `cascade diff --browser` no longer reports a gradient as painting
+  differently when one side writes a first stop at 0% or a last stop at 100%
+  and the other leaves the position out (#1266).
 - `cascade diff --browser --html PAGE.html A.css B.css` renders both files
   over the document in a headless Chromium and reports every computed-style
   value the two disagree on, element and pseudo-element by property, at every
