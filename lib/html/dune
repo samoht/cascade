@@ -1,0 +1,8 @@
+; A parsed HTML page as a mutable tree, and that tree as the node the resolver
+; walks: what [cascade apply], [cascade prune] and the browser comparison read a
+; document through.
+
+(library
+ (name cascade_html)
+ (public_name cascade.html)
+ (libraries cascade fmt markup))

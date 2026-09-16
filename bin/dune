@@ -1,11 +1,14 @@
 (executable
  (public_name cascade)
  (name main)
+ (flags
+  (:standard -open Cascade_html))
  (libraries
   cascade
   cascade.info
   cascade.diff
   cascade.browser
+  cascade.html
   cmdliner
   fmt
   fmt.cli
