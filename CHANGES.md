@@ -841,6 +841,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
+- `Browser_compare.run` in `cascade.browser` is the comparison behind
+  `cascade diff --browser`, for a program that renders its own page and sheets:
+  it returns each differing computed value, or the reason nothing was compared,
+  and `Browser_compare.to_string` writes the CLI's report (#1260).
 - `Css.add_var_fallbacks` gives each `var()` with no fallback of its own the
   value a lookup answers, so a sheet whose tokens are declared elsewhere, such
   as Tailwind's `@reference` output, still resolves them (#1236).
