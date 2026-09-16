@@ -824,6 +824,48 @@ let canonical_ignores_how_the_layer_order_is_written () =
     (equal "@layer a.b{.p{color:red}}@layer a{@layer b{.p{color:blue}}}"
        "@layer a{@layer b{.p{color:blue}}}@layer a.b{.p{color:red}}")
 
+(* Two rules under a condition and its exact negation never apply together:
+   Media Queries 4 sec. 3.4 has [not] negate the whole query, CSS Conditional 3
+   sec. 6.1 the whole [@supports] condition, and CSS Conditional 5 sec. 7.2
+   picks the query container of [@container card (...)] by name and by the
+   features queried, which its negation shares, so both ask one container. Their
+   order decides nothing, whatever they write. A condition that merely differs,
+   or a negation aimed at another container, keeps the order. *)
+let canonical_ignores_order_under_exclusive_conditions () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let swapped a b = equal (a ^ b) (b ^ a) in
+  Alcotest.(check bool)
+    "a media query and its negation" true
+    (swapped "@media (width>=20rem){.a{display:flex}}"
+       "@media not (width>=20rem){.b{display:grid}}");
+  Alcotest.(check bool)
+    "the same, both writing one property on one selector" true
+    (swapped "@media (width>=20rem){.p{color:red}}"
+       "@media not (width>=20rem){.p{color:blue}}");
+  Alcotest.(check bool)
+    "a media type and its negation" true
+    (swapped "@media print{.p{color:red}}" "@media not print{.p{color:blue}}");
+  Alcotest.(check bool)
+    "a named container query and its negation" true
+    (swapped "@container card (width>=20rem){.p{color:red}}"
+       "@container card not (width>=20rem){.p{color:blue}}");
+  Alcotest.(check bool)
+    "a supports condition and its negation" true
+    (swapped "@supports (display:grid){.p{color:red}}"
+       "@supports not (display:grid){.p{color:blue}}");
+  Alcotest.(check bool)
+    "two conditions that can both hold" false
+    (swapped "@media (width>=20rem){.p{color:red}}"
+       "@media (width>=30rem){.p{color:blue}}");
+  Alcotest.(check bool)
+    "a negation querying another container" false
+    (swapped "@container card (width>=20rem){.p{color:red}}"
+       "@container other not (width>=20rem){.p{color:blue}}");
+  Alcotest.(check bool)
+    "a negation of a different query" false
+    (swapped "@media (width>=20rem){.p{color:red}}"
+       "@media not (width>=30rem){.p{color:blue}}")
+
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested rule where
    the author wrote it, which only matters for a property the nested rule also
    sets. Where nothing clashes across the boundary the two spellings compute the
@@ -2595,4 +2637,6 @@ let suite =
         canonical_ignores_layer_block_position;
       Alcotest.test_case "canonical ignores how the layer order is written"
         `Quick canonical_ignores_how_the_layer_order_is_written;
+      Alcotest.test_case "canonical ignores order under exclusive conditions"
+        `Quick canonical_ignores_order_under_exclusive_conditions;
     ] )
