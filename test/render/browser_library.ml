@@ -96,6 +96,41 @@ let () =
   in
   check "a sheet the reader dropped a rule from is sampled as written"
     (samples 800 dropped);
+  (* CSS Images 3 sec. 3.5.3 places an unpositioned last colour stop at 100%, so
+     a mask written with the position and one written without it are the same
+     pixels, though the browser serialises the two differently. A last stop at
+     50% is another image. *)
+  let mask stops =
+    String.concat ""
+      [ ".a{mask-image:radial-gradient(25% 50% at 30% 50%,"; stops; ")}" ]
+  in
+  let mask_paints stops =
+    match
+      differences
+        [ ("first", mask "#fff 100%,#0000 100%"); ("second", mask stops) ]
+    with
+    | Some ds ->
+        let masks =
+          List.filter
+            (fun (d : Browser_compare.difference) ->
+              String.equal d.property "mask-image")
+            ds
+        in
+        Some
+          ( masks <> [],
+            List.for_all (fun d -> d.Browser_compare.paints_same) masks )
+    | None -> None
+  in
+  (match mask_paints "#fff 100%,#0000" with
+  | Some (true, paints) ->
+      check "an unpositioned last stop paints as one at 100%" paints
+  | Some (false, _) -> check "the implied stop is spelled differently" false
+  | None -> check "the implied stop pair runs" false);
+  (match mask_paints "#fff 100%,#0000 50%" with
+  | Some (true, paints) ->
+      check "a last stop at 50% paints differently" (not paints)
+  | Some (false, _) -> check "the 50% stop is reported" false
+  | None -> check "the 50% stop pair runs" false);
   (* A stand-in that exits without a page is what a broken browser looks like to
      the driver. *)
   let broken =
