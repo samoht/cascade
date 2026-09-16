@@ -9802,32 +9802,33 @@ val canonicalize_rule_order :
     fold back together, and conflicting statements keep their relative order.
     Two equal [@supports] blocks may merge across an intervening non-important
     write that the later block shadows with the same selector and property
-    whenever the condition holds. A named [@layer] block keeps its place among
-    layer blocks, which is the layer order, and its place among unlayered rules
-    is no difference, since CSS Cascade 5 sec. 6.1 sorts by layer before order
-    of appearance; an [@layer] statement pins the layer order where it stands. A
-    run of [@property] rules sorts by name, keeping the last registration of
-    each, since CSS Properties and Values API 1 sec. 2 makes registrations for
-    different names order-independent. A [@media] prelude is keyed as the Level
-    4 query Media Queries 4 makes it equal to - [not all and (X)] as [not (X)],
-    [min-X]/[max-X] as the range form, and a lower bound met by an upper bound
-    as the two-sided interval - and an [@container] prelude the same way, which
-    emission cannot do because a Level 3 parser rejects the shorter forms. A
-    [color(srgb ...)] whose channels all land on a whole byte is keyed as the
-    [rgb()] spelling of the same colour, which emission cannot do either because
-    [color()] needs a browser that parses it. A [none] channel of a Lab-family
-    colour standing as a whole colour-longhand value is keyed as the zero CSS
-    Color 4 sec. 4.4 says a missing component behaves as, so a converted
-    achromatic [oklab()] meets the hex a minifier writes for it; sec. 13.3 keeps
-    that off the positions the sheet interpolates, so a gradient stop, a
-    [color-mix()] operand, a custom-property token stream, [@keyframes],
-    [@starting-style] and a colour whose own rule transitions the property it
-    writes keep their [none], and [lossless] bounds how far the resolved colour
-    respells. An identical [-webkit-text-decoration-color] compatibility
-    declaration is dropped when its unprefixed twin is present; a differing or
-    prefixed-only declaration is retained. These are comparison-side
-    normalisations; this function does not change {!val-optimize}'s configured
-    emission policy. *)
+    whenever the condition holds. CSS Cascade 5 sec. 6.1 sorts by layer before
+    order of appearance, so a named [@layer] block of style rules reads in the
+    sheet's layer order, however a pin and the blocks spell that order, and its
+    place among unlayered rules, [@property] and [@keyframes] is no difference;
+    two blocks of one layer keep their order, and an [@layer] statement pins the
+    layer order where it stands. A run of [@property] rules sorts by name,
+    keeping the last registration of each, since CSS Properties and Values API 1
+    sec. 2 makes registrations for different names order-independent. A [@media]
+    prelude is keyed as the Level 4 query Media Queries 4 makes it equal to -
+    [not all and (X)] as [not (X)], [min-X]/[max-X] as the range form, and a
+    lower bound met by an upper bound as the two-sided interval - and an
+    [@container] prelude the same way, which emission cannot do because a Level
+    3 parser rejects the shorter forms. A [color(srgb ...)] whose channels all
+    land on a whole byte is keyed as the [rgb()] spelling of the same colour,
+    which emission cannot do either because [color()] needs a browser that
+    parses it. A [none] channel of a Lab-family colour standing as a whole
+    colour-longhand value is keyed as the zero CSS Color 4 sec. 4.4 says a
+    missing component behaves as, so a converted achromatic [oklab()] meets the
+    hex a minifier writes for it; sec. 13.3 keeps that off the positions the
+    sheet interpolates, so a gradient stop, a [color-mix()] operand, a
+    custom-property token stream, [@keyframes], [@starting-style] and a colour
+    whose own rule transitions the property it writes keep their [none], and
+    [lossless] bounds how far the resolved colour respells. An identical
+    [-webkit-text-decoration-color] compatibility declaration is dropped when
+    its unprefixed twin is present; a differing or prefixed-only declaration is
+    retained. These are comparison-side normalisations; this function does not
+    change {!val-optimize}'s configured emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->

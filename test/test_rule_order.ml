@@ -230,6 +230,24 @@ let layer_blocks_stay_put () =
     (render (statements css))
     (canonical css)
 
+let pinned_layer_blocks_take_the_layer_order () =
+  (* CSS Cascade 5 sec. 6.1 sorts by layer before order of appearance, and a pin
+     fixes the layer order, so blocks written out of it read in it. A body of
+     style rules under [@starting-style] cascades by layer the same way and
+     moves too, across unlayered rules, [@property] and [@keyframes]; a block
+     declaring a sublayer inside it does not move. *)
+  Alcotest.(check string)
+    "starting-style body sorted"
+    "x{color:red}@layer a{y{color:blue}}@layer b{@starting-style{x{opacity:0}}}"
+    (canonical
+       "@layer a,b;@layer b{@starting-style{x{opacity:0}}}x{color:red}@layer \
+        a{y{color:blue}}");
+  Alcotest.(check string)
+    "a block holding a sublayer stays"
+    "@layer a;@layer b{@layer c{x{color:red}}}@layer a{y{color:blue}}"
+    (canonical
+       "@layer a,b;@layer b{@layer c{x{color:red}}}@layer a{y{color:blue}}")
+
 let redundant_layer_pin_folds () =
   (* CSS Cascade 5 sec. 6.4.3: cascade layers are sorted by the order in which
      they first are declared, so a pin gives its layer a position the very next
@@ -241,16 +259,18 @@ let redundant_layer_pin_folds () =
 
 let order_changing_layer_pin_is_kept () =
   (* Sec. 6.4.3 read the other way: here the pins are the only thing putting [a]
-     before [b], since [b]'s block comes first. Dropping [@layer a;] reverses
-     the two layers and changes what the sheet renders, so it has to stay. The
-     [b] pin only repeats what [b]'s own block declares, so it goes. *)
+     before [b], since [b]'s block comes first. Dropping [@layer a;] alone would
+     reverse the two layers and change what the sheet renders, so the order it
+     fixes stays. The projection writes that order out with [a]'s block first,
+     since sec. 6.1 sorts the two blocks by layer whichever comes first, and the
+     pin then repeats what the blocks declare. *)
   let pinned =
     "@layer a;@layer b;@layer b{x{color:red}}@layer a{y{color:blue}}"
   in
   let unpinned = "@layer b{x{color:red}}@layer a{y{color:blue}}" in
   Alcotest.(check string)
-    "the pin that fixes the order stays"
-    "@layer a;@layer b{x{color:red}}@layer a{y{color:blue}}" (canonical pinned);
+    "the order the pin fixes stays"
+    "@layer a{y{color:blue}}@layer b{x{color:red}}" (canonical pinned);
   Alcotest.(check bool)
     "pinned and unpinned sheets stay distinct" true
     (canonical pinned <> canonical unpinned)
@@ -277,12 +297,17 @@ let leading_layer_pins_matching_the_blocks_fold () =
 let layer_pin_folds_one_name_not_the_statement () =
   (* Sec. 6.4.4.2: [@layer a, b;] declares two layers in that order. Only [b]
      repeats the order the blocks already give, so the statement survives with
-     [a] alone rather than going away whole, and the two spellings of the one
-     order project together. *)
+     [a] alone rather than going away whole. The projection then writes the
+     blocks in that order, which is what [a] fixed, and the pin goes too, so the
+     two spellings of the one order project together. *)
   Alcotest.(check string)
-    "only the redundant name leaves the pin"
-    "@layer a;@layer b{x{color:red}}@layer a{y{color:blue}}"
-    (canonical "@layer a,b;@layer b{x{color:red}}@layer a{y{color:blue}}")
+    "the order the pin gives, written by the blocks"
+    "@layer a{y{color:blue}}@layer b{x{color:red}}"
+    (canonical "@layer a,b;@layer b{x{color:red}}@layer a{y{color:blue}}");
+  Alcotest.(check string)
+    "a pin kept for a name no block declares"
+    "@layer a,c;@layer a{y{color:blue}}@layer b{x{color:red}}"
+    (canonical "@layer a,c,b;@layer b{x{color:red}}@layer a{y{color:blue}}")
 
 let layer_pin_names_are_ident_lists () =
   (* Sec. 6.4.2: [a.b] is the sublayer [b] of [a] and declares [a] on the way,
@@ -574,6 +599,8 @@ let suite =
         logical_border_style_keeps_its_place;
       Alcotest.test_case "redundant layer pin folds" `Quick
         redundant_layer_pin_folds;
+      Alcotest.test_case "pinned layer blocks take the layer order" `Quick
+        pinned_layer_blocks_take_the_layer_order;
       Alcotest.test_case "order-changing layer pin is kept" `Quick
         order_changing_layer_pin_is_kept;
       Alcotest.test_case "leading layer pins matching the blocks fold" `Quick

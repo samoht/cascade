@@ -1141,6 +1141,116 @@ let fold_layer_pins (stmts : statement list) : statement list =
       in
       List.filter_map Fun.id (List.mapi rebuild stmts)
 
+(* Sec. 6.1 sorts declarations by layer, in the order sec. 6.4.3 gives the
+   layers, before order of appearance, so the blocks of two different layers
+   decide no tie between themselves whichever comes first. A run of layer blocks
+   therefore reads in the sheet's layer order, a stable sort keeping two blocks
+   of one layer in the order they came. Sorting by that order leaves the order
+   itself where it was: a name the run is first to declare only moves behind
+   names ranked before it, which were declared first.
+
+   Only a block holding style rules alone moves: plain rules, under [@media],
+   [@supports], [@container] or [@starting-style], whose rules sec. 6.1 sorts by
+   layer like any other (CSS Transitions 2 sec. 3.1 has [@starting-style] rules
+   cascade as ordinary style rules). It moves across what it decides nothing
+   with: unlayered style rules of that same shape, which sec. 6.1 sorts apart
+   from every layer; an [@property], whose registration holds for the whole
+   document wherever it is written; and an [@keyframes], which a block of style
+   rules neither defines nor overrides. Those keep their own order and come
+   first, the blocks after them. A block holding anything else, a nested
+   [@layer] above all, which writes into a sublayer another block may name
+   outright ([a{@layer b}] and [a.b]), stays where it is and ends the run, as
+   does an [@layer] statement, which fixes a position. A position in the order
+   that cannot be read ({!Opaque}) leaves no rank to sort by, so the sheet is
+   left as it came. The pins are folded again afterwards: one whose order the
+   blocks now spell by themselves contributes nothing. *)
+let rec style_only (stmt : statement) =
+  match stmt with
+  | Rule r -> r.nested = []
+  | Media (_, b) | Supports (_, b) | Container (_, _, b) | Starting_style b ->
+      List.for_all style_only b
+  | _ -> false
+
+(* What a layer block moves across without deciding anything with it. *)
+let passes_layer_blocks (stmt : statement) =
+  match stmt with
+  | Property _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> true
+  | stmt -> style_only stmt
+
+(* The rank of each name in the sheet's layer order, or [None] when a position
+   in that order cannot be read. *)
+let layer_ranks (stmts : statement list) =
+  let work = Array.of_list stmts in
+  let pins =
+    Array.map (function Layer_decl names -> Some names | _ -> None) work
+  in
+  let fixed =
+    Array.mapi
+      (fun i stmt ->
+        match stmt with Layer_decl _ -> [] | stmt -> statement_slots i stmt)
+      work
+  in
+  let order = layer_order ~fixed ~pins in
+  if List.exists (function Opaque _ -> true | Named _ -> false) order then
+    Option.None
+  else
+    Option.Some
+      (fun name ->
+        let rec find i = function
+          | [] -> max_int
+          | Named n :: _ when equal_layer_name n name -> i
+          | _ :: rest -> find (i + 1) rest
+        in
+        find 0 order)
+
+(* One run from the head of [stmts]: what passes, in order, the movable blocks
+   with their rank, and the rest. [moved] is set when a block and something that
+   passes change places. *)
+let take_layer_run ~block ~moved stmts =
+  let rec take others blocks = function
+    | s :: rest as l -> (
+        match block s with
+        | Some r ->
+            if others <> [] then moved := true;
+            take others ((r, s) :: blocks) rest
+        | None ->
+            if passes_layer_blocks s then begin
+              if blocks <> [] then moved := true;
+              take (s :: others) blocks rest
+            end
+            else (List.rev others, List.rev blocks, l))
+    | [] -> (List.rev others, List.rev blocks, [])
+  in
+  take [] [] stmts
+
+let sort_layer_blocks (stmts : statement list) : statement list =
+  match layer_ranks stmts with
+  | Option.None -> stmts
+  | Option.Some rank ->
+      let block (stmt : statement) =
+        match stmt with
+        | Layer (Some name, body) when List.for_all style_only body ->
+            Some (rank name)
+        | _ -> None
+      in
+      let moved = ref false in
+      let rec go = function
+        | [] -> []
+        | stmt :: rest
+          when Option.is_none (block stmt) && not (passes_layer_blocks stmt) ->
+            stmt :: go rest
+        | stmts ->
+            let others, blocks, rest = take_layer_run ~block ~moved stmts in
+            let sorted =
+              List.stable_sort (fun (a, _) (b, _) -> Int.compare a b) blocks
+            in
+            if not (List.for_all2 (fun (_, a) (_, b) -> a == b) blocks sorted)
+            then moved := true;
+            others @ List.map snd sorted @ go rest
+      in
+      let sorted = go stmts in
+      if !moved then fold_layer_pins sorted else stmts
+
 (* Media Queries 4 sec. 2.3 makes [all] the identity media type, so the Level 3
    [not all and (X)] is the Level 4 [not (X)]; sec. 4.2 gives [min-X]/[max-X]
    and the range form one meaning, and a lower bound met by an upper bound one
@@ -1267,4 +1377,6 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
       ~parent:(None : Selector.t option)
       changed normalized
   in
-  if !changed then result else normalized
+  (* The runs above leave layer blocks side by side, which is where their order
+     can be read. *)
+  sort_layer_blocks (if !changed then result else normalized)
