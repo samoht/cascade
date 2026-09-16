@@ -7769,6 +7769,28 @@ let color_is_color_4 =
         true
     | _ -> false)
 
+(* The web-features key each Color 4 / 5 construct answers to, so a target
+   contract can say whether a browser parses the colour. [light-dark()] and
+   [contrast-color()] have keys of their own; [none] as a channel has not. *)
+let color_feature_key : color -> string option = function
+  | Lab _ -> Some "css.types.color.lab"
+  | Lch _ -> Some "css.types.color.lch"
+  | Oklab _ -> Some "css.types.color.oklab"
+  | Oklch _ -> Some "css.types.color.oklch"
+  | Hwb _ -> Some "css.types.color.hwb"
+  | Color _ -> Some "css.types.color.color"
+  | Mix _ -> Some "css.types.color.color-mix"
+  | Relative_rgb _ -> Some "css.types.color.rgb.relative_syntax"
+  | Relative_color (name, _, _) ->
+      Some (String.concat "" [ "css.types.color."; name; ".relative_syntax" ])
+  | Light_dark _ -> Some "css.types.color.light-dark"
+  | Contrast_color _ -> Some "css.types.color.contrast-color"
+  | _ -> None
+
+let color_uses_feature_where lacks =
+  color_exists (fun c ->
+      match color_feature_key c with Some key -> lacks key | None -> false)
+
 let read_system_color t : system_color =
   Cursor.ws t;
   let keyword = Cursor.ident t in

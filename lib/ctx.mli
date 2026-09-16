@@ -24,10 +24,12 @@ val of_scope :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?judge:Support.targets ->
   ?stats:Stats.t ->
   scope option ->
   t
-(** Build a context from an optional scope. *)
+(** Build a context from an optional scope. [judge] names the browsers the run
+    judges for (default none); [enforce_spec] drops it. *)
 
 val v :
   ?lossless:bool ->
@@ -37,6 +39,7 @@ val v :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?judge:Support.targets ->
   ?registered:(string -> bool) ->
   ?stats:Stats.t ->
   scope ->
@@ -100,6 +103,12 @@ val enforce_spec : t -> bool
 (** Whether the evergreen-browser target is dropped. Off by default: a vendor-
     prefixed declaration whose unprefixed twin is present may be stripped, since
     modern browsers understand the unprefixed form. On: keep every prefix. *)
+
+val judge : t -> Support.targets option
+(** The browsers the run judges for: a [@supports] guard they all satisfy is
+    decided and a fallback they all parse past is dead. [None], the default and
+    what {!enforce_spec} forces, keeps every guard and fallback for the engine
+    that renders the sheet to answer. *)
 
 val stats : t -> Stats.t
 (** Profiling recorder for the run this context belongs to. *)

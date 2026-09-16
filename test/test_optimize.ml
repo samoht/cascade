@@ -3620,9 +3620,13 @@ let target_evergreen_compatibility_prefixes () =
     ".a{-webkit-mask:url(a.svg);mask:url(a.svg)luminance}"
     (optimized_string ".a{mask:url(a.svg) luminance add}");
   Alcotest.(check string)
-    "mask fields without equivalent WebKit grammars are not prefixed"
-    ".a{mask-mode:luminance;mask-composite:add}"
-    (optimized_string ".a{mask-mode:luminance;mask-composite:add}");
+    "mask-mode and mask-composite take WebKit's own vocabulary"
+    ".a{-webkit-mask-source-type:luminance;mask-mode:luminance;-webkit-mask-composite:source-in;mask-composite:intersect}"
+    (optimized_string ".a{mask-mode:luminance;mask-composite:intersect}");
+  Alcotest.(check string)
+    "a mask layer list or substitution has no WebKit spelling"
+    ".a{mask-mode:alpha,luminance;mask-composite:var(--c)}"
+    (optimized_string ".a{mask-mode:alpha,luminance;mask-composite:var(--c)}");
   Alcotest.(check string)
     "the declaration fallback preserves importance"
     ".a{-webkit-user-select:none!important;user-select:none!important}"

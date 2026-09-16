@@ -642,6 +642,84 @@ let rec eval ~atom ~all = function
   | And (a, b) -> v_and (eval ~atom ~all a) (eval ~atom ~all b)
   | Or (a, b) -> v_or (eval ~atom ~all a) (eval ~atom ~all b)
 
+(* CSS Conditional 3 sec. 6.1: a declaration feature holds when the user agent
+   parses the declaration. The web-features dataset says which properties and
+   which colour constructs each target parses, and that is all this reads,
+   engine by engine: a feature over a property the dataset has no key for, a
+   vendor-prefixed one among them, a value using a construct it does not name,
+   or one cascade's own reader refuses, answers [None] for that engine, and so
+   does a [Function] or [General_enclosed] feature. A guard is settled only when
+   every target answers alike. *)
+let three_and a b =
+  match (a, b) with
+  | Some false, _ | _, Some false -> Some false
+  | Some true, Some true -> Some true
+  | _ -> None
+
+let three_or a b =
+  match (a, b) with
+  | Some true, _ | _, Some true -> Some true
+  | Some false, Some false -> Some false
+  | _ -> None
+
+let implemented_by_engine engine version cond =
+  let implements key = Support.engine_implements engine version key in
+  (* The feature's declaration is opaque, since the browser is the parser it is
+     meant for; the typed reading is taken here to see the colours it uses, and
+     a value cascade's own grammar refuses answers nothing. *)
+  let declaration name decl =
+    let typed =
+      Declaration.parse_declaration name
+        (Declaration.string_of_value ~minify:true decl)
+    in
+    match typed with
+    | None -> None
+    | Some decl when Declaration.is_invalid decl -> None
+    | Some decl ->
+        let property =
+          implements (String.concat "" [ "css.properties."; name ])
+        in
+        let unknown key = implements key = None in
+        let colours =
+          if
+            Declaration.value_uses_color
+              (Values.color_uses_feature_where unknown)
+              decl
+          then None
+          else if
+            Declaration.value_uses_color
+              (Values.color_uses_feature_where (fun key ->
+                   implements key = Some false))
+              decl
+          then Some false
+          else Some true
+        in
+        three_and property colours
+  in
+  let rec go = function
+    | Property (Declaration (Property_name { name; _ }, decl)) ->
+        declaration name decl
+    | Property (Empty _ | Unsupported _ | Vendor_flag_enabled) -> None
+    | Function _ | General_enclosed _ -> None
+    | Not a -> Option.map not (go a)
+    | And (a, b) -> three_and (go a) (go b)
+    | Or (a, b) -> three_or (go a) (go b)
+  in
+  go cond
+
+let implemented_by (targets : Support.targets) cond =
+  let answers =
+    [
+      implemented_by_engine Support.Chrome targets.chrome cond;
+      implemented_by_engine Support.Firefox targets.firefox cond;
+      implemented_by_engine Support.Safari targets.safari cond;
+      implemented_by_engine Support.Ios_safari targets.ios_safari cond;
+    ]
+  in
+  if List.for_all (fun a -> a = Some true) answers then Some true
+  else if List.for_all (fun a -> a = Some false) answers then Some false
+  else None
+
 (* Rewriting stays conservative where deciding is complete: a subformula the
    context settles is replaced by its value and absorbed, and the author's shape
    survives everywhere else. A minimised sum of products is usually longer as

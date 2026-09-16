@@ -199,7 +199,8 @@ let expand_lists (stmt : statement) : statement list =
    cascade dedup the optimizer uses - keep the last write of each property,
    preserving genuine fallback pairs - so a coalesced rule holds the same
    declaration set a sheet that never split it would. *)
-let coalesced_declarations decls = Shorthand.deduplicate_declarations decls
+let coalesced_declarations ~ctx decls =
+  Shorthand.deduplicate_declarations_with ~ctx decls
 
 (* Mutable state of one coalescing scan: the run's elements, the graph nodes
    accumulated into each surviving element, which elements remain, and which
@@ -358,7 +359,7 @@ let block_statement prelude body =
    merge concatenates the bodies in source order and re-canonicalises the
    result: the two halves were each canonical alone, but their concatenation
    need not be. *)
-let merged_element ~canon_body scan ~from ~into =
+let merged_element ~canon_body ~ctx scan ~from ~into =
   let earlier, later = if from < into then (from, into) else (into, from) in
   match
     ( element_shape (fst scan.arr.(earlier)),
@@ -370,7 +371,7 @@ let merged_element ~canon_body scan ~from ~into =
           a with
           declarations =
             canonical_declarations
-              (coalesced_declarations (a.declarations @ b.declarations));
+              (coalesced_declarations ~ctx (a.declarations @ b.declarations));
         }
       in
       Some (Rule merged, [ merged ])
@@ -379,8 +380,8 @@ let merged_element ~canon_body scan ~from ~into =
       Some (stmt, Option.value ~default:[] (element_rules stmt))
   | (Some (Style _ | Block _) | None), _ -> None
 
-let merge ~canon_body scan changed ~from ~into =
-  match merged_element ~canon_body scan ~from ~into with
+let merge ~canon_body ~ctx scan changed ~from ~into =
+  match merged_element ~canon_body ~ctx scan ~from ~into with
   | None -> ()
   | Some element ->
       scan.arr.(into) <- element;
@@ -420,16 +421,16 @@ module Shape_table = Hashtbl.Make (Shape_key)
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
    nothing in between observes those. *)
-let try_merge ~canon_body ?parent scan changed ~last ~key i j =
+let try_merge ~canon_body ~ctx ?parent scan changed ~last ~key i j =
   if
     interval_clear scan ~lo:i ~hi:j scan.members.(i)
     || supports_merge_down_clear ?parent scan ~from:i ~into:j
   then begin
-    merge ~canon_body scan changed ~from:i ~into:j;
+    merge ~canon_body ~ctx scan changed ~from:i ~into:j;
     Shape_table.replace last key j
   end
   else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
-    merge ~canon_body scan changed ~from:j ~into:i
+    merge ~canon_body ~ctx scan changed ~from:j ~into:i
   else Shape_table.replace last key j
 
 let shape_key = function
@@ -449,8 +450,8 @@ let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
    surviving element. A conditional block stands in the graph for the union of
    its interior selectors and declarations, a superset of its true edges, so the
    same test covers a block merge. *)
-let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
-    (statement * rule list) list =
+let coalesce ~canon_body ~ctx ?parent changed
+    (run : (statement * rule list) list) : (statement * rule list) list =
   match run with
   | [] | [ _ ] -> run
   | _ ->
@@ -480,7 +481,7 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
         | Some key -> (
             match Shape_table.find_opt last key with
             | Some i when scan.alive.(i) ->
-                try_merge ~canon_body ?parent scan changed ~last ~key i j
+                try_merge ~canon_body ~ctx ?parent scan changed ~last ~key i j
             | _ -> Shape_table.replace last key j)
       done;
       if not scan.merged_any then run
@@ -497,9 +498,9 @@ let coalesce ~canon_body ?parent changed (run : (statement * rule list) list) :
    an empty interval and so always merges; taking it first is what makes the
    merged and unmerged spellings of that pair converge, where sorting first
    strands the one that arrived already foldable. *)
-let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
-    : statement list =
-  let run = coalesce ~canon_body ?parent changed run in
+let rec settle ~canon_body ~ctx ?parent changed
+    (run : (statement * rule list) list) : statement list =
+  let run = coalesce ~canon_body ~ctx ?parent changed run in
   let stmts = sort_run ?parent changed run in
   let sorted =
     List.filter_map
@@ -509,9 +510,9 @@ let rec settle ~canon_body ?parent changed (run : (statement * rule list) list)
         | None -> None)
       stmts
   in
-  let coalesced = coalesce ~canon_body ?parent changed sorted in
+  let coalesced = coalesce ~canon_body ~ctx ?parent changed sorted in
   if coalesced == sorted then stmts
-  else settle ~canon_body ?parent changed coalesced
+  else settle ~canon_body ~ctx ?parent changed coalesced
 
 (* A declaration a conditional group repeats from the rule with the identical
    selector before it, value and all, changes nothing: an engine reading the
@@ -674,9 +675,9 @@ let drop_shadowed_declarations stmts =
    nesting [parent]; a style rule's nested body is canonicalised under the
    rule's own (expanded) selector as the new parent, so nested relative
    selectors are compared on their effective form. *)
-let rec recurse ~(parent : Selector.t option) changed (stmt : statement) :
+let rec recurse ~ctx ~(parent : Selector.t option) changed (stmt : statement) :
     statement =
-  let here b = canonicalize_block ~parent changed b in
+  let here b = canonicalize_block ~ctx ~parent changed b in
   match stmt with
   | Rule r ->
       let child_parent =
@@ -685,7 +686,7 @@ let rec recurse ~(parent : Selector.t option) changed (stmt : statement) :
         | Some p -> Nest.combine p r.selector
       in
       let nested =
-        canonicalize_block ~parent:(Some child_parent) changed r.nested
+        canonicalize_block ~ctx ~parent:(Some child_parent) changed r.nested
       in
       let declarations = canonical_declarations r.declarations in
       if declarations != r.declarations then changed := true;
@@ -703,11 +704,11 @@ let rec recurse ~(parent : Selector.t option) changed (stmt : statement) :
   | Scope (s, e, b) -> Scope (s, e, here b)
   | other -> other
 
-and canonicalize_block ~parent changed (stmts : statement list) : statement list
-    =
+and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
+    statement list =
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
-  let stmts = List.map (recurse ~parent changed) stmts in
+  let stmts = List.map (recurse ~ctx ~parent changed) stmts in
   let expanded =
     List.concat_map expand_lists stmts
     |> drop_shadowed_declarations
@@ -727,8 +728,8 @@ and canonicalize_block ~parent changed (stmts : statement list) : statement list
               | [] -> (List.rev acc, [])
             in
             let run, rest = take [ (stmt, rules) ] rest in
-            let canon_body = canonicalize_block ~parent changed in
-            settle ~canon_body ?parent changed run @ go rest
+            let canon_body = canonicalize_block ~ctx ~parent changed in
+            settle ~canon_body ~ctx ?parent changed run @ go rest
         | None -> stmt :: go rest)
   in
   go expanded
@@ -1196,8 +1197,10 @@ let rec canonical_keyframe_declarations (stmts : statement list) :
           Stylesheet.map_statement_children canonical_keyframe_declarations stmt)
     stmts
 
-let canonicalize ?(lossless = false) (stmts : statement list) : statement list =
+let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
+    (stmts : statement list) : statement list =
   let changed = ref false in
+  let ctx = Ctx.of_scope ~enforce_spec ?judge None in
   let normalized =
     fold_layer_pins
       (canonical_media_nesting
@@ -1211,6 +1214,8 @@ let canonicalize ?(lossless = false) (stmts : statement list) : statement list =
                             (canonical_vendor_aliases stmts)))))))
   in
   let result =
-    canonicalize_block ~parent:(None : Selector.t option) changed normalized
+    canonicalize_block ~ctx
+      ~parent:(None : Selector.t option)
+      changed normalized
   in
   if !changed then result else normalized

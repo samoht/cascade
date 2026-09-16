@@ -359,6 +359,56 @@ let equal_canonical_guarded_repeat () =
       ^ "{.a::after{content:none;--x:red}}")
        (".a::after{content:var(--c)}" ^ guard ^ "{.a::after{--x:red}}"))
 
+(* Canonical mode judges for the browsers [--minify] targets, as the minifier
+   does, unless [--enforce-spec] asks for the spec-only reading above. Every
+   target implements [color-mix()], so a guard on it holds everywhere and the
+   fallback written before it is dead; a target still reads [user-select] and
+   [mask-composite] under their [-webkit-] spellings, so both sides carry the
+   prefixed twin and a sheet that wrote it is the sheet that did not. tw writes
+   lightningcss's fallbacks and prefixes where Tailwind's compiled output writes
+   its own, and the two render alike on every target. *)
+let equal_canonical_targets () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let guard = "@supports (color:color-mix(in lab,red,red))" in
+  let twin =
+    "{.a{background-color:color-mix(in oklab,var(--c) 20%,transparent)}}"
+  in
+  Alcotest.(check bool)
+    "a fallback before a guard every target satisfies is dead" true
+    (equal
+       (".a{background-color:#54a2ff33}" ^ guard ^ twin)
+       (".a{background-color:color-mix(in srgb,oklch(70% .1 250) \
+         20%,transparent)}" ^ guard ^ twin));
+  Alcotest.(check bool)
+    "the guard itself is not a difference" true
+    (equal (".a{color:red}" ^ guard ^ "{.a{color:blue}}") ".a{color:blue}");
+  Alcotest.(check bool)
+    "a prefix a target needs is on both sides" true
+    (equal ".a{-webkit-user-select:none;user-select:none}"
+       ".a{user-select:none}");
+  Alcotest.(check bool)
+    "a mask composite's prefixed vocabulary too" true
+    (equal ".a{-webkit-mask-composite:source-in;mask-composite:intersect}"
+       ".a{mask-composite:intersect}");
+  Alcotest.(check bool)
+    "and a mask mode's" true
+    (equal ".a{-webkit-mask-source-type:alpha;mask-mode:alpha}"
+       ".a{mask-mode:alpha}");
+  Alcotest.(check bool)
+    "a supports guard a target reads prefixed too" true
+    (equal
+       "@supports (-webkit-backdrop-filter:blur(0)) or \
+        (backdrop-filter:blur(0)){.a{color:red}}"
+       "@supports (backdrop-filter:blur(0)){.a{color:red}}");
+  Alcotest.(check bool)
+    "a guard no target satisfies still separates" false
+    (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
+       ".a{color:blue}");
+  Alcotest.(check bool)
+    "a different fallback under an unknown guard still differs" false
+    (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
+       ".a{color:green}@supports (display:wibble){.a{color:blue}}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -366,7 +416,9 @@ let equal_canonical_guarded_repeat () =
    but it cannot delete on a target assumption, so the projection takes none of
    them. *)
 let canonical_keeps_target_gated_content () =
-  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let equal a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true a b
+  in
   (* The declaration an engine without the guarded feature paints is the one
      before the guard, so two sheets that disagree there paint differently. *)
   Alcotest.(check bool)
@@ -760,11 +812,24 @@ let canonical_legacy_name_alias () =
   case "a listed alias alone is not the unprefixed property dropped" false
     "a{-webkit-transform:none}" "a{}";
   (* [-moz-] prefixes are named nowhere in the list, and neither is
-     [-webkit-user-select]: each is its own property. *)
-  case "an unlisted -moz- prefix stays distinct" false
+     [-webkit-user-select]: each is its own property, which the spec-only
+     reading keeps. For the targets, the first is a prefix none of them needs
+     and the second one a target does, and either way both sides carry the same
+     set. *)
+  let spec label expected a b =
+    Alcotest.(check bool)
+      label expected
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true a b)
+  in
+  spec "an unlisted -moz- prefix stays distinct under the spec" false
     "a{-moz-box-sizing:border-box;box-sizing:border-box}"
     "a{box-sizing:border-box}";
-  case "an unlisted -webkit- prefix stays distinct" false
+  spec "an unlisted -webkit- prefix stays distinct under the spec" false
+    "a{-webkit-user-select:none;user-select:none}" "a{user-select:none}";
+  case "a prefix no target needs is dropped from both sides" true
+    "a{-moz-box-sizing:border-box;box-sizing:border-box}"
+    "a{box-sizing:border-box}";
+  case "a prefix a target needs is written on both sides" true
     "a{-webkit-user-select:none;user-select:none}" "a{user-select:none}"
 
 (* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
@@ -2389,6 +2454,8 @@ let suite =
         equal_canonical_relative_color_pass_through;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
+      Alcotest.test_case "canonical judges for the targets" `Quick
+        equal_canonical_targets;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
       Alcotest.test_case "canonical folds container function case" `Quick

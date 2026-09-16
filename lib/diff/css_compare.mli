@@ -112,6 +112,7 @@ type mode = [ `Auto | `Tree | `String | `Canonical ]
 val diff :
   ?mode:mode ->
   ?lossless:bool ->
+  ?enforce_spec:bool ->
   ?prune_unused_custom_props:bool ->
   string ->
   string ->
@@ -120,7 +121,11 @@ val diff :
     leading [/*! ... */] tool banner on either side is stripped before
     comparison. Parsing failures surface as [_error] variants. [lossless]
     preserves exact colour channels and non-terminating numeric arithmetic
-    during canonical comparison.
+    during canonical comparison. Canonical comparison judges for the browsers
+    {!Css.optimize} targets by default, so a [@supports] guard every target
+    satisfies, a prefix a target needs and a fallback every target parses past
+    are no difference; [enforce_spec] (default [false]) keeps every one of
+    those, since an engine outside the targets reads them.
 
     Two sheets that hold the same rules and the same declarations, and differ
     only in the order a rule writes them, leave the structural walk with nothing
@@ -139,6 +144,7 @@ val diff :
 val equal :
   ?mode:mode ->
   ?lossless:bool ->
+  ?enforce_spec:bool ->
   ?prune_unused_custom_props:bool ->
   string ->
   string ->

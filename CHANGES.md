@@ -644,7 +644,10 @@ to lose a whole rule over one bad piece. Both are gone.
 - Default minification adds the WebKit fallbacks Safari 16.4 and Chrome 111
   need, with matching `@supports` tests, and drops a vendor prefix only when its
   unprefixed twin is Baseline widely available. A feature query on a prefixed
-  property keeps its guard (#325, #378, #447, #751, #758, #797)
+  property keeps its guard. `mask-composite` and `mask-mode` take
+  `-webkit-mask-composite` and `-webkit-mask-source-type` in WebKit's own
+  vocabulary, `source-over` for `add` and `auto` for `match-source`, as
+  lightningcss writes them (#325, #378, #447, #751, #758, #797, #1256)
 - `Css.Resolve` matches an attribute selector the way an HTML document does:
   the name folds to ASCII lowercase, the values of the HTML attributes that
   ignore case fold with it, whitespace splits on every ASCII space, and an
@@ -727,6 +730,20 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A nested `&:where(.dark, .dark *)` under `svg *` flattens to the selector
+  `svg :where(.dark, .dark *)` reads as, so `--diff=canonical` no longer
+  reports the pair as a selector change. `Selector.canonicalize` dropped the
+  implied universal from a compound it read but kept it on the subject it
+  lifted a spliced parent onto (#1257)
+- `--diff=canonical` judges for the evergreen browsers `--minify` targets: a
+  `@supports` guard every one of them satisfies is unwrapped and the
+  declaration written before it is dead, a prefix a target needs is written on
+  both sides and one no target needs is dropped from both, and a colour
+  fallback every target parses past is dead. Tailwind's compiled sheet keeps
+  `color-mix(in srgb, ...)` fallbacks and `@supports (color: color-mix(in
+  lab, ...))` twins that lightningcss and tw resolve, and every one of them
+  was reported. `--enforce-spec` names no browser and keeps them apart.
+  `Css.optimize` and `Css.canonicalize_rule_order` gain `?judge` (#1256)
 - A non-terminating quotient in a length or a percentage compares under the
   six-significant-figure budget a number's already does: `calc(1/3 * 100%)`
   and `33.3333%` are one width under `--diff=canonical`, as Tailwind's
