@@ -137,21 +137,87 @@ let canonical_declarations (decls : Declaration.declaration list) :
       if not !changed then decls
       else Array.to_list (Array.map (fun i -> arr.(i)) order)
 
+(* The conditions every rule of an element sits under: a block's own, and those
+   of the one block it holds, if it holds exactly one. A condition only some of
+   its rules sit under is not the element's. *)
+type condition =
+  | Media_condition of Media.t
+  | Supports_condition of Supports.t
+  | Container_condition of string option * Container.t
+
+let rec element_conditions (stmt : statement) =
+  let inner = function [ only ] -> element_conditions only | _ -> [] in
+  match stmt with
+  | Media (q, b) -> Media_condition q :: inner b
+  | Supports (c, b) -> Supports_condition c :: inner b
+  | Container (name, Option.Some c, b) -> (
+      match (name, c) with
+      | Option.None, Container.Named (name, c) ->
+          Container_condition (Option.Some name, c) :: inner b
+      | _ -> Container_condition (name, c) :: inner b)
+  | _ -> []
+
+(* Media Queries 4 sec. 3.4: [not] negates the query it prefixes, all of it.
+   [only] is not a negation and a query list has no single one. *)
+let negated_media : Media.t -> Media.t option = function
+  | Cond (Not c) -> Option.Some (Cond c)
+  | Cond c -> Option.Some (Cond (Not c))
+  | Type ({ prefix = Option.None; _ } as q) ->
+      Option.Some (Type { q with prefix = Option.Some Media.Not })
+  | Type ({ prefix = Option.Some Media.Not; _ } as q) ->
+      Option.Some (Type { q with prefix = Option.None })
+  | Type { prefix = Option.Some Media.Only; _ } | List _ -> Option.None
+
+(* Whether two conditions cannot both hold for one element. Only a condition and
+   its exact negation are read: Media Queries 4 sec. 3.4 and CSS Conditional 3
+   sec. 6.1 have [not] negate the whole query or condition, turning true into
+   false, false into true and unknown into unknown, which applies nothing, so
+   the two are never true together. CSS Conditional 5 sec. 7.2 picks an
+   element's query container by name and by the features the query asks, which a
+   negation shares, so a container query and its negation on one name ask one
+   container. *)
+let excludes a b =
+  let negates negate equal x y =
+    match negate y with Option.Some ny -> equal x ny | Option.None -> false
+  in
+  match (a, b) with
+  | Media_condition x, Media_condition y ->
+      negates negated_media Media.equal x y
+      || negates negated_media Media.equal y x
+  | Supports_condition x, Supports_condition y ->
+      Supports.equal x (Supports.Not y) || Supports.equal y (Supports.Not x)
+  | Container_condition (nx, x), Container_condition (ny, y) ->
+      Option.equal String.equal nx ny
+      && (Container.equal x (Container.Not y)
+         || Container.equal y (Container.Not x))
+  | _ -> false
+
 (* Reorder one maximal run of elements into a canonical linear extension of its
    dependency graph, breaking ties among independent elements by serialized
    statement content so two source orderings converge to one form, while
    preserving physical identity when that order already matches the input.
    [parent], when set, is the enclosing nesting context: the graph expands each
    element's relative selectors against it so overlap is computed on the
-   effective selector. *)
+   effective selector. Two elements under a condition and its negation never
+   apply together, so the graph records no conflict between them. *)
 let sort_run ?parent changed (run : (statement * rule list) list) :
     statement list =
   let arr = Array.of_list run in
   let n = Array.length arr in
   if n < 2 then List.map fst run
   else
+    let conditions = Array.map (fun (stmt, _) -> element_conditions stmt) arr in
+    let exclusive i j =
+      List.exists
+        (fun a -> List.exists (excludes a) conditions.(j))
+        conditions.(i)
+    in
+    let exclusive =
+      if Array.exists (fun c -> c <> []) conditions then Option.Some exclusive
+      else Option.None
+    in
     let g =
-      Rule_graph.of_rules ?parent ~pin_shared_branches:false
+      Rule_graph.of_rules ?parent ~pin_shared_branches:false ?exclusive
         (List.map (fun (stmt, rules) -> element_node stmt rules) run)
     in
     let keys =

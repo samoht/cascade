@@ -57,6 +57,7 @@ val of_rules :
   ?parent:Selector.t ->
   ?closed_world:bool ->
   ?pin_shared_branches:bool ->
+  ?exclusive:(int -> int -> bool) ->
   Stylesheet.rule list ->
   t
 (** [of_rules ?parent rules] builds the graph over [rules] (node [i] is the
@@ -68,7 +69,10 @@ val of_rules :
     [pin_shared_branches] (default [true]) adds conservative structural edges
     between rules sharing a selector branch. Optimizer rewrites need those edges
     to keep produced residuals contiguous; a consumer projecting rules that have
-    already been expanded may disable them. *)
+    already been expanded may disable them. [exclusive i j], when given, asserts
+    that rules [i] and [j] never apply to one element together, as two rules
+    under a condition and its negation do, so no cascade conflict is recorded
+    between them; it does not reach the nodes a rewrite produces. *)
 
 val node_count : t -> int
 (** Number of nodes. *)

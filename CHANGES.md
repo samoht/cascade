@@ -730,6 +730,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- `--diff=canonical` no longer reports two rules under a condition and its
+  negation, such as `@media (width>=20rem)` and `@media not (width>=20rem)`,
+  or `@container card (...)` and `@container card not (...)`, as moved when
+  they are swapped (#1263)
 - `--diff=canonical` no longer reports two sheets as different when one writes
   its layer order as an `@layer a, b;` statement and the other by the order of
   its `@layer` blocks (#1262)

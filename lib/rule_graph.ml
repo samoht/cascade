@@ -73,6 +73,12 @@ type t = {
       (** whether equal selector branches add conservative structural edges;
           optimizer rewrites need them, while a canonical projection over
           already-expanded rules does not *)
+  exclusive : (int -> int -> bool) option;
+      (** a caller's assertion over the nodes {!of_rules} built, by index: the
+          two rules never apply to one element together, so they never
+          cascade-conflict. A node a rewrite produces has an index past those,
+          and the caller's predicate says nothing about it. *)
+  exclusive_count : int;  (** how many nodes [exclusive] speaks for *)
   parent : Selector.t option;
       (** the enclosing nesting context; every node's overlap is computed on its
           selector expanded against this, and rewrites reuse it so produced
@@ -253,9 +259,16 @@ let effective_selector (parent : Selector.t option) (r : rule) =
       |> selector_list
 
 (* Conflict between two nodes of a graph by their stored summaries/branches. *)
+let asserted_exclusive t i j =
+  match t.exclusive with
+  | Option.None -> false
+  | Option.Some exclusive ->
+      i < t.exclusive_count && j < t.exclusive_count && exclusive i j
+
 let nodes_conflict_reason t i j =
   if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
     Option.Some Shared_branch_pin
+  else if asserted_exclusive t i j then Option.None
   else if
     overlap_key_lists_intersect t.overlap_keys.(i) t.overlap_keys.(j)
     && decls_order_conflict t.decl_overlaps.(i) t.decl_overlaps.(j)
@@ -795,7 +808,7 @@ let index_node t (node : node_id) =
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
 let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
-    (rules : rule list) : t =
+    ?exclusive (rules : rule list) : t =
   let rules = Array.of_list rules in
   let n = Array.length rules in
   let summaries = Array.map rule_summary rules in
@@ -814,6 +827,8 @@ let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
       generation = 0;
       closed_world;
       pin_shared_branches;
+      exclusive;
+      exclusive_count = n;
       parent;
       count = n;
       rules;
@@ -1176,6 +1191,8 @@ let produced_graph t ~consume ~total ~new_n produced =
     generation = t.generation + 1;
     closed_world = t.closed_world;
     pin_shared_branches = t.pin_shared_branches;
+    exclusive = t.exclusive;
+    exclusive_count = t.exclusive_count;
     parent = t.parent;
     count = new_n;
     rules = append_slack t.rules ~count:total produced;
