@@ -730,6 +730,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- How rules are grouped into `@media`, `@supports` and `@container` blocks, and
+  where a named `@layer` block stands among unlayered rules, are no difference
+  under `--diff=canonical`. Tailwind and tw group tailwindcss.com's dark
+  variants into different blocks and place `@layer components` apart, and the
+  report listed a dark block split in two that renders the same (#1259)
 - A nested `&:where(.dark, .dark *)` under `svg *` flattens to the selector
   `svg :where(.dark, .dark *)` reads as, so `--diff=canonical` no longer
   reports the pair as a selector change. `Selector.canonicalize` dropped the

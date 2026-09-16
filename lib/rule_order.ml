@@ -9,9 +9,9 @@ open Stylesheet
    block moves atomically with its rules supplying the conflict footprint.
    Custom properties are keyed by name in the dependency graph, so two writers
    of one property on overlapping selectors keep order while a [var()] reader
-   (which writes its own property, not the one it reads) moves freely. A named
-   [@layer] block or declaration pins the layer order at its first occurrence,
-   so it stays a barrier. *)
+   (which writes its own property, not the one it reads) moves freely. An
+   [@layer] statement pins the layer order at its first occurrence, so it stays
+   a barrier; a named [@layer] block only holds its place among layer blocks. *)
 let rec element_rules (stmt : statement) : rule list option =
   match stmt with
   | Rule r -> if r.nested = [] then Some [ r ] else None
@@ -749,22 +749,37 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
     |> List.concat_map expand_blocks
   in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
+  (* CSS Cascade 5 sec. 6.1 sorts declarations by layer before order of
+     appearance, so where a layer block stands among unlayered elements decides
+     no tie with any of them. A stretch of elements and layer blocks reads as
+     its elements, settled as one run, then its layer blocks in the order they
+     came, which is the order of the layers. Nothing else ends the stretch
+     differently: an [@layer] statement or a block declaring a layer inside it
+     is not part of one, so every position in the layer order stays put. *)
   let rec go = function
     | [] -> []
-    | stmt :: rest -> (
-        match element_rules stmt with
-        | Some rules ->
-            let rec take acc = function
-              | s :: r as l -> (
-                  match element_rules s with
-                  | Some rs -> take ((s, rs) :: acc) r
-                  | None -> (List.rev acc, l))
-              | [] -> (List.rev acc, [])
-            in
-            let run, rest = take [ (stmt, rules) ] rest in
-            let canon_body = canonicalize_block ~ctx ~parent changed in
-            settle ~canon_body ~ctx ?parent changed run @ go rest
-        | None -> stmt :: go rest)
+    | stmt :: _ as stmts
+      when (match stmt with Layer _ -> true | _ -> false)
+           || Option.is_some (element_rules stmt) ->
+        let rec take run layers moved = function
+          | (Layer _ as s) :: r -> take run (s :: layers) moved r
+          | s :: r as l -> (
+              match element_rules s with
+              | Some rs ->
+                  take ((s, rs) :: run) layers (moved || layers <> []) r
+              | None -> (List.rev run, List.rev layers, moved, l))
+          | [] -> (List.rev run, List.rev layers, moved, [])
+        in
+        let run, layers, moved, rest = take [] [] false stmts in
+        if moved then changed := true;
+        let canon_body = canonicalize_block ~ctx ~parent changed in
+        let settled =
+          match run with
+          | [] -> []
+          | run -> settle ~canon_body ~ctx ?parent changed run
+        in
+        settled @ layers @ go rest
+    | stmt :: rest -> stmt :: go rest
   in
   go expanded
 
