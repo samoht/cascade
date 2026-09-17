@@ -7,7 +7,7 @@
  (name cascade_browser)
  (public_name cascade.browser)
  (wrapped false)
- (libraries unix))
+ (libraries unix cascade cascade.html))
 
 ; The comparison's driver is compiled into the library, so an installed cascade
 ; carries it and writes it beside the job it runs.

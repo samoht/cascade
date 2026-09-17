@@ -730,11 +730,16 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
-- How rules are grouped into `@media`, `@supports` and `@container` blocks, and
-  where a named `@layer` block stands among unlayered rules, are no difference
-  under `--diff=canonical`. Tailwind and tw group tailwindcss.com's dark
-  variants into different blocks and place `@layer components` apart, and the
-  report listed a dark block split in two that renders the same (#1259)
+- `--diff=canonical` no longer reports two rules under a condition and its
+  negation, such as `@media (width>=20rem)` and `@media not (width>=20rem)`,
+  or `@container card (...)` and `@container card not (...)`, as moved when
+  they are swapped (#1263)
+- `--diff=canonical` no longer reports two sheets as different when one writes
+  its layer order as an `@layer a, b;` statement and the other by the order of
+  its `@layer` blocks (#1262)
+- `--diff=canonical` no longer reports rules grouped into different `@media`,
+  `@supports` or `@container` blocks, or a named `@layer` block standing
+  elsewhere among unlayered rules, as a difference (#1259)
 - A nested `&:where(.dark, .dark *)` under `svg *` flattens to the selector
   `svg :where(.dark, .dark *)` reads as, so `--diff=canonical` no longer
   reports the pair as a selector change. `Selector.canonicalize` dropped the
@@ -841,10 +846,8 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Library
 
-- `Browser_compare.run` in `cascade.browser` is the comparison behind
-  `cascade diff --browser`, for a program that renders its own page and sheets:
-  it returns each differing computed value, or the reason nothing was compared,
-  and `Browser_compare.to_string` writes the CLI's report (#1260).
+- `Browser_compare.run` in `cascade.browser` runs the comparison behind
+  `cascade diff --browser` for a program with its own page and sheets (#1260).
 - `Css.add_var_fallbacks` gives each `var()` with no fallback of its own the
   value a lookup answers, so a sheet whose tokens are declared elsewhere, such
   as Tailwind's `@reference` output, still resolves them (#1236).
@@ -916,6 +919,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### CLI tools
 
+- `cascade diff --browser` over large stylesheets finishes in minutes where it
+  did not finish: it no longer samples a viewport width or interaction state
+  that only rules no element of the page can match name (#1265)
+- `cascade diff --browser` no longer reports a gradient as painting
+  differently when one side writes a first stop at 0% or a last stop at 100%
+  and the other leaves the position out (#1266).
 - `cascade diff --browser --html PAGE.html A.css B.css` renders both files
   over the document in a headless Chromium and reports every computed-style
   value the two disagree on, element and pseudo-element by property, at every

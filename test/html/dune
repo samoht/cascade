@@ -1,0 +1,6 @@
+; The HTML tree [cascade apply], [cascade prune] and the browser comparison read
+; a document through.
+
+(test
+ (name test)
+ (libraries cascade cascade_html alcotest))

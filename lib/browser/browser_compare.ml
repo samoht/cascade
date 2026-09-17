@@ -1,5 +1,9 @@
 let ( // ) = Filename.concat
 
+module Css = Cascade.Css
+module Html = Cascade_html.Html
+module Prune = Cascade.Prune.Make (Cascade_html.Html_node)
+
 type difference = {
   viewport : string;
   state : string;
@@ -35,11 +39,8 @@ let add_json_string buf s =
     s;
   Buffer.add_char buf '"'
 
-let job_json ~html sheets =
-  let buf = Buffer.create 4096 in
-  Buffer.add_string buf "{\"html\":";
-  add_json_string buf html;
-  Buffer.add_string buf ",\"sheets\":[";
+let add_sheets buf key sheets =
+  Buffer.add_string buf (String.concat "" [ ",\""; key; "\":[" ]);
   List.iteri
     (fun i (name, css) ->
       if i > 0 then Buffer.add_char buf ',';
@@ -49,8 +50,111 @@ let job_json ~html sheets =
       add_json_string buf css;
       Buffer.add_char buf '}')
     sheets;
-  Buffer.add_string buf "]}";
+  Buffer.add_char buf ']'
+
+(* [sampling] is what the driver reads the widths and states off; [sheets] is
+   what it renders. *)
+let job_json ~html ~sampling sheets =
+  let buf = Buffer.create 4096 in
+  Buffer.add_string buf "{\"html\":";
+  add_json_string buf html;
+  add_sheets buf "sheets" sheets;
+  add_sheets buf "sampling" sampling;
+  Buffer.add_char buf '}';
   Buffer.contents buf
+
+(* ===== The page and what it can use ===== *)
+
+let is_space c = c = ' ' || c = '\t' || c = '\n' || c = '\r' || c = '\012'
+
+(* The driver's own test: the source opens, after whitespace, with [<!doctype],
+   in any case. *)
+let has_doctype html =
+  let n = String.length html in
+  let rec first i = if i < n && is_space html.[i] then first (i + 1) else i in
+  let i = first 0 in
+  i + 9 <= n
+  && String.equal (String.lowercase_ascii (String.sub html i 9)) "<!doctype"
+
+let is_stylesheet_link (e : Html.element) =
+  String.equal e.tag "link"
+  &&
+  match Html.attribute e "rel" with
+  | None -> false
+  | Some rel ->
+      String.lowercase_ascii rel
+      |> String.map (fun c -> if is_space c then ' ' else c)
+      |> String.split_on_char ' ' |> List.mem "stylesheet"
+
+(* The document's own [<style>] elements and stylesheet links go, wherever they
+   stand, so the sheets compared are the only ones in effect. *)
+let rec strip_styles removed nodes =
+  List.filter
+    (function
+      | Html.Element e when String.equal e.tag "style" || is_stylesheet_link e
+        ->
+          incr removed;
+          false
+      | Html.Element e ->
+          e.children <- strip_styles removed e.children;
+          true
+      | Html.Text _ | Html.Comment _ | Html.Doctype _ -> true)
+    nodes
+
+type page = {
+  document : string;  (** What the browser renders. *)
+  roots : Html.element list;  (** The same page, as the matcher reads it. *)
+  styles_removed : int;
+  doctype_added : bool;
+}
+
+(* The page is prepared once, here, and the browser is handed that same tree
+   printed back: pruning a sheet to the page is only sound over the elements the
+   browser builds, so the two must not prepare the page apart. *)
+let prepare html =
+  let doctype_added = not (has_doctype html) in
+  let html =
+    if doctype_added then String.concat "" [ "<!DOCTYPE html>\n"; html ]
+    else html
+  in
+  let removed = ref 0 in
+  let doc = strip_styles removed (Html.parse html) in
+  {
+    document = Html.to_string doc;
+    roots = Html.roots doc;
+    styles_removed = !removed;
+    doctype_added;
+  }
+
+(* Whether every warning the reader raised cost a declaration and nothing more:
+   one it stamped as a dropped declaration, or one raised while reading a
+   declaration, which the reader recovers from inside the rule it belongs to. A
+   warning raised anywhere else may have cost a whole rule, stamped or not: a
+   selector the reader refuses loses its rule under an unstamped warning. *)
+let drops_no_rule warnings =
+  List.for_all
+    (fun (w : Cascade.Error.t) ->
+      match (w.recovery, w.path) with
+      | Cascade.Error.Recovery.Dropped { construct = Declaration; _ }, _ -> true
+      | Dropped { construct = Rule; _ }, _ -> false
+      | Recovered, "read_declaration" :: _ -> true
+      | Recovered, _ -> false)
+    warnings
+
+(* What the driver samples a sheet for: the sheet less every rule no element of
+   the page can match, as [cascade prune] removes them. A rule whose selector
+   the matcher has no model for is kept, [:hover] among them, so every state a
+   kept rule names is still sampled; a width named only by removed rules cannot
+   change a computed value, so it is not. A sheet the reader lost a whole rule
+   from is sampled as written: a dropped rule leaves nothing to say what it
+   would have matched. *)
+let sampling_sheet roots css =
+  match Css.of_string css with
+  | Ok { Css.stylesheet; warnings; _ } when drops_no_rule warnings ->
+      let analysis = Prune.analyse ~sheet:stylesheet roots in
+      if analysis.elements = 0 then css
+      else Css.to_string ~minify:true analysis.sheet
+  | Ok _ | Error _ -> css
 
 let write_file path contents =
   Out_channel.with_open_bin path (fun oc -> output_string oc contents)
@@ -167,15 +271,30 @@ let run ~html sheets =
          needs one"
       (Browser.chrome_binary ())
   in
+  let page = prepare html in
+  let sampling =
+    List.map (fun (name, css) -> (name, sampling_sheet page.roots css)) sheets
+  in
   let work = mkdtemp () in
   let* report, errors =
-    run_driver ~node ~chrome ~work ~job:(job_json ~html sheets)
+    run_driver ~node ~chrome ~work
+      ~job:(job_json ~html:page.document ~sampling sheets)
+  in
+  let meta =
+    List.filter
+      (fun (key, _) ->
+        not (List.mem key [ "document_styles_removed"; "doctype_added" ]))
+      report.meta
   in
   let report =
     {
       report with
       meta =
-        ("browser", version chrome) :: ("browser_path", chrome) :: report.meta;
+        ("browser", version chrome)
+        :: ("browser_path", chrome)
+        :: ("document_styles_removed", string_of_int page.styles_removed)
+        :: ("doctype_added", if page.doctype_added then "1" else "0")
+        :: meta;
     }
   in
   match (errors, meta_int report "samples") with

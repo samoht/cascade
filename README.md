@@ -181,9 +181,10 @@ gate that treated 2 as 0 would pass while the files differ. The report and the
   compare equal, since none of those moves can change a computed value.
   Cascade-significant order is kept distinct (two writes of the same
   property, a shorthand and its longhand, a load-bearing vendor-prefixed
-  fallback, the order of `@layer` blocks among themselves); where a layer
-  block stands among unlayered rules is no difference, since the cascade
-  sorts by layer before order of appearance. A prefixed
+  fallback, two `@layer` blocks of one layer); where a layer block stands
+  among unlayered rules, and whether the layer order is written as a pin or by
+  the order of the blocks, is no difference, since the cascade sorts by layer
+  before order of appearance. A prefixed
   declaration the [WHATWG Compatibility Standard](https://compat.spec.whatwg.org/#css-legacy-name-aliases)
   section 3.4.1 names a legacy name alias is the same property as its
   unprefixed twin, so an identical pair of them normalizes to the twin alone,

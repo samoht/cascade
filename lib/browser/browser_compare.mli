@@ -9,7 +9,11 @@
     [::placeholder], [::first-letter] and [::first-line] are sampled at every
     viewport width a media condition in either sheet names and under every
     interaction state either sheet names, a state applied to every element at
-    once. *)
+    once. A width or state named only by rules no element of the document can
+    match is not sampled, since such a rule changes no computed value; the rules
+    are judged as [cascade prune] judges them, so a selector the matcher has no
+    model for, [:hover] among them, counts as matching. The sheets themselves
+    are rendered as written. *)
 
 type difference = {
   viewport : string;  (** The viewport sampled, as [WIDTHxHEIGHT]. *)
