@@ -1367,6 +1367,40 @@ let canonical_missing_components_under_transition () =
     (equal "@starting-style{.x{color:oklab(0% none none)}}"
        "@starting-style{.x{color:#000}}")
 
+(* The same sec. 4.4 reading in a custom property: a colour function in the
+   stream is a colour wherever the stream substitutes, so its missing axes are
+   the zeros the longhand's are. lightningcss writes Tailwind's [color-mix(in
+   srgb, rgb(0 0 0) 50%, transparent)] as an OKLab with [none] chroma axes where
+   tw writes the hex. The carve-outs hold as for a longhand: a rule
+   transitioning the property, a keyframe and a [@starting-style] block keep the
+   axes as written. *)
+let canonical_custom_missing_color_components_as_zero () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "missing OKLab axes in a custom stream read as zero against the hex" true
+    (equal ".a{--tw-mask-top-from-color:oklab(0% none none/.5)}"
+       ".a{--tw-mask-top-from-color:#00000080}");
+  Alcotest.(check bool)
+    "a missing OKLCh chroma and hue too" true
+    (equal ".a{--c:oklch(0% none none/.5)}" ".a{--c:#00000080}");
+  Alcotest.(check bool)
+    "a missing Lab axis too" true
+    (equal ".a{--c:lab(0% none none/.5)}" ".a{--c:#00000080}");
+  Alcotest.(check bool)
+    "a missing LCh chroma and hue too" true
+    (equal ".a{--c:lch(0% none none/.5)}" ".a{--c:#00000080}");
+  Alcotest.(check bool)
+    "the resolved colour keeps its alpha" false
+    (equal ".a{--c:oklab(0% none none/.5)}" ".a{--c:#00000040}");
+  Alcotest.(check bool)
+    "a rule transitioning the property keeps the axes apart" false
+    (equal ".a{--c:oklab(0% none none/.5);transition:--c 1s}"
+       ".a{--c:#00000080;transition:--c 1s}");
+  Alcotest.(check bool)
+    "a keyframe keeps its missing axes" false
+    (equal "@keyframes k{from{--c:oklab(0% none none)}to{--c:#fff}}"
+       "@keyframes k{from{--c:#000}to{--c:#fff}}")
+
 let canonical_custom_font_family_quotes () =
   (* A quoted multi-word font name and the unquoted ident sequence substitute
      identically into font-family, so canonical comparison equates them inside a
@@ -2430,6 +2464,8 @@ let suite =
         `Quick canonical_missing_components_survive_interpolation;
       Alcotest.test_case "canonical missing components under a transition"
         `Quick canonical_missing_components_under_transition;
+      Alcotest.test_case "canonical missing components in a custom property"
+        `Quick canonical_custom_missing_color_components_as_zero;
       Alcotest.test_case "canonical custom font-family quotes" `Quick
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
