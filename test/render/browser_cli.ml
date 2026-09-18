@@ -100,11 +100,10 @@ let () =
   check "the pseudo-element is named" (contains report "p:nth-child(1)::after");
   check "its content is reported going from the string to none"
     (contains report "content: \"You should use OCaml\" -> none");
-  check "and the difference paints"
-    (contains report "of them painting differently"
-    && not
-         (contains report "content: \"You should use OCaml\" -> none  (paints")
-    );
+  check "and the render that differs is placed"
+    (contains report "Renders that differ: 1"
+    && contains report "1024x768 none: "
+    && contains report " pixels differ at (");
   (* The same pair as JSON carries the same change, machine-readable. *)
   let json, status = diff [ "--json"; a; b ] in
   check "the JSON document exits 1 too" (status = 1);
@@ -112,13 +111,15 @@ let () =
     (contains json "\"property\": \"content\"");
   check "the JSON records the browser"
     (contains json "\"browser\": {" && contains json "\"version\": \"");
-  check "the JSON counts what was sampled"
-    (contains json "\"samples\": " && contains json "\"elements\": ");
+  check "the JSON counts what was rendered"
+    (contains json "\"captures\": " && contains json "\"elements\": ");
+  check "and places the render that differs"
+    (contains json "\"renders\": [" && contains json "\"first_size\": ");
   (* Identical inputs are identical to the browser. *)
   let report, status = diff [ a; a ] in
   check "an identical pair exits 0" (status = 0);
-  check "and reports no difference"
-    (contains report "Differences: 0 computed values");
+  check "and reports no render that differs"
+    (contains report "Renders that differ: 0");
   (* A browser that answers nothing is a failure, never an equivalence: a
      stand-in that exits without a page is what a broken or missing browser
      looks like to the driver. *)

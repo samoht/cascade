@@ -4,6 +4,17 @@ module Css = Cascade.Css
 module Html = Cascade_html.Html
 module Prune = Cascade.Prune.Make (Cascade_html.Html_node)
 
+type render = {
+  viewport : string;
+  state : string;
+  x : int;
+  y : int;
+  width : int;
+  height : int;
+  first_size : string;
+  second_size : string;
+}
+
 type difference = {
   viewport : string;
   state : string;
@@ -12,10 +23,13 @@ type difference = {
   property : string;
   first : string;
   second : string;
-  paints_same : bool;
 }
 
-type t = { meta : (string * string) list; differences : difference list }
+type t = {
+  meta : (string * string) list;
+  renders : render list;
+  differences : difference list;
+}
 
 (* The job the driver reads is JSON. It holds strings alone, so a string escaper
    is the whole writer: a quote, a backslash and a control byte are escaped, and
@@ -167,35 +181,55 @@ let read_lines ic =
   in
   loop []
 
-(* The driver's TSV: [m] metadata, [d] a difference and [x] an error the page
+(* The driver's TSV: [m] metadata, [r] a render that differs, [d] a computed
+   value the elements under it disagree on, and [x] an error the page
    reported. *)
 let parse_output lines =
-  let meta, differences, errors =
+  let meta, renders, differences, errors =
     List.fold_left
-      (fun (meta, differences, errors) line ->
+      (fun (meta, renders, differences, errors) line ->
         match String.split_on_char '\t' line with
-        | [ "m"; key; value ] -> ((key, value) :: meta, differences, errors)
-        | [
-         "d"; viewport; state; element; pseudo; property; first; second; paints;
-        ] ->
+        | [ "m"; key; value ] ->
+            ((key, value) :: meta, renders, differences, errors)
+        | [ "r"; viewport; state; x; y; width; height; first_size; second_size ]
+          -> (
+            match
+              ( int_of_string_opt x,
+                int_of_string_opt y,
+                int_of_string_opt width,
+                int_of_string_opt height )
+            with
+            | Some x, Some y, Some width, Some height ->
+                let r =
+                  {
+                    viewport;
+                    state;
+                    x;
+                    y;
+                    width;
+                    height;
+                    first_size;
+                    second_size;
+                  }
+                in
+                (meta, r :: renders, differences, errors)
+            | _ -> (meta, renders, differences, errors))
+        | [ "d"; viewport; state; element; pseudo; property; first; second ] ->
             let d =
-              {
-                viewport;
-                state;
-                element;
-                pseudo;
-                property;
-                first;
-                second;
-                paints_same = String.equal paints "1";
-              }
+              { viewport; state; element; pseudo; property; first; second }
             in
-            (meta, d :: differences, errors)
-        | "x" :: rest -> (meta, differences, String.concat "\t" rest :: errors)
-        | _ -> (meta, differences, errors))
-      ([], [], []) lines
+            (meta, renders, d :: differences, errors)
+        | "x" :: rest ->
+            (meta, renders, differences, String.concat "\t" rest :: errors)
+        | _ -> (meta, renders, differences, errors))
+      ([], [], [], []) lines
   in
-  ({ meta = List.rev meta; differences = List.rev differences }, List.rev errors)
+  ( {
+      meta = List.rev meta;
+      renders = List.rev renders;
+      differences = List.rev differences;
+    },
+    List.rev errors )
 
 (* [browser_diff.js] is compiled into the library, so an installed cascade
    carries its own driver; it is written beside the job it runs on. *)
@@ -247,7 +281,7 @@ let mkdtemp () =
 let meta_int report key =
   Option.bind (List.assoc_opt key report.meta) int_of_string_opt
 
-let visible report = List.filter (fun d -> not d.paints_same) report.differences
+let identical report = report.renders = []
 
 let version chrome =
   match Browser.chrome_version chrome with
@@ -297,10 +331,10 @@ let run ~html sheets =
         :: meta;
     }
   in
-  match (errors, meta_int report "samples") with
+  match (errors, meta_int report "captures") with
   | _ :: _, _ -> Error (String.concat "\n" ("the page reported:" :: errors))
   | [], Some n when n > 0 -> Ok report
-  | [], _ -> Error "the browser sampled nothing, so nothing was compared"
+  | [], _ -> Error "the browser rendered nothing, so nothing was compared"
 
 (* ===== The report for a reader ===== *)
 
@@ -324,15 +358,11 @@ let add_header ~first ~second ~html report buf =
   add
     (String.concat ""
        [
-         "Sampled ";
+         "Captured ";
+         meta "captures";
+         " renders of ";
          meta "elements";
-         " elements and ";
-         meta "pseudos";
-         " over ";
-         meta "properties";
-         " properties (";
-         meta "samples";
-         " values)";
+         " elements";
          "\n";
        ]);
   (match meta_int report "document_styles_removed" with
@@ -350,16 +380,48 @@ let add_header ~first ~second ~html report buf =
   add
     (String.concat ""
        [
-         "Differences: ";
-         meta "differences";
-         " computed values, ";
-         string_of_int (List.length (visible report));
-         " of them painting differently";
-         (match List.assoc_opt "truncated" report.meta with
-         | Some n -> String.concat "" [ " (listing the first "; n; ")" ]
-         | None -> "");
+         "Renders that differ: ";
+         string_of_int (List.length report.renders);
          "\n";
        ])
+
+(* Where a render differs: the box the differing pixels span, or the two page
+   sizes when the page laid out to different extents. *)
+let add_renders report buf =
+  List.iter
+    (fun (r : render) ->
+      Buffer.add_string buf
+        (String.concat ""
+           [
+             "  ";
+             r.viewport;
+             " ";
+             r.state;
+             ": ";
+             (if String.equal r.first_size r.second_size then
+                String.concat ""
+                  [
+                    string_of_int r.width;
+                    "x";
+                    string_of_int r.height;
+                    " pixels differ at (";
+                    string_of_int r.x;
+                    ",";
+                    string_of_int r.y;
+                    ")";
+                  ]
+              else
+                String.concat ""
+                  [
+                    "the page is ";
+                    r.first_size;
+                    " under the first sheet and ";
+                    r.second_size;
+                    " under the second";
+                  ]);
+             "\n";
+           ]))
+    report.renders
 
 (* One difference is reported once with the contexts it holds in, since most
    hold under every viewport and state. *)
@@ -401,10 +463,29 @@ let where ~(contexts : context list) (ctxs : context list) =
   | [] -> ""
   | names -> String.concat "" [ "  ["; String.concat ", " names; "]" ]
 
+(* The heading over the computed values, with how many there were and, when the
+   listing stopped short, how many are listed. *)
+let add_differences_heading report buf =
+  match report.differences with
+  | [] -> ()
+  | _ :: _ ->
+      Buffer.add_string buf
+        (String.concat ""
+           [
+             "\nComputed values the elements under those pixels disagree on (";
+             Option.value ~default:"?"
+               (List.assoc_opt "differences" report.meta);
+             (match List.assoc_opt "truncated" report.meta with
+             | Some n -> String.concat "" [ ", listing the first "; n ]
+             | None -> "");
+             "):\n";
+           ])
+
 (* A pseudo-element repeating its element's difference in the same contexts
    inherits it, and is counted rather than listed. *)
 let add_differences report buf =
   let add = Buffer.add_string buf in
+  add_differences_heading report buf;
   let contexts =
     List.sort_uniq compare
       (List.map (fun d -> (d.viewport, d.state)) report.differences)
@@ -427,9 +508,6 @@ let add_differences report buf =
         if head <> !last then (
           last := head;
           add (String.concat "" [ "\n"; head; "\n" ]));
-        let paints =
-          List.exists (fun d -> key d = k && d.paints_same) report.differences
-        in
         add
           (String.concat ""
              [
@@ -439,7 +517,6 @@ let add_differences report buf =
                first;
                " -> ";
                second;
-               (if paints then "  (paints the same)" else "");
                where ~contexts ctxs;
                "\n";
              ]))
@@ -455,11 +532,13 @@ let add_differences report buf =
 
 let pp ppf report =
   let buf = Buffer.create 1024 in
+  add_renders report buf;
   add_differences report buf;
   Format.pp_print_string ppf (Buffer.contents buf)
 
 let to_string ~first ~second ~html report =
   let buf = Buffer.create 1024 in
   add_header ~first ~second ~html report buf;
+  add_renders report buf;
   add_differences report buf;
   Buffer.contents buf

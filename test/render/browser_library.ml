@@ -1,10 +1,12 @@
 (* [Browser_compare.run] against the browser it drives, the way a program that
-   links the library calls it: a changed declaration is a difference naming the
-   element and the property, a pseudo-element's content is sampled, an identical
-   pair has no difference, and a browser that answers nothing is an error rather
-   than an empty report. A viewport width is sampled when a rule some element of
-   the page can match names it, and not when only rules no element matches do; a
-   sheet whose reader dropped a rule is sampled as written.
+   links the library calls it: a changed declaration is a render that differs,
+   explained by a difference naming the element and the property, a
+   pseudo-element's content is read, an identical pair has no render that
+   differs, two spellings of one picture have none either, and a browser that
+   answers nothing is an error rather than an empty report. A viewport width is
+   rendered when a rule some element of the page can match names it, and not
+   when only rules no element matches do; a sheet whose reader dropped a rule is
+   rendered as written.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
@@ -26,6 +28,11 @@ let differences sheets =
   | Ok report -> Some report.differences
   | Error _ -> None
 
+let renders sheets =
+  match Browser_compare.run ~html sheets with
+  | Ok report -> Some report.renders
+  | Error _ -> None
+
 let () =
   Browser.suppressed "browser_library";
   let node =
@@ -34,15 +41,16 @@ let () =
   (match Browser.chrome_binary () with
   | Some _ -> ()
   | None -> skip "no headless browser");
-  (match differences [ ("first", first); ("second", first) ] with
-  | Some [] -> check "an identical pair has no difference" true
-  | Some _ | None -> check "an identical pair has no difference" false);
-  (match
-     differences
-       [
-         ("first", first); ("second", ".a{color:blue}.a::before{content:\"y\"}");
-       ]
-   with
+  (match renders [ ("first", first); ("second", first) ] with
+  | Some [] -> check "an identical pair renders the same" true
+  | Some _ | None -> check "an identical pair renders the same" false);
+  let changed =
+    [ ("first", first); ("second", ".a{color:blue}.a::before{content:\"y\"}") ]
+  in
+  (match renders changed with
+  | Some (_ :: _) -> check "a changed declaration renders differently" true
+  | Some [] | None -> check "a changed declaration renders differently" false);
+  (match differences changed with
   | Some ds ->
       let on property pseudo =
         List.exists
@@ -50,15 +58,22 @@ let () =
             String.equal d.property property && String.equal d.pseudo pseudo)
           ds
       in
-      check "a changed declaration is reported" (on "color" "");
-      check "and its paint differs"
-        (List.exists
-           (fun (d : Browser_compare.difference) ->
-             String.equal d.property "color"
-             && String.equal d.pseudo "" && not d.paints_same)
-           ds);
-      check "a pseudo-element's content is sampled" (on "content" "::before")
+      check "the difference names the property" (on "color" "");
+      check "a pseudo-element's content is read" (on "content" "::before")
   | None -> check "a changed pair runs" false);
+  (* Two spellings of one picture are not a difference, whatever a script reads
+     back: the browser serialises them apart and paints them alike. *)
+  let same_picture name a b =
+    match renders [ ("first", a); ("second", b) ] with
+    | Some [] -> check name true
+    | Some _ | None -> check name false
+  in
+  same_picture "a colour keyword and its hex render the same" ".a{color:red}"
+    ".a{color:#f00}";
+  same_picture "background:none and background:0 0 render the same"
+    ".a{background:none}" ".a{background:0 0}";
+  same_picture "a position keyword and its length render the same"
+    ".a{background:url() left top red}" ".a{background:url() 0 0 red}";
   (* A width named only by a rule no element of the page matches cannot change
      what the page computes, so it is not sampled; one named by a rule that does
      match is. A rule the reader drops leaves nothing to say whether it matches,
@@ -98,39 +113,28 @@ let () =
     (samples 800 dropped);
   (* CSS Images 3 sec. 3.5.3 places an unpositioned last colour stop at 100%, so
      a mask written with the position and one written without it are the same
-     pixels, though the browser serialises the two differently. A last stop at
-     50% is another image. *)
+     pixels, though the browser serialises the two differently. A first stop
+     moved to 50% is another image. *)
   let mask stops =
     String.concat ""
-      [ ".a{mask-image:radial-gradient(25% 50% at 30% 50%,"; stops; ")}" ]
+      [
+        ".a{background:red;mask-image:radial-gradient(25% 50% at 30% 50%,";
+        stops;
+        ")}";
+      ]
   in
-  let mask_paints stops =
-    match
-      differences
-        [ ("first", mask "#fff 100%,#0000 100%"); ("second", mask stops) ]
-    with
-    | Some ds ->
-        let masks =
-          List.filter
-            (fun (d : Browser_compare.difference) ->
-              String.equal d.property "mask-image")
-            ds
-        in
-        Some
-          ( masks <> [],
-            List.for_all (fun d -> d.Browser_compare.paints_same) masks )
-    | None -> None
-  in
-  (match mask_paints "#fff 100%,#0000" with
-  | Some (true, paints) ->
-      check "an unpositioned last stop paints as one at 100%" paints
-  | Some (false, _) -> check "the implied stop is spelled differently" false
-  | None -> check "the implied stop pair runs" false);
-  (match mask_paints "#fff 100%,#0000 50%" with
-  | Some (true, paints) ->
-      check "a last stop at 50% paints differently" (not paints)
-  | Some (false, _) -> check "the 50% stop is reported" false
-  | None -> check "the 50% stop pair runs" false);
+  same_picture "an unpositioned last stop renders as one at 100%"
+    (mask "#fff 100%,#0000 100%")
+    (mask "#fff 100%,#0000");
+  (match
+     renders
+       [
+         ("first", mask "#fff 100%,#0000 100%");
+         ("second", mask "#fff 50%,#0000 100%");
+       ]
+   with
+  | Some (_ :: _) -> check "a first stop at 50% renders differently" true
+  | Some [] | None -> check "a first stop at 50% renders differently" false);
   (* A stand-in that exits without a page is what a broken browser looks like to
      the driver. *)
   let broken =

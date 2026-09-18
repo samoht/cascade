@@ -3,28 +3,44 @@
    needed to check it. *)
 
 let difference ?(viewport = "1024x768") ?(state = "none") ?(pseudo = "")
-    ?(paints_same = false) ~element property first second =
+    ~element property first second =
+  { Browser_compare.viewport; state; element; pseudo; property; first; second }
+
+let render ?(viewport = "1024x768") ?(state = "none") ?(size = "1024x768")
+    ?(second_size = size) x y width height =
   {
     Browser_compare.viewport;
     state;
-    element;
-    pseudo;
-    property;
-    first;
-    second;
-    paints_same;
+    x;
+    y;
+    width;
+    height;
+    first_size = size;
+    second_size;
   }
 
-let report ?(meta = []) differences =
+let report ?(meta = []) ?renders differences =
+  let renders =
+    match renders with
+    | Some rs -> rs
+    | None ->
+        List.sort_uniq compare
+          (List.map
+             (fun (d : Browser_compare.difference) ->
+               render ~viewport:d.viewport ~state:d.state 0 0 10 10)
+             differences)
+  in
   {
     Browser_compare.meta =
       [
         ("browser", "152.0");
         ("viewports", "320x768 1024x768");
         ("states", "none hover");
+        ("captures", string_of_int (2 * List.length renders));
         ("differences", string_of_int (List.length differences));
       ]
       @ meta;
+    renders;
     differences;
   }
 
@@ -95,25 +111,37 @@ let test_inherited_pseudo_is_counted () =
     "the distinct one is listed" true
     (contains out "p::after\n  content: \"x\" -> none")
 
-(* The header counts what paints differently, and a value that paints the same
-   says so beside it. *)
-let test_paint_is_reported () =
-  let same =
-    difference ~paints_same:true ~element:"p" "color" "rgb(255, 0, 0)" "red"
+(* A render that differs says where, in pixels, and one whose two captures are
+   not the same size says how big each page laid out. *)
+let test_renders_are_placed () =
+  let r =
+    report
+      ~renders:
+        [
+          render ~state:"hover" 8 10 32 13;
+          render ~viewport:"320x768" ~size:"320x900" ~second_size:"320x940" 0 0
+            320 940;
+        ]
+      []
   in
-  let visible = difference ~element:"p" "width" "10px" "20px" in
-  let r = report [ same; visible ] in
   let out = text r in
   Alcotest.(check bool)
-    "one paints differently" true
-    (contains out
-       "Differences: 2 computed values, 1 of them painting differently");
+    "counted in the header" true
+    (contains out "Renders that differ: 2");
   Alcotest.(check bool)
-    "the other is marked" true
-    (contains out "color: rgb(255, 0, 0) -> red  (paints the same)");
-  Alcotest.(check int)
-    "visible keeps the one that paints" 1
-    (List.length (Browser_compare.visible r))
+    "the box is named" true
+    (contains out "  1024x768 hover: 32x13 pixels differ at (8,10)\n");
+  Alcotest.(check bool)
+    "a size change is named" true
+    (contains out
+       "  320x768 none: the page is 320x900 under the first sheet and 320x940 \
+        under the second\n");
+  Alcotest.(check bool)
+    "the report is not identical" false
+    (Browser_compare.identical r);
+  Alcotest.(check bool)
+    "a report with no render that differs is" true
+    (Browser_compare.identical (report []))
 
 let test_truncated_listing_says_so () =
   let r =
@@ -123,7 +151,7 @@ let test_truncated_listing_says_so () =
   in
   Alcotest.(check bool)
     "the listing is marked short" true
-    (contains (text r) "(listing the first 5000)")
+    (contains (text r) ", listing the first 5000)")
 
 let suite =
   ( "browser_compare",
@@ -133,7 +161,7 @@ let suite =
       Alcotest.test_case "one state is named" `Quick test_one_state_is_named;
       Alcotest.test_case "inherited pseudo is counted" `Quick
         test_inherited_pseudo_is_counted;
-      Alcotest.test_case "paint is reported" `Quick test_paint_is_reported;
+      Alcotest.test_case "renders are placed" `Quick test_renders_are_placed;
       Alcotest.test_case "truncated listing says so" `Quick
         test_truncated_listing_says_so;
     ] )
