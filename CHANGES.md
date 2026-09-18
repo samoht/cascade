@@ -742,33 +742,33 @@ to lose a whole rule over one bad piece. Both are gone.
   false CSS Conditional 3 sec. 6.1 makes it: Tailwind's `@supports
   (@media(width>=1px): var(--tw))` against nothing compares equal, under
   `--enforce-spec` too, since no reading answers the guard yes. `--minify`
-  keeps the guard, and `Supports.never_holds` is the reading (#NNNN)
+  keeps the guard, and `Supports.never_holds` is the reading (#1270)
 - `cascade diff` no longer exits 2 over a declaration its reader refused: the
   reader is held to the browser's accept set, so a browser drops that
   declaration from whichever file holds it and renders the same, and the
   verdict is the one over what remains, the parse warning kept. Tailwind's
   `filter: blur(<value>)` placeholder against nothing exits 0. A rule the
   reader dropped still withholds the verdict, and `Css_compare.unread_separates`
-  is the library's answer (#NNNN)
+  is the library's answer (#1270)
 - A `color-mix()` or a relative colour over a `light-dark()` argument is the
   `light-dark()` of that operation over each branch, which CSS Color 5 sec. 6
   picks by the element's colour scheme, so `color-mix(in oklab,
   light-dark(red, #00f) 50%, #0000)` and `light-dark(#ff000080, #0000ff80)`
   are one colour under `--diff=canonical` and `--minify` writes the second.
   A mix a branch cannot fold stays as written, and `--lossless` keeps the mix
-  (#NNNN)
+  (#1270)
 - An angle compares as the degrees it names under `--diff=canonical`, which
   CSS Values 4 sec. 6.1 makes one dimension under `deg`, `grad`, `rad` and
   `turn`: `.5turn` and `180deg` are one angle in `rotate`, in a `transform`
   function and in an unregistered custom property's stream, and `1.5rad` is
   the `85.9437deg` lightningcss writes, under the six-significant-figure
   budget a quotient already takes; `--lossless` keeps the unit as written
-  (#NNNN)
+  (#1270)
 - A colour function in a custom property's stream reads a missing axis as
   the zero CSS Color 4 sec. 4.4 makes it, as a colour longhand already did, so
   `--tw-mask-top-from-color:oklab(0% none none/.5)` and its `#00000080` twin
   are one colour under `--diff=canonical`; a rule transitioning the custom
-  property keeps them apart, as it does for a longhand (#NNNN)
+  property keeps them apart, as it does for a longhand (#1270)
 - `--diff=canonical` is several times faster on a large stylesheet, for
   byte-identical output: tw's site sheet against Tailwind's compiled one
   drops from 22s to 5.5s of CPU. Unwrapping a `@supports` guard every target
