@@ -8,11 +8,11 @@ share a single exhaustive walk, so adding a statement kind after this release
 breaks the build at every place that has to decide about it.
 
 Correctness was checked against a browser rather than against cascade. The
-suite renders a sheet and its optimised form in headless Chrome, then compares
-every property `getComputedStyle` reports on every element. It also replays
-2960 recorded minification cases carrying six minifiers' answers. Several of
-the fixes below are cases where Chrome disagreed with the CSS cascade emitted,
-not readings of the spec.
+suite renders a sheet and its optimised form in headless Chrome, over a
+document derived from the sheet's own selectors, and compares the two pages
+pixel for pixel. It also replays 2960 recorded minification cases carrying six
+minifiers' answers. Several of the fixes below are cases where Chrome disagreed
+with the CSS cascade emitted, not readings of the spec.
 
 **Upgrading from 1.1.0.** Many of the fixes below change the CSS cascade emits
 for input 1.1.0 already accepted, and enough of them are miscompiles that a
@@ -861,8 +861,8 @@ to lose a whole rule over one bad piece. Both are gone.
   check comparing a sheet against a minified form that dropped or synthesised
   one of those aliases changes answer (#1200)
 - A browser-backed sweep checks the guarantee itself: every pair
-  `--diff=canonical` reports identical is rendered in headless Chrome and every
-  computed-style difference is a conflation
+  `--diff=canonical` reports identical is rendered in headless Chrome and a
+  page that paints differently under the two is a conflation
 - Canonical diff equates the rewrites that cannot change what a browser
   computes: a shorthand against its four side longhands, `:is(a, b)` against the
   list `a, b` when the arguments share one specificity, equal `@supports` blocks
@@ -1020,6 +1020,18 @@ to lose a whole rule over one bad piece. Both are gone.
   `--enforce-spec` can drop a rule with a raw non-ASCII selector without
   `--minify`, and `--profile` without `--minify` no longer prints an empty
   factoring report (#611, #625, #628, #740)
+
+### Testing
+
+- The render harnesses under `test/render` judge by the raster through
+  `Browser_compare.run`, the oracle behind `cascade diff --browser`: a
+  stylesheet and each form cascade's transforms make of it (`optimize`,
+  lossless `optimize`, the minified text read back, `inline_vars` and `prune`),
+  a pair `--diff=canonical` calls identical, a sheet and its `var()`-resolved
+  form, and a sheet and the page `cascade apply` writes from it, must each
+  paint the same page. The computed-style drivers went with the value filters
+  and colour exemptions they needed, so no harness decides that two spellings
+  are one: the browser paints them alike or the run fails (#1269)
 
 ## 1.1.0
 
