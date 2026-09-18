@@ -9822,17 +9822,28 @@ val canonicalize_rule_order :
       channels all land on a whole byte is keyed as the [rgb()] spelling of the
       same colour, which emission cannot do either because [color()] needs a
       browser that parses it. A [none] channel of a Lab-family colour standing
-      as a whole colour-longhand value is keyed as the zero CSS Color 4 sec. 4.4
+      as a whole colour-longhand value, or as a colour function of a
+      custom-property token stream, is keyed as the zero CSS Color 4 sec. 4.4
       says a missing component behaves as, so a converted achromatic [oklab()]
       meets the hex a minifier writes for it; sec. 13.3 keeps that off the
       positions the sheet interpolates, so a gradient stop, a [color-mix()]
-      operand, a custom-property token stream, [@keyframes], [@starting-style]
-      and a colour whose own rule transitions the property it writes keep their
-      [none], and [lossless] bounds how far the resolved colour respells. An
-      identical [-webkit-text-decoration-color] compatibility declaration is
-      dropped when its unprefixed twin is present; a differing or prefixed-only
-      declaration is retained. These are comparison-side normalisations; this
-      function does not change {!val-optimize}'s configured emission policy. *)
+      operand, [@keyframes], [@starting-style] and a colour whose own rule
+      transitions the property it writes, a custom property named by its own
+      name included, keep their [none], and [lossless] bounds how far the
+      resolved colour respells. An angle is keyed as the degrees it names, which
+      CSS Values 4 sec. 6.1 makes one dimension under [deg], [grad], [rad] and
+      [turn], in the rotate property, in a transform function and in an
+      unregistered custom property's stream, a converted unit rounded to the
+      six-significant-figure budget a quotient takes; [lossless] keeps the unit
+      as written. An [@supports] guard false however a user agent answers its
+      feature tests, reading a parenthesised [<general-enclosed>] term as the
+      false CSS Conditional 3 sec. 6.1 makes it ({!Supports.never_holds}), is
+      dropped with its block under either reading, since no reading answers it
+      yes. An identical [-webkit-text-decoration-color] compatibility
+      declaration is dropped when its unprefixed twin is present; a differing or
+      prefixed-only declaration is retained. These are comparison-side
+      normalisations; this function does not change {!val-optimize}'s configured
+      emission policy. *)
 
 val optimize :
   ?scope:Optimize.scope ->
