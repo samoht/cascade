@@ -1,9 +1,9 @@
 (* The browser comparison behind [cascade diff --browser --html DOC A B]:
-   [Browser_compare] renders the two sheets over the document and reports every
-   computed-style value they disagree on. What is left here is reading the
-   files, the JSON document and the exit status. A run that reaches no browser,
-   samples nothing or breaks in the driver fails rather than reporting
-   equivalence. *)
+   [Browser_compare] renders the two sheets over the document and reports the
+   renders that differ, with the computed values the elements under them
+   disagree on. What is left here is reading the files, the JSON document and
+   the exit status. A run that reaches no browser, renders nothing or breaks in
+   the driver fails rather than reporting equivalence. *)
 
 module J = Cli_json
 
@@ -17,7 +17,19 @@ let json_difference (d : Browser_compare.difference) =
       ("property", J.String d.property);
       ("first", J.String d.first);
       ("second", J.String d.second);
-      ("paints_same", J.Bool d.paints_same);
+    ]
+
+let json_render (r : Browser_compare.render) =
+  J.Obj
+    [
+      ("viewport", J.String r.viewport);
+      ("state", J.String r.state);
+      ("x", J.Int r.x);
+      ("y", J.Int r.y);
+      ("width", J.Int r.width);
+      ("height", J.Int r.height);
+      ("first_size", J.String r.first_size);
+      ("second_size", J.String r.second_size);
     ]
 
 let words s = List.filter (fun w -> w <> "") (String.split_on_char ' ' s)
@@ -49,9 +61,9 @@ let json_report ~file1 ~file2 ~html (report : Browser_compare.t) =
       ("samples", int "samples");
       ("document_styles_removed", int "document_styles_removed");
       ("doctype_added", J.Bool (meta "doctype_added" = "1"));
+      ("captures", int "captures");
+      ("renders", J.List (List.map json_render report.renders));
       ("differences", int "differences");
-      ( "visible_differences",
-        J.Int (List.length (Browser_compare.visible report)) );
       ("truncated", J.Bool (List.mem_assoc "truncated" report.meta));
       ("errors", J.List []);
       ("changes", J.List (List.map json_difference report.differences));
@@ -65,11 +77,11 @@ let compare ~json ~html ~file1 ~file2 =
   | Error msg ->
       Fmt.epr "Error: %s@." msg;
       Stdlib.exit Cli_exit.cannot_determine
-  | Ok report -> (
+  | Ok report ->
       if json then (
         print_string (J.to_string (json_report ~file1 ~file2 ~html report));
         print_newline ())
       else
         print_string
           (Browser_compare.to_string ~first:file1 ~second:file2 ~html report);
-      match report.differences with [] -> Ok () | _ :: _ -> Stdlib.exit 1)
+      if Browser_compare.identical report then Ok () else Stdlib.exit 1

@@ -854,7 +854,8 @@ to lose a whole rule over one bad piece. Both are gone.
 ### Library
 
 - `Browser_compare.run` in `cascade.browser` runs the comparison behind
-  `cascade diff --browser` for a program with its own page and sheets (#1260).
+  `cascade diff --browser` for a program with its own page and sheets, and
+  `Browser_compare.identical` is its verdict (#1260, #1268).
 - `Css.add_var_fallbacks` gives each `var()` with no fallback of its own the
   value a lookup answers, so a sheet whose tokens are declared elsewhere, such
   as Tailwind's `@reference` output, still resolves them (#1236).
@@ -926,23 +927,23 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### CLI tools
 
-- `cascade diff --browser` over large stylesheets finishes in minutes where it
-  did not finish: it no longer samples a viewport width or interaction state
-  that only rules no element of the page can match name (#1265)
-- `cascade diff --browser` no longer reports a gradient as painting
-  differently when one side writes a first stop at 0% or a last stop at 100%
-  and the other leaves the position out (#1266).
 - `cascade diff --browser --html PAGE.html A.css B.css` renders both files
-  over the document in a headless Chromium and reports every computed-style
-  value the two disagree on, element and pseudo-element by property, at every
-  viewport width and interaction state either file names, with the browser
-  version and what was sampled recorded and `--json` for the same as a
-  document. Values are compared as the browser spells them, and each
-  difference says whether the two paint the same; no cascade comparison is
-  involved, so it can catch a false negative of `--diff=canonical`. Exits 2
-  without node or a browser, on a driver failure, or when nothing was
-  sampled, never claiming equivalence. The node and browser locator the render
-  harnesses use is `cascade.browser` now, shared with the CLI (#1252)
+  over the document in a headless Chromium and reports where the renders
+  differ. The page is loaded afresh under each file at every viewport width
+  and interaction state either file names, animations held at their start
+  and transitions finished, and the whole page is captured and compared pixel
+  for pixel. The verdict is the raster and nothing normalises it: two
+  spellings the browser paints alike are one render, whatever
+  `getComputedStyle` says of them, and no cascade comparison is involved, so
+  it can catch a false negative of `--diff=canonical`. Where a render
+  differs, the computed styles of the elements under the differing pixels are
+  listed, so the report names a property. Only a width or state some element
+  of the page can reach is rendered, which keeps a large sheet to minutes.
+  The browser version and what was rendered are recorded, `--json` writes
+  the same as a document, and it exits 2 without node or a browser, on a
+  driver failure, or when nothing was rendered, never claiming equivalence.
+  The node and browser locator the render harnesses use is `cascade.browser`,
+  shared with the CLI (#1252, #1265, #1266, #1268)
 - `cascade prune PAGE.html... STYLE.css` removes the rules a set of HTML
   documents cannot use, `--dry-run` reporting instead of writing. It and
   `cascade apply` leave alone the two selector forms Selectors 4 defines and no
