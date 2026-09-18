@@ -737,6 +737,11 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A colour function in a custom property's stream reads a missing axis as
+  the zero CSS Color 4 sec. 4.4 makes it, as a colour longhand already did, so
+  `--tw-mask-top-from-color:oklab(0% none none/.5)` and its `#00000080` twin
+  are one colour under `--diff=canonical`; a rule transitioning the custom
+  property keeps them apart, as it does for a longhand (#NNNN)
 - `--diff=canonical` is several times faster on a large stylesheet, for
   byte-identical output: tw's site sheet against Tailwind's compiled one
   drops from 22s to 5.5s of CPU. Unwrapping a `@supports` guard every target

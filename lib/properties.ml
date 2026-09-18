@@ -3396,8 +3396,11 @@ let is_color_function name =
    never can. *)
 (* [c] is one component whose syntax fixes it as a colour; fold it to the
    shortest non-keyword spelling, falling back to [fallback ()] when it does not
-   actually parse as a complete colour. *)
-let fold_custom_color ~lossless (c : Component.t) ~fallback =
+   actually parse as a complete colour. [resolve_missing] is
+   {!Values.normalize_color}'s flag: a missing axis reads as the zero CSS Color
+   4 sec. 4.4 makes it, which holds wherever the stream substitutes as it holds
+   for a longhand, and the caller decides where the stream is interpolated. *)
+let fold_custom_color ~lossless ~resolve_missing (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   let cur = Cursor.of_string text in
   match
@@ -3406,7 +3409,8 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
   | Some col when Cursor.is_done cur -> (
       let canon =
         Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color (Values.normalize_color ~lossless col))
+          (Values.nonkeyword_color
+             (Values.normalize_color ~lossless ~resolve_missing col))
       in
       match read_custom_property_value (Cursor.of_string canon) with
       | Tokens cs -> cs
@@ -3526,8 +3530,14 @@ let canonicalize_custom_shadow_components ~lossless components =
       | Typed _ -> components)
   | _ -> components
 
-let rec canonicalize_custom_colors_components ~lossless comps =
-  let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
+let rec canonicalize_custom_colors_components ~lossless
+    ?(resolve_missing = false) comps =
+  let fold_color c ~fallback =
+    fold_custom_color ~lossless ~resolve_missing c ~fallback
+  in
+  let inner =
+    canonicalize_custom_colors_components ~lossless ~resolve_missing
+  in
   List.concat_map
     (fun (c : Component.t) ->
       match c with
@@ -3535,9 +3545,7 @@ let rec canonicalize_custom_colors_components ~lossless comps =
         when is_color_function wrapped.Component.node.name ->
           fold_color c ~fallback:(fun () ->
               let func = wrapped.Component.node in
-              let args =
-                canonicalize_custom_colors_components ~lossless func.arguments
-              in
+              let args = inner func.arguments in
               [
                 Component.Func
                   { wrapped with node = { func with arguments = args } };
@@ -3548,9 +3556,7 @@ let rec canonicalize_custom_colors_components ~lossless comps =
         ->
           fold_custom_calc c ~fallback:(fun () ->
               let func = wrapped.Component.node in
-              let args =
-                canonicalize_custom_colors_components ~lossless func.arguments
-              in
+              let args = inner func.arguments in
               [
                 Component.Func
                   { wrapped with node = { func with arguments = args } };
@@ -3560,18 +3566,14 @@ let rec canonicalize_custom_colors_components ~lossless comps =
           [ drop_function_arguments wrapped ]
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
-          let args =
-            canonicalize_custom_colors_components ~lossless func.arguments
-          in
+          let args = inner func.arguments in
           [
             Component.Func
               { wrapped with node = { func with arguments = args } };
           ]
       | Component.Block wrapped ->
           let block = wrapped.Component.node in
-          let value =
-            canonicalize_custom_colors_components ~lossless block.value
-          in
+          let value = inner block.value in
           [ Component.Block { wrapped with node = { block with value } } ]
       | Component.Preserved _ -> [ c ])
     comps
@@ -4697,7 +4699,7 @@ let normalize_property_value : type a.
           let components' =
             components
             |> canonicalize_custom_shadow_components ~lossless
-            |> canonicalize_custom_colors_components ~lossless
+            |> canonicalize_custom_colors_components ~lossless ~resolve_missing
             |> canonicalize_math_whitespace_components
           in
           if components' == components then value

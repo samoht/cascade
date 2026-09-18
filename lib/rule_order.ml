@@ -967,15 +967,19 @@ let canonical_quotients ~lossless (stmts : statement list) : statement list =
    other colour's analogous component rather than a zero, so at a position that
    interpolates the value the two spellings name two different results.
    {!Declaration.normalize} resolves the sentinel only for a colour standing as
-   a whole colour-longhand value, which leaves a gradient stop, a [color-mix()]
-   operand, a shadow colour and a custom-property token stream reading their
-   [none] as written. A declaration the sheet interpolates from elsewhere is
-   held back too: [@keyframes] and [@starting-style] are the two blocks that
-   exist to be one endpoint of that, so the pass does not descend into them, and
-   a colour whose own rule transitions the property it writes keeps its [none].
-   That guard reads one rule. A transition one rule declares for a colour
-   another rule sets still folds, since seeing it would mean deciding that two
-   selectors match one element, which the projection does not do.
+   a whole colour-longhand value or as a colour function of a custom-property
+   token stream, which leaves a gradient stop, a [color-mix()] operand and a
+   shadow colour reading their [none] as written. The stream's colour is a
+   colour wherever the stream substitutes, and the site it lands at is as
+   invisible to the projection as it is to the hex fold the stream already
+   takes. A declaration the sheet interpolates from elsewhere is held back too:
+   [@keyframes] and [@starting-style] are the two blocks that exist to be one
+   endpoint of that, so the pass does not descend into them, and a colour whose
+   own rule transitions the property it writes keeps its [none], a custom
+   property named by its own name included. That guard reads one rule. A
+   transition one rule declares for a colour another rule sets still folds,
+   since seeing it would mean deciding that two selectors match one element,
+   which the projection does not do.
 
    Guarded like [canonical_color_spelling]: the flagged normalisation is kept
    only where it moves the colour, so no other value fold rides along. *)
