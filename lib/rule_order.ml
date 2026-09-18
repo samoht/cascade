@@ -640,31 +640,32 @@ let keys_written stmt =
       | _ -> acc)
     [] [ stmt ]
 
-(* Per selector, the declarations of the last unguarded rule and the property
-   keys every rule since has written. *)
+(* Per selector, the declarations of the last unguarded rule and where it
+   stands; per property key, where the last rule to write it stands. A key
+   written since that rule is one whose write stands after it. Writing every key
+   into a set per selector instead cost each statement a pass over every
+   selector seen, which is the square of the sheet. *)
 type repeats = {
-  seen :
-    ( string,
-      Declaration.declaration list * (Declaration.prop_key, unit) Hashtbl.t )
-    Hashtbl.t;
+  seen : (string, Declaration.declaration list * int) Hashtbl.t;
+  last_write : (Declaration.prop_key, int) Hashtbl.t;
   dropped : bool ref;
 }
 
 let selector_text sel = Pp.to_string ~minify:true Selector.pp sel
 
-let note_writes t stmt =
-  let keys = keys_written stmt in
-  Hashtbl.iter
-    (fun _ (_, written) ->
-      List.iter (fun k -> Hashtbl.replace written k ()) keys)
-    t.seen
+let note_writes t position stmt =
+  List.iter
+    (fun k -> Hashtbl.replace t.last_write k position)
+    (keys_written stmt)
 
 let repeated t sel d =
   (not (Declaration.is_important d))
   &&
   match Hashtbl.find_opt t.seen sel with
-  | Some (decls, written) ->
-      (not (Hashtbl.mem written (Declaration.property_key d)))
+  | Some (decls, position) ->
+      (match Hashtbl.find_opt t.last_write (Declaration.property_key d) with
+        | Some written -> written <= position
+        | None -> true)
       && List.exists
            (fun d0 ->
              (not (Declaration.is_important d0))
@@ -691,14 +692,20 @@ let prune_guard t stmt body : statement option =
   else Option.Some (with_conditional_body stmt body')
 
 let drop_guarded_repeats outer_changed stmts =
-  let t = { seen = Hashtbl.create 16; dropped = ref false } in
-  let rec go = function
+  let t =
+    {
+      seen = Hashtbl.create 16;
+      last_write = Hashtbl.create 64;
+      dropped = ref false;
+    }
+  in
+  let rec go position = function
     | [] -> []
     | (Rule r as stmt) :: rest ->
-        note_writes t stmt;
+        note_writes t position stmt;
         Hashtbl.replace t.seen (selector_text r.selector)
-          (r.declarations, Hashtbl.create 8);
-        stmt :: go rest
+          (r.declarations, position);
+        stmt :: go (position + 1) rest
     | stmt :: rest -> (
         let pruned =
           match conditional_body stmt with
@@ -707,11 +714,11 @@ let drop_guarded_repeats outer_changed stmts =
         in
         match pruned with
         | Option.Some stmt' ->
-            note_writes t stmt';
-            stmt' :: go rest
-        | Option.None -> go rest)
+            note_writes t position stmt';
+            stmt' :: go (position + 1) rest
+        | Option.None -> go (position + 1) rest)
   in
-  let result = go stmts in
+  let result = go 0 stmts in
   if !(t.dropped) then (
     outer_changed := true;
     result)

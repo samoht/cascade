@@ -1695,6 +1695,31 @@ let regrouping_can_be_disabled () =
     (Astring.String.is_infix ~affix:".text-xs,.text-xs\\/4"
        (out ~regroup:false ()))
 
+(* A guard every judged target satisfies holds wherever its enclosing block
+   does, so its rules apply exactly where they sit: the rules before it, inside
+   it and after it are one run, and the adjacency the guard hid collapses. *)
+let held_guard_joins_the_run () =
+  let out src =
+    Css.to_string ~minify:true
+      (Css.optimize ~judge:Css.Optimize.evergreen_targets
+         (Css.of_string_exn src))
+  in
+  let guard = "@supports (color:color-mix(in lab,red,red))" in
+  Alcotest.(check string)
+    "the rules on both sides of the guard fold with the one inside"
+    ".a{background:#00f;color:red;margin:0}"
+    (out (".a{color:red}" ^ guard ^ "{.a{background:blue}}.a{margin:0}"));
+  Alcotest.(check string)
+    "one guard after another joins the same run"
+    ".a{background:#00f;color:red;margin:0}.b{color:green;padding:0}"
+    (out
+       (".a{color:red}" ^ guard ^ "{.a{background:blue}}" ^ guard
+      ^ "{.a{margin:0}}.b{color:green}" ^ guard ^ "{.b{padding:0}}"));
+  Alcotest.(check string)
+    "a guard the context leaves open keeps its block"
+    ".a{color:red}@supports(display:grud){.a{background:#00f}}"
+    (out ".a{color:red}@supports (display:grud){.a{background:blue}}")
+
 (* The other regrouping pass: two adjacent rules sharing a selector prefix
    become one nested rule, and whether they are adjacent is exactly what an
    unrelated rule between them decides. *)
@@ -1870,6 +1895,7 @@ let optimize_tests =
       `Quick,
       important_survives_non_adjacent_duplicate );
     ("regrouping can be disabled", `Quick, regrouping_can_be_disabled);
+    ("held guard joins the run", `Quick, held_guard_joins_the_run);
     ( "nesting synthesis can be disabled",
       `Quick,
       nesting_synthesis_can_be_disabled );

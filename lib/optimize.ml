@@ -92,22 +92,35 @@ let merge_lone_nested_rule = Nest.merge_lone
 let hoist_declaration_runs = Nest.hoist_declaration_runs
 let synthesize_nesting_statements = Nest.statements
 
-(* Pop the run of [Rule]s most recently pushed onto a reversed accumulator, in
-   forward order, with the remaining accumulator. Unwrapping an [@supports] its
-   context already answers exposes its inner rules, and the preceding rules
-   rejoin the merge pass so an adjacency the wrapper hid can collapse. *)
-let pop_trailing_rules acc =
-  let rec loop acc rules =
-    match acc with
-    | (Rule _ as r) :: rest -> loop rest (r :: rules)
-    | _ -> (rules, acc)
-  in
-  loop acc []
+(* A guard the enclosing context leaves open is put to the browsers the run
+   judges for, when it judges for any: one every target satisfies asks a
+   question they all answer yes to, and one none of them satisfies selects no
+   target. Otherwise the guard stays for the engine to answer. *)
+let supports_decision ~ctx ~supports cond =
+  match Supports.simplify_under ~context:supports cond with
+  | `Cond cond' as open_guard -> (
+      match Ctx.judge ctx with
+      | Some targets -> (
+          match Supports.implemented_by targets cond' with
+          | Some true -> `True
+          | Some false -> `False
+          | None -> open_guard)
+      | None -> open_guard)
+  | decided -> decided
 
-let rec collect_rules (stmt_acc : statement list) (rules_acc : rule list) :
-    statement list -> statement list * rule list * statement list = function
+(* The run of [Rule]s a statement list opens with, as statements and as rules,
+   with what follows it. An [@supports] the context already answers holds
+   wherever the enclosing block does, so its contents apply exactly where they
+   sit: the guard is dropped and its block joins the stream, and a rule it opens
+   with continues the run. Splicing here, while the run is collected, costs the
+   guard nothing; unwrapping it after the run was processed would send the
+   preceding rules through the local passes once per guard. *)
+let rec collect_rules ~holds (stmt_acc : statement list) (rules_acc : rule list)
+    : statement list -> statement list * rule list * statement list = function
   | (Rule r as stmt) :: rest ->
-      collect_rules (stmt :: stmt_acc) (r :: rules_acc) rest
+      collect_rules ~holds (stmt :: stmt_acc) (r :: rules_acc) rest
+  | Supports (cond, block) :: rest when holds cond ->
+      collect_rules ~holds stmt_acc rules_acc (block @ rest)
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
 let factor_rules_incremental ?cache ~settle ~ctx ~held rules =
@@ -392,7 +405,10 @@ and process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
 
 and process_rule_run ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc stmt
     r rest =
-  let plain_stmts, plain_rules, rest = collect_rules [ stmt ] [ r ] rest in
+  let holds cond = supports_decision ~ctx ~supports cond = `True in
+  let plain_stmts, plain_rules, rest =
+    collect_rules ~holds [ stmt ] [ r ] rest
+  in
   let optimized =
     rules_aux ?factor_cache ~ctx ~enforce_spec ~supports plain_rules
   in
@@ -441,23 +457,7 @@ and process_container_statement ?factor_cache ~ctx ~enforce_spec ~owner
 
 and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     acc stmt cond block rest =
-  (* A guard the enclosing context leaves open is put to the browsers the run
-     judges for, when it judges for any: one every target satisfies asks a
-     question they all answer yes to, and one none of them satisfies selects no
-     target. Otherwise the guard stays for the engine to answer. *)
-  let decision =
-    match Supports.simplify_under ~context:supports cond with
-    | `Cond cond' as open_guard -> (
-        match Ctx.judge ctx with
-        | Some targets -> (
-            match Supports.implemented_by targets cond' with
-            | Some true -> `True
-            | Some false -> `False
-            | None -> open_guard)
-        | None -> open_guard)
-    | decided -> decided
-  in
-  match decision with
+  match supports_decision ~ctx ~supports cond with
   (* The guard selects no user agent, so nothing in its block is ever applied
      (CSS Conditional 3 sec. 2). Its cascade layers go with it: CSS Cascade 5
      sec. 6.4.1 keeps a layer defined inside a conditional group rule out of the
@@ -467,16 +467,11 @@ and process_supports_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc
         rest
   (* The guard holds wherever the block enclosing it does, so its contents apply
-     exactly where they already sit. Splicing them into the enclosing stream -
-     with the run of rules already accumulated - lets an adjacency the wrapper
-     hid collapse. *)
+     exactly where they already sit: they join the enclosing stream, where
+     [collect_rules] has already spliced any such guard a rule run reached. *)
   | `True ->
-      let block' =
-        descend_block ?factor_cache ~ctx ~enforce_spec ~owner ~supports block
-      in
-      let trailing, acc = pop_trailing_rules acc in
       process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc
-        (List.concat [ trailing; block'; rest ])
+        (block @ rest)
   | `Cond cond' ->
       let block' =
         descend_block ?factor_cache ~ctx ~enforce_spec ~owner
