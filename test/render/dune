@@ -3,15 +3,17 @@
 ; not fail the suite. CASCADE_NO_BROWSER is a different thing and fails: see
 ; Browser.suppressed.
 ;
-; render_diff: a stylesheet and its optimized forms must compute the same style
-; for every element of a document derived from the stylesheet's own selectors.
-; Run the wider sweep by hand with test/render/run.sh.
+; render_diff: a stylesheet and the forms cascade's transforms make of it
+; (optimize, lossless optimize, the minified text read back, inline-vars and
+; prune) must paint the same page, over a document derived from the
+; stylesheet's own selectors. Run the wider sweep by hand with
+; test/render/run.sh.
 ;
 ; shorthand_expand: a shorthand declaration must compare identical, under
 ; --diff=canonical, to the longhand declarations the browser expands it into.
 ;
-; canonical_agree: a pair --diff=canonical reports identical must compute the
-; same style in the browser for every element of a document derived from it.
+; canonical_agree: a pair --diff=canonical reports identical must paint the
+; same page, over a document derived from it.
 ;
 ; resolve_diff: the declarations Resolve says win for an element must compute
 ; the same style, in the browser, as the stylesheet they came from.
@@ -52,7 +54,7 @@
   at_rule_conditions
   parse_recovery
   custom_property)
- (libraries cascade cascade_diff cascade_browser fmt unix))
+ (libraries cascade cascade_diff cascade_browser cascade.html fmt unix))
 
 ; The generator's declaration pool is drawn from the library's own property
 ; table rather than a list kept here, so a property added to lib/ cannot escape
@@ -68,8 +70,8 @@
    %{target}
    (run %{gen} %{properties}))))
 
-; The executables read their driver scripts at run time, so those have to sit
-; next to them in the build directory.
+; The harnesses with a driver of their own read it at run time, so the scripts
+; have to sit next to them in the build directory.
 
 (rule
  (alias default)
@@ -104,7 +106,6 @@
  (alias runtest)
  (deps
   (env_var CASCADE_NO_BROWSER)
-  (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)
   render_diff.exe)
@@ -130,7 +131,6 @@
  (alias runtest)
  (deps
   (env_var CASCADE_NO_BROWSER)
-  (glob_files *.js)
   (source_tree ../interop/css-minify-tests/traces/tests)
   (source_tree ../examples)
   canonical_agree.exe)

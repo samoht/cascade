@@ -1,7 +1,7 @@
 #!/bin/sh
-# Differential render tests in a real headless browser: a stylesheet and its
-# optimized forms must compute the same style for every element of a document
-# derived from the stylesheet's own selectors.
+# Differential render tests in a real headless browser: a stylesheet and the
+# forms cascade's transforms make of it must paint the same page, over a
+# document derived from the stylesheet's own selectors.
 #
 # [dune test] runs the same harness on a small default sweep; this script runs
 # it from the repository root, so the artefacts of a failure land in tmp/
@@ -16,6 +16,5 @@ set -eu
 dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 root=$(CDPATH= cd "$dir/../.." && pwd)
 cd "$root"
-"$root/scripts/with_switch.sh" dune build test/render/render_diff.exe \
-  test/render/driver.js test/render/dom.js
+"$root/scripts/with_switch.sh" dune build test/render/render_diff.exe
 exec _build/default/test/render/render_diff.exe "$@"

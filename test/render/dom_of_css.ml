@@ -10,6 +10,7 @@ type node = {
   classes : string list;
   attrs : (string * string) list;
   children : node list;
+  empty : bool; (* [:empty] asked for it, so it carries no text *)
 }
 
 (* Where the element must sit among its siblings. *)
@@ -27,15 +28,13 @@ type spec = {
   mutable avoid : string list; (* tags :not() rules out *)
   mutable inner : node list; (* :has() content *)
   mutable fill : node option; (* the sibling an [of S] position pads with *)
-  mutable pseudos : string list; (* pseudo-elements to sample *)
 }
 
 type t = {
   root_node : node;
   html_classes : string list;
   html_attrs : (string * string) list;
-  doc_pseudos : string list;
-  probes : string list;
+  probes : Selector.t list;
   n_selectors : int;
   n_synthesised : int;
   n_elements : int;
@@ -56,7 +55,6 @@ let new_spec () =
     avoid = [];
     inner = [];
     fill = None;
-    pseudos = [];
   }
 
 let restore sp saved =
@@ -70,8 +68,7 @@ let restore sp saved =
   sp.root <- saved.root;
   sp.avoid <- saved.avoid;
   sp.inner <- saved.inner;
-  sp.fill <- saved.fill;
-  sp.pseudos <- saved.pseudos
+  sp.fill <- saved.fill
 
 let is_pseudo_element = function
   | Selector.Before _ | Selector.After _ | Selector.First_line _
@@ -122,13 +119,24 @@ let check_ns = function
   | Some Selector.None | Some (Selector.Prefix _) ->
       raise (Skip "namespaced selector")
 
-(* createElement rejects anything else, and a selector such as [\\2d foo] does
-   reach the synthesiser as the element name [-foo]. *)
+(* The HTML parser takes nothing else as a tag, and a selector such as [\\2d
+   foo] does reach the synthesiser as the element name [-foo]. [plaintext] is a
+   tag, and it reads the rest of the document as text. *)
 let valid_tag name =
-  name <> ""
+  name <> "" && name <> "plaintext"
   && (match name.[0] with 'a' .. 'z' -> true | _ -> false)
   && String.for_all
        (function 'a' .. 'z' | '0' .. '9' | '-' -> true | _ -> false)
+       name
+
+(* What the HTML parser reads as an attribute name: nothing it would take for
+   the end of the name or of the tag. *)
+let valid_attr_name name =
+  name <> ""
+  && String.for_all
+       (fun c ->
+         Char.code c > 0x20
+         && not (List.mem c [ '"'; '\''; '>'; '/'; '='; '<'; '\127' ]))
        name
 
 let set_tag sp name =
@@ -145,6 +153,8 @@ let want_tag sp name =
   match sp.tag with None -> sp.tag <- Some name | Some _ -> ()
 
 let set_attr sp name value =
+  if not (valid_attr_name name) then
+    raise (Skip "attribute name is not an HTML attribute name");
   match name with
   | "class" ->
       List.iter
@@ -156,9 +166,6 @@ let set_attr sp name value =
   | _ ->
       if not (List.mem_assoc name sp.attrs) then
         sp.attrs <- sp.attrs @ [ (name, value) ]
-
-let note_pseudo sp name =
-  if not (List.mem name sp.pseudos) then sp.pseudos <- sp.pseudos @ [ name ]
 
 (* A value that satisfies the match, built around the operand so the browser
    agrees rather than merely the synthesiser. *)
@@ -239,7 +246,7 @@ let nth_pos sp of_type wrap n =
       set_pos sp (wrap i)
 
 let filler tag : node =
-  { tag; id = None; classes = []; attrs = []; children = [] }
+  { tag; id = None; classes = []; attrs = []; children = []; empty = false }
 
 let node_of_spec sp children : node =
   let children = sp.inner @ children in
@@ -251,10 +258,22 @@ let node_of_spec sp children : node =
     | None -> if List.mem "div" sp.avoid then "section" else "div"
   in
   if List.mem tag sp.avoid then raise (Skip "negated type selector");
-  { tag; id = sp.id; classes = sp.classes; attrs = sp.attrs; children }
+  {
+    tag;
+    id = sp.id;
+    classes = sp.classes;
+    attrs = sp.attrs;
+    children;
+    empty = sp.childless;
+  }
 
 let rec add sp part =
   match part with
+  (* The document has one [html], so a type selector naming it is the root step,
+     and its classes and attributes go on that element. *)
+  | Selector.Element (ns, name) when String.lowercase_ascii name = "html" ->
+      check_ns ns;
+      sp.root <- true
   | Selector.Element (ns, name) ->
       check_ns ns;
       set_tag sp name
@@ -361,27 +380,20 @@ let rec add sp part =
   | Selector.Heading -> want_tag sp "h1"
   (* Every element the driver builds is a known HTML element. *)
   | Selector.Defined | Selector.Local_scope | Selector.Global_scope -> ()
-  (* Pseudo-elements the driver samples. Three of them also pin the element the
-     pseudo hangs off. *)
+  (* Pseudo-elements the browser renders on the element built. Three of them
+     also pin the element the pseudo hangs off. *)
   | Selector.Placeholder ->
       want_tag sp "input";
-      set_attr sp "placeholder" "rd";
-      note_pseudo sp "::placeholder"
+      set_attr sp "placeholder" "rd"
   | Selector.File_selector_button ->
       want_tag sp "input";
-      set_attr sp "type" "file";
-      note_pseudo sp "::file-selector-button"
-  | Selector.Marker ->
-      want_tag sp "li";
-      note_pseudo sp "::marker"
-  | Selector.Before _ -> note_pseudo sp "::before"
-  | Selector.After _ -> note_pseudo sp "::after"
-  | Selector.First_line _ -> note_pseudo sp "::first-line"
-  | Selector.First_letter _ -> note_pseudo sp "::first-letter"
-  | Selector.Backdrop -> note_pseudo sp "::backdrop"
-  | Selector.Selection -> note_pseudo sp "::selection"
-  (* Pseudo-elements getComputedStyle cannot sample, or that need a shadow tree,
-     a highlight registry or a running view transition. *)
+      set_attr sp "type" "file"
+  | Selector.Marker -> want_tag sp "li"
+  | Selector.Before _ | Selector.After _ | Selector.First_line _
+  | Selector.First_letter _ | Selector.Backdrop | Selector.Selection ->
+      ()
+  (* Pseudo-elements that need a shadow tree, a highlight registry or a running
+     view transition. *)
   | Selector.Target_text | Selector.Spelling_error | Selector.Grammar_error
   | Selector.Highlight _ | Selector.Part _ | Selector.Slotted _ | Selector.Cue _
   | Selector.Cue_region _ | Selector.View_transition
@@ -404,7 +416,7 @@ let rec add sp part =
   | Selector.Webkit_datetime_edit_meridiem_field
   | Selector.Webkit_inner_spin_button | Selector.Webkit_outer_spin_button
   | Selector.Webkit_calendar_picker_indicator ->
-      raise (Skip "pseudo-element not sampled")
+      raise (Skip "pseudo-element needs a tree the document has not")
   (* Everything below needs something a static document cannot provide. *)
   | Selector.Hover | Selector.Active | Selector.Focus | Selector.Focus_visible
   | Selector.Focus_within | Selector.Target_within | Selector.User_valid
@@ -507,7 +519,6 @@ and add_has sp branches =
       let child = new_spec () in
       add child inner;
       if child.root then raise (Skip ":root inside :has()");
-      sp.pseudos <- sp.pseudos @ child.pseudos;
       sp.inner <- sp.inner @ [ node_of_spec child [] ]
   | _ -> raise (Skip "sibling :has()")
 
@@ -571,7 +582,6 @@ let build_fragment sel =
   | _ :: rest ->
       if List.exists (fun (_, sp) -> sp.root) rest then
         raise (Skip ":root is not the outermost step"));
-  let pseudos = List.concat_map (fun (_, sp) -> sp.pseudos) specs in
   match List.rev specs with
   | [] -> raise (Skip "empty selector")
   | (first_link, target) :: earlier ->
@@ -607,7 +617,7 @@ let build_fragment sel =
       let nodes =
         siblings ~parent_inner:[] ~child_spec:!cur_spec ~child:!cur !before
       in
-      (!cur_spec, nodes, pseudos)
+      (!cur_spec, nodes)
 
 let rec count_nodes n =
   List.fold_left (fun n c -> count_nodes (n + 1) c.children) n
@@ -631,7 +641,6 @@ let of_stylesheet ?(max_elements = 4000) sheet =
   let selectors = all_selectors sheet in
   let cases = ref [] in
   let probes = ref [] in
-  let pseudos = ref [] in
   let html_classes = ref [] in
   let html_attrs = ref [] in
   let skipped = ref [] in
@@ -652,14 +661,10 @@ let of_stylesheet ?(max_elements = 4000) sheet =
         match build_fragment sel with
         | exception Skip reason -> skip sel reason
         | exception Invalid_argument _ -> skip sel "invalid selector component"
-        | outer, nodes, sel_pseudos ->
+        | outer, nodes ->
             incr synthesised;
             count := count_nodes !count nodes;
-            probes := Selector.to_string (strip_pseudo_elements sel) :: !probes;
-            List.iter
-              (fun p ->
-                if not (List.mem p !pseudos) then pseudos := !pseudos @ [ p ])
-              sel_pseudos;
+            probes := strip_pseudo_elements sel :: !probes;
             if outer.root then (
               List.iter
                 (fun c ->
@@ -684,17 +689,24 @@ let of_stylesheet ?(max_elements = 4000) sheet =
                       classes = [ "rd-case" ];
                       attrs = [];
                       children = nodes;
+                      empty = false;
                     };
                   ])
     selectors;
   let root_node : node =
-    { tag = "body"; id = None; classes = []; attrs = []; children = !cases }
+    {
+      tag = "body";
+      id = None;
+      classes = [];
+      attrs = [];
+      children = !cases;
+      empty = false;
+    }
   in
   {
     root_node;
     html_classes = !html_classes;
     html_attrs = !html_attrs;
-    doc_pseudos = !pseudos;
     probes = List.rev !probes;
     n_selectors = List.length selectors;
     n_synthesised = !synthesised;
@@ -703,42 +715,95 @@ let of_stylesheet ?(max_elements = 4000) sheet =
     examples = !examples;
   }
 
-let rec json_of_node (n : node) =
-  Json.Obj
-    ([ ("t", Json.Str n.tag) ]
-    @ (match n.id with Some i -> [ ("i", Json.Str i) ] | None -> [])
-    @ (if n.classes = [] then []
-       else [ ("c", Json.Arr (List.map (fun c -> Json.Str c) n.classes)) ])
-    @ (if n.attrs = [] then []
-       else
-         [
-           ( "a",
-             Json.Arr
-               (List.map
-                  (fun (k, v) -> Json.Arr [ Json.Str k; Json.Str v ])
-                  n.attrs) );
-         ])
-    @
-    if n.children = [] then []
-    else [ ("k", Json.Arr (List.map json_of_node n.children)) ])
+(* ===== The document as HTML ===== *)
 
-let to_json t =
-  Json.Obj
-    [
-      ("dom", json_of_node t.root_node);
-      ("htmlClasses", Json.Arr (List.map (fun c -> Json.Str c) t.html_classes));
-      ( "htmlAttrs",
-        Json.Arr
-          (List.map
-             (fun (k, v) -> Json.Arr [ Json.Str k; Json.Str v ])
-             t.html_attrs) );
-      ("pseudos", Json.Arr (List.map (fun p -> Json.Str p) t.doc_pseudos));
-      ("probes", Json.Arr (List.map (fun p -> Json.Str p) t.probes));
-    ]
+(* An element the parser closes at its start tag, so it holds nothing. *)
+let void_tags =
+  [
+    "area";
+    "base";
+    "br";
+    "col";
+    "embed";
+    "hr";
+    "img";
+    "input";
+    "link";
+    "meta";
+    "param";
+    "source";
+    "track";
+    "wbr";
+  ]
 
+(* An element whose content the parser reads as text, or does not render. *)
+let raw_text_tags =
+  [
+    "script";
+    "style";
+    "textarea";
+    "title";
+    "xmp";
+    "iframe";
+    "noembed";
+    "noframes";
+    "noscript";
+    "template";
+  ]
+
+let add_escaped buf s =
+  String.iter
+    (function
+      | '&' -> Buffer.add_string buf "&amp;"
+      | '<' -> Buffer.add_string buf "&lt;"
+      | '>' -> Buffer.add_string buf "&gt;"
+      | '"' -> Buffer.add_string buf "&quot;"
+      | c -> Buffer.add_char buf c)
+    s
+
+let add_attr buf name value =
+  Buffer.add_char buf ' ';
+  Buffer.add_string buf name;
+  Buffer.add_string buf "=\"";
+  add_escaped buf value;
+  Buffer.add_char buf '"'
+
+(* Every element that can hold text holds a word, so a declaration on it has
+   something to paint: a colour, a font, a margin or a width paints nothing on
+   an empty box. An [:empty] element stays empty, since text would unmatch it.
+   The text comes before the children, so [::first-letter] and [::first-line]
+   read the element's own. *)
+let rec add_node buf (n : node) =
+  Buffer.add_char buf '<';
+  Buffer.add_string buf n.tag;
+  Option.iter (add_attr buf "id") n.id;
+  if n.classes <> [] then add_attr buf "class" (String.concat " " n.classes);
+  List.iter (fun (k, v) -> add_attr buf k v) n.attrs;
+  Buffer.add_char buf '>';
+  if not (List.mem n.tag void_tags) then begin
+    if not (n.empty || List.mem n.tag raw_text_tags) then begin
+      Buffer.add_string buf "ab";
+      List.iter (add_node buf) n.children
+    end;
+    Buffer.add_string buf "</";
+    Buffer.add_string buf n.tag;
+    Buffer.add_char buf '>'
+  end
+
+let to_html t =
+  let buf = Buffer.create 4096 in
+  Buffer.add_string buf "<!DOCTYPE html>\n<html";
+  if t.html_classes <> [] then
+    add_attr buf "class" (String.concat " " t.html_classes);
+  List.iter (fun (k, v) -> add_attr buf k v) t.html_attrs;
+  Buffer.add_string buf "><head><meta charset=\"utf-8\"></head><body>";
+  List.iter (add_node buf) t.root_node.children;
+  Buffer.add_string buf "</body></html>\n";
+  Buffer.contents buf
+
+let probes t = t.probes
 let selectors t = t.n_selectors
 let synthesised t = t.n_synthesised
 let elements t = t.n_elements
-let pseudo_elements t = t.doc_pseudos
 let skipped t = t.skips
 let skipped_example t reason = List.assoc_opt reason t.examples

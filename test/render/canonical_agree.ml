@@ -1,36 +1,36 @@
-(* When [--diff=canonical] reports no difference, a browser must compute the
-   same style for both sheets. The README states that as the guarantee -
-   "canonical reports a difference only when some element would compute a
-   different value" - and nothing checked it. [render_diff] asks whether the
-   optimizer changed a render, and [shorthand_expand] asks the question of one
-   shorthand against its own expansion; neither asks it of the verdict.
+(* When [--diff=canonical] reports no difference, a browser must paint the same
+   page under both sheets. The README states that as the guarantee - "canonical
+   reports a difference only when some element would compute a different value"
+   - and nothing checked it. [render_diff] asks whether a transform changed a
+   render, and [shorthand_expand] asks the question of one shorthand against its
+   own expansion; neither asks it of the verdict.
 
-   The oracle is a headless browser, never cascade. Every pair the comparator
-   calls identical is rendered against a document derived from its selectors,
-   and every computed-style property the two sheets disagree on is a conflation:
-   the comparator equated two sheets that are not the same stylesheet.
+   The oracle is [Browser_compare.run], never cascade. Every pair the comparator
+   calls identical is rendered over a document derived from its selectors, at
+   every viewport and state the pair can use, and [Browser_compare.identical] is
+   the verdict: a pair that paints differently is a conflation, the comparator
+   equated two sheets that are not the same stylesheet. Nothing here reads a
+   value back or decides that two spellings are one; the browser paints them
+   alike or it does not.
 
-   getComputedStyle spells one value more than one way, and the spelling it
-   reports is the one the sheet wrote: [ease] and [cubic-bezier(.25,.1,.25,1)]
-   are the same easing, [0% 0%] and [0px 0px] the same background position. A
-   raw string difference is therefore only a candidate, and the candidates are
-   filtered the way [render_diff] filters them, with cascade's own comparator on
-   the two values alone.
-
-   That filter is the one place this harness leans on the code it tests, and it
-   is worth naming what it hides: a comparator that equates two property values
-   the browser resolves differently makes the sheets holding them invisible
-   here. Value-level equality is what [shorthand_expand] and the declaration
-   suite ask about; the question here is the sheet-level one, which nothing else
-   asked.
+   The comparator's verdict is used once, to choose the pairs: a pair it calls
+   different costs no browser time, because an over-report is safe and the
+   README documents several. That is the only place the harness leans on the
+   code it tests, and it can only hide a pair by keeping it apart, never by
+   passing one.
 
    The pairs are mechanical, not chosen. Each base sheet is paired with what the
    tool emits for it, and with mutants of itself: one declaration dropped, two
    adjacent declarations swapped, one rule dropped, two adjacent rules swapped,
    one rule split into two rules sharing its selector. Whether a mutant changes
-   the render is not decided here, and the comparator's verdict is only a
-   filter: a pair it calls different costs no browser time, because an
-   over-report is safe and the README documents several.
+   the render is not decided here.
+
+   A pair costs a browser launch, a second or two, so the default run renders
+   the longhand runs, the two examples and eight corpus sheets, with one split
+   point and a few mutants per sheet: some 130 pairs in about two minutes.
+   [--splits 0], [--decls 0] and [--rules 0] take every split point and every
+   mutant, [--corpus 0] every corpus sheet, and [--only SUBSTRING] narrows the
+   base sheets; the whole of it is an hour or more.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
@@ -266,12 +266,10 @@ let sample n l =
 
 (* ===== Variants ===== *)
 
-(* [against] is the text the comparator is asked about, which is not always the
-   text the browser renders against. A split renders like the sheet it came
-   from, so the browser compares the split's minified form with the source while
-   the comparator compares it with the split - the verdict is about the pair a
-   caller would actually run [diff] on. [required] marks the variants rendered
-   whatever the verdict says, which is how the split's own claim is checked. *)
+(* [against] is the text the comparator is asked about, and the text the browser
+   renders the variant against: the verdict is about the pair a caller would
+   actually run [diff] on. [required] marks the variants rendered whatever the
+   verdict says, which is how the split's own claim is checked. *)
 type kind =
   | Tool  (** what the tool emits for the sheet *)
   | Split  (** a rule written as two rules sharing its selector *)
@@ -283,7 +281,6 @@ type variant = {
   against : string;
   against_label : string;
   kind : kind;
-  lossy : bool;
   required : bool;
 }
 
@@ -299,7 +296,6 @@ let mutant label ~source sheet =
     against = source;
     against_label = "source";
     kind = Mutant;
-    lossy = false;
     required = false;
   }
 
@@ -313,7 +309,6 @@ let variants ~splits sheet =
         against = source;
         against_label = "source";
         kind = Tool;
-        lossy = true;
         required = false;
       };
       {
@@ -322,7 +317,6 @@ let variants ~splits sheet =
         against = source;
         against_label = "source";
         kind = Tool;
-        lossy = false;
         required = false;
       };
     ]
@@ -342,7 +336,6 @@ let variants ~splits sheet =
             against = source;
             against_label = "source";
             kind = Split;
-            lossy = false;
             required = true;
           };
           {
@@ -351,7 +344,6 @@ let variants ~splits sheet =
             against = text;
             against_label = name;
             kind = Split;
-            lossy = true;
             required = false;
           };
         ])
@@ -413,83 +405,17 @@ let verdict a b =
       | Actual_error _ ->
           Different)
 
-(* ===== Driver protocol ===== *)
+(* ===== Inputs ===== *)
 
-type diff = {
-  variant : string;
-  element : string;
-  property : string;
-  reference : string;
-  observed : string;
-}
+let corpus = ref None
+let runs = ref true
+let decls_budget = ref 4
+let rules_budget = ref 2
 
-type result = { diffs : diff list; errors : string list }
-
-let empty_result = { diffs = []; errors = [] }
-
-let parse_driver_output lines =
-  let table = Hashtbl.create 512 in
-  let get id = try Hashtbl.find table id with Not_found -> empty_result in
-  List.iter
-    (fun line ->
-      match String.split_on_char '\t' line with
-      | "d" :: id :: variant :: _index :: element :: property :: reference
-        :: observed :: _ ->
-          let r = get id in
-          Hashtbl.replace table id
-            {
-              r with
-              diffs =
-                r.diffs
-                @ [ { variant; element; property; reference; observed } ];
-            }
-      | "x" :: id :: rest ->
-          let r = get id in
-          Hashtbl.replace table id
-            { r with errors = r.errors @ [ String.concat "\t" rest ] }
-      | _ -> ())
-    lines;
-  table
-
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  loop []
-
-let run_driver ~node ~chrome ~script ~jobs ~work =
-  let errors = work // "driver.err" in
-  let cmd =
-    String.concat " "
-      [
-        String.concat "" [ "CHROME="; Filename.quote chrome ];
-        Filename.quote node;
-        Filename.quote script;
-        Filename.quote jobs;
-        Filename.quote work;
-        String.concat "" [ "2>"; Filename.quote errors ];
-      ]
-  in
-  let ic = Unix.open_process_in cmd in
-  let lines = read_lines ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> Ok lines
-  | Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
-      let ic = open_in errors in
-      let text = read_lines ic in
-      close_in ic;
-      Error (String.concat "\n" text)
-
-(* ===== Candidate filter ===== *)
-
-let wrap prop value = String.concat "" [ "x{"; prop; ":"; value; "}" ]
-
-let same_value prop a b =
-  try
-    Cascade_diff.Css_compare.equal ~mode:`Canonical (wrap prop a) (wrap prop b)
-  with Reader.Parse_error _ | Failure _ | Invalid_argument _ -> false
+(* One cut point per sheet: the split is where the shapes the corpus does not
+   write come from, and every cut point is a browser launch each. *)
+let splits_budget = ref 1
+let only = ref None
 
 let contains haystack needle =
   let n = String.length needle and h = String.length haystack in
@@ -498,44 +424,13 @@ let contains haystack needle =
   in
   n = 0 || at 0
 
-(* [optimize] without [~lossless] approximates colours by design, and
-   [--diff=canonical] matches it by design: the README says so and offers
-   [--lossless] to turn it off. A colour difference under a variant that
-   optimize built is therefore counted rather than failed. Everything else is a
-   computed value the browser resolved differently on a pair the comparator
-   called identical. *)
-let colour_valued prop =
-  contains prop "color"
-  || List.exists (String.equal prop)
-       [
-         "fill";
-         "stroke";
-         "background-image";
-         "border-image-source";
-         "mask-image";
-         "box-shadow";
-         "text-shadow";
-         "filter";
-         "backdrop-filter";
-       ]
-
-(* ===== Inputs ===== *)
-
-let corpus = ref None
-let runs = ref true
-let decls_budget = ref 8
-let rules_budget = ref 4
-
-(* Every cut point of every rule: the split is where the shapes the corpus does
-   not write come from, and the whole sweep runs in seconds. *)
-let splits_budget = ref 0
-let only = ref None
-
 let usage () =
   Fmt.pr
     "usage: canonical_agree [--corpus N] [--no-runs] [--decls N] [--rules N] \
      [--splits N] [--only SUBSTRING]@.";
-  Fmt.pr "a budget of 0 takes every one, which is also the default@.";
+  Fmt.pr
+    "a budget of 0 takes every one; the defaults are 8 corpus sheets, 4 \
+     declarations, 2 rules and 1 split@.";
   exit 0
 
 let parse_args () =
@@ -548,11 +443,11 @@ let parse_args () =
       | "--corpus" -> corpus := int_of_string_opt (arg ())
       | "--no-runs" -> runs := false
       | "--decls" ->
-          decls_budget := Option.value ~default:8 (int_of_string_opt (arg ()))
+          decls_budget := Option.value ~default:4 (int_of_string_opt (arg ()))
       | "--rules" ->
-          rules_budget := Option.value ~default:4 (int_of_string_opt (arg ()))
+          rules_budget := Option.value ~default:2 (int_of_string_opt (arg ()))
       | "--splits" ->
-          splits_budget := Option.value ~default:0 (int_of_string_opt (arg ()))
+          splits_budget := Option.value ~default:1 (int_of_string_opt (arg ()))
       | "--only" -> only := Some (arg ())
       | "-h" | "--help" -> usage ()
       | _ -> ());
@@ -561,7 +456,7 @@ let parse_args () =
   loop 1
 
 let base_sheets () =
-  let corpus_n = Option.value ~default:0 !corpus in
+  let corpus_n = Option.value ~default:8 !corpus in
   let from_runs =
     if !runs then
       List.map
@@ -581,7 +476,7 @@ let skip reason = Browser.skip "canonical_agree" reason
 
 type job = {
   id : string;
-  source : string;
+  html : string;
   rendered : variant list;
   over_reports : int;
   unreadable : int;
@@ -591,7 +486,6 @@ let build_job (id, text) =
   match Css.of_string ~strict:false text with
   | Error _ -> None
   | Ok { stylesheet; _ } ->
-      let source = Css.to_string stylesheet in
       let splits = sample !splits_budget (split_points stylesheet) in
       let tool, split_variants = variants ~splits stylesheet in
       let candidates =
@@ -599,11 +493,16 @@ let build_job (id, text) =
         @ mutants ~decls:!decls_budget ~rules:!rules_budget stylesheet
       in
       let over = ref 0 and bad = ref 0 in
+      (* A variant printing as its reference, or as one already rendered against
+         the same reference, paints the same by construction. *)
+      let seen = ref [] in
       let rendered =
         List.filter
           (fun v ->
-            if String.equal v.css v.against then false
-            else
+            if String.equal v.css v.against || List.mem (v.against, v.css) !seen
+            then false
+            else (
+              seen := (v.against, v.css) :: !seen;
               match verdict v.against v.css with
               | Identical -> true
               | Unreadable ->
@@ -611,35 +510,11 @@ let build_job (id, text) =
                   v.required
               | Different ->
                   incr over;
-                  v.required)
+                  v.required))
           candidates
       in
-      Some { id; source; rendered; over_reports = !over; unreadable = !bad }
-
-let job_json job dom =
-  let fields =
-    match Dom_of_css.to_json dom with
-    | Json.Obj fields -> fields
-    | Str _ | Int _ | Arr _ -> []
-  in
-  Json.Obj
-    ((("id", Json.Str job.id) :: fields)
-    @ [
-        ( "sheets",
-          Json.Arr
-            (Json.Obj
-               [ ("name", Json.Str "source"); ("css", Json.Str job.source) ]
-            :: List.map
-                 (fun v ->
-                   Json.Obj
-                     [ ("name", Json.Str v.label); ("css", Json.Str v.css) ])
-                 job.rendered) );
-      ])
-
-let write file contents =
-  let oc = open_out file in
-  output_string oc contents;
-  close_out oc
+      let html = Dom_of_css.to_html (Dom_of_css.of_stylesheet stylesheet) in
+      Some { id; html; rendered; over_reports = !over; unreadable = !bad }
 
 (* A sheet reads as one report line: the pair matters more than its layout. *)
 let one_line css =
@@ -654,137 +529,114 @@ let one_line css =
     css;
   String.trim (Buffer.contents b)
 
+type stats = {
+  mutable pairs : int;
+  mutable tool_pairs : int;
+  mutable split_pairs : int;
+  mutable mutant_pairs : int;
+  mutable conflations : int;
+  mutable split_breaks : int;
+  mutable over : int;
+  mutable unreadable : int;
+  mutable failures : int;
+}
+
+let show_renders (report : Browser_compare.t) =
+  List.iter
+    (fun (r : Browser_compare.render) ->
+      Fmt.pr "  %s %s: %dx%d pixels differ at (%d,%d)@." r.viewport r.state
+        r.width r.height r.x r.y)
+    report.renders;
+  List.iteri
+    (fun i (d : Browser_compare.difference) ->
+      if i < 6 then
+        Fmt.pr "  %s%s %s: %S -> %S@." d.element d.pseudo d.property d.first
+          d.second)
+    report.differences;
+  let n = List.length report.differences in
+  if n > 6 then Fmt.pr "  ... %d computed value(s) differ in all@." n
+
+(* Every pair that paints differently is reported, under the pair that carries
+   it, so one run is the whole list and nobody has to fix one to see the
+   next. *)
+let check_pair st job v =
+  st.pairs <- st.pairs + 1;
+  (match v.kind with
+  | Tool -> st.tool_pairs <- st.tool_pairs + 1
+  | Split -> st.split_pairs <- st.split_pairs + 1
+  | Mutant -> st.mutant_pairs <- st.mutant_pairs + 1);
+  match
+    Browser_compare.run ~html:job.html
+      [ (v.against_label, v.against); (v.label, v.css) ]
+  with
+  | Error e ->
+      st.failures <- st.failures + 1;
+      Fmt.pr "FAIL %s: %s against %s: %s@." job.id v.label v.against_label e
+  | Ok report when Browser_compare.identical report -> ()
+  | Ok report ->
+      st.failures <- st.failures + 1;
+      if v.required then (
+        st.split_breaks <- st.split_breaks + 1;
+        Fmt.pr
+          "FAIL %s: %s does not render like the rule it was split from; this \
+           harness is wrong, not the library@."
+          job.id v.label)
+      else (
+        st.conflations <- st.conflations + 1;
+        Fmt.pr "FAIL %s: canonical equates %s with %s@." job.id v.against_label
+          v.label);
+      Fmt.pr "  %s: %s@." v.against_label (one_line v.against);
+      Fmt.pr "  %s: %s@." v.label (one_line v.css);
+      show_renders report
+
+let summary st ~jobs ~elapsed =
+  Fmt.pr "canonical_agree: %d sheet(s), %d equated pair(s), %.1fs@." jobs
+    st.pairs elapsed;
+  Fmt.pr "  equated: %d tool, %d split, %d mutant@." st.tool_pairs
+    st.split_pairs st.mutant_pairs;
+  Fmt.pr "  conflations: %d, broken splits: %d@." st.conflations st.split_breaks;
+  Fmt.pr "  pairs the comparator kept apart: %d, unreadable: %d@." st.over
+    st.unreadable;
+  (* A run that renders no equated pair is not a clean run, it is a blind one:
+     the comparator equates the tool's own output with its input on any sheet
+     that parses, so an empty population means the harness stopped working. *)
+  if st.pairs = 0 then (
+    st.failures <- st.failures + 1;
+    Fmt.pr "FAIL: no pair reached the browser at all@.");
+  Fmt.pr "  failures: %d@." st.failures
+
 let () =
   parse_args ();
   Browser.suppressed "canonical_agree";
-  let node =
-    match Browser.node_binary () with Some n -> n | None -> skip "no node"
-  in
-  let chrome =
-    match Browser.chrome_binary () with
-    | Some c -> c
-    | None -> skip "no headless browser"
-  in
-  let script_dir = Filename.dirname Sys.executable_name in
-  let work = Filename.get_temp_dir_name () // "cascade-canonical-agree" in
-  (try Unix.mkdir work 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+  (match Browser.node_binary () with Some _ -> () | None -> skip "no node");
+  (match Browser.chrome_binary () with
+  | Some _ -> ()
+  | None -> skip "no headless browser");
   let jobs = List.filter_map build_job (base_sheets ()) in
   let jobs =
     List.filter
       (fun j -> match j.rendered with [] -> false | _ :: _ -> true)
       jobs
   in
-  let payload =
-    List.filter_map
-      (fun job ->
-        match Css.of_string ~strict:false job.source with
-        | Error _ -> None
-        | Ok { stylesheet; _ } ->
-            Some (job_json job (Dom_of_css.of_stylesheet stylesheet)))
-      jobs
+  let st =
+    {
+      pairs = 0;
+      tool_pairs = 0;
+      split_pairs = 0;
+      mutant_pairs = 0;
+      conflations = 0;
+      split_breaks = 0;
+      over = 0;
+      unreadable = 0;
+      failures = 0;
+    }
   in
-  let jobs_file = work // "jobs.json" in
-  write jobs_file (Json.to_string (Json.Arr payload));
   let started = Unix.gettimeofday () in
-  let lines =
-    match
-      run_driver ~node ~chrome
-        ~script:(script_dir // "driver.js")
-        ~jobs:jobs_file ~work
-    with
-    | Ok lines -> lines
-    | Error err ->
-        prerr_endline
-          (String.concat ""
-             [ "canonical_agree: the browser driver failed:\n"; err ]);
-        exit 1
-  in
-  let elapsed = Unix.gettimeofday () -. started in
-  let table = parse_driver_output lines in
-  let failures = ref 0 in
-  let pairs = ref 0 and over = ref 0 and unreadable = ref 0 in
-  let tool_pairs = ref 0 and split_pairs = ref 0 and mutant_pairs = ref 0 in
-  let approximations = ref 0 and spellings = ref 0 in
-  let conflations = ref 0 in
-  let split_breaks = ref 0 in
   List.iter
     (fun job ->
-      pairs := !pairs + List.length job.rendered;
-      List.iter
-        (fun v ->
-          match v.kind with
-          | Tool -> incr tool_pairs
-          | Split -> incr split_pairs
-          | Mutant -> incr mutant_pairs)
-        job.rendered;
-      over := !over + job.over_reports;
-      unreadable := !unreadable + job.unreadable;
-      let r = try Hashtbl.find table job.id with Not_found -> empty_result in
-      List.iter
-        (fun e ->
-          incr failures;
-          prerr_endline
-            (String.concat "" [ "canonical_agree: "; job.id; ": "; e ]))
-        r.errors;
-      (* Every property a pair disagrees on, under the pair that carries them,
-         so one run is the whole list and nobody has to fix one to see the
-         next. *)
-      List.iter
-        (fun v ->
-          let mine =
-            List.filter (fun d -> String.equal d.variant v.label) r.diffs
-          in
-          let kept =
-            List.filter
-              (fun d ->
-                if same_value d.property d.reference d.observed then (
-                  incr spellings;
-                  false)
-                else if v.lossy && colour_valued d.property then (
-                  incr approximations;
-                  false)
-                else true)
-              mine
-          in
-          match kept with
-          | [] -> ()
-          | _ :: _ ->
-              incr failures;
-              if v.required then (
-                incr split_breaks;
-                Fmt.pr
-                  "FAIL %s: %s does not render like the rule it was split \
-                   from; this harness is wrong, not the library@."
-                  job.id v.label)
-              else (
-                incr conflations;
-                Fmt.pr "FAIL %s: canonical equates %s with %s@." job.id
-                  v.against_label v.label);
-              Fmt.pr "  %s: %s@." v.against_label (one_line v.against);
-              Fmt.pr "  %s: %s@." v.label (one_line v.css);
-              List.iter
-                (fun d ->
-                  Fmt.pr "  %s %s: %S -> %S@." d.element d.property d.reference
-                    d.observed)
-                kept)
-        job.rendered)
+      st.over <- st.over + job.over_reports;
+      st.unreadable <- st.unreadable + job.unreadable;
+      List.iter (check_pair st job) job.rendered)
     jobs;
-  Fmt.pr "canonical_agree: %d sheet(s), %d equated pair(s), %.1fs@."
-    (List.length jobs) !pairs elapsed;
-  Fmt.pr "  equated: %d tool, %d split, %d mutant@." !tool_pairs !split_pairs
-    !mutant_pairs;
-  Fmt.pr "  conflations: %d, broken splits: %d@." !conflations !split_breaks;
-  Fmt.pr
-    "  candidates the value filter dropped: %d spelling(s), %d lossy \
-     colour(s)@."
-    !spellings !approximations;
-  Fmt.pr "  pairs the comparator kept apart: %d, unreadable: %d@." !over
-    !unreadable;
-  (* A run that renders no equated pair is not a clean run, it is a blind one:
-     the comparator equates the tool's own output with its input on any sheet
-     that parses, so an empty population means the harness stopped working. *)
-  if !pairs = 0 then (
-    incr failures;
-    Fmt.pr "FAIL: no pair reached the browser at all@.");
-  Fmt.pr "  failures: %d@." !failures;
-  if !failures > 0 then exit 1
+  summary st ~jobs:(List.length jobs) ~elapsed:(Unix.gettimeofday () -. started);
+  if st.failures > 0 then exit 1
