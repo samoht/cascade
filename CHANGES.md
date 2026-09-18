@@ -737,6 +737,12 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- `--diff=canonical` drops an `@supports` block whose guard is false however a
+  browser answers it, reading a parenthesised `<general-enclosed>` term as the
+  false CSS Conditional 3 sec. 6.1 makes it: Tailwind's `@supports
+  (@media(width>=1px): var(--tw))` against nothing compares equal, under
+  `--enforce-spec` too, since no reading answers the guard yes. `--minify`
+  keeps the guard, and `Supports.never_holds` is the reading (#NNNN)
 - `cascade diff` no longer exits 2 over a declaration its reader refused: the
   reader is held to the browser's accept set, so a browser drops that
   declaration from whichever file holds it and renders the same, and the

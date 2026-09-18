@@ -147,7 +147,10 @@ the evergreen browsers `--minify` targets: a `@supports` guard every one of
 them satisfies is unwrapped, a vendor prefix a target needs is written on both
 sides and one no target needs is dropped from both, and a colour fallback every
 target parses past is dead, so two sheets that disagree only on those compare
-equal. `--enforce-spec` holds those rewrites off and keeps the two apart.
+equal. `--enforce-spec` holds those rewrites off and keeps the two apart. An
+`@supports` guard no reading answers yes, one over a `<general-enclosed>` term
+such as `(@media(width>=1px): var(--tw))` that CSS Conditional 3 sec. 6.1 makes
+false, selects nothing under either, and its block is dropped under both.
 
 A difference cascade can see exits 1, whether or not it read everything. When it
 finds no difference but could not read a rule in a file, it compares the text

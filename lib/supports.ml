@@ -765,6 +765,34 @@ let rec reduce ~atom ~world ~all cond =
       in
       decide (v_or va vb) residual
 
+(* CSS Conditional 3 sec. 6.1: a parenthesised term that is neither a
+   [<supports-decl>] nor a nested condition is a [<general-enclosed>], and "the
+   result is false". [simplify_under] keeps such a term open, a spelling a later
+   level may give a meaning to, for a sheet the optimizer emits; here it is the
+   constant the spec makes it, so a guard it makes false in every world is one
+   no user agent answers yes to. A function form is a [Function] and stays a
+   variable: cascade's own feature grammar may refuse an argument the browser's
+   [selector()] accepts. *)
+let never_holds cond =
+  match collect_atoms [] cond with
+  | exception Exit -> false
+  | atoms ->
+      let atoms = Array.of_list atoms in
+      let n = Array.length atoms in
+      let all = all_true n in
+      let vectors = Array.init n (atom_vector n) in
+      let zero = Bytes.make (vector_len n) '\000' in
+      let atom leaf =
+        match leaf with
+        | General_enclosed _ -> zero
+        | leaf ->
+            let rec find i =
+              if equal atoms.(i) leaf then vectors.(i) else find (i + 1)
+            in
+            find 0
+      in
+      never (eval ~atom ~all cond)
+
 let simplify_under ~context cond =
   match List.fold_left collect_atoms [] (cond :: context) with
   | exception Exit -> `Cond cond

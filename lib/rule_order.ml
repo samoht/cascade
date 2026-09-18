@@ -1023,6 +1023,24 @@ let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
                (canonical_missing_component_colors ~lossless))
     stmts
 
+(* CSS Conditional 3 sec. 6.1 makes a [<general-enclosed>] term false, so an
+   [@supports] guard false in every world selects no user agent and its block
+   never applies: Tailwind writes [@supports (@media(width>=1px): var(--tw))]
+   for [supports-[@media(width>=1px)]:flex] where tw writes nothing, and the two
+   render alike. The optimizer keeps such a guard open for a sheet it emits; the
+   projection answers for the spec as written and the browsers of today, and
+   neither reading answers the guard yes, so the block goes under [enforce_spec]
+   too. *)
+let rec drop_unanswerable_supports (stmts : statement list) : statement list =
+  List.filter_map
+    (fun stmt ->
+      match stmt with
+      | Supports (cond, _) when Supports.never_holds cond -> None
+      | stmt ->
+          Some
+            (Stylesheet.map_statement_children drop_unanswerable_supports stmt))
+    stmts
+
 (* The normal optimizer drops this typed alias under its maintained-browser
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
@@ -1455,7 +1473,8 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
                    (canonical_color_spellings
                       (canonical_quotients ~lossless
                          (normalize_custom_values ~lossless
-                            (canonical_vendor_aliases stmts)))))))
+                            (canonical_vendor_aliases
+                               (drop_unanswerable_supports stmts))))))))
   in
   let result =
     canonicalize_block ~ctx
