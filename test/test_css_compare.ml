@@ -270,6 +270,51 @@ let equal_canonical_custom_time_units () =
     (equal ".a{--d:.1s}@container style(--d:100ms){.b{color:red}}"
        ".a{--d:100ms}@container style(--d:100ms){.b{color:red}}")
 
+(* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
+   dimension, so an angle is one value under any of them. A [turn] or [grad]
+   converts to degrees exactly; a [rad] goes through pi, and the projection
+   spends on it the six-significant-figure budget a quotient already takes, so
+   [1.5rad] is the [85.9437deg] lightningcss writes. Tailwind writes [.5turn]
+   where lightningcss writes [180deg], in a custom stream and in [rotate] alike;
+   [--lossless] keeps the unit as written. *)
+let equal_canonical_angle_units () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a turn in a custom stream is its degrees" true
+    (equal ".a{--tw-mask-conic-position:.5turn}"
+       ".a{--tw-mask-conic-position:180deg}");
+  Alcotest.(check bool)
+    "a radian in rotate is its degrees under the budget" true
+    (equal ".a{rotate:85.9437deg}" ".a{rotate:1.5rad}");
+  Alcotest.(check bool)
+    "a radian in a transform function too" true
+    (equal ".a{transform:rotate(1.5rad)}" ".a{transform:rotate(85.9437deg)}");
+  Alcotest.(check bool)
+    "a turn in rotate too" true
+    (equal ".a{rotate:.5turn}" ".a{rotate:180deg}");
+  Alcotest.(check bool)
+    "a radian in a custom stream too" true
+    (equal ".a{--r:1.5rad}" ".a{--r:85.9437deg}");
+  Alcotest.(check bool)
+    "a grad inside a function too" true
+    (equal ".a{--t:rotate(200grad)}" ".a{--t:rotate(180deg)}");
+  Alcotest.(check bool)
+    "a different angle still differs" false
+    (equal ".a{rotate:1.5rad}" ".a{rotate:85.9deg}");
+  Alcotest.(check bool)
+    "a property a style() query names keeps its tokens" false
+    (equal ".a{--d:.5turn}@container style(--d:180deg){.b{color:red}}"
+       ".a{--d:180deg}@container style(--d:180deg){.b{color:red}}");
+  let lossless =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true
+  in
+  Alcotest.(check bool)
+    "lossless keeps a radian apart from its degrees" false
+    (lossless ".a{rotate:85.9437deg}" ".a{rotate:1.5rad}");
+  Alcotest.(check bool)
+    "and a custom stream's unit as written" false
+    (lossless ".a{--r:1.5rad}" ".a{--r:85.9437deg}")
+
 (* CSS Color 5 sec. 4.1: a relative colour whose channels are the origin's own
    keywords is the origin in that space, with the alpha the call names. Tailwind
    writes a shadow colour as [oklab(from rgb(0 0 0 / .1) l a b / 20%)] and
@@ -2643,6 +2688,8 @@ let suite =
         equal_canonical_flex_basis_percentage_calc;
       Alcotest.test_case "canonical custom time units" `Quick
         equal_canonical_custom_time_units;
+      Alcotest.test_case "canonical angle units" `Quick
+        equal_canonical_angle_units;
       Alcotest.test_case "canonical relative colour pass-through" `Quick
         equal_canonical_relative_color_pass_through;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
