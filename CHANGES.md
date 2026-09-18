@@ -737,6 +737,13 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- A `color-mix()` or a relative colour over a `light-dark()` argument is the
+  `light-dark()` of that operation over each branch, which CSS Color 5 sec. 6
+  picks by the element's colour scheme, so `color-mix(in oklab,
+  light-dark(red, #00f) 50%, #0000)` and `light-dark(#ff000080, #0000ff80)`
+  are one colour under `--diff=canonical` and `--minify` writes the second.
+  A mix a branch cannot fold stays as written, and `--lossless` keeps the mix
+  (#NNNN)
 - An angle compares as the degrees it names under `--diff=canonical`, which
   CSS Values 4 sec. 6.1 makes one dimension under `deg`, `grad`, `rad` and
   `turn`: `.5turn` and `180deg` are one angle in `rotate`, in a `transform`

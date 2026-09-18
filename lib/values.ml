@@ -8710,7 +8710,10 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       in
       match folded with
       | Option.Some color -> normalize_color ~lossless color
-      | Option.None -> Relative_color (name, origin, tail))
+      | Option.None -> (
+          match light_dark_relative ~lossless name origin tail with
+          | Option.Some color -> color
+          | Option.None -> Relative_color (name, origin, tail)))
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
@@ -8785,7 +8788,56 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
   in
   match folded with
   | Some color -> normalize_color ~lossless color
-  | None -> keep ()
+  | None -> (
+      (* A mix over a [light-dark()] operand is the [light-dark()] of the mix
+         over each branch. *)
+      match
+        light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
+          ~percent2
+      with
+      | Some color -> color
+      | None -> keep ())
+
+(* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
+   element's used colour scheme, so a mix over a [light-dark()] argument is the
+   [light-dark()] of the mix over each branch, and the two arguments distribute
+   at once. Exact only where each branch folds to a colour: a mix a branch keeps
+   stays as written, so the two spellings of it still report. A value fold like
+   the mix itself, so [lossless] holds it off. *)
+and light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2 ~percent2
+    =
+  let branches c =
+    match c with Light_dark (l, d) -> Some (l, d) | _ -> None
+  in
+  let c1 = normalize_color ~lossless color1 in
+  let c2 = normalize_color ~lossless color2 in
+  match (branches c1, branches c2) with
+  | _ when lossless -> None
+  | None, None -> None
+  | b1, b2 -> (
+      let l1, d1 = Option.value b1 ~default:(c1, c1) in
+      let l2, d2 = Option.value b2 ~default:(c2, c2) in
+      let mix color1 color2 =
+        normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
+          ~percent2
+      in
+      match (mix l1 l2, mix d1 d2) with
+      | Mix _, _ | _, Mix _ -> None
+      | light, dark -> Some (Light_dark (light, dark)))
+
+(* The same reading for a relative colour: [oklab(from light-dark(a, b) ...)] is
+   the [light-dark()] of the call over each branch, kept where a branch keeps
+   its call. *)
+and light_dark_relative ~lossless name origin tail =
+  match origin with
+  | Light_dark (l, d) when not lossless -> (
+      let over origin =
+        normalize_color ~lossless (Relative_color (name, origin, tail))
+      in
+      match (over l, over d) with
+      | Relative_color _, _ | _, Relative_color _ -> None
+      | light, dark -> Some (Light_dark (light, dark)))
+  | _ -> None
 
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =
