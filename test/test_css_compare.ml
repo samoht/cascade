@@ -503,6 +503,48 @@ let equal_canonical_targets () =
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
        ".a{color:green}@supports (display:wibble){.a{color:blue}}")
 
+(* A declaration the reader refuses is one the browser refuses:
+   test/spec/browser/accept_set holds the reader to the browser's accept set. A
+   browser drops it from whichever sheet holds it and paints the same, so it
+   separates nothing, and the pair compares by what remains while the warning
+   stays as information. Tailwind writes [filter: blur(<value>)] for a docs
+   placeholder class where tw writes nothing. A rule the reader dropped is text
+   the comparison never saw and nothing holds the rule reader to that set, so it
+   still separates unless both sides lost the same run of text. *)
+let canonical_refused_declaration_separates_nothing () =
+  let diff a b = Cascade_diff.Css_compare.diff ~mode:`Canonical a b in
+  let separates a b = Cascade_diff.Css_compare.unread_separates (diff a b) in
+  let no_diff a b =
+    match (diff a b).Cascade_diff.Css_compare.result with
+    | Cascade_diff.Css_compare.No_diff -> true
+    | _ -> false
+  in
+  Alcotest.(check bool)
+    "the refused declaration reaches neither side" true
+    (no_diff ".a{filter:blur(<value>)}" "");
+  Alcotest.(check bool)
+    "the warning is kept" true
+    (Cascade_diff.Css_compare.has_warnings (diff ".a{filter:blur(<value>)}" ""));
+  Alcotest.(check bool)
+    "a refused declaration on one side separates nothing" false
+    (separates ".a{filter:blur(<value>)}" "");
+  Alcotest.(check bool)
+    "against an empty rule too" false
+    (separates ".a{filter:blur(<value>)}" ".a{}");
+  Alcotest.(check bool)
+    "nor one refused on both sides in two spellings" false
+    (separates ".a{filter:blur(<value>)}" ".a{filter:blur( <value> )}");
+  Alcotest.(check bool)
+    "a difference beside it is still a difference" false
+    (no_diff ".a{filter:blur(<value>)}.b{color:red}" ".b{color:blue}");
+  Alcotest.(check bool)
+    "a rule one side dropped still separates" true
+    (separates ".b{color:red}.a[[ {color:red}" ".b{color:red}");
+  Alcotest.(check bool)
+    "the same dropped rule on both sides does not" false
+    (separates ".b{color:red}.a[[ {color:red}"
+       ".b { color: red }.a[[ {color:red}")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2747,6 +2789,8 @@ let suite =
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical judges for the targets" `Quick
         equal_canonical_targets;
+      Alcotest.test_case "canonical refused declaration separates nothing"
+        `Quick canonical_refused_declaration_separates_nothing;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
       Alcotest.test_case "canonical folds container function case" `Quick

@@ -1,12 +1,13 @@
 CLI: `cascade diff` does not call two files identical over a statement it
 dropped whole.
 
-A statement the reader refuses goes the way of a refused declaration or
-rule: it reaches neither side of the comparison. Two warnings share the
-shape `bad value ... (in property-value)` and mean opposite things. One
-names a `@charset` the reader dropped, the other an `@font-face` cascade
-kept and reported on. The verdict follows what the reader did with the
-statement, not the shape of the warning it left behind.
+A statement the reader refuses goes the way of a refused rule: it reaches
+neither side of the comparison, and nothing holds that reader to a browser's
+accept set the way a declaration's is held. Two warnings share the shape
+`bad value ... (in property-value)` and mean opposite things. One names a
+`@charset` the reader dropped, the other an `@font-face` cascade kept and
+reported on. The verdict follows what the reader did with the statement, not
+the shape of the warning it left behind.
 
 An `@charset` argument the reader refuses costs the whole statement. These
 two sheets differ only in that argument, so both sides lose it and the

@@ -2,11 +2,12 @@ CLI: `cascade diff` does not call two files identical over a rule it could
 not read.
 
 A rule the reader refuses is dropped from both sides before the comparison,
-exactly as a refused declaration is, and it takes everything it holds with
-it. Reporting the pair as identical there claims an equivalence the tool
-never checked, so `cascade diff` gives the same third verdict and exits 2.
-The count is kept apart from the declaration count: a harness reads the two
-to tell what its sheet lost.
+and it takes everything it holds with it. Nothing holds the rule reader to
+what a browser accepts, the way `test/spec/browser/accept_set` holds the
+declaration reader, so reporting the pair as identical there claims an
+equivalence the tool never checked: `cascade diff` withholds the verdict and
+exits 2. The count is kept apart from the declaration count, which withholds
+nothing: a harness reads the two to tell what its sheet lost.
 
 Two sides that lost the same source text are the exception. There the
 comparison did see the same thing twice, so the equality it found holds and
@@ -192,7 +193,8 @@ is the case that reaches cascade from every Tailwind entry stylesheet.
   CSS files are identical
 
 A dropped declaration and a dropped rule are counted apart, so a harness
-reading the report is told which of the two its sheet lost.
+reading the report is told which of the two its sheet lost; the rule is what
+withholds the verdict here.
 
   $ cat > mix-a.css <<EOF
   > .b{grid-template-columns:calc(1 + 2);color:red}
