@@ -217,6 +217,14 @@ val has_warnings : t -> bool
 (** [has_warnings result] is [true] when either side accumulated a parse
     warning. *)
 
+val unread_separates : t -> bool
+(** [unread_separates result] is [true] when what one side's reader dropped may
+    hold a difference the comparison never saw. A dropped declaration or rule
+    reaches neither side of the comparison, and one loss accounts for another
+    only when both readers dropped the same construct spelled the same way; a
+    loss the reader could not name accounts for nothing. A caller that found no
+    difference reads this before calling the two inputs identical. *)
+
 (** {1:stats Statistics} *)
 
 type stats = {

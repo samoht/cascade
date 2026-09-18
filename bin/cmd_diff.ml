@@ -79,33 +79,10 @@ let dropped construct (w : Cascade.Error.t) =
   | Dropped d -> Cascade.Error.Recovery.equal_construct d.construct construct
   | Recovered -> false
 
-(* What one side lost, in the order its reader reported it. *)
-let losses ws =
-  List.filter_map
-    (fun (w : Cascade.Error.t) ->
-      match w.recovery with
-      | Cascade.Error.Recovery.Dropped { construct; text } ->
-          Some (construct, text)
-      | Recovered -> None)
-    ws
-
-(* One loss accounts for another when the two readers threw away the same
-   construct spelled the same way. A loss the reader could not name accounts for
-   nothing: nothing shows the other side lost those same bytes. *)
-let accounts_for (c1, t1) (c2, t2) =
-  Cascade.Error.Recovery.equal_construct c1 c2
-  &&
-  match (t1, t2) with
-  | Some a, Some b -> String.equal a b
-  | None, _ | _, None -> false
-
-(* Two sides that lost the same run of text saw the same thing twice, so what
-   they hid cannot separate them and the comparison's verdict stands. *)
-let losses_cancel (result : Cascade_diff.Css_compare.t) =
-  let expected = losses result.expected_warnings in
-  let actual = losses result.actual_warnings in
-  List.compare_lengths expected actual = 0
-  && List.for_all2 accounts_for expected actual
+(* The verdict is proven when nothing the readers dropped can separate the two
+   sides; {!Cascade_diff.Css_compare.unread_separates} owns that question. *)
+let losses_cancel result =
+  not (Cascade_diff.Css_compare.unread_separates result)
 
 (* Counted per side, because the question is whether either input hid something
    from the comparison, not how many the pair hid between them. *)
