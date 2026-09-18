@@ -150,13 +150,18 @@ target parses past is dead, so two sheets that disagree only on those compare
 equal. `--enforce-spec` holds those rewrites off and keeps the two apart.
 
 A difference cascade can see exits 1, whether or not it read everything. When it
-finds no difference but could not read part of a file, it compares the text each
-side dropped. Text that matches byte for byte cannot hide a difference, so
+finds no difference but could not read a rule in a file, it compares the text
+each side dropped. Text that matches byte for byte cannot hide a difference, so
 exit 0 stands. Text that differs might hide one, so cascade exits 2 rather than
-claim an equivalence it has not established. Adding or removing an unreadable
-declaration exits 2 for that reason: one side dropped text the other did not. A
-gate that treated 2 as 0 would pass while the files differ. The report and the
-`--json` document count the unreadable declarations and rules on each side.
+claim an equivalence it has not established: one side dropped a rule the other
+did not, and a gate that treated 2 as 0 would pass while the files differ. A
+declaration cascade could not read is another matter. Its reader is held to the
+browser's accept set (`test/spec/browser/accept_set`), so a declaration it
+refuses is one the browser drops from whichever file holds it, and the two
+render the same; the declaration is dropped as the browser drops it, the parse
+warning stays as information, and the verdict is the one over what remains.
+The report and the `--json` document count the unreadable declarations and
+rules on each side.
 
 `--diff=MODE` controls what counts as "no difference":
 

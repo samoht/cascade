@@ -498,9 +498,9 @@ let json_document ~file1 ~file2 ~mode ~css1 ~css2 ~unread result =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
   let outcome = result.Cascade_diff.Css_compare.result in
-  (* A declaration or a rule the reader refuses is dropped from both sides, so a
-     comparison that found no difference has not shown the two files to be
-     identical - unless the two sides lost the same text. *)
+  (* A rule the reader refuses is dropped from both sides, so a comparison that
+     found no difference has not shown the two files to be identical - unless
+     the two sides lost the same text. *)
   let identical =
     match outcome with
     | No_diff -> losses_cancel result
@@ -822,10 +822,11 @@ let cmd =
         Cmd.Exit.info
           ~doc:
             "if the comparison found no difference and cascade could not read \
-             a declaration or a rule one of the files holds. The reader drops \
-             it from both sides, so the comparison never sees it and cannot \
-             call the two files identical. The report and the $(b,--json) \
-             document count declarations and rules per side. Under \
+             a rule one of the files holds. The reader drops it from both \
+             sides, so the comparison never sees it and cannot call the two \
+             files identical. A declaration it could not read is one a browser \
+             drops too, so it withholds nothing; the report and the \
+             $(b,--json) document count declarations and rules per side. Under \
              $(b,--browser), if no browser or node was found, the driver \
              failed, or the document gave nothing to sample"
           Cli_exit.cannot_determine;

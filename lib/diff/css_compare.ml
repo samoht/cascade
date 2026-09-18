@@ -1040,21 +1040,25 @@ let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 
 (* ===== What the parse dropped ===== *)
 
-(* What one side lost, in the order its reader reported it. *)
+(* What one side lost that the comparison has to answer for, in the order its
+   reader reported it. A declaration the reader refuses is one the browser
+   refuses: test/spec/browser/accept_set holds the reader to the browser's
+   accept set, so the browser drops it from whichever sheet holds it and paints
+   the same, and it is not a loss the verdict answers for. The warning still
+   says where the reader may have lagged. A rule is: nothing holds the rule
+   reader to a browser, and the rule takes everything it held with it. *)
 let losses ws =
   List.filter_map
     (fun (w : Error.t) ->
       match w.recovery with
-      | Error.Recovery.Dropped { construct; text } -> Some (construct, text)
-      | Recovered -> None)
+      | Error.Recovery.Dropped { construct = Rule; text } -> Some text
+      | Dropped { construct = Declaration; _ } | Recovered -> None)
     ws
 
-(* One loss accounts for another when the two readers threw away the same
-   construct spelled the same way. A loss the reader could not name accounts for
-   nothing: nothing shows the other side lost those same bytes. *)
-let accounts_for (c1, t1) (c2, t2) =
-  Error.Recovery.equal_construct c1 c2
-  &&
+(* One loss accounts for another when the two readers threw away the same text.
+   A loss the reader could not name accounts for nothing: nothing shows the
+   other side lost those same bytes. *)
+let accounts_for t1 t2 =
   match (t1, t2) with
   | Some a, Some b -> String.equal a b
   | None, _ | _, None -> false

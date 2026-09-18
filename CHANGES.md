@@ -737,6 +737,13 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- `cascade diff` no longer exits 2 over a declaration its reader refused: the
+  reader is held to the browser's accept set, so a browser drops that
+  declaration from whichever file holds it and renders the same, and the
+  verdict is the one over what remains, the parse warning kept. Tailwind's
+  `filter: blur(<value>)` placeholder against nothing exits 0. A rule the
+  reader dropped still withholds the verdict, and `Css_compare.unread_separates`
+  is the library's answer (#NNNN)
 - A `color-mix()` or a relative colour over a `light-dark()` argument is the
   `light-dark()` of that operation over each branch, which CSS Color 5 sec. 6
   picks by the element's colour scheme, so `color-mix(in oklab,

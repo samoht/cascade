@@ -218,12 +218,15 @@ val has_warnings : t -> bool
     warning. *)
 
 val unread_separates : t -> bool
-(** [unread_separates result] is [true] when what one side's reader dropped may
-    hold a difference the comparison never saw. A dropped declaration or rule
-    reaches neither side of the comparison, and one loss accounts for another
-    only when both readers dropped the same construct spelled the same way; a
-    loss the reader could not name accounts for nothing. A caller that found no
-    difference reads this before calling the two inputs identical. *)
+(** [unread_separates result] is [true] when a rule one side's reader dropped
+    may hold a difference the comparison never saw. A dropped rule reaches
+    neither side of the comparison, and one loss accounts for another only when
+    both readers dropped the same text; a loss the reader could not name
+    accounts for nothing. A declaration the reader refused separates nothing:
+    the reader is held to the browser's accept set, so a browser drops that
+    declaration from whichever input holds it and renders the same, and its
+    warning stays as information. A caller that found no difference reads this
+    before calling the two inputs identical. *)
 
 (** {1:stats Statistics} *)
 
