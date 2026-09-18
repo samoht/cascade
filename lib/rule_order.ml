@@ -873,15 +873,22 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
    arbitrary tokens and neither form may move. Emission keeps whichever the
    author wrote, so the projection folds the quoted form onto the ident sequence
    - the same normalisation the structural comparator applies through
-   {!Css.declaration_value_for_equivalence}. *)
-let normalize_custom_declaration ~queried d =
+   {!Css.declaration_value_for_equivalence}.
+
+   An angle token is the third: CSS Values 4 sec. 6.1 makes [deg], [grad], [rad]
+   and [turn] one dimension, and a [rad] converts through pi, so the fold spends
+   the six-significant-figure budget a quotient takes and [lossless] holds it
+   off, the unit kept as written as the typed path keeps it. *)
+let normalize_custom_declaration ~lossless ~queried d =
   let d = Declaration.map_custom_value Fun.id d in
   let d =
     match d with
     | Declaration.Declaration { property = Custom_property name; _ }
       when List.mem name queried ->
         d
-    | d -> Declaration.canonicalize_custom_time d
+    | d ->
+        let d = Declaration.canonicalize_custom_time d in
+        if lossless then d else Declaration.canonicalize_custom_angle d
   in
   Declaration.unquote_custom_font_strings d
 
@@ -892,7 +899,8 @@ let normalize_custom_declaration ~queried d =
    does not carry a list of the statements it descends through - the list is
    what left [@scope] and [@starting-style] answering differently from
    [@layer]. *)
-let normalize_custom_values (stmts : statement list) : statement list =
+let normalize_custom_values ~lossless (stmts : statement list) : statement list
+    =
   (* CSS Conditional 5 sec. 6.2: a [style()] query on an unregistered property
      compares the declared tokens as written, so a property a query anywhere in
      the sheet names keeps its spelling. *)
@@ -906,7 +914,7 @@ let normalize_custom_values (stmts : statement list) : statement list =
       [] stmts
   in
   Stylesheet.map_declarations
-    (Common.List.map_preserve (normalize_custom_declaration ~queried))
+    (Common.List.map_preserve (normalize_custom_declaration ~lossless ~queried))
     stmts
 
 (* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
@@ -1446,7 +1454,7 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
                 (canonical_missing_component_colors ~lossless
                    (canonical_color_spellings
                       (canonical_quotients ~lossless
-                         (normalize_custom_values
+                         (normalize_custom_values ~lossless
                             (canonical_vendor_aliases stmts)))))))
   in
   let result =

@@ -737,6 +737,13 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- An angle compares as the degrees it names under `--diff=canonical`, which
+  CSS Values 4 sec. 6.1 makes one dimension under `deg`, `grad`, `rad` and
+  `turn`: `.5turn` and `180deg` are one angle in `rotate`, in a `transform`
+  function and in an unregistered custom property's stream, and `1.5rad` is
+  the `85.9437deg` lightningcss writes, under the six-significant-figure
+  budget a quotient already takes; `--lossless` keeps the unit as written
+  (#NNNN)
 - A colour function in a custom property's stream reads a missing axis as
   the zero CSS Color 4 sec. 4.4 makes it, as a colour longhand already did, so
   `--tw-mask-top-from-color:oklab(0% none none/.5)` and its `#00000080` twin

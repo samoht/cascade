@@ -4408,6 +4408,57 @@ let rec canonicalize_time_components comps =
       | Component.Preserved _ -> c)
     comps
 
+(* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
+   dimension, and a dimension token with one of them is an [<angle>] wherever
+   the stream substitutes. The projection spells the token as the degrees
+   {!Values.normalize_angle} folds it to under the budget, which is where the
+   typed path spells [rotate: 1.5rad], so the two meet. *)
+let canonical_angle_token number unit_ =
+  let v = number.Token.value in
+  let angle : Values.angle option =
+    match String.lowercase_ascii unit_ with
+    | "deg" -> Option.Some (Deg v)
+    | "rad" -> Option.Some (Rad v)
+    | "turn" -> Option.Some (Turn v)
+    | "grad" -> Option.Some (Grad v)
+    | _ -> Option.None
+  in
+  match angle with
+  | Option.None -> Option.None
+  | Option.Some angle -> (
+      let ctx = { Values.default_calc_ctx with budget = true } in
+      match Values.normalize_angle ~ctx angle with
+      | Deg value ->
+          let repr = Pp.string_of_float ~drop_leading_zero:true value in
+          Option.Some
+            (Token.Dimension
+               {
+                 number = { value; repr; number_flag = Token.Number };
+                 unit_ = "deg";
+               })
+      | _ -> Option.None)
+
+let rec canonicalize_angle_components comps =
+  List.map
+    (fun c ->
+      match c with
+      | Component.Preserved
+          ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
+          match canonical_angle_token number unit_ with
+          | Option.Some kind ->
+              Component.Preserved { token with kind; repr = Option.None }
+          | Option.None -> c)
+      | Component.Func wrapped ->
+          let func = wrapped.Component.node in
+          let arguments = canonicalize_angle_components func.arguments in
+          Component.Func { wrapped with node = { func with arguments } }
+      | Component.Block wrapped ->
+          let block = wrapped.Component.node in
+          let value = canonicalize_angle_components block.value in
+          Component.Block { wrapped with node = { block with value } }
+      | Component.Preserved _ -> c)
+    comps
+
 let normalize_property_value : type a.
     ?lossless:bool ->
     ?exact_srgb:bool ->
@@ -4425,13 +4476,13 @@ let normalize_property_value : type a.
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
   match property with
-  | Transform -> map_preserve normalize_transform value
-  | Webkit_transform -> map_preserve normalize_transform value
+  | Transform -> map_preserve (normalize_transform ~ctx) value
+  | Webkit_transform -> map_preserve (normalize_transform ~ctx) value
   | Webkit_border_radius -> normalize_border_radius value
   | Moz_border_radius -> normalize_border_radius value
   | Webkit_box_shadow -> normalize_shadow ~lossless value
   | Moz_box_shadow -> normalize_shadow ~lossless value
-  | Rotate -> normalize_rotate value
+  | Rotate -> normalize_rotate ~ctx value
   | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
   | Transform_origin -> normalize_transform_origin value

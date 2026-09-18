@@ -157,6 +157,15 @@ val canonicalize_custom_time : declaration -> declaration
     tokens as written, so the caller keeps a property such a query names out of
     this fold. *)
 
+val canonicalize_custom_angle : declaration -> declaration
+(** [canonicalize_custom_angle d] spells every [<angle>] token of a
+    custom-property token stream as the degrees it names, a converted unit
+    rounded to the six-significant-figure budget a computed value takes, which
+    CSS Values 4 sec. 6.1 makes one dimension. Equivalence-only normalisation
+    for structural diffing; any other declaration passes through unchanged. As
+    for {!canonicalize_custom_time}, the caller keeps a property a container
+    [style()] query names out of this fold. *)
+
 val canonicalize_custom_whitespace : declaration -> declaration
 (** [canonicalize_custom_whitespace d] drops from a custom-property token stream
     the whitespace CSS reads as nothing: around the [*] and [/] of CSS Values 4

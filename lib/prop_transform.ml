@@ -247,8 +247,9 @@ and read_transforms t : transform list =
   then Cursor.err_invalid t "transform none cannot be combined"
   else transforms
 
-let normalize_rotate : rotate_value -> rotate_value =
-  let na = Values.normalize_angle in
+let normalize_rotate ?(ctx = Values.default_calc_ctx) :
+    rotate_value -> rotate_value =
+  let na = Values.normalize_angle ~ctx in
   fun value ->
     match value with
     | Angle a -> preserve_if_equal value (Angle (na a))
@@ -435,14 +436,14 @@ let canonicalise_transform : transform -> transform = function
    angle and number-percentage operands still fold through their own printers.
    Running this before [canonicalise_transform] lets the zero-checks see a folded
    [calc()]. *)
-let normalize_transform_leaves : transform -> transform =
+let normalize_transform_leaves ~ctx : transform -> transform =
   (* The translate / perspective operands are inside a function, so they keep a
      zero's unit ([translate(0px)] stays). The rotate / skew operands are
-     angles, converted to the shortest unit. The scale operands are
-     [<number-percentage>]: pick the shorter spelling so pp does not have to
-     fold the [Pct]/[Num] node distinction. *)
+     angles, converted to the shortest unit, or to degrees under the budget. The
+     scale operands are [<number-percentage>]: pick the shorter spelling so pp
+     does not have to fold the [Pct]/[Num] node distinction. *)
   let nl = Values.normalize_length ~strip:false in
-  let na = Values.normalize_angle in
+  let na = Values.normalize_angle ~ctx in
   let np = Values.normalize_number_percentage in
   function
   | Translate (x, y) -> Translate (nl x, Option.map nl y)
@@ -468,13 +469,14 @@ let normalize_transform_leaves : transform -> transform =
   | Scale_3d (x, y, z) -> Scale_3d (np x, np y, np z)
   | other -> other
 
-let rec normalize_transform (t : transform) : transform =
+let rec normalize_transform ?(ctx = Values.default_calc_ctx) (t : transform) :
+    transform =
   match t with
-  | List ts -> List (List.map normalize_transform ts)
+  | List ts -> List (List.map (normalize_transform ~ctx) ts)
   | _ ->
-      let t = normalize_transform_leaves t in
+      let t = normalize_transform_leaves ~ctx t in
       let t' = canonicalise_transform t in
-      if t' == t then t else normalize_transform t'
+      if t' == t then t else normalize_transform ~ctx t'
 
 let rec pp_transform : transform Pp.t =
  fun ctx t ->

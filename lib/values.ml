@@ -4443,32 +4443,47 @@ let angle_shortest (a : angle) : angle =
            (render u0 f0, n0)
            rest)
 
+(* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
+   dimension. Under the [budget] every concrete angle is its degrees: a [turn]
+   or [grad] converts exactly and a [rad] through pi, and either conversion is
+   Cascade's own digits, so it takes the six-significant-figure budget a
+   quotient does ([round_computed]). An authored degree keeps every digit. *)
+let budget_degrees (a : angle) : angle =
+  match a with
+  | Rad _ | Turn _ | Grad _ -> (
+      match angle_degrees_opt a with
+      | Some d -> Deg (round_computed d)
+      | None -> a)
+  | a -> a
+
 let normalize_angle ?(ctx = default_calc_ctx) =
+  let spell = if ctx.budget then budget_degrees else angle_shortest in
   let rec go (a : angle) : angle =
     match a with
     | Round (strategy, v, s) -> (
         match (go v, go s) with
-        | Deg v, Deg s when s <> 0. ->
-            angle_shortest (Deg (round_to_step strategy v s))
+        | Deg v, Deg s when s <> 0. -> spell (Deg (round_to_step strategy v s))
         | v, s -> Round (strategy, v, s))
     | Mod (x, y) -> (
         match (go x, go y) with
-        | Deg x, Deg y when y <> 0. -> angle_shortest (Deg (mod_value x y))
+        | Deg x, Deg y when y <> 0. -> spell (Deg (mod_value x y))
         | x, y -> Mod (x, y))
     | Rem (x, y) -> (
         match (go x, go y) with
-        | Deg x, Deg y when y <> 0. -> angle_shortest (Deg (Float.rem x y))
+        | Deg x, Deg y when y <> 0. -> spell (Deg (Float.rem x y))
         | x, y -> Rem (x, y))
     | Calc c -> (
         match eval_angle_calc ~ctx c with
         | Val v -> go v
         | folded -> Calc folded)
-    | Deg _ | Turn _ | Grad _ -> angle_shortest a
+    | Deg _ | Turn _ | Grad _ -> spell a
     (* [angle_shortest] leaves radians alone because deg/rad conversion goes
        through pi and so is never exactly value-preserving. Zero is the one
        radian value that converts exactly, and it is the one that matters: a
-       zero angle is what the grammars let you drop. *)
+       zero angle is what the grammars let you drop. The budget spends its six
+       figures on the rest. *)
     | Rad f when f = 0. -> Deg 0.
+    | Rad _ when ctx.budget -> spell a
     | Rad _ | Var _ | Invalid _ -> a
   in
   go

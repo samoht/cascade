@@ -200,6 +200,26 @@ let canonicalize_custom_time = function
            })
   | decl -> decl
 
+(* Equivalence-only normalisation for structural diffing: an angle token in a
+   custom stream is the same angle under [deg], [rad], [turn] and [grad], and
+   emission keeps the author's unit. *)
+let canonicalize_custom_angle = function
+  | Declaration
+      {
+        property = Custom_property _ as property;
+        value = Custom_value ({ value = Tokens components; _ } as cv);
+        important;
+        _;
+      } ->
+      v ~important property
+        (Custom_value
+           {
+             cv with
+             value =
+               Tokens (Properties.canonicalize_angle_components components);
+           })
+  | decl -> decl
+
 (* Equivalence-only normalisation for structural diffing: drop the whitespace of
    a custom-property stream that CSS reads as nothing. Cascade keeps that
    whitespace verbatim on output, since the stream is opaque and the author's
