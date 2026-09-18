@@ -16,10 +16,10 @@
    [cascade diff --browser --html].
 
    A pair costs a browser launch, a second or two, so the default run is a
-   sample: the hand-written inputs, a few corpus sheets, the two examples and a
-   few seeds, about a hundred pairs in a few minutes. [--full] renders every
-   corpus sheet and more seeds and takes the better part of an hour; [--corpus
-   N], [--seeds N] and [--only SUBSTRING] size the run by hand.
+   sample: the hand-written inputs, 24 corpus sheets, the two examples and 16
+   seeds, about a hundred pairs in two to three minutes. [--full] renders every
+   corpus sheet and 128 seeds, a thousand pairs in some twenty minutes;
+   [--corpus N], [--seeds N] and [--only SUBSTRING] size the run by hand.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
@@ -153,18 +153,23 @@ type input = {
   expect : expectation;
 }
 
-(* Inputs the sweep is known to fail. Each is a render change a transform makes
-   today; fixing one is its own piece of work, so the sweep pins them here and
-   stays green on everything else. *)
-let known = []
+(* Pairs the sweep is known to fail, as [(input, variant, reason)]. Each is a
+   render change a transform makes today; fixing one is its own piece of work,
+   so the sweep pins them here and stays green on everything else. The lossy
+   colour fold rounds a channel within the README's colour-difference budget,
+   and a rounded channel is a pixel the browser paints a unit apart. *)
+let lossy_colour = "the lossy colour fold rounds a channel the browser paints"
 
-let sheet id source =
-  let expect =
-    match List.assoc_opt id known with
-    | Some reason -> Differs reason
-    | None -> Same
-  in
-  { id; source; sheets = None; expect }
+let known =
+  [
+    ("corpus-colors-0047", "optimize", lossy_colour);
+    ("corpus-colors-0048", "optimize", lossy_colour);
+    ("corpus-colors-0049", "optimize", lossy_colour);
+    ("corpus-colors-0051", "optimize", lossy_colour);
+    ("corpus-colors-0056", "optimize", lossy_colour);
+  ]
+
+let sheet id source = { id; source; sheets = None; expect = Same }
 
 let pair id ~source ~expect first second =
   { id; source; sheets = Some [ first; second ]; expect }
@@ -324,20 +329,23 @@ let reparsed css =
   | Ok { stylesheet; _ } -> minified stylesheet
   | Error _ -> css
 
+let exact sheet = Css.to_string ~minify:true ~lossless:true sheet
+
 (* The reference is the printed source, so a difference is the transform's and
-   not the parser's. [prune] is judged over the derived page itself, the page
-   the pruned sheet must still render. *)
+   not the parser's. [optimize] and its reparse are printed as [cascade
+   --minify] prints them, approximation included; the other transforms are
+   printed exactly, so a difference under one is that transform's and not the
+   printer's. [prune] is judged over the derived page itself, the page the
+   pruned sheet must still render. *)
 let variants ~roots sheet =
   let optimized = minified (Css.optimize sheet) in
   [
     ("original", Css.to_string sheet);
     ("optimize", optimized);
-    ( "lossless",
-      Css.to_string ~minify:true ~lossless:true
-        (Css.optimize ~lossless:true sheet) );
+    ("lossless", exact (Css.optimize ~lossless:true sheet));
     ("reparsed", reparsed optimized);
-    ("inline-vars", minified (Css.inline_vars sheet));
-    ("prune", minified (Prune.analyse ~sheet roots).sheet);
+    ("inline-vars", exact (Css.inline_vars sheet));
+    ("prune", exact (Prune.analyse ~sheet roots).sheet);
   ]
 
 (* ===== Probes ===== *)
@@ -444,9 +452,20 @@ let show_renders (report : Browser_compare.t) =
   let n = List.length report.differences in
   if n > 8 then Fmt.pr "  ... %d computed value(s) differ in all@." n
 
-(* One pair through the browser, judged against what the input expects. *)
+(* One pair through the browser, judged against what the input expects, or
+   against its pin. *)
 let check_pair st ~root ~id ~expect ~html first second =
   st.pairs <- st.pairs + 1;
+  let expect =
+    match
+      List.find_opt
+        (fun (input, variant, _) ->
+          String.equal input id && String.equal variant (fst second))
+        known
+    with
+    | Some (_, _, reason) -> Differs reason
+    | None -> expect
+  in
   match (Browser_compare.run ~html [ first; second ], expect) with
   | Error e, _ ->
       st.failures <- st.failures + 1;
@@ -459,8 +478,10 @@ let check_pair st ~root ~id ~expect ~html first second =
           id reason)
       else (
         st.canaries <- st.canaries + 1;
-        Fmt.pr "known %s: %s@." id reason;
-        write_artefacts ~dir:(root // id) ~html ~first ~second report)
+        Fmt.pr "known %s: %s: %s@." id (fst second) reason;
+        write_artefacts
+          ~dir:(root // String.concat "-" [ id; fst second ])
+          ~html ~first ~second report)
   | Ok report, Same ->
       if not (Browser_compare.identical report) then (
         st.differing <- st.differing + 1;

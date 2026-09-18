@@ -407,6 +407,7 @@ let parse css =
   | Error _ -> None
 
 let print sheet = Css.to_string ~minify:true sheet
+let exact sheet = Css.to_string ~minify:true ~lossless:true sheet
 
 let context_of customs =
   let decls =
@@ -419,9 +420,12 @@ let context_of customs =
 let transforms = [ "minify"; "inline-vars"; "optimize"; "eval" ]
 
 (* Every transform in the library that can rewrite a [var()], plus the plain
-   round trip that says whether the reader and the printer alone already moved
-   the sheet. A leg that raises contributes nothing rather than aborting the
-   run: the other legs of the job are still answers. *)
+   round trip that says whether the reader and the minify printer alone already
+   moved the sheet. The round trip and [optimize] print as [cascade --minify]
+   prints, approximation included; the two substitutions print exactly, so a
+   difference under one is the substitution's and not the printer's. A leg that
+   raises contributes nothing rather than aborting the run: the other legs of
+   the job are still answers. *)
 let legs job =
   match parse job.css with
   | None -> []
@@ -434,13 +438,13 @@ let legs job =
       List.filter_map Fun.id
         [
           attempt "minify" print;
-          attempt "inline-vars" (fun s -> print (Css.inline_vars s));
+          attempt "inline-vars" (fun s -> exact (Css.inline_vars s));
           attempt "optimize" (fun s -> print (Css.optimize s));
           (match job.root_customs with
           | None -> None
           | Some customs ->
               let ctx = context_of customs in
-              attempt "eval" (fun s -> print (Css.eval_stylesheet ctx s)));
+              attempt "eval" (fun s -> exact (Css.eval_stylesheet ctx s)));
         ]
 
 (* The legs worth a browser launch: one per distinct text that is not the
@@ -816,9 +820,9 @@ let sweep o jobs ~seed =
   check_moved ~all_legs asked;
   if is_empty findings then
     Fmt.pr "%s: every transform painted what the input painted@." harness
-  else (
-    report_findings ~pairs findings;
-    exit 1)
+  else report_findings ~pairs findings;
+  Fmt.pr "  failures: %d@." (List.length findings);
+  if not (is_empty findings) then exit 1
 
 let () =
   let o = parse_args () in
