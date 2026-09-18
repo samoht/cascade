@@ -444,6 +444,13 @@ type decl_groups = {
   all : node_id list Decl_tbl.t;
   opaque : node_id list Decl_tbl.t;
   frontier : node_id list Decl_tbl.t;
+  mutable all_nodes : node_id list;
+      (** every node in [all], newest first, for the walk a query takes over the
+          whole group *)
+  mutable all_scanned : int;
+      (** the query stamp that last walked [all_nodes]: a block node asks about
+          one group once per branch and declaration that lands in it, and the
+          walk is the same every time *)
 }
 
 type importance_decl_groups = { normal : decl_groups; important : decl_groups }
@@ -463,6 +470,8 @@ let empty_decl_groups () =
     all = Decl_tbl.create 4;
     opaque = Decl_tbl.create 4;
     frontier = Decl_tbl.create 4;
+    all_nodes = [];
+    all_scanned = -1;
   }
 
 let empty_importance_decl_groups () =
@@ -510,6 +519,7 @@ let push_decl groups decl value =
 let add_decl ~compact groups decl value =
   let groups = importance_decl_groups groups decl in
   push_decl groups.all decl value;
+  groups.all_nodes <- value :: groups.all_nodes;
   if compact then begin
     let same =
       Decl_tbl.find_opt groups.frontier decl |> Option.value ~default:[]
@@ -540,20 +550,29 @@ let collect_decl_table decl groups stamp seen acc =
       else add_candidates stamp seen acc ids)
     groups acc
 
+(* The whole group as candidates, once per query. A node writing the same
+   declaration is among them, where the walk per distinct declaration left it
+   out: it is refused by the conflict test as before, and a candidate the test
+   refuses adds no edge, so the answer is the same. Walking the group per
+   declaration of the querying node, a block of sixty rules walked each group
+   sixty times over. *)
+let collect_group_nodes groups stamp seen acc =
+  if groups.all_scanned = stamp then acc
+  else begin
+    groups.all_scanned <- stamp;
+    add_candidates stamp seen acc groups.all_nodes
+  end
+
 let collect_distinct_decls ~compact decl groups stamp seen acc =
   let groups = importance_decl_groups groups decl in
   if compact then
     collect_decl_table decl groups.frontier stamp seen acc |> fun acc ->
     collect_decl_table decl groups.opaque stamp seen acc
-  else collect_decl_table decl groups.all stamp seen acc
+  else collect_group_nodes groups stamp seen acc
 
 let collect_all_decls groups stamp seen acc =
-  let collect groups acc =
-    Decl_tbl.fold
-      (fun _ ids acc -> add_candidates stamp seen acc ids)
-      groups.all acc
-  in
-  collect groups.normal acc |> fun acc -> collect groups.important acc
+  collect_group_nodes groups.normal stamp seen acc |> fun acc ->
+  collect_group_nodes groups.important stamp seen acc
 
 let collect_id_groups collect groups ids stamp seen acc =
   let acc = collect groups.no_id stamp seen acc in

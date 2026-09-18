@@ -730,6 +730,13 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- `--diff=canonical` is several times faster on a large stylesheet, for
+  byte-identical output: tw's site sheet against Tailwind's compiled one
+  drops from 22s to 5.5s of CPU. Unwrapping a `@supports` guard every target
+  satisfies sent the rules before it through the local passes once per
+  guard, dropping a guarded repeat cost a pass over every selector seen per
+  statement, and a block's conflict candidates were walked once per
+  declaration it holds (#1267)
 - `--diff=canonical` no longer reports two rules under a condition and its
   negation, such as `@media (width>=20rem)` and `@media not (width>=20rem)`,
   or `@container card (...)` and `@container card not (...)`, as moved when
