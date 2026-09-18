@@ -545,6 +545,50 @@ let canonical_refused_declaration_separates_nothing () =
     (separates ".b{color:red}.a[[ {color:red}"
        ".b { color: red }.a[[ {color:red}")
 
+(* CSS Conditional 3 sec. 6.1: a parenthesised term that is neither a
+   [<supports-decl>] nor a nested condition is a [<general-enclosed>], and "the
+   result is false", so a guard it makes false in every world selects no user
+   agent and its block never applies. Tailwind writes [@supports
+   (@media(width>=1px): var(--tw))] for [supports-[@media(width>=1px)]:flex],
+   whose "declaration" has no property ident, and tw writes nothing; the two
+   render alike. The projection drops the block under either reading, since no
+   browser and no reading of the spec answers the guard yes. A guard a browser
+   can answer stays, and so does one the term cannot decide alone. *)
+let canonical_drops_unanswerable_supports () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let enforce a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true a b
+  in
+  let guard = "@supports (@media(width>=1px): var(--tw)){.x{display:flex}}" in
+  Alcotest.(check bool)
+    "a guard over a declaration with no property ident selects nothing" true
+    (equal guard "");
+  Alcotest.(check bool) "under --enforce-spec too" true (enforce guard "");
+  Alcotest.(check bool)
+    "a bare general-enclosed term selects nothing" true
+    (equal "@supports (future syntax){.x{display:flex}}" "");
+  Alcotest.(check bool)
+    "and so does one conjoined with a real feature" true
+    (equal
+       "@supports (display:grid) and (@media(width>=1px): \
+        var(--tw)){.x{display:flex}}"
+       "");
+  Alcotest.(check bool)
+    "a guard a browser answers stays" false
+    (equal "@supports (display: grid){.x{display:flex}}" "");
+  Alcotest.(check bool)
+    "under --enforce-spec too" false
+    (enforce "@supports (display: grid){.x{display:flex}}" "");
+  Alcotest.(check bool)
+    "a disjunction the real feature can carry stays" false
+    (equal
+       "@supports (display:grid) or (@media(width>=1px): \
+        var(--tw)){.x{display:flex}}"
+       "");
+  Alcotest.(check bool)
+    "a function form stays open for the browser" false
+    (equal "@supports selector(:has(+ img)){.x{display:flex}}" "")
+
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
    ones that delete content leave the reader of that content - an engine without
@@ -2791,6 +2835,8 @@ let suite =
         equal_canonical_targets;
       Alcotest.test_case "canonical refused declaration separates nothing"
         `Quick canonical_refused_declaration_separates_nothing;
+      Alcotest.test_case "canonical drops an unanswerable @supports" `Quick
+        canonical_drops_unanswerable_supports;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
       Alcotest.test_case "canonical folds container function case" `Quick
