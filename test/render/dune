@@ -3,6 +3,11 @@
 ; not fail the suite. CASCADE_NO_BROWSER is a different thing and fails: see
 ; Browser.suppressed.
 ;
+; Four of them judge by the raster through Browser_compare.run, the oracle
+; behind `cascade diff --browser`: the page is loaded afresh under each sheet,
+; captured whole and compared pixel for pixel, and Browser_compare.identical is
+; the verdict. Nothing in them decides that two spellings are one.
+;
 ; render_diff: a stylesheet and the forms cascade's transforms make of it
 ; (optimize, lossless optimize, the minified text read back, inline-vars and
 ; prune) must paint the same page, over a document derived from the
@@ -15,8 +20,9 @@
 ; canonical_agree: a pair --diff=canonical reports identical must paint the
 ; same page, over a document derived from it.
 ;
-; resolve_diff: the declarations Resolve says win for an element must compute
-; the same style, in the browser, as the stylesheet they came from.
+; resolve_diff: the declarations Resolve says win for an element, written into
+; its style attribute as cascade apply writes them, must paint the page the
+; stylesheet they came from paints.
 ;
 ; selector_match: the element set Resolve says a selector matches must be the
 ; set document.querySelectorAll returns for it, over the same document.
@@ -141,7 +147,6 @@
  (alias runtest)
  (deps
   (env_var CASCADE_NO_BROWSER)
-  (glob_files *.js)
   resolve_diff.exe)
  (action
   (setenv
