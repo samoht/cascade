@@ -30,9 +30,9 @@
 ; must be the ones the browser's CSSOM keeps. Both sides are read through the
 ; same parser, so a difference is recovery and not spelling.
 ;
-; custom_property: a transform that resolves var() must compute, in the
-; browser, what the sheet it rewrote computed. Custom properties are sampled by
-; name, which the other computed-style harnesses here deliberately do not do.
+; custom_property: a transform that resolves var() must paint what the sheet it
+; rewrote painted, over a document whose every consumer of a binding paints
+; what it reads.
 ;
 ; browser_cli: `cascade diff --browser` against the browser it drives: the
 ; README's parity pair reports the pseudo-element losing its content, an
@@ -189,7 +189,6 @@
  (alias runtest)
  (deps
   (env_var CASCADE_NO_BROWSER)
-  (glob_files *.js)
   custom_property.exe)
  (action
   (run %{exe:custom_property.exe})))
