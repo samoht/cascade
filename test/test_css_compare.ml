@@ -344,6 +344,55 @@ let equal_canonical_relative_color_pass_through () =
     "a different alpha still differs" false
     (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.5)}")
 
+(* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
+   element's used colour scheme, so a [color-mix()] or a relative colour over a
+   [light-dark()] argument is the [light-dark()] of that operation over each
+   branch, and each branch folds as the plain colour it is. Tailwind writes a
+   scheme-aware colour at half alpha as the mix and lightningcss as the
+   [light-dark()] of the two hexes. A mix a branch cannot fold stays as written,
+   so the two spellings of it still report. *)
+let equal_canonical_light_dark_mix () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a mix over a light-dark() is the light-dark() of the mixes" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
+  Alcotest.(check bool)
+    "in the second argument too" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,#0000 50%,light-dark(red,#00f))}");
+  Alcotest.(check bool)
+    "and in both" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) \
+        50%,light-dark(#0000,#fff0))}");
+  Alcotest.(check bool)
+    "a relative colour over a light-dark() origin" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:oklab(from light-dark(red,#00f) l a b/.5)}");
+  Alcotest.(check bool)
+    "in a custom stream too" true
+    (equal ".a{--c:light-dark(#ff000080,#0000ff80)}"
+       ".a{--c:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
+  Alcotest.(check bool)
+    "a different proportion is another pair of colours" false
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 25%,#0000)}");
+  Alcotest.(check bool)
+    "a mix no branch can fold stays as written" false
+    (equal
+       ".a{background-color:light-dark(color-mix(in oklab,red \
+        50%,var(--x)),color-mix(in oklab,#00f 50%,var(--x)))}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) \
+        50%,var(--x))}");
+  let lossless =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true
+  in
+  Alcotest.(check bool)
+    "lossless keeps the mix" false
+    (lossless ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}")
+
 (* CSS Cascade 5 sec. 3.2: [all] resets [content], so which of the two a rule
    writes last decides whether a pseudo-element has any. The projection keeps
    both, since the earlier one is a fallback an engine without [all] reads, and
@@ -2692,6 +2741,8 @@ let suite =
         equal_canonical_angle_units;
       Alcotest.test_case "canonical relative colour pass-through" `Quick
         equal_canonical_relative_color_pass_through;
+      Alcotest.test_case "canonical light-dark mix" `Quick
+        equal_canonical_light_dark_mix;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical judges for the targets" `Quick
