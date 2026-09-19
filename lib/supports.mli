@@ -135,6 +135,16 @@ val implemented_by : Support.targets -> t -> bool option
     on its own and combinators follow CSS Conditional 3 sec. 6's three-valued
     logic. *)
 
+val never_holds : t -> bool
+(** [never_holds cond] is [true] when [cond] is false however a user agent
+    answers its feature tests, reading a parenthesised [<general-enclosed>] term
+    as the constant false CSS Conditional 3 sec. 6.1 makes it: a guard over
+    [(@media(width>=1px): var(--tw))], whose declaration has no property ident,
+    selects no user agent, and neither does one conjoined with it. A function
+    form stays a feature test, since cascade's own feature grammar may refuse an
+    argument the browser accepts. {!simplify_under} keeps the term open instead,
+    for a sheet the optimizer emits. *)
+
 val simplify_under : context:t list -> t -> [ `True | `False | `Cond of t ]
 (** [simplify_under ~context cond] decides [cond] against the conjunction [K] of
     the conditions enclosing it. [`True] means [K and not cond] is

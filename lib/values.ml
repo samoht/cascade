@@ -4443,32 +4443,47 @@ let angle_shortest (a : angle) : angle =
            (render u0 f0, n0)
            rest)
 
+(* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
+   dimension. Under the [budget] every concrete angle is its degrees: a [turn]
+   or [grad] converts exactly and a [rad] through pi, and either conversion is
+   Cascade's own digits, so it takes the six-significant-figure budget a
+   quotient does ([round_computed]). An authored degree keeps every digit. *)
+let budget_degrees (a : angle) : angle =
+  match a with
+  | Rad _ | Turn _ | Grad _ -> (
+      match angle_degrees_opt a with
+      | Some d -> Deg (round_computed d)
+      | None -> a)
+  | a -> a
+
 let normalize_angle ?(ctx = default_calc_ctx) =
+  let spell = if ctx.budget then budget_degrees else angle_shortest in
   let rec go (a : angle) : angle =
     match a with
     | Round (strategy, v, s) -> (
         match (go v, go s) with
-        | Deg v, Deg s when s <> 0. ->
-            angle_shortest (Deg (round_to_step strategy v s))
+        | Deg v, Deg s when s <> 0. -> spell (Deg (round_to_step strategy v s))
         | v, s -> Round (strategy, v, s))
     | Mod (x, y) -> (
         match (go x, go y) with
-        | Deg x, Deg y when y <> 0. -> angle_shortest (Deg (mod_value x y))
+        | Deg x, Deg y when y <> 0. -> spell (Deg (mod_value x y))
         | x, y -> Mod (x, y))
     | Rem (x, y) -> (
         match (go x, go y) with
-        | Deg x, Deg y when y <> 0. -> angle_shortest (Deg (Float.rem x y))
+        | Deg x, Deg y when y <> 0. -> spell (Deg (Float.rem x y))
         | x, y -> Rem (x, y))
     | Calc c -> (
         match eval_angle_calc ~ctx c with
         | Val v -> go v
         | folded -> Calc folded)
-    | Deg _ | Turn _ | Grad _ -> angle_shortest a
+    | Deg _ | Turn _ | Grad _ -> spell a
     (* [angle_shortest] leaves radians alone because deg/rad conversion goes
        through pi and so is never exactly value-preserving. Zero is the one
        radian value that converts exactly, and it is the one that matters: a
-       zero angle is what the grammars let you drop. *)
+       zero angle is what the grammars let you drop. The budget spends its six
+       figures on the rest. *)
     | Rad f when f = 0. -> Deg 0.
+    | Rad _ when ctx.budget -> spell a
     | Rad _ | Var _ | Invalid _ -> a
   in
   go
@@ -4905,9 +4920,10 @@ let pp_color_space : color_space Pp.t =
   | Hwb -> Pp.string ctx "hwb"
 
 let pp_color' ctx space components alpha =
-  let decimals =
-    color_channel_decimals space (color_numeric_channels components)
-  in
+  (* The AST carries the canonical precision ([round_modern_color_axes]); the
+     printer serialises it faithfully rather than rounding again, so a refused
+     fold keeps the digits that make its verdict repeat. *)
+  let decimals = 8 in
   Pp.call "color"
     (fun ctx (space, components, alpha) ->
       pp_color_space ctx space;
@@ -7351,13 +7367,29 @@ let relative_color_has_empty_alpha cvs =
    The linear route covers every space whose matrices are wired up, so a
    relative colour folds whether its origin was written as a hex or as the
    [color()] the same conversion reaches. *)
+(* The conversion error the fold takes from the space a colour is written in:
+   none for an sRGB spelling, the wide-gamut bound for a [color()] matrix, the
+   Lab bound for the Lab family, and nothing for an authored sRGB value. *)
+let conversion_error_of_color (c : color) =
+  match c with
+  | Color { space = Srgb | Srgb_linear; _ } -> 0.
+  | Color { space = Lab | Oklab | Lch | Oklch; _ } ->
+      Color_space.lab_conversion_error
+  | Color _ -> Color_space.conversion_error
+  | Oklab _ | Oklch _ | Lab _ | Lch _ -> Color_space.lab_conversion_error
+  | _ -> 0.
+
 let relative_origin_srgb_bytes origin : (int * int * int * int) option =
   match static_color_to_srgb_bytes origin with
   | Some _ as found -> found
   | Option.None -> (
       match static_color_to_linear_srgb origin with
       | Some (linear, alpha_f) -> (
-          match Color_space.srgb_bytes_of_linear linear with
+          match
+            Color_space.srgb_bytes_of_linear
+              ~error:(conversion_error_of_color origin)
+              linear
+          with
           | Some (r, g, b) ->
               let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
               Some
@@ -8346,7 +8378,11 @@ let normalize_static_modern_color ~exact_srgb ~lossless c =
   else
     match static_color_to_linear_srgb c with
     | Some (linear, alpha_f) -> (
-        match Color_space.srgb_bytes_of_linear linear with
+        match
+          Color_space.srgb_bytes_of_linear
+            ~error:(conversion_error_of_color c)
+            linear
+        with
         | Some (r, g, b) ->
             let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
             let alpha_byte =
@@ -8398,7 +8434,17 @@ let normalize_srgb_mix color1 color2 ~p1 ~p2 =
       in
       let alpha = interp_alpha *. alpha_mult in
       let linear = Color_space.linear_rgb_of_rgb (r, g, b) in
-      match Color_space.srgb_bytes_of_linear linear with
+      (* An operand written in sRGB terms mixes by exact arithmetic every engine
+         performs alike; an operand converted from another space carries that
+         conversion's error into the result. *)
+      let mix_error =
+        if
+          static_color_to_srgb_channels color1 <> None
+          && static_color_to_srgb_channels color2 <> None
+        then 0.
+        else Color_space.conversion_error
+      in
+      match Color_space.srgb_bytes_of_linear ~error:mix_error linear with
       | Some (r, g, b) ->
           let clamp01 v = Float.max 0. (Float.min 1. v) in
           let a = Float.to_int (Float.round (clamp01 alpha *. 255.)) in
@@ -8452,6 +8498,50 @@ let round_lab_family_axes ~lossless (c : color) : color =
   | Lch r ->
       Lch { r with l = lab_l r.l; c = r1 r.c; h = round_hue ~lossless r.h }
   | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
+  | other -> other
+
+(* What a browser paints for a colour, as the minifier needs it: the fold
+   verdict of the linear-sRGB colour it converts to. *)
+let srgb_verdict_of_color (c : color) : Color_space.srgb_fold =
+  match static_color_to_linear_srgb c with
+  | Some (linear, _) ->
+      Color_space.srgb_fold_of_linear
+        ~error:(conversion_error_of_color c)
+        linear
+  | None -> Color_space.Out_of_gamut
+
+(* Reduce the coefficients of a colour that did not fold, but only as far as the
+   fold verdict stays the same. An in-gamut colour whose byte is ambiguous must
+   keep the precision that fixes which side of the half-integer it is on, and an
+   out-of-gamut colour must keep the precision the engine gamut maps, so a
+   shorter spelling that changes either is not emitted. Where the canonical
+   rounding is safe it is taken, so the minified output stays as short as it was
+   and repeats: the rounded value yields the same verdict. *)
+let verdict_preserving (rounded : color) (exact : color) : color =
+  if
+    Color_space.equal_srgb_fold
+      (srgb_verdict_of_color rounded)
+      (srgb_verdict_of_color exact)
+  then rounded
+  else exact
+
+(* The [color()] components at their canonical precision, in the AST, so the
+   emitted text and the fold decision agree and minify is a fixed point. The
+   printer serialises the node faithfully. *)
+let round_modern_color_axes ~lossless (c : color) : color =
+  let round_component decimals (component : component) : component =
+    match component with
+    | Num f -> Num (round_color_axis ~lossless ~decimals f)
+    | Pct f -> Pct (round_color_axis ~lossless ~decimals (f /. 100.) *. 100.)
+    | other -> other
+  in
+  match c with
+  | Color r ->
+      let decimals =
+        color_channel_decimals r.space (color_numeric_channels r.components)
+      in
+      Color
+        { r with components = List.map (round_component decimals) r.components }
   | other -> other
 
 (* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
@@ -8576,8 +8666,8 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   in
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   let static_fold () =
-    round_lab_family_axes ~lossless
-      (normalize_static_modern_color ~exact_srgb ~lossless c)
+    let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
+    verdict_preserving (round_lab_family_axes ~lossless folded) folded
   in
   match c with
   | Oklab { l = Some l; a = None; b = None; alpha }
@@ -8587,7 +8677,9 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
   | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
-  | Color _ -> normalize_static_modern_color ~exact_srgb ~lossless c
+  | Color _ ->
+      let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
+      verdict_preserving (round_modern_color_axes ~lossless folded) folded
   | Hex { r; g; b; a } -> normalize_hex_color c r g b a
   (* The authored spelling is a pretty-printing detail the printer reads, not
      part of the colour, so the fold drops it: two spellings of one colour have
@@ -8618,7 +8710,10 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       in
       match folded with
       | Option.Some color -> normalize_color ~lossless color
-      | Option.None -> Relative_color (name, origin, tail))
+      | Option.None -> (
+          match light_dark_relative ~lossless name origin tail with
+          | Option.Some color -> color
+          | Option.None -> Relative_color (name, origin, tail)))
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
@@ -8693,7 +8788,56 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
   in
   match folded with
   | Some color -> normalize_color ~lossless color
-  | None -> keep ()
+  | None -> (
+      (* A mix over a [light-dark()] operand is the [light-dark()] of the mix
+         over each branch. *)
+      match
+        light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
+          ~percent2
+      with
+      | Some color -> color
+      | None -> keep ())
+
+(* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
+   element's used colour scheme, so a mix over a [light-dark()] argument is the
+   [light-dark()] of the mix over each branch, and the two arguments distribute
+   at once. Exact only where each branch folds to a colour: a mix a branch keeps
+   stays as written, so the two spellings of it still report. A value fold like
+   the mix itself, so [lossless] holds it off. *)
+and light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2 ~percent2
+    =
+  let branches c =
+    match c with Light_dark (l, d) -> Some (l, d) | _ -> None
+  in
+  let c1 = normalize_color ~lossless color1 in
+  let c2 = normalize_color ~lossless color2 in
+  match (branches c1, branches c2) with
+  | _ when lossless -> None
+  | None, None -> None
+  | b1, b2 -> (
+      let l1, d1 = Option.value b1 ~default:(c1, c1) in
+      let l2, d2 = Option.value b2 ~default:(c2, c2) in
+      let mix color1 color2 =
+        normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
+          ~percent2
+      in
+      match (mix l1 l2, mix d1 d2) with
+      | Mix _, _ | _, Mix _ -> None
+      | light, dark -> Some (Light_dark (light, dark)))
+
+(* The same reading for a relative colour: [oklab(from light-dark(a, b) ...)] is
+   the [light-dark()] of the call over each branch, kept where a branch keeps
+   its call. *)
+and light_dark_relative ~lossless name origin tail =
+  match origin with
+  | Light_dark (l, d) when not lossless -> (
+      let over origin =
+        normalize_color ~lossless (Relative_color (name, origin, tail))
+      in
+      match (over l, over d) with
+      | Relative_color _, _ | _, Relative_color _ -> None
+      | light, dark -> Some (Light_dark (light, dark)))
+  | _ -> None
 
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =

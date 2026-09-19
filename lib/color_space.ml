@@ -257,22 +257,89 @@ let oklab_distance (l1, a1, b1) (l2, a2, b2) =
    high-precision source whose nearest byte triple is perceptibly off keeps its
    functional spelling. Alpha is not considered here: 8-bit alpha is the
    canonical hex form and is handled by the caller. *)
-let srgb_bytes_of_linear ?(budget = 0.002) (linear : rgb) :
-    (int * int * int) option =
+(* The error an engine's conversion arithmetic leaves in a linear-light sRGB
+   channel, as a fraction of the colour's largest linear channel. Measured on
+   Chrome 153 by rendering display-p3, xyz, oklch and lab spellings of sRGB
+   colours whose one channel sits a known distance from a half-integer byte
+   against the hex on either side: the XYZ-D65 to sRGB step carries 1.5e-4 to
+   3e-4 (a saturated green's red channel of 5.95/255 painted as 5, the P3 grey
+   127.5 as 127 in one channel and 128 in the others), the Lab family and the
+   transfer function alone below 2e-5. Each bound is the largest observed. *)
+let conversion_error = 3e-4
+let lab_conversion_error = 2e-5
+
+(* d(sRGB)/d(linear) at a linear-light value: the encode curve's slope, 12.92 on
+   the toe and steeper the darker the channel above it. *)
+let encode_slope lin =
+  let lin = Float.abs lin in
+  if lin <= 0.0031308 then 12.92
+  else 1.055 /. 2.4 *. (lin ** ((1.0 /. 2.4) -. 1.0))
+
+(* What a browser paints for a colour, as a minifier needs it to decide whether
+   a shorter spelling can stand for the authored one. *)
+type srgb_fold =
+  | Fold of (int * int * int)
+    (* In the sRGB gamut with every channel unambiguous: this spelling paints
+       these bytes in every engine, so a hex/named form may replace it. *)
+  | Ambiguous
+    (* In gamut, but a channel lies within the conversion error of a
+       half-integer byte, where which way it rounds is the engine's arithmetic
+       and not the colour, so no shorter spelling is guaranteed to paint the
+       same pixel. *)
+  | Out_of_gamut
+(* The conversion leaves the sRGB gamut. CSS Color 4 sec. 14.2 has the engine
+   gamut map it for the display with an algorithm of its choosing, so its
+   painted colour is the engine's and no sRGB spelling is it. *)
+
+let equal_srgb_fold (a : srgb_fold) (b : srgb_fold) = a = b
+
+let srgb_fold_of_linear ?(error = conversion_error) (linear : rgb) : srgb_fold =
+  let lr, lg, lb = linear in
   let r, g, b = rgb_of_linear_rgb linear in
   let in_gamut v = v >= -1e-3 && v <= 1.0 +. 1e-3 in
-  if not (in_gamut r && in_gamut g && in_gamut b) then None
+  if not (in_gamut r && in_gamut g && in_gamut b) then Out_of_gamut
   else
-    let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
-    let to_byte v = Float.to_int (Float.round (clamp01 v *. 255.0)) in
-    let rb = to_byte r and gb = to_byte g and bb = to_byte b in
-    let byte_srgb x = Float.of_int x /. 255.0 in
-    let folded = linear_rgb_of_rgb (byte_srgb rb, byte_srgb gb, byte_srgb bb) in
-    if
-      oklab_distance (oklab_of_linear_srgb linear) (oklab_of_linear_srgb folded)
-      <= budget
-    then Some (rb, gb, bb)
-    else None
+    let lmax =
+      Float.max (Float.abs lr) (Float.max (Float.abs lg) (Float.abs lb))
+    in
+    let ambiguous = ref false in
+    let channel lin v =
+      (* A channel the conversion pushed out of [\[0, 1\]] paints the sRGB gamut
+         edge exactly, in every engine: nothing stands between it and the byte
+         it clamps to. Only an in-range channel near a half-integer is the
+         engine's arithmetic to round, and the wider the channel's own slope the
+         further the error reaches. *)
+      if v <= 0. then 0
+      else if v >= 1. then 255
+      else
+        let x = v *. 255.0 in
+        let byte = Float.to_int (Float.round x) in
+        let window = 255.0 *. encode_slope lin *. error *. lmax in
+        let half = Float.floor x +. 0.5 in
+        (* A channel that rounds to a gamut edge is that edge: an engine clamps
+           what crosses [0, 1], so the byte is not one its arithmetic rounds
+           off. Only an interior channel is the engine's to round, and the wider
+           its own slope the further the error reaches. *)
+        if byte <> 0 && byte <> 255 && Float.abs (x -. half) < window then
+          ambiguous := true;
+        byte
+    in
+    let rb = channel lr r and gb = channel lg g and bb = channel lb b in
+    if !ambiguous then Ambiguous else Fold (rb, gb, bb)
+
+(* Fold a colour given as linear sRGB to the 8-bit sRGB byte triple a browser
+   paints for it, when that is one triple: [None] when the colour is out of the
+   sRGB gamut, and when a channel lies within the conversion error of a
+   half-integer byte. See {!srgb_fold_of_linear}. [error] is the space's own;
+   [error = 0.] quantises every channel to the byte it rounds to, which is what
+   an authored sRGB value, a scaled percentage or an alpha does. The error is
+   carried through the encode curve's slope at the channel, so a dark channel of
+   a bright colour is ambiguous over a wider band than a mid-tone. Alpha is not
+   considered. *)
+let srgb_bytes_of_linear ?error (linear : rgb) : (int * int * int) option =
+  match srgb_fold_of_linear ?error linear with
+  | Fold bytes -> Some bytes
+  | Ambiguous | Out_of_gamut -> None
 
 (* CSS Color 4 sec. 14.2.2 "Binary Search Gamut Mapping with Local MINDE": halve
    the OKLCh chroma at constant lightness and hue until the sRGB clip of the

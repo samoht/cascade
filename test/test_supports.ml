@@ -184,6 +184,22 @@ let spec_supports_structural_vectors () =
       Alcotest.(check bool)
         "open world retains unknown guard" true (equal unknown retained)
   | `True | `False -> Alcotest.fail "unknown guard folded without context");
+  (* CSS Conditional 3 sec. 6.1 makes the term false as written, which
+     [never_holds] reads; a function form is a feature test and stays open. *)
+  Alcotest.(check bool)
+    "the spec reads the enclosed term as false" true (never_holds unknown);
+  Alcotest.(check bool)
+    "a declaration with no property ident is such a term" true
+    (never_holds (of_string "(@media(width>=1px): var(--tw))"));
+  Alcotest.(check bool)
+    "conjoined with a feature test it still never holds" true
+    (never_holds (of_string "(display: grid) and (future syntax)"));
+  Alcotest.(check bool)
+    "disjoined with one it may" false
+    (never_holds (of_string "(display: grid) or (future syntax)"));
+  Alcotest.(check bool)
+    "a function form stays a feature test" false
+    (never_holds (of_string "future(syntax)"));
   List.iter
     (fun (row : Supports_inventory.row) ->
       let actual = of_string row.input in

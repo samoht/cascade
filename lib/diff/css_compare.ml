@@ -1038,6 +1038,40 @@ let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
 
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 
+(* ===== What the parse dropped ===== *)
+
+(* What one side lost that the comparison has to answer for, in the order its
+   reader reported it. A declaration the reader refuses is one the browser
+   refuses: test/spec/browser/accept_set holds the reader to the browser's
+   accept set, so the browser drops it from whichever sheet holds it and paints
+   the same, and it is not a loss the verdict answers for. The warning still
+   says where the reader may have lagged. A rule is: nothing holds the rule
+   reader to a browser, and the rule takes everything it held with it. *)
+let losses ws =
+  List.filter_map
+    (fun (w : Error.t) ->
+      match w.recovery with
+      | Error.Recovery.Dropped { construct = Rule; text } -> Some text
+      | Dropped { construct = Declaration; _ } | Recovered -> None)
+    ws
+
+(* One loss accounts for another when the two readers threw away the same text.
+   A loss the reader could not name accounts for nothing: nothing shows the
+   other side lost those same bytes. *)
+let accounts_for t1 t2 =
+  match (t1, t2) with
+  | Some a, Some b -> String.equal a b
+  | None, _ | _, None -> false
+
+(* Two sides that lost the same run of text saw the same thing twice, so what
+   they hid cannot separate them and the comparison's verdict stands. *)
+let unread_separates t =
+  let expected = losses t.expected_warnings in
+  let actual = losses t.actual_warnings in
+  not
+    (List.compare_lengths expected actual = 0
+    && List.for_all2 accounts_for expected actual)
+
 let pp_diff ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
     ?depth ?entries buf t =
   pp_result ~expected ~actual ~color ?depth ?entries buf t.result

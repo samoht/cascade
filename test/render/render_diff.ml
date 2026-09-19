@@ -1,17 +1,34 @@
-(* Render a stylesheet and its optimized forms in a headless browser and check
-   that every element computes the same style under each. A disagreement is an
-   optimizer bug: the two sheets do not render the same page.
+(* Render a stylesheet and the forms cascade's transforms make of it in a
+   headless browser and check that the page paints the same under each. The
+   oracle is [Browser_compare.run] and nothing else: the page is loaded afresh
+   under each sheet at every viewport and state the sheets can use, captured
+   whole and compared pixel for pixel, and [Browser_compare.identical] is the
+   verdict. A render that differs is a bug in the transform, since the two
+   sheets do not paint the same page; nothing here decides that two spellings
+   are equivalent, the browser paints them alike or it does not.
+
+   The document is derived from the sheet's own selectors ([Dom_of_css]), with a
+   word in every element so a declaration has something to paint. The transforms
+   are the ones the README promises preserve rendering, each as one pair against
+   the source: [Css.optimize], [Css.optimize ~lossless:true], the minified text
+   read back, [Css.inline_vars], and [Cascade.Prune] over the derived page. A
+   failure writes the page and both sheets next to it, so it reproduces with
+   [cascade diff --browser --html].
+
+   A pair costs a browser launch, a second or two, so the default run is a
+   sample: the hand-written inputs, 24 corpus sheets, the two examples and 16
+   seeds, about a hundred pairs in two to three minutes. [--full] renders every
+   corpus sheet and 128 seeds, a thousand pairs in some twenty minutes;
+   [--corpus N], [--seeds N] and [--only SUBSTRING] size the run by hand.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
 
 open Cascade
+module Html = Cascade_html.Html
+module Prune = Cascade.Prune.Make (Cascade_html.Html_node)
 
 let ( // ) = Filename.concat
-
-(* ===== Environment ===== *)
-
-let getenv = Browser.getenv
 
 (* ===== Files ===== *)
 
@@ -28,16 +45,9 @@ let rec mkdir_p dir =
     try Unix.mkdir dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ())
 
 let write file contents =
-  let oc = open_out file in
-  output_string oc contents;
-  close_out oc
+  Out_channel.with_open_bin file (fun oc -> output_string oc contents)
 
-let read_file file =
-  let ic = open_in_bin file in
-  let n = in_channel_length ic in
-  let s = really_input_string ic n in
-  close_in ic;
-  s
+let read_file file = In_channel.with_open_bin file In_channel.input_all
 
 (* ===== Inputs ===== *)
 
@@ -55,28 +65,19 @@ a[href^="https"], .card p { text-decoration: underline; color: #00f }
 .card p::before { content: "> "; background: red; background-position-x: 10px }
 |css}
 
-(* The [transition] shorthand resets [transition-behavior], and a run of the
-   other transition longhands does not write that slot. Contracting the run into
-   the shorthand therefore has to carry the behaviour over, or the element stops
-   transitioning discrete values. getComputedStyle reports the slot, so the
-   browser settles it. *)
-let transition_behavior_sheet =
-  {css|
-.rd-tb { transition-behavior: allow-discrete; transition-property: color; transition-duration: 1s; transition-timing-function: ease; transition-delay: 0s }
-|css}
-
 (* [of S] counted from the end. No corpus sheet carries the form and no pair
    below pins it, since a sheet without it renders the same page; what it buys
-   is the probe - the driver reports a selector the derived document fails to
+   is the probe - the harness reports a selector the derived document fails to
    match. *)
 let nth_last_of_sheet = {css|li:nth-last-child(2 of .rd-c) { color: #090 }|css}
 
-(* A sheet paired with a form that renders differently: [gap] resets the row gap
-   the longhand set, so the two orders give the rule a different row gap. The
-   canary fails when the harness reports no difference - a harness that cannot
-   see a known render change proves nothing about the ones it misses. *)
-let canary_sheet = {css|.k { row-gap: 9px; gap: 1px }|css}
-let canary_reordered = {css|.k { gap: 1px; row-gap: 9px }|css}
+(* A sheet paired with a form that renders differently: [margin] resets the top
+   margin the longhand set, so the two orders put the element's text at a
+   different height. The canary fails when the harness reports no difference - a
+   harness that cannot see a known render change proves nothing about the ones
+   it misses. *)
+let canary_sheet = {css|.k { margin-top: 8px; margin: 0 }|css}
+let canary_reordered = {css|.k { margin: 0; margin-top: 8px }|css}
 
 (* CSS Nesting 1 sec. 4 reads [&] as [:is(<parent selector list>)], so a comma
    group under [&:first-child] paints a first child only. The document holds two
@@ -109,9 +110,9 @@ let nth_of_other = {css|:nth-child(2 of .rd-b) { color: #00f }|css}
 
 (* Two same-condition [@container] blocks with a rule between them, over an
    element the sheet makes a query container: the optimizer hoists the second
-   block over that rule, and the browser has to compute the same style either
-   way. Nothing generated carries a container query, so without this the sweep
-   never renders one. *)
+   block over that rule, and the browser has to paint the same page either way.
+   Nothing generated carries a container query, so without this the sweep never
+   renders one. *)
 let distant_container_sheet =
   {css|
 .rd-cq { container-type: inline-size; width: 300px }
@@ -146,22 +147,58 @@ type expectation = Same | Differs of string
 type input = {
   id : string;
   source : string; (* the document is derived from this sheet *)
-  sheets : (string * string) list option; (* None: the optimize variants *)
+  sheets : (string * string) list option;
+      (* the sheets rendered, the first against each other; [None] for the
+         transforms of [source] *)
   expect : expectation;
 }
 
-(* Inputs the sweep is known to fail. Each is a render change the optimizer
-   makes today; fixing one is its own piece of work, so the sweep pins them here
-   and stays green on everything else. *)
-let known = []
+(* Pairs the sweep is known to fail, as [(input, variant, reason)]. Each is a
+   render change a transform makes today; fixing one is its own piece of work,
+   so the sweep pins them here and stays green on everything else. The lossy
+   colour fold rounds a channel within the README's colour-difference budget,
+   and a rounded channel is a pixel the browser paints a unit apart. *)
+let lossy_colour = "the lossy colour fold rounds a channel the browser paints"
 
-let sheet id source =
-  let expect =
-    match List.assoc_opt id known with
-    | Some reason -> Differs reason
-    | None -> Same
-  in
-  { id; source; sheets = None; expect }
+let known =
+  [
+    ("corpus-colors-0047", "optimize", lossy_colour);
+    ("corpus-colors-0048", "optimize", lossy_colour);
+    ("corpus-colors-0049", "optimize", lossy_colour);
+    ("corpus-colors-0051", "optimize", lossy_colour);
+    ("corpus-colors-0056", "optimize", lossy_colour);
+  ]
+
+let sheet id source = { id; source; sheets = None; expect = Same }
+
+let pair id ~source ~expect first second =
+  { id; source; sheets = Some [ first; second ]; expect }
+
+let hand_written =
+  [
+    sheet "smoke" smoke_sheet;
+    sheet "nth-last-child-of" nth_last_of_sheet;
+    sheet "distant-container" distant_container_sheet;
+    pair "container-conflict" ~source:container_conflict_sheet
+      ~expect:
+        (Differs "the hoisted block loses the colour the crossed rule set")
+      ("original", container_conflict_sheet)
+      ("hoisted", container_conflict_hoisted);
+    pair "canary" ~source:canary_sheet
+      ~expect:(Differs "margin resets the top margin the longhand set")
+      ("original", canary_sheet)
+      ("reordered", canary_reordered);
+    pair "nest-list" ~source:nest_list_source ~expect:Same
+      ("nested", nest_list_nested)
+      ("flattened", flattened nest_list_nested);
+    pair "attr-flag" ~source:attr_flag_sheet
+      ~expect:(Differs "the i flag matches a value the unflagged form misses")
+      ("original", attr_flag_sheet)
+      ("unflagged", attr_flag_unflagged);
+    pair "nth-child-of" ~source:nth_of_sheet
+      ~expect:(Differs "the second .rd-a is not a .rd-b")
+      ("original", nth_of_sheet) ("other-of", nth_of_other);
+  ]
 
 (* The committed corpora sit at a fixed place in the tree; the sweep runs both
    from the repository root and from the build directory a dune rule gives it,
@@ -202,7 +239,7 @@ let corpus_files () =
               (fun id ->
                 let file = dir // id // "source.css" in
                 if Sys.file_exists file then
-                  Some ("corpus-" ^ category ^ "-" ^ id, file)
+                  Some (String.concat "-" [ "corpus"; category; id ], file)
                 else None)
               (entries dir))
         (entries root)
@@ -216,7 +253,9 @@ let example_files () =
       List.filter_map
         (fun file ->
           if Filename.check_suffix file ".css" then
-            Some ("example-" ^ Filename.remove_extension file, dir // file)
+            Some
+              ( String.concat "-" [ "example"; Filename.remove_extension file ],
+                dir // file )
           else None)
         (entries dir)
 
@@ -237,6 +276,7 @@ let only = ref None
 let usage () =
   Fmt.pr
     "usage: render_diff [--full] [--seeds N] [--corpus N] [--only SUBSTRING]@.";
+  Fmt.pr "a corpus budget of 0 takes every sheet@.";
   exit 0
 
 let parse_args () =
@@ -258,72 +298,21 @@ let parse_args () =
 
 let inputs () =
   parse_args ();
-  (* The whole committed corpus renders in under two seconds, so the default
-     sweep takes all of it; [--full] only widens the generated half. *)
   let n_seeds =
-    match !seeds with Some n -> n | None -> if !full then 256 else 32
+    match !seeds with Some n -> n | None -> if !full then 128 else 16
   in
-  let n_corpus = match !corpus with Some n -> n | None -> 0 in
+  let n_corpus =
+    match !corpus with Some n -> n | None -> if !full then 0 else 24
+  in
   let files = sample n_corpus (corpus_files ()) @ example_files () in
   let generated =
     List.init n_seeds (fun i ->
         sheet
-          ("seed-" ^ string_of_int i)
+          (String.concat "-" [ "seed"; string_of_int i ])
           (Css.to_string (Gen_sheet.stylesheet ~seed:i)))
   in
   let all =
-    [
-      sheet "smoke" smoke_sheet;
-      sheet "transition-behavior" transition_behavior_sheet;
-      sheet "nth-last-child-of" nth_last_of_sheet;
-      sheet "distant-container" distant_container_sheet;
-      {
-        id = "container-conflict";
-        source = container_conflict_sheet;
-        sheets =
-          Some
-            [
-              ("original", container_conflict_sheet);
-              ("hoisted", container_conflict_hoisted);
-            ];
-        expect =
-          Differs "the hoisted block loses the colour the crossed rule set";
-      };
-      {
-        id = "canary";
-        source = canary_sheet;
-        sheets =
-          Some [ ("original", canary_sheet); ("reordered", canary_reordered) ];
-        expect = Differs "gap resets the row gap the longhand set";
-      };
-      {
-        id = "nest-list";
-        source = nest_list_source;
-        sheets =
-          Some
-            [
-              ("nested", nest_list_nested);
-              ("flattened", flattened nest_list_nested);
-            ];
-        expect = Same;
-      };
-      {
-        id = "attr-flag";
-        source = attr_flag_sheet;
-        sheets =
-          Some
-            [
-              ("original", attr_flag_sheet); ("unflagged", attr_flag_unflagged);
-            ];
-        expect = Differs "the i flag matches a value the unflagged form misses";
-      };
-      {
-        id = "nth-child-of";
-        source = nth_of_sheet;
-        sheets = Some [ ("original", nth_of_sheet); ("other-of", nth_of_other) ];
-        expect = Differs "the second .rd-a is not a .rd-b";
-      };
-    ]
+    hand_written
     @ List.map (fun (id, file) -> sheet id (read_file file)) files
     @ generated
   in
@@ -333,376 +322,270 @@ let inputs () =
 
 (* ===== Variants ===== *)
 
-(* The reference is the printed source: comparing against it isolates what
-   [optimize] did from what the parser and the printer did. *)
-let variants sheet =
-  let optimized = Css.optimize sheet in
-  let minified = Css.to_string ~minify:true optimized in
-  let reparsed =
-    match Css.of_string ~strict:false minified with
-    | Ok { stylesheet; _ } -> Css.to_string ~minify:true stylesheet
-    | Error _ -> minified
-  in
+let minified sheet = Css.to_string ~minify:true sheet
+
+let reparsed css =
+  match Css.of_string ~strict:false css with
+  | Ok { stylesheet; _ } -> minified stylesheet
+  | Error _ -> css
+
+let exact sheet = Css.to_string ~minify:true ~lossless:true sheet
+
+(* The reference is the printed source, so a difference is the transform's and
+   not the parser's. [optimize] and its reparse are printed as [cascade
+   --minify] prints them, approximation included; the other transforms are
+   printed exactly, so a difference under one is that transform's and not the
+   printer's. [prune] is judged over the derived page itself, the page the
+   pruned sheet must still render. *)
+let variants ~roots sheet =
+  let optimized = minified (Css.optimize sheet) in
   [
     ("original", Css.to_string sheet);
-    ("optimize", minified);
-    ( "lossless",
-      Css.to_string ~minify:true ~lossless:true
-        (Css.optimize ~lossless:true sheet) );
-    ("reparsed", reparsed);
+    ("optimize", optimized);
+    ("lossless", exact (Css.optimize ~lossless:true sheet));
+    ("reparsed", reparsed optimized);
+    ("inline-vars", exact (Css.inline_vars sheet));
+    ("prune", exact (Prune.analyse ~sheet roots).sheet);
   ]
 
-(* ===== Canonical filter ===== *)
+(* ===== Probes ===== *)
 
-(* getComputedStyle spells one render more than one way ([0% 0%] against [0px
-   0px], [red] against [rgb(255, 0, 0)]), so a raw string difference is only a
-   candidate. It survives when the two values are not canonically equal, which
-   is when the optimizer changed the render. *)
-let wrap prop value = String.concat "" [ "x{"; prop; ":"; value; "}" ]
+(* Whether the tree parsed back from the page holds an element for each selector
+   the document was built for: one rule per probe, judged as [cascade prune]
+   judges them. [Unmodelled] is a selector the matcher has no model for, which
+   is neither answer. The rule carries a declaration because flattening drops an
+   empty one before anything judges it. *)
+type probes = { matched : int; unmatched : int; unmodelled : int }
 
-let canonically_equal prop a b =
-  try
-    Cascade_diff.Css_compare.equal ~mode:`Canonical (wrap prop a) (wrap prop b)
-  with Reader.Parse_error _ | Failure _ | Invalid_argument _ -> false
-
-(* [optimize] without [~lossless] approximates colours by design: it rounds a
-   channel and rewrites a colour into whichever space spells it shortest. Both
-   change what getComputedStyle reports for a colour-valued property, so under
-   the lossy variants such a difference is counted and reported rather than
-   failed. Everything else, and every difference at all under [lossless], is a
-   render change the optimizer must not make. *)
-let lossy variant = variant = "optimize" || variant = "reparsed"
-
-let colour_valued prop =
-  contains prop "color"
-  || List.mem prop
-       [
-         "fill";
-         "stroke";
-         "background-image";
-         "border-image-source";
-         "mask-image";
-         "box-shadow";
-         "text-shadow";
-         "filter";
-         "backdrop-filter";
-       ]
-
-(* ===== Driver protocol ===== *)
-
-type diff = {
-  variant : string;
-  element : string;
-  property : string;
-  reference : string;
-  observed : string;
-}
-
-type result = {
-  diffs : diff list;
-  candidates : int;
-  approximations : int;
-  matched : int;
-  unmatched : int;
-  rejected : int;
-  unmatched_examples : string list;
-  errors : string list;
-}
-
-let empty_result =
-  {
-    diffs = [];
-    candidates = 0;
-    approximations = 0;
-    matched = 0;
-    unmatched = 0;
-    rejected = 0;
-    unmatched_examples = [];
-    errors = [];
-  }
-
-let int_of s = try int_of_string (String.trim s) with Failure _ -> 0
-
-let parse_driver_output lines =
-  let table = Hashtbl.create 16 in
-  let get id = try Hashtbl.find table id with Not_found -> empty_result in
-  List.iter
-    (fun line ->
-      match String.split_on_char '\t' line with
-      | "d" :: id :: variant :: _index :: element :: property :: reference
-        :: observed :: _ ->
-          let r = get id in
-          let r = { r with candidates = r.candidates + 1 } in
-          let r =
-            if canonically_equal property reference observed then r
-            else if lossy variant && colour_valued property then
-              { r with approximations = r.approximations + 1 }
-            else
-              {
-                r with
-                diffs =
-                  r.diffs
-                  @ [ { variant; element; property; reference; observed } ];
-              }
-          in
-          Hashtbl.replace table id r
-      | [ "c"; id; matched; unmatched; rejected ] ->
-          let r = get id in
-          Hashtbl.replace table id
-            {
-              r with
-              matched = int_of matched;
-              unmatched = int_of unmatched;
-              rejected = int_of rejected;
-            }
-      | [ "u"; id; selector ] ->
-          let r = get id in
-          Hashtbl.replace table id
-            { r with unmatched_examples = r.unmatched_examples @ [ selector ] }
-      | "x" :: id :: rest ->
-          let r = get id in
-          Hashtbl.replace table id
-            { r with errors = r.errors @ [ String.concat "\t" rest ] }
-      | _ -> ())
-    lines;
-  table
-
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
+let probe ~roots selectors =
+  let decl = Css.color (Css.Values.hex "#000") in
+  let sheet =
+    Css.v (List.map (fun selector -> Css.rule ~selector [ decl ]) selectors)
   in
-  loop []
-
-let run_driver ~node ~chrome ~script ~jobs ~work =
-  let errors = work // "driver.err" in
-  let cmd =
-    Fmt.str "CHROME=%s %s %s %s %s 2>%s" (Filename.quote chrome)
-      (Filename.quote node) (Filename.quote script) (Filename.quote jobs)
-      (Filename.quote work) (Filename.quote errors)
-  in
-  let ic = Unix.open_process_in cmd in
-  let lines = read_lines ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> Ok lines
-  | _ ->
-      let ic = open_in errors in
-      let text = read_lines ic in
-      close_in ic;
-      Error (String.concat "\n" text)
+  List.fold_left
+    (fun (p, examples) (e : Cascade.Prune.entry) ->
+      match e.verdict with
+      | Used _ -> ({ p with matched = p.matched + 1 }, examples)
+      | Unused ->
+          ( { p with unmatched = p.unmatched + 1 },
+            Selector.to_string e.selector :: examples )
+      | Unmodelled -> ({ p with unmodelled = p.unmodelled + 1 }, examples))
+    ({ matched = 0; unmatched = 0; unmodelled = 0 }, [])
+    (Prune.analyse ~sheet roots).entries
+  |> fun (p, examples) -> (p, List.rev examples)
 
 (* ===== Artefacts ===== *)
 
-(* A page that rebuilds the derived document with the builder the driver used,
-   so opening the artefact in a browser reproduces the run. *)
-let repro ~css ~dom =
-  String.concat ""
-    [
-      "<!doctype html><html><head><meta charset=\"utf-8\"><style>";
-      css;
-      "</style></head><body><script id=\"rd-doc\" type=\"application/json\">";
-      dom;
-      "</script><script src=\"dom.js\"></script><script>rdBuild(document, \
-       JSON.parse(document.getElementById('rd-doc').textContent));</script></body></html>";
-    ]
-
-let write_artefacts ~dir ~script_dir ~dom ~sheets ~diffs =
+(* The page and both sheets of a pair, so the run reproduces with [cascade diff
+   --browser --html page.html first.css second.css], and the report as the
+   library prints it. *)
+let write_artefacts ~dir ~html ~first ~second report =
   mkdir_p dir;
-  write (dir // "dom.json") dom;
-  write (dir // "dom.js") (read_file (script_dir // "dom.js"));
-  List.iter (fun (name, css) -> write (dir // (name ^ ".css")) css) sheets;
-  List.iter
-    (fun (name, css) ->
-      write (dir // ("page-" ^ name ^ ".html")) (repro ~css ~dom))
-    sheets;
-  let buf = Buffer.create 4096 in
-  let out = Fmt.with_buffer buf in
-  List.iter
-    (fun d ->
-      Fmt.pf out "%s\t%s\t%s\t%s\t%s\n" d.variant d.element d.property
-        d.reference d.observed)
-    diffs;
-  Fmt.flush out ();
-  write (dir // "diff.tsv") (Buffer.contents buf)
+  write (dir // "page.html") html;
+  write (dir // String.concat "" [ fst first; ".css" ]) (snd first);
+  write (dir // String.concat "" [ fst second; ".css" ]) (snd second);
+  write (dir // "report.txt")
+    (Browser_compare.to_string ~first:(fst first) ~second:(fst second)
+       ~html:"page.html" report);
+  Fmt.pr "  artefacts: %s@." dir;
+  Fmt.pr "  reproduce: cascade diff --browser --html %s %s %s@."
+    (dir // "page.html")
+    (dir // String.concat "" [ fst first; ".css" ])
+    (dir // String.concat "" [ fst second; ".css" ])
 
-(* ===== Main ===== *)
-
-(* Absolute, so the path the run prints can be opened from anywhere and the
-   driver can turn the page into a file:// URL. *)
+(* Absolute, so the path the run prints can be opened from anywhere. *)
 let artefact_root () =
   let dir =
-    match getenv "CASCADE_RENDER_ARTIFACTS" with
+    match Browser.getenv "CASCADE_RENDER_ARTIFACTS" with
     | Some d -> d
     | None -> "tmp" // "render-diff"
   in
   if Filename.is_relative dir then Sys.getcwd () // dir else dir
 
-let skip reason = Browser.skip "render_diff" reason
+(* ===== The run ===== *)
 
-let job_of_input input sheets doms unparsed =
-  let id = input.id in
+type stats = {
+  mutable sheets : int;
+  mutable selectors : int;
+  mutable synthesised : int;
+  mutable elements : int;
+  mutable probes : probes;
+  mutable unmatched_shown : int;
+  mutable pairs : int;
+  mutable same_text : int;
+  mutable differing : int;
+  mutable canaries : int;
+  mutable unparsed : int;
+  mutable failures : int;
+  skipped : (string, int) Hashtbl.t;
+}
+
+let stats () =
+  {
+    sheets = 0;
+    selectors = 0;
+    synthesised = 0;
+    elements = 0;
+    probes = { matched = 0; unmatched = 0; unmodelled = 0 };
+    unmatched_shown = 0;
+    pairs = 0;
+    same_text = 0;
+    differing = 0;
+    canaries = 0;
+    unparsed = 0;
+    failures = 0;
+    skipped = Hashtbl.create 16;
+  }
+
+let show_renders (report : Browser_compare.t) =
+  List.iter
+    (fun (r : Browser_compare.render) ->
+      Fmt.pr "  %s %s: %dx%d pixels differ at (%d,%d)@." r.viewport r.state
+        r.width r.height r.x r.y)
+    report.renders;
+  List.iteri
+    (fun i (d : Browser_compare.difference) ->
+      if i < 8 then
+        Fmt.pr "  %s%s %s: %S -> %S@." d.element d.pseudo d.property d.first
+          d.second)
+    report.differences;
+  let n = List.length report.differences in
+  if n > 8 then Fmt.pr "  ... %d computed value(s) differ in all@." n
+
+(* One pair through the browser, judged against what the input expects, or
+   against its pin. *)
+let check_pair st ~root ~id ~expect ~html first second =
+  st.pairs <- st.pairs + 1;
+  let expect =
+    match
+      List.find_opt
+        (fun (input, variant, _) ->
+          String.equal input id && String.equal variant (fst second))
+        known
+    with
+    | Some (_, _, reason) -> Differs reason
+    | None -> expect
+  in
+  match (Browser_compare.run ~html [ first; second ], expect) with
+  | Error e, _ ->
+      st.failures <- st.failures + 1;
+      Fmt.pr "FAIL %s: %s against %s: %s@." id (fst second) (fst first) e
+  | Ok report, Differs reason ->
+      if Browser_compare.identical report then (
+        st.failures <- st.failures + 1;
+        Fmt.pr
+          "FAIL %s: expected a difference (%s) and saw none; remove the pin@."
+          id reason)
+      else (
+        st.canaries <- st.canaries + 1;
+        Fmt.pr "known %s: %s: %s@." id (fst second) reason;
+        write_artefacts
+          ~dir:(root // String.concat "-" [ id; fst second ])
+          ~html ~first ~second report)
+  | Ok report, Same ->
+      if not (Browser_compare.identical report) then (
+        st.differing <- st.differing + 1;
+        st.failures <- st.failures + 1;
+        Fmt.pr "FAIL %s: %s renders differently from %s@." id (fst second)
+          (fst first);
+        show_renders report;
+        write_artefacts
+          ~dir:(root // String.concat "-" [ id; fst second ])
+          ~html ~first ~second report)
+
+(* The pairs an input renders: its first sheet against each other one, less any
+   whose text is the first's or an earlier one's, which paints the same by
+   construction. *)
+let check_pairs st ~root ~html input sheets =
+  match sheets with
+  | [] -> ()
+  | first :: others ->
+      let seen = ref [ snd first ] in
+      List.iter
+        (fun (name, css) ->
+          if List.mem css !seen then st.same_text <- st.same_text + 1
+          else (
+            seen := css :: !seen;
+            check_pair st ~root ~id:input.id ~expect:input.expect ~html first
+              (name, css)))
+        others
+
+let note_document st dom =
+  st.sheets <- st.sheets + 1;
+  st.selectors <- st.selectors + Dom_of_css.selectors dom;
+  st.synthesised <- st.synthesised + Dom_of_css.synthesised dom;
+  st.elements <- st.elements + Dom_of_css.elements dom;
+  List.iter
+    (fun (reason, n) ->
+      let prev = try Hashtbl.find st.skipped reason with Not_found -> 0 in
+      Hashtbl.replace st.skipped reason (prev + n))
+    (Dom_of_css.skipped dom)
+
+let note_probes st ~id (p, examples) =
+  st.probes <-
+    {
+      matched = st.probes.matched + p.matched;
+      unmatched = st.probes.unmatched + p.unmatched;
+      unmodelled = st.probes.unmodelled + p.unmodelled;
+    };
+  List.iter
+    (fun s ->
+      if st.unmatched_shown < 10 then (
+        st.unmatched_shown <- st.unmatched_shown + 1;
+        Fmt.pr "  probe matched no element: %s (%s)@." s id))
+    examples
+
+let check_input st ~root input =
   match Css.of_string ~strict:false input.source with
-  | Error _ ->
-      incr unparsed;
-      None
+  | Error _ -> st.unparsed <- st.unparsed + 1
   | Ok { stylesheet; _ } ->
       let dom = Dom_of_css.of_stylesheet stylesheet in
-      let vs =
-        match input.sheets with Some vs -> vs | None -> variants stylesheet
+      let html = Dom_of_css.to_html dom in
+      let roots = Html.roots (Html.parse html) in
+      note_document st dom;
+      note_probes st ~id:input.id (probe ~roots (Dom_of_css.probes dom));
+      let sheets =
+        match input.sheets with
+        | Some sheets -> sheets
+        | None -> variants ~roots stylesheet
       in
-      Hashtbl.replace sheets id vs;
-      Hashtbl.replace doms id dom;
-      let fields =
-        match Dom_of_css.to_json dom with
-        | Json.Obj fields -> fields
-        | other -> [ ("dom", other) ]
-      in
-      Some
-        (Json.Obj
-           ((("id", Json.Str id) :: fields)
-           @ [
-               ( "sheets",
-                 Json.Arr
-                   (List.map
-                      (fun (name, css) ->
-                        Json.Obj
-                          [ ("name", Json.Str name); ("css", Json.Str css) ])
-                      vs) );
-             ]))
+      check_pairs st ~root ~html input sheets
 
-let () =
-  Browser.suppressed "render_diff";
-  let node =
-    match Browser.node_binary () with Some n -> n | None -> skip "no node"
-  in
-  let chrome =
-    match Browser.chrome_binary () with
-    | Some c -> c
-    | None -> skip "no headless browser"
-  in
-  let script_dir = Filename.dirname Sys.executable_name in
-  let root = artefact_root () in
-  let work = root // ".work" in
-  mkdir_p work;
-  let sheets = Hashtbl.create 16 in
-  let doms = Hashtbl.create 16 in
-  let unparsed = ref 0 in
-  let inputs = inputs () in
-  let jobs =
-    List.filter_map (fun i -> job_of_input i sheets doms unparsed) inputs
-  in
-  let jobs_file = work // "jobs.json" in
-  write jobs_file (Json.to_string (Json.Arr jobs));
-  let started = Unix.gettimeofday () in
-  let lines =
-    match
-      run_driver ~node ~chrome
-        ~script:(script_dir // "driver.js")
-        ~jobs:jobs_file ~work
-    with
-    | Ok lines -> lines
-    | Error err ->
-        prerr_endline ("render_diff: the browser driver failed:\n" ^ err);
-        exit 1
-  in
-  let elapsed = Unix.gettimeofday () -. started in
-  let table = parse_driver_output lines in
-  let failures = ref 0 in
-  let selectors = ref 0 and synthesised = ref 0 and elements = ref 0 in
-  let skipped = Hashtbl.create 16 in
-  let matched = ref 0 and unmatched = ref 0 and rejected = ref 0 in
-  let candidates = ref 0 in
-  let approximations = ref 0 in
-  let surviving = ref 0 in
-  let canaries = ref 0 in
-  let unmatched_shown = ref 0 in
-  List.iter
-    (fun input ->
-      let id = input.id in
-      match Hashtbl.find_opt doms id with
-      | None -> ()
-      | Some dom -> (
-          selectors := !selectors + Dom_of_css.selectors dom;
-          synthesised := !synthesised + Dom_of_css.synthesised dom;
-          elements := !elements + Dom_of_css.elements dom;
-          List.iter
-            (fun (reason, n) ->
-              let prev =
-                try Hashtbl.find skipped reason with Not_found -> 0
-              in
-              Hashtbl.replace skipped reason (prev + n))
-            (Dom_of_css.skipped dom);
-          let r = try Hashtbl.find table id with Not_found -> empty_result in
-          matched := !matched + r.matched;
-          unmatched := !unmatched + r.unmatched;
-          rejected := !rejected + r.rejected;
-          candidates := !candidates + r.candidates;
-          approximations := !approximations + r.approximations;
-          List.iter
-            (fun e -> prerr_endline ("render_diff: " ^ id ^ ": " ^ e))
-            r.errors;
-          if r.errors <> [] then incr failures;
-          List.iter
-            (fun s ->
-              if !unmatched_shown < 10 then (
-                incr unmatched_shown;
-                Fmt.pr "  probe matched no element: %s (%s)@." s id))
-            r.unmatched_examples;
-          match input.expect with
-          | Differs reason ->
-              if r.diffs = [] then (
-                incr failures;
-                Fmt.pr
-                  "FAIL %s: expected a difference (%s) and saw none; remove \
-                   the pin@."
-                  id reason)
-              else (
-                incr canaries;
-                let dir = root // id in
-                write_artefacts ~dir ~script_dir
-                  ~dom:(Json.to_string (Dom_of_css.to_json dom))
-                  ~sheets:(Hashtbl.find sheets id) ~diffs:r.diffs;
-                Fmt.pr "known %s: %s@." id reason;
-                Fmt.pr "  artefacts: %s@." dir)
-          | Same ->
-              if r.diffs <> [] then (
-                surviving := !surviving + List.length r.diffs;
-                incr failures;
-                let dir = root // id in
-                write_artefacts ~dir ~script_dir
-                  ~dom:(Json.to_string (Dom_of_css.to_json dom))
-                  ~sheets:(Hashtbl.find sheets id) ~diffs:r.diffs;
-                Fmt.pr "FAIL %s: %d computed-style difference(s)@." id
-                  (List.length r.diffs);
-                List.iteri
-                  (fun i d ->
-                    if i < 6 then
-                      Fmt.pr "  [%s] %s %s: %S -> %S@." d.variant d.element
-                        d.property d.reference d.observed)
-                  r.diffs;
-                Fmt.pr "  artefacts: %s@." dir)))
-    inputs;
+let summary st ~elapsed =
   Fmt.pr
     "render_diff: %d sheet(s), %d selector(s), %d synthesised, %d element(s), \
-     %.1fs@."
-    (Hashtbl.length doms) !selectors !synthesised !elements elapsed;
-  Fmt.pr "  probes: %d matched, %d unmatched, %d rejected@." !matched !unmatched
-    !rejected;
+     %d pair(s), %.1fs@."
+    st.sheets st.selectors st.synthesised st.elements st.pairs elapsed;
+  Fmt.pr "  probes: %d matched, %d unmatched, %d unmodelled@." st.probes.matched
+    st.probes.unmatched st.probes.unmodelled;
   Fmt.pr
-    "  computed-style candidates: %d, lossy colour approximations: %d, render \
+    "  variants printing as the source or an earlier variant: %d, render \
      differences: %d, canaries seen: %d@."
-    !candidates !approximations !surviving !canaries;
-  if !unparsed > 0 then Fmt.pr "  unparsed inputs: %d@." !unparsed;
-  Hashtbl.fold (fun reason n acc -> (reason, n) :: acc) skipped []
+    st.same_text st.differing st.canaries;
+  if st.unparsed > 0 then Fmt.pr "  unparsed inputs: %d@." st.unparsed;
+  Hashtbl.fold (fun reason n acc -> (reason, n) :: acc) st.skipped []
   |> List.sort (fun (_, a) (_, b) -> compare b a)
   |> List.iter (fun (reason, n) ->
       Fmt.pr "  not synthesised: %-42s %d@." reason n);
-  (* A run that rendered no element is not a clean run, it is a blind one: the
+  (* A run that rendered no pair is not a clean run, it is a blind one: the
      sheets are read from committed corpora, so an empty population means the
      harness stopped working, not that there was nothing to check. *)
-  if Hashtbl.length doms = 0 || !elements = 0 || !matched = 0 then (
-    incr failures;
-    Fmt.pr "FAIL: no element reached the browser at all@.");
-  Fmt.pr "  failures: %d@." !failures;
-  if !failures > 0 then exit 1
+  if st.sheets = 0 || st.elements = 0 || st.pairs = 0 then (
+    st.failures <- st.failures + 1;
+    Fmt.pr "FAIL: no page reached the browser at all@.");
+  Fmt.pr "  failures: %d@." st.failures
+
+let skip reason = Browser.skip "render_diff" reason
+
+let () =
+  Browser.suppressed "render_diff";
+  (match Browser.node_binary () with Some _ -> () | None -> skip "no node");
+  (match Browser.chrome_binary () with
+  | Some _ -> ()
+  | None -> skip "no headless browser");
+  let root = artefact_root () in
+  let st = stats () in
+  let started = Unix.gettimeofday () in
+  List.iter (check_input st ~root) (inputs ());
+  summary st ~elapsed:(Unix.gettimeofday () -. started);
+  if st.failures > 0 then exit 1

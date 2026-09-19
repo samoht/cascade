@@ -6,7 +6,10 @@
     it asks for are added to the document. A selector that cannot hold without a
     user interaction ([:hover]), a shadow tree ([::part]) or a live document
     ([:target]) is not synthesised, but it is counted and reported - it is never
-    silently dropped. *)
+    silently dropped.
+
+    The document is rendered, so every element that can hold text holds a word:
+    a declaration on an empty box paints nothing. *)
 
 type t
 (** A synthesised document. *)
@@ -18,10 +21,18 @@ val of_stylesheet : ?max_elements:int -> Cascade.Css.t -> t
     reaches [max_elements] elements (default 4000); the selectors left over are
     counted under the ["document element cap"] reason. *)
 
-val to_json : t -> Json.t
-(** [to_json t] is the document as the browser driver consumes it: the element
-    tree, the classes and attributes the root [html] element must carry, the
-    pseudo-elements to sample, and the probe selectors. *)
+val to_html : t -> string
+(** [to_html t] is the document as HTML text, with a doctype, the classes and
+    attributes the root [html] element must carry, and the element tree under
+    [body]. The HTML parser rewrites some nesting the selectors asked for (a
+    [td] outside a table, a child of a void element), so what a browser builds
+    from it is what [Cascade_html.Html.parse] builds, not the tree derived; the
+    probes say which selectors that costs. *)
+
+val probes : t -> Cascade.Selector.t list
+(** [probes t] is one selector per synthesised selector, its pseudo-elements
+    stripped: the selectors the document built for, to be matched against the
+    tree parsed back from {!to_html}. *)
 
 val selectors : t -> int
 (** [selectors t] is the number of complex selectors the stylesheet declared,
@@ -33,10 +44,6 @@ val synthesised : t -> int
 
 val elements : t -> int
 (** [elements t] is the number of elements in the document. *)
-
-val pseudo_elements : t -> string list
-(** [pseudo_elements t] is the pseudo-elements the stylesheet targets that the
-    driver samples with [getComputedStyle], such as [::before]. *)
 
 val skipped : t -> (string * int) list
 (** [skipped t] pairs each reason a selector was not synthesised with how many

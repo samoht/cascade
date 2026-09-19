@@ -3396,8 +3396,11 @@ let is_color_function name =
    never can. *)
 (* [c] is one component whose syntax fixes it as a colour; fold it to the
    shortest non-keyword spelling, falling back to [fallback ()] when it does not
-   actually parse as a complete colour. *)
-let fold_custom_color ~lossless (c : Component.t) ~fallback =
+   actually parse as a complete colour. [resolve_missing] is
+   {!Values.normalize_color}'s flag: a missing axis reads as the zero CSS Color
+   4 sec. 4.4 makes it, which holds wherever the stream substitutes as it holds
+   for a longhand, and the caller decides where the stream is interpolated. *)
+let fold_custom_color ~lossless ~resolve_missing (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   let cur = Cursor.of_string text in
   match
@@ -3406,7 +3409,8 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
   | Some col when Cursor.is_done cur -> (
       let canon =
         Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color (Values.normalize_color ~lossless col))
+          (Values.nonkeyword_color
+             (Values.normalize_color ~lossless ~resolve_missing col))
       in
       match read_custom_property_value (Cursor.of_string canon) with
       | Tokens cs -> cs
@@ -3526,8 +3530,14 @@ let canonicalize_custom_shadow_components ~lossless components =
       | Typed _ -> components)
   | _ -> components
 
-let rec canonicalize_custom_colors_components ~lossless comps =
-  let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
+let rec canonicalize_custom_colors_components ~lossless
+    ?(resolve_missing = false) comps =
+  let fold_color c ~fallback =
+    fold_custom_color ~lossless ~resolve_missing c ~fallback
+  in
+  let inner =
+    canonicalize_custom_colors_components ~lossless ~resolve_missing
+  in
   List.concat_map
     (fun (c : Component.t) ->
       match c with
@@ -3535,9 +3545,7 @@ let rec canonicalize_custom_colors_components ~lossless comps =
         when is_color_function wrapped.Component.node.name ->
           fold_color c ~fallback:(fun () ->
               let func = wrapped.Component.node in
-              let args =
-                canonicalize_custom_colors_components ~lossless func.arguments
-              in
+              let args = inner func.arguments in
               [
                 Component.Func
                   { wrapped with node = { func with arguments = args } };
@@ -3548,9 +3556,7 @@ let rec canonicalize_custom_colors_components ~lossless comps =
         ->
           fold_custom_calc c ~fallback:(fun () ->
               let func = wrapped.Component.node in
-              let args =
-                canonicalize_custom_colors_components ~lossless func.arguments
-              in
+              let args = inner func.arguments in
               [
                 Component.Func
                   { wrapped with node = { func with arguments = args } };
@@ -3560,18 +3566,14 @@ let rec canonicalize_custom_colors_components ~lossless comps =
           [ drop_function_arguments wrapped ]
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
-          let args =
-            canonicalize_custom_colors_components ~lossless func.arguments
-          in
+          let args = inner func.arguments in
           [
             Component.Func
               { wrapped with node = { func with arguments = args } };
           ]
       | Component.Block wrapped ->
           let block = wrapped.Component.node in
-          let value =
-            canonicalize_custom_colors_components ~lossless block.value
-          in
+          let value = inner block.value in
           [ Component.Block { wrapped with node = { block with value } } ]
       | Component.Preserved _ -> [ c ])
     comps
@@ -4406,6 +4408,57 @@ let rec canonicalize_time_components comps =
       | Component.Preserved _ -> c)
     comps
 
+(* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
+   dimension, and a dimension token with one of them is an [<angle>] wherever
+   the stream substitutes. The projection spells the token as the degrees
+   {!Values.normalize_angle} folds it to under the budget, which is where the
+   typed path spells [rotate: 1.5rad], so the two meet. *)
+let canonical_angle_token number unit_ =
+  let v = number.Token.value in
+  let angle : Values.angle option =
+    match String.lowercase_ascii unit_ with
+    | "deg" -> Option.Some (Deg v)
+    | "rad" -> Option.Some (Rad v)
+    | "turn" -> Option.Some (Turn v)
+    | "grad" -> Option.Some (Grad v)
+    | _ -> Option.None
+  in
+  match angle with
+  | Option.None -> Option.None
+  | Option.Some angle -> (
+      let ctx = { Values.default_calc_ctx with budget = true } in
+      match Values.normalize_angle ~ctx angle with
+      | Deg value ->
+          let repr = Pp.string_of_float ~drop_leading_zero:true value in
+          Option.Some
+            (Token.Dimension
+               {
+                 number = { value; repr; number_flag = Token.Number };
+                 unit_ = "deg";
+               })
+      | _ -> Option.None)
+
+let rec canonicalize_angle_components comps =
+  List.map
+    (fun c ->
+      match c with
+      | Component.Preserved
+          ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
+          match canonical_angle_token number unit_ with
+          | Option.Some kind ->
+              Component.Preserved { token with kind; repr = Option.None }
+          | Option.None -> c)
+      | Component.Func wrapped ->
+          let func = wrapped.Component.node in
+          let arguments = canonicalize_angle_components func.arguments in
+          Component.Func { wrapped with node = { func with arguments } }
+      | Component.Block wrapped ->
+          let block = wrapped.Component.node in
+          let value = canonicalize_angle_components block.value in
+          Component.Block { wrapped with node = { block with value } }
+      | Component.Preserved _ -> c)
+    comps
+
 let normalize_property_value : type a.
     ?lossless:bool ->
     ?exact_srgb:bool ->
@@ -4423,13 +4476,13 @@ let normalize_property_value : type a.
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
   match property with
-  | Transform -> map_preserve normalize_transform value
-  | Webkit_transform -> map_preserve normalize_transform value
+  | Transform -> map_preserve (normalize_transform ~ctx) value
+  | Webkit_transform -> map_preserve (normalize_transform ~ctx) value
   | Webkit_border_radius -> normalize_border_radius value
   | Moz_border_radius -> normalize_border_radius value
   | Webkit_box_shadow -> normalize_shadow ~lossless value
   | Moz_box_shadow -> normalize_shadow ~lossless value
-  | Rotate -> normalize_rotate value
+  | Rotate -> normalize_rotate ~ctx value
   | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
   | Transform_origin -> normalize_transform_origin value
@@ -4697,7 +4750,7 @@ let normalize_property_value : type a.
           let components' =
             components
             |> canonicalize_custom_shadow_components ~lossless
-            |> canonicalize_custom_colors_components ~lossless
+            |> canonicalize_custom_colors_components ~lossless ~resolve_missing
             |> canonicalize_math_whitespace_components
           in
           if components' == components then value

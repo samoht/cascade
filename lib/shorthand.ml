@@ -4671,16 +4671,21 @@ let compose_mask_via_index ~ctx idx =
 
 (* The property a [transition-property] entry names, against the property a
    declaration writes. A shorthand there transitions every longhand it covers,
-   so [transition-property: background] reaches [background-color]. A name
-   outside the typed table names no property this can be asked about. *)
+   so [transition-property: background] reaches [background-color]. A custom
+   property is named by its own name, which CSS Variables 1 sec. 2 makes
+   case-sensitive; the typed table reads it as an unknown property. A name
+   outside that table names no property this can be asked about. *)
 let named_property_covers : type a. string -> a Properties.property -> bool =
  fun name target ->
-  match property_of_name name with
-  | Some (Prop named) -> (
-      match Properties.eq_property named target with
-      | Some Equal -> true
-      | None -> covers_longhand named target)
-  | None -> false
+  match target with
+  | Properties.Custom_property custom -> String.equal name custom
+  | _ -> (
+      match property_of_name name with
+      | Some (Prop named) -> (
+          match Properties.eq_property named target with
+          | Some Equal -> true
+          | None -> covers_longhand named target)
+      | None -> false)
 
 (* CSS Transitions 1 sec. 2.1: [none] transitions nothing, [all] transitions
    everything, and [all] is the initial. A CSS-wide keyword resolves to that

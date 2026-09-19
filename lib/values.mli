@@ -315,7 +315,10 @@ val normalize_angle : ?ctx:calc_ctx -> angle -> angle
 (** [normalize_angle a] folds the static angle math functions (round / mod / rem
     on [deg] operands) and converts to the shortest of the
     losslessly-interconvertible units (deg / turn / grad); [rad] (irrational via
-    pi) stays as-is. *)
+    pi) stays as-is. Under [ctx.budget] every concrete angle is instead its
+    degrees, a converted unit rounded to the six-significant-figure budget a
+    quotient takes, since CSS Values 4 sec. 6.1 makes the four units one
+    dimension. *)
 
 val normalize_number_percentage :
   ?ctx:calc_ctx -> number_percentage -> number_percentage

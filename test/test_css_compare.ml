@@ -270,6 +270,51 @@ let equal_canonical_custom_time_units () =
     (equal ".a{--d:.1s}@container style(--d:100ms){.b{color:red}}"
        ".a{--d:100ms}@container style(--d:100ms){.b{color:red}}")
 
+(* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
+   dimension, so an angle is one value under any of them. A [turn] or [grad]
+   converts to degrees exactly; a [rad] goes through pi, and the projection
+   spends on it the six-significant-figure budget a quotient already takes, so
+   [1.5rad] is the [85.9437deg] lightningcss writes. Tailwind writes [.5turn]
+   where lightningcss writes [180deg], in a custom stream and in [rotate] alike;
+   [--lossless] keeps the unit as written. *)
+let equal_canonical_angle_units () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a turn in a custom stream is its degrees" true
+    (equal ".a{--tw-mask-conic-position:.5turn}"
+       ".a{--tw-mask-conic-position:180deg}");
+  Alcotest.(check bool)
+    "a radian in rotate is its degrees under the budget" true
+    (equal ".a{rotate:85.9437deg}" ".a{rotate:1.5rad}");
+  Alcotest.(check bool)
+    "a radian in a transform function too" true
+    (equal ".a{transform:rotate(1.5rad)}" ".a{transform:rotate(85.9437deg)}");
+  Alcotest.(check bool)
+    "a turn in rotate too" true
+    (equal ".a{rotate:.5turn}" ".a{rotate:180deg}");
+  Alcotest.(check bool)
+    "a radian in a custom stream too" true
+    (equal ".a{--r:1.5rad}" ".a{--r:85.9437deg}");
+  Alcotest.(check bool)
+    "a grad inside a function too" true
+    (equal ".a{--t:rotate(200grad)}" ".a{--t:rotate(180deg)}");
+  Alcotest.(check bool)
+    "a different angle still differs" false
+    (equal ".a{rotate:1.5rad}" ".a{rotate:85.9deg}");
+  Alcotest.(check bool)
+    "a property a style() query names keeps its tokens" false
+    (equal ".a{--d:.5turn}@container style(--d:180deg){.b{color:red}}"
+       ".a{--d:180deg}@container style(--d:180deg){.b{color:red}}");
+  let lossless =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true
+  in
+  Alcotest.(check bool)
+    "lossless keeps a radian apart from its degrees" false
+    (lossless ".a{rotate:85.9437deg}" ".a{rotate:1.5rad}");
+  Alcotest.(check bool)
+    "and a custom stream's unit as written" false
+    (lossless ".a{--r:1.5rad}" ".a{--r:85.9437deg}")
+
 (* CSS Color 5 sec. 4.1: a relative colour whose channels are the origin's own
    keywords is the origin in that space, with the alpha the call names. Tailwind
    writes a shadow colour as [oklab(from rgb(0 0 0 / .1) l a b / 20%)] and
@@ -298,6 +343,55 @@ let equal_canonical_relative_color_pass_through () =
   Alcotest.(check bool)
     "a different alpha still differs" false
     (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.5)}")
+
+(* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
+   element's used colour scheme, so a [color-mix()] or a relative colour over a
+   [light-dark()] argument is the [light-dark()] of that operation over each
+   branch, and each branch folds as the plain colour it is. Tailwind writes a
+   scheme-aware colour at half alpha as the mix and lightningcss as the
+   [light-dark()] of the two hexes. A mix a branch cannot fold stays as written,
+   so the two spellings of it still report. *)
+let equal_canonical_light_dark_mix () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a mix over a light-dark() is the light-dark() of the mixes" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
+  Alcotest.(check bool)
+    "in the second argument too" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,#0000 50%,light-dark(red,#00f))}");
+  Alcotest.(check bool)
+    "and in both" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) \
+        50%,light-dark(#0000,#fff0))}");
+  Alcotest.(check bool)
+    "a relative colour over a light-dark() origin" true
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:oklab(from light-dark(red,#00f) l a b/.5)}");
+  Alcotest.(check bool)
+    "in a custom stream too" true
+    (equal ".a{--c:light-dark(#ff000080,#0000ff80)}"
+       ".a{--c:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
+  Alcotest.(check bool)
+    "a different proportion is another pair of colours" false
+    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 25%,#0000)}");
+  Alcotest.(check bool)
+    "a mix no branch can fold stays as written" false
+    (equal
+       ".a{background-color:light-dark(color-mix(in oklab,red \
+        50%,var(--x)),color-mix(in oklab,#00f 50%,var(--x)))}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) \
+        50%,var(--x))}");
+  let lossless =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true
+  in
+  Alcotest.(check bool)
+    "lossless keeps the mix" false
+    (lossless ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}")
 
 (* CSS Cascade 5 sec. 3.2: [all] resets [content], so which of the two a rule
    writes last decides whether a pseudo-element has any. The projection keeps
@@ -408,6 +502,92 @@ let equal_canonical_targets () =
     "a different fallback under an unknown guard still differs" false
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
        ".a{color:green}@supports (display:wibble){.a{color:blue}}")
+
+(* A declaration the reader refuses is one the browser refuses:
+   test/spec/browser/accept_set holds the reader to the browser's accept set. A
+   browser drops it from whichever sheet holds it and paints the same, so it
+   separates nothing, and the pair compares by what remains while the warning
+   stays as information. Tailwind writes [filter: blur(<value>)] for a docs
+   placeholder class where tw writes nothing. A rule the reader dropped is text
+   the comparison never saw and nothing holds the rule reader to that set, so it
+   still separates unless both sides lost the same run of text. *)
+let canonical_refused_declaration_separates_nothing () =
+  let diff a b = Cascade_diff.Css_compare.diff ~mode:`Canonical a b in
+  let separates a b = Cascade_diff.Css_compare.unread_separates (diff a b) in
+  let no_diff a b =
+    match (diff a b).Cascade_diff.Css_compare.result with
+    | Cascade_diff.Css_compare.No_diff -> true
+    | _ -> false
+  in
+  Alcotest.(check bool)
+    "the refused declaration reaches neither side" true
+    (no_diff ".a{filter:blur(<value>)}" "");
+  Alcotest.(check bool)
+    "the warning is kept" true
+    (Cascade_diff.Css_compare.has_warnings (diff ".a{filter:blur(<value>)}" ""));
+  Alcotest.(check bool)
+    "a refused declaration on one side separates nothing" false
+    (separates ".a{filter:blur(<value>)}" "");
+  Alcotest.(check bool)
+    "against an empty rule too" false
+    (separates ".a{filter:blur(<value>)}" ".a{}");
+  Alcotest.(check bool)
+    "nor one refused on both sides in two spellings" false
+    (separates ".a{filter:blur(<value>)}" ".a{filter:blur( <value> )}");
+  Alcotest.(check bool)
+    "a difference beside it is still a difference" false
+    (no_diff ".a{filter:blur(<value>)}.b{color:red}" ".b{color:blue}");
+  Alcotest.(check bool)
+    "a rule one side dropped still separates" true
+    (separates ".b{color:red}.a[[ {color:red}" ".b{color:red}");
+  Alcotest.(check bool)
+    "the same dropped rule on both sides does not" false
+    (separates ".b{color:red}.a[[ {color:red}"
+       ".b { color: red }.a[[ {color:red}")
+
+(* CSS Conditional 3 sec. 6.1: a parenthesised term that is neither a
+   [<supports-decl>] nor a nested condition is a [<general-enclosed>], and "the
+   result is false", so a guard it makes false in every world selects no user
+   agent and its block never applies. Tailwind writes [@supports
+   (@media(width>=1px): var(--tw))] for [supports-[@media(width>=1px)]:flex],
+   whose "declaration" has no property ident, and tw writes nothing; the two
+   render alike. The projection drops the block under either reading, since no
+   browser and no reading of the spec answers the guard yes. A guard a browser
+   can answer stays, and so does one the term cannot decide alone. *)
+let canonical_drops_unanswerable_supports () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let enforce a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true a b
+  in
+  let guard = "@supports (@media(width>=1px): var(--tw)){.x{display:flex}}" in
+  Alcotest.(check bool)
+    "a guard over a declaration with no property ident selects nothing" true
+    (equal guard "");
+  Alcotest.(check bool) "under --enforce-spec too" true (enforce guard "");
+  Alcotest.(check bool)
+    "a bare general-enclosed term selects nothing" true
+    (equal "@supports (future syntax){.x{display:flex}}" "");
+  Alcotest.(check bool)
+    "and so does one conjoined with a real feature" true
+    (equal
+       "@supports (display:grid) and (@media(width>=1px): \
+        var(--tw)){.x{display:flex}}"
+       "");
+  Alcotest.(check bool)
+    "a guard a browser answers stays" false
+    (equal "@supports (display: grid){.x{display:flex}}" "");
+  Alcotest.(check bool)
+    "under --enforce-spec too" false
+    (enforce "@supports (display: grid){.x{display:flex}}" "");
+  Alcotest.(check bool)
+    "a disjunction the real feature can carry stays" false
+    (equal
+       "@supports (display:grid) or (@media(width>=1px): \
+        var(--tw)){.x{display:flex}}"
+       "");
+  Alcotest.(check bool)
+    "a function form stays open for the browser" false
+    (equal "@supports selector(:has(+ img)){.x{display:flex}}" "")
 
 (* Every rewrite the optimizer gates behind [~enforce_spec] is justified by what
    maintained browsers support rather than by what the two sheets say, and the
@@ -1366,6 +1546,40 @@ let canonical_missing_components_under_transition () =
     "a @starting-style value keeps its missing axes" false
     (equal "@starting-style{.x{color:oklab(0% none none)}}"
        "@starting-style{.x{color:#000}}")
+
+(* The same sec. 4.4 reading in a custom property: a colour function in the
+   stream is a colour wherever the stream substitutes, so its missing axes are
+   the zeros the longhand's are. lightningcss writes Tailwind's [color-mix(in
+   srgb, rgb(0 0 0) 50%, transparent)] as an OKLab with [none] chroma axes where
+   tw writes the hex. The carve-outs hold as for a longhand: a rule
+   transitioning the property, a keyframe and a [@starting-style] block keep the
+   axes as written. *)
+let canonical_custom_missing_color_components_as_zero () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "missing OKLab axes in a custom stream read as zero against the hex" true
+    (equal ".a{--tw-mask-top-from-color:oklab(0% none none/.5)}"
+       ".a{--tw-mask-top-from-color:#00000080}");
+  Alcotest.(check bool)
+    "a missing OKLCh chroma and hue too" true
+    (equal ".a{--c:oklch(0% none none/.5)}" ".a{--c:#00000080}");
+  Alcotest.(check bool)
+    "a missing Lab axis too" true
+    (equal ".a{--c:lab(0% none none/.5)}" ".a{--c:#00000080}");
+  Alcotest.(check bool)
+    "a missing LCh chroma and hue too" true
+    (equal ".a{--c:lch(0% none none/.5)}" ".a{--c:#00000080}");
+  Alcotest.(check bool)
+    "the resolved colour keeps its alpha" false
+    (equal ".a{--c:oklab(0% none none/.5)}" ".a{--c:#00000040}");
+  Alcotest.(check bool)
+    "a rule transitioning the property keeps the axes apart" false
+    (equal ".a{--c:oklab(0% none none/.5);transition:--c 1s}"
+       ".a{--c:#00000080;transition:--c 1s}");
+  Alcotest.(check bool)
+    "a keyframe keeps its missing axes" false
+    (equal "@keyframes k{from{--c:oklab(0% none none)}to{--c:#fff}}"
+       "@keyframes k{from{--c:#000}to{--c:#fff}}")
 
 let canonical_custom_font_family_quotes () =
   (* A quoted multi-word font name and the unquoted ident sequence substitute
@@ -2430,6 +2644,8 @@ let suite =
         `Quick canonical_missing_components_survive_interpolation;
       Alcotest.test_case "canonical missing components under a transition"
         `Quick canonical_missing_components_under_transition;
+      Alcotest.test_case "canonical missing components in a custom property"
+        `Quick canonical_custom_missing_color_components_as_zero;
       Alcotest.test_case "canonical custom font-family quotes" `Quick
         canonical_custom_font_family_quotes;
       Alcotest.test_case "canonical custom calc percentage" `Quick
@@ -2607,12 +2823,20 @@ let suite =
         equal_canonical_flex_basis_percentage_calc;
       Alcotest.test_case "canonical custom time units" `Quick
         equal_canonical_custom_time_units;
+      Alcotest.test_case "canonical angle units" `Quick
+        equal_canonical_angle_units;
       Alcotest.test_case "canonical relative colour pass-through" `Quick
         equal_canonical_relative_color_pass_through;
+      Alcotest.test_case "canonical light-dark mix" `Quick
+        equal_canonical_light_dark_mix;
       Alcotest.test_case "canonical keeps target-gated content" `Quick
         canonical_keeps_target_gated_content;
       Alcotest.test_case "canonical judges for the targets" `Quick
         equal_canonical_targets;
+      Alcotest.test_case "canonical refused declaration separates nothing"
+        `Quick canonical_refused_declaration_separates_nothing;
+      Alcotest.test_case "canonical drops an unanswerable @supports" `Quick
+        canonical_drops_unanswerable_supports;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
       Alcotest.test_case "canonical folds container function case" `Quick

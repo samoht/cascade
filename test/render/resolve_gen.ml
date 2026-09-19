@@ -18,9 +18,11 @@ let chance r n = int r n = 0
 
    One fixed vocabulary for the document and the selectors, so a generated rule
    has elements to match: random markup and random selectors meet nowhere. None
-   of it names [html], [head] or [body]. *)
+   of it names [html], [head] or [body], and none of it is a tag the HTML parser
+   closes or moves on its own ([p], [li], a table part), so the tree the
+   document is written as is the tree every parser builds from it. *)
 
-let tags = [ "div"; "p"; "span"; "section"; "li" ]
+let tags = [ "div"; "span"; "section"; "article"; "nav" ]
 let classes = [ "a"; "b"; "card" ]
 let ids = [ "lead"; "foot" ]
 let attr_values = [ "v"; "w" ]
@@ -33,113 +35,54 @@ type element = {
   cls : string list;
   attrs : (string * string) list;
   kids : element list;
-  mutable up : element option;
+  text : bool;
 }
 
-type doc = { root : element; subjects : element list }
+type doc = element list
 
-let elt ?id ?(classes = []) ?(attrs = []) tag kids =
-  { tag; eid = id; cls = classes; attrs; kids; up = None }
+let elt ?id ?(classes = []) ?(attrs = []) ?(text = true) tag kids =
+  { tag; eid = id; cls = classes; attrs; kids; text }
 
-let rec tie parent e =
-  e.up <- parent;
-  List.iter (tie (Some e)) e.kids
+let doc children = children
 
-(* Document order, [body]'s descendants only: the driver enumerates the same set
-   with body.querySelectorAll('*'), and the two lists have to line up. *)
-let rec preorder e = e :: List.concat_map preorder e.kids
+(* ===== The document as HTML ===== *)
 
-let doc children =
-  let body = elt "body" children in
-  let root = elt "html" [ elt "head" []; body ] in
-  tie None root;
-  { root; subjects = List.concat_map preorder children }
+let add_escaped buf s =
+  String.iter
+    (function
+      | '&' -> Buffer.add_string buf "&amp;"
+      | '<' -> Buffer.add_string buf "&lt;"
+      | '>' -> Buffer.add_string buf "&gt;"
+      | '"' -> Buffer.add_string buf "&quot;"
+      | c -> Buffer.add_char buf c)
+    s
 
-let subjects d = d.subjects
-let tag e = e.tag
+let add_attr buf name value =
+  Buffer.add_char buf ' ';
+  Buffer.add_string buf name;
+  Buffer.add_string buf "=\"";
+  add_escaped buf value;
+  Buffer.add_char buf '"'
 
-module Node = struct
-  type t = element
+(* An element holds a letter before its children, so a colour, a weight and an
+   opacity paint on it and a margin or a padding moves something. *)
+let rec add_element buf e =
+  Buffer.add_char buf '<';
+  Buffer.add_string buf e.tag;
+  Option.iter (add_attr buf "id") e.eid;
+  if e.cls <> [] then add_attr buf "class" (String.concat " " e.cls);
+  List.iter (fun (k, v) -> add_attr buf k v) e.attrs;
+  Buffer.add_char buf '>';
+  if e.text then Buffer.add_char buf 'x';
+  List.iter (add_element buf) e.kids;
+  Buffer.add_string buf "</";
+  Buffer.add_string buf e.tag;
+  Buffer.add_char buf '>'
 
-  (* Identity, not structure: two sibling [<div>] with the same classes are
-     different elements and a matcher locating one among its siblings has to
-     tell them apart. Every element carries a mutable field, so no two are
-     shared. *)
-  let equal (a : t) (b : t) = a == b
-  let name e = Some e.tag
-  let id e = e.eid
-  let classes e = e.cls
-
-  (* [id] and [class] are attributes as much as any other, and a document that
-     reports them only through the accessors named after them makes [\[id\]] and
-     [\[class~="a"\]] match nothing. *)
-  let attribute e n =
-    match (n, e.cls) with
-    | "id", _ -> e.eid
-    | "class", [] -> None
-    | "class", cls -> Some (String.concat " " cls)
-    | _ -> List.assoc_opt n e.attrs
-
-  let parent e = e.up
-  let children e = e.kids
-  let text_children _ = []
-end
-
-(* [body] and [head] are the document's own scaffolding, so a path starts at
-   [body]'s children: the elements a sheet is resolved against. *)
-let path d e =
-  let rec up e acc =
-    match e.up with
-    | None -> acc
-    | Some p when Node.equal p d.root -> acc
-    | Some p ->
-        let rec index i = function
-          | [] -> i
-          | x :: _ when Node.equal x e -> i
-          | _ :: rest -> index (i + 1) rest
-        in
-        up p
-          (String.concat ""
-             [ e.tag; ":nth-child("; string_of_int (index 1 p.kids); ")" ]
-          :: acc)
-  in
-  String.concat ">" (up e [])
-
-let label d e =
-  let buf = Buffer.create 32 in
-  Buffer.add_string buf (path d e);
-  (match e.eid with
-  | None -> ()
-  | Some i ->
-      Buffer.add_char buf '#';
-      Buffer.add_string buf i);
-  List.iter
-    (fun c ->
-      Buffer.add_char buf '.';
-      Buffer.add_string buf c)
-    e.cls;
+let html_of_doc d =
+  let buf = Buffer.create 1024 in
+  List.iter (add_element buf) d;
   Buffer.contents buf
-
-let rec json_of_element e =
-  Json.Obj
-    ([ ("t", Json.Str e.tag) ]
-    @ (match e.eid with None -> [] | Some i -> [ ("i", Json.Str i) ])
-    @ [
-        ("c", Json.Arr (List.map (fun c -> Json.Str c) e.cls));
-        ( "a",
-          Json.Arr
-            (List.map
-               (fun (k, v) -> Json.Arr [ Json.Str k; Json.Str v ])
-               e.attrs) );
-        ("k", Json.Arr (List.map json_of_element e.kids));
-      ])
-
-let json_of_doc d =
-  let body =
-    match d.root.kids with _ :: body :: _ -> body.kids | _ -> d.subjects
-  in
-  Json.Obj
-    [ ("dom", Json.Obj [ ("k", Json.Arr (List.map json_of_element body)) ]) ]
 
 let rec take n l =
   match (n, l) with 0, _ | _, [] -> [] | n, x :: tl -> x :: take (n - 1) tl
@@ -207,7 +150,10 @@ let simple r =
   | 12 ->
       Selector.compound
         [ cls (); Selector.has [ Selector.Relative (Selector.Child, typ ()) ] ]
-  | 13 -> Selector.compound [ typ (); Selector.Empty ]
+  (* Not [:empty]: every generated element holds a letter, so it would match
+     nothing, and the default reading declines it, which would keep every rule
+     writing the same slots out of the projection with it. *)
+  | 13 -> Selector.compound [ typ (); Selector.Nth_child (Selector.Even, None) ]
   | 14 ->
       Selector.compound
         [ cls (); Selector.Nth_last_child (Selector.Index 1, None) ]
@@ -240,8 +186,8 @@ let selector r =
    A sheet writes a handful of slots over and over: what makes the cascade
    decide is several rules reaching for one slot on one element, so breadth of
    properties would only dilute the run. Every value of a slot differs from
-   every other, so a declaration that wins where another should have shows up in
-   the computed style. *)
+   every other and every one of them paints on an element holding a letter, so a
+   declaration that wins where another should have shows up in the render. *)
 
 type slot = Color | Background | Opacity | Weight | Margin | Padding
 

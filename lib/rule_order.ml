@@ -873,15 +873,22 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
    arbitrary tokens and neither form may move. Emission keeps whichever the
    author wrote, so the projection folds the quoted form onto the ident sequence
    - the same normalisation the structural comparator applies through
-   {!Css.declaration_value_for_equivalence}. *)
-let normalize_custom_declaration ~queried d =
+   {!Css.declaration_value_for_equivalence}.
+
+   An angle token is the third: CSS Values 4 sec. 6.1 makes [deg], [grad], [rad]
+   and [turn] one dimension, and a [rad] converts through pi, so the fold spends
+   the six-significant-figure budget a quotient takes and [lossless] holds it
+   off, the unit kept as written as the typed path keeps it. *)
+let normalize_custom_declaration ~lossless ~queried d =
   let d = Declaration.map_custom_value Fun.id d in
   let d =
     match d with
     | Declaration.Declaration { property = Custom_property name; _ }
       when List.mem name queried ->
         d
-    | d -> Declaration.canonicalize_custom_time d
+    | d ->
+        let d = Declaration.canonicalize_custom_time d in
+        if lossless then d else Declaration.canonicalize_custom_angle d
   in
   Declaration.unquote_custom_font_strings d
 
@@ -892,7 +899,8 @@ let normalize_custom_declaration ~queried d =
    does not carry a list of the statements it descends through - the list is
    what left [@scope] and [@starting-style] answering differently from
    [@layer]. *)
-let normalize_custom_values (stmts : statement list) : statement list =
+let normalize_custom_values ~lossless (stmts : statement list) : statement list
+    =
   (* CSS Conditional 5 sec. 6.2: a [style()] query on an unregistered property
      compares the declared tokens as written, so a property a query anywhere in
      the sheet names keeps its spelling. *)
@@ -906,7 +914,7 @@ let normalize_custom_values (stmts : statement list) : statement list =
       [] stmts
   in
   Stylesheet.map_declarations
-    (Common.List.map_preserve (normalize_custom_declaration ~queried))
+    (Common.List.map_preserve (normalize_custom_declaration ~lossless ~queried))
     stmts
 
 (* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
@@ -967,15 +975,19 @@ let canonical_quotients ~lossless (stmts : statement list) : statement list =
    other colour's analogous component rather than a zero, so at a position that
    interpolates the value the two spellings name two different results.
    {!Declaration.normalize} resolves the sentinel only for a colour standing as
-   a whole colour-longhand value, which leaves a gradient stop, a [color-mix()]
-   operand, a shadow colour and a custom-property token stream reading their
-   [none] as written. A declaration the sheet interpolates from elsewhere is
-   held back too: [@keyframes] and [@starting-style] are the two blocks that
-   exist to be one endpoint of that, so the pass does not descend into them, and
-   a colour whose own rule transitions the property it writes keeps its [none].
-   That guard reads one rule. A transition one rule declares for a colour
-   another rule sets still folds, since seeing it would mean deciding that two
-   selectors match one element, which the projection does not do.
+   a whole colour-longhand value or as a colour function of a custom-property
+   token stream, which leaves a gradient stop, a [color-mix()] operand and a
+   shadow colour reading their [none] as written. The stream's colour is a
+   colour wherever the stream substitutes, and the site it lands at is as
+   invisible to the projection as it is to the hex fold the stream already
+   takes. A declaration the sheet interpolates from elsewhere is held back too:
+   [@keyframes] and [@starting-style] are the two blocks that exist to be one
+   endpoint of that, so the pass does not descend into them, and a colour whose
+   own rule transitions the property it writes keeps its [none], a custom
+   property named by its own name included. That guard reads one rule. A
+   transition one rule declares for a colour another rule sets still folds,
+   since seeing it would mean deciding that two selectors match one element,
+   which the projection does not do.
 
    Guarded like [canonical_color_spelling]: the flagged normalisation is kept
    only where it moves the colour, so no other value fold rides along. *)
@@ -1009,6 +1021,24 @@ let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
                (canonical_missing_components_in_rule ~lossless)
           |> Stylesheet.map_statement_children
                (canonical_missing_component_colors ~lossless))
+    stmts
+
+(* CSS Conditional 3 sec. 6.1 makes a [<general-enclosed>] term false, so an
+   [@supports] guard false in every world selects no user agent and its block
+   never applies: Tailwind writes [@supports (@media(width>=1px): var(--tw))]
+   for [supports-[@media(width>=1px)]:flex] where tw writes nothing, and the two
+   render alike. The optimizer keeps such a guard open for a sheet it emits; the
+   projection answers for the spec as written and the browsers of today, and
+   neither reading answers the guard yes, so the block goes under [enforce_spec]
+   too. *)
+let rec drop_unanswerable_supports (stmts : statement list) : statement list =
+  List.filter_map
+    (fun stmt ->
+      match stmt with
+      | Supports (cond, _) when Supports.never_holds cond -> None
+      | stmt ->
+          Some
+            (Stylesheet.map_statement_children drop_unanswerable_supports stmt))
     stmts
 
 (* The normal optimizer drops this typed alias under its maintained-browser
@@ -1442,8 +1472,9 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
                 (canonical_missing_component_colors ~lossless
                    (canonical_color_spellings
                       (canonical_quotients ~lossless
-                         (normalize_custom_values
-                            (canonical_vendor_aliases stmts)))))))
+                         (normalize_custom_values ~lossless
+                            (canonical_vendor_aliases
+                               (drop_unanswerable_supports stmts))))))))
   in
   let result =
     canonicalize_block ~ctx

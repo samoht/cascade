@@ -1627,20 +1627,27 @@ let spec_color5_mix_out_of_srgb_gamut () =
 let spec_color5_mix_rectangular_spaces () =
   check_color ~expected:"color-mix(in srgb-linear,red,blue)"
     ~optimized:"#bc00bc" "color-mix(in srgb-linear, red, blue)";
-  check_color ~expected:"color-mix(in xyz,red,blue)" ~optimized:"#bc00bc"
+  (* Red and blue in an XYZ space land a hair outside the sRGB gamut, where CSS
+     Color 4 sec. 14.2 has the engine gamut map the result, so it stays a
+     [color()] and is not folded to a clip. *)
+  check_color ~expected:"color-mix(in xyz,red,blue)"
+    ~optimized:"color(xyz .296436 .142416 .484931)"
     "color-mix(in xyz, red, blue)";
-  check_color ~expected:"color-mix(in xyz,red,blue)" ~optimized:"#bc00bc"
+  check_color ~expected:"color-mix(in xyz,red,blue)"
+    ~optimized:"color(xyz .296436 .142416 .484931)"
     "color-mix(in xyz-d65, red, blue)";
-  check_color ~expected:"color-mix(in xyz-d50,red,blue)" ~optimized:"#bc00bc"
-    "color-mix(in xyz-d50, red, blue)";
+  check_color ~expected:"color-mix(in xyz-d50,red,blue)"
+    ~optimized:"color(xyz-d50 .29 .142 .364)" "color-mix(in xyz-d50, red, blue)";
   check_color ~expected:"color-mix(in display-p3,red,blue)" ~optimized:"#800a91"
     "color-mix(in display-p3, red, blue)";
   check_color ~expected:"color-mix(in a98-rgb,red,blue)" ~optimized:"#810081"
     "color-mix(in a98-rgb, red, blue)";
   check_color ~expected:"color-mix(in prophoto-rgb,red,blue)"
     ~optimized:"#ba039d" "color-mix(in prophoto-rgb, red, blue)";
-  check_color ~expected:"color-mix(in rec2020,red,blue)" ~optimized:"#a21393"
-    "color-mix(in rec2020, red, blue)";
+  (* Red and blue in rec2020 also leave the sRGB gamut, so the mix keeps its
+     space rather than folding to a clip. *)
+  check_color ~expected:"color-mix(in rec2020,red,blue)"
+    ~optimized:"color(rec2020 .48 .141 .51)" "color-mix(in rec2020, red, blue)";
   (* Half-strength Display-P3 primaries stay outside sRGB, so the mix keeps the
      interpolation space it was asked for. *)
   check_color

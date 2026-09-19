@@ -14,21 +14,20 @@ type element
 (** An element of a synthesised document. *)
 
 type doc
-(** A synthesised document: the [html], [head] and [body] scaffolding, and the
-    elements a sheet is resolved against. *)
-
-module Node : Cascade.Resolve.NODE with type t = element
-(** The document as the library's matcher reads it. *)
+(** A synthesised document: the elements a sheet is resolved against, in the
+    order they stand under [body]. *)
 
 val elt :
   ?id:string ->
   ?classes:string list ->
   ?attrs:(string * string) list ->
+  ?text:bool ->
   string ->
   element list ->
   element
-(** [elt ?id ?classes ?attrs tag children] is one element. Parent links are tied
-    by {!doc}, so an element belongs to the one document it is passed to. *)
+(** [elt ?id ?classes ?attrs ?text tag children] is one element. It holds a
+    letter before its children unless [text] is [false], so that what is
+    resolved onto it paints. *)
 
 val doc : element list -> doc
 (** [doc children] is the document whose [body] holds [children]. *)
@@ -41,17 +40,7 @@ val stylesheet : seed:int -> Cascade.Css.t
     statements, nested rules and [!important], over the vocabulary {!document}
     builds from. *)
 
-val subjects : doc -> element list
-(** [subjects d] is every element under [body], in document order: the elements
-    the differential resolves and the browser reports on, and in the order the
-    driver enumerates them. *)
-
-val tag : element -> string
-(** [tag e] is [e]'s element name. *)
-
-val label : doc -> element -> string
-(** [label d e] names [e] in a report: its tag, id and classes, and its path
-    from [body]. *)
-
-val json_of_doc : doc -> Json.t
-(** [json_of_doc d] is [d] as [dom.js] builds it. *)
+val html_of_doc : doc -> string
+(** [html_of_doc d] is [d] as HTML text, the elements alone with no [html] or
+    [body] around them. The vocabulary holds no tag the HTML parser closes or
+    moves on its own, so every parser builds the tree written. *)

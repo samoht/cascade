@@ -292,6 +292,13 @@ let version chrome =
 let ( let* ) = Result.bind
 
 let run ~html sheets =
+  let* () =
+    if List.length sheets = 2 then Ok ()
+    else
+      Error
+        "the browser comparison takes exactly two sheets: the report carries \
+         one first and one second, so a third has nowhere to go"
+  in
   let* node =
     Option.to_result
       ~none:"no node on PATH (or in NODE); the browser comparison needs it"

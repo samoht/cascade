@@ -104,6 +104,13 @@ val canonicalize_time_components : custom_value -> custom_value
     Equivalence-only normalisation for structural diffing; every other token
     passes through unchanged. *)
 
+val canonicalize_angle_components : custom_value -> custom_value
+(** [canonicalize_angle_components components] spells every [<angle>] token of
+    [components] as the degrees it names, a [rad], [turn] or [grad] rounded to
+    the six-significant-figure budget a computed value takes, which CSS Values 4
+    sec. 6.1 makes one dimension. Equivalence-only normalisation for structural
+    diffing; every other token passes through unchanged. *)
+
 val canonicalize_math_whitespace_components : custom_value -> custom_value
 (** [canonicalize_math_whitespace_components components] drops the whitespace of
     [components] that CSS reads as nothing: around the [*] and [/] of CSS Values
