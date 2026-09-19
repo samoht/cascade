@@ -737,6 +737,14 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Canonical diff
 
+- The projection canonicalises layer declarations to one form, so two sheets
+  that establish the same layer order in the same places compare equal however
+  they spell it. A single `@layer a, b;`, per-layer `@layer a;` statements and
+  the blocks alone all reach one `@layer <names>;` per conditional-free run,
+  each `a.b` path expanding to `a` then `a.b`; nothing is hoisted across a
+  conditional group that declares a layer, so the order is preserved. This is
+  what made Tailwind's preflight, whose layers are declared in one statement,
+  report against tw's block-by-block sheet (#1275).
 - `--diff=canonical` drops an `@supports` block whose guard is false however a
   browser answers it, reading a parenthesised `<general-enclosed>` term as the
   false CSS Conditional 3 sec. 6.1 makes it: Tailwind's `@supports
