@@ -1004,6 +1004,31 @@ let canonical_ignores_how_the_layer_order_is_written () =
     (equal "@layer a.b{.p{color:red}}@layer a{@layer b{.p{color:blue}}}"
        "@layer a{@layer b{.p{color:blue}}}@layer a.b{.p{color:red}}")
 
+(* The projection is confluent for the layer declaration forms: a single [@layer
+   a, b;] statement, per-layer statements and an empty block, and the blocks
+   alone all establish the same order and compare equal. A dotted name expands
+   to its prefixes on the way, and a conditional group that declares a layer is
+   a barrier no name is hoisted across. The shape is Tailwind's preflight, whose
+   layers are declared in one statement, against a sheet that declares them
+   block by block. *)
+let canonical_layer_declaration_forms_converge () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "one statement against per-layer statements and an empty block" true
+    (equal
+       "@layer theme,base,components,utilities;@layer \
+        theme{.x{color:red}}@layer base{.y{color:blue}}@layer utilities{}"
+       "@layer theme{.x{color:red}}@layer base{.y{color:blue}}@layer \
+        components;@layer utilities{}");
+  Alcotest.(check bool)
+    "a dotted name expands to its prefixes" true
+    (equal "@layer a.b;@layer a.b{x{top:0}}"
+       "@layer a;@layer a.b;@layer a.b{x{top:0}}");
+  Alcotest.(check bool)
+    "a conditional barrier keeps the order apart" false
+    (equal "@layer a;@media print{@layer b{x{top:0}}}"
+       "@media print{@layer b{x{top:0}}}@layer a;")
+
 (* Two rules under a condition and its exact negation never apply together:
    Media Queries 4 sec. 3.4 has [not] negate the whole query, CSS Conditional 3
    sec. 6.1 the whole [@supports] condition, and CSS Conditional 5 sec. 7.2
@@ -2861,6 +2886,8 @@ let suite =
         canonical_ignores_layer_block_position;
       Alcotest.test_case "canonical ignores how the layer order is written"
         `Quick canonical_ignores_how_the_layer_order_is_written;
+      Alcotest.test_case "canonical layer declaration forms converge" `Quick
+        canonical_layer_declaration_forms_converge;
       Alcotest.test_case "canonical ignores order under exclusive conditions"
         `Quick canonical_ignores_order_under_exclusive_conditions;
     ] )
