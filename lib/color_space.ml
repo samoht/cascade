@@ -291,6 +291,8 @@ type srgb_fold =
    gamut map it for the display with an algorithm of its choosing, so its
    painted colour is the engine's and no sRGB spelling is it. *)
 
+let equal_srgb_fold (a : srgb_fold) (b : srgb_fold) = a = b
+
 let srgb_fold_of_linear ?(error = conversion_error) (linear : rgb) : srgb_fold =
   let lr, lg, lb = linear in
   let r, g, b = rgb_of_linear_rgb linear in

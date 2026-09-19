@@ -139,6 +139,10 @@ val lab_conversion_error : float
 
 type srgb_fold = Fold of (int * int * int) | Ambiguous | Out_of_gamut
 
+val equal_srgb_fold : srgb_fold -> srgb_fold -> bool
+(** [equal_srgb_fold a b] is [true] when the two verdicts are the same,
+    including the bytes of a {!constructor-Fold}. *)
+
 val srgb_fold_of_linear : ?error:float -> rgb -> srgb_fold
 (** [srgb_fold_of_linear linear] is what a browser paints for the linear-sRGB
     colour [linear], as a minifier needs it. {!constructor-Fold} is an in-gamut

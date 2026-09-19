@@ -8503,7 +8503,11 @@ let srgb_verdict_of_color (c : color) : Color_space.srgb_fold =
    rounding is safe it is taken, so the minified output stays as short as it was
    and repeats: the rounded value yields the same verdict. *)
 let verdict_preserving (rounded : color) (exact : color) : color =
-  if srgb_verdict_of_color rounded = srgb_verdict_of_color exact then rounded
+  if
+    Color_space.equal_srgb_fold
+      (srgb_verdict_of_color rounded)
+      (srgb_verdict_of_color exact)
+  then rounded
   else exact
 
 (* The [color()] components at their canonical precision, in the AST, so the
