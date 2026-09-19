@@ -21,6 +21,7 @@ let () =
       Fuzz_inline.suite;
       Fuzz_stylesheet.suite;
       Fuzz_optimize.suite;
+      Fuzz_rule_order.suite;
       Fuzz_css.suite;
       Fuzz_supports.suite;
       Fuzz_font_face.suite;

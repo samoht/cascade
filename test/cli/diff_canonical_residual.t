@@ -22,8 +22,8 @@ the report shows the two canonical forms with exit code 1.
   --- pinned.css
   +++ unpinned.css
   @@ position 7 @@
-  -@layer a;@layer b{x{top:0}}
-  +@layer b{x{top:0}}
+  -@layer a,b;@layer b{x{top:0}}
+  +@layer b;@layer b{x{top:0}}
           ^
   
   [1]
