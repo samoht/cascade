@@ -223,71 +223,68 @@ let media_conflict_keeps_source_order () =
 
 let layer_blocks_stay_put () =
   (* [@layer] order pins cascade-layer priority at first occurrence; layer
-     blocks are barriers. *)
+     blocks are barriers. The projection writes the order out as one statement,
+     so the statement and the blocks name the same order and project
+     together. *)
   let css = "@layer b{.y{color:blue}}@layer a{.x{color:red}}" in
   Alcotest.(check string)
     "layer blocks keep source order"
-    (render (statements css))
-    (canonical css)
+    "@layer b,a;@layer b{.y{color:blue}}@layer a{.x{color:red}}" (canonical css)
 
 let pinned_layer_blocks_take_the_layer_order () =
-  (* CSS Cascade 5 sec. 6.1 sorts by layer before order of appearance, and a pin
-     fixes the layer order, so blocks written out of it read in it. A body of
-     style rules under [@starting-style] cascades by layer the same way and
-     moves too, across unlayered rules, [@property] and [@keyframes]; a block
-     declaring a sublayer inside it does not move. *)
+  (* CSS Cascade 5 sec. 6.1 sorts by layer before order of appearance, so the
+     projection writes the layer order out as one statement and leaves the
+     blocks to sit in it. A body of style rules under [@starting-style] cascades
+     by layer the same way and moves too, across unlayered rules. *)
   Alcotest.(check string)
     "starting-style body sorted"
-    "x{color:red}@layer a{y{color:blue}}@layer b{@starting-style{x{opacity:0}}}"
+    "x{color:red}@layer a,b;@layer a{y{color:blue}}@layer \
+     b{@starting-style{x{opacity:0}}}"
     (canonical
        "@layer a,b;@layer b{@starting-style{x{opacity:0}}}x{color:red}@layer \
         a{y{color:blue}}");
   Alcotest.(check string)
     "a block holding a sublayer stays"
-    "@layer a;@layer b{@layer c{x{color:red}}}@layer a{y{color:blue}}"
+    "@layer a,b;@layer b{@layer c;@layer c{x{color:red}}}@layer \
+     a{y{color:blue}}"
     (canonical
        "@layer a,b;@layer b{@layer c{x{color:red}}}@layer a{y{color:blue}}")
 
 let redundant_layer_pin_folds () =
   (* CSS Cascade 5 sec. 6.4.3: cascade layers are sorted by the order in which
-     they first are declared, so a pin gives its layer a position the very next
-     block would have given it anyway. Dropping it leaves the order alone, so
-     the two spellings are one sheet and the projection brings them together. *)
+     they first are declared. The projection states that order once, so the pin
+     and the block that repeats it reach one form. *)
   Alcotest.(check string)
-    "a pin the following block repeats folds away" "@layer a{x{color:red}}"
+    "a pin the following block repeats reaches one form"
+    "@layer a;@layer a{x{color:red}}"
     (canonical "@layer a;@layer a{x{color:red}}")
 
 let order_changing_layer_pin_is_kept () =
   (* Sec. 6.4.3 read the other way: here the pins are the only thing putting [a]
-     before [b], since [b]'s block comes first. Dropping [@layer a;] alone would
-     reverse the two layers and change what the sheet renders, so the order it
-     fixes stays. The projection writes that order out with [a]'s block first,
-     since sec. 6.1 sorts the two blocks by layer whichever comes first, and the
-     pin then repeats what the blocks declare. *)
+     before [b], since [b]'s block comes first. The projection states that
+     order, so [a] stays first and the pinned and unpinned sheets stay apart. *)
   let pinned =
     "@layer a;@layer b;@layer b{x{color:red}}@layer a{y{color:blue}}"
   in
   let unpinned = "@layer b{x{color:red}}@layer a{y{color:blue}}" in
   Alcotest.(check string)
     "the order the pin fixes stays"
-    "@layer a{y{color:blue}}@layer b{x{color:red}}" (canonical pinned);
+    "@layer a,b;@layer a{y{color:blue}}@layer b{x{color:red}}"
+    (canonical pinned);
   Alcotest.(check bool)
     "pinned and unpinned sheets stay distinct" true
     (canonical pinned <> canonical unpinned)
 
 let leading_layer_pins_matching_the_blocks_fold () =
   (* The shape a generator writes: every layer named up front, then the blocks
-     in that same order. Sec. 6.4.3 has the blocks declare that order on their
-     own, so the whole pin goes. One name reads as needed only while a later one
-     is still there to be weighed against it, so the fold has to settle rather
-     than sweep once. *)
+     in that same order. The projection states that order either way. *)
   Alcotest.(check string)
-    "pins repeating the block order fold away"
-    "@layer a{x{color:red}}@layer b{y{color:blue}}"
+    "pins repeating the block order reach one form"
+    "@layer a,b;@layer a{x{color:red}}@layer b{y{color:blue}}"
     (canonical "@layer a,b;@layer a{x{color:red}}@layer b{y{color:blue}}");
   Alcotest.(check string)
-    "written as two statements they fold the same way"
-    "@layer a{x{color:red}}@layer b{y{color:blue}}"
+    "written as two statements they reach the same form"
+    "@layer a,b;@layer a{x{color:red}}@layer b{y{color:blue}}"
     (canonical "@layer a;@layer b;@layer a{x{color:red}}@layer b{y{color:blue}}");
   Alcotest.(check bool)
     "the reversed pin order is another sheet and stays" true
@@ -295,28 +292,25 @@ let leading_layer_pins_matching_the_blocks_fold () =
     <> canonical "@layer a{x{color:red}}@layer b{y{color:blue}}")
 
 let layer_pin_folds_one_name_not_the_statement () =
-  (* Sec. 6.4.4.2: [@layer a, b;] declares two layers in that order. Only [b]
-     repeats the order the blocks already give, so the statement survives with
-     [a] alone rather than going away whole. The projection then writes the
-     blocks in that order, which is what [a] fixed, and the pin goes too, so the
-     two spellings of the one order project together. *)
+  (* Sec. 6.4.4.2: [@layer a, b;] declares two layers in that order. The
+     projection writes the full order it reads, so the statement and the blocks
+     reach one form whatever spelling put [a] before [b]. *)
   Alcotest.(check string)
     "the order the pin gives, written by the blocks"
-    "@layer a{y{color:blue}}@layer b{x{color:red}}"
+    "@layer a,b;@layer a{y{color:blue}}@layer b{x{color:red}}"
     (canonical "@layer a,b;@layer b{x{color:red}}@layer a{y{color:blue}}");
   Alcotest.(check string)
     "a pin kept for a name no block declares"
-    "@layer a,c;@layer a{y{color:blue}}@layer b{x{color:red}}"
+    "@layer a,c,b;@layer a{y{color:blue}}@layer b{x{color:red}}"
     (canonical "@layer a,c,b;@layer b{x{color:red}}@layer a{y{color:blue}}")
 
 let layer_pin_names_are_ident_lists () =
   (* Sec. 6.4.2: [a.b] is the sublayer [b] of [a] and declares [a] on the way,
-     so a pin naming [a] repeats what the sublayer block declares first. An
-     escaped dot makes one ident instead, a layer neither block declares, and
-     that pin is the whole of what puts that layer in the order. *)
+     so the order names [a] then [a.b]. An escaped dot makes one ident instead,
+     a layer of its own. *)
   Alcotest.(check string)
-    "a pin the sublayer block declares first folds away"
-    "@layer a.b{x{color:red}}"
+    "a sublayer names its parent on the way"
+    "@layer a,a.b;@layer a.b{x{color:red}}"
     (canonical "@layer a;@layer a.b{x{color:red}}");
   Alcotest.(check bool)
     "a pin naming an ident that holds a dot stays" true
@@ -325,35 +319,32 @@ let layer_pin_names_are_ident_lists () =
 
 let unblocked_layer_pin_is_kept () =
   (* A pin whose layer never gets a block of its own is the only declaration of
-     that layer, and sec. 6.4.3 sorts it before every layer declared after it.
-     Dropping it would take a position out of the order. *)
+     that layer, and sec. 6.4.3 sorts it before every layer declared after
+     it. *)
   Alcotest.(check string)
-    "a pin with no block of its own stays" "@layer a;@layer b{x{color:red}}"
+    "a pin with no block of its own stays" "@layer a,b;@layer b{x{color:red}}"
     (canonical "@layer a;@layer b{x{color:red}}")
 
 let layer_pin_over_conditional_declaration_is_kept () =
   (* Sec. 6.4.3: a layer declared inside a conditional group rule contributes to
-     the order only when the condition holds, so what the [@media] puts between
-     the pin and the block cannot be read here. Without the pin the [@media] may
-     declare [a] first and push it before [b], so the pin stays. *)
+     the order only when the condition holds, so no name is hoisted across the
+     [@media]; the run before it keeps the pin and the run after it states its
+     own order. *)
   let css =
     "@layer a;@media print{@layer a{x{color:red}}}@layer \
      b{y{color:blue}}@layer a{z{color:green}}"
   in
   Alcotest.(check string)
     "a pin over an unreadable position stays"
-    (render (statements css))
+    "@layer a;@media print{@layer a;@layer a{x{color:red}}}@layer b,a;@layer \
+     b{y{color:blue}}@layer a{z{color:green}}"
     (canonical css)
 
 let layer_pin_over_conditional_layer_is_the_only_position () =
   (* The test above leaves an [@layer b] block between the pin and the block
      that repeats it, and that named position keeps the pin whatever the
      [@media] contributes. Here the conditional block is the only thing between
-     them, so whether it raises a position at all is the whole question: with a
-     layer inside it sec. 6.4.3 puts something unreadable between [a] and [a],
-     and the pin is what says which comes first; with only plain rules inside it
-     the pin says a second time what the block after it already says. The two
-     sheets differ in nothing else. *)
+     them, so whether it raises a position at all is the whole question. *)
   let over_a_layer =
     "@layer a;@media print{@layer q{x{color:red}}}@layer a{y{color:blue}}"
   in
@@ -362,11 +353,12 @@ let layer_pin_over_conditional_layer_is_the_only_position () =
   in
   Alcotest.(check string)
     "a pin over a block declaring a layer stays"
-    (render (statements over_a_layer))
+    "@layer a;@media print{@layer q;@layer q{x{color:red}}}@layer a;@layer \
+     a{y{color:blue}}"
     (canonical over_a_layer);
   Alcotest.(check string)
     "the same pin over a block declaring none folds"
-    "@media print{x{color:red}}@layer a{y{color:blue}}"
+    "@media print{x{color:red}}@layer a;@layer a{y{color:blue}}"
     (canonical over_plain_rules)
 
 let layer_pin_over_import_is_kept () =
@@ -376,8 +368,7 @@ let layer_pin_over_import_is_kept () =
   let css = "@layer a;@import url(x.css);@layer a{y{color:red}}" in
   Alcotest.(check string)
     "a pin over an import stays"
-    (render (statements css))
-    (canonical css)
+    "@layer a;@import\"x.css\";@layer a{y{color:red}}" (canonical css)
 
 let layer_pin_fold_is_idempotent () =
   (* The projection is a projection: what it emits is already canonical. *)
@@ -389,12 +380,12 @@ let layer_pin_fold_is_idempotent () =
 
 let block_with_layer_content_is_barrier () =
   (* A conditional block is only reorderable when its transitive content is
-     plain rules; a nested [@layer] pins it in place. *)
+     plain rules; a nested [@layer] pins it in place, and the run inside states
+     its own order. *)
   let css = "@media print{@layer a{.x{color:red}}}.b{margin:0}" in
   Alcotest.(check string)
     "media wrapping a layer stays put"
-    (render (statements css))
-    (canonical css)
+    "@media print{@layer a;@layer a{.x{color:red}}}.b{margin:0}" (canonical css)
 
 let hoisted_group_converges_with_inline () =
   (* A shared declaration hoisted into a selector-list group is the same

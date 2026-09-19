@@ -1354,6 +1354,178 @@ let sort_layer_blocks (stmts : statement list) : statement list =
       let sorted = go stmts in
       if !moved then fold_layer_pins sorted else stmts
 
+(* A sheet may name its layers in one [@layer a, b;] statement, in per-layer
+   statements, or in the blocks themselves. Two sheets that establish the same
+   layer order in the same places reach two different canonical forms, because
+   the optimizer folds an empty layer block into a trailing declaration while
+   the pin logic splits a leading multi-name statement, and the comparison then
+   reports the two render-equal sheets as different. This is the normal form
+   that removes the dependence on the spelling.
+
+   A block's statements are read as runs separated by a barrier: a statement
+   that is not itself a layer construct but declares a layer below it, such as
+   an [@media] holding an [@layer] or an [@import] with a layer. A barrier's
+   contribution to the order depends on its condition, so no name crosses one.
+   Within a barrier-free run, every layer name the run introduces, each [a.b]
+   path expanded to its prefixes [a] then [a.b], is written once in
+   first-appearance order as one [@layer <names>;] statement at the run's first
+   name-bearing construct. The run's other layer statements and empty layer
+   blocks go, since the statement carries their only effect. Nothing moves past
+   a barrier and the names keep first-appearance order, so the order the sheet
+   renders with is unchanged, and a nested layer is normalized inside the block
+   that holds it. *)
+
+(* The prefixes a layer path declares, outermost first: [a.b] declares [a] then
+   [a.b], and an ident that holds an escaped dot is one name with no prefixes to
+   split. *)
+let layer_name_prefixes (name : layer_name) : layer_name list =
+  let rec go acc cur = function
+    | [] -> List.rev acc
+    | x :: rest ->
+        let cur = cur @ [ x ] in
+        go (cur :: acc) cur rest
+  in
+  go [] [] name
+
+(* The layer names a run introduces, each path expanded, in first-appearance
+   order and deduplicated. *)
+let run_layer_names (run : statement list) : layer_name list =
+  let seen = ref [] in
+  let add name =
+    List.iter
+      (fun prefix ->
+        if not (List.exists (Stylesheet.equal_layer_name prefix) !seen) then
+          seen := !seen @ [ prefix ])
+      (layer_name_prefixes name)
+  in
+  let names_of stmt =
+    match stmt with
+    | Layer (Some name, _) -> [ name ]
+    | Layer_decl names -> names
+    | Import rule -> (
+        match Stylesheet.import_layer_name rule with
+        | Some (_ :: _ as name) -> [ name ]
+        | Some [] | None -> [])
+    | _ -> []
+  in
+  List.iter (fun stmt -> List.iter add (names_of stmt)) run;
+  !seen
+
+(* Put a run's style-only layer blocks into rank order. A block holding a nested
+   layer keeps its place, since the sublayer it holds contributes in source
+   order; moving it would change which of two writes to the sublayer wins. *)
+let sort_layer_blocks_by_rank (names : layer_name list) (stmts : statement list)
+    : statement list =
+  let rank name =
+    let rec go i = function
+      | [] -> max_int
+      | x :: rest ->
+          if Stylesheet.equal_layer_name x name then i else go (i + 1) rest
+    in
+    go 0 names
+  in
+  let name = function Layer (Some name, _) -> name | _ -> [] in
+  let sortable = function
+    | Layer (Some _, body) -> List.for_all style_only body
+    | _ -> false
+  in
+  let rec go = function
+    | [] -> []
+    | block :: _ as stmts when sortable block ->
+        let rec take acc = function
+          | block :: rest when sortable block -> take (block :: acc) rest
+          | rest -> (List.rev acc, rest)
+        in
+        let blocks, rest = take [] stmts in
+        List.stable_sort
+          (fun a b -> Int.compare (rank (name a)) (rank (name b)))
+          blocks
+        @ go rest
+    | stmt :: rest -> stmt :: go rest
+  in
+  go stmts
+
+(* Rewrite one barrier-free run to its normal form: one [@layer <names>;]
+   statement at the run's first name-bearing construct, the other declarations
+   and empty layer blocks gone, the style-only blocks in rank order. *)
+type layer_verdict = Keep | Drop | Other
+
+let canonical_layer_run (run : statement list) : statement list =
+  let names = run_layer_names run in
+  if names = [] then run
+  else
+    let empty block =
+      List.for_all
+        (function
+          | Rule { declarations = []; nested = []; _ } -> true | _ -> false)
+        block
+    in
+    let verdict = function
+      | Layer (Some _, block) -> if empty block then Drop else Keep
+      | Layer_decl (_ :: _) -> Drop
+      | Import rule -> (
+          match Stylesheet.import_layer_name rule with
+          | Some (_ :: _) -> Keep
+          | Some [] | None -> Other)
+      | _ -> Other
+    in
+    let emitted = ref false in
+    let out = ref [] in
+    let emit () =
+      if not !emitted then (
+        emitted := true;
+        out := Layer_decl names :: !out)
+    in
+    List.iter
+      (fun stmt ->
+        match verdict stmt with
+        | Keep ->
+            emit ();
+            out := stmt :: !out
+        | Drop -> emit ()
+        | Other -> out := stmt :: !out)
+      run;
+    sort_layer_blocks_by_rank names (List.rev !out)
+
+(* A statement that is a layer construct itself, and one whose transitive
+   content declares a layer, the second being a barrier for the run around
+   it. *)
+let is_layer_construct = function
+  | Layer (Some _, _) | Layer_decl (_ :: _) -> true
+  | _ -> false
+
+let rec statement_declares_layer stmt =
+  is_layer_construct stmt
+  || (match stmt with
+    | Import rule -> (
+        match Stylesheet.import_layer_name rule with
+        | Some (_ :: _) -> true
+        | Some [] | None -> false)
+    | _ -> false)
+  || Stylesheet.fold_statements
+       (fun acc child -> acc || statement_declares_layer child)
+       false
+       (Stylesheet.statement_children stmt)
+
+let is_barrier stmt =
+  (not (is_layer_construct stmt)) && statement_declares_layer stmt
+
+let rec canonical_layer_declarations (stmts : statement list) : statement list =
+  let stmts =
+    List.map
+      (Stylesheet.map_statement_children canonical_layer_declarations)
+      stmts
+  in
+  let rec go run acc = function
+    | [] -> List.rev_append (canonical_layer_run (List.rev run)) acc
+    | stmt :: rest when is_barrier stmt ->
+        go []
+          (stmt :: List.rev_append (canonical_layer_run (List.rev run)) acc)
+          rest
+    | stmt :: rest -> go (stmt :: run) acc rest
+  in
+  List.rev (go [] [] stmts)
+
 (* Media Queries 4 sec. 2.3 makes [all] the identity media type, so the Level 3
    [not all and (X)] is the Level 4 [not (X)]; sec. 4.2 gives [min-X]/[max-X]
    and the range form one meaning, and a lower bound met by an upper bound one
@@ -1483,4 +1655,5 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
   in
   (* The runs above leave layer blocks side by side, which is where their order
      can be read. *)
-  sort_layer_blocks (if !changed then result else normalized)
+  canonical_layer_declarations
+    (sort_layer_blocks (if !changed then result else normalized))
