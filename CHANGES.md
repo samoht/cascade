@@ -894,7 +894,10 @@ to lose a whole rule over one bad piece. Both are gone.
 
 - `Browser_compare.run` in `cascade.browser` runs the comparison behind
   `cascade diff --browser` for a program with its own page and sheets, and
-  `Browser_compare.identical` is its verdict (#1260, #1268).
+  `Browser_compare.identical` is its verdict (#1260, #1268). It takes exactly
+  two sheets, as the report carries one first and one second; a call that gave
+  a different number used to be accepted and only its first two compared
+  (#1274).
 - `Css.add_var_fallbacks` gives each `var()` with no fallback of its own the
   value a lookup answers, so a sheet whose tokens are declared elsewhere, such
   as Tailwind's `@reference` output, still resolves them (#1236).
