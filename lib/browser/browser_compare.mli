@@ -61,11 +61,12 @@ type t = {
 }
 
 val run : html:string -> (string * string) list -> (t, string) result
-(** [run ~html sheets] renders [html] under each [(name, css)] of [sheets] and
-    compares every sheet to the first. It is [Error] with the reason when no
-    node or no headless Chromium is found, when the driver fails, when the page
-    reports an error, and when nothing was rendered: a run that compared nothing
-    never reads as an equivalence. *)
+(** [run ~html sheets] renders [html] under the two [(name, css)] of [sheets]
+    and compares them to each other. The report carries one first and one
+    second, so exactly two sheets are taken; fewer or more is [Error]. It is
+    [Error] with the reason, too, when no node or no headless Chromium is found,
+    when the driver fails, when the page reports an error, and when nothing was
+    rendered: a run that compared nothing never reads as an equivalence. *)
 
 val identical : t -> bool
 (** [identical report] is whether every render was the same picture under every
