@@ -123,7 +123,9 @@ let test_reversed_order_stays_distinct buf =
   let reversed = List.rev names in
   if
     List.length names > 1
-    && established_order names <> established_order reversed
+    && not
+         (List.equal (List.equal String.equal) (established_order names)
+            (established_order reversed))
   then
     let forward = canonical (sheet_per_name buf names) in
     let backward = canonical (sheet_per_name buf reversed) in

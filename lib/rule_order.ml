@@ -1451,41 +1451,41 @@ let sort_layer_blocks_by_rank (names : layer_name list) (stmts : statement list)
 type layer_verdict = Keep | Drop | Other
 
 let canonical_layer_run (run : statement list) : statement list =
-  let names = run_layer_names run in
-  if names = [] then run
-  else
-    let empty block =
-      List.for_all
-        (function
-          | Rule { declarations = []; nested = []; _ } -> true | _ -> false)
-        block
-    in
-    let verdict = function
-      | Layer (Some _, block) -> if empty block then Drop else Keep
-      | Layer_decl (_ :: _) -> Drop
-      | Import rule -> (
-          match Stylesheet.import_layer_name rule with
-          | Some (_ :: _) -> Keep
-          | Some [] | None -> Other)
-      | _ -> Other
-    in
-    let emitted = ref false in
-    let out = ref [] in
-    let emit () =
-      if not !emitted then (
-        emitted := true;
-        out := Layer_decl names :: !out)
-    in
-    List.iter
-      (fun stmt ->
-        match verdict stmt with
-        | Keep ->
-            emit ();
-            out := stmt :: !out
-        | Drop -> emit ()
-        | Other -> out := stmt :: !out)
-      run;
-    sort_layer_blocks_by_rank names (List.rev !out)
+  match run_layer_names run with
+  | [] -> run
+  | names ->
+      let empty block =
+        List.for_all
+          (function
+            | Rule { declarations = []; nested = []; _ } -> true | _ -> false)
+          block
+      in
+      let verdict = function
+        | Layer (Some _, block) -> if empty block then Drop else Keep
+        | Layer_decl (_ :: _) -> Drop
+        | Import rule -> (
+            match Stylesheet.import_layer_name rule with
+            | Some (_ :: _) -> Keep
+            | Some [] | None -> Other)
+        | _ -> Other
+      in
+      let emitted = ref false in
+      let out = ref [] in
+      let emit () =
+        if not !emitted then (
+          emitted := true;
+          out := Layer_decl names :: !out)
+      in
+      List.iter
+        (fun stmt ->
+          match verdict stmt with
+          | Keep ->
+              emit ();
+              out := stmt :: !out
+          | Drop -> emit ()
+          | Other -> out := stmt :: !out)
+        run;
+      sort_layer_blocks_by_rank names (List.rev !out)
 
 (* A statement that is a layer construct itself, and one whose transitive
    content declares a layer, the second being a barrier for the run around
