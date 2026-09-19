@@ -4905,9 +4905,10 @@ let pp_color_space : color_space Pp.t =
   | Hwb -> Pp.string ctx "hwb"
 
 let pp_color' ctx space components alpha =
-  let decimals =
-    color_channel_decimals space (color_numeric_channels components)
-  in
+  (* The AST carries the canonical precision ([round_modern_color_axes]); the
+     printer serialises it faithfully rather than rounding again, so a refused
+     fold keeps the digits that make its verdict repeat. *)
+  let decimals = 8 in
   Pp.call "color"
     (fun ctx (space, components, alpha) ->
       pp_color_space ctx space;
@@ -7351,13 +7352,29 @@ let relative_color_has_empty_alpha cvs =
    The linear route covers every space whose matrices are wired up, so a
    relative colour folds whether its origin was written as a hex or as the
    [color()] the same conversion reaches. *)
+(* The conversion error the fold takes from the space a colour is written in:
+   none for an sRGB spelling, the wide-gamut bound for a [color()] matrix, the
+   Lab bound for the Lab family, and nothing for an authored sRGB value. *)
+let conversion_error_of_color (c : color) =
+  match c with
+  | Color { space = Srgb | Srgb_linear; _ } -> 0.
+  | Color { space = Lab | Oklab | Lch | Oklch; _ } ->
+      Color_space.lab_conversion_error
+  | Color _ -> Color_space.conversion_error
+  | Oklab _ | Oklch _ | Lab _ | Lch _ -> Color_space.lab_conversion_error
+  | _ -> 0.
+
 let relative_origin_srgb_bytes origin : (int * int * int * int) option =
   match static_color_to_srgb_bytes origin with
   | Some _ as found -> found
   | Option.None -> (
       match static_color_to_linear_srgb origin with
       | Some (linear, alpha_f) -> (
-          match Color_space.srgb_bytes_of_linear linear with
+          match
+            Color_space.srgb_bytes_of_linear
+              ~error:(conversion_error_of_color origin)
+              linear
+          with
           | Some (r, g, b) ->
               let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
               Some
@@ -8346,7 +8363,11 @@ let normalize_static_modern_color ~exact_srgb ~lossless c =
   else
     match static_color_to_linear_srgb c with
     | Some (linear, alpha_f) -> (
-        match Color_space.srgb_bytes_of_linear linear with
+        match
+          Color_space.srgb_bytes_of_linear
+            ~error:(conversion_error_of_color c)
+            linear
+        with
         | Some (r, g, b) ->
             let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
             let alpha_byte =
@@ -8398,7 +8419,17 @@ let normalize_srgb_mix color1 color2 ~p1 ~p2 =
       in
       let alpha = interp_alpha *. alpha_mult in
       let linear = Color_space.linear_rgb_of_rgb (r, g, b) in
-      match Color_space.srgb_bytes_of_linear linear with
+      (* An operand written in sRGB terms mixes by exact arithmetic every engine
+         performs alike; an operand converted from another space carries that
+         conversion's error into the result. *)
+      let mix_error =
+        if
+          static_color_to_srgb_channels color1 <> None
+          && static_color_to_srgb_channels color2 <> None
+        then 0.
+        else Color_space.conversion_error
+      in
+      match Color_space.srgb_bytes_of_linear ~error:mix_error linear with
       | Some (r, g, b) ->
           let clamp01 v = Float.max 0. (Float.min 1. v) in
           let a = Float.to_int (Float.round (clamp01 alpha *. 255.)) in
@@ -8452,6 +8483,46 @@ let round_lab_family_axes ~lossless (c : color) : color =
   | Lch r ->
       Lch { r with l = lab_l r.l; c = r1 r.c; h = round_hue ~lossless r.h }
   | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
+  | other -> other
+
+(* What a browser paints for a colour, as the minifier needs it: the fold
+   verdict of the linear-sRGB colour it converts to. *)
+let srgb_verdict_of_color (c : color) : Color_space.srgb_fold =
+  match static_color_to_linear_srgb c with
+  | Some (linear, _) ->
+      Color_space.srgb_fold_of_linear
+        ~error:(conversion_error_of_color c)
+        linear
+  | None -> Color_space.Out_of_gamut
+
+(* Reduce the coefficients of a colour that did not fold, but only as far as the
+   fold verdict stays the same. An in-gamut colour whose byte is ambiguous must
+   keep the precision that fixes which side of the half-integer it is on, and an
+   out-of-gamut colour must keep the precision the engine gamut maps, so a
+   shorter spelling that changes either is not emitted. Where the canonical
+   rounding is safe it is taken, so the minified output stays as short as it was
+   and repeats: the rounded value yields the same verdict. *)
+let verdict_preserving (rounded : color) (exact : color) : color =
+  if srgb_verdict_of_color rounded = srgb_verdict_of_color exact then rounded
+  else exact
+
+(* The [color()] components at their canonical precision, in the AST, so the
+   emitted text and the fold decision agree and minify is a fixed point. The
+   printer serialises the node faithfully. *)
+let round_modern_color_axes ~lossless (c : color) : color =
+  let round_component decimals (component : component) : component =
+    match component with
+    | Num f -> Num (round_color_axis ~lossless ~decimals f)
+    | Pct f -> Pct (round_color_axis ~lossless ~decimals (f /. 100.) *. 100.)
+    | other -> other
+  in
+  match c with
+  | Color r ->
+      let decimals =
+        color_channel_decimals r.space (color_numeric_channels r.components)
+      in
+      Color
+        { r with components = List.map (round_component decimals) r.components }
   | other -> other
 
 (* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
@@ -8576,8 +8647,8 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   in
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   let static_fold () =
-    round_lab_family_axes ~lossless
-      (normalize_static_modern_color ~exact_srgb ~lossless c)
+    let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
+    verdict_preserving (round_lab_family_axes ~lossless folded) folded
   in
   match c with
   | Oklab { l = Some l; a = None; b = None; alpha }
@@ -8587,7 +8658,9 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
   | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
-  | Color _ -> normalize_static_modern_color ~exact_srgb ~lossless c
+  | Color _ ->
+      let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
+      verdict_preserving (round_modern_color_axes ~lossless folded) folded
   | Hex { r; g; b; a } -> normalize_hex_color c r g b a
   (* The authored spelling is a pretty-printing detail the printer reads, not
      part of the colour, so the fold drops it: two spellings of one colour have

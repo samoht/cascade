@@ -262,6 +262,12 @@ let normalize_expected ~category ~id expected =
          oracle. *)
       fixture ~category ~id ~upstream:"a{color:color(xyz-d50 .5457 .311 .0488)}"
         ~cascade:"a{color:color(xyz-d50 .546 .311 .049)}" upstream
+  | "colors", "0056" ->
+      (* color(display-p3 .5 .5 .5) is 127.5 sRGB in every channel: a browser
+         paints 127 in one and 128 in the others, so folding to the [gray] the
+         oracle writes moves a pixel. Keep the p3 spelling. *)
+      fixture ~category ~id ~upstream:"a{color:gray}"
+        ~cascade:"a{color:color(display-p3 .5 .5 .5)}" upstream
   | "font-face", "0001" ->
       (* A @font-face rule without font-family or src cannot participate in font
          matching. CSS Fonts 4 parses these rules, but says they must not be

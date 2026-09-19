@@ -194,24 +194,42 @@ let test_srgb_bytes_of_linear () =
     Color_space.linear_srgb_of_xyz65
       (Color_space.d65_of_xyz50 (Color_space.xyz50_of_lab (l, a, b)))
   in
+  let fold_lab c =
+    Color_space.srgb_fold_of_linear ~error:Color_space.lab_conversion_error c
+  in
+  let folds = function Color_space.Fold _ -> true | _ -> false in
   Alcotest.(check bool)
-    "in-gamut sRGB red folds to its bytes" true
-    (fold (Color_space.linear_rgb_of_rgb (1.0, 0.0, 0.0)) = Some (255, 0, 0));
+    "authored sRGB red folds to its bytes" true
+    (fold ~error:0. (Color_space.linear_rgb_of_rgb (1.0, 0.0, 0.0))
+    = Some (255, 0, 0));
   Alcotest.(check bool)
-    "oklch(50% .2 30) is within budget and folds" true
-    (fold (of_oklch (0.5, 0.2, 30.0)) <> None);
+    "the Lab family converts accurately enough to fold" true
+    (folds (fold_lab (of_oklch (0.5, 0.2, 30.0))));
   Alcotest.(check bool)
-    "oklch(50% .1 20) is within budget and folds" true
-    (fold (of_oklch (0.5, 0.1, 20.0)) <> None);
+    "a Lab-family channel near a half-integer still folds under its own bound"
+    true
+    (folds (fold_lab (of_oklch (0.5, 0.1, 20.0))));
   Alcotest.(check bool)
-    "lab(50% 20 30) is within budget and folds" true
-    (fold (of_lab (50.0, 20.0, 30.0)) <> None);
+    "lab(50% 20 30) folds" true
+    (folds (fold_lab (of_lab (50.0, 20.0, 30.0))));
   Alcotest.(check bool)
-    "the same fold is rejected under a tighter budget" true
-    (fold ~budget:0.0005 (of_oklch (0.5, 0.1, 20.0)) = None);
+    "the wide-gamut bound covers the conversion error" true
+    (match
+       Color_space.srgb_fold_of_linear
+         (Color_space.linear_rgb_of_rgb (0.5, 0.5, 0.5))
+     with
+    | Color_space.Ambiguous -> true
+    | _ -> false);
   Alcotest.(check bool)
-    "out-of-sRGB-gamut colour is preserved" true
-    (fold (2.0, 0.0, 0.0) = None)
+    "the same colour under the wide-gamut bound is ambiguous" true
+    (match Color_space.srgb_fold_of_linear (of_oklch (0.5, 0.1, 20.0)) with
+    | Color_space.Ambiguous -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "an out-of-sRGB-gamut colour is not an sRGB spelling" true
+    (match Color_space.srgb_fold_of_linear (2.0, 0.0, 0.0) with
+    | Color_space.Out_of_gamut -> true
+    | _ -> false)
 
 (* CSS Color 4 sec. 14.2.2 "Binary Search Gamut Mapping with Local MINDE". The
    algorithm halves the OKLCh chroma at constant lightness and hue and returns a

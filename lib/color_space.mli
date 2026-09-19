@@ -126,11 +126,38 @@ val oklab_distance : lab -> lab -> float
 (** [oklab_distance a b] is the Euclidean distance between two OKLab colours,
     the perceptual difference metric used by the colour-folding budget. *)
 
-val srgb_bytes_of_linear : ?budget:float -> rgb -> (int * int * int) option
-(** [srgb_bytes_of_linear linear] is the nearest 8-bit sRGB byte triple for the
-    linear-sRGB colour [linear], or [None] when it is out of the sRGB gamut or
-    its 8-bit quantisation lies more than [budget] (default [0.002]) in OKLab
-    distance from the source. Alpha is not considered. *)
+val conversion_error : float
+(** The error an engine's conversion arithmetic leaves in a linear-light sRGB
+    channel reached through a wide-gamut or XYZ matrix, as a fraction of the
+    colour's largest linear channel: [0.0006], twice the largest measured by
+    rendering display-p3 and xyz spellings of sRGB colours in a headless
+    Chromium against their hex neighbours. *)
+
+val lab_conversion_error : float
+(** The same for the Lab family, which reaches sRGB through the transfer
+    function alone: [0.00004], twice the largest measured there. *)
+
+type srgb_fold = Fold of (int * int * int) | Ambiguous | Out_of_gamut
+
+val srgb_fold_of_linear : ?error:float -> rgb -> srgb_fold
+(** [srgb_fold_of_linear linear] is what a browser paints for the linear-sRGB
+    colour [linear], as a minifier needs it. {!constructor-Fold} is an in-gamut
+    colour every channel of which quantises unambiguously, so its bytes are the
+    pixel every engine paints and a hex/named form may replace the spelling.
+    {!constructor-Ambiguous} is in gamut but has a channel within [error]
+    (default {!conversion_error}) of a half-integer byte, the error carried
+    through the sRGB encode curve's slope at that channel, so which way it
+    rounds is the engine's arithmetic and not the colour: no shorter spelling is
+    guaranteed to paint the same pixel. {!constructor-Out_of_gamut} is converted
+    away from the sRGB gamut, where CSS Color 4 sec. 14.2 has the engine gamut
+    map it with an algorithm of its choosing. [error = 0.] quantises every
+    channel to the byte it rounds to, which is what an authored sRGB value does.
+    Alpha is not considered. *)
+
+val srgb_bytes_of_linear : ?error:float -> rgb -> (int * int * int) option
+(** [srgb_bytes_of_linear linear] is the bytes of {!srgb_fold_of_linear} when it
+    is {!constructor-Fold}, and [None] for {!constructor-Ambiguous} or
+    {!constructor-Out_of_gamut}. *)
 
 val gamut_mapped_srgb_of_oklch : lch -> rgb
 (** [gamut_mapped_srgb_of_oklch (l, c, h)] is the sRGB colour, channels in
