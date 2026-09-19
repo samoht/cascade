@@ -492,6 +492,13 @@ to lose a whole rule over one bad piece. Both are gone.
 
 ### Minification
 
+- A colour folds to the bytes a browser paints, not to the nearest byte within
+  a 0.002 DeltaE(OK) budget. `color(display-p3 .5 .5 .5)` folded to `gray`
+  though the browser paints 127 in one channel, and an `lch()` channel rounded.
+  A colour the conversion leaves outside the sRGB gamut, or on a byte an
+  engine's arithmetic could round either way, keeps its authored spelling; an
+  authored sRGB value, a scaled percentage and an alpha are exact and fold
+  (#1272).
 - A relative colour whose channels are the lab family's own keywords in order
   folds to its origin in that space, with the alpha the call names:
   `oklab(from rgb(0 0 0 / .1) l a b / 20%)` minifies to `#0003`, as
