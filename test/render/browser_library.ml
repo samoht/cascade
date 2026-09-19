@@ -35,6 +35,14 @@ let renders sheets =
 
 let () =
   Browser.suppressed "browser_library";
+  (* The count is checked before any browser is looked for, so this holds where
+     the rest of the file skips. *)
+  (match
+     Browser_compare.run ~html
+       [ ("first", first); ("second", first); ("third", first) ]
+   with
+  | Error _ -> check "a third sheet is refused before a browser is needed" true
+  | Ok _ -> check "a third sheet is refused before a browser is needed" false);
   let node =
     match Browser.node_binary () with Some n -> n | None -> skip "no node"
   in
