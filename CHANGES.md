@@ -1,4 +1,4 @@
-## 1.2.0 (unreleased)
+## 1.2.0
 
 Most entries below are defect fixes, and the largest group of them has one
 cause. Readers, printers and optimizer passes each walked the statement tree
@@ -8,7 +8,7 @@ share a single exhaustive walk, so adding a statement kind after this release
 breaks the build at every place that has to decide about it.
 
 Correctness was checked against a browser rather than against cascade. The
-suite renders a sheet and its optimised form in headless Chrome, over a
+suite now renders a sheet and its optimised form in headless Chrome, over a
 document derived from the sheet's own selectors, and compares the two pages
 pixel for pixel. It also replays 2960 recorded minification cases carrying six
 minifiers' answers. Several of the fixes below are cases where Chrome disagreed
