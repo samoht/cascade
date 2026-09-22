@@ -9,6 +9,10 @@ tap:
   clone_url: https://github.com/samoht/homebrew-tap.git
   push_url: git@github.com:samoht/homebrew-tap
 
+build:
+  linux: static
+  switch: lto-5.4.1
+
 packages:
   - name: cascade
     target: bin/main.exe
