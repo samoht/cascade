@@ -964,7 +964,23 @@ let comment_preservation_policy () =
   (* Comments inside selector lists or values are discarded (industry consensus
      - none of Lightning, cssnano, CSSO preserve these). *)
   roundtrip ".a /* between */ , .b { color: red }" ".a,.b{color:red}";
-  roundtrip ".x { color: rgb(/* r */ 255 0 0) }" ".x{color:red}"
+  roundtrip ".x { color: rgb(/* r */ 255 0 0) }" ".x{color:red}";
+  (* The same holds for a bang comment written inside a rule: it is part of that
+     rule's text, not a statement of the sheet, so it is discarded with the
+     rule's other comments rather than hoisted in front of it. The first case is
+     what @tailwindcss/forms emits for [--tw-ring-inset]. *)
+  roundtrip ".a { --x: var(--tw-empty,/*!*/ /*!*/) }" ".a{--x:var(--tw-empty,)}";
+  roundtrip ".x { color: /*! v */ red }" ".x{color:red}";
+  roundtrip ".x { color: red; /*! note */ background: blue }"
+    ".x{color:red;background:#00f}";
+  roundtrip ".a /*! sel */ , .b { color: red }" ".a,.b{color:red}";
+  roundtrip "@media /*! q */ screen { .a { color: red } }"
+    "@media screen{.a{color:red}}";
+  roundtrip "@media screen { /*! body */ .a { color: red } }"
+    "@media screen{.a{color:red}}";
+  roundtrip ".x { content: \"/*! str */\" }" ".x{content:\"/*! str */\"}";
+  (* A [/*!] inside an ordinary comment is text of that comment. *)
+  roundtrip "/* a /*! b */ .a { color: red }" ".a{color:red}"
 
 let non_minified_preserves_conditional_forms () =
   preserves_non_minified "@media (min-width: 768px) { .btn { display: block } }"

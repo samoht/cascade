@@ -4939,57 +4939,63 @@ module Source = struct
     }
 end
 
-(* Scan [source] for top-level [/*! ... */] bang comments. The lexer drops
-   ordinary comments per CSS Syntax 3 (ED) sec. 4.3.2; bang comments are the
-   minifier convention for license headers and need to round-trip. Returns pairs
-   [(start_offset, body)] in source order; nested comments inside strings or
-   other comments are not handled because CSS comments don't nest. *)
-let extract_bang_comments (source : string) : (int * string) list =
-  let len = String.length source in
-  let acc = ref [] in
-  let i = ref 0 in
-  while !i + 2 < len do
-    if
-      String.unsafe_get source !i = '/'
-      && String.unsafe_get source (!i + 1) = '*'
-      && String.unsafe_get source (!i + 2) = '!'
-    then (
-      let start_offset = !i in
-      let body_start = !i + 2 in
-      let j = ref (!i + 3) in
-      let stop : int option ref = ref Option.None in
-      while !stop = Option.None && !j + 1 < len do
-        if
-          String.unsafe_get source !j = '*'
-          && String.unsafe_get source (!j + 1) = '/'
-        then stop := Some !j
-        else incr j
-      done;
-      match !stop with
-      | Some end_ ->
-          let body = String.sub source body_start (end_ - body_start) in
-          acc := (start_offset, body) :: !acc;
-          i := end_ + 2
-      | None -> i := len)
-    else incr i
-  done;
-  List.rev !acc
+(* [pair_from source c1 c2 i] is the first offset at or after [i] where [c1] is
+   followed by [c2]. *)
+let rec pair_from source c1 c2 i =
+  if i + 1 >= String.length source then Option.None
+  else if
+    String.unsafe_get source i = c1 && String.unsafe_get source (i + 1) = c2
+  then Some i
+  else pair_from source c1 c2 (i + 1)
 
+(* Scan [source] for [/*! ... */] bang comments. The lexer drops ordinary
+   comments per CSS Syntax 3 (ED) sec. 4.3.2; bang comments are the minifier
+   convention for license headers and need to round-trip. Returns pairs
+   [(start_offset, body)] in source order. An ordinary comment is skipped whole,
+   so a [/*!] inside it is not a bang comment; strings are not skipped, which
+   only matters inside a rule, where {!interleave_bang_comments} drops the match
+   anyway. *)
+let extract_bang_comments (source : string) : (int * string) list =
+  let rec loop acc i =
+    match pair_from source '/' '*' i with
+    | Option.None -> List.rev acc
+    | Some start -> (
+        let body_start = start + 2 in
+        match pair_from source '*' '/' body_start with
+        | Option.None -> List.rev acc
+        | Some end_ ->
+            let acc =
+              if body_start < end_ && String.unsafe_get source body_start = '!'
+              then
+                (start, String.sub source body_start (end_ - body_start)) :: acc
+              else acc
+            in
+            loop acc (end_ + 2))
+  in
+  loop [] 0
+
+(* A bang comment is a statement only between top-level rules. One that starts
+   inside a rule's span sits in its prelude, its block or one of its values; it
+   is part of that rule's text, whose comments are discarded, so it is dropped
+   rather than hoisted in front of the rule. *)
 let interleave_bang_comments source rules sheet =
   let bangs = extract_bang_comments source in
-  let rule_ends = List.map (fun r -> (rule_loc r).Loc.end_pos) rules in
-  let rec interleave bangs rule_ends sheet =
-    match (bangs, rule_ends, sheet) with
+  let rule_locs = List.map rule_loc rules in
+  let rec interleave bangs rule_locs sheet =
+    match (bangs, rule_locs, sheet) with
     | [], _, _ -> sheet
     | (_, body) :: rest_b, [], _ ->
         Bang_comment body :: interleave rest_b [] sheet
-    | (offset, body) :: rest_b, end_ :: _, _ when offset < end_ ->
-        Bang_comment body :: interleave rest_b rule_ends sheet
+    | (offset, body) :: rest_b, { Loc.start_pos; _ } :: _, _
+      when offset < start_pos ->
+        Bang_comment body :: interleave rest_b rule_locs sheet
+    | (offset, _) :: rest_b, { Loc.end_pos; _ } :: _, _ when offset < end_pos ->
+        interleave rest_b rule_locs sheet
     | _, _ :: rest_s, [] -> interleave bangs rest_s []
     | _, _ :: rest_s, stmt :: rest_sheet ->
         stmt :: interleave bangs rest_s rest_sheet
   in
-  interleave bangs rule_ends sheet
+  interleave bangs rule_locs sheet
 
 (* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
    from [Parser.stylesheet] with per-rule typed-validation warnings. *)

@@ -691,7 +691,6 @@ let consume_name_start_or_delim ~force_url_function r c =
 
 let next_token ?(force_url_function = false) ?(unicode_ranges = false)
     ?on_comment r =
-  skip_comment_run on_comment r;
   let b = Reader.peek_byte r in
   if b = -1 then Eof
   else
@@ -766,9 +765,13 @@ let next_token ?(force_url_function = false) ?(unicode_ranges = false)
 
 (** {1 Stream API (uniform with other stages)} *)
 
-(* Wrap a tokenizer step with source-location capture. *)
+(* Wrap a tokenizer step with source-location capture. The comments before a
+   token are skipped first, so its location and source text start at the token
+   itself: a rule opened by that token does not span a comment written in front
+   of it. *)
 let tokenize_with_loc ?(force_url_function = false) ?(unicode_ranges = false)
     ?on_comment reader =
+  skip_comment_run on_comment reader;
   let start_pos = Reader.position reader in
   let kind =
     next_token ~force_url_function ~unicode_ranges ?on_comment reader
