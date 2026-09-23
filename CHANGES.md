@@ -1,3 +1,11 @@
+## 1.2.1 (unreleased)
+
+### Parsing
+
+- A `/*! */` comment inside a rule is discarded with the rule's other comments
+  instead of being hoisted out in front of it, so `cascade diff` no longer
+  reports removed rules on `@tailwindcss/forms` output (#1276).
+
 ## 1.2.0
 
 Most entries below are defect fixes, and the largest group of them has one
