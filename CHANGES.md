@@ -15,7 +15,7 @@ later was skipped by all of them instead of causing a compile error. They now
 share a single exhaustive walk, so adding a statement kind after this release
 breaks the build at every place that has to decide about it.
 
-Morover, correctness is now checked against a browser. The
+Correctness is now also checked against a browser. The
 suite now renders a sheet and its optimised form in headless Chrome, over a
 document derived from the sheet's own selectors, and compares the two pages
 pixel for pixel. It also replays 2960 recorded minification cases carrying six
