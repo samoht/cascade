@@ -791,8 +791,10 @@ let atom_of_components t components =
         as media -> (
           match value with
           | Media.Length (Values.Rem rem) -> Min_width_rem rem
-          | Media.Length (Values.Px px) when Float.is_integer px ->
-              Min_width_px (int_of_float px)
+          | Media.Length (Values.Px px) when Float.is_integer px -> (
+              match Common.int_of_float_opt px with
+              | Some px -> Min_width_px px
+              | None -> Feature_query media)
           | _ -> Feature_query media)
       | media -> (
           match single_feature_of_media media with

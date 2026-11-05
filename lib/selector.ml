@@ -425,13 +425,12 @@ let read_attribute_value_ident t s (loc : Loc.t) =
   match raw with Some raw when String.contains raw '\\' -> raw | _ -> s
 
 let format_attribute_number n (unit : string option) =
-  match unit with
-  | None ->
-      if Float.is_integer n then string_of_int (int_of_float n)
-      else string_of_float n
-  | Some u ->
-      if Float.is_integer n then string_of_int (int_of_float n) ^ u
-      else string_of_float n ^ u
+  let number =
+    match Common.int_of_float_opt n with
+    | Some i when Float.is_integer n -> string_of_int i
+    | _ -> string_of_float n
+  in
+  match unit with None -> number | Some u -> number ^ u
 
 let read_attribute_value_unquoted t =
   match Cursor.peek t with

@@ -140,9 +140,10 @@ let normalize_columns_value : columns_value -> columns_value =
   match value with
   | Auto_count n -> Count n
   | Count_calc c as value -> (
-      match eval_calc (numeric_columns_calc_leaves c) with
-      | Num n when Float.is_integer n && n >= 1. -> Count (int_of_float n)
-      | folded -> if folded == c then value else Count_calc folded)
+      let folded = eval_calc (numeric_columns_calc_leaves c) in
+      match Prop_common.positive_integer_of_calc folded with
+      | Some n -> Count n
+      | None -> if folded == c then value else Count_calc folded)
   (* The column width keeps the spelling the author wrote for the unminified
      round-trip, and the printer drops it under [--minify]. Fold it, or two
      spellings of one width reach one minified text through two nodes. *)
@@ -194,7 +195,9 @@ let rec pp_columns_value : columns_value Pp.t =
   | Count_calc c ->
       pp_calc
         ~unwrap_num:
-          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+          (match c with
+          | Num _ -> Option.is_some (Prop_common.positive_integer_of_calc c)
+          | _ -> true)
         pp_columns_value ctx c
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
@@ -254,9 +257,10 @@ let normalize_column_count : column_count -> column_count =
  fun value ->
   match value with
   | Calc c -> (
-      match eval_calc (numeric_column_count_calc_leaves c) with
-      | Num n when Float.is_integer n && n >= 1. -> Count (int_of_float n)
-      | folded -> if folded == c then value else Calc folded)
+      let folded = eval_calc (numeric_column_count_calc_leaves c) in
+      match Prop_common.positive_integer_of_calc folded with
+      | Some n -> Count n
+      | None -> if folded == c then value else Calc folded)
   | other -> other
 
 let rec pp_column_count : column_count Pp.t =
@@ -266,7 +270,9 @@ let rec pp_column_count : column_count Pp.t =
   | Calc c ->
       pp_calc
         ~unwrap_num:
-          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+          (match c with
+          | Num _ -> Option.is_some (Prop_common.positive_integer_of_calc c)
+          | _ -> true)
         pp_column_count ctx c
   | Var v -> pp_var pp_column_count ctx v
   | Inherit -> Pp.string ctx "inherit"

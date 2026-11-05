@@ -6287,19 +6287,29 @@ let read_integer_calc : type a.
      nearest integer rather than refusing it, so a fractional result keeps the
      call and rounds where the value is used. *)
   match eval_numeric_calc expr with
-  | Some f when Float.is_integer f -> `Int (int_of_float f)
+  | Some f when Float.is_integer f -> (
+      (* Past the [int] range the call stays, and sec. 10.12 clamps it to the
+         range the user agent supports. *)
+      match Common.int_of_float_opt f with
+      | Some n -> `Int n
+      | None -> `Calc expr)
   | Some _ | None -> `Calc expr
 
 (* Sec. 10.12 rounds to the nearest integer with a tie going toward positive
    infinity, so this is the integer a slot's own range has to answer for: a call
    that rounds outside the range is as invalid as the literal would be. One
    holding a [var()] does not resolve here and has no integer yet, and an
-   infinity or a NaN has none at all. *)
+   infinity or a NaN has none at all. One past the [int] range clamps to it, as
+   the same section clamps an integer to the supported range, so it keeps its
+   sign. *)
 let calc_integer_value : type a. a calc -> int option =
  fun expr ->
   match eval_numeric_calc expr with
-  | Some f when Float.is_finite f ->
-      Option.some (int_of_float (Float.floor (f +. 0.5)))
+  | Some f when Float.is_finite f -> (
+      let f = Float.floor (f +. 0.5) in
+      match Common.int_of_float_opt f with
+      | Some n -> Option.some n
+      | None -> Option.some (if f > 0. then max_int else min_int))
   | Some _ | None -> Option.none
 
 let read_integer name t =

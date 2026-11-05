@@ -346,12 +346,13 @@ let strip_exponent_plus s =
   | _ -> s
 
 let format_integer is_neg abs_f f =
-  if abs_f <= float_of_int max_int then
-    let s = string_of_int (int_of_float abs_f) in
-    if is_neg then "-" ^ s else s
-  else
-    (* Very large integer - use string_of_float and clean it up *)
-    trim_decimal_suffix (string_of_float f) |> strip_exponent_plus
+  match Common.int_of_float_opt abs_f with
+  | Some i ->
+      let s = string_of_int i in
+      if is_neg then "-" ^ s else s
+  | None ->
+      (* Very large integer - use string_of_float and clean it up *)
+      trim_decimal_suffix (string_of_float f) |> strip_exponent_plus
 
 let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
   let scale = 10.0 ** float_of_int max_decimals in
@@ -366,18 +367,18 @@ let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
       let d = max_decimals + min 24 (max 0 leading_zeros) in
       (d, floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
   in
-  if scaled > float_of_int max_int then
-    (* [format_decimal] splices the decimal point into what it takes for a pure
-       digit string, but a scaled magnitude past [max_int] only stringifies
-       through exponent notation. Print the magnitude itself, the way
-       [format_integer] does over the same range. *)
-    let s =
-      trim_decimal_suffix (string_of_float abs_f) |> strip_exponent_plus
-    in
-    if is_neg then "-" ^ s else s
-  else
-    let s = string_of_int (int_of_float scaled) in
-    format_decimal ~drop_leading_zero s max_decimals is_neg
+  match Common.int_of_float_opt scaled with
+  | Some i ->
+      format_decimal ~drop_leading_zero (string_of_int i) max_decimals is_neg
+  | None ->
+      (* [format_decimal] splices the decimal point into what it takes for a
+         pure digit string, but a scaled magnitude with no [int] only
+         stringifies through exponent notation. Print the magnitude itself, the
+         way [format_integer] does over the same range. *)
+      let s =
+        trim_decimal_suffix (string_of_float abs_f) |> strip_exponent_plus
+      in
+      if is_neg then "-" ^ s else s
 
 let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
@@ -419,7 +420,7 @@ let int ctx i =
 
 (* An integer-valued float prints as that integer (see [format_integer]); take
    the allocation-free [int] path instead of building a string via
-   [string_of_float]. The bound mirrors [format_integer]'s own guard. *)
+   [string_of_float]. One with no [int] takes [format_integer]'s fallback. *)
 (* CSS Values 4 sec. 10.7.2: [NaN] is a keyword of the math-function grammar and
    exists nowhere else, so a NaN-valued number has no literal spelling. Sec.
    10.13 serialises it as [calc(NaN)], with [* 1<unit>] appended once the value
@@ -434,15 +435,18 @@ let nan_value ctx suffix =
 
 let float ctx f =
   if Float.is_nan f then nan_value ctx ""
-  else if Float.is_integer f && Float.abs f <= float_of_int max_int then
-    int ctx (int_of_float f)
-  else string ctx (string_of_float ~drop_leading_zero:true f)
+  else
+    match Common.int_of_float_opt f with
+    | Some i when Float.is_integer f -> int ctx i
+    | _ -> string ctx (string_of_float ~drop_leading_zero:true f)
 
 let float_n n ctx f =
   if Float.is_nan f then nan_value ctx ""
-  else if Float.is_integer f && Float.abs f <= float_of_int max_int then
-    int ctx (int_of_float f)
-  else string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
+  else
+    match Common.int_of_float_opt f with
+    | Some i when Float.is_integer f -> int ctx i
+    | _ ->
+        string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
 
 let hex ctx i =
   let hex_digit n =
