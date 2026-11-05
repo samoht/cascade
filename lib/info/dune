@@ -1,6 +1,11 @@
+; dune-build-info installs no .cmx for its data module, which dune replaces at
+; link time, so flambda raises warning 58 on every use (ocaml/dune#11418).
+
 (library
  (name cascade_info)
  (public_name cascade.info)
+ (flags
+  (:standard -w -58))
  (libraries dune-build-info))
 
 ; Packaging builds (bottler) export PROJECT_VERSION and expect the binary to
