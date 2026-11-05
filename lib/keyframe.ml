@@ -12,8 +12,9 @@ type position =
           [exit-crossing]). *)
 
 let string_of_pct p =
-  if Float.is_integer p then Int.to_string (Float.to_int p)
-  else Float.to_string p
+  match Common.int_of_float_opt p with
+  | Some i when Float.is_integer p -> Int.to_string i
+  | _ -> Float.to_string p
 
 let string_of_position = function
   | From -> "from"

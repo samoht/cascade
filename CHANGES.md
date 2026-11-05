@@ -1,3 +1,12 @@
+## 1.2.2 (unreleased)
+
+### Printing
+
+- A number at or past 2^62 no longer changes sign when printed, so
+  `a{width:4611686018427387904px}` stays positive under `--minify` and
+  `z-index:calc(1e30)` no longer becomes `-1`. A fractional `aspect-ratio`
+  numerator such as `1.5/1` is no longer truncated to `1/1` (#1280).
+
 ## 1.2.1
 
 ### Parsing

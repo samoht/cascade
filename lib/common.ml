@@ -154,6 +154,9 @@ module String = struct
     find 0 (max 0 marker_pos) lines
 end
 
+let int_of_float_opt f =
+  if Float.abs f < 0x1p62 then Some (int_of_float f) else None
+
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 
 (* [String.iter] would allocate a closure over the accumulator ref on every

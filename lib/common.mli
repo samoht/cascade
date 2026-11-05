@@ -81,6 +81,12 @@ module String : sig
       that line's end. *)
 end
 
+val int_of_float_opt : float -> int option
+(** [int_of_float_opt f] is [Some (int_of_float f)] when [f] lies strictly
+    between [-2^62] and [2^62], where every integer-valued float is an [int],
+    and [None] otherwise, NaN included. Past that bound [int_of_float] returns
+    [min_int] or a value that depends on the platform. *)
+
 val mix_int : int -> int -> int
 (** [mix_int acc x] folds the integer [x] into the running hash [acc]. *)
 
