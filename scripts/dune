@@ -39,6 +39,12 @@
 ;; DROP_CANDIDATE (vendor prefix + modern is typed; add to vendor pair list)
 ;; or TYPE_ME (no typed handler yet).
 
+;; lib/baseline.ml is generated from the web-features Baseline dataset. It
+;; needs the network, curl and jq, so no rule runs it; regenerate it by hand
+;; when browsers ship new features:
+;;
+;;   scripts/gen_baseline.sh && dune fmt
+
 ;; Mutation testing. Rewrites one token of one library source in a separate
 ;; checkout, rebuilds it and asks whether the suite noticed. Opt-in: a campaign
 ;; costs a full build and a full test run per mutant, so it has no alias.

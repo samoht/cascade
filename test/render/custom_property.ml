@@ -423,18 +423,12 @@ let transforms = [ "minify"; "inline-vars"; "optimize"; "eval" ]
    round trip that says whether the reader and the minify printer alone already
    moved the sheet. The round trip and [optimize] print as [cascade --minify]
    prints, approximation included; the two substitutions print exactly, so a
-   difference under one is the substitution's and not the printer's. A leg that
-   raises contributes nothing rather than aborting the run: the other legs of
-   the job are still answers. *)
+   difference under one is the substitution's and not the printer's. *)
 let legs job =
   match parse job.css with
   | None -> []
   | Some sheet ->
-      let attempt name f =
-        match f sheet with
-        | text -> Some { lname = name; lcss = text }
-        | exception _ -> None
-      in
+      let attempt name f = Some { lname = name; lcss = f sheet } in
       List.filter_map Fun.id
         [
           attempt "minify" print;

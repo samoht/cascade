@@ -225,10 +225,6 @@ let check_raises name expected_exn f =
   | exn when exn = expected_exn ->
       (* For other exceptions, use structural equality *)
       ()
-  | exn ->
-      Alcotest.failf "%s: expected %s but got %s" name
-        (Printexc.to_string expected_exn)
-        (Printexc.to_string exn)
 
 (** Generic helper for testing constructor string representations *)
 let check_construct name to_string expected value =

@@ -100,6 +100,35 @@ let columns_holds_reset_slot d =
       | _ -> true)
   | _ -> false
 
+let columns_plain_width :
+    Properties.column_width -> [ `Auto | `Width of Values.length ] option =
+  function
+  | Auto -> Some `Auto
+  | Width l -> Some (`Width l)
+  | _ -> None
+
+let columns_plain_count :
+    Properties.column_count -> [ `Auto | `Count of int ] option = function
+  | Auto -> Some `Auto
+  | Count n -> Some (`Count n)
+  | _ -> None
+
+(* [shorthand] takes the place of the first of the two longhands and the second
+   is dropped. *)
+let replace_column_longhands shorthand decls =
+  let placed = ref false in
+  List.filter_map
+    (fun d ->
+      match d with
+      | Declaration { property = Column_width; _ }
+      | Declaration { property = Column_count; _ } ->
+          if !placed then None
+          else (
+            placed := true;
+            Some shorthand)
+      | _ -> Some d)
+    decls
+
 let synthesize_columns decls =
   let width_of d : (Properties.column_width * bool) option =
     match d with
@@ -120,38 +149,13 @@ let synthesize_columns decls =
   else
     match (uniq width_of, uniq count_of) with
     | Some (w, wi), Some (c, ci) when wi = ci -> (
-        let plain_width :
-            Properties.column_width ->
-            [ `Auto | `Width of Values.length ] option = function
-          | Auto -> Some `Auto
-          | Width l -> Some (`Width l)
-          | _ -> None
-        in
-        let plain_count :
-            Properties.column_count -> [ `Auto | `Count of int ] option =
-          function
-          | Auto -> Some `Auto
-          | Count n -> Some (`Count n)
-          | _ -> None
-        in
-        match (plain_width w, plain_count c) with
+        match (columns_plain_width w, columns_plain_count c) with
         | Some w, Some c ->
             let shorthand =
               Declaration.v ~important:wi Properties.Columns
                 (columns_value_of_longhands w c)
             in
-            let placed = ref false in
-            List.filter_map
-              (fun d ->
-                match d with
-                | Declaration { property = Column_width; _ }
-                | Declaration { property = Column_count; _ } ->
-                    if !placed then None
-                    else (
-                      placed := true;
-                      Some shorthand)
-                | _ -> Some d)
-              decls
+            replace_column_longhands shorthand decls
         | _ -> decls)
     | _ -> decls
 
