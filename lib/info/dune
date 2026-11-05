@@ -14,9 +14,5 @@
 
 (rule
  (target project_version.ml)
- (deps
-  (env_var PROJECT_VERSION))
  (action
-  (with-stdout-to
-   %{target}
-   (bash "printf 'let env = \"%s\"\\n' \"${PROJECT_VERSION:-dev}\""))))
+  (write-file %{target} "let env = \"%{env:PROJECT_VERSION=dev}\"\n")))
