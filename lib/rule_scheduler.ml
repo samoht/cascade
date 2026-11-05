@@ -104,6 +104,17 @@ let initial_queue ~ctx ~finalize graph candidates_by_key =
   Rule_candidate.enumerate ~ctx ~finalize graph
   |> enqueue candidates_by_key 0 Queue.empty
 
+(* Refresh affected-neighborhood candidates per commit only for small graphs; on
+   large graphs the cumulative per-commit enumeration cost dominates, so defer
+   to drain-time re-enumeration. *)
+let requeue_after_commit ~refresh_after_commit ~ctx ~finalize candidates_by_key
+    graph graph' candidate next_key queue =
+  if refresh_after_commit then
+    let touching = affected_nodes graph candidate in
+    let candidates = Rule_candidate.enumerate ~touching ~ctx ~finalize graph' in
+    enqueue candidates_by_key next_key queue candidates
+  else (next_key, queue)
+
 let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
     candidates_by_key =
   let rec loop iteration refreshed graph next_key queue =
@@ -132,20 +143,11 @@ let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
               | Error _ -> loop iteration refreshed graph next_key queue
               | Ok graph' ->
                   Stats.add_saving (Ctx.stats ctx) candidate.saving;
-                  (* Refresh affected-neighborhood candidates per commit only
-                     for small graphs; on large graphs the cumulative per-commit
-                     enumeration cost dominates, so defer to drain-time
-                     re-enumeration. *)
-                  if refresh_after_commit then
-                    let touching = affected_nodes graph candidate in
-                    let candidates =
-                      Rule_candidate.enumerate ~touching ~ctx ~finalize graph'
-                    in
-                    let next_key, queue =
-                      enqueue candidates_by_key next_key queue candidates
-                    in
-                    loop (iteration + 1) false graph' next_key queue
-                  else loop (iteration + 1) false graph' next_key queue))
+                  let next_key, queue =
+                    requeue_after_commit ~refresh_after_commit ~ctx ~finalize
+                      candidates_by_key graph graph' candidate next_key queue
+                  in
+                  loop (iteration + 1) false graph' next_key queue))
   in
   loop
 
