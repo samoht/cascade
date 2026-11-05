@@ -150,8 +150,9 @@ type t =
 (* ===== Formatting helpers ===== *)
 
 let format_float f =
-  if Float.is_integer f then Int.to_string (Float.to_int f)
-  else Float.to_string f
+  match Common.int_of_float_opt f with
+  | Some i when Float.is_integer f -> Int.to_string i
+  | _ -> Float.to_string f
 
 let string_of_cmp = function
   | Lt -> "<"
@@ -643,8 +644,14 @@ let value_of_components_opt components =
            { value = denominator; number_flag = Token.Integer; _ };
        _;
      };
-  ] ->
-      Some (Ratio (int_of_float numerator.value, int_of_float denominator))
+  ]
+    when Float.is_integer numerator.value ->
+      (* [Ratio] holds [int]s, so a term with no [int], or a fractional
+         numerator, keeps the text as written. *)
+      Option.bind (Common.int_of_float_opt numerator.value) (fun n ->
+          Option.map
+            (fun d -> Ratio (n, d))
+            (Common.int_of_float_opt denominator))
   | [ Component.Preserved { kind = Token.Ident name; _ } ] ->
       Some (Ident (ident_of_string name))
   | [
