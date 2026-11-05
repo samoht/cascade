@@ -651,14 +651,9 @@ let test_read_var_reference () =
   (* Test invalid cases *)
   let neg input =
     let r = Cursor.of_string input in
-    try
-      let _ = read_reference r in
-      Alcotest.failf "Expected failure for: %s" input
-    with
-    | Cursor.Parse_error _ | Reader.Parse_error _ -> ()
-    | exn ->
-        Alcotest.failf "Unexpected exception for '%s': %s" input
-          (Printexc.to_string exn)
+    match read_reference r with
+    | _ -> Alcotest.failf "Expected failure for: %s" input
+    | exception (Cursor.Parse_error _ | Reader.Parse_error _) -> ()
   in
 
   neg "not-a-var";
@@ -701,14 +696,9 @@ let spec_custom_fallback_edges () =
     (Some "\"unterminated)");
   let neg input =
     let r = Cursor.of_string input in
-    try
-      let _ = read_reference r in
-      Alcotest.failf "Expected failure for: %s" input
-    with
-    | Cursor.Parse_error _ | Reader.Parse_error _ -> ()
-    | exn ->
-        Alcotest.failf "Unexpected exception for '%s': %s" input
-          (Printexc.to_string exn)
+    match read_reference r with
+    | _ -> Alcotest.failf "Expected failure for: %s" input
+    | exception (Cursor.Parse_error _ | Reader.Parse_error _) -> ()
   in
   neg "var(--color";
   check_var_ref "var(---)" "-" None;
