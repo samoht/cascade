@@ -5404,7 +5404,7 @@ let grid_template_of_run raw : Properties.grid_template option =
               match Properties.read_grid_template t with
               | value when Cursor.is_done t -> Some value
               | _ -> Option.None
-              | exception _ -> Option.None)))
+              | exception Cursor.Parse_error _ -> Option.None)))
   | _ -> Option.None
 
 let try_compose_grid_template_at idx i =
@@ -5521,7 +5521,7 @@ let gd_read_grid text =
   match Properties.read_grid t with
   | value when Cursor.is_done t -> Some value
   | _ -> Option.None
-  | exception _ -> Option.None
+  | exception Cursor.Parse_error _ -> Option.None
 
 let gd_is_none : Properties.grid_template -> bool = function
   | None -> true
