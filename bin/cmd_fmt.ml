@@ -81,15 +81,9 @@ let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
     (* Without --minify, Css.optimize never runs and the recorder stays empty:
        report only when the fixpoint had a chance to run. *)
     if profile && minify then report_profile (Stats.snapshot stats)
-  with
-  | Sys_error msg ->
-      Fmt.epr "Error: %s@." msg;
-      Stdlib.exit 1
-  | e ->
-      Fmt.epr "Unexpected error: %s@." (Printexc.to_string e);
-      let bt = Printexc.get_backtrace () in
-      if bt <> "" then Fmt.epr "%s@." bt;
-      Stdlib.exit 1
+  with Sys_error msg ->
+    Fmt.epr "Error: %s@." msg;
+    Stdlib.exit 1
 
 let input_arg =
   let doc = "CSS file to process (use - for stdin)" in

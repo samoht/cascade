@@ -29,12 +29,8 @@ let canonical_file ~import_root resolved =
         resolved canonical root;
       None
 
-let warn_cannot_read resolved = function
-  | Sys_error msg -> Fmt.epr "warning: cannot read %s: %s@." resolved msg
-  | Unix.Unix_error (error, _, _) ->
-      Fmt.epr "warning: cannot read %s: %s@." resolved
-        (Unix.error_message error)
-  | error -> raise error
+let warn_cannot_read resolved msg =
+  Fmt.epr "warning: cannot read %s: %s@." resolved msg
 
 let canonical_import_root = function
   | None -> None
@@ -59,9 +55,13 @@ let cache_resolved ~import_root imports resolved =
           let content = Cli_io.read_file filename in
           Hashtbl.add imports resolved content;
           Some (Cli_io.parse_css ~filename content)
-    with error ->
-      warn_cannot_read resolved error;
-      None
+    with
+    | Sys_error msg ->
+        warn_cannot_read resolved msg;
+        None
+    | Unix.Unix_error (error, _, _) ->
+        warn_cannot_read resolved (Unix.error_message error);
+        None
 
 let resolve_import loader url =
   let path = strip_url_suffix url in
