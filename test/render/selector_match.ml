@@ -1203,32 +1203,27 @@ let () =
             | Ok _, Some (Matched hits) -> (
                 let css = String.concat "" [ p.read; "{color:red}" ] in
                 match Cascade.Css.of_string css with
-                | Error _ | (exception _) -> ()
-                | Ok { stylesheet; _ } -> (
-                    match P.analyse ~sheet:stylesheet [ d.root ] with
-                    | exception _ -> ()
-                    | analysis ->
-                        let kept =
-                          Cascade.Css.statements analysis.sheet <> []
-                        in
-                        if hits <> [] && not kept then
-                          prune_deleted_a_match :=
-                            {
-                              probe = p;
-                              doc_id = d.did;
-                              detail =
+                | Error _ -> ()
+                | Ok { stylesheet; _ } ->
+                    let analysis = P.analyse ~sheet:stylesheet [ d.root ] in
+                    let kept = Cascade.Css.statements analysis.sheet <> [] in
+                    if hits <> [] && not kept then
+                      prune_deleted_a_match :=
+                        {
+                          probe = p;
+                          doc_id = d.did;
+                          detail =
+                            [
+                              String.concat ""
                                 [
-                                  String.concat ""
-                                    [
-                                      "    the browser matched ";
-                                      string_of_int (List.length hits);
-                                      " element(s), prune removed the rule";
-                                    ];
+                                  "    the browser matched ";
+                                  string_of_int (List.length hits);
+                                  " element(s), prune removed the rule";
                                 ];
-                            }
-                            :: !prune_deleted_a_match
-                        else if hits = [] && kept then
-                          incr prune_kept_an_unmatched))
+                            ];
+                        }
+                        :: !prune_deleted_a_match
+                    else if hits = [] && kept then incr prune_kept_an_unmatched)
             | _ -> ())
         probes)
     trees;
@@ -1264,10 +1259,7 @@ let () =
               let cascade =
                 match sel with
                 | Error m -> Unreadable m
-                | Ok s -> (
-                    match cascade_answer s els with
-                    | a -> a
-                    | exception e -> Unreadable (Printexc.to_string e))
+                | Ok s -> cascade_answer s els
               in
               let finding detail = { probe = p; doc_id = d.did; detail } in
               let browser_says =

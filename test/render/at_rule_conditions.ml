@@ -765,7 +765,7 @@ let table_of_env env =
           | None -> value
         in
         match Media.feature feature (Media.value_of_string value) with
-        | exception _ -> None
+        | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
         | entry -> Some entry)
     (env_reading env)
 
@@ -777,13 +777,19 @@ let thresholds env =
 type media_job = { id : string; text : string; query : Media.t option }
 
 let parse_media text =
-  match Media.of_string text with exception _ -> None | q -> Some q
+  match Media.of_string text with
+  | exception Cursor.Parse_error _ -> None
+  | q -> Some q
 
 let parse_supports text =
-  match Supports.of_string text with exception _ -> None | c -> Some c
+  match Supports.of_string text with
+  | exception Cursor.Parse_error _ -> None
+  | c -> Some c
 
 let parse_container text =
-  match Container.of_string text with exception _ -> None | c -> Some c
+  match Container.of_string text with
+  | exception Cursor.Parse_error _ -> None
+  | c -> Some c
 
 let supports_leaf (c : Supports.t) =
   match c with
@@ -795,17 +801,13 @@ let supports_leaf (c : Supports.t) =
    stage of its own, and the first one: a query the parser recovers to [not all]
    has already lost what it selected before any rewrite runs, and attributing
    that to the rewrite would name the wrong function. *)
-let serialise q =
-  match Media.to_string ~minify:true q with
-  | exception _ -> None
-  | text -> Some text
+let serialise q = Media.to_string ~minify:true q
 
 let rewrites_of = function
   | None -> []
   | Some q ->
-      List.filter_map
-        (fun (label, rewritten) ->
-          Option.map (fun text -> (label, text)) (serialise rewritten))
+      List.map
+        (fun (label, rewritten) -> (label, serialise rewritten))
         [
           ("round_trip", q);
           ("lower_for_minify", Media.lower_for_minify q);
@@ -1122,17 +1124,12 @@ let () =
       let k = pool.(next s mod Array.length pool) in
       let c = pool.(next s mod Array.length pool) in
       match (parse_supports k, parse_supports c) with
-      | Some kc, Some cc -> (
-          match Supports.simplify_under ~context:[ kc ] cc with
-          | exception _ -> ()
-          | decision ->
-              (match decision with
-              | `Cond c' -> (
-                  match Supports.to_string c' with
-                  | exception _ -> ()
-                  | text -> ignore (intern_supports text))
-              | `True | `False -> ());
-              simplify_sample := (k, c, decision) :: !simplify_sample)
+      | Some kc, Some cc ->
+          let decision = Supports.simplify_under ~context:[ kc ] cc in
+          (match decision with
+          | `Cond c' -> ignore (intern_supports (Supports.to_string c'))
+          | `True | `False -> ());
+          simplify_sample := (k, c, decision) :: !simplify_sample
       | _ -> ()
     done;
   let supports_jobs = List.rev !supports_order in
@@ -1166,18 +1163,16 @@ let () =
         match parse_container text with
         | None -> None
         | Some c -> (
-            match
+            let rewritten =
               Container.to_stylesheet_string ~minify:true
                 (Container.lower_for_minify c)
-            with
-            | exception _ -> None
-            | rewritten -> (
-                if String.equal rewritten text then None
-                else
-                  match intern_container rewritten with
-                  | Some rid when not (String.equal rid id) ->
-                      Some (id, rid, rewritten)
-                  | Some _ | None -> None)))
+            in
+            if String.equal rewritten text then None
+            else
+              match intern_container rewritten with
+              | Some rid when not (String.equal rid id) ->
+                  Some (id, rid, rewritten)
+              | Some _ | None -> None))
       (List.map (fun (id, t) -> (id, t)) !container_jobs)
   in
   let container_text id =
@@ -1346,10 +1341,7 @@ let () =
               let cascade =
                 match job.query with
                 | None -> false
-                | Some q -> (
-                    match Context.matches_media ctx q with
-                    | exception _ -> false
-                    | b -> b)
+                | Some q -> Context.matches_media ctx q
               in
               let cascade =
                 if planted "evaluation" (String.equal job.text "screen") then
@@ -1440,16 +1432,12 @@ let () =
     (fun job ->
       match job.query with
       | None -> ()
-      | Some q -> (
-          match Media.to_string ~minify:true (Media.normalize q) with
-          | exception _ -> ()
-          | key ->
-              let previous =
-                match Hashtbl.find_opt buckets key with
-                | Some l -> l
-                | None -> []
-              in
-              Hashtbl.replace buckets key (job :: previous)))
+      | Some q ->
+          let key = Media.to_string ~minify:true (Media.normalize q) in
+          let previous =
+            match Hashtbl.find_opt buckets key with Some l -> l | None -> []
+          in
+          Hashtbl.replace buckets key (job :: previous))
     media_jobs;
   let answer_vector job =
     let buf = Buffer.create (List.length environments) in
@@ -1533,10 +1521,7 @@ let () =
   let supports_cascade text =
     match parse_supports text with
     | None -> false
-    | Some c -> (
-        match Context.matches_supports supports_ctx c with
-        | exception _ -> false
-        | b -> b)
+    | Some c -> Context.matches_supports supports_ctx c
   in
   List.iter
     (fun (id, text) ->
@@ -1613,23 +1598,21 @@ let () =
                      says both the context and the guard hold"
                 else None
             | `Cond c' -> (
-                match Supports.to_string c' with
-                | exception _ -> None
-                | text -> (
-                    match supports_truth text with
-                    | Some bc' when not (Bool.equal bc bc') ->
-                        Some
-                          (String.concat ""
-                             [
-                               "cascade narrows the guard to ";
-                               text;
-                               ", and the browser answers ";
-                               string_of_bool bc';
-                               " to that and ";
-                               string_of_bool bc;
-                               " to the original";
-                             ])
-                    | _ -> None))
+                let text = Supports.to_string c' in
+                match supports_truth text with
+                | Some bc' when not (Bool.equal bc bc') ->
+                    Some
+                      (String.concat ""
+                         [
+                           "cascade narrows the guard to ";
+                           text;
+                           ", and the browser answers ";
+                           string_of_bool bc';
+                           " to that and ";
+                           string_of_bool bc;
+                           " to the original";
+                         ])
+                | _ -> None)
           in
           Option.iter
             (fun detail ->
@@ -1693,10 +1676,7 @@ let () =
               let cascade =
                 match parse_container text with
                 | None -> false
-                | Some c -> (
-                    match Context.matches_container ctx c with
-                    | exception _ -> false
-                    | b -> b)
+                | Some c -> Context.matches_container ctx c
               in
               if not (Bool.equal cascade browser) then
                 evaluation :=
@@ -1760,10 +1740,8 @@ let () =
               let cascade =
                 match parse_media med with
                 | None -> false
-                | Some mc -> (
-                    match Context.matches_media ctx mc with
-                    | exception _ -> false
-                    | b -> b && supports_cascade sup)
+                | Some mc ->
+                    Context.matches_media ctx mc && supports_cascade sup
               in
               if not (Bool.equal cascade browser) then
                 evaluation :=
