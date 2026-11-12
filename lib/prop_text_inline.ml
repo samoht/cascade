@@ -462,7 +462,10 @@ let rec read_ruby_position t : ruby_position =
           read_ruby_position_keyword t
       in
       let duplicate keyword =
-        List.length (List.filter (equal_ruby_position_keyword keyword) keywords)
+        List.length
+          (List.filter
+             (Prop_common.equal_ruby_position_keyword keyword)
+             keywords)
         > 1
       in
       let valid =
@@ -602,7 +605,7 @@ let rec read_initial_letter_align t : initial_letter_align =
           (fun keyword ->
             List.length
               (List.filter
-                 (equal_initial_letter_align_keyword keyword)
+                 (Prop_common.equal_initial_letter_align_keyword keyword)
                  keywords)
             > 1)
           keywords

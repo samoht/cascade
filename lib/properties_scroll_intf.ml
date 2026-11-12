@@ -3,7 +3,7 @@
 
 open Values
 
-(* Multi-column Layout Types *)
+(** CSS columns values for multi-column layout. *)
 type columns_value =
   | Auto
   | Count of int
@@ -29,6 +29,10 @@ type columns_value =
   | Var of columns_value var
 
 (* CSS Multicol 2 sec. 4.1: [column-width] is [auto | <length [0,inf]>]. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-width}
+     [column-width]}: [auto | <length [0,inf]>]. *)
 type column_width =
   | Auto
   | Width of length
@@ -40,6 +44,10 @@ type column_width =
   | Var of column_width var
 
 (* CSS Multicol 2 sec. 4.3: [column-count] is [auto | <integer [1,inf]>]. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-count}
+     [column-count]}: [auto | <integer [1,inf]>]. *)
 type column_count =
   | Auto
   | Count of int
@@ -57,6 +65,10 @@ type column_count =
 (* CSS Multicol 2 sec. 4.2: [column-height] is [auto | <length [0,inf]>]; it
    takes no percentage, which Chrome 146 refuses. Sec. 4.4 gives [column-wrap]
    the three keywords below. Both start at [auto]. *)
+
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-height}
+     [column-height]}: [auto | <length [0,inf]>]. *)
 type column_height =
   | Auto
   | Height of length
@@ -67,6 +79,9 @@ type column_height =
   | Revert_layer
   | Var of column_height var
 
+(** CSS Multicol 2
+    {{:https://drafts.csswg.org/css-multicol-2/#propdef-column-wrap}
+     [column-wrap]}: [auto | nowrap | wrap]. *)
 type column_wrap =
   | Auto
   | Nowrap
@@ -89,6 +104,8 @@ type column_span =
   | Var of column_span var
 
 (* Scroll Types *)
+
+(** CSS scroll behavior values *)
 type scroll_behavior =
   | Auto
   | Smooth
@@ -99,6 +116,7 @@ type scroll_behavior =
   | Revert_layer
   | Var of scroll_behavior var
 
+(** CSS scroll-snap-align values *)
 type scroll_snap_align =
   | None
   | Start
@@ -112,6 +130,7 @@ type scroll_snap_align =
   | Revert_layer
   | Var of scroll_snap_align var
 
+(** CSS scroll-snap-stop values *)
 type scroll_snap_stop =
   | Normal
   | Always
@@ -122,11 +141,13 @@ type scroll_snap_stop =
   | Revert_layer
   | Var of scroll_snap_stop var
 
+(** CSS scroll-snap-strictness values *)
 type scroll_snap_strictness =
   | Mandatory
   | Proximity
   | Var of scroll_snap_strictness var
 
+(** CSS scroll-snap axis values *)
 type scroll_snap_axis =
   | None
   | X
@@ -136,6 +157,7 @@ type scroll_snap_axis =
   | Both
   | Var of scroll_snap_axis var
 
+(** CSS scroll-snap-type values *)
 type scroll_snap_type =
   | Axis of scroll_snap_axis (* Just the axis, no strictness *)
   | Axis_with_strictness of
@@ -201,8 +223,12 @@ type timeline_shorthand =
   | Revert_layer
   | Var of timeline_shorthand var
 
+(** One edge of Scroll-driven Animations 1
+    {{:https://drafts.csswg.org/scroll-animations-1/#propdef-view-timeline-inset}
+     [view-timeline-inset]}. *)
 type timeline_inset_item = Auto | Length of length_percentage
 
+(** Sec. 5.2 [view-timeline-inset]: the start edge then the end edge. *)
 type timeline_inset =
   | Inset of timeline_inset_item * timeline_inset_item option
   | Insets of timeline_inset list
@@ -228,6 +254,7 @@ type view_timeline_shorthand =
   | Revert_layer
   | Var of view_timeline_shorthand var
 
+(** CSS overscroll behavior values *)
 type overscroll_behavior =
   | Auto
   | Contain

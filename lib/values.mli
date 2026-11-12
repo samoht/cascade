@@ -103,6 +103,17 @@ val with_alpha : color -> alpha -> color
     answer {!gamut_map_color} gives one too. So do the CSS-wide keywords and
     [auto], which are not colours. *)
 
+val equal_length : length -> length -> bool
+(** [equal_length a b] tests lengths for structural equality. *)
+
+val equal_length_percentage : length_percentage -> length_percentage -> bool
+(** [equal_length_percentage a b] tests [<length-percentage>] values for
+    structural equality. *)
+
+val equal_number_percentage : number_percentage -> number_percentage -> bool
+(** [equal_number_percentage a b] tests [<number> | <percentage>] values for
+    structural equality. *)
+
 val equal_color : color -> color -> bool
 (** [equal_color a b] tests colours for structural equality. Two spellings of
     one colour are two colours: [#fff] and [white] name the same sRGB, and each

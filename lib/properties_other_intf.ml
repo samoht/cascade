@@ -6,6 +6,8 @@ open Values
 open Properties_background_intf
 
 (* Direction Types *)
+
+(** CSS direction values *)
 type direction =
   | Ltr
   | Rtl
@@ -16,6 +18,7 @@ type direction =
   | Revert_layer
   | Var of direction var
 
+(** CSS unicode-bidi values *)
 type unicode_bidi =
   | Normal
   | Embed
@@ -30,6 +33,7 @@ type unicode_bidi =
   | Revert_layer
   | Var of unicode_bidi var
 
+(** CSS writing-mode values *)
 type writing_mode =
   | Horizontal_tb
   | Vertical_rl
@@ -60,25 +64,26 @@ type text_combine_upright =
     the [base-select] CSS Basic User Interface 4 sec. 5.1 gives that property
     along with the compatibility keywords of its own. *)
 type webkit_appearance =
-  | None
-  | Auto
-  | Button
-  | Textfield
-  | Menulist
-  | Base_select
-  | Listbox
-  | Checkbox
-  | Radio
-  | Push_button
-  | Square_button
-  | Apple_pay_button
-  | Inherit
+  | None  (** No appearance styling *)
+  | Auto  (** Default browser styling *)
+  | Button  (** Button appearance *)
+  | Textfield  (** Text field appearance *)
+  | Menulist  (** Select/dropdown appearance *)
+  | Base_select  (** The base appearance of a select (Chrome alias) *)
+  | Listbox  (** List box appearance *)
+  | Checkbox  (** Checkbox appearance *)
+  | Radio  (** Radio button appearance *)
+  | Push_button  (** Push button appearance *)
+  | Square_button  (** Square button appearance *)
+  | Apple_pay_button  (** Apple Pay button appearance *)
+  | Inherit  (** Inherit from parent *)
   | Initial
   | Unset
   | Revert
   | Revert_layer
   | Var of webkit_appearance var
 
+(** CSS -webkit-font-smoothing values. *)
 type webkit_font_smoothing =
   | Auto
   | None
@@ -91,6 +96,7 @@ type webkit_font_smoothing =
   | Revert_layer
   | Var of webkit_font_smoothing var
 
+(** CSS -moz-osx-font-smoothing values. *)
 type moz_osx_font_smoothing =
   | Auto
   | Grayscale
@@ -101,6 +107,7 @@ type moz_osx_font_smoothing =
   | Revert_layer
   | Var of moz_osx_font_smoothing var
 
+(** CSS webkit-box-orient values. *)
 type webkit_box_orient =
   | Horizontal
   | Vertical
@@ -121,6 +128,7 @@ type moz_orient =
   | Inherit
   | Var of moz_orient var
 
+(** CSS -webkit-line-clamp values. *)
 type webkit_line_clamp =
   | None
   | Lines of int
@@ -135,6 +143,7 @@ type webkit_line_clamp =
   | Revert_layer
   | Var of webkit_line_clamp var
 
+(** CSS text-size-adjust values (including vendor prefixes). *)
 type text_size_adjust =
   | None
   | Auto
@@ -151,6 +160,8 @@ type text_size_adjust =
   | Var of text_size_adjust var
 
 (* Other Types *)
+
+(** CSS forced-color-adjust values. *)
 type forced_color_adjust =
   | Auto
   | None
@@ -192,6 +203,7 @@ type appearance =
   | Revert_layer
   | Var of appearance var
 
+(** CSS print-color-adjust values. *)
 type print_color_adjust =
   | Economy
   | Exact
@@ -212,6 +224,7 @@ type box_decoration_break =
   | Revert_layer
   | Var of box_decoration_break var
 
+(** CSS clear values. *)
 type clear =
   | None
   | Left
@@ -226,6 +239,7 @@ type clear =
   | Revert_layer
   | Var of clear var
 
+(** CSS float side values. *)
 type float_side =
   | None
   | Left
@@ -239,6 +253,7 @@ type float_side =
   | Revert_layer
   | Var of float_side var
 
+(** CSS text-decoration-skip-ink values *)
 type text_decoration_skip_ink =
   | Auto
   | None
@@ -275,13 +290,15 @@ type transform_origin =
   | XYZ of length * length * length
   | Position_z of position_value * length
   | Initial
-  | Inherit
+  | Inherit  (** Transform origin (2D or 3D). *)
   | Unset
   | Revert
   | Revert_layer
   | Var of transform_origin var
 
 (* transform-box property: establishes the reference box for transform *)
+
+(** CSS transform-box property values *)
 type transform_box =
   | Content_box
   | Border_box
@@ -296,6 +313,8 @@ type transform_box =
   | Var of transform_box var
 
 (* will-change property: which properties will animate *)
+
+(** CSS will-change property values for performance optimization hints. *)
 type will_change =
   | Will_change_auto
   | Scroll_position
@@ -311,9 +330,11 @@ type will_change =
   | Var of will_change var
 
 (* perspective-origin is the CSS <position> grammar. *)
-type perspective_origin = position_value
 
-(* clip property (deprecated, but needed for sr-only) *)
+type perspective_origin = position_value
+(** CSS perspective-origin values for 3D transforms. *)
+
+(** CSS clip property values (deprecated, but needed for sr-only). *)
 type clip =
   | Clip_auto
   | Clip_rect of length * length * length * length

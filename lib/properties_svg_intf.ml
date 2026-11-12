@@ -4,12 +4,14 @@ open Values
 
 (* SVG Types *)
 (* SVG paint servers allow url(#id) with optional fallback (none/currentcolor/color). *)
+
+(** SVG paint values for fill and stroke properties *)
 type svg_paint =
-  | None
-  | Inherit
-  | Current_color
-  | Color of color
-  | Url of string * svg_paint option
+  | None  (** No paint *)
+  | Inherit  (** Inherited value *)
+  | Current_color  (** Current color value *)
+  | Color of color  (** Specific color value *)
+  | Url of string * svg_paint option  (** url(#id) with optional fallback *)
   | Context_fill
       (** SVG2 sec. 13.2 [context-fill] - inherits the fill paint of the context
           element, used in marker / pattern / use trees. *)
@@ -36,7 +38,7 @@ type fill_rule =
     [<length>], which is why this is not plain [length_percentage]; sec. 13.5.6
     gives the dash lengths the same shape. A negative width is invalid. *)
 type stroke_width =
-  | Number of float
+  | Number of float  (** A width in user units *)
   | Calc of stroke_width calc
       (** A math function answering the [<number>] branch. CSS Values 4 sec.
           10.12 checks the [0,inf] range on what it resolves to, so a call the

@@ -3,6 +3,7 @@
 
 open Values
 
+(** CSS font style values. *)
 type font_style =
   | Normal
   | Italic
@@ -16,6 +17,7 @@ type font_style =
   | Revert_layer
   | Var of font_style var
 
+(** CSS text align values. *)
 type text_align =
   | Left
   | Right
@@ -73,6 +75,7 @@ type text_decoration_shorthand = {
   thickness : length option;
 }
 
+(** CSS text decoration values. *)
 type text_decoration =
   | None
   | Shorthand of text_decoration_shorthand
@@ -83,6 +86,9 @@ type text_decoration =
   | Revert_layer
   | Var of text_decoration var
 
+(** CSS Text Decoration 4
+    {{:https://drafts.csswg.org/css-text-decor-4/#propdef-text-decoration-skip}
+     [text-decoration-skip]}: the shorthand over the four longhands below. *)
 type text_decoration_skip =
   | None
   | Auto
@@ -93,6 +99,8 @@ type text_decoration_skip =
   | Revert_layer
   | Var of text_decoration_skip var
 
+(** Sec. 2.5.1 [text-decoration-skip-self]: whether the box's own decoration
+    skips it. *)
 type text_decoration_skip_self =
   | None
   | Objects
@@ -103,6 +111,8 @@ type text_decoration_skip_self =
   | Revert_layer
   | Var of text_decoration_skip_self var
 
+(** Sec. 2.5.2 [text-decoration-skip-box]: whether an ancestor's decoration
+    skips the box's edges. *)
 type text_decoration_skip_box =
   | All
   | None
@@ -113,6 +123,8 @@ type text_decoration_skip_box =
   | Revert_layer
   | Var of text_decoration_skip_box var
 
+(** Sec. 2.5.3 [text-decoration-skip-inset]: whether the decoration is inset
+    from the glyph edges. *)
 type text_decoration_skip_inset =
   | None
   | Auto
@@ -123,8 +135,10 @@ type text_decoration_skip_inset =
   | Revert_layer
   | Var of text_decoration_skip_inset var
 
+(** Sec. 2.5.4: one span of spaces a decoration skips. *)
 type text_decoration_skip_space = All | Start | End
 
+(** Sec. 2.5.4 [text-decoration-skip-spaces]. *)
 type text_decoration_skip_spaces =
   | Spaces of text_decoration_skip_space list
   | Inherit
@@ -159,8 +173,13 @@ type text_emphasis =
 
 type text_emphasis_line = Over | Under
 type text_emphasis_side = Left | Right
+
+(** One class of character the emphasis marks skip, for CSS Text Decoration 4
+    {{:https://drafts.csswg.org/css-text-decor-4/#propdef-text-emphasis-skip}
+     [text-emphasis-skip]}. *)
 type text_emphasis_skip_keyword = Spaces | Punctuation | Symbols | Narrow
 
+(** Sec. 4.3 [text-emphasis-skip]. *)
 type text_emphasis_skip =
   | Skip of text_emphasis_skip_keyword list
   | Inherit
@@ -231,6 +250,7 @@ type glyph_orientation_vertical =
     combine. *)
 type text_transform_case = Capitalize | Uppercase | Lowercase
 
+(** CSS text transform values. *)
 type text_transform =
   | None
   | Case of text_transform_case
@@ -375,6 +395,10 @@ type font_variant_caps =
    swash(<font-feature-value-name>) || ornaments(<font-feature-value-name>) ||
    annotation(<font-feature-value-name>) ]]. A feature value name is a
    [<custom-ident>] naming a block of the [@font-feature-values] rule. *)
+
+(** One feature of CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates}
+     [font-variant-alternates]}. *)
 type font_variant_alternates_item =
   | Stylistic of string
   | Historical_forms
@@ -384,6 +408,9 @@ type font_variant_alternates_item =
   | Ornaments of string
   | Annotation of string
 
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant-alternates}
+     [font-variant-alternates]}. *)
 type font_variant_alternates =
   | Normal
   | Alternates of font_variant_alternates_item list
@@ -426,6 +453,7 @@ type font_variant_east_asian =
   | Revert_layer
   | Var of font_variant_east_asian var
 
+(** CSS text-overflow values *)
 type text_overflow =
   | Clip
   | Ellipsis
@@ -442,6 +470,8 @@ type text_overflow =
    <'text-wrap-style'>]. A single component names the arm it came from;
    [Mode_style] carries both, and prints mode-first whatever order it was
    written in. *)
+
+(** CSS text-wrap values *)
 type text_wrap =
   | Wrap
   | No_wrap
@@ -450,6 +480,7 @@ type text_wrap =
   | Stable
   | Pretty
   | Mode_style of [ `Wrap | `No_wrap ] * [ `Auto | `Balance | `Stable | `Pretty ]
+      (** both components, printed mode-first *)
   | Inherit
   | Initial
   | Unset
@@ -509,6 +540,9 @@ type text_box_edge =
   | Revert_layer
   | Var of text_box_edge var
 
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-text-box} [text-box]}:
+    [normal | <'text-box-trim'> || <'text-box-edge'>]. *)
 type text_box =
   | Normal
   | Box of text_box_trim option * text_box_edge option
@@ -623,6 +657,9 @@ type initial_letter =
   | Revert_layer
   | Var of initial_letter var
 
+(** One alignment point of CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align}
+     [initial-letter-align]}. *)
 type initial_letter_align_keyword =
   | Alphabetic
   | Ideographic
@@ -630,6 +667,9 @@ type initial_letter_align_keyword =
   | Leading
   | Border_box
 
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-align}
+     [initial-letter-align]}. *)
 type initial_letter_align =
   | Align of initial_letter_align_keyword list
   | Inherit
@@ -639,6 +679,9 @@ type initial_letter_align =
   | Revert_layer
   | Var of initial_letter_align var
 
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-initial-letter-wrap}
+     [initial-letter-wrap]}. *)
 type initial_letter_wrap =
   | None
   | First
@@ -699,6 +742,9 @@ type ruby_position =
   | Revert_layer
   | Var of ruby_position var
 
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-dominant-baseline}
+     [dominant-baseline]}: [auto | <baseline-metric>]. *)
 type dominant_baseline =
   | Auto
   | Alphabetic
@@ -715,6 +761,7 @@ type dominant_baseline =
   | Revert_layer
   | Var of dominant_baseline var
 
+(** CSS white-space values *)
 type white_space =
   | Normal
   | Nowrap
@@ -733,6 +780,10 @@ type white_space =
 
 (* CSS Text 4 sec. 3.1: [white-space-collapse] says how white space and segment
    breaks in the source collapse. *)
+
+(** CSS Text 4
+    {{:https://drafts.csswg.org/css-text-4/#propdef-white-space-collapse}
+     [white-space-collapse]}: how white space and line breaks collapse. *)
 type white_space_collapse =
   | Collapse
   | Discard
@@ -747,6 +798,7 @@ type white_space_collapse =
   | Revert_layer
   | Var of white_space_collapse var
 
+(** CSS word-break values *)
 type word_break =
   | Normal
   | Break_all
@@ -760,6 +812,7 @@ type word_break =
   | Revert_layer
   | Var of word_break var
 
+(** CSS overflow-wrap values *)
 type overflow_wrap =
   | Normal
   | Break_word
@@ -771,6 +824,7 @@ type overflow_wrap =
   | Revert_layer
   | Var of overflow_wrap var
 
+(** CSS hyphens values *)
 type hyphens =
   | None
   | Manual

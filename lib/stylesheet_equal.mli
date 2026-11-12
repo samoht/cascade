@@ -2,6 +2,13 @@
 
 open Stylesheet_intf
 
+val equal_cascade_origin : cascade_origin -> cascade_origin -> bool
+(** [equal_cascade_origin a b] is [true] when [a] and [b] are the same origin.
+*)
+
+val equal : stylesheet -> stylesheet -> bool
+(** [equal a b] tests stylesheets for structural equality. *)
+
 val equal_layer_name : layer_name -> layer_name -> bool
 (** [equal_layer_name a b] is whether [a] and [b] name the same idents in the
     same order. *)

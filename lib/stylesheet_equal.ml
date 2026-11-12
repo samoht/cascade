@@ -1,5 +1,8 @@
 open Stylesheet_intf
 
+let equal_cascade_origin (a : cascade_origin) b = a = b
+let equal (a : stylesheet) b = a = b
+
 (* Two layers are the same layer when they name the same idents: a [.] one of
    them carries is not the separator between two (CSS Cascade 5 sec. 6.4.1). *)
 let equal_layer_name : layer_name -> layer_name -> bool =

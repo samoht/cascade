@@ -4,6 +4,8 @@ open Values
 open Properties_background_intf
 
 (* User Interaction Types *)
+
+(** CSS cursor values. *)
 type cursor =
   | Auto
   | Default
@@ -117,6 +119,7 @@ type nav =
   | Revert_layer
   | Var of nav var
 
+(** CSS user-select values. *)
 type user_select =
   | None
   | Auto
@@ -130,6 +133,7 @@ type user_select =
   | Revert_layer
   | Var of user_select var
 
+(** CSS pointer-events values *)
 type pointer_events =
   | Auto
   | None
@@ -148,6 +152,7 @@ type pointer_events =
   | Revert_layer
   | Var of pointer_events var
 
+(** CSS touch-action values *)
 type touch_action =
   | Auto
   | None
@@ -169,6 +174,7 @@ type touch_action =
       (** Variable references like var(--tw-pan-x,) var(--tw-pan-y,) *)
   | Var of touch_action var
 
+(** CSS resize values. *)
 type resize =
   | None
   | Both
@@ -184,6 +190,8 @@ type resize =
   | Var of resize var
 
 (* Box Model Types *)
+
+(** CSS box sizing values. *)
 type box_sizing =
   | Border_box
   | Content_box
@@ -194,6 +202,7 @@ type box_sizing =
   | Revert_layer
   | Var of box_sizing var
 
+(** CSS field sizing values. *)
 type field_sizing =
   | Content
   | Fixed
@@ -204,6 +213,7 @@ type field_sizing =
   | Revert_layer
   | Var of field_sizing var
 
+(** CSS caption side values. *)
 type caption_side =
   | Top
   | Bottom
@@ -214,6 +224,7 @@ type caption_side =
   | Revert_layer
   | Var of caption_side var
 
+(** CSS object-fit values *)
 type object_fit =
   | Fill
   | Contain

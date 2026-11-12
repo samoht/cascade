@@ -4,9 +4,13 @@ open Values
 open Properties_layout_intf
 
 (* List Types *)
+
+(** CSS [symbols()] counter-system keywords *)
 type symbols_type = Cyclic | Numeric | Alphabetic | Symbolic | Fixed
+
 type list_style_symbol = String of string | Url of string
 
+(** CSS list-style-type values *)
 type list_style_type =
   | None
   | Disc
@@ -64,7 +68,7 @@ type list_style_type =
   | Trad_chinese_informal
   | Trad_chinese_formal
   | Ethiopic_numeric
-  | Name of string
+  | Name of string  (** A case-sensitive custom counter-style name. *)
   | String of string
   | Symbols of symbols_type option * list_style_symbol list
   | Inherit
@@ -74,6 +78,7 @@ type list_style_type =
   | Revert_layer
   | Var of list_style_type var
 
+(** CSS list-style-position values *)
 type list_style_position =
   | Inside
   | Outside
@@ -117,6 +122,8 @@ type vertical_align =
   | Var of vertical_align var
 
 (* Border Types *)
+
+(** CSS border-collapse values *)
 type border_collapse =
   | Collapse
   | Separate
@@ -127,13 +134,14 @@ type border_collapse =
   | Revert_layer
   | Var of border_collapse var
 
-(* Border shorthand type *)
 type border_shorthand = {
   width : border_width option;
   style : border_style option;
   color : color option;
 }
+(** CSS border shorthand type. *)
 
+(** CSS border property values. *)
 type border =
   | Inherit
   | Initial
@@ -181,8 +189,13 @@ type logical_border_style =
 (* [-webkit-text-stroke] is [<line-width> || <color>] over its two longhands. It
    is not in a CSS specification; the shape is what WebKit and Blink accept and
    what their CSSOM reports back. *)
-type webkit_text_stroke = { width : border_width option; color : color option }
 
+type webkit_text_stroke = { width : border_width option; color : color option }
+(** {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-text-stroke}
+     [-webkit-text-stroke]}: a width and a colour, either of which may be
+    absent. No CSS specification defines it. *)
+
+(** CSS outline style values. *)
 type outline_style =
   | None
   | Solid
@@ -202,12 +215,15 @@ type outline_style =
   | Var of outline_style var
 
 (* Outline shorthand type *)
+
 type outline_shorthand = {
   width : border_width option;
   style : outline_style option;
   color : color option;
 }
+(** CSS outline shorthand components. *)
 
+(** CSS outline property values. *)
 type outline =
   | Inherit
   | Initial
