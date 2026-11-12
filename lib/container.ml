@@ -256,6 +256,17 @@ let rec compare_style_query q1 q2 =
   | Neg a, Neg b -> compare_style_query a b
   | _ -> Int.compare (style_query_rank q1) (style_query_rank q2)
 
+let rank = function
+  | Min_width_rem _ -> 0
+  | Min_width_px _ -> 1
+  | Named _ -> 2
+  | Style _ -> 3
+  | Scroll_state _ -> 4
+  | And _ -> 5
+  | Or _ -> 6
+  | Not _ -> 7
+  | Feature_query _ -> 8
+
 let rec compare t1 t2 =
   match (t1, t2) with
   | Min_width_rem r1, Min_width_rem r2 -> Float.compare r1 r2
@@ -275,7 +286,10 @@ let rec compare t1 t2 =
       if c <> 0 then c else compare b1 b2
   | Not a, Not b -> compare a b
   | Feature_query q1, Feature_query q2 -> Media.compare q1 q2
-  | _ -> Stdlib.compare t1 t2
+  | ( ( Min_width_rem _ | Min_width_px _ | Named _ | Style _ | Scroll_state _
+      | And _ | Or _ | Not _ | Feature_query _ ),
+      _ ) ->
+      Int.compare (rank t1) (rank t2)
 
 let compare_scroll_state_query (a : scroll_state_query) b = Stdlib.compare a b
 
