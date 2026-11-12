@@ -60,6 +60,16 @@
   stylesheet_read
   stylesheet_source
   stylesheet_partial
+  context_intf
+  context_core
+  context_pp
+  context_residual
+  context_length
+  context_match
+  context_numeric
+  context_css_wide
+  context_paint
+  context_keyword
   summary
   values_intf
   values_color_name
