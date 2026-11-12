@@ -11,16 +11,11 @@ type position =
           ([cover], [contain], [entry], [exit], [entry-crossing],
           [exit-crossing]). *)
 
-let string_of_pct p =
-  match Common.int_of_float_opt p with
-  | Some i when Float.is_integer p -> Int.to_string i
-  | _ -> Float.to_string p
-
 let string_of_position = function
   | From -> "from"
   | To -> "to"
-  | Percent p -> string_of_pct p ^ "%"
-  | Timeline_range (name, p) -> name ^ " " ^ string_of_pct p ^ "%"
+  | Percent p -> Pp.string_of_float p ^ "%"
+  | Timeline_range (name, p) -> name ^ " " ^ Pp.string_of_float p ^ "%"
 
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list

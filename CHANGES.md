@@ -8,6 +8,9 @@
   to `1/1` (#1280).
 - Very large numbers print the same on Windows as elsewhere. `3.40282e38px` came
   out there as `3.40282e038px` (#1286).
+- Large numbers in media features, attribute values and keyframe offsets print
+  as `1e30` like everywhere else, and the same on Windows, instead of `1e+30`
+  (#0000).
 
 ### Parsing
 

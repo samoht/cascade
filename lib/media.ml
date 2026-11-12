@@ -149,11 +149,6 @@ type t =
 
 (* ===== Formatting helpers ===== *)
 
-let format_float f =
-  match Common.int_of_float_opt f with
-  | Some i when Float.is_integer f -> Int.to_string i
-  | _ -> Float.to_string f
-
 let string_of_cmp = function
   | Lt -> "<"
   | Le -> "<="
@@ -351,7 +346,7 @@ let pp_value : value Pp.t =
  fun ctx -> function
   | Length l -> pp_length ctx l
   | Integer i -> Pp.string ctx (Int.to_string i)
-  | Number f -> Pp.string ctx (format_float f)
+  | Number f -> Pp.string ctx (Pp.string_of_float f)
   | Ratio (n, 1) when Pp.minified ctx -> Pp.string ctx (Int.to_string n)
   | Ratio (n, 1) ->
       Pp.string ctx (Int.to_string n);
@@ -361,7 +356,7 @@ let pp_value : value Pp.t =
       Pp.char ctx '/';
       Pp.string ctx (Int.to_string d)
   | Resolution_value (n, unit) ->
-      Pp.string ctx (format_float n);
+      Pp.string ctx (Pp.string_of_float n);
       Pp.string ctx unit
   | Ident s -> Pp.string ctx (string_of_ident s)
   | Function (name, args) ->
