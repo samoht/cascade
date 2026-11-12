@@ -179,7 +179,12 @@ let rec holds_unattributed_run stmt =
   | When (_, b)
   | Else (_, b) ->
       List.exists holds_unattributed_run b
-  | _ -> false
+  | Rule _ | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+  | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
+  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      false
 
 (* Two declarations an element computes differently once they swap order: they
    write a common longhand slot, and they are not the same declaration. Reading
@@ -206,7 +211,13 @@ let rules_conflict (r1 : rule) (r2 : rule) =
    ordering/context that hoisting past would change. *)
 let crossable_by_distant_merge = function
   | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
-  | _ -> false
+  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+  | Layer_decl _ | Layer _ | Moz_document _ | Starting_style _ | When _ | Else _
+  | Supports_condition _ | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _
+  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      false
 
 (* CSS Conditional Rules 5 sec. 2: a conditional group rule applies its contents
    when its condition holds, so two blocks under one prelude carry the same
@@ -454,7 +465,17 @@ let merge_consecutive_starting_style ?(optimize_merged_block = Fun.id)
    only the declarations called a layer empty and deleted the CSS under it. *)
 let is_layer_empty (block : statement list) : bool =
   List.for_all
-    (function Rule { declarations = []; nested = []; _ } -> true | _ -> false)
+    (function
+      | Rule { declarations = []; nested = []; _ } -> true
+      | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+      | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
+      | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
+      | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+      | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+      | Page _ | Page_with_margins _ | Font_palette_values _
+      | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+      | Unknown_at_rule _ ->
+          false)
     block
 
 (* Collect consecutive empty named layers and merge them into a Layer_decl *)
@@ -510,7 +531,15 @@ let add_new_layer_names seen names =
 let layer_names_of_statement = function
   | Layer_decl names -> names
   | Layer (Some name, _) -> [ name ]
-  | _ -> []
+  | Layer (None, _)
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Media _ | Container _ | Supports _
+  | Moz_document _ | Starting_style _ | When _ | Else _ | Supports_condition _
+  | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+  | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+  | Font_palette_values _ | Font_feature_values _ | View_transition _
+  | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      []
 
 let following_layer_introduction_order seen stmts =
   let rec loop seen introduced_rev added_by_layer_decl = function
@@ -655,7 +684,13 @@ let drop_misplaced_imports stmts =
       | Import _ -> false
       | Charset _ | Namespace _ -> true
       | Layer_decl _ when not !seen_import_or_namespace -> true
-      | _ ->
+      | Layer_decl _ | Rule _ | Declarations _ | Bang_comment _ | Property _
+      | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+      | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+      | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+      | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+      | Font_palette_values _ | Font_feature_values _ | View_transition _
+      | Position_try _ | Viewport _ | Unknown_at_rule _ ->
           seen_body := true;
           true)
     stmts

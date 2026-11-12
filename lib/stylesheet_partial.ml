@@ -82,7 +82,13 @@ let validate_partial_prelude () =
         in
         namespace_seen := true;
         error
-    | _ ->
+    | Rule _ | Declarations _ | Bang_comment _ | Property _ | Layer _ | Media _
+    | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
+    | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+    | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+    | Unknown_at_rule _ ->
         body_seen := true;
         None
 
@@ -130,7 +136,12 @@ let rec statement_has_invalid_declaration = function
            margins
   | Position_try (_, decls) | Supports_condition (_, decls) ->
       List.exists Declaration.is_invalid decls
-  | _ -> false
+  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+  | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+  | Font_face _ | Counter_style _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Viewport _ | Unknown_at_rule _
+    ->
+      false
 
 let validate_partial_invalid_declarations loc stmt =
   if statement_has_invalid_declaration stmt then
@@ -170,7 +181,12 @@ let rec statement_has_strict_warning = function
            margins
   | Position_try (_, decls) | Supports_condition (_, decls) ->
       List.exists declaration_has_strict_warning decls
-  | _ -> false
+  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+  | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+  | Font_face _ | Counter_style _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Viewport _ | Unknown_at_rule _
+    ->
+      false
 
 let validate_partial_strict_warnings loc stmt =
   if statement_has_strict_warning stmt then
