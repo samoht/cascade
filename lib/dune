@@ -127,6 +127,9 @@
   prop_text_inline
   prop_text_decor
   prop_animation
+  prop_animation_timeline
+  prop_animation_transition
+  prop_animation_shorthand
   prop_list
   prop_content)
  (libraries uri psq logs mtime.clock))
