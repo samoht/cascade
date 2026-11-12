@@ -68,6 +68,18 @@ let () =
       Test_declaration.suite;
       Test_properties.suite;
       Test_stylesheet.suite;
+      Test_stylesheet_strict.suite;
+      Test_stylesheet_recovery.suite;
+      Test_stylesheet_syntax.suite;
+      Test_stylesheet_cascade.suite;
+      Test_stylesheet_at_rules.suite;
+      Test_stylesheet_nesting.suite;
+      Test_stylesheet_minify.suite;
+      Test_stylesheet_elision.suite;
+      Test_stylesheet_calc.suite;
+      Test_stylesheet_families.suite;
+      Test_stylesheet_vars.suite;
+      Test_stylesheet_statement.suite;
       Test_variables.suite;
       Test_inline.suite;
       Test_optimize.suite;

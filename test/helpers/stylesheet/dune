@@ -1,0 +1,3 @@
+(library
+ (name stylesheet_helpers)
+ (libraries cascade alcotest astring css_test_helpers))
