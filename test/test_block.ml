@@ -417,6 +417,65 @@ let test_rules_conflict_selectors () =
       ("two states one element can be in at once", "a:hover", "a:focus", true);
     ]
 
+(* --- distant merges and the cascade --- *)
+
+let merge_distant_media css =
+  render (Block.merge_distant_media ~optimize_merged_block:id (block css))
+
+(* An element carrying both classes has one ::before box. With the query true it
+   reads [blue] then [green] at one specificity, (0,1,1), and computes green;
+   hoisting the later block above the list would hand it blue. The list meets
+   [.b::before] through its [.a::before] branch, so the merge stays refused. *)
+let test_distant_media_keeps_order_across_a_pseudo_element_list () =
+  let css =
+    "@media (min-width:1px){.x{color:red}}.a:after,.a:before{color:blue}@media \
+     (min-width:1px){.b:before{color:green}}"
+  in
+  Alcotest.(check string)
+    "the later block stays behind the list"
+    (render (block css))
+    (merge_distant_media css)
+
+(* CSS Cascade 5 sec. 6.1 ranks specificity before order of appearance. On an
+   element matching both, [#y] (1,0,0) beats [.b] (0,1,0) from either position,
+   and where only one matches order decides nothing, so the later block may move
+   above [#y]. *)
+let test_distant_media_crosses_a_more_specific_rule () =
+  Alcotest.(check string)
+    "the later block joins the first across a rule it cannot outweigh"
+    (render
+       (block
+          "@media (min-width:1px){.x{color:red}.b{color:green}}#y{color:blue}"))
+    (merge_distant_media
+       "@media (min-width:1px){.x{color:red}}#y{color:blue}@media \
+        (min-width:1px){.b{color:green}}")
+
+(* An [@scope] body stands for its scoping root with [&] (CSS Cascade 6 sec.
+   2.5.2), a selector the pass does not have, so it cannot weigh [& .b] against
+   [.b] and keeps the order. *)
+let test_distant_media_keeps_order_across_a_scope_body () =
+  let css =
+    "@media (min-width:1px){.x{color:red}}@media print{@scope (.s){& \
+     .b{color:blue}}}@media (min-width:1px){.b{color:green}}"
+  in
+  Alcotest.(check string)
+    "the later block stays behind the scope body"
+    (render (block css))
+    (merge_distant_media css)
+
+(* CSS Nesting 1 sec. 3 weighs [&] as the enclosing rule's selector, and here
+   that is [.outer .card], not [.card]: [&+&] weighs (0,4,0), as much as [.outer
+   .card .y.z]. An element both match reads blue then green, so the later block
+   cannot move above [.y.z]. Weighing [&] as [.card] alone would give (0,2,0)
+   against (0,3,0) and let it move. *)
+let test_distant_media_weighs_a_nested_body_by_its_ancestors () =
+  let css =
+    ".outer{color:#000;.card{@media(width>=1px){.a{color:red}}.y.z{color:#00f}@media(width>=1px){&+&{color:green}}}}"
+  in
+  Alcotest.(check string)
+    "the later block stays behind a rule of equal weight" css
+    (render (Css.optimize (block css)))
+
 (* --- allocation / complexity guard --- *)
 
 (* [n] plain rules with one [@media print] block at each end, so the pass has
@@ -490,6 +549,14 @@ let suite =
         test_rules_conflict_declarations;
       Alcotest.test_case "rules_conflict reads the selector pair" `Quick
         test_rules_conflict_selectors;
+      Alcotest.test_case "distant @media stays behind a pseudo-element list"
+        `Quick test_distant_media_keeps_order_across_a_pseudo_element_list;
+      Alcotest.test_case "distant @media crosses a more specific rule" `Quick
+        test_distant_media_crosses_a_more_specific_rule;
+      Alcotest.test_case "distant @media stays behind a scope body" `Quick
+        test_distant_media_keeps_order_across_a_scope_body;
+      Alcotest.test_case "distant @media weighs a nested body by its ancestors"
+        `Quick test_distant_media_weighs_a_nested_body_by_its_ancestors;
       Alcotest.test_case "merge distant @media is subquadratic" `Quick
         test_merge_distant_media_is_subquadratic;
     ] )

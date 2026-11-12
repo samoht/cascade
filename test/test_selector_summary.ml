@@ -190,7 +190,11 @@ let optimizer_dependency_examples () =
      :where(kbd):not(:where([class~=\"not-prose\"],[class~=\"not-prose\"] *))"
     ".prose kbd";
   check_overlap "selector list stays conservative for grouping safety" true
-    ".a,.b" ".c"
+    ".a,.b" ".c";
+  (* An element carrying both classes has one ::before box, and both rules style
+     it: the list's [.a::before] branch meets [.b::before]. *)
+  check_overlap "a list of pseudo-elements meets one of its pseudo-elements"
+    true ".a::after,.a::before" ".b::before"
 
 let suite =
   ( "selector_summary",
