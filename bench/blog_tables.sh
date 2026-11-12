@@ -43,13 +43,35 @@ fixture() { echo "$CORPUS/$1-stripmq.css"; }
 # /usr/bin/time only resolves to 10ms, which is useless for tools that finish
 # in single-digit milliseconds: it reports them all as "10ms" or "0ms".
 time_ms() {
+  hyperfine_stats mean --warmup 2 -- "$@"
+}
+
+# One hyperfine measurement of a command, printed as FORMAT: [mean] is the
+# mean wall-clock ms +- one standard deviation; [median] is the median
+# wall-clock ms with its range, then the median CPU ms (user + system), which
+# a loaded machine inflates far less than wall-clock. Reads the JSON of
+# hyperfine 1 and of hyperfine 2, which moved the statistics under [summary].
+hyperfine_stats() {
+  local format=$1 flags=()
+  shift
+  while [ "$1" != "--" ]; do flags+=("$1"); shift; done
+  shift
   local json
-  json="$(hyperfine --warmup 2 --runs "$RUNS" --style none --export-json /dev/stdout \
+  json="$(hyperfine "${flags[@]}" --runs "$RUNS" --style none --export-json /dev/stdout \
             --shell=none "$*" 2>/dev/null)" || { echo "?"; return; }
   echo "$json" | python3 -c '
 import json,sys
 r = json.load(sys.stdin)["results"][0]
-print("%.1f+-%.1f" % (r["mean"]*1000, r["stddev"]*1000))'
+if "summary" in r:
+    w, c = r["summary"]["time_wall_clock"], r["summary"]["time_cpu"]
+    cpu = c["median"]
+else:
+    w, cpu = r, r["user"] + r["system"]
+if sys.argv[1] == "mean":
+    print("%.1f+-%.1f" % (w["mean"]*1000, w["stddev"]*1000))
+else:
+    print("%.0f (%.0f-%.0f) %.0f" % (w["median"]*1000, w["min"]*1000,
+                                     w["max"]*1000, cpu*1000))' "$format"
 }
 
 run_cssnano() { postcss "$1" --use cssnano --no-map -o "$2" >/dev/null 2>&1; }
@@ -219,18 +241,6 @@ perturb() {
     }' "$1"
 }
 
-# Median wall-clock ms (min-max) of a command whose exit status is a verdict
-# rather than a failure: [cascade diff] exits 1 when the sheets differ.
-median_ms() {
-  local json
-  json="$(hyperfine --warmup 1 --runs "$RUNS" --style none --export-json /dev/stdout \
-            -i --shell=none "$*" 2>/dev/null)" || { echo "?"; return; }
-  echo "$json" | python3 -c '
-import json,sys
-r = json.load(sys.stdin)["results"][0]
-print("%.0f (%.0f-%.0f)" % (r["median"]*1000, r["min"]*1000, r["max"]*1000))'
-}
-
 # Megabytes the OCaml runtime allocated over one run.
 alloc_mb() {
   OCAMLRUNPARAM='v=0x400' "$@" 2>&1 >/dev/null |
@@ -239,18 +249,22 @@ alloc_mb() {
 
 # One row of the diff table: label, the two sheets, and the blocks ([{]) the
 # first one opens.
+# [-i]: [cascade diff] exits 1 when the sheets differ, a verdict rather than a
+# failure.
 diff_row() {
-  printf '%-18s %8s %20s %10s\n' "$1" "$(grep -o '{' "$2" | wc -l | tr -d ' ')" \
-    "$(median_ms "$CASCADE" diff "$2" "$3")" \
-    "$(alloc_mb "$CASCADE" diff "$2" "$3")"
+  local wall cpu
+  read -r wall cpu <<<"$(hyperfine_stats median --warmup 1 -i -- \
+                          "$CASCADE" diff "$2" "$3" | sed 's/ (/(/')"
+  printf '%-16s %7s %20s %8s %8s\n' "$1" "$(grep -o '{' "$2" | wc -l | tr -d ' ')" \
+    "$wall" "$cpu" "$(alloc_mb "$CASCADE" diff "$2" "$3")"
 }
 
 # Table 7: [cascade diff] cost. Each real sheet against its own --minify output
 # and against a perturbed copy, then the synthetic series, whose growth from
 # one size to the next reads the complexity.
 section_diff() {
-  echo "## cascade diff (median ms (min-max) over $RUNS runs; MB allocated)"
-  printf '%-18s %8s %20s %10s\n' input blocks wall alloc
+  echo "## cascade diff (median wall ms (range) and CPU ms over $RUNS runs; MB allocated)"
+  printf '%-16s %7s %20s %8s %8s\n' input blocks wall cpu alloc
   for s in "${SITES[@]}"; do
     local f; f="$(fixture "$s")"; [ -f "$f" ] || continue
     "$CASCADE" fmt --minify "$f" > "$TMP/$s.min.css" 2>/dev/null
