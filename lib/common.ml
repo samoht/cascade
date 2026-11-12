@@ -157,6 +157,25 @@ end
 let int_of_float_opt f =
   if Float.abs f < 0x1p62 then Some (int_of_float f) else None
 
+let canonical_exponent s =
+  match String.index_opt s 'e' with
+  | None -> s
+  | Some i ->
+      let n = String.length s in
+      let plus = i + 1 < n && s.[i + 1] = '+' in
+      let minus = i + 1 < n && s.[i + 1] = '-' in
+      let digits = if plus || minus then i + 2 else i + 1 in
+      let rec skip k = if k < n - 1 && s.[k] = '0' then skip (k + 1) else k in
+      let k = skip digits in
+      if (not plus) && k = digits then s
+      else
+        String.concat ""
+          [
+            String.sub s 0 (i + 1);
+            (if minus then "-" else "");
+            String.sub s k (n - k);
+          ]
+
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 
 (* [String.iter] would allocate a closure over the accumulator ref on every

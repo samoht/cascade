@@ -114,6 +114,22 @@ let test_hash_string_allocates_nothing () =
     (Fmt.str "alloc %.0f -> %.0f (%.2f words per call)" a1 a2 per_call)
     true (per_call < 0.5)
 
+let check_exponent input expected =
+  Alcotest.(check string) input expected (Common.canonical_exponent input)
+
+(* mingw's printf pads an exponent to at least three digits. A leading zero in
+   it is as redundant as the [+], and keeping it makes the bytes depend on the
+   platform. *)
+let test_canonical_exponent_drops_padding () =
+  check_exponent "3.40282e+038" "3.40282e38";
+  check_exponent "1e+019" "1e19"
+
+let test_canonical_exponent_keeps_digits () =
+  check_exponent "1e+38" "1e38";
+  check_exponent "1e+308" "1e308";
+  check_exponent "3.40282e+38" "3.40282e38";
+  check_exponent "123456789012" "123456789012"
+
 let suite =
   ( "common",
     [
@@ -129,4 +145,8 @@ let suite =
         test_filter_map_preserve_keeps_noop_identity;
       Alcotest.test_case "hash_string allocates nothing" `Quick
         test_hash_string_allocates_nothing;
+      Alcotest.test_case "canonical_exponent drops padding" `Quick
+        test_canonical_exponent_drops_padding;
+      Alcotest.test_case "canonical_exponent keeps digits" `Quick
+        test_canonical_exponent_keeps_digits;
     ] )

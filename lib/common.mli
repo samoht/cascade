@@ -87,6 +87,12 @@ val int_of_float_opt : float -> int option
     and [None] otherwise, NaN included. Past that bound [int_of_float] returns
     [min_int] or a value that depends on the platform. *)
 
+val canonical_exponent : string -> string
+(** [canonical_exponent s] is [s] with the exponent after its first [e] written
+    without a [+] sign or leading zeros, keeping at least one digit, so
+    [canonical_exponent "3.40282e+038"] is ["3.40282e38"]. A string with no [e]
+    is returned unchanged. *)
+
 val mix_int : int -> int -> int
 (** [mix_int acc x] folds the integer [x] into the running hash [acc]. *)
 

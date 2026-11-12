@@ -161,6 +161,20 @@ let float_large_decimal_in_stylesheet () =
     "a{transform:scale(123456789012)}";
   check_sheet "opacity" "b{opacity:calc(999999999999.75)}" "b{opacity:1e12}"
 
+(* A magnitude past the [int] range prints in exponent notation. The exponent
+   carries no sign and no leading zeros whatever the C library's printf pads it
+   to, so the bytes are the same on every platform. *)
+let float_exponent_digits () =
+  check_float 1e19 ~expected:"1e19";
+  check_float (-1e20) ~expected:"-1e20";
+  check_float 3.40282e38 ~expected:"3.40282e38";
+  check_float 1e308 ~expected:"1e308";
+  match of_string "a{width:3.40282e38px}" with
+  | Error e -> failf "width: %s" (Pp.to_string Error.pp e)
+  | Ok { stylesheet; _ } ->
+      check string "width" "a{width:3.40282e38px}"
+        (to_string ~minify:true stylesheet)
+
 (* CSS Values 4 sec. 10.7.2 puts the [NaN] keyword in the math-function grammar
    and nowhere else, and sec. 10.9.2 keeps NaN inside a calculation tree, so a
    value that is NaN has no bare spelling. Chrome drops [width: NaNpx],
@@ -327,6 +341,7 @@ let suite =
         float_large_decimal_reparses;
       Alcotest.test_case "float large decimal in stylesheet" `Quick
         float_large_decimal_in_stylesheet;
+      Alcotest.test_case "float exponent digits" `Quick float_exponent_digits;
       Alcotest.test_case "nan never prints as a bare token" `Quick
         nan_never_prints_as_a_bare_token;
       Alcotest.test_case "nan leaf serializes as a math function" `Quick
