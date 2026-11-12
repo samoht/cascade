@@ -20,6 +20,9 @@
 - On Windows `cascade` ends its lines in LF as elsewhere, where its output and
   help pages ended them in CRLF, and `cascade diff --browser` starts node
   without a POSIX shell and finds it on `PATH` under `PATHEXT` (#0000).
+- `--inline-imports` inlines `@import url("C:/a.css")` and checks it against
+  `--import-root`, where it left a Windows drive path alone as a remote URL
+  (#0000).
 
 ### Library
 

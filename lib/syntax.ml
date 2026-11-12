@@ -61,8 +61,26 @@ let split_top_level_colon cvs =
 let strip_url_suffix url =
   Uri.of_string url |> Uri.with_uri ~query:None ~fragment:None |> Uri.to_string
 
-let url_file_path url = Uri.of_string url |> Uri.path |> Uri.pct_decode
+(* [C:/a.css] or [c:\a.css] names a file on a Windows drive. RFC 3986 reads the
+   letter as a scheme, but WHATWG URL reads a one-letter scheme as a drive
+   letter, and no URL scheme in use is one letter long. The decoded path is what
+   says so, since [strip_url_suffix] encodes the backslash. *)
+let is_drive_path uri =
+  match Uri.scheme uri with
+  | Some scheme when String.length scheme = 1 && Option.is_none (Uri.host uri)
+    -> (
+      match Uri.pct_decode (Uri.path uri) with
+      | "" -> false
+      | path -> path.[0] = '/' || path.[0] = '\\')
+  | Some _ | None -> false
+
+let url_file_path url =
+  let uri = Uri.of_string url in
+  let path = Uri.pct_decode (Uri.path uri) in
+  if is_drive_path uri then String.concat "" [ String.sub url 0 2; path ]
+  else path
 
 let is_remote_url url =
   let uri = Uri.of_string url in
-  Option.is_some (Uri.scheme uri) || Option.is_some (Uri.host uri)
+  (not (is_drive_path uri))
+  && (Option.is_some (Uri.scheme uri) || Option.is_some (Uri.host uri))

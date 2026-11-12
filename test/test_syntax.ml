@@ -98,7 +98,10 @@ let url_file_path () =
     (Syntax.url_file_path "C:/a%20b/c.css?v=1#top");
   Alcotest.(check string)
     "a drive path keeps its backslashes" "c:\\a\\b.css"
-    (Syntax.url_file_path "c:\\a\\b.css")
+    (Syntax.url_file_path "c:\\a\\b.css");
+  Alcotest.(check string)
+    "a drive path survives the suffix strip" "c:\\a\\b c.css"
+    (Syntax.url_file_path (Syntax.strip_url_suffix "c:\\a\\b c.css?v=1"))
 
 let remote_url () =
   check_true "https" (Syntax.is_remote_url "HTTPS://example.test/a.css");

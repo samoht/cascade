@@ -42,7 +42,9 @@ val strip_url_suffix : string -> string
 
 val url_file_path : string -> string
 (** [url_file_path url] decodes the path component of [url] for a filesystem
-    lookup. *)
+    lookup, keeping the drive of a Windows path such as [C:/a.css]. *)
 
 val is_remote_url : string -> bool
-(** [is_remote_url url] is true when [url] has a scheme or authority. *)
+(** [is_remote_url url] is true when [url] has a scheme or authority. A Windows
+    drive path such as [C:/a.css] or [c:\\a.css] is local, though RFC 3986 reads
+    its letter as a scheme. *)
