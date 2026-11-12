@@ -1489,6 +1489,138 @@ let spec_csv_nested_edges () =
     "nested comma groups" "rgb(1,2,3)|[a,b]|{c:d,e:f}"
     (groups.value |> List.map Parser.to_string_minified |> String.concat "|")
 
+(* [opener] [n] times, then [inner], then [closer] [n] times. *)
+let nested n ~opener ~inner ~closer =
+  let b = Buffer.create ((n * 4) + String.length inner) in
+  for _ = 1 to n do
+    Buffer.add_string b opener
+  done;
+  Buffer.add_string b inner;
+  for _ = 1 to n do
+    Buffer.add_string b closer
+  done;
+  Buffer.contents b
+
+let is_too_deep (e : Error.t) =
+  Astring.String.is_infix ~affix:"nested deeper than" (Error.to_string e)
+
+(* Run [f] with the OCaml stack capped at 128K words. Before the parser had a
+   depth limit, the stack each level of input cost grew linearly: nested rules
+   overflowed OCaml 5's default stack of 128M words at about 4.8 million levels
+   and this one at under 5,000, nested parens at under 22,000, so the cap
+   reproduces the overflow on an input small enough for a quick test. *)
+let with_small_stack f =
+  let previous = Gc.get () in
+  Gc.set { previous with Gc.stack_limit = 1 lsl 17 };
+  Fun.protect ~finally:(fun () -> Gc.set previous) f
+
+let parse_ok css =
+  match Css.of_string css with
+  | Ok parse -> parse
+  | Error e ->
+      Alcotest.failf "lenient parse must recover: %s" (Error.to_string e)
+
+let check_one_too_deep what ~construct warnings =
+  match List.filter is_too_deep warnings with
+  | [ { Error.recovery = Error.Recovery.Dropped d; _ } ] ->
+      Alcotest.(check bool)
+        (what ^ ": the warning names the dropped construct")
+        true
+        (Error.Recovery.equal_construct construct d.construct)
+  | ws ->
+      Alcotest.failf "%s: expected one dropped too-deep warning, got %d" what
+        (List.length ws)
+
+let nesting_at_the_limit () =
+  (* A rule's block is one level and each paren one more, so this value sits at
+     exactly the limit and is kept, printed and optimised as before. *)
+  let limit = 128 in
+  let value = nested (limit - 1) ~opener:"(" ~inner:"x" ~closer:")" in
+  let css = String.concat "" [ ".a{--x:"; value; "}" ] in
+  let parse = parse_ok css in
+  Alcotest.(check int) "no warning" 0 (List.length parse.warnings);
+  Alcotest.(check string)
+    "the value prints back" css
+    (Css.to_string ~minify:true parse.stylesheet);
+  let rules = nested (limit - 1) ~opener:".a{" ~inner:"color:red" ~closer:"}" in
+  let parse = parse_ok (String.concat "" [ ".a{"; rules; "}" ]) in
+  Alcotest.(check int) "nested rules: no warning" 0 (List.length parse.warnings);
+  with_small_stack (fun () ->
+      let pretty = Css.to_string parse.stylesheet in
+      let minified = Css.to_string ~minify:true parse.stylesheet in
+      let optimised = Css.optimize parse.stylesheet in
+      Alcotest.(check bool) "printed" true (pretty <> "" && minified <> "");
+      Alcotest.(check int)
+        "optimised" 1
+        (List.length (Css.statements optimised)))
+
+let nesting_past_the_limit () =
+  (* One level past the limit, the rule holding it is dropped with a warning,
+     the way an invalid rule is, and the input resumes after it where CSS Syntax
+     3 (ED) sec. 5.5.9 ends the block. *)
+  let limit = 128 in
+  let value = nested limit ~opener:"(" ~inner:"x" ~closer:")" in
+  let parse =
+    parse_ok (String.concat "" [ ".a{--x:"; value; "}.b{color:red}" ])
+  in
+  Alcotest.(check string)
+    "only the rule after it survives" ".b{color:red}"
+    (Css.to_string ~minify:true parse.stylesheet);
+  check_one_too_deep "past the limit" ~construct:Error.Recovery.Rule
+    parse.warnings;
+  (* Without a rule's block around it, the value is one level shallower. A [}]
+     inside a paren is the paren's to keep (sec. 5.5.9), so it neither ends the
+     list nor the declaration early. In a declaration list, only the declaration
+     is lost. *)
+  let value = nested (limit + 1) ~opener:"(" ~inner:"x}" ~closer:")" in
+  let decls =
+    Parser.list_of_declarations
+      (Reader.of_string (String.concat "" [ "a:"; value; ";b:c" ]))
+  in
+  Alcotest.(check int)
+    "the next declaration survives" 1 (List.length decls.value);
+  check_one_too_deep "declaration" ~construct:Error.Recovery.Declaration
+    decls.warnings;
+  (* The stream has no warning list, so it raises. *)
+  match Parser.next (Parser.of_string value) with
+  | exception Error.Parse_error e when is_too_deep e -> ()
+  | _ -> Alcotest.fail "the stream must refuse a value nested past the limit"
+
+let nesting_far_past_the_limit () =
+  (* The depth that overflowed the stack: the parser stops building at the limit
+     and consumes the rest without recursing, so nothing deeper reaches the
+     printer, the optimiser or the typed readers. *)
+  let depth = 50_000 in
+  with_small_stack (fun () ->
+      List.iter
+        (fun opener ->
+          let css = nested depth ~opener ~inner:"" ~closer:"" in
+          let parse = parse_ok css in
+          Alcotest.(check int)
+            (opener ^ " repeated: nothing kept")
+            0
+            (List.length (Css.statements parse.stylesheet));
+          Alcotest.(check int)
+            (opener ^ " repeated: one warning")
+            1
+            (List.length (List.filter is_too_deep parse.warnings));
+          ignore (Css.to_string parse.stylesheet))
+        [ "("; "["; "{"; "a("; ".a{"; "@media x{"; ":is(" ];
+      let custom =
+        String.concat ""
+          [ ".a{--x:"; nested depth ~opener:"(" ~inner:"" ~closer:"" ]
+      in
+      check_one_too_deep "custom property" ~construct:Error.Recovery.Rule
+        (parse_ok custom).warnings;
+      let listed =
+        Parser.list_of_component_values
+          (Reader.of_string (nested depth ~opener:"(" ~inner:"" ~closer:""))
+      in
+      Alcotest.(check int) "the list leaves it out" 0 (List.length listed.value);
+      Alcotest.(check int)
+        "and reports it" 1
+        (List.length (List.filter is_too_deep listed.warnings)))
+
 let spec_deep_nesting_edges () =
   (* CSS Syntax Level 3 section 5.5.9 closes simple blocks at EOF. This is a
      bounded regression vector for stack/resource behavior and auto-closing. *)
@@ -1787,6 +1919,10 @@ let suite =
         spec_wpt_declaration_recovery_matrix;
       Alcotest.test_case "spec section 11 parser security regressions" `Quick
         spec_security_resource_exhaustion_regressions;
+      Alcotest.test_case "nesting at the limit" `Quick nesting_at_the_limit;
+      Alcotest.test_case "nesting past the limit" `Quick nesting_past_the_limit;
+      Alcotest.test_case "nesting far past the limit" `Quick
+        nesting_far_past_the_limit;
       Alcotest.test_case "spec section 12 parsing change checklist" `Quick
         spec12_parsing_checklist;
       Alcotest.test_case "spec section 5.5.1 CDO/CDC rule-list handling" `Quick
