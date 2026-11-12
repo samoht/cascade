@@ -5865,24 +5865,31 @@ let same_property_reparse (row : property_grammar_row) decl reparsed =
   && Css.Declaration.to_string ~minify:true decl
      = Css.Declaration.to_string ~minify:true reparsed
 
+(* A manifest row's failure. Every row is checked, so a row's checks raise this
+   rather than ending the test at the first failing row. *)
+exception Row_failed of string
+
+let row_fail msg = raise (Row_failed msg)
+let row_failf fmt = Fmt.kstr row_fail fmt
+
 let check_property_positive (row : property_grammar_row) value =
   match parse_property_decl row.property value with
   | Some (_input, serialized, decl, Some reparsed)
     when same_property_reparse row decl reparsed ->
       ignore serialized
   | Some (input, serialized, _, _) ->
-      Alcotest.failf
+      row_failf
         "%s positive vector serialized to unparsable or structurally different \
          declaration: %s -> %s"
         row.property input serialized
-  | None -> Alcotest.failf "%s positive vector rejected: %s" row.property value
+  | None -> row_failf "%s positive vector rejected: %s" row.property value
 
 let check_property_negative (row : property_grammar_row) value =
   match parse_property_decl row.property value with
   | None -> ()
   | Some (_, _, decl, _) when Css.Declaration.is_invalid decl -> ()
   | Some (input, serialized, _, _) ->
-      Alcotest.failf "%s negative vector parsed: %s -> %s" row.property input
+      row_failf "%s negative vector parsed: %s -> %s" row.property input
         serialized
 
 let check_property_css_wide (row : property_grammar_row) keyword =
@@ -5891,11 +5898,9 @@ let check_property_css_wide (row : property_grammar_row) keyword =
     when same_property_reparse row decl reparsed ->
       ()
   | Some (input, serialized, _, _) ->
-      Alcotest.failf
-        "%s CSS-wide keyword did not structurally reparse: %s -> %s"
+      row_failf "%s CSS-wide keyword did not structurally reparse: %s -> %s"
         row.property input serialized
-  | None ->
-      Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
+  | None -> row_failf "%s CSS-wide keyword rejected: %s" row.property keyword
 
 let check_property_var (row : property_grammar_row) =
   let token_stream_fallbacks =
@@ -5915,11 +5920,11 @@ let check_property_var (row : property_grammar_row) =
         when same_property_reparse row decl reparsed ->
           ()
       | Some (input, serialized, _, _) ->
-          Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
+          row_failf "%s var() value did not structurally reparse: %s -> %s"
             row.property input serialized
       | None ->
-          Alcotest.failf "%s var() value rejected with fallback: %s"
-            row.property fallback)
+          row_failf "%s var() value rejected with fallback: %s" row.property
+            fallback)
     (row.positives @ token_stream_fallbacks)
 
 let property_value_has_substitution value =
@@ -5935,7 +5940,7 @@ let check_property_trailing_token_rejected (row : property_grammar_row) value =
     match parse_property_decl row.property (value ^ " )") with
     | None -> ()
     | Some (input, serialized, _, _) ->
-        Alcotest.failf
+        row_failf
           "%s positive vector accepted an extra trailing token: %s -> %s"
           row.property input serialized
 
@@ -5946,7 +5951,7 @@ let check_property_trailing_token_rejected (row : property_grammar_row) value =
 let check_property_value_tail (row : property_grammar_row) value =
   let bare = row.property ^ ":" ^ value in
   match parse_property_decl row.property value with
-  | None -> Alcotest.failf "%s positive vector rejected: %s" row.property value
+  | None -> row_failf "%s positive vector rejected: %s" row.property value
   | Some (_, _, decl, _) ->
       let expected = Css.Declaration.string_of_value ~minify:true decl in
       List.iter
@@ -5955,43 +5960,40 @@ let check_property_value_tail (row : property_grammar_row) value =
           let c = Cursor.of_string input in
           match read_declaration c with
           | None ->
-              Alcotest.failf "%s dropped the declaration: %s" row.property input
+              row_failf "%s dropped the declaration: %s" row.property input
           | exception (Cursor.Parse_error _ | Reader.Parse_error _) ->
-              Alcotest.failf "%s rejected the declaration: %s" row.property
-                input
+              row_failf "%s rejected the declaration: %s" row.property input
           | Some tailed ->
-              Alcotest.(check string)
-                (Fmt.str "%s holds the value of %S" input bare)
-                expected
-                (Css.Declaration.string_of_value ~minify:true tailed);
-              Alcotest.(check bool)
-                (Fmt.str "%s important flag" input)
-                important
-                (Css.Declaration.is_important tailed))
+              let got = Css.Declaration.string_of_value ~minify:true tailed in
+              if not (String.equal got expected) then
+                row_failf "%s holds the value of %S: expected %S, got %S" input
+                  bare expected got;
+              if
+                not (Bool.equal important (Css.Declaration.is_important tailed))
+              then row_failf "%s important flag: expected %b" input important)
         [ (";", false); (" !important", true); (" !important;", true) ]
 
 let check_property_name (row : property_grammar_row) =
   if String.trim row.property <> row.property then
-    Alcotest.failf "%S has leading or trailing property-name whitespace"
-      row.property;
-  if row.property = "" then Alcotest.fail "empty property-name row";
+    row_failf "%S has leading or trailing property-name whitespace" row.property;
+  if row.property = "" then row_fail "empty property-name row";
   String.iter
     (function
       | 'a' .. 'z' | '0' .. '9' | '-' -> ()
       | c ->
-          Alcotest.failf "%s contains non-CSS property-name character %C"
+          row_failf "%s contains non-CSS property-name character %C"
             row.property c)
     row.property
 
 let check_branch_counts (row : property_grammar_row) =
   if row.positives = [] then
-    Alcotest.failf "%s has no positive grammar vectors" row.property;
+    row_failf "%s has no positive grammar vectors" row.property;
   if row.negatives = [] then
-    Alcotest.failf "%s has no negative grammar vectors" row.property;
+    row_failf "%s has no negative grammar vectors" row.property;
   if List.length row.positives < 2 then
-    Alcotest.failf "%s needs at least two positive branch vectors" row.property;
+    row_failf "%s needs at least two positive branch vectors" row.property;
   if List.length row.negatives < 2 then
-    Alcotest.failf "%s needs at least two negative branch vectors" row.property
+    row_failf "%s needs at least two negative branch vectors" row.property
 
 let manifest_normalize_value = String.trim
 
@@ -6002,9 +6004,9 @@ let check_no_branch_duplicates (row : property_grammar_row) =
     <> List.length (List.sort_uniq String.compare normalized)
   in
   if duplicate_values row.positives then
-    Alcotest.failf "%s has duplicate positive grammar vectors" row.property;
+    row_failf "%s has duplicate positive grammar vectors" row.property;
   if duplicate_values row.negatives then
-    Alcotest.failf "%s has duplicate negative grammar vectors" row.property
+    row_failf "%s has duplicate negative grammar vectors" row.property
 
 let check_no_positive_negative_overlap (row : property_grammar_row) =
   let positive_set =
@@ -6015,7 +6017,7 @@ let check_no_positive_negative_overlap (row : property_grammar_row) =
     (fun negative ->
       let normalized = manifest_normalize_value negative in
       if List.mem normalized positive_set then
-        Alcotest.failf "%s grammar vector is both positive and negative: %S"
+        row_failf "%s grammar vector is both positive and negative: %S"
           row.property normalized)
     row.negatives
 
@@ -6023,7 +6025,7 @@ let check_no_empty_branches (row : property_grammar_row) =
   List.iter
     (fun value ->
       if String.trim value = "" then
-        Alcotest.failf "%s has an empty grammar vector" row.property)
+        row_failf "%s has an empty grammar vector" row.property)
     (row.positives @ row.negatives)
 
 let check_manifest_row_shape (row : property_grammar_row) =
@@ -6068,7 +6070,7 @@ let check_manifest_calc_surface (row : property_grammar_row) =
         row.positives
     in
     if not has_calc then
-      Alcotest.failf
+      row_failf
         "%s should include at least one function/calc-family grammar vector"
         row.property
 
@@ -6108,8 +6110,8 @@ let spec_property_grammar_manifest () =
       (fun (row : property_grammar_row) ->
         match check_property_row row with
         | () -> None
-        | exception e ->
-            Some (String.concat "" [ row.property; ": "; Printexc.to_string e ]))
+        | exception Row_failed msg ->
+            Some (String.concat "" [ row.property; ": "; msg ]))
       property_grammar_matrix
   in
   match failures with

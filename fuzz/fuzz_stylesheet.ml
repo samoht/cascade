@@ -1607,10 +1607,7 @@ let test_comments_random_no_crash buf =
     let mutated =
       String.sub buf 0 pos ^ marker ^ String.sub buf pos (n - pos)
     in
-    try ignore (Css.of_string ~strict:false mutated : (_, _) result)
-    with exn ->
-      failf "lenient parse raised on comment-inserted input %S: %s" mutated
-        (Printexc.to_string exn)
+    match Css.of_string ~strict:false mutated with Ok _ | Error _ -> ()
 
 (* Minify monotonicity: minified output must never be longer than pretty output
    for the same stylesheet. A regression here means the minifier added bytes -

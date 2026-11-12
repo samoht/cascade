@@ -176,10 +176,10 @@ let assert_strict_lenient_contract label input =
           input
 
 let test_parse_crash_safety buf =
-  ignore (Css.of_string ~strict:false (cssish buf));
+  (match Css.of_string ~strict:false (cssish buf) with Ok _ | Error _ -> ());
   ignore (Css.of_string_exn ~strict:false (cssish buf));
   let css = css_like_text buf in
-  ignore (Css.of_string ~strict:false css);
+  (match Css.of_string ~strict:false css with Ok _ | Error _ -> ());
   ignore (Css.of_string_exn ~strict:false css)
 
 (* Parsing and printing over the byte shapes [cssish] cannot reach. Sec. 3.3

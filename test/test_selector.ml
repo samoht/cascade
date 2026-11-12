@@ -81,9 +81,6 @@ let of_string_empty_raises_parse_error () =
   match of_string "" with
   | _ -> Alcotest.fail "empty selector parsed"
   | exception Error.Parse_error _ -> ()
-  | exception exn ->
-      Alcotest.failf "empty selector raised %s instead of Error.Parse_error"
-        (Printexc.to_string exn)
 
 (* Not a roundtrip test *)
 let element_cases () =
@@ -699,14 +696,10 @@ let invalid () =
    that parsing fails (and mention what was broken). *)
 let check_parse_error input _expected_msg =
   let t = Cursor.of_string input in
-  try
-    let _ = read t in
-    Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
-  with
-  | Cursor.Parse_error _ -> ()
-  | exn ->
-      Alcotest.failf "For '%s': expected Parse_error but got %s" input
-        (Printexc.to_string exn)
+  match read t with
+  | _ ->
+      Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
+  | exception Cursor.Parse_error _ -> ()
 
 let parse_errors_attributes () =
   (* CSS Syntax 5.3.7 auto-closes unterminated brackets at EOF, so missing
@@ -1648,11 +1641,9 @@ let matches_literal haystack needle =
 
 let check_callstack name input expected_stack_parts =
   let t = Cursor.of_string input in
-  try
-    let _ = read t in
-    Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
-  with
-  | Cursor.Parse_error err ->
+  match read t with
+  | _ -> Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+  | exception Cursor.Parse_error err ->
       let callstack_str = String.concat " -> " err.path in
       List.iter
         (fun stack_item ->
@@ -1666,9 +1657,6 @@ let check_callstack name input expected_stack_parts =
       if err.loc.start_pos > err.loc.end_pos then
         Alcotest.failf "%s: loc span should be non-empty but got [%d,%d]" name
           err.loc.start_pos err.loc.end_pos
-  | exn ->
-      Alcotest.failf "%s: expected Parse_error but got %s" name
-        (Printexc.to_string exn)
 
 let check_full_css_callstack name css_input expected_stack_parts =
   match Css.of_string ~strict:true css_input with

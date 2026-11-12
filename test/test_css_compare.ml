@@ -2,8 +2,6 @@
 
 open Cascade
 
-let () = ignore (Css.of_string ~strict:false "")
-
 let contains_substring s needle =
   let len = String.length s in
   let needle_len = String.length needle in
