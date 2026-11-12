@@ -90,6 +90,12 @@ let () =
       Test_variables.suite;
       Test_inline.suite;
       Test_optimize.suite;
+      Test_optimize_declarations.suite;
+      Test_optimize_factor.suite;
+      Test_optimize_merge.suite;
+      Test_optimize_boundaries.suite;
+      Test_optimize_origins.suite;
+      Test_optimize_fuzz.suite;
       Test_font_face.suite;
       Test_keyframe.suite;
       Test_media.suite;

@@ -15,4 +15,5 @@
   css_test_helpers
   stylesheet_helpers
   declaration_helpers
+  optimize_helpers
   cascade_spec_inventory))
