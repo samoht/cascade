@@ -39,11 +39,16 @@
 ;; DROP_CANDIDATE (vendor prefix + modern is typed; add to vendor pair list)
 ;; or TYPE_ME (no typed handler yet).
 
-;; lib/baseline.ml is generated from the web-features Baseline dataset. It
-;; needs the network, curl and jq, so no rule runs it; regenerate it by hand
-;; when browsers ship new features:
+;; lib/baseline.ml is built from lib/baseline.tsv by gen_baseline_ml. The data
+;; comes from the web-features Baseline dataset; fetching it needs the network,
+;; curl and jq, so no rule runs it. Refresh it by hand when browsers ship new
+;; features:
 ;;
-;;   scripts/gen_baseline.sh && dune fmt
+;;   scripts/gen_baseline.sh
+
+(executable
+ (name gen_baseline_ml)
+ (modules gen_baseline_ml))
 
 ;; Mutation testing. Rewrites one token of one library source in a separate
 ;; checkout, rebuilds it and asks whether the suite noticed. Opt-in: a campaign

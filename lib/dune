@@ -59,6 +59,16 @@
   prop_animation)
  (libraries uri psq logs mtime.clock))
 
+(rule
+ (target baseline.ml)
+ (deps
+  (:gen ../scripts/gen_baseline_ml.exe)
+  (:data baseline.tsv))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{gen} %{data}))))
+
 (mdx
  (files
   aria.mli
