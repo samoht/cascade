@@ -47,6 +47,7 @@ let () =
       Test_gzip_size.suite;
       Test_edge.suite;
       Test_shorthand.suite;
+      Test_shorthand_compose.suite;
       Test_merge.suite;
       Test_nest.suite;
       Test_size.suite;
