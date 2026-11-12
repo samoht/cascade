@@ -74,6 +74,13 @@ let () =
       Test_declaration_grammar.suite;
       Test_declaration_identity.suite;
       Test_properties.suite;
+      Test_properties_layout.suite;
+      Test_properties_background.suite;
+      Test_properties_ui.suite;
+      Test_properties_font.suite;
+      Test_properties_text.suite;
+      Test_properties_animation.suite;
+      Test_properties_generated.suite;
       Test_stylesheet.suite;
       Test_stylesheet_strict.suite;
       Test_stylesheet_recovery.suite;

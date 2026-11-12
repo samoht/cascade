@@ -1,0 +1,3 @@
+(library
+ (name properties_helpers)
+ (libraries cascade alcotest fmt css_test_helpers))
