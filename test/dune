@@ -7,7 +7,6 @@
   alcotest
   astring
   fmt
-  unix
   re
   cascade_diff
   css_test_helpers

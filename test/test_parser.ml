@@ -879,19 +879,14 @@ let spec_security_resource_exhaustion_regressions () =
   let parse_list css =
     (Parser.list_of_component_values (Reader.of_string css)).value
   in
+  (* Processor time rather than SIGALRM: the signal does not exist on Windows,
+     and CPU time does not count the time a busy host spends elsewhere. *)
   let check_completes name f =
-    let exception Timeout in
-    let previous =
-      Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
-    in
-    Fun.protect
-      ~finally:(fun () ->
-        ignore (Unix.alarm 0);
-        ignore (Sys.signal Sys.sigalrm previous))
-      (fun () ->
-        ignore (Unix.alarm 1);
-        try f ()
-        with Timeout -> Alcotest.failf "%s did not complete within 1s" name)
+    let start = Sys.time () in
+    f ();
+    let elapsed = Sys.time () -. start in
+    if elapsed > 1. then
+      Alcotest.failf "%s took %.2fs of CPU, over 1s" name elapsed
   in
   let deep_parens = String.make 4096 '(' ^ "x" in
   check_completes "unterminated paren nesting" (fun () ->
