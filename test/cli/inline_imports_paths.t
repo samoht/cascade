@@ -141,9 +141,11 @@ unresolved import stays in the output, as it does for any unreadable import.
   $ cascade --minify --inline-imports --import-root=import-boundary/root import-boundary/root/entry-parent.css 2>/dev/null
   @import"../outside.css";.entry{color:#00f}
 
-An absolute path under the canonical root is accepted.
+An absolute path under the canonical root is accepted. Under Cygwin the shell's
+$PWD is a POSIX path the native executable cannot open, so the absolute paths
+handed to it go through cygpath -m where that exists.
 
-  $ import_root="$PWD/import-boundary/root"
+  $ import_root=$(cygpath -m "$PWD/import-boundary/root" 2>/dev/null || printf '%s' "$PWD/import-boundary/root")
   $ cat > import-boundary/root/absolute.css <<EOF
   > .absolute { color: green }
   > EOF
@@ -156,7 +158,7 @@ An absolute path under the canonical root is accepted.
 
 An absolute path outside the canonical root is rejected too.
 
-  $ outside="$PWD/import-boundary/outside.css"
+  $ outside=$(cygpath -m "$PWD/import-boundary/outside.css" 2>/dev/null || printf '%s' "$PWD/import-boundary/outside.css")
   $ cat > import-boundary/root/entry-absolute-out.css <<EOF
   > @import url("$outside");
   > .entry { color: blue }
