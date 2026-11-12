@@ -173,14 +173,6 @@ let sampling_sheet roots css =
 let write_file path contents =
   Out_channel.with_open_bin path (fun oc -> output_string oc contents)
 
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  loop []
-
 (* The driver's TSV: [m] metadata, [r] a render that differs, [d] a computed
    value the elements under it disagree on, and [x] an error the page
    reported. *)
@@ -239,22 +231,17 @@ let run_driver ~node ~chrome ~work ~job =
   let errors = work // "driver.err" in
   write_file script Browser_diff_js.source;
   write_file job_file job;
-  let cmd =
-    String.concat " "
-      [
-        String.concat "" [ "CHROME="; Filename.quote chrome ];
-        Filename.quote node;
-        Filename.quote script;
-        Filename.quote job_file;
-        Filename.quote work;
-        String.concat "" [ "2>"; Filename.quote errors ];
-      ]
-  in
-  let ic = Unix.open_process_in cmd in
-  let lines = read_lines ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> Ok (parse_output lines)
-  | Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
+  match
+    Browser.run
+      ~env:[ ("CHROME", chrome) ]
+      ~stderr:errors node [ script; job_file; work ]
+  with
+  | exception Unix.Unix_error (e, _, _) ->
+      Error
+        (String.concat ""
+           [ "the browser driver did not start: "; Unix.error_message e ])
+  | lines, Unix.WEXITED 0 -> Ok (parse_output lines)
+  | _, (Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _) ->
       let text = In_channel.with_open_bin errors In_channel.input_all in
       Error
         (String.concat "" [ "the browser driver failed:\n"; String.trim text ])

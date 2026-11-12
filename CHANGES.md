@@ -15,6 +15,12 @@
   CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
   per CRLF, and a NUL could make `Source_index.v` raise (#1285).
 
+### CLI tools
+
+- On Windows `cascade` ends its lines in LF as elsewhere, where its output and
+  help pages ended them in CRLF, and `cascade diff --browser` starts node
+  without a POSIX shell and finds it on `PATH` under `PATHEXT` (#0000).
+
 ### Library
 
 - `Cascade.Reader` exposes `origin` and `original_offset`, which map a position

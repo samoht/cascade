@@ -2,6 +2,14 @@ open Cmdliner
 
 let () = Printexc.record_backtrace true
 
+(* A standard channel starts in text mode, which on Windows writes each "\n" as
+   "\r\n" and reads "\r\n" back as "\n". The CLI writes the bytes it prints, and
+   reads standard input as it reads a file, on every platform. *)
+let () =
+  set_binary_mode_out stdout true;
+  set_binary_mode_out stderr true;
+  set_binary_mode_in stdin true
+
 let info =
   let doc = "Tools to manipulate CSS files safely" in
   let man =

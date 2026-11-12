@@ -3,10 +3,26 @@ let ( // ) = Filename.concat
 let getenv name =
   match Sys.getenv_opt name with Some "" | None -> None | Some v -> Some v
 
+(* Windows has no execute bit: a program is a file with an extension [PATHEXT]
+   lists, and a command is found on [PATH] under each of those extensions. *)
+let program_extensions () =
+  Option.value ~default:".COM;.EXE;.BAT;.CMD" (getenv "PATHEXT")
+  |> String.split_on_char ';'
+  |> List.filter_map (function
+    | "" -> None
+    | e -> Some (String.lowercase_ascii e))
+
+let program_extension path =
+  List.mem
+    (String.lowercase_ascii (Filename.extension path))
+    (program_extensions ())
+
 let executable path =
   (try Sys.file_exists path && not (Sys.is_directory path)
    with Sys_error _ -> false)
   &&
+  if Sys.win32 then program_extension path
+  else
     try
       Unix.access path [ Unix.X_OK ];
       true
@@ -14,15 +30,34 @@ let executable path =
 
 let on_path name =
   let dirs =
-    String.split_on_char ':' (Option.value ~default:"" (getenv "PATH"))
+    String.split_on_char
+      (if Sys.win32 then ';' else ':')
+      (Option.value ~default:"" (getenv "PATH"))
+  in
+  let names =
+    if Sys.win32 then
+      name
+      :: List.map
+           (fun e -> String.concat "" [ name; e ])
+           (program_extensions ())
+    else [ name ]
   in
   List.find_map
     (fun d ->
       if d = "" then None
       else
-        let p = d // name in
-        if executable p then Some p else None)
+        List.find_map
+          (fun n ->
+            let p = d // n in
+            if executable p then Some p else None)
+          names)
     dirs
+
+(* The name a program answers to: on Windows, its file name less the extension
+   that makes it one. *)
+let program_name file =
+  if Sys.win32 && program_extension file then Filename.remove_extension file
+  else file
 
 (* The browser caches keep one directory per version, so the largest path is the
    newest build. *)
@@ -37,7 +72,8 @@ let rec search_tree root names depth acc =
             let p = root // entry in
             if try Sys.is_directory p with Sys_error _ -> false then
               search_tree p names (depth - 1) acc
-            else if List.mem entry names && executable p then p :: acc
+            else if List.mem (program_name entry) names && executable p then
+              p :: acc
             else acc)
           acc entries
 
@@ -88,21 +124,68 @@ let node_binary () =
   | Some n when executable n -> Some n
   | Some _ | None -> on_path "node"
 
+let read_lines ic =
+  let rec loop acc =
+    match input_line ic with
+    | line -> loop (line :: acc)
+    | exception End_of_file -> List.rev acc
+  in
+  loop []
+
+let run ?(env = []) ?stderr prog args =
+  let set binding (name, _) =
+    String.starts_with ~prefix:(String.concat "" [ name; "=" ]) binding
+  in
+  let inherited =
+    List.filter
+      (fun binding -> not (List.exists (set binding) env))
+      (Array.to_list (Unix.environment ()))
+  in
+  let environment =
+    Array.of_list
+      (List.map (fun (name, v) -> String.concat "" [ name; "="; v ]) env
+      @ inherited)
+  in
+  let null = Unix.openfile Filename.null [ Unix.O_RDWR; Unix.O_CLOEXEC ] 0 in
+  let err =
+    match stderr with
+    | None -> null
+    | Some file ->
+        Unix.openfile file
+          [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC; Unix.O_CLOEXEC ]
+          0o644
+  in
+  let out, child_out = Unix.pipe ~cloexec:true () in
+  let spawn () =
+    Unix.create_process_env prog
+      (Array.of_list (prog :: args))
+      environment null child_out err
+  in
+  let close_child_ends () =
+    Unix.close child_out;
+    if Option.is_some stderr then Unix.close err;
+    Unix.close null
+  in
+  match Fun.protect ~finally:close_child_ends spawn with
+  | exception e ->
+      Unix.close out;
+      raise e
+  | pid ->
+      let ic = Unix.in_channel_of_descr out in
+      set_binary_mode_in ic false;
+      let lines =
+        Fun.protect ~finally:(fun () -> close_in ic) (fun () -> read_lines ic)
+      in
+      let _, status = Unix.waitpid [] pid in
+      (lines, status)
+
 let chrome_version chrome =
-  let read_lines ic =
-    let rec loop acc =
-      match input_line ic with
-      | line -> loop (line :: acc)
-      | exception End_of_file -> List.rev acc
-    in
-    loop []
+  (* A binary that cannot be started prints no banner. *)
+  let lines =
+    match run chrome [ "--version" ] with
+    | exception Unix.Unix_error _ -> []
+    | lines, _ -> lines
   in
-  let ic =
-    Unix.open_process_in
-      (String.concat " " [ Filename.quote chrome; "--version"; "2>/dev/null" ])
-  in
-  let lines = read_lines ic in
-  ignore (Unix.close_process_in ic);
   let leading_int s =
     let n = String.length s in
     let rec upto i =
