@@ -11,7 +11,7 @@ type t = {
   comments : comment list;
   rules : rule list;
   trailing_loc : Loc.t;
-  original_offsets : int array option;
+  origin : Reader.origin;
   line_starts : int array;
 }
 
@@ -49,9 +49,7 @@ let original_offset t offset =
            string_of_int (String.length t.preprocessed_source);
            "]";
          ]);
-  match t.original_offsets with
-  | Option.None -> offset
-  | Option.Some map -> map.(offset)
+  Reader.original_offset t.origin offset
 
 let original_loc t ({ Loc.start_pos; end_pos } as loc) =
   check_loc t loc;
@@ -84,55 +82,6 @@ let span t ({ Loc.start_pos; end_pos } as loc) =
   check_loc t loc;
   { start = position t start_pos; end_ = position t end_pos }
 
-let has_bom input =
-  String.length input >= 3
-  && input.[0] = '\xEF'
-  && input.[1] = '\xBB'
-  && input.[2] = '\xBF'
-
-(* Boundary map from the CSS-preprocessed buffer back to caller bytes. The two
-   interior byte boundaries of a U+FFFD replacement map to the original NUL's
-   start; lexer/component locations only occur at code-point boundaries, where
-   the map is exact. *)
-let build_original_offsets original preprocessed =
-  if String.equal original preprocessed then Option.None
-  else
-    let original_length = String.length original in
-    let preprocessed_length = String.length preprocessed in
-    let map = Array.make (preprocessed_length + 1) 0 in
-    let original_pos = ref (if has_bom original then 3 else 0) in
-    let preprocessed_pos = ref 0 in
-    map.(0) <- !original_pos;
-    let emit_byte original_end =
-      incr preprocessed_pos;
-      if !preprocessed_pos > preprocessed_length then
-        invalid_arg "Css.Source: preprocessing map exceeds parsed source";
-      map.(!preprocessed_pos) <- original_end
-    in
-    while !original_pos < original_length do
-      match original.[!original_pos] with
-      | '\x00' ->
-          let start = !original_pos in
-          incr original_pos;
-          emit_byte start;
-          emit_byte start;
-          emit_byte !original_pos
-      | '\r' ->
-          incr original_pos;
-          if !original_pos < original_length && original.[!original_pos] = '\n'
-          then incr original_pos;
-          emit_byte !original_pos
-      | '\x0C' ->
-          incr original_pos;
-          emit_byte !original_pos
-      | _ ->
-          incr original_pos;
-          emit_byte !original_pos
-    done;
-    if !preprocessed_pos <> preprocessed_length then
-      invalid_arg "Css.Source: preprocessing map disagrees with parsed source";
-    Option.Some map
-
 let line_starts source =
   let starts = ref [ 0 ] in
   String.iteri
@@ -140,7 +89,7 @@ let line_starts source =
     source;
   Array.of_list (List.rev !starts)
 
-let v ~original ~preprocessed ~comments syntax_rules =
+let v ~original ~preprocessed ~origin ~comments syntax_rules =
   let previous_end = ref 0 in
   let rules =
     List.map
@@ -165,6 +114,6 @@ let v ~original ~preprocessed ~comments syntax_rules =
         comments;
     rules;
     trailing_loc;
-    original_offsets = build_original_offsets original preprocessed;
+    origin;
     line_starts = line_starts preprocessed;
   }
