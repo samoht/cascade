@@ -12,6 +12,9 @@
   common
   custom_property_name
   declaration_intf
+  declaration_core
+  declaration_value
+  declaration_reader
   factor
   flatten
   inline
