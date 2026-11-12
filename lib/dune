@@ -120,6 +120,9 @@
   prop_box
   prop_font
   prop_text
+  prop_text_layout
+  prop_text_inline
+  prop_text_decor
   prop_animation
   prop_list
   prop_content)
