@@ -37,6 +37,10 @@
   rule_index
   rule_order
   selector_intf
+  selector_make
+  selector_pseudo
+  selector_reader
+  selector_printer
   shorthand
   shorthand_border
   shorthand_box
