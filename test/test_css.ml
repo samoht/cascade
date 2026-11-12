@@ -580,12 +580,7 @@ let var_digit_after_dashes () =
 
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
 let roundtrip () =
-  let read_file path =
-    let ic = open_in path in
-    Fun.protect
-      ~finally:(fun () -> close_in ic)
-      (fun () -> really_input_string ic (in_channel_length ic))
-  in
+  let read_file path = In_channel.with_open_bin path In_channel.input_all in
   let original_css =
     let candidates =
       [ "examples/empty_tailwind.css"; "test/examples/empty_tailwind.css" ]

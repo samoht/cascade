@@ -71,11 +71,7 @@ let test_cache_reuses_identical_rule_run () =
 let read_example name =
   let candidates = [ "examples/" ^ name; "test/examples/" ^ name ] in
   match List.find_opt Sys.file_exists candidates with
-  | Some path ->
-      let ic = open_in path in
-      Fun.protect
-        ~finally:(fun () -> close_in ic)
-        (fun () -> really_input_string ic (in_channel_length ic))
+  | Some path -> In_channel.with_open_bin path In_channel.input_all
   | None -> Alcotest.failf "fixture %s not found (tried examples/)" name
 
 (* Factoring must not depend on unrelated content: two sheets that differ only
