@@ -40,12 +40,16 @@ let supports_path_and_inner stmt =
          sec. 7.4 allows a token stream simplification, so [(colo\r:x)] and
          [(color:x)] ask the same question and only the printer keeps them
          apart. *)
-      Some ("@supports " ^ Css.Supports.to_string ~verbatim:false cond, inner)
+      Some
+        ( String.concat ""
+            [ "@supports "; Css.Supports.to_string ~verbatim:false cond ],
+          inner )
   | None -> None
 
 let media_path_and_inner stmt =
   match Css.as_media stmt with
-  | Some (cond, inner) -> Some ("@media " ^ Css.Media.to_string cond, inner)
+  | Some (cond, inner) ->
+      Some (String.concat "" [ "@media "; Css.Media.to_string cond ], inner)
   | None -> None
 
 let layer_path_and_inner stmt =
@@ -54,17 +58,19 @@ let layer_path_and_inner stmt =
       let name =
         Option.fold ~none:"" ~some:Css.Stylesheet.string_of_layer_name name_opt
       in
-      Some ("@layer " ^ name, inner)
+      Some (String.concat "" [ "@layer "; name ], inner)
   | None -> None
 
 let container_path_and_inner stmt =
   match Css.as_container stmt with
   | Some (name_opt, cond, inner) ->
-      let prefix = match name_opt with Some n -> n ^ " " | None -> "" in
+      let name, sep =
+        match name_opt with Some n -> (n, " ") | None -> ("", "")
+      in
       let cond_str =
         match cond with Some c -> Css.Container.to_string c | None -> ""
       in
-      Some ("@container " ^ prefix ^ cond_str, inner)
+      Some (String.concat "" [ "@container "; name; sep; cond_str ], inner)
   | None -> None
 
 let first_some thunks stmt =

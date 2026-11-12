@@ -304,33 +304,37 @@ let surround ~left ~right pp ctx a =
   pp ctx a;
   right ctx ()
 
-(* Number formatting to be implemented according to the plan *)
+(* The digit at [i] of [s] left-padded with [pad] zeros. *)
+let padded s pad i = if i < pad then '0' else s.[i - pad]
+
+let rec trim_trailing_zeros s pad ~point i =
+  if i > point && padded s pad (i - 1) = '0' then
+    trim_trailing_zeros s pad ~point (i - 1)
+  else i
+
+let add_digits b s pad lo hi =
+  for i = lo to hi - 1 do
+    Buffer.add_char b (padded s pad i)
+  done
+
+(* [s] is the digit string of a magnitude scaled by [10^max_decimals]. Every
+   non-integral number printed goes through here, so the digits are read in
+   place, zero-padded on the left to [max_decimals], and written once. *)
 let format_decimal ?(drop_leading_zero = false) s max_decimals is_neg =
-  let len = String.length s in
-  let s =
-    if len < max_decimals then String.make (max_decimals - len) '0' ^ s else s
-  in
-  let len = String.length s in
-  let point_pos = len - max_decimals in
-  let int_part = if point_pos <= 0 then "0" else String.sub s 0 point_pos in
-  let frac_part =
-    if point_pos >= len then "" else String.sub s point_pos (len - point_pos)
-  in
-
-  (* Trim trailing zeros from fractional part *)
-  let rec trim_zeros s =
-    if String.ends_with ~suffix:"0" s then
-      trim_zeros (String.sub s 0 (String.length s - 1))
-    else s
-  in
-  let frac_part = trim_zeros frac_part in
-
-  let final_str =
-    if frac_part = "" then int_part
-    else if drop_leading_zero && int_part = "0" then "." ^ frac_part
-    else int_part ^ "." ^ frac_part
-  in
-  if is_neg then "-" ^ final_str else final_str
+  let pad = max 0 (max_decimals - String.length s) in
+  let len = String.length s + pad in
+  let point = len - max_decimals in
+  let frac_end = trim_trailing_zeros s pad ~point len in
+  let has_frac = frac_end > point in
+  let int_is_zero = point = 0 || (point = 1 && padded s pad 0 = '0') in
+  let b = Buffer.create (len + 3) in
+  if is_neg then Buffer.add_char b '-';
+  if not (has_frac && drop_leading_zero && int_is_zero) then
+    if point = 0 then Buffer.add_char b '0' else add_digits b s pad 0 point;
+  if has_frac then (
+    Buffer.add_char b '.';
+    add_digits b s pad point frac_end);
+  Buffer.contents b
 
 let trim_decimal_suffix s =
   if String.ends_with ~suffix:".0" s then String.sub s 0 (String.length s - 2)
@@ -452,12 +456,13 @@ let hex ctx i =
     | 15 -> 'F'
     | n -> char_of_int (n + int_of_char '0')
   in
-  let rec to_hex n =
-    if n = 0 then "0"
-    else if n < 16 then String.make 1 (hex_digit n)
-    else to_hex (n / 16) ^ to_hex (n mod 16)
+  let rec go n =
+    if n < 16 then char ctx (hex_digit n)
+    else (
+      go (n / 16);
+      go (n mod 16))
   in
-  string ctx (to_hex i)
+  go i
 
 let unit ctx f suffix =
   if Float.is_nan f then nan_value ctx suffix
