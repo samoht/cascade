@@ -51,6 +51,15 @@
   shorthand_timing
   size
   stylesheet_intf
+  stylesheet_cascade
+  stylesheet_equal
+  stylesheet_walk
+  stylesheet_pp
+  stylesheet_at_rule
+  stylesheet_descriptor
+  stylesheet_read
+  stylesheet_source
+  stylesheet_partial
   summary
   values_intf
   values_color_name
