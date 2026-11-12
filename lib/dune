@@ -17,6 +17,17 @@
   inline
   merge
   properties_intf
+  properties_layout_intf
+  properties_text_intf
+  properties_border_intf
+  properties_font_intf
+  properties_animation_intf
+  properties_background_intf
+  properties_ui_intf
+  properties_content_intf
+  properties_scroll_intf
+  properties_svg_intf
+  properties_other_intf
   rule
   rule_index
   rule_order

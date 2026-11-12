@@ -95,6 +95,30 @@ module Fs = struct
 
   let list_dir path =
     try Array.to_list (Sys.readdir path) with Sys_error _ -> []
+
+  (* [part_of ~intf f] is whether the interface file [intf] includes [f] as one
+     of its parts: [properties_intf.ml] includes
+     [properties_<family>_intf.ml]. *)
+  let part_of ~intf f =
+    match Filename.chop_suffix_opt ~suffix:"_intf.ml" intf with
+    | None -> false
+    | Some base ->
+        (not (String.equal f intf))
+        && String.starts_with ~prefix:(String.concat "" [ base; "_" ]) f
+        && Filename.check_suffix f "_intf.ml"
+
+  (* An interface file split into parts is read as the file and all its
+     parts. *)
+  let read_intf_lines path =
+    let dir = Filename.dirname path in
+    let intf = Filename.basename path in
+    let parts =
+      list_dir dir
+      |> List.filter (part_of ~intf)
+      |> List.sort String.compare
+      |> List.map (Filename.concat dir)
+    in
+    List.concat_map read_lines (path :: parts)
 end
 
 let ( // ) a b = if a = "" then b else a ^ Filename.dir_sep ^ b
@@ -133,7 +157,7 @@ let first_regex_group regexps line =
     regexps
 
 let extract_types path : string list =
-  let lines = Fs.read_lines path in
+  let lines = Fs.read_intf_lines path in
   let type_patterns = [ type_blank_re; type_nonrec_re; type_re ] in
   let rec loop acc = function
     | [] -> List.rev acc
@@ -151,7 +175,7 @@ let extract_types path : string list =
 
 (* Extract types that contain Var constructors from interface files *)
 let extract_var_types path : string list =
-  let lines = Fs.read_lines path in
+  let lines = Fs.read_intf_lines path in
   let var_type_re =
     Re.Perl.compile_pat "\\|\\s+Var\\s+of\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+var"
   in
@@ -514,9 +538,15 @@ let stats =
 (* ANSI color codes for better output *)
 let () =
   let intf_files =
-    Fs.list_dir lib_dir
-    |> List.filter (fun f -> Filename.check_suffix f "_intf.ml")
-    |> List.sort compare
+    let all =
+      Fs.list_dir lib_dir
+      |> List.filter (fun f -> Filename.check_suffix f "_intf.ml")
+    in
+    (* A part is checked with the interface file that includes it. *)
+    List.filter
+      (fun f -> not (List.exists (fun intf -> Fs.part_of ~intf f) all))
+      all
+    |> List.sort String.compare
   in
   if intf_files = [] then (
     print_string
