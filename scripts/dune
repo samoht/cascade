@@ -15,6 +15,7 @@
  (alias runtest)
  (deps
   (:properties ../lib/properties.ml)
+  (:properties_identity ../lib/properties_identity.ml)
   (:properties_intf ../lib/properties_intf.ml)
   (:script check_properties.exe))
  (action
@@ -28,7 +29,9 @@
  (deps
   (glob_files ../lib/*_intf.ml)
   (glob_files ../lib/*.mli)
+  (glob_files ../lib/variables*.ml)
   (glob_files ../test/test_*.ml)
+  (glob_files_rec ../test/helpers/*_helpers.ml)
   (:script check_api_consistency.exe))
  (action
   (run %{script})))
@@ -39,11 +42,16 @@
 ;; DROP_CANDIDATE (vendor prefix + modern is typed; add to vendor pair list)
 ;; or TYPE_ME (no typed handler yet).
 
-;; lib/baseline.ml is generated from the web-features Baseline dataset. It
-;; needs the network, curl and jq, so no rule runs it; regenerate it by hand
-;; when browsers ship new features:
+;; lib/baseline.ml is built from lib/baseline.tsv by gen_baseline_ml. The data
+;; comes from the web-features Baseline dataset; fetching it needs the network,
+;; curl and jq, so no rule runs it. Refresh it by hand when browsers ship new
+;; features:
 ;;
-;;   scripts/gen_baseline.sh && dune fmt
+;;   scripts/gen_baseline.sh
+
+(executable
+ (name gen_baseline_ml)
+ (modules gen_baseline_ml))
 
 ;; Mutation testing. Rewrites one token of one library source in a separate
 ;; checkout, rebuilds it and asks whether the suite noticed. Opt-in: a campaign

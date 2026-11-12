@@ -12,21 +12,97 @@
   common
   custom_property_name
   declaration_intf
+  declaration_core
+  declaration_value
+  declaration_reader
   factor
   flatten
   inline
+  inline_scope
+  inline_subst
+  inline_dead
+  inline_layer
+  inline_import
   merge
   properties_intf
+  properties_layout_intf
+  properties_text_intf
+  properties_border_intf
+  properties_font_intf
+  properties_animation_intf
+  properties_background_intf
+  properties_ui_intf
+  properties_content_intf
+  properties_scroll_intf
+  properties_svg_intf
+  properties_other_intf
+  properties_meta
+  properties_identity
+  properties_custom
+  properties_normalize
+  properties_printer
   rule
   rule_index
   rule_order
   selector_intf
+  selector_make
+  selector_pseudo
+  selector_reader
+  selector_printer
   shorthand
+  shorthand_border
+  shorthand_box
+  shorthand_common
+  shorthand_coverage
+  shorthand_dedup
+  shorthand_held
+  shorthand_layer
+  shorthand_layout
+  shorthand_pair
+  shorthand_text
+  shorthand_timing
   size
   stylesheet_intf
+  stylesheet_cascade
+  stylesheet_equal
+  stylesheet_walk
+  stylesheet_pp
+  stylesheet_at_rule
+  stylesheet_descriptor
+  stylesheet_read
+  stylesheet_source
+  stylesheet_partial
+  context_intf
+  context_core
+  context_pp
+  context_residual
+  context_length
+  context_match
+  context_numeric
+  context_css_wide
+  context_paint
+  context_keyword
   summary
   values_intf
+  values_color_name
+  values_var
+  values_calc
+  values_length
+  values_color_fold
+  values_numeric
+  values_color_pp
+  values_read_calc
+  values_read_numeric
+  values_read_color
+  values_color_normalize
   variables_intf
+  variables_syntax
+  variables_value
+  variables_text
+  variables_visual
+  variables_motion
+  variables_layout
+  variables_property
   rule_graph
   rule_scheduler
   pool
@@ -48,16 +124,45 @@
   prop_flex
   prop_grid
   prop_image
+  prop_image_position
+  prop_image_gradient
+  prop_image_value
   prop_background
+  prop_background_shadow
+  prop_background_border
+  prop_background_layer
+  prop_background_border_image
   prop_mask
   prop_transform
   prop_ui
   prop_layout
   prop_box
   prop_font
+  prop_font_variant
+  prop_font_family
+  prop_font_face
+  prop_font_shorthand
   prop_text
-  prop_animation)
+  prop_text_layout
+  prop_text_inline
+  prop_text_decor
+  prop_animation
+  prop_animation_timeline
+  prop_animation_transition
+  prop_animation_shorthand
+  prop_list
+  prop_content)
  (libraries uri psq logs mtime.clock))
+
+(rule
+ (target baseline.ml)
+ (deps
+  (:gen ../scripts/gen_baseline_ml.exe)
+  (:data baseline.tsv))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{gen} %{data}))))
 
 (mdx
  (files

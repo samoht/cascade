@@ -13,4 +13,8 @@
   re
   cascade_diff
   css_test_helpers
+  stylesheet_helpers
+  declaration_helpers
+  optimize_helpers
+  properties_helpers
   cascade_spec_inventory))
