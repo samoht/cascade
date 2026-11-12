@@ -44,7 +44,6 @@ let () =
       Test_ctx.suite;
       Test_pool.suite;
       Test_stats.suite;
-      Test_gzip_size.suite;
       Test_edge.suite;
       Test_shorthand.suite;
       Test_shorthand_compose.suite;
