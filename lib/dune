@@ -116,6 +116,10 @@
   prop_image_gradient
   prop_image_value
   prop_background
+  prop_background_shadow
+  prop_background_border
+  prop_background_layer
+  prop_background_border_image
   prop_mask
   prop_transform
   prop_ui
