@@ -18,6 +18,11 @@
   factor
   flatten
   inline
+  inline_scope
+  inline_subst
+  inline_dead
+  inline_layer
+  inline_import
   merge
   properties_intf
   properties_layout_intf
