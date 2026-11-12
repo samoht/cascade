@@ -66,6 +66,13 @@ let () =
       Test_values.suite;
       Test_color_space.suite;
       Test_declaration.suite;
+      Test_declaration_families.suite;
+      Test_declaration_shorthand.suite;
+      Test_declaration_keywords.suite;
+      Test_declaration_validity.suite;
+      Test_declaration_spec.suite;
+      Test_declaration_grammar.suite;
+      Test_declaration_identity.suite;
       Test_properties.suite;
       Test_stylesheet.suite;
       Test_stylesheet_strict.suite;
