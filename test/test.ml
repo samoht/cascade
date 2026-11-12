@@ -17,6 +17,10 @@ let () =
   Alcotest.run "css"
     [
       Test_css.suite;
+      Test_css_traversal.suite;
+      Test_css_values.suite;
+      Test_css_parsing.suite;
+      Test_css_builders.suite;
       Test_baseline.suite;
       Test_support.suite;
       Test_webkit_fallback.suite;
