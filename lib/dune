@@ -26,6 +26,17 @@
   stylesheet_intf
   summary
   values_intf
+  values_color_name
+  values_var
+  values_calc
+  values_length
+  values_color_fold
+  values_numeric
+  values_color_pp
+  values_read_calc
+  values_read_numeric
+  values_read_color
+  values_color_normalize
   variables_intf
   rule_graph
   rule_scheduler
