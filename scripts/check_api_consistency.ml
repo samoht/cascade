@@ -66,6 +66,11 @@ let ignored_types =
     (* Stylesheet analysis records/enums, not standalone CSS value parsers. *)
   ]
 
+(* Interface files whose types are not CSS syntax, so no read_*/pp_* pair is
+   owed: context_intf.ml holds the evaluation context, its document, query and
+   loader records, shared by the Context parts. *)
+let ignored_intf_files = [ "context_intf.ml" ]
+
 (* Types where neg (negative) tests are not applicable because the parser
    accepts any identifier as valid input (e.g., grid line names, attribute
    names). *)
@@ -119,6 +124,42 @@ module Fs = struct
       |> List.map (Filename.concat dir)
     in
     List.concat_map read_lines (path :: parts)
+
+  (* [with_parts path] is [path] followed by the files a split moved its body
+     into: [test_values.ml] is read with [test_values_<group>.ml], and
+     [variables.ml] with [variables_<family>.ml]. *)
+  let with_parts path =
+    let dir = Filename.dirname path in
+    let prefix = String.concat "" [ Filename.remove_extension path; "_" ] in
+    let parts =
+      list_dir dir
+      |> List.map (Filename.concat dir)
+      |> List.filter (fun f ->
+          String.starts_with ~prefix f && Filename.check_suffix f ".ml")
+      |> List.sort String.compare
+    in
+    path :: parts
+
+  let read_with_parts path = List.concat_map read_lines (with_parts path)
+
+  (* [read_test_sources path] reads the test file [test/test_<m>.ml] with its
+     parts and the helper module those parts share, kept as
+     [test/helpers/<m>_helpers.ml] or [test/helpers/<m>/<m>_helpers.ml]. *)
+  let read_test_sources path =
+    let helpers =
+      match Filename.chop_suffix_opt ~suffix:".ml" (Filename.basename path) with
+      | Some name when String.starts_with ~prefix:"test_" name ->
+          let m = String.sub name 5 (String.length name - 5) in
+          let dir = Filename.concat (Filename.dirname path) "helpers" in
+          let file = String.concat "" [ m; "_helpers.ml" ] in
+          [
+            Filename.concat dir file;
+            Filename.concat (Filename.concat dir m) file;
+          ]
+          |> List.filter Sys.file_exists
+      | _ -> []
+    in
+    List.concat_map read_lines (with_parts path @ helpers)
 end
 
 let ( // ) a b = if a = "" then b else a ^ Filename.dir_sep ^ b
@@ -277,14 +318,16 @@ let collect_test_line state lines idx line =
         state.name;
       if starts_toplevel_test_item line then flush_collected_test state
 
+let extract_file_test_functions test_file =
+  let lines = Fs.read_lines test_file in
+  let state = collected_test () in
+  List.iteri (fun idx line -> collect_test_line state lines idx line) lines;
+  flush_collected_test state;
+  state.tests
+
 let extract_test_functions test_file =
   if not (Sys.file_exists test_file) then []
-  else
-    let lines = Fs.read_lines test_file in
-    let state = collected_test () in
-    List.iteri (fun idx line -> collect_test_line state lines idx line) lines;
-    flush_collected_test state;
-    state.tests
+  else List.concat_map extract_file_test_functions (Fs.with_parts test_file)
 
 (* Analyze check and neg patterns in test function body. The "neg" call can be
    [neg] (basic helper), [neg_cursor] (cursor-based), or any future
@@ -356,7 +399,7 @@ let invalid_tests tests valid_types expected_test_name =
 
 let file_has_test_helper test_path name : bool =
   let rex = Re.Perl.compile_pat ("[\\s]*let[\\s]+" ^ name ^ "\\b") in
-  List.exists (fun l -> Re.execp rex l) (Fs.read_lines test_path)
+  List.exists (fun l -> Re.execp rex l) (Fs.read_test_sources test_path)
 
 let missing_tests test_file test_names valid_types expected_test_name =
   List.filter
@@ -489,7 +532,7 @@ let file_has_let test_path name : bool =
   (* Check for multiple patterns: 1. Direct let binding: let check_foo = ... 2.
      Inline check_value call: check_value "foo" pp_foo read_foo 3. Local helper
      within test function: let check_foo ... inside test_foo function *)
-  let lines = Fs.read_lines test_path in
+  let lines = Fs.read_test_sources test_path in
 
   (* First check for direct let binding at any indentation level *)
   let rex = Re.Perl.compile_pat ("[\\s]*let[\\s]+" ^ name ^ "\\b") in
@@ -540,7 +583,9 @@ let () =
   let intf_files =
     let all =
       Fs.list_dir lib_dir
-      |> List.filter (fun f -> Filename.check_suffix f "_intf.ml")
+      |> List.filter (fun f ->
+          Filename.check_suffix f "_intf.ml"
+          && not (List.mem f ignored_intf_files))
     in
     (* A part is checked with the interface file that includes it. *)
     List.filter
@@ -818,7 +863,7 @@ let () =
 
     (* Check which cases are handled in vars_of_property *)
     let check_property_case_handled prop_name =
-      let lines = Fs.read_lines variables_path in
+      let lines = Fs.read_with_parts variables_path in
       let pattern = "\\|[\\s]+" ^ prop_name ^ "[\\s]*," in
       let rex = Re.Perl.compile_pat pattern in
       List.exists (fun l -> Re.execp rex l) lines

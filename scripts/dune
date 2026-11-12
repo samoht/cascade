@@ -29,7 +29,9 @@
  (deps
   (glob_files ../lib/*_intf.ml)
   (glob_files ../lib/*.mli)
+  (glob_files ../lib/variables*.ml)
   (glob_files ../test/test_*.ml)
+  (glob_files_rec ../test/helpers/*_helpers.ml)
   (:script check_api_consistency.exe))
  (action
   (run %{script})))
