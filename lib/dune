@@ -91,6 +91,13 @@
   values_read_color
   values_color_normalize
   variables_intf
+  variables_syntax
+  variables_value
+  variables_text
+  variables_visual
+  variables_motion
+  variables_layout
+  variables_property
   rule_graph
   rule_scheduler
   pool
