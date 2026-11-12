@@ -15,6 +15,7 @@
  (alias runtest)
  (deps
   (:properties ../lib/properties.ml)
+  (:properties_identity ../lib/properties_identity.ml)
   (:properties_intf ../lib/properties_intf.ml)
   (:script check_properties.exe))
  (action

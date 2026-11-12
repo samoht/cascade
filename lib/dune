@@ -28,6 +28,11 @@
   properties_scroll_intf
   properties_svg_intf
   properties_other_intf
+  properties_meta
+  properties_identity
+  properties_custom
+  properties_normalize
+  properties_printer
   rule
   rule_index
   rule_order
@@ -89,7 +94,9 @@
   prop_box
   prop_font
   prop_text
-  prop_animation)
+  prop_animation
+  prop_list
+  prop_content)
  (libraries uri psq logs mtime.clock))
 
 (rule
