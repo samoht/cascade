@@ -59,9 +59,7 @@ offsets, which the text comparison does not care about.
 `--json` still counts the rule each side lost. The counts say what the parse
 dropped; they no longer withhold the verdict on their own.
 
-  $ cascade diff --json --diff=canonical same-a.css same-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_rules"])'
+  $ cascade diff --json --diff=canonical same-a.css same-b.css | helpers/jsonq.exe '.identical .unreadable_rules'
   True {'expected': 1, 'actual': 1}
 
 A rule only one side dropped leaves the other side holding text the
@@ -222,13 +220,9 @@ withholds the verdict here.
 `--json` carries the rule count beside the declaration count, so a harness
 asserts on either without reading the report.
 
-  $ cascade diff --json --diff=canonical mix-a.css mix-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"], d["unreadable_rules"])'
+  $ cascade diff --json --diff=canonical mix-a.css mix-b.css | helpers/jsonq.exe '.identical .unreadable_declarations .unreadable_rules'
   False {'expected': 1, 'actual': 1} {'expected': 1, 'actual': 1}
-  $ cascade diff --json --diff=canonical at-a.css at-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"], d["unreadable_rules"])'
+  $ cascade diff --json --diff=canonical at-a.css at-b.css | helpers/jsonq.exe '.identical .unreadable_declarations .unreadable_rules'
   True {'expected': 0, 'actual': 0} {'expected': 0, 'actual': 0}
 
 The document and the status agree.

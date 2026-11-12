@@ -72,9 +72,7 @@ the comparison could read both sides.
 `--json` still counts the declaration each side lost, and reports the pair
 identical.
 
-  $ cascade diff --json --diff=canonical text-a.css text-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"])'
+  $ cascade diff --json --diff=canonical text-a.css text-b.css | helpers/jsonq.exe '.identical .unreadable_declarations'
   True {'expected': 1, 'actual': 1}
 
 Two refused declarations that name different properties are two
@@ -181,17 +179,11 @@ and its block, both sides hold the same text, and the verdict is proven.
 either side" without reading the report, and reads `identical` for the
 verdict.
 
-  $ cascade diff --json --diff=canonical same-a.css same-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"])'
+  $ cascade diff --json --diff=canonical same-a.css same-b.css | helpers/jsonq.exe '.identical .unreadable_declarations'
   True {'expected': 1, 'actual': 1}
-  $ cascade diff --json --diff=canonical one-a.css one-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"])'
+  $ cascade diff --json --diff=canonical one-a.css one-b.css | helpers/jsonq.exe '.identical .unreadable_declarations'
   True {'expected': 0, 'actual': 1}
-  $ cascade diff --json --diff=canonical plain-a.css plain-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"])'
+  $ cascade diff --json --diff=canonical plain-a.css plain-b.css | helpers/jsonq.exe '.identical .unreadable_declarations'
   True {'expected': 0, 'actual': 0}
 
 The document and the status agree: `--json` reports the same verdicts.

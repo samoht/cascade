@@ -114,9 +114,9 @@ the value each side gives it, and the status is still 1.
 
 Both of those are well-formed JSON.
 
-  $ cascade diff --json a.css b.css | python3 -m json.tool > /dev/null; echo $?
+  $ cascade diff --json a.css b.css | helpers/jsonq.exe; echo $?
   0
-  $ cascade diff --json a.css d.css | python3 -m json.tool > /dev/null; echo $?
+  $ cascade diff --json a.css d.css | helpers/jsonq.exe; echo $?
   0
 
 A difference inside a container is one entry that nests its own changes,
@@ -128,16 +128,13 @@ rather than a rule change hoisted to the top level.
   $ cat > m2.css <<EOF
   > @media (min-width: 40rem) { .x { color: blue; top: 0 } }
   > EOF
-  $ cascade diff --json m1.css m2.css | python3 -m json.tool > /dev/null; echo $?
+  $ cascade diff --json m1.css m2.css | helpers/jsonq.exe; echo $?
   0
-  $ cascade diff --json m1.css m2.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["stats"]["container_changes"], d["identical"])
-  > c = d["changes"][0]
-  > print(c["kind"], c["change"], c["container_type"], c["condition"])
-  > print(c["rules"], c["actual_rules"])
-  > n = c["changes"][0]
-  > print(n["kind"], n["selector"], n["added_properties"], n["property_changes"])'
+  $ cascade diff --json m1.css m2.css | helpers/jsonq.exe \
+  >   '.stats.container_changes .identical' \
+  >   '.changes[0].kind .changes[0].change .changes[0].container_type .changes[0].condition' \
+  >   '.changes[0].rules .changes[0].actual_rules' \
+  >   '.changes[0].changes[0].kind .changes[0].changes[0].selector .changes[0].changes[0].added_properties .changes[0].changes[0].property_changes'
   1 False
   container modified media (min-width: 40rem)
   ['.x{color:red}'] ['.x{color:blue;top:0}']
@@ -153,13 +150,10 @@ a complaint. A warning both files raise names both sides once.
   $ cat > w2.css <<EOF
   > .x { color: red; float: center; margin: 1px }
   > EOF
-  $ cascade diff --json w1.css w2.css | python3 -m json.tool > /dev/null; echo $?
+  $ cascade diff --json w1.css w2.css | helpers/jsonq.exe; echo $?
   0
-  $ cascade diff --json w1.css w2.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["errors"])
-  > for w in d["warnings"]:
-  >     print(w["side"], "|", w["message"].splitlines()[0])'
+  $ cascade diff --json w1.css w2.css | helpers/jsonq.exe .errors \
+  >   --each .warnings '.side | .message:first-line'
   []
   both | <string>: read_declaration/float: bad value for float: unknown float-side: center at [24-30] (in component)
 
@@ -171,23 +165,18 @@ A warning only one file raises names that side.
   $ cat > p2.css <<EOF
   > .x { position: nope; margin: 1px }
   > EOF
-  $ cascade diff --json p1.css p2.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > for w in d["warnings"]:
-  >     print(w["side"], "|", w["message"].splitlines()[0])'
+  $ cascade diff --json p1.css p2.css | helpers/jsonq.exe \
+  >   --each .warnings '.side | .message:first-line'
   expected | <string>: read_declaration/clear: bad value for clear: unknown clear: nope at [12-16] (in component)
   actual | <string>: read_declaration/position: bad value for position: unknown position: nope at [15-19] (in component)
 
 The character-diff fallback carries the position and the two lines instead
 of a change list.
 
-  $ cascade diff --json --diff=string a.css d.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["mode"], d["changes"])
-  > s = d["string_diff"]
-  > print(s["position"], s["line_expected"], s["column_expected"])
-  > print(s["diff_lines"]["expected"])
-  > print(s["diff_lines"]["actual"])'
+  $ cascade diff --json --diff=string a.css d.css | helpers/jsonq.exe \
+  >   '.mode .changes' \
+  >   '.string_diff.position .string_diff.line_expected .string_diff.column_expected' \
+  >   .string_diff.diff_lines.expected .string_diff.diff_lines.actual
   string []
   12 0 12
   .x { color: red }
@@ -205,7 +194,5 @@ passing either is accepted and leaves the document alone.
 
 A side read from standard input is named the way the report names it.
 
-  $ printf '.x { color: blue }\n' | cascade diff --json - a.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["expected"], d["actual"])'
+  $ printf '.x { color: blue }\n' | cascade diff --json - a.css | helpers/jsonq.exe '.expected .actual'
   <stdin> a.css

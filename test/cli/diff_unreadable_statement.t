@@ -76,13 +76,9 @@ at-rule and its prelude, so it costs the verdict nothing.
 `--json` counts the dropped `@charset` among the rules, and the status
 agrees with the document.
 
-  $ cascade diff --json --diff=canonical charset-a.css charset-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"], d["unreadable_rules"])'
+  $ cascade diff --json --diff=canonical charset-a.css charset-b.css | helpers/jsonq.exe '.identical .unreadable_declarations .unreadable_rules'
   False {'expected': 0, 'actual': 0} {'expected': 1, 'actual': 1}
-  $ cascade diff --json --diff=canonical tw-a.css tw-b.css | python3 -c 'import json,sys
-  > d = json.load(sys.stdin)
-  > print(d["identical"], d["unreadable_declarations"], d["unreadable_rules"])'
+  $ cascade diff --json --diff=canonical tw-a.css tw-b.css | helpers/jsonq.exe '.identical .unreadable_declarations .unreadable_rules'
   True {'expected': 0, 'actual': 0} {'expected': 0, 'actual': 0}
   $ cascade diff --json --diff=canonical charset-a.css charset-b.css > /dev/null
   [2]

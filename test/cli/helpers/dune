@@ -1,0 +1,6 @@
+; jsonq checks and reads the JSON `cascade diff --json` writes, in place of a
+; python3 the test machine may not have.
+
+(executable
+ (name jsonq)
+ (libraries jsont jsont.bytesrw))
