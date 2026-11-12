@@ -6,6 +6,8 @@
   come out negative under `--minify`, and `z-index:calc(1e30)` as `-1` (#1280).
 - `@media (aspect-ratio:1.5/1)` is printed as written instead of being rounded
   down to `1/1` (#1280).
+- Very large numbers print the same on Windows as elsewhere: `3.40282e38px` no
+  longer comes out as `3.40282e038px` (#1286).
 
 ### Parsing
 
