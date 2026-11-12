@@ -386,7 +386,7 @@ let test_ns () =
   (* Namespaced attributes in regular selectors *)
   check "div[xml|lang]";
   check "span[xlink|href]";
-  check ~expected:"rect[svg|width=\"100\"]" "rect[svg|width=100]";
+  check "rect[svg|width=\"100\"]";
 
   (* Complex namespaced selectors *)
   check ~expected:"svg|g.highlight>svg|rect[fill=red]"

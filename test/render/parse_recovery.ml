@@ -366,6 +366,17 @@ let curated =
     ( "late_namespace",
       ".a { color: green }\n.b { color: red }",
       ".a { color: green }\n@namespace x url(y);\n.b { color: red }" );
+    (* Selectors 4 sec. 6.1: an attribute value is an ident or a string, so a
+       numeric token there is an invalid selector and the rule goes. *)
+    ( "attr_number_value",
+      "[data-x=\"2\"] { color: green }\n.b { color: red }",
+      "[data-x=2] { color: green }\n.b { color: red }" );
+    ( "attr_dimension_value",
+      "[data-x=\"2px\"] { color: green }\n.b { color: red }",
+      "[data-x=2px] { color: green }\n.b { color: red }" );
+    ( "attr_percentage_value",
+      "[data-x=\"50%\"] { color: green }\n.b { color: red }",
+      "[data-x=50%] { color: green }\n.b { color: red }" );
     ( "unbalanced_open_bracket",
       ".a[x=y] { color: green }\n.b { color: red }",
       ".a[x { color: green }\n.b { color: red }" );

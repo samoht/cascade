@@ -635,7 +635,16 @@ let parse_errors_attributes () =
   check_parse_error ".test[]" "expected identifier";
   check_parse_error ".test[[attr]]" "expected identifier";
   check_parse_error ".test[data id=\"value\"]" "trailing tokens";
-  check_parse_error ".test[data-id=value with spaces]" "trailing tokens"
+  check_parse_error ".test[data-id=value with spaces]" "trailing tokens";
+  (* Selectors 4 sec. 6.1 takes an [<ident-token>] or a [<string-token>] as the
+     value, and Chrome drops a rule whose value is a number, a dimension or a
+     percentage instead of reading it as a string. *)
+  check_parse_error "[data-x=2]" "attribute value";
+  check_parse_error "[data-x=1.0]" "attribute value";
+  check_parse_error "[data-x=1e30]" "attribute value";
+  check_parse_error "[data-x=2px]" "attribute value";
+  check_parse_error "[data-x=50%]" "attribute value";
+  check_parse_error "rect[svg|width=100]" "attribute value"
 
 let parse_errors_combinators () =
   check_parse_error ".test >> .child" "expected at least one selector";
@@ -742,13 +751,6 @@ let callstack_accuracy () =
     ".test[[attr]] { color: red; }"
     [ "rule"; "selector"; "list" ]
 
-(* A number past 2^62 prints like every other CSS number: [1e30], never C
-   printf's [1e+30] or mingw's [1e+030]. *)
-let attribute_large_number () =
-  Alcotest.(check string)
-    "attribute value" {|[data-x="1e30"]|}
-    (to_string (of_string "[data-x=1e30]"))
-
 let suite =
   let open Alcotest in
   ( "selector",
@@ -760,7 +762,6 @@ let suite =
       test_case "pseudo class" `Quick pseudo_class_cases;
       test_case "pseudo element" `Quick pseudo_element_cases;
       test_case "attribute" `Quick attribute_cases;
-      test_case "attribute large number" `Quick attribute_large_number;
       (* Combinations *)
       test_case "combinator cases" `Quick combinator_cases;
       test_case "compound" `Quick compound_cases;

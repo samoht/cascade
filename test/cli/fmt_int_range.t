@@ -80,14 +80,18 @@ A container width.
   $ printf '@container (min-width:1e30px){a{color:red}}' | cascade fmt --minify - 2>&1
   @container(width>=1e30px){a{color:red}}
 
-An attribute value written as a number.
+An attribute value written as a number is no value at all: Selectors 4
+sec. 6.1 takes an ident or a string there, and Chrome drops the rule
+rather than read the number as a string. So does cascade, with a warning.
 
-  $ printf '[data-x=1e30]{color:red}' | cascade fmt - 2>&1
-  [data-x="1e30"] {
-    color: red;
+  $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt - 2>/dev/null
+  .b {
+    color: green;
   }
-  $ printf '[data-x=1e30]{color:red}' | cascade fmt --minify - 2>&1
-  [data-x="1e30"]{color:red}
+  $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt --minify - 2>/dev/null
+  .b{color:green}
+  $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt --minify - 2>&1 >/dev/null | grep -c 'attribute value'
+  1
 
 A keyframe timeline range offset.
 
