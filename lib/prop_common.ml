@@ -9,6 +9,14 @@ open Common
 open Values
 open Properties_intf
 
+(* The count a math function at an [<integer [1,inf]>] slot folds to, and so
+   whether a printer may drop the wrapper around a bare leaf. A call that folds
+   past the [int] range has no count: it keeps its wrapper, and CSS Values 4
+   sec. 10.12 clamps it to the range the user agent supports. *)
+let positive_integer_of_calc : _ calc -> int option = function
+  | Num n when Float.is_integer n && n >= 1. -> int_of_float_opt n
+  | _ -> None
+
 let err_invalid_value ?loc ?got t prop_name value =
   Cursor.err ?loc ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
