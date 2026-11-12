@@ -22,6 +22,17 @@
   rule_order
   selector_intf
   shorthand
+  shorthand_border
+  shorthand_box
+  shorthand_common
+  shorthand_coverage
+  shorthand_dedup
+  shorthand_held
+  shorthand_layer
+  shorthand_layout
+  shorthand_pair
+  shorthand_text
+  shorthand_timing
   size
   stylesheet_intf
   summary
