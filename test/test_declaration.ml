@@ -416,14 +416,14 @@ let error_missing_colon () =
 (* [Declaration.of_string] documents one failure mode, so a caller writes one
    handler. Text that is not a declaration reaches it two ways - the reader
    raises, or it answers [None] for a component a declaration cannot start with
-   - and both must leave through the same exception. *)
+   - and both must come back as an [Error]. *)
 let of_string_one_failure_mode () =
   let refused input =
     match of_string input with
-    | d ->
+    | Ok d ->
         Alcotest.failf "%S: expected a parse error, parsed %S" input
           (to_string d)
-    | exception Cursor.Parse_error _ -> ()
+    | Error _ -> ()
   in
   (* The reader reaches the value and rejects it. *)
   refused "color";

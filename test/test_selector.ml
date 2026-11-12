@@ -5,10 +5,13 @@ open Css.Selector
 open Css_test_helpers
 open Selector_helpers
 
-let of_string_empty_raises_parse_error () =
-  match of_string "" with
-  | _ -> Alcotest.fail "empty selector parsed"
-  | exception Error.Parse_error _ -> ()
+let of_string_empty_is_error () =
+  (match of_string "" with
+  | Ok _ -> Alcotest.fail "empty selector parsed"
+  | Error _ -> ());
+  match v "" with
+  | _ -> Alcotest.fail "empty selector built"
+  | exception Invalid_argument _ -> ()
 
 (* Not a roundtrip test *)
 let element_cases () =
@@ -815,8 +818,7 @@ let suite =
       (* Parser/serializer coverage. *)
       test_case "roundtrip" `Quick roundtrip;
       (* Parser/API-policy error coverage. *)
-      test_case "of_string empty raises Parse_error" `Quick
-        of_string_empty_raises_parse_error;
+      test_case "of_string empty is an error" `Quick of_string_empty_is_error;
       test_case "invalid" `Quick invalid;
       test_case "parse errors - attributes" `Quick parse_errors_attributes;
       test_case "parse errors - combinators" `Quick parse_errors_combinators;

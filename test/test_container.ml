@@ -3,8 +3,8 @@ open Cascade
 let rejects_invalid input =
   let open Css.Container in
   match of_string input with
-  | exception Error.Parse_error _ -> ()
-  | query ->
+  | Error _ -> ()
+  | Ok query ->
       Alcotest.failf "invalid container query parsed: %s -> %s" input
         (to_string query)
 

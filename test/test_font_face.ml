@@ -38,48 +38,32 @@ let test_src () =
        [ Url { url = "font.woff2"; format = None; tech = Some "variations" } ])
 
 let expect_src_rejected input =
-  try
-    let src = src_of_string input in
-    Alcotest.failf "invalid font-face src parsed: %S -> %S" input
-      (string_of_src src)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match src_of_string input with
+  | Error _ -> ()
+  | Ok src ->
+      Alcotest.failf "invalid font-face src parsed: %S -> %S" input
+        (string_of_src src)
 
 let expect_metric_rejected input =
-  try
-    let metric = metric_override_of_string input in
-    Alcotest.failf "invalid font metric parsed: %S -> %S" input
-      (string_of_metric_override metric)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match metric_override_of_string input with
+  | Error _ -> ()
+  | Ok metric ->
+      Alcotest.failf "invalid font metric parsed: %S -> %S" input
+        (string_of_metric_override metric)
 
 let expect_size_adjust_rejected input =
-  try
-    let size_adjust = size_adjust_of_string input in
-    Alcotest.failf "invalid font size-adjust parsed: %S -> %s" input
-      (string_of_size_adjust size_adjust)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match size_adjust_of_string input with
+  | Error _ -> ()
+  | Ok size_adjust ->
+      Alcotest.failf "invalid font size-adjust parsed: %S -> %s" input
+        (string_of_size_adjust size_adjust)
 
 let accepted_invalid_cases label parse render inputs =
   List.filter_map
     (fun input ->
-      try
-        Fmt.kstr
-          (fun s -> Some s)
-          "%s: %S -> %S" label input
-          (parse input |> render)
-      with
-      | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _
-      | Failure _
-      ->
-        None)
+      match parse input with
+      | Error _ -> None
+      | Ok v -> Fmt.kstr Option.some "%s: %S -> %S" label input (render v))
     inputs
 
 let expect_rejected_cases label parse render inputs =

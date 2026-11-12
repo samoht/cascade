@@ -117,9 +117,18 @@ let spec_media_error_recovery_vectors () =
   let check_recovers name input =
     Alcotest.(check string) name "not all" (to_string (of_string input))
   in
+  (* Without branch recovery the same query is an [Error], not an exception. *)
+  let check_strict_refuses name input =
+    match of_string_strict input with
+    | Ok query ->
+        Alcotest.failf "%s: strict parse accepted %S as %S" name input
+          (to_string query)
+    | Error _ -> ()
+  in
   List.iter
     (fun (row : Cascade_spec_inventory.Query_grammar.invalid_row) ->
-      check_recovers row.branch row.input)
+      check_recovers row.branch row.input;
+      check_strict_refuses row.branch row.input)
     Cascade_spec_inventory.Query_grammar.media_negative;
   List.iter
     (fun (row : Cascade_spec_inventory.Query_grammar.row) ->

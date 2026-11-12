@@ -452,8 +452,8 @@ let spec_typed_custom_property () =
   (* CSS Variables 1 sec. 2 names a custom property with a <dashed-ident>, the
      same check Declaration.custom_property makes. *)
   Alcotest.check_raises "undashed name is no custom property"
-    (Failure "custom_property: w: not a custom-property name") (fun () ->
-      ignore (typed_custom_property "w" Length (Px 1.)))
+    (Invalid_argument "custom_property: w: not a custom-property name")
+    (fun () -> ignore (typed_custom_property "w" Length (Px 1.)))
 
 let spec_typed_custom_property_registration () =
   (* A registration read back at its syntax assigns without a printer per arm,

@@ -26,7 +26,7 @@ let basic () =
   Alcotest.(check bool) "done after skip" true (is_done r);
   Alcotest.(check bool)
     "skipping past the end raises" true
-    (match skip r with exception Parse_error _ -> true | () -> false)
+    (match skip r with exception Invalid_argument _ -> true | () -> false)
 
 let peeks () =
   let r = of_string "abc" in

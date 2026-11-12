@@ -156,10 +156,9 @@ let spec_supports_negative_vectors () =
       Alcotest.(check string) input input (to_string (of_string input)))
     Supports_inventory.general_enclosed_functions;
   let expect_error name input =
-    try
-      ignore (of_string input);
-      Alcotest.failf "%s: expected invalid @supports condition" name
-    with Cursor.Parse_error _ -> ()
+    match of_string input with
+    | Ok _ -> Alcotest.failf "%s: expected invalid @supports condition" name
+    | Error _ -> ()
   in
   List.iteri
     (fun i input ->
@@ -285,7 +284,7 @@ let property_guard () =
   in
   let build name value =
     match property name value with
-    | exception Failure _ -> "<refused>"
+    | exception Invalid_argument _ -> "<refused>"
     | cond -> (
         let text =
           Css.to_string ~minify:true

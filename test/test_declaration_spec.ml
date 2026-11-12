@@ -157,7 +157,7 @@ let custom_property_guard () =
      answer is derived from the round-trip, not from a pinned spelling. *)
   let build name value =
     match custom_property name value with
-    | exception Failure _ -> "<refused>"
+    | exception Invalid_argument _ -> "<refused>"
     | d -> (
         let text = to_string ~minify:true d in
         let back =
