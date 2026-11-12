@@ -3,6 +3,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
@@ -38,8 +40,8 @@ let condition buf i =
   | 0 -> Min_width_rem (Float.of_int (byte_at buf (i + 1)) /. 4.)
   | 1 -> Min_width_px (byte_at buf (i + 1))
   | 2 -> Named (name buf (i + 1), Min_width_rem 24.)
-  | 3 -> Named (name buf (i + 1), of_string (raw buf (i + 2)))
-  | _ -> of_string (raw buf (i + 1))
+  | 3 -> Named (name buf (i + 1), ok (of_string (raw buf (i + 2))))
+  | _ -> ok (of_string (raw buf (i + 1)))
 
 let test_non_empty_string_output buf =
   let s = Css.Container.to_string (condition buf 0) in
@@ -98,7 +100,7 @@ let test_container_context_shape buf =
 
 let test_raw_query_stable buf =
   let raw = raw buf 0 in
-  let query = Css.Container.of_string raw in
+  let query = ok (Css.Container.of_string raw) in
   if Css.Container.to_string query <> raw then
     fail "raw container query serialization changed"
 
@@ -107,7 +109,7 @@ let test_spec_container_vectors buf =
   let row =
     pick Cascade_spec_inventory.Query_grammar.container_positive buf 0
   in
-  let query = of_string row.input in
+  let query = ok (of_string row.input) in
   let expected = row.expected in
   let actual = to_string query in
   if actual <> expected then
@@ -264,7 +266,7 @@ let spelling_pair buf i =
       ("theme(static)", "theme(dynamic)");
     ]
     buf i
-  |> fun (a, b) -> (of_string a, of_string b)
+  |> fun (a, b) -> (ok (of_string a), ok (of_string b))
 
 let test_spelling_pairs_sound buf =
   let a, b = spelling_pair buf 0 in
@@ -278,8 +280,8 @@ let test_spelling_pairs_sound buf =
    sec. 5.4), so these two queries match different containers. If the sweep
    cannot separate them it cannot separate anything. *)
 let test_sweep_catches_wrong_equality _buf =
-  let escaped = Css.Container.of_string {|(inline-size\ \>\=\ 10px)|} in
-  let real = Css.Container.of_string "(inline-size >= 10px)" in
+  let escaped = ok (Css.Container.of_string {|(inline-size\ \>\=\ 10px)|}) in
+  let real = ok (Css.Container.of_string "(inline-size >= 10px)") in
   match disagreement escaped real with
   | Some _ -> ()
   | None ->

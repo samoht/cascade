@@ -928,11 +928,9 @@ let test_inline_keeps_a_page_break_property () =
     Css.inline_vars
       [
         Stylesheet.Rule
-          (Stylesheet.rule
-             ~selector:(Selector.of_string ":root")
+          (Stylesheet.rule ~selector:(Selector.v ":root")
              [ Declaration.custom_property property value ]);
-        Stylesheet.Rule
-          (Stylesheet.rule ~selector:(Selector.of_string ".a") [ decl ]);
+        Stylesheet.Rule (Stylesheet.rule ~selector:(Selector.v ".a") [ decl ]);
       ]
     |> Css.to_string
   in

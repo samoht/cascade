@@ -133,11 +133,13 @@ type t =
   | List of t list
 
 val of_string : string -> t
-(** [of_string s] parses [s] as a media query. *)
+(** [of_string s] parses [s] as a media query list. It does not fail: a query
+    that does not match the grammar reads as [not all], as CSS Media Queries 4
+    sec. 3.2 has it, and the queries beside it keep what they say. *)
 
-val of_string_strict : string -> t
-(** [of_string_strict s] parses [s] as a media query without branch recovery.
-    Raises {!Cursor.exception-Parse_error} for a malformed query. *)
+val of_string_strict : string -> (t, Error.t) result
+(** [of_string_strict s] is like {!of_string} without that recovery: it is
+    [Error e] if a query in [s] is malformed. *)
 
 val read : ?recover:bool -> Cursor.t -> t
 (** [read t] parses the media query [t] holds, consuming nothing. Invalid

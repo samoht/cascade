@@ -56,8 +56,7 @@ let custom_property_layer_and_meta_survive () =
     Css.var ~layer:"theme" ~meta:(inject "tag") "x" Css.Length (Css.Rem 1.)
   in
   let projected =
-    Rule_order.canonicalize
-      [ Css.rule ~selector:(Selector.of_string ":root") [ decl ] ]
+    Rule_order.canonicalize [ Css.rule ~selector:(Selector.v ":root") [ decl ] ]
   in
   match List.map Css.Stylesheet.statement_declarations projected with
   | [ [ d ] ] ->

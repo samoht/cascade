@@ -5,6 +5,13 @@
 - `Component.t` has a `Flat` case: the contents of a block or function nested
   past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
   a tree. A match over `Component.t` needs a case for it (#1296).
+- `Selector`, `Container`, `Supports` and `Declaration.of_string`,
+  `Media.of_string_strict` and `Font_face.*_of_string` return `(_, Error.t)
+  result` instead of raising: match on it, or use `Selector.v` (#0000).
+- `Declaration.custom_property` and `Supports.property`, `func` and
+  `property_name` raise `Invalid_argument` instead of `Failure` (#0000).
+- `Reader` loses `Parse_error`, the `err` functions and its call stack, and
+  `Reader.skip` past the end raises `Invalid_argument` (#0000).
 
 ### Printing
 

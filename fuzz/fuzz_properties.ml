@@ -24,18 +24,12 @@ let inventory_properties =
 
 let check_reader reader printer input =
   let r = Cursor.of_string input in
-  match
-    try Some (reader r)
-    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-  with
+  match try Some (reader r) with Cursor.Parse_error _ -> None with
   | None -> ()
   | Some value -> (
       let once = Css.Pp.to_string ~minify:true printer value in
       let r2 = Cursor.of_string once in
-      match
-        try Some (reader r2)
-        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-      with
+      match try Some (reader r2) with Cursor.Parse_error _ -> None with
       | None -> ()
       | Some reparsed when Cursor.is_done r2 ->
           let twice = Css.Pp.to_string ~minify:true printer reparsed in
@@ -48,17 +42,12 @@ let assert_invalid_declaration_contract =
 
 let check_reader_crash_safety reader printer input =
   let r = Cursor.of_string input in
-  match
-    try Some (reader r)
-    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-  with
+  match try Some (reader r) with Cursor.Parse_error _ -> None with
   | None -> ()
   | Some value ->
       let once = Css.Pp.to_string ~minify:true printer value in
       let r2 = Cursor.of_string once in
-      ignore
-        (try Some (reader r2)
-         with Cursor.Parse_error _ | Reader.Parse_error _ -> None)
+      ignore (try Some (reader r2) with Cursor.Parse_error _ -> None)
 
 let property_core_vectors =
   [

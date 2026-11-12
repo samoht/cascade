@@ -14,57 +14,7 @@ type t = {
      tokenizer. *)
   enforce_spec : bool;
   mutable pos : int;
-  mutable call_stack : string list; (* Stack of parsing contexts for debugging *)
 }
-
-type parse_error = {
-  message : string;
-  got : string option;
-  position : int;
-  filename : string;
-  line : int;
-  col : int;
-  context_window : string;
-  marker_pos : int;
-  callstack : string list;
-}
-(** Parse error information with structured details. *)
-
-exception Parse_error of parse_error
-
-(** Pretty print parse error with debugging information *)
-let pp_parse_error (err : parse_error) =
-  let buf = Buffer.create 256 in
-  Buffer.add_string buf err.message;
-  Buffer.add_string buf " at ";
-  Buffer.add_string buf err.filename;
-  Buffer.add_char buf ':';
-  Buffer.add_string buf (string_of_int err.line);
-  Buffer.add_char buf ':';
-  Buffer.add_string buf (string_of_int err.col);
-  (match err.callstack with
-  | [] -> ()
-  | callstack ->
-      Buffer.add_string buf "\n    [stack: ";
-      Buffer.add_string buf (String.concat " -> " callstack);
-      Buffer.add_char buf ']');
-  if err.context_window <> "" then begin
-    let lines = String.split_on_char '\n' err.context_window in
-    let marker_line, marker_pos, _ =
-      Common.String.marker_line lines err.marker_pos
-    in
-    List.iteri
-      (fun i line ->
-        Buffer.add_char buf '\n';
-        Buffer.add_string buf line;
-        if i = marker_line then begin
-          Buffer.add_char buf '\n';
-          Buffer.add_string buf (String.make marker_pos ' ');
-          Buffer.add_char buf '^'
-        end)
-      lines
-  end;
-  Buffer.contents buf
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =
@@ -127,14 +77,7 @@ let preprocess input =
 
 let of_string ?(enforce_spec = false) input =
   let input, shifts = preprocess input in
-  {
-    input;
-    len = String.length input;
-    shifts;
-    enforce_spec;
-    pos = 0;
-    call_stack = [];
-  }
+  { input; len = String.length input; shifts; enforce_spec; pos = 0 }
 
 type origin = { map : shift array; length : int }
 
@@ -194,27 +137,6 @@ let skip_utf8 t =
   | None -> if t.pos < t.len then t.pos <- t.pos + 1 (* advance past bad byte *)
   | Some (_, n) -> t.pos <- t.pos + n
 
-(** {1 Call Stack Management} *)
-
-let push_context t context = t.call_stack <- context :: t.call_stack
-
-let pop_context t =
-  match t.call_stack with
-  | [] -> () (* No context to pop *)
-  | _ :: rest -> t.call_stack <- rest
-
-let with_context t context f =
-  push_context t context;
-  match f () with
-  | result ->
-      pop_context t;
-      result
-  | exception exn ->
-      pop_context t;
-      raise exn
-
-let callstack t = List.rev t.call_stack
-
 let context_window ?(before = 40) ?(after = 40) t =
   let pos = t.pos in
   (* [before] and [after] are target radiuses, not caps: a boundary that falls
@@ -232,47 +154,6 @@ let context_window ?(before = 40) ?(after = 40) t =
     Common.String.utf8_length ~pos:start_pos ~len:(pos - start_pos) t.input
   in
   (context, marker_pos)
-
-(** Error helpers *)
-let err ?got t expected =
-  let context, marker_pos = context_window t in
-  (* Scan forward from the start of the input, so a newline ends the line it
-     sits on and the byte after it opens the next one at column 1. A column
-     counts decoded elements, like the caret. *)
-  let line, col =
-    Common.String.utf8_fold ~len:t.pos
-      (fun (line, col) _ decoded ->
-        match decoded with
-        | Common.String.Scalar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
-        | Common.String.Scalar _ | Common.String.Malformed _ -> (line, col + 1))
-      (1, 1) t.input
-  in
-  raise
-    (Parse_error
-       {
-         message = expected;
-         got;
-         position = t.pos;
-         (* A reader is built from a string, so it has no name of its own; a
-            caller that has one stamps it with [with_filename]. *)
-         filename = "<CSS input>";
-         line;
-         col;
-         context_window = context;
-         marker_pos;
-         callstack = callstack t;
-       })
-
-let err_eof t = err t "unexpected end of input"
-let err_expected t what = err t ("expected " ^ what)
-
-let err_expected_but_eof t what =
-  err t ("Expected " ^ what ^ " but reached end of input")
-
-(** {1 Error Utilities} *)
-let err_invalid t what = err t ("invalid " ^ what)
-
-let with_filename error filename = { error with filename }
 
 (** {1 Looking Ahead} *)
 
@@ -312,7 +193,7 @@ let looking_at t s =
 (** {1 Reading Characters} *)
 
 let skip t =
-  if t.pos >= t.len then err_eof t;
+  if t.pos >= t.len then invalid_arg "Reader.skip: end of input";
   t.pos <- t.pos + 1
 
 (** Get current position in input *)

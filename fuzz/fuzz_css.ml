@@ -3,6 +3,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
@@ -99,7 +101,7 @@ let generated_stylesheet buf =
             ~condition:(Css.Supports.property "display" "grid")
             [
               Css.container
-                ~condition:(Css.Container.of_string "(inline-size > 30em)")
+                ~condition:(ok (Css.Container.of_string "(inline-size > 30em)"))
                 [ Css.rule ~selector:(selector "inside") [ color 4 ] ];
             ];
         ];

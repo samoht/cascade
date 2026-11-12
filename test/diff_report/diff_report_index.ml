@@ -121,7 +121,7 @@ let parse text =
   match Css.of_string ~strict:false text with
   | Ok { stylesheet; _ } -> Some stylesheet
   | Error _ -> None
-  | exception (Reader.Parse_error _ | Failure _ | Invalid_argument _) -> None
+  | exception (Failure _ | Invalid_argument _) -> None
 
 let index_of_text text = Option.map (index ~source:text) (parse text)
 
@@ -158,8 +158,7 @@ let index_for (mode : C.mode) text =
               match index_of_text canonical with
               | None -> Some idx
               | Some c -> Some (union idx c))
-          | exception (Reader.Parse_error _ | Failure _ | Invalid_argument _) ->
-              Some idx))
+          | exception (Failure _ | Invalid_argument _) -> Some idx))
   | (`Auto | `Tree | `String | `Canonical), idx -> idx
 
 (* An at-rule with no selector is named by its own text. [@charset] is dropped

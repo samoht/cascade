@@ -794,7 +794,7 @@ let atom_of_components t components =
   | Style_func _ | Scroll_state_func _ -> specific_of_components t stripped
   | Parenthesized_feature | Other_query -> (
       let source = string_of_components components in
-      match Media.of_string_strict source with
+      match Media.read ~recover:false (Cursor.of_string source) with
       | Media.Cond (Media.Feature (Media.Plain (Media.Min Media.Width, value)))
         as media -> (
           match value with
@@ -848,7 +848,7 @@ let read t =
   | Some (name, query) -> Named (name, unnamed_of_components t query)
   | None -> unnamed_of_components t components
 
-let of_string s = read (Cursor.of_string s)
+let of_string s = Error.catch @@ fun () -> read (Cursor.of_string s)
 let feature name value = Feature_query (Media.feature name value)
 
 let style ?value prop =

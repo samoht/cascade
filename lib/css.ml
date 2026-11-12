@@ -831,7 +831,7 @@ let bindable_theme_defaults lookup name =
 let root_theme_rule declarations =
   Stylesheet.Rule
     {
-      selector = Selector.of_string ":root";
+      selector = Selector.v ":root";
       declarations;
       nested = [];
       merge_key = None;

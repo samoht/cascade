@@ -862,11 +862,7 @@ type browser_answer = Matched of int list | Refused
 type cascade_answer = Unreadable of string | Undecided | Decided of int list
 
 let read_selector text =
-  match Selector.of_string text with
-  | sel -> Ok sel
-  | exception Error.Parse_error e -> Error (Error.to_string e)
-  | exception Invalid_argument m ->
-      Error (String.concat "" [ "Invalid_argument: "; m ])
+  Result.map_error Error.to_string (Selector.of_string text)
 
 (* The path a caller actually walks: a rule read out of a sheet. A selector the
    selector API refuses and the sheet parser keeps, or the other way round, is

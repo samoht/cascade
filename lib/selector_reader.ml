@@ -1203,6 +1203,13 @@ let of_string_fallback s =
   | _ -> Element (None, unescape_selector_name s)
 
 let of_string s =
+  Error.catch @@ fun () ->
   try read (Cursor.of_string s)
   with Cursor.Parse_error _ as exn ->
     if not (can_fallback_shortcut s) then raise exn else of_string_fallback s
+
+let v s =
+  match of_string s with
+  | Ok sel -> sel
+  | Error e ->
+      invalid_arg (String.concat "" [ "Selector.v: "; Error.to_string e ])

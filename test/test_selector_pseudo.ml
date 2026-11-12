@@ -745,8 +745,7 @@ let scrollbar_state_pseudo_classes_read () =
       round_trips (concat [ ".a:is("; pc; ")" ]);
       round_trips (concat [ ".a:has("; pc; ")" ]);
       (* Selectors 4 sec. 17: a pseudo-class weighs a class. *)
-      Alcotest.(check int)
-        ("specificity " ^ pc) 1 (specificity (of_string pc)).classes;
+      Alcotest.(check int) ("specificity " ^ pc) 1 (specificity (v pc)).classes;
       (* None of them is functional. *)
       neg_cursor read (concat [ ".a"; pc; "(1)" ]))
     scrollbar_state_pseudo_classes;

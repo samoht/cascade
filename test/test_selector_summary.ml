@@ -8,7 +8,7 @@ open Cascade
 module S = Css.Selector
 module Summary = Css.Selector_summary
 
-let selector input = S.of_string input
+let selector input = S.v input
 let summary input = Summary.of_selector (selector input)
 
 let check_summary ?(ids = []) ?(classes = []) ?element ?(complex = false) name

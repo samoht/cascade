@@ -127,26 +127,31 @@ let string_of_font_tech = function
    serializes to (CSS Syntax 3 (ED) sec. 9) rather than against its own bytes:
    read raw, such a name ends the declaration early and never looks like the
    single ident it is. *)
-let property_name ?repr name =
+let property_name_opt ?repr name =
   let reader = Cursor.of_string (Parser.escape_ident name) in
-  let parsed =
-    try Cursor.ident ~keep_case:true reader
-    with Cursor.Parse_error _ ->
-      failwith ("invalid supports declaration property name: " ^ name)
-  in
-  if not (Cursor.is_done reader) then
-    failwith ("invalid supports declaration property name: " ^ name);
-  let name =
-    if Custom_property_name.has_prefix parsed then parsed
-    else String.lowercase_ascii parsed
-  in
-  Property_name { name; repr }
+  match Cursor.ident_opt reader with
+  | Some parsed when Cursor.is_done reader ->
+      let name =
+        if Custom_property_name.has_prefix parsed then parsed
+        else String.lowercase_ascii parsed
+      in
+      Some (Property_name { name; repr })
+  | Some _ | None -> None
+
+let invalid_property_name name =
+  String.concat "" [ "invalid supports declaration property name: "; name ]
+
+let property_name ?repr name =
+  match property_name_opt ?repr name with
+  | Some name -> name
+  | None -> invalid_arg (invalid_property_name name)
 
 let string_of_property_name (Property_name { name; _ }) = name
 
-let declaration_feature ?repr prop value =
+(* [name] is [prop] as {!property_name} reads it. *)
+let declaration_feature name prop value =
   match (String.lowercase_ascii prop, String.lowercase_ascii value) with
-  | _, "" -> Empty (property_name ?repr prop)
+  | _, "" -> Empty name
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
       (* The name and the value stay apart: read as one text, a name carrying a
@@ -159,7 +164,6 @@ let declaration_feature ?repr prop value =
          reading would hand back a different one: [rgba(0,0,0,.5)] and
          [#ff0000ff] name grammars a browser can accept one of and refuse the
          other. *)
-      let name = property_name ?repr prop in
       match Declaration.parse_opaque_declaration prop value with
       | Some decl -> Declaration (name, decl)
       | None -> Unsupported (name, String.trim value))
@@ -174,7 +178,7 @@ let declaration_feature ?repr prop value =
 let property prop value =
   let bare, _ = Declaration.split_important value in
   if not (String.equal value "" || Declaration.is_declaration_value bare) then
-    failwith
+    invalid_arg
       (String.concat ""
          [
            "supports property: ";
@@ -183,55 +187,56 @@ let property prop value =
            value;
            " is not a declaration value";
          ]);
+  let name = property_name prop in
   let value =
     if String.equal value "" then value
     else
       Cursor.string_of_components_verbatim ~trim:true
         (Cursor.remaining (Cursor.of_string value))
   in
-  Property (declaration_feature prop value)
+  Property (declaration_feature name prop value)
 
-let single_ident name args =
+(* The one ident [args] holds, as [read] takes it; [name] is the function. *)
+let single_ident ~read name args =
   let cursor = Cursor.of_string args in
   let ident = Cursor.ident ~keep_case:false cursor in
   Cursor.ws cursor;
   Cursor.expect_eof cursor;
-  if ident = "" then failwith ("empty " ^ name ^ "() in @supports");
-  ident
+  if ident = "" then
+    Cursor.err_invalid cursor (String.concat "" [ "empty "; name; "()" ]);
+  match read ident with
+  | Some v -> v
+  | None -> Cursor.err_invalid cursor (String.concat "" [ name; "()" ])
+
+let function_feature name args =
+  let lower_name = String.lowercase_ascii name in
+  match lower_name with
+  | "selector" ->
+      let cursor = Cursor.of_string args in
+      let selector = Selector.read cursor in
+      Cursor.ws cursor;
+      Cursor.expect_eof cursor;
+      Selector selector
+  | "font-format" ->
+      Font_format (single_ident ~read:font_format_of_string name args)
+  | "font-tech" -> Font_tech (single_ident ~read:font_tech_of_string name args)
+  | "at-rule" -> (
+      let cursor = Cursor.of_string args in
+      match Cursor.at_keyword_opt cursor with
+      | Some at_rule ->
+          Cursor.ws cursor;
+          Cursor.expect_eof cursor;
+          At_rule at_rule
+      | None -> Cursor.err_invalid cursor "at-rule()")
+  | "named-feature" -> Named_feature (single_ident ~read:Option.some name args)
+  | "env" -> Env (single_ident ~read:Option.some name args)
+  | _ -> General (lower_name, String.trim args)
 
 let func name args =
-  let lower_name = String.lowercase_ascii name in
-  let feature =
-    match lower_name with
-    | "selector" ->
-        let cursor = Cursor.of_string args in
-        let selector = Selector.read cursor in
-        Cursor.ws cursor;
-        Cursor.expect_eof cursor;
-        Selector selector
-    | "font-format" -> (
-        match font_format_of_string (single_ident name args) with
-        | Some format -> Font_format format
-        | None -> failwith "invalid font-format() in @supports")
-    | "font-tech" -> (
-        match font_tech_of_string (single_ident name args) with
-        | Some tech -> Font_tech tech
-        | None -> failwith "invalid font-tech() in @supports")
-    | "at-rule" ->
-        let cursor = Cursor.of_string args in
-        let at_rule =
-          match Cursor.at_keyword_opt cursor with
-          | Some name -> name
-          | None -> failwith "invalid at-rule() in @supports"
-        in
-        Cursor.ws cursor;
-        Cursor.expect_eof cursor;
-        At_rule at_rule
-    | "named-feature" -> Named_feature (single_ident name args)
-    | "env" -> Env (single_ident name args)
-    | _ -> General (lower_name, String.trim args)
-  in
-  Function feature
+  match function_feature name args with
+  | feature -> Function feature
+  | exception Error.Parse_error e ->
+      invalid_arg (String.concat "" [ "Supports.func: "; Error.to_string e ])
 
 (* ===== Pretty printing ===== *)
 
@@ -383,12 +388,11 @@ let declaration_of_components t prop value =
     err t value "Invalid declaration in @supports";
   match property_ident (strip_components prop) with
   | Some (name, repr) -> (
-      let text = Cursor.string_of_components_verbatim ~trim:true value in
-      (* [declaration_feature] is the shared constructor, so it reports through
-         [Failure]; re-raise it against the declaration's own components. *)
-      match declaration_feature ?repr name text with
-      | feature -> Property feature
-      | exception Failure msg -> err t (prop @ value) msg)
+      match property_name_opt ?repr name with
+      | Some pname ->
+          let text = Cursor.string_of_components_verbatim ~trim:true value in
+          Property (declaration_feature pname name text)
+      | None -> err t (prop @ value) (invalid_property_name name))
   | None -> err t prop "Invalid declaration in @supports"
 
 let function_call t (fn : Component.func Component.node) =
@@ -397,9 +401,11 @@ let function_call t (fn : Component.func Component.node) =
   if not (Component.is_any_value [ Component.Func fn ]) then
     err t [ Component.Func fn ] "Invalid general-enclosed function in @supports";
   (* The feature grammar has priority over the general-enclosed fallback. *)
-  match func name (Cursor.string_of_components_verbatim ~trim:true args) with
-  | feature -> feature
-  | exception (Failure _ | Cursor.Parse_error _) ->
+  match
+    function_feature name (Cursor.string_of_components_verbatim ~trim:true args)
+  with
+  | feature -> Function feature
+  | exception Cursor.Parse_error _ ->
       Function
         (General
            ( String.lowercase_ascii name,
@@ -498,7 +504,7 @@ let read ?(allow_unwrapped_decl = false) t =
   cond
 
 let of_string ?allow_unwrapped_decl s =
-  read ?allow_unwrapped_decl (Cursor.of_string s)
+  Error.catch @@ fun () -> read ?allow_unwrapped_decl (Cursor.of_string s)
 
 (* ===== Comparison ===== *)
 

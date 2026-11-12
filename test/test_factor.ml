@@ -461,8 +461,7 @@ let test_transform_origin_position_nodes_factor () =
         Css.concat
           [
             stylesheet;
-            Css.v
-              [ Css.rule ~selector:(Selector.of_string ".b") [ declaration ] ];
+            Css.v [ Css.rule ~selector:(Selector.v ".b") [ declaration ] ];
           ]
         |> Css.optimize |> Css.to_string ~minify:true
   in

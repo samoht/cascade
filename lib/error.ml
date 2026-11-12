@@ -179,6 +179,7 @@ let with_property property t =
   | _ -> t
 
 let fail e = Stdlib.raise (Parse_error e)
+let catch f = match f () with v -> Ok v | exception Parse_error e -> Error e
 
 let with_context label f =
   try f ()

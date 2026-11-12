@@ -70,12 +70,20 @@ let test_empty_side_contexts () =
 
 let test_property_value_lookup () =
   let open Css.Values in
-  let gap = Css.Declaration.of_string "--gap: 1rem" in
-  let brand = Css.Declaration.of_string "--brand: red" in
-  let inherited_color = Css.Declaration.of_string "color: blue" in
-  let inherited_font_size = Css.Declaration.of_string "font-size: 16px" in
-  let initial_display = Css.Declaration.of_string "display: inline" in
-  let initial_width = Css.Declaration.of_string "width: auto" in
+  let gap = Css_test_helpers.ok (Css.Declaration.of_string "--gap: 1rem") in
+  let brand = Css_test_helpers.ok (Css.Declaration.of_string "--brand: red") in
+  let inherited_color =
+    Css_test_helpers.ok (Css.Declaration.of_string "color: blue")
+  in
+  let inherited_font_size =
+    Css_test_helpers.ok (Css.Declaration.of_string "font-size: 16px")
+  in
+  let initial_display =
+    Css_test_helpers.ok (Css.Declaration.of_string "display: inline")
+  in
+  let initial_width =
+    Css_test_helpers.ok (Css.Declaration.of_string "width: auto")
+  in
   let ctx =
     Css.Context.v ~custom_properties:[ gap; brand ]
       ~inherited_values:[ inherited_color; inherited_font_size ]
@@ -99,9 +107,13 @@ let test_property_value_lookup () =
     (Css.Context.initial_value "width" ctx)
 
 let test_property_value_lookup_boundaries () =
-  let gap = Css.Declaration.of_string "--gap: 1rem" in
-  let inherited = Css.Declaration.of_string "color: blue" in
-  let initial = Css.Declaration.of_string "display: inline" in
+  let gap = Css_test_helpers.ok (Css.Declaration.of_string "--gap: 1rem") in
+  let inherited =
+    Css_test_helpers.ok (Css.Declaration.of_string "color: blue")
+  in
+  let initial =
+    Css_test_helpers.ok (Css.Declaration.of_string "display: inline")
+  in
   let ctx =
     Css.Context.v ~custom_properties:[ gap ] ~inherited_values:[ inherited ]
       ~initial_values:[ initial ] ()
@@ -121,8 +133,7 @@ let test_property_value_lookup_boundaries () =
 
 let test_document_context () =
   let ctx =
-    Css.Context.document ~root:"html"
-      ~scope:(Css.Selector.of_string ".card")
+    Css.Context.document ~root:"html" ~scope:(Css.Selector.v ".card")
       ~element:"button" ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
       ~attributes:[ ("type", Some "submit"); ("disabled", None) ]
       ~pseudo_classes:[ "focus-visible" ] ~pseudo_elements:[ "before" ] ()
@@ -141,8 +152,7 @@ let test_document_context () =
 
 let test_document_context_boundaries () =
   let ctx =
-    Css.Context.document ~root:":root"
-      ~scope:(Css.Selector.of_string ".dialog")
+    Css.Context.document ~root:":root" ~scope:(Css.Selector.v ".dialog")
       ~element:"input" ~classes:[ "field"; "is-invalid" ] ~ids:[ "email" ]
       ~attributes:
         [
@@ -303,9 +313,12 @@ let test_loader_and_animation_boundaries () =
 let test_context_debug_printers () =
   let value_ctx =
     Css.Context.v
-      ~custom_properties:[ Css.Declaration.of_string "--gap: 1rem" ]
-      ~inherited_values:[ Css.Declaration.of_string "color: red" ]
-      ~initial_values:[ Css.Declaration.of_string "display: inline" ]
+      ~custom_properties:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "--gap: 1rem") ]
+      ~inherited_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "color: red") ]
+      ~initial_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "display: inline") ]
       ~base_url:"https://example.test/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 14.)
       ~current_color:(Css.Values.Named Css.Values.Red)
@@ -322,8 +335,7 @@ let test_context_debug_printers () =
   check_matches "value dump has dimensions" "container_height=Some 480px"
     value_dump;
   let document_dump =
-    Css.Context.document ~root:"html"
-      ~scope:(Css.Selector.of_string ".card")
+    Css.Context.document ~root:"html" ~scope:(Css.Selector.v ".card")
       ~element:"button" ~classes:[ "btn" ] ~ids:[ "submit" ]
       ~attributes:[ ("disabled", None); ("type", Some "submit") ]
       ~pseudo_classes:[ "focus-visible" ] ~pseudo_elements:[ "before" ] ()

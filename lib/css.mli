@@ -43,7 +43,7 @@
     open Cascade.Css
 
     let def, primary = var "primary-color" Color (hex "#3b82f6")
-    let root = rule ~selector:(Selector.of_string ":root") [ def ]
+    let root = rule ~selector:(Selector.v ":root") [ def ]
     let card = rule ~selector:(Selector.class_ "card") [ color (Var primary) ]
     let css = to_string (v [ root; card ])
     ]}
@@ -3936,10 +3936,10 @@ val custom_property : ?layer:string -> string -> string -> declaration
       the [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property,
       as CSS text
 
-    It raises [Failure] on a pair that does not make the one declaration it
-    names, such as a value carrying a top-level [;] or [}] or an unterminated
-    function, block or string. A name holding a code point no bare ident carries
-    is written back with the escapes that read it.
+    It raises [Invalid_argument] on a pair that does not make the one
+    declaration it names, such as a value carrying a top-level [;] or [}] or an
+    unterminated function, block or string. A name holding a code point no bare
+    ident carries is written back with the escapes that read it.
     {!Declaration.parse_custom_property} is the same check as an option.
 
     Example: [custom_property "--primary-color" "#3b82f6"]

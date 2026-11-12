@@ -1082,7 +1082,9 @@ let read ?(recover = true) t =
     | true, queries -> List queries
 
 let of_string s = read (Cursor.of_string s)
-let of_string_strict s = read ~recover:false (Cursor.of_string s)
+
+let of_string_strict s =
+  Error.catch @@ fun () -> read ~recover:false (Cursor.of_string s)
 
 let of_function_components components =
   match feature_in_components components with

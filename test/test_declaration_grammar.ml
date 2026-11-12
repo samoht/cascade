@@ -21,7 +21,7 @@ let parse_property_decl property value =
         let serialized = Css.Declaration.to_string ~minify:true decl in
         let c2 = Cursor.of_string serialized in
         Some (input, serialized, decl, read_declaration c2)
-  with Cursor.Parse_error _ | Reader.Parse_error _ -> None
+  with Cursor.Parse_error _ -> None
 
 let same_property_reparse (row : property_grammar_row) decl reparsed =
   Css.Declaration.property_name reparsed = row.property
@@ -124,7 +124,7 @@ let check_property_value_tail (row : property_grammar_row) value =
           match read_declaration c with
           | None ->
               row_failf "%s dropped the declaration: %s" row.property input
-          | exception (Cursor.Parse_error _ | Reader.Parse_error _) ->
+          | exception Cursor.Parse_error _ ->
               row_failf "%s rejected the declaration: %s" row.property input
           | Some tailed ->
               let got = Css.Declaration.string_of_value ~minify:true tailed in

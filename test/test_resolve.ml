@@ -43,7 +43,7 @@ end
 
 module R = Resolve.Make (Node)
 
-let sel = Selector.of_string
+let sel = Selector.v
 
 (* section div (#a) span (#s1) div (#b) span (#s2) *)
 let s1 = elt ~id:"s1" "span" []

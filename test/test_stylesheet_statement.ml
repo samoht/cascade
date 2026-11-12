@@ -217,7 +217,7 @@ let statement_shapes () =
       ("bare declarations", bare_declarations ());
       ("else", else_branch ());
       ("origin", with_origin User [ sole_statement ".x{color:red}" ]);
-      ("page", Page ([], [ Css.Declaration.of_string "margin:1cm" ]));
+      ("page", Page ([], [ ok (Css.Declaration.of_string "margin:1cm") ]));
     ]
 
 (* Two independent builds of the list, so no answer below can come from physical

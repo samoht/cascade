@@ -46,7 +46,7 @@ let test_string_output () =
 
 let test_of_string () =
   let check name input expected =
-    let actual = of_string input in
+    let actual = Css_test_helpers.ok (of_string input) in
     Alcotest.(check string) name (to_string expected) (to_string actual)
   in
   check "simple property" "(display: grid)" (property "display" "grid");
@@ -85,7 +85,7 @@ let test_of_string () =
 
 let test_current_work_vectors () =
   let check name input expected =
-    let actual = of_string input in
+    let actual = Css_test_helpers.ok (of_string input) in
     Alcotest.(check string) name expected (to_string actual)
   in
   check "supports selector has" "selector(:has(img))" "selector(:has(img))";
@@ -103,7 +103,7 @@ let test_current_work_vectors () =
 
 let spec_supports_feature_vectors () =
   let check name input expected =
-    let actual = of_string input in
+    let actual = Css_test_helpers.ok (of_string input) in
     Alcotest.(check string) name expected (to_string actual)
   in
   (* CSS Conditional Rules 3 section 6 includes parenthesized general-enclosed
@@ -153,7 +153,9 @@ let spec_supports_feature_vectors () =
 let spec_supports_negative_vectors () =
   List.iter
     (fun input ->
-      Alcotest.(check string) input input (to_string (of_string input)))
+      Alcotest.(check string)
+        input input
+        (to_string (Css_test_helpers.ok (of_string input))))
     Supports_inventory.general_enclosed_functions;
   let expect_error name input =
     match of_string input with
@@ -166,10 +168,10 @@ let spec_supports_negative_vectors () =
     Cascade_spec_inventory.Supports_grammar.invalid
 
 let spec_supports_structural_vectors () =
-  let unknown = of_string "(future syntax)" in
+  let unknown = Css_test_helpers.ok (of_string "(future syntax)") in
   Alcotest.(check bool)
     "unknown enclosed atom differs from a function" false
-    (equal unknown (of_string "future(syntax)"));
+    (equal unknown (Css_test_helpers.ok (of_string "future(syntax)")));
   Alcotest.(check bool)
     "unknown feature is false in an empty explicit context" true
     (Css.Context.matches_supports (Css.Context.query ()) (Not unknown));
@@ -189,19 +191,22 @@ let spec_supports_structural_vectors () =
     "the spec reads the enclosed term as false" true (never_holds unknown);
   Alcotest.(check bool)
     "a declaration with no property ident is such a term" true
-    (never_holds (of_string "(@media(width>=1px): var(--tw))"));
+    (never_holds
+       (Css_test_helpers.ok (of_string "(@media(width>=1px): var(--tw))")));
   Alcotest.(check bool)
     "conjoined with a feature test it still never holds" true
-    (never_holds (of_string "(display: grid) and (future syntax)"));
+    (never_holds
+       (Css_test_helpers.ok (of_string "(display: grid) and (future syntax)")));
   Alcotest.(check bool)
     "disjoined with one it may" false
-    (never_holds (of_string "(display: grid) or (future syntax)"));
+    (never_holds
+       (Css_test_helpers.ok (of_string "(display: grid) or (future syntax)")));
   Alcotest.(check bool)
     "a function form stays a feature test" false
-    (never_holds (of_string "future(syntax)"));
+    (never_holds (Css_test_helpers.ok (of_string "future(syntax)")));
   List.iter
     (fun (row : Supports_inventory.row) ->
-      let actual = of_string row.input in
+      let actual = Css_test_helpers.ok (of_string row.input) in
       Alcotest.(check bool)
         row.name true
         (equal (supports_of_expected row.expected) actual))
@@ -209,7 +214,7 @@ let spec_supports_structural_vectors () =
 
 let spec_supports_nested_edges () =
   let check name input expected =
-    let actual = of_string input in
+    let actual = Css_test_helpers.ok (of_string input) in
     Alcotest.(check string) name expected (to_string actual)
   in
   check "not wraps grouped or" "not ((display: grid) or (display: flex))"
@@ -237,7 +242,7 @@ let spec_supports_context_vectors () =
     (fun input ->
       Alcotest.(check string)
         "supports condition syntax" input
-        (to_string (of_string input)))
+        (to_string (Css_test_helpers.ok (of_string input))))
     [
       "(display: grid)";
       "selector(:has(img))";
@@ -261,7 +266,7 @@ let test_roundtrip () =
   List.iter
     (fun cond ->
       let s = to_string cond in
-      let parsed = of_string s in
+      let parsed = Css_test_helpers.ok (of_string s) in
       Alcotest.(check string) ("roundtrip: " ^ s) s (to_string parsed))
     cases
 

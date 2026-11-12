@@ -15,7 +15,7 @@ val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
     authored CSS text.
 
-    @raise Failure
+    @raise Invalid_argument
       if the pair does not make the one declaration it names. [name] has to be a
       [<dashed-ident>], and [value] the [<declaration-value>?] CSS Variables 1
       sec. 2 gives a custom property: no top-level [;], no unmatched closing
@@ -90,10 +90,10 @@ val read_keyframe_declarations : Cursor.t -> declaration list
 val read_block : Cursor.t -> declaration list
 (** [read_block t] is the typed declarations parsed from a braced block. *)
 
-val of_string : string -> declaration
+val of_string : string -> (declaration, Error.t) result
 (** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).
-    Raises {!Cursor.exception-Parse_error}, anchored on the offending text, when
-    [s] is not a valid declaration. *)
+    This is [Error e], anchored on the offending text, when [s] is not a valid
+    declaration. *)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
 (** [parse_declaration ?layer property value] reads [property] and [value] with

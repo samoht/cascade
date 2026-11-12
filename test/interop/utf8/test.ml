@@ -83,27 +83,6 @@ let test_maximal_subpart_count () =
     "an ASCII byte after a truncated sequence stands alone" 2
     (Cascade.Common.String.utf8_length "\xe1\x80A")
 
-(* Fail at byte [pos] of [input] and report where the reader says that is. *)
-let error_line_and_column input pos =
-  let open Reader in
-  let r = of_string input in
-  for _ = 1 to pos do
-    skip r
-  done;
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.failf "expected a parse error at byte %d" pos
-  | exception Parse_error error -> (error.line, error.col)
-
-(* A column is one element of the decoded text, counted from 1, so an error just
-   past the ten elements of [maximal_subparts] sits in column 11. *)
-let test_error_column_after_ill_formed () =
-  Alcotest.(check (pair int int))
-    "column past the tenth element" (1, 11)
-    (error_line_and_column maximal_subparts (String.length maximal_subparts));
-  Alcotest.(check (pair int int))
-    "column past a truncated sequence and the letter after it" (1, 3)
-    (error_line_and_column "\xe1\x80A" 3)
-
 let () =
   Alcotest.run "utf8_boundary"
     [
@@ -113,8 +92,5 @@ let () =
           ("per line", `Quick, test_per_line);
         ] );
       ( "maximal subparts",
-        [
-          ("element count", `Quick, test_maximal_subpart_count);
-          ("error column", `Quick, test_error_column_after_ill_formed);
-        ] );
+        [ ("element count", `Quick, test_maximal_subpart_count) ] );
     ]

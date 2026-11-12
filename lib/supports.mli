@@ -8,7 +8,9 @@ type property_name
 val property_name : ?repr:string -> string -> property_name
 (** [property_name ?repr name] is the name of a declaration feature. [repr] is
     the spelling the author wrote when it differs from [name], which is how an
-    escape survives the round trip; a name cascade generates has none. *)
+    escape survives the round trip; a name cascade generates has none.
+
+    @raise Invalid_argument if [name] does not read as one ident. *)
 
 type declaration_feature =
   | Declaration of property_name * Declaration.t
@@ -77,15 +79,20 @@ val property : string -> string -> t
 (** [property name value] parses [name: value] as a structured supports
     declaration feature. [value] keeps the spelling it is given.
 
-    @raise Failure
-      if [value] is not a [<declaration-value>] (CSS Syntax 3 (ED) sec. 7.2).
-      The feature writes the value between its own parentheses, so an unmatched
-      closing bracket closes them and the tail becomes a second branch of the
-      condition. *)
+    @raise Invalid_argument
+      if [name] is not one ident or [value] is not a [<declaration-value>] (CSS
+      Syntax 3 (ED) sec. 7.2). The feature writes the value between its own
+      parentheses, so an unmatched closing bracket closes them and the tail
+      becomes a second branch of the condition. Use {!of_string} to deal with
+      untrusted input. *)
 
 val func : string -> string -> t
 (** [func name args] parses [args] as CSS component values for a supports
-    function feature. *)
+    function feature.
+
+    @raise Invalid_argument
+      if [args] does not match the grammar of a function [name] names. Use
+      {!of_string} to deal with untrusted input. *)
 
 val to_string : ?minify:bool -> ?verbatim:bool -> t -> string
 (** [to_string ?minify ?verbatim cond] renders the condition as a CSS
@@ -115,9 +122,9 @@ val read : ?allow_unwrapped_decl:bool -> Cursor.t -> t
     prelude was lexed into ({!Cursor.val-sub}) rather than a re-lex of their
     text. *)
 
-val of_string : ?allow_unwrapped_decl:bool -> string -> t
+val of_string : ?allow_unwrapped_decl:bool -> string -> (t, Error.t) result
 (** [of_string s] parses a [\@supports] condition string into a structured type.
-    Raises {!Cursor.exception-Parse_error} if the condition cannot be parsed. *)
+    This is [Error e] if [s] is malformed. *)
 
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. *)

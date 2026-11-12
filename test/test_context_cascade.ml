@@ -2,14 +2,14 @@ open Cascade
 open Context_helpers
 
 let check_layered_eval_value name ~ctx ~layer_order ?layer ~expected input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   Alcotest.(check decl_t)
     name
     (declaration_with_value decl expected)
     (Css.eval_declaration ctx ~layer_order ?layer decl)
 
 let check_layered_eval_preserves name ~ctx ~layer_order ?layer input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   Alcotest.(check decl_t)
     name decl
     (Css.eval_declaration ctx ~layer_order ?layer decl)
@@ -284,14 +284,17 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
   in
   winning_resolved_candidate ~layer_order candidates
   |> Option.map (fun ((candidate : Css.Stylesheet.cascade_candidate), value) ->
-      let decl = Css.Declaration.of_string (property ^ ": " ^ value) in
+      let decl =
+        Css_test_helpers.ok
+          (Css.Declaration.of_string (property ^ ": " ^ value))
+      in
       match candidate.layer with
       | None -> Css.eval_declaration ctx ~layer_order decl
       | Some layer -> Css.eval_declaration ctx ~layer_order ~layer decl)
 
 let check_resolved_property ?layer_order name ~ctx ~document ~query ~property
     ~expected stylesheet =
-  let expected = Css.Declaration.of_string expected in
+  let expected = Css_test_helpers.ok (Css.Declaration.of_string expected) in
   let actual =
     resolve_stylesheet_property ?layer_order ~ctx ~document ~query ~property
       (stylesheet_of_string stylesheet)
@@ -300,7 +303,7 @@ let check_resolved_property ?layer_order name ~ctx ~document ~query ~property
 
 let check_ast_resolved_property ?layer_order name ~ctx ~document ~query
     ~property ~expected stylesheet =
-  let expected = Css.Declaration.of_string expected in
+  let expected = Css_test_helpers.ok (Css.Declaration.of_string expected) in
   let actual =
     resolve_stylesheet_property ?layer_order ~ctx ~document ~query ~property
       stylesheet
@@ -334,22 +337,28 @@ let layered_eval_ast_contract () =
     Css.Context.v ~custom_properties
       ~initial_values:
         [
-          Css.Declaration.of_string "color: canvastext";
-          Css.Declaration.of_string "margin-left: 0";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: canvastext");
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
         ]
       ~inherited_values:
-        [ Css.Declaration.of_string "color: var(--color-brand)" ]
+        [
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "color: var(--color-brand)");
+        ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in
   let strong_ctx =
     Css.Context.v ~custom_properties
       ~initial_values:
         [
-          Css.Declaration.of_string "color: canvastext";
-          Css.Declaration.of_string "margin-left: 0";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: canvastext");
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
         ]
       ~inherited_values:
-        [ Css.Declaration.of_string "color: var(--color-brand)" ]
+        [
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "color: var(--color-brand)");
+        ]
       ~root_font_size:(Css.Values.Px 16.) ~viewport_height:(Css.Values.Px 1000.)
       ()
   in
@@ -443,11 +452,14 @@ let test_layered_computed_revert_contract () =
     Css.Context.v
       ~initial_values:
         [
-          Css.Declaration.of_string "color: canvastext";
-          Css.Declaration.of_string "margin-left: 0";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: canvastext");
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
         ]
       ~inherited_values:
-        [ Css.Declaration.of_string "color: var(--color-brand-500)" ]
+        [
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "color: var(--color-brand-500)");
+        ]
       ~custom_properties:
         [
           Css.Declaration.custom_property ~layer:"theme" "--color-brand-500"
@@ -599,9 +611,12 @@ let cascade_rule_resolver_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--theme-color: oklch(70% 0.15 250)";
-          Css.Declaration.of_string "--app-color: oklch(40% 0.10 250)";
-          Css.Declaration.of_string "--scoped-color: green";
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--theme-color: oklch(70% 0.15 250)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--app-color: oklch(40% 0.10 250)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--scoped-color: green");
         ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in
@@ -664,9 +679,8 @@ let cascade_rule_resolver_contract () =
       @layer utilities { .btn { color: revert-layer; } }
     |};
   let scoped =
-    Css.Context.document
-      ~scope:(Css.Selector.of_string ".card")
-      ~element:"h2" ~classes:[ "title" ] ()
+    Css.Context.document ~scope:(Css.Selector.v ".card") ~element:"h2"
+      ~classes:[ "title" ] ()
   in
   check_resolved_property
     "scope proximity beats later source order at equal specificity" ~layer_order
@@ -680,18 +694,18 @@ let cascade_rule_resolver_contract () =
     "scope boundary suppresses declarations outside the active scope"
     ~layer_order ~ctx:value_ctx
     ~document:
-      (Css.Context.document
-         ~scope:(Css.Selector.of_string ".card")
-         ~element:"h2" ~classes:[ "title"; "boundary" ] ())
+      (Css.Context.document ~scope:(Css.Selector.v ".card") ~element:"h2"
+         ~classes:[ "title"; "boundary" ] ())
     ~query ~property:"color" ~expected:"color: blue"
     {|
       @scope (.card) to (.boundary) { .title { color: green; } }
       .title { color: blue; }
     |};
   let ast_rule selector declarations =
-    Css.rule
-      ~selector:(Css.Selector.of_string selector)
-      (List.map Css.Declaration.of_string declarations)
+    Css.rule ~selector:(Css.Selector.v selector)
+      (List.map
+         (fun d -> Css_test_helpers.ok (Css.Declaration.of_string d))
+         declarations)
   in
   let origin_sheet =
     [

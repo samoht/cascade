@@ -2,7 +2,7 @@ open Cascade
 open Context_helpers
 
 let check_eval_value name ~ctx ~expected input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   Alcotest.(check decl_t)
     name
     (declaration_with_value decl expected)
@@ -183,22 +183,24 @@ let test_computed_value_resolution_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--brand: red";
-          Css.Declaration.of_string "--gap: 1rem";
+          Css_test_helpers.ok (Css.Declaration.of_string "--brand: red");
+          Css_test_helpers.ok (Css.Declaration.of_string "--gap: 1rem");
         ]
       ~inherited_values:
         [
-          Css.Declaration.of_string "color: blue";
-          Css.Declaration.of_string "font-size: 10px";
-          Css.Declaration.of_string "line-height: 1.5";
-          Css.Declaration.of_string "border-collapse: collapse";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: blue");
+          Css_test_helpers.ok (Css.Declaration.of_string "font-size: 10px");
+          Css_test_helpers.ok (Css.Declaration.of_string "line-height: 1.5");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "border-collapse: collapse");
         ]
       ~initial_values:
         [
-          Css.Declaration.of_string "display: inline";
-          Css.Declaration.of_string "width: auto";
-          Css.Declaration.of_string "line-height: normal";
-          Css.Declaration.of_string "border-collapse: separate";
+          Css_test_helpers.ok (Css.Declaration.of_string "display: inline");
+          Css_test_helpers.ok (Css.Declaration.of_string "width: auto");
+          Css_test_helpers.ok (Css.Declaration.of_string "line-height: normal");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "border-collapse: separate");
         ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
@@ -261,20 +263,25 @@ let computed_edge_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--brand: red";
-          Css.Declaration.of_string "--accent: var(--brand)";
-          Css.Declaration.of_string "--cycle-a: var(--cycle-b)";
-          Css.Declaration.of_string "--cycle-b: var(--cycle-a)";
-          Css.Declaration.of_string "--cycle-fb: var(--cycle-fb, red)";
-          Css.Declaration.of_string "--space: 2em";
+          Css_test_helpers.ok (Css.Declaration.of_string "--brand: red");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--accent: var(--brand)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--cycle-a: var(--cycle-b)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--cycle-b: var(--cycle-a)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--cycle-fb: var(--cycle-fb, red)");
+          Css_test_helpers.ok (Css.Declaration.of_string "--space: 2em");
         ]
-      ~inherited_values:[ Css.Declaration.of_string "font-size: 12px" ]
+      ~inherited_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "font-size: 12px") ]
       ~initial_values:
         [
-          Css.Declaration.of_string "color: canvastext";
-          Css.Declaration.of_string "font-size: medium";
-          Css.Declaration.of_string "line-height: normal";
-          Css.Declaration.of_string "margin-left: 0";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: canvastext");
+          Css_test_helpers.ok (Css.Declaration.of_string "font-size: medium");
+          Css_test_helpers.ok (Css.Declaration.of_string "line-height: normal");
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
         ]
       ~base_url:"https://example.test/assets/css/theme.css"
       ~root_font_size:(Css.Values.Px 20.) ~parent_font_size:(Css.Values.Px 12.)
@@ -331,12 +338,14 @@ let computed_calc_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--pad-y: 1em";
-          Css.Declaration.of_string "--pad-x: 2rem";
-          Css.Declaration.of_string "--brand-alpha: 0.5";
+          Css_test_helpers.ok (Css.Declaration.of_string "--pad-y: 1em");
+          Css_test_helpers.ok (Css.Declaration.of_string "--pad-x: 2rem");
+          Css_test_helpers.ok (Css.Declaration.of_string "--brand-alpha: 0.5");
         ]
-      ~inherited_values:[ Css.Declaration.of_string "font-size: 12px" ]
-      ~initial_values:[ Css.Declaration.of_string "opacity: 1" ]
+      ~inherited_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "font-size: 12px") ]
+      ~initial_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "opacity: 1") ]
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
       ~viewport_width:(Css.Values.Px 1000.)
       ~viewport_height:(Css.Values.Px 600.)
@@ -381,7 +390,11 @@ let eval_calc_family_contract () =
      needs a viewport / font / container context to fold. *)
   let ctx =
     Css.Context.v
-      ~custom_properties:[ Css.Declaration.of_string "--lp: calc(50% + 1rem)" ]
+      ~custom_properties:
+        [
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--lp: calc(50% + 1rem)");
+        ]
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
       ~viewport_width:(Css.Values.Px 1000.)
       ~container_width:(Css.Values.Px 400.) ()
@@ -398,20 +411,22 @@ let eval_ast_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--brand: red";
-          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
-          Css.Declaration.of_string "--rgb: 10 20 30";
-          Css.Declaration.of_string "--alpha: 0.5";
-          Css.Declaration.of_string "--shift: 1rem";
-          Css.Declaration.of_string "--ring-offset: 2px";
-          Css.Declaration.of_string "--ring-color: blue";
+          Css_test_helpers.ok (Css.Declaration.of_string "--brand: red");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--gap: calc(1rem + 2px)");
+          Css_test_helpers.ok (Css.Declaration.of_string "--rgb: 10 20 30");
+          Css_test_helpers.ok (Css.Declaration.of_string "--alpha: 0.5");
+          Css_test_helpers.ok (Css.Declaration.of_string "--shift: 1rem");
+          Css_test_helpers.ok (Css.Declaration.of_string "--ring-offset: 2px");
+          Css_test_helpers.ok (Css.Declaration.of_string "--ring-color: blue");
         ]
       ~inherited_values:
         [
-          Css.Declaration.of_string "color: blue";
-          Css.Declaration.of_string "font-size: 12px";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: blue");
+          Css_test_helpers.ok (Css.Declaration.of_string "font-size: 12px");
         ]
-      ~initial_values:[ Css.Declaration.of_string "width: auto" ]
+      ~initial_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "width: auto") ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
       ~current_color:(Css.Values.Named Css.Values.Red)
@@ -459,18 +474,23 @@ let eval_spec_edge_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
-          Css.Declaration.of_string "--outer: var(--missing, var(--gap))";
-          Css.Declaration.of_string
-            "--nested-fallback: var(--missing, calc(var(--gap) + 1rem))";
-          Css.Declaration.of_string "--rgb: 12 34 56";
-          Css.Declaration.of_string "--alpha: calc(0.2 + 0.3)";
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--gap: calc(1rem + 2px)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--outer: var(--missing, var(--gap))");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string
+               "--nested-fallback: var(--missing, calc(var(--gap) + 1rem))");
+          Css_test_helpers.ok (Css.Declaration.of_string "--rgb: 12 34 56");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--alpha: calc(0.2 + 0.3)");
         ]
-      ~inherited_values:[ Css.Declaration.of_string "color: blue" ]
+      ~inherited_values:
+        [ Css_test_helpers.ok (Css.Declaration.of_string "color: blue") ]
       ~initial_values:
         [
-          Css.Declaration.of_string "margin-left: 0";
-          Css.Declaration.of_string "color: canvastext";
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
+          Css_test_helpers.ok (Css.Declaration.of_string "color: canvastext");
         ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
@@ -517,24 +537,28 @@ let eval_css_spec_edge_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--brand: red";
-          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
-          Css.Declaration.of_string "--angle: calc(30deg + 15deg)";
-          Css.Declaration.of_string "--alpha: 0.5";
-          Css.Declaration.of_string "--shadow: 0 0 var(--gap) currentColor";
-          Css.Declaration.of_string "--image: url(../img/pattern.svg)";
+          Css_test_helpers.ok (Css.Declaration.of_string "--brand: red");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--gap: calc(1rem + 2px)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--angle: calc(30deg + 15deg)");
+          Css_test_helpers.ok (Css.Declaration.of_string "--alpha: 0.5");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--shadow: 0 0 var(--gap) currentColor");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--image: url(../img/pattern.svg)");
         ]
       ~inherited_values:
         [
-          Css.Declaration.of_string "color: blue";
-          Css.Declaration.of_string "display: block";
-          Css.Declaration.of_string "font-size: 10px";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: blue");
+          Css_test_helpers.ok (Css.Declaration.of_string "display: block");
+          Css_test_helpers.ok (Css.Declaration.of_string "font-size: 10px");
         ]
       ~initial_values:
         [
-          Css.Declaration.of_string "display: inline";
-          Css.Declaration.of_string "margin-left: 0";
-          Css.Declaration.of_string "opacity: 1";
+          Css_test_helpers.ok (Css.Declaration.of_string "display: inline");
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
+          Css_test_helpers.ok (Css.Declaration.of_string "opacity: 1");
         ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
@@ -623,20 +647,20 @@ let eval_observable_matrix_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--gap: 1rem";
-          Css.Declaration.of_string "--angle: 45deg";
-          Css.Declaration.of_string "--duration: 500ms";
+          Css_test_helpers.ok (Css.Declaration.of_string "--gap: 1rem");
+          Css_test_helpers.ok (Css.Declaration.of_string "--angle: 45deg");
+          Css_test_helpers.ok (Css.Declaration.of_string "--duration: 500ms");
         ]
       ~inherited_values:
         [
-          Css.Declaration.of_string "color: blue";
-          Css.Declaration.of_string "font-size: 10px";
+          Css_test_helpers.ok (Css.Declaration.of_string "color: blue");
+          Css_test_helpers.ok (Css.Declaration.of_string "font-size: 10px");
         ]
       ~initial_values:
         [
-          Css.Declaration.of_string "display: inline";
-          Css.Declaration.of_string "margin-left: 0";
-          Css.Declaration.of_string "color: canvastext";
+          Css_test_helpers.ok (Css.Declaration.of_string "display: inline");
+          Css_test_helpers.ok (Css.Declaration.of_string "margin-left: 0");
+          Css_test_helpers.ok (Css.Declaration.of_string "color: canvastext");
         ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
@@ -702,10 +726,12 @@ let eval_stylesheet_spec_edge_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--brand: red";
-          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
-          Css.Declaration.of_string "--alpha: 0.5";
-          Css.Declaration.of_string "--angle: calc(30deg + 15deg)";
+          Css_test_helpers.ok (Css.Declaration.of_string "--brand: red");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--gap: calc(1rem + 2px)");
+          Css_test_helpers.ok (Css.Declaration.of_string "--alpha: 0.5");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--angle: calc(30deg + 15deg)");
         ]
       ~base_url:"https://example.test/css/app.css"
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)

@@ -3,6 +3,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
@@ -113,7 +115,7 @@ let generated_media buf =
           ( Css.Supports.property "display" "grid",
             [
               Css.container ~name:"card"
-                ~condition:(Css.Container.of_string "(inline-size > 30em)")
+                ~condition:(ok (Css.Container.of_string "(inline-size > 30em)"))
                 [ rule buf 8 ];
             ] );
       ] )
@@ -172,8 +174,8 @@ let generated_stylesheet buf =
         ( Some (pick [ [ "base" ]; [ "theme" ]; [ "components" ] ] buf 12),
           [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
       Css.Stylesheet.Scope
-        ( Some (Css.Selector.of_string ".card"),
-          Some (Css.Selector.of_string ".limit"),
+        ( Some (Css.Selector.v ".card"),
+          Some (Css.Selector.v ".limit"),
           [ rule buf 24 ] );
       Css.Stylesheet.Starting_style [ rule buf 28 ];
       Css.Stylesheet.with_origin Css.Stylesheet.Author

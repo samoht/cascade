@@ -104,6 +104,11 @@ exception Parse_error of t
 val fail : t -> 'a
 (** Raises {!Parse_error} with the given value. *)
 
+val catch : (unit -> 'a) -> ('a, t) result
+(** [catch f] is [Ok (f ())], or [Error e] if [f] raises [Parse_error e]. Every
+    public [of_string] returns through it, so {!Parse_error} stays inside the
+    readers. *)
+
 val with_context : string -> (unit -> 'a) -> 'a
 (** [with_context label f] runs [f ()] and, on a raised {!Parse_error}, prepends
     [label] to the error's context path. Compose on every descent into a named

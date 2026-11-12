@@ -275,7 +275,7 @@ let distinct_value label a b =
     (Css.Declaration.equal_declaration a b)
 
 let aspect_ratio_has_one_node () =
-  let parsed = Css.Declaration.of_string "aspect-ratio:16/9" in
+  let parsed = ok (Css.Declaration.of_string "aspect-ratio:16/9") in
   same_text_same_hash "Ratio constructor vs parsed"
     (Css.aspect_ratio (Css.Ratio (16., 9.)))
     parsed;
@@ -284,12 +284,12 @@ let aspect_ratio_has_one_node () =
     parsed;
   same_text_same_hash "Auto_ratio constructor vs parsed"
     (Css.aspect_ratio (Css.Auto_ratio (16., 9.)))
-    (Css.Declaration.of_string "aspect-ratio:auto 16/9")
+    (ok (Css.Declaration.of_string "aspect-ratio:auto 16/9"))
 
 let caret_auto_has_one_node () =
   same_text_same_hash "caret Auto constructor vs parsed"
     (Css.caret (Css.Auto : Css.caret))
-    (Css.Declaration.of_string "caret:auto")
+    (ok (Css.Declaration.of_string "caret:auto"))
 
 let gradient_var kind constructor =
   let var =
@@ -299,7 +299,9 @@ let gradient_var kind constructor =
   same_text_same_hash
     (kind ^ " var constructor vs parsed")
     (Css.background_image (constructor var))
-    (Css.Declaration.of_string ("background-image:" ^ kind ^ "(var(--stops))"))
+    (Css_test_helpers.ok
+       (Css.Declaration.of_string
+          ("background-image:" ^ kind ^ "(var(--stops))")))
 
 let radial_gradient_var_has_one_node () =
   gradient_var "radial-gradient" (fun var -> Css.Radial_gradient_var var)
@@ -462,12 +464,13 @@ let number_spellings_keep_their_value () =
    its typed values alone: reading the print back has to land on the node that
    printed it, not merely on the same text. *)
 let reads_back input =
-  let d = Css.Declaration.of_string input in
+  let d = ok (Css.Declaration.of_string input) in
   let printed = Css.Declaration.to_string ~minify:true d in
   Alcotest.(check bool)
     (input ^ ": the print reads back as the same node")
     true
-    (Css.Declaration.equal_declaration d (Css.Declaration.of_string printed))
+    (Css.Declaration.equal_declaration d
+       (ok (Css.Declaration.of_string printed)))
 
 (* Four families whose grammar takes more component values than the reader took.
    Each block pins the multi-value forms the grammar allows, the single-value

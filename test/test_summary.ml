@@ -14,7 +14,7 @@ let rule css =
   | [| rule |] -> rule
   | rules -> Alcotest.failf "expected one rule, got %d" (Array.length rules)
 
-let decl css = Declaration.of_string css
+let decl css = Css_test_helpers.ok (Declaration.of_string css)
 let decl_string decl = Declaration.to_string ~minify:true decl
 let decl_size decl = String.length (decl_string decl)
 

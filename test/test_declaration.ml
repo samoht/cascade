@@ -399,15 +399,11 @@ let roundtrip () =
   check_declaration ~expected:"margin:10px" "margin : 10px";
   check_declaration ~expected:"padding:5px!important" "padding: 5px !important"
 
-(* The exact error-message shape moved from [Reader.Parse_error] to [Error.t];
-   we now only assert that parsing fails. *)
 let expect_parse_error name f =
   try
     f ();
     Alcotest.failf "%s: expected Parse_error but none was raised" name
-  with
-  | Cursor.Parse_error _ -> ()
-  | Reader.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 let error_missing_colon () =
   let r = Cursor.of_string "color red;" in

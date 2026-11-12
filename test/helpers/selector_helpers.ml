@@ -12,7 +12,7 @@ let check_construct expected selector =
   check_construct expected (to_string ~minify:true) expected selector
 
 let check_pretty_to expected input =
-  let actual = to_string ~minify:false (of_string input) in
+  let actual = to_string ~minify:false (v input) in
   Alcotest.(check string) ("pretty " ^ input) expected actual
 
 let check_spec_tuple name expected actual =
@@ -22,11 +22,11 @@ let check_spec_tuple name expected actual =
 
 (* Extra minifier invariant: reparse and preserve specificity. *)
 let check_minified_to expected input =
-  let original = of_string input in
+  let original = v input in
   let minified = to_string ~minify:true original in
   Alcotest.(check string) ("minify " ^ input) expected minified;
-  let reparsed = of_string minified in
-  let expected_ast = of_string expected in
+  let reparsed = v minified in
+  let expected_ast = v expected in
   Alcotest.(check bool)
     ("minified selector reparses to expected AST: " ^ input)
     true
@@ -42,9 +42,9 @@ let check_minified_to expected input =
    compound), so we compare the minified form against itself after re-parsing
    and re-minifying. *)
 let check_minified_equiv input =
-  let original = of_string input in
+  let original = v input in
   let minified = to_string ~minify:true original in
-  let reparsed = of_string minified in
+  let reparsed = v minified in
   let reminified = to_string ~minify:true reparsed in
   Alcotest.(check string)
     ("minified selector is idempotent: " ^ input)

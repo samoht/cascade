@@ -1,6 +1,6 @@
 open Cascade
 
-let decl css = Declaration.of_string css
+let decl css = Css_test_helpers.ok (Declaration.of_string css)
 
 let single_selector css =
   match Css.of_string css with

@@ -17,33 +17,6 @@ val pp : t Pp.t
 (** [pp] pretty-prints the parser context with current position and a small
     context window for debugging. *)
 
-type parse_error = {
-  message : string;
-  got : string option;
-  position : int;
-  filename : string;
-  line : int;
-  col : int;
-  context_window : string;
-  marker_pos : int;
-  callstack : string list;
-}
-(** Parse error information with structured details. {!field-filename} names the
-    source: a reader built by {!val-of_string} carries ["<CSS input>"] until
-    {!with_filename} replaces it. {!field-position} is a byte offset,
-    {!field-line} and {!field-col} are the 1-based line and column of that
-    offset, and {!field-marker_pos} counts the characters of
-    {!field-context_window} before it. A column is one Unicode scalar value, as
-    for {!context_window}. *)
-
-exception Parse_error of parse_error
-(** [Parse_error error] is raised on parse errors with structured debugging
-    information. *)
-
-val pp_parse_error : parse_error -> string
-(** [pp_parse_error error] formats a parse error as a string, locating it as
-    [filename:line:column] and including call stack if available. *)
-
 (** {1 Core} *)
 
 val of_string : ?enforce_spec:bool -> string -> t
@@ -103,46 +76,6 @@ val context_window : ?before:int -> ?after:int -> t -> string * int
     radiuses rather than caps: a boundary falling inside a UTF-8 sequence moves
     outward to the lead byte, so [context] is never a truncated code point. *)
 
-(** {1 Call Stack Management} *)
-
-val push_context : t -> string -> unit
-(** [push_context t context] pushes a parsing context onto the call stack. *)
-
-val pop_context : t -> unit
-(** [pop_context t] pops the top parsing context from the call stack. *)
-
-val with_context : t -> string -> (unit -> 'a) -> 'a
-(** [with_context t context f] runs [f] with [context] pushed onto the call
-    stack, automatically popping it when done (even if [f] raises an exception).
-*)
-
-val callstack : t -> string list
-(** [callstack t] returns the current parsing call stack for debugging. *)
-
-(** {1 Error Handling} *)
-
-val err : ?got:string -> t -> string -> 'a
-(** [err ?got t expected] raises a parse error. *)
-
-val err_eof : t -> 'a
-(** [err_eof t] raises an "unexpected end of input" error. *)
-
-val err_expected : t -> string -> 'a
-(** [err_expected t what] raises an "expected [what]" error. *)
-
-val err_expected_but_eof : t -> string -> 'a
-(** [err_expected_but_eof t what] raises an "Expected [what] but reached end of
-    input" error. *)
-
-val err_invalid : t -> string -> 'a
-(** [err_invalid t what] raises a parse error for an invalid [what]. *)
-
-(** {1 Error Utilities} *)
-
-val with_filename : parse_error -> string -> parse_error
-(** [with_filename error filename] is [error] with [filename] as its source
-    name. The location is unchanged. *)
-
 (** {1 Characters} *)
 
 val peek : t -> char option
@@ -165,8 +98,9 @@ val peek_string : t -> int -> string
 (** [peek_string t n] returns next [n] chars without consuming them. *)
 
 val skip : t -> unit
-(** [skip t] consumes one character, or raises {!exception-Parse_error} at end
-    of input. *)
+(** [skip t] consumes one character.
+
+    @raise Invalid_argument if [t] is at end of input. *)
 
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] if input starts with [s]. *)

@@ -781,15 +781,8 @@ let parse_media text =
   | exception Cursor.Parse_error _ -> None
   | q -> Some q
 
-let parse_supports text =
-  match Supports.of_string text with
-  | exception Cursor.Parse_error _ -> None
-  | c -> Some c
-
-let parse_container text =
-  match Container.of_string text with
-  | exception Cursor.Parse_error _ -> None
-  | c -> Some c
+let parse_supports text = Result.to_option (Supports.of_string text)
+let parse_container text = Result.to_option (Container.of_string text)
 
 let supports_leaf (c : Supports.t) =
   match c with

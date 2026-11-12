@@ -25,7 +25,7 @@ let dom_selector_boundary () =
       Alcotest.(check string)
         ("minify selector " ^ input)
         expected
-        (Css.Selector.to_string ~minify:true (Css.Selector.of_string input)))
+        (Css.Selector.to_string ~minify:true (Css.Selector.v input)))
     selector_cases;
   neg_cursor read ".card:has(> ) { color: red }";
   neg_cursor read "::before::after { color: red }";
@@ -88,10 +88,10 @@ let environment_query_boundary () =
 
 let value_resolution_boundary () =
   let open Css.Values in
-  let inherited_font_size = Css.Declaration.of_string "font-size: 16px" in
-  let inherited_color = Css.Declaration.of_string "color: canvastext" in
-  let initial_width = Css.Declaration.of_string "width: auto" in
-  let initial_display = Css.Declaration.of_string "display: inline" in
+  let inherited_font_size = ok (Css.Declaration.of_string "font-size: 16px") in
+  let inherited_color = ok (Css.Declaration.of_string "color: canvastext") in
+  let initial_width = ok (Css.Declaration.of_string "width: auto") in
+  let initial_display = ok (Css.Declaration.of_string "display: inline") in
   let ctx =
     {
       Css.Context.empty with
@@ -124,26 +124,26 @@ let value_resolution_boundary () =
 
 let custom_property_boundary () =
   let check_specified_value name css expected =
-    let decl = Css.Declaration.of_string css in
+    let decl = ok (Css.Declaration.of_string css) in
     Alcotest.(check string)
       name expected
       (Css.Declaration.string_of_value ~minify:false decl)
   in
   let check_minified_value name css expected =
-    let decl = Css.Declaration.of_string css in
+    let decl = ok (Css.Declaration.of_string css) in
     Alcotest.(check string)
       name expected
       (Css.Declaration.string_of_value ~minify:true decl)
   in
-  let gap = Css.Declaration.of_string "--gap: 1rem" in
+  let gap = ok (Css.Declaration.of_string "--gap: 1rem") in
   let ctx =
     {
       Css.Context.empty with
       custom_properties =
         [
           gap;
-          Css.Declaration.of_string "--a: var(--b)";
-          Css.Declaration.of_string "--b: var(--a, red)";
+          ok (Css.Declaration.of_string "--a: var(--b)");
+          ok (Css.Declaration.of_string "--b: var(--a, red)");
         ];
     }
   in

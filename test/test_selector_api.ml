@@ -25,7 +25,7 @@ let check_attr_name = check_value_cursor "attr_name" read_attr_name pp_attr_name
    drop [.a::before.b] and [.a::before:hover]. *)
 let canonicalize_pseudo_compound_is () =
   let canon expected input =
-    let actual = to_string ~minify:true (canonicalize (of_string input)) in
+    let actual = to_string ~minify:true (canonicalize (v input)) in
     Alcotest.(check string) ("canonicalize " ^ input) expected actual;
     match Cursor.option read (Cursor.of_string actual) with
     | Some _ -> ()
@@ -66,9 +66,7 @@ let canonicalize_pseudo_compound_is () =
    does. *)
 let canonicalize_lifted_subject_drops_universal () =
   let canon expected parent child =
-    let spliced =
-      Nest.substitute ~parent:(of_string parent) (of_string child)
-    in
+    let spliced = Nest.substitute ~parent:(v parent) (v child) in
     let actual = to_string ~minify:true (canonicalize spliced) in
     Alcotest.(check string)
       ("canonicalize " ^ parent ^ " { " ^ child ^ " }")
@@ -76,7 +74,7 @@ let canonicalize_lifted_subject_drops_universal () =
     Alcotest.(check bool)
       (parent ^ " { " ^ child ^ " } canonicalizes to the AST of " ^ expected)
       true
-      (equal (canonicalize spliced) (canonicalize (of_string expected)))
+      (equal (canonicalize spliced) (canonicalize (v expected)))
   in
   canon "svg :where(.dark,.dark *)" "svg *" "&:where(.dark, .dark *)";
   canon "svg :where(.dark,.dark *)" "svg *" "&:where(.dark,.dark *)";
@@ -87,14 +85,14 @@ let canonicalize_lifted_subject_drops_universal () =
 
 let canonicalize_top_level_is_unwrap () =
   let canon expected input =
-    let actual = canonicalize (of_string input) in
+    let actual = canonicalize (v input) in
     Alcotest.(check string)
       ("canonicalize " ^ input) expected
       (to_string ~minify:true actual);
     Alcotest.(check bool)
       (input ^ " canonicalizes to the AST of " ^ expected)
       true
-      (equal actual (canonicalize (of_string expected)));
+      (equal actual (canonicalize (v expected)));
     match Cursor.option read (Cursor.of_string expected) with
     | Some _ -> ()
     | None ->
@@ -104,7 +102,7 @@ let canonicalize_top_level_is_unwrap () =
     Alcotest.(check bool)
       (a ^ " and " ^ b ^ " are different selectors")
       false
-      (equal (canonicalize (of_string a)) (canonicalize (of_string b)))
+      (equal (canonicalize (v a)) (canonicalize (v b)))
   in
   canon "a,b" ":is(a,b)";
   canon ".a,.b" ":is(.a,.b)";
@@ -600,7 +598,7 @@ let hash_separates_deep_tails () =
   let seen = Hashtbl.create 1024 in
   for i = 1 to n do
     Hashtbl.replace seen
-      (Fmt.kstr (fun src -> hash (of_string src)) "%s .t%d" prefix i)
+      (Fmt.kstr (fun src -> hash (v src)) "%s .t%d" prefix i)
       ()
   done;
   Alcotest.(check int)
@@ -633,7 +631,7 @@ let hash_agrees_with_equal () =
     (fun src_a ->
       List.iter
         (fun src_b ->
-          let a = of_string src_a and b = of_string src_b in
+          let a = v src_a and b = v src_b in
           let eq = equal a b in
           if eq <> (compare a b = 0) then
             Alcotest.failf "equal disagrees with compare on %s / %s" src_a src_b;
