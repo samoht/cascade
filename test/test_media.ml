@@ -700,11 +700,19 @@ let normalize_is_idempotent () =
       "theme(static)";
     ]
 
+(* A number past 2^62 prints like every other CSS number: [1e30], never C
+   printf's [1e+30] or mingw's [1e+030]. *)
+let test_large_resolution () =
+  Alcotest.(check string)
+    "resolution" "(min-resolution: 1e30dpi)"
+    (to_string (of_string "(min-resolution:1e30dpi)"))
+
 let suite =
   let open Alcotest in
   ( "media",
     [
       test_case "to_string" `Quick test_string_output;
+      test_case "large resolution" `Quick test_large_resolution;
       test_case "spec media query level 4/5 vectors" `Quick
         spec_media_l45_vectors;
       test_case "spec media query structural vectors" `Quick

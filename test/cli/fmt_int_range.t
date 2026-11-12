@@ -41,13 +41,13 @@ A media feature length, and a resolution.
   $ printf '@media (min-width:4611686018427387904px){a{color:red}}' | cascade fmt --minify - 2>&1
   @media(width>=4.61168601843e18px){a{color:red}}
   $ printf '@media (min-resolution:1e30dpi){a{color:red}}' | cascade fmt - 2>&1
-  @media (min-resolution: 1e+30dpi) {
+  @media (min-resolution: 1e30dpi) {
     a {
       color: red;
     }
   }
   $ printf '@media (min-resolution:1e30dpi){a{color:red}}' | cascade fmt --minify - 2>&1
-  @media(resolution>=1e+30dpi){a{color:red}}
+  @media(resolution>=1e30dpi){a{color:red}}
 
 A ratio whose terms have no `int`, or whose numerator is not an
 integer, stays as written.
@@ -83,22 +83,22 @@ A container width.
 An attribute value written as a number.
 
   $ printf '[data-x=1e30]{color:red}' | cascade fmt - 2>&1
-  [data-x="1e+30"] {
+  [data-x="1e30"] {
     color: red;
   }
   $ printf '[data-x=1e30]{color:red}' | cascade fmt --minify - 2>&1
-  [data-x="1e+30"]{color:red}
+  [data-x="1e30"]{color:red}
 
 A keyframe timeline range offset.
 
   $ printf '@keyframes k{entry 1e30%%{color:red}}' | cascade fmt - 2>&1
   @keyframes k {
-    entry 1e+30% {
+    entry 1e30% {
       color: red;
     }
   }
   $ printf '@keyframes k{entry 1e30%%{color:red}}' | cascade fmt --minify - 2>&1
-  @keyframes k{entry 1e+30%{color:red}}
+  @keyframes k{entry 1e30%{color:red}}
 
 A math function at an `<integer>` slot. CSS Values 4 sec. 10.12 rounds
 it and clamps the result to the supported range at computed-value time,

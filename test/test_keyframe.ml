@@ -132,6 +132,13 @@ let spec_keyframe_invalid_edges () =
       "from, middle, to";
     ]
 
+(* A number past 2^62 prints like every other CSS number: [1e30], never C
+   printf's [1e+30] or mingw's [1e+030]. *)
+let test_large_offset () =
+  Alcotest.(check string)
+    "timeline range offset" "entry 1e30%"
+    (string_of_position (Timeline_range ("entry", 1e30)))
+
 let suite =
   let open Alcotest in
   ( "keyframe",
@@ -147,4 +154,5 @@ let suite =
         spec_keyframe_duplicate_offsets;
       test_case "spec keyframe invalid selector recovery edges" `Quick
         spec_keyframe_invalid_edges;
+      test_case "large offset" `Quick test_large_offset;
     ] )

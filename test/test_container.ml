@@ -428,6 +428,13 @@ let normalize_is_idempotent () =
       "theme(static)";
     ]
 
+(* A number past 2^62 prints like every other CSS number: [1e30], never C
+   printf's [1e+30] or mingw's [1e+030]. *)
+let test_large_rem () =
+  Alcotest.(check string)
+    "min-width rem" "(min-width:1e30rem)"
+    Css.Container.(to_string (Min_width_rem 1e30))
+
 let tests =
   Alcotest.
     [
@@ -462,6 +469,7 @@ let tests =
       test_case "equal on opaque conditions" `Quick equal_on_opaque_conditions;
       test_case "spec style range comparison" `Quick spec_style_range_comparison;
       test_case "normalize is idempotent" `Quick normalize_is_idempotent;
+      test_case "large rem" `Quick test_large_rem;
     ]
 
 let suite = ("container", tests)

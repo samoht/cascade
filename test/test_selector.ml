@@ -742,6 +742,13 @@ let callstack_accuracy () =
     ".test[[attr]] { color: red; }"
     [ "rule"; "selector"; "list" ]
 
+(* A number past 2^62 prints like every other CSS number: [1e30], never C
+   printf's [1e+30] or mingw's [1e+030]. *)
+let attribute_large_number () =
+  Alcotest.(check string)
+    "attribute value" {|[data-x="1e30"]|}
+    (to_string (of_string "[data-x=1e30]"))
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -753,6 +760,7 @@ let suite =
       test_case "pseudo class" `Quick pseudo_class_cases;
       test_case "pseudo element" `Quick pseudo_element_cases;
       test_case "attribute" `Quick attribute_cases;
+      test_case "attribute large number" `Quick attribute_large_number;
       (* Combinations *)
       test_case "combinator cases" `Quick combinator_cases;
       test_case "compound" `Quick compound_cases;
