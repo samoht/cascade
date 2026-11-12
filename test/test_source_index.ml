@@ -101,6 +101,101 @@ let test_name_must_match () =
     "nothing starts at 1" true
     (Index.at_rule index ~name:"@media" 1 = None)
 
+(* The reader rewrites the input before parsing (CSS Syntax 3 sec. 3.3
+   "Preprocessing the input stream"): a CRLF becomes one LF, a leading BOM goes
+   and a NUL becomes the three bytes of U+FFFD. The offsets must still index the
+   caller's string, not the rewritten one. *)
+
+let statements name css =
+  Index.at_statements (Index.v css) ~name
+  |> List.map (fun (i, (s : Index.statement)) -> (i, s.prelude, s.next))
+  |> List.sort (fun (i, _, _) (j, _, _) -> Int.compare i j)
+
+let calls name css =
+  Index.calls (Index.v css) ~name
+  |> List.map (fun (i, (b : Index.block)) -> (i, b.body, b.next))
+  |> List.sort (fun (i, _, _) (j, _, _) -> Int.compare i j)
+
+let found = Alcotest.(list (triple int string int))
+
+let check_header css ~at ~prelude ~brace ~body ~next =
+  let h = at_rule "@media" css at in
+  Alcotest.(check string) "prelude" prelude h.prelude;
+  Alcotest.(check int) "brace" brace h.brace;
+  Alcotest.(check string) "body" body h.block.body;
+  Alcotest.(check int) "next" next h.block.next
+
+(* @import 0..33, ';' 34, CR 35, LF 36, @source 37, inline 45, its ')' 63, ';'
+   64. *)
+let test_crlf_statement () =
+  let css =
+    "@import \"tailwindcss\" source(none);\r\n@source inline(\"underline\");\n"
+  in
+  Alcotest.check found "@import"
+    [ (0, " \"tailwindcss\" source(none)", 35) ]
+    (statements "@import" css);
+  Alcotest.check found "@source"
+    [ (37, " inline(\"underline\")", 65) ]
+    (statements "@source" css);
+  Alcotest.check found "source()" [ (22, "none", 34) ] (calls "source" css);
+  Alcotest.check found "inline()"
+    [ (45, "\"underline\"", 64) ]
+    (calls "inline" css)
+
+(* @media 6, '{' 19, ' .b { color: red } ' 20..38, '}' 39. *)
+let test_crlf_block () =
+  check_header ".a{}\r\n@media print { .b { color: red } }" ~at:6
+    ~prelude:"print" ~brace:19 ~body:" .b { color: red } " ~next:40
+
+(* @media 6, '{' 19, body 20..36 with a CRLF at each end, '}' 37, CRLF
+   38..39. *)
+let test_crlf_inside_block () =
+  check_header ".a{}\r\n@media print {\r\n.b{color:red}\r\n}\r\n" ~at:6
+    ~prelude:"print" ~brace:19 ~body:"\r\n.b{color:red}\r\n" ~next:38
+
+(* theme 11, '(' 16, '--spacing' 17..25, ')' 26. *)
+let test_crlf_call () =
+  Alcotest.check found "theme()"
+    [ (11, "--spacing", 27) ]
+    (calls "theme" ".a{\r\nwidth:theme(--spacing)}")
+
+(* BOM 0..2, @import 3, ';' 14, LF 15, @media 16, '{' 29, '}' 36. *)
+let test_bom () =
+  let css = "\xEF\xBB\xBF@import \"x\";\n@media print { .b{} }" in
+  Alcotest.check found "@import"
+    [ (3, " \"x\"", 15) ]
+    (statements "@import" css);
+  check_header css ~at:16 ~prelude:"print" ~brace:29 ~body:" .b{} " ~next:37
+
+(* A NUL grows by two bytes in the rewrite. @import 0, NUL 9, ';' 11, LF 12,
+   @layer 13, ';' 21. *)
+let test_nul () =
+  let css = "@import \"\x00\";\n@layer a;" in
+  Alcotest.check found "@import"
+    [ (0, " \"\x00\"", 12) ]
+    (statements "@import" css);
+  Alcotest.check found "@layer" [ (13, " a", 22) ] (statements "@layer" css)
+
+(* The same sources with LF only, and with a lone CR or FF, which the rewrite
+   maps one byte to one byte: nothing shifts. *)
+let test_lf_control () =
+  let css =
+    "@import \"tailwindcss\" source(none);\n@source inline(\"underline\");\n"
+  in
+  Alcotest.check found "@import"
+    [ (0, " \"tailwindcss\" source(none)", 35) ]
+    (statements "@import" css);
+  Alcotest.check found "@source"
+    [ (36, " inline(\"underline\")", 64) ]
+    (statements "@source" css);
+  Alcotest.check found "inline()"
+    [ (44, "\"underline\"", 63) ]
+    (calls "inline" css);
+  check_header ".a{}\n@media print { .b { color: red } }" ~at:5 ~prelude:"print"
+    ~brace:18 ~body:" .b { color: red } " ~next:39;
+  check_header ".a{}\r@media print {\x0C.b{}\r}" ~at:5 ~prelude:"print"
+    ~brace:18 ~body:"\x0C.b{}\r" ~next:26
+
 let suite =
   ( "source_index",
     [
@@ -120,4 +215,12 @@ let suite =
       Alcotest.test_case "unclosed block" `Quick test_unclosed_block;
       Alcotest.test_case "name and offset must both match" `Quick
         test_name_must_match;
+      Alcotest.test_case "CRLF before a statement" `Quick test_crlf_statement;
+      Alcotest.test_case "CRLF before a block" `Quick test_crlf_block;
+      Alcotest.test_case "CRLF inside a block" `Quick test_crlf_inside_block;
+      Alcotest.test_case "CRLF before a call" `Quick test_crlf_call;
+      Alcotest.test_case "leading BOM" `Quick test_bom;
+      Alcotest.test_case "NUL in a string" `Quick test_nul;
+      Alcotest.test_case "LF, lone CR and FF keep offsets" `Quick
+        test_lf_control;
     ] )
