@@ -1111,6 +1111,19 @@ let repeated_selector_value_swap_remains_visible () =
     "the last-wins change is reported" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* Two identical rules are still two rules: pairing the first exactly leaves the
+   second free for the changed rule opposite. Telling them apart by their
+   content claims both at once and drops the change, since the added rule keeps
+   the sheets from lining up position by position. *)
+let identical_partner_rules_pair_once () =
+  let d =
+    diff_of ~expected:".a{color:red}.a{color:blue}"
+      ~actual:".a{color:red}.a{color:red}.z{margin:0}"
+  in
+  Alcotest.(check (list string))
+    "the changed rule is reported" [ "color: blue -> red" ]
+    (rule_property_changes d)
+
 (* ===== Containers nested past the old recursion cutoff ===== *)
 
 (* The walker recurses on strictly smaller statement lists, so nothing needs a
@@ -1933,6 +1946,8 @@ let suite =
         reordered_rule_diff_is_subquadratic;
       Alcotest.test_case "renamed-rule diff is subquadratic" `Quick
         renamed_rule_diff_is_subquadratic;
+      Alcotest.test_case "identical partner rules pair once" `Quick
+        identical_partner_rules_pair_once;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
