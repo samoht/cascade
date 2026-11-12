@@ -122,6 +122,10 @@
   prop_layout
   prop_box
   prop_font
+  prop_font_variant
+  prop_font_family
+  prop_font_face
+  prop_font_shorthand
   prop_text
   prop_text_layout
   prop_text_inline
