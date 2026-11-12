@@ -758,7 +758,26 @@ let partial_trim added removed =
     ( trim_reconciled_grouping common added,
       trim_reconciled_grouping common removed )
 
-let rule_sig stmt = Option.map (fun (_, _, s) -> s) (flat_rule_parts stmt)
+(* Declaration signatures in the order [decls_signature] sorts declarations. *)
+module Signature_map = Map.Make (struct
+  type t = (string * string) list
+
+  let compare = List.compare compare_prop_value
+end)
+
+(* The flat rules of [rules] by declaration signature, each with its single
+   selectors, in source order. *)
+let flat_rules_by_signature rules =
+  List.fold_left
+    (fun groups stmt ->
+      match flat_rule_parts stmt with
+      | Some (_, subs, sign) ->
+          Signature_map.update sign
+            (fun group -> Some ((stmt, subs) :: Option.value ~default:[] group))
+            groups
+      | None -> groups)
+    Signature_map.empty rules
+  |> Signature_map.map List.rev
 
 let rule_selector_str stmt =
   Option.map (fun (s, _, _) -> Css.Selector.to_string s) (Css.as_rule stmt)
@@ -766,45 +785,46 @@ let rule_selector_str stmt =
 (* A declaration signature is a pure regroup when its removed and added flat
    rules carry the same multiset of single selectors (only the grouping moved).
    Emit a [Regrouped] note for it; the rules are dropped from add/remove. *)
-let detect_pure_regroups added removed =
-  let with_sig s rules = List.filter (fun r -> rule_sig r = Some s) rules in
-  let single_keys rules =
+let detect_pure_regroups ~added_by_sig ~removed_by_sig =
+  let single_keys group =
     List.concat_map
-      (fun r ->
-        match flat_rule_parts r with
-        | Some (_, subs, _) -> List.map selector_key_of_selector subs
-        | None -> [])
-      rules
+      (fun (_, subs) -> List.map selector_key_of_selector subs)
+      group
     |> List.sort Selector.compare
   in
-  List.filter_map rule_sig (added @ removed)
-  |> List.sort_uniq compare
-  |> List.filter_map (fun s ->
-      let radd = with_sig s added and rrem = with_sig s removed in
-      if
-        radd <> [] && rrem <> []
-        && List.equal Selector.equal (single_keys radd) (single_keys rrem)
-      then
-        Some
-          ( s,
+  let selectors group =
+    List.filter_map (fun (stmt, _) -> rule_selector_str stmt) group
+  in
+  Signature_map.merge
+    (fun _ radd rrem ->
+      match (radd, rrem) with
+      | Some radd, Some rrem
+        when List.equal Selector.equal (single_keys radd) (single_keys rrem) ->
+          Some
             (Regrouped
                {
-                 from_selectors = List.filter_map rule_selector_str rrem;
-                 to_selectors = List.filter_map rule_selector_str radd;
+                 from_selectors = selectors rrem;
+                 to_selectors = selectors radd;
                }
-              : rule_diff) )
-      else None)
+              : rule_diff)
+      | _ -> None)
+    added_by_sig removed_by_sig
 
 let reconcile_selector_grouping added removed =
-  let pure = detect_pure_regroups added removed in
-  let pure_sigs = List.map fst pure in
-  let in_pure r =
-    match rule_sig r with Some s -> List.mem s pure_sigs | None -> false
+  let pure =
+    detect_pure_regroups
+      ~added_by_sig:(flat_rules_by_signature added)
+      ~removed_by_sig:(flat_rules_by_signature removed)
   in
-  let added = List.filter (fun r -> not (in_pure r)) added in
-  let removed = List.filter (fun r -> not (in_pure r)) removed in
-  let added, removed = partial_trim added removed in
-  (added, removed, List.map snd pure)
+  let not_pure stmt =
+    match flat_rule_parts stmt with
+    | Some (_, _, s) -> not (Signature_map.mem s pure)
+    | None -> true
+  in
+  let added, removed =
+    partial_trim (List.filter not_pure added) (List.filter not_pure removed)
+  in
+  (added, removed, List.map snd (Signature_map.bindings pure))
 
 (* Key reorder detection uses both selector and declarations: two same-selector
    rules with conflicting declarations cascade last-wins. *)
@@ -953,20 +973,49 @@ let convert_removed_rule stmt =
     let sel, decls = strings_of_rule stmt in
     Some (Removed { selector = sel; declarations = decls } : rule_diff)
 
-let selector_position sel rules =
-  let sel_key = selector_key_of_selector sel in
-  List.mapi
+module Selector_tbl = Hashtbl.Make (struct
+  type t = Css.Selector.t
+
+  let equal = Selector.equal
+  let hash = Selector.hash
+end)
+
+(* Where a [Reordered] entry places a selector: the index of the first rule each
+   side writes it in, and the statements of the actual side by index. Built once
+   per pair of statement lists, since a report can hold a move for every
+   rule. *)
+type positions = {
+  first1 : int Selector_tbl.t;
+  first2 : int Selector_tbl.t;
+  stmts2 : Css.statement array;
+}
+
+let first_positions rules =
+  let first = Selector_tbl.create (List.length rules) in
+  List.iteri
     (fun i stmt ->
       match Css.as_rule stmt with
-      | Some (s, _, _) when Selector.equal (selector_key_of_selector s) sel_key
-        ->
-          Some i
-      | _ -> None)
-    rules
-  |> List.find_map Fun.id |> Option.value ~default:(-1)
+      | Some (s, _, _) ->
+          let key = selector_key_of_selector s in
+          if not (Selector_tbl.mem first key) then Selector_tbl.add first key i
+      | None -> ())
+    rules;
+  first
 
-let selector_at_position pos rules =
-  Option.bind (List.nth_opt rules pos) describe_statement
+let positions rules1 rules2 =
+  {
+    first1 = first_positions rules1;
+    first2 = first_positions rules2;
+    stmts2 = Array.of_list rules2;
+  }
+
+let selector_position sel first =
+  Option.value ~default:(-1)
+    (Selector_tbl.find_opt first (selector_key_of_selector sel))
+
+let selector_at_position pos stmts =
+  if pos < 0 || pos >= Array.length stmts then None
+  else describe_statement stmts.(pos)
 
 let content_changed selector old_decls new_decls =
   let property_changes, added_props, removed_props =
@@ -982,10 +1031,10 @@ let content_changed selector old_decls new_decls =
       removed_properties = removed_props;
     }
 
-let reordered ~rules1 ~rules2 sel1 sel2 selector : rule_diff =
-  let expected_pos = selector_position sel1 rules1 in
-  let actual_pos = selector_position sel2 rules2 in
-  let swapped_with = selector_at_position expected_pos rules2 in
+let reordered ~positions sel1 sel2 selector : rule_diff =
+  let expected_pos = selector_position sel1 positions.first1 in
+  let actual_pos = selector_position sel2 positions.first2 in
+  let swapped_with = selector_at_position expected_pos positions.stmts2 in
   (Reordered
      {
        selector;
@@ -1029,11 +1078,11 @@ let decls_str_equal d1 d2 =
        (fun x y -> decl_to_prop_value x = decl_to_prop_value y)
        d1 d2
 
-let convert_modified_rule ~moved ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
+let convert_modified_rule ~moved ~positions (sel1, sel2, decls1, decls2) =
   let sel1_str = Css.Selector.to_string sel1 in
   let sel2_str = Css.Selector.to_string sel2 in
   let position_changed () = position_changed ~moved sel1 in
-  let reordered selector = reordered ~rules1 ~rules2 sel1 sel2 selector in
+  let reordered selector = reordered ~positions sel1 sel2 selector in
   let reorder_or_content selector d1 d2 =
     if position_changed () then Some (reordered selector)
     else Some (content_changed selector d1 d2)
@@ -1383,9 +1432,10 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   in
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   let moved = moved_order_keys rules1 rules2 in
+  let positions = positions rules1 rules2 in
   List.filter_map convert_added_rule r_added
   @ List.filter_map convert_removed_rule r_removed
-  @ List.filter_map (convert_modified_rule ~moved ~rules1 ~rules2) r_modified
+  @ List.filter_map (convert_modified_rule ~moved ~positions) r_modified
   @ r_regrouped
   |> merge_same_selector_changes ~rules1 ~rules2
   |> dedup_reorders
