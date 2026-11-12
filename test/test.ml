@@ -75,6 +75,8 @@ let () =
       Test_selector_summary.suite;
       Test_aria.suite;
       Test_values.suite;
+      Test_values_color.suite;
+      Test_values_math.suite;
       Test_color_space.suite;
       Test_declaration.suite;
       Test_declaration_families.suite;
