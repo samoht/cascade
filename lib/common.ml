@@ -157,6 +157,12 @@ end
 let int_of_float_opt f =
   if Float.abs f < 0x1p62 then Some (int_of_float f) else None
 
+let canonical_exponent s =
+  match String.index_opt s 'e' with
+  | Some i when i + 1 < String.length s && s.[i + 1] = '+' ->
+      String.sub s 0 (i + 1) ^ String.sub s (i + 2) (String.length s - i - 2)
+  | _ -> s
+
 let mix_int acc x = ((acc lsl 5) - acc) lxor x
 
 (* [String.iter] would allocate a closure over the accumulator ref on every

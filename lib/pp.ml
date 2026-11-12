@@ -338,13 +338,6 @@ let trim_decimal_suffix s =
     String.sub s 0 (String.length s - 1)
   else s
 
-let strip_exponent_plus s =
-  (* Remove redundant '+' in exponent notation: "3.40282e+38" -> "3.40282e38" *)
-  match String.index_opt s 'e' with
-  | Some i when i + 1 < String.length s && s.[i + 1] = '+' ->
-      String.sub s 0 (i + 1) ^ String.sub s (i + 2) (String.length s - i - 2)
-  | _ -> s
-
 let format_integer is_neg abs_f f =
   match Common.int_of_float_opt abs_f with
   | Some i ->
@@ -352,7 +345,7 @@ let format_integer is_neg abs_f f =
       if is_neg then "-" ^ s else s
   | None ->
       (* Very large integer - use string_of_float and clean it up *)
-      trim_decimal_suffix (string_of_float f) |> strip_exponent_plus
+      trim_decimal_suffix (string_of_float f) |> Common.canonical_exponent
 
 let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
   let scale = 10.0 ** float_of_int max_decimals in
@@ -376,7 +369,7 @@ let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
          stringifies through exponent notation. Print the magnitude itself, the
          way [format_integer] does over the same range. *)
       let s =
-        trim_decimal_suffix (string_of_float abs_f) |> strip_exponent_plus
+        trim_decimal_suffix (string_of_float abs_f) |> Common.canonical_exponent
       in
       if is_neg then "-" ^ s else s
 
