@@ -63,6 +63,10 @@ let () =
       Test_pp.suite;
       Test_syntax.suite;
       Test_context.suite;
+      Test_context_query.suite;
+      Test_context_loader.suite;
+      Test_context_eval.suite;
+      Test_context_cascade.suite;
       Test_reader.suite;
       Test_selector.suite;
       Test_selector_pseudo.suite;
