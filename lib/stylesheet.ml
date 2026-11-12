@@ -139,8 +139,8 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
   (match (on_source, comments) with
   | Option.Some emit, Option.Some comments ->
       emit
-        (Source.v ~original ~preprocessed ~comments:(List.rev !comments)
-           out.value)
+        (Source.v ~original ~preprocessed ~origin:(Reader.origin reader)
+           ~comments:(List.rev !comments) out.value)
   | Option.None, Option.None -> ()
   | _ -> assert false);
   (sheet, out.warnings @ typed_warnings)

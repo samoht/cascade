@@ -7,6 +7,12 @@
 - `@media (aspect-ratio:1.5/1)` is printed as written instead of being rounded
   down to `1/1` (#1280).
 
+### Parsing
+
+- `Source_index` offsets and slices index the string you passed even when it
+  has CRLF line endings, starts with a BOM or holds a NUL. They used to drift
+  by a byte per CRLF, and a NUL could make `Source_index.v` raise (#1285).
+
 ## 1.2.1
 
 ### Parsing

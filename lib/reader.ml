@@ -1,8 +1,13 @@
 (** Simple CSS parser implementation. *)
 
+(* [from, upto) of the rewrite stands for [source_from, source_upto) of the
+   original, where preprocessing changed the length. *)
+type shift = { from : int; upto : int; source_from : int; source_upto : int }
+
 type t = {
   input : string;
   len : int;
+  shifts : shift array;
   (* Restrict non-ASCII identifiers to the CSS Syntax 3 (ED) sec. 4.2 range list
      rather than accepting any code point >= U+0080. Rides on the reader so
      every [_at] predicate reaches it without threading a parameter through the
@@ -88,31 +93,76 @@ let rec needs_preprocess input len i =
 
 let copy_preprocessed input len start =
   let buf = Buffer.create len in
-  let fffd = "\xEF\xBF\xBD" in
+  let shifts =
+    ref
+      (if start = 0 then []
+       else [ { from = 0; upto = 0; source_from = 0; source_upto = start } ])
+  in
+  let replace ~source_from ~source_upto text =
+    let from = Buffer.length buf in
+    Buffer.add_string buf text;
+    shifts :=
+      { from; upto = Buffer.length buf; source_from; source_upto } :: !shifts
+  in
   let i = ref start in
   while !i < len do
     let c = input.[!i] in
     (match c with
-    | '\x00' -> Buffer.add_string buf fffd
-    | '\r' ->
-        Buffer.add_char buf '\n';
-        if !i + 1 < len && input.[!i + 1] = '\n' then incr i
-    | '\x0C' -> Buffer.add_char buf '\n'
+    | '\x00' -> replace ~source_from:!i ~source_upto:(!i + 1) "\xEF\xBF\xBD"
+    | '\r' when !i + 1 < len && input.[!i + 1] = '\n' ->
+        replace ~source_from:!i ~source_upto:(!i + 2) "\n";
+        incr i
+    | '\r' | '\x0C' -> Buffer.add_char buf '\n'
     | _ -> Buffer.add_char buf c);
     incr i
   done;
-  Buffer.contents buf
+  (Buffer.contents buf, Array.of_list (List.rev !shifts))
 
 let preprocess input =
   let len = String.length input in
   let bom = has_bom input in
   let start = if bom then 3 else 0 in
-  if (not bom) && not (needs_preprocess input len 0) then input
+  if (not bom) && not (needs_preprocess input len 0) then (input, [||])
   else copy_preprocessed input len start
 
 let of_string ?(enforce_spec = false) input =
-  let input = preprocess input in
-  { input; len = String.length input; enforce_spec; pos = 0; call_stack = [] }
+  let input, shifts = preprocess input in
+  {
+    input;
+    len = String.length input;
+    shifts;
+    enforce_spec;
+    pos = 0;
+    call_stack = [];
+  }
+
+type origin = { map : shift array; length : int }
+
+let origin t = { map = t.shifts; length = t.len }
+
+let original_offset { map; length } i =
+  if i < 0 || i > length then
+    invalid_arg
+      (String.concat ""
+         [
+           "Reader.original_offset: ";
+           string_of_int i;
+           " is outside [0-";
+           string_of_int length;
+           "]";
+         ]);
+  (* The last shift starting at or before [i], or -1. *)
+  let rec last lo hi =
+    if hi - lo <= 1 then lo
+    else
+      let mid = (lo + hi) / 2 in
+      if map.(mid).from <= i then last mid hi else last lo mid
+  in
+  let k = last (-1) (Array.length map) in
+  if k < 0 then i
+  else
+    let s = map.(k) in
+    if i < s.upto then s.source_from else s.source_upto + (i - s.upto)
 
 let source t = t.input
 let enforce_spec t = t.enforce_spec

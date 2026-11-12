@@ -56,7 +56,22 @@ val enforce_spec : t -> bool
     {!val-of_string}. *)
 
 val source : t -> string
-(** [source t] is the full input string the reader was built from. *)
+(** [source t] is the input [t] was built from after CSS Syntax 3 sec. 3.3
+    preprocessing, which every position of [t] indexes. *)
+
+type origin
+(** [origin] maps positions in {!source} back to the string {!val-of_string} was
+    given. *)
+
+val origin : t -> origin
+(** [origin t] is the map for [t]'s input. *)
+
+val original_offset : origin -> int -> int
+(** [original_offset o i] is the byte offset in the original string of position
+    [i] in {!source}. Position [0] lands after a leading BOM, a position after a
+    CRLF lands after both bytes, and a position inside the U+FFFD that replaced
+    a NUL lands on that NUL. Raises [Invalid_argument] when [i] is negative or
+    past the end of {!source}. *)
 
 val is_done : t -> bool
 (** [is_done t] is [true] when at end of input. *)

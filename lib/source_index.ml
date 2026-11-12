@@ -25,23 +25,26 @@ type t = {
 let inner_end ~closed (loc : Loc.t) =
   if closed then loc.end_pos - 1 else loc.end_pos
 
-let group css ~from ~upto ~next =
-  { body = String.sub css from (upto - from); next }
+(* Parser positions index the reader's preprocessed copy; [offset] carries one
+   back to [css]. *)
+let group css ~offset ~from ~upto ~next =
+  let from = offset from and upto = offset upto in
+  { body = String.sub css from (upto - from); next = offset next }
 
-let block_of css (b : Component.block Component.node) =
+let block_of css ~offset (b : Component.block Component.node) =
   let upto = inner_end ~closed:b.node.closed b.loc in
-  group css ~from:(b.loc.start_pos + 1) ~upto ~next:b.loc.end_pos
+  group css ~offset ~from:(b.loc.start_pos + 1) ~upto ~next:b.loc.end_pos
 
 (* A call's arguments start where its first one does; one that takes none has an
    empty body against its own closer. *)
-let call_of css (f : Component.func Component.node) =
+let call_of css ~offset (f : Component.func Component.node) =
   let upto = inner_end ~closed:f.node.terminated f.loc in
   let from =
     match f.node.arguments with
     | argument :: _ -> (Component.source_loc argument).start_pos
     | [] -> upto
   in
-  group css ~from ~upto ~next:f.loc.end_pos
+  group css ~offset ~from ~upto ~next:f.loc.end_pos
 
 (* The [{] an at-rule's prelude leads to. A group in the prelude is a single
    component, so a [;] inside one does not end the at-rule. *)
@@ -62,29 +65,29 @@ let rec statement_end ~closer = function
       (loc.start_pos, loc.start_pos)
   | _ :: rest -> statement_end ~closer rest
 
+let add_header t css ~offset name (at : Loc.t)
+    (b : Component.block Component.node) =
+  let from = offset at.end_pos and brace = offset b.loc.start_pos in
+  let prelude = String.trim (String.sub css from (brace - from)) in
+  Hashtbl.replace t.at (offset at.start_pos)
+    (name, { prelude; brace; block = block_of css ~offset b })
+
+let add_statement t css ~offset ~closer name (at : Loc.t) rest =
+  let upto, next = statement_end ~closer rest in
+  let from = offset at.end_pos and upto = offset upto in
+  let prelude = String.sub css from (upto - from) in
+  Hashtbl.replace t.statement (offset at.start_pos)
+    (name, { prelude; next = offset next })
+
 let v css =
+  let reader = Reader.of_string css in
+  let offset = Reader.original_offset (Reader.origin reader) in
   let t =
     {
       call = Hashtbl.create 16;
       at = Hashtbl.create 16;
       statement = Hashtbl.create 16;
     }
-  in
-  let header name (at : Loc.t) rest =
-    match brace_of rest with
-    | None -> ()
-    | Some b ->
-        let brace = b.Component.loc.start_pos in
-        let prelude =
-          String.trim (String.sub css at.end_pos (brace - at.end_pos))
-        in
-        Hashtbl.replace t.at at.start_pos
-          (name, { prelude; brace; block = block_of css b })
-  in
-  let statement ~closer name (at : Loc.t) rest =
-    let upto, next = statement_end ~closer rest in
-    let prelude = String.sub css at.end_pos (upto - at.end_pos) in
-    Hashtbl.replace t.statement at.start_pos (name, { prelude; next })
   in
   let rec walk ~closer = function
     | [] -> ()
@@ -96,20 +99,22 @@ let v css =
                registering both would answer [at_statement] for a blockful rule
                with a prelude running to the end of the source. *)
             match brace_of rest with
-            | Some _ -> header name loc rest
-            | None -> statement ~closer name loc rest)
+            | Some b -> add_header t css ~offset name loc b
+            | None -> add_statement t css ~offset ~closer name loc rest)
         | Component.Preserved _ -> ()
         | Component.Block b ->
             walk ~closer:(inner_end ~closed:b.node.closed b.loc) b.node.value
         | Component.Func f ->
-            Hashtbl.replace t.call f.loc.start_pos (f.node.name, call_of css f);
+            Hashtbl.replace t.call (offset f.loc.start_pos)
+              (f.node.name, call_of css ~offset f);
             walk
               ~closer:(inner_end ~closed:f.node.terminated f.loc)
               f.node.arguments);
         walk ~closer rest
   in
-  let parsed = Parser.list_of_component_values (Reader.of_string css) in
-  walk ~closer:(String.length css) parsed.value;
+  let closer = String.length (Reader.source reader) in
+  let parsed = Parser.list_of_component_values reader in
+  walk ~closer parsed.value;
   t
 
 (* [name( ... )] starting at [i]. *)
