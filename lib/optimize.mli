@@ -202,13 +202,16 @@ val merge_distant_media :
   statement list
 (** [merge_distant_media ?owner stmts] merges a later same-condition [@media]
     block into the first occurrence when hoisting it past the intervening
-    statements cannot reorder a conflicting rule (overlapping selector with a
-    shared property set to a different value).
+    statements cannot reorder a conflicting rule: a selector of equal
+    specificity that may match the same element, with a shared property set to a
+    different value at the same importance.
 
-    [owner] is the style rule whose body [stmts] is, when it is one. A
-    declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
-    3.4), so without it the run is a conflict the hoist never sees; the pass
-    then refuses the merge rather than read that silence as safety. *)
+    [owner] is the style rule whose body [stmts] is, when it is one, with the
+    selector the cascade weighs it by: expanded against its own ancestors when
+    it is nested. A declarations run in that body sets properties on [owner]
+    (CSS Nesting 1 sec. 3.4), and a nested rule weighs [&] as its selector, so
+    without it the pass refuses a merge across such a run rather than read that
+    silence as safety. *)
 
 val merge_consecutive_supports :
   ?optimize_merged_block:(statement list -> statement list) ->

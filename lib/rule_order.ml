@@ -373,12 +373,6 @@ let drop_shadowed_by_rules later_rules (rule : rule) : rule =
   if List.compare_lengths declarations rule.declarations = 0 then rule
   else { rule with declarations }
 
-let rules_conflict ?parent a b =
-  let graph = Rule_graph.of_rules ?parent ~pin_shared_branches:false [ a; b ] in
-  Rule_graph.conflict graph
-    (Rule_graph.Node_id.of_int_exn 0)
-    (Rule_graph.Node_id.of_int_exn 1)
-
 let supports_merge_down_clear ?parent scan ~from ~into =
   match (fst scan.arr.(from), fst scan.arr.(into)) with
   | Supports _, Supports _ ->
@@ -393,7 +387,7 @@ let supports_merge_down_clear ?parent scan ~from ~into =
             | Rule rule ->
                 let residual = drop_shadowed_by_rules later_rules rule in
                 residual.declarations <> []
-                && rules_conflict ?parent moving residual
+                && Rule_graph.rules_conflict ?parent moving residual
             | _ ->
                 List.exists
                   (fun member ->

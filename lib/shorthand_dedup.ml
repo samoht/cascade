@@ -128,35 +128,21 @@ let rec without_importance = function
 let same_value a b =
   Declaration.equal_declaration (without_importance a) (without_importance b)
 
-(* Only a pair that writes a common cascade slot at the same importance with
-   different values constrains its own order: [!important] beats the plain
-   declaration wherever the two sit, and an identical pair is its own winner
-   either way. The footprint is computed once per declaration rather than once
-   per pair, since the test below is quadratic. *)
-type commute_fact = {
-  decl : declaration;
-  important : bool;
-  keys : overlap_key list;
-}
-
-let commute_fact decl =
-  {
-    decl;
-    important = Declaration.is_important decl;
-    keys = declaration_overlap_keys decl;
-  }
-
-let commute_facts_conflict a b =
-  a.important = b.important
-  && (not (Declaration.same_minified a.decl b.decl))
-  && declarations_overlap_with_keys a.decl a.keys b.decl b.keys
-
+(* Two declaration lists commute when no pair across them conflicts. The
+   footprint is computed once per declaration rather than once per pair, since
+   the test below is quadratic. *)
 let declarations_commute left right =
-  let left = List.map commute_fact left in
-  let right = List.map commute_fact right in
+  let with_keys decls =
+    List.map (fun decl -> (decl, declaration_overlap_keys decl)) decls
+  in
+  let left = with_keys left and right = with_keys right in
   not
     (List.exists
-       (fun a -> List.exists (fun b -> commute_facts_conflict a b) right)
+       (fun (a, a_keys) ->
+         List.exists
+           (fun (b, b_keys) ->
+             declarations_conflict_with_keys a a_keys b b_keys)
+           right)
        left)
 
 let legacy_vendor_fallback new_decl existing =

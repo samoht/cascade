@@ -146,65 +146,56 @@ let merge_consecutive_media ?(optimize_merged_block = Fun.id)
     merge_media_blocks ~optimize_merged_block stmts
   else stmts
 
-(* Leaf rules reachable from a statement, in source order, descending into
-   nested blocks. A nested declarations run (CSS Nesting 1 sec. 3.4) sets
-   properties on the rule it sits in, so it reads as one more rule with that
-   selector; missed, it is a conflict the hoisting analysis below never sees.
-   Descent goes through [statement_children], so a statement that grows a block
-   is reached without listing it here. *)
-let rec leaf_rules ?parent stmt =
-  match stmt with
-  | Rule r -> r :: List.concat_map (fun s -> leaf_rules ~parent:r s) r.nested
-  | Declarations decls -> (
-      match parent with
-      | Some (p : rule) -> [ { p with declarations = decls; nested = [] } ]
-      | None -> [])
-  | stmt ->
-      List.concat_map (fun s -> leaf_rules ?parent s) (statement_children stmt)
+(* The style rules reachable from a statement, in source order, descending into
+   nested blocks, each under the selector the cascade weighs it by. [parent] is
+   that selector for the style rule enclosing [stmt]: a nested rule's selector
+   is expanded against it (CSS Nesting 1 sec. 3), and a nested declarations run
+   (sec. 3.4) sets properties on that rule, so it reads as one more rule with
+   that selector; missed, it is a conflict the hoisting analysis below never
+   sees. Descent goes through [statement_children], so a statement that grows a
+   block is reached without listing it here.
 
-(* A declarations run outside any style rule: [leaf_rules] reports nothing for
-   it, so an analysis that must see every declaration refuses rather than read
-   that silence as "no conflict". *)
-let rec holds_unattributed_run stmt =
-  match stmt with
-  | Declarations _ -> true
-  | Media (_, b)
-  | Supports (_, b)
-  | Layer (_, b)
-  | Container (_, _, b)
-  | Starting_style b
-  | Origin (_, b)
-  | Moz_document (_, b)
-  | Scope (_, _, b)
-  | When (_, b)
-  | Else (_, b) ->
-      List.exists holds_unattributed_run b
-  | Rule _ | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
-  | Layer_decl _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
-  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
-  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-      false
+   [None] is a refusal: some declaration under [stmt] belongs to a rule whose
+   weight this cannot read, and an analysis that must see every declaration
+   reads that silence as a conflict rather than as safety. A declarations run
+   with no enclosing rule names no rule at all. A selector still holding [&]
+   once expanded has no enclosing rule to weigh it by: an [@scope] body stands
+   for its scoping root with [&] (CSS Cascade 6 sec. 2.5.2), which is not a
+   selector in hand. *)
+let rec leaf_rules ?parent acc stmt =
+  match acc with
+  | Option.None -> Option.None
+  | Option.Some leaves -> (
+      let leaf (r : rule) rest =
+        if Nest.contains r.selector then Option.None else Option.Some (r :: rest)
+      in
+      match stmt with
+      | Rule r ->
+          let selector =
+            match parent with
+            | Option.None -> r.selector
+            | Option.Some p -> Nest.combine p r.selector
+          in
+          List.fold_left
+            (leaf_rules ~parent:selector)
+            (leaf { r with selector } leaves)
+            r.nested
+      | Declarations declarations -> (
+          match parent with
+          | Option.Some selector ->
+              leaf
+                { selector; declarations; nested = []; merge_key = None }
+                leaves
+          | Option.None -> Option.None)
+      | Scope (_, _, body) ->
+          List.fold_left (leaf_rules ~parent:Selector.Nesting) acc body
+      | stmt ->
+          List.fold_left (leaf_rules ?parent) acc (statement_children stmt))
 
-(* Two declarations an element computes differently once they swap order: they
-   write a common longhand slot, and they are not the same declaration. Reading
-   the slots off the shorthand footprint rather than the property name is what
-   ties [background] to the [background-color] it also writes. A pair that
-   differs in importance is decided by importance, not by order. *)
-let declarations_conflict a b =
-  Declaration.is_important a = Declaration.is_important b
-  && (not (Declaration.same_minified a b))
-  && Shorthand.declarations_overlap a b
-
-(* Two rules whose declarations would reorder unsafely: overlapping selectors
-   and a conflicting declaration pair. *)
-let rules_conflict (r1 : rule) (r2 : rule) =
-  Selector_summary.may_overlap
-    (Selector_summary.of_selector r1.selector)
-    (Selector_summary.of_selector r2.selector)
-  && List.exists
-       (fun a -> List.exists (declarations_conflict a) r2.declarations)
-       r1.declarations
+(* The leaves of [stmts] in source order, or [None] when one of them refuses. *)
+let leaves ?parent stmts =
+  List.fold_left (leaf_rules ?parent) (Option.Some []) stmts
+  |> Option.map List.rev
 
 (* Only cross statements whose cascade is pure source order: plain rules and
    conditional groups. Layers, origins, scopes, imports, etc. establish
@@ -234,10 +225,11 @@ let crossable_by_distant_merge = function
    decides when two identities are one; [build] puts a merged body back under
    one; [hoistable] is a family's own refusal to move a body at all.
 
-   [owner] is the style rule whose body [stmts] is, when it is one. A
-   declarations run in that body sets properties on [owner] (CSS Nesting 1 sec.
-   3.4), so the analysis below only sees it once it can name the rule the run
-   belongs to. *)
+   [owner] is the style rule whose body [stmts] is, when it is one, under the
+   selector the cascade weighs it by. A declarations run in that body sets
+   properties on [owner] (CSS Nesting 1 sec. 3.4), so the analysis below only
+   sees it once it can name the rule the run belongs to, and a rule nested in
+   the body weighs [&] as that selector. *)
 let has_distant_partner ~prelude ~equal_prelude stmts =
   let keys = List.filter_map (fun s -> Option.map fst (prelude s)) stmts in
   let rec dup = function
@@ -262,28 +254,60 @@ let split_at_prelude ~prelude ~equal_prelude key out :
   in
   go [] out
 
-let try_distant_merge ~prelude ~equal_prelude ~build ~leaves ~unattributed out
-    key block : statement list option =
-  let hoisted = leaves block in
+(* [crosses stmt] is [true] when the hoisted block may not move above [stmt]. *)
+let try_distant_merge ~prelude ~equal_prelude ~build ~crosses out key block :
+    statement list option =
   match split_at_prelude ~prelude ~equal_prelude key out with
-  | None -> None
-  | Some (before, target, after)
-    when List.for_all crossable_by_distant_merge after ->
-      let crossed = leaves after in
-      if
-        unattributed block || unattributed after
-        || List.exists (fun h -> List.exists (rules_conflict h) crossed) hoisted
-      then None
-      else Some (before @ [ build key (target @ block) ] @ after)
-  | Some _ -> None
+  | Option.Some (before, target, after)
+    when List.for_all crossable_by_distant_merge after
+         && not (List.exists crosses after) ->
+      Option.Some (before @ [ build key (target @ block) ] @ after)
+  | Option.Some _ | Option.None -> Option.None
+
+(* Statements by identity: every hoist attempt reads the run it crosses, which
+   is most of what came before it, so each statement's leaves are read once per
+   pass rather than once per attempt. *)
+module Statement_memo = Hashtbl.Make (struct
+  type t = statement
+
+  let equal = ( == )
+  let hash = Hashtbl.hash
+end)
+
+(* The leaves of a hoisted block, and whether that block may not move above a
+   statement it would cross, under [parent]. *)
+let crossing ?parent () =
+  let facts stmts =
+    Option.map (List.map (fun r -> Rule_graph.facts r)) (leaves ?parent stmts)
+  in
+  let memo = Statement_memo.create 64 in
+  let crossed stmt =
+    match Statement_memo.find_opt memo stmt with
+    | Option.Some facts -> facts
+    | Option.None ->
+        let f = facts [ stmt ] in
+        Statement_memo.add memo stmt f;
+        f
+  in
+  (* The hoisted block is small and the crossed run can be most of the sheet, so
+     the scan runs over the crossed rules and stops at the first conflict. *)
+  let crosses hoisted stmt =
+    match crossed stmt with
+    | Option.None -> true
+    | Option.Some crossed ->
+        List.exists
+          (fun c ->
+            List.exists (fun h -> Rule_graph.facts_conflict h c) hoisted)
+          crossed
+  in
+  (facts, crosses)
 
 let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
     ~optimize_merged_block stmts =
   if not (has_distant_partner ~prelude ~equal_prelude stmts) then stmts
   else
-    let leaves stmts = List.concat_map (leaf_rules ?parent:owner) stmts in
-    let unattributed stmts =
-      Option.is_none owner && List.exists holds_unattributed_run stmts
+    let facts, crosses =
+      crossing ?parent:(Option.map (fun (r : rule) -> r.selector) owner) ()
     in
     (* The accumulator is carried reversed, as the consecutive-block passes
        nearby carry theirs: appending to the end copies it once per statement,
@@ -293,12 +317,15 @@ let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
     let step rout stmt =
       match prelude stmt with
       | Some (key, block) when hoistable block -> (
-          match
-            try_distant_merge ~prelude ~equal_prelude ~build ~leaves
-              ~unattributed (List.rev rout) key block
-          with
-          | Some out' -> List.rev out'
-          | None -> stmt :: rout)
+          match facts block with
+          | Option.None -> stmt :: rout
+          | Option.Some hoisted -> (
+              match
+                try_distant_merge ~prelude ~equal_prelude ~build
+                  ~crosses:(crosses hoisted) (List.rev rout) key block
+              with
+              | Some out' -> List.rev out'
+              | None -> stmt :: rout))
       | Some _ | None -> stmt :: rout
     in
     List.fold_left step [] stmts

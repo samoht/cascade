@@ -22,6 +22,9 @@
 - An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
   `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
   and an `@namespace` after a rule, go as browsers ignore them (#1294).
+- A later `@media` or `@container` block no longer merges into an earlier one
+  across a list like `.a:after,.a:before` that styles the same pseudo-element,
+  and now merges across a more specific rule (#0000).
 
 ### Parsing
 

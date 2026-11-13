@@ -24,6 +24,7 @@ type t = {
   pseudo_element : Selector.t option;
   parent : t option;
   complex : bool;
+  opaque : bool;
 }
 
 let empty =
@@ -41,6 +42,7 @@ let empty =
     pseudo_element = None;
     parent = None;
     complex = false;
+    opaque = false;
   }
 
 let mark_complex s = if s.complex then s else { s with complex = true }
@@ -133,7 +135,10 @@ let rec of_selector (sel : Selector.t) : t =
   | Combined (_, _, right) -> of_selector right
   | Relative (_, right) -> of_selector right
   | List [ single ] -> of_selector single
-  | List _ -> { empty with complex = true }
+  (* One summary has one subject, and a list has one per branch: the facts of
+     one branch say nothing about another, not even that it has no
+     pseudo-element. *)
+  | List _ -> { empty with complex = true; opaque = true }
   | _ -> fold_simple empty sel
 
 let exact_value = function
@@ -242,7 +247,8 @@ let direct_facts_disjoint a b =
       || negation_disjoint a b
 
 let rec may_overlap a b =
-  if direct_facts_disjoint a b then false
+  if a.opaque || b.opaque then true
+  else if direct_facts_disjoint a b then false
   else
     match (a.parent, b.parent) with
     | Some pa, Some pb when not (may_overlap pa pb) -> false

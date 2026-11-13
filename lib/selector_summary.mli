@@ -17,7 +17,10 @@ type t
 val of_selector : Selector.t -> t
 (** [of_selector sel] computes the summary in O(size of [sel]). The summary is
     keyed on the rightmost compound (the subject element) so that, e.g., [.a .b]
-    and [.c .b] summarize the same way - both target a [.b] element. *)
+    and [.c .b] summarize the same way - both target a [.b] element. A list of
+    several branches has one subject per branch, so its summary records no fact
+    and {!may_overlap} answers [true] against it; summarise each branch to
+    reason about the list. *)
 
 val may_overlap : t -> t -> bool
 (** [may_overlap a b] is [true] when some DOM element might match both

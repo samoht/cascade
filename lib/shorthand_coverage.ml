@@ -1096,19 +1096,29 @@ let add_logical_aliases slots =
 let property_footprint : type a. a Properties.property -> overlap_key list =
  fun property -> add_logical_aliases (property_slots property)
 
-(* Spelled as explicit recursion rather than [List.exists (overlap_key_equal
-   footprint)]: the partial application and the closure over [b] each allocate
-   once per element, and this pair sits in the conflict test's inner loop, which
-   made them the two largest allocation sites in the optimizer. *)
-let rec footprint_mem footprint = function
+(* Key lists are sorted ascending, so a membership test stops at the first key
+   past the one asked for and two lists merge-walk in step: linear in their
+   lengths, and allocation-free, which matters because this sits in the inner
+   loop of every conflict test. *)
+let rec overlap_key_in key = function
   | [] -> false
-  | k :: rest -> overlap_key_equal footprint k || footprint_mem footprint rest
+  | k :: rest ->
+      let c = overlap_key_compare key k in
+      c = 0 || (c > 0 && overlap_key_in key rest)
 
-let rec overlap_keys_intersect a b =
-  match a with
-  | [] -> false
-  | footprint :: rest ->
-      footprint_mem footprint b || overlap_keys_intersect rest b
+let rec overlap_keys_meet a b =
+  match (a, b) with
+  | [], _ | _, [] -> false
+  | x :: xs, y :: ys ->
+      let c = overlap_key_compare x y in
+      if c = 0 then true
+      else if c < 0 then overlap_keys_meet xs b
+      else overlap_keys_meet a ys
+
+let overlap_keys_broad keys = overlap_key_in broad_overlap_key keys
+
+let overlap_keys_intersect a b =
+  overlap_keys_broad a || overlap_keys_broad b || overlap_keys_meet a b
 
 (* The families whose footprints spell out every longhand name the model knows.
    Every arm of [property_footprint] not listed here has a footprint that is a
@@ -1249,6 +1259,17 @@ let name_extends other name =
   && String.starts_with ~prefix:other name
   && Char.equal name.[n] '-'
 
+let rec strictly_ascending = function
+  | [] | [ _ ] -> true
+  | a :: (b :: _ as rest) ->
+      overlap_key_compare a b < 0 && strictly_ascending rest
+
+(* Sorted and without repeats, the shape [overlap_keys_intersect] walks. A
+   single-slot footprint, the common case, is already in that shape. *)
+let sorted_keys keys =
+  if strictly_ascending keys then keys
+  else List.sort_uniq overlap_key_compare keys
+
 (* A name the model cannot place takes the broad key, not a key naming itself:
    [declarations_overlap_with_keys] treats it as touching whatever it meets, and
    a footprint naming only itself let a caller's key prefilter judge the pair
@@ -1259,7 +1280,7 @@ let rec declaration_overlap_keys decl =
   | Declaration { property = Unknown_property name; _ }
     when not (unknown_name_is_placeable name) ->
       [ broad_overlap_key ]
-  | Declaration { property; _ } -> property_footprint property
+  | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
 let declarations_overlap_with_keys a a_keys b b_keys =
   match (unwrap_theme_guard a, unwrap_theme_guard b) with
@@ -1290,6 +1311,15 @@ let declarations_overlap a b =
     (declaration_overlap_keys a)
     b
     (declaration_overlap_keys b)
+
+(* CSS Cascade 5 sec. 6.1 ranks importance before order of appearance, and one
+   declaration written twice computes the same value from either position, so
+   only a pair at one importance writing a common slot differently is decided by
+   order. *)
+let declarations_conflict_with_keys a a_keys b b_keys =
+  Bool.equal (Declaration.is_important a) (Declaration.is_important b)
+  && (not (Declaration.same_minified a b))
+  && declarations_overlap_with_keys a a_keys b b_keys
 
 (* A declaration no footprint comparison separates from another: [all] resets
    every non-exempt slot, and a property outside the model expands to slots its
