@@ -879,19 +879,43 @@ let spec_security_resource_exhaustion_regressions () =
   let parse_list css =
     (Parser.list_of_component_values (Reader.of_string css)).value
   in
+  (* No spec is involved: this guard is test infrastructure. A watchdog domain
+     ends the run with exit 2, naming the vector, if [f] has not finished after
+     [wall_limit] seconds of wall time (works on every OS, unlike SIGALRM). The
+     CPU-time check after [f] returns still catches a merely quadratic parser,
+     and does not count time a busy host spends elsewhere. *)
+  let wall_limit = 10. and cpu_limit = 1. in
   let check_completes name f =
-    let exception Timeout in
-    let previous =
-      Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout))
+    let finished = Atomic.make false in
+    let watchdog =
+      Domain.spawn (fun () ->
+          let deadline = Unix.gettimeofday () +. wall_limit in
+          while
+            (not (Atomic.get finished)) && Unix.gettimeofday () < deadline
+          do
+            Unix.sleepf 0.05
+          done;
+          if not (Atomic.get finished) then (
+            prerr_string
+              (String.concat ""
+                 [
+                   "parser hung on ";
+                   name;
+                   ": no result after ";
+                   string_of_float wall_limit;
+                   "s\n";
+                 ]);
+            exit 2))
     in
+    let start = Sys.time () in
     Fun.protect
       ~finally:(fun () ->
-        ignore (Unix.alarm 0);
-        ignore (Sys.signal Sys.sigalrm previous))
-      (fun () ->
-        ignore (Unix.alarm 1);
-        try f ()
-        with Timeout -> Alcotest.failf "%s did not complete within 1s" name)
+        Atomic.set finished true;
+        Domain.join watchdog)
+      f;
+    let elapsed = Sys.time () -. start in
+    if elapsed > cpu_limit then
+      Alcotest.failf "%s took %.2fs of CPU, over %.0fs" name elapsed cpu_limit
   in
   let deep_parens = String.make 4096 '(' ^ "x" in
   check_completes "unterminated paren nesting" (fun () ->
