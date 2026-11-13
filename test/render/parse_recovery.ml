@@ -244,6 +244,18 @@ let curated =
     ( "custom_prop_bad_string",
       ".a { --x: \"ab\"; color: green }",
       ".a { --x: \"ab\n; color: green }" );
+    (* CSS Syntax 3 sec. 3.3 turns a CRLF, CR or FF into an LF, and sec. 4.3.5
+       consumes a backslash before it as a line continuation, so each string
+       stays a string, where an unescaped line break ends it as a bad string. *)
+    ( "string_continuation_crlf",
+      ".a { content: \"ab\"; color: green }",
+      ".a { content: \"a\\\r\nb\"; color: green }" );
+    ( "string_continuation_cr",
+      ".a { content: \"ab\"; color: green }",
+      ".a { content: \"a\\\rb\"; color: green }" );
+    ( "string_continuation_ff",
+      ".a { content: \"ab\"; color: green }",
+      ".a { content: \"a\\\012b\"; color: green }" );
     ( "custom_prop_semicolon_in_parens",
       ".a { --x: (a); color: green }",
       ".a { --x: (a;b); color: green }" );

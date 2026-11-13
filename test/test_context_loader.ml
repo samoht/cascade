@@ -102,8 +102,43 @@ let test_loader_context_contract () =
   check_resolved_url "scheme matching is case-insensitive" ~loader
     ~expected:"https://cdn.example.test/site.css"
     "HTTPS://cdn.example.test/site.css";
+  (* WHATWG URL sec. 4.4 scheme start state: a digit opens no scheme, and in the
+     scheme state a code point outside ASCII alphanumerics, [+], [-] and [.]
+     starts over with none, so both are relative paths. *)
+  check_resolved_url "a digit before a colon is a relative path" ~loader
+    ~expected:"https://example.test/css/1:/x" "1:/x";
+  check_resolved_url "an underscore before a colon is a relative path" ~loader
+    ~expected:"https://example.test/css/a_b:x" "a_b:x";
+  (* Sec. 4.4 scheme state reads [C:] as scheme [c]. *)
+  check_resolved_url "a one-letter scheme remains absolute" ~loader
+    ~expected:"c:/a.css" "C:/a.css";
   check_url_error "relative URL without base is unresolved"
     ~loader:Css.Context.empty_loader "theme.css";
+  check_url_error "a digit before a colon needs a base"
+    ~loader:Css.Context.empty_loader "1:/x";
+  (* Against a filesystem base, a Windows drive path or UNC path is absolute and
+     names a file whatever the base, by the Windows filesystem convention, which
+     reads [\\] as [/]. *)
+  let files = Css.Context.loader ~base_url:"sub/entry.css" () in
+  check_resolved_url "a drive path is absolute" ~loader:files
+    ~expected:"C:/dir/a.css" "C:\\dir\\a.css";
+  check_resolved_url "a drive-relative path keeps its drive" ~loader:files
+    ~expected:"C:a.css" "C:a.css";
+  check_resolved_url "a UNC path is absolute" ~loader:files
+    ~expected:"//host/share/a.css" "\\\\host\\share\\a.css";
+  check_resolved_url "a digit before a colon is relative to the file"
+    ~loader:files ~expected:"sub/1:/x" "1:/x";
+  check_resolved_url "a file URL remains absolute" ~loader:files
+    ~expected:"file:///C:/a.css" "file:///C:/a.css";
+  (* RFC 3986 sec. 5.2.2 then resolves an import inside that file against its
+     directory; sec. 6.2.2.1 lowercases the scheme. *)
+  check_resolved_url "an import beside a drive path" ~expected:"c:/dir/b.css"
+    ~loader:(Css.Context.loader ~base_url:"C:/dir/a.css" ())
+    "b.css";
+  check_resolved_url "an import beside a UNC path"
+    ~expected:"//host/share/b.css"
+    ~loader:(Css.Context.loader ~base_url:"//host/share/a.css" ())
+    "b.css";
   check_import_loaded "loads same-directory import" ~loader
     ~expected:".theme{color:red}" "@import url(theme.css);";
   check_import_loaded "loads root-relative import" ~loader

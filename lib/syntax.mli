@@ -36,13 +36,31 @@ val split_top_level_colon :
     dropped. Returns [None] if no top-level colon is present. *)
 
 val strip_url_suffix : string -> string
-(** [strip_url_suffix url] strips a query string ([?...]) and fragment ([#...])
-    from [url]. Used when resolving [@import] URLs against the host filesystem,
-    where neither suffix is meaningful. *)
+(** [strip_url_suffix url] is [url] cut at its first [?] or [#], which open its
+    query and fragment. The path before them is kept as written. Used when
+    resolving [@import] URLs against the host filesystem, where neither suffix
+    is meaningful. *)
+
+val url_scheme : string -> string option
+(** [url_scheme url] is the lowercased scheme of [url]: an ASCII alpha, then
+    ASCII alphanumerics, [+], [-] or [.], ended by [:] (WHATWG URL sec. 4.4, RFC
+    3986 sec. 3.1). [1:/x] has none, so it is a relative path. *)
+
+val local_absolute_path : string -> string option
+(** [local_absolute_path s] is [s] with each backslash written [/] when [s] is a
+    Windows drive path ([C:/a.css], [C:\\a.css] or the drive-relative [C:a.css])
+    or a UNC path ([\\\\host\\share\\a.css]), and [None] otherwise. These are
+    Windows filesystem conventions, not URL syntax: WHATWG URL reads [C:] as a
+    scheme and knows a Windows drive letter only in a file URL. *)
 
 val url_file_path : string -> string
-(** [url_file_path url] decodes the path component of [url] for a filesystem
-    lookup. *)
+(** [url_file_path url] is the filesystem path [url] names, percent-decoded and
+    without its query or fragment. A drive path or UNC path is kept as written.
+    A [file:] URL gives its path, with a Windows drive letter as its first
+    segment written [C:] and a host other than [localhost] as the server of a
+    UNC path [//host/path] (WHATWG URL sec. 4.4 file and path states). *)
 
 val is_remote_url : string -> bool
-(** [is_remote_url url] is true when [url] has a scheme or authority. *)
+(** [is_remote_url url] is true when [url] has a scheme other than [file] or an
+    authority ([//host]). A drive path such as [C:/a.css], a UNC path and a
+    [file:] URL are local. *)

@@ -89,9 +89,7 @@ let report category ~pair ~detail ~repro =
 let bin = ref None
 
 let write file contents =
-  let oc = open_out file in
-  output_string oc contents;
-  close_out oc
+  Out_channel.with_open_bin file (fun oc -> output_string oc contents)
 
 let read_all ic =
   let buf = Buffer.create 4096 in
@@ -109,33 +107,43 @@ let work () =
   (try Unix.mkdir dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
   dir
 
-(* [cascade diff] on two files, as a caller runs it: the status and the
-   bytes. *)
+(* [cascade diff] on two files, as a caller runs it: the status and the bytes it
+   writes on standard output and standard error. No shell stands between: a
+   POSIX command line is not one [cmd.exe] can run. *)
 let run_cli ~exe ~mode ~extra a b =
   let dir = work () in
   let fa = Filename.concat dir "expected.css" in
   let fb = Filename.concat dir "actual.css" in
   write fa a;
   write fb b;
-  let cmd =
-    String.concat " "
-      ([
-         "NO_COLOR=1";
-         Filename.quote exe;
-         "diff";
-         String.concat "" [ "--diff="; mode ];
-       ]
-      @ extra
-      @ [ Filename.quote fa; Filename.quote fb; "2>&1" ])
+  let args =
+    [ exe; "diff"; String.concat "" [ "--diff="; mode ] ] @ extra @ [ fa; fb ]
   in
-  let ic = Unix.open_process_in cmd in
-  let out = read_all ic in
+  let environment =
+    Array.of_list
+      ("NO_COLOR=1"
+      :: List.filter
+           (fun b -> not (String.starts_with ~prefix:"NO_COLOR=" b))
+           (Array.to_list (Unix.environment ())))
+  in
+  let out, child_out = Unix.pipe ~cloexec:true () in
+  let pid =
+    Fun.protect
+      ~finally:(fun () -> Unix.close child_out)
+      (fun () ->
+        Unix.create_process_env exe (Array.of_list args) environment Unix.stdin
+          child_out child_out)
+  in
+  let ic = Unix.in_channel_of_descr out in
+  let output =
+    Fun.protect ~finally:(fun () -> close_in ic) (fun () -> read_all ic)
+  in
   let status =
-    match Unix.close_process_in ic with
-    | Unix.WEXITED n -> n
-    | Unix.WSIGNALED n | Unix.WSTOPPED n -> 128 + n
+    match Unix.waitpid [] pid with
+    | _, Unix.WEXITED n -> n
+    | _, (Unix.WSIGNALED n | Unix.WSTOPPED n) -> 128 + n
   in
-  (status, out)
+  (status, output)
 
 let cli_repro ~mode ~extra =
   String.concat " "

@@ -15,8 +15,20 @@
   CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
   per CRLF, and a NUL could make `Source_index.v` raise (#1285).
 
+### CLI tools
+
+- On Windows `cascade` ends its lines in LF as elsewhere, where its output and
+  help pages ended them in CRLF, and `cascade diff --browser` starts node
+  without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).
+- `--inline-imports` inlines Windows drive paths (`C:/a.css`, `C:\a.css`,
+  `C:a.css`), UNC paths and `file:` URLs and checks them against
+  `--import-root`. It left them alone as remote URLs or looked a UNC path up
+  under the importing file's directory (#1291).
+
 ### Library
 
+- `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
+  as WHATWG URL does, since a digit cannot open a scheme (#1291).
 - `Cascade.Reader` exposes `origin` and `original_offset`, which map a position
   in the preprocessed input back to a byte offset in the string the reader was
   given (#1285).
