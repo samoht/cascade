@@ -66,6 +66,15 @@
   `--import-root`. It left them alone as remote URLs or looked a UNC path up
   under the importing file's directory (#1291).
 
+### Diff report
+
+- `cascade diff` no longer slows down quadratically with the number of rules
+  that moved or changed selector: netflix.com's stylesheet against its own
+  `--minify` output takes 0.2 s of CPU instead of 1.2 s (#1297).
+- A changed rule is reported when the other file holds two identical copies of
+  its counterpart. Pairing one copy claimed both, and the change was dropped
+  (#1297).
+
 ### Library
 
 - `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,

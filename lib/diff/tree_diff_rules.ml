@@ -284,29 +284,25 @@ let selectors_share_parent sel1_str sel2_str =
       List.rev p1_rest = List.rev p2_rest && p1_rest <> []
   | _ -> false
 
+(* The rules of [rules2] by selector key and by declaration signature. A rule is
+   named by its position in [rules2]: two identical rules are still two rules,
+   and claiming one must leave the other free. *)
 let build_rule_lookup_tables rules2 =
-  (* Create lookup tables for O(1) access *)
   let rules2_by_key = Hashtbl.create (List.length rules2) in
   let rules2_by_props = Hashtbl.create (List.length rules2) in
-
-  (* Populate lookup tables *)
-  List.iter
-    (fun r ->
+  List.iteri
+    (fun i r ->
       let key = selector_key_of_stmt r in
       let decls = rule_declarations r in
       let props = decls_signature decls in
-
-      (* Add to key-based lookup (multiple rules can have same key) *)
       let existing_key =
         try Hashtbl.find rules2_by_key key with Not_found -> []
       in
-      Hashtbl.replace rules2_by_key key (r :: existing_key);
-
-      (* Add to props-based lookup (multiple rules can have same props) *)
+      Hashtbl.replace rules2_by_key key ((i, r) :: existing_key);
       let existing_props =
         try Hashtbl.find rules2_by_props props with Not_found -> []
       in
-      Hashtbl.replace rules2_by_props props (r :: existing_props))
+      Hashtbl.replace rules2_by_props props ((i, r) :: existing_props))
     rules2;
   (* Buckets were built by prepending. Put them back in source order so every
      equal-quality choice below has a stable positional tie-break. *)
@@ -332,18 +328,18 @@ type exact_match = Same | Moved of rule_modification
 
 (* Try to find an exact match by selector key and declarations. [None] when
    nothing on the other side matches exactly. *)
-let try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 =
+let try_exact_match ~moved rules2_by_key used r1 key1 d1 =
   let candidates = try Hashtbl.find rules2_by_key key1 with Not_found -> [] in
   match
     List.find_opt
-      (fun r ->
-        (not (Hashtbl.mem used_rules r))
+      (fun (i, r) ->
+        (not used.(i))
         && List.equal Declaration.equal_declaration (rule_declarations r) d1
         && Stylesheet.equal (rule_nested r) (rule_nested r1))
       candidates
   with
-  | Some exact ->
-      Hashtbl.replace used_rules exact ();
+  | Some (i, exact) ->
+      used.(i) <- true;
       let sel1 = rule_selector r1 in
       let sel2 = rule_selector exact in
       if selector_moved moved key1 then Some (Moved (sel1, sel2, d1, d1))
@@ -370,59 +366,58 @@ let rec footprint_distance one other =
 
 (* Find the unused same-key rule with the closest declaration footprint. Buckets
    and this fold are in source order, so the earlier occurrence wins a tie. *)
-let try_same_key_match rules2_by_key used_rules r1 key1 d1 =
+let try_same_key_match rules2_by_key used r1 key1 d1 =
   let candidates = try Hashtbl.find rules2_by_key key1 with Not_found -> [] in
   let footprint1 = declaration_footprint d1 in
   let closest =
     List.fold_left
-      (fun best r ->
-        if Hashtbl.mem used_rules r then best
+      (fun best ((i, r) as candidate) ->
+        if used.(i) then best
         else
           let distance =
             footprint_distance footprint1
               (declaration_footprint (rule_declarations r))
           in
           match best with
-          | None -> Some (distance, r)
+          | None -> Some (distance, candidate)
           | Some (best_distance, _) when distance < best_distance ->
-              Some (distance, r)
+              Some (distance, candidate)
           | Some _ -> best)
       None candidates
     |> Option.map snd
   in
   match closest with
-  | Some r2 ->
-      Hashtbl.replace used_rules r2 ();
+  | Some (i, r2) ->
+      used.(i) <- true;
       let d2 = rule_declarations r2 in
       Some (rule_selector r1, rule_selector r2, d1, d2)
   | None -> None
 
 (* Try to find equivalent rule by properties with shared parent *)
-let try_equivalent_props_match rules2_by_props used_rules r1 d1 props1 =
+let try_equivalent_props_match rules2_by_props used r1 d1 props1 =
   let candidates =
     try Hashtbl.find rules2_by_props props1 with Not_found -> []
   in
   let sel1_str = Css.Selector.to_string (rule_selector r1) in
   match
     List.find_opt
-      (fun r ->
-        if Hashtbl.mem used_rules r then false
-        else
-          let sel2_str = Css.Selector.to_string (rule_selector r) in
-          selectors_share_parent sel1_str sel2_str)
+      (fun (i, r) ->
+        (not used.(i))
+        &&
+        let sel2_str = Css.Selector.to_string (rule_selector r) in
+        selectors_share_parent sel1_str sel2_str)
       candidates
   with
-  | Some r2 ->
-      Hashtbl.replace used_rules r2 ();
+  | Some (i, r2) ->
+      used.(i) <- true;
       let d2 = rule_declarations r2 in
       Some (rule_selector r1, rule_selector r2, d1, d2)
   | None -> None
 
-let pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
-    props1 =
-  match try_same_key_match rules2_by_key used_rules r1 key1 d1 with
+let pick_non_exact_rule rules2_by_key rules2_by_props used r1 key1 d1 props1 =
+  match try_same_key_match rules2_by_key used r1 key1 d1 with
   | Some result -> Some result
-  | None -> try_equivalent_props_match rules2_by_props used_rules r1 d1 props1
+  | None -> try_equivalent_props_match rules2_by_props used r1 d1 props1
 
 (* The pairs the rules of [rules1] make with [rules2], as [(moved, changed)]:
    the rules that only changed places, and the rules whose content or selector
@@ -431,7 +426,7 @@ let pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1 d1
    back. *)
 let rules_modified_diff ~moved rules1 rules2 =
   let rules2_by_key, rules2_by_props = build_rule_lookup_tables rules2 in
-  let used_rules = Hashtbl.create (List.length rules2) in
+  let used = Array.make (List.length rules2) false in
   (* Claim every exact match first, wherever it sits. Matching in one greedy
      pass lets an early rule take, through the property fallback, the partner a
      later rule matches exactly, so a page of [.to-*] gradient rules, all with
@@ -442,7 +437,7 @@ let rules_modified_diff ~moved rules1 rules2 =
       (fun r1 ->
         let key1 = selector_key_of_stmt r1 in
         let d1 = rule_declarations r1 in
-        match try_exact_match ~moved rules2_by_key used_rules r1 key1 d1 with
+        match try_exact_match ~moved rules2_by_key used r1 key1 d1 with
         | Some pick -> Left pick
         | None -> Right r1)
       rules1
@@ -457,8 +452,8 @@ let rules_modified_diff ~moved rules1 rules2 =
         let d1 = rule_declarations r1 in
         let props1 = decls_signature d1 in
         let pick =
-          pick_non_exact_rule rules2_by_key rules2_by_props used_rules r1 key1
-            d1 props1
+          pick_non_exact_rule rules2_by_key rules2_by_props used r1 key1 d1
+            props1
         in
         let acc = match pick with None -> acc | Some x -> x :: acc in
         aux acc t1
@@ -758,7 +753,26 @@ let partial_trim added removed =
     ( trim_reconciled_grouping common added,
       trim_reconciled_grouping common removed )
 
-let rule_sig stmt = Option.map (fun (_, _, s) -> s) (flat_rule_parts stmt)
+(* Declaration signatures in the order [decls_signature] sorts declarations. *)
+module Signature_map = Map.Make (struct
+  type t = (string * string) list
+
+  let compare = List.compare compare_prop_value
+end)
+
+(* The flat rules of [rules] by declaration signature, each with its single
+   selectors, in source order. *)
+let flat_rules_by_signature rules =
+  List.fold_left
+    (fun groups stmt ->
+      match flat_rule_parts stmt with
+      | Some (_, subs, sign) ->
+          Signature_map.update sign
+            (fun group -> Some ((stmt, subs) :: Option.value ~default:[] group))
+            groups
+      | None -> groups)
+    Signature_map.empty rules
+  |> Signature_map.map List.rev
 
 let rule_selector_str stmt =
   Option.map (fun (s, _, _) -> Css.Selector.to_string s) (Css.as_rule stmt)
@@ -766,45 +780,46 @@ let rule_selector_str stmt =
 (* A declaration signature is a pure regroup when its removed and added flat
    rules carry the same multiset of single selectors (only the grouping moved).
    Emit a [Regrouped] note for it; the rules are dropped from add/remove. *)
-let detect_pure_regroups added removed =
-  let with_sig s rules = List.filter (fun r -> rule_sig r = Some s) rules in
-  let single_keys rules =
+let detect_pure_regroups ~added_by_sig ~removed_by_sig =
+  let single_keys group =
     List.concat_map
-      (fun r ->
-        match flat_rule_parts r with
-        | Some (_, subs, _) -> List.map selector_key_of_selector subs
-        | None -> [])
-      rules
+      (fun (_, subs) -> List.map selector_key_of_selector subs)
+      group
     |> List.sort Selector.compare
   in
-  List.filter_map rule_sig (added @ removed)
-  |> List.sort_uniq compare
-  |> List.filter_map (fun s ->
-      let radd = with_sig s added and rrem = with_sig s removed in
-      if
-        radd <> [] && rrem <> []
-        && List.equal Selector.equal (single_keys radd) (single_keys rrem)
-      then
-        Some
-          ( s,
+  let selectors group =
+    List.filter_map (fun (stmt, _) -> rule_selector_str stmt) group
+  in
+  Signature_map.merge
+    (fun _ radd rrem ->
+      match (radd, rrem) with
+      | Some radd, Some rrem
+        when List.equal Selector.equal (single_keys radd) (single_keys rrem) ->
+          Some
             (Regrouped
                {
-                 from_selectors = List.filter_map rule_selector_str rrem;
-                 to_selectors = List.filter_map rule_selector_str radd;
+                 from_selectors = selectors rrem;
+                 to_selectors = selectors radd;
                }
-              : rule_diff) )
-      else None)
+              : rule_diff)
+      | _ -> None)
+    added_by_sig removed_by_sig
 
 let reconcile_selector_grouping added removed =
-  let pure = detect_pure_regroups added removed in
-  let pure_sigs = List.map fst pure in
-  let in_pure r =
-    match rule_sig r with Some s -> List.mem s pure_sigs | None -> false
+  let pure =
+    detect_pure_regroups
+      ~added_by_sig:(flat_rules_by_signature added)
+      ~removed_by_sig:(flat_rules_by_signature removed)
   in
-  let added = List.filter (fun r -> not (in_pure r)) added in
-  let removed = List.filter (fun r -> not (in_pure r)) removed in
-  let added, removed = partial_trim added removed in
-  (added, removed, List.map snd pure)
+  let not_pure stmt =
+    match flat_rule_parts stmt with
+    | Some (_, _, s) -> not (Signature_map.mem s pure)
+    | None -> true
+  in
+  let added, removed =
+    partial_trim (List.filter not_pure added) (List.filter not_pure removed)
+  in
+  (added, removed, List.map snd (Signature_map.bindings pure))
 
 (* Key reorder detection uses both selector and declarations: two same-selector
    rules with conflicting declarations cascade last-wins. *)
@@ -953,20 +968,49 @@ let convert_removed_rule stmt =
     let sel, decls = strings_of_rule stmt in
     Some (Removed { selector = sel; declarations = decls } : rule_diff)
 
-let selector_position sel rules =
-  let sel_key = selector_key_of_selector sel in
-  List.mapi
+module Selector_tbl = Hashtbl.Make (struct
+  type t = Css.Selector.t
+
+  let equal = Selector.equal
+  let hash = Selector.hash
+end)
+
+(* Where a [Reordered] entry places a selector: the index of the first rule each
+   side writes it in, and the statements of the actual side by index. Built once
+   per pair of statement lists, since a report can hold a move for every
+   rule. *)
+type positions = {
+  first1 : int Selector_tbl.t;
+  first2 : int Selector_tbl.t;
+  stmts2 : Css.statement array;
+}
+
+let first_positions rules =
+  let first = Selector_tbl.create (List.length rules) in
+  List.iteri
     (fun i stmt ->
       match Css.as_rule stmt with
-      | Some (s, _, _) when Selector.equal (selector_key_of_selector s) sel_key
-        ->
-          Some i
-      | _ -> None)
-    rules
-  |> List.find_map Fun.id |> Option.value ~default:(-1)
+      | Some (s, _, _) ->
+          let key = selector_key_of_selector s in
+          if not (Selector_tbl.mem first key) then Selector_tbl.add first key i
+      | None -> ())
+    rules;
+  first
 
-let selector_at_position pos rules =
-  Option.bind (List.nth_opt rules pos) describe_statement
+let positions rules1 rules2 =
+  {
+    first1 = first_positions rules1;
+    first2 = first_positions rules2;
+    stmts2 = Array.of_list rules2;
+  }
+
+let selector_position sel first =
+  Option.value ~default:(-1)
+    (Selector_tbl.find_opt first (selector_key_of_selector sel))
+
+let selector_at_position pos stmts =
+  if pos < 0 || pos >= Array.length stmts then None
+  else describe_statement stmts.(pos)
 
 let content_changed selector old_decls new_decls =
   let property_changes, added_props, removed_props =
@@ -982,10 +1026,10 @@ let content_changed selector old_decls new_decls =
       removed_properties = removed_props;
     }
 
-let reordered ~rules1 ~rules2 sel1 sel2 selector : rule_diff =
-  let expected_pos = selector_position sel1 rules1 in
-  let actual_pos = selector_position sel2 rules2 in
-  let swapped_with = selector_at_position expected_pos rules2 in
+let reordered ~positions sel1 sel2 selector : rule_diff =
+  let expected_pos = selector_position sel1 positions.first1 in
+  let actual_pos = selector_position sel2 positions.first2 in
+  let swapped_with = selector_at_position expected_pos positions.stmts2 in
   (Reordered
      {
        selector;
@@ -1029,11 +1073,11 @@ let decls_str_equal d1 d2 =
        (fun x y -> decl_to_prop_value x = decl_to_prop_value y)
        d1 d2
 
-let convert_modified_rule ~moved ~rules1 ~rules2 (sel1, sel2, decls1, decls2) =
+let convert_modified_rule ~moved ~positions (sel1, sel2, decls1, decls2) =
   let sel1_str = Css.Selector.to_string sel1 in
   let sel2_str = Css.Selector.to_string sel2 in
   let position_changed () = position_changed ~moved sel1 in
-  let reordered selector = reordered ~rules1 ~rules2 sel1 sel2 selector in
+  let reordered selector = reordered ~positions sel1 sel2 selector in
   let reorder_or_content selector d1 d2 =
     if position_changed () then Some (reordered selector)
     else Some (content_changed selector d1 d2)
@@ -1383,9 +1427,10 @@ let to_rule_changes rules1 rules2 : rule_diff list =
   in
   let r_added, r_removed, r_modified, r_regrouped = rule_diffs rules1 rules2 in
   let moved = moved_order_keys rules1 rules2 in
+  let positions = positions rules1 rules2 in
   List.filter_map convert_added_rule r_added
   @ List.filter_map convert_removed_rule r_removed
-  @ List.filter_map (convert_modified_rule ~moved ~rules1 ~rules2) r_modified
+  @ List.filter_map (convert_modified_rule ~moved ~positions) r_modified
   @ r_regrouped
   |> merge_same_selector_changes ~rules1 ~rules2
   |> dedup_reorders

@@ -1111,6 +1111,34 @@ let repeated_selector_value_swap_remains_visible () =
     "the last-wins change is reported" false
     (Cascade_diff.Tree_diff.is_empty d)
 
+(* Two identical rules are still two rules: pairing the first exactly leaves the
+   second free for the changed rule opposite. Telling them apart by their
+   content claims both at once and drops the change, since the added rule keeps
+   the sheets from lining up position by position. *)
+let identical_partner_rules_pair_once () =
+  let d =
+    diff_of ~expected:".a{color:red}.a{color:blue}"
+      ~actual:".a{color:red}.a{color:red}.z{margin:0}"
+  in
+  (* CSS Cascade 5 sec. 6.1: both `.a` rules apply to one element and the later
+     wins, so the computed color is blue in the expected sheet and red in the
+     actual one; `.z` exists only in the actual sheet, and no rule of the
+     expected sheet is missing from it. *)
+  Alcotest.(check (list string))
+    "the changed rule is reported" [ "color: blue -> red" ]
+    (rule_property_changes d);
+  let selectors pick = List.filter_map pick d.Cascade_diff.Tree_diff.rules in
+  Alcotest.(check (list string))
+    "the new rule is reported as added" [ ".z" ]
+    (selectors (function
+      | Cascade_diff.Tree_diff.Added { selector; _ } -> Some selector
+      | _ -> None));
+  Alcotest.(check (list string))
+    "nothing is reported removed" []
+    (selectors (function
+      | Cascade_diff.Tree_diff.Removed { selector; _ } -> Some selector
+      | _ -> None))
+
 (* ===== Containers nested past the old recursion cutoff ===== *)
 
 (* The walker recurses on strictly smaller statement lists, so nothing needs a
@@ -1645,6 +1673,70 @@ let changed_rule_diff_is_subquadratic () =
        ratio)
     true (ratio < 3.)
 
+(* [n] rules [.c<i>], each adjacent pair swapped on the actual side when
+   [swapped]. *)
+let pair_swapped_rules ~swapped n =
+  let buf = Buffer.create (n * 24) in
+  let rule i =
+    List.iter (Buffer.add_string buf) [ ".c"; string_of_int i; "{color:red}" ]
+  in
+  for p = 0 to (n / 2) - 1 do
+    if swapped then (
+      rule ((2 * p) + 1);
+      rule (2 * p))
+    else (
+      rule (2 * p);
+      rule ((2 * p) + 1))
+  done;
+  parse (Buffer.contents buf)
+
+(* The label of a scaling check: what was doubled, and the words allocated
+   before and after. *)
+let doubling_label what small large =
+  let words w = Float.to_string (Float.round w) in
+  String.concat ""
+    [ "alloc "; words small; " -> "; words large; " ("; what; " doubled)" ]
+
+let swaps_words n =
+  diff_words
+    (pair_swapped_rules ~swapped:false n)
+    (pair_swapped_rules ~swapped:true n)
+
+(* Each moved rule reports the position its selector holds on both sides.
+   Finding it by walking the sheet once per move makes the diff quadratic in the
+   number of moves. *)
+let reordered_rule_diff_is_subquadratic () =
+  let small_words = swaps_words 2_000 in
+  let large_words = swaps_words 4_000 in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (doubling_label "moves" small_words large_words)
+    true (ratio < 3.)
+
+(* [n] rules [.<prefix><i>], each with a declaration of its own, so every rule
+   has a signature no other shares. *)
+let distinct_signature_rules prefix n =
+  let buf = Buffer.create (n * 24) in
+  for i = 0 to n - 1 do
+    let i = string_of_int i in
+    List.iter (Buffer.add_string buf) [ "."; prefix; i; "{margin:"; i; "px}" ]
+  done;
+  parse (Buffer.contents buf)
+
+let renamed_words n =
+  diff_words (distinct_signature_rules "r" n) (distinct_signature_rules "s" n)
+
+(* Every rule renamed leaves one added and one removed rule per declaration
+   signature. Collecting each signature's rules by filtering both lists once per
+   signature makes the regroup check quadratic in the number of rules. *)
+let renamed_rule_diff_is_subquadratic () =
+  let small_words = renamed_words 1_000 in
+  let large_words = renamed_words 2_000 in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (doubling_label "renames" small_words large_words)
+    true (ratio < 3.)
+
 let suite =
   ( "tree_diff",
     [
@@ -1865,6 +1957,12 @@ let suite =
         whole_rule_body_separates_name_from_value;
       Alcotest.test_case "changed-rule diff is subquadratic" `Quick
         changed_rule_diff_is_subquadratic;
+      Alcotest.test_case "reordered-rule diff is subquadratic" `Quick
+        reordered_rule_diff_is_subquadratic;
+      Alcotest.test_case "renamed-rule diff is subquadratic" `Quick
+        renamed_rule_diff_is_subquadratic;
+      Alcotest.test_case "identical partner rules pair once" `Quick
+        identical_partner_rules_pair_once;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

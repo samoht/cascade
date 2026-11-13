@@ -62,8 +62,15 @@ bench/blog_tables.sh rewrites    # just one section
 RUNS=5 bench/blog_tables.sh
 ```
 
-Sections: `versions rewrites size speed lossless reminify`. The re-minification
-table is skipped unless `REMIN_DIR` points at a directory of `.min.css` files.
+Sections: `versions rewrites size speed lossless reminify diff`. The
+re-minification table is skipped unless `REMIN_DIR` points at a directory of
+`.min.css` files.
+
+`diff` times `cascade diff` (median and range over `RUNS`, plus the megabytes
+the OCaml runtime allocated) on each fixture against its own `--minify` output
+and against a perturbed copy, then on synthetic sheets of 1k, 5k and 20k rules
+(`DIFF_SIZES` overrides the sizes); the growth between sizes reads the
+complexity. It needs only `hyperfine` and `cascade`.
 
 Requirements on `PATH`: `hyperfine`, `cascade` (or `CASCADE=<path>`), `csso`,
 `lightningcss`, `esbuild`, `postcss` + `cssnano`. The `cssnano` binary published
