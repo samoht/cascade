@@ -70,10 +70,10 @@
 
 - `cascade diff` no longer slows down quadratically with the number of rules
   that moved or changed selector: netflix.com's stylesheet against its own
-  `--minify` output takes 0.2 s of CPU instead of 1.2 s (#0000).
+  `--minify` output takes 0.2 s of CPU instead of 1.2 s (#1297).
 - A changed rule is reported when the other file holds two identical copies of
   its counterpart. Pairing one copy claimed both, and the change was dropped
-  (#0000).
+  (#1297).
 
 ### Library
 

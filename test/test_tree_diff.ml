@@ -1120,9 +1120,24 @@ let identical_partner_rules_pair_once () =
     diff_of ~expected:".a{color:red}.a{color:blue}"
       ~actual:".a{color:red}.a{color:red}.z{margin:0}"
   in
+  (* CSS Cascade 5 sec. 6.1: both `.a` rules apply to one element and the later
+     wins, so the computed color is blue in the expected sheet and red in the
+     actual one; `.z` exists only in the actual sheet, and no rule of the
+     expected sheet is missing from it. *)
   Alcotest.(check (list string))
     "the changed rule is reported" [ "color: blue -> red" ]
-    (rule_property_changes d)
+    (rule_property_changes d);
+  let selectors pick = List.filter_map pick d.Cascade_diff.Tree_diff.rules in
+  Alcotest.(check (list string))
+    "the new rule is reported as added" [ ".z" ]
+    (selectors (function
+      | Cascade_diff.Tree_diff.Added { selector; _ } -> Some selector
+      | _ -> None));
+  Alcotest.(check (list string))
+    "nothing is reported removed" []
+    (selectors (function
+      | Cascade_diff.Tree_diff.Removed { selector; _ } -> Some selector
+      | _ -> None))
 
 (* ===== Containers nested past the old recursion cutoff ===== *)
 
