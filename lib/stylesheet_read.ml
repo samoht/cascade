@@ -840,46 +840,62 @@ and read_rule ?(nested = false) (r : Cursor.t) : rule =
   let declarations, nested = Cursor.braces (read_rule_body selector) r in
   { selector; declarations; nested; merge_key = None }
 
-type prelude_seen = {
-  mutable charset_seen : bool;
-  mutable import_seen : bool;
-  mutable namespace_seen : bool;
-  mutable body_seen : bool;
-}
+(* The order CSS fixes at the head of a sheet. CSS Syntax 3 sec. 3.2 honours
+   [@charset] only as the first bytes of the sheet. CSS Cascade 5 sec. 2 puts
+   [@import] before every other valid at-rule and style rule but [@charset] and
+   [@layer] statements, with nothing valid between two imports, and CSS
+   Namespaces 3 sec. 3 puts [@namespace] after the imports and before every
+   other rule. A browser ignores a comment, an at-rule it has no grammar for and
+   a misplaced rule, so none of them moves the prelude on. *)
+type prelude = Start | Before_imports | Imports | Namespaces | Body
 
-let new_prelude_seen () =
-  {
-    charset_seen = false;
-    import_seen = false;
-    namespace_seen = false;
-    body_seen = false;
-  }
+let prelude_start = Start
 
-let validate_stylesheet_prelude r state stmt =
+let misplaced prelude stmt =
   match stmt with
-  | Charset _ ->
-      if
-        state.charset_seen || state.import_seen || state.namespace_seen
-        || state.body_seen
-      then Cursor.err_invalid r "@charset must precede all rules";
-      state.charset_seen <- true
-  | Layer_decl _ ->
-      if state.import_seen || state.namespace_seen then state.body_seen <- true
-  | Import _ ->
-      if state.namespace_seen || state.body_seen then
-        Cursor.err_invalid r "@import must precede style rules";
-      state.import_seen <- true
-  | Namespace _ ->
-      if state.body_seen then
-        Cursor.err_invalid r "@namespace must precede style rules";
-      state.namespace_seen <- true
-  | Rule _ | Declarations _ | Bang_comment _ | Property _ | Layer _ | Media _
-  | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
-  | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
-  | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
-  | Page _ | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-      state.body_seen <- true
+  | Charset _ -> (
+      match prelude with
+      | Start -> Option.None
+      | Before_imports | Imports | Namespaces | Body ->
+          Option.Some "@charset must precede all rules")
+  | Import _ -> (
+      match prelude with
+      | Start | Before_imports | Imports -> Option.None
+      | Namespaces | Body -> Option.Some "@import must precede style rules")
+  | Namespace _ -> (
+      match prelude with
+      | Start | Before_imports | Imports | Namespaces -> Option.None
+      | Body -> Option.Some "@namespace must precede style rules")
+  | Rule _ | Declarations _ | Bang_comment _ | Property _ | Layer_decl _
+  | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      Option.None
+
+let prelude_next prelude stmt =
+  if Option.is_some (misplaced prelude stmt) then prelude
+  else
+    match stmt with
+    | Bang_comment _ | Charset _ | Unknown_at_rule _ -> (
+        match prelude with
+        | Start -> Before_imports
+        | Before_imports | Imports | Namespaces | Body -> prelude)
+    | Layer_decl _ -> (
+        match prelude with
+        | Start | Before_imports -> Before_imports
+        | Imports | Namespaces | Body -> Body)
+    | Import _ -> Imports
+    | Namespace _ -> Namespaces
+    | Rule _ | Declarations _ | Property _ | Layer _ | Media _ | Container _
+    | Supports _ | Moz_document _ | Starting_style _ | When _ | Else _
+    | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+    | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _ ->
+        Body
 
 let validate_stylesheet_else r acc stmt =
   match stmt with
@@ -887,15 +903,15 @@ let validate_stylesheet_else r acc stmt =
       Cursor.err_invalid r "@else without preceding @when"
   | _ -> ()
 
-let rec read_stylesheet_statements r state acc =
+let rec read_stylesheet_statements r prelude acc =
   Cursor.ws r;
   if Cursor.is_done r then List.rev acc
   else
     let stmt = read_statement r in
     validate_stylesheet_else r acc stmt;
-    validate_stylesheet_prelude r state stmt;
-    read_stylesheet_statements r state (stmt :: acc)
+    Option.iter (Cursor.err_invalid r) (misplaced prelude stmt);
+    read_stylesheet_statements r (prelude_next prelude stmt) (stmt :: acc)
 
 let read (r : Cursor.t) : stylesheet =
   Cursor.with_context r "stylesheet" (fun () ->
-      read_stylesheet_statements r (new_prelude_seen ()) [])
+      read_stylesheet_statements r prelude_start [])

@@ -85,7 +85,7 @@ let collect_empty_layer_names = Block.collect_empty_layer_names
 let merge_layer_declarations = Block.merge_layer_declarations
 let drop_redundant_layer_decls = Block.drop_redundant_layer_decls
 let drop_empty_rules = Block.drop_empty_rules
-let drop_misplaced_imports = Block.drop_misplaced_imports
+let drop_misplaced_prelude = Block.drop_misplaced_prelude
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
 let drop_dead_nested_rules = Nest.drop_dead_nested
 let merge_lone_nested_rule = Nest.merge_lone
@@ -256,15 +256,15 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           ~ctx:(Ctx.with_recurse_blocks false ctx)
           ~enforce_spec ~owner ~supports
       in
-      (* [drop_misplaced_imports] runs first: an [@import] after a style rule is
-         invalid and ignored by browsers (CSS Cascade L6 sec. 2), so it must not
+      (* [drop_misplaced_prelude] runs first: an [@import] after a style rule is
+         invalid and ignored by browsers (CSS Cascade 5 sec. 2), so it must not
          act as a cascade boundary. Stripping it up front lets the rules it
          falsely separated merge in this same pass, keeping [statements]
          idempotent (stripping after the merge would leave a re-run to combine
          them). *)
       let stmts' =
         let stmts =
-          drop_misplaced_imports stmts
+          drop_misplaced_prelude stmts
           |> merge_named_layers_by_name |> split_vendor_selector_lists
         in
         let stmts =

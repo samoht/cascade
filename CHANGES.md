@@ -17,6 +17,12 @@
   `--minify` turned `[x="-2"]` and `[x="-"]` into selectors browsers drop, and
   `[x="a\\b"]` into `[x=a\b]`, another value (#1292).
 
+### Minification
+
+- An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
+  `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
+  and an `@namespace` after a rule, go as browsers ignore them (#0000).
+
 ### Parsing
 
 - A rule whose attribute selector has a number as its value, such as
@@ -25,6 +31,9 @@
 - `Source_index` offsets and slices index the string you passed even when it has
   CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
   per CRLF, and a NUL could make `Source_index.v` raise (#1285).
+- An invalid declaration in an `@keyframes` frame warns, as one in a style rule
+  does. An `@charset` after an `@layer` statement warns; an `@import` after an
+  unrecognised at-rule no longer does (#0000).
 
 ### CLI tools
 

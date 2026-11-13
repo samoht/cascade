@@ -89,9 +89,10 @@ val drop_redundant_layer_decls :
 val drop_empty_rules : Stylesheet.statement list -> Stylesheet.statement list
 (** Drop the statements of a block that contribute nothing. *)
 
-val drop_misplaced_imports :
+val drop_misplaced_prelude :
   Stylesheet.statement list -> Stylesheet.statement list
-(** Drop imports that appear after stylesheet body statements. *)
+(** [drop_misplaced_prelude stmts] is [stmts] without the [@charset], [@import]
+    and [@namespace] written where a browser ignores them. *)
 
 val merge_named_layers_by_name :
   Stylesheet.statement list -> Stylesheet.statement list

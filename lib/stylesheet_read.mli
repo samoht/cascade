@@ -21,6 +21,23 @@ val read_rule : ?nested:bool -> Cursor.t -> rule
 (** [read_rule ?nested r] reads a style rule; with [~nested:true] its prelude is
     a relative selector list. *)
 
+(** {1 Prelude placement} *)
+
+type prelude
+(** How far a sheet has read into the [@charset], [@import] and [@namespace]
+    that open it. *)
+
+val prelude_start : prelude
+(** [prelude_start] is the place before the first statement of a sheet. *)
+
+val misplaced : prelude -> statement -> string option
+(** [misplaced prelude stmt] is the placement rule [stmt] breaks when it comes
+    at [prelude], [None] when it may stand there. A misplaced statement is
+    invalid and a browser ignores it. *)
+
+val prelude_next : prelude -> statement -> prelude
+(** [prelude_next prelude stmt] is the place after [stmt] read at [prelude]. *)
+
 val read : Cursor.t -> stylesheet
 (** [read r] reads a whole stylesheet, raising on the first invalid statement.
 *)

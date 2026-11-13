@@ -666,33 +666,15 @@ let rec drop_empty_rules stmts =
       else if rest' == rest && stmt' == stmt then stmts
       else stmt' :: rest'
 
-(* CSS Cascade 5 sec. 2: a [@layer <name>;] declaration form is prelude-friendly
-   and may interleave with [@charset] / [@import] / [@namespace], so a
-   [Layer_decl] before [@import] / [@namespace] must not flip [seen_body] -
-   otherwise the following [@import] gets dropped as misplaced. *)
-let drop_misplaced_imports stmts =
-  let seen_body = ref false in
-  let seen_import_or_namespace = ref false in
+(* A misplaced [@charset], [@import] or [@namespace] is invalid and a browser
+   ignores it, so it goes. *)
+let drop_misplaced_prelude stmts =
+  let prelude = ref Stylesheet_read.prelude_start in
   list_filter_preserve
     (fun stmt ->
-      match stmt with
-      | (Charset _ | Import _ | Namespace _) when not !seen_body ->
-          (match stmt with
-          | Import _ | Namespace _ -> seen_import_or_namespace := true
-          | _ -> ());
-          true
-      | Import _ -> false
-      | Charset _ | Namespace _ -> true
-      | Layer_decl _ when not !seen_import_or_namespace -> true
-      | Layer_decl _ | Rule _ | Declarations _ | Bang_comment _ | Property _
-      | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
-      | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-      | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-      | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
-      | Font_palette_values _ | Font_feature_values _ | View_transition _
-      | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-          seen_body := true;
-          true)
+      let misplaced = Stylesheet_read.misplaced !prelude stmt in
+      prelude := Stylesheet_read.prelude_next !prelude stmt;
+      Option.is_none misplaced)
     stmts
 
 (* CSS Cascade 5 sec 6.4.2: same-name [@layer] blocks in the same enclosing
