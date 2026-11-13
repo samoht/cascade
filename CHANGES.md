@@ -30,6 +30,10 @@
   to `1/1` (#1280).
 - Very large numbers print the same on Windows as elsewhere. `3.40282e38px` came
   out there as `3.40282e038px` (#1286).
+- Numbers round the same way on Windows as elsewhere: `100000000000.5` printed
+  there as `100000000001`. A number with more than 15 significant digits keeps
+  its last decimals: `123456789.12345679` came out as `123456789.1234568`
+  (#1300).
 - Large numbers in media features and keyframe offsets print as `1e30` like
   everywhere else, and the same on Windows, instead of `1e+30` (#1292).
 - A number too small for eight decimals keeps its value. `(min-resolution:
