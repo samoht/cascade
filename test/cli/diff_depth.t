@@ -33,7 +33,7 @@ qualifies every difference below it.
   CSS: 29 chars vs 34 chars (17.2% diff)
   Changes: 1 modified rule
   
-  warn.css parse warning: read_declaration/width: bad value for width: no accepted form at <string>:1:25 (in component)
+  warn.css parse warning: read_declaration/width: bad value for width: no accepted form at warn.css:1:25 (in component)
   .x { color: red; width: <value> }
                           ^
   

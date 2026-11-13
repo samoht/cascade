@@ -34,7 +34,7 @@ says so. The warning names the declaration each side lost.
   > .g{grid-template-columns:calc(1 + 2);color:red}
   > EOF
   $ cascade diff --diff=canonical same-a.css same-b.css
-  same-a.css and same-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at <string>:1:29 (in component)
+  same-a.css and same-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at same-a.css:1:29 (in component)
   .g { grid-template-columns: calc(1 + 2); color: red }
                               ^^^^^^^^^^^
   
@@ -47,7 +47,7 @@ the browser reads neither.
   > .g{grid-template-columns:calc(9 + 9);color:red}
   > EOF
   $ cascade diff --diff=canonical same-a.css other-b.css
-  same-a.css and other-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at <string>:1:29 (in component)
+  same-a.css and other-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at same-a.css:1:29 (in component)
   .g { grid-template-columns: calc(1 + 2); color: red }
                               ^^^^^^^^^^^
   
@@ -63,7 +63,7 @@ the comparison could read both sides.
   > .g{grid-template-columns:calc(1 + 2);color:#f00}
   > EOF
   $ cascade diff --diff=canonical text-a.css text-b.css
-  text-a.css and text-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at <string>:1:26 (in component)
+  text-a.css and text-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at text-a.css:1:26 (in component)
   .g{grid-template-columns:calc(1 + 2);color:red}
                            ^^^^^^^^^^^
   
@@ -96,7 +96,7 @@ and the status is 1, warning or no warning.
   CSS: 54 chars vs 49 chars (9.3% diff)
   Changes: 1 modified rule
   
-  same-a.css and differ-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at <string>:1:29 (in component)
+  same-a.css and differ-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at same-a.css:1:29 (in component)
   .g { grid-template-columns: calc(1 + 2); color: red }
                               ^^^^^^^^^^^
   
@@ -119,7 +119,7 @@ the two paint the same, and the verdict is 0.
   > .g{grid-template-columns:calc(1 + 2);color:red}
   > EOF
   $ cascade diff --diff=canonical one-a.css one-b.css
-  one-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at <string>:1:26 (in component)
+  one-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at one-b.css:1:26 (in component)
   .g{grid-template-columns:calc(1 + 2);color:red}
                            ^^^^^^^^^^^
   
@@ -130,7 +130,7 @@ the two paint the same, and the verdict is 0.
   $ cat > blur-b.css <<EOF
   > EOF
   $ cascade diff --diff=canonical blur-a.css blur-b.css
-  blur-a.css parse warning: read_declaration/filter: bad value for filter: invalid filter value: expected filter function(s) at <string>:1:11 (in component)
+  blur-a.css parse warning: read_declaration/filter: bad value for filter: invalid filter value: expected filter function(s) at blur-a.css:1:11 (in component)
   .a{filter:blur(<value>)}
             ^^^^^^^^^^^^^
   
@@ -149,7 +149,7 @@ exits 1.
   CSS: 38 chars vs 15 chars (60.5% diff)
   Changes: 1 modified rule
   
-  blur-c.css parse warning: read_declaration/filter: bad value for filter: invalid filter value: expected filter function(s) at <string>:1:11 (in component)
+  blur-c.css parse warning: read_declaration/filter: bad value for filter: invalid filter value: expected filter function(s) at blur-c.css:1:11 (in component)
   .a{filter:blur(<value>)}.b{color:red}
             ^^^^^^^^^^^^^
   
@@ -171,7 +171,7 @@ and its block, both sides hold the same text, and the verdict is proven.
   > .g { color: red }
   > EOF
   $ cascade diff --diff=canonical at-a.css at-b.css
-  at-a.css and at-b.css parse warning: <string>: unknown at-rule @tailwind at [0-15] (in at-rule)
+  at-a.css and at-b.css parse warning: at-a.css: unknown at-rule @tailwind at [0-15] (in at-rule)
   
   CSS files are identical
 

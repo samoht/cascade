@@ -634,6 +634,22 @@ let stylesheet_raises_on_strict_warning () =
   | _ -> Alcotest.fail "strict read accepted an invalid declaration"
   | exception Invalid_argument _ -> ()
 
+(* An input without a name renders under the one placeholder [Error] uses.
+   [center] is not a [float] value (CSS 2 sec. 9.5.1) and starts at the tenth
+   code point of line 1 (CSS Syntax 3 (ED) sec. 3.3). *)
+let unnamed_input_placeholder () =
+  match Css.of_string ".x{float:center}" with
+  | Error e -> Alcotest.failf "fatal: %s" (Error.to_string e)
+  | Ok { Css.warnings = [ w ]; _ } ->
+      Alcotest.(check (option string)) "no name" None w.Error.filename;
+      let first = List.hd (String.split_on_char '\n' (Error.to_string w)) in
+      Alcotest.(check bool)
+        (String.concat "" [ "placeholder location in "; first ])
+        true
+        (Astring.String.is_infix ~affix:" at <CSS input>:1:10 " first)
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "expected one warning, got %d" (List.length warnings)
+
 let suite =
   ( "css",
     [
@@ -668,6 +684,8 @@ let suite =
         custom_properties_integration;
       Alcotest.test_case "var(--1A202C) parses" `Quick var_digit_after_dashes;
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
+      Alcotest.test_case "unnamed input placeholder" `Quick
+        unnamed_input_placeholder;
       Alcotest.test_case "stylesheet raises on a strict warning" `Quick
         stylesheet_raises_on_strict_warning;
     ] )
