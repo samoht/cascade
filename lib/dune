@@ -166,6 +166,7 @@
 
 (mdx
  (files
+  apply.mli
   aria.mli
   baseline.mli
   block.mli
@@ -176,7 +177,6 @@
   context.mli
   cover.mli
   css.mli
-  css_graph.mli
   cursor.mli
   ctx.mli
   declaration.mli
@@ -204,6 +204,7 @@
   rule.mli
   rule_index.mli
   selector.mli
+  selector_summary.mli
   shorthand.mli
   size.mli
   sort.mli
@@ -211,10 +212,10 @@
   stats.mli
   stylesheet.mli
   summary.mli
+  support.mli
   supports.mli
   syntax.mli
   token.mli
-  weighted_interval.mli
   values.mli
   variables.mli)
  (libraries cascade))

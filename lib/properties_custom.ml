@@ -356,7 +356,7 @@ let pp_value : type a. (a kind * a) Pp.t =
 let string_of_channel : channel -> string = function
   | Int i -> string_of_int i
   | Num f -> Pp.string_of_float f
-  | Pct p -> Pp.string_of_float p ^ "%"
+  | Pct p -> String.concat "" [ Pp.string_of_float p; "%" ]
   | Var _ -> "0"
   | None -> "none"
 
@@ -377,9 +377,10 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Content -> (
       match value with
       | String "" -> "\"\""
-      | String s -> "\"" ^ s ^ "\""
+      | String s -> String.concat "" [ "\""; s; "\"" ]
       | Quoted { value; quote; repr = _ } ->
-          String.make 1 quote ^ value ^ String.make 1 quote
+          let quote = String.make 1 quote in
+          String.concat "" [ quote; value; quote ]
       | None -> "none"
       | Normal -> "normal"
       | Open_quote -> "open-quote"
@@ -396,8 +397,8 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Rgb -> (
       match value with
       | Channels { r; g; b } ->
-          string_of_channel r ^ " " ^ string_of_channel g ^ " "
-          ^ string_of_channel b
+          String.concat " "
+            [ string_of_channel r; string_of_channel g; string_of_channel b ]
       | Var _ -> "initial")
   | Animation -> Pp.to_string pp_animation value
   | Gradient_direction -> Pp.to_string pp_gradient_direction value

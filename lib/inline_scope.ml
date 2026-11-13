@@ -42,9 +42,8 @@ let selector_covers ~ancestor ~consumer =
   if universal_selector_text a then true
   else if a = c then true
   else
-    let prefix = a ^ " " in
-    String.length c >= String.length prefix
-    && String.sub c 0 (String.length prefix) = prefix
+    let n = String.length a in
+    String.length c > n && String.starts_with ~prefix:a c && c.[n] = ' '
 
 (** {1 At-rule path} *)
 

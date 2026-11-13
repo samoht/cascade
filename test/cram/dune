@@ -4,3 +4,7 @@
   ../../README.md
   (source_tree ../../test/interop)
   (package cascade)))
+
+(cram
+ (applies_to public_modules)
+ (deps ../../lib/dune))
