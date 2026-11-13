@@ -952,7 +952,7 @@ and condition_in_parens t component : condition =
   | Component.Func { node = { terminated = true; _ }; _ } -> general_enclosed ()
   | Component.Func { node = { terminated = false; _ }; _ } ->
       err t [ component ] "unmatched function in @media condition"
-  | Component.Block _ | Component.Preserved _ ->
+  | Component.Block _ | Component.Preserved _ | Component.Flat _ ->
       err t [ component ] "expected media-in-parens"
 
 and condition_chain t operator acc components : condition =
@@ -986,7 +986,7 @@ let is_media_in_parens = function
   | Component.Block { node = { opening = Token.Paren; _ }; _ }
   | Component.Func _ ->
       true
-  | Component.Block _ | Component.Preserved _ -> false
+  | Component.Block _ | Component.Preserved _ | Component.Flat _ -> false
 
 let starts_with_condition components =
   match non_whitespace_components components with

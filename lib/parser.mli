@@ -18,6 +18,15 @@ val of_reader : ?unicode_ranges:bool -> Reader.t -> t
 val of_string : ?unicode_ranges:bool -> string -> t
 (** [of_string ?unicode_ranges s] builds a fresh reader and lexer from [s]. *)
 
+val max_nesting_depth : int
+(** [max_nesting_depth] is [128], the most blocks and functions the parser
+    builds into a tree. CSS Syntax 3 sets no limit and leaves one to each
+    implementation. A block or function nested deeper is kept whole, its
+    contents a {!Component.Flat} run of the tokens read, so the parser drops
+    nothing for its depth and no walk over the tree goes deeper than this. A
+    reader that needs the tree inside the run fails with {!Error.Too_deep}: a
+    rule nested deeper loses what its block holds. *)
+
 (** {1 Stream API} *)
 
 val next : t -> Component.t

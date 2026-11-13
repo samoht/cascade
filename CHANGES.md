@@ -1,5 +1,11 @@
 ## 1.3.0 (unreleased)
 
+### Breaking
+
+- `Component.t` has a `Flat` case: the contents of a block or function nested
+  past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
+  a tree. A match over `Component.t` needs a case for it (#1296).
+
 ### Printing
 
 - Very large numbers keep their sign. `width:4611686018427387904px` came out
@@ -44,6 +50,11 @@
 - An `@charset` warns and goes unless the sheet opens with exactly
   `@charset "UTF-8";`, so not after whitespace, a comment or an `@layer`
   statement. An `@import` after an unrecognised at-rule no longer warns (#1294).
+- Input nesting blocks or functions more than 128 deep no longer crashes
+  cascade with a stack overflow. A value nested deeper is kept and printed back
+  as written; a rule nested deeper loses its contents with a warning (#1296).
+- A selector nesting `:is()` more than 100 deep drops its rule with a warning
+  instead of reading as an `:is()` that matches nothing (#1296).
 
 ### CLI tools
 

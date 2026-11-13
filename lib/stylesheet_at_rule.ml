@@ -130,7 +130,9 @@ let starts_with_import_keyword components =
       String.equal name "layer" || String.equal name "supports"
   | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
       String.equal (String.lowercase_ascii name) "layer"
-  | Some (Component.Block _ | Component.Preserved _) | None -> false
+  | Some (Component.Block _ | Component.Preserved _ | Component.Flat _) | None
+    ->
+      false
 
 let drain_until_semicolon r =
   let rec loop acc =

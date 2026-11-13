@@ -30,6 +30,7 @@ let () =
       Test_source_index.suite;
       Test_component.suite;
       Test_parser.suite;
+      Test_parser_depth.suite;
       Test_cursor.suite;
       Test_error.suite;
       Test_resolve.suite;

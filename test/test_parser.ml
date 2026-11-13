@@ -37,6 +37,7 @@ let rec pp_cv : Component.t Css.Pp.t =
       Css.Pp.char ctx '(';
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx arguments;
       Css.Pp.char ctx ')'
+  | Component.Flat { node; _ } -> Css.Pp.list ~sep:Css.Pp.sp Token.pp ctx node
 
 let pp_cvs ctx cvs = Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx cvs
 

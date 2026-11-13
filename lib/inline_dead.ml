@@ -24,6 +24,7 @@ let rec refs_of_components components =
       | Component.Func { node = { arguments; _ }; _ } ->
           refs_of_components arguments
       | Component.Block { node = { value; _ }; _ } -> refs_of_components value
+      | Component.Flat { node; _ } -> Component.flat_var_refs node
       | Component.Preserved _ -> [])
     components
 
@@ -47,6 +48,15 @@ and refs_of_var_args args =
     ("--" ^ var.Values.name) :: fallback_refs
   with Cursor.Parse_error _ -> (
     match strip_component_ws args with
+    (* The arguments of a [var()] opened past the parser's depth: the name is
+       the first one in the run, and the fallback's own references follow. *)
+    | [ Component.Flat { node; _ } ] -> (
+        let refs = Component.flat_var_refs node in
+        match strip_component_ws (Component.shallow args) with
+        | Component.Preserved { kind = Token.Ident name; _ } :: _
+          when Custom_property_name.is_valid name ->
+            name :: refs
+        | _ -> refs)
     | Component.Preserved { kind = Token.Ident name; _ } :: rest
       when Custom_property_name.is_valid name ->
         name :: refs_of_components (split_var_fallback [] rest)

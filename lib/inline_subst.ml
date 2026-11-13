@@ -162,7 +162,8 @@ let rec components_contain preserved components =
       | Component.Func { node = { arguments; _ }; _ } ->
           components_contain preserved arguments
       | Component.Block { node = { value; _ }; _ } ->
-          components_contain preserved value)
+          components_contain preserved value
+      | Component.Flat { node; _ } -> List.exists preserved node)
     components
 
 let parse_var_components args : (string * Component.t list option) option =
@@ -203,7 +204,9 @@ let rec substitute_components ~kept visible ~visited components =
                 Component.Block { block with node = { block.node with value } };
               ]
         | Cycle -> Cycle)
-    | Component.Preserved _ as cv -> Components [ cv ]
+    (* Nothing in a run nested past the parser's depth is substituted: it prints
+       back as read, references and all. *)
+    | (Component.Preserved _ | Component.Flat _) as cv -> Components [ cv ]
   in
   let rec loop acc = function
     | [] -> Components (List.rev acc)
@@ -362,12 +365,16 @@ let rec var_names_in acc components =
           let acc = var_names_in acc arguments in
           if String.equal (String.lowercase_ascii name) "var" then
             match
-              List.filter (fun c -> not (Component.is_whitespace c)) arguments
+              List.filter
+                (fun c -> not (Component.is_whitespace c))
+                (Component.shallow arguments)
             with
             | Component.Preserved { kind = Token.Ident n; _ } :: _ -> n :: acc
             | _ -> acc
           else acc
       | Component.Block { node = { value; _ }; _ } -> var_names_in acc value
+      | Component.Flat { node; _ } ->
+          List.rev_append (Component.flat_var_refs node) acc
       | Component.Preserved _ -> acc)
     acc components
 
@@ -483,7 +490,7 @@ let rec fallback_components ~lookup components =
                   value = fallback_components ~lookup block.node.value;
                 };
             }
-      | Component.Preserved _ as cv -> cv)
+      | (Component.Preserved _ | Component.Flat _) as cv -> cv)
     components
 
 let declaration_with_fallbacks ~lookup decl =

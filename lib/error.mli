@@ -55,6 +55,10 @@ type kind =
   | Unknown_at_rule of string  (** At-keyword name has no registered handler. *)
   | Unterminated of Sort.t
       (** Hit EOF inside a {!Sort.t} that needed a closing delimiter. *)
+  | Too_deep of int
+      (** A {!Sort.t} nests blocks or functions deeper than the payload, the
+          most a reader goes into: {!Parser.max_nesting_depth} for what the
+          parser builds, less for a grammar that recurses at each level. *)
 
 type t = {
   loc : Loc.t;

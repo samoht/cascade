@@ -43,7 +43,7 @@ let rec var_refs_in_components acc (components : Component.t list) =
       | Component.Func { node = { name; arguments; _ }; _ } ->
           let acc =
             if String.lowercase_ascii name = "var" then
-              match first_var_ref_ident arguments with
+              match first_var_ref_ident (Component.shallow arguments) with
               | Option.Some n -> n :: acc
               | Option.None -> acc
             else acc
@@ -51,6 +51,8 @@ let rec var_refs_in_components acc (components : Component.t list) =
           var_refs_in_components acc arguments
       | Component.Block { node = { value; _ }; _ } ->
           var_refs_in_components acc value
+      | Component.Flat { node; _ } ->
+          List.rev_append (Component.flat_var_refs node) acc
       | Component.Preserved _ -> acc)
     acc components
 
@@ -81,6 +83,16 @@ let rec substitution_fn_in_components (components : Component.t list) =
           | _ -> substitution_fn_in_components arguments)
       | Component.Block { node = { value; _ }; _ } ->
           substitution_fn_in_components value
+      | Component.Flat { node; _ } ->
+          List.find_map
+            (fun (tok : Token.t) ->
+              match tok.kind with
+              | Token.Function name -> (
+                  match String.lowercase_ascii name with
+                  | ("var" | "attr" | "env") as fn -> Option.Some fn
+                  | _ -> Option.None)
+              | _ -> Option.None)
+            node
       | Component.Preserved _ -> Option.None)
     components
 
@@ -101,7 +113,16 @@ let rec element_relative_in_components (components : Component.t list) =
       | Component.Func { node = { arguments; _ }; _ } ->
           element_relative_in_components arguments
       | Component.Block { node = { value; _ }; _ } ->
-          element_relative_in_components value)
+          element_relative_in_components value
+      | Component.Flat { node; _ } ->
+          List.find_map
+            (fun (tok : Token.t) ->
+              match tok.kind with
+              | Token.Dimension { unit_; _ }
+                when Values.is_element_relative_unit unit_ ->
+                  Option.Some unit_
+              | _ -> Option.None)
+            node)
     components
 
 let element_relative_in_value_string value =

@@ -43,6 +43,7 @@ type kind =
   | Bad_condition of { at_rule : string; reason : string }
   | Unknown_at_rule of string
   | Unterminated of Sort.t
+  | Too_deep of int
 
 (* [source] carries the raw input string so [snippet] can be materialised lazily
    by the user-facing pretty-printer. Most raised errors are caught and
@@ -103,6 +104,10 @@ let pp_kind : kind Pp.t =
   | Unterminated s ->
       Pp.string ctx "unterminated ";
       Sort.pp ctx s
+  | Too_deep limit ->
+      Pp.string ctx "nested deeper than ";
+      Pp.int ctx limit;
+      Pp.string ctx " levels"
 
 let pp : t Pp.t =
  fun ctx ({ loc; sort; path; kind; source = _; filename; recovery = _ } as t) ->

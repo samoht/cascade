@@ -102,6 +102,9 @@ let v css =
             | Some b -> add_header t css ~offset name loc b
             | None -> add_statement t css ~offset ~closer name loc rest)
         | Component.Preserved _ -> ()
+        (* Nested past the depth the parser builds, nothing in the run reads as
+           a statement or a call, so there is nothing to index. *)
+        | Component.Flat _ -> ()
         | Component.Block b ->
             walk ~closer:(inner_end ~closed:b.node.closed b.loc) b.node.value
         | Component.Func f ->

@@ -206,7 +206,10 @@ val err : ?loc:Loc.t -> ?got:string -> t -> string -> 'a
 (** [err ?loc ?got t msg] raises {!Parse_error} at the current position, or at
     [loc] when given. A reader that consumes the offending token before
     rejecting it passes the span it read: {!val-position} has moved on to
-    whatever follows by then, which at the end of a value is the terminator. *)
+    whatever follows by then, which at the end of a value is the terminator.
+    Failing at a {!Component.Flat} run raises {!Error.Too_deep}: the run holds
+    what was nested past {!Parser.max_nesting_depth}, which no reader sees into.
+*)
 
 val err_invalid : ?loc:Loc.t -> t -> string -> 'a
 (** [err_invalid t msg] is [err t ("invalid: " ^ msg)]. *)

@@ -15,49 +15,128 @@ let of_string ?unicode_ranges s = of_reader ?unicode_ranges (Reader.of_string s)
 
 (** {1 section 5.3 algorithms operating on a {!Lexer.t}} *)
 
-(* Consume a component value. The opening token [tok] has already been read. *)
-let rec consume_component_value_from lexer tok : Component.t =
+(* CSS Syntax 3 (ED) sets no nesting limit, and the CSSWG resolved that one is
+   for each UA to choose (w3c/csswg-drafts#2881). Chrome sets none that a value
+   reaches: it keeps a custom property nested 100,000 deep in [(], [[], [{] or a
+   function, whole (test/render/parse_recovery.ml, the [deep_] cases). Every
+   walk over the component tree, and over the typed tree read from it, recurses
+   once per level, so the tree stops here and what is nested deeper is kept as
+   the flat token run the lexer read: nothing is lost, and no walk takes more
+   than this many frames. With OCaml 5's default stack of 128M words, [a{]
+   repeated overflowed reading at about 4.8 million levels, and printing each
+   level indented made the output grow as the square of the depth. *)
+let max_nesting_depth = 128
+
+let opening_char : Token.bracket -> char = function
+  | Curly -> '{'
+  | Paren -> '('
+  | Square -> '['
+
+(* The contents of a block whose opener has been read, as a flat run, and the
+   token that ended it: the closer matching [closer] outside any block the run
+   opens, or EOF. As sec. 5.5.9 and 5.5.10 have it, each block in the run closes
+   only at the closer matching its own opener, a function at [)], and any other
+   closer is a token of the run. The open blocks are a byte each in [open_]
+   rather than a frame each on the OCaml stack, so no depth of input can exhaust
+   it. *)
+let consume_flat lexer ~(closer : Token.bracket) =
+  let open_ = Buffer.create 16 in
+  let rec loop acc =
+    let tok = Lexer.next lexer in
+    let depth = Buffer.length open_ in
+    match tok.Token.kind with
+    | Token.Eof -> (List.rev acc, tok)
+    | Token.Close b when depth = 0 && Token.equal_bracket b closer ->
+        (List.rev acc, tok)
+    | Token.Close b
+      when depth > 0 && Buffer.nth open_ (depth - 1) = opening_char b ->
+        Buffer.truncate open_ (depth - 1);
+        loop (tok :: acc)
+    | Token.Open b ->
+        Buffer.add_char open_ (opening_char b);
+        loop (tok :: acc)
+    | Token.Function _ ->
+        Buffer.add_char open_ (opening_char Paren);
+        loop (tok :: acc)
+    | _ -> loop (tok :: acc)
+  in
+  let tokens, ended = loop [] in
+  let contents =
+    match tokens with
+    | [] -> []
+    | (first : Token.t) :: _ ->
+        let last =
+          List.fold_left (fun _ (tok : Token.t) -> tok.loc) first.loc tokens
+        in
+        [ Flat { node = tokens; loc = Loc.union first.loc last } ]
+  in
+  (contents, ended)
+
+(* Consume a component value. The opening token [tok] has already been read.
+   [depth] counts the blocks and functions open around it. *)
+let rec consume_nested_value ~depth lexer tok : Component.t =
   match tok.Token.kind with
   | Token.Open bracket ->
-      let block = consume_simple_block lexer bracket ~start_loc:tok.loc in
+      let block =
+        consume_simple_block ~depth:(depth + 1) lexer bracket ~start_loc:tok.loc
+      in
       Block block
   | Token.Function name ->
-      let func = consume_function lexer ~name ~start_loc:tok.loc in
+      let func =
+        consume_function ~depth:(depth + 1) lexer ~name ~start_loc:tok.loc
+      in
       Func func
   | _ -> Preserved tok
 
-and consume_simple_block lexer opening ~start_loc :
+(* [depth] counts the block [opening] starts with the ones around it. *)
+and consume_simple_block ~depth lexer opening ~start_loc :
     Component.block Component.node =
-  let rec loop acc =
-    let tok = Lexer.next lexer in
-    match tok.Token.kind with
-    | Token.Eof ->
-        let loc = Loc.union start_loc tok.loc in
-        { node = { opening; value = List.rev acc; closed = false }; loc }
-    | Token.Close b when Token.equal_bracket b opening ->
-        let loc = Loc.union start_loc tok.loc in
-        { node = { opening; value = List.rev acc; closed = true }; loc }
-    | _ ->
-        let cv = consume_component_value_from lexer tok in
-        loop (cv :: acc)
+  let finish value (ended : Token.t) =
+    let closed = match ended.kind with Token.Eof -> false | _ -> true in
+    { node = { opening; value; closed }; loc = Loc.union start_loc ended.loc }
   in
-  loop []
+  if depth > max_nesting_depth then
+    let value, ended = consume_flat lexer ~closer:opening in
+    finish value ended
+  else
+    let rec loop acc =
+      let tok = Lexer.next lexer in
+      match tok.Token.kind with
+      | Token.Eof -> finish (List.rev acc) tok
+      | Token.Close b when Token.equal_bracket b opening ->
+          finish (List.rev acc) tok
+      | _ ->
+          let cv = consume_nested_value ~depth lexer tok in
+          loop (cv :: acc)
+    in
+    loop []
 
-and consume_function lexer ~name ~start_loc : Component.func Component.node =
-  let rec loop acc =
-    let tok = Lexer.next lexer in
-    match tok.Token.kind with
-    | Token.Eof ->
-        let loc = Loc.union start_loc tok.loc in
-        { node = { name; arguments = List.rev acc; terminated = false }; loc }
-    | Token.Close Paren ->
-        let loc = Loc.union start_loc tok.loc in
-        { node = { name; arguments = List.rev acc; terminated = true }; loc }
-    | _ ->
-        let cv = consume_component_value_from lexer tok in
-        loop (cv :: acc)
+and consume_function ~depth lexer ~name ~start_loc :
+    Component.func Component.node =
+  let finish arguments (ended : Token.t) =
+    let terminated = match ended.kind with Token.Eof -> false | _ -> true in
+    {
+      node = { name; arguments; terminated };
+      loc = Loc.union start_loc ended.loc;
+    }
   in
-  loop []
+  if depth > max_nesting_depth then
+    let arguments, ended = consume_flat lexer ~closer:Paren in
+    finish arguments ended
+  else
+    let rec loop acc =
+      let tok = Lexer.next lexer in
+      match tok.Token.kind with
+      | Token.Eof -> finish (List.rev acc) tok
+      | Token.Close Paren -> finish (List.rev acc) tok
+      | _ ->
+          let cv = consume_nested_value ~depth lexer tok in
+          loop (cv :: acc)
+    in
+    loop []
+
+let consume_component_value_from lexer tok =
+  consume_nested_value ~depth:0 lexer tok
 
 let consume_component_value lexer : Component.t =
   let tok = Lexer.next lexer in
@@ -357,11 +436,6 @@ let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
       add_dimension_unit buf unit_
   | kind -> add_token_kind buf kind
 
-let opening_char : Token.bracket -> char = function
-  | Curly -> '{'
-  | Paren -> '('
-  | Square -> '['
-
 let closing_char : Token.bracket -> char = function
   | Curly -> '}'
   | Paren -> ')'
@@ -424,7 +498,8 @@ let normal_pair_needs_token_boundary prev next =
   (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
      a dimension all end their name at the [(], so the block stays apart. *)
   | ( Component.Preserved { kind = Token.Ident _; _ },
-      Component.Block { node = { opening = Token.Paren; _ }; _ } ) ->
+      ( Component.Block { node = { opening = Token.Paren; _ }; _ }
+      | Component.Preserved { kind = Token.Open Token.Paren; _ } ) ) ->
       true
   | ( Component.Preserved
         {
@@ -478,6 +553,54 @@ let normal_pair_needs_token_boundary prev next =
       true
   | _ -> false
 
+(* CSS Custom Properties 1 (ED) sec. 4.1: a custom property's value "must not"
+   have its whitespace normalized, so the stream a var() substitutes keeps the
+   runs the author wrote. Syntax 3 sec. 9.1's one-space serialization is the
+   right answer for a reserialized token stream and the wrong one here, which is
+   why this is its own entry point rather than a flag on that one. The boundary
+   space {!cvs_to_buffer} inserts between components that would otherwise merge
+   is NOT whitespace normalization and is kept: dropping it turns [a/**/b] into
+   the single ident [ab].
+
+   Every printer writes a {!Component.Flat} run this way: its tokens are kept as
+   read, so the run prints back the way the tree it stands for would. *)
+let rec cv_to_buffer_verbatim buf : Component.t -> unit = function
+  | Preserved { kind = Token.Whitespace run; _ } -> Buffer.add_string buf run
+  | Preserved { repr = Some repr; _ } -> Buffer.add_string buf repr
+  | Preserved t -> add_token_kind buf t.kind
+  | Block { node = { opening; value; _ }; _ } ->
+      Buffer.add_char buf (opening_char opening);
+      cvs_to_buffer_verbatim buf value;
+      Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments; _ }; _ } ->
+      Buffer.add_string buf (escape_ident name);
+      Buffer.add_char buf '(';
+      cvs_to_buffer_verbatim buf arguments;
+      Buffer.add_char buf ')'
+  | Flat { node; _ } ->
+      cvs_to_buffer_verbatim buf (List.map (fun tok -> Preserved tok) node);
+      (* The closers of what the input ended inside, as a tree prints one. *)
+      List.iter
+        (fun b -> Buffer.add_char buf (closing_char b))
+        (Component.flat_left_open node)
+
+and cvs_to_buffer_verbatim buf cvs =
+  let rec loop prev = function
+    | [] -> ()
+    | cv :: rest
+      when is_whitespace cv
+           && match prev with Some p -> is_backslash_delim p | None -> false ->
+        loop prev rest
+    | cv :: rest ->
+        (match prev with
+        | Some p when normal_pair_needs_token_boundary p cv ->
+            Buffer.add_char buf ' '
+        | _ -> ());
+        cv_to_buffer_verbatim buf cv;
+        loop (Some cv) rest
+  in
+  loop None cvs
+
 let rec cv_to_buffer buf : Component.t -> unit = function
   | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
@@ -493,6 +616,7 @@ let rec cv_to_buffer buf : Component.t -> unit = function
       Buffer.add_char buf '(';
       cvs_to_buffer buf arguments;
       Buffer.add_char buf ')'
+  | Flat _ as cv -> cv_to_buffer_verbatim buf cv
 
 (* The serialised [Delim "\\"] is "\\\n", which already supplies a separator;
    eat the next whitespace so [Delim "\\"; Whitespace _] round-trips cleanly. *)
@@ -548,6 +672,8 @@ let word_like_end : Component.t -> bool = function
   | Func _ -> true
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
+  (* A run is the whole of a block's value: no sibling follows it to merge. *)
+  | Flat _ -> false
 
 let word_like_start : Component.t -> bool = function
   | Preserved
@@ -567,6 +693,7 @@ let word_like_start : Component.t -> bool = function
   | Func _ -> true
   | Block { node = { opening = Paren; _ }; _ } -> true
   | Block _ -> false
+  | Flat _ -> false
 
 (* CSS Syntax 3 (ED) sec. 9 fixed-pair separations: certain delim pairs would
    form a multi-char token (comment, CDO) when emitted adjacently, even though
@@ -590,7 +717,8 @@ let pair_needs_token_boundary ~minify_numeric prev next =
   (* Sec. 4.3.4 turns [ident(] into a function token. An at-keyword, a hash and
      a dimension all end their name at the [(], so the block stays apart. *)
   | ( Component.Preserved { kind = Token.Ident _; _ },
-      Component.Block { node = { opening = Token.Paren; _ }; _ } ) ->
+      ( Component.Block { node = { opening = Token.Paren; _ }; _ }
+      | Component.Preserved { kind = Token.Open Token.Paren; _ } ) ) ->
       true
   | ( Component.Preserved
         {
@@ -724,6 +852,7 @@ let rec cv_to_buffer_min ~minify_numbers ~in_math ~preserve_numeric_sign buf =
       cvs_to_buffer_min ~minify_numbers ~in_math:(is_math_function name) buf
         arguments;
       Buffer.add_char buf ')'
+  | Flat _ as cv -> cv_to_buffer_verbatim buf cv
 
 and cvs_to_buffer_min ~minify_numbers ~in_math buf cvs =
   let rec drop_ws = function
@@ -762,45 +891,6 @@ and cvs_to_buffer_min ~minify_numbers ~in_math buf cvs =
         loop (Some cv) false false rest
   in
   loop None false false cvs
-
-(* CSS Custom Properties 1 (ED) sec. 4.1: a custom property's value "must not"
-   have its whitespace normalized, so the stream a var() substitutes keeps the
-   runs the author wrote. Syntax 3 sec. 9.1's one-space serialization is the
-   right answer for a reserialized token stream and the wrong one here, which is
-   why this is its own entry point rather than a flag on that one. The boundary
-   space {!cvs_to_buffer} inserts between components that would otherwise merge
-   is NOT whitespace normalization and is kept: dropping it turns [a/**/b] into
-   the single ident [ab]. *)
-let rec cv_to_buffer_verbatim buf : Component.t -> unit = function
-  | Preserved { kind = Token.Whitespace run; _ } -> Buffer.add_string buf run
-  | Preserved { repr = Some repr; _ } -> Buffer.add_string buf repr
-  | Preserved t -> add_token_kind buf t.kind
-  | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
-      cvs_to_buffer_verbatim buf value;
-      Buffer.add_char buf (closing_char opening)
-  | Func { node = { name; arguments; _ }; _ } ->
-      Buffer.add_string buf (escape_ident name);
-      Buffer.add_char buf '(';
-      cvs_to_buffer_verbatim buf arguments;
-      Buffer.add_char buf ')'
-
-and cvs_to_buffer_verbatim buf cvs =
-  let rec loop prev = function
-    | [] -> ()
-    | cv :: rest
-      when is_whitespace cv
-           && match prev with Some p -> is_backslash_delim p | None -> false ->
-        loop prev rest
-    | cv :: rest ->
-        (match prev with
-        | Some p when normal_pair_needs_token_boundary p cv ->
-            Buffer.add_char buf ' '
-        | _ -> ());
-        cv_to_buffer_verbatim buf cv;
-        loop (Some cv) rest
-  in
-  loop None cvs
 
 let to_string_verbatim cvs =
   let buf = Buffer.create 32 in
@@ -977,6 +1067,7 @@ let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
       cvs_to_buffer_min_custom ~fold_ident ~in_math:(is_math_function name)
         ~opaque buf arguments;
       Buffer.add_char buf ')'
+  | Flat _ as cv -> cv_to_buffer_verbatim buf cv
 
 (* Drops optional whitespace between sibling tokens (like [cvs_to_buffer_min])
    but routes children through [cv_to_buffer_custom_min] so nested function and
@@ -1070,7 +1161,9 @@ let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
     | Token.Close Curly when nested -> close prelude tok.loc None
     | Token.Open Curly ->
         let _ = Lexer.next lexer in
-        let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
+        let block =
+          consume_simple_block ~depth:1 lexer Curly ~start_loc:tok.loc
+        in
         warn_unclosed ~meta lexer warnings block;
         close prelude block.loc (Some block)
     | _ ->
@@ -1125,7 +1218,9 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     | Token.Close Curly when nested -> drop tok.loc
     | Token.Open Curly ->
         let _ = Lexer.next lexer in
-        let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
+        let block =
+          consume_simple_block ~depth:1 lexer Curly ~start_loc:tok.loc
+        in
         warn_unclosed ~meta lexer warnings block;
         let loc = Loc.union start_loc block.loc in
         if is_custom_property_shape prelude then (
@@ -1191,7 +1286,14 @@ let has_bad_token value =
     | Preserved { kind = Token.Bad_string | Token.Bad_url; _ } -> true
     | Block { node = { value; _ }; _ } -> List.exists walk value
     | Func { node = { arguments; _ }; _ } -> List.exists walk arguments
-    | _ -> false
+    | Flat { node; _ } ->
+        List.exists
+          (fun (tok : Token.t) ->
+            match tok.kind with
+            | Token.Bad_string | Token.Bad_url -> true
+            | _ -> false)
+          node
+    | Preserved _ -> false
   in
   List.exists walk value
 
@@ -1585,6 +1687,8 @@ let rec arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level =
       | Component.Func { node = { arguments = value; _ }; _ } ->
           arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang
             ~top_level:false value
+      | Component.Flat { node; _ } ->
+          Component.flat_is_valid ~require_closed:false node
       | Component.Preserved _ -> true)
 
 let arbitrary_value r ~allow_top_level_semicolon_bang =
