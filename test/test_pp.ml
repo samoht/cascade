@@ -201,6 +201,43 @@ let float_sub_floor_magnitude () =
     (Pp.string_of_float (-1.2e-9));
   check_float_n 2 0.001 ~expected:".001"
 
+(* The rule [Pp.string_of_float] states. A decimal place rounds the number the
+   author wrote, the shortest decimal that reads back as the double (CSS Syntax
+   3 sec. 4.3.13 gives a number the value of its decimal digits), with a half
+   going away from zero. That is what the css-minify-tests corpus expects:
+   colors/0048 and colors/0049 print [0.8765] as [.877] at three places, though
+   its double, 0.87649999999999995, lies below the half. The 12 significant
+   digits round the exact value of the double with ties to even, IEEE 754-2019
+   sec. 4.3.1. No digit comes from the C library, so they are the same on every
+   platform: mingw's runtime printed [100000000000.5] as [100000000001]. *)
+let float_rounding_rule () =
+  let at d f = Pp.string_of_float ~max_decimals:d f in
+  check string "0.125 at 2" "0.13" (at 2 0.125);
+  check string "0.375 at 2" "0.38" (at 2 0.375);
+  check string "-0.125 at 2" "-0.13" (at 2 (-0.125));
+  check string "2.5 at 0" "3" (at 0 2.5);
+  check string "-2.5 at 0" "-3" (at 0 (-2.5));
+  check string "0.8765 at 3" "0.877" (at 3 0.8765);
+  check string "0.0045 at 3" "0.005" (at 3 0.0045);
+  check string "0.416666875 at 8" "0.41666688" (at 8 0.416666875);
+  check_float_n 3 (-0.8765) ~expected:"-.877";
+  (* [0.1 +. 0.2] reads back from 0.30000000000000004, which is below the half
+     at 16 places and exact at 17. *)
+  check string "0.1 + 0.2 at 16" "0.3" (at 16 (0.1 +. 0.2));
+  check string "0.1 + 0.2 at 17" "0.30000000000000004" (at 17 (0.1 +. 0.2));
+  (* Seventeen significant digits are what these doubles read back from; the
+     eight places keep every one of them. *)
+  check_float 123456789.123456789 ~expected:"123456789.12345679";
+  check_float 98765432.987654321 ~expected:"98765432.98765433";
+  (* Twelve significant digits, past the scaled [int] range: an exact half goes
+     to the even neighbour. *)
+  check_float 100000000000.5 ~expected:"100000000000";
+  check_float 100000000001.5 ~expected:"100000000002";
+  check_float (-100000000000.5) ~expected:"-100000000000";
+  check_float (-100000000001.5) ~expected:"-100000000002";
+  check_float 50000000000.25 ~expected:"50000000000.2";
+  check_float 50000000000.75 ~expected:"50000000000.8"
+
 (* The [int] boundary: an integral value below 2^62 prints every digit, one at
    or past it prints 12 significant digits in exponent notation. *)
 let float_int_boundary () =
@@ -377,6 +414,7 @@ let suite =
       Alcotest.test_case "float exponent digits" `Quick float_exponent_digits;
       Alcotest.test_case "float sub-floor magnitude" `Quick
         float_sub_floor_magnitude;
+      Alcotest.test_case "float rounding rule" `Quick float_rounding_rule;
       Alcotest.test_case "float int boundary" `Quick float_int_boundary;
       Alcotest.test_case "nan never prints as a bare token" `Quick
         nan_never_prints_as_a_bare_token;
