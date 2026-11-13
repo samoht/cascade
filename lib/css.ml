@@ -556,10 +556,9 @@ type parse = {
   source : Source.t option;
 }
 
-let of_string ?(strict = false) ?(filename = "<string>")
-    ?(meta = Loc.default_meta_level) ?(enforce_spec = false)
-    ?(preserve_source = false) css =
-  let stamp e = Error.with_filename ~filename e in
+let of_string ?(strict = false) ?filename ?(meta = Loc.default_meta_level)
+    ?(enforce_spec = false) ?(preserve_source = false) css =
+  let stamp e = Error.with_filename ?filename e in
   try
     let source : Source.t option ref = ref Option.None in
     let on_source =
