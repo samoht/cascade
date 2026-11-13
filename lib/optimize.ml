@@ -242,6 +242,17 @@ let split_vendor_selector_lists (stmts : statement list) : statement list =
       | other -> [ other ])
     stmts
 
+(* CSS Cascade 6 sec. 2.5.2: an [@scope] body's rules and declarations stand for
+   the scoping root, which [&] names there, not for the enclosing rule. *)
+let scope_owner =
+  Option.Some
+    {
+      selector = Selector.Nesting;
+      declarations = [];
+      nested = [];
+      merge_key = None;
+    }
+
 let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (stmts : statement list) : statement list =
   match stmts with
@@ -309,18 +320,8 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       process_supports_statement ?factor_cache ~ctx ~enforce_spec ~owner
         ~supports acc stmt cond block rest
   | (Scope (start, end_, block) as stmt) :: rest ->
-      let start' = option_map_preserve canonicalize_scope_selector start in
-      let end_' = option_map_preserve canonicalize_scope_selector end_ in
-      let optimized_block =
-        descend_block ?factor_cache ~ctx ~enforce_spec ~owner ~supports block
-      in
-      let optimized =
-        if start' == start && end_' == end_ && optimized_block == block then
-          stmt
-        else Scope (start', end_', optimized_block)
-      in
-      process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
-        (optimized :: acc) rest
+      process_scope_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+        acc stmt start end_ block rest
   | (Origin (origin, block) as stmt) :: rest ->
       process_group_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         acc stmt block
@@ -377,6 +378,21 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         (hd :: acc) rest
 
+and process_scope_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+    acc stmt start end_ block rest =
+  let start' = option_map_preserve canonicalize_scope_selector start in
+  let end_' = option_map_preserve canonicalize_scope_selector end_ in
+  let optimized_block =
+    descend_block ?factor_cache ~ctx ~enforce_spec ~owner:scope_owner ~supports
+      block
+  in
+  let optimized =
+    if start' == start && end_' == end_ && optimized_block == block then stmt
+    else Scope (start', end_', optimized_block)
+  in
+  process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+    (optimized :: acc) rest
+
 and descend_block ?factor_cache ~ctx ~enforce_spec ~owner ~supports block =
   if Ctx.recurse_blocks ctx then
     statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports block
@@ -410,7 +426,7 @@ and process_rule_run ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc stmt
     collect_rules ~holds [ stmt ] [ r ] rest
   in
   let optimized =
-    rules_aux ?factor_cache ~ctx ~enforce_spec ~supports plain_rules
+    rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports plain_rules
   in
   let as_statements =
     if optimized == plain_rules then plain_stmts
@@ -518,16 +534,25 @@ and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
 (* Optimize one rule's nested statements recursively, then drop the redundant
    nesting prefix (see [drop_nesting_prefix]) and let a run written after them
    rejoin the rule's own declarations wherever the cascade allows. The body is
-   the rule's, so it optimizes with the rule as owner. Dead nested rules go
+   the rule's, so it optimizes with the rule as owner, under its selector
+   expanded against [owner]'s: CSS Nesting 1 sec. 3 weighs [&] as the enclosing
+   rule's selector, and that one may itself be nested. Dead nested rules go
    before the hoist, so a declaration behind one is no longer held back. *)
-and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~supports rule =
+and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+    rule =
   let nested =
     match (Ctx.recurse_blocks ctx, rule.nested) with
     | false, nested -> nested
     | true, [] -> []
     | true, nested ->
+        let owner =
+          match owner with
+          | Option.None -> rule
+          | Option.Some (o : rule) ->
+              { rule with selector = Nest.combine o.selector rule.selector }
+        in
         let nested =
-          statements ?factor_cache ~ctx ~enforce_spec ~owner:(Some rule)
+          statements ?factor_cache ~ctx ~enforce_spec ~owner:(Option.Some owner)
             ~supports nested
         in
         if enforce_spec then nested
@@ -541,11 +566,12 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~supports rule =
   in
   merge_lone_nested_rule rule
 
-and rules_aux ?factor_cache ~ctx ~enforce_spec ~supports (rules : rule list) :
-    rule list =
+and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+    (rules : rule list) : rule list =
   let with_optimized_nested =
     list_map_preserve
-      (rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~supports)
+      (rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner
+         ~supports)
       rules
   in
   (* A run contracts into a shorthand only when nothing that reaches the same
@@ -648,7 +674,8 @@ let single_rule ?scope (rule : rule) : rule =
   }
 
 let rules ?scope (rules : rule list) : rule list =
-  rules_aux ~ctx:(ctx_of_scope scope) ~enforce_spec:false ~supports:[] rules
+  rules_aux ~ctx:(ctx_of_scope scope) ~enforce_spec:false ~owner:None
+    ~supports:[] rules
 
 (** {1 Nesting Flattening} *)
 

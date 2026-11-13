@@ -24,6 +24,7 @@ type t = {
   pseudo_element : Selector.t option;
   parent : t option;
   complex : bool;
+  opaque : bool;
 }
 
 let empty =
@@ -41,6 +42,7 @@ let empty =
     pseudo_element = None;
     parent = None;
     complex = false;
+    opaque = false;
   }
 
 let mark_complex s = if s.complex then s else { s with complex = true }
@@ -133,7 +135,10 @@ let rec of_selector (sel : Selector.t) : t =
   | Combined (_, _, right) -> of_selector right
   | Relative (_, right) -> of_selector right
   | List [ single ] -> of_selector single
-  | List _ -> { empty with complex = true }
+  (* One summary has one subject, and a list has one per branch: the facts of
+     one branch say nothing about another, not even that it has no
+     pseudo-element. *)
+  | List _ -> { empty with complex = true; opaque = true }
   | _ -> fold_simple empty sel
 
 let exact_value = function
@@ -142,9 +147,27 @@ let exact_value = function
 
 let same_attr_key a b = a.key = b.key
 
-let attr_flag_is_case_insensitive = function
-  | Some Selector_intf.Insensitive -> true
-  | _ -> false
+(* HTML sec. 4.16.2 lowercases a type selector before comparing it to an HTML
+   element's name, and Selectors 4 sec. 6.7 matches IDs ASCII case-insensitively
+   in a quirks-mode document. Two names that fold to one may name one element,
+   so only folded names prove two subjects apart. A [:not()] still compares the
+   name as written: [#a] is not [:not(#A)] in a no-quirks document. *)
+let fold_case s =
+  if String.exists (fun c -> c >= 'A' && c <= 'Z') s then
+    String.lowercase_ascii s
+  else s
+
+let element_key s = Option.map fold_case s.element
+let id_keys s = String_set.map fold_case s.ids
+
+(* Selectors 4 sec. 6.3: [s] matches the value as written, [i] every ASCII case
+   of it, and no flag leaves the comparison to the document language, the same
+   one on both sides of a pair. A flag's matches lie within those of every flag
+   ranked at or above it. *)
+let flag_rank : Selector.attr_flag option -> int = function
+  | Some Sensitive -> 0
+  | None -> 1
+  | Some Insensitive -> 2
 
 let exact_attr_disjoint a b =
   match (exact_value a.matcher, exact_value b.matcher) with
@@ -163,13 +186,17 @@ let attrs_disjoint a b =
         b.attrs)
     a.attrs
 
+(* Every value [a] matches is one [b] matches. [b]'s [i] takes any case of its
+   value; otherwise [a] has to spell the value [b] spells and compare no more
+   loosely than [b]. *)
 let exact_attr_implies a b =
   same_attr_key a b
   &&
-  match (exact_value a.matcher, exact_value b.matcher) with
-  | Some x, Some y when attr_flag_is_case_insensitive b.flag ->
+  match (exact_value a.matcher, exact_value b.matcher, b.flag) with
+  | Some x, Some y, Some Insensitive ->
       String.lowercase_ascii x = String.lowercase_ascii y
-  | Some x, Some y -> String.equal x y
+  | Some x, Some y, (None | Some Sensitive) ->
+      String.equal x y && flag_rank a.flag <= flag_rank b.flag
   | _ -> false
 
 let attr_negation_disjoint attrs not_attrs =
@@ -229,26 +256,29 @@ let direct_facts_disjoint a b =
   if pe_disjoint then true
   else
     let elem_disjoint =
-      match (a.element, b.element) with Some x, Some y -> x <> y | _ -> false
+      match (element_key a, element_key b) with
+      | Some x, Some y -> not (String.equal x y)
+      | _ -> false
     in
     if elem_disjoint then true
     else
       let id_disjoint =
         (not (String_set.is_empty a.ids))
         && (not (String_set.is_empty b.ids))
-        && String_set.disjoint a.ids b.ids
+        && String_set.disjoint (id_keys a) (id_keys b)
       in
       id_disjoint || attrs_disjoint a b || nths_disjoint a b
       || negation_disjoint a b
 
 let rec may_overlap a b =
-  if direct_facts_disjoint a b then false
+  if a.opaque || b.opaque then true
+  else if direct_facts_disjoint a b then false
   else
     match (a.parent, b.parent) with
     | Some pa, Some pb when not (may_overlap pa pb) -> false
     | _ -> true
 
-let ids s = String_set.elements s.ids
+let ids s = String_set.elements (id_keys s)
 let classes s = String_set.elements s.classes
-let element s = s.element
+let element = element_key
 let is_complex s = s.complex

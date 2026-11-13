@@ -316,6 +316,239 @@ let conflict_flex_and_transition_components () =
       Alcotest.(check bool) label true (Rule_graph.conflict g (nid 0) (nid 1)))
     cases
 
+(* --- rules_conflict: the pairwise question --- *)
+
+(* The one question every pass that reorders two rules rests on: can an element
+   tell the two rules' source order apart. Every answer below is read off the
+   cascade, not off what a pass does with it. *)
+let two_rules css =
+  match rules_of css with
+  (* A declaration lost on the way in would answer [false] for a reason the case
+     is not about. *)
+  | [ a; b ] when a.Stylesheet.declarations <> [] && b.declarations <> [] ->
+      (a, b)
+  | _ -> Alcotest.failf "expected two rules that both declare something: %s" css
+
+(* Which rule is named first is not part of the question, so each case is asked
+   both ways round. *)
+let check_rules_conflict ?parent (name, css, expected) =
+  let a, b = two_rules css in
+  Alcotest.(check bool) name expected (Rule_graph.rules_conflict ?parent a b);
+  Alcotest.(check bool)
+    (name ^ ", named the other way round")
+    expected
+    (Rule_graph.rules_conflict ?parent b a)
+
+(* One selector on both sides, so the answer is the declaration pair's alone. *)
+let rules_conflict_declarations () =
+  List.iter check_rules_conflict
+    [
+      (* [margin] writes margin-top, so the two set one slot to two values and
+         whichever is read last wins it. *)
+      ( "a shorthand against its own longhand",
+        ".a{margin:1px}.a{margin-top:2px}",
+        true );
+      (* CSS Cascade 5 sec. 6.1 (Cascade Sorting Order) ranks origin and
+         importance before order of appearance, so the important declaration
+         wins from either position. *)
+      ( "a normal declaration against an important one",
+        ".a{color:red}.a{color:blue!important}",
+        false );
+      (* Cascade 5 sec. 6.1: equal importance, origin and specificity leave
+         order of appearance to decide. *)
+      ( "two important declarations on one property",
+        ".a{color:red!important}.a{color:blue!important}",
+        true );
+      (* One slot, one value: no element computes anything different once the
+         two swap. *)
+      ("one declaration written twice", ".a{color:red}.a{color:red}", false);
+      (* [var()] substitutes the value the cascade computed for [--c] on the
+         element, which the declarations of [--c] fix wherever the declaration
+         reading them sits. The two write different slots. *)
+      ( "a custom property against the property reading it",
+        ".a{--c:red}.a{color:var(--c)}",
+        false );
+      ( "two declarations of one custom property",
+        ".a{--c:red}.a{--c:blue}",
+        true );
+      ( "two properties sharing no slot",
+        ".a{color:red}.a{background-color:blue}",
+        false );
+      (* The [font] shorthand sets line-height, so it and a [line-height] of its
+         own contend for that slot however unrelated the two names read. *)
+      ( "a shorthand against a longhand its name does not carry",
+        ".a{font:12px/1.5 serif}.a{line-height:2}",
+        true );
+      ( "two shorthands sharing one longhand",
+        ".a{border-top:1px solid red}.a{border-color:blue}",
+        true );
+      (* CSS Logical 1 sec. 4 (Flow-Relative Box Model Properties): paired
+         flow-relative and physical properties share a computed value, and sec.
+         4.2 maps [margin-inline-start] to [margin-left] under horizontal-tb
+         ltr, so the two contend for that slot. *)
+      ( "a flow-relative property against a physical one",
+        ".a{margin-inline-start:1px}.a{margin-left:2px}",
+        true );
+      (* CSS Cascade 5 sec. 3.2 (Resetting All Properties: the all property):
+         [all] resets every property but [direction], [unicode-bidi] and the
+         custom ones, [color] included. *)
+      ("an all reset against a longhand", ".a{all:unset}.a{color:red}", true);
+      ( "two shorthands sharing no longhand",
+        ".a{margin:1px}.a{padding:2px}",
+        false );
+      (* A rule carrying more than one declaration separates "some pair
+         contends" from "every pair contends": [color] contends with [color] and
+         [margin] shares no slot with it, and the element still computes a
+         different colour once the two swap, so one contending pair is the whole
+         answer. *)
+      ( "a contending declaration beside one that shares no slot",
+        ".a{color:red}.a{color:blue;margin:1px}",
+        true );
+      (* The same shape with the contending pair written last, so neither the
+         first nor the last declaration of the pair decides it alone. *)
+      ( "a contending declaration behind one that shares no slot",
+        ".a{color:red}.a{margin:1px;color:blue}",
+        true );
+    ]
+
+(* One property with two values on both sides, so the declarations always
+   contend and the answer is the selector pair's alone. *)
+let rules_conflict_selectors () =
+  let case (name, left, right, expected) =
+    check_rules_conflict
+      ( name,
+        String.concat "" [ left; "{color:red}"; right; "{color:blue}" ],
+        expected )
+  in
+  List.iter case
+    [
+      ("two classes one element can carry at once", ".a", ".b", true);
+      ("two element names", "div", "p", false);
+      ("two ids", "#x", "#y", false);
+      (* Two pseudo-elements are two boxes, and neither is the element that
+         originates them. *)
+      ("two pseudo-elements", ".a::before", ".a::after", false);
+      ( "a pseudo-element against its originating element",
+        ".a::before",
+        ".a",
+        false );
+      ("a negation against what it forbids", ".a:not(.b)", ".a.b", false);
+      ( "two exact values for one attribute",
+        {|[type="text"]|},
+        {|[type="radio"]|},
+        false );
+      ( "an odd position against the even ones",
+        "li:first-child",
+        "li:nth-child(even)",
+        false );
+      (* An element has one parent, and it is a div or a p, not both. *)
+      ("two parents one element cannot both have", "div>.a", "p>.a", false);
+      (* An ancestor chain has room for both. *)
+      ("two ancestors one element can have at once", ".x .a", ".y .a", true);
+      ( "the universal selector against a class of no weight",
+        "*",
+        ":where(.a)",
+        true );
+      ("two states one element can be in at once", "a:hover", "a:focus", true);
+      (* A list is one rule per branch: its [.a::before] branch styles the
+         ::before box of an element carrying both classes, at the weight
+         [.b::before] has. *)
+      ( "a list branch meeting a pseudo-element",
+        ".a::after,.a::before",
+        ".b::before",
+        true );
+      (* HTML sec. 4.16.2 (Case-sensitivity of selectors) lowercases a type
+         selector before comparing it to an HTML element's name: both match
+         [<div>]. *)
+      ("two cases of one element name", "DIV", "div", true);
+      (* Selectors 4 sec. 6.7 (ID selectors) matches IDs ASCII
+         case-insensitively in a quirks-mode document. *)
+      ("two cases of one id", "#A", "#a", true);
+      (* Selectors 4 sec. 6.3 (Case-sensitivity): [i] matches [data-x="A"], and
+         an unflagged [data-x] compares case-sensitively, so its negation
+         matches that element too. *)
+      ( "an insensitive attribute against an unflagged negation",
+        {|[data-x="a" i]|},
+        ":not([data-x=a])",
+        true );
+      (* HTML sec. 4.16.2: [type] compares ASCII case-insensitively unless the
+         selector says [s], so [type="A"] matches both. *)
+      ( "an unflagged type against its sensitive negation",
+        "[type=a]",
+        {|:not([type="a" s])|},
+        true );
+    ]
+
+(* CSS Cascade 5 sec. 6.1 ranks specificity before order of appearance, so on an
+   element both rules match the heavier one wins from either position, and where
+   only one matches there is nothing to order. *)
+let rules_conflict_specificity () =
+  let case (name, left, right, expected) =
+    check_rules_conflict
+      ( name,
+        String.concat "" [ left; "{color:red}"; right; "{color:blue}" ],
+        expected )
+  in
+  List.iter case
+    [
+      ("the universal selector against a class", "*", ".a", false);
+      ("a class against an id", ".a", "#x", false);
+      ("a class against two", ".a", ".b.c", false);
+      (* [:is()] weighs its heaviest argument whichever one matched. *)
+      ("a class against an :is() holding an id", ".a", ":is(.b,#x)", false);
+      ("a list one branch of which ties", ".a,#x", ".b", true);
+    ];
+  (* [parent] expands each selector against the rule they are nested in. CSS
+     Nesting 1 sec. 4 (Nesting Selector) gives [&] the specificity of [.p],
+     (0,1,0), so [&+&] weighs (0,2,0), as much as [.p .a], and the two tie. Read
+     without it, [&] would weigh nothing. *)
+  check_rules_conflict
+    ~parent:(Css.Selector.of_string ".p")
+    ("a nested pair tied once expanded", "&+&{color:red}.a{color:blue}", true)
+
+(* Each sheet ends with a rule that paints red on an element the middle rule
+   paints blue, and on that element the two weigh the same, so the element is
+   red and the last rule cannot move above the middle one. A first rule that
+   meets neither of the others may sink below the middle one, so the outputs the
+   cascade allows are listed by hand. The browser oracle renders each sheet
+   against its optimized form ([test/render/render_diff.ml]); the quirks-mode
+   case it cannot render, since the harness refuses a BackCompat page. *)
+let optimize_keeps_case_folded_order () =
+  let check (name, css, allowed) =
+    let out = optimize_str css in
+    if not (List.mem out allowed) then
+      Alcotest.failf "%s: %s optimized to %s, which the cascade forbids" name
+        css out
+  in
+  List.iter check
+    [
+      (* Selectors 4 sec. 6.3: [data-x="A"] matches both. *)
+      ( "an insensitive attribute behind its sensitive negation",
+        ".z{color:red}:not([data-x=a]){color:#00f}[data-x=a i]{color:red}",
+        [ ".z{color:red}:not([data-x=a]){color:#00f}[data-x=a i]{color:red}" ]
+      );
+      (* HTML sec. 4.16.2: [type="A"] matches [[type=a]], not [[type=a s]]. *)
+      ( "an unflagged type behind its sensitive negation",
+        ".z{color:red}:not([type=a s]){color:#00f}[type=a]{color:red}",
+        [ ".z{color:red}:not([type=a s]){color:#00f}[type=a]{color:red}" ] );
+      (* HTML sec. 4.16.2: [<div>] matches both. [span] meets neither and may
+         sink. *)
+      ( "an upper-case type selector behind its lower-case form",
+        "span{color:red}div{color:#00f}DIV{color:red}",
+        [
+          "span{color:red}div{color:#00f}DIV{color:red}";
+          "div{color:#00f}DIV,span{color:red}";
+        ] );
+      (* Selectors 4 sec. 6.7: in quirks mode [id="a"] matches both. [#b] meets
+         neither and may sink. *)
+      ( "an id behind its other case",
+        "#b{color:red}#A{color:#00f}#a{color:red}",
+        [
+          "#b{color:red}#A{color:#00f}#a{color:red}";
+          "#A{color:#00f}#a,#b{color:red}";
+        ] );
+    ]
+
 (* --- canonical_order: topological projection --- *)
 
 let canonical_order_pins_conflict () =
@@ -773,6 +1006,14 @@ let suite =
         conflict_logical_border_components;
       Alcotest.test_case "conflict: flex and transition components" `Quick
         conflict_flex_and_transition_components;
+      Alcotest.test_case "rules_conflict reads the declaration pair" `Quick
+        rules_conflict_declarations;
+      Alcotest.test_case "rules_conflict reads the selector pair" `Quick
+        rules_conflict_selectors;
+      Alcotest.test_case "rules_conflict weighs specificity" `Quick
+        rules_conflict_specificity;
+      Alcotest.test_case "optimize keeps case-folded pairs in order" `Quick
+        optimize_keeps_case_folded_order;
       Alcotest.test_case "canonical_order pins a conflicting pair" `Quick
         canonical_order_pins_conflict;
       Alcotest.test_case "canonical_order keeps disjoint source order" `Quick

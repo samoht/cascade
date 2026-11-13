@@ -21,11 +21,15 @@ let overlap_key_equal = Shorthand_coverage.overlap_key_equal
 let overlap_key_hash = Shorthand_coverage.overlap_key_hash
 let overlap_key_compare = Shorthand_coverage.overlap_key_compare
 let broad_overlap_key = Shorthand_coverage.broad_overlap_key
+let overlap_keys_broad = Shorthand_coverage.overlap_keys_broad
 let overlap_keys_intersect = Shorthand_coverage.overlap_keys_intersect
 let declaration_overlap_keys = Shorthand_coverage.declaration_overlap_keys
 
 let declarations_overlap_with_keys =
   Shorthand_coverage.declarations_overlap_with_keys
+
+let declarations_conflict_with_keys =
+  Shorthand_coverage.declarations_conflict_with_keys
 
 let declaration_is_broad = Shorthand_coverage.declaration_is_broad
 let custom_property_name = Shorthand_coverage.custom_property_name
