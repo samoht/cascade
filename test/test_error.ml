@@ -234,6 +234,220 @@ let bad_value_reason_names_something () =
       (".x { aspect-ratio: nope }", "no accepted form");
     ]
 
+(* ===== Line and column =====
+
+   CSS Syntax 3 (ED) sec. 3.3 preprocesses the input before tokenizing: CR, FF
+   and the CRLF pair each become one LF, and a NUL becomes U+FFFD. A parse error
+   is located in that preprocessed text, so its line is the count of LFs before
+   it plus one. Sec. 3.2 decodes bytes into code points first, so a column
+   counts code points (and one U+FFFD per maximal ill-formed subpart), not
+   bytes. Lines and columns are 1-based, the [file:line:column] form an editor
+   jumps to. *)
+
+let euros n = repeat n eur
+
+(* A local UTF-8 validator, so the oracle does not run through the decoder under
+   test. *)
+let is_utf8 s =
+  let len = String.length s in
+  let rec go i =
+    if i >= len then true
+    else
+      let b = Char.code s.[i] in
+      let n =
+        if b < 0x80 then 1
+        else if b land 0xe0 = 0xc0 then 2
+        else if b land 0xf0 = 0xe0 then 3
+        else if b land 0xf8 = 0xf0 then 4
+        else 0
+      in
+      if n = 0 || i + n > len then false
+      else
+        let rec continuations k =
+          k = n
+          || (Char.code s.[i + k] land 0xc0 = 0x80 && continuations (k + 1))
+        in
+        continuations 1 && go (i + n)
+  in
+  go 0
+
+(* An error at byte [pos] of [input] as the reader preprocesses it, which is the
+   text every parse error carries. *)
+let error_at ?filename input pos =
+  let source = Reader.source (Reader.of_string input) in
+  Error.v ?filename ~source
+    ~loc:(Loc.v ~start_pos:pos ~end_pos:pos)
+    ~sort:Sort.Component
+    (Error.Missing_token "a character the input never holds")
+
+let position e =
+  match Error.position e with
+  | Some p -> p
+  | None -> Alcotest.fail "an error with a source has a position"
+
+let error_line_and_column () =
+  let check name input pos expected =
+    Alcotest.(check (pair int int))
+      name expected
+      (position (error_at input pos))
+  in
+  (* An LF ends its line, so the byte after it opens the next at column 1. *)
+  check "start of the second line" "abc\n" 4 (2, 1);
+  check "start of the second line, longer first" "aaaaa\n" 6 (2, 1);
+  check "start of the third line" "ab\ncd\n" 6 (3, 1);
+  (* The position past the last code point of a line is one column beyond. *)
+  check "past the last character" "abc" 3 (1, 4)
+
+(* CSS Syntax 3 (ED) sec. 3.3: CRLF, a lone CR and FF are each one line break.
+   [error_at] positions are in the preprocessed text, where each is one LF. *)
+let line_breaks_after_preprocessing () =
+  let check name input pos expected =
+    Alcotest.(check (pair int int))
+      name expected
+      (position (error_at input pos))
+  in
+  check "CRLF is one break" "a\r\nb" 2 (2, 1);
+  check "a lone CR is one break" "a\rb" 2 (2, 1);
+  check "FF is one break" "a\x0cb" 2 (2, 1);
+  check "two CRLFs are two breaks" "\r\n\r\nb" 2 (3, 1);
+  check "CR CR is two breaks" "a\r\rb" 3 (3, 1);
+  check "a CRLF then an LF are two breaks" "a\r\nb\nc" 4 (3, 1)
+
+(* An error built over a string the reader never preprocessed counts the same
+   breaks, so [position] does not depend on who built the error. *)
+let line_breaks_in_a_raw_source () =
+  let at source pos =
+    position
+      (Error.v ~source
+         ~loc:(Loc.v ~start_pos:pos ~end_pos:pos)
+         ~sort:Sort.Component (Error.Missing_token "x"))
+  in
+  Alcotest.(check (pair int int)) "CRLF" (2, 1) (at "a\r\nb" 3);
+  Alcotest.(check (pair int int)) "CR" (2, 1) (at "a\rb" 2);
+  Alcotest.(check (pair int int)) "FF" (2, 1) (at "a\x0cb" 2);
+  Alcotest.(check (pair int int)) "CR CR" (3, 1) (at "a\r\rb" 3)
+
+(* A warning from a whole parse is located in the author's lines whichever break
+   the author used. [center] opens column 13 of the second line. *)
+let parse_warning_line_and_column () =
+  List.iter
+    (fun (name, break) ->
+      let css =
+        String.concat "" [ "a{color:red}"; break; ".x { float: center }" ]
+      in
+      match parse_warnings css with
+      | [ w ] -> Alcotest.(check (pair int int)) name (2, 13) (position w)
+      | ws ->
+          Alcotest.failf "%s: expected one warning, got %d" name
+            (List.length ws))
+    [ ("LF", "\n"); ("CRLF", "\r\n"); ("CR", "\r"); ("FF", "\x0c") ]
+
+(* A column counts code points: three EURO SIGNs are nine bytes and three
+   columns, so the error sits in column 4 with three characters before the
+   caret. *)
+let error_column_counts_characters () =
+  let e = error_at (euros 3) 9 in
+  Alcotest.(check (pair int int)) "column counts characters" (1, 4) (position e);
+  match Error.snippet e with
+  | Some { marker_pos; _ } ->
+      Alcotest.(check int) "caret counts characters" 3 marker_pos
+  | None -> Alcotest.fail "an error with a source has a snippet"
+
+(* The caret of pure ASCII stays one column per byte; the snippet window keeps
+   40 characters before it. *)
+let error_ascii_caret_holds () =
+  let e = error_at (String.make 50 'a') 50 in
+  Alcotest.(check (pair int int)) "ascii column" (1, 51) (position e);
+  match Error.snippet e with
+  | Some { marker_pos; _ } -> Alcotest.(check int) "ascii caret" 40 marker_pos
+  | None -> Alcotest.fail "an error with a source has a snippet"
+
+(* A window boundary landing inside a UTF-8 sequence moves out to the lead byte,
+   so the context a caret is drawn under is never a truncated code point. *)
+let error_context_window_keeps_code_points () =
+  let text e =
+    match Error.snippet e with
+    | Some { text; _ } -> text
+    | None -> Alcotest.fail "an error with a source has a snippet"
+  in
+  Alcotest.(check bool)
+    "leading boundary keeps code points" true
+    (is_utf8 (text (error_at (euros 40 ^ "xx") 122)));
+  Alcotest.(check bool)
+    "trailing boundary keeps code points" true
+    (is_utf8 (text (error_at ("x" ^ euros 40) 1)))
+
+let first_line e = List.hd (String.split_on_char '\n' (Error.to_string e))
+
+(* The source name holds no location. An error without one renders the
+   placeholder [<CSS input>], and [with_filename] names it without moving the
+   line, the column or the byte offset. *)
+let error_filename_names_the_source () =
+  let e = error_at "abc\ndef" 5 in
+  Alcotest.(check (option string)) "no source name" None e.filename;
+  Alcotest.(check (pair int int))
+    "location of the failing byte" (2, 2) (position e);
+  let stamped = Error.with_filename ~filename:"theme.css" e in
+  Alcotest.(check (option string))
+    "stamped source name" (Some "theme.css") stamped.filename;
+  Alcotest.(check (pair int int))
+    "stamping a name keeps the location" (2, 2) (position stamped);
+  Alcotest.(check int)
+    "stamping a name keeps the offset" 5 stamped.loc.start_pos
+
+(* The rendered location is the three-part [source:line:column] an editor can
+   jump to; the byte offset is not a fourth part. *)
+let error_renders_three_part_location () =
+  let e = error_at "abc\ndef" 5 in
+  Alcotest.(check string)
+    "renders source:line:column"
+    "missing a character the input never holds at <CSS input>:2:2 (in \
+     component)"
+    (first_line e);
+  Alcotest.(check string)
+    "renders the stamped source name"
+    "missing a character the input never holds at theme.css:2:2 (in component)"
+    (first_line (Error.with_filename ~filename:"theme.css" e))
+
+(* The window can span both sides of the failing line; its caret goes right
+   under that line, at a column measured from the line start. *)
+let error_renders_caret_on_marked_line () =
+  check "caret interrupts the context below the marked line"
+    (error_at "first\nsecond\nthird" 8)
+    (String.concat ""
+       [
+         "missing a character the input never holds at <CSS input>:2:3 (in \
+          component)\n";
+         "first\n";
+         "second\n";
+         "  ^\n";
+         "third";
+       ])
+
+(* Position zero is a valid marker. *)
+let error_renders_caret_at_context_start () =
+  check "caret at zero" (error_at "abc" 0)
+    (String.concat ""
+       [
+         "missing a character the input never holds at <CSS input>:1:1 (in \
+          component)\n";
+         "abc\n";
+         "^";
+       ])
+
+let tests_position () =
+  error_line_and_column ();
+  line_breaks_after_preprocessing ();
+  line_breaks_in_a_raw_source ();
+  parse_warning_line_and_column ();
+  error_column_counts_characters ();
+  error_ascii_caret_holds ();
+  error_context_window_keeps_code_points ();
+  error_filename_names_the_source ();
+  error_renders_three_part_location ();
+  error_renders_caret_on_marked_line ();
+  error_renders_caret_at_context_start ()
+
 let suite =
   ( "error",
     [
@@ -259,4 +473,5 @@ let suite =
         value_span_marks_the_rejected_value;
       Alcotest.test_case "bad value reason names something" `Quick
         bad_value_reason_names_something;
+      Alcotest.test_case "line and column" `Quick tests_position;
     ] )
