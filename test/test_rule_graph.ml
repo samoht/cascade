@@ -457,6 +457,26 @@ let rules_conflict_selectors () =
         ".a::after,.a::before",
         ".b::before",
         true );
+      (* HTML sec. 4.16.2 (Case-sensitivity of selectors) lowercases a type
+         selector before comparing it to an HTML element's name: both match
+         [<div>]. *)
+      ("two cases of one element name", "DIV", "div", true);
+      (* Selectors 4 sec. 6.7 (ID selectors) matches IDs ASCII
+         case-insensitively in a quirks-mode document. *)
+      ("two cases of one id", "#A", "#a", true);
+      (* Selectors 4 sec. 6.3 (Case-sensitivity): [i] matches [data-x="A"], and
+         an unflagged [data-x] compares case-sensitively, so its negation
+         matches that element too. *)
+      ( "an insensitive attribute against an unflagged negation",
+        {|[data-x="a" i]|},
+        ":not([data-x=a])",
+        true );
+      (* HTML sec. 4.16.2: [type] compares ASCII case-insensitively unless the
+         selector says [s], so [type="A"] matches both. *)
+      ( "an unflagged type against its sensitive negation",
+        "[type=a]",
+        {|:not([type="a" s])|},
+        true );
     ]
 
 (* CSS Cascade 5 sec. 6.1 ranks specificity before order of appearance, so on an
@@ -485,6 +505,49 @@ let rules_conflict_specificity () =
   check_rules_conflict
     ~parent:(Css.Selector.of_string ".p")
     ("a nested pair tied once expanded", "&+&{color:red}.a{color:blue}", true)
+
+(* Each sheet ends with a rule that paints red on an element the middle rule
+   paints blue, and on that element the two weigh the same, so the element is
+   red and the last rule cannot move above the middle one. A first rule that
+   meets neither of the others may sink below the middle one, so the outputs the
+   cascade allows are listed by hand. The browser oracle renders each sheet
+   against its optimized form ([test/render/render_diff.ml]); the quirks-mode
+   case it cannot render, since the harness refuses a BackCompat page. *)
+let optimize_keeps_case_folded_order () =
+  let check (name, css, allowed) =
+    let out = optimize_str css in
+    if not (List.mem out allowed) then
+      Alcotest.failf "%s: %s optimized to %s, which the cascade forbids" name
+        css out
+  in
+  List.iter check
+    [
+      (* Selectors 4 sec. 6.3: [data-x="A"] matches both. *)
+      ( "an insensitive attribute behind its sensitive negation",
+        ".z{color:red}:not([data-x=a]){color:#00f}[data-x=a i]{color:red}",
+        [ ".z{color:red}:not([data-x=a]){color:#00f}[data-x=a i]{color:red}" ]
+      );
+      (* HTML sec. 4.16.2: [type="A"] matches [[type=a]], not [[type=a s]]. *)
+      ( "an unflagged type behind its sensitive negation",
+        ".z{color:red}:not([type=a s]){color:#00f}[type=a]{color:red}",
+        [ ".z{color:red}:not([type=a s]){color:#00f}[type=a]{color:red}" ] );
+      (* HTML sec. 4.16.2: [<div>] matches both. [span] meets neither and may
+         sink. *)
+      ( "an upper-case type selector behind its lower-case form",
+        "span{color:red}div{color:#00f}DIV{color:red}",
+        [
+          "span{color:red}div{color:#00f}DIV{color:red}";
+          "div{color:#00f}DIV,span{color:red}";
+        ] );
+      (* Selectors 4 sec. 6.7: in quirks mode [id="a"] matches both. [#b] meets
+         neither and may sink. *)
+      ( "an id behind its other case",
+        "#b{color:red}#A{color:#00f}#a{color:red}",
+        [
+          "#b{color:red}#A{color:#00f}#a{color:red}";
+          "#A{color:#00f}#a,#b{color:red}";
+        ] );
+    ]
 
 (* --- canonical_order: topological projection --- *)
 
@@ -949,6 +1012,8 @@ let suite =
         rules_conflict_selectors;
       Alcotest.test_case "rules_conflict weighs specificity" `Quick
         rules_conflict_specificity;
+      Alcotest.test_case "optimize keeps case-folded pairs in order" `Quick
+        optimize_keeps_case_folded_order;
       Alcotest.test_case "canonical_order pins a conflicting pair" `Quick
         canonical_order_pins_conflict;
       Alcotest.test_case "canonical_order keeps disjoint source order" `Quick

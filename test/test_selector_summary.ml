@@ -136,7 +136,50 @@ let negation () =
   check_overlap "an insensitive not-attr excludes the other case" false
     "[type=BUTTON]" {|:not([type="button" i])|};
   check_overlap "a sensitive one leaves that case alone" true "[type=BUTTON]"
-    {|:not([type="button" s])|}
+    {|:not([type="button" s])|};
+  (* A positive attribute proves a [:not()] disjoint only when every value it
+     matches is one the negated attribute matches too. Selectors 4 sec. 6.3: [i]
+     matches every ASCII case of the value and [s] the value alone, and with no
+     flag the document language decides, the same way for both sides. The [i]
+     side matches [data-x="A"], which an unflagged [data-x] compares
+     case-sensitively (HTML sec. 4.16.2 lists no [data-*] attribute), so the
+     element matches both. *)
+  check_overlap "an insensitive attribute meets a sensitive not-attr" true
+    {|[data-x="a" i]|} ":not([data-x=a])";
+  check_overlap "an insensitive attribute meets an s not-attr" true
+    {|[data-x="a" i]|} {|:not([data-x="a" s])|};
+  (* HTML sec. 4.16.2 compares a [type] value ASCII case-insensitively unless
+     the selector says [s]: [[type=a]] matches [type="A"], and [[type=a s]] does
+     not, so [:not([type=a s])] does. *)
+  check_overlap "an unflagged attribute meets an s not-attr" true "[type=a]"
+    {|:not([type="a" s])|};
+  (* The other way round every value the positive side matches is one the
+     negation forbids. *)
+  check_overlap "an s attribute is disjoint from its unflagged not-attr" false
+    {|[data-x="a" s]|} ":not([data-x=a])";
+  check_overlap "an unflagged attribute is disjoint from its i not-attr" false
+    "[data-x=a]" {|:not([data-x="A" i])|}
+
+(* HTML sec. 4.16.2 lowercases a type selector before comparing it to the name
+   of an HTML element in an HTML document, so [DIV] and [div] both match
+   [<div>]. Selectors 4 sec. 6.6 and 6.7 match classes and IDs ASCII
+   case-insensitively in a quirks-mode document, so [#A] and [#a] both match
+   [id="a"] there. A summary does not know its document, so neither pair is
+   disjoint. Exact names still decide a [:not()]: [#a] is not [:not(#A)] in a
+   no-quirks document. *)
+let case_folding () =
+  check_overlap "two cases of one element name may overlap" true "DIV" "div";
+  check_overlap "two cases of one element name, compounded" true "DIV.x" "div.y";
+  check_overlap "two element names stay disjoint whatever their case" false
+    "DIV" "p";
+  check_overlap "two cases of one ID may overlap" true "#A" "#a";
+  check_overlap "two IDs stay disjoint whatever their case" false "#A" "#b";
+  check_overlap "two cases of one parent ID may overlap" true "#A > .x"
+    "#a > .x";
+  check_overlap "an ID meets the negation of its other case" true "#a"
+    ":not(#A)";
+  check_overlap "an element name meets the negation of its other case" true
+    "DIV" ":not(div)"
 
 let child_positions () =
   check_overlap "first child and even nth child are disjoint" false
@@ -206,6 +249,7 @@ let suite =
       Alcotest.test_case "attributes" `Quick attributes;
       Alcotest.test_case "child context" `Quick child_context;
       Alcotest.test_case "negation" `Quick negation;
+      Alcotest.test_case "case folding" `Quick case_folding;
       Alcotest.test_case "child positions" `Quick child_positions;
       Alcotest.test_case "optimizer dependency examples" `Quick
         optimizer_dependency_examples;
