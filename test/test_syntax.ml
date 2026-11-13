@@ -94,6 +94,30 @@ let strip_url_suffix () =
     "a backslash stays as written" "c:\\a\\b c.css"
     (Syntax.strip_url_suffix "c:\\a\\b c.css?v=1")
 
+let check_scheme name expected url =
+  Alcotest.(check (option string)) name expected (Syntax.url_scheme url)
+
+let url_scheme () =
+  (* WHATWG URL sec. 4.4 scheme start state and scheme state, as RFC 3986 sec.
+     3.1: an ASCII alpha, then ASCII alphanumerics, [+], [-] or [.], ended by
+     [:]. The scheme is lowercased. *)
+  check_scheme "https" (Some "https") "HTTPS://example.test/a.css";
+  check_scheme "data" (Some "data") "data:text/css,a{}";
+  check_scheme "every scheme code point" (Some "a+b-c.d") "a+b-c.d:x";
+  (* A one-letter scheme is a scheme: WHATWG URL reads [C:/a.css] as scheme [c]
+     with path [/a.css]. *)
+  check_scheme "one letter" (Some "c") "C:/a.css";
+  (* Scheme start state: a code point other than an ASCII alpha means no
+     scheme. *)
+  check_scheme "a digit opens no scheme" None "1:/x";
+  check_scheme "an empty scheme" None ":a";
+  (* Scheme state: a code point outside the scheme set before [:] starts the
+     input over with no scheme. *)
+  check_scheme "an underscore" None "a_b:x";
+  check_scheme "a pipe" None "C|/a.css";
+  check_scheme "a slash before the colon" None "a/b:c";
+  check_scheme "no colon" None "a.css"
+
 let url_file_path () =
   Alcotest.(check string)
     "encoded path becomes filesystem path" "foo?bar#baz.css"
@@ -202,6 +226,7 @@ let suite =
       Alcotest.test_case "is_hex" `Quick is_hex;
       Alcotest.test_case "url_needs_quotes" `Quick url_needs_quotes;
       Alcotest.test_case "strip_url_suffix" `Quick strip_url_suffix;
+      Alcotest.test_case "url_scheme" `Quick url_scheme;
       Alcotest.test_case "url_file_path" `Quick url_file_path;
       Alcotest.test_case "remote_url" `Quick remote_url;
     ] )

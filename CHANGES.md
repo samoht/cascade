@@ -20,12 +20,15 @@
 - On Windows `cascade` ends its lines in LF as elsewhere, where its output and
   help pages ended them in CRLF, and `cascade diff --browser` starts node
   without a POSIX shell and finds it on `PATH` under `PATHEXT` (#0000).
-- `--inline-imports` inlines `@import url("C:/a.css")` and checks it against
-  `--import-root`, where it left a Windows drive path alone as a remote URL
-  (#0000).
+- `--inline-imports` inlines Windows drive paths (`C:/a.css`, `C:\a.css`,
+  `C:a.css`), UNC paths and `file:` URLs and checks them against
+  `--import-root`. It left them alone as remote URLs or looked a UNC path up
+  under the importing file's directory (#0000).
 
 ### Library
 
+- `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
+  as WHATWG URL does, since a digit cannot open a scheme (#0000).
 - `Cascade.Reader` exposes `origin` and `original_offset`, which map a position
   in the preprocessed input back to a byte offset in the string the reader was
   given (#1285).

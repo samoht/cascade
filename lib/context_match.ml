@@ -430,13 +430,28 @@ end
 (** {2 URL resolution (RFC 3986)} *)
 
 module Url = struct
+  (* A drive or UNC path names a file whatever the directory of a filesystem
+     base. [Uri] reads [1:/x] as scheme [1], where WHATWG URL sec. 4.4 reads a
+     relative path, so a [./] keeps its first segment a path. *)
   let resolve loader href =
-    let reference = Uri.of_string href in
-    match (Uri.scheme reference, loader.base_url) with
-    | Some _, _ -> Ok (Uri.to_string reference)
-    | None, None -> Error ("no base URL to resolve " ^ href)
-    | None, Some base ->
-        Ok (Uri.resolve "" (Uri.of_string base) reference |> Uri.to_string)
+    let local_base =
+      match loader.base_url with
+      | None -> true
+      | Some base -> not (Syntax.is_remote_url base)
+    in
+    match (Syntax.local_absolute_path href, Syntax.url_scheme href) with
+    | Some path, _ when local_base -> Ok path
+    | _, Some _ -> Ok (Uri.to_string (Uri.of_string href))
+    | _, None -> (
+        match loader.base_url with
+        | None -> Error ("no base URL to resolve " ^ href)
+        | Some base ->
+            let reference =
+              match Uri.scheme (Uri.of_string href) with
+              | Some _ -> Uri.of_string (String.concat "" [ "./"; href ])
+              | None -> Uri.of_string href
+            in
+            Ok (Uri.resolve "" (Uri.of_string base) reference |> Uri.to_string))
 end
 
 (** {2 [@import] loader (CSS Cascade 5 sec. 2)}

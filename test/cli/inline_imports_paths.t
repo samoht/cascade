@@ -186,3 +186,14 @@ A symlink whose canonical target leaves the root is rejected.
   $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-outside-link.css 2>&1 | grep -Fq 'outside --import-root'
   $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-outside-link.css 2>/dev/null
   @import"outside-link.css";.entry{color:#00f}
+
+A file URL names a local file (WHATWG URL sec. 4.4 file state). Its path is
+the absolute path, after a third slash when it opens with a drive.
+
+  $ case "$import_root" in /*) file_url="file://$import_root" ;; *) file_url="file:///$import_root" ;; esac
+  $ cat > import-boundary/root/entry-file-url.css <<EOF
+  > @import url("$file_url/absolute.css");
+  > .entry { color: blue }
+  > EOF
+  $ cascade --minify --inline-imports --import-root="$import_root" import-boundary/root/entry-file-url.css
+  .absolute{color:green}.entry{color:#00f}

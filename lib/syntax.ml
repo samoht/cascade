@@ -58,29 +58,89 @@ let split_top_level_colon cvs =
   in
   loop [] cvs
 
+(* WHATWG URL sec. 4.4 path state, as RFC 3986 sec. 3.3: the path ends at the
+   first [?] or [#]. The path is kept as written, backslashes included. *)
 let strip_url_suffix url =
-  Uri.of_string url |> Uri.with_uri ~query:None ~fragment:None |> Uri.to_string
+  let rec cut i =
+    if i = String.length url then url
+    else match url.[i] with '?' | '#' -> String.sub url 0 i | _ -> cut (i + 1)
+  in
+  cut 0
 
-(* [C:/a.css] or [c:\a.css] names a file on a Windows drive. RFC 3986 reads the
-   letter as a scheme, but WHATWG URL reads a one-letter scheme as a drive
-   letter, and no URL scheme in use is one letter long. The decoded path is what
-   says so, since [strip_url_suffix] encodes the backslash. *)
-let is_drive_path uri =
-  match Uri.scheme uri with
-  | Some scheme when String.length scheme = 1 && Option.is_none (Uri.host uri)
-    -> (
-      match Uri.pct_decode (Uri.path uri) with
-      | "" -> false
-      | path -> path.[0] = '/' || path.[0] = '\\')
-  | Some _ | None -> false
+let is_ascii_alpha = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false
 
-let url_file_path url =
+let is_scheme_char = function
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '+' | '-' | '.' -> true
+  | _ -> false
+
+(* WHATWG URL sec. 4.4 scheme start state and scheme state, as RFC 3986 sec.
+   3.1. [Uri] accepts any run of code points other than [/?#] before [:]. *)
+let url_scheme url =
+  match String.index_opt url ':' with
+  | Some n
+    when n > 0
+         && is_ascii_alpha url.[0]
+         && String.for_all is_scheme_char (String.sub url 0 n) ->
+      Some (String.lowercase_ascii (String.sub url 0 n))
+  | Some _ | None -> None
+
+(* Windows filesystem paths, which [--inline-imports] reads as local on every
+   OS. WHATWG URL reads [C:/a.css] as scheme [c] (sec. 4.4 scheme state); its
+   Windows drive letter (sec. 4.2) applies only inside a file URL. *)
+let is_drive_path s =
+  String.length s >= 2 && is_ascii_alpha s.[0] && s.[1] = ':'
+
+let is_unc_path s = String.starts_with ~prefix:"\\\\" s
+
+let local_absolute_path s =
+  if is_drive_path s || is_unc_path s then
+    Some (String.map (function '\\' -> '/' | c -> c) s)
+  else None
+
+(* Sec. 4.2: "starts with a Windows drive letter" needs the input to end, or
+   continue with [/], [\], [?] or [#], after the letter and [:] or [|]. *)
+let starts_with_drive_letter s =
+  String.length s >= 2
+  && is_ascii_alpha s.[0]
+  && (s.[1] = ':' || s.[1] = '|')
+  && (String.length s = 2
+     || match s.[2] with '/' | '\\' | '?' | '#' -> true | _ -> false)
+
+(* Sec. 4.4 file state and path state keep a drive letter as the first path
+   segment and write it with [:]; the file host state reads [localhost] as the
+   empty host, and any other host is the server of a UNC path. *)
+let file_url_path url =
   let uri = Uri.of_string url in
   let path = Uri.pct_decode (Uri.path uri) in
-  if is_drive_path uri then String.concat "" [ String.sub url 0 2; path ]
-  else path
+  let segment =
+    if String.starts_with ~prefix:"/" path then
+      String.sub path 1 (String.length path - 1)
+    else path
+  in
+  let path =
+    if starts_with_drive_letter segment then
+      String.concat ""
+        [
+          String.sub segment 0 1;
+          ":";
+          String.sub segment 2 (String.length segment - 2);
+        ]
+    else path
+  in
+  match Uri.host uri with
+  | None | Some ("" | "localhost") -> path
+  | Some host -> String.concat "" [ "//"; host; path ]
+
+let url_file_path url =
+  let url = strip_url_suffix url in
+  match url_scheme url with
+  | Some "file" -> file_url_path url
+  | Some _ when not (is_drive_path url) ->
+      Uri.pct_decode (Uri.path (Uri.of_string url))
+  | Some _ | None -> Uri.pct_decode url
 
 let is_remote_url url =
-  let uri = Uri.of_string url in
-  (not (is_drive_path uri))
-  && (Option.is_some (Uri.scheme uri) || Option.is_some (Uri.host uri))
+  match url_scheme url with
+  | Some "file" -> false
+  | Some _ -> not (is_drive_path url)
+  | None -> String.starts_with ~prefix:"//" url

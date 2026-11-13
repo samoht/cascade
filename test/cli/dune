@@ -3,3 +3,10 @@
  (deps
   (package cascade)
   helpers/jsonq.exe))
+
+; A drive path names a file only on Windows.
+
+(cram
+ (applies_to inline_imports_windows)
+ (enabled_if
+  (= %{os_type} Win32)))
