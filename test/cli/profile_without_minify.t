@@ -37,3 +37,18 @@ names its iterations (the header line's counts, and the per-iteration table).
   factor fixpoint (2 runs, 2 iterations
   $ grep -c "rules_in" profile2.txt
   1
+
+The footer counts the declaration blocks the nested-merge safety check looked
+up. Neither rule above carries a nested block, so none is looked up. Two
+`.q` rules, the first carrying a nested block, put the second rule's block to
+that nested body once, and merging them leaves no second rule to look up again.
+
+  $ grep "nested-merge probes" profile2.txt
+  nested-merge probes: 0
+  $ cat > nested.css <<EOF
+  > .q { top: 0; &:hover { color: red } }
+  > .q { left: 0 }
+  > EOF
+  $ cascade --minify --profile nested.css > /dev/null 2>profile3.txt
+  $ grep "nested-merge probes" profile3.txt
+  nested-merge probes: 1

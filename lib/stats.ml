@@ -19,6 +19,7 @@ type counters = {
   factor_preflight_gain : int;
   factor_bytes_saved : int;
   factor_transfer_reverts : int;
+  nested_merge_probes : int;
 }
 
 type snapshot = { counters : counters; iteration_stats : iteration_stat list }
@@ -38,6 +39,7 @@ let no_counters =
     factor_preflight_gain = 0;
     factor_bytes_saved = 0;
     factor_transfer_reverts = 0;
+    nested_merge_probes = 0;
   }
 
 let v ?(profile = false) () =
@@ -77,6 +79,10 @@ let add_preflight_gain t gain =
       t.counters with
       factor_preflight_gain = t.counters.factor_preflight_gain + gain;
     }
+
+let probe_nested_merge t =
+  t.counters <-
+    { t.counters with nested_merge_probes = t.counters.nested_merge_probes + 1 }
 
 let record_iteration t ~fixpoint ~local_iteration ~before_rules ~before_bytes
     ~after_rules ~after_bytes ~bytes_saved ~active_passes ~changed_passes

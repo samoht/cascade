@@ -19,6 +19,7 @@ let print_factor_profile_footer (counters : Stats.counters) =
   Fmt.epr "@.factor committed savings: %d bytes@." counters.factor_bytes_saved;
   Fmt.epr "factor preflight: %d skipped, estimated gain %d bytes@."
     counters.factor_fixpoints_skipped counters.factor_preflight_gain;
+  Fmt.epr "nested-merge probes: %d@." counters.nested_merge_probes;
   if counters.factor_transfer_reverts > 0 then
     Fmt.epr "factor transfer gate: %d segments reverted@."
       counters.factor_transfer_reverts

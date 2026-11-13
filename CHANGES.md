@@ -85,6 +85,9 @@
   `C:a.css`), UNC paths and `file:` URLs and checks them against
   `--import-root`. It left them alone as remote URLs or looked a UNC path up
   under the importing file's directory (#1291).
+- `cascade fmt --minify --profile` reports `nested-merge probes`, the
+  declaration blocks the same-selector merge checked against nested blocks
+  before them, also read as `Stats.counters.nested_merge_probes` (#1301).
 
 ### Diff report
 

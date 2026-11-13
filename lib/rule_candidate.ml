@@ -260,7 +260,7 @@ let same_selector_eligible (r : rule) =
    The scan first is what keeps a run carrying no nested block, the common one,
    from reading a body at all, and the empty index short-circuits the blocks
    ahead of the first nested body. *)
-let nested_merge_is_safe ?probes (rules : rule list) =
+let nested_merge_is_safe ~stats (rules : rule list) =
   let rec nested_ahead = function
     | [] | [ _ ] -> false
     | (r : rule) :: rest -> r.nested <> [] || nested_ahead rest
@@ -272,7 +272,7 @@ let nested_merge_is_safe ?probes (rules : rule list) =
           match ahead.indexed with
           | [] -> true
           | _ ->
-              Option.iter incr probes;
+              Stats.probe_nested_merge stats;
               facts_commute_with ahead (decl_facts r.declarations)
         in
         block_commutes
@@ -832,9 +832,9 @@ let same_selector_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
+let add_same_selector_group ?size_cache ~stats ~finalize g ~candidates ids =
   let source_order = ordered_ids g ids |> rules_with_ids g in
-  let safe = nested_merge_is_safe (List.map snd source_order) in
+  let safe = nested_merge_is_safe ~stats (List.map snd source_order) in
   let rules_with_ids = same_selector_merge_order source_order in
   let ordered = List.map fst rules_with_ids in
   let rules = List.map snd rules_with_ids in
@@ -858,7 +858,7 @@ let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
       | Option.Some c -> candidates := c :: !candidates)
   | _ -> ()
 
-let same_selector_candidates ?size_cache ?touching ~finalize g =
+let same_selector_candidates ?size_cache ?touching ~stats ~finalize g =
   let touching = touching_set touching in
   let buckets = Int_table.create 128 in
   List.iter
@@ -875,7 +875,8 @@ let same_selector_candidates ?size_cache ?touching ~finalize g =
           same_selector_groups g ids
           |> List.iter (fun ids ->
               if touches_any touching ids then
-                add_same_selector_group ?size_cache ~finalize g ~candidates ids)
+                add_same_selector_group ?size_cache ~stats ~finalize g
+                  ~candidates ids)
       | _ -> ())
     buckets;
   !candidates
@@ -1729,7 +1730,8 @@ let enumerate ?touching ~ctx ~finalize g =
   let size_cache = Rule_rewrite.size_cache g in
   let candidates =
     identical_body_candidates ~size_cache ?touching ~ctx ~finalize g
-    @ same_selector_candidates ~size_cache ?touching ~finalize g
+    @ same_selector_candidates ~size_cache ?touching ~stats:(Ctx.stats ctx)
+        ~finalize g
     @ selector_branch_inline_candidates ~size_cache ?touching ~finalize g
   in
   candidates

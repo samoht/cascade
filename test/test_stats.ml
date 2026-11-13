@@ -75,6 +75,8 @@ let test_fresh_recorder_is_empty () =
   Alcotest.(check int) "factor_bytes_saved" 0 report.counters.factor_bytes_saved;
   Alcotest.(check int)
     "factor_transfer_reverts" 0 report.counters.factor_transfer_reverts;
+  Alcotest.(check int)
+    "nested_merge_probes" 0 report.counters.nested_merge_probes;
   Alcotest.(check int) "iteration stats" 0 (List.length report.iteration_stats);
   Alcotest.(check bool) "profile off by default" false (S.profile (S.v ()));
   Alcotest.(check bool)

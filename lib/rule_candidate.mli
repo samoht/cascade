@@ -13,8 +13,8 @@ val enumerate :
     local and heuristic; every candidate still commits through
     {!Rule_graph.rewrite}. *)
 
-val nested_merge_is_safe : ?probes:int ref -> Stylesheet.rule list -> bool
-(** [nested_merge_is_safe ?probes rules] is whether a run of rules on one
+val nested_merge_is_safe : stats:Stats.t -> Stylesheet.rule list -> bool
+(** [nested_merge_is_safe ~stats rules] is whether a run of rules on one
     selector, given in source order, can merge into the first without changing
     what any element computes. CSS Nesting 1 sec. 3.4 puts a declaration written
     after a nested rule behind it, so merging moves each later rule's
@@ -23,6 +23,6 @@ val nested_merge_is_safe : ?probes:int ref -> Stylesheet.rule list -> bool
     same weight with a different value. Selectors are not read, so a pair that
     could never meet on one element still counts.
 
-    [probes], when given, is incremented once for every declaration block put to
-    the nested bodies written before it, so a run of [n] rules adds at most
-    [n - 1] to it. *)
+    Each declaration block put to the nested bodies written before it is counted
+    in [stats] as one [nested_merge_probes], so a run of [n] rules adds at most
+    [n - 1]. *)

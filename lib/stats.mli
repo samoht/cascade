@@ -44,6 +44,8 @@ type counters = {
       (** total committed byte savings reported by global factoring passes *)
   factor_transfer_reverts : int;
       (** factoring results discarded because the estimated DEFLATE size grew *)
+  nested_merge_probes : int;
+      (** declaration blocks the nested-merge safety check looked up *)
 }
 (** Counters over one run. *)
 
@@ -72,6 +74,9 @@ val revert_fixpoint : t -> unit
 
 val add_preflight_gain : t -> int -> unit
 (** Add the preflight's raw-byte gain estimate for one segment. *)
+
+val probe_nested_merge : t -> unit
+(** Count one declaration block the nested-merge safety check looked up. *)
 
 val record_iteration :
   t ->

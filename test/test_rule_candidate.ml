@@ -157,7 +157,7 @@ let nested_merge_reads_a_slot_as_a_multiset () =
   let case name expected css =
     Alcotest.(check bool)
       name expected
-      (Rule_candidate.nested_merge_is_safe (rules css))
+      (Rule_candidate.nested_merge_is_safe ~stats:(Stats.v ()) (rules css))
   in
   case "a later nested writer still blocks a matching earlier one" false
     ".q{top:0;&:hover{color:red}}.q{left:0;&:hover{color:blue}}.q{color:red}";
@@ -213,11 +213,11 @@ let nested_merge_safety_reads_each_block_once () =
     |> rules
   in
   let probes rules =
-    let probes = ref 0 in
-    let safe = Rule_candidate.nested_merge_is_safe ~probes rules in
+    let stats = Stats.v () in
+    let safe = Rule_candidate.nested_merge_is_safe ~stats rules in
     Alcotest.(check bool)
       "neither run writes a slot twice, so it merges" true safe;
-    !probes
+    (Stats.snapshot stats).counters.nested_merge_probes
   in
   Alcotest.(check int)
     "nested blocks spread over the run" (n - 1) (probes spread);
