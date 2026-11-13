@@ -659,6 +659,7 @@ let value_of_components_opt components =
   | _ -> Option.None
 
 let value_of_string s =
+  Error.catch @@ fun () ->
   let cursor = Cursor.of_string s in
   match value_of_components_opt (Cursor.remaining cursor) with
   | Some value -> value

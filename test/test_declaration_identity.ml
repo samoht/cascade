@@ -14,7 +14,7 @@ open Declaration_helpers
    [hash a = hash b && equal_declaration a b], so the two have to agree or a
    merge is lost. *)
 let optimized_declarations css =
-  Css.of_string_exn css |> Css.optimize |> Css.statements
+  Css.stylesheet css |> Css.optimize |> Css.statements
   |> List.concat_map (function
     | Css.Stylesheet.Rule r -> r.Css.Stylesheet.declarations
     | _ -> [])
@@ -26,7 +26,7 @@ let sole_declaration css =
       Alcotest.failf "%s: expected one declaration, got %d" css (List.length l)
 
 let minified css =
-  Css.to_string ~minify:true (Css.optimize (Css.of_string_exn css))
+  Css.to_string ~minify:true (Css.optimize (Css.stylesheet css))
 
 (* CSS Variables 1 sec. 3 makes a shorthand carrying a [var()] a
    pending-substitution value: it is syntax-checked only after substitution, and
@@ -117,7 +117,7 @@ let printed_units_are_lowercase () =
     (fun (css, minified_css) ->
       Alcotest.(check string)
         css minified_css
-        (Css.to_string ~minify:true (Css.of_string_exn css)))
+        (Css.to_string ~minify:true (Css.stylesheet css)))
     [
       ("a{width:10.0PX}", "a{width:10px}");
       ("a{line-height:10.0PX}", "a{line-height:10px}");

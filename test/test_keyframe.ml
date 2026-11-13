@@ -163,8 +163,8 @@ let test_large_offset () =
   check "exit 4e-33%" "exit 4e-33%";
   check "exit -4e-33%" "exit -4e-33%";
   match selector_of_string "1e30%" with
-  | exception Invalid_argument _ -> ()
-  | Positions _ -> Alcotest.fail "a plain 1e30% is past <percentage [0,100]>"
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "a plain 1e30% is past <percentage [0,100]>"
 
 let suite =
   let open Alcotest in

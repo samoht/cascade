@@ -157,11 +157,13 @@ val of_function_components : Component.t list -> t
 (** [of_function_components components] parses an already-tokenized conditional
     [media(...)] body. *)
 
-val value_of_string : string -> value
-(** [value_of_string s] parses [s] as a media-feature value. *)
+val value_of_string : string -> (value, Error.t) result
+(** [value_of_string s] parses [s] as a media-feature value. This is [Error e]
+    if [s] is not one value. *)
 
 val name_of_string : string -> name
-(** [name_of_string s] parses a media feature name. *)
+(** [name_of_string s] parses a media feature name. It does not fail: a name
+    outside the known features is [Other s]. *)
 
 val string_of_name : name -> string
 (** [string_of_name name] serializes a media feature name. *)

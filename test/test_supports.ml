@@ -348,7 +348,7 @@ let property_guard () =
    the minified printer. *)
 let minified ?(enforce_spec = false) css =
   Css.to_string ~minify:true ~enforce_spec
-    (Css.optimize ~enforce_spec (Css.of_string_exn css))
+    (Css.optimize ~enforce_spec (Css.stylesheet css))
 
 (* Every input below is already in the minified spelling, so the sheet the
    author wrote is the whole expectation. Rows are collected rather than

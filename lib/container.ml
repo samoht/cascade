@@ -751,6 +751,15 @@ let specific_of_components t components =
       err t components "unrecognised container feature query"
   | Other_query -> err t components "not a container-specific query"
 
+(* The [name: value] feature whose value still holds a [var()]. *)
+let var_feature_query name value_components =
+  match Media.value_of_string (string_of_components value_components) with
+  | Ok value ->
+      Feature_query
+        (Media.Cond
+           (Media.Feature (Media.Plain (Media.name_of_string name, value))))
+  | Error e -> Error.fail e
+
 let unresolved_media_feature components =
   match trim_components components with
   | [
@@ -765,14 +774,7 @@ let unresolved_media_feature components =
                 when (not
                         (trim_components value_components |> components_empty))
                      && Component.has_var value_components ->
-                  let value = string_of_components value_components in
-                  Some
-                    (Feature_query
-                       (Media.Cond
-                          (Media.Feature
-                             (Media.Plain
-                                ( Media.name_of_string name,
-                                  Media.value_of_string value )))))
+                  Some (var_feature_query name value_components)
               | Some _ | None -> None)
           | _ -> None)
       | None -> None)

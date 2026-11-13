@@ -647,7 +647,7 @@ let escaped_identifiers_survive_emission () =
   check_roundtrip "escaped feature value" {|(future: light\ or\ dark)|};
   let minify source =
     source
-    |> Css.of_string_exn ~strict:false
+    |> Css.stylesheet ~strict:false
     |> Css.optimize |> Css.to_string ~minify:true
   in
   let source =

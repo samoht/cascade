@@ -309,8 +309,8 @@ let declaration_with_components decl components : Declaration.declaration option
     in
     let opaque () = Some (Declaration.with_opaque_value decl value) in
     match Declaration.with_value decl value with
-    | decl -> Some decl
-    | exception Cursor.Parse_error _ ->
+    | Ok decl -> Some decl
+    | Error _ ->
         (* [font-family] takes a list of names this reader does not model as
            one, so the substituted text is written back as it stands. Anywhere
            else a refused substitution is CSS Variables 1 sec. 3's invalid at

@@ -179,10 +179,10 @@ let assert_strict_lenient_contract label input =
 
 let test_parse_crash_safety buf =
   (match Css.of_string ~strict:false (cssish buf) with Ok _ | Error _ -> ());
-  ignore (Css.of_string_exn ~strict:false (cssish buf));
+  ignore (Css.stylesheet ~strict:false (cssish buf));
   let css = css_like_text buf in
   (match Css.of_string ~strict:false css with Ok _ | Error _ -> ());
-  ignore (Css.of_string_exn ~strict:false css)
+  ignore (Css.stylesheet ~strict:false css)
 
 (* Parsing and printing over the byte shapes [cssish] cannot reach. Sec. 3.3
    replaces every malformed sequence with U+FFFD before the tokenizer sees it,

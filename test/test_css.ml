@@ -388,7 +388,7 @@ let constructed_custom_property_reparses () =
         in
         let again =
           Css.to_string ~minify:true ~lossless ~enforce_spec
-            (Css.of_string_exn printed)
+            (Css.stylesheet printed)
         in
         Alcotest.(check string)
           (String.concat "" [ label; " is its own fixed point ("; mode; ")" ])
@@ -398,11 +398,11 @@ let constructed_custom_property_reparses () =
   let decl, _ = Css.var "brand" Css.Color (Css.oklch 63.7 0.237 25.331) in
   fixed_point "constructed custom property" (v [ rule ~selector:btn [ decl ] ]);
   fixed_point "parsed custom property"
-    (Css.of_string_exn ".btn{--brand:oklch(63.7% .237 25.331)}");
+    (Css.stylesheet ".btn{--brand:oklch(63.7% .237 25.331)}");
   (* A parsed typed colour is its own fixed point: the typed printer and the
      custom-value serialiser have to agree on the percentage boundary. *)
   fixed_point "typed percentage pair"
-    (Css.of_string_exn ".btn{color:hsl(120 50% 50%)}");
+    (Css.stylesheet ".btn{color:hsl(120 50% 50%)}");
   (* [%] closes its token (CSS Syntax 3 (ED) sec. 4), so a constructed colour
      has to spell the boundary after a percentage the way a reparse of its own
      bytes does. *)
@@ -451,15 +451,15 @@ let constructed_custom_property_reparses () =
      percentage, so the reader has no boundary to restore. *)
   List.iter
     (fun source ->
-      let printed = Css.to_string ~minify:true (Css.of_string_exn source) in
+      let printed = Css.to_string ~minify:true (Css.stylesheet source) in
       Alcotest.(check string)
         "minified custom property keeps its spelling" source printed;
-      fixed_point "tight custom property" (Css.of_string_exn source))
+      fixed_point "tight custom property" (Css.stylesheet source))
     [ ":root{--x:10%5px}"; ":root{--x:50%.5}" ];
   (* Pretty output is the upper bound on minified output for the same node. *)
   List.iter
     (fun source ->
-      let sheet = Css.of_string_exn source in
+      let sheet = Css.stylesheet source in
       let minified = Css.to_string ~minify:true sheet in
       let pretty = Css.to_string sheet in
       if String.length minified > String.length pretty then

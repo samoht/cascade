@@ -63,7 +63,7 @@ let c3_stylesheet_scope_background_synthesis () =
      allowed. This is the CSS-text scope axis, not the [~closed_world] DOM
      assumption. *)
   let optimize ?scope css =
-    Css.of_string_exn ~strict:false css
+    Css.stylesheet ~strict:false css
     |> Css.optimize ?scope |> Css.to_string ~minify:true |> String.trim
   in
   let partial_run =
@@ -112,7 +112,7 @@ let closed_world_groups_disjoint_selectors () =
      refuses. Under closed_world the caller asserts no element matches two of
      these selectors, so the group is safe. *)
   let opt ?closed_world css =
-    Css.of_string_exn ~strict:false css
+    Css.stylesheet ~strict:false css
     |> Css.optimize ?closed_world |> Css.to_string ~minify:true
   in
   let input = ".a{color:red}.c{color:blue}.b{color:red}" in
@@ -131,7 +131,7 @@ let closed_world_groups_disjoint_selectors () =
 
 let coalesce_adjacent_custom_property_rules () =
   let opt css =
-    Css.of_string_exn ~strict:false css
+    Css.stylesheet ~strict:false css
     |> Css.optimize |> Css.to_string ~minify:true
   in
   (* Custom-property rules are barred from the DAG factoring, but adjacent rules

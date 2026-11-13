@@ -102,15 +102,15 @@ let universal = Universal None
 let universal_ns ns = Universal (Some ns)
 
 (** Parse an ARIA attribute name into its structured type *)
-let aria_attr_of_string : string -> aria_attr = Aria.of_string
+let aria_attr_of_string : string -> aria_attr option = Aria.of_string
 
 (** Categorize an attribute name into its structured type *)
 let attr_name_of_string name =
   let len = String.length name in
   if len > 5 && String.sub name 0 5 = "aria-" then
     match aria_attr_of_string name with
-    | attr -> Aria attr
-    | exception Invalid_argument _ -> Regular name
+    | Some attr -> Aria attr
+    | None -> Regular name
   else if len > 5 && String.sub name 0 5 = "data-" then
     Data (String.sub name 5 (len - 5))
   else Regular name

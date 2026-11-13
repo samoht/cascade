@@ -1,7 +1,7 @@
 open Cascade
 open Css_test_helpers
 
-let parse s = Css.of_string_exn ~strict:false s
+let parse s = Css.stylesheet ~strict:false s
 let minified css = Css.to_string ~minify:true css
 let optimized_minified css = css |> Css.optimize |> minified
 

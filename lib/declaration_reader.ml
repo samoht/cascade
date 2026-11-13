@@ -1206,6 +1206,7 @@ let keep_custom_fields ~from decl =
   | Declaration _ | Theme_guarded _ -> decl
 
 let with_value decl value =
+  Error.catch @@ fun () ->
   let important = if is_important decl then "!important" else "" in
   let tail () = Cursor.of_string (String.concat "" [ value; important ]) in
   match property_key decl with

@@ -287,13 +287,13 @@ val same_property : declaration -> declaration -> bool
 (** [same_property d1 d2] is [property_key d1 = property_key d2]: the two
     declarations target the same property name. *)
 
-val with_value : declaration -> string -> declaration
+val with_value : declaration -> string -> (declaration, Error.t) result
 (** [with_value decl value] is [decl] carrying [value], read as a value of the
     property [decl] already holds and re-typed where that property accepts it.
     The property is taken from [decl] rather than from its name, so one whose
     minified spelling belongs to another property ([page-break-*] renders as the
-    CSS Fragmentation 3 sec. 3.4 [break-*] alias) is rebuilt as itself. Raises
-    [Cursor.Parse_error] when the property accepts no such value. *)
+    CSS Fragmentation 3 sec. 3.4 [break-*] alias) is rebuilt as itself. This is
+    [Error e] when the property accepts no such value. *)
 
 val with_opaque_value : declaration -> string -> declaration
 (** [with_opaque_value decl value] is [decl]'s property carrying [value] as an

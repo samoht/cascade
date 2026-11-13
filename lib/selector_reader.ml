@@ -5,8 +5,8 @@ open Selector_pseudo
 let read_aria_attr t : aria_attr =
   let s = Cursor.ident t in
   match aria_attr_of_string s with
-  | v -> v
-  | exception Invalid_argument msg -> Cursor.err t msg
+  | Some v -> v
+  | None -> Cursor.err t ("not a supported aria attribute: " ^ s)
 
 let read_attr_name t : attr_name =
   let s = Cursor.ident t in

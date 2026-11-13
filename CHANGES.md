@@ -5,9 +5,14 @@
 - `Component.t` has a `Flat` case: the contents of a block or function nested
   past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
   a tree. A match over `Component.t` needs a case for it (#1296).
-- `Selector`, `Container`, `Supports` and `Declaration.of_string`,
-  `Media.of_string_strict` and `Font_face.*_of_string` return `(_, Error.t)
-  result` instead of raising: match on it, or use `Selector.v` (#0000).
+- `Selector`, `Container`, `Supports` and `Declaration.of_string` return
+  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v`
+  (#0000).
+- `Media.of_string_strict` and `value_of_string`, `Keyframe.selector_of_string`,
+  `Declaration.with_value` and `Font_face.*_of_string` return a result too, and
+  `Aria.of_string` an option (#0000).
+- `Css.of_string_exn` is now `Css.stylesheet`, which raises `Invalid_argument`
+  instead of `Error.Parse_error` (#0000).
 - `Declaration.custom_property` and `Supports.property`, `func` and
   `property_name` raise `Invalid_argument` instead of `Failure` (#0000).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and

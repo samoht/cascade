@@ -615,8 +615,7 @@ let test_stylesheet_unicode_bytes buf =
 (** read_rule -- must not crash. *)
 let test_read_rule buf =
   let r = Cursor.of_string buf in
-  try ignore (Css.Stylesheet.read_rule r)
-  with Cursor.Parse_error _ | Invalid_argument _ -> ()
+  try ignore (Css.Stylesheet.read_rule r) with Cursor.Parse_error _ -> ()
 
 (** read_block -- must not crash. *)
 let test_read_block buf =
