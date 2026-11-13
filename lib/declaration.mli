@@ -198,6 +198,11 @@ val of_string : string -> declaration
 val read_declarations : Cursor.t -> declaration list
 (** [read_declarations t] is all typed declarations in an unbraced block. *)
 
+val read_keyframe_declarations : Cursor.t -> declaration list
+(** [read_keyframe_declarations t] is {!read_declarations} for the block of a
+    keyframe, where an [!important] declaration and every [animation-*] property
+    but [animation-timing-function] are invalid (CSS Animations 1 sec. 3). *)
+
 val read_block : Cursor.t -> declaration list
 (** [read_block t] is the typed declarations parsed from a braced block. *)
 

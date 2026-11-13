@@ -10,36 +10,33 @@ let read_keyframe (r : Cursor.t) : keyframe =
     try Keyframe.selector_of_string selector_str
     with Invalid_argument msg -> Cursor.err_invalid r msg
   in
-  let declarations =
-    Cursor.braces
-      (fun inner ->
-        Declaration.read_declarations inner
-        |> List.filter (fun decl -> not (Declaration.is_important decl)))
-      r
-  in
+  let declarations = Cursor.braces Declaration.read_keyframe_declarations r in
   { selector; declarations }
 
 (* Helper functions for reading specific at-rules *)
 
-(* CSS Syntax 3 (ED) sec. 8.3 reserves [@charset "UTF-8";] as the byte-stream
-   decoder hint. The exact form -- uppercase label, double quotes, semicolon --
-   is recognised; any other [@charset] (lowercase, single quotes, different
-   label, no terminating ';') is a syntax error. *)
+(* CSS Syntax 3 sec. 3.2 reads an encoding only from the first bytes of a sheet,
+   and only when they are [@charset "<label>";]: one space, double quotes, and
+   the semicolon right after the closing quote. Sec. 8.3 makes any other
+   [@charset] an unrecognized rule, so it is a syntax error; of the labels only
+   ["UTF-8"] is recognised. *)
 let read_charset (r : Cursor.t) : statement =
+  let at = Cursor.position r in
+  let fail loc reason = Error.fail_bad_value loc ~property:"@charset" ~reason in
+  if at.Loc.start_pos <> 0 then
+    fail at "@charset must be the first bytes of the stylesheet";
   Cursor.expect_at_keyword "charset" r;
-  Cursor.ws r;
+  (match Cursor.next_raw r with
+  | Some (Component.Preserved { kind = Token.Whitespace " "; _ }) -> ()
+  | _ -> fail at "@charset takes one space before its quote");
   let encoding =
     match Cursor.string_with_quote_opt r with
     | Some (value, '"') when value = "UTF-8" -> value
-    | _ ->
-        Error.fail_bad_value (Cursor.position r) ~property:"@charset"
-          ~reason:"@charset only recognises \"UTF-8\""
+    | _ -> fail (Cursor.position r) "@charset only recognises \"UTF-8\""
   in
-  Cursor.ws r;
-  if Cursor.peek_semicolon r then Cursor.skip r
-  else
-    Error.fail_bad_value (Cursor.position r) ~property:"@charset"
-      ~reason:"@charset must end with ';'";
+  (match Cursor.next_raw r with
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+  | _ -> fail at "@charset must end with ';' right after its quote");
   Charset encoding
 
 (* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'

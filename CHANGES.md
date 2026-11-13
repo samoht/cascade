@@ -21,7 +21,7 @@
 
 - An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
   `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
-  and an `@namespace` after a rule, go as browsers ignore them (#0000).
+  and an `@namespace` after a rule, go as browsers ignore them (#1294).
 
 ### Parsing
 
@@ -32,8 +32,12 @@
   CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
   per CRLF, and a NUL could make `Source_index.v` raise (#1285).
 - An invalid declaration in an `@keyframes` frame warns, as one in a style rule
-  does. An `@charset` after an `@layer` statement warns; an `@import` after an
-  unrecognised at-rule no longer does (#0000).
+  does, and so do an `!important` one and an `animation-*` property other than
+  `animation-timing-function`, which browsers ignore there. The first went
+  silently and the others stayed (#1294).
+- An `@charset` warns and goes unless the sheet opens with exactly
+  `@charset "UTF-8";`, so not after whitespace, a comment or an `@layer`
+  statement. An `@import` after an unrecognised at-rule no longer warns (#1294).
 
 ### CLI tools
 
