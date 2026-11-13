@@ -1502,7 +1502,7 @@ let nested n ~opener ~inner ~closer =
   Buffer.contents b
 
 let is_too_deep (e : Error.t) =
-  Astring.String.is_infix ~affix:"nested deeper than" (Error.to_string e)
+  match e.kind with Error.Too_deep _ -> true | _ -> false
 
 (* Run [f] with the OCaml stack capped at 128K words. Before the parser had a
    depth limit, the stack each level of input cost grew linearly: nested rules

@@ -64,11 +64,17 @@ val of_string : ?meta:Loc.meta_level -> ?unicode_ranges:bool -> string -> t
 (** [of_string ?meta ?unicode_ranges s] lexes [s] into a {!Component.t} list and
     wraps it. The trailing [Eof] token is dropped. [unicode_ranges] is passed to
     {!Lexer.of_reader}, and only the value of a [unicode-range] descriptor sets
-    it. *)
+    it.
+
+    @raise Parse_error
+      on input nesting past {!Parser.max_nesting_depth}, as {!Parser.next} does.
+*)
 
 val of_reader : ?meta:Loc.meta_level -> Reader.t -> t
 (** [of_reader ?meta r] consumes the rest of [r]'s input as a component stream
-    and wraps it. *)
+    and wraps it.
+
+    @raise Parse_error as {!of_string} does. *)
 
 (** {1 Stream API} *)
 

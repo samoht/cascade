@@ -15,19 +15,83 @@ let of_string ?unicode_ranges s = of_reader ?unicode_ranges (Reader.of_string s)
 
 (** {1 section 5.3 algorithms operating on a {!Lexer.t}} *)
 
-(* Consume a component value. The opening token [tok] has already been read. *)
-let rec consume_component_value_from lexer tok : Component.t =
+(* CSS Syntax 3 (ED) sets no nesting limit, and the CSSWG resolved that one is
+   for each UA to choose (w3c/csswg-drafts#2881, July 2023); WebKit stops nested
+   rule lists at 128 (WebKit bug 258272). Every walk over the component tree,
+   and over the typed tree read from it, recurses once per level, so this is
+   what keeps them on the stack: with OCaml 5's default stack of 128M words,
+   [a{] repeated overflowed reading at about 4.8 million levels, and printing
+   each level indented made the output grow as the square of the depth. *)
+let max_nesting_depth = 128
+
+(* Raised once the input has been consumed to the end of the outermost component
+   value holding a block nested past [max_nesting_depth], with the location of
+   the last token consumed. *)
+exception Too_deep of Loc.t
+
+let opening_char : Token.bracket -> char = function
+  | Curly -> '{'
+  | Paren -> '('
+  | Square -> '['
+
+(* Consume the rest of the blocks [enclosing] lists, innermost first, without
+   building them: as sec. 5.5.9 and 5.5.10 have it, each closes only at the
+   closer matching its opener, a function at [)]. The open blocks are a byte
+   each in [stack] rather than a frame each on the OCaml stack, so no depth of
+   input can exhaust it. *)
+let skip_enclosing_blocks lexer ~last enclosing =
+  let stack = Buffer.create 256 in
+  List.iter
+    (fun b -> Buffer.add_char stack (opening_char b))
+    (List.rev enclosing);
+  let push b loc =
+    Buffer.add_char stack (opening_char b);
+    loc
+  in
+  let rec loop last =
+    let depth = Buffer.length stack in
+    if depth = 0 then last
+    else
+      let tok = Lexer.next lexer in
+      match tok.Token.kind with
+      | Token.Eof -> tok.loc
+      | Token.Close b when Buffer.nth stack (depth - 1) = opening_char b ->
+          Buffer.truncate stack (depth - 1);
+          loop tok.loc
+      | Token.Open b -> loop (push b tok.loc)
+      | Token.Function _ -> loop (push Token.Paren tok.loc)
+      | _ -> loop tok.loc
+  in
+  loop last
+
+(* [enclosing] lists the blocks open around the one [opening] starts, innermost
+   first. *)
+let descend lexer ~enclosing opening ~start_loc =
+  if List.compare_length_with enclosing max_nesting_depth < 0 then
+    opening :: enclosing
+  else
+    raise
+      (Too_deep
+         (skip_enclosing_blocks lexer ~last:start_loc (opening :: enclosing)))
+
+(* Consume a component value. The opening token [tok] has already been read.
+   [enclosing] lists the blocks open around it, innermost first: [[]] for a
+   component value at the top of a rule or a list. *)
+let rec consume_component_value_from ~enclosing lexer tok : Component.t =
   match tok.Token.kind with
   | Token.Open bracket ->
-      let block = consume_simple_block lexer bracket ~start_loc:tok.loc in
+      let block =
+        consume_simple_block ~enclosing lexer bracket ~start_loc:tok.loc
+      in
       Block block
   | Token.Function name ->
-      let func = consume_function lexer ~name ~start_loc:tok.loc in
+      let func = consume_function ~enclosing lexer ~name ~start_loc:tok.loc in
       Func func
   | _ -> Preserved tok
 
-and consume_simple_block lexer opening ~start_loc :
+and consume_simple_block ~enclosing lexer opening ~start_loc :
     Component.block Component.node =
+  let enclosing = descend lexer ~enclosing opening ~start_loc in
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
@@ -38,12 +102,14 @@ and consume_simple_block lexer opening ~start_loc :
         let loc = Loc.union start_loc tok.loc in
         { node = { opening; value = List.rev acc; closed = true }; loc }
     | _ ->
-        let cv = consume_component_value_from lexer tok in
+        let cv = consume_component_value_from ~enclosing lexer tok in
         loop (cv :: acc)
   in
   loop []
 
-and consume_function lexer ~name ~start_loc : Component.func Component.node =
+and consume_function ~enclosing lexer ~name ~start_loc :
+    Component.func Component.node =
+  let enclosing = descend lexer ~enclosing Token.Paren ~start_loc in
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
@@ -54,14 +120,20 @@ and consume_function lexer ~name ~start_loc : Component.func Component.node =
         let loc = Loc.union start_loc tok.loc in
         { node = { name; arguments = List.rev acc; terminated = true }; loc }
     | _ ->
-        let cv = consume_component_value_from lexer tok in
+        let cv = consume_component_value_from ~enclosing lexer tok in
         loop (cv :: acc)
   in
   loop []
 
+let too_deep loc = Error.too_deep loc Sort.Component ~limit:max_nesting_depth
+
+(* The stream has no warning list to carry a component value nested past
+   [max_nesting_depth], so it raises once the value is consumed. *)
 let consume_component_value lexer : Component.t =
   let tok = Lexer.next lexer in
-  consume_component_value_from lexer tok
+  match consume_component_value_from ~enclosing:[] lexer tok with
+  | cv -> cv
+  | exception Too_deep last -> Error.fail (too_deep (Loc.union tok.loc last))
 
 (** {1 Stream API (uniform with Reader/Lexer)} *)
 
@@ -356,11 +428,6 @@ let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
         (minified_number_repr ~preserve_sign:preserve_numeric_sign number);
       add_dimension_unit buf unit_
   | kind -> add_token_kind buf kind
-
-let opening_char : Token.bracket -> char = function
-  | Curly -> '{'
-  | Paren -> '('
-  | Square -> '['
 
 let closing_char : Token.bracket -> char = function
   | Curly -> '}'
@@ -1052,33 +1119,52 @@ let warn_unclosed ~meta lexer warnings (block : Component.block Component.node)
     warn ~meta lexer warnings ~recovery:Error.Recovery.Recovered
       (Error.unterminated block.loc Sort.Block)
 
+(* A construct holding a block nested past [max_nesting_depth] is dropped whole,
+   the way sec. 5.5 drops an invalid rule or declaration: [loc] spans it, and
+   the input resumes after it where the spec's own consumption would. *)
+let warn_too_deep ~meta lexer warnings ~sort construct loc =
+  warn ~meta lexer warnings
+    ~recovery:
+      Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc construct)
+    (Error.too_deep loc sort ~limit:max_nesting_depth)
+
 (* CSS Syntax 3 (ED) sec. 5.5.2. [nested = true] also terminates on a stray
    ['}'] (the spec's "outermost block ended") so block-contents callers can
-   recover instead of swallowing the closing delimiter. *)
+   recover instead of swallowing the closing delimiter. [None] is an at-rule
+   nesting past [max_nesting_depth], dropped with a warning. *)
 let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
-    Component.at_rule =
-  let close prelude end_loc block =
+    Component.at_rule option =
+  let close ~too_deep prelude end_loc block =
     let loc = Loc.union start_loc end_loc in
-    { node = { name; prelude = List.rev prelude; block }; loc }
+    if too_deep then (
+      warn_too_deep ~meta lexer warnings ~sort:Sort.At_rule Error.Recovery.Rule
+        loc;
+      None)
+    else Some { node = { name; prelude = List.rev prelude; block }; loc }
   in
-  let rec loop prelude =
+  let rec loop ~too_deep prelude =
     let tok = Lexer.peek lexer in
     match tok.Token.kind with
     | Token.Semicolon | Token.Eof ->
         let _ = Lexer.next lexer in
-        close prelude tok.loc None
-    | Token.Close Curly when nested -> close prelude tok.loc None
-    | Token.Open Curly ->
+        close ~too_deep prelude tok.loc None
+    | Token.Close Curly when nested -> close ~too_deep prelude tok.loc None
+    | Token.Open Curly -> (
         let _ = Lexer.next lexer in
-        let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
-        warn_unclosed ~meta lexer warnings block;
-        close prelude block.loc (Some block)
-    | _ ->
+        match
+          consume_simple_block ~enclosing:[] lexer Curly ~start_loc:tok.loc
+        with
+        | block ->
+            warn_unclosed ~meta lexer warnings block;
+            close ~too_deep prelude block.loc (Some block)
+        | exception Too_deep last -> close ~too_deep:true prelude last None)
+    | _ -> (
         let _ = Lexer.next lexer in
-        let cv = consume_component_value_from lexer tok in
-        loop (cv :: prelude)
+        match consume_component_value_from ~enclosing:[] lexer tok with
+        | cv -> loop ~too_deep (cv :: prelude)
+        | exception Too_deep _ -> loop ~too_deep:true prelude)
   in
-  loop []
+  loop ~too_deep:false []
 
 (* A prelude whose first two non-whitespace items are an ident starting with
    [--] followed by ':' reads as a declaration rather than a selector. The
@@ -1097,52 +1183,76 @@ let is_custom_property_shape prelude =
       | _ -> false)
   | _ -> false
 
+(* The rule [start_loc] opens, once its [block] is read. A
+   custom-property-shaped prelude reads as a declaration and discards the
+   rule. *)
+let qualified_rule_of_block ~meta lexer ~warnings ~start_loc prelude block :
+    Component.qualified_rule option =
+  warn_unclosed ~meta lexer warnings block;
+  let loc = Loc.union start_loc block.loc in
+  if is_custom_property_shape prelude then (
+    (* Dropping the rule is what the spec asks for, but it still has to be
+       reported: [Css.of_string] warns for every rule it drops. *)
+    warn ~meta lexer warnings
+      ~recovery:Error.Recovery.(dropped Rule)
+      (Error.sort_mismatch loc ~sort:Sort.Qualified_rule ~expected:Sort.Selector
+         ~found:Sort.Declaration);
+    None)
+  else Some { node = { prelude = List.rev prelude; block }; loc }
+
 (* CSS Syntax 3 (ED) sec. 5.5.3. [nested = true] makes a stray ['}'] or a
    top-level ';' before any block end the rule attempt with [None]; the spec
    groups those two with the EOF branch as parse errors, so they are reported
    the same way. A custom-property-shaped prelude discards the rule, warning
-   that it read as a declaration. *)
+   that it read as a declaration, and one nesting past [max_nesting_depth] is
+   discarded with a warning. *)
 let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
-  let drop end_loc =
-    (* [start_loc] is the rule's first token and [end_loc] the one that ended
-       the attempt, so the union spans the rule the sheet loses. *)
-    let loc = Loc.union start_loc end_loc in
-    warn ~meta lexer warnings
-      ~recovery:Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc Rule)
-      (Error.unterminated loc Sort.Qualified_rule);
+  let drop_too_deep end_loc =
+    warn_too_deep ~meta lexer warnings ~sort:Sort.Qualified_rule
+      Error.Recovery.Rule
+      (Loc.union start_loc end_loc);
     None
   in
-  let rec loop prelude =
+  let drop ~too_deep end_loc =
+    if too_deep then drop_too_deep end_loc
+    else
+      (* [start_loc] is the rule's first token and [end_loc] the one that ended
+         the attempt, so the union spans the rule the sheet loses. *)
+      let loc = Loc.union start_loc end_loc in
+      warn ~meta lexer warnings
+        ~recovery:
+          Error.Recovery.(dropped ~source:(Lexer.source lexer) ~loc Rule)
+        (Error.unterminated loc Sort.Qualified_rule);
+      None
+  in
+  let rec loop ~too_deep prelude =
     let tok = Lexer.peek lexer in
     match tok.Token.kind with
     | Token.Eof ->
         let _ = Lexer.next lexer in
-        drop tok.loc
+        drop ~too_deep tok.loc
     | Token.Semicolon when nested ->
         let _ = Lexer.next lexer in
-        drop tok.loc
-    | Token.Close Curly when nested -> drop tok.loc
-    | Token.Open Curly ->
+        drop ~too_deep tok.loc
+    | Token.Close Curly when nested -> drop ~too_deep tok.loc
+    | Token.Open Curly -> (
         let _ = Lexer.next lexer in
-        let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
-        warn_unclosed ~meta lexer warnings block;
-        let loc = Loc.union start_loc block.loc in
-        if is_custom_property_shape prelude then (
-          (* Dropping the rule is what the spec asks for, but it still has to be
-             reported: [Css.of_string] warns for every rule it drops. *)
-          warn ~meta lexer warnings
-            ~recovery:Error.Recovery.(dropped Rule)
-            (Error.sort_mismatch loc ~sort:Sort.Qualified_rule
-               ~expected:Sort.Selector ~found:Sort.Declaration);
-          None)
-        else Some { node = { prelude = List.rev prelude; block }; loc }
-    | _ ->
+        match
+          consume_simple_block ~enclosing:[] lexer Curly ~start_loc:tok.loc
+        with
+        | exception Too_deep last -> drop_too_deep last
+        | block when too_deep -> drop_too_deep block.loc
+        | block ->
+            qualified_rule_of_block ~meta lexer ~warnings ~start_loc prelude
+              block)
+    | _ -> (
         let _ = Lexer.next lexer in
-        let cv = consume_component_value_from lexer tok in
-        loop (cv :: prelude)
+        match consume_component_value_from ~enclosing:[] lexer tok with
+        | cv -> loop ~too_deep (cv :: prelude)
+        | exception Too_deep _ -> loop ~too_deep:true prelude)
   in
-  loop []
+  loop ~too_deep:false []
 
 let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
     =
@@ -1159,11 +1269,12 @@ let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
         with
         | Some qr -> loop (Qualified qr :: acc)
         | None -> loop acc)
-    | Token.At_keyword name ->
-        let ar =
+    | Token.At_keyword name -> (
+        match
           consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings
-        in
-        loop (At ar :: acc)
+        with
+        | Some ar -> loop (At ar :: acc)
+        | None -> loop acc)
     | _ -> (
         Lexer.reconsume lexer tok;
         match
@@ -1266,30 +1377,56 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
    5.5.5 passes to "consume a declaration". A balanced '}' is eaten by
    [consume_component_value_from] along with its opening brace, so one reaching
    this loop closes an enclosing block: hand it back rather than swallow it and
-   the rest of the block with it. *)
+   the rest of the block with it.
+
+   A body holding a block nested past [max_nesting_depth] is consumed all the
+   same and answers [Error] with the location of the last component it read. *)
 let consume_declaration_body lexer =
-  let rec loop acc =
+  let finish ~too_deep acc =
+    match too_deep with None -> Ok (List.rev acc) | Some last -> Error last
+  in
+  let rec loop ~too_deep acc =
     let t = Lexer.next lexer in
     match t.Token.kind with
-    | Token.Semicolon | Token.Eof -> List.rev acc
+    | Token.Semicolon | Token.Eof -> finish ~too_deep acc
     | Token.Close Curly ->
         Lexer.reconsume lexer t;
-        List.rev acc
-    | _ -> loop (consume_component_value_from lexer t :: acc)
+        finish ~too_deep acc
+    | _ -> (
+        match consume_component_value_from ~enclosing:[] lexer t with
+        | cv -> (
+            match too_deep with
+            | None -> loop ~too_deep (cv :: acc)
+            | Some _ -> loop ~too_deep:(Some (Component.source_loc cv)) acc)
+        | exception Too_deep last -> loop ~too_deep:(Some last) acc)
   in
-  loop []
+  loop ~too_deep:None []
+
+(* The declaration [name_loc] opens, from what {!consume_declaration_body}
+   read. *)
+let declaration_of_body ~meta lexer ~name ~name_loc ~warnings = function
+  | Ok body -> declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings body
+  | Error last ->
+      warn_too_deep ~meta lexer warnings ~sort:Sort.Declaration
+        Error.Recovery.Declaration (Loc.union name_loc last);
+      None
 
 (* Answers where the skip stopped, so the caller can report the whole
    declaration it threw away and not just the token it started on. *)
 let skip_bad_declaration lexer tok =
+  let skip_component t =
+    match consume_component_value_from ~enclosing:[] lexer t with
+    | cv -> Component.source_loc cv
+    | exception Too_deep last -> last
+  in
   let rec skip last =
     let t = Lexer.next lexer in
     match t.Token.kind with
     | Token.Semicolon -> t.loc
     | Token.Eof -> last
-    | _ -> skip (Component.source_loc (consume_component_value_from lexer t))
+    | _ -> skip (skip_component t)
   in
-  skip (Component.source_loc (consume_component_value_from lexer tok))
+  skip (skip_component tok)
 
 let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
   (* CSS Syntax 3 (ED) sec. 5.5.11: the value of a unicode-range descriptor is
@@ -1299,7 +1436,7 @@ let consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc =
       Lexer.with_unicode_ranges lexer (fun () -> consume_declaration_body lexer)
     else consume_declaration_body lexer
   in
-  match declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings body with
+  match declaration_of_body ~meta lexer ~name ~name_loc ~warnings body with
   | Some d -> Some (`Decl d)
   | None -> None
 
@@ -1307,9 +1444,10 @@ let consume_decl_list_item ~meta lexer ~warnings tok =
   match tok.Token.kind with
   | Token.Eof -> `Done
   | Token.Whitespace _ | Token.Semicolon | Token.Close Curly -> `Skip
-  | Token.At_keyword name ->
-      let ar = consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings in
-      `Item (`At ar)
+  | Token.At_keyword name -> (
+      match consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings with
+      | Some ar -> `Item (`At ar)
+      | None -> `Skip)
   | Token.Ident name -> (
       match
         consume_decl_from_ident ~meta lexer ~warnings ~name ~name_loc:tok.loc
@@ -1373,16 +1511,21 @@ let try_consume_nested_qualified ~meta lexer ~start_loc ~warnings ~result =
 
 (* Section 5.5.5: an [Ident] in a block's contents may begin either a
    declaration or a nested qualified rule. Try declaration first; if it fails,
-   rewind and parse a qualified rule. *)
+   rewind and parse a qualified rule. A body nesting past [max_nesting_depth]
+   fails as a declaration, and the qualified rule read in its place reports
+   it. *)
 let consume_block_ident ~meta lexer ~name ~tok ~warnings ~pending ~result ~flush
     =
   Lexer.save lexer;
-  let body = consume_declaration_body lexer in
   let warnings_snapshot = !warnings in
-  match
-    declaration_of_buffer ~meta lexer ~name ~name_loc:tok.Token.loc ~warnings
-      body
-  with
+  let declaration =
+    match consume_declaration_body lexer with
+    | Error _ -> None
+    | Ok body ->
+        declaration_of_buffer ~meta lexer ~name ~name_loc:tok.Token.loc
+          ~warnings body
+  in
+  match declaration with
   | Some d ->
       Lexer.commit lexer;
       pending := d :: !pending
@@ -1413,11 +1556,12 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
     | Token.Whitespace _ | Token.Semicolon -> loop ()
     | Token.At_keyword name ->
         flush ();
-        let ar =
-          consume_at_rule ~nested:true ~meta lexer ~name ~start_loc:tok.loc
-            ~warnings
-        in
-        result := `Rule (Component.At ar) :: !result;
+        (match
+           consume_at_rule ~nested:true ~meta lexer ~name ~start_loc:tok.loc
+             ~warnings
+         with
+        | Some ar -> result := `Rule (Component.At ar) :: !result
+        | None -> ());
         loop ()
     | Token.Ident name ->
         consume_block_ident ~meta lexer ~name ~tok ~warnings ~pending ~result
@@ -1448,9 +1592,9 @@ let rule ?(meta = Loc.default_meta_level) r =
         | Token.Eof -> None
         | Token.At_keyword name ->
             let tok = Lexer.next lexer in
-            Some
-              (Component.At
-                 (consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings))
+            Option.map
+              (fun ar -> Component.At ar)
+              (consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings)
         | _ -> (
             let start_loc = (Lexer.peek lexer).Token.loc in
             match consume_qualified_rule ~meta lexer ~start_loc ~warnings with
@@ -1475,8 +1619,7 @@ let declaration ?(meta = Loc.default_meta_level) r =
       | Token.Ident name ->
           let tok = Lexer.next lexer in
           let body = consume_declaration_body lexer in
-          declaration_of_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
-            body
+          declaration_of_body ~meta lexer ~name ~name_loc:tok.loc ~warnings body
       | _ -> None)
 
 let list_of_declarations ?(meta = Loc.default_meta_level) r =
@@ -1489,34 +1632,26 @@ let list_of_rules ?(meta = Loc.default_meta_level) r =
       let lexer = Lexer.of_reader r in
       consume_list_of_rules ~meta lexer ~top_level:false ~warnings)
 
+(* A component value nested past [max_nesting_depth] is left out of the list and
+   reported in its warnings. The caller knows what the list was for, so the
+   warning's recovery is the caller's to stamp. *)
 let list_of_component_values r =
-  with_warnings (fun ~warnings:_ ->
-      let p = of_reader r in
+  with_warnings (fun ~warnings ->
+      let lexer = Lexer.of_reader r in
       let rec loop acc =
-        match next p with
-        | Preserved { kind = Token.Eof; _ } -> List.rev acc
-        | cv -> loop (cv :: acc)
+        let tok = Lexer.next lexer in
+        match tok.Token.kind with
+        | Token.Eof -> List.rev acc
+        | _ -> (
+            match consume_component_value_from ~enclosing:[] lexer tok with
+            | cv -> loop (cv :: acc)
+            | exception Too_deep last ->
+                warn ~meta:`Full lexer warnings
+                  ~recovery:Error.Recovery.Recovered
+                  (too_deep (Loc.union tok.loc last));
+                loop acc)
       in
       loop [])
-
-let rec next_non_ws p =
-  match next p with
-  | Preserved { kind = Token.Whitespace _; _ } -> next_non_ws p
-  | cv -> cv
-
-let rec rest_is_ws_then_eof p =
-  match next p with
-  | Preserved { kind = Token.Eof; _ } -> true
-  | Preserved { kind = Token.Whitespace _; _ } -> rest_is_ws_then_eof p
-  | _ -> false
-
-let component_value r =
-  with_warnings (fun ~warnings:_ ->
-      let p = of_reader r in
-      let first = next_non_ws p in
-      match first with
-      | Preserved { kind = Token.Eof; _ } -> None
-      | _ -> if rest_is_ws_then_eof p then Some first else None)
 
 let split_comma_groups cvs =
   let rec split current groups = function
@@ -1547,6 +1682,14 @@ let trim_component_value_whitespace cvs =
   in
   cvs |> drop_leading |> List.rev |> drop_leading |> List.rev
 
+(* A list that lost a component value nested past [max_nesting_depth] matches no
+   grammar: what it held is unknown. *)
+let component_value r =
+  let out = list_of_component_values r in
+  match trim_component_value_whitespace out.value with
+  | [ cv ] when out.warnings = [] -> { out with value = Some cv }
+  | _ -> { out with value = None }
+
 let component_values_are_whitespace_only cvs =
   List.for_all
     (function Preserved { kind = Token.Whitespace _; _ } -> true | _ -> false)
@@ -1555,7 +1698,7 @@ let component_values_are_whitespace_only cvs =
 let matches_grammar r grammar =
   let out = list_of_component_values r in
   let value = trim_component_value_whitespace out.value in
-  if grammar value then { out with value = Some value }
+  if out.warnings = [] && grammar value then { out with value = Some value }
   else { out with value = None }
 
 let csv_by_grammar r grammar =
@@ -1565,7 +1708,7 @@ let csv_by_grammar r grammar =
     let out = { raw with value = split_comma_groups raw.value } in
     let match_group group =
       let group = trim_component_value_whitespace group in
-      if grammar group then Some group else None
+      if raw.warnings = [] && grammar group then Some group else None
     in
     { out with value = List.map match_group out.value }
 
@@ -1591,7 +1734,7 @@ let arbitrary_value r ~allow_top_level_semicolon_bang =
   let out = list_of_component_values r in
   let value = trim_component_value_whitespace out.value in
   if
-    value <> []
+    value <> [] && out.warnings = []
     && arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level:true
          value
   then { out with value = Some value }

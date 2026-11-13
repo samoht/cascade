@@ -44,6 +44,9 @@
 - An `@charset` warns and goes unless the sheet opens with exactly
   `@charset "UTF-8";`, so not after whitespace, a comment or an `@layer`
   statement. An `@import` after an unrecognised at-rule no longer warns (#1294).
+- Input nesting blocks or functions more than 128 deep no longer crashes
+  cascade with a stack overflow: the rule or declaration holding it is dropped
+  with a warning and parsing resumes after it (#0000).
 
 ### CLI tools
 

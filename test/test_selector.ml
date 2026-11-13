@@ -657,8 +657,7 @@ let invalid () =
    moved when we switched to the component-stream parser; tests now only assert
    that parsing fails (and mention what was broken). *)
 let check_parse_error input _expected_msg =
-  let t = Cursor.of_string input in
-  match read t with
+  match read (Cursor.of_string input) with
   | _ ->
       Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
   | exception Cursor.Parse_error _ -> ()
