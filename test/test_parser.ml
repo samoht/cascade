@@ -879,14 +879,43 @@ let spec_security_resource_exhaustion_regressions () =
   let parse_list css =
     (Parser.list_of_component_values (Reader.of_string css)).value
   in
-  (* Processor time rather than SIGALRM: the signal does not exist on Windows,
-     and CPU time does not count the time a busy host spends elsewhere. *)
+  (* No spec is involved: this guard is test infrastructure. A watchdog domain
+     ends the run with exit 2, naming the vector, if [f] has not finished after
+     [wall_limit] seconds of wall time (works on every OS, unlike SIGALRM). The
+     CPU-time check after [f] returns still catches a merely quadratic parser,
+     and does not count time a busy host spends elsewhere. *)
+  let wall_limit = 10. and cpu_limit = 1. in
   let check_completes name f =
+    let finished = Atomic.make false in
+    let watchdog =
+      Domain.spawn (fun () ->
+          let deadline = Unix.gettimeofday () +. wall_limit in
+          while
+            (not (Atomic.get finished)) && Unix.gettimeofday () < deadline
+          do
+            Unix.sleepf 0.05
+          done;
+          if not (Atomic.get finished) then (
+            prerr_string
+              (String.concat ""
+                 [
+                   "parser hung on ";
+                   name;
+                   ": no result after ";
+                   string_of_float wall_limit;
+                   "s\n";
+                 ]);
+            exit 2))
+    in
     let start = Sys.time () in
-    f ();
+    Fun.protect
+      ~finally:(fun () ->
+        Atomic.set finished true;
+        Domain.join watchdog)
+      f;
     let elapsed = Sys.time () -. start in
-    if elapsed > 1. then
-      Alcotest.failf "%s took %.2fs of CPU, over 1s" name elapsed
+    if elapsed > cpu_limit then
+      Alcotest.failf "%s took %.2fs of CPU, over %.0fs" name elapsed cpu_limit
   in
   let deep_parens = String.make 4096 '(' ^ "x" in
   check_completes "unterminated paren nesting" (fun () ->
