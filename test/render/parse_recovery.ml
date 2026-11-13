@@ -545,6 +545,73 @@ let curated =
       ".a { --x: y !important; color: green }" );
   ]
 
+(* [opener] [n] times, then [inner], then [closer] [n] times. *)
+let nested n ~opener ~inner ~closer =
+  let b = Buffer.create ((n * 4) + String.length inner) in
+  for _ = 1 to n do
+    Buffer.add_string b opener
+  done;
+  Buffer.add_string b inner;
+  for _ = 1 to n do
+    Buffer.add_string b closer
+  done;
+  Buffer.contents b
+
+(* Nesting depth, which CSS Syntax 3 (ED) does not limit and the CSSWG left to
+   each UA (w3c/csswg-drafts#2881). Measured in Chrome 157: a custom property
+   nested 100,000 deep in [(], [[] or [a(] is kept whole, and so is a [color]
+   nesting [var()] 200 deep, so cascade keeps a value past
+   [Parser.max_nesting_depth] as the flat run of tokens it is. Style rules and
+   [\@media] rules nested 1,000 deep are kept too, past the depth cascade reads
+   rules to; {!depth_limited} names what that drops. A deep sheet is no
+   malformation, so it is its own control, but for the stray closer, whose
+   control has none. A label counts the levels the openers nest, the innermost
+   style rule being one more: [.o] holds the [a] rules, and [.a] sits in the
+   [\@media] ones. *)
+let deep =
+  let named label n = String.concat "_" [ "deep"; label; string_of_int n ] in
+  let sheet label ?(control = Fun.id) ~prefix ~opener ~inner ~closer ~suffix n =
+    let at inner =
+      String.concat "" [ prefix; nested n ~opener ~inner ~closer; suffix ]
+    in
+    (named label n, at (control inner), at inner)
+  in
+  let value (label, opener, closer) =
+    List.map
+      (sheet
+         (String.concat "_" [ "value"; label ])
+         ~prefix:".a { --x: " ~opener ~inner:"x" ~closer
+         ~suffix:"; color: green }\n.b { color: red }")
+      [ 128; 129; 1_000; 10_000; 100_000 ]
+  in
+  List.concat_map value
+    [ ("paren", "(", ")"); ("square", "[", "]"); ("function", "a(", ")") ]
+  @ List.map
+      (sheet "rules" ~prefix:".s { color: blue }\n.o { color: blue; "
+         ~opener:"a { " ~inner:"color: green" ~closer:" }"
+         ~suffix:" z-index: 1 }\n.b { color: red }")
+      [ 127; 128; 999 ]
+  @ List.map
+      (sheet "media" ~prefix:".s { color: blue }\n" ~opener:"@media x { "
+         ~inner:".a { color: green }" ~closer:" }" ~suffix:"\n.b { color: red }")
+      [ 127; 128; 999 ]
+  (* CSS Variables 1 sec. 3: a [var()] leaves a standard property's value to
+     computed-value time, however deep. *)
+  @ List.map
+      (sheet "var" ~prefix:".a { color: " ~opener:"var(--a, " ~inner:"red"
+         ~closer:")" ~suffix:"; z-index: 1 }\n.b { color: red }")
+      [ 129; 200 ]
+  (* CSS Syntax 3 (ED) sec. 5.5.9 ends a block only at its own closer, so the
+     [)] inside [[ ]] is a token of that block, and sec. 7.2 bars it from a
+     <declaration-value> as unmatched: the custom property goes at any depth,
+     the rule after it stays. *)
+  @ List.map
+      (sheet "mismatched_closer"
+         ~control:(fun _ -> "[]x")
+         ~prefix:".a { --x: " ~opener:"(" ~inner:"[)]x" ~closer:")"
+         ~suffix:" }\n.b { color: red }")
+      [ 10; 129 ]
+
 let corpus ~sample =
   let jobs = ref [] in
   let add id family css control =
@@ -607,7 +674,7 @@ let corpus ~sample =
       add
         (String.concat "" [ "curated/"; label ])
         "curated" case (Some control_id))
-    curated;
+    (curated @ deep);
   List.rev !jobs
 
 (* ===== Cascade's side ===== *)
@@ -954,6 +1021,33 @@ let rule_path fact =
 
 let is_declaration fact = Option.is_some (String.index_opt fact '#')
 
+(* The rules a fact is nested in, the rule itself counted: the [>] between the
+   segments of its rule path. The driver escapes it inside an identity. *)
+let fact_depth fact = List.length (String.split_on_char '>' (rule_path fact))
+
+(* Whether fact [f] is [g] or a rule [g] is nested in. *)
+let holds f g =
+  String.equal f g
+  || String.starts_with ~prefix:(String.concat "" [ f; ">" ]) g
+  || String.starts_with ~prefix:(String.concat "" [ f; "#" ]) g
+
+(* A loss that is cascade's own limit, not a recovery defect. The depth a reader
+   goes into is the UA's to choose (w3c/csswg-drafts#2881), and cascade reads
+   rules to [Parser.max_nesting_depth] and no further, where Chrome keeps 1,000
+   levels (the [deep_rules_] and [deep_media_] cases). Every fact cascade lost
+   is then nested past the limit, or a rule holding one and nothing else: the
+   driver reports no rule that declares nothing, so the empty rules around the
+   cut go with it. Read off the facts, so a loss of anything shallower is still
+   fatal. *)
+let depth_limited v =
+  is_empty v.under && is_empty v.rewritten
+  && (not (is_empty v.over))
+  &&
+  let deep =
+    List.filter (fun f -> fact_depth f > Parser.max_nesting_depth) v.over
+  in
+  List.for_all (fun f -> List.exists (holds f) deep) v.over
+
 (* The declarations the browser threw away from a rule it still parsed.
 
    Losing a whole rule is not evidence of a parse error: truncating a sheet at a
@@ -1213,7 +1307,10 @@ let () =
         !facts_seen + List.length (Hashtbl.find answers j.id).input_facts)
     jobs;
 
-  let findings = ref [] and strict_gaps = ref [] and excused = ref [] in
+  let findings = ref []
+  and strict_gaps = ref []
+  and excused = ref []
+  and depth_cut = ref [] in
   let over_n = ref 0 and under_n = ref 0 and rewritten_n = ref 0 in
   (* The browser's own deviation, kept apart from cascade's: it is reported in
      full and it does not fail the run, and a run that stops finding it says the
@@ -1229,6 +1326,9 @@ let () =
       let v = verdict answer in
       if browser_deviation v j.css then
         excused := { job = j; seen = v; small = j.css; alike = 1 } :: !excused
+      else if depth_limited v then
+        depth_cut :=
+          { job = j; seen = v; small = j.css; alike = 1 } :: !depth_cut
       else if not (agreed v) then begin
         if not (is_empty v.over) then incr over_n;
         if not (is_empty v.under) then incr under_n;
@@ -1277,7 +1377,8 @@ let () =
     jobs;
   let findings = List.rev !findings
   and strict_gaps = List.rev !strict_gaps
-  and excused = List.rev !excused in
+  and excused = List.rev !excused
+  and depth_cut = List.rev !depth_cut in
 
   Fmt.pr "%s: %d input(s), %d browser fact(s), seed %d, %.1fs@." harness
     (List.length jobs) !facts_seen !corpus_seed elapsed;
@@ -1332,6 +1433,18 @@ let () =
         Fmt.pr "  input:     %s@." (one_line f.job.css);
         show_facts "cascade kept, browser dropped:" f.seen.under)
       (representatives excused)
+  end;
+  if not (is_empty depth_cut) then begin
+    Fmt.pr
+      "@.=== CASCADE (rules nested past Parser.max_nesting_depth = %d, a \
+       UA-defined limit) (%d) ===@."
+      Parser.max_nesting_depth (List.length depth_cut);
+    List.iter
+      (fun f ->
+        Fmt.pr "@.%s [%s]@." f.job.id f.job.family;
+        Fmt.pr "  input:     %s@." (one_line f.job.css);
+        show_facts "browser kept, cascade dropped:" f.seen.over)
+      depth_cut
   end;
 
   if is_empty findings && is_empty strict_gaps then begin
