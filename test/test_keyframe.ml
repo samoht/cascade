@@ -64,7 +64,8 @@ let test_spec_keyframe_position_vectors () =
 let test_spec_keyframe_selector_vectors () =
   let check_positions name input expected =
     match selector_of_string input with
-    | Positions actual ->
+    | Error e -> Alcotest.failf "%s: %s" name (Error.to_string e)
+    | Ok (Positions actual) ->
         Alcotest.(check int)
           (name ^ " length") (List.length expected) (List.length actual);
         List.iter2
@@ -74,8 +75,8 @@ let test_spec_keyframe_selector_vectors () =
   in
   let check_raw name input =
     match selector_of_string input with
-    | exception Invalid_argument _ -> ()
-    | Positions _ -> Alcotest.failf "%s: expected invalid selector" name
+    | Error _ -> ()
+    | Ok _ -> Alcotest.failf "%s: expected invalid selector" name
   in
   check_positions "from to list" "from, to" [ From; To ];
   check_positions "percentage list" "0%, 50%, 100%"
@@ -98,7 +99,7 @@ let spec_keyframe_duplicate_offsets () =
   let check input expected =
     Alcotest.(check string)
       input expected
-      (selector_of_string input |> to_string)
+      (selector_of_string input |> Css_test_helpers.ok |> to_string)
   in
   check "50%, 50%" "50%, 50%";
   check "from, 0%, 100%, to" "from, 0%, 100%, to";
@@ -114,13 +115,14 @@ let spec_keyframe_duplicate_offsets () =
     (position_compare (Percent 50.) To < 0)
 
 let spec_keyframe_invalid_edges () =
-  (* The low-level selector helper raises on non-keyframe selector syntax;
-     stylesheet parsing rejects those where a keyframe selector is required. *)
+  (* CSS Animations 1 sec. 3: an empty item, a function, a non-percentage
+     dimension, a percentage outside [0,100] and an unknown keyword are not
+     keyframe selectors, and the parser says so in its result. *)
   List.iter
     (fun input ->
       match selector_of_string input with
-      | exception Invalid_argument _ -> ()
-      | Positions _ -> Alcotest.failf "expected invalid selector: %s" input)
+      | Error _ -> ()
+      | Ok _ -> Alcotest.failf "expected invalid selector: %s" input)
     [
       "from,";
       ",to";

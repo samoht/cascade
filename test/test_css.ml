@@ -620,6 +620,20 @@ let roundtrip () =
     Alcotest.(check string)
       "CSS roundtrip should be idempotent" first_pass second_pass
 
+(* [stylesheet] is [of_string] for CSS written in a program. CSS Syntax 3 sec.
+   5.4 recovers from an invalid declaration (CSS 2 sec. 9.5.1: [float] takes
+   [left], [right] or [none]), so a non-strict read keeps the rule without it;
+   [~strict:true] turns the warning into the [Invalid_argument] a literal that
+   is not valid CSS deserves. *)
+let stylesheet_raises_on_strict_warning () =
+  let css = ".x{float:center;color:red}" in
+  Alcotest.(check string)
+    "non-strict drops the invalid declaration" ".x{color:red}"
+    (Css.to_string ~minify:true (Css.stylesheet css));
+  match Css.stylesheet ~strict:true css with
+  | _ -> Alcotest.fail "strict read accepted an invalid declaration"
+  | exception Invalid_argument _ -> ()
+
 let suite =
   ( "css",
     [
@@ -654,4 +668,6 @@ let suite =
         custom_properties_integration;
       Alcotest.test_case "var(--1A202C) parses" `Quick var_digit_after_dashes;
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
+      Alcotest.test_case "stylesheet raises on a strict warning" `Quick
+        stylesheet_raises_on_strict_warning;
     ] )

@@ -673,11 +673,30 @@ let special_cases () =
   check_declaration ~expected:"margin-block:1px 1px"
     ~optimized:"margin-block:1px" "margin-block: 1px 1px"
 
+(* [with_value] reads the new value with the grammar of the property the
+   declaration already names. CSS Color 4 sec. 6.1: [blue] is a named color and
+   [nope] is no [<color>]; CSS 2 sec. 9.5.1: [float] takes [left], [right] or
+   [none], so [center] is invalid. *)
+let with_value_contract () =
+  let color_red = ok (of_string "color: red") in
+  (match with_value color_red "blue" with
+  | Ok d ->
+      Alcotest.(check string)
+        "color takes blue" "color:blue" (to_string ~minify:true d)
+  | Error e -> Alcotest.failf "blue: %s" (Error.to_string e));
+  (match with_value color_red "nope" with
+  | Error _ -> ()
+  | Ok d -> Alcotest.failf "nope read as %s" (to_string d));
+  match with_value (ok (of_string "float: left")) "center" with
+  | Error _ -> ()
+  | Ok d -> Alcotest.failf "center read as %s" (to_string d)
+
 let suite =
   ( "declaration",
     [
       (* Parsing basics *)
       test_case "simple" `Quick simple;
+      test_case "with_value contract" `Quick with_value_contract;
       test_case "multiple" `Quick multiple;
       test_case "block" `Quick block;
       test_case "complex values" `Quick complex_values;
