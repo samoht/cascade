@@ -260,7 +260,7 @@ let same_selector_eligible (r : rule) =
    The scan first is what keeps a run carrying no nested block, the common one,
    from reading a body at all, and the empty index short-circuits the blocks
    ahead of the first nested body. *)
-let nested_merge_is_safe (rules : rule list) =
+let nested_merge_is_safe ?probes (rules : rule list) =
   let rec nested_ahead = function
     | [] | [ _ ] -> false
     | (r : rule) :: rest -> r.nested <> [] || nested_ahead rest
@@ -271,7 +271,9 @@ let nested_merge_is_safe (rules : rule list) =
         let block_commutes =
           match ahead.indexed with
           | [] -> true
-          | _ -> facts_commute_with ahead (decl_facts r.declarations)
+          | _ ->
+              Option.iter incr probes;
+              facts_commute_with ahead (decl_facts r.declarations)
         in
         block_commutes
         &&

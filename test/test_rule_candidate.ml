@@ -192,11 +192,13 @@ let nested_merge_reads_a_slot_as_a_multiset () =
    pair leaves [front] alone, since it has one block, and makes [spread] cost a
    probe per pair.
 
-   The comparison is between the two runs, never against a wall-clock budget:
-   [Sys.time] is this process's own CPU, alcotest runs its cases one after
-   another, and the two measurements therefore sit under the same load. *)
+   The probes are counted, not timed: a probe allocates nothing, so allocation
+   cannot tell the two ways apart, and a time ratio moves with whatever else the
+   host runs. Each block after the first faces the nested bodies ahead of it
+   once, so both runs make [n - 1] probes; asking per pair makes [spread] make
+   [n (n - 1) / 2]. *)
 let nested_merge_safety_reads_each_block_once () =
-  let n = 2000 and reps = 100 in
+  let n = 200 in
   let spread =
     List.init n (fun i -> Fmt.str ".q{--a%d:%d;&:hover{--n%d:%d}}" i i i i)
     |> String.concat "" |> rules
@@ -210,26 +212,17 @@ let nested_merge_safety_reads_each_block_once () =
       |> String.concat "")
     |> rules
   in
-  Alcotest.(check bool)
-    "neither run writes a slot twice, so both merge" true
-    (Rule_candidate.nested_merge_is_safe spread
-    && Rule_candidate.nested_merge_is_safe front);
-  let cost rules =
-    Gc.full_major ();
-    let t0 = Sys.time () in
-    for _ = 1 to reps do
-      ignore (Sys.opaque_identity (Rule_candidate.nested_merge_is_safe rules))
-    done;
-    Sys.time () -. t0
+  let probes rules =
+    let probes = ref 0 in
+    let safe = Rule_candidate.nested_merge_is_safe ~probes rules in
+    Alcotest.(check bool)
+      "neither run writes a slot twice, so it merges" true safe;
+    !probes
   in
-  let a = cost spread in
-  let b = cost front in
-  Alcotest.(check bool)
-    (Fmt.str
-       "%d nested blocks over %d rules costs %.3fs, all on one %.3fs (%.1fx)" n
-       n a b (a /. b))
-    true
-    (b = 0. || a < b *. 3.)
+  Alcotest.(check int)
+    "nested blocks spread over the run" (n - 1) (probes spread);
+  Alcotest.(check int)
+    "nested blocks all on the first rule" (n - 1) (probes front)
 
 (* --- allocation / complexity guards --- *)
 

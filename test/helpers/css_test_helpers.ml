@@ -175,10 +175,14 @@ let check_construct name to_string expected value =
 (** Common CSS-wide keywords *)
 let css_wide_keywords = [ "inherit"; "unset"; "revert"; "revert-layer" ]
 
-(** Minor words allocated by a thunk, for the allocation guards *)
+(* A promoted word is counted in both [major] and [promoted]. *)
+let allocated_words () =
+  let minor, promoted, major = Gc.counters () in
+  minor +. major -. promoted
+
 let measure f =
   Gc.full_major ();
-  let w0 = Gc.minor_words () in
+  let w0 = allocated_words () in
   let r = f () in
   ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
+  allocated_words () -. w0

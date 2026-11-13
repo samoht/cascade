@@ -882,11 +882,10 @@ let spec_security_resource_exhaustion_regressions () =
   in
   (* No spec is involved: this guard is test infrastructure. A watchdog domain
      ends the run with exit 2, naming the vector, if [f] has not finished after
-     [wall_limit] seconds of wall time (works on every OS, unlike SIGALRM). The
-     CPU-time check after [f] returns still catches a merely quadratic parser,
-     and does not count time a busy host spends elsewhere. *)
-  let wall_limit = 10. and cpu_limit = 1. in
-  let check_completes name f =
+     [wall_limit] seconds of wall time (works on every OS, unlike SIGALRM): a
+     hang is a question about time, and only a clock answers it. *)
+  let wall_limit = 10. in
+  let completes name f =
     let finished = Atomic.make false in
     let watchdog =
       Domain.spawn (fun () ->
@@ -908,22 +907,30 @@ let spec_security_resource_exhaustion_regressions () =
                  ]);
             exit 2))
     in
-    let start = Sys.time () in
     Fun.protect
       ~finally:(fun () ->
         Atomic.set finished true;
         Domain.join watchdog)
-      f;
-    let elapsed = Sys.time () -. start in
-    if elapsed > cpu_limit then
-      Alcotest.failf "%s took %.2fs of CPU, over %.0fs" name elapsed cpu_limit
+      f
   in
-  let deep_parens = String.make 4096 '(' ^ "x" in
-  check_completes "unterminated paren nesting" (fun () ->
-      ignore (parse_list deep_parens));
-  let deep_squares = String.make 4096 '[' ^ "x" in
-  check_completes "unterminated square nesting" (fun () ->
-      ignore (parse_list deep_squares));
+  (* A parser that finishes can still be quadratic, and that is read from what
+     it allocates, which no load on the host changes: doubling the input doubles
+     a linear parse's allocation and quadruples a quadratic one's. *)
+  let check_linear name input =
+    let words n =
+      let css = input n in
+      completes name (fun () -> measure (fun () -> parse_list css))
+    in
+    let a1 = words 2048 and a2 = words 4096 in
+    if not (a1 > 0. && a2 < a1 *. 3.) then
+      Alcotest.failf "%s allocates %.0f -> %.0f words (%.2fx for 2x input)" name
+        a1 a2 (a2 /. a1)
+  in
+  let unterminated opening n =
+    String.concat "" [ String.make n opening; "x" ]
+  in
+  check_linear "unterminated paren nesting" (unterminated '(');
+  check_linear "unterminated square nesting" (unterminated '[');
   let bad_urls = List.init 64 (fun _ -> "url(foo\"bar) ") |> String.concat "" in
   ignore (parse_list bad_urls);
   let comments =

@@ -106,8 +106,11 @@ val css_wide_keywords : string list
     specifications. *)
 
 val measure : (unit -> 'a) -> float
-(** [measure f] is the minor words [f] allocates, read as the difference of a
-    counter that only grows, so a collection inside [f] does not disturb it.
+(** [measure f] is the words [f] allocates on either heap, read as the
+    difference of counters that only grow, so a collection inside [f] does not
+    disturb it. Both heaps, because a block too large for the minor heap goes
+    straight to the major one, and so would the strings a quadratic pass copies.
+    The counters are this domain's: another domain does not move them.
     [Gc.full_major] starts every reading from the same heap state, so collection
     and finalisation owed by an earlier case is not charged to whichever thunk
     runs next; the allocation guards compare two readings as a ratio, which
