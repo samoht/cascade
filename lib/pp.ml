@@ -351,19 +351,14 @@ let format_integer is_neg abs_f f =
       (* Very large integer - use string_of_float and clean it up *)
       trim_decimal_suffix (string_of_float f) |> Common.canonical_exponent
 
-let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
-  let scale = 10.0 ** float_of_int max_decimals in
-  let scaled = floor ((abs_f *. scale) +. 0.5) in
-  (* Extend the cap past the leading zeros only for a magnitude that would
-     otherwise round to "0", so [0.000000001em] keeps its digits while a coarse
-     [max_decimals] and colour-channel precision stay untouched. *)
-  let max_decimals, scaled =
-    if scaled <> 0.0 then (max_decimals, scaled)
-    else
-      let leading_zeros = -1 - int_of_float (floor (log10 abs_f)) in
-      let d = max_decimals + min 24 (max 0 leading_zeros) in
-      (d, floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
+(* [abs_f] in exponent notation, 12 significant digits. *)
+let format_exponent is_neg abs_f =
+  let s =
+    trim_decimal_suffix (string_of_float abs_f) |> Common.canonical_exponent
   in
+  if is_neg then String.concat "" [ "-"; s ] else s
+
+let format_scaled ~drop_leading_zero max_decimals is_neg abs_f scaled =
   match Common.int_of_float_opt scaled with
   | Some i ->
       format_decimal ~drop_leading_zero (string_of_int i) max_decimals is_neg
@@ -372,10 +367,24 @@ let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
          pure digit string, but a scaled magnitude with no [int] only
          stringifies through exponent notation. Print the magnitude itself, the
          way [format_integer] does over the same range. *)
-      let s =
-        trim_decimal_suffix (string_of_float abs_f) |> Common.canonical_exponent
-      in
-      if is_neg then "-" ^ s else s
+      format_exponent is_neg abs_f
+
+let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
+  let scale = 10.0 ** float_of_int max_decimals in
+  let scaled = floor ((abs_f *. scale) +. 0.5) in
+  if scaled <> 0.0 then
+    format_scaled ~drop_leading_zero max_decimals is_neg abs_f scaled
+  else
+    (* A magnitude that would round to "0" keeps [max_decimals] significant
+       digits instead (one at least), so [0.000000001em] keeps its value while a
+       coarse [max_decimals] and colour-channel precision stay untouched. Past
+       24 leading zeros the decimal spelling gives way to exponent notation. *)
+    let leading_zeros = -1 - int_of_float (floor (log10 abs_f)) in
+    if leading_zeros > 24 then format_exponent is_neg abs_f
+    else
+      let d = max 1 max_decimals + leading_zeros in
+      format_scaled ~drop_leading_zero d is_neg abs_f
+        (floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
 
 let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)

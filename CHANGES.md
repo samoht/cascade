@@ -10,6 +10,9 @@
   out there as `3.40282e038px` (#1286).
 - Large numbers in media features and keyframe offsets print as `1e30` like
   everywhere else, and the same on Windows, instead of `1e+30` (#0000).
+- A number too small for eight decimals keeps its value. `(min-resolution:
+  4e-33dpi)` and `entry 4e-33%` came out as `0dpi` and `0%`, and a negative one
+  as `-0` (#0000).
 
 ### Parsing
 
