@@ -21,7 +21,7 @@ A warning on standard error:
 
   $ printf '.a { color: red }\n.b { color: }\n' > bad.css
   $ cascade fmt bad.css 2>&1 >/dev/null | cat -e
-  warning: bad.css: read_declaration: bad value for : expected a value at [31-31] (in component)$
+  warning: read_declaration: bad value for : expected a value at bad.css:2:14 (in component)$
   warning: .a { color: red }$
   warning: .b { color: }$
   warning:              ^$

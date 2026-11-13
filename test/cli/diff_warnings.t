@@ -16,7 +16,7 @@ byte offset each side puts it at is no part of its identity.
   CSS: 44 chars vs 56 chars (27.3% diff)
   Changes: 1 modified rule
   
-  a.css and b.css parse warning: <string>: read_declaration/float: bad value for float: unknown float-side: center at [24-30] (in component)
+  a.css and b.css parse warning: read_declaration/float: bad value for float: unknown float-side: center at <string>:1:25 (in component)
   .x { color: red; float: center; margin: 0 }
                           ^^^^^^
   
@@ -42,13 +42,13 @@ second file's, then the ones both files raise.
   CSS: 45 chars vs 50 chars (11.1% diff)
   Changes: 1 modified rule
   
-  c.css parse warning: <string>: read_declaration/clear: bad value for clear: unknown clear: nope at [27-31] (in component)
+  c.css parse warning: read_declaration/clear: bad value for clear: unknown clear: nope at <string>:1:28 (in component)
   .x { float: center; clear: nope; margin: 0 }
                              ^^^^
-  d.css parse warning: <string>: read_declaration/position: bad value for position: unknown position: nope at [30-34] (in component)
+  d.css parse warning: read_declaration/position: bad value for position: unknown position: nope at <string>:1:31 (in component)
   .x { float: center; position: nope; margin: 1px }
                                 ^^^^
-  c.css and d.css parse warning: <string>: read_declaration/float: bad value for float: unknown float-side: center at [12-18] (in component)
+  c.css and d.css parse warning: read_declaration/float: bad value for float: unknown float-side: center at <string>:1:13 (in component)
   .x { float: center; clear: nope; margin: 0 }
               ^^^^^^
   
@@ -73,13 +73,13 @@ the two the budget leaves out are counted once rather than once per side.
   CSS: 78 chars vs 81 chars (3.8% diff)
   Changes: 1 modified rule
   
-  e.css parse warning: <string>: read_declaration/z-index: bad value for z-index: expected integer at [60-64] (in component)
+  e.css parse warning: read_declaration/z-index: bad value for z-index: expected integer at <string>:1:61 (in component)
   clear: nope; visibility: nope; z-index: nope; margin: 0 }
                                           ^^^^
-  f.css parse warning: <string>: read_declaration/position: bad value for position: unknown position: nope at [61-65] (in component)
+  f.css parse warning: read_declaration/position: bad value for position: unknown position: nope at <string>:1:62 (in component)
   lear: nope; visibility: nope; position: nope; margin: 1px }
                                           ^^^^
-  e.css and f.css parse warning: <string>: read_declaration/float: bad value for float: unknown float-side: center at [12-18] (in component)
+  e.css and f.css parse warning: read_declaration/float: bad value for float: unknown float-side: center at <string>:1:13 (in component)
   .x { float: center; clear: nope; visibility: nope; z-index
               ^^^^^^
   e.css and f.css: 2 more parse warnings
@@ -103,13 +103,13 @@ One warning past the budget keeps the singular form.
   CSS: 78 chars vs 80 chars (2.6% diff)
   Changes: 1 modified rule
   
-  g.css and h.css parse warning: <string>: read_declaration/float: bad value for float: unknown float-side: center at [12-18] (in component)
+  g.css and h.css parse warning: read_declaration/float: bad value for float: unknown float-side: center at <string>:1:13 (in component)
   .x { float: center; clear: nope; visibility: nope; z-index
               ^^^^^^
-  g.css and h.css parse warning: <string>: read_declaration/clear: bad value for clear: unknown clear: nope at [27-31] (in component)
+  g.css and h.css parse warning: read_declaration/clear: bad value for clear: unknown clear: nope at <string>:1:28 (in component)
   .x { float: center; clear: nope; visibility: nope; z-index: nope; margi
                              ^^^^
-  g.css and h.css parse warning: <string>: read_declaration/visibility: bad value for visibility: unknown visibility: nope at [45-49] (in component)
+  g.css and h.css parse warning: read_declaration/visibility: bad value for visibility: unknown visibility: nope at <string>:1:46 (in component)
   float: center; clear: nope; visibility: nope; z-index: nope; margin: 0 }
                                           ^^^^
   g.css and h.css: 1 more parse warning

@@ -155,7 +155,7 @@ a complaint. A warning both files raise names both sides once.
   $ cascade diff --json w1.css w2.css | helpers/jsonq.exe .errors \
   >   --each .warnings '.side | .message:first-line'
   []
-  both | <string>: read_declaration/float: bad value for float: unknown float-side: center at [24-30] (in component)
+  both | read_declaration/float: bad value for float: unknown float-side: center at <string>:1:25 (in component)
 
 A warning only one file raises names that side.
 
@@ -167,8 +167,8 @@ A warning only one file raises names that side.
   > EOF
   $ cascade diff --json p1.css p2.css | helpers/jsonq.exe \
   >   --each .warnings '.side | .message:first-line'
-  expected | <string>: read_declaration/clear: bad value for clear: unknown clear: nope at [12-16] (in component)
-  actual | <string>: read_declaration/position: bad value for position: unknown position: nope at [15-19] (in component)
+  expected | read_declaration/clear: bad value for clear: unknown clear: nope at <string>:1:13 (in component)
+  actual | read_declaration/position: bad value for position: unknown position: nope at <string>:1:16 (in component)
 
 The character-diff fallback carries the position and the two lines instead
 of a change list.

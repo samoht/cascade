@@ -79,7 +79,7 @@ let caret_counts_characters () =
     (located ~source ~start_pos:12 ~end_pos:13)
     (String.concat ""
        [
-         "bad selector: boom at [12-13] (in selector)\n";
+         "bad selector: boom at <CSS input>:1:5 (in selector)\n";
          repeat 4 eur;
          "!\n";
          "    ^";
@@ -92,7 +92,7 @@ let marker_spans_characters () =
     (located ~source ~start_pos:1 ~end_pos:10)
     (String.concat ""
        [
-         "bad selector: boom at [1-10] (in selector)\n.";
+         "bad selector: boom at <CSS input>:1:2 (in selector)\n.";
          repeat 3 eur;
          "!\n";
          " ^^^";
@@ -110,7 +110,7 @@ let window_never_splits_a_code_point () =
   check "window opens on a lead byte" e
     (String.concat ""
        [
-         "bad selector: boom at [90-91] (in selector)\n";
+         "bad selector: boom at <CSS input>:1:31 (in selector)\n";
          repeat 14 eur;
          "!\n";
          "              ^";
@@ -130,7 +130,7 @@ let ascii_caret_unmoved () =
     "renders valid utf-8" true
     (String.is_valid_utf_8 (Error.to_string e));
   check "ascii caret unmoved" e
-    "bad value for color: not a color at [11-16] (in property-value)\n\
+    "bad value for color: not a color at <CSS input>:1:12 (in property-value)\n\
      a { color: bogus; }\n\
     \           ^^^^^"
 
@@ -150,7 +150,7 @@ let caret_marks_the_line_it_points_at () =
   check "caret marks the line it points at" e
     (String.concat "\n"
        [
-         "bad value for float: unknown float-side at [33-39] (in \
+         "bad value for float: unknown float-side at <CSS input>:3:10 (in \
           property-value)";
          ".header {";
          "  color: red;";
@@ -169,7 +169,7 @@ let source_context () =
       try Cursor.err_expected t "':'"
       with Cursor.Parse_error e ->
         check "source context" e
-          "bad value for : expected ':' at [0-5] (in component)\n\
+          "bad value for : expected ':' at <CSS input>:1:1 (in component)\n\
            color red;\n\
            ^^^^^")
 

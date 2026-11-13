@@ -12,6 +12,8 @@
   `property_name` raise `Invalid_argument` instead of `Failure` (#0000).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and
   `Reader.skip` past the end raises `Invalid_argument` (#0000).
+- Parse errors and warnings print their location as `file:line:column` instead
+  of a byte range, and `Error.position` gives that line and column (#0000).
 
 ### Printing
 
