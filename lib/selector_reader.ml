@@ -618,7 +618,13 @@ let read_forgiving_segment read_item t acc =
   | sel ->
       Cursor.ws item;
       if Cursor.is_done item then sel :: acc else acc
-  | exception Cursor.Parse_error _ -> acc
+  (* Selectors 4 sec. 16.1 drops an invalid selector from a forgiving list. One
+     nested deeper than cascade reads may well be valid, so it is not dropped as
+     if it were: the rule holding it fails instead. *)
+  | exception Cursor.Parse_error e -> (
+      match e.kind with
+      | Error.Too_deep _ -> raise (Cursor.Parse_error e)
+      | _ -> acc)
 
 let read_nth_expr t =
   let expr = read_nth t in

@@ -56,8 +56,9 @@ type kind =
   | Unterminated of Sort.t
       (** Hit EOF inside a {!Sort.t} that needed a closing delimiter. *)
   | Too_deep of int
-      (** A {!Sort.t} opened more nested blocks and functions than the payload,
-          the most the parser builds. *)
+      (** A {!Sort.t} nests blocks or functions deeper than the payload, the
+          most a reader goes into: {!Parser.max_nesting_depth} for what the
+          parser builds, less for a grammar that recurses at each level. *)
 
 type t = {
   loc : Loc.t;
@@ -172,10 +173,6 @@ val unknown_at_rule : Loc.t -> string -> t
 
 val unterminated : Loc.t -> Sort.t -> t
 (** [unterminated loc s] flags an EOF inside an unclosed node of sort [s]. *)
-
-val too_deep : Loc.t -> Sort.t -> limit:int -> t
-(** [too_deep loc s ~limit] flags a node of sort [s] nesting blocks and
-    functions more than [limit] deep. *)
 
 (** {2 Raising constructors}
 

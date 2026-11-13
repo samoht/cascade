@@ -20,26 +20,22 @@ val of_string : ?unicode_ranges:bool -> string -> t
 
 val max_nesting_depth : int
 (** [max_nesting_depth] is [128], the most blocks and functions the parser
-    nests. CSS Syntax 3 sets no limit and leaves one to each implementation;
-    WebKit nests rule lists 128 deep. A rule or declaration nesting deeper is
-    consumed to where the spec ends it and dropped with an {!Error.Too_deep}
-    warning, so no tree the parser builds is deeper than this. *)
+    builds into a tree. CSS Syntax 3 sets no limit and leaves one to each
+    implementation. A block or function nested deeper is kept whole, its
+    contents a {!Component.Flat} run of the tokens read, so the parser drops
+    nothing for its depth and no walk over the tree goes deeper than this. A
+    reader that needs the tree inside the run fails with {!Error.Too_deep}: a
+    rule nested deeper loses what its block holds. *)
 
 (** {1 Stream API} *)
 
 val next : t -> Component.t
 (** [next t] consumes the next component value. At end of input returns
-    [Preserved Token.Eof]. Honours a component pushed back by {!reconsume}.
-
-    @raise Error.Parse_error
-      with {!Error.Too_deep} on a component value nesting past
-      {!max_nesting_depth}, once the value is consumed. *)
+    [Preserved Token.Eof]. Honours a component pushed back by {!reconsume}. *)
 
 val peek : t -> Component.t
 (** [peek t] is the next component value without consuming it. A subsequent
-    {!peek} or {!next} returns the same value.
-
-    @raise Error.Parse_error as {!next} does. *)
+    {!peek} or {!next} returns the same value. *)
 
 val reconsume : t -> Component.t -> unit
 (** [reconsume t cv] pushes [cv] back so the next {!next} returns it. At most
@@ -149,13 +145,12 @@ type grammar = Component.t list -> bool
 
 val matches_grammar : Reader.t -> grammar -> Component.t list option output
 (** [matches_grammar r grammar] runs section 5.4.1: parse a list of component
-    values, then return it only if [grammar] accepts it and no value was left
-    out (see {!list_of_component_values}). *)
+    values, then return it only if [grammar] accepts it. *)
 
 val csv_by_grammar : Reader.t -> grammar -> Component.t list option list output
 (** [csv_by_grammar r grammar] runs section 5.4.2: split into top-level comma
     groups, then match each group independently. Whitespace-only input returns
-    an empty list, and a list that left a value out matches no group. *)
+    an empty list. *)
 
 val stylesheet :
   ?meta:Loc.meta_level ->
@@ -197,13 +192,11 @@ val list_of_declarations :
 
 val component_value : Reader.t -> Component.t option output
 (** [component_value r] runs section 5.4.8: discard surrounding whitespace,
-    parse exactly one component value, and return [None] for empty input,
-    trailing component values, or a value nesting past {!max_nesting_depth}. *)
+    parse exactly one component value, and return [None] for empty input or
+    trailing component values. *)
 
 val list_of_component_values : Reader.t -> Component.t list output
-(** [list_of_component_values r] runs section 5.4.9. A component value nesting
-    past {!max_nesting_depth} is left out and reported in the warnings, whose
-    {!Error.field-recovery} the caller stamps. *)
+(** [list_of_component_values r] runs section 5.4.9. *)
 
 val csv_component_values : Reader.t -> Component.t list list output
 (** [csv_component_values r] runs section 5.4.10, splitting only on top-level
@@ -211,9 +204,8 @@ val csv_component_values : Reader.t -> Component.t list list output
 
 val declaration_value : Reader.t -> Component.t list option output
 (** [declaration_value r] matches CSS Syntax 3 (ED) sec. 7.2's
-    [<declaration-value>] production, and fails on a value nesting past
-    {!max_nesting_depth}. *)
+    [<declaration-value>] production. *)
 
 val any_value : Reader.t -> Component.t list option output
-(** [any_value r] matches CSS Syntax 3 (ED) sec. 7.2's [<any-value>] production,
-    and fails on a value nesting past {!max_nesting_depth}. *)
+(** [any_value r] matches CSS Syntax 3 (ED) sec. 7.2's [<any-value>] production.
+*)

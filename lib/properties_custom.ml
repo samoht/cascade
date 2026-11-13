@@ -237,7 +237,8 @@ let rec canonicalize_custom_colors_components ~lossless
           let block = wrapped.Component.node in
           let value = inner block.value in
           [ Component.Block { wrapped with node = { block with value } } ]
-      | Component.Preserved _ -> [ c ])
+      (* A run nested past the parser's depth is kept as read. *)
+      | Component.Preserved _ | Component.Flat _ -> [ c ])
     comps
 
 (* Typed re-readers exposed for the registry pass that consumes [@property]
@@ -541,7 +542,7 @@ let rec canonicalize_math_whitespace ~in_math comps =
               canonicalize_math_whitespace ~in_math:nested_in_math block.value
             in
             Component.Block { wrapped with node = { block with value } }
-        | Component.Preserved _ -> c)
+        | Component.Preserved _ | Component.Flat _ -> c)
       comps
   in
   let comps' =
@@ -601,7 +602,7 @@ let rec canonicalize_time_components comps =
           let block = wrapped.Component.node in
           let value = canonicalize_time_components block.value in
           Component.Block { wrapped with node = { block with value } }
-      | Component.Preserved _ -> c)
+      | Component.Preserved _ | Component.Flat _ -> c)
     comps
 
 (* CSS Values 4 sec. 6.1: [deg], [grad], [rad] and [turn] are units of one
@@ -652,7 +653,7 @@ let rec canonicalize_angle_components comps =
           let block = wrapped.Component.node in
           let value = canonicalize_angle_components block.value in
           Component.Block { wrapped with node = { block with value } }
-      | Component.Preserved _ -> c)
+      | Component.Preserved _ | Component.Flat _ -> c)
     comps
 
 let normalize_custom_property_value ?(lossless = false)

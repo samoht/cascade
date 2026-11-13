@@ -201,7 +201,6 @@ let bad_condition loc ~at_rule ~reason =
 
 let unknown_at_rule loc name = v ~loc ~sort:Sort.At_rule (Unknown_at_rule name)
 let unterminated loc s = v ~loc ~sort:s (Unterminated s)
-let too_deep loc s ~limit = v ~loc ~sort:s (Too_deep limit)
 
 let fail_sort_mismatch loc ~sort ~expected ~found =
   fail (sort_mismatch loc ~sort ~expected ~found)

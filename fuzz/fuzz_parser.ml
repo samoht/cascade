@@ -34,6 +34,14 @@ let rec shape = function
   | Component.Func { node = { name; arguments; _ }; _ } ->
       let inner = arguments |> List.filter_map shape |> String.concat "," in
       Fmt.kstr (fun s -> Some s) "function(%s:%s)" name inner
+  | Component.Flat { node; _ } ->
+      let inner =
+        node
+        |> List.filter_map (fun (tok : Token.t) ->
+            shape (Component.Preserved tok))
+        |> String.concat ","
+      in
+      Fmt.kstr (fun s -> Some s) "flat(%s)" inner
 
 let shapes cvs = List.filter_map shape cvs
 let comma_shapes groups = List.map shapes groups

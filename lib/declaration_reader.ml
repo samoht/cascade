@@ -22,6 +22,8 @@ let rec component_stays_in_declaration = function
       closed && List.for_all component_stays_in_declaration value
   | Component.Func { node = { terminated; arguments; _ }; _ } ->
       terminated && List.for_all component_stays_in_declaration arguments
+  | Component.Flat { node; _ } ->
+      Component.flat_is_valid ~require_closed:true node
 
 (* A top-level [;] ends the declaration, so the tail becomes a second one. It is
    only a stop at top level: [(a;b)] keeps it inside the block. Sec. 7.2 keeps a
@@ -220,6 +222,7 @@ let rec component_is_complete = function
       closed && List.for_all component_is_complete value
   | Component.Func { node = { terminated; arguments; _ }; _ } ->
       terminated && List.for_all component_is_complete arguments
+  | Component.Flat { node; _ } -> Component.flat_left_open node = []
 
 let validate_complete_declaration_value t =
   if not (List.for_all component_is_complete (value_components t)) then
@@ -231,6 +234,11 @@ let rec component_has_curly_block = function
       List.exists component_has_curly_block value
   | Component.Func { node = { arguments; _ }; _ } ->
       List.exists component_has_curly_block arguments
+  | Component.Flat { node; _ } ->
+      List.exists
+        (fun (tok : Token.t) ->
+          match tok.kind with Token.Open Token.Curly -> true | _ -> false)
+        node
   | Component.Preserved _ -> false
 
 let reject_curly_block_value t =
@@ -248,6 +256,11 @@ let rec component_has_unterminated_string = function
       List.exists component_has_unterminated_string value
   | Component.Func { node = { arguments; _ }; _ } ->
       List.exists component_has_unterminated_string arguments
+  | Component.Flat { node; _ } ->
+      List.exists
+        (fun (tok : Token.t) ->
+          match tok.kind with Token.Bad_string -> true | _ -> false)
+        node
   | Component.Preserved _ -> false
 
 let reject_unterminated_string_value t =
@@ -266,6 +279,8 @@ let rec component_leaves_declaration_value = function
       List.exists component_leaves_declaration_value value
   | Component.Func { node = { arguments; _ }; _ } ->
       List.exists component_leaves_declaration_value arguments
+  | Component.Flat { node; _ } ->
+      not (Component.flat_is_valid ~require_closed:false node)
   | Component.Preserved _ -> false
 
 let reject_custom_bad_string t =
@@ -285,7 +300,7 @@ let invalid_var_arguments arguments =
   match
     List.filter
       (fun component -> not (Component.is_whitespace component))
-      arguments
+      (Component.shallow arguments)
   with
   | Component.Preserved { kind = Token.Ident name; _ } :: rest
     when Custom_property_name.is_valid name -> (
@@ -299,6 +314,65 @@ let invalid_var_arguments arguments =
       | Component.Preserved { kind = Token.Comma; _ } :: _ -> false
       | _ -> true)
   | _ -> true
+
+(* [component_has_invalid_substitution] over a {!Component.Flat} run, in one
+   pass and with no recursion: each block and function the run opens is a frame
+   on [frames], and a substitution call's frame tracks how far its arguments
+   have got through their grammar. *)
+type call_arguments =
+  | Var_name  (** [var(] waiting for its custom property name. *)
+  | Var_fallback_comma  (** The name read; only a comma may follow. *)
+  | Substitution_empty  (** [env(] or [attr(] with no argument yet. *)
+  | Free  (** Anything goes: a fallback, an argument read, any other block. *)
+
+let flat_has_invalid_substitution tokens =
+  let frames = Stack.create () in
+  let invalid = ref false in
+  let argument (tok : Token.t) =
+    match Stack.top_opt frames with
+    | None -> ()
+    | Some (_, _, state) -> (
+        match (!state, tok.kind) with
+        | Var_name, Token.Ident name when Custom_property_name.is_valid name ->
+            state := Var_fallback_comma
+        | Var_fallback_comma, Token.Comma -> state := Free
+        | (Var_name | Var_fallback_comma), _ -> invalid := true
+        | Substitution_empty, _ -> state := Free
+        | Free, _ -> ())
+  in
+  let closes (b : Token.bracket) =
+    match Stack.top_opt frames with
+    | Some (opening, _, _) -> Token.equal_bracket opening b
+    | None -> false
+  in
+  List.iter
+    (fun (tok : Token.t) ->
+      match tok.kind with
+      | Token.Whitespace _ -> ()
+      | Token.Close b when closes b -> (
+          let _, _, state = Stack.pop frames in
+          match !state with
+          | Var_name | Substitution_empty -> invalid := true
+          | Var_fallback_comma | Free -> ())
+      | Token.Function name ->
+          argument tok;
+          let substitution, state =
+            match String.lowercase_ascii_preserve name with
+            | "var" -> (true, Var_name)
+            | "env" | "attr" -> (true, Substitution_empty)
+            | _ -> (false, Free)
+          in
+          Stack.push (Token.Paren, substitution, ref state) frames
+      | Token.Open b ->
+          argument tok;
+          Stack.push (b, false, ref Free) frames
+      | _ -> argument tok)
+    tokens;
+  (* A substitution call the run leaves open is unterminated. *)
+  !invalid
+  || Stack.fold
+       (fun unterminated (_, substitution, _) -> unterminated || substitution)
+       false frames
 
 let rec components_have_invalid_substitution components =
   List.exists component_has_invalid_substitution components
@@ -319,6 +393,7 @@ and component_has_invalid_substitution = function
       invalid_call || components_have_invalid_substitution arguments
   | Component.Block { node = { value; _ }; _ } ->
       components_have_invalid_substitution value
+  | Component.Flat { node; _ } -> flat_has_invalid_substitution node
   | Component.Preserved _ -> false
 
 let rec components_contain_var components =
@@ -329,6 +404,7 @@ and component_contains_var = function
       String.lowercase_ascii_preserve name = "var"
       || components_contain_var arguments
   | Component.Block { node = { value; _ }; _ } -> components_contain_var value
+  | Component.Flat { node; _ } -> Component.flat_calls [ "var" ] node
   | Component.Preserved _ -> false
 
 (* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
@@ -353,6 +429,10 @@ and component_has_substitution = function
       || components_have_substitution arguments
   | Component.Block { node = { value; _ }; _ } ->
       components_have_substitution value
+  (* A call with no argument defers nothing, but it is also invalid, which
+     {!flat_has_invalid_substitution} answers; this only has to see the call. *)
+  | Component.Flat { node; _ } ->
+      Component.flat_calls [ "var"; "env"; "attr" ] node
   | Component.Preserved _ -> false
 
 let raw_value_has_invalid_substitution raw_value =
@@ -603,6 +683,7 @@ and component_calls_named names = function
       || components_call_named names arguments
   | Component.Block { node = { value; _ }; _ } ->
       components_call_named names value
+  | Component.Flat { node; _ } -> Component.flat_calls names node
   | Component.Preserved _ -> false
 
 let validate_anchor_queries t name components =
@@ -692,6 +773,14 @@ and component_has_var_color_function = function
       || components_have_var_color_function arguments
   | Component.Block { node = { value; _ }; _ } ->
       components_have_var_color_function value
+  (* Over a run, a colour function and a [var()] anywhere in it: the run keeps
+     no tree to say which call holds which. Answering yes keeps the value
+     verbatim, which is what the run prints anyway. *)
+  | Component.Flat { node; _ } ->
+      Component.flat_calls
+        [ "rgb"; "rgba"; "hsl"; "hsla"; "hwb"; "lab"; "lch"; "oklab"; "oklch" ]
+        node
+      && Component.flat_calls [ "var" ] node
   | Component.Preserved _ -> false
 
 let has_var_color_function raw_value =

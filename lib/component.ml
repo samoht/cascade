@@ -2,7 +2,11 @@
 
 type 'a node = { node : 'a; loc : Loc.t }
 
-type t = Preserved of Token.t | Block of block node | Func of func node
+type t =
+  | Preserved of Token.t
+  | Block of block node
+  | Func of func node
+  | Flat of Token.t list node
 
 and block = {
   opening : Token.bracket;
@@ -40,14 +44,24 @@ type declaration = declaration_body node
 (* A {!Loc.t} records where a node was read, not what it holds, so two nodes
    that spell the same component value are the same value however far apart the
    source wrote them. *)
-let rank = function Preserved _ -> 0 | Block _ -> 1 | Func _ -> 2
+let rank = function
+  | Preserved _ -> 0
+  | Block _ -> 1
+  | Func _ -> 2
+  | Flat _ -> 3
 
 let rec compare (a : t) (b : t) =
   match (a, b) with
   | Preserved t1, Preserved t2 -> Token.compare_kind t1.kind t2.kind
   | Block b1, Block b2 -> compare_block b1.node b2.node
   | Func f1, Func f2 -> compare_func f1.node f2.node
-  | (Preserved _ | Block _ | Func _), _ -> Int.compare (rank a) (rank b)
+  | Flat r1, Flat r2 ->
+      List.compare
+        (fun (t1 : Token.t) (t2 : Token.t) ->
+          Token.compare_kind t1.kind t2.kind)
+        r1.node r2.node
+  | (Preserved _ | Block _ | Func _ | Flat _), _ ->
+      Int.compare (rank a) (rank b)
 
 and compare_block (b1 : block) (b2 : block) =
   let c = Token.compare_bracket b1.opening b2.opening in
@@ -69,8 +83,93 @@ let source_loc : t -> Loc.t = function
   | Preserved tok -> tok.Token.loc
   | Block b -> b.loc
   | Func f -> f.loc
+  | Flat r -> r.loc
 
 let rule_loc : rule -> Loc.t = function Qualified r -> r.loc | At r -> r.loc
+
+let opening_char : Token.bracket -> char = function
+  | Curly -> '{'
+  | Paren -> '('
+  | Square -> '['
+
+(* One pass over a flat run. The blocks it opens are a byte each in [open_], so
+   the scan takes no stack whatever the run nests. A closer is matched only by
+   the innermost open block, as sec. 5.5.9 closes one; any other is a stray
+   token of the run. *)
+type flat_scan = {
+  bad_token : bool;
+  stray_closer : bool;
+  left_open : Token.bracket list;
+}
+
+let bracket_of_char = function
+  | '{' -> Token.Curly
+  | '[' -> Token.Square
+  | _ -> Token.Paren
+
+let scan_flat tokens =
+  let open_ = Buffer.create 16 in
+  let scan acc (tok : Token.t) =
+    match tok.kind with
+    | Token.Bad_string | Token.Bad_url -> { acc with bad_token = true }
+    | Token.Open b ->
+        Buffer.add_char open_ (opening_char b);
+        acc
+    | Token.Function _ ->
+        Buffer.add_char open_ (opening_char Paren);
+        acc
+    | Token.Close b ->
+        let depth = Buffer.length open_ in
+        if depth > 0 && Buffer.nth open_ (depth - 1) = opening_char b then (
+          Buffer.truncate open_ (depth - 1);
+          acc)
+        else { acc with stray_closer = true }
+    | _ -> acc
+  in
+  let acc =
+    List.fold_left scan
+      { bad_token = false; stray_closer = false; left_open = [] }
+      tokens
+  in
+  let left_open = ref [] in
+  String.iter
+    (fun c -> left_open := bracket_of_char c :: !left_open)
+    (Buffer.contents open_);
+  { acc with left_open = !left_open }
+
+let flat_is_valid ~require_closed tokens =
+  let s = scan_flat tokens in
+  (not s.bad_token) && (not s.stray_closer)
+  && ((not require_closed) || s.left_open = [])
+
+let flat_left_open tokens = (scan_flat tokens).left_open
+
+let flat_calls names tokens =
+  List.exists
+    (fun (tok : Token.t) ->
+      match tok.kind with
+      | Token.Function name ->
+          List.exists (String.equal (String.lowercase_ascii name)) names
+      | _ -> false)
+    tokens
+
+let flat_var_refs tokens =
+  let _, refs =
+    List.fold_left
+      (fun (after_var, refs) (tok : Token.t) ->
+        match tok.kind with
+        | Token.Function name when String.lowercase_ascii name = "var" ->
+            (true, refs)
+        | Token.Ident n when after_var && Custom_property_name.is_valid n ->
+            (false, n :: refs)
+        | _ -> (after_var, refs))
+      (false, []) tokens
+  in
+  List.rev refs
+
+let shallow = function
+  | [ Flat { node; _ } ] -> List.map (fun tok -> Preserved tok) node
+  | components -> components
 
 let rec is_any_value components =
   List.for_all
@@ -81,12 +180,13 @@ let rec is_any_value components =
       | Block { node = { value; closed; _ }; _ } -> closed && is_any_value value
       | Func { node = { arguments; terminated; _ }; _ } ->
           terminated && is_any_value arguments
+      | Flat { node; _ } -> flat_is_valid ~require_closed:true node
       | Preserved _ -> true)
     components
 
 let is_whitespace = function
   | Preserved { kind = Token.Whitespace _; _ } -> true
-  | Preserved _ | Block _ | Func _ -> false
+  | Preserved _ | Block _ | Func _ | Flat _ -> false
 
 (* A real [var()] function anywhere in the components, recursing into function
    arguments and bracketed blocks. A [var(] inside a string or a url() is an
@@ -98,13 +198,9 @@ let rec has_var components =
       | Func { node = { name; arguments; _ }; _ } ->
           String.lowercase_ascii name = "var" || has_var arguments
       | Block { node = { value; _ }; _ } -> has_var value
+      | Flat { node; _ } -> flat_calls [ "var" ] node
       | Preserved _ -> false)
     components
-
-let opening_char : Token.bracket -> char = function
-  | Curly -> '{'
-  | Paren -> '('
-  | Square -> '['
 
 let closing_char : Token.bracket -> char = function
   | Curly -> '}'
@@ -133,6 +229,15 @@ let rec pp : t Pp.t =
       Pp.char ctx ')';
       if not terminated then Pp.string ctx "<unterminated>";
       Pp.char ctx '@';
+      Loc.pp ctx loc
+  | Flat { node; loc } ->
+      Pp.string ctx "<flat";
+      List.iter
+        (fun tok ->
+          Pp.space ctx ();
+          Token.pp ctx tok)
+        node;
+      Pp.string ctx ">@";
       Loc.pp ctx loc
 
 let to_string t = Pp.to_string pp t

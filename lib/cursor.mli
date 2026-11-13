@@ -64,17 +64,11 @@ val of_string : ?meta:Loc.meta_level -> ?unicode_ranges:bool -> string -> t
 (** [of_string ?meta ?unicode_ranges s] lexes [s] into a {!Component.t} list and
     wraps it. The trailing [Eof] token is dropped. [unicode_ranges] is passed to
     {!Lexer.of_reader}, and only the value of a [unicode-range] descriptor sets
-    it.
-
-    @raise Parse_error
-      on input nesting past {!Parser.max_nesting_depth}, as {!Parser.next} does.
-*)
+    it. *)
 
 val of_reader : ?meta:Loc.meta_level -> Reader.t -> t
 (** [of_reader ?meta r] consumes the rest of [r]'s input as a component stream
-    and wraps it.
-
-    @raise Parse_error as {!of_string} does. *)
+    and wraps it. *)
 
 (** {1 Stream API} *)
 
@@ -212,7 +206,10 @@ val err : ?loc:Loc.t -> ?got:string -> t -> string -> 'a
 (** [err ?loc ?got t msg] raises {!Parse_error} at the current position, or at
     [loc] when given. A reader that consumes the offending token before
     rejecting it passes the span it read: {!val-position} has moved on to
-    whatever follows by then, which at the end of a value is the terminator. *)
+    whatever follows by then, which at the end of a value is the terminator.
+    Failing at a {!Component.Flat} run raises {!Error.Too_deep}: the run holds
+    what was nested past {!Parser.max_nesting_depth}, which no reader sees into.
+*)
 
 val err_invalid : ?loc:Loc.t -> t -> string -> 'a
 (** [err_invalid t msg] is [err t ("invalid: " ^ msg)]. *)
