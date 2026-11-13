@@ -455,7 +455,7 @@ let c61_no_merge_starting_style () =
     ".toast{color:red}@starting-style{.toast{opacity:0}}.toast{display:flex}"
     output
 
-let c61_import_substitution_point () =
+let cascade2_import_substitution_point () =
   (* A misplaced @import - one that follows a style rule - is invalid, and every
      browser ignores it (CSS Cascade 5 section 2, CSS 2.1 section 6.3). It is a
      no-op, not a cascade boundary and not a live substitution point: an invalid
@@ -475,10 +475,12 @@ let c61_import_substitution_point () =
     "misplaced @import is a no-op: dropped, surrounding rules merge"
     ".theme{color:red;display:flex}" output
 
-let c61_import_after_bang_comment () =
-  (* A comment is not a rule (CSS Syntax 3 sec. 4.3.2), so a preserved license
-     comment before an @import leaves the import valid (CSS Cascade 5 sec. 2):
-     the browser loads it, and the optimizer must keep it. *)
+let cascade2_import_after_bang_comment () =
+  (* CSS Cascade 5 sec. 2 makes an @import invalid only after a valid at-rule or
+     style rule, and a comment is neither (CSS Syntax 3 sec. 4.3.2 consumes it
+     without producing a token). Chrome keeps the CSSImportRule after a
+     preserved license comment (curated case [comment_before_import] of
+     test/render/parse_recovery.ml), so the optimizer keeps the import. *)
   let import =
     Css.Stylesheet.Import
       { url = "url(a.css)"; layer = None; supports = None; media = None }
@@ -770,12 +772,12 @@ let suite =
       ( "spec cascade 6.1 no merge across starting-style boundary",
         `Quick,
         c61_no_merge_starting_style );
-      ( "spec cascade 6.1 import keeps substitution point",
+      ( "spec cascade 2 import keeps substitution point",
         `Quick,
-        c61_import_substitution_point );
-      ( "spec cascade 6.1 import after bang comment is kept",
+        cascade2_import_substitution_point );
+      ( "spec cascade 2 import after bang comment is kept",
         `Quick,
-        c61_import_after_bang_comment );
+        cascade2_import_after_bang_comment );
       ( "spec cascade 6.1 at-rule boundaries are opaque",
         `Quick,
         c61_no_named_atrule_merge );

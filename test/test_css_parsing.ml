@@ -448,7 +448,7 @@ let spec_author_ident_case_sensitive () =
     "var(--Foo)";
   keeps "gradient position var() argument name"
     ".a{background:linear-gradient(VAR(--Foo),red,blue)}" "var(--Foo)";
-  (* CSS Syntax 3 sec. 8.2 recognises [@charset] only as the exact byte
+  (* CSS Syntax 3 sec. 8.3 recognises [@charset] only as the exact byte
      sequence, so the encoding name is not a keyword to fold. *)
   (match of_string ~strict:true "@charset \"utf-8\";.a{color:red}" with
   | Ok _ -> Alcotest.fail "@charset accepted a lower-case encoding name"
@@ -528,7 +528,7 @@ let spec_at_rule_name_case_insensitive () =
     "an unknown at-rule nested in a block keeps its case"
     "@layer x{@Bar baz;a{color:red}}"
     (render "@layer x{@Bar baz;a{color:red}}");
-  (* CSS Syntax 3 sec. 8.2 matches [@charset] and the quote after it as an exact
+  (* CSS Syntax 3 sec. 8.3 matches [@charset] and the quote after it as an exact
      byte sequence, so no other spelling of it is the charset rule. *)
   Alcotest.(check string)
     "@CHARSET is a name, not the charset rule" "@CHARSET \"UTF-8\";a{color:red}"
