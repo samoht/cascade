@@ -873,7 +873,13 @@ let validate_stylesheet_prelude r state stmt =
       if state.body_seen then
         Cursor.err_invalid r "@namespace must precede style rules";
       state.namespace_seen <- true
-  | _ -> state.body_seen <- true
+  | Rule _ | Declarations _ | Bang_comment _ | Property _ | Layer _ | Media _
+  | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
+  | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+  | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+  | Page _ | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      state.body_seen <- true
 
 let validate_stylesheet_else r acc stmt =
   match stmt with

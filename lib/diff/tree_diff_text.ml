@@ -45,7 +45,13 @@ let describe_prelude_statement (s : Css.statement) =
              ";";
            ])
   | Layer_decl names -> Some (layer_decl_text names)
-  | _ -> None
+  | Rule _ | Declarations _ | Bang_comment _ | Import _ | Property _ | Layer _
+  | Media _ | Container _ | Supports _ | Moz_document _ | Starting_style _
+  | When _ | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+  | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+  | Page _ | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      None
 
 (* A statement's own text, split at its block: the head names it, the body is
    what a descriptor-only at-rule is compared on. *)

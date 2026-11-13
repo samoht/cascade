@@ -16,7 +16,13 @@ let rec element_rules (stmt : statement) : rule list option =
   match stmt with
   | Rule r -> if r.nested = [] then Some [ r ] else None
   | Media (_, b) | Supports (_, b) | Container (_, _, b) -> block_rules b
-  | _ -> None
+  | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Property _ | Layer_decl _ | Layer _ | Moz_document _ | Starting_style _
+  | When _ | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+  | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+  | Page _ | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      None
 
 and block_rules (stmts : statement list) : rule list option =
   List.fold_left
@@ -155,7 +161,15 @@ let rec element_conditions (stmt : statement) =
       | Option.None, Container.Named (name, c) ->
           Container_condition (Option.Some name, c) :: inner b
       | _ -> Container_condition (name, c) :: inner b)
-  | _ -> []
+  | Container (_, Option.None, _)
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      []
 
 (* Media Queries 4 sec. 3.4: [not] negates the query it prefixes, all of it.
    [only] is not a negation and a query list has no single one. *)
@@ -411,7 +425,14 @@ let element_shape (stmt : statement) =
   | Supports (c, body) -> Some (Block (Feature_query c, body))
   | Container (name, cond, body) ->
       Some (Block (Container_query (name, cond), body))
-  | _ -> None
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      None
 
 let block_statement prelude body =
   match prelude with
@@ -605,14 +626,28 @@ let rec settle ~canon_body ~ctx ?parent changed
    marks [!important]. *)
 let conditional_body : statement -> statement list option = function
   | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Option.Some b
-  | _ -> Option.None
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      Option.None
 
 let with_conditional_body stmt body =
   match stmt with
   | Media (q, _) -> Media (q, body)
   | Supports (c, _) -> Supports (c, body)
   | Container (n, c, _) -> Container (n, c, body)
-  | stmt -> stmt
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      stmt
 
 (* A conditional block is the sequence of one block per rule it holds, the way
    {!expand_lists} reads a selector list as one rule per branch. A block moves
@@ -808,7 +843,12 @@ let rec recurse ~ctx ~(parent : Selector.t option) changed (stmt : statement) :
   | Starting_style b -> Starting_style (here b)
   | Origin (o, b) -> Origin (o, here b)
   | Scope (s, e, b) -> Scope (s, e, here b)
-  | other -> other
+  | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Property _ | Layer_decl _ | Supports_condition _ | Keyframes _
+  | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+  | Page _ | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      stmt
 
 and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
     statement list =
@@ -1083,7 +1123,13 @@ let rec sort_property_runs (stmts : statement list) : statement list =
     | Starting_style b -> Starting_style (here b)
     | Origin (o, b) -> Origin (o, here b)
     | Scope (s, e, b) -> Scope (s, e, here b)
-    | other -> other
+    | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+    | Namespace _ | Property _ | Layer_decl _ | Supports_condition _
+    | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+    | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+    | Unknown_at_rule _ ->
+        stmt
   in
   let rec go acc = function
     | [] -> List.rev acc
@@ -1144,7 +1190,14 @@ let rec declares_layer (stmts : statement list) : bool =
     (fun stmt ->
       match stmt with
       | Layer _ | Layer_decl _ | Import _ -> true
-      | stmt -> declares_layer (Stylesheet.statement_children stmt))
+      | ( Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
+        | Property _ | Media _ | Container _ | Supports _ | Moz_document _
+        | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+        | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+        | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+        | Font_palette_values _ | Font_feature_values _ | View_transition _
+        | Position_try _ | Viewport _ | Unknown_at_rule _ ) as stmt ->
+          declares_layer (Stylesheet.statement_children stmt))
     stmts
 
 (* The positions statement [i] adds to the layer order. A named [@layer] block
@@ -1156,7 +1209,13 @@ let statement_slots i (stmt : statement) : slot list =
   | Layer (Some name, _) -> layer_name_slots name
   | Import { layer = Some (_ :: _ as name); _ } -> layer_name_slots name
   | Layer (None, _) | Import _ -> [ Opaque i ]
-  | stmt ->
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
+  | Property _ | Media _ | Container _ | Supports _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
       if declares_layer (Stylesheet.statement_children stmt) then [ Opaque i ]
       else []
 
@@ -1272,7 +1331,13 @@ let rec style_only (stmt : statement) =
   | Rule r -> r.nested = []
   | Media (_, b) | Supports (_, b) | Container (_, _, b) | Starting_style b ->
       List.for_all style_only b
-  | _ -> false
+  | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+  | Property _ | Layer_decl _ | Layer _ | Moz_document _ | When _ | Else _
+  | Supports_condition _ | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _
+  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      false
 
 (* What a layer block moves across without deciding anything with it. *)
 let passes_layer_blocks (stmt : statement) =
@@ -1406,7 +1471,15 @@ let run_layer_names (run : statement list) : layer_name list =
         match Stylesheet.import_layer_name rule with
         | Some (_ :: _ as name) -> [ name ]
         | Some [] | None -> [])
-    | _ -> []
+    | Layer (None, _)
+    | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
+    | Property _ | Media _ | Container _ | Supports _ | Moz_document _
+    | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+    | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+    | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+    | Unknown_at_rule _ ->
+        []
   in
   List.iter (fun stmt -> List.iter add (names_of stmt)) run;
   !seen
@@ -1457,7 +1530,16 @@ let canonical_layer_run (run : statement list) : statement list =
       let empty block =
         List.for_all
           (function
-            | Rule { declarations = []; nested = []; _ } -> true | _ -> false)
+            | Rule { declarations = []; nested = []; _ } -> true
+            | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+            | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
+            | Container _ | Supports _ | Moz_document _ | Starting_style _
+            | When _ | Else _ | Supports_condition _ | Origin _ | Scope _
+            | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+            | Counter_style _ | Page _ | Page_with_margins _
+            | Font_palette_values _ | Font_feature_values _ | View_transition _
+            | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+                false)
           block
       in
       let verdict = function
@@ -1467,7 +1549,16 @@ let canonical_layer_run (run : statement list) : statement list =
             match Stylesheet.import_layer_name rule with
             | Some (_ :: _) -> Keep
             | Some [] | None -> Other)
-        | _ -> Other
+        | Layer (None, _)
+        | Layer_decl []
+        | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
+        | Property _ | Media _ | Container _ | Supports _ | Moz_document _
+        | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+        | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+        | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+        | Font_palette_values _ | Font_feature_values _ | View_transition _
+        | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+            Other
       in
       let emitted = ref false in
       let out = ref [] in
@@ -1492,7 +1583,16 @@ let canonical_layer_run (run : statement list) : statement list =
    it. *)
 let is_layer_construct = function
   | Layer (Some _, _) | Layer_decl (_ :: _) -> true
-  | _ -> false
+  | Layer (None, _)
+  | Layer_decl []
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Media _ | Container _ | Supports _
+  | Moz_document _ | Starting_style _ | When _ | Else _ | Supports_condition _
+  | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+  | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+  | Font_palette_values _ | Font_feature_values _ | View_transition _
+  | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+      false
 
 let rec statement_declares_layer stmt =
   is_layer_construct stmt

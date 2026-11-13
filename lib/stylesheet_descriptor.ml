@@ -1085,7 +1085,7 @@ let expect_view_transition_block r =
 let same_view_transition_descriptor a b =
   match (a, b) with
   | Navigation _, Navigation _ | Types _, Types _ -> true
-  | _ -> false
+  | (Navigation _ | Types _), _ -> false
 
 let replace_view_transition_descriptor desc acc =
   desc

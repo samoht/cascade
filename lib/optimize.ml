@@ -758,7 +758,15 @@ let add_compatibility_prefixes ~targets stylesheet =
           let condition' = add_conditional_prefixes ~targets condition in
           if condition' == condition then original
           else Else (Some condition', body)
-      | _ -> original
+      | Else (None, _)
+      | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+      | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
+      | Container _ | Moz_document _ | Starting_style _ | Supports_condition _
+      | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+      | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+      | Font_palette_values _ | Font_feature_values _ | View_transition _
+      | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+          original
     in
     let stmt =
       if at_declaration_site compatibility_declaration_sites stmt then

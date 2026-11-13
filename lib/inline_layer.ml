@@ -53,7 +53,15 @@ let layer_order stylesheet : string list option =
     | Stylesheet.Else (_, body)
     | Stylesheet.Origin (_, body) ->
         walk ~placed:false prefix body
-    | stmt -> walk ~placed prefix (Stylesheet.statement_children stmt)
+    | Stylesheet.(
+        ( Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+        | Namespace _ | Property _ | Container _ | Starting_style _
+        | Supports_condition _ | Scope _ | Keyframes _ | Webkit_keyframes _
+        | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+        | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+        | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ))
+      as stmt ->
+        walk ~placed prefix (Stylesheet.statement_children stmt)
   in
   walk ~placed:true [] stylesheet;
   if !undecided then None else Some (List.rev !order)
@@ -189,7 +197,14 @@ let layer_claims ~ranks ~unlayered stylesheet =
     | Stylesheet.Else (_, body)
     | Stylesheet.Starting_style body ->
         walk ~layer ~rank body
-    | _ -> if rank <> unlayered then reaches := false
+    | Stylesheet.(
+        ( Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
+        | Property _ | Supports_condition _ | Keyframes _ | Webkit_keyframes _
+        | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+        | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+        | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ))
+      ->
+        if rank <> unlayered then reaches := false
   in
   walk ~layer:[] ~rank:unlayered stylesheet;
   if !reaches then Some slots else None
@@ -342,6 +357,16 @@ let collapse_layer_decided ~keep stylesheet =
                   nested = List.map map_stmt r.nested;
                 }
           | Declarations decls -> Declarations (filter_decls decls)
-          | other -> other)
+          | Stylesheet.(
+              ( Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+              | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _
+              | Moz_document _ | Starting_style _ | When _ | Else _
+              | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+              | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+              | Counter_style _ | Page _ | Page_with_margins _
+              | Font_palette_values _ | Font_feature_values _
+              | View_transition _ | Position_try _ | Viewport _
+              | Unknown_at_rule _ )) as other ->
+              other)
     in
     List.map map_stmt stylesheet

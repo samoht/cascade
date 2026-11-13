@@ -475,7 +475,15 @@ let strip_dead ~keep ~live_set stmts =
     | Page (sel, decls) ->
         Some
           (Page (sel, filter_decls ~at_path ~selector:universal_selector decls))
-    | other -> Some other
+    | Stylesheet.(
+        ( Bang_comment _ | Charset _ | Import _ | Namespace _ | Layer_decl _
+        | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+        | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+        | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+        | Font_face _ | Counter_style _ | Page_with_margins _
+        | Font_palette_values _ | Font_feature_values _ | View_transition _
+        | Position_try _ | Viewport _ | Unknown_at_rule _ )) as other ->
+        Some other
   in
   map_stmts ~parents:[] ~at_path:[] stmts
 

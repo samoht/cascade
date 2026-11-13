@@ -207,7 +207,15 @@ let collect_scopes ~kept stylesheet =
           match parents with p :: _ -> p | [] -> Selector.Universal None
         in
         record at_path sel (local_customs ~kept decls)
-    | _ -> ()
+    | Stylesheet.(
+        ( Bang_comment _ | Charset _ | Import _ | Namespace _ | Layer_decl _
+        | Layer _ | Media _ | Container _ | Supports _ | Moz_document _
+        | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+        | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
+        | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
+        | Font_palette_values _ | Font_feature_values _ | View_transition _
+        | Position_try _ | Viewport _ | Unknown_at_rule _ )) ->
+        ()
   in
   List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
   let all = List.rev !acc in

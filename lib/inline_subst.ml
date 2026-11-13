@@ -754,4 +754,11 @@ and substitute_stmt ~kept ~scopes ~parents ~at_path stmt =
           Font_face (substitute_font_face ~scopes ~at_path descriptors)
       | Page_with_margins (sel, descriptors, margins) ->
           substitute_page_with_margins ~scopes ~at_path sel descriptors margins
-      | other -> other)
+      | Stylesheet.(
+          ( Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+          | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _
+          | Moz_document _ | Starting_style _ | When _ | Else _
+          | Supports_condition _ | Origin _ | Scope _ | Counter_style _
+          | Font_palette_values _ | Font_feature_values _ | View_transition _
+          | Viewport _ | Unknown_at_rule _ )) as other ->
+          other)
