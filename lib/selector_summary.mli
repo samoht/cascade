@@ -32,25 +32,30 @@ val may_overlap : t -> t -> bool
 
     - different pseudo-elements ([::before] vs [::after], or one with and one
       without);
-    - different element names in the subject ([div] vs [p]);
+    - different element names in the subject ([div] vs [p]), compared ASCII
+      case-insensitively since HTML matches [DIV] and [div] alike;
     - both subjects carry non-empty, disjoint ID sets (an element has at most
-      one ID, so two selectors with distinct mandatory IDs can't match it);
-    - conflicting exact attribute requirements on the same subject attribute;
+      one ID, so two selectors with distinct mandatory IDs can't match it),
+      compared ASCII case-insensitively since a quirks-mode document matches
+      [#A] and [#a] alike;
+    - conflicting exact attribute requirements on the same subject attribute,
+      read with their [i] and [s] flags;
     - simple required-token conflicts with [:not(...)] on the subject;
     - simple child-position conflicts such as [:first-child] vs
       [:nth-child(even)];
     - conflicting immediate-parent summaries for child-combinator selectors. *)
 
 val ids : t -> string list
-(** [ids s] returns the IDs that appear in the summary's subject, in sorted
-    order. Helper for tests and assertions. *)
+(** [ids s] returns the IDs that appear in the summary's subject, ASCII
+    lowercased and in sorted order, so two summaries {!may_overlap} reads as one
+    ID share it. *)
 
 val classes : t -> string list
 (** [classes s] returns the classes in the summary's subject, sorted. *)
 
 val element : t -> string option
-(** [element s] is the element name in the subject, or [None] if the subject is
-    universal / unspecified. *)
+(** [element s] is the element name in the subject, ASCII lowercased, or [None]
+    if the subject is universal / unspecified. *)
 
 val is_complex : t -> bool
 (** [is_complex s] is [true] when the summary contains selector structure the
