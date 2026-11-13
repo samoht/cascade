@@ -475,6 +475,28 @@ let c61_import_substitution_point () =
     "misplaced @import is a no-op: dropped, surrounding rules merge"
     ".theme{color:red;display:flex}" output
 
+let c61_import_after_bang_comment () =
+  (* A comment is not a rule (CSS Syntax 3 sec. 4.3.2), so a preserved license
+     comment before an @import leaves the import valid (CSS Cascade 5 sec. 2):
+     the browser loads it, and the optimizer must keep it. *)
+  let import =
+    Css.Stylesheet.Import
+      { url = "url(a.css)"; layer = None; supports = None; media = None }
+  in
+  let rule =
+    Css.rule ~selector:(Css.Selector.class_ "a")
+      [ Css.Declaration.color (hex_color "ff0000") ]
+  in
+  let output =
+    Css.Optimize.stylesheet
+      [ Css.Stylesheet.Bang_comment "! license "; import; rule ]
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "import after a bang comment is kept"
+    "/*! license */@import\"a.css\";.a{color:red}" output
+
 let c61_no_named_atrule_merge () =
   (* CSS-wide name-defining at-rules and descriptor at-rules are stylesheet
      statements, not rule declarations. Optimizing adjacent rules must preserve
@@ -751,6 +773,9 @@ let suite =
       ( "spec cascade 6.1 import keeps substitution point",
         `Quick,
         c61_import_substitution_point );
+      ( "spec cascade 6.1 import after bang comment is kept",
+        `Quick,
+        c61_import_after_bang_comment );
       ( "spec cascade 6.1 at-rule boundaries are opaque",
         `Quick,
         c61_no_named_atrule_merge );

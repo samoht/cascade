@@ -272,6 +272,10 @@ let spec_strict_accepts_valid_stylesheets () =
          (color);" );
       ( "layer statement before import",
         "@layer reset, theme; @import url(theme.css) layer(theme);" );
+      (* A comment is not a rule (CSS Syntax 3 sec. 4.3.2), so a preserved one
+         leaves the [@import] after it in the prelude. *)
+      ( "bang comment before import",
+        "/*! license */ @import url(a.css); .a { color: red }" );
       ("anonymous layer block", "@layer { .anonymous { color: red } }");
       ( "nested layer block",
         "@layer framework { @layer theme { .title { color: red } } }" );
@@ -355,6 +359,14 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@charset \"UTF-8\" .x { color: red }" );
       ("charset must use string token", "@charset url(UTF-8);");
       ("late charset", ".x { color: red } @charset \"UTF-8\";");
+      (* CSS Syntax 3 sec. 3.2 honours [@charset] only as the first bytes of the
+         sheet, so even an [@layer] statement may not precede it. *)
+      ( "layer statement before charset",
+        "@layer a; @charset \"UTF-8\"; .x { color: red }" );
+      (* CSS Cascade 5 sec. 2: nothing valid between two imports but [@layer]
+         statements before the first. *)
+      ( "layer statement between imports",
+        "@import url(a.css); @layer a; @import url(b.css);" );
       ( "late import after qualified rule",
         ".x { color: red } @import url(late.css);" );
       ( "namespace after qualified rule",
@@ -523,6 +535,26 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@scope (.x) to () { .x { color: red } }" );
     ]
 
+(* An invalid declaration is reported wherever it sits: the frames of
+   [@keyframes] hold declarations as a style rule does. *)
+let declarations_in_keyframes_are_checked () =
+  List.iter
+    (fun (name, css) -> strict_reject name css)
+    [
+      ("sin() as a width in a style rule", ".x { width: sin(1) }");
+      ( "sin() as a width in keyframes",
+        "@keyframes k { from { width: sin(1) } }" );
+      ( "sin() as a width in webkit keyframes",
+        "@-webkit-keyframes k { from { width: sin(1) } }" );
+      ( "sin() as a width in moz keyframes",
+        "@-moz-keyframes k { from { width: sin(1) } }" );
+      ( "specified hue in style rule",
+        ".x { color: color-mix(in hsl specified hue, red, blue) }" );
+      ( "specified hue in keyframes",
+        "@keyframes k { from { color: color-mix(in hsl specified hue, red, \
+         blue) } }" );
+    ]
+
 let suite =
   ( "stylesheet_strict",
     [
@@ -546,4 +578,7 @@ let suite =
       ( "spec strict rejects invalid stylesheets",
         `Quick,
         spec_strict_rejects_invalid_stylesheets );
+      ( "declarations in keyframes are checked",
+        `Quick,
+        declarations_in_keyframes_are_checked );
     ] )
