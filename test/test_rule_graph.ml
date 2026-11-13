@@ -348,12 +348,14 @@ let rules_conflict_declarations () =
       ( "a shorthand against its own longhand",
         ".a{margin:1px}.a{margin-top:2px}",
         true );
-      (* The cascade ranks by importance before it reaches order of appearance,
-         so the important declaration wins from either position. *)
+      (* CSS Cascade 5 sec. 6.1 (Cascade Sorting Order) ranks origin and
+         importance before order of appearance, so the important declaration
+         wins from either position. *)
       ( "a normal declaration against an important one",
         ".a{color:red}.a{color:blue!important}",
         false );
-      (* Equal importance leaves order of appearance to decide. *)
+      (* Cascade 5 sec. 6.1: equal importance, origin and specificity leave
+         order of appearance to decide. *)
       ( "two important declarations on one property",
         ".a{color:red!important}.a{color:blue!important}",
         true );
@@ -380,13 +382,16 @@ let rules_conflict_declarations () =
       ( "two shorthands sharing one longhand",
         ".a{border-top:1px solid red}.a{border-color:blue}",
         true );
-      (* The writing mode of the elements the sheet matches decides which
-         physical side a flow-relative property resolves to, and for
-         horizontal-tb ltr that side is the left one. *)
+      (* CSS Logical 1 sec. 4 (Flow-Relative Box Model Properties): paired
+         flow-relative and physical properties share a computed value, and sec.
+         4.2 maps [margin-inline-start] to [margin-left] under horizontal-tb
+         ltr, so the two contend for that slot. *)
       ( "a flow-relative property against a physical one",
         ".a{margin-inline-start:1px}.a{margin-left:2px}",
         true );
-      (* [all] resets every property but the custom ones, [color] included. *)
+      (* CSS Cascade 5 sec. 3.2 (Resetting All Properties: the all property):
+         [all] resets every property but [direction], [unicode-bidi] and the
+         custom ones, [color] included. *)
       ("an all reset against a longhand", ".a{all:unset}.a{color:red}", true);
       ( "two shorthands sharing no longhand",
         ".a{margin:1px}.a{padding:2px}",
@@ -473,9 +478,10 @@ let rules_conflict_specificity () =
       ("a class against an :is() holding an id", ".a", ":is(.b,#x)", false);
       ("a list one branch of which ties", ".a,#x", ".b", true);
     ];
-  (* [parent] expands each selector against the rule they are nested in: [&+&]
-     weighs [.p+.p], (0,2,0), as much as [.p .a], so the two tie. Read without
-     it, [&] would weigh nothing. *)
+  (* [parent] expands each selector against the rule they are nested in. CSS
+     Nesting 1 sec. 4 (Nesting Selector) gives [&] the specificity of [.p],
+     (0,1,0), so [&+&] weighs (0,2,0), as much as [.p .a], and the two tie. Read
+     without it, [&] would weigh nothing. *)
   check_rules_conflict
     ~parent:(Css.Selector.of_string ".p")
     ("a nested pair tied once expanded", "&+&{color:red}.a{color:blue}", true)

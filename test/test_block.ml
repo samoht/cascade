@@ -315,31 +315,44 @@ let test_distant_media_crosses_a_more_specific_rule () =
        "@media (min-width:1px){.x{color:red}}#y{color:blue}@media \
         (min-width:1px){.b{color:green}}")
 
-(* An [@scope] body stands for its scoping root with [&] (CSS Cascade 6 sec.
-   2.5.2), a selector the pass does not have, so it cannot weigh [& .b] against
-   [.b] and keeps the order. *)
-let test_distant_media_keeps_order_across_a_scope_body () =
+(* A missed optimisation, not a cascade rule. CSS Cascade 6 sec. 3.1 (Cascade
+   Sorting Order) ranks scope proximity after specificity and before order of
+   appearance, and gives a rule without a scoping root infinite proximity. On an
+   element both [@scope (.s) { & .b }] and [.b] match, either specificity or the
+   scoped rule's finite proximity decides, so order never does and the later
+   block could move above the scope body. The pass reads no scoping root (sec.
+   3.5.1, Effects of @scope, makes [&] the root), so it refuses: a pass that
+   learns to weigh the pair may merge here. *)
+let test_distant_media_refuses_to_cross_a_scope_body () =
   let css =
     "@media (min-width:1px){.x{color:red}}@media print{@scope (.s){& \
      .b{color:blue}}}@media (min-width:1px){.b{color:green}}"
   in
   Alcotest.(check string)
-    "the later block stays behind the scope body"
+    "the pass does not yet move the later block over the scope body"
     (render (block css))
     (merge_distant_media css)
 
-(* CSS Nesting 1 sec. 3 weighs [&] as the enclosing rule's selector, and here
-   that is [.outer .card], not [.card]: [&+&] weighs (0,4,0), as much as [.outer
-   .card .y.z]. An element both match reads blue then green, so the later block
-   cannot move above [.y.z]. Weighing [&] as [.card] alone would give (0,2,0)
-   against (0,3,0) and let it move. *)
+(* CSS Nesting 1 sec. 4 (Nesting Selector) gives [&] the largest specificity of
+   the enclosing rule's selector, here [.outer .card], (0,2,0), not [.card]
+   alone. So [&+&] weighs (0,4,0), as much as [.outer .card .y.z] (Selectors 4
+   sec. 15, Calculating a selector's specificity), and on an element both match
+   order of appearance decides: blue then green. Whatever else the optimizer
+   does, the [&+&] block stays behind [.y.z]. Weighing [&] as [.card] would give
+   (0,2,0) against (0,3,0) and let it move. *)
 let test_distant_media_weighs_a_nested_body_by_its_ancestors () =
-  let css =
-    ".outer{color:#000;.card{@media(width>=1px){.a{color:red}}.y.z{color:#00f}@media(width>=1px){&+&{color:green}}}}"
+  let out =
+    render
+      (Css.optimize
+         (block
+            ".outer{color:#000;.card{@media(width>=1px){.a{color:red}}.y.z{color:#00f}@media(width>=1px){&+&{color:green}}}}"))
   in
-  Alcotest.(check string)
-    "the later block stays behind a rule of equal weight" css
-    (render (Css.optimize (block css)))
+  match
+    ( Astring.String.find_sub ~sub:".y.z{color:#00f}" out,
+      Astring.String.find_sub ~sub:"&+&{color:green}" out )
+  with
+  | Some y_z, Some amp -> Alcotest.(check bool) out true (y_z < amp)
+  | _ -> Alcotest.failf "both rules survive: %s" out
 
 (* --- allocation / complexity guard --- *)
 
@@ -414,8 +427,8 @@ let suite =
         `Quick test_distant_media_keeps_order_across_a_pseudo_element_list;
       Alcotest.test_case "distant @media crosses a more specific rule" `Quick
         test_distant_media_crosses_a_more_specific_rule;
-      Alcotest.test_case "distant @media stays behind a scope body" `Quick
-        test_distant_media_keeps_order_across_a_scope_body;
+      Alcotest.test_case "distant @media refuses to cross a scope body (missed)"
+        `Quick test_distant_media_refuses_to_cross_a_scope_body;
       Alcotest.test_case "distant @media weighs a nested body by its ancestors"
         `Quick test_distant_media_weighs_a_nested_body_by_its_ancestors;
       Alcotest.test_case "merge distant @media is subquadratic" `Quick
