@@ -700,11 +700,30 @@ let normalize_is_idempotent () =
       "theme(static)";
     ]
 
+(* A number past 2^62 prints like every other CSS number: [1e30], never C
+   printf's [1e+30] or mingw's [1e+030]. CSS Syntax 3 sec. 4.3.13 reads the
+   exponent marker in either case and its sign as optional, so [1E30], [1e+30]
+   and [1e30] are one value and the shortest spelling is the minifier's; CSSOM
+   sec. 6.7.2 serialisation, which never uses an exponent, is not what this
+   prints. A magnitude too small for the fixed decimals keeps its value too:
+   Chrome reads [(min-resolution: 4e-33dpi)] back as itself, not as [0dpi]
+   (curated/media_tiny_resolution in test/render/parse_recovery.ml). *)
+let test_large_resolution () =
+  let check input expected =
+    Alcotest.(check string) input expected (to_string (of_string input))
+  in
+  check "(min-resolution:1e30dpi)" "(min-resolution: 1e30dpi)";
+  check "(min-resolution:1E30dpi)" "(min-resolution: 1e30dpi)";
+  check "(min-resolution:1e+30dpi)" "(min-resolution: 1e30dpi)";
+  check "(min-resolution:1e-30dpi)" "(min-resolution: 1e-30dpi)";
+  check "(min-resolution:4e-33dpi)" "(min-resolution: 4e-33dpi)"
+
 let suite =
   let open Alcotest in
   ( "media",
     [
       test_case "to_string" `Quick test_string_output;
+      test_case "large resolution" `Quick test_large_resolution;
       test_case "spec media query level 4/5 vectors" `Quick
         spec_media_l45_vectors;
       test_case "spec media query structural vectors" `Quick

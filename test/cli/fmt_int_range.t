@@ -30,7 +30,11 @@ A fraction whose digits, scaled to the printed precision, reach 2^62.
   $ printf 'a{width:46116860184.27387904px}' | cascade fmt --minify - 2>&1
   a{width:46116860184.3px}
 
-A media feature length, and a resolution.
+A media feature length, and a resolution. A number past the `int`
+range prints in exponent notation as `1e30`, never `1e+30`: CSS Syntax
+3 sec. 4.3.13 reads the sign after `e` as optional, so both spell one
+value and the shorter is the minifier's. This is a minified stylesheet,
+not CSSOM sec. 6.7.2 serialisation, which never uses an exponent.
 
   $ printf '@media (min-width:4611686018427387904px){a{color:red}}' | cascade fmt - 2>&1
   @media (min-width: 4.61168601843e18px) {
@@ -41,13 +45,13 @@ A media feature length, and a resolution.
   $ printf '@media (min-width:4611686018427387904px){a{color:red}}' | cascade fmt --minify - 2>&1
   @media(width>=4.61168601843e18px){a{color:red}}
   $ printf '@media (min-resolution:1e30dpi){a{color:red}}' | cascade fmt - 2>&1
-  @media (min-resolution: 1e+30dpi) {
+  @media (min-resolution: 1e30dpi) {
     a {
       color: red;
     }
   }
   $ printf '@media (min-resolution:1e30dpi){a{color:red}}' | cascade fmt --minify - 2>&1
-  @media(resolution>=1e+30dpi){a{color:red}}
+  @media(resolution>=1e30dpi){a{color:red}}
 
 A ratio whose terms have no `int`, or whose numerator is not an
 integer, stays as written.
@@ -80,25 +84,32 @@ A container width.
   $ printf '@container (min-width:1e30px){a{color:red}}' | cascade fmt --minify - 2>&1
   @container(width>=1e30px){a{color:red}}
 
-An attribute value written as a number.
+An attribute value written as a number is no value at all: Selectors 4
+sec. 6.1 takes an ident or a string there, and Chrome drops the rule
+rather than read the number as a string. So does cascade, with a warning.
 
-  $ printf '[data-x=1e30]{color:red}' | cascade fmt - 2>&1
-  [data-x="1e+30"] {
-    color: red;
+  $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt - 2>/dev/null
+  .b {
+    color: green;
   }
-  $ printf '[data-x=1e30]{color:red}' | cascade fmt --minify - 2>&1
-  [data-x="1e+30"]{color:red}
+  $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt --minify - 2>/dev/null
+  .b{color:green}
+  $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt --minify - 2>&1 >/dev/null | grep -c 'attribute value'
+  1
 
-A keyframe timeline range offset.
+A keyframe timeline range offset, which Scroll-driven Animations 1
+(Appendix A) leaves unbounded: `<timeline-range-name> <percentage>`,
+where a plain offset is `<percentage [0,100]>`. Its exponent prints as
+the media resolution's does.
 
   $ printf '@keyframes k{entry 1e30%%{color:red}}' | cascade fmt - 2>&1
   @keyframes k {
-    entry 1e+30% {
+    entry 1e30% {
       color: red;
     }
   }
   $ printf '@keyframes k{entry 1e30%%{color:red}}' | cascade fmt --minify - 2>&1
-  @keyframes k{entry 1e+30%{color:red}}
+  @keyframes k{entry 1e30%{color:red}}
 
 A math function at an `<integer>` slot. CSS Values 4 sec. 10.12 rounds
 it and clamps the result to the supported range at computed-value time,

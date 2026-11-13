@@ -97,23 +97,13 @@ let read_attribute_value_ident t s (loc : Loc.t) =
   in
   match raw with Some raw when String.contains raw '\\' -> raw | _ -> s
 
-let format_attribute_number n (unit : string option) =
-  let number =
-    match Common.int_of_float_opt n with
-    | Some i when Float.is_integer n -> string_of_int i
-    | _ -> string_of_float n
-  in
-  match unit with None -> number | Some u -> number ^ u
-
+(* Selectors 4 sec. 6.1: an unquoted value is an [<ident-token>]; a number, a
+   dimension or a percentage there is an invalid selector, as Chrome reads
+   it. *)
 let read_attribute_value_unquoted t =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident s; loc; _ }) ->
       read_attribute_value_ident t s loc
-  | Some (Component.Preserved { kind = Token.Number_tok _; _ })
-  | Some (Component.Preserved { kind = Token.Dimension _; _ })
-  | Some (Component.Preserved { kind = Token.Percentage _; _ }) ->
-      let n, unit = Cursor.number_with_unit t in
-      format_attribute_number n unit
   | _ -> ""
 
 let read_attribute_value t =

@@ -152,13 +152,12 @@ val read_attr_name : Cursor.t -> attr_name
 (** [read_attr_name t] parses an [attr_name] from [t]. *)
 
 val attr_value_needs_quoting : string -> bool
-(** [attr_value_needs_quoting value] returns [true] if the given attribute value
-    requires quoting according to CSS specifications. Values need quotes if:
-    - They are empty
-    - They start with a digit
-    - They start with double hyphen (--)
-    - They contain characters that are not valid in CSS identifiers (anything
-      other than letters, digits, hyphens, underscores, or non-ASCII) *)
+(** [attr_value_needs_quoting value] is [true] when [value] is not one CSS ident
+    ({!Syntax.is_ident}), so it must print as a string: Selectors 4 sec. 6.1
+    takes an [<ident-token>] or a [<string-token>] as an attribute value. A
+    value that is empty, starts with a digit or with [-] before a digit, is a
+    lone [-], or holds a code point no ident holds needs quotes; [--2] and [-a]
+    do not. *)
 
 val pp_nth : nth Pp.t
 (** [pp_nth] pretty-prints nth expressions. *)

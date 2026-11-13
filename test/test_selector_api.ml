@@ -257,7 +257,21 @@ let test_attr_value_quoting () =
   (* With underscore *)
   check_needs_quoting "value123" false;
   (* Letters then digits *)
-  check_needs_quoting "-webkit" false (* Single hyphen prefix *)
+  check_needs_quoting "-webkit" false;
+
+  (* Single hyphen prefix *)
+
+  (* CSS Syntax 3 sec. 4.3.9: an ident sequence opens with a name-start code
+     point, [--], or [-] before a name-start code point. A sign or a [.] before
+     a digit opens a <number-token> (sec. 4.3.10) and a lone [-] is a
+     <delim-token>, so those keep their quotes. *)
+  check_needs_quoting "-2" true;
+  check_needs_quoting "-" true;
+  check_needs_quoting "-.5" true;
+  check_needs_quoting "+2" true;
+  check_needs_quoting "--2" false;
+  check_needs_quoting "-a" false;
+  check_needs_quoting "-_" false
 
 let test_attr_flag () =
   (* Test attribute selector flags - returns option type *)
@@ -386,7 +400,7 @@ let test_ns () =
   (* Namespaced attributes in regular selectors *)
   check "div[xml|lang]";
   check "span[xlink|href]";
-  check ~expected:"rect[svg|width=\"100\"]" "rect[svg|width=100]";
+  check "rect[svg|width=\"100\"]";
 
   (* Complex namespaced selectors *)
   check ~expected:"svg|g.highlight>svg|rect[fill=red]"

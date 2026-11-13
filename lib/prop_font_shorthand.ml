@@ -748,7 +748,7 @@ let rec read_font_stretch_with ~keywords t : font_stretch =
      puts the range on the value a math function resolves to, so a folded
      comparison answers to it the way a literal does. *)
   let checked t n : font_stretch =
-    if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
+    if n < 0. then err_invalid_value t "font-stretch" (Pp.string_of_float n);
     Pct n
   in
   let read_percentage t : font_stretch = checked t (Cursor.pct t) in

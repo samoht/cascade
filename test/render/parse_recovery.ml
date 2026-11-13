@@ -366,6 +366,105 @@ let curated =
     ( "late_namespace",
       ".a { color: green }\n.b { color: red }",
       ".a { color: green }\n@namespace x url(y);\n.b { color: red }" );
+    (* Selectors 4 sec. 6.1: an attribute value is an ident or a string, so a
+       numeric token there is an invalid selector and the rule goes. *)
+    ( "attr_number_value",
+      "[data-x=\"2\"] { color: green }\n.b { color: red }",
+      "[data-x=2] { color: green }\n.b { color: red }" );
+    ( "attr_dimension_value",
+      "[data-x=\"2px\"] { color: green }\n.b { color: red }",
+      "[data-x=2px] { color: green }\n.b { color: red }" );
+    ( "attr_percentage_value",
+      "[data-x=\"50%\"] { color: green }\n.b { color: red }",
+      "[data-x=50%] { color: green }\n.b { color: red }" );
+    (* CSS Syntax 3 sec. 4.3.10: a sign or a [.] before a digit starts a number,
+       so each of these is a <number-token> and the rule goes. *)
+    ( "attr_negative_number_value",
+      "[x=\"-2\"] { color: green }\n.b { color: red }",
+      "[x=-2] { color: green }\n.b { color: red }" );
+    ( "attr_plus_number_value",
+      "[x=\"+2\"] { color: green }\n.b { color: red }",
+      "[x=+2] { color: green }\n.b { color: red }" );
+    ( "attr_fraction_value",
+      "[x=\".5\"] { color: green }\n.b { color: red }",
+      "[x=.5] { color: green }\n.b { color: red }" );
+    ( "attr_number_value_with_flag",
+      "[x=\"2\" i] { color: green }\n.b { color: red }",
+      "[x=2 i] { color: green }\n.b { color: red }" );
+    ( "attr_any_namespace_number_value",
+      "[*|x=\"2\"] { color: green }\n.b { color: red }",
+      "[*|x=2] { color: green }\n.b { color: red }" );
+    ( "attr_no_namespace_number_value",
+      "[|x=\"2\"] { color: green }\n.b { color: red }",
+      "[|x=2] { color: green }\n.b { color: red }" );
+    (* Sec. 4.3.1: [#a] is a <hash-token> and a lone [-] a <delim-token>,
+       neither an ident nor a string. *)
+    ( "attr_hash_value",
+      "[x=\"#a\"] { color: green }\n.b { color: red }",
+      "[x=#a] { color: green }\n.b { color: red }" );
+    ( "attr_lone_dash_value",
+      "[x=\"-\"] { color: green }\n.b { color: red }",
+      "[x=-] { color: green }\n.b { color: red }" );
+    (* Sec. 4.3.9: [--], [-] before a name code point and an escape each start
+       an ident sequence, so these are <ident-token>s and the rule stays: the
+       values are "--2", "-a", "2" and "-2". *)
+    ( "attr_double_dash_value",
+      "[x=\"--2\"] { color: green }\n.b { color: red }",
+      "[x=--2] { color: green }\n.b { color: red }" );
+    ( "attr_dash_ident_value",
+      "[x=\"-a\"] { color: green }\n.b { color: red }",
+      "[x=-a] { color: green }\n.b { color: red }" );
+    ( "attr_escaped_digit_value",
+      "[x=\"2\"] { color: green }\n.b { color: red }",
+      "[x=\\32] { color: green }\n.b { color: red }" );
+    ( "attr_dash_escaped_digit_value",
+      "[x=\"-2\"] { color: green }\n.b { color: red }",
+      "[x=-\\32] { color: green }\n.b { color: red }" );
+    (* CSS Syntax 3 sec. 4.3.5: a backslash in a string escapes the next code
+       point, so ["a\\b"] is the value [a\b]; a bare [a\b] is [a] then the hex
+       escape [\b], U+000B (sec. 4.3.7). *)
+    ( "attr_string_backslash_value",
+      "[x=\"ab\"] { color: green }\n.b { color: red }",
+      "[x=\"a\\\\b\"] { color: green }\n.b { color: red }" );
+    (* CSS Syntax 3 sec. 4.3.13 reads an exponent, so a magnitude below the
+       printer's fixed decimals is still that magnitude, not 0. *)
+    ( "media_tiny_resolution",
+      "@media (min-resolution: 1dpi) { .a { color: green } }\n.b { color: red }",
+      "@media (min-resolution: 4e-33dpi) { .a { color: green } }\n\
+       .b { color: red }" );
+    ( "container_tiny_width",
+      "@container (min-width: 1rem) { .a { color: green } }\n.b { color: red }",
+      "@container (min-width: 4e-33rem) { .a { color: green } }\n\
+       .b { color: red }" );
+    (* Sec. 4.3.13 takes [E] for [e] and an optional [+]. *)
+    ( "media_exponent_spellings",
+      "@media (min-resolution: 1dpi) { .a { color: green } }\n.b { color: red }",
+      "@media (min-resolution: 1E30dpi) { .a { color: green } }\n\
+       @media (min-resolution: 1e+30dpi) { .c { color: green } }\n\
+       .b { color: red }" );
+    (* Scroll-driven Animations 1, Appendix A: [<keyframe-selector> = from | to
+       | <percentage [0,100]> | <timeline-range-name> <percentage>]. Only the
+       plain percentage is bounded. *)
+    ( "keyframe_range_offset_exponent",
+      "@keyframes k { from { opacity: 0 } entry 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } entry 1e30% { opacity: 1 } }\n\
+       .a { color: green }" );
+    ( "keyframe_range_offset_negative",
+      "@keyframes k { from { opacity: 0 } entry 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } entry -1e30% { opacity: 1 } }\n\
+       .a { color: green }" );
+    ( "keyframe_range_offset_tiny",
+      "@keyframes k { from { opacity: 0 } entry 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } entry 4e-33% { opacity: 1 } }\n\
+       .a { color: green }" );
+    ( "keyframe_plain_offset_exponent",
+      "@keyframes k { from { opacity: 0 } 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } 1e30% { opacity: 1 } }\n\
+       .a { color: green }" );
     ( "unbalanced_open_bracket",
       ".a[x=y] { color: green }\n.b { color: red }",
       ".a[x { color: green }\n.b { color: red }" );

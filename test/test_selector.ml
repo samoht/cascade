@@ -253,6 +253,40 @@ let attribute_cases () =
   check ~expected:"[id=--custom]" "[id=\"--custom\"]";
   check ~expected:"[class=--modifier]" "[class=\"--modifier\"]";
 
+  (* Selectors 4 sec. 6.1: "Attribute values must be <ident-token>s or
+     <string-token>s." A string drops its quotes only when the bare text reads
+     back as one <ident-token> (CSS Syntax 3 sec. 4.3.9). Each of these would
+     come back as a <number-token>, a <dimension-token> or a <delim-token> (sec.
+     4.3.10, 4.3.1), and Chrome drops [[x=-2]] and [[x=-]]
+     (curated/attr_negative_number_value and curated/attr_lone_dash_value in
+     test/render/parse_recovery.ml), so the quotes stay. *)
+  List.iter
+    (fun value -> check (String.concat "" [ "[x=\""; value; "\"]" ]))
+    [ "2"; "-2"; "+2"; ".5"; "-.5"; "1e3"; "2px"; "-" ];
+  check_construct "[x=\"-2\"]" (attribute "x" (Exact "-2"));
+  check_construct "[x=\"-\"]" (attribute "x" (Exact "-"));
+  (* Selectors 4 sec. 7.2 takes an <ident> or a <string> as a :lang() range, by
+     the same rule. *)
+  check ":lang(\"-2\")";
+  (* CSS Syntax 3 sec. 4.3.9: [--] and a [-] before a name code point start an
+     ident sequence, and Chrome keeps [[x=--2]] and [[x=-a]]
+     (curated/attr_double_dash_value, curated/attr_dash_ident_value). *)
+  check "[x=--2]";
+  check "[x=-a]";
+  check ~expected:"[x=-a]" "[x=\"-a\"]";
+  (* An escape starts one too: [\32] is the value "2" and [-\32] the value "-2",
+     kept as written (curated/attr_escaped_digit_value,
+     curated/attr_dash_escaped_digit_value). *)
+  check "[x=\\32]";
+  check "[x=-\\32]";
+  (* CSS Syntax 3 sec. 4.3.5: a backslash in a string escapes the next code
+     point, so the string ["a\\b"] holds [a\b]. Printed bare, [a\b] is [a] then
+     the hex escape [\b], U+000B (sec. 4.3.7), which Chrome reads as another
+     value (curated/attr_string_backslash_value). *)
+  check "[x=\"a\\\\b\"]";
+  check ~minify:false "[x=\"a\\\\b\"]";
+  check ~minify:false "[x='a\\\\b']";
+
   (* Test cases where quotes are OPTIONAL per CSS spec *)
   (* Simple identifiers don't need quotes - test both forms are accepted and normalized *)
   check "[type=button]";
@@ -635,7 +669,28 @@ let parse_errors_attributes () =
   check_parse_error ".test[]" "expected identifier";
   check_parse_error ".test[[attr]]" "expected identifier";
   check_parse_error ".test[data id=\"value\"]" "trailing tokens";
-  check_parse_error ".test[data-id=value with spaces]" "trailing tokens"
+  check_parse_error ".test[data-id=value with spaces]" "trailing tokens";
+  (* Selectors 4 sec. 6.1 takes an [<ident-token>] or a [<string-token>] as the
+     value, and Chrome drops a rule whose value is a number, a dimension or a
+     percentage instead of reading it as a string. *)
+  check_parse_error "[data-x=2]" "attribute value";
+  check_parse_error "[data-x=1.0]" "attribute value";
+  check_parse_error "[data-x=1e30]" "attribute value";
+  check_parse_error "[data-x=2px]" "attribute value";
+  check_parse_error "[data-x=50%]" "attribute value";
+  check_parse_error "rect[svg|width=100]" "attribute value";
+  (* CSS Syntax 3 sec. 4.3.10: a sign or a [.] before a digit starts a number,
+     so each value is a <number-token>, and Chrome drops each rule
+     (curated/attr_*_value in test/render/parse_recovery.ml). Sec. 4.3.1 makes
+     [#a] a <hash-token> and a lone [-] a <delim-token>. *)
+  check_parse_error "[x=-2]" "attribute value";
+  check_parse_error "[x=+2]" "attribute value";
+  check_parse_error "[x=.5]" "attribute value";
+  check_parse_error "[x=2 i]" "attribute value";
+  check_parse_error "[*|x=2]" "attribute value";
+  check_parse_error "[|x=2]" "attribute value";
+  check_parse_error "[x=#a]" "attribute value";
+  check_parse_error "[x=-]" "attribute value"
 
 let parse_errors_combinators () =
   check_parse_error ".test >> .child" "expected at least one selector";

@@ -132,6 +132,38 @@ let spec_keyframe_invalid_edges () =
       "from, middle, to";
     ]
 
+(* Scroll-driven Animations 1, Appendix A "Named Timeline Range Keyframe
+   Selectors": [<keyframe-selector> = from | to | <percentage [0,100]> |
+   <timeline-range-name> <percentage>]. The plain percentage is bounded, the one
+   after a range name is not, and Chrome keeps [entry 1e30%] and [entry -1e30%]
+   while it drops a plain [1e30%] (curated/keyframe_range_offset_* in
+   test/render/parse_recovery.ml).
+
+   A number past 2^62 prints like every other CSS number: [1e30], never C
+   printf's [1e+30] or mingw's [1e+030]. CSS Syntax 3 sec. 4.3.13 reads the
+   exponent marker in either case and its sign as optional, so [1E30], [1e+30]
+   and [1e30] are one value and the shortest spelling is the minifier's; this is
+   not CSSOM sec. 6.7.2 serialisation, which never uses an exponent. A magnitude
+   too small for the fixed decimals keeps its value rather than printing as
+   [0%]. *)
+let test_large_offset () =
+  Alcotest.(check string)
+    "timeline range offset" "entry 1e30%"
+    (string_of_position (Timeline_range ("entry", 1e30)));
+  let check input expected =
+    Alcotest.(check (option string))
+      input (Some expected)
+      (Option.map string_of_position (position_of_string input))
+  in
+  check "entry 1E30%" "entry 1e30%";
+  check "entry 1e+30%" "entry 1e30%";
+  check "entry -1e30%" "entry -1e30%";
+  check "exit 4e-33%" "exit 4e-33%";
+  check "exit -4e-33%" "exit -4e-33%";
+  match selector_of_string "1e30%" with
+  | exception Invalid_argument _ -> ()
+  | Positions _ -> Alcotest.fail "a plain 1e30% is past <percentage [0,100]>"
+
 let suite =
   let open Alcotest in
   ( "keyframe",
@@ -147,4 +179,5 @@ let suite =
         spec_keyframe_duplicate_offsets;
       test_case "spec keyframe invalid selector recovery edges" `Quick
         spec_keyframe_invalid_edges;
+      test_case "large offset" `Quick test_large_offset;
     ] )

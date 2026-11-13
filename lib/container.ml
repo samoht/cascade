@@ -45,12 +45,6 @@ and scroll_state_query =
   | Either of scroll_state_query * scroll_state_query
   | Negated of scroll_state_query
 
-(* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
-let format_rem f =
-  let s = string_of_float f in
-  if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
-  else s
-
 let string_of_components cvs =
   Cursor.string_of_components_verbatim ~trim:true cvs
 
@@ -154,7 +148,7 @@ and to_string_with ~pretty ~minify t =
       (* The [width>=] range upgrade is a target-fact rewrite applied by
          [lower_for_minify] in the optimize phase, not here. *)
       let sep = if pretty && not minify then ": " else ":" in
-      String.concat "" [ "(min-width"; sep; format_rem rem; "rem)" ]
+      String.concat "" [ "(min-width"; sep; Pp.string_of_float rem; "rem)" ]
   | Min_width_px px ->
       let sep = if pretty && not minify then ": " else ":" in
       String.concat "" [ "(min-width"; sep; Int.to_string px; "px)" ]
