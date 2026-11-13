@@ -502,8 +502,7 @@ let rules_conflict_specificity () =
      Nesting 1 sec. 4 (Nesting Selector) gives [&] the specificity of [.p],
      (0,1,0), so [&+&] weighs (0,2,0), as much as [.p .a], and the two tie. Read
      without it, [&] would weigh nothing. *)
-  check_rules_conflict
-    ~parent:(Css.Selector.of_string ".p")
+  check_rules_conflict ~parent:(Css.Selector.v ".p")
     ("a nested pair tied once expanded", "&+&{color:red}.a{color:blue}", true)
 
 (* Each sheet ends with a rule that paints red on an element the middle rule

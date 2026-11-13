@@ -45,6 +45,9 @@ val drop_redundant_nesting_prefix : t -> t
 (** [drop_redundant_nesting_prefix sel] removes a leading [&] that is the whole
     left operand of a combinator (CSS Nesting 1 sec. 3). *)
 
-val of_string : string -> t
+val of_string : string -> (t, Error.t) result
 (** [of_string s] is {!val-read} over [s], or the class, ID or type selector [s]
     spells as one name when the reader rejects it. *)
+
+val v : string -> t
+(** [v s] is like {!of_string} but raises [Invalid_argument]. *)

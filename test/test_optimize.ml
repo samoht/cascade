@@ -865,7 +865,7 @@ let test_prune_unused_custom_props () =
    a [@keyframes] frame is no different from a style rule. *)
 let test_drop_invalid_reaches_keyframe_frames () =
   let recovered css =
-    Css.of_string_exn css |> Css.Optimize.drop_invalid
+    Css.stylesheet css |> Css.Optimize.drop_invalid
     |> Css.Stylesheet.to_string ~minify:true
   in
   Alcotest.(check string)
@@ -888,7 +888,7 @@ let test_drop_invalid_reaches_keyframe_frames () =
    style rule. *)
 let test_position_try_prune_reaches_keyframe_frames () =
   let pruned css =
-    Css.of_string_exn css
+    Css.stylesheet css
     |> Css.Optimize.stylesheet ~scope:`Stylesheet
     |> Css.Stylesheet.to_string ~minify:true
   in
@@ -908,7 +908,7 @@ let test_position_try_prune_reaches_keyframe_frames () =
    whatever the author wrote, and [--minify] silently does nothing there. *)
 let test_optimize_descends_into_every_conditional_group () =
   let check name css expected =
-    Alcotest.(check string) name expected (minify (Css.of_string_exn css))
+    Alcotest.(check string) name expected (minify (Css.stylesheet css))
   in
   check "@media" "@media print{a{color:#f00}a{color:#f00}}"
     "@media print{a{color:red}}";
@@ -928,7 +928,7 @@ let test_optimize_descends_into_every_conditional_group () =
    beside it make once their conditions are known equal. *)
 let test_merge_consecutive_starting_style () =
   let check name css expected =
-    Alcotest.(check string) name expected (minify (Css.of_string_exn css))
+    Alcotest.(check string) name expected (minify (Css.stylesheet css))
   in
   check "@media merges an adjacent run"
     "@media print{.a{opacity:0}}@media print{.b{opacity:1}}"
@@ -962,7 +962,7 @@ let test_promote_registered_reaches_at_rule_declarations () =
   let check name body expected =
     Alcotest.(check string)
       name (registration ^ expected)
-      (minify (Css.of_string_exn ~strict:false (registration ^ body)))
+      (minify (Css.stylesheet ~strict:false (registration ^ body)))
   in
   check "a style rule types the declaration" "a{--c:rgb(255 0 0)}" "a{--c:red}";
   check "@position-try types it too" "@position-try --p{--c:rgb(255 0 0)}"
@@ -983,7 +983,7 @@ let test_promote_registered_keeps_unmatched_string_quoted () =
   let check name registration body expected =
     Alcotest.(check string)
       name (registration ^ expected)
-      (minify (Css.of_string_exn ~strict:false (registration ^ body)))
+      (minify (Css.stylesheet ~strict:false (registration ^ body)))
   in
   let idents =
     "@property \
@@ -1024,7 +1024,7 @@ let test_registered_zero_length_initial_value () =
   let check name input expected =
     Alcotest.(check string)
       name expected
-      (minify (Css.of_string_exn ~strict:false input))
+      (minify (Css.stylesheet ~strict:false input))
   in
   let registration syntax value =
     String.concat ""

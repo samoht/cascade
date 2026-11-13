@@ -465,10 +465,39 @@ let tree_same_selector_reorder () =
 
 (* ===== Suite ===== *)
 
+(* ===== Warning locations ===== *)
+
+(* A warning names the input it came from and its place in that file, not in the
+   text left once the tool banner and leading blank lines are stripped. CSS 2
+   sec. 9.5.1 gives [float] [left], [right] or [none], so [center] is invalid;
+   CSS Syntax 3 (ED) sec. 3.3 counts each LF as one line, so after a one-line
+   banner and a blank line the rule opens line 3, and [center] starts at its
+   tenth code point. *)
+let warning_located_in_the_file () =
+  let expected = "/*! tool v1 */\n\n.x{float:center}" in
+  let actual = ".x{float:left}" in
+  let d =
+    Cascade_diff.Css_compare.diff ~expected_filename:"a.css"
+      ~actual_filename:"b.css" expected actual
+  in
+  match d.expected_warnings with
+  | [ w ] ->
+      Alcotest.(check (option string))
+        "names the input" (Some "a.css") w.Cascade.Error.filename;
+      Alcotest.(check (option (pair int int)))
+        "place in the file"
+        (Some (3, 10))
+        (Cascade.Error.position w)
+  | ws ->
+      Alcotest.failf "expected one warning on the expected side, got %d"
+        (List.length ws)
+
 let suite =
   ( "css_compare",
     [
       Alcotest.test_case "import tree url" `Quick import_tree_url;
+      Alcotest.test_case "warning located in the file" `Quick
+        warning_located_in_the_file;
       Alcotest.test_case "import tree media" `Quick import_tree_media;
       Alcotest.test_case "import tree order" `Quick import_tree_order;
       Alcotest.test_case "import canonical media" `Quick import_canonical_media;

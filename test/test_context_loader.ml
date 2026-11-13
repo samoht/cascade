@@ -15,7 +15,7 @@ let check_url_error name ~loader input =
   | Error _ -> ()
 
 let check_registered_property_valid name ~registry input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   match Css.Context.validate_registered_custom_property registry decl with
   | Ok () -> ()
   | Error msg ->
@@ -23,7 +23,7 @@ let check_registered_property_valid name ~registry input =
         name input msg
 
 let check_registered_property_error name ~registry input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   match Css.Context.validate_registered_custom_property registry decl with
   | Ok () ->
       Alcotest.failf "%s: expected registered property %S to fail validation"
@@ -219,9 +219,12 @@ let animation_time_eval_contract () =
     Css.Context.v
       ~custom_properties:
         [
-          Css.Declaration.of_string "--duration: calc(500ms * 2)";
-          Css.Declaration.of_string "--delay: calc(250ms * 2)";
-          Css.Declaration.of_string "--distance: calc(1rem + 2px)";
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--duration: calc(500ms * 2)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--delay: calc(250ms * 2)");
+          Css_test_helpers.ok
+            (Css.Declaration.of_string "--distance: calc(1rem + 2px)");
         ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in

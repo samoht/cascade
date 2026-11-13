@@ -117,9 +117,18 @@ let spec_media_error_recovery_vectors () =
   let check_recovers name input =
     Alcotest.(check string) name "not all" (to_string (of_string input))
   in
+  (* Without branch recovery the same query is an [Error], not an exception. *)
+  let check_strict_refuses name input =
+    match of_string_strict input with
+    | Ok query ->
+        Alcotest.failf "%s: strict parse accepted %S as %S" name input
+          (to_string query)
+    | Error _ -> ()
+  in
   List.iter
     (fun (row : Cascade_spec_inventory.Query_grammar.invalid_row) ->
-      check_recovers row.branch row.input)
+      check_recovers row.branch row.input;
+      check_strict_refuses row.branch row.input)
     Cascade_spec_inventory.Query_grammar.media_negative;
   List.iter
     (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
@@ -638,7 +647,7 @@ let escaped_identifiers_survive_emission () =
   check_roundtrip "escaped feature value" {|(future: light\ or\ dark)|};
   let minify source =
     source
-    |> Css.of_string_exn ~strict:false
+    |> Css.stylesheet ~strict:false
     |> Css.optimize |> Css.to_string ~minify:true
   in
   let source =
@@ -718,12 +727,35 @@ let test_large_resolution () =
   check "(min-resolution:1e-30dpi)" "(min-resolution: 1e-30dpi)";
   check "(min-resolution:4e-33dpi)" "(min-resolution: 4e-33dpi)"
 
+(* Media Queries 4 sec. 2.4.3: an [<mf-value>] is one [<number>], [<dimension>],
+   [<ident>] or [<ratio>]. Text that is none of them, or more than one, is an
+   [Error]. *)
+let value_of_string_contract () =
+  let accepts input =
+    match value_of_string input with
+    | Ok _ -> ()
+    | Error e -> Alcotest.failf "%S: %s" input (Error.to_string e)
+  in
+  let refuses input =
+    match value_of_string input with
+    | Error _ -> ()
+    | Ok _ -> Alcotest.failf "%S read as a media-feature value" input
+  in
+  accepts "1px";
+  accepts "2";
+  accepts "16/9";
+  accepts "landscape";
+  refuses "";
+  refuses ")";
+  refuses "1px 2px"
+
 let suite =
   let open Alcotest in
   ( "media",
     [
       test_case "to_string" `Quick test_string_output;
       test_case "large resolution" `Quick test_large_resolution;
+      test_case "value_of_string contract" `Quick value_of_string_contract;
       test_case "spec media query level 4/5 vectors" `Quick
         spec_media_l45_vectors;
       test_case "spec media query structural vectors" `Quick

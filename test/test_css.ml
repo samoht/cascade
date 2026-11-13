@@ -388,7 +388,7 @@ let constructed_custom_property_reparses () =
         in
         let again =
           Css.to_string ~minify:true ~lossless ~enforce_spec
-            (Css.of_string_exn printed)
+            (Css.stylesheet printed)
         in
         Alcotest.(check string)
           (String.concat "" [ label; " is its own fixed point ("; mode; ")" ])
@@ -398,11 +398,11 @@ let constructed_custom_property_reparses () =
   let decl, _ = Css.var "brand" Css.Color (Css.oklch 63.7 0.237 25.331) in
   fixed_point "constructed custom property" (v [ rule ~selector:btn [ decl ] ]);
   fixed_point "parsed custom property"
-    (Css.of_string_exn ".btn{--brand:oklch(63.7% .237 25.331)}");
+    (Css.stylesheet ".btn{--brand:oklch(63.7% .237 25.331)}");
   (* A parsed typed colour is its own fixed point: the typed printer and the
      custom-value serialiser have to agree on the percentage boundary. *)
   fixed_point "typed percentage pair"
-    (Css.of_string_exn ".btn{color:hsl(120 50% 50%)}");
+    (Css.stylesheet ".btn{color:hsl(120 50% 50%)}");
   (* [%] closes its token (CSS Syntax 3 (ED) sec. 4), so a constructed colour
      has to spell the boundary after a percentage the way a reparse of its own
      bytes does. *)
@@ -451,15 +451,15 @@ let constructed_custom_property_reparses () =
      percentage, so the reader has no boundary to restore. *)
   List.iter
     (fun source ->
-      let printed = Css.to_string ~minify:true (Css.of_string_exn source) in
+      let printed = Css.to_string ~minify:true (Css.stylesheet source) in
       Alcotest.(check string)
         "minified custom property keeps its spelling" source printed;
-      fixed_point "tight custom property" (Css.of_string_exn source))
+      fixed_point "tight custom property" (Css.stylesheet source))
     [ ":root{--x:10%5px}"; ":root{--x:50%.5}" ];
   (* Pretty output is the upper bound on minified output for the same node. *)
   List.iter
     (fun source ->
-      let sheet = Css.of_string_exn source in
+      let sheet = Css.stylesheet source in
       let minified = Css.to_string ~minify:true sheet in
       let pretty = Css.to_string sheet in
       if String.length minified > String.length pretty then
@@ -620,6 +620,36 @@ let roundtrip () =
     Alcotest.(check string)
       "CSS roundtrip should be idempotent" first_pass second_pass
 
+(* [stylesheet] is [of_string] for CSS written in a program. CSS Syntax 3 sec.
+   5.4 recovers from an invalid declaration (CSS 2 sec. 9.5.1: [float] takes
+   [left], [right] or [none]), so a non-strict read keeps the rule without it;
+   [~strict:true] turns the warning into the [Invalid_argument] a literal that
+   is not valid CSS deserves. *)
+let stylesheet_raises_on_strict_warning () =
+  let css = ".x{float:center;color:red}" in
+  Alcotest.(check string)
+    "non-strict drops the invalid declaration" ".x{color:red}"
+    (Css.to_string ~minify:true (Css.stylesheet css));
+  match Css.stylesheet ~strict:true css with
+  | _ -> Alcotest.fail "strict read accepted an invalid declaration"
+  | exception Invalid_argument _ -> ()
+
+(* An input without a name renders under the one placeholder [Error] uses.
+   [center] is not a [float] value (CSS 2 sec. 9.5.1) and starts at the tenth
+   code point of line 1 (CSS Syntax 3 (ED) sec. 3.3). *)
+let unnamed_input_placeholder () =
+  match Css.of_string ".x{float:center}" with
+  | Error e -> Alcotest.failf "fatal: %s" (Error.to_string e)
+  | Ok { Css.warnings = [ w ]; _ } ->
+      Alcotest.(check (option string)) "no name" None w.Error.filename;
+      let first = List.hd (String.split_on_char '\n' (Error.to_string w)) in
+      Alcotest.(check bool)
+        (String.concat "" [ "placeholder location in "; first ])
+        true
+        (Astring.String.is_infix ~affix:" at <CSS input>:1:10 " first)
+  | Ok { Css.warnings; _ } ->
+      Alcotest.failf "expected one warning, got %d" (List.length warnings)
+
 let suite =
   ( "css",
     [
@@ -654,4 +684,8 @@ let suite =
         custom_properties_integration;
       Alcotest.test_case "var(--1A202C) parses" `Quick var_digit_after_dashes;
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
+      Alcotest.test_case "unnamed input placeholder" `Quick
+        unnamed_input_placeholder;
+      Alcotest.test_case "stylesheet raises on a strict warning" `Quick
+        stylesheet_raises_on_strict_warning;
     ] )

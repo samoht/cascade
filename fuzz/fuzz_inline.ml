@@ -10,9 +10,10 @@ let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 let color buf i = pick [ "#abc"; "#123"; "#f00"; "#00f"; "red"; "blue" ] buf i
 
 let inlined_min css =
-  match Css.of_string_exn ~strict:false css with
-  | sheet -> Some (Css.to_string ~minify:true (Css.inline_vars sheet))
-  | exception Error.Parse_error _ -> None
+  match Css.of_string ~strict:false css with
+  | Ok { stylesheet; _ } ->
+      Some (Css.to_string ~minify:true (Css.inline_vars stylesheet))
+  | Error _ -> None
 
 let layer name body = String.concat "" [ "@layer "; name; "{"; body; "}" ]
 

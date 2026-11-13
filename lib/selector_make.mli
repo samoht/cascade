@@ -31,10 +31,9 @@ val universal : t
 val universal_ns : ns -> t
 (** [universal_ns ns] is [ns|*]. *)
 
-val aria_attr_of_string : string -> aria_attr
-(** [aria_attr_of_string s] is the ARIA attribute named [s].
-
-    @raise Invalid_argument if [s] names none. *)
+val aria_attr_of_string : string -> aria_attr option
+(** [aria_attr_of_string s] is the ARIA attribute named [s], or [None] if [s]
+    names none. *)
 
 val attr_name_of_string : string -> attr_name
 (** [attr_name_of_string name] classifies [name] as an ARIA, [data-] or regular

@@ -81,8 +81,18 @@ val pp_kind : kind Pp.t
     [expected <ident> but found <delim '.'>]. *)
 
 val pp : t Pp.t
-(** [pp] renders the located, sort-tagged error, e.g.
+(** [pp] renders the located, sort-tagged error. With a {!field-source} the
+    location is [source:line:column] followed by the snippet and its caret, e.g.
+    [bad selector: double dot at theme.css:2:5 (in selector)], the source being
+    [<CSS input>] when the error has no {!field-filename}. Without one it is the
+    byte range, e.g.
     [expected <ident> but found <delim '.'> at [12-13] (in selector)]. *)
+
+val position : t -> (int * int) option
+(** [position t] is the 1-based line and column of [t]'s start in its
+    {!field-source}, or [None] without one. As in CSS Syntax 3 (ED) sec. 3.3,
+    CR, FF and a CRLF pair each end one line, and a column counts one code
+    point, or one maximal ill-formed subpart, rather than a byte. *)
 
 val to_string : t -> string
 (** [to_string error] renders [error] as source text. *)
@@ -103,6 +113,11 @@ exception Parse_error of t
 
 val fail : t -> 'a
 (** Raises {!Parse_error} with the given value. *)
+
+val catch : (unit -> 'a) -> ('a, t) result
+(** [catch f] is [Ok (f ())], or [Error e] if [f] raises [Parse_error e]. Every
+    public [of_string] returns through it, so {!Parse_error} stays inside the
+    readers. *)
 
 val with_context : string -> (unit -> 'a) -> 'a
 (** [with_context label f] runs [f ()] and, on a raised {!Parse_error}, prepends

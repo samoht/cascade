@@ -89,7 +89,11 @@ let selector_of_string s =
   let parts = String.split_on_char ',' s in
   let positions = List.filter_map position_of_string parts in
   if List.length positions = List.length parts && positions <> [] then
-    Positions positions
-  else invalid_arg ("invalid keyframe selector: " ^ s)
+    Ok (Positions positions)
+  else
+    Error
+      (Error.v ~source:s
+         ~loc:(Loc.v ~start_pos:0 ~end_pos:(String.length s))
+         ~sort:Sort.Selector (Error.Bad_selector "not a keyframe selector"))
 
 let selector_equal a b = to_string a = to_string b

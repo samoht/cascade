@@ -26,7 +26,7 @@ accounted for by the other.
   > .a[[ {color:blue}
   > EOF
   $ cascade diff --diff=canonical rule-a.css rule-b.css
-  rule-a.css and rule-b.css parse warning: <string>: unterminated qualified-rule at [14-30] (in qualified-rule)
+  rule-a.css and rule-b.css parse warning: unterminated qualified-rule at rule-a.css:2:1 (in qualified-rule)
   .b{color:red}
   .a[[ {color:red}
   ^^^^^^^^^^^^^^^^
@@ -49,7 +49,7 @@ offsets, which the text comparison does not care about.
   > .a[[ {color:red}
   > EOF
   $ cascade diff --diff=canonical same-a.css same-b.css
-  same-a.css and same-b.css parse warning: <string>: unterminated qualified-rule at [18-34] (in qualified-rule)
+  same-a.css and same-b.css parse warning: unterminated qualified-rule at same-a.css:2:1 (in qualified-rule)
   .b { color: red }
   .a[[ {color:red}
   ^^^^^^^^^^^^^^^^
@@ -69,7 +69,7 @@ comparison never saw, so that verdict stays unproven.
   > .b{color:red}
   > EOF
   $ cascade diff --diff=canonical kept-a.css same-b.css
-  same-b.css parse warning: <string>: unterminated qualified-rule at [14-30] (in qualified-rule)
+  same-b.css parse warning: unterminated qualified-rule at same-b.css:2:1 (in qualified-rule)
   .b{color:red}
   .a[[ {color:red}
   ^^^^^^^^^^^^^^^^
@@ -95,7 +95,7 @@ both sides, at the offset where it gave up.
   CSS: 40 chars vs 41 chars (2.5% diff)
   Changes: 1 changed container
   
-  media-a.css and media-b.css parse warning: <string>: bad condition for @media: expected media type or condition at [21-22] (in at-rule)
+  media-a.css and media-b.css parse warning: bad condition for @media: expected media type or condition at media-a.css:2:8 (in at-rule)
   .b{color:red}
   @media ^^^{.x{color:red}}
          ^
@@ -121,7 +121,7 @@ the verdict follows those.
   > @supports ^^^{.x{color:blue}}
   > EOF
   $ cascade diff --diff=canonical sup-a.css sup-b.css
-  sup-a.css and sup-b.css parse warning: <string>: bad condition for @supports: Expected supports feature at [24-25] (in at-rule)
+  sup-a.css and sup-b.css parse warning: bad condition for @supports: Expected supports feature at sup-a.css:2:11 (in at-rule)
   .b{color:red}
   @supports ^^^{.x{color:red}}
             ^
@@ -142,7 +142,7 @@ and that is the same loss.
   > --foo:{color:blue}
   > EOF
   $ cascade diff --diff=canonical decl-a.css decl-b.css
-  decl-a.css and decl-b.css parse warning: <string>: expected selector but found declaration at [14-31] (in qualified-rule)
+  decl-a.css and decl-b.css parse warning: expected selector but found declaration at decl-a.css:2:1 (in qualified-rule)
   .b{color:red}
   --foo:{color:red}
   ^^^^^^^^^^^^^^^^^
@@ -162,7 +162,7 @@ names the difference and the status stays 1.
   CSS: 31 chars vs 33 chars (6.5% diff)
   Changes: 1 modified rule
   
-  rule-a.css and differ-b.css parse warning: <string>: unterminated qualified-rule at [14-30] (in qualified-rule)
+  rule-a.css and differ-b.css parse warning: unterminated qualified-rule at rule-a.css:2:1 (in qualified-rule)
   .b{color:red}
   .a[[ {color:red}
   ^^^^^^^^^^^^^^^^
@@ -186,7 +186,7 @@ is the case that reaches cascade from every Tailwind entry stylesheet.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical at-a.css at-b.css
-  at-a.css and at-b.css parse warning: <string>: unknown at-rule @tailwind at [0-15] (in at-rule)
+  at-a.css and at-b.css parse warning: at-a.css: unknown at-rule @tailwind at [0-15] (in at-rule)
   
   CSS files are identical
 
@@ -203,11 +203,11 @@ withholds the verdict here.
   > .a[[ {color:blue}
   > EOF
   $ cascade diff --diff=canonical mix-a.css mix-b.css
-  mix-a.css and mix-b.css parse warning: <string>: unterminated qualified-rule at [48-64] (in qualified-rule)
+  mix-a.css and mix-b.css parse warning: unterminated qualified-rule at mix-a.css:2:1 (in qualified-rule)
   template-columns:calc(1 + 2);color:red}
   .a[[ {color:red}
   ^^^^^^^^^^^^^^^^
-  mix-a.css and mix-b.css parse warning: <string>: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at [25-36] (in component)
+  mix-a.css and mix-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at mix-a.css:1:26 (in component)
   .b{grid-template-columns:calc(1 + 2);color:red}
                            ^^^^^^^^^^^
   .a[[ {color:red}

@@ -22,31 +22,32 @@ let feature = Css.Media.feature
 let container_feature = Css.Container.feature
 
 let declaration_with_value decl value =
-  Css.Declaration.of_string
-    (Css.Declaration.property_name decl
-    ^ ": " ^ value
-    ^ if Css.Declaration.is_important decl then " !important" else "")
+  Css_test_helpers.ok
+    (Css.Declaration.of_string
+       (Css.Declaration.property_name decl
+       ^ ": " ^ value
+       ^ if Css.Declaration.is_important decl then " !important" else ""))
 
 let check_eval_preserves name ~ctx input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   Alcotest.(check decl_t) name decl (Css.eval_declaration ctx decl)
 
 let check_eval name ~ctx ?layer_order ?layer ~expected input =
-  let decl = Css.Declaration.of_string input in
-  let expected = Css.Declaration.of_string expected in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
+  let expected = Css_test_helpers.ok (Css.Declaration.of_string expected) in
   let actual = Css.eval_declaration ctx ?layer_order ?layer decl in
   Alcotest.(check decl_t) name expected actual
 
 let check_eval_idempotent name ~ctx ?layer_order ?layer input =
-  let decl = Css.Declaration.of_string input in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
   let once = Css.eval_declaration ctx ?layer_order ?layer decl in
   let twice = Css.eval_declaration ctx ?layer_order ?layer once in
   Alcotest.(check decl_t) name once twice
 
 let check_eval_context_extension name ?layer_order ?layer ~weak_ctx ~strong_ctx
     ~expected input =
-  let decl = Css.Declaration.of_string input in
-  let expected = Css.Declaration.of_string expected in
+  let decl = Css_test_helpers.ok (Css.Declaration.of_string input) in
+  let expected = Css_test_helpers.ok (Css.Declaration.of_string expected) in
   let direct = Css.eval_declaration strong_ctx ?layer_order ?layer decl in
   let staged =
     Css.eval_declaration strong_ctx ?layer_order ?layer

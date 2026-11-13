@@ -5,8 +5,8 @@ open Selector_pseudo
 let read_aria_attr t : aria_attr =
   let s = Cursor.ident t in
   match aria_attr_of_string s with
-  | v -> v
-  | exception Invalid_argument msg -> Cursor.err t msg
+  | Some v -> v
+  | None -> Cursor.err t ("not a supported aria attribute: " ^ s)
 
 let read_attr_name t : attr_name =
   let s = Cursor.ident t in
@@ -1203,6 +1203,13 @@ let of_string_fallback s =
   | _ -> Element (None, unescape_selector_name s)
 
 let of_string s =
+  Error.catch @@ fun () ->
   try read (Cursor.of_string s)
   with Cursor.Parse_error _ as exn ->
     if not (can_fallback_shortcut s) then raise exn else of_string_fallback s
+
+let v s =
+  match of_string s with
+  | Ok sel -> sel
+  | Error e ->
+      invalid_arg (String.concat "" [ "Selector.v: "; Error.to_string e ])

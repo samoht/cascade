@@ -28,3 +28,7 @@ val unicodish : string -> string
     never exercises. The fragments are placed in real syntactic positions -
     selector, property name, value, at-rule prelude - rather than concatenated,
     so the parser reaches them the way a stylesheet would. *)
+
+val ok : ('a, Cascade.Error.t) result -> 'a
+(** [ok r] is the value of [Ok v], and fails the fuzz case with the error
+    printed on [Error]. *)

@@ -38,48 +38,32 @@ let test_src () =
        [ Url { url = "font.woff2"; format = None; tech = Some "variations" } ])
 
 let expect_src_rejected input =
-  try
-    let src = src_of_string input in
-    Alcotest.failf "invalid font-face src parsed: %S -> %S" input
-      (string_of_src src)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match src_of_string input with
+  | Error _ -> ()
+  | Ok src ->
+      Alcotest.failf "invalid font-face src parsed: %S -> %S" input
+        (string_of_src src)
 
 let expect_metric_rejected input =
-  try
-    let metric = metric_override_of_string input in
-    Alcotest.failf "invalid font metric parsed: %S -> %S" input
-      (string_of_metric_override metric)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match metric_override_of_string input with
+  | Error _ -> ()
+  | Ok metric ->
+      Alcotest.failf "invalid font metric parsed: %S -> %S" input
+        (string_of_metric_override metric)
 
 let expect_size_adjust_rejected input =
-  try
-    let size_adjust = size_adjust_of_string input in
-    Alcotest.failf "invalid font size-adjust parsed: %S -> %s" input
-      (string_of_size_adjust size_adjust)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match size_adjust_of_string input with
+  | Error _ -> ()
+  | Ok size_adjust ->
+      Alcotest.failf "invalid font size-adjust parsed: %S -> %s" input
+        (string_of_size_adjust size_adjust)
 
 let accepted_invalid_cases label parse render inputs =
   List.filter_map
     (fun input ->
-      try
-        Fmt.kstr
-          (fun s -> Some s)
-          "%s: %S -> %S" label input
-          (parse input |> render)
-      with
-      | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _
-      | Failure _
-      ->
-        None)
+      match parse input with
+      | Error _ -> None
+      | Ok v -> Fmt.kstr Option.some "%s: %S -> %S" label input (render v))
     inputs
 
 let expect_rejected_cases label parse render inputs =
@@ -91,12 +75,14 @@ let expect_rejected_cases label parse render inputs =
 
 let test_spec_src_parser_vectors () =
   let check_src name input expected =
-    let parsed = src_of_string input in
+    let parsed = Css_test_helpers.ok (src_of_string input) in
     Alcotest.(check bool) name true (equal_src parsed expected);
     Alcotest.(check bool)
       (name ^ " serialization idempotent")
       true
-      (equal_src (src_of_string (string_of_src parsed)) parsed)
+      (equal_src
+         (Css_test_helpers.ok (src_of_string (string_of_src parsed)))
+         parsed)
   in
   check_src "url format tech"
     "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)"
@@ -136,23 +122,27 @@ let test_spec_src_invalid_vectors () =
 let test_spec_metric_parsing_edges () =
   Alcotest.(check string)
     "normal parses" "normal"
-    (metric_override_of_string " normal " |> string_of_metric_override);
+    (Css_test_helpers.ok (metric_override_of_string " normal ")
+    |> string_of_metric_override);
   Alcotest.(check string)
     "percentage parses" "92.5%"
-    (metric_override_of_string "92.5%" |> string_of_metric_override);
+    (Css_test_helpers.ok (metric_override_of_string "92.5%")
+    |> string_of_metric_override);
   Alcotest.(check string)
     "size adjust percentage" "87.5%"
-    (size_adjust_of_string "87.5%" |> string_of_size_adjust)
+    (Css_test_helpers.ok (size_adjust_of_string "87.5%")
+    |> string_of_size_adjust)
 
 let test_spec_metric_negative_vectors () =
   List.iter expect_metric_rejected [ "-1%"; "auto"; "100" ];
   Alcotest.(check string)
     "over 100 metric override still parses" "120%"
-    (metric_override_of_string "120%" |> string_of_metric_override);
+    (Css_test_helpers.ok (metric_override_of_string "120%")
+    |> string_of_metric_override);
   List.iter expect_size_adjust_rejected [ "-10%"; "normal"; "auto"; "100" ];
   Alcotest.(check string)
     "zero size adjust parses" "0%"
-    (size_adjust_of_string "0%" |> string_of_size_adjust)
+    (Css_test_helpers.ok (size_adjust_of_string "0%") |> string_of_size_adjust)
 
 (* CSS Values 4 sec. 10.1 puts a math function wherever a [<percentage>] is
    allowed, and CSS Fonts 4 sec. 4.10 and Fonts 5 sec. 4.4 spell these four
@@ -166,7 +156,8 @@ let spec_fontface_metric_math () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (metric_override_of_string input |> string_of_metric_override))
+        (Css_test_helpers.ok (metric_override_of_string input)
+        |> string_of_metric_override))
     [
       ("calc(50%)", "50%");
       ("calc(50% + 10%)", "60%");
@@ -178,7 +169,8 @@ let spec_fontface_metric_math () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (size_adjust_of_string input |> string_of_size_adjust))
+        (Css_test_helpers.ok (size_adjust_of_string input)
+        |> string_of_size_adjust))
     [
       ("calc(50%)", "50%");
       ("calc(50% + 10%)", "60%");
@@ -190,7 +182,9 @@ let spec_fontface_metric_math () =
 
 let spec_fontface_source_edges () =
   let check_normalized name input expected =
-    Alcotest.(check string) name expected (src_of_string input |> string_of_src)
+    Alcotest.(check string)
+      name expected
+      (Css_test_helpers.ok (src_of_string input) |> string_of_src)
   in
   check_normalized "tech variations" "url(\"variable.woff2\") tech(variations)"
     "url(variable.woff2) tech(variations)";
@@ -215,7 +209,8 @@ let spec_fontface_metric_edges () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (metric_override_of_string input |> string_of_metric_override))
+        (Css_test_helpers.ok (metric_override_of_string input)
+        |> string_of_metric_override))
     [
       ("0%", "0%");
       ("100%", "100%");
@@ -227,7 +222,8 @@ let spec_fontface_metric_edges () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (size_adjust_of_string input |> string_of_size_adjust))
+        (Css_test_helpers.ok (size_adjust_of_string input)
+        |> string_of_size_adjust))
     [
       ("0%", "0%");
       ("100%", "100%");
@@ -240,7 +236,10 @@ let spec_fontface_src_minify_edges () =
     let mismatches =
       List.filter_map
         (fun (name, input, expected) ->
-          let actual = input |> src_of_string |> string_of_src ~minify:true in
+          let actual =
+            input |> src_of_string |> Css_test_helpers.ok
+            |> string_of_src ~minify:true
+          in
           if String.equal actual expected then None
           else
             Fmt.kstr
@@ -319,7 +318,8 @@ let spec_fontface_src_accepted_edges () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (input |> src_of_string |> string_of_src ~minify:true))
+        (input |> src_of_string |> Css_test_helpers.ok
+       |> string_of_src ~minify:true))
     [
       ("url()", "url()");
       ("url(\"\")", "url()");
@@ -342,13 +342,15 @@ let spec_fontface_metric_numeric_edges () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (metric_override_of_string input |> string_of_metric_override))
+        (Css_test_helpers.ok (metric_override_of_string input)
+        |> string_of_metric_override))
     [ ("+10%", "10%"); (".5%", "0.5%"); ("1e2%", "100%"); ("0e0%", "0%") ];
   List.iter
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (size_adjust_of_string input |> string_of_size_adjust))
+        (Css_test_helpers.ok (size_adjust_of_string input)
+        |> string_of_size_adjust))
     [ ("+10%", "10%"); (".5%", "0.5%"); ("1e2%", "100%"); ("0e0%", "0%") ];
   let accepted =
     accepted_invalid_cases "font metric override" metric_override_of_string

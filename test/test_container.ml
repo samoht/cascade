@@ -3,8 +3,8 @@ open Cascade
 let rejects_invalid input =
   let open Css.Container in
   match of_string input with
-  | exception Error.Parse_error _ -> ()
-  | query ->
+  | Error _ -> ()
+  | Ok query ->
       Alcotest.failf "invalid container query parsed: %s -> %s" input
         (to_string query)
 
@@ -21,40 +21,43 @@ let test_string_output () =
     (to_string (Named ("sidebar", Min_width_rem 24.)));
   Alcotest.(check string)
     "raw" "(width > 0px)"
-    (to_string (of_string "(width > 0px)"));
+    (to_string (Css_test_helpers.ok (of_string "(width > 0px)")));
   (* A container condition is the question the rendering browser is asked, so
      the escape the author wrote survives. CSS Syntax 3 sec. 4.3.7 decodes [\\0]
      to U+FFFD, and writing that code point back raw is a different spelling of
      the same query; Chrome 153 keeps the escape in [conditionText]. *)
   Alcotest.(check string)
     "an escape in a general-enclosed feature" "(min-width: 1\\0px)"
-    (to_string (of_string "(min-width: 1\\0px)"));
+    (to_string (Css_test_helpers.ok (of_string "(min-width: 1\\0px)")));
   Alcotest.(check string)
     "style query raw" "style(--theme: dark)"
-    (to_string (of_string "style(--theme: dark)"));
+    (to_string (Css_test_helpers.ok (of_string "style(--theme: dark)")));
   Alcotest.(check string)
     "range query raw" "(inline-size >= 30em)"
-    (to_string (of_string "(inline-size >= 30em)"));
+    (to_string (Css_test_helpers.ok (of_string "(inline-size >= 30em)")));
   Alcotest.(check string)
     "scroll-state query raw" "scroll-state(stuck: top)"
-    (to_string (of_string "scroll-state(stuck: top)"));
+    (to_string (Css_test_helpers.ok (of_string "scroll-state(stuck: top)")));
   Alcotest.(check string)
     "named style query raw" "card style(--variant: featured)"
-    (to_string (Named ("card", of_string "style(--variant: featured)")));
+    (to_string
+       (Named
+          ("card", Css_test_helpers.ok (of_string "style(--variant: featured)"))));
   (* CSS Conditional Rules 5 sec. 4: [not] takes one query-in-parens, and a
      [style()] function is one, so [not style(--a)] needs no extra wrapping. *)
   Alcotest.(check string)
     "negated style query" "not style(--a)"
-    (to_string ~minify:true (of_string "not style(--a)"));
+    (to_string ~minify:true (Css_test_helpers.ok (of_string "not style(--a)")));
   Alcotest.(check string)
     "named negated style query" "card not style(--variant)"
-    (to_string ~minify:true (Named ("card", of_string "not style(--variant)")));
+    (to_string ~minify:true
+       (Named ("card", Css_test_helpers.ok (of_string "not style(--variant)"))));
   Alcotest.(check string)
     "chained range query raw" "(30em <= inline-size < 60em)"
-    (to_string (of_string "(30em <= inline-size < 60em)"));
+    (to_string (Css_test_helpers.ok (of_string "(30em <= inline-size < 60em)")));
   Alcotest.(check string)
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
-    (to_string (of_string "(aspect-ratio > 1/1)"))
+    (to_string (Css_test_helpers.ok (of_string "(aspect-ratio > 1/1)")))
 
 (* CSS Containment 3 sec. 4 makes a container name a [<custom-ident>], so an
    API-constructed name must take CSS Syntax 3 sec. 9.1 identifier escaping. *)
@@ -66,25 +69,28 @@ let named_container_name_round_trips () =
     "the container name is escaped" {|a\ b (min-width:24rem)|} serialized;
   Alcotest.(check bool)
     "the escaped container name reparses" true
-    (equal query (of_string serialized))
+    (equal query (Css_test_helpers.ok (of_string serialized)))
 
 let component_parser_edges () =
   let open Css.Container in
   Alcotest.(check string)
     "quoted operators stay in declaration values" "style(--x: \"() and y\")"
-    (to_string (of_string "style(--x: \"() and y\")"));
+    (to_string (Css_test_helpers.ok (of_string "style(--x: \"() and y\")")));
   Alcotest.(check string)
     "keyword values stay in declarations" "style(--x: red and blue)"
-    (to_string (of_string "style(--x: red and blue)"));
+    (to_string (Css_test_helpers.ok (of_string "style(--x: red and blue)")));
   Alcotest.(check string)
     "condition keywords are case-insensitive" "style(--x) and style(--y)"
-    (to_string ~minify:true (of_string "style(--x) AND style(--y)"));
+    (to_string ~minify:true
+       (Css_test_helpers.ok (of_string "style(--x) AND style(--y)")));
   Alcotest.(check string)
     "escaped condition keyword is decoded" "style(--x) and style(--y)"
-    (to_string ~minify:true (of_string "style(--x) \\61 nd style(--y)"));
+    (to_string ~minify:true
+       (Css_test_helpers.ok (of_string "style(--x) \\61 nd style(--y)")));
   Alcotest.(check string)
     "named compound query" "card (width>1px) and (height>1px)"
-    (to_string ~minify:true (of_string "card (width > 1px) AND (height > 1px)"))
+    (to_string ~minify:true
+       (Css_test_helpers.ok (of_string "card (width > 1px) AND (height > 1px)")))
 
 let stylesheet_component_parser_edges () =
   let render css =
@@ -104,7 +110,9 @@ let stylesheet_component_parser_edges () =
 let spec_container_l3_vectors () =
   let open Css.Container in
   let check_raw name input =
-    Alcotest.(check string) name input (to_string (of_string input))
+    Alcotest.(check string)
+      name input
+      (to_string (Css_test_helpers.ok (of_string input)))
   in
   List.iter
     (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
@@ -112,10 +120,13 @@ let spec_container_l3_vectors () =
     Cascade_spec_inventory.Query_grammar.container_positive;
   Alcotest.(check string)
     "named size query" "card (inline-size > 30em)"
-    (to_string (Named ("card", of_string "(inline-size > 30em)")));
+    (to_string
+       (Named ("card", Css_test_helpers.ok (of_string "(inline-size > 30em)"))));
   Alcotest.(check string)
     "named style query" "card style(--variant: featured)"
-    (to_string (Named ("card", of_string "style(--variant: featured)")));
+    (to_string
+       (Named
+          ("card", Css_test_helpers.ok (of_string "style(--variant: featured)"))));
   Alcotest.(check string)
     "nested names remain explicit" "outer inner (min-width:640px)"
     (to_string (Named ("outer", Named ("inner", Min_width_px 640))))
@@ -200,14 +211,14 @@ let test_kind () =
     (kind (Named ("x", Min_width_rem 24.)) = Min_width);
   Alcotest.(check bool)
     "raw is Other" true
-    (kind (of_string "style(--theme: dark)") = Other)
+    (kind (Css_test_helpers.ok (of_string "style(--theme: dark)")) = Other)
 
 let test_spec_container_compare_edges () =
   let open Css.Container in
   let sorted =
     List.sort compare
       [
-        of_string "(inline-size > 30em)";
+        Css_test_helpers.ok (of_string "(inline-size > 30em)");
         Named ("card", Min_width_rem 24.);
         Min_width_px 640;
         Min_width_rem 24.;
@@ -235,11 +246,16 @@ let spec_container_context_vectors () =
     [
       (Min_width_px 400, "(min-width:400px)");
       (Min_width_rem 30., "(min-width:30rem)");
-      (of_string "(inline-size > 30em)", "(inline-size > 30em)");
-      (of_string "(30em <= inline-size < 60em)", "(30em <= inline-size < 60em)");
-      (of_string "style(--theme: dark)", "style(--theme: dark)");
-      (of_string "scroll-state(stuck: top)", "scroll-state(stuck: top)");
-      (Named ("card", of_string "(width >= 400px)"), "card (width >= 400px)");
+      ( Css_test_helpers.ok (of_string "(inline-size > 30em)"),
+        "(inline-size > 30em)" );
+      ( Css_test_helpers.ok (of_string "(30em <= inline-size < 60em)"),
+        "(30em <= inline-size < 60em)" );
+      ( Css_test_helpers.ok (of_string "style(--theme: dark)"),
+        "style(--theme: dark)" );
+      ( Css_test_helpers.ok (of_string "scroll-state(stuck: top)"),
+        "scroll-state(stuck: top)" );
+      ( Named ("card", Css_test_helpers.ok (of_string "(width >= 400px)")),
+        "card (width >= 400px)" );
     ]
 
 let spec_container_query_vectors () =
@@ -248,7 +264,7 @@ let spec_container_query_vectors () =
     (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
       Alcotest.(check string)
         row.branch row.expected
-        (to_string (of_string row.input)))
+        (to_string (Css_test_helpers.ok (of_string row.input))))
     Cascade_spec_inventory.Query_grammar.container_positive
 
 let spec_container_invalid_vectors () =
@@ -264,7 +280,9 @@ let spec_container_invalid_vectors () =
 let spec_container_unitless_zero_length () =
   let open Css.Container in
   let check name input expected =
-    Alcotest.(check string) name expected (to_string (of_string input))
+    Alcotest.(check string)
+      name expected
+      (to_string (Css_test_helpers.ok (of_string input)))
   in
   check "min-width" "(min-width: 0)" "(min-width:0px)";
   check "min-inline-size" "(min-inline-size: 0)" "(min-inline-size: 0px)";
@@ -280,7 +298,11 @@ let spec_container_unitless_zero_length () =
 let equal_ignores_bound_spelling () =
   let open Css.Container in
   let same name a b =
-    Alcotest.(check bool) name true (equal (of_string a) (of_string b))
+    Alcotest.(check bool)
+      name true
+      (equal
+         (Css_test_helpers.ok (of_string a))
+         (Css_test_helpers.ok (of_string b)))
   in
   same "min- prefix is the >= comparison" "(min-width: 10px)" "(width >= 10px)";
   same "min- prefix against the value-first spelling" "(min-width: 10px)"
@@ -295,7 +317,11 @@ let equal_ignores_bound_spelling () =
   (* An inclusive bound is not the strict one: normalising the spelling must not
      normalise away the comparison. *)
   let differ name a b =
-    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+    Alcotest.(check bool)
+      name false
+      (equal
+         (Css_test_helpers.ok (of_string a))
+         (Css_test_helpers.ok (of_string b)))
   in
   differ "inclusive is not strict" "(min-width: 10px)" "(width > 10px)";
   differ "a lower bound is not an upper bound" "(min-width: 10px)"
@@ -311,8 +337,8 @@ let equal_ignores_bound_spelling () =
    serialisation also keeps their spellings apart. *)
 let equal_separates_an_escaped_feature_name () =
   let open Css.Container in
-  let escaped = of_string {|(inline-size\ \>\=\ 10px)|} in
-  let real = of_string "(inline-size >= 10px)" in
+  let escaped = Css_test_helpers.ok (of_string {|(inline-size\ \>\=\ 10px)|}) in
+  let real = Css_test_helpers.ok (of_string "(inline-size >= 10px)") in
   Alcotest.(check bool)
     "the two queries keep distinct serialisations" false
     (String.equal (to_string escaped) (to_string real));
@@ -321,7 +347,8 @@ let equal_separates_an_escaped_feature_name () =
     (equal escaped real);
   Alcotest.(check bool)
     "and it still equals itself" true
-    (equal escaped (of_string {|(inline-size\ \>\=\ 10px)|}))
+    (equal escaped
+       (Css_test_helpers.ok (of_string {|(inline-size\ \>\=\ 10px)|})))
 
 (* CSS Values 4 sec. 9: function names are ASCII case-insensitive, so the case
    the AST keeps for round-trip is spelling. CSS Syntax 3 sec. 5.5.6 consumes a
@@ -330,7 +357,11 @@ let equal_separates_an_escaped_feature_name () =
 let equal_ignores_function_spelling () =
   let open Css.Container in
   let same name a b =
-    Alcotest.(check bool) name true (equal (of_string a) (of_string b))
+    Alcotest.(check bool)
+      name true
+      (equal
+         (Css_test_helpers.ok (of_string a))
+         (Css_test_helpers.ok (of_string b)))
   in
   same "an uppercase style() is the same query" "STYLE(--x)" "style(--x)";
   same "an uppercase scroll-state() is the same query"
@@ -338,7 +369,11 @@ let equal_ignores_function_spelling () =
   same "the space after the colon is not the value" "style(--x: 1)"
     "style(--x:1)";
   let differ name a b =
-    Alcotest.(check bool) name false (equal (of_string a) (of_string b))
+    Alcotest.(check bool)
+      name false
+      (equal
+         (Css_test_helpers.ok (of_string a))
+         (Css_test_helpers.ok (of_string b)))
   in
   differ "a different style() value is a different query" "style(--x: 1)"
     "style(--x: 2)";
@@ -354,16 +389,16 @@ let equal_ignores_function_spelling () =
    itself. *)
 let equal_on_opaque_conditions () =
   let open Css.Container in
-  let opaque = of_string "theme(static)" in
+  let opaque = Css_test_helpers.ok (of_string "theme(static)") in
   Alcotest.(check bool)
     "an opaque condition equals itself" true
-    (equal opaque (of_string "theme(static)"));
+    (equal opaque (Css_test_helpers.ok (of_string "theme(static)")));
   Alcotest.(check bool)
     "the parentheses around it are not part of it" true
-    (equal opaque (of_string "(theme(static))"));
+    (equal opaque (Css_test_helpers.ok (of_string "(theme(static))")));
   Alcotest.(check bool)
     "an opaque condition does not equal a different one" false
-    (equal opaque (of_string "theme(dynamic)"))
+    (equal opaque (Css_test_helpers.ok (of_string "theme(dynamic)")))
 
 (* Conditional Rules 5 sec. 5.4 gives <style-range> a single-comparison branch,
    [<style-range-value> <mf-comparison> <style-range-value>], alongside the two
@@ -373,7 +408,9 @@ let equal_on_opaque_conditions () =
 let spec_style_range_comparison () =
   let open Css.Container in
   let round_trips name input =
-    Alcotest.(check string) name input (to_string (of_string input))
+    Alcotest.(check string)
+      name input
+      (to_string (Css_test_helpers.ok (of_string input)))
   in
   round_trips "equality" "style(--gap = 10px)";
   round_trips "value-first equality" "style(10px = --gap)";
@@ -382,15 +419,21 @@ let spec_style_range_comparison () =
   round_trips "value-first strict" "style(10px < --gap)";
   Alcotest.(check string)
     "the minified spelling drops the spaces" "style(--gap=10px)"
-    (to_string ~minify:true (of_string "style(--gap = 10px)"));
+    (to_string ~minify:true
+       (Css_test_helpers.ok (of_string "style(--gap = 10px)")));
   Alcotest.(check bool)
     "the minified spelling reparses to the same query" true
     (equal
-       (of_string "style(--gap = 10px)")
-       (of_string (to_string ~minify:true (of_string "style(--gap = 10px)"))));
+       (Css_test_helpers.ok (of_string "style(--gap = 10px)"))
+       (Css_test_helpers.ok
+          (of_string
+             (to_string ~minify:true
+                (Css_test_helpers.ok (of_string "style(--gap = 10px)"))))));
   Alcotest.(check bool)
     "the operator is part of the query" false
-    (equal (of_string "style(--gap = 10px)") (of_string "style(--gap > 10px)"));
+    (equal
+       (Css_test_helpers.ok (of_string "style(--gap = 10px)"))
+       (Css_test_helpers.ok (of_string "style(--gap > 10px)")));
   (* [<mf-eq>] reaches <style-range> only through <mf-comparison>, and the two
      interval branches take [<mf-lt>] twice or [<mf-gt>] twice. So neither an
      [=] bound nor a pair of opposing bounds is a <style-range>. *)
@@ -403,7 +446,7 @@ let normalize_is_idempotent () =
   let open Css.Container in
   List.iter
     (fun input ->
-      let once = normalize (of_string input) in
+      let once = normalize (Css_test_helpers.ok (of_string input)) in
       Alcotest.(check string)
         ("normalize is idempotent: " ^ input)
         (to_string once)
@@ -411,7 +454,7 @@ let normalize_is_idempotent () =
       Alcotest.(check bool)
         ("a normal form reparses to itself: " ^ input)
         true
-        (equal once (of_string (to_string once))))
+        (equal once (Css_test_helpers.ok (of_string (to_string once)))))
     [
       "(min-width: 10px)";
       "(min-width: 24rem)";
@@ -445,7 +488,9 @@ let test_large_rem () =
     "tiny min-width rem" "(min-width:4e-33rem)"
     (to_string (Min_width_rem 4e-33));
   let check input expected =
-    Alcotest.(check string) input expected (to_string (of_string input))
+    Alcotest.(check string)
+      input expected
+      (to_string (Css_test_helpers.ok (of_string input)))
   in
   check "(min-width:1E30rem)" "(min-width:1e30rem)";
   check "(min-width:1e+30rem)" "(min-width:1e30rem)";

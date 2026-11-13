@@ -56,8 +56,13 @@ let is_declaration_value value =
   | [] -> false
   | components -> components_stay_in_declaration components
 
-let refuse name detail =
-  failwith (String.concat "" [ "custom_property: "; name; ": "; detail ])
+(* Why [name] and [value] make no custom property declaration, if they do
+   not. *)
+let custom_property_refusal name value =
+  if not (is_custom_property_name name) then Some "not a custom-property name"
+  else if not (is_optional_declaration_value value) then
+    Some (String.concat "" [ value; " is not a declaration value" ])
+  else None
 
 (* CSS Syntax 3 (ED) sec. 5.5.6 discards whitespace before a declaration's value
    and again from its end, so a stream built from text carries neither. Only the
@@ -80,10 +85,10 @@ let custom_property ?layer name value =
      leaves the declaration as soon as the text is read back. A name carrying
      one of those is written back with the escapes that read it (CSS Syntax 3
      (ED) sec. 4.3.7), so it stays the name of this declaration. *)
-  if not (is_custom_property_name name) then
-    refuse name "not a custom-property name";
-  if not (is_optional_declaration_value value) then
-    refuse name (String.concat "" [ value; " is not a declaration value" ]);
+  (match custom_property_refusal name value with
+  | Some detail ->
+      invalid_arg (String.concat "" [ "custom_property: "; name; ": "; detail ])
+  | None -> ());
   (* Parse the value into a CSS Syntax 3 component stream so the declaration
      never carries a raw author string; the printer can then re-serialise with
      the active [Pp] context (handles minification). *)
@@ -567,15 +572,12 @@ let read_custom_value_declaration t name : declaration =
   let value_str, is_important = split_important raw_value in
   if not (is_optional_declaration_value value_str) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
-  (* custom_property may raise Failure for invalid names like "--" *)
-  try
-    let custom_value = read_custom_property_payload name value_str in
-    let decl =
-      v (Custom_property name)
-        (Custom_value { value = custom_value; layer = None; meta = None })
-    in
-    if is_important then important decl else decl
-  with Failure msg -> Cursor.err_invalid t msg
+  let custom_value = read_custom_property_payload name value_str in
+  let decl =
+    v (Custom_property name)
+      (Custom_value { value = custom_value; layer = None; meta = None })
+  in
+  if is_important then important decl else decl
 
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
@@ -1118,6 +1120,7 @@ let read_block t =
   Cursor.braces (fun inner -> read_declarations inner) t
 
 let of_string s =
+  Error.catch @@ fun () ->
   let r = Cursor.of_string s in
   match read_declaration r with
   | Some d -> d
@@ -1147,7 +1150,9 @@ let parse_declaration ?layer property value =
      the same parsed token stream the declaration parser would. *)
   match layer with
   | Some _ when is_custom_property_name property -> (
-      try Some (custom_property ?layer property value) with Failure _ -> None)
+      match custom_property_refusal property value with
+      | None -> Some (custom_property ?layer property value)
+      | Some _ -> None)
   | _ -> (
       try
         read_declaration
@@ -1201,6 +1206,7 @@ let keep_custom_fields ~from decl =
   | Declaration _ | Theme_guarded _ -> decl
 
 let with_value decl value =
+  Error.catch @@ fun () ->
   let important = if is_important decl then "!important" else "" in
   let tail () = Cursor.of_string (String.concat "" [ value; important ]) in
   match property_key decl with

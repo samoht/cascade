@@ -86,15 +86,17 @@ val read_size_adjust : Cursor.t -> size_adjust
 (** [read_size_adjust t] reads one [size-adjust] value, like
     {!read_metric_override}. *)
 
-val metric_override_of_string : string -> metric_override
-(** [metric_override_of_string s] parses a metric override value. *)
+val metric_override_of_string : string -> (metric_override, Error.t) result
+(** [metric_override_of_string s] parses a metric override value. This is
+    [Error e] if [s] is malformed. *)
 
-val size_adjust_of_string : string -> size_adjust
-(** [size_adjust_of_string s] parses a size-adjust percentage. *)
+val size_adjust_of_string : string -> (size_adjust, Error.t) result
+(** [size_adjust_of_string s] parses a size-adjust percentage. This is [Error e]
+    if [s] is malformed. *)
 
-val src_of_string : string -> src
-(** [src_of_string s] parses a src value. Raises {!Cursor.Parse_error} for
-    unparsed sources. *)
+val src_of_string : string -> (src, Error.t) result
+(** [src_of_string s] parses a src value. This is [Error e] if [s] is malformed.
+*)
 
 val read_src : Cursor.t -> src
 (** [read_src t] parses a font source list from a component cursor. *)

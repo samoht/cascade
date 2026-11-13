@@ -157,7 +157,7 @@ let custom_property_guard () =
      answer is derived from the round-trip, not from a pinned spelling. *)
   let build name value =
     match custom_property name value with
-    | exception Failure _ -> "<refused>"
+    | exception Invalid_argument _ -> "<refused>"
     | d -> (
         let text = to_string ~minify:true d in
         let back =
@@ -348,7 +348,7 @@ let spec_custom_tokens () =
    unquoting it would name the keyword instead of the family. *)
 let custom_font_equivalence_key () =
   let key css =
-    Css.declaration_value_for_equivalence (Css.Declaration.of_string css)
+    Css.declaration_value_for_equivalence (ok (Css.Declaration.of_string css))
   in
   List.iter
     (fun (css, expected) -> Alcotest.(check string) css expected (key css))
@@ -419,7 +419,9 @@ let filter_omitted_arguments () =
           check_declaration ~expected:omitted
             (String.concat "" [ prop; ":"; fn; "( /**/ )" ]);
           let canonical text =
-            of_string text |> normalize |> string_of_value ~minify:true
+            Css_test_helpers.ok (of_string text)
+            |> normalize
+            |> string_of_value ~minify:true
           in
           Alcotest.(check string)
             omitted (canonical explicit) (canonical omitted))

@@ -160,7 +160,7 @@ let cli_pairs = ref 0
 let diff_of ~mode a b =
   match C.diff ~mode a b with
   | d -> Some d
-  | exception (Reader.Parse_error _ | Failure _ | Invalid_argument _) -> None
+  | exception (Failure _ | Invalid_argument _) -> None
 
 let show css = if String.length css <= 200 then css else String.sub css 0 200
 

@@ -4,6 +4,9 @@
 
 open Cascade
 open Alcobar
+
+let ok = Fuzz_helpers.ok
+
 module Supports_inventory = Cascade_spec_inventory.Supports_grammar
 
 let rec supports_of_expected = function
@@ -19,27 +22,24 @@ let rec supports_of_expected = function
 
 (** Supports.of_string -- must not crash on arbitrary input. *)
 let test_of_string buf =
-  try ignore (Css.Supports.of_string buf) with Cursor.Parse_error _ -> ()
+  match Css.Supports.of_string buf with Ok _ | Error _ -> ()
 
 (** Roundtrip: parse -> to_string -> parse should not crash. *)
 let test_roundtrip buf =
-  match
-    try Some (Css.Supports.of_string buf) with Cursor.Parse_error _ -> None
-  with
+  match Result.to_option (Css.Supports.of_string buf) with
   | None -> ()
   | Some cond -> (
       let s = Css.Supports.to_string cond in
-      try ignore (Css.Supports.of_string s)
-      with Cursor.Parse_error _ -> fail "supports roundtrip re-parse failed")
+      match Css.Supports.of_string s with
+      | Ok _ -> ()
+      | Error _ -> fail "supports roundtrip re-parse failed")
 
 let test_serialization_idempotent buf =
-  match
-    try Some (Css.Supports.of_string buf) with Cursor.Parse_error _ -> None
-  with
+  match Result.to_option (Css.Supports.of_string buf) with
   | None -> ()
   | Some cond ->
       let once = Css.Supports.to_string cond in
-      let twice = Css.Supports.(once |> of_string |> to_string) in
+      let twice = Css.Supports.(once |> of_string |> ok |> to_string) in
       if once <> twice then fail "supports serialization drifted"
 
 let rec has_mixed_operator = function
@@ -56,33 +56,25 @@ let rec has_mixed_operator = function
       false
 
 let test_mixed_operator_serialization_reparse buf =
-  match
-    try Some (Css.Supports.of_string buf) with Cursor.Parse_error _ -> None
-  with
+  match Result.to_option (Css.Supports.of_string buf) with
   | Some cond when has_mixed_operator cond ->
       let serialized = Css.Supports.to_string cond in
-      let reparsed =
-        try Some (Css.Supports.of_string serialized)
-        with Cursor.Parse_error _ -> None
-      in
+      let reparsed = Result.to_option (Css.Supports.of_string serialized) in
       if Option.is_none reparsed then
         fail "mixed and/or supports serialization did not reparse"
   | _ -> ()
 
 (** pp -- must not crash on any parsed condition. *)
 let test_pp buf =
-  match
-    try Some (Css.Supports.of_string buf) with Cursor.Parse_error _ -> None
-  with
+  match Result.to_option (Css.Supports.of_string buf) with
   | None -> ()
   | Some cond -> ignore (Css.Supports.to_string cond)
 
 (** compare -- must not crash on any pair of parsed conditions. *)
 let test_compare buf1 buf2 =
   match
-    ( (try Some (Css.Supports.of_string buf1) with Cursor.Parse_error _ -> None),
-      try Some (Css.Supports.of_string buf2) with Cursor.Parse_error _ -> None
-    )
+    ( Result.to_option (Css.Supports.of_string buf1),
+      Result.to_option (Css.Supports.of_string buf2) )
   with
   | Some a, Some b ->
       ignore (Css.Supports.compare a b);
@@ -143,14 +135,14 @@ let generated_condition buf =
 let test_generated_condition_serialization_idempotent buf =
   let condition = generated_condition buf in
   let once = Css.Supports.to_string condition in
-  let twice = Css.Supports.(once |> of_string |> to_string) in
+  let twice = Css.Supports.(once |> of_string |> ok |> to_string) in
   if once <> twice then
     failf "generated supports serialization changed: %S -> %S" once twice
 
 let test_supports_context_syntax buf =
   let condition = generated_condition buf in
   let serialized = Css.Supports.to_string condition in
-  let reparsed = Css.Supports.(serialized |> of_string |> to_string) in
+  let reparsed = Css.Supports.(serialized |> of_string |> ok |> to_string) in
   if serialized <> reparsed then
     failf "supports syntax changed: %S -> %S" serialized reparsed
 
@@ -158,7 +150,7 @@ let spec_supports_vector buf = pick Supports_inventory.rows buf 0
 
 let test_spec_supports_structural_vectors buf =
   let row = spec_supports_vector buf in
-  let actual = Css.Supports.of_string row.input in
+  let actual = ok (Css.Supports.of_string row.input) in
   if not (Css.Supports.equal (supports_of_expected row.expected) actual) then
     failf "supports vector parsed to wrong AST: %S -> %S" row.input
       (Css.Supports.to_string actual)
@@ -170,8 +162,8 @@ let test_spec_supports_invalid_vectors buf =
 let test_supports_conditions buf =
   let row = pick Supports_inventory.rows buf 2 in
   let input = row.input in
-  let once = Css.Supports.to_string (Css.Supports.of_string input) in
-  let twice = Css.Supports.to_string (Css.Supports.of_string once) in
+  let once = Css.Supports.to_string (ok (Css.Supports.of_string input)) in
+  let twice = Css.Supports.to_string (ok (Css.Supports.of_string once)) in
   if once <> twice then
     failf "supports condition family serialization drifted: %S -> %S" once twice
 

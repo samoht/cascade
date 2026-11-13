@@ -408,14 +408,14 @@ let s552_unknown_at_rule_constructor () =
         Alcotest.failf "%s: expected an error, built %S" what (printed stmt)
   in
   let parts stmt =
-    match Css.of_string_exn (printed stmt) with
+    match Css.stylesheet (printed stmt) with
     | [ Unknown_at_rule { name; prelude; block } ] -> (name, prelude, block)
     | other ->
         Alcotest.failf "expected one unknown at-rule, got %d statements"
           (List.length other)
   in
   let at_rule = Alcotest.(triple string string (option string)) in
-  let block = Css.of_string_exn ".a{color:red}" in
+  let block = Css.stylesheet ".a{color:red}" in
   (* A block cascade does model reaches the body through its own printer, so a
      caller places one without assembling or re-reading a sheet. *)
   let statements =
@@ -506,7 +506,7 @@ let s552_unknown_at_rule_error_is_local () =
   Alcotest.(check int) "only the malformed at-rule is lost" 2 (List.length kept);
   Alcotest.(check int)
     "the survivors print a sheet holding both of them" 2
-    (List.length (Css.of_string_exn (Css.to_string ~minify:true kept)))
+    (List.length (Css.stylesheet (Css.to_string ~minify:true kept)))
 
 (* CSS Syntax 3 sec. 5.4.2: an unrecognised at-rule has no grammar to
    re-serialise its body from, so the body travels as the source text between

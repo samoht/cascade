@@ -67,8 +67,9 @@ let conditional_atom r ~at_rule (fn : Component.func Component.node) =
   | "media" -> Media_condition (Media.of_function_components fn.node.arguments)
   | "supports" ->
       Supports_condition_test
-        (Supports.of_string ~allow_unwrapped_decl:true
-           (Cursor.string_of_components ~trim:true fn.node.arguments))
+        (Supports.read ~allow_unwrapped_decl:true
+           (Cursor.of_string
+              (Cursor.string_of_components ~trim:true fn.node.arguments)))
   | name ->
       Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
 
@@ -140,8 +141,8 @@ let scope_prelude r prelude_components : Selector.t option * Selector.t option =
       if s = "" then None
       else
         match Selector.of_string s with
-        | sel -> Some sel
-        | exception Invalid_argument m -> Cursor.err_invalid r m
+        | Ok sel -> Some sel
+        | Error e -> Error.fail e
     in
     (opt start, opt end_)
 

@@ -7,9 +7,7 @@ open Selector_helpers
    rendering browser or the host document language is available: a rewrite runs
    only when the CSS text and the CSS specs prove it on their own. *)
 let check_enforce_spec_to expected input =
-  let actual =
-    Css.Pp.to_string ~minify:true ~enforce_spec:true pp (of_string input)
-  in
+  let actual = Css.Pp.to_string ~minify:true ~enforce_spec:true pp (v input) in
   Alcotest.(check string) ("enforce-spec " ^ input) expected actual
 
 (* ignore-test *)
@@ -52,7 +50,7 @@ let test_nesting_selector () =
 (* ignore-test *)
 let test_spec_selector_specificity () =
   let check_specificity name input ids classes elements =
-    let actual = specificity (of_string input) in
+    let actual = specificity (v input) in
     Alcotest.(check int) (name ^ " ids") ids actual.ids;
     Alcotest.(check int) (name ^ " classes") classes actual.classes;
     Alcotest.(check int) (name ^ " elements") elements actual.elements
@@ -74,8 +72,8 @@ let test_spec_selector_specificity () =
 
 let spec_minifier_semantics () =
   let check_specificity name input ids classes elements =
-    let minified = to_string ~minify:true (of_string input) in
-    let actual = specificity (of_string minified) in
+    let minified = to_string ~minify:true (v input) in
+    let actual = specificity (v minified) in
     Alcotest.(check int) (name ^ " ids") ids actual.ids;
     Alcotest.(check int) (name ^ " classes") classes actual.classes;
     Alcotest.(check int) (name ^ " elements") elements actual.elements

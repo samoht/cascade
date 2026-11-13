@@ -103,7 +103,7 @@ let test_vars_of_property () =
 
 let spec_vars_of_property_matrix () =
   let check property_name declaration =
-    let decl = Css.Declaration.of_string declaration in
+    let decl = ok (Css.Declaration.of_string declaration) in
     let vars = vars_of_declarations [ decl ] in
     Alcotest.(check int) property_name 1 (List.length vars)
   in
@@ -139,7 +139,7 @@ let spec_vars_of_property_matrix () =
    or longhand twin does. *)
 let spec_vars_of_property_logical_matrix () =
   let check property_name declaration =
-    let decl = Css.Declaration.of_string declaration in
+    let decl = ok (Css.Declaration.of_string declaration) in
     let vars = vars_of_declarations [ decl ] in
     Alcotest.(check int) property_name 1 (List.length vars)
   in
@@ -321,7 +321,8 @@ let test_vars_of_declarations () =
      exposes it too: the value never went through a typed parser, so the
      reference is recovered structurally from the component stream. *)
   let tokens_ref =
-    vars_of_declarations [ of_string "--gradient-bg:var(--color-black)" ]
+    vars_of_declarations
+      [ Css_test_helpers.ok (of_string "--gradient-bg:var(--color-black)") ]
   in
   Alcotest.(check bool)
     "custom Tokens value exposes the ref" true (has_black tokens_ref)
@@ -452,8 +453,8 @@ let spec_typed_custom_property () =
   (* CSS Variables 1 sec. 2 names a custom property with a <dashed-ident>, the
      same check Declaration.custom_property makes. *)
   Alcotest.check_raises "undashed name is no custom property"
-    (Failure "custom_property: w: not a custom-property name") (fun () ->
-      ignore (typed_custom_property "w" Length (Px 1.)))
+    (Invalid_argument "custom_property: w: not a custom-property name")
+    (fun () -> ignore (typed_custom_property "w" Length (Px 1.)))
 
 let spec_typed_custom_property_registration () =
   (* A registration read back at its syntax assigns without a printer per arm,
@@ -653,7 +654,7 @@ let test_read_var_reference () =
     let r = Cursor.of_string input in
     match read_reference r with
     | _ -> Alcotest.failf "Expected failure for: %s" input
-    | exception (Cursor.Parse_error _ | Reader.Parse_error _) -> ()
+    | exception Cursor.Parse_error _ -> ()
   in
 
   neg "not-a-var";
@@ -698,7 +699,7 @@ let spec_custom_fallback_edges () =
     let r = Cursor.of_string input in
     match read_reference r with
     | _ -> Alcotest.failf "Expected failure for: %s" input
-    | exception (Cursor.Parse_error _ | Reader.Parse_error _) -> ()
+    | exception Cursor.Parse_error _ -> ()
   in
   neg "var(--color";
   check_var_ref "var(---)" "-" None;
@@ -764,7 +765,7 @@ let spec_read_reference_body_as_string_edges () =
 
 let spec_custom_computed_edges () =
   let check_context name specified =
-    let decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
+    let decl = ok (Css.Declaration.of_string (name ^ ": " ^ specified)) in
     let ctx = { Css.Context.empty with custom_properties = [ decl ] } in
     Alcotest.(check (option decl_t))
       (name ^ " context") (Some decl)

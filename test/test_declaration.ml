@@ -399,15 +399,11 @@ let roundtrip () =
   check_declaration ~expected:"margin:10px" "margin : 10px";
   check_declaration ~expected:"padding:5px!important" "padding: 5px !important"
 
-(* The exact error-message shape moved from [Reader.Parse_error] to [Error.t];
-   we now only assert that parsing fails. *)
 let expect_parse_error name f =
   try
     f ();
     Alcotest.failf "%s: expected Parse_error but none was raised" name
-  with
-  | Cursor.Parse_error _ -> ()
-  | Reader.Parse_error _ -> ()
+  with Cursor.Parse_error _ -> ()
 
 let error_missing_colon () =
   let r = Cursor.of_string "color red;" in
@@ -416,14 +412,14 @@ let error_missing_colon () =
 (* [Declaration.of_string] documents one failure mode, so a caller writes one
    handler. Text that is not a declaration reaches it two ways - the reader
    raises, or it answers [None] for a component a declaration cannot start with
-   - and both must leave through the same exception. *)
+   - and both must come back as an [Error]. *)
 let of_string_one_failure_mode () =
   let refused input =
     match of_string input with
-    | d ->
+    | Ok d ->
         Alcotest.failf "%S: expected a parse error, parsed %S" input
           (to_string d)
-    | exception Cursor.Parse_error _ -> ()
+    | Error _ -> ()
   in
   (* The reader reaches the value and rejects it. *)
   refused "color";
@@ -677,11 +673,30 @@ let special_cases () =
   check_declaration ~expected:"margin-block:1px 1px"
     ~optimized:"margin-block:1px" "margin-block: 1px 1px"
 
+(* [with_value] reads the new value with the grammar of the property the
+   declaration already names. CSS Color 4 sec. 6.1: [blue] is a named color and
+   [nope] is no [<color>]; CSS 2 sec. 9.5.1: [float] takes [left], [right] or
+   [none], so [center] is invalid. *)
+let with_value_contract () =
+  let color_red = ok (of_string "color: red") in
+  (match with_value color_red "blue" with
+  | Ok d ->
+      Alcotest.(check string)
+        "color takes blue" "color:blue" (to_string ~minify:true d)
+  | Error e -> Alcotest.failf "blue: %s" (Error.to_string e));
+  (match with_value color_red "nope" with
+  | Error _ -> ()
+  | Ok d -> Alcotest.failf "nope read as %s" (to_string d));
+  match with_value (ok (of_string "float: left")) "center" with
+  | Error _ -> ()
+  | Ok d -> Alcotest.failf "center read as %s" (to_string d)
+
 let suite =
   ( "declaration",
     [
       (* Parsing basics *)
       test_case "simple" `Quick simple;
+      test_case "with_value contract" `Quick with_value_contract;
       test_case "multiple" `Quick multiple;
       test_case "block" `Quick block;
       test_case "complex values" `Quick complex_values;

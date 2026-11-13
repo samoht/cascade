@@ -5,6 +5,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let cssish buf =
   let alphabet =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 \
@@ -261,10 +263,10 @@ let generated_supports_condition buf =
 let generated_container_condition buf =
   pick
     [
-      Css.Container.of_string "(inline-size > 30em)";
-      Css.Container.of_string "(30em <= inline-size < 60em)";
-      Css.Container.of_string "style(--variant: featured)";
-      Css.Container.of_string "scroll-state(stuck: top)";
+      ok (Css.Container.of_string "(inline-size > 30em)");
+      ok (Css.Container.of_string "(30em <= inline-size < 60em)");
+      ok (Css.Container.of_string "style(--variant: featured)");
+      ok (Css.Container.of_string "scroll-state(stuck: top)");
     ]
     buf 8
 
@@ -293,8 +295,8 @@ let nested_condition_block buf media supports container =
     Css.Stylesheet.Supports_condition
       ("--generated-condition", [ declaration buf 15 ]);
     Css.Stylesheet.Scope
-      ( Some (Css.Selector.of_string ".card"),
-        Some (Css.Selector.of_string ".boundary"),
+      ( Some (Css.Selector.v ".card"),
+        Some (Css.Selector.v ".boundary"),
         [ Css.Stylesheet.Starting_style [ rule buf 16 ] ] );
   ]
 
@@ -613,8 +615,7 @@ let test_stylesheet_unicode_bytes buf =
 (** read_rule -- must not crash. *)
 let test_read_rule buf =
   let r = Cursor.of_string buf in
-  try ignore (Css.Stylesheet.read_rule r)
-  with Cursor.Parse_error _ | Invalid_argument _ -> ()
+  try ignore (Css.Stylesheet.read_rule r) with Cursor.Parse_error _ -> ()
 
 (** read_block -- must not crash. *)
 let test_read_block buf =
@@ -1267,11 +1268,11 @@ let test_property_value_context buf =
       ]
       buf 1
   in
-  let custom_decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
+  let custom_decl = ok (Css.Declaration.of_string (name ^ ": " ^ specified)) in
   let ctx =
     Css.Context.v ~custom_properties:[ custom_decl ]
-      ~inherited_values:[ Css.Declaration.of_string "color: currentColor" ]
-      ~initial_values:[ Css.Declaration.of_string "display: inline" ]
+      ~inherited_values:[ ok (Css.Declaration.of_string "color: currentColor") ]
+      ~initial_values:[ ok (Css.Declaration.of_string "display: inline") ]
       ~base_url:"https://example.test/css/app.css" ~root_font_size:(Px 16.)
       ~parent_font_size:(Px 14.) ~current_color:(Named Black)
       ~viewport_width:(Px 1024.) ~viewport_height:(Px 768.)

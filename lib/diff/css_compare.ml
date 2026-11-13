@@ -91,13 +91,13 @@ let at_rule_path_and_inner stmt =
     ]
     stmt
 
-let strip_tool_header css =
-  (* Strip a leading /*!...*/ header comment with simpler flow to reduce
-     nesting *)
-  let stripped =
-    if not (String.starts_with ~prefix:"/*!" css) then css
+(* The offset in [css] past a leading /*!...*/ header comment, the newline after
+   it and any whitespace, where the compared text starts. *)
+let tool_header_end css =
+  let len = String.length css in
+  let start =
+    if not (String.starts_with ~prefix:"/*!" css) then 0
     else
-      let len = String.length css in
       (* Find the end of the opening header comment "*/" starting at index 3 *)
       let rec find_comment_end i =
         if i + 1 >= len then None
@@ -105,14 +105,48 @@ let strip_tool_header css =
         else find_comment_end (i + 1)
       in
       match find_comment_end header_comment_start with
-      | None -> css
-      | Some j ->
-          let start_pos = if j < len && css.[j] = '\n' then j + 1 else j in
-          if start_pos >= len then ""
-          else String.sub css start_pos (len - start_pos)
+      | None -> 0
+      | Some j -> if j < len && css.[j] = '\n' then j + 1 else j
   in
+  let rec skip i =
+    if i < len then
+      match css.[i] with
+      | ' ' | '\012' | '\n' | '\r' | '\t' -> skip (i + 1)
+      | _ -> i
+    else i
+  in
+  skip start
+
+let strip_tool_header css =
+  let start = tool_header_end css in
   (* Trim trailing whitespace for consistent comparison *)
-  String.trim stripped
+  String.trim (String.sub css start (String.length css - start))
+
+(* A warning located in the stripped text, moved back to its place in the file:
+   the stripped prefix, preprocessed as the reader would (CSS Syntax 3 (ED) sec.
+   3.3), goes back in front of the source and of the location. *)
+let relocate ~prefix (e : Error.t) =
+  if prefix = "" then e
+  else
+    let prefix = Reader.source (Reader.of_string prefix) in
+    let shift = String.length prefix in
+    {
+      e with
+      loc =
+        Loc.v ~start_pos:(e.loc.start_pos + shift)
+          ~end_pos:(e.loc.end_pos + shift);
+      source = Option.map (fun s -> String.concat "" [ prefix; s ]) e.source;
+    }
+
+(* [css] read the way [diff] compares it, with its warnings and error placed in
+   the file [filename] names. *)
+let parse_input ?filename css =
+  let prefix = String.sub css 0 (tool_header_end css) in
+  let relocate = relocate ~prefix in
+  match Css.of_string ?filename (strip_tool_header css) with
+  | Ok parse ->
+      Ok { parse with Css.warnings = List.map relocate parse.warnings }
+  | Error e -> Error (relocate e)
 
 (* The canonical projection sorts a run of [@property] rules by name (see
    [Css.canonicalize_rule_order]): CSS Properties and Values API 1 sec. 2 makes
@@ -818,7 +852,9 @@ let parse_warnings = function
   | Error _ -> []
 
 let diff ?(mode = `Auto) ?(lossless = false) ?(enforce_spec = false)
-    ?(prune_unused_custom_props = false) expected actual =
+    ?(prune_unused_custom_props = false) ?expected_filename ?actual_filename
+    expected actual =
+  let expected_input = expected and actual_input = actual in
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   if expected = actual then
@@ -832,8 +868,10 @@ let diff ?(mode = `Auto) ?(lossless = false) ?(enforce_spec = false)
           actual_warnings = [];
         }
     | (`Auto | `Tree | `Canonical) as mode ->
-        let expected_parse = Css.of_string expected in
-        let actual_parse = Css.of_string actual in
+        let expected_parse =
+          parse_input ?filename:expected_filename expected_input
+        in
+        let actual_parse = parse_input ?filename:actual_filename actual_input in
         let result =
           match mode with
           | `Auto -> diff_auto ~expected ~actual ~expected_parse ~actual_parse

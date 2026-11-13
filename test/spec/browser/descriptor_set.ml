@@ -264,7 +264,6 @@ let jobs ~seed ~only =
 let cascade_accepts job =
   match Css.of_string job.sheet with
   | exception Error.Parse_error _ -> false
-  | exception Reader.Parse_error _ -> false
   | Error _ -> false
   | Ok { warnings = _ :: _; _ } -> false
   | Ok { stylesheet; warnings = []; _ } ->

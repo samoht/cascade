@@ -114,14 +114,18 @@ val diff :
   ?lossless:bool ->
   ?enforce_spec:bool ->
   ?prune_unused_custom_props:bool ->
+  ?expected_filename:string ->
+  ?actual_filename:string ->
   string ->
   string ->
   t
 (** [diff ?mode expected actual] returns the diff between two CSS strings. A
     leading [/*! ... */] tool banner on either side is stripped before
-    comparison. Parsing failures surface as [_error] variants. [lossless]
-    preserves exact colour channels and non-terminating numeric arithmetic
-    during canonical comparison. Canonical comparison judges for the browsers
+    comparison. Parsing failures surface as [_error] variants. Each side's
+    warnings and error name [expected_filename] or [actual_filename] and are
+    located in that side's text as given, banner included. [lossless] preserves
+    exact colour channels and non-terminating numeric arithmetic during
+    canonical comparison. Canonical comparison judges for the browsers
     {!Css.optimize} targets by default, so a [@supports] guard every target
     satisfies, a prefix a target needs and a fallback every target parses past
     are no difference; [enforce_spec] (default [false]) keeps every one of

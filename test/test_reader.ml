@@ -26,7 +26,7 @@ let basic () =
   Alcotest.(check bool) "done after skip" true (is_done r);
   Alcotest.(check bool)
     "skipping past the end raises" true
-    (match skip r with exception Parse_error _ -> true | () -> false)
+    (match skip r with exception Invalid_argument _ -> true | () -> false)
 
 let peeks () =
   let r = of_string "abc" in
@@ -97,304 +97,106 @@ let utf8_peek_bounds () =
     (peek_utf8_at r 0);
   Alcotest.(check int) "does not advance" position (Reader.position r)
 
-(* Test call stack functionality *)
-let callstack_case () =
-  let r = of_string "test" in
-
-  (* Initially empty call stack *)
-  Alcotest.(check (list string)) "initial callstack empty" [] (callstack r);
-
-  (* Push context *)
-  push_context r "context1";
-  Alcotest.(check (list string)) "single context" [ "context1" ] (callstack r);
-
-  (* Push another context *)
-  push_context r "context2";
-  Alcotest.(check (list string))
-    "nested contexts" [ "context1"; "context2" ] (callstack r);
-
-  (* Pop context *)
-  pop_context r;
-  Alcotest.(check (list string)) "after pop" [ "context1" ] (callstack r);
-
-  (* Pop last context *)
-  pop_context r;
-  Alcotest.(check (list string)) "empty after pop all" [] (callstack r);
-
-  (* Pop empty stack should not crash *)
-  pop_context r;
-  Alcotest.(check (list string)) "pop empty stack" [] (callstack r)
-
-let with_context_case () =
-  let r = of_string "test" in
-  let result = ref [] in
-
-  (* Test with_context preserves and cleans up context *)
-  with_context r "test_context" (fun () ->
-      result := callstack r;
-      42)
-  |> ignore;
-
-  Alcotest.(check (list string))
-    "context during execution" [ "test_context" ] !result;
-  Alcotest.(check (list string)) "context cleaned up after" [] (callstack r)
-
-let with_context_exception () =
-  let r = of_string "test" in
-
-  (* Test that context is cleaned up even when exception is raised *)
-  (try
-     with_context r "test_context" (fun () -> failwith "test exception")
-     |> ignore
-   with Failure _ -> ());
-
-  Alcotest.(check (list string))
-    "context cleaned up after exception" [] (callstack r)
-
 (* Helper to skip to a specific pattern in reader *)
 let rec skip_to_pattern r pattern =
   if (not (is_done r)) && not (looking_at r pattern) then (
     skip r;
     skip_to_pattern r pattern)
 
-let error_formatting_multiline () =
-  (* Test error on multi-line CSS with previous line context *)
+let context_window_multiline () =
+  (* The window around a position on a later line reaches the line before. *)
   let multiline_css =
     ".class1 {\n  color: red;\n}\n.class2 {\n  invalid-prop: value;\n}"
   in
   let r = of_string multiline_css in
-
-  (* Navigate to the error position (around "invalid-prop") *)
   skip_to_pattern r "invalid";
+  let context, _ = context_window r in
+  Alcotest.(check bool)
+    "has newline in context" true
+    (String.contains context '\n');
+  Alcotest.(check bool)
+    "context reasonable length" true
+    (String.length context < 120)
 
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.fail "expected a parse error"
-  | exception Parse_error error ->
-      (* Check that context includes previous line *)
-      Alcotest.(check bool)
-        "has newline in context" true
-        (String.contains error.context_window '\n');
-      (* Check that the context isn't too long (should be around 80 chars) *)
-      Alcotest.(check bool)
-        "context reasonable length" true
-        (String.length error.context_window < 120);
-      (* The location lives in [line] and [col]; [filename] names the source and
-         carries no location, so it holds no separator. *)
-      Alcotest.(check bool)
-        "filename holds no location" false
-        (String.contains error.filename ':');
-      Alcotest.(check (pair int int))
-        "location of the failing byte" (5, 3) (error.line, error.col)
-
-let error_formatting_long_line () =
-  (* Test error on very long single line (minified CSS) *)
+let context_window_long_line () =
+  (* A window in the middle of a long line is about 80 characters, with the
+     marker near its middle. *)
   let long_css = String.make 200 'x' ^ "invalid" ^ String.make 200 'y' in
   let r = of_string long_css in
-
-  (* Navigate to around the middle *)
   for _ = 1 to 205 do
     skip r
   done;
+  let context, marker_pos = context_window r in
+  let context_len = String.length context in
+  Alcotest.(check bool)
+    "context around 80 chars" true
+    (context_len >= 70 && context_len <= 90);
+  Alcotest.(check bool)
+    "marker near middle" true
+    (marker_pos >= 30 && marker_pos <= 50);
+  Alcotest.(check bool)
+    "no newlines in single line" false
+    (String.contains context '\n')
 
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.fail "expected a parse error"
-  | exception Parse_error error ->
-      (* Check that context is around 80 characters *)
-      let context_len = String.length error.context_window in
-      Alcotest.(check bool)
-        "context around 80 chars" true
-        (context_len >= 70 && context_len <= 90);
-      (* Check that marker position is roughly in the middle *)
-      Alcotest.(check bool)
-        "marker near middle" true
-        (error.marker_pos >= 30 && error.marker_pos <= 50);
-      (* Should not have newlines for single line *)
-      Alcotest.(check bool)
-        "no newlines in single line" false
-        (String.contains error.context_window '\n')
-
-let error_formatting_short_input () =
-  (* Test error on very short input *)
+let context_window_short_input () =
   let short_css = "ab" in
-  let r = of_string short_css in
+  let context, marker_pos = context_window (of_string short_css) in
+  Alcotest.(check string) "context is full short string" short_css context;
+  Alcotest.(check int) "marker at start" 0 marker_pos
 
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.fail "expected a parse error"
-  | exception Parse_error error ->
-      (* Check that context is the entire short string *)
-      Alcotest.(check string)
-        "context is full short string" short_css error.context_window;
-      (* Check marker position *)
-      Alcotest.(check int) "marker at start" 0 error.marker_pos
+let context_window_at_start () =
+  let context, marker_pos = context_window (of_string "invalid syntax here") in
+  Alcotest.(check int) "marker at start" 0 marker_pos;
+  Alcotest.(check bool) "has some context" true (String.length context > 0)
 
-let error_formatting_at_start () =
-  (* Test error at very beginning of input *)
-  let css = "invalid syntax here" in
-  let r = of_string css in
-
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.fail "expected a parse error"
-  | exception Parse_error error ->
-      (* Check that context starts from beginning *)
-      Alcotest.(check int) "marker at start" 0 error.marker_pos;
-      (* Check that we get reasonable context from the start *)
-      Alcotest.(check bool)
-        "has some context" true
-        (String.length error.context_window > 0)
-
-let error_formatting_at_end () =
-  (* Test error near end of input *)
-  let css = "some valid css syntax" in
-  let r = of_string css in
-
-  (* Navigate to near the end *)
+let context_window_at_end () =
+  let r = of_string "some valid css syntax" in
   while not (is_done r) do
     skip r
   done;
+  let context, marker_pos = context_window r in
+  Alcotest.(check bool) "has leading context" true (String.length context > 0);
+  Alcotest.(check bool)
+    "marker near end" true
+    (marker_pos >= String.length context - 5)
 
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.fail "expected a parse error"
-  | exception Parse_error error ->
-      (* Should have context leading up to the end *)
-      Alcotest.(check bool)
-        "has leading context" true
-        (String.length error.context_window > 0);
-      (* Marker should be at end of context *)
-      Alcotest.(check bool)
-        "marker near end" true
-        (error.marker_pos >= String.length error.context_window - 5)
-
-(* Fail at byte [pos] of [input] and hand back the error record. *)
-let error_at input pos =
+(* The context window at byte [pos] of [input]. *)
+let context_at input pos =
   let r = of_string input in
   for _ = 1 to pos do
     skip r
   done;
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.failf "expected a parse error at byte %d" pos
-  | exception Parse_error error -> error
+  context_window r
 
-(* Lines and columns are 1-based and counted from the start of the input: the
-   byte just past a newline opens the next line at column 1, and the position
-   past the last byte of a line is one column beyond it. *)
-let error_line_and_column () =
-  let check name input pos expected =
-    let error = error_at input pos in
-    Alcotest.(check (pair int int)) name expected (error.line, error.col)
-  in
-  check "start of the second line" "abc\n" 4 (2, 1);
-  check "start of the second line, longer first" "aaaaa\n" 6 (2, 1);
-  check "start of the third line" "ab\ncd\n" 6 (3, 1);
-  check "past the last character" "abc" 3 (1, 4)
-
-(* A column is one Unicode scalar value, for the reported column and for the
-   caret alike, so three euro signs put the error in column 4 with three
-   characters before the caret rather than nine bytes. *)
-let error_column_counts_characters () =
-  let error = error_at (euros 3) 9 in
-  Alcotest.(check (pair int int))
-    "column counts characters" (1, 4) (error.line, error.col);
-  Alcotest.(check int) "caret counts characters" 3 error.marker_pos
-
-(* The caret of pure ASCII stays where it was, one column per byte. *)
-let error_ascii_caret_holds () =
-  let error = error_at (String.make 50 'a') 50 in
-  Alcotest.(check (pair int int)) "ascii column" (1, 51) (error.line, error.col);
-  Alcotest.(check int) "ascii caret" 40 error.marker_pos
+(* A marker counts Unicode scalar values, so three euro signs put three
+   characters before it rather than nine bytes; pure ASCII stays one per
+   byte. *)
+let context_window_counts_characters () =
+  Alcotest.(check int)
+    "marker counts characters" 3
+    (snd (context_at (euros 3) 9));
+  Alcotest.(check int)
+    "ascii marker" 40
+    (snd (context_at (String.make 50 'a') 50))
 
 (* A window boundary landing inside a UTF-8 sequence moves out to the lead byte,
    so the context a caret is drawn under is never a truncated code point. *)
-let error_context_window_keeps_code_points () =
-  let before = error_at (euros 40 ^ "xx") 122 in
+let context_window_keeps_code_points () =
+  let before, _ = context_at (euros 40 ^ "xx") 122 in
   Alcotest.(check bool)
-    "leading boundary keeps code points" true
-    (is_utf8 before.context_window);
-  let after = error_at ("x" ^ euros 40) 1 in
+    "leading boundary keeps code points" true (is_utf8 before);
+  let after, _ = context_at ("x" ^ euros 40) 1 in
   Alcotest.(check bool)
-    "trailing boundary keeps code points" true
-    (is_utf8 after.context_window)
+    "trailing boundary keeps code points" true (is_utf8 after)
 
-(* [filename] names the source and holds nothing else. A reader built by
-   [of_string] has no name of its own, so it carries the placeholder, and
-   [with_filename] swaps in the caller's name without disturbing the location in
-   [line], [col] and [position]. *)
-let error_filename_names_the_source () =
-  let error = error_at "abc\ndef" 5 in
-  Alcotest.(check string) "default source name" "<CSS input>" error.filename;
-  Alcotest.(check (pair int int))
-    "location of the failing byte" (2, 2) (error.line, error.col);
-  let stamped = with_filename error "theme.css" in
-  Alcotest.(check string) "stamped source name" "theme.css" stamped.filename;
-  Alcotest.(check (pair int int))
-    "stamping a name keeps the location" (2, 2)
-    (stamped.line, stamped.col);
-  Alcotest.(check int) "stamping a name keeps the offset" 5 stamped.position
-
-(* The rendered location is the three-part [source:line:column] an editor can
-   jump to. The byte offset stays in [position] for a caller that wants it, and
-   is not a fourth part of the rendered location. *)
-let error_renders_three_part_location () =
-  let first_line error =
-    List.hd (String.split_on_char '\n' (pp_parse_error error))
-  in
-  let error = error_at "abc\ndef" 5 in
-  Alcotest.(check bool)
-    "renders source:line:column" true
-    (String.ends_with ~suffix:" at <CSS input>:2:2" (first_line error));
-  Alcotest.(check bool)
-    "renders the stamped source name" true
-    (String.ends_with ~suffix:" at theme.css:2:2"
-       (first_line (with_filename error "theme.css")))
-
-(* The context window can span both sides of the failing line. Its caret belongs
-   immediately below that line, at a column measured from the line start. *)
-let error_renders_caret_on_marked_line () =
-  let error = error_at "first\nsecond\nthird" 8 in
-  Alcotest.(check string)
-    "caret interrupts the context below the marked line"
-    (String.concat ""
-       [
-         "a character the input never holds at <CSS input>:2:3\n";
-         "first\n";
-         "second\n";
-         "  ^\n";
-         "third";
-       ])
-    (pp_parse_error error)
-
-(* Position zero is a valid marker, not an out-of-bounds request for the old
-   arbitrary twenty-column fallback. *)
-let error_renders_caret_at_context_start () =
-  let error = error_at "abc" 0 in
-  Alcotest.(check string)
-    "caret at zero"
-    (String.concat ""
-       [
-         "a character the input never holds at <CSS input>:1:1\n"; "abc\n"; "^";
-       ])
-    (pp_parse_error error)
-
-let tests_call_stack () =
-  callstack_case ();
-  with_context_case ();
-  with_context_exception ()
-
-let tests_error_formatting () =
-  error_formatting_multiline ();
-  error_formatting_long_line ();
-  error_formatting_short_input ();
-  error_formatting_at_start ();
-  error_formatting_at_end ()
-
-let tests_error_position () =
-  error_line_and_column ();
-  error_column_counts_characters ();
-  error_ascii_caret_holds ();
-  error_context_window_keeps_code_points ();
-  error_filename_names_the_source ();
-  error_renders_three_part_location ();
-  error_renders_caret_on_marked_line ();
-  error_renders_caret_at_context_start ()
+let tests_context_window () =
+  context_window_multiline ();
+  context_window_long_line ();
+  context_window_short_input ();
+  context_window_at_start ();
+  context_window_at_end ();
+  context_window_counts_characters ();
+  context_window_keeps_code_points ()
 
 let suite =
   ( "reader",
@@ -403,7 +205,5 @@ let suite =
       test_case "peeks" `Quick peeks;
       test_case "UTF-8 skip" `Quick skips_code_points;
       test_case "UTF-8 peek bounds" `Quick utf8_peek_bounds;
-      test_case "call stack" `Quick tests_call_stack;
-      test_case "error formatting" `Quick tests_error_formatting;
-      test_case "error position" `Quick tests_error_position;
+      test_case "context window" `Quick tests_context_window;
     ] )

@@ -15,7 +15,7 @@ val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
     authored CSS text.
 
-    @raise Failure
+    @raise Invalid_argument
       if the pair does not make the one declaration it names. [name] has to be a
       [<dashed-ident>], and [value] the [<declaration-value>?] CSS Variables 1
       sec. 2 gives a custom property: no top-level [;], no unmatched closing
@@ -90,10 +90,10 @@ val read_keyframe_declarations : Cursor.t -> declaration list
 val read_block : Cursor.t -> declaration list
 (** [read_block t] is the typed declarations parsed from a braced block. *)
 
-val of_string : string -> declaration
+val of_string : string -> (declaration, Error.t) result
 (** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).
-    Raises {!Cursor.exception-Parse_error}, anchored on the offending text, when
-    [s] is not a valid declaration. *)
+    This is [Error e], anchored on the offending text, when [s] is not a valid
+    declaration. *)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
 (** [parse_declaration ?layer property value] reads [property] and [value] with
@@ -136,13 +136,13 @@ val parse_custom_property : string -> string -> declaration option
 val read : Cursor.t -> declaration
 (** [read t] parses one typed declaration from [t]. *)
 
-val with_value : declaration -> string -> declaration
+val with_value : declaration -> string -> (declaration, Error.t) result
 (** [with_value decl value] is [decl] carrying [value], read as a value of the
     property [decl] already holds and re-typed where that property accepts it.
     The property is taken from [decl] rather than from its name, so one whose
     minified spelling belongs to another property ([page-break-*] renders as the
-    CSS Fragmentation 3 sec. 3.4 [break-*] alias) is rebuilt as itself. Raises
-    [Cursor.Parse_error] when the property accepts no such value. *)
+    CSS Fragmentation 3 sec. 3.4 [break-*] alias) is rebuilt as itself. This is
+    [Error e] when the property accepts no such value. *)
 
 val with_opaque_value : declaration -> string -> declaration
 (** [with_opaque_value decl value] is [decl]'s property carrying [value] as an

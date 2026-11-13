@@ -7,7 +7,7 @@ open Css_test_helpers
 open Declaration_helpers
 
 let check_visible_var name css expected =
-  let declaration = Css.Declaration.of_string css in
+  let declaration = ok (Css.Declaration.of_string css) in
   let names =
     Css.vars_of_declarations [ declaration ] |> List.map Css.any_var_name
   in

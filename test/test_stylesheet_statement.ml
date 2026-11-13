@@ -124,7 +124,7 @@ let render_sheet n =
       i
   done;
   Fmt.flush out ();
-  Css.of_string_exn (Buffer.contents b)
+  Css.stylesheet (Buffer.contents b)
 
 (* A serialiser walks the tree once. Presizing the buffer from a [Pp.size]
    prepass walks it a second time, and the counter sink skips only the output
@@ -187,7 +187,7 @@ let parsed_shapes =
   ]
 
 let sole_statement css =
-  match Css.statements (Css.of_string_exn css) with
+  match Css.statements (Css.stylesheet css) with
   | [ s ] -> s
   | l -> Alcotest.failf "%s: expected one statement, got %d" css (List.length l)
 
@@ -197,7 +197,7 @@ let sole_statement css =
    parser folds every [@page] into [Page_with_margins]. *)
 let bare_declarations () =
   match
-    Css.statements (Css.of_string_exn ".a{color:red;@media screen{color:blue}}")
+    Css.statements (Css.stylesheet ".a{color:red;@media screen{color:blue}}")
   with
   | [ Rule { nested = [ Media (_, [ (Declarations _ as d) ]) ]; _ } ] -> d
   | _ -> Alcotest.fail "expected bare declarations inside a nested @media"
@@ -205,7 +205,7 @@ let bare_declarations () =
 let else_branch () =
   match
     Css.statements
-      (Css.of_string_exn
+      (Css.stylesheet
          "@when media(width>0px){.x{color:red}}@else{.y{color:red}}")
   with
   | [ _; (Else _ as e) ] -> e
@@ -217,7 +217,7 @@ let statement_shapes () =
       ("bare declarations", bare_declarations ());
       ("else", else_branch ());
       ("origin", with_origin User [ sole_statement ".x{color:red}" ]);
-      ("page", Page ([], [ Css.Declaration.of_string "margin:1cm" ]));
+      ("page", Page ([], [ ok (Css.Declaration.of_string "margin:1cm") ]));
     ]
 
 (* Two independent builds of the list, so no answer below can come from physical
@@ -314,7 +314,7 @@ let statement_equality_reads_the_payload () =
 (* The pipeline [cascade --minify] runs: the optimiser over a parsed sheet, then
    the minified printer. *)
 let optimized_statement css =
-  match Css.statements (Css.optimize (Css.of_string_exn css)) with
+  match Css.statements (Css.optimize (Css.stylesheet css)) with
   | [ s ] -> s
   | l -> Alcotest.failf "%s: expected one statement, got %d" css (List.length l)
 

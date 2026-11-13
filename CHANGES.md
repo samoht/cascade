@@ -5,6 +5,22 @@
 - `Component.t` has a `Flat` case: the contents of a block or function nested
   past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
   a tree. A match over `Component.t` needs a case for it (#1296).
+- `Selector`, `Container`, `Supports` and `Declaration.of_string` return
+  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v`
+  (#1299).
+- `Media.of_string_strict` and `value_of_string`, `Keyframe.selector_of_string`,
+  `Declaration.with_value` and `Font_face.*_of_string` return a result too, and
+  `Aria.of_string` an option (#1299).
+- `Css.of_string_exn` is now `Css.stylesheet`, which raises `Invalid_argument`
+  instead of `Error.Parse_error` (#1299).
+- `Declaration.custom_property` and `Supports.property`, `func` and
+  `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
+- `Reader` loses `Parse_error`, the `err` functions and its call stack, and
+  `Reader.skip` past the end raises `Invalid_argument` (#1299).
+- Parse errors and warnings print their location as `file:line:column` instead
+  of a byte range, and `Error.position` gives that line and column (#1299).
+- `cascade diff` names each input in its warnings, and `Css.of_string` without
+  `~filename` leaves the name unset, printed as `<CSS input>` (#1299).
 
 ### Printing
 

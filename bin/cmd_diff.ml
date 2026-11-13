@@ -30,8 +30,8 @@ let resolve_style_renderer style_renderer =
   | Some s when s <> "" -> Some `None
   | _ -> style_renderer
 
-let run_diff mode ~lossless ~enforce_spec ~prune_unused_custom_props ~css1 ~css2
-    =
+let run_diff mode ~lossless ~enforce_spec ~prune_unused_custom_props ~file1
+    ~file2 ~css1 ~css2 =
   let mode =
     match mode with
     | Auto -> `Auto
@@ -40,7 +40,8 @@ let run_diff mode ~lossless ~enforce_spec ~prune_unused_custom_props ~css1 ~css2
     | Canonical -> `Canonical
   in
   Cascade_diff.Css_compare.diff ~mode ~lossless ~enforce_spec
-    ~prune_unused_custom_props css1 css2
+    ~prune_unused_custom_props ~expected_filename:file1 ~actual_filename:file2
+    css1 css2
 
 (* How many top-level differences the report names. [Fit_entries] lets the
    automatic shaping decide, [All_entries] names every one, [Count n] names
@@ -538,7 +539,8 @@ type canonical_opts = {
 let print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts =
   let result =
     run_diff mode ~lossless:opts.lossless ~enforce_spec:opts.enforce_spec
-      ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1 ~css2
+      ~prune_unused_custom_props:opts.prune_unused_custom_props ~file1 ~file2
+      ~css1 ~css2
   in
   let unread = unread_of result in
   let document = json_document ~file1 ~file2 ~mode ~css1 ~css2 ~unread result in
@@ -563,7 +565,8 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
   else
     let result =
       run_diff mode ~lossless:opts.lossless ~enforce_spec:opts.enforce_spec
-        ~prune_unused_custom_props:opts.prune_unused_custom_props ~css1 ~css2
+        ~prune_unused_custom_props:opts.prune_unused_custom_props ~file1 ~file2
+        ~css1 ~css2
     in
     match result.Cascade_diff.Css_compare.result with
     | No_diff -> (

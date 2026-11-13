@@ -272,7 +272,7 @@ let c61_no_merge_scope () =
     [
       item_rule (Css.Declaration.color (hex_color "ff0000"));
       Css.Stylesheet.Scope
-        ( Some (Css.Selector.of_string ".component"),
+        ( Some (Css.Selector.v ".component"),
           None,
           [
             Css.rule
@@ -319,9 +319,9 @@ let c61_distinct_scopes_preserved () =
   let input =
     [
       Css.Stylesheet.Scope
-        (Some (Css.Selector.of_string ".outer"), None, [ scoped_rule ]);
+        (Some (Css.Selector.v ".outer"), None, [ scoped_rule ]);
       Css.Stylesheet.Scope
-        (Some (Css.Selector.of_string ".inner"), None, [ scoped_rule ]);
+        (Some (Css.Selector.v ".inner"), None, [ scoped_rule ]);
     ]
   in
   let optimized = Css.Optimize.stylesheet input in
@@ -356,12 +356,12 @@ let c61_distinct_scope_limits_preserved () =
   let input =
     [
       Css.Stylesheet.Scope
-        ( Some (Css.Selector.of_string ".card"),
-          Some (Css.Selector.of_string ".footer"),
+        ( Some (Css.Selector.v ".card"),
+          Some (Css.Selector.v ".footer"),
           [ scoped_rule ] );
       Css.Stylesheet.Scope
-        ( Some (Css.Selector.of_string ".card"),
-          Some (Css.Selector.of_string ".aside"),
+        ( Some (Css.Selector.v ".card"),
+          Some (Css.Selector.v ".aside"),
           [ scoped_rule ] );
     ]
   in

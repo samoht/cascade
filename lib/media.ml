@@ -659,6 +659,7 @@ let value_of_components_opt components =
   | _ -> Option.None
 
 let value_of_string s =
+  Error.catch @@ fun () ->
   let cursor = Cursor.of_string s in
   match value_of_components_opt (Cursor.remaining cursor) with
   | Some value -> value
@@ -1082,7 +1083,9 @@ let read ?(recover = true) t =
     | true, queries -> List queries
 
 let of_string s = read (Cursor.of_string s)
-let of_string_strict s = read ~recover:false (Cursor.of_string s)
+
+let of_string_strict s =
+  Error.catch @@ fun () -> read ~recover:false (Cursor.of_string s)
 
 let of_function_components components =
   match feature_in_components components with

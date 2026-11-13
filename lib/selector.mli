@@ -31,10 +31,16 @@ val id : string -> t
     pretty-printing. Only rejects control characters and '--' prefix. Raises
     [Invalid_argument] on invalid. *)
 
-val of_string : string -> t
+val of_string : string -> (t, Error.t) result
 (** [of_string s] parses a complete CSS selector, including complex and
-    comma-separated selectors. CSS escapes are decoded. Raises
-    {!Error.Parse_error} when [s] is malformed. *)
+    comma-separated selectors. CSS escapes are decoded. This is [Error e] if [s]
+    is malformed. *)
+
+val v : string -> t
+(** [v s] is the selector [s] spells, for selector text written in a program.
+
+    @raise Invalid_argument
+      if [s] is malformed. Use {!of_string} to deal with untrusted input. *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)

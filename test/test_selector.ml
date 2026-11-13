@@ -5,10 +5,13 @@ open Css.Selector
 open Css_test_helpers
 open Selector_helpers
 
-let of_string_empty_raises_parse_error () =
-  match of_string "" with
-  | _ -> Alcotest.fail "empty selector parsed"
-  | exception Error.Parse_error _ -> ()
+let of_string_empty_is_error () =
+  (match of_string "" with
+  | Ok _ -> Alcotest.fail "empty selector parsed"
+  | Error _ -> ());
+  match v "" with
+  | _ -> Alcotest.fail "empty selector built"
+  | exception Invalid_argument _ -> ()
 
 (* Not a roundtrip test *)
 let element_cases () =
@@ -509,7 +512,7 @@ let roundtrip () =
   (* Escaping roundtrip tests *)
   (* Helper to test roundtrip for class selectors *)
   let check_class_roundtrip escaped =
-    let sel = of_string ("." ^ escaped) in
+    let sel = v ("." ^ escaped) in
     let output = to_string ~minify:true sel in
     Alcotest.(check string)
       (Fmt.str "class roundtrip for %S" escaped)
@@ -518,7 +521,7 @@ let roundtrip () =
 
   (* Helper to test roundtrip for ID selectors *)
   let check_id_roundtrip escaped =
-    let sel = of_string ("#" ^ escaped) in
+    let sel = v ("#" ^ escaped) in
     let output = to_string ~minify:true sel in
     Alcotest.(check string)
       (Fmt.str "id roundtrip for %S" escaped)
@@ -527,7 +530,7 @@ let roundtrip () =
 
   (* Helper to test roundtrip for element selectors *)
   let check_element_roundtrip escaped =
-    let sel = of_string escaped in
+    let sel = v escaped in
     let output = to_string ~minify:true sel in
     Alcotest.(check string)
       (Fmt.str "element roundtrip for %S" escaped)
@@ -556,19 +559,19 @@ let roundtrip () =
   check_element_roundtrip "my-component";
 
   (* Hex escapes - these get normalized to simpler escape forms *)
-  let sel = of_string ".\\3A hover" in
+  let sel = v ".\\3A hover" in
   let output = to_string ~minify:true sel in
   (* \3A (hex for ':') + "hover" -> unescapes to ":hover" -> escapes to
      "\:hover" *)
   Alcotest.(check string) "class hex escape normalizes" ".\\:hover" output;
 
-  let sel = of_string "#\\2F value" in
+  let sel = v "#\\2F value" in
   let output = to_string ~minify:true sel in
   (* \2F (hex for '/') + "value" -> unescapes to "/value" -> escapes to
      "\/value" *)
   Alcotest.(check string) "id hex escape normalizes" "#\\/value" output;
 
-  let sel = of_string ".\\5B test\\5D" in
+  let sel = v ".\\5B test\\5D" in
   let output = to_string ~minify:true sel in
   (* \5B = '[', \5D = ']' - note: trailing space after hex escape is consumed *)
   Alcotest.(check string) "class hex escape normalizes" ".\\[test\\]" output;
@@ -815,8 +818,7 @@ let suite =
       (* Parser/serializer coverage. *)
       test_case "roundtrip" `Quick roundtrip;
       (* Parser/API-policy error coverage. *)
-      test_case "of_string empty raises Parse_error" `Quick
-        of_string_empty_raises_parse_error;
+      test_case "of_string empty is an error" `Quick of_string_empty_is_error;
       test_case "invalid" `Quick invalid;
       test_case "parse errors - attributes" `Quick parse_errors_attributes;
       test_case "parse errors - combinators" `Quick parse_errors_combinators;

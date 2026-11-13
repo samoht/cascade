@@ -128,7 +128,6 @@ let cascade_accepts ~property ~value =
   let css = String.concat "" [ "a{"; property; ":"; value; "}" ] in
   match Css.of_string css with
   | exception Error.Parse_error _ -> false
-  | exception Reader.Parse_error _ -> false
   | Error _ -> false
   | Ok { stylesheet; warnings = _ :: _; _ } ->
       ignore stylesheet;

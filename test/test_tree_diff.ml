@@ -2,7 +2,7 @@
 
 open Cascade
 
-let parse css = Css.of_string_exn ~strict:false css
+let parse css = Css.stylesheet ~strict:false css
 
 let string_contains ~needle hay =
   let nl = String.length needle and hl = String.length hay in

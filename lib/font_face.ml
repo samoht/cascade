@@ -216,6 +216,7 @@ let rec read_size_adjust t : size_adjust =
   | Some _ | None -> Cursor.err_invalid t "size-adjust"
 
 let read_whole read s =
+  Error.catch @@ fun () ->
   let t = Cursor.of_string s in
   let value = read t in
   Cursor.ws t;
@@ -351,6 +352,7 @@ let src_of_string s =
     | Quoted_url { url; format; tech; _ } -> Url { url; format; tech }
     | entry -> entry
   in
+  Error.catch @@ fun () ->
   let t = Cursor.of_string s in
   let entries = read_src t in
   Cursor.expect_eof t;

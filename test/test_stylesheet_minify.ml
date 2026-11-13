@@ -916,7 +916,7 @@ let fidelity_hex_form_preserved () =
      same way [#ff0000] already arrives there as [red]. *)
   Alcotest.(check string)
     "optimize drops the authored hex spelling" ".x {\n  color: #abcdef;\n}"
-    (Css.of_string_exn ".x { color: #ABCDEF }"
+    (Css.stylesheet ".x { color: #ABCDEF }"
     |> Css.optimize |> Css.to_string |> String.trim)
 
 (* CSS Color 4 section 5.1 + cascade convention: under non-minified output, the

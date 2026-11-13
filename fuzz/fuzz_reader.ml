@@ -50,16 +50,13 @@ let test_looking_at buf =
   ignore (Reader.looking_at r buf);
   ignore (Reader.looking_at r "")
 
-(** The error snippet is built at any position without crashing. *)
+(** The context window is built at any position without crashing. *)
 let test_context_window buf =
   let r = Reader.of_string buf in
   while not (Reader.is_done r) do
     ignore (Reader.context_window r);
     Reader.skip r
-  done;
-  match Reader.err r "boom" with
-  | (_ : unit) -> assert false
-  | exception Reader.Parse_error e -> ignore (Reader.pp_parse_error e)
+  done
 
 let suite =
   ( "reader",

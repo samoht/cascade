@@ -821,11 +821,11 @@ let suite =
             "both rules survive" 2
             (List.length (Css.rule_statements stylesheet));
           Alcotest.(check int) "one warning" 1 (List.length warnings);
-          (* filename threads through *)
+          (* An unnamed input carries no filename; the printer names it. *)
           match warnings with
           | [ w ] ->
               Alcotest.(check (option string))
-                "default filename" (Some "<string>") w.Cascade.Error.filename
+                "no default filename" None w.Cascade.Error.filename
           | _ -> Alcotest.fail "expected one warning" );
       ( "of_string ~strict:true rejects unknown at-rule",
         `Quick,

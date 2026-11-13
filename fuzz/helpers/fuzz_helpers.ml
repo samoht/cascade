@@ -81,3 +81,7 @@ let unicodish buf =
   Buffer.add_string b (shape 9);
   Buffer.add_string b "}}";
   Buffer.contents b
+
+let ok = function
+  | Ok v -> v
+  | Error e -> Alcobar.fail (Cascade.Error.to_string e)

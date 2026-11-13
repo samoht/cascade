@@ -1650,7 +1650,7 @@ let spec_escape_ident_leading_digit () =
    over; printed as [-4] it leaves a number where the ident stood. *)
 let spec_escaped_ident_survives_minify () =
   let minify source =
-    Css.of_string_exn ~strict:false source |> Css.to_string ~minify:true
+    Css.stylesheet ~strict:false source |> Css.to_string ~minify:true
   in
   let check_keeps_dash_digit name source =
     let printed = minify source in

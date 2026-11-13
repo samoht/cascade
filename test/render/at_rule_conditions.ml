@@ -764,9 +764,12 @@ let table_of_env env =
           | Some i -> String.sub value 0 i
           | None -> value
         in
-        match Media.feature feature (Media.value_of_string value) with
-        | exception (Cursor.Parse_error _ | Invalid_argument _) -> None
-        | entry -> Some entry)
+        match Media.value_of_string value with
+        | Error _ -> None
+        | Ok value -> (
+            match Media.feature feature value with
+            | exception Invalid_argument _ -> None
+            | entry -> Some entry))
     (env_reading env)
 
 let thresholds env =
@@ -781,15 +784,8 @@ let parse_media text =
   | exception Cursor.Parse_error _ -> None
   | q -> Some q
 
-let parse_supports text =
-  match Supports.of_string text with
-  | exception Cursor.Parse_error _ -> None
-  | c -> Some c
-
-let parse_container text =
-  match Container.of_string text with
-  | exception Cursor.Parse_error _ -> None
-  | c -> Some c
+let parse_supports text = Result.to_option (Supports.of_string text)
+let parse_container text = Result.to_option (Container.of_string text)
 
 let supports_leaf (c : Supports.t) =
   match c with

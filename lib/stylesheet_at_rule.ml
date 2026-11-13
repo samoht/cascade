@@ -7,8 +7,11 @@ let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
   let selector_str = Cursor.drain_until_block_as_string ~trim:true r in
   let selector =
-    try Keyframe.selector_of_string selector_str
-    with Invalid_argument msg -> Cursor.err_invalid r msg
+    match Keyframe.selector_of_string selector_str with
+    | Ok selector -> selector
+    | Error _ ->
+        Cursor.err_invalid r
+          (String.concat "" [ "keyframe selector: "; selector_str ])
   in
   let declarations = Cursor.braces Declaration.read_keyframe_declarations r in
   { selector; declarations }

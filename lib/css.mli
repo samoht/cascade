@@ -43,7 +43,7 @@
     open Cascade.Css
 
     let def, primary = var "primary-color" Color (hex "#3b82f6")
-    let root = rule ~selector:(Selector.of_string ":root") [ def ]
+    let root = rule ~selector:(Selector.v ":root") [ def ]
     let card = rule ~selector:(Selector.class_ "card") [ color (Var primary) ]
     let css = to_string (v [ root; card ])
     ]}
@@ -3936,10 +3936,10 @@ val custom_property : ?layer:string -> string -> string -> declaration
       the [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property,
       as CSS text
 
-    It raises [Failure] on a pair that does not make the one declaration it
-    names, such as a value carrying a top-level [;] or [}] or an unterminated
-    function, block or string. A name holding a code point no bare ident carries
-    is written back with the escapes that read it.
+    It raises [Invalid_argument] on a pair that does not make the one
+    declaration it names, such as a value carrying a top-level [;] or [}] or an
+    unterminated function, block or string. A name holding a code point no bare
+    ident carries is written back with the escapes that read it.
     {!Declaration.parse_custom_property} is the same check as an option.
 
     Example: [custom_property "--primary-color" "#3b82f6"]
@@ -4062,19 +4062,22 @@ val of_string :
     mapping in {!field-source}. The snapshot describes only the authored parse:
     optimising, flattening, mapping, or otherwise transforming
     {!field-stylesheet} neither mutates it nor fabricates locations for split,
-    merged, dropped, or synthetic nodes. *)
+    merged, dropped, or synthetic nodes. {!val-stylesheet} is the raising form
+    for CSS written in a program. *)
 
-val of_string_exn :
+val stylesheet :
   ?strict:bool ->
   ?filename:string ->
   ?meta:Loc.meta_level ->
   ?enforce_spec:bool ->
   string ->
   t
-(** [of_string_exn ?strict css] parses [css] like {!of_string}, raises
-    {!Error.Parse_error} instead of returning [Error], and discards the
-    {!field-warnings} list. In non-strict mode warnings are silently dropped;
-    with [~strict:true] any warning escalates to a raise. *)
+(** [stylesheet css] is the stylesheet {!of_string} reads from [css], for CSS
+    written in a program. It discards the {!field-warnings}; with [~strict:true]
+    any warning is an error.
+
+    @raise Invalid_argument
+      if [css] does not read. Use {!of_string} to deal with untrusted input. *)
 
 (** {2:optimization Optimization}
 

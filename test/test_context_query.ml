@@ -2,7 +2,7 @@ open Cascade
 open Context_helpers
 
 let check_selector_match name ~ctx ~expected input =
-  let selector = Css.Selector.of_string input in
+  let selector = Css.Selector.v input in
   Alcotest.(check bool)
     name expected
     (Css.Context.matches_selector ctx selector)
@@ -12,7 +12,7 @@ let check_media_match name ~ctx ~expected input =
   Alcotest.(check bool) name expected (Css.Context.matches_media ctx query)
 
 let check_supports_match name ~ctx ~expected input =
-  let condition = Css.Supports.of_string input in
+  let condition = Css_test_helpers.ok (Css.Supports.of_string input) in
   Alcotest.(check bool)
     name expected
     (Css.Context.matches_supports ctx condition)
@@ -91,7 +91,7 @@ let media_inapplicable_feature () =
     "not (cascade-unknown: 1)"
 
 let check_container_match name ~ctx ?name:container_name ~expected input =
-  let condition = Css.Container.of_string input in
+  let condition = Css_test_helpers.ok (Css.Container.of_string input) in
   Alcotest.(check bool)
     name expected
     (Css.Context.matches_container ctx ?name:container_name condition)
@@ -101,7 +101,8 @@ let check_container_match name ~ctx ?name:container_name ~expected input =
 let container_feature_eligibility () =
   let ctx =
     Css.Context.query
-      ~container_features:[ Css.Container.of_string "(width: 500px)" ]
+      ~container_features:
+        [ Css_test_helpers.ok (Css.Container.of_string "(width: 500px)") ]
       ()
   in
   List.iter
@@ -118,8 +119,8 @@ let container_feature_eligibility () =
     Css.Context.query
       ~container_features:
         [
-          Css.Container.of_string "(width: 500px)";
-          Css.Container.of_string "(height: 300px)";
+          Css_test_helpers.ok (Css.Container.of_string "(width: 500px)");
+          Css_test_helpers.ok (Css.Container.of_string "(height: 300px)");
         ]
       ()
   in
@@ -128,8 +129,7 @@ let container_feature_eligibility () =
 
 let test_document_selector_context_contract () =
   let ctx =
-    Css.Context.document ~root:"html"
-      ~scope:(Css.Selector.of_string ".card")
+    Css.Context.document ~root:"html" ~scope:(Css.Selector.v ".card")
       ~element:"button" ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
       ~attributes:
         [
@@ -302,8 +302,7 @@ let test_query_context_boolean_contract () =
 
 let selector_scope_contract () =
   let scoped =
-    Css.Context.document ~root:"html"
-      ~scope:(Css.Selector.of_string ".card")
+    Css.Context.document ~root:"html" ~scope:(Css.Selector.v ".card")
       ~element:"section"
       ~classes:[ "card"; "group"; "is-open" ]
       ~ids:[ "billing" ]

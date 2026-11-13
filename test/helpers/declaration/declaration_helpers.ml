@@ -19,7 +19,7 @@ let check_declaration ?minify ?roundtrip ?expected ?optimized input =
 let check = check_declaration
 
 let check_specified_value name css expected =
-  let decl = Css.Declaration.of_string css in
+  let decl = ok (Css.Declaration.of_string css) in
   Alcotest.(check string)
     name expected
     (Css.Declaration.string_of_value ~minify:false decl)

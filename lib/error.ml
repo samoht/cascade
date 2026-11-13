@@ -64,6 +64,33 @@ let snippet t =
   | None -> None
   | Some source -> Some (Loc.snippet source t.loc)
 
+(* CSS Syntax 3 (ED) sec. 3.3 turns CR, FF and the CRLF pair into one LF before
+   tokenizing, and a column is one element of the decoded stream: a code point,
+   or one U+FFFD per maximal ill-formed subpart (sec. 3.2). A source the reader
+   already preprocessed holds only LF; counting the other breaks as well gives
+   the same answer on a raw string. *)
+let line_col source pos =
+  let len = max 0 (min pos (String.length source)) in
+  let line, col, _ =
+    Common.String.utf8_fold ~len
+      (fun (line, col, after_cr) _ decoded ->
+        match decoded with
+        | Common.String.Scalar u -> (
+            match Uchar.to_int u with
+            | 0x0A when after_cr -> (line, col, false)
+            | 0x0A | 0x0C -> (line + 1, 1, false)
+            | 0x0D -> (line + 1, 1, true)
+            | _ -> (line, col + 1, false))
+        | Common.String.Malformed _ -> (line, col + 1, false))
+      (1, 1, false) source
+  in
+  (line, col)
+
+let position t =
+  match t.source with
+  | None -> None
+  | Some source -> Some (line_col source t.loc.start_pos)
+
 let context t =
   {
     Loc.Context.path = Loc.Path.of_labels t.path;
@@ -109,10 +136,13 @@ let pp_kind : kind Pp.t =
       Pp.int ctx limit;
       Pp.string ctx " levels"
 
+(* A source names the line and column, as [source:line:column] an editor can
+   jump to; an error without one only has its byte range. *)
 let pp : t Pp.t =
  fun ctx ({ loc; sort; path; kind; source = _; filename; recovery = _ } as t) ->
-  (match filename with
-  | Some f when f <> "" ->
+  let position = position t in
+  (match (position, filename) with
+  | None, Some f when f <> "" ->
       Pp.string ctx f;
       Pp.string ctx ": "
   | _ -> ());
@@ -123,7 +153,15 @@ let pp : t Pp.t =
       Pp.string ctx ": ");
   pp_kind ctx kind;
   Pp.string ctx " at ";
-  Loc.pp ctx loc;
+  (match position with
+  | Some (line, col) ->
+      Pp.string ctx
+        (match filename with Some f when f <> "" -> f | _ -> "<CSS input>");
+      Pp.char ctx ':';
+      Pp.string ctx (Int.to_string line);
+      Pp.char ctx ':';
+      Pp.string ctx (Int.to_string col)
+  | None -> Loc.pp ctx loc);
   Pp.string ctx " (in ";
   Sort.pp ctx sort;
   Pp.char ctx ')';
@@ -179,6 +217,7 @@ let with_property property t =
   | _ -> t
 
 let fail e = Stdlib.raise (Parse_error e)
+let catch f = match f () with v -> Ok v | exception Parse_error e -> Error e
 
 let with_context label f =
   try f ()

@@ -141,7 +141,9 @@ let test_map_nested () =
 let conditional_groups body =
   [
     ("@media", Stylesheet.Media (Media.of_string "screen", body));
-    ("@supports", Stylesheet.Supports (Supports.of_string "(top: 0)", body));
+    ( "@supports",
+      Stylesheet.Supports
+        (Css_test_helpers.ok (Supports.of_string "(top: 0)"), body) );
     ("@container", Stylesheet.Container (None, None, body));
     ("@layer", Stylesheet.Layer (Some [ "a" ], body));
     ("@origin", Stylesheet.Origin (Stylesheet.Author, body));
@@ -166,7 +168,9 @@ let test_spec_map_conditional_boundaries () =
         ~condition:(Css.Supports.func "selector" ":has(img)")
         [
           container ~name:"card"
-            ~condition:(Css.Container.of_string "(inline-size > 30em)")
+            ~condition:
+              (Css_test_helpers.ok
+                 (Css.Container.of_string "(inline-size > 30em)"))
             [
               rule ~selector:(Selector.class_ "title") [ color (hex "#ff0000") ];
             ];
@@ -272,7 +276,9 @@ let test_spec_sort_conditional_boundaries () =
         ~condition:(Css.Supports.property "display" "grid")
         [
           container
-            ~condition:(Css.Container.of_string "(inline-size > 30em)")
+            ~condition:
+              (Css_test_helpers.ok
+                 (Css.Container.of_string "(inline-size > 30em)"))
             [
               rule ~selector:(Selector.class_ "zzz") [ color (hex "#ff0000") ];
               rule ~selector:(Selector.class_ "aaa") [ color (hex "#00ff00") ];
@@ -376,7 +382,8 @@ let public_fold_edges () =
                   [
                     container
                       ~condition:
-                        (Css.Container.of_string "(inline-size > 30em)")
+                        (Css_test_helpers.ok
+                           (Css.Container.of_string "(inline-size > 30em)"))
                       [ parent ];
                   ];
               ];
@@ -488,7 +495,8 @@ let public_custom_props_declaration_sites () =
     [
       ("@media", Stylesheet.Media (Media.of_string "screen", [ styled ]));
       ( "@supports",
-        Stylesheet.Supports (Supports.of_string "(top: 0)", [ styled ]) );
+        Stylesheet.Supports
+          (Css_test_helpers.ok (Supports.of_string "(top: 0)"), [ styled ]) );
       ("@container", Stylesheet.Container (None, None, [ styled ]));
       ("@layer", Stylesheet.Layer (Some [ "a" ], [ styled ]));
       ("@origin", Stylesheet.Origin (Stylesheet.Author, [ styled ]));
@@ -565,7 +573,9 @@ let public_layers_conditional_groups () =
     [
       ("@media", fun b -> Stylesheet.Media (Media.of_string "screen", b));
       ( "@supports",
-        fun b -> Stylesheet.Supports (Supports.of_string "(top: 0)", b) );
+        fun b ->
+          Stylesheet.Supports
+            (Css_test_helpers.ok (Supports.of_string "(top: 0)"), b) );
       ("@container", fun b -> Stylesheet.Container (None, None, b));
       ("@layer", fun b -> Stylesheet.Layer (Some [ "outer" ], b));
       ("@origin", fun b -> Stylesheet.Origin (Stylesheet.Author, b));
@@ -690,13 +700,17 @@ let stylesheet_queries_reach_nested () =
     rule ~selector:(Selector.class_ sel) [ color (hex "#111111") ]
   in
   let screen = Media.of_string "screen" in
-  let wide = Container.of_string "(width > 10px)" in
+  let wide = Css_test_helpers.ok (Container.of_string "(width > 10px)") in
   let selectors_of rules =
     List.map (fun (r : Stylesheet.rule) -> Selector.to_string r.selector) rules
   in
   (* The at-rule sits under a group. *)
   let grouped wrap =
-    v [ Stylesheet.Supports (Supports.of_string "(top: 0)", [ wrap ]) ]
+    v
+      [
+        Stylesheet.Supports
+          (Css_test_helpers.ok (Supports.of_string "(top: 0)"), [ wrap ]);
+      ]
   in
   let media_in_group = grouped (Stylesheet.Media (screen, [ styled "a" ])) in
   Alcotest.(check (list string))
@@ -759,7 +773,7 @@ let stylesheet_queries_reach_nested () =
    holds declarations without a block. A [var()] no walk reaches is a variable a
    caller thinks nothing needs. *)
 let public_vars_declaration_sites () =
-  let decl = Declaration.of_string "color:var(--x)" in
+  let decl = Css_test_helpers.ok (Declaration.of_string "color:var(--x)") in
   let styled = rule ~selector:(Selector.class_ "a") [ decl ] in
   let frame : Stylesheet.keyframe =
     { selector = Keyframe.Positions [ Keyframe.From ]; declarations = [ decl ] }
@@ -771,7 +785,8 @@ let public_vars_declaration_sites () =
     [
       ("@media", Stylesheet.Media (Media.of_string "screen", [ styled ]));
       ( "@supports",
-        Stylesheet.Supports (Supports.of_string "(top: 0)", [ styled ]) );
+        Stylesheet.Supports
+          (Css_test_helpers.ok (Supports.of_string "(top: 0)"), [ styled ]) );
       ("@container", Stylesheet.Container (None, None, [ styled ]));
       ("@layer", Stylesheet.Layer (Some [ "a" ], [ styled ]));
       ("@origin", Stylesheet.Origin (Stylesheet.Author, [ styled ]));
@@ -823,7 +838,7 @@ let public_vars_declaration_sites () =
     Alcotest.failf "vars_of_rules and vars_of_stylesheet disagree on: %s"
       (String.concat ", " disagree);
   (* Deduplicated across statements, in source order. *)
-  let y = Declaration.of_string "color:var(--y)" in
+  let y = Css_test_helpers.ok (Declaration.of_string "color:var(--y)") in
   Alcotest.(check (list string))
     "deduplicated in source order" [ "--x"; "--y" ]
     (names

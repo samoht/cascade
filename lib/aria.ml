@@ -117,57 +117,57 @@ let pp ctx attr =
 let to_string attr = Pp.to_string pp attr
 
 let of_string = function
-  | "aria-activedescendant" -> Active_descendant
-  | "aria-atomic" -> Atomic
-  | "aria-autocomplete" -> Autocomplete
-  | "aria-braillelabel" -> Braillelabel
-  | "aria-brailleroledescription" -> Brailleroledescription
-  | "aria-busy" -> Busy
-  | "aria-checked" -> Checked
-  | "aria-colcount" -> Colcount
-  | "aria-colindex" -> Colindex
-  | "aria-colindextext" -> Colindextext
-  | "aria-colspan" -> Colspan
-  | "aria-controls" -> Controls
-  | "aria-current" -> Current
-  | "aria-describedby" -> Describedby
-  | "aria-description" -> Description
-  | "aria-details" -> Details
-  | "aria-disabled" -> Disabled
-  | "aria-dropeffect" -> Dropeffect
-  | "aria-errormessage" -> Errormessage
-  | "aria-expanded" -> Expanded
-  | "aria-flowto" -> Flowto
-  | "aria-grabbed" -> Grabbed
-  | "aria-haspopup" -> Haspopup
-  | "aria-hidden" -> Hidden
-  | "aria-invalid" -> Invalid
-  | "aria-keyshortcuts" -> Keyshortcuts
-  | "aria-label" -> Label
-  | "aria-labelledby" -> Labelledby
-  | "aria-level" -> Level
-  | "aria-live" -> Live
-  | "aria-modal" -> Modal
-  | "aria-multiline" -> Multiline
-  | "aria-multiselectable" -> Multiselectable
-  | "aria-orientation" -> Orientation
-  | "aria-owns" -> Owns
-  | "aria-placeholder" -> Placeholder
-  | "aria-posinset" -> Posinset
-  | "aria-pressed" -> Pressed
-  | "aria-readonly" -> Readonly
-  | "aria-relevant" -> Relevant
-  | "aria-required" -> Required
-  | "aria-roledescription" -> Roledescription
-  | "aria-rowcount" -> Rowcount
-  | "aria-rowindex" -> Rowindex
-  | "aria-rowindextext" -> Rowindextext
-  | "aria-rowspan" -> Rowspan
-  | "aria-selected" -> Selected
-  | "aria-setsize" -> Setsize
-  | "aria-sort" -> Sort
-  | "aria-valuemax" -> Valuemax
-  | "aria-valuemin" -> Valuemin
-  | "aria-valuenow" -> Valuenow
-  | "aria-valuetext" -> Valuetext
-  | name -> invalid_arg ("not a supported aria attribute: " ^ name)
+  | "aria-activedescendant" -> Some Active_descendant
+  | "aria-atomic" -> Some Atomic
+  | "aria-autocomplete" -> Some Autocomplete
+  | "aria-braillelabel" -> Some Braillelabel
+  | "aria-brailleroledescription" -> Some Brailleroledescription
+  | "aria-busy" -> Some Busy
+  | "aria-checked" -> Some Checked
+  | "aria-colcount" -> Some Colcount
+  | "aria-colindex" -> Some Colindex
+  | "aria-colindextext" -> Some Colindextext
+  | "aria-colspan" -> Some Colspan
+  | "aria-controls" -> Some Controls
+  | "aria-current" -> Some Current
+  | "aria-describedby" -> Some Describedby
+  | "aria-description" -> Some Description
+  | "aria-details" -> Some Details
+  | "aria-disabled" -> Some Disabled
+  | "aria-dropeffect" -> Some Dropeffect
+  | "aria-errormessage" -> Some Errormessage
+  | "aria-expanded" -> Some Expanded
+  | "aria-flowto" -> Some Flowto
+  | "aria-grabbed" -> Some Grabbed
+  | "aria-haspopup" -> Some Haspopup
+  | "aria-hidden" -> Some Hidden
+  | "aria-invalid" -> Some Invalid
+  | "aria-keyshortcuts" -> Some Keyshortcuts
+  | "aria-label" -> Some Label
+  | "aria-labelledby" -> Some Labelledby
+  | "aria-level" -> Some Level
+  | "aria-live" -> Some Live
+  | "aria-modal" -> Some Modal
+  | "aria-multiline" -> Some Multiline
+  | "aria-multiselectable" -> Some Multiselectable
+  | "aria-orientation" -> Some Orientation
+  | "aria-owns" -> Some Owns
+  | "aria-placeholder" -> Some Placeholder
+  | "aria-posinset" -> Some Posinset
+  | "aria-pressed" -> Some Pressed
+  | "aria-readonly" -> Some Readonly
+  | "aria-relevant" -> Some Relevant
+  | "aria-required" -> Some Required
+  | "aria-roledescription" -> Some Roledescription
+  | "aria-rowcount" -> Some Rowcount
+  | "aria-rowindex" -> Some Rowindex
+  | "aria-rowindextext" -> Some Rowindextext
+  | "aria-rowspan" -> Some Rowspan
+  | "aria-selected" -> Some Selected
+  | "aria-setsize" -> Some Setsize
+  | "aria-sort" -> Some Sort
+  | "aria-valuemax" -> Some Valuemax
+  | "aria-valuemin" -> Some Valuemin
+  | "aria-valuenow" -> Some Valuenow
+  | "aria-valuetext" -> Some Valuetext
+  | _ -> None

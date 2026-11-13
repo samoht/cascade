@@ -12,6 +12,9 @@
     Regenerate: [REGEN=1 dune build @@test/interop/utf8/regen-traces]. *)
 
 module Reader = Cascade.Reader
+module Error = Cascade.Error
+module Loc = Cascade.Loc
+module Sort = Cascade.Sort
 
 let trace_path = "traces/UTF-8-test.txt"
 
@@ -83,19 +86,22 @@ let test_maximal_subpart_count () =
     "an ASCII byte after a truncated sequence stands alone" 2
     (Cascade.Common.String.utf8_length "\xe1\x80A")
 
-(* Fail at byte [pos] of [input] and report where the reader says that is. *)
+(* Locate an error at byte [pos] of [input] as the reader preprocesses it. *)
 let error_line_and_column input pos =
-  let open Reader in
-  let r = of_string input in
-  for _ = 1 to pos do
-    skip r
-  done;
-  match err r "a character the input never holds" with
-  | (_ : unit) -> Alcotest.failf "expected a parse error at byte %d" pos
-  | exception Parse_error error -> (error.line, error.col)
+  let source = Reader.source (Reader.of_string input) in
+  let e =
+    Error.v ~source
+      ~loc:(Loc.v ~start_pos:pos ~end_pos:pos)
+      ~sort:Sort.Component
+      (Error.Missing_token "a character the input never holds")
+  in
+  match Error.position e with
+  | Some p -> p
+  | None -> Alcotest.failf "expected a position at byte %d" pos
 
-(* A column is one element of the decoded text, counted from 1, so an error just
-   past the ten elements of [maximal_subparts] sits in column 11. *)
+(* A column is one element of the decoded text (CSS Syntax 3 (ED) sec. 3.2),
+   counted from 1, so an error just past the ten elements of [maximal_subparts]
+   sits in column 11. *)
 let test_error_column_after_ill_formed () =
   Alcotest.(check (pair int int))
     "column past the tenth element" (1, 11)

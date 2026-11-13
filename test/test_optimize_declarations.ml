@@ -512,7 +512,7 @@ let test_lossless_keeps_logical_physical_order () =
    to blue rather than red). *)
 let important_survives_non_adjacent_duplicate () =
   let out src =
-    Css.to_string ~minify:true (Css.optimize (Css.of_string_exn src))
+    Css.to_string ~minify:true (Css.optimize (Css.stylesheet src))
   in
   Alcotest.(check string)
     "the !important winner is kept and the dead write dropped"
@@ -538,7 +538,7 @@ let regrouping_can_be_disabled () =
   let src =
     ".text-xs{font-size:var(--text-xs);line-height:1}.text-xs\\/4{font-size:var(--text-xs);line-height:4}.text-xs\\/5{font-size:var(--text-xs);line-height:5}.text-xs\\/6{font-size:var(--text-xs);line-height:6}.text-xs\\/7{font-size:var(--text-xs);line-height:7}"
   in
-  let sheet = Css.of_string_exn src in
+  let sheet = Css.stylesheet src in
   let out ?regroup () =
     Css.to_string ~minify:true (Css.optimize ?regroup sheet)
   in
@@ -556,8 +556,7 @@ let regrouping_can_be_disabled () =
 let held_guard_joins_the_run () =
   let out src =
     Css.to_string ~minify:true
-      (Css.optimize ~judge:Css.Optimize.evergreen_targets
-         (Css.of_string_exn src))
+      (Css.optimize ~judge:Css.Optimize.evergreen_targets (Css.stylesheet src))
   in
   let guard = "@supports (color:color-mix(in lab,red,red))" in
   Alcotest.(check string)
@@ -580,7 +579,7 @@ let held_guard_joins_the_run () =
    unrelated rule between them decides. *)
 let nesting_synthesis_can_be_disabled () =
   let sheet =
-    Css.of_string_exn
+    Css.stylesheet
       ".prose:where(:not(.not-prose,.not-prose \
        *)){color:red;font-size:1rem}.prose:where(:not(.not-prose,.not-prose \
        *)):where(.dark,.dark *){color:blue;font-size:2rem}"
@@ -598,7 +597,7 @@ let nesting_synthesis_can_be_disabled () =
 
 let flatten_nesting_is_an_output_invariant () =
   let out css =
-    Css.of_string_exn css
+    Css.stylesheet css
     |> Css.optimize ~flatten_nesting:true
     |> Css.to_string ~minify:true
   in
@@ -622,7 +621,7 @@ let page_break_var_shadows_like_its_alias () =
     (fun (input, expected) ->
       Alcotest.(check string)
         input expected
-        (Css.of_string_exn ~strict:false input |> minify))
+        (Css.stylesheet ~strict:false input |> minify))
     [
       (* The modern spelling sets the oracle. *)
       (".a{break-after:var(--x);break-after:page}", ".a{break-after:page}");

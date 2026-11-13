@@ -861,8 +861,8 @@ let spec_break3_page_break_var () =
         (var_decl ^ " names the same property as " ^ keyword_decl)
         true
         (same_property
-           (Css.Declaration.of_string var_decl)
-           (Css.Declaration.of_string keyword_decl)))
+           (ok (Css.Declaration.of_string var_decl))
+           (ok (Css.Declaration.of_string keyword_decl))))
     [
       ("page-break-before: var(--x)", "page-break-before: left");
       ("page-break-after: var(--x)", "page-break-after: always");

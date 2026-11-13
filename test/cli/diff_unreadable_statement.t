@@ -22,7 +22,7 @@ comparison sees the same thing twice.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical charset-a.css charset-b.css
-  charset-a.css and charset-b.css parse warning: <string>: bad value for @charset: @charset only recognises "UTF-8" at [0-13] (in property-value)
+  charset-a.css and charset-b.css parse warning: charset-a.css: bad value for @charset: @charset only recognises "UTF-8" at [0-13] (in property-value)
   
   Unreadable rules: charset-a.css 1, charset-b.css 1
   Cannot determine whether the CSS files are identical
@@ -40,7 +40,7 @@ on material the parse kept and the verdict stays proven.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical face-a.css face-b.css
-  face-a.css and face-b.css parse warning: <string>: bad value for @font-face: missing font-family or src descriptor at [0-25] (in property-value)
+  face-a.css and face-b.css parse warning: face-a.css: bad value for @font-face: missing font-family or src descriptor at [0-25] (in property-value)
   
   CSS files are identical
 
@@ -53,7 +53,7 @@ names no font to load, so minification drops it from both sides.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical face-a.css face-c.css
-  face-a.css and face-c.css parse warning: <string>: bad value for @font-face: missing font-family or src descriptor at [0-25] (in property-value)
+  face-a.css and face-c.css parse warning: face-a.css: bad value for @font-face: missing font-family or src descriptor at [0-25] (in property-value)
   
   CSS files are identical
 
@@ -69,7 +69,7 @@ at-rule and its prelude, so it costs the verdict nothing.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical tw-a.css tw-b.css
-  tw-a.css and tw-b.css parse warning: <string>: unknown at-rule @tailwind at [0-15] (in at-rule)
+  tw-a.css and tw-b.css parse warning: tw-a.css: unknown at-rule @tailwind at [0-15] (in at-rule)
   
   CSS files are identical
 

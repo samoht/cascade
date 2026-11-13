@@ -18,10 +18,10 @@ let same_decl a b = a == b || a = b
 let test_vendor_detection () =
   Alcotest.(check bool)
     "vendor pseudo detected" true
-    (Merge.vendor (Selector.of_string ".a::-webkit-scrollbar"));
+    (Merge.vendor (Selector.v ".a::-webkit-scrollbar"));
   Alcotest.(check bool)
     "regular selector is not vendor" false
-    (Merge.vendor (Selector.of_string ".a::before"))
+    (Merge.vendor (Selector.v ".a::before"))
 
 let test_declarations_equal_fast_and_structural_paths () =
   let r = rule ".a{color:red;width:1px}" in
@@ -44,9 +44,9 @@ let test_declarations_equal_fast_and_structural_paths () =
    variant would have survived. Grouping by sorting a run and checking only
    neighbours is unsound for exactly this reason. *)
 let test_compatible_is_not_transitive () =
-  let newer = Selector.of_string ".x:user-valid" in
-  let plain = Selector.of_string ".y" in
-  let guarded = Selector.of_string ":is(:where(.group):hover .z)" in
+  let newer = Selector.v ".x:user-valid" in
+  let plain = Selector.v ".y" in
+  let guarded = Selector.v ":is(:where(.group):hover .z)" in
   Alcotest.(check bool) "newer with plain" true (Merge.compatible newer plain);
   Alcotest.(check bool)
     "plain with guarded" true
@@ -68,7 +68,7 @@ let test_compatible_is_not_transitive () =
    [:is(:where(.peer))] variant, one that is both, and a [:where()] holding
    neither marker. *)
 let compat_pool =
-  List.map Selector.of_string
+  List.map Selector.v
     [
       ".a";
       ".b:hover";
@@ -183,7 +183,7 @@ let test_run_matches_the_pair_loop () =
 (* Selectors whose distinguishing part sits behind a prefix they share, which is
    where a table keyed by [key] has to work hardest. *)
 let key_pool =
-  Array.map Selector.of_string
+  Array.map Selector.v
     [|
       ".a";
       ".p0 .p1 .p2 .p3 .p4 .p5 .p6 .p7 .t1";
