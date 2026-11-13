@@ -455,7 +455,7 @@ let c61_no_merge_starting_style () =
     ".toast{color:red}@starting-style{.toast{opacity:0}}.toast{display:flex}"
     output
 
-let c61_import_substitution_point () =
+let cascade2_import_substitution_point () =
   (* A misplaced @import - one that follows a style rule - is invalid, and every
      browser ignores it (CSS Cascade 5 section 2, CSS 2.1 section 6.3). It is a
      no-op, not a cascade boundary and not a live substitution point: an invalid
@@ -474,6 +474,30 @@ let c61_import_substitution_point () =
   Alcotest.(check string)
     "misplaced @import is a no-op: dropped, surrounding rules merge"
     ".theme{color:red;display:flex}" output
+
+let cascade2_import_after_bang_comment () =
+  (* CSS Cascade 5 sec. 2 makes an @import invalid only after a valid at-rule or
+     style rule, and a comment is neither (CSS Syntax 3 sec. 4.3.2 consumes it
+     without producing a token). Chrome keeps the CSSImportRule after a
+     preserved license comment (curated case [comment_before_import] of
+     test/render/parse_recovery.ml), so the optimizer keeps the import. *)
+  let import =
+    Css.Stylesheet.Import
+      { url = "url(a.css)"; layer = None; supports = None; media = None }
+  in
+  let rule =
+    Css.rule ~selector:(Css.Selector.class_ "a")
+      [ Css.Declaration.color (hex_color "ff0000") ]
+  in
+  let output =
+    Css.Optimize.stylesheet
+      [ Css.Stylesheet.Bang_comment "! license "; import; rule ]
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "import after a bang comment is kept"
+    "/*! license */@import\"a.css\";.a{color:red}" output
 
 let c61_no_named_atrule_merge () =
   (* CSS-wide name-defining at-rules and descriptor at-rules are stylesheet
@@ -748,9 +772,12 @@ let suite =
       ( "spec cascade 6.1 no merge across starting-style boundary",
         `Quick,
         c61_no_merge_starting_style );
-      ( "spec cascade 6.1 import keeps substitution point",
+      ( "spec cascade 2 import keeps substitution point",
         `Quick,
-        c61_import_substitution_point );
+        cascade2_import_substitution_point );
+      ( "spec cascade 2 import after bang comment is kept",
+        `Quick,
+        cascade2_import_after_bang_comment );
       ( "spec cascade 6.1 at-rule boundaries are opaque",
         `Quick,
         c61_no_named_atrule_merge );

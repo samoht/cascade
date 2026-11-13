@@ -366,6 +366,72 @@ let curated =
     ( "late_namespace",
       ".a { color: green }\n.b { color: red }",
       ".a { color: green }\n@namespace x url(y);\n.b { color: red }" );
+    (* CSS Cascade 5 sec. 2 places an @import before every other valid at-rule
+       and style rule but @charset and @layer statements. The CSSOM shows an
+       import as a CSSImportRule whether or not its sheet loads, so each case
+       says whether the import survived. *)
+    ( "comment_before_import",
+      "@import url(a.css);\n.a { color: green }",
+      "/*! license */\n@import url(a.css);\n.a { color: green }" );
+    ( "comment_between_imports",
+      "@import url(a.css);\n@import url(b.css);\n.a { color: green }",
+      "@import url(a.css);\n/*! c */\n@import url(b.css);\n.a { color: green }"
+    );
+    ( "unknown_at_rule_before_import",
+      "@import url(a.css);\n.a { color: green }",
+      "@foo bar;\n@import url(a.css);\n.a { color: green }" );
+    ( "invalid_rule_before_import",
+      "@import url(a.css);\n.a { color: green }",
+      "..b { color: red }\n@import url(a.css);\n.a { color: green }" );
+    ( "layer_block_before_import",
+      "@import url(a.css);\n\
+       @layer x { .b { color: blue } }\n\
+       .a { color: green }",
+      "@layer x { .b { color: blue } }\n\
+       @import url(a.css);\n\
+       .a { color: green }" );
+    (* Media Queries 4 sec. 3.2 reads a query that does not parse as [not all],
+       and the rule stays. Its parentheses are balanced: an unclosed one would
+       carry the rest of the sheet into the prelude. *)
+    ( "bad_media_before_import",
+      "@import url(a.css);\n\
+       @media screen screen { .b { color: blue } }\n\
+       .a { color: green }",
+      "@media screen screen { .b { color: blue } }\n\
+       @import url(a.css);\n\
+       .a { color: green }" );
+    ( "namespace_before_import",
+      "@import url(a.css);\n@namespace x url(y);\n.a { color: green }",
+      "@namespace x url(y);\n@import url(a.css);\n.a { color: green }" );
+    (* CSS Namespaces 3 sec. 3 places an @namespace before every other
+       non-ignored at-rule but @charset and @import. *)
+    ( "namespace_after_layer_statement",
+      "@import url(a.css);\n\
+       @namespace x url(y);\n\
+       @layer l;\n\
+       .a { color: green }",
+      "@import url(a.css);\n\
+       @layer l;\n\
+       @namespace x url(y);\n\
+       .a { color: green }" );
+    ( "namespace_after_leading_layer_statement",
+      "@namespace x url(y);\n@layer l;\n.a { color: green }",
+      "@layer l;\n@namespace x url(y);\n.a { color: green }" );
+    (* CSS Animations 1 sec. 3 ignores an !important declaration in a keyframe
+       and every property it defines but animation-timing-function. *)
+    ( "keyframe_important",
+      "@keyframes k { from { opacity: 0; color: red } }",
+      "@keyframes k { from { opacity: 0; color: red !important } }" );
+    ( "keyframe_animation_name",
+      "@keyframes k { from { opacity: 0 } }",
+      "@keyframes k { from { opacity: 0; animation-name: x } }" );
+    ( "keyframe_animation_duration",
+      "@keyframes k { from { opacity: 0 } }",
+      "@keyframes k { from { opacity: 0; animation-duration: 1s } }" );
+    ( "keyframe_animation_timing_function",
+      "@keyframes k { from { opacity: 0 } }",
+      "@keyframes k { from { opacity: 0; animation-timing-function: linear } }"
+    );
     (* Selectors 4 sec. 6.1: an attribute value is an ident or a string, so a
        numeric token there is an invalid selector and the rule goes. *)
     ( "attr_number_value",

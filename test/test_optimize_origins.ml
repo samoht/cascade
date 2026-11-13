@@ -387,12 +387,20 @@ let c63_importance_inverts_origin () =
     (rank Author true > rank Animation false)
 
 let c63_keyframes_ignore_important () =
-  (* CSS Cascade section 6.3: declarations qualified with !important inside
-     @keyframes are ignored. *)
+  (* CSS Animations 1 sec. 3: "properties qualified with !important are invalid
+     and ignored" in a keyframe. Invalid, so a strict read rejects it and a
+     lenient one drops it with a warning. *)
   let stylesheet =
-    Css.Stylesheet.read
-      (Cursor.of_string
-         "@keyframes fade{from{opacity:0!important}to{opacity:1}}")
+    match
+      Css.of_string ~strict:false
+        "@keyframes fade{from{opacity:0!important}to{opacity:1}}"
+    with
+    | Ok { Css.stylesheet; warnings; _ } ->
+        Alcotest.(check int)
+          "the important keyframe declaration warns" 1 (List.length warnings);
+        stylesheet
+    | Error err ->
+        Alcotest.failf "lenient parse failed: %s" (Error.to_string err)
   in
   match stylesheet with
   | [

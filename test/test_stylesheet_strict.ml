@@ -272,6 +272,20 @@ let spec_strict_accepts_valid_stylesheets () =
          (color);" );
       ( "layer statement before import",
         "@layer reset, theme; @import url(theme.css) layer(theme);" );
+      (* CSS Cascade 5 sec. 2 counts only valid at-rules and style rules against
+         an [@import], and a comment is neither (CSS Syntax 3 sec. 4.3.2).
+         Chrome keeps both imports: curated cases [comment_before_import] and
+         [comment_between_imports]. *)
+      ( "bang comment before import",
+        "/*! license */ @import url(a.css); .a { color: red }" );
+      ( "bang comment between imports",
+        "@import url(a.css); /*! c */ @import url(b.css); .a { color: red }" );
+      (* CSS Cascade 5 sec. 6.4.4.2 allows [@layer] statements "before @import
+         and @namespace rules"; Chrome keeps both: curated case
+         [namespace_after_leading_layer_statement]. *)
+      ( "layer statement before namespace",
+        "@layer a; @namespace svg url(http://www.w3.org/2000/svg); .a { color: \
+         red }" );
       ("anonymous layer block", "@layer { .anonymous { color: red } }");
       ( "nested layer block",
         "@layer framework { @layer theme { .title { color: red } } }" );
@@ -355,6 +369,40 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@charset \"UTF-8\" .x { color: red }" );
       ("charset must use string token", "@charset url(UTF-8);");
       ("late charset", ".x { color: red } @charset \"UTF-8\";");
+      (* CSS Syntax 3 sec. 3.2 reads an encoding only when the first bytes of
+         the sheet are [40 63 68 61 72 73 65 74 20 22 XX* 22 3B], that is
+         [@charset "<label>";] with one space and the semicolon right after the
+         closing quote, and sec. 8.3 treats every other [@charset] as an
+         unrecognized rule, invalid by sec. 8. Each edge below breaks one byte
+         of that pattern. *)
+      ( "layer statement before charset",
+        "@layer a; @charset \"UTF-8\"; .x { color: red }" );
+      ("whitespace before charset", " @charset \"UTF-8\"; .x { color: red }");
+      ("comment before charset", "/* c */@charset \"UTF-8\"; .x { color: red }");
+      ("charset in single quotes", "@charset 'UTF-8'; .x { color: red }");
+      ( "two spaces before the charset quote",
+        "@charset  \"UTF-8\"; .x { color: red }" );
+      ( "space before the charset semicolon",
+        "@charset \"UTF-8\" ; .x { color: red }" );
+      (* CSS Cascade 5 sec. 2: nothing valid between two imports but [@layer]
+         statements before the first. *)
+      ( "layer statement between imports",
+        "@import url(a.css); @layer a; @import url(b.css);" );
+      (* CSS Cascade 5 sec. 2: an [@layer] block or an [@media] rule is a valid
+         at-rule, the latter even when its query reads as [not all] (Media
+         Queries 4 sec. 3.2). Chrome drops the import after either: curated
+         cases [layer_block_before_import] and [bad_media_before_import]. *)
+      ( "layer block before import",
+        "@layer x { .b { color: blue } } @import url(a.css);" );
+      ( "media rule before import",
+        "@media print { .b { color: blue } } @import url(a.css);" );
+      (* CSS Namespaces 3 sec. 3.1: an [@namespace] precedes every non-ignored
+         at-rule but [@charset] and [@import], and a misplaced one is ignored.
+         Chrome drops it after an [@layer] statement that follows an import:
+         curated case [namespace_after_layer_statement]. *)
+      ( "namespace after layer statement after import",
+        "@import url(a.css); @layer x; @namespace svg \
+         url(http://www.w3.org/2000/svg);" );
       ( "late import after qualified rule",
         ".x { color: red } @import url(late.css);" );
       ( "namespace after qualified rule",
@@ -523,6 +571,83 @@ let spec_strict_rejects_invalid_stylesheets () =
         "@scope (.x) to () { .x { color: red } }" );
     ]
 
+(* An invalid declaration is reported wherever it sits: the frames of
+   [@keyframes] hold declarations as a style rule does. *)
+let declarations_in_keyframes_are_checked () =
+  List.iter
+    (fun (name, css) -> strict_reject name css)
+    [
+      (* CSS Values 4 sec. 10.4: sin() represents a <number>, and sec. 10.9
+         makes a math function invalid where its type is not one the context
+         takes; [width] takes a <length-percentage>. *)
+      ("sin() as a width in a style rule", ".x { width: sin(1) }");
+      ( "sin() as a width in keyframes",
+        "@keyframes k { from { width: sin(1) } }" );
+      ( "sin() as a width in webkit keyframes",
+        "@-webkit-keyframes k { from { width: sin(1) } }" );
+      ( "sin() as a width in moz keyframes",
+        "@-moz-keyframes k { from { width: sin(1) } }" );
+      (* CSS Color 4 sec. 13.3: [<hue-interpolation-method> = [ shorter | longer
+         | increasing | decreasing ] hue], so [specified hue] is not in it;
+         color-mix() takes that method through its
+         [<color-interpolation-method>] (CSS Color 5 sec. 3). *)
+      ( "specified hue in style rule",
+        ".x { color: color-mix(in hsl specified hue, red, blue) }" );
+      ( "specified hue in keyframes",
+        "@keyframes k { from { color: color-mix(in hsl specified hue, red, \
+         blue) } }" );
+    ]
+
+(* CSS Animations 1 sec. 3: in a keyframe, "properties qualified with !important
+   are invalid and ignored", and "the properties defined by this specification
+   are ignored in these rules, with the exception of animation-timing-function".
+   Chrome drops each of these from the frame (curated cases
+   [keyframe_important], [keyframe_animation_name] and
+   [keyframe_animation_duration] of test/render/parse_recovery.ml). *)
+let keyframe_ignores_important_and_animation () =
+  List.iter
+    (fun (name, css) -> strict_reject name css)
+    [
+      ( "!important in a keyframe",
+        "@keyframes k { from { opacity: 0; color: red !important } }" );
+      ( "!important in a webkit keyframe",
+        "@-webkit-keyframes k { from { color: red !important } }" );
+      ( "animation-name in a keyframe",
+        "@keyframes k { from { opacity: 0; animation-name: x } }" );
+      ( "animation-duration in a keyframe",
+        "@keyframes k { from { animation-duration: 1s } }" );
+      ( "animation-delay in a keyframe",
+        "@keyframes k { from { animation-delay: 1s } }" );
+      ( "animation-iteration-count in a keyframe",
+        "@keyframes k { from { animation-iteration-count: 2 } }" );
+      ( "animation-direction in a keyframe",
+        "@keyframes k { from { animation-direction: reverse } }" );
+      ( "animation-fill-mode in a keyframe",
+        "@keyframes k { from { animation-fill-mode: both } }" );
+      ( "animation-play-state in a keyframe",
+        "@keyframes k { from { animation-play-state: paused } }" );
+      ( "animation shorthand in a keyframe",
+        "@keyframes k { from { animation: x 1s } }" );
+    ];
+  (* Chrome keeps the exception in the frame: curated case
+     [keyframe_animation_timing_function]. *)
+  strict_accept "animation-timing-function in a keyframe"
+    "@keyframes k { from { opacity: 0; animation-timing-function: linear } }";
+  (* The ignored declarations go and the frame keeps the rest, so the sheet
+     reads as the one without them, as it does to Chrome. *)
+  let lenient css =
+    match Css.of_string ~strict:false css with
+    | Ok { Css.stylesheet; _ } -> minify stylesheet
+    | Error err ->
+        Alcotest.failf "lenient parse failed: %s" (Error.to_string err)
+  in
+  Alcotest.(check string)
+    "the frame keeps what Chrome keeps"
+    (lenient "@keyframes k { from { opacity: 0; z-index: 1 } }")
+    (lenient
+       "@keyframes k { from { opacity: 0; animation-name: x; color: red \
+        !important; z-index: 1 } }")
+
 let suite =
   ( "stylesheet_strict",
     [
@@ -546,4 +671,10 @@ let suite =
       ( "spec strict rejects invalid stylesheets",
         `Quick,
         spec_strict_rejects_invalid_stylesheets );
+      ( "declarations in keyframes are checked",
+        `Quick,
+        declarations_in_keyframes_are_checked );
+      ( "keyframe ignores !important and animation properties",
+        `Quick,
+        keyframe_ignores_important_and_animation );
     ] )

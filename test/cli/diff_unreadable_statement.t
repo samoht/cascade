@@ -14,15 +14,15 @@ two sheets differ only in that argument, so both sides lose it and the
 comparison sees the same thing twice.
 
   $ cat > charset-a.css <<EOF
-  > .b{color:red}
   > @charset "a";
+  > .b{color:red}
   > EOF
   $ cat > charset-b.css <<EOF
-  > .b { color: red }
   > @charset "b";
+  > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical charset-a.css charset-b.css
-  charset-a.css and charset-b.css parse warning: <string>: bad value for @charset: @charset only recognises "UTF-8" at [14-27] (in property-value)
+  charset-a.css and charset-b.css parse warning: <string>: bad value for @charset: @charset only recognises "UTF-8" at [0-13] (in property-value)
   
   Unreadable rules: charset-a.css 1, charset-b.css 1
   Cannot determine whether the CSS files are identical

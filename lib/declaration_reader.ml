@@ -915,14 +915,26 @@ let check_declaration_separator t acc =
       Cursor.err t "missing semicolon between declarations"
   | _ -> Done (List.rev acc)
 
-let read_declaration_no_recovery t acc =
+(* [read_declaration] where [refuse] may name why a declaration is invalid at
+   that site: it then fails as a value the reader rejects does. *)
+let read_declaration_at ~refuse t =
+  Cursor.ws t;
+  let loc = Cursor.position t in
   match read_declaration t with
+  | Option.Some decl as read -> (
+      match refuse decl with
+      | Option.None -> read
+      | Option.Some reason -> Cursor.err_invalid ~loc t reason)
+  | Option.None -> Option.None
+
+let read_declaration_no_recovery ~refuse t acc =
+  match read_declaration_at ~refuse t with
   | None -> Done (List.rev acc)
   | Some decl -> check_declaration_separator t (decl :: acc)
 
-let read_declaration_with_recovery t acc =
+let read_declaration_with_recovery ~refuse t acc =
   let start = Cursor.save t in
-  match read_declaration t with
+  match read_declaration_at ~refuse t with
   | None -> Done (List.rev acc)
   | Some decl -> (
       let acc = decl :: acc in
@@ -934,9 +946,9 @@ let read_declaration_with_recovery t acc =
   | exception Error.Parse_error e ->
       Recover { decls = acc; error = e; from = start }
 
-let read_declaration_step t acc =
-  if Cursor.recover t then read_declaration_with_recovery t acc
-  else read_declaration_no_recovery t acc
+let read_declaration_step ~refuse t acc =
+  if Cursor.recover t then read_declaration_with_recovery ~refuse t acc
+  else read_declaration_no_recovery ~refuse t acc
 
 (* CSS Syntax 3 (ED) sec. 5.5.5 ("consume a block's contents"): the invalid
    declaration is dropped, reading resumes past the next [;], and the
@@ -966,7 +978,7 @@ let skip_at_rule t =
   in
   go ()
 
-let rec read_declarations_loop t acc =
+let rec read_declarations_loop ~refuse t acc =
   Cursor.ws t;
   match Cursor.peek t with
   | None -> List.rev acc
@@ -980,17 +992,37 @@ let rec read_declarations_loop t acc =
       Cursor.push_warning t
         ~recovery:(Cursor.dropped_since t from Error.Recovery.Rule)
         error;
-      read_declarations_loop t acc
+      read_declarations_loop ~refuse t acc
   | _ -> (
-      match read_declaration_step t acc with
+      match read_declaration_step ~refuse t acc with
       | Done decls -> decls
-      | Continue acc -> read_declarations_loop t acc
+      | Continue acc -> read_declarations_loop ~refuse t acc
       | Recover { decls; error; from } ->
-          read_declarations_loop t
+          read_declarations_loop ~refuse t
             (recover_declaration_step t decls error ~from))
 
 let read_declarations t =
-  Cursor.with_context t "declarations" @@ fun () -> read_declarations_loop t []
+  Cursor.with_context t "declarations" @@ fun () ->
+  read_declarations_loop ~refuse:(fun _ -> Option.None) t []
+
+(* CSS Animations 1 sec. 3: in a keyframe "properties qualified with !important
+   are invalid and ignored", and "the properties defined by this specification
+   are ignored in these rules, with the exception of animation-timing-function".
+   The name is read off the declaration, so one kept as an unknown property (a
+   [var()] value) is refused as well. *)
+let keyframe_refusal decl =
+  if is_important decl then Option.Some "!important in a keyframe"
+  else
+    match property_name decl with
+    | ( "animation" | "animation-name" | "animation-duration"
+      | "animation-delay" | "animation-iteration-count" | "animation-direction"
+      | "animation-fill-mode" | "animation-play-state" ) as name ->
+        Option.Some (String.concat "" [ name; " in a keyframe" ])
+    | _ -> Option.None
+
+let read_keyframe_declarations t =
+  Cursor.with_context t "declarations" @@ fun () ->
+  read_declarations_loop ~refuse:keyframe_refusal t []
 
 let read_block t =
   Cursor.ws t;

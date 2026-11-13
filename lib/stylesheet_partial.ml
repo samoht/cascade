@@ -1,5 +1,6 @@
 open Stylesheet_intf
 open Stylesheet_pp
+open Stylesheet_walk
 open Stylesheet_read
 
 (* Replay a Parser-recovered rule as a Cursor by flattening its components.
@@ -47,50 +48,13 @@ let rule_loc : Component.rule -> Loc.t = function
   | Qualified { loc; _ } | At { loc; _ } -> loc
 
 let validate_partial_prelude () =
-  let charset_seen = ref false in
-  let import_seen = ref false in
-  let namespace_seen = ref false in
-  let body_seen = ref false in
+  let prelude = ref prelude_start in
   fun loc stmt ->
-    let warning reason =
-      Some (Error.bad_value loc ~property:"stylesheet" ~reason)
-    in
-    match stmt with
-    | Charset _ ->
-        let error =
-          if !charset_seen || !import_seen || !namespace_seen || !body_seen then
-            warning "@charset must precede all rules"
-          else None
-        in
-        charset_seen := true;
-        error
-    | Layer_decl _ ->
-        if !import_seen || !namespace_seen then body_seen := true;
-        None
-    | Import _ ->
-        let error =
-          if !namespace_seen || !body_seen then
-            warning "@import must precede style rules"
-          else None
-        in
-        import_seen := true;
-        error
-    | Namespace _ ->
-        let error =
-          if !body_seen then warning "@namespace must precede style rules"
-          else None
-        in
-        namespace_seen := true;
-        error
-    | Rule _ | Declarations _ | Bang_comment _ | Property _ | Layer _ | Media _
-    | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
-    | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
-    | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
-    | Page _ | Page_with_margins _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-    | Unknown_at_rule _ ->
-        body_seen := true;
-        None
+    let misplaced = misplaced !prelude stmt in
+    prelude := prelude_next !prelude stmt;
+    Option.map
+      (fun reason -> Error.bad_value loc ~property:"stylesheet" ~reason)
+      misplaced
 
 let validate_partial_statement loc = function
   | Rule { selector; _ } when Selector.matches_nothing selector ->
@@ -111,40 +75,15 @@ let validate_partial_statement loc = function
            ~reason:"missing font-family descriptor")
   | _ -> None
 
-let rec statement_has_invalid_declaration = function
-  | Rule { declarations; nested; _ } ->
-      List.exists Declaration.is_invalid declarations
-      || List.exists statement_has_invalid_declaration nested
-  | Declarations decls -> List.exists Declaration.is_invalid decls
-  | Media (_, block)
-  | Container (_, _, block)
-  | Supports (_, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block)
-  | Layer (_, block)
-  | Starting_style block
-  | Origin (_, block)
-  | Scope (_, _, block) ->
-      List.exists statement_has_invalid_declaration block
-  | Page (_, decls) -> List.exists Declaration.is_invalid decls
-  | Page_with_margins (_, descs, margins) ->
-      List.exists Declaration.is_invalid descs
-      || List.exists
-           (fun { descriptors; _ } ->
-             List.exists Declaration.is_invalid descriptors)
-           margins
-  | Position_try (_, decls) | Supports_condition (_, decls) ->
-      List.exists Declaration.is_invalid decls
-  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
-  | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-  | Font_face _ | Counter_style _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Viewport _ | Unknown_at_rule _
-    ->
-      false
+(* [fold_declarations] reaches every declaration site, the frames of
+   [@keyframes] and the margin boxes of [@page] included. *)
+let statement_has_declaration p stmt =
+  fold_declarations
+    (fun found decls -> found || List.exists p decls)
+    false [ stmt ]
 
 let validate_partial_invalid_declarations loc stmt =
-  if statement_has_invalid_declaration stmt then
+  if statement_has_declaration Declaration.is_invalid stmt then
     Some
       (Error.bad_value loc ~property:"stylesheet"
          ~reason:"invalid declaration value")
@@ -156,40 +95,8 @@ let rec declaration_has_strict_warning = function
   | Declaration.Theme_guarded { decl; _ } -> declaration_has_strict_warning decl
   | _ -> false
 
-let rec statement_has_strict_warning = function
-  | Rule { declarations; nested; _ } ->
-      List.exists declaration_has_strict_warning declarations
-      || List.exists statement_has_strict_warning nested
-  | Declarations decls -> List.exists declaration_has_strict_warning decls
-  | Media (_, block)
-  | Container (_, _, block)
-  | Supports (_, block)
-  | Moz_document (_, block)
-  | When (_, block)
-  | Else (_, block)
-  | Layer (_, block)
-  | Starting_style block
-  | Origin (_, block)
-  | Scope (_, _, block) ->
-      List.exists statement_has_strict_warning block
-  | Page (_, decls) -> List.exists declaration_has_strict_warning decls
-  | Page_with_margins (_, descs, margins) ->
-      List.exists declaration_has_strict_warning descs
-      || List.exists
-           (fun { descriptors; _ } ->
-             List.exists declaration_has_strict_warning descriptors)
-           margins
-  | Position_try (_, decls) | Supports_condition (_, decls) ->
-      List.exists declaration_has_strict_warning decls
-  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
-  | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-  | Font_face _ | Counter_style _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Viewport _ | Unknown_at_rule _
-    ->
-      false
-
 let validate_partial_strict_warnings loc stmt =
-  if statement_has_strict_warning stmt then
+  if statement_has_declaration declaration_has_strict_warning stmt then
     Some
       (Error.bad_value loc ~property:"stylesheet"
          ~reason:"strict stylesheet warning")
