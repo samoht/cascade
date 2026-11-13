@@ -429,11 +429,27 @@ let normalize_is_idempotent () =
     ]
 
 (* A number past 2^62 prints like every other CSS number: [1e30], never C
-   printf's [1e+30] or mingw's [1e+030]. *)
+   printf's [1e+30] or mingw's [1e+030]. CSS Syntax 3 sec. 4.3.13 reads the
+   exponent marker in either case and its sign as optional, so [1E30], [1e+30]
+   and [1e30] are one value and the shortest spelling is the minifier's; this is
+   not CSSOM sec. 6.7.2 serialisation, which never uses an exponent. A magnitude
+   too small for the fixed decimals keeps its value: Chrome reads [(min-width:
+   4e-33rem)] back as itself, not as [0rem] (curated/container_tiny_width in
+   test/render/parse_recovery.ml). *)
 let test_large_rem () =
+  let open Css.Container in
   Alcotest.(check string)
     "min-width rem" "(min-width:1e30rem)"
-    Css.Container.(to_string (Min_width_rem 1e30))
+    (to_string (Min_width_rem 1e30));
+  Alcotest.(check string)
+    "tiny min-width rem" "(min-width:4e-33rem)"
+    (to_string (Min_width_rem 4e-33));
+  let check input expected =
+    Alcotest.(check string) input expected (to_string (of_string input))
+  in
+  check "(min-width:1E30rem)" "(min-width:1e30rem)";
+  check "(min-width:1e+30rem)" "(min-width:1e30rem)";
+  check "(min-width:4e-33rem)" "(min-width:4e-33rem)"
 
 let tests =
   Alcotest.

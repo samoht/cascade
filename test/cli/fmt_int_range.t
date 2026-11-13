@@ -30,7 +30,11 @@ A fraction whose digits, scaled to the printed precision, reach 2^62.
   $ printf 'a{width:46116860184.27387904px}' | cascade fmt --minify - 2>&1
   a{width:46116860184.3px}
 
-A media feature length, and a resolution.
+A media feature length, and a resolution. A number past the `int`
+range prints in exponent notation as `1e30`, never `1e+30`: CSS Syntax
+3 sec. 4.3.13 reads the sign after `e` as optional, so both spell one
+value and the shorter is the minifier's. This is a minified stylesheet,
+not CSSOM sec. 6.7.2 serialisation, which never uses an exponent.
 
   $ printf '@media (min-width:4611686018427387904px){a{color:red}}' | cascade fmt - 2>&1
   @media (min-width: 4.61168601843e18px) {
@@ -93,7 +97,10 @@ rather than read the number as a string. So does cascade, with a warning.
   $ printf '[data-x=1e30]{color:red}.b{color:green}' | cascade fmt --minify - 2>&1 >/dev/null | grep -c 'attribute value'
   1
 
-A keyframe timeline range offset.
+A keyframe timeline range offset, which Scroll-driven Animations 1
+(Appendix A) leaves unbounded: `<timeline-range-name> <percentage>`,
+where a plain offset is `<percentage [0,100]>`. Its exponent prints as
+the media resolution's does.
 
   $ printf '@keyframes k{entry 1e30%%{color:red}}' | cascade fmt - 2>&1
   @keyframes k {
