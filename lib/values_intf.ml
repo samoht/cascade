@@ -1,4 +1,5 @@
 type meta = ..
+(** The type for CSS variable metadata. *)
 
 type component_values = Component.t list
 (** Parsed CSS component values preserved for fallback and invalid-value
@@ -12,16 +13,16 @@ type custom_value = component_values
 (** CSS custom-property token stream. *)
 
 type 'a fallback =
-  | Empty (* Empty fallback: var(--name,) *)
+  | Empty  (** Empty fallback: var(--name,) *)
   | Empty2
-    (* 2-char empty fallback: var(--name, ) -- matches tailwindcss output,
-       likely a bug in tailwindcss *)
-  | None (* No fallback: var(--name) *)
-  | Fallback of 'a (* Value fallback: var(--name, value) *)
+      (** 2-char empty fallback: var(--name, ) -- matches tailwindcss output,
+          likely a bug in tailwindcss *)
+  | None  (** No fallback: var(--name) *)
+  | Fallback of 'a  (** Value fallback: var(--name, value) *)
   | Syntax_fallback of component_values
-    (* Syntactic declaration-value fallback when it is not a typed value. *)
-  | Var_fallback of
-      string (* Nested var fallback: var(--name, var(--fallback)) *)
+      (** Syntactic declaration-value fallback when it is not a typed value. *)
+  | Var_fallback of string
+      (** Nested var fallback: var(--name, var(--fallback)) *)
 
 type 'a var = {
   name : string;
@@ -37,6 +38,9 @@ type 'a var = {
 }
 
 type 'a env = { name : string; indices : int list; fallback : 'a option }
+(** CSS [env()] reference. *)
+
+(** CSS calc operations. *)
 type calc_op = Add | Sub | Mul | Div
 
 (** CSS Values 4 sec. 10.7 math constants - emitted at the source byte sequence
@@ -95,17 +99,23 @@ and angle_arg =
   | Operation of angle_arg * calc_op * angle_arg
   | Grouped of angle_arg
 
+(** CSS calc values. *)
 type 'a calc =
-  | Var of 'a var
+  | Var of 'a var  (** CSS variable *)
   | Val of 'a
-  | Num of float
+  | Num of float  (** Unitless number *)
   | Math_const of math_const
-  | Sibling_index
-  | Sibling_count
+      (** CSS Values 4 sec. 10.7 math constant ([pi], [e], [infinity],
+          [-infinity], [NaN]) preserved verbatim through pretty pp. *)
+  | Sibling_index  (** CSS [sibling-index()] math function. *)
+  | Sibling_count  (** CSS [sibling-count()] math function. *)
   | Expr of 'a calc * calc_op * 'a calc
-  | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
-  | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
+  | Nested of 'a calc  (** Explicitly nested calc() *)
+    (* Explicitly nested calc(), rendered as calc(inner) *)
+  | Parens of 'a calc  (** Parenthesized expression *)
+    (* Parenthesized expression, rendered as (inner) *)
   | Math_fn of math_fn
+      (** CSS Values 4 (ED) sec. 9.1 numeric math function call. *)
 (* CSS Values 4 (ED) sec. 9.1 numeric math functions ([sin], [cos], [hypot],
    ...). Pretty pp emits [name(args)] preserving source shape; minify pp /
    optimizer evaluates to [Num]. *)
@@ -126,6 +136,10 @@ type 'a attr_call = {
   fallback : 'a attr_fallback;
 }
 
+(** CSS length values.
+
+    Supports absolute, relative, viewport (including dynamic/large/small),
+    character-based units, keywords, and calculated expressions. *)
 type length =
   | Px of float
   | Cm of float
@@ -160,18 +174,20 @@ type length =
   | Svw of float
   | Svmin of float
   | Svmax of float
-  | Cqw of float
-  | Cqh of float
-  | Cqi of float
-  | Cqb of float
-  | Cqmin of float
-  | Cqmax of float
-  | Ch of float
-  | Lh of float
+  | Cqw of float  (** Container query width units *)
+  | Cqh of float  (** Container query height units *)
+  | Cqi of float  (** Container query inline-size units *)
+  | Cqb of float  (** Container query block-size units *)
+  | Cqmin of float  (** Smaller container query dimension units *)
+  | Cqmax of float  (** Larger container query dimension units *)
+  | Ch of float  (** Character units *)
+  | Lh of float  (** Line height units *)
   | Dimension of { value : float; unit : string; repr : string }
-  | Size
+      (** Dimension with authored numeric spelling preserved for pretty
+          printing. *)
+  | Size  (** [size] keyword inside [calc-size()]. *)
   | Auto
-  | None
+  | None  (** none keyword (e.g., for max-width) *)
   | Normal
       (** [normal] keyword used by [letter-spacing], [word-spacing],
           [line-height], etc. when their value falls back to the user-agent
@@ -182,48 +198,53 @@ type length =
   | Unset
   | Revert
   | Revert_layer
-  | Fit_content
+  | Fit_content  (** fit-content keyword *)
   | Fit_content_arg of length
       (** [fit-content(<length-percentage>)] - CSS Sizing 3 sec. 5.1. The
           argument is a [<length-percentage>]; we store it via the [length] type
           because [length] already has a [Pct of float] case for the percentage
           form (a separate [length_percentage] would force a mutually-recursive
           type). *)
-  | Content
-  | Contain
-  | Max_content
-  | Min_content
-  | Webkit_max_content
-  | Webkit_min_content
-  | Webkit_fit_content
-  | Moz_max_content
-  | Moz_min_content
-  | Moz_fit_content
-  | From_font
-  | Hairline
-  | Thin
-  | Medium
-  | Thick
-  | Stretch
-  | Clamp of length * length * length
-  | Min of length list
-  | Max of length list
-  | Minmax of length * length
-  | Round of string * length * length
-  | Mod of length * length
-  | Rem_fn of length * length
-  | Hypot of length list
-  | Abs of length
-  | Calc_size of length * length calc
+  | Content  (** content keyword *)
+  | Contain  (** contain keyword (intrinsic sizing) *)
+  | Max_content  (** max-content keyword *)
+  | Min_content  (** min-content keyword *)
+  | Webkit_max_content  (** -webkit-max-content (legacy intrinsic sizing) *)
+  | Webkit_min_content  (** -webkit-min-content (legacy intrinsic sizing) *)
+  | Webkit_fit_content  (** -webkit-fit-content (legacy intrinsic sizing) *)
+  | Moz_max_content  (** -moz-max-content (legacy intrinsic sizing) *)
+  | Moz_min_content  (** -moz-min-content (legacy intrinsic sizing) *)
+  | Moz_fit_content  (** -moz-fit-content (legacy intrinsic sizing) *)
+  | From_font  (** from-font keyword for text-decoration-thickness *)
+  | Hairline  (** hairline line-width keyword for text-decoration-thickness *)
+  | Thin  (** thin line-width keyword for text-decoration-thickness *)
+  | Medium  (** medium line-width keyword for text-decoration-thickness *)
+  | Thick  (** thick line-width keyword for text-decoration-thickness *)
+  | Stretch  (** stretch keyword (intrinsic sizing) *)
+  | Clamp of length * length * length  (** CSS [clamp(min, val, max)]. *)
+  | Min of length list  (** CSS [min(a, b, ...)]. *)
+  | Max of length list  (** CSS [max(a, b, ...)]. *)
+  | Minmax of length * length  (** CSS [minmax(min, max)] (grid). *)
+  | Round of string * length * length  (** CSS [round()] math function *)
+  | Mod of length * length  (** CSS [mod()] math function *)
+  | Rem_fn of length * length  (** CSS [rem()] math function *)
+  | Hypot of length list  (** CSS [hypot()] math function *)
+  | Abs of length  (** CSS [abs()] math function *)
+  | Calc_size of length * length calc  (** CSS [calc-size()] function *)
   | Anchor_size of string
+      (** CSS [anchor-size()] function, from
+          {{:https://www.w3.org/TR/css-anchor-position-1/} CSS Anchor
+           Positioning Level 1}. *)
   | Anchor of string option * string * length option
+      (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Attr of length attr_call
       (** CSS Values 5 sec. 8.7 [attr(<attr-name> <attr-type>?, <fallback>?)]
           for typed-value contexts. *)
-  | Env of length env
-  | Var of length var
-  | Calc of length calc
+  | Env of length env  (** CSS [env()] reference. *)
+  | Var of length var  (** CSS variable reference *)
+  | Calc of length calc  (** Calculated expressions *)
 
+(** CSS color spaces for color-mix() *)
 type color_space =
   | Srgb
   | Srgb_linear
@@ -241,6 +262,7 @@ type color_space =
   | Hsl
   | Hwb
 
+(** CSS named colors as defined in the CSS Color Module specification. *)
 type color_name =
   | Red
   | Blue
@@ -391,6 +413,7 @@ type color_name =
   | White_smoke
   | Yellow_green
 
+(** CSS channel values (for RGB) *)
 type channel =
   | Int of int
   | Num of float
@@ -406,6 +429,7 @@ type rgb =
   | Channels of { r : channel; g : channel; b : channel }
   | Var of rgb var
 
+(** CSS angle values *)
 type angle =
   | Deg of float
   | Rad of float
@@ -414,7 +438,7 @@ type angle =
   | Round of string * angle * angle
   | Mod of angle * angle
   | Rem of angle * angle
-  | Calc of angle calc
+  | Calc of angle calc  (** Calculated angle expressions *)
   | Var of angle var
   | Invalid of invalid_value
       (** Spec-invalid [<angle>] input (e.g. [asin(<angle>)] - inverse trig
@@ -423,6 +447,7 @@ type angle =
           [Optimize.drop_invalid] pass, which every serialisation runs, removes
           any declaration whose typed value reduces to this arm. *)
 
+(** CSS alpha values (for HSL/HWB/etc) *)
 type alpha =
   | None
   | Num of float
@@ -430,8 +455,10 @@ type alpha =
   | Var of alpha var
   | Calc of alpha calc
 
+(** CSS hue values (for HSL/HWB) *)
 type hue = Unitless of float | Angle of angle | Var of hue var | Hue_none
 
+(** CSS color component values *)
 type component =
   | Num of float
   | Pct of float
@@ -440,12 +467,14 @@ type component =
   | Calc of component calc
   | Component_none
 
+(** CSS percentage values *)
 type percentage =
   | Pct of float
   | Num of float
   | Var of percentage var
   | Calc of percentage calc
 
+(** CSS length or percentage values. *)
 type length_percentage =
   | Length of length
   | Pct of float
@@ -459,12 +488,14 @@ type length_percentage =
             [Optimize.drop_invalid] removes the declaration on every
             serialisation. *)
 
+(** CSS number or percentage values (for properties like scale, brightness) *)
 type number_percentage =
   | Num of float
   | Pct of float
   | Var of number_percentage var
   | Calc of number_percentage calc
 
+(** CSS hue interpolation options *)
 type hue_interpolation =
   | Shorter
   | Longer
@@ -478,28 +509,29 @@ type hue_interpolation =
 (** CSS system colors - case-insensitive keywords that map to OS/browser colors
 *)
 type system_color =
-  | Accent_color
-  | Accent_color_text
-  | Active_text
-  | Button_border
-  | Button_face
-  | Button_text
-  | Canvas
-  | Canvas_text
-  | Field
-  | Field_text
-  | Gray_text
-  | Highlight
-  | Highlight_text
-  | Link_text
-  | Mark
-  | Mark_text
-  | Selected_item
-  | Selected_item_text
-  | Visited_text
+  | Accent_color  (** Background of accented user interface controls *)
+  | Accent_color_text  (** Text of accented user interface controls *)
+  | Active_text  (** Text of active links *)
+  | Button_border  (** Base border color of controls *)
+  | Button_face  (** Background color of controls *)
+  | Button_text  (** Text color of controls *)
+  | Canvas  (** Background of application content or documents *)
+  | Canvas_text  (** Text color in application content or documents *)
+  | Field  (** Background of input fields *)
+  | Field_text  (** Text in input fields *)
+  | Gray_text  (** Text color for disabled items *)
+  | Highlight  (** Background of selected items *)
+  | Highlight_text  (** Text color of selected items *)
+  | Link_text  (** Text of non-active, non-visited links *)
+  | Mark  (** Background of specially marked text *)
+  | Mark_text  (** Text that has been specially marked *)
+  | Selected_item  (** Background of selected items (e.g., selected checkbox) *)
+  | Selected_item_text  (** Text of selected items *)
+  | Visited_text  (** Text of visited links *)
   (* WebKit-specific system colors *)
-  | Webkit_focus_ring_color
+  | Webkit_focus_ring_color  (** WebKit-specific focus ring color *)
 
+(** CSS color values. *)
 type color =
   | Hex of { r : int; g : int; b : int; a : int }
       (** A hex colour decoded to its sRGB byte components ([a = 255] when
@@ -530,17 +562,22 @@ type color =
       a : float option;
       b : float option;
       alpha : alpha;
-    }
+    }  (** Lab color space. l, a and b can be [None] to represent CSS [none]. *)
   | Oklch of { l : percentage option; c : float option; h : hue; alpha : alpha }
+      (** OKLCH color space. l and c can be [None] to represent CSS [none]. *)
   | Oklab of {
       l : percentage option;
       a : float option;
       b : float option;
       alpha : alpha;
     }
+      (** Oklab color space. l, a and b can be [None] to represent CSS 'none'
+          keyword. *)
   | Lch of { l : percentage option; c : float option; h : hue; alpha : alpha }
-  | Named of color_name
+      (** LCH color space. l and c can be [None] to represent CSS [none]. *)
+  | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | System of system_color
+      (** CSS system colors like Button_text, Canvas, etc. *)
   | Var of color var
   | Current
   | Transparent
@@ -560,13 +597,14 @@ type color =
       percent2 : percentage option;
     }
 
+(** CSS duration values. *)
 type duration =
-  | Ms of float
-  | S of float
+  | Ms of float  (** milliseconds *)
+  | S of float  (** seconds *)
   (* CSS Animations 2 sec. 4.1: [animation-duration] alone has an [auto] arm,
      and it is that property's initial value. *)
-  | Auto
-  | Durations of duration list
+  | Auto  (** [animation-duration] only *)
+  | Durations of duration list  (** comma-separated list of durations *)
   | Round of string * duration * duration
   | Mod of duration * duration
   | Rem of duration * duration
@@ -575,31 +613,22 @@ type duration =
   | Unset
   | Revert
   | Revert_layer
-  | Var of duration var
+  | Var of duration var  (** CSS variable reference *)
   | Calc of duration calc
 
+(** CSS number values (unitless numbers for filters, transforms, etc.) *)
 type number =
-  | Num of float
-  | Var of number var
+  | Num of float  (** Number value *)
+  | Var of number var  (** CSS variable reference *)
   | Calc of number calc
-  | Round of string * number * number
-  | Mod of number * number
-  | Rem of number * number
-  | Hypot of number * number
-  | Pow of number * number
-  | Sqrt of number
-  | Abs of number
-  | Sign of number
-  | Sin of angle
+  | Round of string * number * number  (** CSS [round()] math function *)
+  | Mod of number * number  (** CSS [mod()] math function *)
+  | Rem of number * number  (** CSS [rem()] math function *)
+  | Hypot of number * number  (** CSS [hypot()] math function *)
+  | Pow of number * number  (** CSS [pow()] math function *)
+  | Sqrt of number  (** CSS [sqrt()] math function *)
+  | Abs of number  (** CSS [abs()] math function *)
+  | Sign of number  (** CSS [sign()] math function *)
+  | Sin of angle  (** CSS [sin()] math function *)
 
 type transition_behavior = Normal | Allow_discrete
-
-let equal_length (a : length) b = a = b
-let equal_length_percentage (a : length_percentage) b = a = b
-let equal_number_percentage (a : number_percentage) b = a = b
-let equal_color (a : color) b = a = b
-
-(* Bounded like [Declaration.hash], for the same reason: the depth cap keeps the
-   cost of fingerprinting a deep [color-mix()] tree off the caller's inner
-   loop. *)
-let hash_color (c : color) = Hashtbl.hash_param 30 100 c

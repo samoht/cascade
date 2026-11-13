@@ -5,6 +5,25 @@
 
 open Stylesheet_intf
 
+val resolve_font_face_var :
+  src:(Font_face.src -> Font_face.src) ->
+  unicode_range:(Properties.unicode_range list -> Properties.unicode_range list) ->
+  font_family:(Properties.font_family list -> Properties.font_family list) ->
+  font_style:(Properties.font_style -> Properties.font_style) ->
+  font_weight:(Properties.font_weight -> Properties.font_weight) ->
+  font_stretch:(Properties.font_stretch -> Properties.font_stretch) ->
+  font_display:(Properties.font_display -> Properties.font_display) ->
+  font_variant:(font_variant_descriptor -> font_variant_descriptor) ->
+  font_feature_settings:
+    (Properties.font_feature_settings -> Properties.font_feature_settings) ->
+  font_variation_settings:
+    (Properties.font_variation_settings -> Properties.font_variation_settings) ->
+  metric_override:(Font_face.metric_override -> Font_face.metric_override) ->
+  size_adjust:(Font_face.size_adjust -> Font_face.size_adjust) ->
+  font_face_descriptor ->
+  font_face_descriptor option
+(** [resolve_font_face_var] is {!Stylesheet.resolve_font_face_var}. *)
+
 val read_font_variant_descriptor : Cursor.t -> font_variant_descriptor
 (** [read_font_variant_descriptor r] reads the [font-variant] descriptor of an
     [@font-face], or a [var()] standing for one. *)

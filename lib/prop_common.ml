@@ -378,3 +378,34 @@ let read_dashed_ident t =
   let ident = Cursor.ident ~keep_case:true t in
   if Custom_property_name.is_valid ident then ident
   else Cursor.err_invalid ~loc t ("expected dashed ident, got: " ^ ident)
+
+let equal_overflow (a : overflow) b = a = b
+let equal_grid_line (a : grid_line) b = a = b
+let equal_text_emphasis_skip_keyword (a : text_emphasis_skip_keyword) b = a = b
+
+let equal_min_intrinsic_sizing_keyword (a : min_intrinsic_sizing_keyword) b =
+  a = b
+
+let equal_initial_letter_align_keyword (a : initial_letter_align_keyword) b =
+  a = b
+
+let equal_ruby_position_keyword (a : ruby_position_keyword) b = a = b
+let equal_background_shorthand (a : background_shorthand) b = a = b
+let equal_background_box (a : background_box) b = a = b
+let equal_mask_layer (a : mask_layer) b = a = b
+let equal_position_area_keyword (a : position_area_keyword) b = a = b
+
+let equal_position_visibility_condition (a : position_visibility_condition) b =
+  a = b
+
+let equal_animation_range_name (a : animation_range_name) b = a = b
+let equal_container_shorthand (a : container_shorthand) b = a = b
+let equal_paint_order_keyword (a : paint_order_keyword) b = a = b
+let equal_paint_order (a : paint_order) b = a = b
+let equal_border_width (a : border_width) b = a = b
+let equal_overscroll_behavior (a : overscroll_behavior) b = a = b
+
+let equal_contain_intrinsic_size_item (a : contain_intrinsic_size_item) b =
+  a = b
+
+let equal_border_style (a : border_style) b = a = b

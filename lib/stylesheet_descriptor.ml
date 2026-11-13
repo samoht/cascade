@@ -1,6 +1,33 @@
 open Stylesheet_intf
 open Stylesheet_at_rule
 
+let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
+    ~font_weight ~font_stretch ~font_display ~font_variant
+    ~font_feature_settings ~font_variation_settings ~metric_override
+    ~size_adjust = function
+  | Src value -> Some (Src (src value))
+  | Unicode_range values -> Some (Unicode_range (unicode_range values))
+  | Font_family values -> Some (Font_family (font_family values))
+  | Font_style value -> Some (Font_style (font_style value))
+  | Font_weight value -> Some (Font_weight (font_weight value))
+  | Font_weight_range (low, high) ->
+      Some (Font_weight_range (font_weight low, font_weight high))
+  | Font_stretch value -> Some (Font_stretch (font_stretch value))
+  | Font_stretch_range (low, high) ->
+      Some (Font_stretch_range (font_stretch low, font_stretch high))
+  | Font_display value -> Some (Font_display (font_display value))
+  | Font_variant value -> Some (Font_variant (font_variant value))
+  | Font_feature_settings value ->
+      Some (Font_feature_settings (font_feature_settings value))
+  | Font_variation_settings value ->
+      Some (Font_variation_settings (font_variation_settings value))
+  | Ascent_override value -> Some (Ascent_override (metric_override value))
+  | Descent_override value -> Some (Descent_override (metric_override value))
+  | Line_gap_override value -> Some (Line_gap_override (metric_override value))
+  | Size_adjust value -> Some (Size_adjust (size_adjust value))
+  (* A keyword holds no var() to resolve. *)
+  | Font_style_auto | Font_weight_auto | Font_stretch_auto -> None
+
 (* Read a font-face descriptor *)
 (* Helper to read descriptor value after colon *)
 (* CSS Fonts 4 (ED) sec. 4.4 writes each font property descriptor's grammar out

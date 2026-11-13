@@ -14,6 +14,7 @@ type content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
   | Image of background_image
+      (** The [<image>] of {!type-background_image}, aliased below. *)
   | None
   | Normal
   | Open_quote
@@ -42,18 +43,21 @@ type counter_set =
   | Revert_layer
   | Var of counter_set var
 
+(** CSS content-visibility values. *)
 type content_visibility =
-  | Visible
-  | Hidden
-  | Auto
+  | Visible  (** Content is visible and rendered *)
+  | Hidden  (** Content is hidden from rendering *)
+  | Auto  (** Browser determines visibility based on relevance *)
   | Initial
-  | Inherit
+  | Inherit  (** Inherit from parent *)
   | Unset
   | Revert
   | Revert_layer
   | Var of content_visibility var
       (** The CSS quotes property - defines quotation marks *)
 
+(** CSS quotes property values - defines quotation marks for q and blockquote.
+*)
 type quotes =
   | Auto  (** Browser default based on language *)
   | None  (** No quotation marks *)
@@ -66,6 +70,8 @@ type quotes =
   | Var of quotes var
 
 (* Container Types *)
+
+(** CSS container-type values *)
 type container_type =
   | Size
   | Inline_size
@@ -88,6 +94,7 @@ type container_name =
   | Revert_layer
   | Var of container_name var
 
+(** Sec. 2.1 [anchor-name]: [none | <dashed-ident>#]. *)
 type anchor_name =
   | None
   | Names of string list
@@ -98,6 +105,8 @@ type anchor_name =
   | Revert_layer
   | Var of anchor_name var
 
+(** Sec. 3.1.2 [<position-area>]: one of the grid keywords naming a region
+    around the anchor. *)
 type position_area_keyword =
   | Top
   | Bottom
@@ -164,6 +173,8 @@ type position_anchor =
   | Revert_layer
   | Var of position_anchor var
 
+(** Sec. 6.1 [<try-tactic>] and the [<dashed-ident>] naming a [@position-try]
+    rule. *)
 type position_try_fallback =
   | Flip_block
   | Flip_inline
@@ -177,6 +188,7 @@ type position_try_fallback_entry =
   | Tactics of position_try_fallback list
   | Area of position_area_keyword * position_area_keyword option
 
+(** Sec. 6.1 [position-try-fallbacks]. *)
 type position_try_fallbacks =
   | None
   | Fallbacks of position_try_fallback_entry list
@@ -187,6 +199,7 @@ type position_try_fallbacks =
   | Revert_layer
   | Var of position_try_fallbacks var
 
+(** Sec. 6.2 [position-try-order]: [normal | <try-size>]. *)
 type position_try_order =
   | Normal
   | Most_width
@@ -203,6 +216,9 @@ type position_try_order =
 (* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>
    || <'position-try-fallbacks'>]. A [Normal] order is the initial value and is
    omitted from the serialisation. *)
+
+(** Sec. 6.3 [position-try]:
+    [<'position-try-order'>? <'position-try-fallbacks'>]. *)
 type position_try =
   | Try of position_try_order * position_try_fallbacks
   | Initial
@@ -212,8 +228,10 @@ type position_try =
   | Revert_layer
   | Var of position_try var
 
+(** Sec. 7 [<anchor-visibility>]: one condition that hides the box. *)
 type position_visibility_condition = Anchors_visible | No_overflow
 
+(** Sec. 7 [position-visibility]. *)
 type position_visibility =
   | Always
   | Conditions of position_visibility_condition list
@@ -224,6 +242,8 @@ type position_visibility =
   | Revert_layer
   | Var of position_visibility var
 
+(** Sec. 3.1.2 [position-area]: one or two keywords from a single branch of the
+    grammar. *)
 type position_area =
   | None
   | Area of position_area_keyword * position_area_keyword option
@@ -234,6 +254,9 @@ type position_area =
   | Revert_layer
   | Var of position_area var
 
+(** CSS Scroll Anchoring 1
+    {{:https://drafts.csswg.org/css-scroll-anchoring-1/#propdef-overflow-anchor}
+     [overflow-anchor]}. *)
 type overflow_anchor =
   | Auto
   | None
@@ -276,6 +299,9 @@ type scrollbar_gutter =
   | Revert_layer
   | Var of scrollbar_gutter var
 
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-palette}
+     [font-palette]}. *)
 type font_palette =
   | Normal
   | Light
@@ -288,8 +314,14 @@ type font_palette =
   | Revert_layer
   | Var of font_palette var
 
+(** One face the browser may synthesise, for CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis}
+     [font-synthesis]}. *)
 type font_synthesis_feature = Weight | Style | Small_caps | Position
 
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-synthesis}
+     [font-synthesis]}. *)
 type font_synthesis =
   | None
   | Features of font_synthesis_feature list
@@ -300,6 +332,8 @@ type font_synthesis =
   | Revert_layer
   | Var of font_synthesis var
 
+(** Sec. 6.2 [<timeline-range-name>]: the named part of a view progress
+    timeline. *)
 type animation_range_name =
   | Cover
   | Contain
@@ -308,6 +342,7 @@ type animation_range_name =
   | Entry_crossing
   | Exit_crossing
 
+(** Sec. 6.2: one end of [animation-range]. *)
 type animation_range_item =
   | Normal
   | Items of animation_range_item list
@@ -320,6 +355,7 @@ type animation_range_item =
   | Revert_layer
   | Var of animation_range_item var
 
+(** Sec. 6.2 [animation-range]: the start then the end. *)
 type animation_range =
   | Range of animation_range_item * animation_range_item option
   | Ranges of animation_range list
@@ -330,6 +366,9 @@ type animation_range =
   | Revert_layer
   | Var of animation_range var
 
+(** View Transitions 1
+    {{:https://drafts.csswg.org/css-view-transitions-1/#propdef-view-transition-name}
+     [view-transition-name]}, with the [match-element] of Level 2. *)
 type view_transition_name =
   | None
   | Match_element
@@ -341,6 +380,9 @@ type view_transition_name =
   | Revert_layer
   | Var of view_transition_name var
 
+(** View Transitions 2
+    {{:https://drafts.csswg.org/css-view-transitions-2/#propdef-view-transition-class}
+     [view-transition-class]}: [none | <custom-ident>+]. *)
 type view_transition_class =
   | None
   | Classes of string list
@@ -351,6 +393,9 @@ type view_transition_class =
   | Revert_layer
   | Var of view_transition_class var
 
+(** CSS Images 3
+    {{:https://drafts.csswg.org/css-images-3/#propdef-image-orientation}
+     [image-orientation]}. *)
 type image_orientation =
   | None
   | From_image
@@ -361,6 +406,9 @@ type image_orientation =
   | Revert_layer
   | Var of image_orientation var
 
+(** CSS Images 3
+    {{:https://drafts.csswg.org/css-images-3/#propdef-image-rendering}
+     [image-rendering]}. *)
 type image_rendering =
   | Auto
   | Smooth
@@ -374,8 +422,13 @@ type image_rendering =
   | Revert_layer
   | Var of image_rendering var
 
+(** CSS Values 4
+    {{:https://drafts.csswg.org/css-values-4/#resolution} [<resolution>]}. *)
 type resolution = Dpi of float | Dpcm of float | Dppx of float | X of float
 
+(** CSS Images 4
+    {{:https://drafts.csswg.org/css-images-4/#propdef-image-resolution}
+     [image-resolution]}: [[ from-image || <resolution> ] && snap?]. *)
 type image_resolution =
   | Resolution of resolution
   | From_image
@@ -398,6 +451,9 @@ type contain_intrinsic_size_item =
   | Auto_none
   | Auto of length
 
+(** CSS Sizing 4
+    {{:https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-size}
+     [contain-intrinsic-size]}: one axis or both. *)
 type contain_intrinsic_size =
   | None
   | Intrinsic of
@@ -409,6 +465,10 @@ type contain_intrinsic_size =
   | Revert_layer
   | Var of contain_intrinsic_size var
 
+(** One axis longhand of {!type-contain_intrinsic_size}.
+
+    @see <https://drafts.csswg.org/css-sizing-4/#propdef-contain-intrinsic-width>
+      contain-intrinsic-width *)
 type contain_intrinsic_longhand =
   | None
   | Size of contain_intrinsic_size_item
@@ -419,9 +479,19 @@ type contain_intrinsic_longhand =
   | Revert_layer
   | Var of contain_intrinsic_longhand var
 
+(** One edge whose margin CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}
+    trims. *)
 type margin_trim_edge = Block_start | Inline_start | Block_end | Inline_end
+
+(** One axis whose margins CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}
+    trims. *)
 type margin_trim_axis = Block | Inline
 
+(** CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#propdef-margin-trim} [margin-trim]}.
+*)
 type margin_trim =
   | None
   | Block
@@ -450,6 +520,8 @@ type ray = {
   contain : bool;
   position : position_value option;
 }
+(** Sec. 3.2 [ray()]: an angle, a size, whether the path is contained, and the
+    position it starts from. *)
 
 (** CSS Masking 1 sec. 5.1 [<geometry-box>] reference box for [clip-path]: the
     [<shape-box>] from CSS Shapes 1 plus the SVG-specific boxes. *)
@@ -468,7 +540,7 @@ type clip_path_extent = Extent_length of length | Closest_side | Farthest_side
 
 type clip_path_fill_rule = Nonzero | Evenodd
 
-(* clip-path property for clipping regions *)
+(** CSS clip-path property values for clipping regions. *)
 type clip_path =
   | Clip_path_none
   | Clip_path_url of string
@@ -537,6 +609,8 @@ type clip_path =
           [Optimize.drop_invalid] pass removes the declaration on every
           serialisation. *)
 
+(** Sec. 2.1 [offset-path]: [none | <offset-path> || <coord-box>], where the
+    shape branch reuses {!type-clip_path}. *)
 type offset_path =
   | None
   | Url of string
@@ -553,6 +627,7 @@ type offset_path =
   | Revert_layer
   | Var of offset_path var
 
+(** Sec. 2.4 [offset-anchor]: [auto | <position>]. *)
 type offset_anchor =
   | Auto
   | Position of position_value
@@ -563,6 +638,7 @@ type offset_anchor =
   | Revert_layer
   | Var of offset_anchor var
 
+(** Sec. 2.5 [offset-position]: [normal | auto | <position>]. *)
 type offset_position =
   | Normal
   | Auto
@@ -574,8 +650,11 @@ type offset_position =
   | Revert_layer
   | Var of offset_position var
 
+(** Sec. 2.3 [offset-rotate]: which of [auto] and [reverse] an explicit angle is
+    measured from. *)
 type offset_rotate_mode = Auto | Reverse
 
+(** Sec. 2.3 [offset-rotate]: [[ auto | reverse ] || <angle>]. *)
 type offset_rotate =
   | Auto
   | Reverse
@@ -597,6 +676,9 @@ type offset_rotate =
    path, or both, and never nothing. [offset-distance] and [offset-rotate] sit
    inside the path branch, so [With_path] is the only shape that carries them
    and neither can be written without a path in front. *)
+
+(** Sec. 2.6: the leading group of the [offset] shorthand, which is either a
+    position on its own or a path with the slots that follow it. *)
 type offset_target =
   | Position_only of offset_position
   | With_path of {
@@ -606,6 +688,9 @@ type offset_target =
       rotate : offset_rotate option;
     }
 
+(** Sec. 2.6 [offset]:
+    [[ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> ||
+     <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?]. *)
 type offset =
   | Shorthand of { target : offset_target; anchor : offset_anchor option }
   | Initial
@@ -628,6 +713,8 @@ type container_shorthand =
   | Var of container_shorthand var
 
 (* Containment Types *)
+
+(** CSS contain values *)
 type contain =
   | None
   | Strict
@@ -645,6 +732,7 @@ type contain =
   | Revert_layer
   | Var of contain var
 
+(** CSS isolation values *)
 type isolation =
   | Auto
   | Isolate
@@ -655,7 +743,7 @@ type isolation =
   | Revert_layer
   | Var of isolation var
 
-(* Break Types - for page/column/region breaks *)
+(** CSS break-before/break-after values for page/column/region breaks. *)
 type break_value =
   | Auto
   | Avoid
@@ -677,6 +765,7 @@ type break_value =
   | Revert_layer
   | Var of break_value var
 
+(** CSS break-inside values. *)
 type break_inside_value =
   | Auto
   | Avoid
@@ -689,9 +778,9 @@ type break_inside_value =
   | Revert_layer
   | Var of break_inside_value var
 
-(* CSS Fragmentation 3 sec. 3.4 deprecated [page-break-before / -after /
-   -inside] aliases. The shorter value vocabulary makes them their own type
-   rather than overload [break_value]. *)
+(** CSS Fragmentation 3 sec. 3.4 deprecated [page-break-before / -after] alias
+    vocabulary; the shorter value list makes these their own type rather than
+    overload {!type-break_value}. *)
 type page_break_value =
   | Auto
   | Always (* maps to [break-before/after: page] *)
@@ -704,6 +793,8 @@ type page_break_value =
   | Revert
   | Revert_layer
   | Var of page_break_value var
+      (** CSS Fragmentation 3 sec. 3.4 deprecated [page-break-inside]
+          vocabulary. *)
 
 type page_break_inside_value =
   | Auto
@@ -736,6 +827,7 @@ type page_size_orientation =
   | Landscape
   | Var of page_size_orientation var
 
+(** CSS paged-media [size] descriptor values. *)
 type page_size =
   | Auto
   | Single of length

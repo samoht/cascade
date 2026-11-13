@@ -4,6 +4,8 @@ open Values
 open Properties_border_intf
 
 (* Background Types *)
+
+(** CSS background-attachment values. *)
 type background_attachment =
   | Scroll
   | Fixed
@@ -16,6 +18,7 @@ type background_attachment =
   | Revert_layer
   | Var of background_attachment var
 
+(** CSS background and mask box values. *)
 type background_box =
   | Border_box
   | Padding_box
@@ -29,6 +32,7 @@ type background_box =
   | Revert_layer
   | Var of background_box var
 
+(** CSS background-repeat values. *)
 type background_repeat =
   | Repeat
   | Space
@@ -60,6 +64,7 @@ type background_repeat =
   | Revert_layer
   | Var of background_repeat var
 
+(** CSS background-size values. *)
 type background_size =
   | Auto
   | Cover
@@ -87,6 +92,7 @@ type color_interpolation =
   | In of color_space * hue_interpolation_method option
   | Var of color_interpolation var
 
+(** Gradient direction values *)
 type gradient_direction =
   | Default_direction
   | To_top
@@ -101,8 +107,10 @@ type gradient_direction =
   | With_interpolation of gradient_direction * color_interpolation
   | Var of gradient_direction var
 
+(** Shape of a radial gradient *)
 type radial_shape = Circle | Ellipse | Var of radial_shape var
 
+(** Size of a radial gradient *)
 type radial_size =
   | Closest_side
   | Farthest_side
@@ -150,8 +158,15 @@ type position_value =
    [background-position-y] each take [center | [<edge>? <length-percentage>]].
    One type serves both, each edge keyword naming exactly one axis, and the
    per-property reader refuses the other axis's keywords. *)
+
+(** One physical edge a [<position>] offsets from, for CSS Backgrounds 4
+    {{:https://drafts.csswg.org/css-backgrounds-4/#propdef-background-position-x}
+     [background-position-x]}. *)
 type position_axis_edge = Left | Right | Top | Bottom
 
+(** One axis of CSS Backgrounds 4
+    {{:https://drafts.csswg.org/css-backgrounds-4/#propdef-background-position-x}
+     [background-position-x]}. *)
 type background_position_axis =
   | Center
   | Edge of position_axis_edge
@@ -175,7 +190,10 @@ type radial_gradient_config = {
   position : position_value option;
   interpolation : color_interpolation option;
 }
+(** Configuration for radial-gradient prefix: shape, size, position, and
+    optional [in <color-interpolation-method>] clause. *)
 
+(** Per CSS Backgrounds and Borders 3 sec. 4.1. *)
 type border_radius =
   | Radius of {
       horizontal : length_percentage list;
@@ -190,7 +208,7 @@ type border_radius =
   | Unset
   | Revert
   | Revert_layer
-  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 sec. 4.1. *)
+  | Var of border_radius var
 
 type conic_gradient_config = {
   angle : angle option;  (** [from <angle>] starting angle *)
@@ -198,6 +216,8 @@ type conic_gradient_config = {
   interpolation : color_interpolation option;
       (** Optional [in <color-interpolation-method>] clause. *)
 }
+(** Configuration for conic-gradient prefix: starting angle, center, and
+    optional [in <color-interpolation-method>] clause. *)
 
 type gradient_position =
   | Linear_position of gradient_direction
@@ -205,23 +225,24 @@ type gradient_position =
   | Conic_position of conic_gradient_config
   | Var of gradient_position var
 
+(** Gradient stop values *)
 type gradient_stop =
   | Color_percentage of
       color * length_percentage option * length_percentage option
-    (* Color with optional length-percentage position *)
-  | Color_length of
-      color
-      * length option
-      * length option (* Color with optional length position *)
-  | Length of length (* Interpolation hint with length, e.g., "50px" *)
+      (** Color with optional percentage positions *)
+  (* Color with optional length-percentage position *)
+  | Color_length of color * length option * length option
+      (** Color with optional length positions *)
+  | Length of length  (** Interpolation hint with length, e.g., "50px" *)
   | Channel of channel
       (** Residual numeric channel token from custom-property substitution. *)
-  | List of
-      gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
-  | Percentage of
-      percentage (* Interpolation hint with percentage, e.g., "50%" *)
+  | List of gradient_stop list
+      (** Multiple gradient stops - used for var fallbacks *)
+  | Percentage of percentage
+      (** Interpolation hint with percentage, e.g., "50%" *)
   | Position of gradient_position
   | Direction of gradient_direction
+      (** Gradient direction for stops, e.g., "to right" or Var *)
   | Var of gradient_stop var
 (* Gradient direction for stops, e.g., "to right" or Var *)
 
@@ -305,6 +326,8 @@ and cross_fade_option = {
 
 (* CSS Lists 3 sec. 3.5: [list-style-image] is a [<image>], which is the
    [background_image] vocabulary without its comma list, or [none]. *)
+
+(** CSS list-style-image values *)
 type list_style_image =
   | None
   | Image of background_image
@@ -340,6 +363,7 @@ type list_style =
 type background_position = position_value list
 
 (* Structured background type for the shorthand property *)
+
 type background_shorthand = {
   color : color option;
   image : background_image option;
@@ -350,13 +374,14 @@ type background_shorthand = {
   clip : background_box option;
   origin : background_box option;
 }
+(** CSS background shorthand values. *)
 
 type background =
   | Inherit
   | Initial
   | Unset
   | None
-  | Shorthand of background_shorthand
+  | Shorthand of background_shorthand  (** CSS background values. *)
   | Var of background var
   | Vars of background var list
 (* Mask Types *)
@@ -506,9 +531,12 @@ type border_image_slice_offsets = {
   offsets : border_image_slice_item list;
   fill : bool;
 }
+(** Sec. 5.2: the one to four offsets and the [fill] keyword. *)
 
 (* CSS Backgrounds 3 sec. 5.2: [border-image-slice] is one to four offsets with
    an optional [fill]; the longhand also takes the CSS-wide keywords. *)
+
+(** Sec. 5.2 [border-image-slice]. *)
 type border_image_slice =
   | Slices of border_image_slice_offsets
   | Inherit
@@ -518,17 +546,24 @@ type border_image_slice =
   | Revert_layer
   | Var of border_image_slice var
 
+(** Sec. 5.3: one [border-image-width], which unlike a border width takes a bare
+    number as a multiple of the border width. *)
 type border_image_width_item =
   | Number of number
   | Pct of float
   | Length of length
   | Auto
 
+(** Sec. 5.4: one [border-image-outset], a number or a length. *)
 type border_image_outset_item = Number of number | Length of length
+
+(** Sec. 5.5: how the middle of an edge is filled. *)
 type border_image_repeat_keyword = Stretch | Repeat | Round | Space
 
 (* CSS Backgrounds 3 sec. 5.5: [border-image-repeat] is one or two keywords
    (block then inline); the longhand also takes the CSS-wide keywords. *)
+
+(** Sec. 5.5 [border-image-repeat]: the block edge then the inline edge. *)
 type border_image_repeat =
   | Repeats of border_image_repeat_keyword list
   | Inherit
@@ -540,6 +575,8 @@ type border_image_repeat =
 
 (* CSS Backgrounds 3 sec. 5.3: [border-image-width] is one to four items; the
    longhand also takes the CSS-wide keywords. *)
+
+(** Sec. 5.3 [border-image-width]. *)
 type border_image_width =
   | Widths of border_image_width_item list
   | Inherit
@@ -551,6 +588,8 @@ type border_image_width =
 
 (* CSS Backgrounds 3 sec. 5.4: [border-image-outset] is one to four items; the
    longhand also takes the CSS-wide keywords. *)
+
+(** Sec. 5.4 [border-image-outset]. *)
 type border_image_outset =
   | Outsets of border_image_outset_item list
   | Inherit
@@ -573,8 +612,14 @@ type border_image = {
   repeat : border_image_repeat_keyword list option;
   mode : mask_border_mode option;
 }
+(** CSS Backgrounds 3
+    {{:https://drafts.csswg.org/css-backgrounds-3/#propdef-border-image}
+     [border-image]} and CSS Masking 1
+    {{:https://drafts.csswg.org/css-masking-1/#propdef-mask-border}
+     [mask-border]}, which share every slot but the [mode] only the mask
+    carries. *)
 
-(* Gap shorthand type *)
+(** CSS gap shorthand type. *)
 type gap =
   | Lengths of { row_gap : length option; column_gap : length option }
   | Inherit

@@ -3,6 +3,8 @@
 open Values
 
 (* Transform & Animation Types *)
+
+(** CSS transform values *)
 type transform =
   | Translate of length * length option
   | Translate_x of length
@@ -54,6 +56,7 @@ type transform =
 
 type transforms = transform list
 
+(** CSS transform-style values *)
 type transform_style =
   | Flat
   | Preserve_3d
@@ -64,6 +67,7 @@ type transform_style =
   | Revert_layer
   | Var of transform_style var
 
+(** CSS backface-visibility values *)
 type backface_visibility =
   | Visible
   | Hidden
@@ -74,6 +78,7 @@ type backface_visibility =
   | Revert_layer
   | Var of backface_visibility var
 
+(** CSS scale property values *)
 type scale =
   | X of number_percentage
   | XY of number_percentage * number_percentage
@@ -98,6 +103,7 @@ type translate_value =
   | Revert_layer
   | Var of translate_value var
 
+(** CSS rotate property values *)
 type rotate_value =
   | Angle of angle  (** z-axis rotation *)
   | X of angle  (** x-axis rotation *)
@@ -112,6 +118,7 @@ type rotate_value =
   | Revert_layer
   | Var of rotate_value var
 
+(** CSS steps direction values. *)
 type steps_direction =
   | Jump_start
   | Jump_end
@@ -121,6 +128,7 @@ type steps_direction =
   | End
   | Var of steps_direction var
 
+(** CSS animation timing function values. *)
 type timing_function =
   | Ease
   | Linear
@@ -140,6 +148,7 @@ type timing_function =
   | Revert_layer
   | Var of timing_function var
 
+(** CSS transition property value. *)
 type transition_property_value =
   | All
   | None
@@ -152,8 +161,9 @@ type transition_property_value =
   | Var of transition_property_value var
 
 type transition_property = transition_property_value list
+(** CSS transition property (list of property values). *)
 
-(* Transition behavior for discrete transitions (CSS Transitions Level 2) *)
+(** CSS transition-behavior values (Transitions Level 2). *)
 type transition_behavior =
   | Normal
   | Allow_discrete
@@ -166,6 +176,9 @@ type transition_behavior =
   | Revert_layer
   | Var of transition_behavior var
 
+(** CSS Positioned Layout 4
+    {{:https://drafts.csswg.org/css-position-4/#propdef-overlay} [overlay]}:
+    whether the box is in the top layer. *)
 type overlay =
   | Auto
   | None
@@ -183,6 +196,7 @@ type transition_shorthand = {
   delay : duration option;
   behavior : transition_behavior option;
 }
+(** CSS transition shorthand values. *)
 
 type transition =
   | Inherit
@@ -191,9 +205,10 @@ type transition =
   | Revert
   | Revert_layer
   | None
-  | Shorthand of transition_shorthand
+  | Shorthand of transition_shorthand  (** CSS transition values. *)
   | Var of transition var
 
+(** CSS animation direction values *)
 type animation_direction =
   | Normal
   | Reverse
@@ -207,6 +222,7 @@ type animation_direction =
   | Revert_layer
   | Var of animation_direction var
 
+(** CSS animation fill mode values *)
 type animation_fill_mode =
   | None
   | Forwards
@@ -220,6 +236,7 @@ type animation_fill_mode =
   | Revert_layer
   | Var of animation_fill_mode var
 
+(** CSS animation iteration count values *)
 type animation_iteration_count =
   | Count of number
   | Infinite
@@ -231,6 +248,7 @@ type animation_iteration_count =
   | Revert_layer
   | Var of animation_iteration_count var
 
+(** CSS animation play state values *)
 type animation_play_state =
   | Running
   | Paused
@@ -242,8 +260,14 @@ type animation_play_state =
   | Revert_layer
   | Var of animation_play_state var
 
+(** How one animation composes with the value beneath it, for CSS Animations 2
+    {{:https://drafts.csswg.org/css-animations-2/#propdef-animation-composition}
+     [animation-composition]}. *)
 type animation_composition_item = Replace | Add | Accumulate
 
+(** CSS Animations 2
+    {{:https://drafts.csswg.org/css-animations-2/#propdef-animation-composition}
+     [animation-composition]}. *)
 type animation_composition =
   | Compositions of animation_composition_item list
   | Initial
@@ -277,6 +301,7 @@ type animation_shorthand = {
   play_state : animation_play_state option;
   timeline : animation_timeline option;
 }
+(** CSS animation shorthand values *)
 
 and animation_timeline =
   | None
@@ -300,6 +325,8 @@ type animation =
   | Var of animation var
 
 (* Visual Effects Types *)
+
+(** CSS blend-mode values *)
 type blend_mode =
   | Normal
   | Multiply
@@ -327,8 +354,8 @@ type blend_mode =
   | Var of blend_mode var
 
 type shadow =
-  | Shadow of shadow_body
-  | Inset of inset
+  | Shadow of shadow_body  (** A non-inset shadow. *)
+  | Inset of inset  (** An inset shadow. *)
   | None
   | Inherit
   | Initial
@@ -348,11 +375,13 @@ and shadow_body = {
 (** The [<length>{2,4} && <color>?] body of a single [<shadow>]. *)
 
 and inset =
-  | Var of shadow var (* inset var(--x): whole body from one var *)
-  | Body of shadow_body (* inset 2px 4px red *)
+  | Var of shadow var  (** [inset var(--x)]: the whole body from one var. *)
+  | Body of shadow_body  (** [inset 2px 4px red]: a concrete inset body. *)
   | Toggle of { name : string; no_fallback : bool; body : shadow_body }
-(* var(--name) <body>: ring inset toggle *)
+      (** [var(--name) <body>]: a dynamic inset toggle (Tailwind's ring system).
+      *)
 
+(** CSS text-shadow values *)
 type text_shadow =
   | None
   | Text_shadow of {
@@ -368,6 +397,7 @@ type text_shadow =
   | Revert_layer
   | Var of text_shadow var
 
+(** Filter functions with an optional argument. *)
 type filter_function =
   | Blur_function
   | Brightness_function
@@ -379,21 +409,22 @@ type filter_function =
   | Saturate_function
   | Sepia_function
 
+(** CSS filter values *)
 type filter =
-  | None
-  | Omitted of filter_function
-  | Blur of length
-  | Brightness of number_percentage
-  | Contrast of number_percentage
-  | Drop_shadow of shadow
-  | Grayscale of number_percentage
-  | Hue_rotate of angle
-  | Invert of number_percentage
-  | Opacity of number_percentage
-  | Saturate of number_percentage
-  | Sepia of number_percentage
-  | Url of string
-  | List of filter list
+  | None  (** No filter *)
+  | Omitted of filter_function  (** Function with its argument omitted. *)
+  | Blur of length  (** blur(px) *)
+  | Brightness of number_percentage  (** brightness(%) *)
+  | Contrast of number_percentage  (** contrast(%) *)
+  | Drop_shadow of shadow  (** drop-shadow(...) *)
+  | Grayscale of number_percentage  (** grayscale(%) *)
+  | Hue_rotate of angle  (** hue-rotate(deg) *)
+  | Invert of number_percentage  (** invert(%) *)
+  | Opacity of number_percentage  (** opacity(%) *)
+  | Saturate of number_percentage  (** saturate(%) *)
+  | Sepia of number_percentage  (** sepia(%) *)
+  | Url of string  (** url(...) *)
+  | List of filter list  (** Multiple filters *)
   | Inherit
   | Initial
   | Unset

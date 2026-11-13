@@ -5,6 +5,8 @@ open Properties_layout_intf
 open Properties_text_intf
 
 (* Font Types *)
+
+(** CSS font-family values *)
 type font_family =
   (* Generic CSS font families *)
   | Sans_serif
@@ -117,8 +119,9 @@ type font_family =
           preserves the source verbatim for round-trip; [Optimize.drop_invalid]
           removes the declaration on every serialisation. *)
 
+(** CSS font-stretch values *)
 type font_stretch =
-  | Pct of float
+  | Pct of float  (** Percentage values from 50% to 200% *)
   | Calc of font_stretch calc
       (** CSS Values 4 sec. 10.1 puts a math function where the [<percentage>]
           stands, and sec. 10.12 checks the [0,inf] range on what it resolves
@@ -171,6 +174,7 @@ type font =
   | Revert_layer
   | Var of font var
 
+(** CSS font-size-adjust metric keywords *)
 type font_size_adjust_metric =
   | Ex_height
   | Cap_height
@@ -178,6 +182,7 @@ type font_size_adjust_metric =
   | Ic_width
   | Ic_height
 
+(** CSS font-size-adjust values *)
 type font_size_adjust =
   | None
   | Number of float
@@ -195,6 +200,7 @@ type font_size_adjust =
   | Revert_layer
   | Var of font_size_adjust var
 
+(** CSS font-variant-emoji values *)
 type font_variant_emoji =
   | Normal
   | Text
@@ -228,8 +234,9 @@ type unicode_range =
   | Wildcard of { prefix : int; prefix_width : int; wildcards : int }
   | Var of unicode_range var
 
+(** CSS font-variant-numeric token values *)
 type font_variant_numeric_token =
-  | Normal
+  | Normal  (** Reset to normal font variant *)
   | Lining_nums
   | Oldstyle_nums
   | Proportional_nums
@@ -240,6 +247,7 @@ type font_variant_numeric_token =
   | Slashed_zero
   | Var of font_variant_numeric_token var
 
+(** CSS font-variant-numeric values *)
 type font_variant_numeric =
   | Normal
   | Inherit
@@ -261,6 +269,7 @@ type font_variant_numeric =
    || <alternates> || <caps> || <numeric> || <east-asian> || <position> ||
    <emoji> ]] over its seven longhands, each written at most once. A slot the
    value leaves out is reset to that longhand's initial. *)
+
 type font_variant_shorthand = {
   ligatures : font_variant_ligature list;
   alternates : font_variant_alternates_item list;
@@ -270,7 +279,13 @@ type font_variant_shorthand = {
   position : font_variant_position option;
   emoji : font_variant_emoji option;
 }
+(** The slots of the CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant}
+     [font-variant]} shorthand. *)
 
+(** CSS Fonts 4
+    {{:https://drafts.csswg.org/css-fonts-4/#propdef-font-variant}
+     [font-variant]}. *)
 type font_variant =
   | Normal
   | None
@@ -282,9 +297,13 @@ type font_variant =
   | Revert_layer
   | Var of font_variant var
 
+(** The optional value paired with an OpenType feature tag. *)
 type font_feature_value = On | Off | Index of int
-type font_feature_setting = { tag : string; value : font_feature_value option }
 
+type font_feature_setting = { tag : string; value : font_feature_value option }
+(** One OpenType feature tag and its optional value. *)
+
+(** CSS font-feature-settings values. *)
 type font_feature_settings =
   | Normal
   | Feature_list of font_feature_setting list
@@ -296,7 +315,9 @@ type font_feature_settings =
   | Var of font_feature_settings var
 
 type font_variation_setting = { tag : string; value : float }
+(** One OpenType variation axis and its numeric value. *)
 
+(** CSS font-variation-settings values. *)
 type font_variation_settings =
   | Normal
   | Axis_list of font_variation_setting list

@@ -3,6 +3,7 @@
 
 open Values
 
+(** CSS border style values. *)
 type border_style =
   | None
   | Solid
@@ -21,6 +22,7 @@ type border_style =
   | Revert_layer
   | Var of border_style var
 
+(** CSS line-height values *)
 type line_height =
   | Normal
   | Px of float
@@ -42,9 +44,14 @@ type line_height =
   | Min of line_height list
   | Max of line_height list
   | Clamp of line_height * line_height * line_height
+      (** CSS Values 4 sec. 10.2 comparison functions over the
+          [<length-percentage>] half of the grammar. A length beside a
+          percentage resolves only at used-value time, so the call stands here
+          rather than folding to one of its arguments. *)
   | Calc of line_height calc
   | Var of line_height var
 
+(** CSS font weight values. *)
 type font_weight =
   | Weight of float
   | Normal
@@ -62,6 +69,8 @@ type font_weight =
   | Var of font_weight var
 
 (* Display & Layout Types *)
+
+(** CSS display values. *)
 type display =
   | Block
   | Inline
@@ -109,6 +118,7 @@ type display =
           3 sec. 2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
   | Var of display var
 
+(** CSS position values. *)
 type position =
   | Static
   | Relative
@@ -123,6 +133,7 @@ type position =
   | Revert_layer
   | Var of position var
 
+(** CSS visibility values. *)
 type visibility =
   | Visible
   | Hidden
@@ -134,6 +145,9 @@ type visibility =
   | Revert_layer
   | Var of visibility var
 
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-baseline-source}
+     [baseline-source]}: which line box baseline an inline block aligns on. *)
 type baseline_source =
   | Auto
   | First
@@ -145,6 +159,10 @@ type baseline_source =
   | Revert_layer
   | Var of baseline_source var
 
+(** SVG 2
+    {{:https://www.w3.org/TR/SVG2/text.html#AlignmentBaselineProperty}
+     [alignment-baseline]}: the baseline of the box aligned against its parent's
+    dominant baseline. *)
 type alignment_baseline =
   | Baseline
   | Text_bottom
@@ -162,6 +180,10 @@ type alignment_baseline =
   | Revert_layer
   | Var of alignment_baseline var
 
+(** CSS Inline 3
+    {{:https://drafts.csswg.org/css-inline-3/#propdef-baseline-shift}
+     [baseline-shift]}:
+    [<length-percentage> | sub | super | top | center | bottom]. *)
 type baseline_shift =
   | Shift of length_percentage
   | Sub
@@ -176,6 +198,7 @@ type baseline_shift =
   | Revert_layer
   | Var of baseline_shift var
 
+(** CSS z-index values. *)
 type z_index =
   | Auto
   | Index of int
@@ -187,6 +210,7 @@ type z_index =
   | Revert_layer
   | Var of z_index var
 
+(** CSS opacity values. *)
 type opacity =
   | Opacity_number of float
   | Calc of opacity calc
@@ -197,6 +221,10 @@ type opacity =
   | Revert_layer
   | Var of opacity var
 
+(** CSS Shapes 1
+    {{:https://drafts.csswg.org/css-shapes-1/#propdef-shape-image-threshold}
+     [shape-image-threshold]}: the alpha above which a pixel of the shape image
+    is inside the shape. *)
 type shape_image_threshold =
   | Number of float
   | Calc of shape_image_threshold calc
@@ -232,6 +260,7 @@ type zoom =
   | Revert_layer
   | Var of zoom var
 
+(** CSS order values (flexbox order). *)
 type order =
   | Int of int
   | Calc of order calc
@@ -242,6 +271,7 @@ type order =
   | Revert_layer
   | Var of order var
 
+(** CSS overflow values. *)
 type overflow =
   | Visible
   | Hidden
@@ -257,8 +287,15 @@ type overflow =
   | Var of overflow var
 
 type border_spacing = Lengths of length list | Var of border_spacing var
+
+(** CSS Box 4
+    {{:https://drafts.csswg.org/css-box-4/#typedef-visual-box} [<visual-box>]}:
+    the box edge an overflow clip margin is measured from. *)
 type overflow_clip_box = Content_box | Padding_box | Border_box
 
+(** CSS Overflow 4
+    {{:https://drafts.csswg.org/css-overflow-4/#propdef-overflow-clip-margin}
+     [overflow-clip-margin]}: [<visual-box> || <length>]. *)
 type overflow_clip_margin =
   | Clip_margin of overflow_clip_box option * length option
   | Initial
@@ -269,6 +306,8 @@ type overflow_clip_margin =
   | Var of overflow_clip_margin var
 
 (* Flexbox Types *)
+
+(** CSS flex direction values. *)
 type flex_direction =
   | Row
   | Row_reverse
@@ -357,6 +396,9 @@ type align_content =
   | Revert_layer
   | Var of align_content var
 
+(** CSS align-items values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
+     align-items} *)
 type align_items =
   | Normal
   | Stretch
@@ -393,6 +435,9 @@ type align_items =
   | Revert_layer
   | Var of align_items var
 
+(** CSS align-self values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} MDN:
+     align-self} *)
 type align_self =
   | Auto
   | Normal
@@ -429,6 +474,9 @@ type align_self =
   | Revert_layer
   | Var of align_self var
 
+(** CSS justify-content values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content} MDN:
+     justify-content} *)
 type justify_content =
   | Normal
   (* Content position values - safe by default *)
@@ -467,6 +515,9 @@ type justify_content =
   | Revert_layer
   | Var of justify_content var
 
+(** CSS justify-items values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items} MDN:
+     justify-items} *)
 type justify_items =
   | Normal
   | Stretch
@@ -515,6 +566,9 @@ type justify_items =
   | Revert_layer
   | Var of justify_items var
 
+(** CSS justify-self values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
+     justify-self} *)
 type justify_self =
   | Auto
   | Normal
@@ -560,6 +614,7 @@ type justify_self =
   | Revert_layer
   | Var of justify_self var
 
+(** CSS flex basis values. *)
 type flex_basis =
   | Auto
   | Content
@@ -654,6 +709,8 @@ type border_width =
   | Vmax of float
   | Pct of float
   | Dimension of { value : float; unit : string; repr : string }
+      (** A length in a unit [border_width] does not name, carrying the authored
+          spelling in [repr] the way {!length} does. *)
   | Zero
   | Auto
   | Max_content
@@ -671,20 +728,24 @@ type border_width =
   | Revert_layer
   | Var of border_width var
 
+(** CSS flex shorthand values. *)
 type flex =
-  | Initial (* 0 1 auto *)
+  | Initial  (** 0 1 auto *)
   | Inherit
   | Unset
   | Revert
   | Revert_layer
-  | Auto (* 1 1 auto *)
-  | None (* 0 0 auto *)
-  | Grow of flex_factor (* Single grow value *)
-  | Basis of flex_basis (* 1 1 <flex-basis> *)
-  | Grow_shrink of flex_factor * flex_factor (* grow shrink 0% *)
-  | Full of flex_factor * flex_factor * flex_basis (* grow shrink basis *)
+  | Auto  (** 1 1 auto *)
+  | None  (** 0 0 auto *)
+  | Grow of flex_factor  (** Single grow value *)
+  | Basis of flex_basis  (** 1 1 <flex-basis> *)
+  | Grow_shrink of flex_factor * flex_factor  (** grow shrink 0% *)
+  | Full of flex_factor * flex_factor * flex_basis  (** grow shrink basis *)
   | Var of flex var
 
+(** CSS font-size values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-size} MDN:
+     font-size} *)
 type font_size =
   | Length of length
   | Pct of float
@@ -710,6 +771,7 @@ type font_size =
   | Revert_layer
   | Var of font_size var
 
+(** CSS place-content values *)
 type place_content =
   | Normal
   | Start
@@ -735,6 +797,7 @@ type place_content =
   | Revert_layer
   | Var of place_content var
 
+(** CSS place-items values *)
 type place_items =
   | Normal
   | Start
@@ -757,11 +820,14 @@ type place_items =
   | Var of place_items var
 
 (* Grid Types *)
+
+(** One component in a [grid-auto-flow] value. *)
 type grid_auto_flow_component =
   | Axis of [ `Row | `Column ]
   | Dense
   | Var of grid_auto_flow_component var
 
+(** CSS grid-auto-flow values *)
 type grid_auto_flow =
   | Row
   | Column
@@ -848,6 +914,7 @@ type grid_template =
           know. *)
   | Var of grid_template var
 
+(** CSS grid-template-areas values *)
 type grid_template_areas =
   | No_areas
   | Areas of string
@@ -858,15 +925,16 @@ type grid_template_areas =
   | Revert_layer
   | Var of grid_template_areas var
 
+(** CSS grid line values *)
 type grid_line =
-  | Auto
-  | Num of int
-  | Name of string
-  | Num_name of int * string
-  | Span of int
-  | Span_name of string
-  | Span_num_name of int * string
-  | Calc of grid_line calc
+  | Auto  (** auto *)
+  | Num of int  (** 1, 2, 3, ... or -1, -2, ... *)
+  | Name of string  (** "header-start", "main-end", etc. *)
+  | Num_name of int * string  (** <integer> <custom-ident> *)
+  | Span of int  (** span 2, span 3, etc. *)
+  | Span_name of string  (** span <custom-ident> *)
+  | Span_num_name of int * string  (** span <integer> <custom-ident> *)
+  | Calc of grid_line calc  (** calc(12 * -1), etc. *)
   | Calc_name of grid_line calc * string
       (** CSS Values 4 sec. 10 allows a math function wherever an [<integer>] is
           allowed, so the index of a named line may be one. *)
@@ -894,6 +962,7 @@ type grid_area =
   | Revert
   | Revert_layer
 
+(** CSS aspect-ratio values *)
 type aspect_ratio =
   | Auto
   | Auto_ratio of float * float
