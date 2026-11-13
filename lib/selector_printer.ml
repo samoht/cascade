@@ -11,52 +11,26 @@ let pp_attr_flag ctx = function
       Pp.char ctx 's'
   | None -> ()
 
-(* CSS Selectors 4 sec. 6.2 accepts an [<ident-token>] or [<string-token>] as an
-   attribute match value. Quotes can drop only when this text is a CSS ident. *)
-let attr_value_needs_quoting value =
-  if value = "" then true
-  else
-    let first = value.[0] in
-    (* Numbers need quoting; double-dash identifiers are valid CSS idents. *)
-    if first >= '0' && first <= '9' then true
-    else
-      (* Must quote if contains non-identifier characters *)
-      not
-        (String.for_all
-           (function
-             | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
-             | c when Char.code c >= 0xA0 ->
-                 true (* Unicode chars U+00A0 and higher *)
-             | _ -> false)
-           value)
+(* Selectors 4 sec. 6.1: "Attribute values must be <ident-token>s or
+   <string-token>s." The quotes drop only when the bare text reads back as one
+   ident: [-2] and [-] would come back as a number and a delim. *)
+let attr_value_needs_quoting value = not (Syntax.is_ident value)
 
-(* Helper to pretty-print attribute values with smart quoting. *)
-let pp_quoted_attr_value quote ctx value =
-  Pp.char ctx quote;
-  String.iter
-    (fun c ->
-      if c = quote then (
-        Pp.char ctx '\\';
-        Pp.char ctx c)
-      else Pp.char ctx c)
-    value;
-  Pp.char ctx quote
-
+(* Under minify, drop the surrounding quotes when the value is a CSS ident since
+   Selectors 4 sec. 6.1 accepts the ident and string forms at the same grammar
+   position and the bare form is shorter. The non-minified path keeps the quotes
+   for source fidelity - the user who wrote [type="text"] expects to read
+   [type="text"] back, even if [type=text] would parse the same way. An unquoted
+   value holds the spelling it was read with, escapes included; a quoted one
+   holds the decoded string, so a backslash in it is a character to escape, not
+   an escape to keep. *)
 let pp_attr_value ?quote ctx value =
-  (* Under minify, drop the surrounding quotes when the value is a CSS ident
-     since CSS Selectors 4 sec. 6.2 accepts the ident and string forms at the
-     same grammar position and the bare form is shorter. The non-minified path
-     keeps the quotes for source fidelity - the user who wrote [type="text"]
-     expects to read [type="text"] back, even if [type=text] would parse the
-     same way. *)
-  if String.contains value '\\' then Pp.string ctx value
-  else if Pp.minified ctx && not (attr_value_needs_quoting value) then
-    Pp.string ctx value
-  else
-    match quote with
-    | Some quote when not (Pp.minified ctx) ->
-        pp_quoted_attr_value quote ctx value
-    | _ -> Pp.quoted_string ctx value
+  match quote with
+  | None when String.contains value '\\' -> Pp.string ctx value
+  | _ when Pp.minified ctx && not (attr_value_needs_quoting value) ->
+      Pp.string ctx value
+  | Some quote when not (Pp.minified ctx) -> Pp.quoted_string ~quote ctx value
+  | _ -> Pp.quoted_string ctx value
 
 (* Helper to print a token with pretty spacing when not minifying. *)
 let pp_token : string Pp.t =

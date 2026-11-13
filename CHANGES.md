@@ -9,16 +9,19 @@
 - Very large numbers print the same on Windows as elsewhere. `3.40282e38px` came
   out there as `3.40282e038px` (#1286).
 - Large numbers in media features and keyframe offsets print as `1e30` like
-  everywhere else, and the same on Windows, instead of `1e+30` (#0000).
+  everywhere else, and the same on Windows, instead of `1e+30` (#1292).
 - A number too small for eight decimals keeps its value. `(min-resolution:
   4e-33dpi)` and `entry 4e-33%` came out as `0dpi` and `0%`, and a negative one
-  as `-0` (#0000).
+  as `-0` (#1292).
+- An attribute value keeps its quotes unless it reads back as an ident.
+  `--minify` turned `[x="-2"]` and `[x="-"]` into selectors browsers drop, and
+  `[x="a\\b"]` into `[x=a\b]`, another value (#1292).
 
 ### Parsing
 
 - A rule whose attribute selector has a number as its value, such as
   `[data-x=2]`, `[data-x=2px]` or `[data-x=50%]`, is dropped with a warning, as
-  browsers drop it, instead of being kept as `[data-x="2"]` (#0000).
+  browsers drop it, instead of being kept as `[data-x="2"]` (#1292).
 - `Source_index` offsets and slices index the string you passed even when it has
   CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
   per CRLF, and a NUL could make `Source_index.v` raise (#1285).
