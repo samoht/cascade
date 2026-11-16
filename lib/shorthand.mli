@@ -90,9 +90,6 @@ val custom_property_name : Declaration.declaration -> string option
     name and nothing else, so a caller indexing footprints files it under the
     name rather than under {!val-declaration_overlap_keys}. *)
 
-val same_property : Declaration.declaration -> Declaration.declaration -> bool
-(** Same CSS property. *)
-
 val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** Same declaration value ignoring importance. *)
 

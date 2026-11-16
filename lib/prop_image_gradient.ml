@@ -1230,7 +1230,6 @@ let minify_webkit_gradient_stop = function
   | Webkit_gradient.Color_stop (position, color) ->
       Webkit_gradient.Color_stop (position, minify_color color)
 
-let minify_conic_gradient_config config = config
 let linear_gradient dir stops = Linear_gradient (dir, stops)
 
 let radial_gradient

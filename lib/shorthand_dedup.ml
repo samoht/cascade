@@ -110,8 +110,6 @@ let property_covered_by_important kept decl =
       && declaration_covers existing decl)
     kept
 
-let same_property = Declaration.same_property
-
 (* Rebuilt through the smart constructors: they recompute the cached
    [Declaration.hash] over the new payload, and a record update would leave it
    fingerprinting the importance that was just cleared. *)
@@ -121,10 +119,10 @@ let rec without_importance = function
   | Theme_guarded { var_name; decl; _ } ->
       Declaration.theme_guarded ~var_name (without_importance decl)
 
-(* Value equality ignoring importance. Every caller establishes [same_property]
-   first, so the two declarations share a value type and this is a structural
-   value comparison: on canonical ASTs it matches minified-text equality without
-   rendering. *)
+(* Value equality ignoring importance. Every caller establishes
+   [Declaration.same_property] first, so the two declarations share a value type
+   and this is a structural value comparison: on canonical ASTs it matches
+   minified-text equality without rendering. *)
 let same_value a b =
   Declaration.equal_declaration (without_importance a) (without_importance b)
 
@@ -148,7 +146,7 @@ let declarations_commute left right =
 let legacy_vendor_fallback new_decl existing =
   (* Different-value duplicates are kept when one value is vendor-prefixed: the
      cascade may pick whichever the browser understands. *)
-  same_property new_decl existing
+  Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
@@ -158,7 +156,7 @@ let legacy_vendor_fallback new_decl existing =
    parse the later colour; every target parsing it makes the earlier declaration
    dead at cascade time. *)
 let legacy_color_fallback ?targets new_decl existing =
-  same_property new_decl existing
+  Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
   && (match targets with
     | Some targets ->
@@ -174,13 +172,13 @@ let legacy_color_fallback ?targets new_decl existing =
    and the earlier is dead. *)
 let legacy_runtime_subst_fallback ?targets new_decl existing =
   Option.is_none targets
-  && same_property new_decl existing
+  && Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
   && Declaration.value_uses_runtime_subst new_decl
   && not (Declaration.value_uses_runtime_subst existing)
 
 let same_property_value_declaration new_decl existing =
-  same_property new_decl existing
+  Declaration.same_property new_decl existing
   && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 

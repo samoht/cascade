@@ -33,7 +33,6 @@ let declarations_conflict_with_keys =
 
 let declaration_is_broad = Shorthand_coverage.declaration_is_broad
 let custom_property_name = Shorthand_coverage.custom_property_name
-let same_property = Shorthand_dedup.same_property
 let same_value = Shorthand_dedup.same_value
 let declarations_commute = Shorthand_dedup.declarations_commute
 

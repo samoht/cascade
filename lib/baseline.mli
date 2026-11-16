@@ -24,9 +24,6 @@ type support = {
 (** The first version of each engine that shipped a production. [None] is an
     engine that does not implement it at all. *)
 
-val dataset_version : string
-(** The web-features release {!support} was generated from. *)
-
 val support : (string * support) list
 (** Per-engine first versions, keyed by BCD compat key
     ([css.properties.text-overflow.string]). Every [css.*] key web-features

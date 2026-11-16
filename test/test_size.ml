@@ -16,16 +16,6 @@ let rule css =
 let min_rule r = Pp.to_string ~minify:true Stylesheet.pp_rule r
 let min_decl d = Pp.to_string ~minify:true Declaration.pp d
 
-let test_decl_list_separator_math () =
-  Alcotest.(check int) "empty list" 0 (Size.decl_list 0 0);
-  Alcotest.(check int) "single declaration" 9 (Size.decl_list 9 1);
-  Alcotest.(check int) "three declarations" 11 (Size.decl_list 9 3)
-
-let test_rule_from_parts () =
-  Alcotest.(check int) "empty declarations" 4 (Size.rule_from_parts 2 0 0);
-  Alcotest.(check int) "one declaration" 13 (Size.rule_from_parts 2 9 1);
-  Alcotest.(check int) "two declarations" 23 (Size.rule_from_parts 2 18 2)
-
 let test_decl_and_rule_sizes_match_minified_output () =
   let r = rule ".a{color:red;width:1px}" in
   let decl_bytes =
@@ -48,9 +38,6 @@ let test_rules_size_is_sum () =
 let suite =
   ( "size",
     [
-      Alcotest.test_case "decl list separator math" `Quick
-        test_decl_list_separator_math;
-      Alcotest.test_case "rule_from_parts" `Quick test_rule_from_parts;
       Alcotest.test_case "decl and rule sizes match minified output" `Quick
         test_decl_and_rule_sizes_match_minified_output;
       Alcotest.test_case "rules size is sum" `Quick test_rules_size_is_sum;

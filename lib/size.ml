@@ -13,7 +13,3 @@ let rule (r : Stylesheet.rule) =
   sel + 2 + decls + separators
 
 let rules rules = List.fold_left (fun acc r -> acc + rule r) 0 rules
-let decl_list decl_bytes decl_count = decl_bytes + max 0 (decl_count - 1)
-
-let rule_from_parts selector_bytes decl_bytes decl_count =
-  selector_bytes + 2 + decl_list decl_bytes decl_count

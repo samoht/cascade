@@ -842,7 +842,6 @@ let rec read_margin_length ?(global = false) t : length =
       t
 
 let read_margin_shorthand t : length list =
-  let read_margin_component = read_margin_length in
   Cursor.enum "margin"
     [
       ("inherit", [ (Inherit : length) ]);
@@ -852,5 +851,5 @@ let read_margin_shorthand t : length list =
       ("revert-layer", [ Revert_layer ]);
     ]
     ~default:(fun t ->
-      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_margin_component t)
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_margin_length t)
     t

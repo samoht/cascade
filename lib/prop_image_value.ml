@@ -651,13 +651,9 @@ let minify_background_image : background_image -> background_image = function
   | O_repeating_radial_gradient (config, stops) ->
       O_repeating_radial_gradient (config, List.map minify_gradient_stop stops)
   | Conic_gradient (config, stops) ->
-      Conic_gradient
-        ( minify_conic_gradient_config config,
-          List.map minify_gradient_stop stops )
+      Conic_gradient (config, List.map minify_gradient_stop stops)
   | Repeating_conic_gradient (config, stops) ->
-      Repeating_conic_gradient
-        ( minify_conic_gradient_config config,
-          List.map minify_gradient_stop stops )
+      Repeating_conic_gradient (config, List.map minify_gradient_stop stops)
   | Webkit_gradient (Webkit_gradient.Linear ({ stops; _ } as gradient)) ->
       Webkit_gradient
         (Webkit_gradient.Linear
