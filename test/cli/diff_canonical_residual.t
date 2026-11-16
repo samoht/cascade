@@ -17,11 +17,11 @@ the report shows the two canonical forms with exit code 1.
   Changes: none classified structurally (see report below)
   Canonical forms differ:
   
-  Strings differ at position 7 (line 0, col 7)
+  Strings differ at line 1, column 8 (byte 7)
   
   --- pinned.css
   +++ unpinned.css
-  @@ position 7 @@
+  @@ line 1 @@
   -@layer a,b;@layer b{x{top:0}}
   +@layer b;@layer b{x{top:0}}
           ^

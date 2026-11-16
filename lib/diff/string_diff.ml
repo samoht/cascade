@@ -141,10 +141,10 @@ let diff ?(context_size = 3) ~expected actual =
       Some
         {
           position = pos;
-          line_expected = line_exp;
-          column_expected = col_exp;
-          line_actual = line_act;
-          column_actual = col_act;
+          line_expected = line_exp + 1;
+          column_expected = col_exp + 1;
+          line_actual = line_act + 1;
+          column_actual = col_act + 1;
           context_before;
           diff_lines = (diff_line_exp, diff_line_act);
           context_after;
@@ -306,19 +306,19 @@ let pp ?(config = default_config) ?(expected_label = "Expected")
     ?(actual_label = "Actual") buf t =
   add_strings buf
     [
-      "Strings differ at position ";
-      string_of_int t.position;
-      " (line ";
+      "Strings differ at line ";
       string_of_int t.line_expected;
-      ", col ";
+      ", column ";
       string_of_int t.column_expected;
+      " (byte ";
+      string_of_int t.position;
       ")\n\n";
     ];
 
   (* Git-style diff header *)
   add_strings buf [ "--- "; expected_label; "\n" ];
   add_strings buf [ "+++ "; actual_label; "\n" ];
-  add_strings buf [ "@@ position "; string_of_int t.position; " @@\n" ];
+  add_strings buf [ "@@ line "; string_of_int t.line_expected; " @@\n" ];
 
   (* Print context before *)
   List.iter (pp_line_pair buf) t.context_before;

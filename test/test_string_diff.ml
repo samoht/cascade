@@ -62,7 +62,7 @@ let diff_multiline () =
   Alcotest.(check bool) "multiline diff is Some" true (Option.is_some result);
   let d = Option.get result in
   Alcotest.(check int) "position is 10" 10 d.position;
-  Alcotest.(check int) "line_expected is 1" 1 d.line_expected
+  Alcotest.(check int) "line_expected is 2" 2 d.line_expected
 
 let diff_empty_vs_nonempty () =
   let result = Cascade_diff.String_diff.diff ~expected:"" "something" in
@@ -136,11 +136,11 @@ let pp_trailing_newline_adds_no_context_line () =
         "a terminating newline contributes no context line"
         (String.concat "\n"
            [
-             "Strings differ at position 2 (line 1, col 0)";
+             "Strings differ at line 2, column 1 (byte 2)";
              "";
              "--- Expected";
              "+++ Actual";
-             "@@ position 2 @@";
+             "@@ line 2 @@";
              " a";
              "-b";
              "+x";
@@ -163,11 +163,11 @@ let pp_trailing_blank_line_keeps_one_context_line () =
         "one authored blank context line remains"
         (String.concat "\n"
            [
-             "Strings differ at position 2 (line 1, col 0)";
+             "Strings differ at line 2, column 1 (byte 2)";
              "";
              "--- Expected";
              "+++ Actual";
-             "@@ position 2 @@";
+             "@@ line 2 @@";
              " a";
              "-b";
              "+x";
@@ -189,11 +189,11 @@ let pp_short_lines_keeps_after_context () =
         "short lines keep trailing context"
         (String.concat "\n"
            [
-             "Strings differ at position 2 (line 1, col 0)";
+             "Strings differ at line 2, column 1 (byte 2)";
              "";
              "--- Expected";
              "+++ Actual";
-             "@@ position 2 @@";
+             "@@ line 2 @@";
              " a";
              "-b";
              "+x";
@@ -280,10 +280,10 @@ let pp_crlf_vs_lf () =
   let expected_output =
     String.concat ""
       [
-        "Strings differ at position 13 (line 0, col 13)\n\n";
+        "Strings differ at line 1, column 14 (byte 13)\n\n";
         "--- Expected\n";
         "+++ Actual\n";
-        "@@ position 13 @@\n";
+        "@@ line 1 @@\n";
         "-.a{color:red}\\r\n";
         "+.a{color:red}\n";
         caret;
@@ -302,10 +302,10 @@ let pp_escape_byte () =
   let expected_output =
     String.concat ""
       [
-        "Strings differ at position 2 (line 0, col 2)\n\n";
+        "Strings differ at line 1, column 3 (byte 2)\n\n";
         "--- Expected\n";
         "+++ Actual\n";
-        "@@ position 2 @@\n";
+        "@@ line 1 @@\n";
         "-.a\\x1b\n";
         "+.a\n";
         caret;

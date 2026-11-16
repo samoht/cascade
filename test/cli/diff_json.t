@@ -180,7 +180,7 @@ of a change list.
   >   '.string_diff.position .string_diff.line_expected .string_diff.column_expected' \
   >   .string_diff.diff_lines.expected .string_diff.diff_lines.actual
   string []
-  12 0 12
+  12 1 13
   .x { color: red }
   .x { color: blue }
 

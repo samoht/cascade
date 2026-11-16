@@ -136,6 +136,12 @@
 
 ### Diff report
 
+- When the comparison falls back to the text, the report and the `--json`
+  document give the first difference's line and column counting from 1, as a
+  parse warning does: a difference at the start of the second line read `line 1,
+  col 0`. The report's `@@` header names that line instead of a byte offset
+  (#1334).
+
 - `cascade diff` no longer slows down quadratically with the number of rules
   that moved or changed selector: netflix.com's stylesheet against its own
   `--minify` output takes 0.2 s of CPU instead of 1.2 s (#1297).
