@@ -118,7 +118,7 @@ let input_arg =
   let doc =
     "The stylesheet to read; $(b,-) (the default) reads standard input."
   in
-  Arg.(value & pos 0 string "-" & info [] ~docv:"FILE" ~doc)
+  Arg.(value & pos 0 file "-" & info [] ~docv:"FILE" ~doc)
 
 let minify_arg =
   let doc =
@@ -374,10 +374,12 @@ let cmd =
           0;
         Cmd.Exit.info
           ~doc:
-            "if the input cannot be read, or if parse recovery left no \
-             statement at all. An output that is empty because the stylesheet \
-             held nothing a browser acts on is a success"
+            "if the input exists but cannot be read, or if parse recovery left \
+             no statement at all. An output that is empty because the \
+             stylesheet held nothing a browser acts on is a success"
           1;
+        Cmd.Exit.info
+          ~doc:"on command-line errors, a missing input file among them" 124;
       ]
   in
   Cmd.v (Cmd.info "fmt" ~doc ~man ~exits) term

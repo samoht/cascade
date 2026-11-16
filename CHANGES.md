@@ -132,6 +132,9 @@
   error: parse dropped every rule` and `cascade: warning: --lossless has no
   effect without --minify`, where they began with `Error:` or `Warning:`
   (#1337).
+- `cascade fmt missing.css` exits 124, the command-line error the other commands
+  give a missing file, where it exited 1 as if the file had failed to parse
+  (#1338).
 - The help pages group the options by what they act on (minifying, inlining, the
   canonical diff, the browser comparison), give every command examples and
   describe the `diff` report. `--flatten-nesting` without `--minify` is noted as
