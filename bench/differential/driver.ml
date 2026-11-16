@@ -246,7 +246,6 @@ module Candidates = struct
   let default_count = ref 0
   let sheet_count = ref 0
   let observation = Buffer.create 4096
-  let observation_formatter = Fmt.with_buffer observation
 
   let dump_candidates label ctx css =
     let rules = rules css in
@@ -256,26 +255,25 @@ module Candidates = struct
         rules |> Rule_graph.of_rules
         |> Rule_candidate.enumerate ~ctx ~finalize:Fun.id
       in
+      let record (candidate : Rule_rewrite.candidate) =
+        incr candidate_count;
+        if candidate.kind = Rule_rewrite.Default_factoring then
+          incr default_count;
+        Fmt.str "%s|%d|%a|%d|%s\n" (kind_name candidate.kind)
+          candidate.generation
+          Fmt.(list ~sep:nop (fmt "%d,"))
+          (List.map Rule_graph.Node_id.to_int candidate.consume)
+          candidate.saving
+          (String.concat ""
+             (List.map
+                (Pp.to_string ~minify:true Stylesheet.pp_rule)
+                candidate.produce))
+      in
+      (* The scheduler ranks candidates by their content, so the set a graph
+         offers is the observation, not the order it was found in. *)
       Buffer.clear observation;
-      List.iter
-        (fun (candidate : Rule_rewrite.candidate) ->
-          incr candidate_count;
-          if candidate.kind = Rule_rewrite.Default_factoring then
-            incr default_count;
-          Fmt.pf observation_formatter "%s|%d|" (kind_name candidate.kind)
-            candidate.generation;
-          List.iter
-            (fun id ->
-              Fmt.pf observation_formatter "%d," (Rule_graph.Node_id.to_int id))
-            candidate.consume;
-          Fmt.pf observation_formatter "|%d|" candidate.saving;
-          List.iter
-            (fun rule ->
-              Buffer.add_string observation
-                (Pp.to_string ~minify:true Stylesheet.pp_rule rule))
-            candidate.produce;
-          Buffer.add_char observation '\n')
-        candidates;
+      List.map record candidates |> List.sort String.compare
+      |> List.iter (Buffer.add_string observation);
       incr sheet_count;
       Fmt.pr "%s\t%s\n" label (fingerprint (Buffer.contents observation))
     end
