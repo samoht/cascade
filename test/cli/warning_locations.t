@@ -78,3 +78,18 @@ prints the two misplaced imports apart, though their message is the same.
   statements.css:6:1: warning: @else without preceding @when
     @else { .e { color: red } }
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A declaration with no value is reported at what ends it: the `;` after
+it, or the `}` that closes the rule, rather than the column past the `}`.
+
+  $ printf '.a { color: ; top: 0 }\n.b { color: }\n.c{color:}' > empty.css
+  $ cascade -v empty.css 2>&1 >/dev/null
+  empty.css:1:13: warning: bad value: expected a value
+    .a { color: ; top: 0 }
+                ^
+  empty.css:2:13: warning: bad value: expected a value
+    .b { color: }
+                ^
+  empty.css:3:10: warning: bad value: expected a value
+    .c{color:}
+             ^
