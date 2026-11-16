@@ -409,9 +409,97 @@ let test_distant_media_hoists_are_subquadratic () =
     (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x N)" small_words large_words ratio)
     true (ratio < 3.)
 
+(* A pass that changes nothing hands back its input, so the optimizer reads a
+   no-op off physical identity instead of comparing trees. Each sheet holds a
+   block of every family a pass merges, and one family member written twice
+   where a conflicting rule keeps them apart. *)
+let unchanged_sheets =
+  [
+    "@layer a{.x{color:red}}@layer b{.y{color:blue}}@layer c;";
+    "@media (min-width:1px){.x{color:red}}.x{color:blue}@media \
+     (min-width:1px){.x{color:green}}";
+    "@supports (display:grid){.x{color:red}}.x{color:blue}@supports \
+     (display:flex){.y{color:green}}";
+    "@container (width>1px){.x{color:red}}.x{color:blue}@container \
+     (width>1px){.x{color:green}}";
+    "@starting-style{.x{color:red}}.y{color:blue}@starting-style{.z{color:red}}";
+    "@layer a,b;.x{color:red}@layer c;";
+  ]
+
+let block_passes =
+  let rebuilt stmts = List.rev (List.rev stmts) in
+  [
+    ( "merge_consecutive_layers",
+      Block.merge_consecutive_layers ~optimize_merged_block:rebuilt );
+    ( "merge_consecutive_media",
+      Block.merge_consecutive_media ~optimize_merged_block:rebuilt );
+    ( "merge_distant_media",
+      fun stmts ->
+        Block.merge_distant_media ~optimize_merged_block:rebuilt stmts );
+    ( "merge_consecutive_supports",
+      Block.merge_consecutive_supports ~optimize_merged_block:rebuilt );
+    ( "merge_consecutive_containers",
+      Block.merge_consecutive_containers ~optimize_merged_block:rebuilt );
+    ( "merge_distant_containers",
+      fun stmts ->
+        Block.merge_distant_containers ~optimize_merged_block:rebuilt stmts );
+    ( "merge_consecutive_starting_style",
+      Block.merge_consecutive_starting_style ~optimize_merged_block:rebuilt );
+    ("merge_layer_declarations", Block.merge_layer_declarations);
+    ("drop_redundant_layer_decls", Block.drop_redundant_layer_decls);
+    ("merge_named_layers_by_name", Block.merge_named_layers_by_name);
+    ("drop_empty_rules", Block.drop_empty_rules);
+    ("drop_misplaced_prelude", Block.drop_misplaced_prelude);
+  ]
+
+let test_unchanged_block_is_returned () =
+  List.iter
+    (fun css ->
+      let stmts = block css in
+      List.iter
+        (fun (name, pass) ->
+          if pass stmts != stmts then
+            Alcotest.failf "%s rebuilt a block it left unchanged: %s" name css)
+        block_passes)
+    unchanged_sheets
+
+(* A merge re-optimizes the body it joined, and only that one: a block with no
+   partner keeps its node and its body is not handed over. *)
+let test_only_a_merged_body_is_reoptimized () =
+  let check name pass css =
+    let stmts = block css in
+    let handed = ref 0 in
+    let out =
+      pass
+        ~optimize_merged_block:(fun body ->
+          incr handed;
+          body)
+        stmts
+    in
+    Alcotest.(check int) (name ^ ": bodies handed over") 1 !handed;
+    let last = List.nth stmts (List.length stmts - 1) in
+    let last' = List.nth out (List.length out - 1) in
+    if last != last' then Alcotest.failf "%s rebuilt the block it kept" name
+  in
+  check "merge_consecutive_media"
+    (fun ~optimize_merged_block ->
+      Block.merge_consecutive_media ~optimize_merged_block)
+    "@media (min-width:1px){.x{color:red}}@media \
+     (min-width:1px){.y{color:blue}}.q{margin:0}@media print{.z{color:red}}";
+  check "merge_distant_media"
+    (fun ~optimize_merged_block stmts ->
+      Block.merge_distant_media ~optimize_merged_block stmts)
+    "@media (min-width:1px){.x{color:red}}.q{margin:0}@media \
+     (min-width:1px){.y{color:blue}}@media \
+     print{.z{color:red}}.z{color:green}@media print{.z{color:blue}}"
+
 let suite =
   ( "block",
     [
+      Alcotest.test_case "a pass that changes nothing returns its input" `Quick
+        test_unchanged_block_is_returned;
+      Alcotest.test_case "only a merged body is re-optimized" `Quick
+        test_only_a_merged_body_is_reoptimized;
       Alcotest.test_case "merge same-name @layer" `Quick
         test_merge_layers_combines_same_name;
       Alcotest.test_case "keep distinct-name @layer" `Quick
