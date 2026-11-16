@@ -67,7 +67,7 @@ let modern_is_typed name =
   match Properties.read_any_property cursor with
   | Properties.Prop (Properties.Unknown_property _) -> false
   | Properties.Prop _ -> true
-  | exception _ -> false
+  | exception Cursor.Parse_error _ -> false
 
 let classify name =
   match strip_vendor_prefix name with

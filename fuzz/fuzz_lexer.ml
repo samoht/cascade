@@ -110,6 +110,35 @@ let test_escape_bound_stable buf =
   let toks = kind_strings input in
   if toks = [] then fail "escaped identifier produced no tokens"
 
+(* CSS Syntax 3 sec. 4.3.13: what [Pp.string_of_float] writes is read back by
+   consume a number. It has to come back as one <number-token> of the value
+   printed, within the precision the printer states: the sign and non-zeroness
+   kept, [max_decimals] (8) significant digits for a magnitude that rounds to
+   zero at 8 decimal places, and otherwise half a unit of the 8th decimal place
+   or of the 12th significant digit. An infinity is clamped and a NaN has no
+   number token, so both are left out. *)
+let test_printed_number_lexes_back f drop_leading_zero =
+  if Float.is_finite f then
+    let printed = Css.Pp.string_of_float ~drop_leading_zero f in
+    match kinds printed with
+    | [ Token.Number_tok { value; _ }; Token.Eof ] ->
+        let mag = Float.abs f in
+        let tolerance =
+          if Float.equal (floor ((mag *. 1e8) +. 0.5)) 0. then 5e-8 *. mag
+          else 5e-9 +. (5e-12 *. mag)
+        in
+        if
+          Bool.(
+            not (equal (f > 0.) (value > 0.) && equal (f < 0.) (value < 0.)))
+        then
+          failf "%h printed as %S reads back as %h, another sign" f printed
+            value;
+        if Float.abs (value -. f) > tolerance then
+          failf "%h printed as %S reads back as %h" f printed value
+    | _ ->
+        failf "%h printed as %S is not one number token: %s" f printed
+          (String.concat " " (kind_strings printed))
+
 let test_spec_token_family_vectors buf =
   let row = pick Cascade_spec_inventory.Syntax_grammar.token_rows buf 0 in
   let input = row.input in
@@ -138,6 +167,8 @@ let suite =
       test_case "eof stable" [ bytes ] test_eof_stable;
       test_case "token pair stable" [ bytes ] test_token_pair_stable;
       test_case "escape bound stable" [ bytes ] test_escape_bound_stable;
+      test_case "printed number lexes back" [ float; bool ]
+        test_printed_number_lexes_back;
       test_case "spec token family vectors" [ bytes ]
         test_spec_token_family_vectors;
     ] )

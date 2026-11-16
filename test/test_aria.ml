@@ -73,9 +73,9 @@ let test_all_attributes_roundtrip () =
         (name ^ " suffix")
         (String.sub name 5 (String.length name - 5))
         (Aria.suffix attr);
-      Alcotest.(check string)
-        (name ^ " of_string") name
-        (Aria.to_string (Aria.of_string name));
+      Alcotest.(check (option string))
+        (name ^ " of_string") (Some name)
+        (Option.map Aria.to_string (Aria.of_string name));
       Alcotest.(check string)
         (name ^ " pp") name
         (Css.Pp.to_string Aria.pp attr))
@@ -109,9 +109,9 @@ let test_selector_attr_name_classification () =
 let test_invalid_aria_enum_names () =
   List.iter
     (fun name ->
-      Alcotest.check_raises ("reject " ^ name)
-        (Invalid_argument ("not a supported aria attribute: " ^ name))
-        (fun () -> ignore (Aria.of_string name)))
+      Alcotest.(check (option string))
+        ("reject " ^ name) None
+        (Option.map Aria.to_string (Aria.of_string name)))
     [ "aria-custom"; "aria"; "aria-"; "ARIA-hidden"; "aria-disabled-extra" ];
   List.iter
     (fun name ->

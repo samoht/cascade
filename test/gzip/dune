@@ -1,0 +1,9 @@
+; Gzip_size scored against real DEFLATE from bytesrw.zlib. Its own runner so
+; the main suite does not link zlib. Disabled on Windows because bytesrw's zlib
+; C stubs do not link on mingw.
+
+(test
+ (name test)
+ (enabled_if
+  (<> %{os_type} Win32))
+ (libraries cascade alcotest bytesrw bytesrw.zlib))

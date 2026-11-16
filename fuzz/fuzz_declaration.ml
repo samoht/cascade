@@ -124,7 +124,7 @@ let test_custom_property_serialization_shape buf =
   (* [custom_property] refuses a value it cannot write back as one declaration,
      so the shape holds over the pairs it accepts. *)
   match Css.Declaration.custom_property name value with
-  | exception Failure _ -> ()
+  | exception Invalid_argument _ -> ()
   | decl -> (
       let serialized = serialize decl in
       if not (starts_with ~prefix:(name ^ ":") serialized) then

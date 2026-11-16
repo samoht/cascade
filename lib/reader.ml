@@ -1,65 +1,20 @@
 (** Simple CSS parser implementation. *)
 
+(* [from, upto) of the rewrite stands for [source_from, source_upto) of the
+   original, where preprocessing changed the length. *)
+type shift = { from : int; upto : int; source_from : int; source_upto : int }
+
 type t = {
   input : string;
   len : int;
+  shifts : shift array;
   (* Restrict non-ASCII identifiers to the CSS Syntax 3 (ED) sec. 4.2 range list
      rather than accepting any code point >= U+0080. Rides on the reader so
      every [_at] predicate reaches it without threading a parameter through the
      tokenizer. *)
   enforce_spec : bool;
   mutable pos : int;
-  mutable call_stack : string list; (* Stack of parsing contexts for debugging *)
 }
-
-type parse_error = {
-  message : string;
-  got : string option;
-  position : int;
-  filename : string;
-  line : int;
-  col : int;
-  context_window : string;
-  marker_pos : int;
-  callstack : string list;
-}
-(** Parse error information with structured details. *)
-
-exception Parse_error of parse_error
-
-(** Pretty print parse error with debugging information *)
-let pp_parse_error (err : parse_error) =
-  let buf = Buffer.create 256 in
-  Buffer.add_string buf err.message;
-  Buffer.add_string buf " at ";
-  Buffer.add_string buf err.filename;
-  Buffer.add_char buf ':';
-  Buffer.add_string buf (string_of_int err.line);
-  Buffer.add_char buf ':';
-  Buffer.add_string buf (string_of_int err.col);
-  (match err.callstack with
-  | [] -> ()
-  | callstack ->
-      Buffer.add_string buf "\n    [stack: ";
-      Buffer.add_string buf (String.concat " -> " callstack);
-      Buffer.add_char buf ']');
-  if err.context_window <> "" then begin
-    let lines = String.split_on_char '\n' err.context_window in
-    let marker_line, marker_pos, _ =
-      Common.String.marker_line lines err.marker_pos
-    in
-    List.iteri
-      (fun i line ->
-        Buffer.add_char buf '\n';
-        Buffer.add_string buf line;
-        if i = marker_line then begin
-          Buffer.add_char buf '\n';
-          Buffer.add_string buf (String.make marker_pos ' ');
-          Buffer.add_char buf '^'
-        end)
-      lines
-  end;
-  Buffer.contents buf
 
 (* Pretty-printer for the parser state *)
 let pp (ctx : Pp.ctx) (t : t) =
@@ -88,31 +43,69 @@ let rec needs_preprocess input len i =
 
 let copy_preprocessed input len start =
   let buf = Buffer.create len in
-  let fffd = "\xEF\xBF\xBD" in
+  let shifts =
+    ref
+      (if start = 0 then []
+       else [ { from = 0; upto = 0; source_from = 0; source_upto = start } ])
+  in
+  let replace ~source_from ~source_upto text =
+    let from = Buffer.length buf in
+    Buffer.add_string buf text;
+    shifts :=
+      { from; upto = Buffer.length buf; source_from; source_upto } :: !shifts
+  in
   let i = ref start in
   while !i < len do
     let c = input.[!i] in
     (match c with
-    | '\x00' -> Buffer.add_string buf fffd
-    | '\r' ->
-        Buffer.add_char buf '\n';
-        if !i + 1 < len && input.[!i + 1] = '\n' then incr i
-    | '\x0C' -> Buffer.add_char buf '\n'
+    | '\x00' -> replace ~source_from:!i ~source_upto:(!i + 1) "\xEF\xBF\xBD"
+    | '\r' when !i + 1 < len && input.[!i + 1] = '\n' ->
+        replace ~source_from:!i ~source_upto:(!i + 2) "\n";
+        incr i
+    | '\r' | '\x0C' -> Buffer.add_char buf '\n'
     | _ -> Buffer.add_char buf c);
     incr i
   done;
-  Buffer.contents buf
+  (Buffer.contents buf, Array.of_list (List.rev !shifts))
 
 let preprocess input =
   let len = String.length input in
   let bom = has_bom input in
   let start = if bom then 3 else 0 in
-  if (not bom) && not (needs_preprocess input len 0) then input
+  if (not bom) && not (needs_preprocess input len 0) then (input, [||])
   else copy_preprocessed input len start
 
 let of_string ?(enforce_spec = false) input =
-  let input = preprocess input in
-  { input; len = String.length input; enforce_spec; pos = 0; call_stack = [] }
+  let input, shifts = preprocess input in
+  { input; len = String.length input; shifts; enforce_spec; pos = 0 }
+
+type origin = { map : shift array; length : int }
+
+let origin t = { map = t.shifts; length = t.len }
+
+let original_offset { map; length } i =
+  if i < 0 || i > length then
+    invalid_arg
+      (String.concat ""
+         [
+           "Reader.original_offset: ";
+           string_of_int i;
+           " is outside [0-";
+           string_of_int length;
+           "]";
+         ]);
+  (* The last shift starting at or before [i], or -1. *)
+  let rec last lo hi =
+    if hi - lo <= 1 then lo
+    else
+      let mid = (lo + hi) / 2 in
+      if map.(mid).from <= i then last mid hi else last lo mid
+  in
+  let k = last (-1) (Array.length map) in
+  if k < 0 then i
+  else
+    let s = map.(k) in
+    if i < s.upto then s.source_from else s.source_upto + (i - s.upto)
 
 let source t = t.input
 let enforce_spec t = t.enforce_spec
@@ -144,27 +137,6 @@ let skip_utf8 t =
   | None -> if t.pos < t.len then t.pos <- t.pos + 1 (* advance past bad byte *)
   | Some (_, n) -> t.pos <- t.pos + n
 
-(** {1 Call Stack Management} *)
-
-let push_context t context = t.call_stack <- context :: t.call_stack
-
-let pop_context t =
-  match t.call_stack with
-  | [] -> () (* No context to pop *)
-  | _ :: rest -> t.call_stack <- rest
-
-let with_context t context f =
-  push_context t context;
-  match f () with
-  | result ->
-      pop_context t;
-      result
-  | exception exn ->
-      pop_context t;
-      raise exn
-
-let callstack t = List.rev t.call_stack
-
 let context_window ?(before = 40) ?(after = 40) t =
   let pos = t.pos in
   (* [before] and [after] are target radiuses, not caps: a boundary that falls
@@ -182,47 +154,6 @@ let context_window ?(before = 40) ?(after = 40) t =
     Common.String.utf8_length ~pos:start_pos ~len:(pos - start_pos) t.input
   in
   (context, marker_pos)
-
-(** Error helpers *)
-let err ?got t expected =
-  let context, marker_pos = context_window t in
-  (* Scan forward from the start of the input, so a newline ends the line it
-     sits on and the byte after it opens the next one at column 1. A column
-     counts decoded elements, like the caret. *)
-  let line, col =
-    Common.String.utf8_fold ~len:t.pos
-      (fun (line, col) _ decoded ->
-        match decoded with
-        | Common.String.Scalar u when Uchar.to_int u = 0x0A -> (line + 1, 1)
-        | Common.String.Scalar _ | Common.String.Malformed _ -> (line, col + 1))
-      (1, 1) t.input
-  in
-  raise
-    (Parse_error
-       {
-         message = expected;
-         got;
-         position = t.pos;
-         (* A reader is built from a string, so it has no name of its own; a
-            caller that has one stamps it with [with_filename]. *)
-         filename = "<CSS input>";
-         line;
-         col;
-         context_window = context;
-         marker_pos;
-         callstack = callstack t;
-       })
-
-let err_eof t = err t "unexpected end of input"
-let err_expected t what = err t ("expected " ^ what)
-
-let err_expected_but_eof t what =
-  err t ("Expected " ^ what ^ " but reached end of input")
-
-(** {1 Error Utilities} *)
-let err_invalid t what = err t ("invalid " ^ what)
-
-let with_filename error filename = { error with filename }
 
 (** {1 Looking Ahead} *)
 
@@ -262,7 +193,7 @@ let looking_at t s =
 (** {1 Reading Characters} *)
 
 let skip t =
-  if t.pos >= t.len then err_eof t;
+  if t.pos >= t.len then invalid_arg "Reader.skip: end of input";
   t.pos <- t.pos + 1
 
 (** Get current position in input *)

@@ -40,15 +40,22 @@ val broad_overlap_key : overlap_key
 (** Key for a declaration that may overlap any other non-exempt declaration: a
     reset such as [all], or a property name the footprint model cannot place. *)
 
+val overlap_keys_broad : overlap_key list -> bool
+(** [overlap_keys_broad keys] is [true] when the sorted [keys] hold
+    {!val-broad_overlap_key}. *)
+
 val overlap_keys_intersect : overlap_key list -> overlap_key list -> bool
-(** [overlap_keys_intersect a b] is [true] when two precomputed declaration
-    footprints may touch a common cascade slot. *)
+(** [overlap_keys_intersect a b] is [true] when two key lists may touch a common
+    cascade slot: they share a key, or either holds {!val-broad_overlap_key}.
+    Both are sorted by {!val-overlap_key_compare}, as
+    {!val-declaration_overlap_keys} returns them and as a union of such lists
+    sorted again is; the test merge-walks them. *)
 
 val declaration_overlap_keys : Declaration.declaration -> overlap_key list
 (** [declaration_overlap_keys d] is the conservative set of longhand footprint
-    keys touched by [d], for indexing potential declaration overlaps.
-    {!val-broad_overlap_key} means [d] is broad and must be checked against
-    every non-exempt property. *)
+    keys touched by [d], sorted by {!val-overlap_key_compare} without repeats,
+    for indexing potential declaration overlaps. {!val-broad_overlap_key} means
+    [d] is broad and must be checked against every non-exempt property. *)
 
 val declarations_overlap_with_keys :
   Declaration.declaration ->
@@ -58,6 +65,18 @@ val declarations_overlap_with_keys :
   bool
 (** [declarations_overlap_with_keys a a_keys b b_keys] is
     {!val-declarations_overlap} using precomputed declaration footprints. *)
+
+val declarations_conflict_with_keys :
+  Declaration.declaration ->
+  overlap_key list ->
+  Declaration.declaration ->
+  overlap_key list ->
+  bool
+(** [declarations_conflict_with_keys a a_keys b b_keys] is [true] when source
+    order decides between [a] and [b] on an element both apply to: they are of
+    one importance (CSS Cascade 5 sec. 6.1 ranks importance first), they are not
+    the same declaration, and they overlap by
+    {!val-declarations_overlap_with_keys}. *)
 
 val declaration_is_broad : Declaration.declaration -> bool
 (** [declaration_is_broad d] is [true] when [d] may write a cascade slot any

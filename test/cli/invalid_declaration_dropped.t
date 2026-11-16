@@ -33,7 +33,7 @@ The same holds without --minify, since the contract names both.
 
 Each one warns rather than failing the run.
 
-  $ cascade fmt --minify invalid.css 2>&1 >/dev/null | grep -c "bad value\|invalid"
+  $ cascade fmt --minify invalid.css 2>&1 >/dev/null | grep -c -e "bad value" -e "invalid"
   12
 
 What the opaque fallback is for, and must keep doing: an unknown property name,

@@ -34,9 +34,10 @@ val position_compare : position -> position -> int
 val position_of_string : string -> position option
 (** [position_of_string s] parses a position string like "from", "to", "50%". *)
 
-val selector_of_string : string -> selector
-(** [selector_of_string s] parses a selector string. Raises [Invalid_argument]
-    if parsing fails. *)
+val selector_of_string : string -> (selector, Error.t) result
+(** [selector_of_string s] parses a selector string. This is [Error e] if [s] is
+    not a comma-separated list of [from], [to], percentages in \[[0%];[100%]\]
+    and [<timeline-range-name> <percentage>] positions. *)
 
 val selector_equal : selector -> selector -> bool
 (** [selector_equal a b] checks if two selectors are equal. *)

@@ -122,6 +122,41 @@ val conflict : t -> node_id -> node_id -> bool
 val order_constrained : t -> node_id -> node_id -> bool
 (** [order_constrained] is a clearer alias for {!val-conflict}. *)
 
+val rules_conflict :
+  ?parent:Selector.t -> Stylesheet.rule -> Stylesheet.rule -> bool
+(** [rules_conflict ?parent a b] is {!val-conflict} between the two nodes of
+    [of_rules ?parent ~pin_shared_branches:false [a; b]], decided without
+    building the graph: [true] when an element can match selector branches of
+    [a] and [b] of equal specificity and the two write a common slot at equal
+    importance, so that element computes something different once the two swap
+    source order. Symmetric.
+
+    [false] is the side a caller acts on: it says no element can tell the two
+    rules apart, so a pass may reorder them. Each half leans towards [true] when
+    it cannot decide: {!Selector_summary.may_overlap} answers [true] unless it
+    can prove the two subjects disjoint, and a shorthand counts as writing every
+    longhand it expands to. The answer holds within one origin, layer and scope
+    context, where specificity and then order of appearance rank the
+    declarations (CSS Cascade 5 sec. 6.1), so the selectors have to be the ones
+    the cascade weighs: a nested rule's selector expanded against its ancestors,
+    as [parent] does for one level. *)
+
+type facts
+(** What {!val-rules_conflict} reads off one rule. *)
+
+val facts : ?parent:Selector.t -> Stylesheet.rule -> facts
+(** [facts ?parent r] is what {!val-rules_conflict} reads off [r], read once for
+    a caller that asks about [r] against many rules. *)
+
+val facts_conflict : facts -> facts -> bool
+(** [facts_conflict (facts ?parent a) (facts ?parent b)] is
+    [rules_conflict ?parent a b]. *)
+
+val selectors_conflict : Selector.t -> Selector.t -> bool
+(** [selectors_conflict a b] is the selector half of {!val-rules_conflict}: some
+    branch of [a] and some branch of [b] have equal specificity and may match
+    one element. *)
+
 val precedes : t -> node_id -> node_id -> bool
 (** [precedes t i j] is [true] when the graph requires node [i] to be emitted
     before node [j], directly or through a compact transitive chain. This is for

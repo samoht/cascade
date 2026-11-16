@@ -45,12 +45,6 @@ and scroll_state_query =
   | Either of scroll_state_query * scroll_state_query
   | Negated of scroll_state_query
 
-(* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
-let format_rem f =
-  let s = string_of_float f in
-  if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
-  else s
-
 let string_of_components cvs =
   Cursor.string_of_components_verbatim ~trim:true cvs
 
@@ -154,7 +148,7 @@ and to_string_with ~pretty ~minify t =
       (* The [width>=] range upgrade is a target-fact rewrite applied by
          [lower_for_minify] in the optimize phase, not here. *)
       let sep = if pretty && not minify then ": " else ":" in
-      String.concat "" [ "(min-width"; sep; format_rem rem; "rem)" ]
+      String.concat "" [ "(min-width"; sep; Pp.string_of_float rem; "rem)" ]
   | Min_width_px px ->
       let sep = if pretty && not minify then ": " else ":" in
       String.concat "" [ "(min-width"; sep; Int.to_string px; "px)" ]
@@ -256,6 +250,17 @@ let rec compare_style_query q1 q2 =
   | Neg a, Neg b -> compare_style_query a b
   | _ -> Int.compare (style_query_rank q1) (style_query_rank q2)
 
+let rank = function
+  | Min_width_rem _ -> 0
+  | Min_width_px _ -> 1
+  | Named _ -> 2
+  | Style _ -> 3
+  | Scroll_state _ -> 4
+  | And _ -> 5
+  | Or _ -> 6
+  | Not _ -> 7
+  | Feature_query _ -> 8
+
 let rec compare t1 t2 =
   match (t1, t2) with
   | Min_width_rem r1, Min_width_rem r2 -> Float.compare r1 r2
@@ -275,7 +280,10 @@ let rec compare t1 t2 =
       if c <> 0 then c else compare b1 b2
   | Not a, Not b -> compare a b
   | Feature_query q1, Feature_query q2 -> Media.compare q1 q2
-  | _ -> Stdlib.compare t1 t2
+  | ( ( Min_width_rem _ | Min_width_px _ | Named _ | Style _ | Scroll_state _
+      | And _ | Or _ | Not _ | Feature_query _ ),
+      _ ) ->
+      Int.compare (rank t1) (rank t2)
 
 let compare_scroll_state_query (a : scroll_state_query) b = Stdlib.compare a b
 
@@ -743,6 +751,15 @@ let specific_of_components t components =
       err t components "unrecognised container feature query"
   | Other_query -> err t components "not a container-specific query"
 
+(* The [name: value] feature whose value still holds a [var()]. *)
+let var_feature_query name value_components =
+  match Media.value_of_string (string_of_components value_components) with
+  | Ok value ->
+      Feature_query
+        (Media.Cond
+           (Media.Feature (Media.Plain (Media.name_of_string name, value))))
+  | Error e -> Error.fail e
+
 let unresolved_media_feature components =
   match trim_components components with
   | [
@@ -757,14 +774,7 @@ let unresolved_media_feature components =
                 when (not
                         (trim_components value_components |> components_empty))
                      && Component.has_var value_components ->
-                  let value = string_of_components value_components in
-                  Some
-                    (Feature_query
-                       (Media.Cond
-                          (Media.Feature
-                             (Media.Plain
-                                ( Media.name_of_string name,
-                                  Media.value_of_string value )))))
+                  Some (var_feature_query name value_components)
               | Some _ | None -> None)
           | _ -> None)
       | None -> None)
@@ -786,13 +796,15 @@ let atom_of_components t components =
   | Style_func _ | Scroll_state_func _ -> specific_of_components t stripped
   | Parenthesized_feature | Other_query -> (
       let source = string_of_components components in
-      match Media.of_string_strict source with
+      match Media.read ~recover:false (Cursor.of_string source) with
       | Media.Cond (Media.Feature (Media.Plain (Media.Min Media.Width, value)))
         as media -> (
           match value with
           | Media.Length (Values.Rem rem) -> Min_width_rem rem
-          | Media.Length (Values.Px px) when Float.is_integer px ->
-              Min_width_px (int_of_float px)
+          | Media.Length (Values.Px px) when Float.is_integer px -> (
+              match Common.int_of_float_opt px with
+              | Some px -> Min_width_px px
+              | None -> Feature_query media)
           | _ -> Feature_query media)
       | media -> (
           match single_feature_of_media media with
@@ -838,7 +850,7 @@ let read t =
   | Some (name, query) -> Named (name, unnamed_of_components t query)
   | None -> unnamed_of_components t components
 
-let of_string s = read (Cursor.of_string s)
+let of_string s = Error.catch @@ fun () -> read (Cursor.of_string s)
 let feature name value = Feature_query (Media.feature name value)
 
 let style ?value prop =

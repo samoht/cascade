@@ -6,25 +6,9 @@
 
 open Cascade
 
-val neg : ?allow_partial:bool -> (Reader.t -> 'a) -> string -> unit
-(** [neg reader input] tests that [reader] rejects [input], by raising
-    [Parse_error] or by returning without having taken the whole of it.
-    Returning a value and leaving input behind is an acceptance, not a
-    rejection: a reader that takes the prefix of [margin: inherit 10px] has
-    accepted a value the case calls invalid. Pass [~allow_partial:true] for a
-    reader whose contract is to stop early, where leftover input is the
-    rejection. *)
-
-val none : (Reader.t -> 'a option) -> string -> unit
-(** [none reader input] tests that parsing should fail by expecting None result.
-    Use this for parsers that return Some/None instead of raising. *)
-
-val test_css_wide_keywords_mixing :
-  (Reader.t -> 'a) -> string list -> string -> unit
-(** [test_css_wide_keywords_mixing reader keywords prop_name] tests that
-    CSS-wide keywords (inherit, unset, etc.) cannot be mixed with other values.
-    They must be standalone values and cannot be combined with other tokens in
-    the same declaration. *)
+val ok : ('a, Error.t) result -> 'a
+(** [ok r] is the value of [Ok v], and fails the test with the error printed on
+    [Error]. *)
 
 val check_value :
   string ->
@@ -41,10 +25,17 @@ val check_value :
     -> print -> parse -> print). *)
 
 val neg_cursor : ?allow_partial:bool -> (Cursor.t -> 'a) -> string -> unit
-(** Cursor-based variant of {!neg}, with the same [allow_partial] contract. *)
+(** [neg_cursor parse input] tests that [parse] rejects [input], by raising
+    {!Error.Parse_error} or by returning without having taken the whole of it.
+    Returning a value and leaving input behind is an acceptance, not a
+    rejection: a reader that takes the prefix of [margin: inherit 10px] has
+    accepted a value the case calls invalid. Pass [~allow_partial:true] for a
+    reader whose contract is to stop early, where leftover input is the
+    rejection. *)
 
 val none_cursor : (Cursor.t -> 'a option) -> string -> unit
-(** Cursor-based variant of {!none}. *)
+(** [none_cursor parse input] tests that [parse] yields [None] for [input], or
+    raises {!Error.Parse_error}. *)
 
 val check_error : (Cursor.t -> 'a) -> string -> string -> unit
 (** [check_error parse input expected] asserts that [parse] applied to a cursor
@@ -102,16 +93,9 @@ val sheets_agree : string -> string -> string -> unit
     same statements. Use it where the two differ only in whitespace a grammar
     allows but does not require. *)
 
-val check_parse_error_fields :
-  string -> Reader.parse_error -> Reader.parse_error -> unit
-(** [check_parse_error_fields name expected actual] compares message and got
-    fields between expected and actual parse errors. Fails the test with a
-    descriptive message if they don't match. *)
-
 val check_raises : string -> exn -> (unit -> unit) -> unit
-(** [check_raises name expected_exn f] tests that calling the function raises
-    the expected exception. Handles Parse_error comparison using
-    check_parse_error_fields. *)
+(** [check_raises name expected_exn f] tests that [f ()] raises an exception
+    equal to [expected_exn]. *)
 
 val check_construct : string -> ('a -> string) -> string -> 'a -> unit
 (** [check_construct name to_string expected value] tests that constructed

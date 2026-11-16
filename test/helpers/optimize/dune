@@ -1,0 +1,3 @@
+(library
+ (name optimize_helpers)
+ (libraries cascade alcotest))

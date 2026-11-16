@@ -33,8 +33,7 @@ let fallback_value buf =
 
 let parse_var input =
   let r = Cursor.of_string input in
-  try Some (Css.Variables.read_reference r)
-  with Cursor.Parse_error _ | Reader.Parse_error _ -> None
+  try Some (Css.Variables.read_reference r) with Cursor.Parse_error _ -> None
 
 let test_var_ref_crash_safety buf = ignore (parse_var (cssish buf))
 
@@ -77,7 +76,7 @@ let test_custom_declaration_name_invariant buf =
   (* [custom_property] refuses a value it cannot write back as one declaration,
      so the invariant holds over the pairs it accepts. *)
   match Css.Declaration.custom_property name (cssish buf) with
-  | exception Failure _ -> ()
+  | exception Invalid_argument _ -> ()
   | decl -> (
       match Css.Variables.custom_declaration_name decl with
       | Some parsed when parsed = name -> ()
@@ -141,7 +140,6 @@ let check_leaf_rejects_empty : type a. string -> a Css.Variables.syntax -> unit
   | _ -> (
       match Css.Variables.read_value (Cursor.of_string "") syntax with
       | exception Cursor.Parse_error _ -> ()
-      | exception Reader.Parse_error _ -> ()
       | _ -> failf "%S read a value from an empty stream" name)
 
 let test_reader_rejects_empty_stream buf =
@@ -149,7 +147,6 @@ let test_reader_rejects_empty_stream buf =
   let quoted = String.concat "" [ "\""; name; "\"" ] in
   match Css.Variables.read_any_syntax (Cursor.of_string quoted) with
   | exception Cursor.Parse_error _ -> ()
-  | exception Reader.Parse_error _ -> ()
   | Css.Variables.Syntax syntax -> check_leaf_rejects_empty name syntax
 
 let suite =

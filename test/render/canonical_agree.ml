@@ -396,8 +396,7 @@ type verdict = Identical | Different | Unreadable
 
 let verdict a b =
   match Cascade_diff.Css_compare.diff ~mode:`Canonical a b with
-  | exception (Reader.Parse_error _ | Failure _ | Invalid_argument _) ->
-      Unreadable
+  | exception (Failure _ | Invalid_argument _) -> Unreadable
   | d -> (
       match d.result with
       | Cascade_diff.Css_compare.No_diff -> Identical

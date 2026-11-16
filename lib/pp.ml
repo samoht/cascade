@@ -304,33 +304,37 @@ let surround ~left ~right pp ctx a =
   pp ctx a;
   right ctx ()
 
-(* Number formatting to be implemented according to the plan *)
+(* The digit at [i] of [s] left-padded with [pad] zeros. *)
+let padded s pad i = if i < pad then '0' else s.[i - pad]
+
+let rec trim_trailing_zeros s pad ~point i =
+  if i > point && padded s pad (i - 1) = '0' then
+    trim_trailing_zeros s pad ~point (i - 1)
+  else i
+
+let add_digits b s pad lo hi =
+  for i = lo to hi - 1 do
+    Buffer.add_char b (padded s pad i)
+  done
+
+(* [s] is the digit string of a magnitude scaled by [10^max_decimals]. Every
+   non-integral number printed goes through here, so the digits are read in
+   place, zero-padded on the left to [max_decimals], and written once. *)
 let format_decimal ?(drop_leading_zero = false) s max_decimals is_neg =
-  let len = String.length s in
-  let s =
-    if len < max_decimals then String.make (max_decimals - len) '0' ^ s else s
-  in
-  let len = String.length s in
-  let point_pos = len - max_decimals in
-  let int_part = if point_pos <= 0 then "0" else String.sub s 0 point_pos in
-  let frac_part =
-    if point_pos >= len then "" else String.sub s point_pos (len - point_pos)
-  in
-
-  (* Trim trailing zeros from fractional part *)
-  let rec trim_zeros s =
-    if String.ends_with ~suffix:"0" s then
-      trim_zeros (String.sub s 0 (String.length s - 1))
-    else s
-  in
-  let frac_part = trim_zeros frac_part in
-
-  let final_str =
-    if frac_part = "" then int_part
-    else if drop_leading_zero && int_part = "0" then "." ^ frac_part
-    else int_part ^ "." ^ frac_part
-  in
-  if is_neg then "-" ^ final_str else final_str
+  let pad = max 0 (max_decimals - String.length s) in
+  let len = String.length s + pad in
+  let point = len - max_decimals in
+  let frac_end = trim_trailing_zeros s pad ~point len in
+  let has_frac = frac_end > point in
+  let int_is_zero = point = 0 || (point = 1 && padded s pad 0 = '0') in
+  let b = Buffer.create (len + 3) in
+  if is_neg then Buffer.add_char b '-';
+  if not (has_frac && drop_leading_zero && int_is_zero) then
+    if point = 0 then Buffer.add_char b '0' else add_digits b s pad 0 point;
+  if has_frac then (
+    Buffer.add_char b '.';
+    add_digits b s pad point frac_end);
+  Buffer.contents b
 
 let trim_decimal_suffix s =
   if String.ends_with ~suffix:".0" s then String.sub s 0 (String.length s - 2)
@@ -338,46 +342,49 @@ let trim_decimal_suffix s =
     String.sub s 0 (String.length s - 1)
   else s
 
-let strip_exponent_plus s =
-  (* Remove redundant '+' in exponent notation: "3.40282e+38" -> "3.40282e38" *)
-  match String.index_opt s 'e' with
-  | Some i when i + 1 < String.length s && s.[i + 1] = '+' ->
-      String.sub s 0 (i + 1) ^ String.sub s (i + 2) (String.length s - i - 2)
-  | _ -> s
-
 let format_integer is_neg abs_f f =
-  if abs_f <= float_of_int max_int then
-    let s = string_of_int (int_of_float abs_f) in
-    if is_neg then "-" ^ s else s
-  else
-    (* Very large integer - use string_of_float and clean it up *)
-    trim_decimal_suffix (string_of_float f) |> strip_exponent_plus
+  match Common.int_of_float_opt abs_f with
+  | Some i ->
+      let s = string_of_int i in
+      if is_neg then "-" ^ s else s
+  | None ->
+      (* Very large integer - use string_of_float and clean it up *)
+      trim_decimal_suffix (string_of_float f) |> Common.canonical_exponent
+
+(* [abs_f] in exponent notation, 12 significant digits. *)
+let format_exponent is_neg abs_f =
+  let s =
+    trim_decimal_suffix (string_of_float abs_f) |> Common.canonical_exponent
+  in
+  if is_neg then String.concat "" [ "-"; s ] else s
+
+let format_scaled ~drop_leading_zero max_decimals is_neg abs_f scaled =
+  match Common.int_of_float_opt scaled with
+  | Some i ->
+      format_decimal ~drop_leading_zero (string_of_int i) max_decimals is_neg
+  | None ->
+      (* [format_decimal] splices the decimal point into what it takes for a
+         pure digit string, but a scaled magnitude with no [int] only
+         stringifies through exponent notation. Print the magnitude itself, the
+         way [format_integer] does over the same range. *)
+      format_exponent is_neg abs_f
 
 let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
   let scale = 10.0 ** float_of_int max_decimals in
   let scaled = floor ((abs_f *. scale) +. 0.5) in
-  (* Extend the cap past the leading zeros only for a magnitude that would
-     otherwise round to "0", so [0.000000001em] keeps its digits while a coarse
-     [max_decimals] and colour-channel precision stay untouched. *)
-  let max_decimals, scaled =
-    if scaled <> 0.0 then (max_decimals, scaled)
-    else
-      let leading_zeros = -1 - int_of_float (floor (log10 abs_f)) in
-      let d = max_decimals + min 24 (max 0 leading_zeros) in
-      (d, floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
-  in
-  if scaled > float_of_int max_int then
-    (* [format_decimal] splices the decimal point into what it takes for a pure
-       digit string, but a scaled magnitude past [max_int] only stringifies
-       through exponent notation. Print the magnitude itself, the way
-       [format_integer] does over the same range. *)
-    let s =
-      trim_decimal_suffix (string_of_float abs_f) |> strip_exponent_plus
-    in
-    if is_neg then "-" ^ s else s
+  if scaled <> 0.0 then
+    format_scaled ~drop_leading_zero max_decimals is_neg abs_f scaled
   else
-    let s = string_of_int (int_of_float scaled) in
-    format_decimal ~drop_leading_zero s max_decimals is_neg
+    (* A magnitude that would round to "0" keeps [max_decimals] significant
+       digits instead (one at least), so [0.000000001em] keeps its value while a
+       coarse [max_decimals] and colour-channel precision stay untouched. Past
+       24 leading zeros the decimal spelling gives way to exponent notation. *)
+    let leading_zeros = -1 - int_of_float (floor (log10 abs_f)) in
+    if leading_zeros > 24 then format_exponent is_neg abs_f
+    else
+      let d = max 1 max_decimals + leading_zeros in
+      format_scaled ~drop_leading_zero d is_neg abs_f
+        (floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
 
 let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
@@ -419,7 +426,7 @@ let int ctx i =
 
 (* An integer-valued float prints as that integer (see [format_integer]); take
    the allocation-free [int] path instead of building a string via
-   [string_of_float]. The bound mirrors [format_integer]'s own guard. *)
+   [string_of_float]. One with no [int] takes [format_integer]'s fallback. *)
 (* CSS Values 4 sec. 10.7.2: [NaN] is a keyword of the math-function grammar and
    exists nowhere else, so a NaN-valued number has no literal spelling. Sec.
    10.13 serialises it as [calc(NaN)], with [* 1<unit>] appended once the value
@@ -434,15 +441,18 @@ let nan_value ctx suffix =
 
 let float ctx f =
   if Float.is_nan f then nan_value ctx ""
-  else if Float.is_integer f && Float.abs f <= float_of_int max_int then
-    int ctx (int_of_float f)
-  else string ctx (string_of_float ~drop_leading_zero:true f)
+  else
+    match Common.int_of_float_opt f with
+    | Some i when Float.is_integer f -> int ctx i
+    | _ -> string ctx (string_of_float ~drop_leading_zero:true f)
 
 let float_n n ctx f =
   if Float.is_nan f then nan_value ctx ""
-  else if Float.is_integer f && Float.abs f <= float_of_int max_int then
-    int ctx (int_of_float f)
-  else string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
+  else
+    match Common.int_of_float_opt f with
+    | Some i when Float.is_integer f -> int ctx i
+    | _ ->
+        string ctx (string_of_float ~drop_leading_zero:true ~max_decimals:n f)
 
 let hex ctx i =
   let hex_digit n =
@@ -455,12 +465,13 @@ let hex ctx i =
     | 15 -> 'F'
     | n -> char_of_int (n + int_of_char '0')
   in
-  let rec to_hex n =
-    if n = 0 then "0"
-    else if n < 16 then String.make 1 (hex_digit n)
-    else to_hex (n / 16) ^ to_hex (n mod 16)
+  let rec go n =
+    if n < 16 then char ctx (hex_digit n)
+    else (
+      go (n / 16);
+      go (n mod 16))
   in
-  string ctx (to_hex i)
+  go i
 
 let unit ctx f suffix =
   if Float.is_nan f then nan_value ctx suffix

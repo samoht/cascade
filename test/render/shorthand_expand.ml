@@ -260,7 +260,7 @@ let verdict shorthand decls =
   match
     Cascade_diff.Css_compare.diff ~mode:`Canonical shorthand (wrap decls)
   with
-  | exception (Reader.Parse_error _ | Failure _ | Invalid_argument _) -> Differs
+  | exception (Failure _ | Invalid_argument _) -> Differs
   | d -> (
       match (d.expected_warnings, d.actual_warnings) with
       | e :: _, _ ->

@@ -149,10 +149,6 @@ type t =
 
 (* ===== Formatting helpers ===== *)
 
-let format_float f =
-  if Float.is_integer f then Int.to_string (Float.to_int f)
-  else Float.to_string f
-
 let string_of_cmp = function
   | Lt -> "<"
   | Le -> "<="
@@ -350,7 +346,7 @@ let pp_value : value Pp.t =
  fun ctx -> function
   | Length l -> pp_length ctx l
   | Integer i -> Pp.string ctx (Int.to_string i)
-  | Number f -> Pp.string ctx (format_float f)
+  | Number f -> Pp.string ctx (Pp.string_of_float f)
   | Ratio (n, 1) when Pp.minified ctx -> Pp.string ctx (Int.to_string n)
   | Ratio (n, 1) ->
       Pp.string ctx (Int.to_string n);
@@ -360,7 +356,7 @@ let pp_value : value Pp.t =
       Pp.char ctx '/';
       Pp.string ctx (Int.to_string d)
   | Resolution_value (n, unit) ->
-      Pp.string ctx (format_float n);
+      Pp.string ctx (Pp.string_of_float n);
       Pp.string ctx unit
   | Ident s -> Pp.string ctx (string_of_ident s)
   | Function (name, args) ->
@@ -643,8 +639,14 @@ let value_of_components_opt components =
            { value = denominator; number_flag = Token.Integer; _ };
        _;
      };
-  ] ->
-      Some (Ratio (int_of_float numerator.value, int_of_float denominator))
+  ]
+    when Float.is_integer numerator.value ->
+      (* [Ratio] holds [int]s, so a term with no [int], or a fractional
+         numerator, keeps the text as written. *)
+      Option.bind (Common.int_of_float_opt numerator.value) (fun n ->
+          Option.map
+            (fun d -> Ratio (n, d))
+            (Common.int_of_float_opt denominator))
   | [ Component.Preserved { kind = Token.Ident name; _ } ] ->
       Some (Ident (ident_of_string name))
   | [
@@ -657,6 +659,7 @@ let value_of_components_opt components =
   | _ -> Option.None
 
 let value_of_string s =
+  Error.catch @@ fun () ->
   let cursor = Cursor.of_string s in
   match value_of_components_opt (Cursor.remaining cursor) with
   | Some value -> value
@@ -950,7 +953,7 @@ and condition_in_parens t component : condition =
   | Component.Func { node = { terminated = true; _ }; _ } -> general_enclosed ()
   | Component.Func { node = { terminated = false; _ }; _ } ->
       err t [ component ] "unmatched function in @media condition"
-  | Component.Block _ | Component.Preserved _ ->
+  | Component.Block _ | Component.Preserved _ | Component.Flat _ ->
       err t [ component ] "expected media-in-parens"
 
 and condition_chain t operator acc components : condition =
@@ -984,7 +987,7 @@ let is_media_in_parens = function
   | Component.Block { node = { opening = Token.Paren; _ }; _ }
   | Component.Func _ ->
       true
-  | Component.Block _ | Component.Preserved _ -> false
+  | Component.Block _ | Component.Preserved _ | Component.Flat _ -> false
 
 let starts_with_condition components =
   match non_whitespace_components components with
@@ -1080,7 +1083,9 @@ let read ?(recover = true) t =
     | true, queries -> List queries
 
 let of_string s = read (Cursor.of_string s)
-let of_string_strict s = read ~recover:false (Cursor.of_string s)
+
+let of_string_strict s =
+  Error.catch @@ fun () -> read ~recover:false (Cursor.of_string s)
 
 let of_function_components components =
   match feature_in_components components with

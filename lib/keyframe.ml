@@ -11,15 +11,11 @@ type position =
           ([cover], [contain], [entry], [exit], [entry-crossing],
           [exit-crossing]). *)
 
-let string_of_pct p =
-  if Float.is_integer p then Int.to_string (Float.to_int p)
-  else Float.to_string p
-
 let string_of_position = function
   | From -> "from"
   | To -> "to"
-  | Percent p -> string_of_pct p ^ "%"
-  | Timeline_range (name, p) -> name ^ " " ^ string_of_pct p ^ "%"
+  | Percent p -> Pp.string_of_float p ^ "%"
+  | Timeline_range (name, p) -> name ^ " " ^ Pp.string_of_float p ^ "%"
 
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list
@@ -93,7 +89,11 @@ let selector_of_string s =
   let parts = String.split_on_char ',' s in
   let positions = List.filter_map position_of_string parts in
   if List.length positions = List.length parts && positions <> [] then
-    Positions positions
-  else invalid_arg ("invalid keyframe selector: " ^ s)
+    Ok (Positions positions)
+  else
+    Error
+      (Error.v ~source:s
+         ~loc:(Loc.v ~start_pos:0 ~end_pos:(String.length s))
+         ~sort:Sort.Selector (Error.Bad_selector "not a keyframe selector"))
 
 let selector_equal a b = to_string a = to_string b

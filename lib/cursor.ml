@@ -189,6 +189,7 @@ let component_head_shape : Component.t -> head_shape = function
       | Token.Paren -> `Paren_block
       | Token.Square -> `Square_block)
   | Component.Func _ -> `Func
+  | Component.Flat _ -> `Other
 
 let peek_head_shape t : head_shape =
   drop_ws t;
@@ -251,13 +252,20 @@ let raise_ t kind loc = raise_sort t sort kind loc
    end of a value that is the terminator. Such a reader passes the span it
    read. *)
 let err ?loc ?got t msg =
-  let loc = match loc with Some loc -> loc | None -> position t in
-  match got with
-  | Some g ->
-      raise_ t
-        (Error.Bad_value { property = ""; reason = msg ^ ": got " ^ g })
-        loc
-  | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc
+  drop_ws t;
+  match (loc, t.cvs) with
+  (* A reader that fails at a {!Component.Flat} run fails because the run was
+     never built into the tree it wanted to read, not for what it holds. *)
+  | None, Component.Flat f :: _ ->
+      raise_ t (Error.Too_deep Parser.max_nesting_depth) f.loc
+  | _ -> (
+      let loc = match loc with Some loc -> loc | None -> position t in
+      match got with
+      | Some g ->
+          raise_ t
+            (Error.Bad_value { property = ""; reason = msg ^ ": got " ^ g })
+            loc
+      | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc)
 
 let err_invalid ?loc t msg = err ?loc t ("invalid: " ^ msg)
 let err_eof t = raise_ t (Error.Unterminated sort) (position t)
@@ -892,7 +900,8 @@ let call name t f =
       let _ = next t in
       let arg = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
       let arg = { arg with depth = t.depth + 1 } in
-      if arg.depth > max_nesting_depth then err arg "nesting too deep";
+      if arg.depth > max_nesting_depth then
+        raise_ arg (Error.Too_deep max_nesting_depth) fn.loc;
       whole_block f arg
   | _ -> err_expected t (name ^ "(")
 

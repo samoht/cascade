@@ -1,6 +1,7 @@
 (* Script to validate that all properties in properties_intf.ml are handled in
-   properties.ml's read_property function, and that the tag table ordering a
-   property identity lists each of them exactly once under its own tag.
+   properties.ml's read_property function, and that the tag table in
+   properties_identity.ml ordering a property identity lists each of them
+   exactly once under its own tag.
 
    Two constructors sharing a tag would make [Properties.compare_property]
    answer [0] for two different properties, and every ordered container keyed on
@@ -65,7 +66,7 @@ let extract_property_constructors ~static content =
   in
   loop false [] lines
 
-(* Read the text between a START/END marker pair in properties.ml *)
+(* Read the text between a START/END marker pair in a source file *)
 let marked_region ~marker content =
   let start_pattern = Re.Perl.compile_pat (".*" ^ marker ^ "_START.*") in
   let end_pattern = Re.Perl.compile_pat (".*" ^ marker ^ "_END.*") in
@@ -127,17 +128,20 @@ let () =
   let project_root = ".." in
   let intf_file = Filename.concat project_root "lib/properties_intf.ml" in
   let impl_file = Filename.concat project_root "lib/properties.ml" in
+  let identity_file =
+    Filename.concat project_root "lib/properties_identity.ml"
+  in
 
-  if not (Sys.file_exists intf_file) then (
-    prerr_string ("Cannot find " ^ intf_file ^ "\n");
-    exit 1);
-
-  if not (Sys.file_exists impl_file) then (
-    prerr_string ("Cannot find " ^ impl_file ^ "\n");
-    exit 1);
+  List.iter
+    (fun file ->
+      if not (Sys.file_exists file) then (
+        prerr_string (String.concat "" [ "Cannot find "; file; "\n" ]);
+        exit 1))
+    [ intf_file; impl_file; identity_file ];
 
   let intf_content = read_file intf_file in
   let impl_content = read_file impl_file in
+  let identity_content = read_file identity_file in
 
   let all_properties =
     extract_property_constructors ~static:true intf_content
@@ -200,7 +204,7 @@ let () =
   (* The tag table covers every constructor, [Custom_property] and
      [Unknown_property] included, so it is checked against the full list rather
      than the static one [read_any_property] answers for. *)
-  let tag_table = extract_tag_table impl_content in
+  let tag_table = extract_tag_table identity_content in
   let tagged = List.map fst tag_table in
   let tagged_set = StringSet.of_list tagged in
   let declared_set =
@@ -286,7 +290,7 @@ let () =
   (* [eq_property]'s table ends in a wildcard, so the compiler cannot see a
      constructor left out of it: such a property would read back as [None] from
      [Declaration.value_of] for ever. *)
-  let eq_table = extract_eq_table impl_content in
+  let eq_table = extract_eq_table identity_content in
   let mispaired = List.filter (fun (x, y) -> not (String.equal x y)) eq_table in
   if not (List.is_empty mispaired) then (
     Fmt.pr "ERROR: eq_property arms pairing two different constructors:@.";

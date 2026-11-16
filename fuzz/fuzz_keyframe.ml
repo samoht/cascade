@@ -11,9 +11,7 @@ let test_position buf = ignore (Css.Keyframe.position_of_string buf)
 (** selector_of_string -- must reject invalid selectors without unexpected
     exceptions. *)
 let test_selector buf =
-  match Css.Keyframe.selector_of_string buf with
-  | _ -> ()
-  | exception Invalid_argument _ -> ()
+  match Css.Keyframe.selector_of_string buf with Ok _ | Error _ -> ()
 
 (** position roundtrip: parse -> to_string -> parse. *)
 let test_position_roundtrip buf =
@@ -30,12 +28,14 @@ let test_position_roundtrip buf =
 (** selector roundtrip: parse -> to_string -> parse. *)
 let test_selector_roundtrip buf =
   match Css.Keyframe.selector_of_string buf with
-  | exception Invalid_argument _ -> ()
-  | sel ->
+  | Error _ -> ()
+  | Ok sel -> (
       let s = Css.Keyframe.to_string sel in
-      let sel2 = Css.Keyframe.selector_of_string s in
-      if not (Css.Keyframe.selector_equal sel sel2) then
-        fail "selector roundtrip mismatch"
+      match Css.Keyframe.selector_of_string s with
+      | Error _ -> fail "selector roundtrip did not re-parse"
+      | Ok sel2 ->
+          if not (Css.Keyframe.selector_equal sel sel2) then
+            fail "selector roundtrip mismatch")
 
 let position_in_spec_range = function
   | Css.Keyframe.From | Css.Keyframe.To -> true
@@ -52,8 +52,8 @@ let test_position_spec_range buf =
 
 let test_selector_spec_range buf =
   match Css.Keyframe.selector_of_string buf with
-  | exception Invalid_argument _ -> ()
-  | Css.Keyframe.Positions positions ->
+  | Error _ -> ()
+  | Ok (Css.Keyframe.Positions positions) ->
       if positions = [] then fail "parsed keyframe selector has no positions";
       if not (List.for_all position_in_spec_range positions) then
         fail "keyframe selector contains out-of-range position"
@@ -93,12 +93,12 @@ let test_generated_duplicate_selector_preserved buf =
     ^ Css.Keyframe.string_of_position (Css.Keyframe.Percent pct)
   in
   match Css.Keyframe.selector_of_string input with
-  | exception Invalid_argument _ ->
-      fail "generated duplicate keyframe selector failed to parse"
-  | Css.Keyframe.Positions [ a; b ] ->
+  | Error _ -> fail "generated duplicate keyframe selector failed to parse"
+  | Ok (Css.Keyframe.Positions [ a; b ]) ->
       if Css.Keyframe.position_compare a b <> 0 then
         fail "duplicate keyframe offsets were not preserved"
-  | Css.Keyframe.Positions _ -> fail "duplicate keyframe selector changed arity"
+  | Ok (Css.Keyframe.Positions _) ->
+      fail "duplicate keyframe selector changed arity"
 
 let test_from_to_percentage_equivalence _buf =
   if

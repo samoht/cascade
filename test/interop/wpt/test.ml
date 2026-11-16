@@ -456,14 +456,10 @@ let non_ascii_codepoints =
 let unclosed_constructs =
   let should_be_valid str () =
     let c = Cascade.Cursor.of_string str in
-    match
-      try
-        let _ = Cascade.Css.Selector.read c in
-        Ok ()
-      with e -> Error e
-    with
-    | Ok () -> ()
-    | Error e -> Alcotest.failf "%s: %s" str (Printexc.to_string e)
+    match Cascade.Css.Selector.read c with
+    | _ -> ()
+    | exception (Cascade.Cursor.Parse_error _ as e) ->
+        Alcotest.failf "%s: %s" str (Printexc.to_string e)
   in
   [
     Alcotest.test_case "unclosed-constructs.html [foo] valid" `Quick

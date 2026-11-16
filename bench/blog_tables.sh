@@ -9,10 +9,10 @@
 #   bench/blog_tables.sh rewrites         # just one section
 #   RUNS=5 bench/blog_tables.sh
 #
-# Sections: versions rewrites size speed lossless reminify
+# Sections: versions rewrites size speed lossless reminify diff
 #
 # Requirements (all on PATH): hyperfine, cascade (or -c PATH), csso, lightningcss,
-# esbuild, postcss + cssnano. Note that the `cssnano` BINARY is cssnano-cli,
+# esbuild, postcss + cssnano; the diff section needs only hyperfine and cascade. Note that the `cssnano` BINARY is cssnano-cli,
 # which pins cssnano 3.10.0 from 2017; we drive the real plugin through
 # postcss-cli instead. This is a trap worth remembering.
 #
@@ -43,13 +43,35 @@ fixture() { echo "$CORPUS/$1-stripmq.css"; }
 # /usr/bin/time only resolves to 10ms, which is useless for tools that finish
 # in single-digit milliseconds: it reports them all as "10ms" or "0ms".
 time_ms() {
+  hyperfine_stats mean --warmup 2 -- "$@"
+}
+
+# One hyperfine measurement of a command, printed as FORMAT: [mean] is the
+# mean wall-clock ms +- one standard deviation; [median] is the median
+# wall-clock ms with its range, then the median CPU ms (user + system), which
+# a loaded machine inflates far less than wall-clock. Reads the JSON of
+# hyperfine 1 and of hyperfine 2, which moved the statistics under [summary].
+hyperfine_stats() {
+  local format=$1 flags=()
+  shift
+  while [ "$1" != "--" ]; do flags+=("$1"); shift; done
+  shift
   local json
-  json="$(hyperfine --warmup 2 --runs "$RUNS" --style none --export-json /dev/stdout \
+  json="$(hyperfine "${flags[@]}" --runs "$RUNS" --style none --export-json /dev/stdout \
             --shell=none "$*" 2>/dev/null)" || { echo "?"; return; }
   echo "$json" | python3 -c '
 import json,sys
 r = json.load(sys.stdin)["results"][0]
-print("%.1f+-%.1f" % (r["mean"]*1000, r["stddev"]*1000))'
+if "summary" in r:
+    w, c = r["summary"]["time_wall_clock"], r["summary"]["time_cpu"]
+    cpu = c["median"]
+else:
+    w, cpu = r, r["user"] + r["system"]
+if sys.argv[1] == "mean":
+    print("%.1f+-%.1f" % (w["mean"]*1000, w["stddev"]*1000))
+else:
+    print("%.0f (%.0f-%.0f) %.0f" % (w["median"]*1000, w["min"]*1000,
+                                     w["max"]*1000, cpu*1000))' "$format"
 }
 
 run_cssnano() { postcss "$1" --use cssnano --no-map -o "$2" >/dev/null 2>&1; }
@@ -176,9 +198,91 @@ section_reminify() {
   echo
 }
 
+# A synthetic sheet of N flat rules. Variant [a] is the base; [b] changes a
+# value in every 10th rule, drops every 25th, swaps every 40th with the next
+# and appends N/50 new rules, so every kind of rule entry is exercised.
+synth() {
+  awk -v n="$1" -v v="$2" 'BEGIN {
+    split("block flex grid inline none", disp, " ")
+    for (i = 0; i < n; i++) {
+      r[i] = sprintf(".c%d .p%d{color:#%06x;margin:%dpx;display:%s}",
+                     i, i % 50, (i * 2654435761) % 16777216, i % 13,
+                     disp[i % 5 + 1])
+      if (v == "b" && i % 10 == 3) sub(/margin:[0-9]+px/, "margin:99px", r[i])
+    }
+    for (i = 0; i < n; i++) {
+      if (v == "b" && i % 25 == 7) continue
+      if (v == "b" && i % 40 == 11 && i + 1 < n) {
+        printf "%s%s", r[i + 1], r[i]; i++; continue
+      }
+      printf "%s", r[i]
+    }
+    if (v == "b") for (i = 0; i < n / 50; i++) printf ".new%d{padding:%dpx}", i, i
+  }'
+}
+
+# A real sheet with the same kinds of edit, made on its top-level text: every
+# 7th rule gains a declaration, every 17th is dropped, every 11th swaps with
+# the next. Only records with no at-rule are touched, so blocks stay balanced.
+perturb() {
+  awk 'BEGIN { RS = "}"; ORS = "" }
+    function plain(r) { return r ~ /\{/ && r !~ /@/ && r !~ /\{[ \t\n]*$/ }
+    function brace(i) { return i == NR && rec[i] ~ /^[ \t\n]*$/ ? "" : "}" }
+    { rec[NR] = $0 } END {
+      for (i = 1; i <= NR; i++) {
+        if (plain(rec[i]) && i % 17 == 0) continue
+        if (plain(rec[i]) && i % 7 == 0)
+          rec[i] = rec[i] (rec[i] ~ /;$/ ? "" : ";") "z-index:7"
+        if (plain(rec[i]) && i < NR && plain(rec[i + 1]) && i % 11 == 0) {
+          print rec[i + 1] "}" rec[i] "}"; i++; continue
+        }
+        print rec[i] brace(i)
+      }
+    }' "$1"
+}
+
+# Megabytes the OCaml runtime allocated over one run.
+alloc_mb() {
+  OCAMLRUNPARAM='v=0x400' "$@" 2>&1 >/dev/null |
+    awk '/^allocated_words:/ { printf "%.0f", $2 * 8 / 1e6 }'
+}
+
+# One row of the diff table: label, the two sheets, and the blocks ([{]) the
+# first one opens.
+# [-i]: [cascade diff] exits 1 when the sheets differ, a verdict rather than a
+# failure.
+diff_row() {
+  local wall cpu
+  read -r wall cpu <<<"$(hyperfine_stats median --warmup 1 -i -- \
+                          "$CASCADE" diff "$2" "$3" | sed 's/ (/(/')"
+  printf '%-16s %7s %20s %8s %8s\n' "$1" "$(grep -o '{' "$2" | wc -l | tr -d ' ')" \
+    "$wall" "$cpu" "$(alloc_mb "$CASCADE" diff "$2" "$3")"
+}
+
+# Table 7: [cascade diff] cost. Each real sheet against its own --minify output
+# and against a perturbed copy, then the synthetic series, whose growth from
+# one size to the next reads the complexity.
+section_diff() {
+  echo "## cascade diff (median wall ms (range) and CPU ms over $RUNS runs; MB allocated)"
+  printf '%-16s %7s %20s %8s %8s\n' input blocks wall cpu alloc
+  for s in "${SITES[@]}"; do
+    local f; f="$(fixture "$s")"; [ -f "$f" ] || continue
+    "$CASCADE" fmt --minify "$f" > "$TMP/$s.min.css" 2>/dev/null
+    perturb "$f" > "$TMP/$s.edit.css"
+    diff_row "$s/minify" "$f" "$TMP/$s.min.css"
+    diff_row "$s/edit" "$f" "$TMP/$s.edit.css"
+  done
+  for n in ${DIFF_SIZES:-1000 5000 20000}; do
+    synth "$n" a > "$TMP/synth-$n-a.css"
+    synth "$n" b > "$TMP/synth-$n-b.css"
+    diff_row "synth/$n" "$TMP/synth-$n-a.css" "$TMP/synth-$n-b.css"
+  done
+  echo
+}
+
 main() {
   local sections=("$@")
-  [ ${#sections[@]} -gt 0 ] || sections=(versions rewrites size speed lossless reminify)
+  [ ${#sections[@]} -gt 0 ] || sections=(versions rewrites size speed lossless reminify diff)
   for sec in "${sections[@]}"; do "section_$sec"; done
 }
 

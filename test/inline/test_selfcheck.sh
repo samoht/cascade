@@ -134,7 +134,7 @@ grep -q '^UNUSABLE real moving\.html@' "$work/out" ||
 # And it produces no count: a difference between two renders of one page says
 # nothing about a transform, so blaming one is the failure this gate exists to
 # stop.
-if grep -q 'moving\.html@.* \(minimal\|minify\)$' "$work/out"; then
+if grep -Eq 'moving\.html@.* (minimal|minify)$' "$work/out"; then
   fail "an unusable page still reported a transform result"
 fi
 
@@ -142,7 +142,7 @@ fi
 # so what it renders today says nothing about what it renders tomorrow.
 grep -q '^UNUSABLE real unfrozen\.html@' "$work/out" ||
   fail "a page the current freezer still changes was not reported as unusable"
-if grep -q 'unfrozen\.html@.* \(minimal\|minify\)$' "$work/out"; then
+if grep -Eq 'unfrozen\.html@.* (minimal|minify)$' "$work/out"; then
   fail "a stale page still reported a transform result"
 fi
 

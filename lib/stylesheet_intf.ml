@@ -37,6 +37,8 @@ type 'a property_rule = {
 
 (** {2 Cascade Origins} *)
 
+(** Cascade origins from CSS Cascading and Inheritance. [Animation] and
+    [Transition] represent generated virtual rules. *)
 type cascade_origin =
   | User_agent
   | User
@@ -44,8 +46,6 @@ type cascade_origin =
   | Author
   | Animation
   | Transition
-      (** Cascade origins from CSS Cascading and Inheritance. [Animation] and
-          [Transition] represent generated virtual rules. *)
 
 type cascade_layer_candidate = {
   layer : string option;
@@ -344,45 +344,8 @@ type 'a edit = Keep | Replace of 'a | Drop
 
 (** {1 Rendering} *)
 
-type mode = Variables | Inline  (** Rendering mode for CSS output *)
-
-let equal_cascade_origin (a : cascade_origin) b = a = b
-let equal (a : stylesheet) b = a = b
-
-(** [resolve_font_face_var ~src ~unicode_range ... descriptor] is [descriptor]
-    with its value rewritten by the matching resolver, or [None] when it holds
-    no value a [var()] can be resolved in.
-
-    CSS Variables 1 sec. 3 substitutes [var()] in a property value; an
-    [\@font-face] descriptor is not a property, so no descriptor grammar accepts
-    one and browsers drop the declaration that holds it. cascade substitutes at
-    build time instead, and this table is the whole set it can reach: the parser
-    keeps a [var()] only for a descriptor named here, and {!Inline} supplies the
-    resolvers. A descriptor added to the table takes another resolver argument,
-    so both sides have to answer for it. *)
-let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
-    ~font_weight ~font_stretch ~font_display ~font_variant
-    ~font_feature_settings ~font_variation_settings ~metric_override
-    ~size_adjust = function
-  | Src value -> Some (Src (src value))
-  | Unicode_range values -> Some (Unicode_range (unicode_range values))
-  | Font_family values -> Some (Font_family (font_family values))
-  | Font_style value -> Some (Font_style (font_style value))
-  | Font_weight value -> Some (Font_weight (font_weight value))
-  | Font_weight_range (low, high) ->
-      Some (Font_weight_range (font_weight low, font_weight high))
-  | Font_stretch value -> Some (Font_stretch (font_stretch value))
-  | Font_stretch_range (low, high) ->
-      Some (Font_stretch_range (font_stretch low, font_stretch high))
-  | Font_display value -> Some (Font_display (font_display value))
-  | Font_variant value -> Some (Font_variant (font_variant value))
-  | Font_feature_settings value ->
-      Some (Font_feature_settings (font_feature_settings value))
-  | Font_variation_settings value ->
-      Some (Font_variation_settings (font_variation_settings value))
-  | Ascent_override value -> Some (Ascent_override (metric_override value))
-  | Descent_override value -> Some (Descent_override (metric_override value))
-  | Line_gap_override value -> Some (Line_gap_override (metric_override value))
-  | Size_adjust value -> Some (Size_adjust (size_adjust value))
-  (* A keyword holds no var() to resolve. *)
-  | Font_style_auto | Font_weight_auto | Font_stretch_auto -> None
+(** Rendering mode for CSS output.
+    - [Variables]: Standard rendering with CSS custom properties support
+    - [Inline]: For inline styles (no at-rules, variables expanded with their
+      values) *)
+type mode = Variables | Inline

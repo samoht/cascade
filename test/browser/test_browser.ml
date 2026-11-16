@@ -17,6 +17,25 @@ let write ?(mode = 0o644) path contents =
   Out_channel.with_open_bin path (fun oc -> output_string oc contents);
   Unix.chmod path mode
 
+(* A stand-in program named [name] in [dir] that prints [banner] when given: a
+   shell script on Unix, and on Windows, where an extension rather than an
+   execute bit makes a file a program, a [.cmd]. *)
+let program ?banner dir name =
+  if Sys.win32 then (
+    let path = dir // String.concat "" [ name; ".cmd" ] in
+    write path
+      (match banner with
+      | None -> "@echo off\r\nexit /b 0\r\n"
+      | Some text -> String.concat "" [ "@echo off\r\necho("; text; "\r\n" ]);
+    path)
+  else
+    let path = dir // name in
+    write ~mode:0o755 path
+      (match banner with
+      | None -> "#!/bin/sh\nexit 0\n"
+      | Some text -> String.concat "" [ "#!/bin/sh\necho '"; text; "'\n" ]);
+    path
+
 (* The variable is set for [f] alone and put back after, whatever [f] does. *)
 let with_env name value f =
   let saved = Sys.getenv_opt name in
@@ -40,8 +59,7 @@ let getenv_empty_is_unset () =
 
 let executable_is_a_runnable_file () =
   with_dir (fun dir ->
-      let script = dir // "runnable" and plain = dir // "plain" in
-      write ~mode:0o755 script "#!/bin/sh\nexit 0\n";
+      let script = program dir "runnable" and plain = dir // "plain" in
       write plain "not a program\n";
       Alcotest.(check bool) "a runnable file" true (Browser.executable script);
       Alcotest.(check bool)
@@ -56,9 +74,7 @@ let executable_is_a_runnable_file () =
    answered. *)
 let env_names_the_binary () =
   with_dir (fun dir ->
-      let chrome = dir // "a-browser" and node = dir // "a-node" in
-      write ~mode:0o755 chrome "#!/bin/sh\nexit 0\n";
-      write ~mode:0o755 node "#!/bin/sh\nexit 0\n";
+      let chrome = program dir "a-browser" and node = program dir "a-node" in
       with_env "CHROME" chrome (fun () ->
           Alcotest.(check (option string))
             "CHROME names the browser" (Some chrome) (Browser.chrome_binary ()));
@@ -79,10 +95,7 @@ let env_names_the_binary () =
 let version_from_the_banner () =
   with_dir (fun dir ->
       let banner text =
-        let path = dir // "versioned" in
-        write ~mode:0o755 path
-          (String.concat "" [ "#!/bin/sh\necho '"; text; "'\n" ]);
-        Browser.chrome_version path
+        Browser.chrome_version (program ~banner:text dir "versioned")
       in
       Alcotest.(check (option (pair int int)))
         "a Chromium banner"

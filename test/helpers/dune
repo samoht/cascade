@@ -1,3 +1,4 @@
 (library
  (name css_test_helpers)
- (libraries cascade alcotest fmt))
+ (wrapped false)
+ (libraries cascade cascade_diff alcotest fmt re))

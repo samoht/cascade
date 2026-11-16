@@ -815,7 +815,9 @@ let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
   | Calc c ->
       pp_calc
         ~unwrap_num:
-          (match c with Num n -> Float.is_integer n && n >= 1. | _ -> true)
+          (match c with
+          | Num _ -> Option.is_some (positive_integer_of_calc c)
+          | _ -> true)
         pp_webkit_line_clamp ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -843,9 +845,10 @@ let normalize_webkit_line_clamp (value : webkit_line_clamp) : webkit_line_clamp
     =
   match value with
   | Calc c -> (
-      match eval_calc (numeric_line_clamp_calc_leaves c) with
-      | Num n when Float.is_integer n && n >= 1. -> Lines (int_of_float n)
-      | folded -> if folded == c then value else Calc folded)
+      let folded = eval_calc (numeric_line_clamp_calc_leaves c) in
+      match positive_integer_of_calc folded with
+      | Some n -> Lines n
+      | None -> if folded == c then value else Calc folded)
   | value -> value
 
 let rec read_user_select t : user_select =

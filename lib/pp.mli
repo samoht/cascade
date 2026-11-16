@@ -219,16 +219,31 @@ val option : ?none:unit t -> 'a t -> 'a option t
 
 (** {2 Number Formatting}
 
-    CSS number formatters that handle minification rules like dropping leading
-    zeros and avoiding scientific notation *)
+    CSS number formatters for a minified stylesheet: the shortest text CSS
+    Syntax 3 sec. 4.3.13 reads back as the same number, within the precision
+    {!string_of_float} states. This is not CSSOM sec. 6.7.2 serialisation, which
+    rounds to six decimals and never uses an exponent. *)
 
 val string_of_float :
   ?drop_leading_zero:bool -> ?max_decimals:int -> float -> string
-(** [string_of_float ?drop_leading_zero ?max_decimals f] converts a float to a
-    string.
-    - [drop_leading_zero]: if true, omits leading zero for 0 < |n| < 1 (.5
-      instead of 0.5)
-    - [max_decimals]: maximum decimal precision (default 8) *)
+(** [string_of_float ?drop_leading_zero ?max_decimals f] is [f] rounded half up
+    to [max_decimals] decimal places (defaults to [8]), with trailing zeros and
+    a trailing point trimmed.
+    - An integral [f] prints every digit below [2^62] in magnitude, and 12
+      significant digits in exponent notation from there.
+    - A fractional [f] whose magnitude, scaled by [10^max_decimals], reaches
+      [2^62] prints with 12 significant digits, in exponent notation from
+      [1e12].
+    - A non-zero [f] that would round to [0] keeps [max_decimals] significant
+      digits (one at least) instead, in decimals while it has at most 24 leading
+      zeros after the point, and past that 12 in exponent notation.
+    - [drop_leading_zero] (defaults to [false]) writes [.5] for [0.5].
+
+    Exponent notation is the shortest spelling CSS Syntax 3 sec. 4.3.13 reads:
+    [1e30] and [4e-33], never [1e+30] nor a padded [1e+030]. An infinity prints
+    as [3.40282e38] or [-3.40282e38], the largest single-precision float, and
+    NaN as [NaN], the spelling [float_of_string] reads back; {!nan_value} is its
+    CSS spelling. *)
 
 val nan_value : ctx -> string -> unit
 (** [nan_value ctx suffix] writes the CSS spelling of a NaN-valued number:
@@ -236,14 +251,12 @@ val nan_value : ctx -> string -> unit
     sec. 10.13. *)
 
 val float : float t
-(** [float] formats floating point numbers with CSS rules:
-    - Always drops leading zero for 0 < |n| < 1 (outputs .5 not 0.5)
-    - No scientific notation (uses bounded precision)
-    - Trims trailing zeros. *)
+(** [float] is {!string_of_float} with [drop_leading_zero], except that NaN is
+    {!nan_value}'s [calc(NaN)]. *)
 
 val float_n : int -> float t
-(** [float_n n] formats float to exactly n decimal places using round-half-up.
-    Used for CSS color channels and opacity where precision matters. *)
+(** [float_n n] is {!float} rounded half up to at most [n] decimal places. Used
+    for CSS color channels and opacity where precision matters. *)
 
 val round_sig : int -> float -> float
 (** [round_sig n f] rounds [f] to [n] significant digits. *)

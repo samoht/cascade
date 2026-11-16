@@ -20,7 +20,7 @@ let sel_string sel = Selector.to_string ~minify:true sel
 
 let test_contains_and_substitute () =
   let parent = Selector.class_ "card" in
-  let nested = Selector.of_string "&:hover" in
+  let nested = Selector.v "&:hover" in
   Alcotest.(check bool) "contains nesting" true (Nest.contains nested);
   Alcotest.(check bool)
     "plain selector" false
@@ -36,7 +36,7 @@ let test_combine_relative_nested_and_descendant () =
     (sel_string (Nest.combine parent (Selector.class_ "title")));
   Alcotest.(check string)
     "nesting replacement" ".card:hover"
-    (sel_string (Nest.combine parent (Selector.of_string "&:hover")));
+    (sel_string (Nest.combine parent (Selector.v "&:hover")));
   Alcotest.(check string)
     "relative child" ".card>.title"
     (sel_string

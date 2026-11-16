@@ -1,9 +1,5 @@
 (** Tests for Cascade_diff.String_diff module *)
 
-open Cascade
-
-let () = ignore (Css.of_string ~strict:false "")
-
 (* ===== first_diff_pos tests ===== *)
 
 let first_diff_pos_identical () =

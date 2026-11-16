@@ -203,7 +203,14 @@ let rec crossing barrier (stmts : statement list) =
       let barrier =
         match stmt with
         | Unknown_at_rule _ -> Opaque
-        | _ ->
+        | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+        | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
+        | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
+        | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+        | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+        | Page _ | Page_with_margins _ | Font_palette_values _
+        | Font_feature_values _ | View_transition _ | Position_try _
+        | Viewport _ ->
             crossing
               (Crossed (List.rev_append (statement_declarations stmt) decls))
               (statement_children stmt)

@@ -25,9 +25,10 @@
   (astring :with-test)
   (bytesrw :with-test)
   (conf-zlib :with-test)
-  (conf-python-3 :with-test)
+  (jsont :with-test)
   markup
   (mdx :with-test)
+  (ocamlfind :with-test)
   (re :with-test)
   (fmt (>= 0.10.0))
   base-unix

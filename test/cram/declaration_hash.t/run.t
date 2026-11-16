@@ -6,9 +6,9 @@ cache value instead of using the smart constructors.
   > open Cascade
   > let forged =
   >   match Declaration.of_string "color:currentColor" with
-  >   | Declaration.Declaration { property; value; important; _ } ->
+  >   | Ok (Declaration.Declaration { property; value; important; _ }) ->
   >       Declaration.Declaration { property; value; important; hash = 0 }
-  >   | Declaration.Theme_guarded _ -> assert false
+  >   | Ok (Declaration.Theme_guarded _) | Error _ -> assert false
   > EOF
   $ ocamlfind ocamlc -package cascade -c forge_hash.ml >/dev/null 2>&1
   [2]

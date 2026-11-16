@@ -7,7 +7,8 @@ val getenv : string -> string option
 
 val executable : string -> bool
 (** [executable path] is [true] when [path] names a file this process may
-    execute. *)
+    execute: on Windows, which has no execute bit, a file whose extension
+    [PATHEXT] lists. *)
 
 val chrome_binary : unit -> string option
 (** [chrome_binary ()] is a headless-capable Chromium: [CHROME] when that names
@@ -18,6 +19,20 @@ val chrome_binary : unit -> string option
 val node_binary : unit -> string option
 (** [node_binary ()] is node: [NODE] when that names an executable, [PATH]
     otherwise. *)
+
+val run :
+  ?env:(string * string) list ->
+  ?stderr:string ->
+  string ->
+  string list ->
+  string list * Unix.process_status
+(** [run ?env ?stderr prog args] runs [prog] with the arguments [args], with no
+    shell between, and is the lines it writes on standard output and how it
+    exited. [env] sets variables over this process's environment. Standard error
+    goes to the file [stderr], and to the null device when [stderr] is absent;
+    standard input is the null device.
+
+    @raise Unix.Unix_error when [prog] cannot be started. *)
 
 val chrome_version : string -> (int * int) option
 (** [chrome_version chrome] is the [(major, minor)] the binary reports. The

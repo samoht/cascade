@@ -43,6 +43,7 @@ type any_syntax = Syntax : 'a syntax -> any_syntax
 type nonrec custom_value = custom_value
 (** CSS custom-property token stream. *)
 
+(** The type of CSS variables. *)
 type any_var =
   | V : 'a var -> any_var
       (** Existential wrapper for CSS variables of any type *)

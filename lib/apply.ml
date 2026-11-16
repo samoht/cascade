@@ -241,7 +241,16 @@ let rec decls_of_stmts acc stmts =
         match s with
         | Stylesheet.Rule r -> List.rev_append (Stylesheet.declarations r) acc
         | Stylesheet.Declarations ds -> List.rev_append ds acc
-        | _ -> acc
+        | Stylesheet.(
+            ( Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
+            | Layer_decl _ | Layer _ | Media _ | Container _ | Supports _
+            | Moz_document _ | Starting_style _ | When _ | Else _
+            | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+            | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+            | Counter_style _ | Page _ | Page_with_margins _
+            | Font_palette_values _ | Font_feature_values _ | View_transition _
+            | Position_try _ | Viewport _ | Unknown_at_rule _ )) ->
+            acc
       in
       decls_of_stmts acc (Stylesheet.statement_children s))
     acc stmts
@@ -257,7 +266,16 @@ let rec dynamic_decls acc stmts =
       match s with
       | Stylesheet.Rule r when inlinable (Stylesheet.selector r) -> acc
       | Stylesheet.Layer (_, b) -> dynamic_decls acc b
-      | s -> decls_of_stmts acc [ s ])
+      | Stylesheet.(
+          ( Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+          | Namespace _ | Property _ | Layer_decl _ | Media _ | Container _
+          | Supports _ | Moz_document _ | Starting_style _ | When _ | Else _
+          | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+          | Webkit_keyframes _ | Moz_keyframes _ | Font_face _ | Counter_style _
+          | Page _ | Page_with_margins _ | Font_palette_values _
+          | Font_feature_values _ | View_transition _ | Position_try _
+          | Viewport _ | Unknown_at_rule _ )) as s ->
+          decls_of_stmts acc [ s ])
     acc stmts
 
 (* The kept declarations to test an inlinable one against, one per property
@@ -325,7 +343,16 @@ let rec split ~is_dyn stmts =
               | inl -> of_part inl :: inline
             in
             (keep, inline)
-        | other -> (other :: keep, inline))
+        | Stylesheet.(
+            ( Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+            | Namespace _ | Property _ | Media _ | Container _ | Supports _
+            | Moz_document _ | Starting_style _ | When _ | Else _
+            | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+            | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+            | Counter_style _ | Page _ | Page_with_margins _
+            | Font_palette_values _ | Font_feature_values _ | View_transition _
+            | Position_try _ | Viewport _ | Unknown_at_rule _ )) as other ->
+            (other :: keep, inline))
       ([], []) stmts
   in
   (List.rev keep, List.rev inline)

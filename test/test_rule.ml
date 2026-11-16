@@ -131,7 +131,7 @@ let test_merge_run_reads_each_selector_once () =
   (* The ratio below is readable only while the marker probe allocates. Pin that
      first, so a probe that stops allocating fails here rather than leaving the
      guard passing on a flat line. *)
-  let sel = Selector.of_string ":where(.sidebar) .s0" in
+  let sel = Selector.v ":where(.sidebar) .s0" in
   Alcotest.(check bool)
     "marker probe allocates, so words count walks" true
     (measure (fun () -> Selector.has_is_where_pattern sel) > 0.);

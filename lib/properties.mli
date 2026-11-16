@@ -2873,3 +2873,86 @@ val is_color_function : string -> bool
     a colour: the CSS Color 4 numeric notations, [color()] and [color-mix()],
     and [light-dark()]. A gradient is not one: its type is fixed by the property
     it lands in, not by the function. *)
+
+(** {2 Structural equality} *)
+
+val equal_overflow : overflow -> overflow -> bool
+(** [equal_overflow a b] is whether [a] and [b] are structurally equal. *)
+
+val equal_grid_line : grid_line -> grid_line -> bool
+(** [equal_grid_line a b] is whether [a] and [b] are structurally equal. *)
+
+val equal_text_emphasis_skip_keyword :
+  text_emphasis_skip_keyword -> text_emphasis_skip_keyword -> bool
+(** [equal_text_emphasis_skip_keyword a b] is whether [a] and [b] are
+    structurally equal. *)
+
+val equal_min_intrinsic_sizing_keyword :
+  min_intrinsic_sizing_keyword -> min_intrinsic_sizing_keyword -> bool
+(** [equal_min_intrinsic_sizing_keyword a b] is whether [a] and [b] are
+    structurally equal. *)
+
+val equal_initial_letter_align_keyword :
+  initial_letter_align_keyword -> initial_letter_align_keyword -> bool
+(** [equal_initial_letter_align_keyword a b] is whether [a] and [b] are
+    structurally equal. *)
+
+val equal_ruby_position_keyword :
+  ruby_position_keyword -> ruby_position_keyword -> bool
+(** [equal_ruby_position_keyword a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_background_shorthand :
+  background_shorthand -> background_shorthand -> bool
+(** [equal_background_shorthand a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_background_box : background_box -> background_box -> bool
+(** [equal_background_box a b] is whether [a] and [b] are structurally equal. *)
+
+val equal_mask_layer : mask_layer -> mask_layer -> bool
+(** [equal_mask_layer a b] is whether [a] and [b] are structurally equal. *)
+
+val equal_position_area_keyword :
+  position_area_keyword -> position_area_keyword -> bool
+(** [equal_position_area_keyword a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_position_visibility_condition :
+  position_visibility_condition -> position_visibility_condition -> bool
+(** [equal_position_visibility_condition a b] is whether [a] and [b] are
+    structurally equal. *)
+
+val equal_animation_range_name :
+  animation_range_name -> animation_range_name -> bool
+(** [equal_animation_range_name a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_container_shorthand :
+  container_shorthand -> container_shorthand -> bool
+(** [equal_container_shorthand a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_paint_order_keyword :
+  paint_order_keyword -> paint_order_keyword -> bool
+(** [equal_paint_order_keyword a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_paint_order : paint_order -> paint_order -> bool
+(** [equal_paint_order a b] is whether [a] and [b] are structurally equal. *)
+
+val equal_border_width : border_width -> border_width -> bool
+(** [equal_border_width a b] is whether [a] and [b] are structurally equal. *)
+
+val equal_overscroll_behavior :
+  overscroll_behavior -> overscroll_behavior -> bool
+(** [equal_overscroll_behavior a b] is whether [a] and [b] are structurally
+    equal. *)
+
+val equal_contain_intrinsic_size_item :
+  contain_intrinsic_size_item -> contain_intrinsic_size_item -> bool
+(** [equal_contain_intrinsic_size_item a b] is whether [a] and [b] are
+    structurally equal. *)
+
+val equal_border_style : border_style -> border_style -> bool
+(** [equal_border_style a b] is whether [a] and [b] are structurally equal. *)

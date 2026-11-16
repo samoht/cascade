@@ -3,6 +3,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
@@ -99,7 +101,7 @@ let generated_stylesheet buf =
             ~condition:(Css.Supports.property "display" "grid")
             [
               Css.container
-                ~condition:(Css.Container.of_string "(inline-size > 30em)")
+                ~condition:(ok (Css.Container.of_string "(inline-size > 30em)"))
                 [ Css.rule ~selector:(selector "inside") [ color 4 ] ];
             ];
         ];
@@ -176,11 +178,11 @@ let assert_strict_lenient_contract label input =
           input
 
 let test_parse_crash_safety buf =
-  ignore (Css.of_string ~strict:false (cssish buf));
-  ignore (Css.of_string_exn ~strict:false (cssish buf));
+  (match Css.of_string ~strict:false (cssish buf) with Ok _ | Error _ -> ());
+  ignore (Css.stylesheet ~strict:false (cssish buf));
   let css = css_like_text buf in
-  ignore (Css.of_string ~strict:false css);
-  ignore (Css.of_string_exn ~strict:false css)
+  (match Css.of_string ~strict:false css with Ok _ | Error _ -> ());
+  ignore (Css.stylesheet ~strict:false css)
 
 (* Parsing and printing over the byte shapes [cssish] cannot reach. Sec. 3.3
    replaces every malformed sequence with U+FFFD before the tokenizer sees it,

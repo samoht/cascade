@@ -93,9 +93,9 @@ val to_stylesheet_string : ?minify:bool -> t -> string
 val pp : t Pp.t
 (** [pp] is a composable printer for a container condition. *)
 
-val of_string : string -> t
-(** [of_string s] parses a container condition. Raises
-    {!Cursor.exception-Parse_error} for a malformed condition. *)
+val of_string : string -> (t, Error.t) result
+(** [of_string s] parses a container condition. This is [Error e] if [s] is
+    malformed. *)
 
 val read : Cursor.t -> t
 (** [read t] parses the container condition [t] holds, consuming nothing. A

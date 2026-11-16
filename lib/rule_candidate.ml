@@ -38,9 +38,7 @@ let decl_fact decl =
 let decl_facts decls = List.map decl_fact decls
 
 let decl_facts_conflict a b =
-  a.important = b.important
-  && (not (same_decl a.decl b.decl))
-  && Shorthand.declarations_overlap_with_keys a.decl a.keys b.decl b.keys
+  Shorthand.declarations_conflict_with_keys a.decl a.keys b.decl b.keys
 
 let declarations_equal (a : Declaration.declaration list)
     (b : Declaration.declaration list) =
@@ -396,20 +394,6 @@ let candidate ?size_cache ~kind ~finalize g ~consume ~produce =
 
 let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
 let decls_inline_cost decls = decls_size decls + List.length decls
-
-let selectors_tie_and_overlap a b =
-  List.exists
-    (fun selector_a ->
-      let summary_a = Selector_summary.of_selector selector_a in
-      List.exists
-        (fun selector_b ->
-          Selector.equal_specificity
-            (Selector.specificity selector_a)
-            (Selector.specificity selector_b)
-          && Selector_summary.may_overlap summary_a
-               (Selector_summary.of_selector selector_b))
-        (Edge.selectors b))
-    (Edge.selectors a)
 
 let grouped_rule (rules : rule list) : rule option =
   match rules with
@@ -1021,7 +1005,7 @@ let unsafe_cross_member_leftover group_decls rules =
       && List.exists
            (fun (other : rule) ->
              other != rule
-             && selectors_tie_and_overlap rule.selector other.selector)
+             && Rule_graph.selectors_conflict rule.selector other.selector)
            rules)
     rules
 
@@ -1095,7 +1079,7 @@ let group_crosses_external_conflict g ~ids (grouped : rule) =
           && crosses_bounds g ~min_origin ~max_origin external_id
           &&
           let external_rule : rule = Rule_graph.node_rule g external_id in
-          selectors_tie_and_overlap grouped.selector external_rule.selector
+          Rule_graph.selectors_conflict grouped.selector external_rule.selector
           && declarations_cross_order grouped.declarations
                external_rule.declarations)
 
@@ -1345,7 +1329,8 @@ let needs_default_reassertion entry ~prior member =
   && List.exists
        (fun prior ->
          member_overrides_default entry prior
-         && selectors_tie_and_overlap prior.rule.selector member.rule.selector)
+         && Rule_graph.selectors_conflict prior.rule.selector
+              member.rule.selector)
        prior
 
 let entry_needs_later_default_reassertion members entry =

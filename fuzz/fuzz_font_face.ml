@@ -5,6 +5,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let byte_at buf idx =
   if String.length buf = 0 then 0 else Char.code buf.[idx mod String.length buf]
 
@@ -12,49 +14,24 @@ let pick values buf salt =
   List.nth values (byte_at buf salt mod List.length values)
 
 let parse_metric input =
-  try Some (Css.Font_face.metric_override_of_string input)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    None
+  Result.to_option (Css.Font_face.metric_override_of_string input)
 
 let parse_size_adjust input =
-  try Some (Css.Font_face.size_adjust_of_string input)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    None
+  Result.to_option (Css.Font_face.size_adjust_of_string input)
 
-let parse_src input =
-  try Some (Css.Font_face.src_of_string input)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    None
+let parse_src input = Result.to_option (Css.Font_face.src_of_string input)
 
 (** metric_override_of_string -- must not crash. *)
 let test_metric_override buf =
-  try ignore (Css.Font_face.metric_override_of_string buf)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match Css.Font_face.metric_override_of_string buf with Ok _ | Error _ -> ()
 
 (** size_adjust_of_string -- must not crash. *)
 let test_size_adjust buf =
-  try ignore (Css.Font_face.size_adjust_of_string buf)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match Css.Font_face.size_adjust_of_string buf with Ok _ | Error _ -> ()
 
 (** src_of_string -- must not crash. *)
 let test_src buf =
-  try ignore (Css.Font_face.src_of_string buf)
-  with
-  | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _ | Failure _
-  ->
-    ()
+  match Css.Font_face.src_of_string buf with Ok _ | Error _ -> ()
 
 (** metric_override roundtrip: parse -> to_string -> parse. *)
 let test_metric_override_roundtrip buf =
@@ -62,12 +39,9 @@ let test_metric_override_roundtrip buf =
   | None -> ()
   | Some m -> (
       let s = Css.Font_face.string_of_metric_override m in
-      try ignore (Css.Font_face.metric_override_of_string s)
-      with
-      | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _
-      | Failure _
-      ->
-        fail "metric_override roundtrip failed")
+      match Css.Font_face.metric_override_of_string s with
+      | Ok _ -> ()
+      | Error _ -> fail "metric_override roundtrip failed")
 
 (** src roundtrip: parse -> to_string -> parse. *)
 let test_src_roundtrip buf =
@@ -75,12 +49,9 @@ let test_src_roundtrip buf =
   | None -> ()
   | Some src -> (
       let s = Css.Font_face.string_of_src src in
-      try ignore (Css.Font_face.src_of_string s)
-      with
-      | Error.Parse_error _ | Reader.Parse_error _ | Invalid_argument _
-      | Failure _
-      ->
-        fail "src roundtrip failed")
+      match Css.Font_face.src_of_string s with
+      | Ok _ -> ()
+      | Error _ -> fail "src roundtrip failed")
 
 let test_metric_override_non_negative buf =
   match parse_metric buf with
@@ -103,7 +74,7 @@ let test_metric_override_serialization_idempotent buf =
   | None -> ()
   | Some metric ->
       let once = Css.Font_face.string_of_metric_override metric in
-      let reparsed = Css.Font_face.metric_override_of_string once in
+      let reparsed = ok (Css.Font_face.metric_override_of_string once) in
       let twice = Css.Font_face.string_of_metric_override reparsed in
       if once <> twice then
         failf "metric override serialization changed: %S -> %S" once twice
@@ -116,8 +87,8 @@ let test_generated_src_serialization_idempotent buf =
     | 2 -> "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)"
     | _ -> "url(\"variable.woff2\") tech(variations)"
   in
-  let once = Css.Font_face.(entry |> src_of_string |> string_of_src) in
-  let twice = Css.Font_face.(once |> src_of_string |> string_of_src) in
+  let once = Css.Font_face.(entry |> src_of_string |> ok |> string_of_src) in
+  let twice = Css.Font_face.(once |> src_of_string |> ok |> string_of_src) in
   if once <> twice then
     failf "font src serialization changed: %S -> %S" once twice
 
@@ -129,11 +100,11 @@ let test_generated_metric_edge_idempotent buf =
     | 2 -> "100%"
     | _ -> "125.5%"
   in
-  let metric = Css.Font_face.metric_override_of_string input in
+  let metric = ok (Css.Font_face.metric_override_of_string input) in
   let once = Css.Font_face.string_of_metric_override metric in
   let twice =
     Css.Font_face.(
-      once |> metric_override_of_string |> string_of_metric_override)
+      once |> metric_override_of_string |> ok |> string_of_metric_override)
   in
   if once <> twice then fail "generated metric serialization drifted"
 
@@ -153,7 +124,7 @@ let test_spec_src_vectors buf =
   | None -> failf "valid font-face src vector rejected: %S" input
   | Some src ->
       let serialized = Css.Font_face.string_of_src src in
-      let reparsed = Css.Font_face.src_of_string serialized in
+      let reparsed = ok (Css.Font_face.src_of_string serialized) in
       if not (Css.Font_face.equal_src src reparsed) then
         failf "font-face src structure changed: %S -> %S" input serialized
 

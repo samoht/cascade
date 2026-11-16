@@ -46,13 +46,13 @@
     400))))
 
 ; The @font-face descriptor population, from the same dispatch-table reading:
-; read_font_face_desc in lib/stylesheet.ml is the only place that says which
-; descriptors cascade models.
+; read_font_face_desc in lib/stylesheet_descriptor.ml is the only place that
+; says which descriptors cascade models.
 
 (rule
  (target font_face_descriptors.ml)
  (deps
-  (:stylesheet ../../../lib/stylesheet.ml)
+  (:stylesheet ../../../lib/stylesheet_descriptor.ml)
   gen_reader_properties.exe)
  (action
   (with-stdout-to
@@ -72,7 +72,7 @@
 (rule
  (target counter_style_descriptors.ml)
  (deps
-  (:stylesheet ../../../lib/stylesheet.ml)
+  (:stylesheet ../../../lib/stylesheet_descriptor.ml)
   gen_reader_properties.exe)
  (action
   (with-stdout-to
@@ -87,7 +87,7 @@
 (rule
  (target property_descriptors.ml)
  (deps
-  (:stylesheet ../../../lib/stylesheet.ml)
+  (:stylesheet ../../../lib/stylesheet_read.ml)
   gen_reader_properties.exe)
  (action
   (with-stdout-to

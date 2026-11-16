@@ -862,11 +862,7 @@ type browser_answer = Matched of int list | Refused
 type cascade_answer = Unreadable of string | Undecided | Decided of int list
 
 let read_selector text =
-  match Selector.of_string text with
-  | sel -> Ok sel
-  | exception Error.Parse_error e -> Error (Error.to_string e)
-  | exception Invalid_argument m ->
-      Error (String.concat "" [ "Invalid_argument: "; m ])
+  Result.map_error Error.to_string (Selector.of_string text)
 
 (* The path a caller actually walks: a rule read out of a sheet. A selector the
    selector API refuses and the sheet parser keeps, or the other way round, is
@@ -1203,32 +1199,27 @@ let () =
             | Ok _, Some (Matched hits) -> (
                 let css = String.concat "" [ p.read; "{color:red}" ] in
                 match Cascade.Css.of_string css with
-                | Error _ | (exception _) -> ()
-                | Ok { stylesheet; _ } -> (
-                    match P.analyse ~sheet:stylesheet [ d.root ] with
-                    | exception _ -> ()
-                    | analysis ->
-                        let kept =
-                          Cascade.Css.statements analysis.sheet <> []
-                        in
-                        if hits <> [] && not kept then
-                          prune_deleted_a_match :=
-                            {
-                              probe = p;
-                              doc_id = d.did;
-                              detail =
+                | Error _ -> ()
+                | Ok { stylesheet; _ } ->
+                    let analysis = P.analyse ~sheet:stylesheet [ d.root ] in
+                    let kept = Cascade.Css.statements analysis.sheet <> [] in
+                    if hits <> [] && not kept then
+                      prune_deleted_a_match :=
+                        {
+                          probe = p;
+                          doc_id = d.did;
+                          detail =
+                            [
+                              String.concat ""
                                 [
-                                  String.concat ""
-                                    [
-                                      "    the browser matched ";
-                                      string_of_int (List.length hits);
-                                      " element(s), prune removed the rule";
-                                    ];
+                                  "    the browser matched ";
+                                  string_of_int (List.length hits);
+                                  " element(s), prune removed the rule";
                                 ];
-                            }
-                            :: !prune_deleted_a_match
-                        else if hits = [] && kept then
-                          incr prune_kept_an_unmatched))
+                            ];
+                        }
+                        :: !prune_deleted_a_match
+                    else if hits = [] && kept then incr prune_kept_an_unmatched)
             | _ -> ())
         probes)
     trees;
@@ -1264,10 +1255,7 @@ let () =
               let cascade =
                 match sel with
                 | Error m -> Unreadable m
-                | Ok s -> (
-                    match cascade_answer s els with
-                    | a -> a
-                    | exception e -> Unreadable (Printexc.to_string e))
+                | Ok s -> cascade_answer s els
               in
               let finding detail = { probe = p; doc_id = d.did; detail } in
               let browser_says =

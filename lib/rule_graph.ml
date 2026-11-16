@@ -51,7 +51,6 @@ type rewrite_error =
 
 type decl_overlap = {
   decl : Declaration.declaration;
-  important : bool;
   footprint : Shorthand.overlap_key list;
 }
 
@@ -134,10 +133,8 @@ type t = {
    exact same-value writes, or differing importance means a reorder is
    cascade-neutral inside a fixed origin/layer/scope context. *)
 let declarations_conflict left right =
-  left.important = right.important
-  && (not (Declaration.same_minified left.decl right.decl))
-  && Shorthand.declarations_overlap_with_keys left.decl left.footprint
-       right.decl right.footprint
+  Shorthand.declarations_conflict_with_keys left.decl left.footprint right.decl
+    right.footprint
 
 (* Written as plain recursion rather than nested [List.exists]: the inner
    closure captured the outer element, so it was rebuilt once per element of the
@@ -150,30 +147,6 @@ let rec decls_order_conflict d1 d2 =
   match d1 with
   | [] -> false
   | a :: rest -> declaration_conflicts_with a d2 || decls_order_conflict rest d2
-
-(* [keys] comes from [rule_overlap_keys], which sorts, so the scan stops at the
-   first key past [key] rather than walking the whole list. *)
-let rec overlap_key_in key = function
-  | [] -> false
-  | k :: rest ->
-      let c = Shorthand.overlap_key_compare key k in
-      c = 0 || (c > 0 && overlap_key_in key rest)
-
-(* Both arguments come from [rule_overlap_keys], which sorts, so this walks the
-   two in step rather than scanning one per element of the other: linear instead
-   of quadratic in the rules' distinct key counts. *)
-let rec overlap_keys_meet a b =
-  match (a, b) with
-  | [], _ | _, [] -> false
-  | x :: xs, y :: ys ->
-      let c = Shorthand.overlap_key_compare x y in
-      if c = 0 then true
-      else if c < 0 then overlap_keys_meet xs b
-      else overlap_keys_meet a ys
-
-let overlap_key_lists_intersect a b =
-  let broad = Shorthand.broad_overlap_key in
-  overlap_key_in broad a || overlap_key_in broad b || overlap_keys_meet a b
 
 (* [List.exists2] over a zipped pair needs the zip built first, and the inner
    one was built inside the outer closure: B's whole tuple list was rebuilt once
@@ -258,6 +231,21 @@ let effective_selector (parent : Selector.t option) (r : rule) =
         parents
       |> selector_list
 
+(* The cascade half of the order relation, over each rule's overlap keys,
+   declaration footprints and selector branches: the one decision every caller
+   asking whether two rules conflict reaches, through the graph or through
+   [rules_conflict]. The key test is the cheap first cut: two rules whose
+   footprints meet nowhere write no common slot. *)
+let declarations_order_conflict keys_a decls_a keys_b decls_b =
+  Shorthand.overlap_keys_intersect keys_a keys_b
+  && decls_order_conflict decls_a decls_b
+
+let cascade_conflict ~closed_world keys_a decls_a selectors_a summaries_a
+    specificities_a keys_b decls_b selectors_b summaries_b specificities_b =
+  declarations_order_conflict keys_a decls_a keys_b decls_b
+  && selectors_order_conflict ~closed_world selectors_a summaries_a
+       specificities_a selectors_b summaries_b specificities_b
+
 (* Conflict between two nodes of a graph by their stored summaries/branches. *)
 let asserted_exclusive t i j =
   match t.exclusive with
@@ -270,11 +258,10 @@ let nodes_conflict_reason t i j =
     Option.Some Shared_branch_pin
   else if asserted_exclusive t i j then Option.None
   else if
-    overlap_key_lists_intersect t.overlap_keys.(i) t.overlap_keys.(j)
-    && decls_order_conflict t.decl_overlaps.(i) t.decl_overlaps.(j)
-    && selectors_order_conflict ~closed_world:t.closed_world t.selectors.(i)
-         t.selector_summaries.(i) t.specificities.(i) t.selectors.(j)
-         t.selector_summaries.(j) t.specificities.(j)
+    cascade_conflict ~closed_world:t.closed_world t.overlap_keys.(i)
+      t.decl_overlaps.(i) t.selectors.(i) t.selector_summaries.(i)
+      t.specificities.(i) t.overlap_keys.(j) t.decl_overlaps.(j) t.selectors.(j)
+      t.selector_summaries.(j) t.specificities.(j)
   then Option.Some Cascade_conflict
   else Option.None
 
@@ -297,11 +284,7 @@ module Spec_table = Common.Table.Make (struct
 end)
 
 let declaration_overlap decl =
-  {
-    decl;
-    important = Declaration.is_important decl;
-    footprint = Shorthand.declaration_overlap_keys decl;
-  }
+  { decl; footprint = Shorthand.declaration_overlap_keys decl }
 
 let rule_decl_overlaps (rule : rule) =
   List.map declaration_overlap rule.declarations
@@ -332,11 +315,10 @@ let rec distinct_keys keys i acc =
     distinct_keys keys (i - 1) acc
   else distinct_keys keys (i - 1) (keys.(i) :: acc)
 
-(* A rule's distinct overlap keys, sorted: [overlap_key_in] and
-   [overlap_keys_meet] read this list once per candidate pair, and sorting is
-   what lets them stop early and merge-walk instead of scanning one list per
-   element of the other. Sorted in one array, since deduplicating against the
-   accumulator scanned it once per key, and [Array.sort] is in place. *)
+(* A rule's distinct overlap keys, sorted: {!Shorthand.overlap_keys_intersect}
+   reads this list once per candidate pair and merge-walks it. Sorted in one
+   array, since deduplicating against the accumulator scanned it once per key,
+   and [Array.sort] is in place. *)
 let rule_overlap_keys decls =
   let total = footprint_total 0 decls in
   if total = 0 then []
@@ -346,6 +328,67 @@ let rule_overlap_keys decls =
     Array.sort Shorthand.overlap_key_compare keys;
     distinct_keys keys (total - 1) []
   end
+
+(* What the order relation reads off a selector: each branch with its summary
+   and its specificity. *)
+let branch_facts selector =
+  let branches = Edge.selectors selector in
+  ( branches,
+    List.map Selector_summary.of_selector branches,
+    List.map Selector.specificity branches )
+
+let selectors_conflict a b =
+  let branches_a, summaries_a, specificities_a = branch_facts a in
+  let branches_b, summaries_b, specificities_b = branch_facts b in
+  selectors_order_conflict ~closed_world:false branches_a summaries_a
+    specificities_a branches_b summaries_b specificities_b
+
+(* What the order relation reads off one rule, read once so a caller asking
+   about many pairs pays for each rule once rather than once per pair. The
+   footprints are read only for a pair whose selectors may tie: without a graph
+   to index them, most pairs a caller asks about are settled by the selectors
+   alone, and a footprint costs more to read than a selector. *)
+type facts = {
+  selector_branches : Selector.t list;
+  branch_weights : Selector.specificity list;
+  branch_summaries : Selector_summary.t list Lazy.t;
+  footprints : (Shorthand.overlap_key list * decl_overlap list) Lazy.t;
+}
+
+let facts ?parent rule =
+  let selector_branches = Edge.selectors (effective_selector parent rule) in
+  {
+    selector_branches;
+    branch_weights = List.map Selector.specificity selector_branches;
+    branch_summaries =
+      lazy (List.map Selector_summary.of_selector selector_branches);
+    footprints =
+      lazy
+        (let decls = rule_decl_overlaps rule in
+         (rule_overlap_keys decls, decls));
+  }
+
+let rec weights_tie a = function
+  | [] -> false
+  | w :: rest ->
+      List.exists (Selector.equal_specificity w) a || weights_tie a rest
+
+(* [cascade_conflict]'s two halves, the selector one asked first, and within it
+   the weights, which settle most pairs before a summary is read. *)
+let facts_conflict a b =
+  weights_tie a.branch_weights b.branch_weights
+  && selectors_order_conflict ~closed_world:false a.selector_branches
+       (Lazy.force a.branch_summaries)
+       a.branch_weights b.selector_branches
+       (Lazy.force b.branch_summaries)
+       b.branch_weights
+  &&
+  let keys_a, decls_a = Lazy.force a.footprints in
+  let keys_b, decls_b = Lazy.force b.footprints in
+  declarations_order_conflict keys_a decls_a keys_b decls_b
+
+let rules_conflict ?parent a b =
+  facts_conflict (facts ?parent a) (facts ?parent b)
 
 (* A cascade conflict needs two selector branches of equal specificity, so a
    candidate bucket is keyed by specificity as well as by overlap key: rules
@@ -774,7 +817,7 @@ let source_order_edges t =
     let candidates =
       (* A node carrying the broad key meets every prior declaration, so its own
          keys index nothing: only specificity narrows it. *)
-      if overlap_key_in Shorthand.broad_overlap_key keys then
+      if Shorthand.overlap_keys_broad keys then
         collect_specs by_spec specs j seen []
       else
         (* probed per declaration rather than per distinct key: the key alone
@@ -831,12 +874,14 @@ let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
   let rules = Array.of_list rules in
   let n = Array.length rules in
   let summaries = Array.map rule_summary rules in
-  let effective = Array.map (effective_selector parent) rules in
-  let selectors = Array.map Edge.selectors effective in
-  let selector_summaries =
-    Array.map (List.map Selector_summary.of_selector) selectors
+  let facts =
+    Array.map (fun rule -> branch_facts (effective_selector parent rule)) rules
   in
-  let specificities = Array.map (List.map Selector.specificity) selectors in
+  let selectors = Array.map (fun (branches, _, _) -> branches) facts in
+  let selector_summaries =
+    Array.map (fun (_, summaries, _) -> summaries) facts
+  in
+  let specificities = Array.map (fun (_, _, specs) -> specs) facts in
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps rules in
   let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
@@ -1179,12 +1224,16 @@ let rewrite_live t ~total ~new_n ~consume =
 
 let produced_metadata t produced =
   let summaries = Array.map rule_summary produced in
-  let effective = Array.map (effective_selector t.parent) produced in
-  let selectors = Array.map Edge.selectors effective in
-  let selector_summaries =
-    Array.map (List.map Selector_summary.of_selector) selectors
+  let facts =
+    Array.map
+      (fun rule -> branch_facts (effective_selector t.parent rule))
+      produced
   in
-  let specificities = Array.map (List.map Selector.specificity) selectors in
+  let selectors = Array.map (fun (branches, _, _) -> branches) facts in
+  let selector_summaries =
+    Array.map (fun (_, summaries, _) -> summaries) facts
+  in
+  let specificities = Array.map (fun (_, _, specs) -> specs) facts in
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps produced in
   let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
@@ -1432,7 +1481,7 @@ let external_candidates graph ~total ~consumed ~seen p =
     end
   in
   let keys = graph.overlap_keys.(p) in
-  if overlap_key_in Shorthand.broad_overlap_key keys then
+  if Shorthand.overlap_keys_broad keys then
     for k = 0 to total - 1 do
       push k
     done
@@ -1524,7 +1573,7 @@ let add_produced_edge t graph consume succ left right reason =
 let collect_produced_candidates by_decl_key by_spec by_branch graph right seen
     keys specs =
   let candidates =
-    if overlap_key_in Shorthand.broad_overlap_key keys then
+    if Shorthand.overlap_keys_broad keys then
       collect_specs by_spec specs right seen []
     else
       collect_bucket by_decl_key Shorthand.broad_overlap_key specs right seen []

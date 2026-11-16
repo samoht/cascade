@@ -137,9 +137,7 @@ let selector_examples_doc =
     [ ".item"; ":nth-child(2n+1)"; ":has(.child)"; ":hover"; "::before" ]
   in
   let modelled, unmodelled =
-    List.partition
-      (fun sample -> Resolve.supported (Selector.of_string sample))
-      samples
+    List.partition (fun sample -> Resolve.supported (Selector.v sample)) samples
   in
   String.concat ""
     [

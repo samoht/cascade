@@ -1,7 +1,7 @@
 open Cascade
 open Css_test_helpers
 
-let parse s = Css.of_string_exn ~strict:false s
+let parse s = Css.stylesheet ~strict:false s
 let minified css = Css.to_string ~minify:true css
 let optimized_minified css = css |> Css.optimize |> minified
 
@@ -928,11 +928,9 @@ let test_inline_keeps_a_page_break_property () =
     Css.inline_vars
       [
         Stylesheet.Rule
-          (Stylesheet.rule
-             ~selector:(Selector.of_string ":root")
+          (Stylesheet.rule ~selector:(Selector.v ":root")
              [ Declaration.custom_property property value ]);
-        Stylesheet.Rule
-          (Stylesheet.rule ~selector:(Selector.of_string ".a") [ decl ]);
+        Stylesheet.Rule (Stylesheet.rule ~selector:(Selector.v ".a") [ decl ]);
       ]
     |> Css.to_string
   in

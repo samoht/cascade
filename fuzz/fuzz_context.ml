@@ -3,6 +3,8 @@
 open Cascade
 open Alcobar
 
+let ok = Fuzz_helpers.ok
+
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
@@ -22,7 +24,7 @@ let pp_decl decl = Css.Declaration.to_string ~minify:true decl
 let pp_stylesheet sheet = Css.Stylesheet.to_string ~minify:true sheet
 
 let normalize_decl decl =
-  Css.Declaration.of_string (Css.Declaration.to_string ~minify:true decl)
+  ok (Css.Declaration.of_string (Css.Declaration.to_string ~minify:true decl))
 
 let check_same_decl label expected actual =
   let expected = normalize_decl expected in
@@ -37,7 +39,7 @@ let check_eval_shape label input actual =
   let after_name = Css.Declaration.property_name actual in
   if before_name <> after_name then
     failf "%s: property changed from %S to %S" label before_name after_name;
-  let reparsed = Css.Declaration.of_string (pp_decl actual) in
+  let reparsed = ok (Css.Declaration.of_string (pp_decl actual)) in
   check_same_decl (label ^ " roundtrip") actual reparsed
 
 let check_same_stylesheet label expected actual =
@@ -144,7 +146,7 @@ let generated_decl buf =
         ^ ") ease-in var(--delay, " ^ duration buf 56 ^ ")"
     | _ -> "view-timeline: --reveal block"
   in
-  Css.Declaration.of_string decl
+  ok (Css.Declaration.of_string decl)
 
 let fuzz_decl buf =
   if byte_at buf 0 mod 3 = 0 then generated_decl buf
@@ -188,7 +190,7 @@ let fuzz_decl buf =
         "view-timeline: --reveal block";
       ]
       buf 0
-    |> Css.Declaration.of_string
+    |> Css.Declaration.of_string |> ok
 
 let conservative_decl buf =
   pick
@@ -201,7 +203,7 @@ let conservative_decl buf =
       "transform: translateX(10px) rotate(45deg)";
     ]
     buf 1
-  |> Css.Declaration.of_string
+  |> Css.Declaration.of_string |> ok
 
 let computable_decl buf =
   pick
@@ -219,7 +221,7 @@ let computable_decl buf =
       "transform: translateX(var(--shift)) rotate(45deg)";
     ]
     buf 2
-  |> Css.Declaration.of_string
+  |> Css.Declaration.of_string |> ok
 
 let contains_residual text =
   List.exists (contains_literal text)
@@ -242,26 +244,26 @@ let eval_ctx ?viewport_height buf =
   Css.Context.v
     ~custom_properties:
       [
-        Css.Declaration.of_string "--brand: red";
-        Css.Declaration.of_string "--gap: calc(1rem + 2px)";
-        Css.Declaration.of_string "--rgb: 12 34 56";
-        Css.Declaration.of_string "--alpha: 0.5";
-        Css.Declaration.of_string "--shift: 1rem";
-        Css.Declaration.of_string "--ring-offset: 2px";
-        Css.Declaration.of_string "--ring-color: blue";
-        Css.Declaration.of_string "--shadow: 0 0 var(--gap) currentColor";
-        Css.Declaration.of_string "--duration: calc(500ms * 2)";
-        Css.Declaration.of_string "--delay: calc(250ms * 2)";
+        ok (Css.Declaration.of_string "--brand: red");
+        ok (Css.Declaration.of_string "--gap: calc(1rem + 2px)");
+        ok (Css.Declaration.of_string "--rgb: 12 34 56");
+        ok (Css.Declaration.of_string "--alpha: 0.5");
+        ok (Css.Declaration.of_string "--shift: 1rem");
+        ok (Css.Declaration.of_string "--ring-offset: 2px");
+        ok (Css.Declaration.of_string "--ring-color: blue");
+        ok (Css.Declaration.of_string "--shadow: 0 0 var(--gap) currentColor");
+        ok (Css.Declaration.of_string "--duration: calc(500ms * 2)");
+        ok (Css.Declaration.of_string "--delay: calc(250ms * 2)");
       ]
     ~inherited_values:
       [
-        Css.Declaration.of_string "color: blue";
-        Css.Declaration.of_string "display: block";
+        ok (Css.Declaration.of_string "color: blue");
+        ok (Css.Declaration.of_string "display: block");
       ]
     ~initial_values:
       [
-        Css.Declaration.of_string "display: inline";
-        Css.Declaration.of_string "margin-left: 0";
+        ok (Css.Declaration.of_string "display: inline");
+        ok (Css.Declaration.of_string "margin-left: 0");
       ]
     ~base_url:"https://example.test/css/app.css" ~root_font_size:(Px root)
     ~parent_font_size:(Px parent) ~current_color:(Named Blue)
@@ -319,7 +321,7 @@ let fuzz_layered_decl buf =
       "padding: var(--component-gap)";
     ]
     buf 7
-  |> Css.Declaration.of_string
+  |> Css.Declaration.of_string |> ok
 
 let assert_empty_property_value_context (value : Css.Context.t) =
   let empty_lists =
@@ -438,9 +440,11 @@ let test_property_value_context buf =
       ]
       buf 1
   in
-  let custom_decl = Css.Declaration.of_string (custom ^ ": " ^ value) in
-  let inherited_decl = Css.Declaration.of_string (property ^ ": " ^ value) in
-  let initial_decl = Css.Declaration.of_string "display: inline" in
+  let custom_decl = ok (Css.Declaration.of_string (custom ^ ": " ^ value)) in
+  let inherited_decl =
+    ok (Css.Declaration.of_string (property ^ ": " ^ value))
+  in
+  let initial_decl = ok (Css.Declaration.of_string "display: inline") in
   let ctx =
     Css.Context.v ~custom_properties:[ custom_decl ]
       ~inherited_values:[ inherited_decl ] ~initial_values:[ initial_decl ]
@@ -615,7 +619,7 @@ let test_property_registration_context buf =
          (Css.Context.registered_property name registry)
          (Some registration))
   then fail "property registry lost registration";
-  let valid_decl = Css.Declaration.of_string (name ^ ": " ^ valid_value) in
+  let valid_decl = ok (Css.Declaration.of_string (name ^ ": " ^ valid_value)) in
   (match
      Css.Context.validate_registered_custom_property registry valid_decl
    with
@@ -623,7 +627,7 @@ let test_property_registration_context buf =
   | Error msg -> failf "registered valid value rejected: %S" msg);
   if invalid_value <> "" then
     let invalid_decl =
-      Css.Declaration.of_string (name ^ ": " ^ invalid_value)
+      ok (Css.Declaration.of_string (name ^ ": " ^ invalid_value))
     in
     match
       Css.Context.validate_registered_custom_property registry invalid_decl
@@ -634,7 +638,7 @@ let test_property_registration_context buf =
 let assert_value_printer custom =
   let value_ctx =
     Css.Context.v
-      ~custom_properties:[ Css.Declaration.of_string (custom ^ ": red") ]
+      ~custom_properties:[ ok (Css.Declaration.of_string (custom ^ ": red")) ]
       ~base_url:"https://example.test/print.css"
       ~root_font_size:(Css.Values.Px 16.) ()
   in

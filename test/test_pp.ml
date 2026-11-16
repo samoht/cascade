@@ -161,6 +161,53 @@ let float_large_decimal_in_stylesheet () =
     "a{transform:scale(123456789012)}";
   check_sheet "opacity" "b{opacity:calc(999999999999.75)}" "b{opacity:1e12}"
 
+(* A magnitude past the [int] range prints in exponent notation. The exponent
+   carries no sign and no leading zeros whatever the C library's printf pads it
+   to, so the bytes are the same on every platform. CSS Syntax 3 sec. 4.3.13
+   reads the [+] after [e] as optional, so [1e30] and [1e+30] are one value and
+   the shorter is the minifier's. This is not CSSOM serialisation: CSSOM sec.
+   6.7.2 rounds a <number> to six decimals and notes that "scientific notation
+   is not used". *)
+let float_exponent_digits () =
+  check_float 1e19 ~expected:"1e19";
+  check_float (-1e20) ~expected:"-1e20";
+  check_float 3.40282e38 ~expected:"3.40282e38";
+  check_float 1e308 ~expected:"1e308";
+  match of_string "a{width:3.40282e38px}" with
+  | Error e -> failf "width: %s" (Pp.to_string Error.pp e)
+  | Ok { stylesheet; _ } ->
+      check string "width" "a{width:3.40282e38px}"
+        (to_string ~minify:true stylesheet)
+
+(* CSS Syntax 3 sec. 4.3.13 reads a number's exponent as well as its digits, so
+   a magnitude too small for the fixed decimal places still has a spelling of
+   its own value, and printing it as [0] or [-0] would change the value. The
+   rule [Pp.string_of_float] states: such a magnitude keeps [max_decimals]
+   significant digits, as decimals while it has at most 24 leading zeros and in
+   exponent notation (12 significant digits) past that. *)
+let float_sub_floor_magnitude () =
+  let zeros n = String.make n '0' in
+  check_float 1e-9 ~expected:".000000001";
+  check_float 1.5e-25 ~expected:(String.concat "" [ "."; zeros 24; "15" ]);
+  check_float 1.5e-26 ~expected:"1.5e-26";
+  check_float 1e-30 ~expected:"1e-30";
+  check_float (-1e-30) ~expected:"-1e-30";
+  check_float 4e-33 ~expected:"4e-33";
+  check_float (-4e-33) ~expected:"-4e-33";
+  check_float 1e-40 ~expected:"1e-40";
+  (* The least subnormal double. *)
+  check_float 5e-324 ~expected:"4.94065645841e-324";
+  check string "string_of_float keeps the sign" "-0.0000000012"
+    (Pp.string_of_float (-1.2e-9));
+  check_float_n 2 0.001 ~expected:".001"
+
+(* The [int] boundary: an integral value below 2^62 prints every digit, one at
+   or past it prints 12 significant digits in exponent notation. *)
+let float_int_boundary () =
+  check_float (0x1p62 -. 512.) ~expected:"4611686018427387392";
+  check_float 0x1p62 ~expected:"4.61168601843e18";
+  check_float (-0x1p62) ~expected:"-4.61168601843e18"
+
 (* CSS Values 4 sec. 10.7.2 puts the [NaN] keyword in the math-function grammar
    and nowhere else, and sec. 10.9.2 keeps NaN inside a calculation tree, so a
    value that is NaN has no bare spelling. Chrome drops [width: NaNpx],
@@ -327,6 +374,10 @@ let suite =
         float_large_decimal_reparses;
       Alcotest.test_case "float large decimal in stylesheet" `Quick
         float_large_decimal_in_stylesheet;
+      Alcotest.test_case "float exponent digits" `Quick float_exponent_digits;
+      Alcotest.test_case "float sub-floor magnitude" `Quick
+        float_sub_floor_magnitude;
+      Alcotest.test_case "float int boundary" `Quick float_int_boundary;
       Alcotest.test_case "nan never prints as a bare token" `Quick
         nan_never_prints_as_a_bare_token;
       Alcotest.test_case "nan leaf serializes as a math function" `Quick

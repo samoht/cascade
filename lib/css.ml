@@ -304,7 +304,10 @@ let rule ~selector ?nested ?merge_key declarations =
   Rule (Stylesheet.rule ~selector ?nested ?merge_key declarations)
 
 let keyframe ~selector ~declarations =
-  { Stylesheet.selector = Keyframe.selector_of_string selector; declarations }
+  match Keyframe.selector_of_string selector with
+  | Ok selector -> { Stylesheet.selector; declarations }
+  | Error e ->
+      invalid_arg (String.concat "" [ "Css.keyframe: "; Error.to_string e ])
 
 (* Re-export keyframes from Stylesheet *)
 let keyframes = Stylesheet.keyframes
@@ -553,10 +556,9 @@ type parse = {
   source : Source.t option;
 }
 
-let of_string ?(strict = false) ?(filename = "<string>")
-    ?(meta = Loc.default_meta_level) ?(enforce_spec = false)
-    ?(preserve_source = false) css =
-  let stamp e = Error.with_filename ~filename e in
+let of_string ?(strict = false) ?filename ?(meta = Loc.default_meta_level)
+    ?(enforce_spec = false) ?(preserve_source = false) css =
+  let stamp e = Error.with_filename ?filename e in
   try
     let source : Source.t option ref = ref Option.None in
     let on_source =
@@ -575,10 +577,11 @@ let of_string ?(strict = false) ?(filename = "<string>")
     else Ok { stylesheet; warnings; source = !source }
   with Error.Parse_error error -> Error (stamp error)
 
-let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
+let stylesheet ?strict ?filename ?meta ?enforce_spec css =
   match of_string ?strict ?filename ?meta ?enforce_spec css with
   | Ok { stylesheet; _ } -> stylesheet
-  | Error error -> Error.fail error
+  | Error e ->
+      invalid_arg (String.concat "" [ "Css.stylesheet: "; Error.to_string e ])
 
 (* Splicing a [@layer] body into its parent replaces one statement with several,
    which [edit_statements] cannot express and which does not need it: the splice
@@ -831,7 +834,7 @@ let bindable_theme_defaults lookup name =
 let root_theme_rule declarations =
   Stylesheet.Rule
     {
-      selector = Selector.of_string ":root";
+      selector = Selector.v ":root";
       declarations;
       nested = [];
       merge_key = None;
@@ -897,7 +900,15 @@ let merge_into_root_scope decls (stmts : Stylesheet.statement list) :
               merged := true;
               Stylesheet.Rule { r with declarations = decls @ r.declarations }
           | Stylesheet.Layer (n, b) -> Stylesheet.Layer (n, go b)
-          | other -> other
+          | ( Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+            | Namespace _ | Property _ | Layer_decl _ | Media _ | Container _
+            | Supports _ | Moz_document _ | Starting_style _ | When _ | Else _
+            | Supports_condition _ | Origin _ | Scope _ | Keyframes _
+            | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+            | Counter_style _ | Page _ | Page_with_margins _
+            | Font_palette_values _ | Font_feature_values _ | View_transition _
+            | Position_try _ | Viewport _ | Unknown_at_rule _ ) as other ->
+              other
         in
         stmt' :: go rest
   in

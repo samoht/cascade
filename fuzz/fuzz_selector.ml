@@ -14,10 +14,7 @@ let matches_literal s literal =
   let re = Re.(compile (str literal)) in
   Re.execp re s
 
-let parse_selector s =
-  try Some (Css.Selector.of_string s)
-  with Cursor.Parse_error _ | Invalid_argument _ -> None
-
+let parse_selector s = Result.to_option (Css.Selector.of_string s)
 let minified sel = Css.Selector.to_string ~minify:true sel
 
 let assert_stable input =
@@ -40,9 +37,7 @@ let assert_reject input =
 
 (** Selector.of_string -- must not crash on arbitrary input. *)
 let test_of_string buf =
-  try ignore (Css.Selector.of_string buf) with
-  | Cursor.Parse_error _ -> ()
-  | Invalid_argument _ -> ()
+  match Css.Selector.of_string buf with Ok _ | Error _ -> ()
 
 (** Selector.read -- must not crash. *)
 let test_read buf =
@@ -73,40 +68,28 @@ let test_read_nth buf =
 
 (** Roundtrip: parse -> to_string -> parse should not crash. *)
 let test_roundtrip buf =
-  match
-    try Some (Css.Selector.of_string buf)
-    with Cursor.Parse_error _ | Invalid_argument _ -> None
-  with
+  match Result.to_option (Css.Selector.of_string buf) with
   | None -> ()
   | Some sel -> (
       let s = Css.Selector.to_string sel in
-      try ignore (Css.Selector.of_string s)
-      with Cursor.Parse_error _ | Invalid_argument _ ->
-        fail "roundtrip re-parse crashed")
+      match Css.Selector.of_string s with
+      | Ok _ -> ()
+      | Error _ -> fail "roundtrip re-parse crashed")
 
 (** pp -- must not crash on any parsed selector. *)
 let test_pp buf =
-  match
-    try Some (Css.Selector.of_string buf)
-    with Cursor.Parse_error _ | Invalid_argument _ -> None
-  with
+  match Result.to_option (Css.Selector.of_string buf) with
   | None -> ()
   | Some sel -> ignore (Css.Selector.to_string sel)
 
 (** Selectors specificity is structural and must be stable across
     parse/serialize/reparse for accepted selectors. *)
 let test_specificity_roundtrip buf =
-  match
-    try Some (Css.Selector.of_string buf)
-    with Cursor.Parse_error _ | Invalid_argument _ -> None
-  with
+  match Result.to_option (Css.Selector.of_string buf) with
   | None -> ()
   | Some sel -> (
       let serialized = Css.Selector.to_string ~minify:true sel in
-      match
-        try Some (Css.Selector.of_string serialized)
-        with Cursor.Parse_error _ | Invalid_argument _ -> None
-      with
+      match Result.to_option (Css.Selector.of_string serialized) with
       | None -> fail "specificity roundtrip serialization did not reparse"
       | Some reparsed ->
           let before = Css.Selector.specificity sel in
@@ -120,18 +103,14 @@ let test_specificity_roundtrip buf =
    Initial garbage input may fail to parse (out of scope); once a parse succeeds
    the serializer must always emit reparseable output. *)
 let parse_or_skip parse buf k =
-  match
-    try Some (parse buf)
-    with Cursor.Parse_error _ | Invalid_argument _ -> None
-  with
-  | None -> ()
-  | Some x -> k x
+  match parse buf with Error _ -> () | Ok x -> k x
 
 let reparse_or_fail parse step s =
-  try parse s
-  with (Cursor.Parse_error _ | Invalid_argument _) as exn ->
-    failf "serializer emitted un-reparseable output at %s: %S (%s)" step s
-      (Printexc.to_string exn)
+  match parse s with
+  | Ok x -> x
+  | Error e ->
+      failf "serializer emitted un-reparseable output at %s: %S (%s)" step s
+        (Error.to_string e)
 
 let test_serialization_idempotent buf =
   parse_or_skip Css.Selector.of_string buf @@ fun sel ->
@@ -149,7 +128,10 @@ let test_serialization_idempotent buf =
 
 let test_selector_list_serialization_idempotent buf =
   let serialize = Css.Selector.to_string ~minify:true in
-  let parse s = Css.Selector.read_selector_list (Cursor.of_string s) in
+  let parse s =
+    Error.catch @@ fun () ->
+    Css.Selector.read_selector_list (Cursor.of_string s)
+  in
   parse_or_skip parse buf @@ fun selectors ->
   let once = serialize selectors in
   let twice = serialize (reparse_or_fail parse "first reparse" once) in
@@ -183,7 +165,10 @@ let test_canonicalize_preserves_physical_identity buf =
 (* Same fixed-point identity contract on a selector list, the construct
    canonicalize sorts and de-duplicates. *)
 let test_list_canon_identity buf =
-  let parse s = Css.Selector.read_selector_list (Cursor.of_string s) in
+  let parse s =
+    Error.catch @@ fun () ->
+    Css.Selector.read_selector_list (Cursor.of_string s)
+  in
   parse_or_skip parse buf @@ fun selectors ->
   let canon = Css.Selector.canonicalize selectors in
   let again = Css.Selector.canonicalize canon in

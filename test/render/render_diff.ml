@@ -140,6 +140,17 @@ let container_conflict_hoisted =
 .rd-cw .rd-cx { color: #090 }
 |css}
 
+(* Two rules of one weight that one element meets only once case is folded, with
+   a rule between them the last one has to stay behind. Selectors 4 sec. 6.3:
+   the [i] flag matches [data-x="A"], which [:not([data-x=a])] matches too. HTML
+   sec. 4.16.2: [DIV] and [div] both match [<div>]. The derived document holds
+   such an element, so a reorder that reads the pair as disjoint paints it
+   blue. *)
+let case_attr_sheet =
+  {css|.z{color:red}:not([data-x=a]){color:#00f}[data-x="a" i]{color:red}|css}
+
+let case_element_sheet = {css|span{color:red}div{color:#00f}DIV{color:red}|css}
+
 (* [Differs] is the expected-failure marker: the harness fails when the pair it
    names renders the same, so a fix cannot leave the pin behind. *)
 type expectation = Same | Differs of string
@@ -179,6 +190,8 @@ let hand_written =
     sheet "smoke" smoke_sheet;
     sheet "nth-last-child-of" nth_last_of_sheet;
     sheet "distant-container" distant_container_sheet;
+    sheet "case-folded-attribute" case_attr_sheet;
+    sheet "case-folded-element" case_element_sheet;
     pair "container-conflict" ~source:container_conflict_sheet
       ~expect:
         (Differs "the hoisted block loses the colour the crossed rule set")

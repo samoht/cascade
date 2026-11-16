@@ -81,6 +81,18 @@ module String : sig
       that line's end. *)
 end
 
+val int_of_float_opt : float -> int option
+(** [int_of_float_opt f] is [Some (int_of_float f)] when [f] lies strictly
+    between [-2^62] and [2^62], where every integer-valued float is an [int],
+    and [None] otherwise, NaN included. Past that bound [int_of_float] returns
+    [min_int] or a value that depends on the platform. *)
+
+val canonical_exponent : string -> string
+(** [canonical_exponent s] is [s] with the exponent after its first [e] written
+    without a [+] sign or leading zeros, keeping at least one digit, so
+    [canonical_exponent "3.40282e+038"] is ["3.40282e38"]. A string with no [e]
+    is returned unchanged. *)
+
 val mix_int : int -> int -> int
 (** [mix_int acc x] folds the integer [x] into the running hash [acc]. *)
 

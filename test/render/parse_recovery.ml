@@ -244,6 +244,18 @@ let curated =
     ( "custom_prop_bad_string",
       ".a { --x: \"ab\"; color: green }",
       ".a { --x: \"ab\n; color: green }" );
+    (* CSS Syntax 3 sec. 3.3 turns a CRLF, CR or FF into an LF, and sec. 4.3.5
+       consumes a backslash before it as a line continuation, so each string
+       stays a string, where an unescaped line break ends it as a bad string. *)
+    ( "string_continuation_crlf",
+      ".a { content: \"ab\"; color: green }",
+      ".a { content: \"a\\\r\nb\"; color: green }" );
+    ( "string_continuation_cr",
+      ".a { content: \"ab\"; color: green }",
+      ".a { content: \"a\\\rb\"; color: green }" );
+    ( "string_continuation_ff",
+      ".a { content: \"ab\"; color: green }",
+      ".a { content: \"a\\\012b\"; color: green }" );
     ( "custom_prop_semicolon_in_parens",
       ".a { --x: (a); color: green }",
       ".a { --x: (a;b); color: green }" );
@@ -354,6 +366,171 @@ let curated =
     ( "late_namespace",
       ".a { color: green }\n.b { color: red }",
       ".a { color: green }\n@namespace x url(y);\n.b { color: red }" );
+    (* CSS Cascade 5 sec. 2 places an @import before every other valid at-rule
+       and style rule but @charset and @layer statements. The CSSOM shows an
+       import as a CSSImportRule whether or not its sheet loads, so each case
+       says whether the import survived. *)
+    ( "comment_before_import",
+      "@import url(a.css);\n.a { color: green }",
+      "/*! license */\n@import url(a.css);\n.a { color: green }" );
+    ( "comment_between_imports",
+      "@import url(a.css);\n@import url(b.css);\n.a { color: green }",
+      "@import url(a.css);\n/*! c */\n@import url(b.css);\n.a { color: green }"
+    );
+    ( "unknown_at_rule_before_import",
+      "@import url(a.css);\n.a { color: green }",
+      "@foo bar;\n@import url(a.css);\n.a { color: green }" );
+    ( "invalid_rule_before_import",
+      "@import url(a.css);\n.a { color: green }",
+      "..b { color: red }\n@import url(a.css);\n.a { color: green }" );
+    ( "layer_block_before_import",
+      "@import url(a.css);\n\
+       @layer x { .b { color: blue } }\n\
+       .a { color: green }",
+      "@layer x { .b { color: blue } }\n\
+       @import url(a.css);\n\
+       .a { color: green }" );
+    (* Media Queries 4 sec. 3.2 reads a query that does not parse as [not all],
+       and the rule stays. Its parentheses are balanced: an unclosed one would
+       carry the rest of the sheet into the prelude. *)
+    ( "bad_media_before_import",
+      "@import url(a.css);\n\
+       @media screen screen { .b { color: blue } }\n\
+       .a { color: green }",
+      "@media screen screen { .b { color: blue } }\n\
+       @import url(a.css);\n\
+       .a { color: green }" );
+    ( "namespace_before_import",
+      "@import url(a.css);\n@namespace x url(y);\n.a { color: green }",
+      "@namespace x url(y);\n@import url(a.css);\n.a { color: green }" );
+    (* CSS Namespaces 3 sec. 3 places an @namespace before every other
+       non-ignored at-rule but @charset and @import. *)
+    ( "namespace_after_layer_statement",
+      "@import url(a.css);\n\
+       @namespace x url(y);\n\
+       @layer l;\n\
+       .a { color: green }",
+      "@import url(a.css);\n\
+       @layer l;\n\
+       @namespace x url(y);\n\
+       .a { color: green }" );
+    ( "namespace_after_leading_layer_statement",
+      "@namespace x url(y);\n@layer l;\n.a { color: green }",
+      "@layer l;\n@namespace x url(y);\n.a { color: green }" );
+    (* CSS Animations 1 sec. 3 ignores an !important declaration in a keyframe
+       and every property it defines but animation-timing-function. *)
+    ( "keyframe_important",
+      "@keyframes k { from { opacity: 0; color: red } }",
+      "@keyframes k { from { opacity: 0; color: red !important } }" );
+    ( "keyframe_animation_name",
+      "@keyframes k { from { opacity: 0 } }",
+      "@keyframes k { from { opacity: 0; animation-name: x } }" );
+    ( "keyframe_animation_duration",
+      "@keyframes k { from { opacity: 0 } }",
+      "@keyframes k { from { opacity: 0; animation-duration: 1s } }" );
+    ( "keyframe_animation_timing_function",
+      "@keyframes k { from { opacity: 0 } }",
+      "@keyframes k { from { opacity: 0; animation-timing-function: linear } }"
+    );
+    (* Selectors 4 sec. 6.1: an attribute value is an ident or a string, so a
+       numeric token there is an invalid selector and the rule goes. *)
+    ( "attr_number_value",
+      "[data-x=\"2\"] { color: green }\n.b { color: red }",
+      "[data-x=2] { color: green }\n.b { color: red }" );
+    ( "attr_dimension_value",
+      "[data-x=\"2px\"] { color: green }\n.b { color: red }",
+      "[data-x=2px] { color: green }\n.b { color: red }" );
+    ( "attr_percentage_value",
+      "[data-x=\"50%\"] { color: green }\n.b { color: red }",
+      "[data-x=50%] { color: green }\n.b { color: red }" );
+    (* CSS Syntax 3 sec. 4.3.10: a sign or a [.] before a digit starts a number,
+       so each of these is a <number-token> and the rule goes. *)
+    ( "attr_negative_number_value",
+      "[x=\"-2\"] { color: green }\n.b { color: red }",
+      "[x=-2] { color: green }\n.b { color: red }" );
+    ( "attr_plus_number_value",
+      "[x=\"+2\"] { color: green }\n.b { color: red }",
+      "[x=+2] { color: green }\n.b { color: red }" );
+    ( "attr_fraction_value",
+      "[x=\".5\"] { color: green }\n.b { color: red }",
+      "[x=.5] { color: green }\n.b { color: red }" );
+    ( "attr_number_value_with_flag",
+      "[x=\"2\" i] { color: green }\n.b { color: red }",
+      "[x=2 i] { color: green }\n.b { color: red }" );
+    ( "attr_any_namespace_number_value",
+      "[*|x=\"2\"] { color: green }\n.b { color: red }",
+      "[*|x=2] { color: green }\n.b { color: red }" );
+    ( "attr_no_namespace_number_value",
+      "[|x=\"2\"] { color: green }\n.b { color: red }",
+      "[|x=2] { color: green }\n.b { color: red }" );
+    (* Sec. 4.3.1: [#a] is a <hash-token> and a lone [-] a <delim-token>,
+       neither an ident nor a string. *)
+    ( "attr_hash_value",
+      "[x=\"#a\"] { color: green }\n.b { color: red }",
+      "[x=#a] { color: green }\n.b { color: red }" );
+    ( "attr_lone_dash_value",
+      "[x=\"-\"] { color: green }\n.b { color: red }",
+      "[x=-] { color: green }\n.b { color: red }" );
+    (* Sec. 4.3.9: [--], [-] before a name code point and an escape each start
+       an ident sequence, so these are <ident-token>s and the rule stays: the
+       values are "--2", "-a", "2" and "-2". *)
+    ( "attr_double_dash_value",
+      "[x=\"--2\"] { color: green }\n.b { color: red }",
+      "[x=--2] { color: green }\n.b { color: red }" );
+    ( "attr_dash_ident_value",
+      "[x=\"-a\"] { color: green }\n.b { color: red }",
+      "[x=-a] { color: green }\n.b { color: red }" );
+    ( "attr_escaped_digit_value",
+      "[x=\"2\"] { color: green }\n.b { color: red }",
+      "[x=\\32] { color: green }\n.b { color: red }" );
+    ( "attr_dash_escaped_digit_value",
+      "[x=\"-2\"] { color: green }\n.b { color: red }",
+      "[x=-\\32] { color: green }\n.b { color: red }" );
+    (* CSS Syntax 3 sec. 4.3.5: a backslash in a string escapes the next code
+       point, so ["a\\b"] is the value [a\b]; a bare [a\b] is [a] then the hex
+       escape [\b], U+000B (sec. 4.3.7). *)
+    ( "attr_string_backslash_value",
+      "[x=\"ab\"] { color: green }\n.b { color: red }",
+      "[x=\"a\\\\b\"] { color: green }\n.b { color: red }" );
+    (* CSS Syntax 3 sec. 4.3.13 reads an exponent, so a magnitude below the
+       printer's fixed decimals is still that magnitude, not 0. *)
+    ( "media_tiny_resolution",
+      "@media (min-resolution: 1dpi) { .a { color: green } }\n.b { color: red }",
+      "@media (min-resolution: 4e-33dpi) { .a { color: green } }\n\
+       .b { color: red }" );
+    ( "container_tiny_width",
+      "@container (min-width: 1rem) { .a { color: green } }\n.b { color: red }",
+      "@container (min-width: 4e-33rem) { .a { color: green } }\n\
+       .b { color: red }" );
+    (* Sec. 4.3.13 takes [E] for [e] and an optional [+]. *)
+    ( "media_exponent_spellings",
+      "@media (min-resolution: 1dpi) { .a { color: green } }\n.b { color: red }",
+      "@media (min-resolution: 1E30dpi) { .a { color: green } }\n\
+       @media (min-resolution: 1e+30dpi) { .c { color: green } }\n\
+       .b { color: red }" );
+    (* Scroll-driven Animations 1, Appendix A: [<keyframe-selector> = from | to
+       | <percentage [0,100]> | <timeline-range-name> <percentage>]. Only the
+       plain percentage is bounded. *)
+    ( "keyframe_range_offset_exponent",
+      "@keyframes k { from { opacity: 0 } entry 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } entry 1e30% { opacity: 1 } }\n\
+       .a { color: green }" );
+    ( "keyframe_range_offset_negative",
+      "@keyframes k { from { opacity: 0 } entry 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } entry -1e30% { opacity: 1 } }\n\
+       .a { color: green }" );
+    ( "keyframe_range_offset_tiny",
+      "@keyframes k { from { opacity: 0 } entry 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } entry 4e-33% { opacity: 1 } }\n\
+       .a { color: green }" );
+    ( "keyframe_plain_offset_exponent",
+      "@keyframes k { from { opacity: 0 } 50% { opacity: 1 } }\n\
+       .a { color: green }",
+      "@keyframes k { from { opacity: 0 } 1e30% { opacity: 1 } }\n\
+       .a { color: green }" );
     ( "unbalanced_open_bracket",
       ".a[x=y] { color: green }\n.b { color: red }",
       ".a[x { color: green }\n.b { color: red }" );
@@ -367,6 +544,73 @@ let curated =
       ".a { --x: y; color: green }",
       ".a { --x: y !important; color: green }" );
   ]
+
+(* [opener] [n] times, then [inner], then [closer] [n] times. *)
+let nested n ~opener ~inner ~closer =
+  let b = Buffer.create ((n * 4) + String.length inner) in
+  for _ = 1 to n do
+    Buffer.add_string b opener
+  done;
+  Buffer.add_string b inner;
+  for _ = 1 to n do
+    Buffer.add_string b closer
+  done;
+  Buffer.contents b
+
+(* Nesting depth, which CSS Syntax 3 (ED) does not limit and the CSSWG left to
+   each UA (w3c/csswg-drafts#2881). Measured in Chrome 157: a custom property
+   nested 100,000 deep in [(], [[] or [a(] is kept whole, and so is a [color]
+   nesting [var()] 200 deep, so cascade keeps a value past
+   [Parser.max_nesting_depth] as the flat run of tokens it is. Style rules and
+   [\@media] rules nested 1,000 deep are kept too, past the depth cascade reads
+   rules to; {!depth_limited} names what that drops. A deep sheet is no
+   malformation, so it is its own control, but for the stray closer, whose
+   control has none. A label counts the levels the openers nest, the innermost
+   style rule being one more: [.o] holds the [a] rules, and [.a] sits in the
+   [\@media] ones. *)
+let deep =
+  let named label n = String.concat "_" [ "deep"; label; string_of_int n ] in
+  let sheet label ?(control = Fun.id) ~prefix ~opener ~inner ~closer ~suffix n =
+    let at inner =
+      String.concat "" [ prefix; nested n ~opener ~inner ~closer; suffix ]
+    in
+    (named label n, at (control inner), at inner)
+  in
+  let value (label, opener, closer) =
+    List.map
+      (sheet
+         (String.concat "_" [ "value"; label ])
+         ~prefix:".a { --x: " ~opener ~inner:"x" ~closer
+         ~suffix:"; color: green }\n.b { color: red }")
+      [ 128; 129; 1_000; 10_000; 100_000 ]
+  in
+  List.concat_map value
+    [ ("paren", "(", ")"); ("square", "[", "]"); ("function", "a(", ")") ]
+  @ List.map
+      (sheet "rules" ~prefix:".s { color: blue }\n.o { color: blue; "
+         ~opener:"a { " ~inner:"color: green" ~closer:" }"
+         ~suffix:" z-index: 1 }\n.b { color: red }")
+      [ 127; 128; 999 ]
+  @ List.map
+      (sheet "media" ~prefix:".s { color: blue }\n" ~opener:"@media x { "
+         ~inner:".a { color: green }" ~closer:" }" ~suffix:"\n.b { color: red }")
+      [ 127; 128; 999 ]
+  (* CSS Variables 1 sec. 3: a [var()] leaves a standard property's value to
+     computed-value time, however deep. *)
+  @ List.map
+      (sheet "var" ~prefix:".a { color: " ~opener:"var(--a, " ~inner:"red"
+         ~closer:")" ~suffix:"; z-index: 1 }\n.b { color: red }")
+      [ 129; 200 ]
+  (* CSS Syntax 3 (ED) sec. 5.5.9 ends a block only at its own closer, so the
+     [)] inside [[ ]] is a token of that block, and sec. 7.2 bars it from a
+     <declaration-value> as unmatched: the custom property goes at any depth,
+     the rule after it stays. *)
+  @ List.map
+      (sheet "mismatched_closer"
+         ~control:(fun _ -> "[]x")
+         ~prefix:".a { --x: " ~opener:"(" ~inner:"[)]x" ~closer:")"
+         ~suffix:" }\n.b { color: red }")
+      [ 10; 129 ]
 
 let corpus ~sample =
   let jobs = ref [] in
@@ -430,7 +674,7 @@ let corpus ~sample =
       add
         (String.concat "" [ "curated/"; label ])
         "curated" case (Some control_id))
-    curated;
+    (curated @ deep);
   List.rev !jobs
 
 (* ===== Cascade's side ===== *)
@@ -777,6 +1021,33 @@ let rule_path fact =
 
 let is_declaration fact = Option.is_some (String.index_opt fact '#')
 
+(* The rules a fact is nested in, the rule itself counted: the [>] between the
+   segments of its rule path. The driver escapes it inside an identity. *)
+let fact_depth fact = List.length (String.split_on_char '>' (rule_path fact))
+
+(* Whether fact [f] is [g] or a rule [g] is nested in. *)
+let holds f g =
+  String.equal f g
+  || String.starts_with ~prefix:(String.concat "" [ f; ">" ]) g
+  || String.starts_with ~prefix:(String.concat "" [ f; "#" ]) g
+
+(* A loss that is cascade's own limit, not a recovery defect. The depth a reader
+   goes into is the UA's to choose (w3c/csswg-drafts#2881), and cascade reads
+   rules to [Parser.max_nesting_depth] and no further, where Chrome keeps 1,000
+   levels (the [deep_rules_] and [deep_media_] cases). Every fact cascade lost
+   is then nested past the limit, or a rule holding one and nothing else: the
+   driver reports no rule that declares nothing, so the empty rules around the
+   cut go with it. Read off the facts, so a loss of anything shallower is still
+   fatal. *)
+let depth_limited v =
+  is_empty v.under && is_empty v.rewritten
+  && (not (is_empty v.over))
+  &&
+  let deep =
+    List.filter (fun f -> fact_depth f > Parser.max_nesting_depth) v.over
+  in
+  List.for_all (fun f -> List.exists (holds f) deep) v.over
+
 (* The declarations the browser threw away from a rule it still parsed.
 
    Losing a whole rule is not evidence of a parse error: truncating a sheet at a
@@ -1036,7 +1307,10 @@ let () =
         !facts_seen + List.length (Hashtbl.find answers j.id).input_facts)
     jobs;
 
-  let findings = ref [] and strict_gaps = ref [] and excused = ref [] in
+  let findings = ref []
+  and strict_gaps = ref []
+  and excused = ref []
+  and depth_cut = ref [] in
   let over_n = ref 0 and under_n = ref 0 and rewritten_n = ref 0 in
   (* The browser's own deviation, kept apart from cascade's: it is reported in
      full and it does not fail the run, and a run that stops finding it says the
@@ -1052,6 +1326,9 @@ let () =
       let v = verdict answer in
       if browser_deviation v j.css then
         excused := { job = j; seen = v; small = j.css; alike = 1 } :: !excused
+      else if depth_limited v then
+        depth_cut :=
+          { job = j; seen = v; small = j.css; alike = 1 } :: !depth_cut
       else if not (agreed v) then begin
         if not (is_empty v.over) then incr over_n;
         if not (is_empty v.under) then incr under_n;
@@ -1100,7 +1377,8 @@ let () =
     jobs;
   let findings = List.rev !findings
   and strict_gaps = List.rev !strict_gaps
-  and excused = List.rev !excused in
+  and excused = List.rev !excused
+  and depth_cut = List.rev !depth_cut in
 
   Fmt.pr "%s: %d input(s), %d browser fact(s), seed %d, %.1fs@." harness
     (List.length jobs) !facts_seen !corpus_seed elapsed;
@@ -1155,6 +1433,18 @@ let () =
         Fmt.pr "  input:     %s@." (one_line f.job.css);
         show_facts "cascade kept, browser dropped:" f.seen.under)
       (representatives excused)
+  end;
+  if not (is_empty depth_cut) then begin
+    Fmt.pr
+      "@.=== CASCADE (rules nested past Parser.max_nesting_depth = %d, a \
+       UA-defined limit) (%d) ===@."
+      Parser.max_nesting_depth (List.length depth_cut);
+    List.iter
+      (fun f ->
+        Fmt.pr "@.%s [%s]@." f.job.id f.job.family;
+        Fmt.pr "  input:     %s@." (one_line f.job.css);
+        show_facts "browser kept, cascade dropped:" f.seen.over)
+      depth_cut
   end;
 
   if is_empty findings && is_empty strict_gaps then begin
