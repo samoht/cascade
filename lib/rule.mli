@@ -21,6 +21,15 @@ val finalize :
 val drop_shadowed : Stylesheet.rule list -> Stylesheet.rule list
 (** Drop same-selector shadowed rules and declarations. *)
 
+val normalize :
+  ctx:Ctx.t ->
+  held:Shorthand.held ->
+  Stylesheet.rule list ->
+  Stylesheet.rule list
+(** [normalize ~ctx ~held rules] runs the rule-local passes over a rule run:
+    {!single} on each rule, {!drop_shadowed} over the run and {!finalize} on
+    each rule, with [held] summarising the run. *)
+
 val merge_adjacent_identical :
   ctx:Ctx.t -> Stylesheet.rule list -> Stylesheet.rule list
 (** Merge each maximal run of adjacent rules whose declaration bodies are

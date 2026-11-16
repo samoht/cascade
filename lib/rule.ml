@@ -351,6 +351,13 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
 let drop_shadowed rules =
   rules |> drop_shadowed_declarations |> drop_shadowed_rules
 
+(* The cheap rule-local pipeline, run on a rule run before the factoring and
+   independent of the stylesheet-wide factoring budget. *)
+let normalize ~ctx ~held rules =
+  list_map_preserve (single ~ctx) rules
+  |> drop_shadowed
+  |> list_map_preserve (finalize ~held ~canonicalize_selector:false ~ctx)
+
 (* Adjacent identical-body merging: two neighbouring rules with the same
    declarations apply identically whether split or grouped, so the merge is
    cascade-safe for any DOM with no ordering analysis. It runs locally because

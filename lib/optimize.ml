@@ -65,7 +65,6 @@ let merge_overflow_longhands = Shorthand.merge_overflow_longhands
 let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
 let compose_shorthands = Shorthand.compose_shorthands
 let deduplicate_declarations = Shorthand.deduplicate_declarations
-let single_rule_without_nested = Rule.single
 let declaration_run = Rule.declaration_run
 let finalize_rule_without_nested = Rule.finalize
 
@@ -125,16 +124,6 @@ let factor_rules_incremental ?cache ~settle ~ctx ~held rules =
   Factor.run ?cache ~settle ~ctx
     ~finalize:(finalize_rule_without_nested ~held ~ctx)
     rules
-
-(* Keep the cheap rule-local pipeline independent of the stylesheet-wide
-   factoring budget. [Rule.finalize] normalizes any shorthand it synthesizes, so
-   one linear preparation pass reaches the local fixed point even when a large
-   stylesheet limits the global walks. *)
-let normalize_rules_locally ~ctx ~held rules =
-  list_map_preserve (single_rule_without_nested ~ctx) rules
-  |> Rule.drop_shadowed
-  |> list_map_preserve
-       (finalize_rule_without_nested ~held ~canonicalize_selector:false ~ctx)
 
 let merge_adjacent_and_mark ~ctx invalidated rules =
   let settled = Rule.merge_adjacent_identical ~ctx rules in
@@ -581,7 +570,7 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   in
   (* Apply local rule normalization before the DAG factor scheduler decides
      global selector/declaration grouping. *)
-  let prepared = normalize_rules_locally ~ctx ~held with_optimized_nested in
+  let prepared = Rule.normalize ~ctx ~held with_optimized_nested in
   (* Factoring is greedy and global: extracting one shared declaration subset
      can leave behind leftovers that are themselves factorable. The local linear
      optimizations above always run; this incremental gate only decides whether
