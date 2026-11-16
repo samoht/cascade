@@ -194,6 +194,11 @@ let cmd =
         "Nesting is flattened before anything is judged, since a nested \
          selector is written against its parent. Pipe the result through \
          $(b,cascade --minify) to nest it again.";
+      `S Manpage.s_examples;
+      `P "See what would go, then write the pruned stylesheet:";
+      `Pre
+        "cascade prune --dry-run src/*.html style.css\n\
+         cascade prune src/*.html style.css > style.pruned.css";
     ]
   in
   Cmd.v (Cmd.info "prune" ~doc ~man ~exits) Term.(term_result term)

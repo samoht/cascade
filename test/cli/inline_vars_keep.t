@@ -76,6 +76,6 @@ effect on its own.
 A wildcard [*] is rejected with a clear error - names must be listed
 explicitly.
 
-  $ cascade --minify --inline-vars --keep-vars="*" theme.css 2>&1 | head -3
+  $ cascade --minify --inline-vars --keep-vars="*" theme.css
   Error: --keep-vars does not accept the wildcard "*"; list names explicitly.
   [1]

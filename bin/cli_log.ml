@@ -4,7 +4,7 @@ type verbosity = Quiet | Normal | Verbose
 
 let quiet =
   let doc = "Print errors only: no parse warning and no note." in
-  Arg.(value & flag & info [ "q"; "quiet" ] ~doc)
+  Arg.(value & flag & info [ "q"; "quiet" ] ~docs:Manpage.s_common_options ~doc)
 
 let verbosity =
   let doc =
@@ -12,7 +12,9 @@ let verbosity =
      under the first. Twice ($(b,-vv)) also prints the optimizer's step \
      tracing."
   in
-  Arg.(value & flag_all & info [ "v"; "verbose" ] ~doc)
+  Arg.(
+    value & flag_all
+    & info [ "v"; "verbose" ] ~docs:Manpage.s_common_options ~doc)
 
 let setup quiet verbose =
   let verbosity, level =

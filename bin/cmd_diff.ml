@@ -653,20 +653,21 @@ let compare_files file1 file2 style_renderer mode limit json opts document
               source2
         | Error e, _ | _, Error e -> Error e)
 
+let canonical_options = "CANONICAL OPTIONS"
+let browser_options = "BROWSER OPTIONS"
+
 let file1_arg =
-  let doc = "First CSS file to compare (expected/reference; use - for stdin)" in
+  let doc = "The reference stylesheet; $(b,-) reads standard input." in
   Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE1" ~doc)
 
 let file2_arg =
-  let doc = "Second CSS file to compare (actual/test; use - for stdin)" in
+  let doc = "The stylesheet compared with it; $(b,-) reads standard input." in
   Arg.(required & pos 1 (some file) None & info [] ~docv:"FILE2" ~doc)
 
 let mode_arg =
   let doc =
-    "Diff mode: 'auto' (smart detection), 'tree' (force structural diff), \
-     'string' (force string diff), or 'canonical' (independently optimize and \
-     minify both inputs with the same canonical settings, then compare the \
-     resulting bytes)"
+    "What counts as a difference: $(b,auto), $(b,tree), $(b,string) or \
+     $(b,canonical), as the description says."
   in
   let mode_conv =
     Arg.enum
@@ -731,7 +732,7 @@ let lossless_arg =
      report as different rather than collapsing to equal. Has no effect \
      outside $(b,--diff=canonical)."
   in
-  Arg.(value & flag & info [ "lossless" ] ~doc)
+  Arg.(value & flag & info [ "lossless" ] ~docs:canonical_options ~doc)
 
 let enforce_spec_arg =
   let doc =
@@ -744,7 +745,7 @@ let enforce_spec_arg =
      targets reads it, so two sheets that differ there report as different. \
      Has no effect outside $(b,--diff=canonical)."
   in
-  Arg.(value & flag & info [ "enforce-spec" ] ~doc)
+  Arg.(value & flag & info [ "enforce-spec" ] ~docs:canonical_options ~doc)
 
 let prune_unused_custom_props_arg =
   let doc =
@@ -754,7 +755,9 @@ let prune_unused_custom_props_arg =
      dead-custom-property divergences (a render-no-op); enable only when that \
      difference is immaterial. Has no effect outside $(b,--diff=canonical)."
   in
-  Arg.(value & flag & info [ "prune-unused-custom-props" ] ~doc)
+  Arg.(
+    value & flag
+    & info [ "prune-unused-custom-props" ] ~docs:canonical_options ~doc)
 
 let browser_arg =
   let doc =
@@ -771,11 +774,14 @@ let browser_arg =
      headless Chromium ($(b,NODE), $(b,CHROME), or the usual places) and exits \
      2 without them."
   in
-  Arg.(value & flag & info [ "browser" ] ~doc)
+  Arg.(value & flag & info [ "browser" ] ~docs:browser_options ~doc)
 
 let html_arg =
   let doc = "The HTML document $(b,--browser) renders both files over." in
-  Arg.(value & opt (some file) None & info [ "html" ] ~docv:"FILE" ~doc)
+  Arg.(
+    value
+    & opt (some file) None
+    & info [ "html" ] ~docs:browser_options ~docv:"FILE" ~doc)
 
 let term =
   let open Term in
@@ -803,35 +809,47 @@ let man =
   [
     `S Manpage.s_description;
     `P
-      "$(tname) compares two CSS files and reports structural differences \
-       using a tree-based diff format with syntax highlighting.";
-    `P "The comparison parses both CSS files and detects:";
-    `I ("-", "Added, removed, or modified rules");
-    `I ("-", "Property value changes");
-    `I ("-", "Reordered rules");
-    `I ("-", "Changes in @media, @layer, and other at-rules");
-    `S Manpage.s_examples;
-    `P "Compare two CSS files:";
-    `Pre "  cascade diff reference.css output.css";
-    `P "Compare a stylesheet on standard input against a reference:";
-    `Pre "  cascade fmt --minify src.css | cascade diff reference.css -";
-    `P "Read the comparison as JSON instead of the report:";
-    `Pre "  cascade diff --json reference.css output.css";
+      "$(tname) parses $(i,FILE1) (the reference) and $(i,FILE2) and reports \
+       the rules and declarations that were added, removed, changed or moved \
+       between them. $(b,--diff) chooses what counts as a difference: \
+       $(b,auto) compares the structure and falls back to the text so that a \
+       formatting change still shows, $(b,tree) compares the structure only, \
+       $(b,string) the text, and $(b,canonical) minifies both sides the same \
+       way and compares the results, so two sheets that give every element the \
+       same computed values are the same.";
     `P
-      "Render both files over a document in a headless browser and report the \
-       computed styles that differ, as a report or as JSON:";
-    `Pre "  cascade diff --browser --html page.html reference.css output.css";
+      "The report opens with a summary: the size of each file and how many \
+       rules each kind of change touched. The parse warnings come next, a few \
+       and a count of the rest ($(b,-v) prints every one, $(b,-q) none), then \
+       the changes as a tree under $(b,---) $(i,FILE1) and $(b,+++) \
+       $(i,FILE2). A long report keeps as many changes as stay readable and \
+       says how to see the rest; $(b,--limit) sets that bound.";
+    `P
+      "The exit status is the verdict, described under EXIT STATUS: a script \
+       treats 1 as different and 2 as a failure to decide.";
+    `S Manpage.s_arguments;
+    `S Manpage.s_options;
+    `S canonical_options;
+    `S browser_options;
+    `S Manpage.s_examples;
+    `P "Compare two files, or a build's output on standard input:";
     `Pre
-      "  cascade diff --browser --html page.html --json reference.css \
-       output.css";
-    `P "Disable colors using flag:";
-    `Pre "  cascade diff --color=never reference.css output.css";
-    `P "Disable colors using NO_COLOR environment variable:";
-    `Pre "  NO_COLOR=1 cascade diff reference.css output.css";
+      "cascade diff reference.css output.css\n\
+       cascade --minify src.css | cascade diff reference.css -";
+    `P "Check that a refactor or a minifier did not change the page:";
+    `Pre "cascade diff --diff=canonical before.css after.css";
+    `P "Read the comparison as JSON instead of the report:";
+    `Pre "cascade diff --json reference.css output.css";
+    `P
+      "Render both files over a page in a headless browser and report the \
+       computed styles that differ:";
+    `Pre "cascade diff --browser --html page.html reference.css output.css";
+    `P "Without colours:";
+    `Pre "NO_COLOR=1 cascade diff reference.css output.css";
   ]
 
 let cmd =
-  let doc = "Compare two CSS files with structural analysis" in
+  let doc = "Compare two stylesheets by what they do" in
   let exits =
     Cli_exit.with_defaults
       [

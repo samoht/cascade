@@ -179,6 +179,10 @@ let cmd =
          element is a sibling like any other, and a kept rule may select \
          across it. A block the parser cannot use keeps its text as well, \
          rather than being emptied along with the blocks that were projected.";
+      `S Manpage.s_examples;
+      `Pre "cascade apply page.html > inlined.html";
+      `P "With an extra stylesheet, and without restating inherited values:";
+      `Pre "cascade apply --minimal page.html theme.css > inlined.html";
     ]
   in
   Cmd.v (Cmd.info "apply" ~doc ~man ~exits) Term.(term_result term)

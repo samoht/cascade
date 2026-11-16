@@ -11,18 +11,29 @@ let () =
   set_binary_mode_in stdin true
 
 let info =
-  let doc = "Tools to manipulate CSS files safely" in
+  let doc = "Format, minify, compare and prune CSS" in
   let man =
     [
       `S Manpage.s_description;
       `P
-        "Cascade ships four subcommands: $(b,fmt) (format, minify, inline \
-         imports), $(b,diff) (structural CSS diff), $(b,apply) (resolve a \
-         stylesheet into an HTML page's inline styles) and $(b,prune) (remove \
-         the rules a set of documents cannot use). When no subcommand is \
-         given, $(b,fmt) is used.";
+        "Cascade has four commands: $(b,fmt) formats and minifies a \
+         stylesheet, $(b,diff) compares two stylesheets by what they do, \
+         $(b,apply) moves a stylesheet into an HTML page's inline styles, and \
+         $(b,prune) removes the rules a set of pages never uses. Without a \
+         command, $(b,fmt) runs, so $(b,cascade style.css) is $(b,cascade fmt \
+         style.css). $(b,cascade) $(i,COMMAND) $(b,--help) describes each one.";
+      `P
+        "A parse warning reads $(i,file:line:column): $(b,warning:) \
+         $(i,message), followed by the line it is about. $(b,-q) hides them \
+         and $(b,-v) prints every one where a repeat is otherwise counted.";
+      `S Manpage.s_examples;
+      `Pre
+        "cascade --minify style.css > style.min.css\n\
+         cascade diff --diff=canonical style.css style.min.css\n\
+         cascade apply page.html theme.css > inlined.html\n\
+         cascade prune --dry-run src/*.html style.css";
       `S Manpage.s_bugs;
-      `P "Report bugs at https://github.com/samoht/cascade";
+      `P "Report bugs at https://github.com/samoht/cascade/issues";
     ]
   in
   Cmd.info "cascade" ~version:Cascade_info.version ~doc ~man
@@ -42,8 +53,16 @@ let help_or_version = function
 let option_like first =
   String.length first > 1 && first.[0] = '-' && first <> "-"
 
+(* A word with no dot or slash that names no file is a mistyped command
+   ([cascade fmtt a.css]) rather than a stylesheet, and cmdliner says so, with
+   the command it is closest to. *)
+let path_like first =
+  first = "-" || String.contains first '.' || String.contains first '/'
+  || Sys.file_exists first
+
 let default_fmt_arg first =
-  not (known_subcommand first || help_or_version first || option_like first)
+  path_like first
+  && not (known_subcommand first || help_or_version first || option_like first)
 
 (* cmdliner's [Cmd.group ~default] only invokes the default term when the
    command line is empty or the first positional is a known subcommand name; any

@@ -124,6 +124,15 @@
   and in the `diff` report; `apply` and `prune` take `-q` and `-v` for the first
   time. On netflix.com's stylesheet that is 43 lines of warnings instead of 478
   (#1332).
+- `cascade fmtt a.css` says `fmtt` is an unknown command and suggests `fmt`,
+  where it complained about `a.css`; a word that names no file and holds no `.`
+  or `/` is not taken for a stylesheet (#1333).
+- The help pages group the options by what they act on (minifying, inlining, the
+  canonical diff, the browser comparison), give every command examples and
+  describe the `diff` report. `--flatten-nesting` without `--minify` is noted as
+  doing nothing, as the other minifier options are, and `--keep-vars='*'` no
+  longer prints a stray `[1]`. The README's formatting check used `--diff=tree`,
+  which ignores formatting; it uses `--diff=string` (#1333).
 
 ### Diff report
 
