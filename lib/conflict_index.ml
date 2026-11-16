@@ -185,19 +185,18 @@ let collect_bucket bucket key specs stamp seen acc =
    declaration; every older node reaches both through the runs in between. So
    the group keeps only those two runs. Keeping only the newest would lose a
    node two runs back that writes neither the newest declaration nor the new
-   node's. [all] and [opaque] preserve full history for shapes where that
+   node's. [all_nodes] and [opaque] preserve full history for shapes where that
    compaction invariant does not apply. *)
 type writers = { decl : Declaration.declaration; mutable members : int list }
 
 type decl_groups = {
-  all : int list Decl_tbl.t;
   opaque : int list Decl_tbl.t;
   mutable newest : writers option;
       (** the newest run of simple branches writing one declaration *)
   mutable previous : writers option;  (** the run before [newest] *)
   mutable all_nodes : int list;
-      (** every node in [all], newest first, for the walk a query takes over the
-          whole group *)
+      (** every node of the group, newest first, for the walk a query takes over
+          the whole group *)
   mutable all_scanned : int;
       (** the query stamp that last walked [all_nodes]: a block node asks about
           one group once per branch and declaration that lands in it, and the
@@ -218,7 +217,6 @@ type selector_decl_groups = {
 
 let empty_decl_groups () =
   {
-    all = Decl_tbl.create 4;
     opaque = Decl_tbl.create 4;
     newest = Option.None;
     previous = Option.None;
@@ -270,7 +268,6 @@ let push_decl groups decl value =
 
 let add_decl ~compact groups decl value =
   let groups = importance_decl_groups groups decl in
-  push_decl groups.all decl value;
   groups.all_nodes <- value :: groups.all_nodes;
   if compact then (
     match groups.newest with
