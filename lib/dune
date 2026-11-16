@@ -105,6 +105,7 @@
   variables_layout
   variables_property
   rule_graph
+  conflict_index
   rule_scheduler
   preflight
   ctx

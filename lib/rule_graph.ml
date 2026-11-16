@@ -2,6 +2,7 @@
 
 open Stylesheet
 open Stdlib
+open Conflict_index
 
 (* The declaration-keyed bucket index is probed once per overlap key per node
    while a graph is built, and a generic [Hashtbl] compares whole declaration
@@ -22,15 +23,6 @@ module Key_tbl = Hashtbl.Make (struct
 end)
 
 module String_table = Common.Table.Make (String)
-
-(* Packed specificities, so the bucket index is keyed by an immediate rather
-   than by a record a generic table would hash and compare field by field. *)
-module Spec_table = Common.Table.Make (struct
-  type t = int
-
-  let equal = Int.equal
-  let hash = Hashtbl.hash
-end)
 
 module Node_id = struct
   type t = int
@@ -300,13 +292,6 @@ let nodes_conflict_reason t i j =
 
 let nodes_conflict t i j = nodes_conflict_reason t i j <> Option.None
 
-module Overlap_key_table = Hashtbl.Make (struct
-  type t = Shorthand.overlap_key
-
-  let equal = Shorthand.overlap_key_equal
-  let hash = Shorthand.overlap_key_hash
-end)
-
 let declaration_overlap decl =
   { decl; footprint = Shorthand.declaration_overlap_keys decl }
 
@@ -414,49 +399,21 @@ let facts_conflict a b =
 let rules_conflict ?parent a b =
   facts_conflict (facts ?parent a) (facts ?parent b)
 
-(* A cascade conflict needs two selector branches of equal specificity, so a
-   candidate bucket is keyed by specificity as well as by overlap key: rules
-   that write the same property at specificities that can never tie are not
-   enumerated at all, which is four candidate pairs in five of a real
-   stylesheet. The three components count simple selectors and sit far below the
-   20-bit field; one past it saturates, which can only merge two specificities
-   into one bucket, never split one. *)
-let spec_field = 0xFFFFF
-let spec_component x = if x > spec_field then spec_field else x
+type facts_index = facts positioned
 
-let spec_key (s : Selector.specificity) =
-  (spec_component s.ids lsl 40)
-  lor (spec_component s.classes lsl 20)
-  lor spec_component s.elements
+let facts_index = positioned
 
-let rec spec_key_mem (key : int) = function
-  | [] -> false
-  | k :: rest -> key = k || spec_key_mem key rest
+let index_facts index ~at rule =
+  add_at index ~at
+    ~specs:(distinct_spec_keys [] rule.branch_weights)
+    ~keys:(fst (Lazy.force rule.footprints))
+    rule
 
-(* The distinct specificities of a node's branches. A rule has a handful of
-   branches, so the linear membership test beats sorting them. *)
-let rec distinct_spec_keys acc = function
-  | [] -> acc
-  | spec :: rest ->
-      let key = spec_key spec in
-      distinct_spec_keys (if spec_key_mem key acc then acc else key :: acc) rest
-
-let spec_bucket bucket key =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.Some inner -> inner
-  | Option.None ->
-      let inner = Spec_table.create 4 in
-      Overlap_key_table.replace bucket key inner;
-      inner
-
-let rec add_spec_buckets bucket value = function
-  | [] -> ()
-  | spec :: rest ->
-      Spec_table.push bucket spec value;
-      add_spec_buckets bucket value rest
-
-let add_bucket bucket key specs value =
-  add_spec_buckets (spec_bucket bucket key) value specs
+let conflicts_after index ~after rule =
+  exists_after index ~after
+    ~specs:(distinct_spec_keys [] rule.branch_weights)
+    ~keys:(fst (Lazy.force rule.footprints))
+    (facts_conflict rule)
 
 (* [seen] is a per-target stamp array indexed by node id: [seen.(i) = stamp]
    means node [i] is already a candidate for the current target. The target's

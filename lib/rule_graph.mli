@@ -152,6 +152,22 @@ val facts_conflict : facts -> facts -> bool
 (** [facts_conflict (facts ?parent a) (facts ?parent b)] is
     [rules_conflict ?parent a b]. *)
 
+type facts_index
+(** Rules read by {!val-facts}, each at a position, indexed by what
+    {!val-facts_conflict} needs two rules to share. *)
+
+val facts_index : unit -> facts_index
+(** [facts_index ()] is an empty index. *)
+
+val index_facts : facts_index -> at:int -> facts -> unit
+(** [index_facts index ~at f] adds [f] to [index] at position [at], which is no
+    less than any position added before. *)
+
+val conflicts_after : facts_index -> after:int -> facts -> bool
+(** [conflicts_after index ~after f] is [true] when some [g] added to [index] at
+    a position greater than [after] has [facts_conflict f g]. It tests only the
+    rules after [after] sharing a specificity and an overlap key with [f]. *)
+
 val selectors_conflict : Selector.t -> Selector.t -> bool
 (** [selectors_conflict a b] is the selector half of {!val-rules_conflict}: some
     branch of [a] and some branch of [b] have equal specificity and may match

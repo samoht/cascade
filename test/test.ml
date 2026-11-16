@@ -47,6 +47,7 @@ let () =
       Test_size.suite;
       Test_rule.suite;
       Test_rule_index.suite;
+      Test_conflict_index.suite;
       Test_apply.suite;
       Test_prune.suite;
       Test_factor.suite;

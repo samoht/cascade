@@ -229,94 +229,138 @@ let crossable_by_distant_merge = function
    selector the cascade weighs it by. A declarations run in that body sets
    properties on [owner] (CSS Nesting 1 sec. 3.4), so the analysis below only
    sees it once it can name the rule the run belongs to, and a rule nested in
-   the body weighs [&] as that selector. *)
-let has_distant_partner ~prelude ~equal_prelude stmts =
-  let keys = List.filter_map (fun s -> Option.map fst (prelude s)) stmts in
-  let rec dup = function
-    | [] -> false
-    | k :: rest -> List.exists (equal_prelude k) rest || dup rest
-  in
-  dup keys
+   the body weighs [&] as that selector.
 
-(* Split [out] at the first block whose prelude is [key], into what comes before
-   it, its own body, and what sits between it and the caller. [out] pairs each
-   statement with what a hoist reads off it. *)
-let split_at_prelude ~prelude ~equal_prelude key out =
-  let rec go before = function
-    | [] -> Option.None
-    | ((stmt, _) as entry) :: after -> (
-        match prelude stmt with
-        | Option.Some (k, body) when equal_prelude k key ->
-            Option.Some (List.rev before, body, after)
-        | Option.Some _ | Option.None -> go (entry :: before) after)
-  in
-  go [] out
+   A block merges into the first kept block of its prelude, its partner, and so
+   crosses every statement kept after that. A pass keeps statements by position
+   and reads each one's leaves once a hoist first needs them, from [unread] on:
+   [index] holds the leaves of every kept statement but a partner, a partner
+   holds its own, which grow as blocks merge into it, and [blocked] is the last
+   position a block may not cross, a statement the cascade does not read in
+   source order or one whose leaves refuse.
 
-(* [crosses entry] is [true] when the hoisted block may not move above the
-   statement in [entry]. *)
-let try_distant_merge ~prelude ~equal_prelude ~build ~entry ~crosses out key
-    block =
-  match split_at_prelude ~prelude ~equal_prelude key out with
-  | Option.Some (before, target, after)
-    when List.for_all (fun (stmt, _) -> crossable_by_distant_merge stmt) after
-         && not (List.exists crosses after) ->
-      Option.Some (before @ [ entry (build key (target @ block)) ] @ after)
-  | Option.Some _ | Option.None -> Option.None
+   A pass with no two blocks of one prelude returns [stmts] untouched; any other
+   rebuilds each block of the family over [optimize_merged_block] of its
+   body. *)
+type 'k partner = {
+  at : int;
+  mutable key : 'k;
+  mutable chunks : statement list list;  (** the body, last chunk first *)
+  leaves : Rule_graph.facts_index;
+}
 
-(* The leaves of a hoisted block, a statement paired with the leaves it presents
-   to a block crossing it, and whether that block may not cross it, under
-   [parent]. Every hoist attempt reads the run it crosses, which is most of what
-   came before it, so a statement's leaves are read on the first crossing and
-   kept with it for the rest of the pass. *)
-let crossing ?parent () =
-  let facts stmts =
-    Option.map (List.map (fun r -> Rule_graph.facts r)) (leaves ?parent stmts)
-  in
-  let entry stmt = (stmt, lazy (facts [ stmt ])) in
-  (* The hoisted block is small and the crossed run can be most of the sheet, so
-     the scan runs over the crossed rules and stops at the first conflict. *)
-  let crosses hoisted (_, crossed) =
-    match Lazy.force crossed with
-    | Option.None -> true
-    | Option.Some crossed ->
-        List.exists
-          (fun c ->
-            List.exists (fun h -> Rule_graph.facts_conflict h c) hoisted)
-          crossed
-  in
-  (facts, entry, crosses)
+type 'k kept =
+  | Plain of statement
+  | Block of 'k * statement list
+  | Partner of 'k partner
+
+type 'k pass = {
+  build : 'k -> statement list -> statement;
+  parent : Selector.t option;
+  kept : 'k kept Dynarray.t;
+  index : Rule_graph.facts_index;
+  mutable partners : 'k partner list;
+  mutable blocked : int;
+  mutable unread : int;
+}
+
+let body p = List.concat (List.rev p.chunks)
+
+let facts pass stmts =
+  Option.map
+    (List.map (fun r -> Rule_graph.facts r))
+    (leaves ?parent:pass.parent stmts)
+
+let read_kept pass =
+  for at = pass.unread to Dynarray.length pass.kept - 1 do
+    let stmt, into =
+      match Dynarray.get pass.kept at with
+      | Plain stmt -> (stmt, pass.index)
+      | Block (key, block) -> (pass.build key block, pass.index)
+      | Partner p -> (pass.build p.key (body p), p.leaves)
+    in
+    match facts pass [ stmt ] with
+    | Option.Some rules when crossable_by_distant_merge stmt ->
+        List.iter (Rule_graph.index_facts into ~at) rules
+    | Option.Some _ | Option.None -> pass.blocked <- at
+  done;
+  pass.unread <- Dynarray.length pass.kept
+
+let crosses pass ~after h =
+  Rule_graph.conflicts_after pass.index ~after h
+  || List.exists
+       (fun q -> Rule_graph.conflicts_after q.leaves ~after h)
+       pass.partners
+
+(* Merge [block], under [key], into its partner [p] when nothing kept after [p]
+   stops it. *)
+let merge pass p key block =
+  read_kept pass;
+  pass.blocked <= p.at
+  &&
+  match facts pass block with
+  | Option.None -> false
+  | Option.Some hoisted ->
+      (not (List.exists (crosses pass ~after:p.at) hoisted))
+      && begin
+        List.iter (Rule_graph.index_facts p.leaves ~at:p.at) hoisted;
+        p.key <- key;
+        p.chunks <- block :: p.chunks;
+        true
+      end
+
+(* Keep a block of the family, or merge it into its partner; [true] when it has
+   one. *)
+let keep_block pass ~equal_prelude ~hoistable key block =
+  match List.find_opt (fun p -> equal_prelude p.key key) pass.partners with
+  | Option.None ->
+      let p =
+        {
+          at = Dynarray.length pass.kept;
+          key;
+          chunks = [ block ];
+          leaves = Rule_graph.facts_index ();
+        }
+      in
+      pass.partners <- p :: pass.partners;
+      Dynarray.add_last pass.kept (Partner p);
+      false
+  | Option.Some p ->
+      if not (hoistable block && merge pass p key block) then
+        Dynarray.add_last pass.kept (Block (key, block));
+      true
 
 let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
     ~optimize_merged_block stmts =
-  if not (has_distant_partner ~prelude ~equal_prelude stmts) then stmts
-  else
-    let facts, entry, crosses =
-      crossing ?parent:(Option.map (fun (r : rule) -> r.selector) owner) ()
-    in
-    (* The accumulator is carried reversed, as the consecutive-block passes
-       nearby carry theirs: appending to the end copies it once per statement,
-       which costs a square in the statement count. Only a block of the family
-       needs it in order, to find the partner it merges into, and [rev_map] puts
-       the result back in source order. *)
-    let step rout stmt =
-      match prelude stmt with
-      | Some (key, block) when hoistable block -> (
-          match facts block with
-          | Option.None -> entry stmt :: rout
-          | Option.Some hoisted -> (
-              match
-                try_distant_merge ~prelude ~equal_prelude ~build ~entry
-                  ~crosses:(crosses hoisted) (List.rev rout) key block
-              with
-              | Some out' -> List.rev out'
-              | None -> entry stmt :: rout))
-      | Some _ | None -> entry stmt :: rout
-    in
-    List.fold_left step [] stmts
-    |> List.rev_map (fun (stmt, _) ->
+  let pass =
+    {
+      build;
+      parent = Option.map (fun (r : rule) -> r.selector) owner;
+      kept = Dynarray.create ();
+      index = Rule_graph.facts_index ();
+      partners = [];
+      blocked = -1;
+      unread = 0;
+    }
+  in
+  let partnered =
+    List.fold_left
+      (fun partnered stmt ->
         match prelude stmt with
-        | Some (key, body) -> build key (optimize_merged_block body)
-        | None -> stmt)
+        | Option.None ->
+            Dynarray.add_last pass.kept (Plain stmt);
+            partnered
+        | Option.Some (key, block) ->
+            keep_block pass ~equal_prelude ~hoistable key block || partnered)
+      false stmts
+  in
+  if not partnered then stmts
+  else
+    Dynarray.to_list pass.kept
+    |> List.map (function
+      | Plain stmt -> stmt
+      | Block (key, block) -> build key (optimize_merged_block block)
+      | Partner p -> build p.key (optimize_merged_block (body p)))
 
 let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
   merge_distant
