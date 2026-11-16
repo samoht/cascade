@@ -201,17 +201,41 @@ val canonical_order_by : t -> (node_id -> int) -> node_id array
     comparison passes a content-derived rank so two source orderings of
     cascade-independent rules converge to one form. *)
 
-val rules_order_by :
+type run
+(** The order of one run of rules a canonical projection settles, kept while
+    some of its rules fold together. Unlike {!t}, a consumed node leaves no
+    relay behind: once it is gone, two rules only it ordered are free. *)
+
+val run :
   ?parent:Selector.t ->
-  ?exclusive:(int -> int -> bool) ->
+  ?exclusive:(node_id -> node_id -> bool) ->
+  folds:(node_id -> bool) ->
   Stylesheet.rule list ->
-  (node_id -> int) ->
-  node_id array
-(** [rules_order_by ?parent ?exclusive rules rank] is
-    [canonical_order_by (of_rules ?parent ~pin_shared_branches:false ?exclusive
-     rules) rank], for a caller that wants the order and then drops the graph:
-    it builds the nodes and their edges and leaves out the index and the node
-    sizes only {!val-rewrite} and the candidate search read. *)
+  run
+(** [run ?parent ?exclusive ~folds rules] is the run of [rules], node [i] the
+    [i]th rule standing at position [i]. Until a fold, {!run_order} orders it as
+    {!canonical_order_by} orders
+    [of_rules ?parent ~pin_shared_branches:false ?exclusive rules]. [folds i]
+    says whether node [i] may later be consumed by {!fold}; the fewer that may,
+    the fewer edges the run holds. [exclusive i j] asserts that nodes [i] and
+    [j] never apply to one element together, so no cascade conflict is recorded
+    between them, and it speaks for the nodes {!fold} produces too. *)
+
+val run_order : run -> (node_id -> int) -> node_id array
+(** [run_order r rank] is the live nodes of [r] in a linear extension of their
+    conflicts, choosing among the nodes free to come next the one with the
+    smallest [rank]. That order becomes where the nodes stand. [rank] must be
+    injective on the live nodes. *)
+
+val run_conflict : run -> node_id -> node_id -> bool
+(** [run_conflict r i j] is {!rules_conflict} between the rules of nodes [i] and
+    [j], whatever [exclusive] says. *)
+
+val fold : run -> node_id list -> Stylesheet.rule -> at:node_id -> node_id
+(** [fold r consumed rule ~at] replaces the live nodes [consumed], each one
+    [run]'s [folds] allowed or one an earlier fold produced, by a new node for
+    [rule] standing where [at] stood, and is that node. [at] is one of
+    [consumed]. *)
 
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension

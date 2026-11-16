@@ -4,17 +4,6 @@ open Stylesheet
 open Stdlib
 open Conflict_index
 
-(* The declaration-keyed bucket index is probed once per overlap key per node
-   while a graph is built, and a generic [Hashtbl] compares whole declaration
-   subtrees on every probe. The cached [Declaration.hash] buckets in constant
-   time and the structural check runs only when two hashes collide. *)
-module Decl_tbl = Hashtbl.Make (struct
-  type t = Declaration.declaration
-
-  let equal = Declaration.same_minified
-  let hash = Declaration.hash
-end)
-
 module Key_tbl = Hashtbl.Make (struct
   type t = Shorthand.overlap_key
 
@@ -49,11 +38,6 @@ type rewrite_error =
   | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
-
-type decl_overlap = {
-  decl : Declaration.declaration;
-  footprint : Shorthand.overlap_key list;
-}
 
 (* Which nodes each node can reach, as a bitset per node. Orienting a factoring
    asks the question once per ordered pair of source references, so a run of [n]
@@ -415,323 +399,10 @@ let conflicts_after index ~after rule =
     ~keys:(fst (Lazy.force rule.footprints))
     (facts_conflict rule)
 
-(* [seen] is a per-target stamp array indexed by node id: [seen.(i) = stamp]
-   means node [i] is already a candidate for the current target. The target's
-   own index is a fresh monotonically increasing stamp, so no clearing is
-   needed, and dedup is O(1) with no hashing or per-target allocation. *)
-let add_candidate (stamp : int) (seen : int array) acc i =
-  let idx = Node_id.to_int i in
-  if Int.equal seen.(idx) stamp then acc
-  else begin
-    seen.(idx) <- stamp;
-    i :: acc
-  end
-
-let rec add_candidates stamp seen acc = function
-  | [] -> acc
-  | i :: rest -> add_candidates stamp seen (add_candidate stamp seen acc i) rest
-
-let rec collect_specs bucket specs stamp seen acc =
-  match specs with
-  | [] -> acc
-  | spec :: rest ->
-      let acc =
-        match Spec_table.find_opt bucket spec with
-        | Option.None -> acc
-        | Option.Some ids -> add_candidates stamp seen acc ids
-      in
-      collect_specs bucket rest stamp seen acc
-
-let collect_bucket bucket key specs stamp seen acc =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.None -> acc
-  | Option.Some inner -> collect_specs inner specs stamp seen acc
-
 let collect_string_bucket bucket key stamp seen acc =
   String_table.find_opt bucket key
   |> Option.value ~default:[]
   |> add_candidates stamp seen acc
-
-(* The declaration that writes a key sits below the specificity and the
-   selector's exclusive subject facts. Two rules writing the same declaration
-   never constrain each other's order there, while two branches with distinct
-   mandatory IDs or element names cannot target the same element. Keeping both
-   dimensions in the index skips either whole group without enumerating its
-   nodes.
-
-   Simple one-declaration branches in one group conflict exactly when their
-   declarations differ, so in source order they form runs of writers of one
-   declaration, each run ordered after the whole run before it. A new node links
-   to the newest run, or to the run before it when the newest writes its own
-   declaration; every older node reaches both through the runs in between. So
-   the group keeps only those two runs. Keeping only the newest would lose a
-   node two runs back that writes neither the newest declaration nor the new
-   node's. [all] and [opaque] preserve full history for shapes where that
-   compaction invariant does not apply. *)
-type writers = {
-  decl : Declaration.declaration;
-  mutable members : node_id list;
-}
-
-type decl_groups = {
-  all : node_id list Decl_tbl.t;
-  opaque : node_id list Decl_tbl.t;
-  mutable newest : writers option;
-      (** the newest run of simple branches writing one declaration *)
-  mutable previous : writers option;  (** the run before [newest] *)
-  mutable all_nodes : node_id list;
-      (** every node in [all], newest first, for the walk a query takes over the
-          whole group *)
-  mutable all_scanned : int;
-      (** the query stamp that last walked [all_nodes]: a block node asks about
-          one group once per branch and declaration that lands in it, and the
-          walk is the same every time *)
-}
-
-type importance_decl_groups = { normal : decl_groups; important : decl_groups }
-
-type id_decl_groups = {
-  no_id : importance_decl_groups;
-  by_id : importance_decl_groups String_table.t;
-}
-
-type selector_decl_groups = {
-  no_element : id_decl_groups;
-  by_element : id_decl_groups String_table.t;
-}
-
-let empty_decl_groups () =
-  {
-    all = Decl_tbl.create 4;
-    opaque = Decl_tbl.create 4;
-    newest = Option.None;
-    previous = Option.None;
-    all_nodes = [];
-    all_scanned = -1;
-  }
-
-let empty_importance_decl_groups () =
-  { normal = empty_decl_groups (); important = empty_decl_groups () }
-
-let empty_id_decl_groups () =
-  { no_id = empty_importance_decl_groups (); by_id = String_table.create 4 }
-
-let empty_selector_decl_groups () =
-  { no_element = empty_id_decl_groups (); by_element = String_table.create 4 }
-
-let selector_decl_groups inner spec : selector_decl_groups =
-  match Spec_table.find_opt inner spec with
-  | Option.Some index -> index
-  | Option.None ->
-      let index = empty_selector_decl_groups () in
-      Spec_table.replace inner spec index;
-      index
-
-let element_decl_groups index = function
-  | Option.None -> index.no_element
-  | Option.Some element -> (
-      match String_table.find_opt index.by_element element with
-      | Option.Some groups -> groups
-      | Option.None ->
-          let groups = empty_id_decl_groups () in
-          String_table.replace index.by_element element groups;
-          groups)
-
-let named_decl_groups groups name =
-  match String_table.find_opt groups.by_id name with
-  | Option.Some decls -> decls
-  | Option.None ->
-      let decls = empty_importance_decl_groups () in
-      String_table.replace groups.by_id name decls;
-      decls
-
-let importance_decl_groups groups decl =
-  if Declaration.is_important decl then groups.important else groups.normal
-
-let push_decl groups decl value =
-  Decl_tbl.replace groups decl
-    (value :: Option.value ~default:[] (Decl_tbl.find_opt groups decl))
-
-let add_decl ~compact groups decl value =
-  let groups = importance_decl_groups groups decl in
-  push_decl groups.all decl value;
-  groups.all_nodes <- value :: groups.all_nodes;
-  if compact then (
-    match groups.newest with
-    | Option.Some run when Declaration.same_minified run.decl decl ->
-        run.members <- value :: run.members
-    | newest ->
-        groups.previous <- newest;
-        groups.newest <- Option.Some { decl; members = [ value ] })
-  else push_decl groups.opaque decl value
-
-let add_selector_decl ~compact index summary decl value =
-  let groups = element_decl_groups index (Selector_summary.element summary) in
-  match Selector_summary.ids summary with
-  | [] -> add_decl ~compact groups.no_id decl value
-  | ids ->
-      List.iter
-        (fun id -> add_decl ~compact (named_decl_groups groups id) decl value)
-        ids
-
-let add_decl_bucket ~compact bucket key spec summary decl value =
-  add_selector_decl ~compact
-    (selector_decl_groups (spec_bucket bucket key) spec)
-    summary decl value
-
-let collect_decl_table decl groups stamp seen acc =
-  Decl_tbl.fold
-    (fun decl' ids acc ->
-      if Declaration.same_minified decl decl' then acc
-      else add_candidates stamp seen acc ids)
-    groups acc
-
-let collect_writers decl run stamp seen acc =
-  match run with
-  | Option.Some run when not (Declaration.same_minified decl run.decl) ->
-      add_candidates stamp seen acc run.members
-  | Option.Some _ | Option.None -> acc
-
-(* The whole group as candidates, once per query. A node writing the same
-   declaration is among them, where the walk per distinct declaration left it
-   out: it is refused by the conflict test as before, and a candidate the test
-   refuses adds no edge, so the answer is the same. Walking the group per
-   declaration of the querying node, a block of sixty rules walked each group
-   sixty times over. *)
-let collect_group_nodes groups stamp seen acc =
-  if groups.all_scanned = stamp then acc
-  else begin
-    groups.all_scanned <- stamp;
-    add_candidates stamp seen acc groups.all_nodes
-  end
-
-let collect_distinct_decls ~compact decl groups stamp seen acc =
-  let groups = importance_decl_groups groups decl in
-  if compact then
-    collect_writers decl groups.newest stamp seen acc |> fun acc ->
-    collect_writers decl groups.previous stamp seen acc |> fun acc ->
-    collect_decl_table decl groups.opaque stamp seen acc
-  else collect_group_nodes groups stamp seen acc
-
-let collect_all_decls groups stamp seen acc =
-  collect_group_nodes groups.normal stamp seen acc |> fun acc ->
-  collect_group_nodes groups.important stamp seen acc
-
-let collect_id_groups collect groups ids stamp seen acc =
-  let acc = collect groups.no_id stamp seen acc in
-  match ids with
-  | [] ->
-      String_table.fold
-        (fun _ decls acc -> collect decls stamp seen acc)
-        groups.by_id acc
-  | ids ->
-      List.fold_left
-        (fun acc id ->
-          match String_table.find_opt groups.by_id id with
-          | Option.None -> acc
-          | Option.Some decls -> collect decls stamp seen acc)
-        acc ids
-
-let collect_selector_groups collect index summary stamp seen acc =
-  let ids = Selector_summary.ids summary in
-  let acc = collect_id_groups collect index.no_element ids stamp seen acc in
-  match Selector_summary.element summary with
-  | Option.None ->
-      String_table.fold
-        (fun _ groups acc ->
-          collect_id_groups collect groups ids stamp seen acc)
-        index.by_element acc
-  | Option.Some element -> (
-      match String_table.find_opt index.by_element element with
-      | Option.None -> acc
-      | Option.Some groups ->
-          collect_id_groups collect groups ids stamp seen acc)
-
-let collect_decl_bucket ~compact bucket key spec summary decl stamp seen acc =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.None -> acc
-  | Option.Some inner -> (
-      match Spec_table.find_opt inner spec with
-      | Option.None -> acc
-      | Option.Some index ->
-          collect_selector_groups
-            (collect_distinct_decls ~compact decl)
-            index summary stamp seen acc)
-
-(* A prior node whose own declaration is broad meets every key, so no single
-   declaration of the querying node can rule its group out. *)
-let collect_broad_bucket bucket spec summary stamp seen acc =
-  match Overlap_key_table.find_opt bucket Shorthand.broad_overlap_key with
-  | Option.None -> acc
-  | Option.Some inner -> (
-      match Spec_table.find_opt inner spec with
-      | Option.None -> acc
-      | Option.Some index ->
-          collect_selector_groups collect_all_decls index summary stamp seen acc
-      )
-
-let rec collect_decl_keys ~compact bucket spec summary decl stamp seen acc =
-  function
-  | [] -> acc
-  | key :: rest ->
-      collect_decl_keys ~compact bucket spec summary decl stamp seen
-        (collect_decl_bucket ~compact bucket key spec summary decl stamp seen
-           acc)
-        rest
-
-let rec collect_decl_overlaps ~compact bucket spec summary stamp seen acc =
-  function
-  | [] -> acc
-  | (ov : decl_overlap) :: rest ->
-      collect_decl_overlaps ~compact bucket spec summary stamp seen
-        (collect_decl_keys ~compact bucket spec summary ov.decl stamp seen acc
-           ov.footprint)
-        rest
-
-let rec simple_subject_selector (selector : Selector.t) =
-  match selector with
-  | Class _ | Id _ | Element _ | Universal _ -> true
-  | Compound selectors -> List.for_all simple_subject_selector selectors
-  | _ -> false
-
-let compact_rule = function [ { footprint = [ _ ]; _ } ] -> true | _ -> false
-
-let rec collect_rule_overlaps bucket decls selectors summaries specificities
-    stamp seen acc =
-  match (selectors, summaries, specificities) with
-  | [], [], [] -> acc
-  | selector :: selectors, summary :: summaries, specificity :: specificities ->
-      let spec = spec_key specificity in
-      let compact = compact_rule decls && simple_subject_selector selector in
-      let acc =
-        collect_broad_bucket bucket spec summary stamp seen acc |> fun acc ->
-        collect_decl_overlaps ~compact bucket spec summary stamp seen acc decls
-      in
-      collect_rule_overlaps bucket decls selectors summaries specificities stamp
-        seen acc
-  | _ -> invalid_arg "Rule_graph.collect_rule_overlaps"
-
-let rec add_decl_keys ~compact bucket spec summary decl value = function
-  | [] -> ()
-  | key :: rest ->
-      add_decl_bucket ~compact bucket key spec summary decl value;
-      add_decl_keys ~compact bucket spec summary decl value rest
-
-let rec add_decl_overlaps ~compact bucket spec summary value = function
-  | [] -> ()
-  | (ov : decl_overlap) :: rest ->
-      add_decl_keys ~compact bucket spec summary ov.decl value ov.footprint;
-      add_decl_overlaps ~compact bucket spec summary value rest
-
-let rec add_rule_overlaps bucket decls selectors summaries specificities value =
-  match (selectors, summaries, specificities) with
-  | [], [], [] -> ()
-  | selector :: selectors, summary :: summaries, specificity :: specificities ->
-      let compact = compact_rule decls && simple_subject_selector selector in
-      add_decl_overlaps ~compact bucket (spec_key specificity) summary value
-        decls;
-      add_rule_overlaps bucket decls selectors summaries specificities value
-  | _ -> invalid_arg "Rule_graph.add_rule_overlaps"
 
 (* A run of [n] nodes closes into [n * n / 8] bytes. Past this length each
    question walks the edges again and the graph holds nothing. *)
@@ -862,8 +533,14 @@ end
    point of doing this here - it never reaches [nodes_conflict_reason]. The
    reduction is exact rather than a narrowing: reachability is identical and
    only the redundant edges are gone. [covered] is [anc.(j)], so it ends the
-   walk holding [j]'s ancestors for a later target to read. *)
-let link_candidates t succ anc ~reduce j candidates =
+   walk holding [j]'s ancestors for a later target to read.
+
+   A node [relays] refuses may leave the graph later, and an edge the reduction
+   dropped because a path through it carried the order would leave with it. So
+   its ancestors never join a set through it: [anc.(i)] holds the nodes that
+   reach [i] through relays only, and every edge it lets go stays implied once
+   the nodes that are not relays are gone. *)
+let link_candidates t succ anc ~reduce ~relays j candidates =
   let link i reason = succ.(i) <- (j, reason) :: succ.(i) in
   if not reduce then
     List.iter
@@ -881,52 +558,50 @@ let link_candidates t succ anc ~reduce j candidates =
           | Option.None -> ()
           | Option.Some reason ->
               link i reason;
-              Reach.union ~into:covered anc.(i);
+              if relays i then Reach.union ~into:covered anc.(i);
               Reach.add covered i)
       (List.sort (fun a b -> Int.compare b a) candidates)
   end
 
-let source_order_edges t =
+let index_candidates t index ~relay j =
+  Conflict_index.candidates index ~relay ~keys:t.overlap_keys.(j)
+    t.decl_overlaps.(j) t.selectors.(j) t.selector_summaries.(j)
+    t.specificities.(j) j
+
+let index_insert t index ~relay j =
+  Conflict_index.insert index ~relay t.decl_overlaps.(j) t.selectors.(j)
+    t.selector_summaries.(j) t.specificities.(j) j
+
+(* The edges of [t]'s nodes in source order, and the index that found them,
+   holding every node. *)
+let source_order_edges ?(relays = fun _ -> true) t =
   let n = t.count in
   let succ = Array.make n [] in
   let reduce = n <= closure_node_limit in
   let anc = if reduce then Array.init n (fun _ -> Reach.v n) else [||] in
-  let by_decl_key = Overlap_key_table.create 256 in
+  let index = Conflict_index.v n in
   let by_branch = String_table.create 256 in
-  (* every prior node, bucketed by specificity: what a node carrying the broad
-     key has to be checked against, since the broad key intersects every
-     other *)
-  let by_spec = Spec_table.create 64 in
-  let seen = Array.make (max n 1) (-1) in
   for j = 0 to n - 1 do
-    let keys = t.overlap_keys.(j) in
-    let specs = distinct_spec_keys [] t.specificities.(j) in
+    let relay = relays j in
+    let candidates = index_candidates t index ~relay j in
     let candidates =
-      (* A node carrying the broad key meets every prior declaration, so its own
-         keys index nothing: only specificity narrows it. *)
-      if Shorthand.overlap_keys_broad keys then
-        collect_specs by_spec specs j seen []
-      else
-        (* probed per declaration rather than per distinct key: the key alone
-           does not say which declaration of [j] faces the bucket, and that is
-           what decides which group can never conflict *)
-        collect_rule_overlaps by_decl_key t.decl_overlaps.(j) t.selectors.(j)
-          t.selector_summaries.(j) t.specificities.(j) j seen []
+      if t.pin_shared_branches then
+        List.fold_left
+          (fun acc branch ->
+            collect_string_bucket by_branch branch j
+              (Conflict_index.seen index)
+              acc)
+          candidates t.branches.(j)
+      else candidates
     in
-    let candidates =
-      List.fold_left
-        (fun acc branch -> collect_string_bucket by_branch branch j seen acc)
-        candidates t.branches.(j)
-    in
-    link_candidates t succ anc ~reduce j candidates;
-    add_rule_overlaps by_decl_key t.decl_overlaps.(j) t.selectors.(j)
-      t.selector_summaries.(j) t.specificities.(j) j;
-    List.iter
-      (fun branch -> String_table.push by_branch branch j)
-      t.branches.(j);
-    add_spec_buckets by_spec j specs
+    link_candidates t succ anc ~reduce ~relays j candidates;
+    index_insert t index ~relay j;
+    if t.pin_shared_branches then
+      List.iter
+        (fun branch -> String_table.push by_branch branch j)
+        t.branches.(j)
   done;
-  Array.map List.rev succ
+  (Array.map List.rev succ, index)
 
 let index_add tbl key node =
   String_table.replace tbl key
@@ -969,6 +644,18 @@ let index_node t (node : node_id) =
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
+(* What the order relation reads off each of [rules]. *)
+let rule_facts parent rules =
+  let facts =
+    Array.map (fun rule -> branch_facts (effective_selector parent rule)) rules
+  in
+  let decl_overlaps = Array.map rule_decl_overlaps rules in
+  ( Array.map (fun (branches, _, _) -> branches) facts,
+    Array.map (fun (_, summaries, _) -> summaries) facts,
+    Array.map (fun (_, _, specs) -> specs) facts,
+    decl_overlaps,
+    Array.map rule_overlap_keys decl_overlaps )
+
 (* The nodes of [rules] in source order with their edges, the given [summaries],
    and an empty external index sized for [index_capacity] entries, which the
    first rewrite fills: enough to project an order, and to rewrite once the
@@ -976,17 +663,11 @@ let index_node t (node : node_id) =
 let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
     ?(pin_shared_branches = true) ?exclusive (rules : rule array) : t =
   let n = Array.length rules in
-  let facts =
-    Array.map (fun rule -> branch_facts (effective_selector parent rule)) rules
+  let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
+      =
+    rule_facts parent rules
   in
-  let selectors = Array.map (fun (branches, _, _) -> branches) facts in
-  let selector_summaries =
-    Array.map (fun (_, summaries, _) -> summaries) facts
-  in
-  let specificities = Array.map (fun (_, _, specs) -> specs) facts in
   let branches = Array.map selector_branch_keys selectors in
-  let decl_overlaps = Array.map rule_decl_overlaps rules in
-  let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
   let t =
     {
       generation = 0;
@@ -1021,7 +702,7 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
       expansions = 0;
     }
   in
-  { t with succ = source_order_edges t }
+  { t with succ = fst (source_order_edges t) }
 
 let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
   let rules = Array.of_list rules in
@@ -1296,14 +977,6 @@ let canonical_order_by t (rank : node_id -> int) : node_id array =
   match topo_order_by t rank with
   | Option.Some order -> order
   | Option.None -> invalid_arg "Rule_graph.canonical_order: cyclic live graph"
-
-(* The order reads only the edges, so the graph it walks holds no summaries and
-   no index. *)
-let rules_order_by ?parent ?exclusive rules rank =
-  canonical_order_by
-    (ordered_nodes ~summaries:[||] ~index_capacity:1 ?parent
-       ~pin_shared_branches:false ?exclusive (Array.of_list rules))
-    rank
 
 let canonical_order t : node_id array =
   canonical_order_by t (fun node -> t.origin.(node))
@@ -1972,3 +1645,171 @@ let canonicalize t =
     ~pin_shared_branches:t.pin_shared_branches (to_rules t)
 
 let to_canonical_rules = to_rules
+
+(* A run a canonical projection settles: it orders the run, folds some of its
+   elements together, and orders it again until nothing folds. Nodes keep the
+   edges and the index between rounds rather than being rebuilt each one. A fold
+   consumes nodes outright, with no relay left behind, so an edge the reduction
+   dropped must not have depended on one: the nodes a caller says may fold relay
+   nothing ({!link_candidates}) and never join a compact run, and a node a fold
+   produces holds an edge to every live node it conflicts with. *)
+type run = {
+  mutable nodes : t;
+      (** every rule the run has held, by node id, and what the order reads off
+          each *)
+  mutable live : bool array;  (** whether no fold consumed each node yet *)
+  mutable pos : int array;
+      (** where each live node stands in the run, which orients its edges *)
+  mutable edges : node_id list array;
+      (** the successors of each node; an edge to a dead node is skipped *)
+  index : Conflict_index.t;
+}
+
+let run ?parent ?exclusive ~folds rules =
+  let rules = Array.of_list rules in
+  let n = Array.length rules in
+  let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
+      =
+    rule_facts parent rules
+  in
+  let nodes =
+    {
+      generation = 0;
+      closed_world = false;
+      pin_shared_branches = false;
+      exclusive;
+      exclusive_count = max_int;
+      parent;
+      count = n;
+      rules;
+      summaries = [||];
+      origin = [||];
+      death = [||];
+      selectors;
+      selector_summaries;
+      specificities;
+      branches = [||];
+      decl_overlaps;
+      overlap_keys;
+      succ = [||];
+      key_index = Key_tbl.create 1;
+      branch_index = String_table.create 1;
+      lineage =
+        {
+          indexed = false;
+          head = 0;
+          marks = [||];
+          stamp = 0;
+          row = Bytes.empty;
+        };
+      reach = Unbuilt;
+      expansions = 0;
+    }
+  in
+  let succ, index = source_order_edges ~relays:(fun i -> not (folds i)) nodes in
+  {
+    nodes;
+    live = Array.make n true;
+    pos = Array.init n Fun.id;
+    edges = Array.map (List.map fst) succ;
+    index;
+  }
+
+let run_conflict r i j =
+  let t = r.nodes in
+  cascade_conflict ~closed_world:false t.overlap_keys.(i) t.decl_overlaps.(i)
+    t.selectors.(i) t.selector_summaries.(i) t.specificities.(i)
+    t.overlap_keys.(j) t.decl_overlaps.(j) t.selectors.(j)
+    t.selector_summaries.(j) t.specificities.(j)
+
+(* Kahn's algorithm over the live nodes, the smallest rank first among those
+   free to come next. *)
+let run_order r rank =
+  let count = r.nodes.count in
+  let pred = Array.make (max count 1) 0 in
+  let live = ref 0 in
+  for i = 0 to count - 1 do
+    if r.live.(i) then begin
+      incr live;
+      List.iter
+        (fun j -> if r.live.(j) then pred.(j) <- pred.(j) + 1)
+        r.edges.(i)
+    end
+  done;
+  let out = Array.make !live 0 in
+  let queue = ref Topo_queue.empty in
+  for i = 0 to count - 1 do
+    if r.live.(i) && pred.(i) = 0 then
+      queue := Topo_queue.add i (topo_priority rank i) !queue
+  done;
+  let rec loop queue o =
+    match Topo_queue.pop queue with
+    | Option.None ->
+        if o < !live then invalid_arg "Rule_graph.run_order: cyclic run"
+    | Option.Some ((e, _), queue) ->
+        out.(o) <- e;
+        r.pos.(e) <- o;
+        let queue =
+          List.fold_left
+            (fun queue j ->
+              if r.live.(j) then begin
+                pred.(j) <- pred.(j) - 1;
+                if pred.(j) = 0 then
+                  Topo_queue.add j (topo_priority rank j) queue
+                else queue
+              end
+              else queue)
+            queue r.edges.(e)
+        in
+        loop queue (o + 1)
+  in
+  loop !queue 0;
+  out
+
+(* [arr] with [item] at [count], growing it geometrically. *)
+let append arr ~count item =
+  let arr =
+    if Array.length arr > count then arr
+    else begin
+      let grown = Array.make (max 1 (2 * count)) item in
+      Array.blit arr 0 grown 0 count;
+      grown
+    end
+  in
+  arr.(count) <- item;
+  arr
+
+let fold r consumed rule ~at =
+  let t = r.nodes in
+  let m = t.count in
+  List.iter (fun i -> r.live.(i) <- false) consumed;
+  let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
+      =
+    rule_facts t.parent [| rule |]
+  in
+  let t =
+    {
+      t with
+      count = m + 1;
+      rules = append t.rules ~count:m rule;
+      selectors = append t.selectors ~count:m selectors.(0);
+      selector_summaries =
+        append t.selector_summaries ~count:m selector_summaries.(0);
+      specificities = append t.specificities ~count:m specificities.(0);
+      decl_overlaps = append t.decl_overlaps ~count:m decl_overlaps.(0);
+      overlap_keys = append t.overlap_keys ~count:m overlap_keys.(0);
+    }
+  in
+  r.nodes <- t;
+  r.live <- append r.live ~count:m true;
+  r.pos <- append r.pos ~count:m r.pos.(at);
+  r.edges <- append r.edges ~count:m [];
+  Conflict_index.grow r.index (m + 1);
+  List.iter
+    (fun i ->
+      if r.live.(i) && Option.is_some (nodes_conflict_reason t i m) then
+        if r.pos.(i) < r.pos.(m) then r.edges.(i) <- m :: r.edges.(i)
+        else r.edges.(m) <- i :: r.edges.(m))
+    (index_candidates t r.index ~relay:false m);
+  index_insert t r.index ~relay:false m;
+  m

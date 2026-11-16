@@ -210,10 +210,12 @@ let rewrite_keeps_constraints_through_dead_relays () =
    order when the two rules conflict and follows the rank otherwise. A shared
    selector branch alone pins nothing, and a pair the caller asserts exclusive
    is free. *)
-let rules_order_by_follows_rank_between_conflicts () =
+let run_order_follows_rank_between_conflicts () =
   let reversed ?exclusive css =
-    Rule_graph.rules_order_by ?exclusive (rules_of css) (fun id ->
-        -Rule_graph.Node_id.to_int id)
+    let rules = rules_of css in
+    Rule_graph.run_order
+      (Rule_graph.run ?exclusive ~folds:(fun _ -> false) rules)
+      (fun id -> -Rule_graph.Node_id.to_int id)
     |> int_order
   in
   Alcotest.(check (list int))
@@ -1257,8 +1259,8 @@ let suite =
         rules_conflict_specificity;
       Alcotest.test_case "optimize keeps case-folded pairs in order" `Quick
         optimize_keeps_case_folded_order;
-      Alcotest.test_case "rules_order_by follows the rank between conflicts"
-        `Quick rules_order_by_follows_rank_between_conflicts;
+      Alcotest.test_case "run_order follows the rank between conflicts" `Quick
+        run_order_follows_rank_between_conflicts;
       Alcotest.test_case "canonical_order pins a conflicting pair" `Quick
         canonical_order_pins_conflict;
       Alcotest.test_case "canonical_order keeps disjoint source order" `Quick

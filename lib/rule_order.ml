@@ -63,13 +63,6 @@ let element_node (stmt : statement) (rules : rule list) : rule =
         merge_key = None;
       }
 
-let is_identity order =
-  let id = ref true in
-  Array.iteri
-    (fun i v -> if i <> Rule_graph.Node_id.to_int v then id := false)
-    order;
-  !id
-
 (* Source-order-preserving edge count: [indeg.(j)] is the number of
    source-earlier declarations that overlap [j], which must all be emitted
    before [j]. [footprints] is the overlap key list of each declaration, hoisted
@@ -206,56 +199,6 @@ let excludes a b =
          || Container.equal y (Container.Not x))
   | _ -> false
 
-(* Reorder one maximal run of elements into a canonical linear extension of its
-   dependency graph, breaking ties among independent elements by serialized
-   statement content so two source orderings converge to one form, while
-   preserving physical identity when that order already matches the input.
-   [parent], when set, is the enclosing nesting context: the graph expands each
-   element's relative selectors against it so overlap is computed on the
-   effective selector. Two elements under a condition and its negation never
-   apply together, so the graph records no conflict between them. *)
-let sort_run ?parent changed (run : (statement * rule list) list) :
-    statement list =
-  let arr = Array.of_list run in
-  let n = Array.length arr in
-  if n < 2 then List.map fst run
-  else
-    let conditions = Array.map (fun (stmt, _) -> element_conditions stmt) arr in
-    let exclusive i j =
-      List.exists
-        (fun a -> List.exists (excludes a) conditions.(j))
-        conditions.(i)
-    in
-    let exclusive =
-      if Array.exists (fun c -> c <> []) conditions then Option.Some exclusive
-      else Option.None
-    in
-    let keys =
-      Array.map
-        (fun (stmt, _) -> Pp.to_string ~minify:true pp_stylesheet [ stmt ])
-        arr
-    in
-    let ranked = Array.init n (fun i -> i) in
-    Array.sort
-      (fun a b ->
-        match String.compare keys.(a) keys.(b) with
-        | 0 -> Int.compare a b
-        | c -> c)
-      ranked;
-    let rank = Array.make n 0 in
-    Array.iteri (fun pos i -> rank.(i) <- pos) ranked;
-    let order =
-      Rule_graph.rules_order_by ?parent ?exclusive
-        (List.map (fun (stmt, rules) -> element_node stmt rules) run)
-        (fun node -> rank.(Rule_graph.Node_id.to_int node))
-    in
-    if is_identity order then List.map fst run
-    else begin
-      changed := true;
-      Array.to_list
-        (Array.map (fun i -> fst arr.(Rule_graph.Node_id.to_int i)) order)
-    end
-
 (* A grouped rule is the sequence of its per-branch rules, and a hoisted shared
    declaration is the same declaration written inline, so two sheets that factor
    the same content differently ([.absolute,.sr-only {position:absolute}] vs the
@@ -279,22 +222,6 @@ let expand_lists (stmt : statement) : statement list =
    declaration set a sheet that never split it would. *)
 let coalesced_declarations ~ctx decls =
   Shorthand.deduplicate_declarations_with ~ctx decls
-
-(* Mutable state of one coalescing scan: the run's elements, the node standing
-   for each element as the run was read and what the conflict test reads off it,
-   the nodes accumulated into each surviving element, which elements remain, and
-   which were plain style rules in the run as it was read. The scan asks about
-   pairs of nodes and never about their order, so it holds each node's facts
-   rather than a graph of the run. *)
-type scan = {
-  nodes : rule array;
-  facts : Rule_graph.facts array;
-  arr : (statement * rule list) array;
-  plain : bool array;
-  members : int list array;
-  alive : bool array;
-  mutable merged_any : bool;
-}
 
 (* Two rules that agree wherever they meet. Restrict each to the declarations
    that overlap the other rule at all; when those two sequences are equal, the
@@ -320,8 +247,148 @@ let overlapping_writes_equal (a : rule) (b : rule) =
   let a = with_keys a and b = with_keys b in
   List.equal Declaration.same_minified (touching a b) (touching b a)
 
+(* The shape a run element folds in: a style rule merges declaration lists under
+   one selector, a conditional block concatenates bodies under an unchanged
+   prelude. [element_shape] is the one place the statements that can pair are
+   enumerated - the key that decides two elements share a cascade slot and the
+   merge that folds them both read it, so a statement cannot become mergeable
+   for one and stay unknown to the other. *)
+type block_prelude =
+  | Media_query of Media.t
+  | Feature_query of Supports.t
+  | Container_query of string option * Container.t option
+
+type merge_shape = Style of rule | Block of block_prelude * statement list
+
+let element_shape (stmt : statement) =
+  match stmt with
+  | Rule r when r.merge_key = None -> Some (Style r)
+  | Media (m, body) -> Some (Block (Media_query m, body))
+  | Supports (c, body) -> Some (Block (Feature_query c, body))
+  | Container (name, cond, body) ->
+      Some (Block (Container_query (name, cond), body))
+  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
+  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      None
+
+let block_statement prelude body =
+  match prelude with
+  | Media_query m -> Media (m, body)
+  | Feature_query c -> Supports (c, body)
+  | Container_query (name, cond) -> Container (name, cond, body)
+
+(* What makes two run elements the same cascade slot, so that one can fold into
+   the other. Style, media and supports shapes retain their text keys, while a
+   container condition uses the structural equality that decides whether two
+   queries select the same containers. Its normalised spelling is only a hash:
+   collisions still reach [equal] instead of becoming merges. *)
+module Shape_key = struct
+  type t = Text of string | Container of string option * Container.t option
+
+  let equal a b =
+    match (a, b) with
+    | Text a, Text b -> String.equal a b
+    | Container (an, ac), Container (bn, bc) ->
+        Option.equal String.equal an bn && Option.equal Container.equal ac bc
+    | (Text _ | Container _), _ -> false
+
+  let hash = function
+    | Text text -> Hashtbl.hash (0, text)
+    | Container (name, cond) ->
+        let cond =
+          Option.map
+            (fun c -> Container.to_string ~minify:true (Container.normalize c))
+            cond
+        in
+        Hashtbl.hash (1, name, cond)
+end
+
+module Shape_table = Hashtbl.Make (Shape_key)
+
+let shape_key = function
+  | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
+  | Block (Media_query m, _) ->
+      Shape_key.Text (String.concat "" [ "@media "; Media.to_string m ])
+  | Block (Feature_query c, _) ->
+      Shape_key.Text (String.concat "" [ "@supports "; Supports.to_string c ])
+  | Block (Container_query (name, cond), _) -> Shape_key.Container (name, cond)
+
+let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
+
+(* A run element and what the rounds of {!settle} read off it, worked out once:
+   the graph node standing for it, its shape key, the conditions every rule of
+   it sits under, and its serialized text, which ranks it among the elements it
+   is free to pass. *)
+type element = {
+  stmt : statement;
+  rules : rule list;
+  node : rule;
+  plain : bool;
+  key : Shape_key.t option;
+  conditions : condition list;
+  text : string Lazy.t;
+}
+
+let element stmt rules =
+  {
+    stmt;
+    rules;
+    node = element_node stmt rules;
+    plain = (match stmt with Rule _ -> true | _ -> false);
+    key = element_key stmt;
+    conditions = element_conditions stmt;
+    text = lazy (Pp.to_string ~minify:true pp_stylesheet [ stmt ]);
+  }
+
+(* The elements a run has held, by graph node: the ones it started with, then
+   each one a fold produced, numbered as {!Rule_graph.fold} numbers its
+   nodes. *)
+type store = { mutable elements : element array; mutable count : int }
+
+let add_element store e =
+  if store.count = Array.length store.elements then begin
+    let grown = Array.make (2 * store.count) e in
+    Array.blit store.elements 0 grown 0 store.count;
+    store.elements <- grown
+  end;
+  store.elements.(store.count) <- e;
+  store.count <- store.count + 1
+
+(* One run being settled: its elements, and the graph of their order kept across
+   rounds. *)
+type settling = {
+  canon_body : statement list -> statement list;
+  ctx : Ctx.t;
+  parent : Selector.t option;
+  store : store;
+  graph : Rule_graph.run;
+}
+
+(* Mutable state of one coalescing scan over the run's current order: the node
+   standing at each position as the scan found it, which is what the conflict
+   test reads, the element each position holds once the scan has folded into it,
+   the positions accumulated into each surviving one, and which remain. *)
+type scan = {
+  st : settling;
+  start : int array;
+  current : (statement * rule list) array;
+  members : int list array;
+  alive : bool array;
+  mutable merged_any : bool;
+}
+
+let start_element scan i = scan.st.store.elements.(scan.start.(i))
+let node = Rule_graph.Node_id.of_int_exn
+
 let nodes_conflict scan i j =
-  Rule_graph.facts_conflict scan.facts.(i) scan.facts.(j)
+  Rule_graph.run_conflict scan.st.graph
+    (node scan.start.(i))
+    (node scan.start.(j))
 
 (* Nothing strictly between [lo] and [hi] observes any accumulated occurrence in
    [mems] moving across it. A conflict between two rules that write the
@@ -332,9 +399,9 @@ let nodes_conflict scan i j =
 let interval_clear scan ~lo ~hi mems =
   let observed m a =
     nodes_conflict scan m a
-    && not
-         (scan.plain.(m) && scan.plain.(a)
-         && overlapping_writes_equal scan.nodes.(m) scan.nodes.(a))
+    &&
+    let em = start_element scan m and ea = start_element scan a in
+    not (em.plain && ea.plain && overlapping_writes_equal em.node ea.node)
   in
   let ok = ref true in
   for m = lo + 1 to hi - 1 do
@@ -374,61 +441,29 @@ let drop_shadowed_by_rules later_rules (rule : rule) : rule =
   if List.compare_lengths declarations rule.declarations = 0 then rule
   else { rule with declarations }
 
-let supports_merge_down_clear ?parent scan ~from ~into =
-  match (fst scan.arr.(from), fst scan.arr.(into)) with
+let supports_merge_down_clear scan ~from ~into =
+  match (fst scan.current.(from), fst scan.current.(into)) with
   | Supports _, Supports _ ->
-      let moving = element_node (fst scan.arr.(from)) (snd scan.arr.(from)) in
-      let later_rules = snd scan.arr.(into) in
+      let moving =
+        element_node (fst scan.current.(from)) (snd scan.current.(from))
+      in
+      let later_rules = snd scan.current.(into) in
       let rec clear i =
         if i >= into then true
         else
           let conflicts =
-            match fst scan.arr.(i) with
+            match fst scan.current.(i) with
             | Rule rule ->
                 let residual = drop_shadowed_by_rules later_rules rule in
                 residual.declarations <> []
-                && Rule_graph.rules_conflict ?parent moving residual
+                && Rule_graph.rules_conflict ?parent:scan.st.parent moving
+                     residual
             | _ -> List.exists (nodes_conflict scan i) scan.members.(from)
           in
           (not conflicts) && clear (i + 1)
       in
       clear (from + 1)
   | _ -> false
-
-(* The shape a run element folds in: a style rule merges declaration lists under
-   one selector, a conditional block concatenates bodies under an unchanged
-   prelude. [element_shape] is the one place the statements that can pair are
-   enumerated - the key that decides two elements share a cascade slot and the
-   merge that folds them both read it, so a statement cannot become mergeable
-   for one and stay unknown to the other. *)
-type block_prelude =
-  | Media_query of Media.t
-  | Feature_query of Supports.t
-  | Container_query of string option * Container.t option
-
-type merge_shape = Style of rule | Block of block_prelude * statement list
-
-let element_shape (stmt : statement) =
-  match stmt with
-  | Rule r when r.merge_key = None -> Some (Style r)
-  | Media (m, body) -> Some (Block (Media_query m, body))
-  | Supports (c, body) -> Some (Block (Feature_query c, body))
-  | Container (name, cond, body) ->
-      Some (Block (Container_query (name, cond), body))
-  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
-  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
-  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
-  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-  | Unknown_at_rule _ ->
-      None
-
-let block_statement prelude body =
-  match prelude with
-  | Media_query m -> Media (m, body)
-  | Feature_query c -> Supports (c, body)
-  | Container_query (name, cond) -> Container (name, cond, body)
 
 (* The element a merge produces. Two elements only ever pair on an equal
    [element_key], and the key carries the slot's shape, so the two sides always
@@ -437,11 +472,11 @@ let block_statement prelude body =
    merge concatenates the bodies in source order and re-canonicalises the
    result: the two halves were each canonical alone, but their concatenation
    need not be. *)
-let merged_element ~canon_body ~ctx scan ~from ~into =
+let merged_element scan ~from ~into =
   let earlier, later = if from < into then (from, into) else (into, from) in
   match
-    ( element_shape (fst scan.arr.(earlier)),
-      element_shape (fst scan.arr.(later)) )
+    ( element_shape (fst scan.current.(earlier)),
+      element_shape (fst scan.current.(later)) )
   with
   | Some (Style a), Some (Style b) ->
       let merged =
@@ -449,77 +484,40 @@ let merged_element ~canon_body ~ctx scan ~from ~into =
           a with
           declarations =
             canonical_declarations
-              (coalesced_declarations ~ctx (a.declarations @ b.declarations));
+              (coalesced_declarations ~ctx:scan.st.ctx
+                 (a.declarations @ b.declarations));
         }
       in
       Some (Rule merged, [ merged ])
   | Some (Block (prelude, ba)), Some (Block (_, bb)) ->
-      let stmt = block_statement prelude (canon_body (ba @ bb)) in
+      let stmt = block_statement prelude (scan.st.canon_body (ba @ bb)) in
       Some (stmt, Option.value ~default:[] (element_rules stmt))
   | (Some (Style _ | Block _) | None), _ -> None
 
-let merge ~canon_body ~ctx scan changed ~from ~into =
-  match merged_element ~canon_body ~ctx scan ~from ~into with
+let merge scan changed ~from ~into =
+  match merged_element scan ~from ~into with
   | None -> ()
   | Some element ->
-      scan.arr.(into) <- element;
+      scan.current.(into) <- element;
       scan.members.(into) <- scan.members.(from) @ scan.members.(into);
       scan.alive.(from) <- false;
       scan.merged_any <- true;
       changed := true
 
-(* What makes two run elements the same cascade slot, so that one can fold into
-   the other. Style, media and supports shapes retain their text keys, while a
-   container condition uses the structural equality that decides whether two
-   queries select the same containers. Its normalised spelling is only a hash:
-   collisions still reach [equal] instead of becoming merges. *)
-module Shape_key = struct
-  type t = Text of string | Container of string option * Container.t option
-
-  let equal a b =
-    match (a, b) with
-    | Text a, Text b -> String.equal a b
-    | Container (an, ac), Container (bn, bc) ->
-        Option.equal String.equal an bn && Option.equal Container.equal ac bc
-    | (Text _ | Container _), _ -> false
-
-  let hash = function
-    | Text text -> Hashtbl.hash (0, text)
-    | Container (name, cond) ->
-        let cond =
-          Option.map
-            (fun c -> Container.to_string ~minify:true (Container.normalize c))
-            cond
-        in
-        Hashtbl.hash (1, name, cond)
-end
-
-module Shape_table = Hashtbl.Make (Shape_key)
-
 (* Fold the earlier occurrence [i] down into [j] when nothing in between
    observes its writes moving; otherwise fold [j]'s writes up into [i] when
    nothing in between observes those. *)
-let try_merge ~canon_body ~ctx ?parent scan changed ~last ~key i j =
+let try_merge scan changed ~last ~key i j =
   if
     interval_clear scan ~lo:i ~hi:j scan.members.(i)
-    || supports_merge_down_clear ?parent scan ~from:i ~into:j
+    || supports_merge_down_clear scan ~from:i ~into:j
   then begin
-    merge ~canon_body ~ctx scan changed ~from:i ~into:j;
+    merge scan changed ~from:i ~into:j;
     Shape_table.replace last key j
   end
   else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
-    merge ~canon_body ~ctx scan changed ~from:j ~into:i
+    merge scan changed ~from:j ~into:i
   else Shape_table.replace last key j
-
-let shape_key = function
-  | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
-  | Block (Media_query m, _) ->
-      Shape_key.Text (String.concat "" [ "@media "; Media.to_string m ])
-  | Block (Feature_query c, _) ->
-      Shape_key.Text (String.concat "" [ "@supports "; Supports.to_string c ])
-  | Block (Container_query (name, cond), _) -> Shape_key.Container (name, cond)
-
-let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 
 (* Coalesce same-slot elements within one run. Folding an occurrence into
    another moves its writes past every element in between, which is observable
@@ -528,54 +526,104 @@ let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
    run, against every original occurrence already accumulated into the surviving
    element. A conditional block's node is the union of its interior selectors
    and declarations, a superset of its true conflicts, so the same test covers a
-   block merge. [blocks] says whether blocks fold at all. *)
-let coalesce ~blocks ~canon_body ~ctx ?parent changed
-    (run : (statement * rule list) list) : (statement * rule list) list =
-  match run with
-  | [] | [ _ ] -> run
-  | _ ->
-      let arr = Array.of_list run in
-      let n = Array.length arr in
-      let nodes =
-        Array.map (fun (stmt, rules) -> element_node stmt rules) arr
-      in
-      let scan =
-        {
-          nodes;
-          facts = Array.map (Rule_graph.facts ?parent) nodes;
-          arr;
-          plain =
-            Array.map
-              (fun (stmt, _) -> match stmt with Rule _ -> true | _ -> false)
-              arr;
-          members = Array.init n (fun i -> [ i ]);
-          alive = Array.make n true;
-          merged_any = false;
-        }
-      in
-      let last = Shape_table.create 16 in
-      let key stmt =
-        match stmt with
-        | Rule _ -> element_key stmt
-        | _ -> if blocks then element_key stmt else None
-      in
-      for j = 0 to n - 1 do
-        match key (fst arr.(j)) with
-        | None -> ()
-        | Some key -> (
-            match Shape_table.find_opt last key with
-            | Some i when scan.alive.(i) ->
-                try_merge ~canon_body ~ctx ?parent scan changed ~last ~key i j
-            | _ -> Shape_table.replace last key j)
-      done;
-      if not scan.merged_any then run
-      else Array.to_list arr |> List.filteri (fun i _ -> scan.alive.(i))
+   block merge. [blocks] says whether blocks fold at all. An element the scan
+   folded into becomes one new node of the graph. *)
+(* The run after [scan]: each surviving element, an element the scan folded
+   into standing as one new node of the graph in place of every node folded
+   into it. *)
+let folded scan =
+  let st = scan.st and ids = scan.start in
+  let survivor p =
+    match scan.members.(p) with
+    | [ q ] when q = p -> ids.(p)
+    | members ->
+        let stmt, rules = scan.current.(p) in
+        let e = element stmt rules in
+        (* the graph asks [exclusive] about the node it adds *)
+        add_element st.store e;
+        Rule_graph.Node_id.to_int
+          (Rule_graph.fold st.graph
+             (List.map (fun q -> node ids.(q)) members)
+             e.node
+             ~at:(node ids.(p)))
+  in
+  let rec collect p acc =
+    if p < 0 then acc
+    else collect (p - 1) (if scan.alive.(p) then survivor p :: acc else acc)
+  in
+  Array.of_list (collect (Array.length ids - 1) [])
+
+let coalesce ~blocks st changed (ids : int array) : int array =
+  let n = Array.length ids in
+  if n < 2 then ids
+  else
+    let scan =
+      {
+        st;
+        start = ids;
+        current =
+          Array.map
+            (fun id ->
+              let e = st.store.elements.(id) in
+              (e.stmt, e.rules))
+            ids;
+        members = Array.init n (fun i -> [ i ]);
+        alive = Array.make n true;
+        merged_any = false;
+      }
+    in
+    let last = Shape_table.create 16 in
+    let key e =
+      match e.stmt with Rule _ -> e.key | _ -> if blocks then e.key else None
+    in
+    for j = 0 to n - 1 do
+      match key (start_element scan j) with
+      | None -> ()
+      | Some key -> (
+          match Shape_table.find_opt last key with
+          | Some i when scan.alive.(i) -> try_merge scan changed ~last ~key i j
+          | _ -> Shape_table.replace last key j)
+    done;
+    if scan.merged_any then folded scan else ids
+
+(* Reorder a run into a canonical linear extension of its dependency graph,
+   breaking ties among independent elements by serialized statement content so
+   two source orderings converge to one form, while preserving the run as it
+   stands when that order already matches it. The graph expands each element's
+   relative selectors against the enclosing nesting context, so overlap is
+   computed on the effective selector, and records no conflict between two
+   elements under a condition and its negation, which never apply together. *)
+let sort st changed ids =
+  let n = Array.length ids in
+  if n < 2 then ids
+  else
+    let text i = Lazy.force st.store.elements.(ids.(i)).text in
+    let ranked = Array.init n Fun.id in
+    Array.sort
+      (fun a b ->
+        match String.compare (text a) (text b) with
+        | 0 -> Int.compare a b
+        | c -> c)
+      ranked;
+    let rank = Array.make st.store.count 0 in
+    Array.iteri (fun pos i -> rank.(ids.(i)) <- pos) ranked;
+    let order =
+      Array.map Rule_graph.Node_id.to_int
+        (Rule_graph.run_order st.graph (fun id ->
+             rank.(Rule_graph.Node_id.to_int id)))
+    in
+    if Array.for_all2 Int.equal order ids then ids
+    else begin
+      changed := true;
+      order
+    end
 
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept
    apart, enabling a merge the source order hid, so equivalent sheets converge
    regardless of which arrangement they started from. Each merging round removes
-   at least one element, so this terminates.
+   at least one element, so this terminates. Each round reads the graph and the
+   elements the rounds before it left, so a round costs what changed since.
 
    Fold what the run already offers before sorting it. Sorting is free to move
    two same-selector occurrences apart, and a pair the input wrote adjacent has
@@ -589,23 +637,54 @@ let coalesce ~blocks ~canon_body ~ctx ?parent changed
    sort would instead regroup the rules in the order the input wrote them, and
    the block each rule landed in would decide where it sorts. They fold once the
    sort has put the rules in canonical order. *)
-let rec settle ~canon_body ~ctx ?parent changed
-    (run : (statement * rule list) list) : statement list =
-  let run = coalesce ~blocks:false ~canon_body ~ctx ?parent changed run in
-  let stmts = sort_run ?parent changed run in
-  let sorted =
-    List.filter_map
-      (fun s ->
-        match element_rules s with
-        | Some rules -> Some (s, rules)
-        | None -> None)
-      stmts
-  in
-  let coalesced =
-    coalesce ~blocks:true ~canon_body ~ctx ?parent changed sorted
-  in
-  if coalesced == sorted then stmts
-  else settle ~canon_body ~ctx ?parent changed coalesced
+let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
+    : statement list =
+  match run with
+  | [] -> []
+  | [ (stmt, _) ] -> [ stmt ]
+  | run ->
+      let elements =
+        Array.of_list (List.map (fun (stmt, rules) -> element stmt rules) run)
+      in
+      let n = Array.length elements in
+      let store = { elements; count = n } in
+      (* Only two elements of one shape key fold, and folding keeps the key, so
+         an element alone with its key stays in the graph to the end. *)
+      let sharing = Shape_table.create 16 in
+      Array.iter
+        (fun e ->
+          Option.iter
+            (fun key ->
+              Shape_table.replace sharing key
+                (1 + Option.value ~default:0 (Shape_table.find_opt sharing key)))
+            e.key)
+        elements;
+      let folds id =
+        match elements.(Rule_graph.Node_id.to_int id).key with
+        | Some key -> Shape_table.find sharing key > 1
+        | None -> false
+      in
+      let exclusive i j =
+        let conditions id =
+          store.elements.(Rule_graph.Node_id.to_int id).conditions
+        in
+        let cj = conditions j in
+        List.exists (fun a -> List.exists (excludes a) cj) (conditions i)
+      in
+      let graph =
+        Rule_graph.run ?parent ~exclusive ~folds
+          (Array.to_list (Array.map (fun e -> e.node) elements))
+      in
+      let st = { canon_body; ctx; parent; store; graph } in
+      let rec rounds ids =
+        let ids = coalesce ~blocks:false st changed ids in
+        let ids = sort st changed ids in
+        let coalesced = coalesce ~blocks:true st changed ids in
+        if coalesced == ids then ids else rounds coalesced
+      in
+      rounds (Array.init n Fun.id)
+      |> Array.map (fun id -> store.elements.(id).stmt)
+      |> Array.to_list
 
 (* A declaration a conditional group repeats from the rule with the identical
    selector before it, value and all, changes nothing: an engine reading the
