@@ -799,10 +799,19 @@ let callstack_accuracy () =
     ".test[[attr]] { color: red; }"
     [ "rule"; "selector"; "list" ]
 
+(* The optimizer reads a no-op off physical identity, so a list with no member
+   to strip comes back as the same node. *)
+let nesting_prefix_keeps_an_untouched_list () =
+  let sel = v ".a,.b" in
+  if Cascade.Selector.drop_redundant_nesting_prefix sel != sel then
+    Alcotest.fail "a list with no nesting prefix was rebuilt"
+
 let suite =
   let open Alcotest in
   ( "selector",
     [
+      test_case "nesting prefix keeps an untouched list" `Quick
+        nesting_prefix_keeps_an_untouched_list;
       (* Basic selector types *)
       test_case "element" `Quick element_cases;
       test_case "class" `Quick class_cases;
