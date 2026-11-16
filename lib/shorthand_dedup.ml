@@ -644,31 +644,35 @@ let legacy_name_alias_of = function
    the alias and its twin compare as the twin alone. This assumes nothing about
    which browsers are targeted -- the two names ARE one property -- so it holds
    where the target-dependent prefix drops do not. A differing value or
-   importance is two writes of one property and stays. *)
-let legacy_name_alias_twin vendor twin =
-  match legacy_name_alias_of (Declaration.property_name vendor) with
-  | None -> false
-  | Some unprefixed ->
-      String.equal unprefixed (Declaration.property_name twin)
-      && same_value_text vendor twin
-      && Bool.equal
-           (Declaration.is_important vendor)
-           (Declaration.is_important twin)
+   importance is two writes of one property and stays. [unprefixed] is the
+   property [vendor] is an alias of. *)
+let legacy_name_alias_twin ~unprefixed vendor twin =
+  String.equal unprefixed (Declaration.property_name twin)
+  && same_value_text vendor twin
+  && Bool.equal
+       (Declaration.is_important vendor)
+       (Declaration.is_important twin)
 
 (* Canonical comparison follows the aliasing the specs prove on their own,
    without enabling every target-dependent optimizer rewrite. Sec. 3.4.1 above
    settles the [-webkit-] list; [-webkit-text-decoration-color] is not on it but
    every engine that ships the prefix aliases it, and Cascade normalizes it
    whatever the target. A differing fallback, mismatched importance, or prefix
-   without a standard twin remains observable and is kept. *)
+   without a standard twin remains observable and is kept. A declaration's own
+   name says whether it is a legacy alias, so that name is read once per
+   declaration. *)
 let drop_redundant_decoration_color_aliases declarations =
   filter_preserve
     (fun declaration ->
+      let legacy_twin =
+        match legacy_name_alias_of (Declaration.property_name declaration) with
+        | None -> fun _ -> false
+        | Some unprefixed -> legacy_name_alias_twin ~unprefixed declaration
+      in
       not
         (List.exists
            (fun twin ->
-             decoration_color_alias_twin declaration twin
-             || legacy_name_alias_twin declaration twin)
+             decoration_color_alias_twin declaration twin || legacy_twin twin)
            declarations))
     declarations
 

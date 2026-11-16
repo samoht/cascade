@@ -109,6 +109,8 @@
 - `cascade diff --diff=canonical` builds a rule graph only to order a run of
   rules, not to fold rules within it. tw's tailwindcss.com sheet against
   Tailwind's takes 3.2 s of CPU instead of 5.3 s (#1308).
+- `cascade diff --diff=canonical` checks each declaration for a legacy vendor
+  alias once rather than once per other declaration in its rule (#1309).
 
 ### Library
 
