@@ -20,6 +20,7 @@ let () =
       Test_support.suite;
       Test_webkit_fallback.suite;
       Test_loc.suite;
+      Test_line_col.suite;
       Test_token.suite;
       Test_lexer.suite;
       Test_source_index.suite;

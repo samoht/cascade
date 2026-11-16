@@ -11,7 +11,7 @@
 type t
 
 val of_components :
-  ?source:string ->
+  ?source:Error.Source.t ->
   ?recover:bool ->
   ?meta:Loc.meta_level ->
   ?eof_loc:Loc.t ->
@@ -19,7 +19,8 @@ val of_components :
   t
 (** [of_components ?source ?recover ?meta ?eof_loc cvs] is a fresh cursor over
     [cvs]. Pass [?source] so errors raised while consuming the cursor get a
-    source-context snippet attached (matching {!of_string}'s behaviour). Pass
+    source-context snippet attached (matching {!of_string}'s behaviour); cursors
+    over one text share one [source], and with it its index. Pass
     [~recover:true] to enable per-declaration recovery: validators that honour
     {!recover} will catch a {!exception-Parse_error} on one declaration, push it
     to {!push_warning}, and skip to the next [;] instead of propagating. [?meta]

@@ -39,6 +39,7 @@ let with_unicode_ranges t f =
   Fun.protect ~finally:(fun () -> t.unicode_ranges <- saved) f
 
 let source t = Reader.source t.reader
+let indexed_source t = Reader.indexed_source t.reader
 
 (** {1 Tokenization} *)
 

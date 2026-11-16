@@ -8,7 +8,8 @@ open Stylesheet_read
    original [At_keyword] token was already consumed during section 5.3, so
    synthesize one at the rule's location so dispatch in [read_statement] still
    sees the opening [\@name]. [?source] flows through so errors raised by
-   validators downstream pick up source-context snippets. *)
+   validators downstream pick up source-context snippets, all of them sharing
+   its one index. *)
 let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
   | Qualified { node = { prelude; block }; _ } ->
       Cursor.of_components ?source ?meta ~recover:true
@@ -137,6 +138,7 @@ let validate_partial_statement_warnings warnings validate_prelude rule stmt =
 
 let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
+  let text = Option.map Error.Source.text source in
   let warnings = ref [] in
   let validate_prelude = validate_partial_prelude () in
   (* CSS Conditional Rules 5 section 4: [@else] is a continuation rule and must
@@ -151,7 +153,7 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
            alike, so it names what a drop costs the sheet. The error's own
            location marks where the read gave up inside it. *)
         let lost () =
-          Error.Recovery.(dropped ?source ~loc:(rule_loc rule) Rule)
+          Error.Recovery.(dropped ?source:text ~loc:(rule_loc rule) Rule)
         in
         (* Drain declaration-level warnings first so source order is preserved:
            decl warnings come from inside the rule, the rule-level error (if

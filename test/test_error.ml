@@ -480,6 +480,27 @@ let locating_warnings_is_linear () =
           (a2 /. a1))
     [ ("a rule a line", "\n"); ("one line", "") ]
 
+(* What rendering allocates does not see a walk that allocates nothing, so the
+   sharing that keeps the walks to one is checked as well: the parser's warnings
+   (the unterminated block) and the typed reader's (each [float]) carry the one
+   index of the parse, whose lookups test_line_col bounds. *)
+let warnings_share_one_index () =
+  let css = warning_sheet ~break:"\n" 3 ^ "\n.y{a:(" in
+  let indexes =
+    List.map
+      (fun (w : Error.t) ->
+        match w.source with
+        | Some source -> source
+        | None -> Alcotest.failf "no source: %s" (Error.to_string w))
+      (parse_warnings css)
+  in
+  Alcotest.(check int) "warnings" 5 (List.length indexes);
+  List.iter
+    (fun index ->
+      if not (index == List.hd indexes) then
+        Alcotest.fail "two indexes of one source")
+    indexes
+
 let suite =
   ( "error",
     [
@@ -508,4 +529,6 @@ let suite =
       Alcotest.test_case "line and column" `Quick tests_position;
       Alcotest.test_case "locating warnings is linear" `Quick
         locating_warnings_is_linear;
+      Alcotest.test_case "warnings share one index" `Quick
+        warnings_share_one_index;
     ] )

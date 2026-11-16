@@ -1125,8 +1125,9 @@ let warn ~meta lexer (warnings : Error.t list ref) ~recovery (e : Error.t) =
   let e =
     match meta with
     | `Full ->
-        let source = Lexer.source lexer in
-        Error.v ~source ~loc:e.loc ~sort:e.sort e.kind
+        Error.in_source
+          (Lexer.indexed_source lexer)
+          ~loc:e.loc ~sort:e.sort e.kind
     | `None | `Locs -> e
   in
   warnings := Error.with_recovery recovery e :: !warnings

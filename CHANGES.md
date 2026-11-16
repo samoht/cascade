@@ -21,6 +21,12 @@
   of a byte range, and `Error.position` gives that line and column (#1299).
 - `cascade diff` names each input in its warnings, and `Css.of_string` without
   `~filename` leaves the name unset, printed as `<CSS input>` (#1299).
+- `Error.t`'s `source` is an `Error.Source.t`, the input text with the index
+  of its positions that `Error.position` reads and the errors of one parse
+  share; `Error.Source.text` gives the string. `Error.in_source` builds an
+  error in a shared source, and `Cursor.of_components` and
+  `Stylesheet.read_stylesheet_of_rules` take an `Error.Source.t` as `?source`
+  (#1310).
 
 ### Printing
 
@@ -94,6 +100,11 @@
 - `cascade fmt --minify --profile` reports `nested-merge probes`, the
   declaration blocks the same-selector merge checked against nested blocks
   before them, also read as `Stats.counters.nested_merge_probes` (#1301).
+- Printing parse warnings costs in proportion to the warnings plus the input,
+  where each warning counted its line and column from the first byte. A 2.1 MB
+  sheet of concatenated SatCSS stylesheets takes 0.4 s of CPU under `cascade
+  fmt` instead of 5.0 s. netflix.com's stylesheet minifies in 0.6 s instead of
+  0.8 s (#1310).
 
 ### Diff report
 

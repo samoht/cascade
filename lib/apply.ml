@@ -107,7 +107,7 @@ let ua_declared =
 let parse_inline s =
   let cursor =
     Cursor.of_string s |> Cursor.remaining
-    |> Cursor.of_components ~source:s ~recover:true
+    |> Cursor.of_components ~source:(Error.Source.v s) ~recover:true
   in
   match Declaration.read_declarations cursor with
   | decls -> decls

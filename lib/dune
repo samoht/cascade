@@ -23,6 +23,7 @@
   inline_dead
   inline_layer
   inline_import
+  line_col
   merge
   properties_intf
   properties_layout_intf

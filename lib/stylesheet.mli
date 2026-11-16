@@ -452,7 +452,7 @@ val read : Cursor.t -> t
     instead. *)
 
 val read_stylesheet_of_rules :
-  ?source:string ->
+  ?source:Error.Source.t ->
   ?meta:Loc.meta_level ->
   Component.rule list ->
   stylesheet * Error.t list
@@ -461,7 +461,7 @@ val read_stylesheet_of_rules :
     validator failure on one rule is captured as a warning and the rule is
     dropped; the remaining rules are returned. Pass [?source] (and keep [?meta]
     at its default [`Full]) so dropped-rule warnings carry source- context
-    snippets. *)
+    snippets; they share its index. *)
 
 module Source : sig
   (** Immutable source fidelity captured by

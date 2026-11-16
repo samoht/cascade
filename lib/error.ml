@@ -49,12 +49,20 @@ type kind =
    by the user-facing pretty-printer. Most raised errors are caught and
    discarded inside speculative parsers ([Cursor.option] / [Cursor.one_of]), so
    building the snippet eagerly was pure waste in the hot path. *)
+module Source = struct
+  type t = Line_col.t
+
+  let v = Line_col.v
+  let text = Line_col.source
+  let locate t pos = Line_col.locate t pos
+end
+
 type t = {
   loc : Loc.t;
   sort : Sort.t;
   path : string list;
   kind : kind;
-  source : string option;
+  source : Source.t option;
   filename : string option;
   recovery : Recovery.t;
 }
@@ -62,34 +70,12 @@ type t = {
 let snippet t =
   match t.source with
   | None -> None
-  | Some source -> Some (Loc.snippet source t.loc)
-
-(* CSS Syntax 3 (ED) sec. 3.3 turns CR, FF and the CRLF pair into one LF before
-   tokenizing, and a column is one element of the decoded stream: a code point,
-   or one U+FFFD per maximal ill-formed subpart (sec. 3.2). A source the reader
-   already preprocessed holds only LF; counting the other breaks as well gives
-   the same answer on a raw string. *)
-let line_col source pos =
-  let len = max 0 (min pos (String.length source)) in
-  let line, col, _ =
-    Common.String.utf8_fold ~len
-      (fun (line, col, after_cr) _ decoded ->
-        match decoded with
-        | Common.String.Scalar u -> (
-            match Uchar.to_int u with
-            | 0x0A when after_cr -> (line, col, false)
-            | 0x0A | 0x0C -> (line + 1, 1, false)
-            | 0x0D -> (line + 1, 1, true)
-            | _ -> (line, col + 1, false))
-        | Common.String.Malformed _ -> (line, col + 1, false))
-      (1, 1, false) source
-  in
-  (line, col)
+  | Some source -> Some (Loc.snippet (Source.text source) t.loc)
 
 let position t =
   match t.source with
   | None -> None
-  | Some source -> Some (line_col source t.loc.start_pos)
+  | Some source -> Some (Source.locate source t.loc.start_pos)
 
 let context t =
   {
@@ -198,8 +184,19 @@ let v ?(path = Loc.Path.empty) ?source ?filename ~loc ~sort kind =
     sort;
     path = Loc.Path.to_labels path;
     kind;
-    source;
+    source = Option.map Source.v source;
     filename;
+    recovery = Recovery.Recovered;
+  }
+
+let in_source source ~loc ~sort kind =
+  {
+    loc;
+    sort;
+    path = [];
+    kind;
+    source = Some source;
+    filename = None;
     recovery = Recovery.Recovered;
   }
 

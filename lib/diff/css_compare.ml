@@ -123,27 +123,34 @@ let strip_tool_header css =
   String.trim (String.sub css start (String.length css - start))
 
 (* A warning located in the stripped text, moved back to its place in the file:
-   the stripped prefix, preprocessed as the reader would (CSS Syntax 3 (ED) sec.
-   3.3), goes back in front of the source and of the location. *)
-let relocate ~prefix (e : Error.t) =
-  if prefix = "" then e
-  else
-    let prefix = Reader.source (Reader.of_string prefix) in
-    let shift = String.length prefix in
-    {
-      e with
-      loc =
-        Loc.v ~start_pos:(e.loc.start_pos + shift)
-          ~end_pos:(e.loc.end_pos + shift);
-      source = Option.map (fun s -> String.concat "" [ prefix; s ]) e.source;
-    }
+   [shift] bytes further on, in [source], the stripped prefix in front of the
+   stripped text. *)
+let relocate ~shift ~source (e : Error.t) =
+  {
+    e with
+    loc =
+      Loc.v ~start_pos:(e.loc.start_pos + shift) ~end_pos:(e.loc.end_pos + shift);
+    source = (match e.source with Some _ -> Some source | None -> None);
+  }
 
 (* [css] read the way [diff] compares it, with its warnings and error placed in
-   the file [filename] names. *)
+   the file [filename] names. The warnings of one parse share one source, so the
+   moved one is built once, from both parts preprocessed as the reader does (CSS
+   Syntax 3 (ED) sec. 3.3), and they share its index in turn. *)
 let parse_input ?filename css =
-  let prefix = String.sub css 0 (tool_header_end css) in
-  let relocate = relocate ~prefix in
-  match Css.of_string ?filename (strip_tool_header css) with
+  let stripped = strip_tool_header css in
+  let relocate =
+    match tool_header_end css with
+    | 0 -> Fun.id
+    | header_end ->
+        let preprocess s = Reader.source (Reader.of_string s) in
+        let prefix = preprocess (String.sub css 0 header_end) in
+        let source =
+          Error.Source.v (String.concat "" [ prefix; preprocess stripped ])
+        in
+        relocate ~shift:(String.length prefix) ~source
+  in
+  match Css.of_string ?filename stripped with
   | Ok parse ->
       Ok { parse with Css.warnings = List.map relocate parse.warnings }
   | Error e -> Error (relocate e)

@@ -3,6 +3,8 @@ open Common
 type t = {
   mutable cvs : Component.t list;
   source : string option;
+  indexed : Error.Source.t option;
+      (* [source] with its index, which every error raised here carries. *)
   warnings : Error.t list ref;
   recover : bool;
   meta : Loc.meta_level;
@@ -23,14 +25,16 @@ type t = {
    small enough that the per-level selector validation walks stay linear. *)
 let max_nesting_depth = 100
 
-let of_components ?source ?(recover = false) ?(meta = Loc.default_meta_level)
-    ?eof_loc cvs =
-  { cvs; source; warnings = ref []; recover; meta; eof_loc; depth = 0 }
+let of_components ?source:indexed ?(recover = false)
+    ?(meta = Loc.default_meta_level) ?eof_loc cvs =
+  let source = Option.map Error.Source.text indexed in
+  { cvs; source; indexed; warnings = ref []; recover; meta; eof_loc; depth = 0 }
 
 let sub ?eof_loc t cvs =
   {
     cvs;
     source = t.source;
+    indexed = t.indexed;
     warnings = t.warnings;
     recover = t.recover;
     meta = t.meta;
@@ -69,6 +73,7 @@ let of_string ?(meta = Loc.default_meta_level) ?unicode_ranges s =
   {
     cvs = lex_to_cv_list parser;
     source = Some (Reader.source reader);
+    indexed = Some (Reader.indexed_source reader);
     warnings = ref [];
     recover = false;
     meta;
@@ -81,6 +86,7 @@ let of_reader ?(meta = Loc.default_meta_level) r =
   {
     cvs = lex_to_cv_list parser;
     source = Some (Reader.source r);
+    indexed = Some (Reader.indexed_source r);
     warnings = ref [];
     recover = false;
     meta;
@@ -242,8 +248,9 @@ exception Parse_error = Error.Parse_error
 let sort = Sort.Component
 
 let raise_sort t sort kind loc =
-  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
-  Error.fail (Error.v ?source ~loc ~sort kind)
+  match (t.meta, t.indexed) with
+  | `Full, Some source -> Error.fail (Error.in_source source ~loc ~sort kind)
+  | _ -> Error.fail (Error.v ~loc ~sort kind)
 
 let raise_ t kind loc = raise_sort t sort kind loc
 
@@ -277,9 +284,10 @@ let err_expected_but_eof t what =
 let err_unexpected t = err t "unexpected token"
 
 let condition_error t ~at_rule reason =
-  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
-  Error.v ?source ~loc:(position t) ~sort:Sort.At_rule
-    (Error.Bad_condition { at_rule; reason })
+  let loc = position t and kind = Error.Bad_condition { at_rule; reason } in
+  match (t.meta, t.indexed) with
+  | `Full, Some source -> Error.in_source source ~loc ~sort:Sort.At_rule kind
+  | _ -> Error.v ~loc ~sort:Sort.At_rule kind
 
 let err_condition t ~at_rule reason =
   Error.fail (condition_error t ~at_rule reason)
