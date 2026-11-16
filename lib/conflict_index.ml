@@ -409,22 +409,53 @@ let rec simple_subject_selector (selector : Selector.t) =
 
 let compact_rule = function [ { footprint = [ _ ]; _ } ] -> true | _ -> false
 
-let rec collect_rule_overlaps ~relay bucket decls selectors summaries
-    specificities stamp seen acc =
+(* The groups a node's branches reach. A branch reaches the groups of its
+   specificity and of the element and IDs its subject requires, so two branches
+   that agree on those, and on whether the node sits in the compact runs through
+   them, reach the same groups: a block node holding dozens of class branches
+   reaches them once. *)
+type reach = {
+  spec : int;
+  summary : Selector_summary.t;
+  element : string option;
+  ids : string list;
+  compact : bool;
+}
+
+let same_reach a b =
+  Int.equal a.spec b.spec
+  && Bool.equal a.compact b.compact
+  && Option.equal String.equal a.element b.element
+  && List.equal String.equal a.ids b.ids
+
+let rec reaches ~relay decls acc selectors summaries specificities =
   match (selectors, summaries, specificities) with
-  | [], [], [] -> acc
+  | [], [], [] -> List.rev acc
   | selector :: selectors, summary :: summaries, specificity :: specificities ->
-      let spec = spec_key specificity in
-      let compact =
-        relay && compact_rule decls && simple_subject_selector selector
+      let reach =
+        {
+          spec = spec_key specificity;
+          summary;
+          element = Selector_summary.element summary;
+          ids = Selector_summary.ids summary;
+          compact =
+            relay && compact_rule decls && simple_subject_selector selector;
+        }
       in
       let acc =
-        collect_broad_bucket bucket spec summary stamp seen acc |> fun acc ->
-        collect_decl_overlaps ~compact bucket spec summary stamp seen acc decls
+        if List.exists (same_reach reach) acc then acc else reach :: acc
       in
-      collect_rule_overlaps ~relay bucket decls selectors summaries
-        specificities stamp seen acc
-  | _ -> invalid_arg "Rule_graph.collect_rule_overlaps"
+      reaches ~relay decls acc selectors summaries specificities
+  | _ -> invalid_arg "Conflict_index.reaches"
+
+let collect_rule_overlaps ~relay bucket decls selectors summaries specificities
+    stamp seen acc =
+  List.fold_left
+    (fun acc { spec; summary; compact; _ } ->
+      collect_broad_bucket bucket spec summary stamp seen acc |> fun acc ->
+      collect_decl_overlaps ~compact bucket spec summary stamp seen acc decls)
+    acc
+    (reaches ~relay decls [] selectors summaries specificities)
 
 let rec add_decl_keys ~compact bucket spec summary decl value = function
   | [] -> ()
@@ -438,19 +469,12 @@ let rec add_decl_overlaps ~compact bucket spec summary value = function
       add_decl_keys ~compact bucket spec summary ov.decl value ov.footprint;
       add_decl_overlaps ~compact bucket spec summary value rest
 
-let rec add_rule_overlaps ~relay bucket decls selectors summaries specificities
+let add_rule_overlaps ~relay bucket decls selectors summaries specificities
     value =
-  match (selectors, summaries, specificities) with
-  | [], [], [] -> ()
-  | selector :: selectors, summary :: summaries, specificity :: specificities ->
-      let compact =
-        relay && compact_rule decls && simple_subject_selector selector
-      in
-      add_decl_overlaps ~compact bucket (spec_key specificity) summary value
-        decls;
-      add_rule_overlaps ~relay bucket decls selectors summaries specificities
-        value
-  | _ -> invalid_arg "Rule_graph.add_rule_overlaps"
+  List.iter
+    (fun { spec; summary; compact; _ } ->
+      add_decl_overlaps ~compact bucket spec summary value decls)
+    (reaches ~relay decls [] selectors summaries specificities)
 
 (* Every node indexed so far: each bucketed by the keys its declarations write,
    then by specificity and subject, and by specificity alone, which is what a
