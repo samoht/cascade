@@ -391,11 +391,45 @@ let test_custom_prop_empty_edges _buf =
   assert_serializes "empty value" "--x:" "--x:";
   assert_serializes "whitespace-only value" "--x: " "--x:"
 
+(* [equal_declaration] answers what [Stdlib.compare] answers, and two
+   declarations it calls equal, built in one domain, are one object, so the
+   optimizer's equality tests read a pointer rather than walk two values. The
+   pairs hold equal declarations parsed apart, unequal ones, a NaN that only
+   [compare] equates with itself, and custom properties over arbitrary token
+   streams. *)
+let test_equal_is_compare buf =
+  let texts =
+    [
+      declaration_text buf 0;
+      declaration_text buf 1;
+      "opacity:calc(infinity - infinity)";
+      "width:calc(1px * (infinity - infinity))";
+      "--fuzz:" ^ cssish buf;
+      "--fuzz:" ^ cssish (String.sub buf 0 (String.length buf / 2));
+    ]
+  in
+  let parsed = List.filter_map parse_declaration (texts @ texts) in
+  let decls = parsed @ List.map Css.Declaration.normalize parsed in
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          let expected = Stdlib.compare a b = 0 in
+          if Css.Declaration.equal_declaration a b <> expected then
+            failf "equal_declaration disagrees with compare: %S vs %S"
+              (serialize a) (serialize b);
+          if expected && a != b then
+            failf "two equal declarations are two objects: %S" (serialize a))
+        decls)
+    decls
+
 let suite =
   ( "declaration",
     [
       test_case "read_declaration crash safety" [ bytes ]
         test_read_declaration_crash_safety;
+      test_case "equal_declaration agrees with compare" [ bytes ]
+        test_equal_is_compare;
       test_case "read_declaration crash safety over non-ascii bytes" [ bytes ]
         test_declaration_unicode_bytes;
       test_case "serialization idempotent" [ bytes ]
