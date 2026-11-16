@@ -35,6 +35,22 @@ let check_minified_to expected input =
     ("specificity preserved: " ^ input)
     (specificity original) (specificity reparsed)
 
+(* A rewrite that changes the node is [canonicalize]'s, and the node it reaches
+   is the one its print reads back as: pp is a serializer (docs/invariants.md).
+   Specificity is preserved through the rewrite. *)
+let check_canonical_to ?(enforce_spec = false) expected input =
+  let original = v input in
+  let canonical = canonicalize ~enforce_spec original in
+  let printed = to_string ~minify:true canonical in
+  Alcotest.(check string) ("canonicalize " ^ input) expected printed;
+  Alcotest.(check bool)
+    ("canonical selector reads back as built: " ^ input)
+    true
+    (equal canonical (v printed));
+  check_spec_tuple
+    ("specificity preserved: " ^ input)
+    (specificity original) (specificity canonical)
+
 (* Extra minifier invariant: minify is idempotent (a second pass produces no
    further change), and specificity is preserved. Strict AST equality between
    [original] and [reparsed] does not hold for inputs the minifier rewrites

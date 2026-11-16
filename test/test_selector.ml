@@ -109,9 +109,10 @@ let pseudo_class_cases () =
   check_construct ":nth-child(2n)" (nth_child Even);
   check_construct ":nth-child(odd)" (nth_child (An_plus_b (2, 1)));
   (* nth with Index and of clause. Per CSS Selectors 4 section 13.3.1 the
-     printer canonicalizes [<an+b>] to the shortest equivalent spelling -
-     [(0n+5)] -> [(5)] / [(1)] -> [:first-child]. *)
-  check ~expected:":first-child" ":nth-child(1)";
+     printer spells [<an+b>] the shortest way - [(0n+5)] -> [(5)]. Turning
+     [:nth-child(1)] into the [:first-child] node is [Selector.canonicalize]'s,
+     so pp keeps it. *)
+  check ":nth-child(1)";
   check ":nth-child(5)";
   check ~expected:":nth-child(odd of.item)" ":nth-child( odd of .item )";
   check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";

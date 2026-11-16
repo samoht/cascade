@@ -24,6 +24,11 @@ val check_minified_to : string -> string -> unit
 (** [check_minified_to expected input] checks that [input] minifies to
     [expected], reparses to its AST and keeps its specificity. *)
 
+val check_canonical_to : ?enforce_spec:bool -> string -> string -> unit
+(** [check_canonical_to ?enforce_spec expected input] checks that
+    {!Cascade.Css.Selector.canonicalize} takes [input] to [expected], that the
+    node reads back from its print, and that it keeps its specificity. *)
+
 val check_minified_equiv : string -> unit
 (** [check_minified_equiv input] checks that minifying [input] is idempotent and
     keeps its specificity. *)

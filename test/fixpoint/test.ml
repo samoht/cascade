@@ -458,32 +458,27 @@ let print_report loaded results =
 
 let selector_text sel = Selector.to_string ~minify:true sel
 
-(* The tree the reader builds, down to the simple selectors and the [:where()]
-   and [:has()] lists; a leaf is its spelling. [:is()] and [:not()] are leaves
-   too, and so is a compound holding nothing else: the minified printer still
-   folds some of them in place ([:not(:not(X))] prints as [X],
-   [:is(:link,:visited)] as [:any-link], [input:not(:enabled)] as
-   [input:disabled]). *)
+(* The tree the reader builds, down to the simple selectors and the selector
+   lists of the pseudo-classes that take one; a leaf is its spelling. *)
 let rec same_selector (a : Selector.t) (b : Selector.t) =
-  let leaf : Selector.t -> bool = function
-    | Compound _ | List _ | Where _ | Has _ | Combined _ | Relative _ -> false
-    | _ -> true
-  in
   match (a, b) with
-  | Compound xs, Compound ys when List.for_all leaf xs && List.for_all leaf ys
-    ->
-      String.equal (selector_text a) (selector_text b)
   | Compound xs, Compound ys
   | List xs, List ys
+  | Is xs, Is ys
   | Where xs, Where ys
+  | Not xs, Not ys
   | Has xs, Has ys ->
       List.equal same_selector xs ys
   | Combined (l, c, r), Combined (l', c', r') ->
       Selector.equal_combinator c c' && same_selector l l' && same_selector r r'
   | Relative (c, r), Relative (c', r') ->
       Selector.equal_combinator c c' && same_selector r r'
-  | (Compound _ | List _ | Where _ | Has _ | Combined _ | Relative _), _
-  | _, (Compound _ | List _ | Where _ | Has _ | Combined _ | Relative _) ->
+  | ( ( Compound _ | List _ | Is _ | Where _ | Not _ | Has _ | Combined _
+      | Relative _ ),
+      _ )
+  | ( _,
+      ( Compound _ | List _ | Is _ | Where _ | Not _ | Has _ | Combined _
+      | Relative _ ) ) ->
       false
   | a, b -> String.equal (selector_text a) (selector_text b)
 
