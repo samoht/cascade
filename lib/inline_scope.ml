@@ -2,45 +2,50 @@ open Stylesheet
 
 (** {1 Selector cover} *)
 
-let substitute_nesting ~parent sel =
-  Selector.map (function Selector.Nesting -> parent | s -> s) sel
-
-let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
-    =
-  if Nest.contains child then substitute_nesting ~parent child
-  else Selector.Combined (parent, Selector.Descendant, child)
-
 (* Effective selector after substituting [&] / nesting against any parent
    selectors on the recursion stack. *)
 let effective_selector ~parents sel =
-  match parents with
-  | [] -> sel
-  | _ ->
-      List.fold_left
-        (fun child parent -> combine_with_parent parent child)
-        sel parents
+  List.fold_left (fun child parent -> Nest.combine parent child) sel parents
 
-(* A selector reaches the whole subtree when a comma branch is universal/root:
-   [:root]/[html] inherit to every element and [*] matches every element, so
-   [:root,:host] covers via [:root] but a lone [:host] (shadow root) does
-   not. *)
-let universal_selector_text s =
-  String.split_on_char ',' s
-  |> List.exists (fun p ->
-      match String.trim p with ":root" | "html" | "*" -> true | _ -> false)
+(* [:root] and [html] inherit to every element and [*] matches every element, so
+   each reaches the whole subtree; a lone [:host] (shadow root) does not. *)
+let reaches_every_element = function
+  | ":root" | "html" | "*" -> true
+  | _ -> false
+
+(* The alternatives a selector matches by: a selector list's branches, and the
+   arguments of an [:is()] standing alone or at the left of a combinator, which
+   Selectors 4 sec. 4.2 matches as any one of them. Nesting puts a parent list
+   there ([.a,.b { .x {} }] is [:is(.a,.b) .x]). *)
+let rec alternatives = function
+  | Selector.List branches | Selector.Is branches ->
+      List.concat_map alternatives branches
+  | Selector.Combined (Selector.Is branches, comb, right) ->
+      List.concat_map alternatives branches
+      |> List.map (fun branch -> Selector.Combined (branch, comb, right))
+  | sel -> [ sel ]
 
 (* [.theme] is an ancestor of [.theme .descendant] (descendant-prefix), not of
    [.other]; universals always cover. The comparison is conservatively exact
    (not structural), matching the "static prefix" semantics the cram suite
-   expects. *)
+   expects. It reads the two selectors alternative by alternative: a definition
+   on one alternative of [ancestor] reaches an element that one matches, and a
+   consumer is covered when each of its alternatives is. *)
 let selector_covers ~ancestor ~consumer =
-  let a = Selector.to_string ~minify:true ancestor in
-  let c = Selector.to_string ~minify:true consumer in
-  if universal_selector_text a then true
-  else if a = c then true
-  else
-    let n = String.length a in
-    String.length c > n && String.starts_with ~prefix:a c && c.[n] = ' '
+  let prefixes =
+    List.map (Selector.to_string ~minify:true) (alternatives ancestor)
+  in
+  List.for_all
+    (fun consumer ->
+      let c = Selector.to_string ~minify:true consumer in
+      List.exists
+        (fun a ->
+          reaches_every_element a || String.equal a c
+          ||
+          let n = String.length a in
+          String.length c > n && String.starts_with ~prefix:a c && c.[n] = ' ')
+        prefixes)
+    (alternatives consumer)
 
 (** {1 At-rule path} *)
 

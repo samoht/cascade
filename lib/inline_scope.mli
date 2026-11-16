@@ -9,8 +9,10 @@ val effective_selector : parents:Selector.t list -> Selector.t -> Selector.t
 
 val selector_covers : ancestor:Selector.t -> consumer:Selector.t -> bool
 (** [selector_covers ~ancestor ~consumer] is [true] when a custom property
-    declared on [ancestor] reaches [consumer]: [ancestor] is a universal
-    selector or a static descendant prefix of [consumer]. *)
+    declared on [ancestor] reaches [consumer]: every alternative of [consumer]
+    (a branch of a list, an argument of a leading [:is()]) has an alternative of
+    [ancestor] that is a universal selector or a static descendant prefix of it.
+*)
 
 (** One at-rule wrapper a statement sits inside. *)
 type at_node =

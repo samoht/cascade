@@ -129,6 +129,10 @@
 
 ### CLI tools
 
+- `--inline-vars` composes a nested rule's selector as CSS Nesting does, so
+  `.x&` under `a` no longer reads as the class `.xa` and takes a value defined
+  there. A definition on a selector list reaches a consumer under one of its
+  branches (#1352).
 - `--inline-vars` folds a variable that several rules define with one value, as
   it already did once `--minify` had merged those rules, so inlining its output
   again changes nothing. The warning now names a variable whose definitions
