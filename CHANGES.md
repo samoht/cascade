@@ -68,6 +68,10 @@
   a shorthand that reset it: `background:#fff url(a.png) no-repeat center`
   followed by `background-position` and `background-size` became
   `background:0/25px 25px`, dropping the image, colour and repeat.
+- `--minify --scope=stylesheet` keeps a `font-weight`, or another of the seven
+  `font` components, that a rule writes before a `font-size` and
+  `font-family` run: the run contracted into a `font` shorthand that reset it,
+  so `font-weight:700` was lost.
 - An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
   `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
   and an `@namespace` after a rule, go as browsers ignore them (#1294).

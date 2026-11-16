@@ -65,6 +65,14 @@ let rec slots_written_after ~slots_of idx ~from =
     if Rule_index.is_absorbed idx from then rest
     else slots_of (Rule_index.decl_at idx from) lor rest
 
+let slots_written_before ~slots_of idx ~upto =
+  let rec aux j acc =
+    if j >= upto then acc
+    else if Rule_index.is_absorbed idx j then aux (j + 1) acc
+    else aux (j + 1) (acc lor slots_of (Rule_index.decl_at idx j))
+  in
+  aux 0 0
+
 let same_importance = function
   | [] -> true
   | first :: rest ->
