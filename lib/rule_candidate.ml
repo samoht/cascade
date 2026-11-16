@@ -1966,6 +1966,7 @@ let offers t =
   family t.default;
   List.sort (fun (a : offer) (b : offer) -> Int.compare a.key b.key) !acc
 
+let is_live t id = is_live t.core.view id
 let candidates t = List.map (fun (offer : offer) -> offer.candidate) (offers t)
 
 let enumerate ?nodes ~ctx ~finalize g =

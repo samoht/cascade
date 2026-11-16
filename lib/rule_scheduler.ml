@@ -115,14 +115,38 @@ let offer graph queue offer =
    [Rule_graph.rewrite] refuses one whose rules a later commit consumed.
 
    A drain with no commit since the last one leaves every candidate of the graph
-   tried on it and refused: the run is settled. One stopped by [max_iterations]
-   is not. *)
+   tried on it and refused: the run is settled. A rewrite only adds orders, so a
+   refusal for sources ordered both ways stands on every later graph and the
+   candidate is not tried again, until a commit consumes the outside rule they
+   are ordered around. A candidate refused for a conflict no order decides yet,
+   or for a cycle, is tried again: a later order can decide the conflict, and a
+   cycle can run through an outside rule a later commit consumes. One stopped by
+   [max_iterations] is not settled. *)
 type outcome = { graph : Rule_graph.t; settled : bool }
+
+(* How long a refusal stands: not past this graph, until the given outside rule
+   is consumed, or for good. *)
+type refusal = Retry | Until_consumed of Rule_graph.node_id | Final
+
+let refusal : Rule_graph.rewrite_error -> refusal = function
+  | New_external_conflict _ | New_produced_conflict _ | Cycle -> Retry
+  | Ambiguous_external_order { external_; _ } -> Until_consumed external_
+  | Empty_consume | Empty_produce | Invalid_node _ | Duplicate_node _
+  | Stale_node _ | Ambiguous_produced_order _ ->
+      Final
+
+let still_refused pool refused o =
+  match Hashtbl.find_opt refused (Rule_candidate.key o) with
+  | Option.None | Option.Some Retry -> false
+  | Option.Some Final -> true
+  | Option.Some (Until_consumed external_) ->
+      Rule_candidate.is_live pool external_
 
 let run ~ctx ~finalize graph =
   let max_iterations = max_iterations graph in
   let refresh_after_commit = Rule_graph.node_count graph <= 128 in
   let pool = Rule_candidate.start ~ctx ~finalize graph in
+  let refused = Hashtbl.create 64 in
   let rec loop iteration ~committed graph queue =
     if iteration >= max_iterations then { graph; settled = false }
     else
@@ -132,15 +156,21 @@ let run ~ctx ~finalize graph =
           else begin
             ignore (Rule_candidate.refresh pool);
             loop iteration ~committed:false graph
-              (List.fold_left (offer graph) Queue.empty
+              (List.fold_left
+                 (fun queue o ->
+                   if still_refused pool refused o then queue
+                   else offer graph queue o)
+                 Queue.empty
                  (Rule_candidate.offers pool))
           end
-      | Some ((_, { candidate; _ }), queue) -> (
+      | Some ((key, { candidate; _ }), queue) -> (
           match
             Rule_graph.rewrite graph ~consume:candidate.consume
               ~produce:candidate.produce
           with
-          | Error _ -> loop iteration ~committed graph queue
+          | Error e ->
+              Hashtbl.replace refused key (refusal e);
+              loop iteration ~committed graph queue
           | Ok graph' ->
               Stats.add_saving (Ctx.stats ctx) candidate.saving;
               Rule_candidate.rewrite pool graph' ~consume:candidate.consume;

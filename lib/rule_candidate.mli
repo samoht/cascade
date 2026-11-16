@@ -44,6 +44,10 @@ val offers : t -> offer list
 (** [offers t] is every offer [t] makes as of the last {!refresh}, in the order
     they were made. *)
 
+val is_live : t -> Rule_graph.node_id -> bool
+(** [is_live t id] is [true] if the rule [id] is live in the graph [t] last
+    refreshed on. *)
+
 val candidates : t -> Rule_rewrite.candidate list
 (** [candidates t] is the candidates of [offers t]. *)
 

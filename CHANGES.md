@@ -101,7 +101,7 @@
 - `--minify` is faster on large sheets, with the same output: a merge attempt
   costs the rules it touches rather than the size of the sheet, about a third
   fewer instructions on real sheets (#1306, #1307, #1313, #1322, #1323, #1324,
-  #1325, #1344).
+  #1325, #1344, #1356).
 - `--minify` breaks a tie between merges that save the same by the rules they
   produce, shortest first, and then by source order, never by a hash, so its
   output no longer depends on how the syntax tree is represented (#1355).
