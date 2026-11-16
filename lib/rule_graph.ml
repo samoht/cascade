@@ -62,6 +62,19 @@ type decl_overlap = {
    long enough that holding them costs more than re-asking. *)
 type reachability = Unbuilt | Held of Bytes.t array | Walked
 
+(* What the graphs one [of_rules] call starts share as they are rewritten from
+   one another: [marks], a mark per node a walk can stamp instead of allocating
+   a visited set over every node; [row], a reachable set to fill and read at
+   once; and [head], the generation the newest committed rewrite reached. Only a
+   graph at [head] may be rewritten, because a rewrite writes its nodes into the
+   slots past its parent's extent. *)
+type lineage = {
+  mutable head : int;
+  mutable marks : int array;
+  mutable stamp : int;
+  mutable row : Bytes.t;
+}
+
 type t = {
   generation : int;
   closed_world : bool;
@@ -86,37 +99,44 @@ type t = {
       (** live extent of the node arrays. They are allocated with slack and
           appended to in place, so their length is a capacity, not a node count.
       *)
-  rules : rule array;  (** all nodes ever created, dead ones included *)
-  summaries : Summary.t array;
+  mutable rules : rule array;  (** all nodes ever created, dead ones included *)
+  mutable summaries : Summary.t array;
       (** declaration-side facts and byte sizes, precomputed once per node *)
-  origin : int array;
-  live : bool array;
-  selectors : Selector.t list array;
+  mutable origin : int array;
+  mutable death : int array;
+      (** the generation of the first graph a node is dead in, [max_int] while
+          it lives. Shared across the lineage like [rules], so a graph reads
+          liveness against its own [generation]. *)
+  mutable selectors : Selector.t list array;
       (** effective selector branches for each node, after applying [parent] *)
-  selector_summaries : Selector_summary.t list array;
-  specificities : Selector.specificity list array;
+  mutable selector_summaries : Selector_summary.t list array;
+  mutable specificities : Selector.specificity list array;
       (** each node's per-branch specificity, computed once. The order test
           compares specificity on every candidate pair, and recomputing it
           allocates a record per branch per comparison, which made it one of the
           largest allocation sites in the optimizer. *)
-  branches : string list array;
-  decl_overlaps : decl_overlap list array;
-  overlap_keys : Shorthand.overlap_key list array;
-  succ : (node_id * edge_reason) list array;
+  mutable branches : string list array;
+  mutable decl_overlaps : decl_overlap list array;
+  mutable overlap_keys : Shorthand.overlap_key list array;
+  mutable succ : (node_id * edge_reason) list array;
       (** directed partial-order edges: [i] precedes every node reachable from
           [succ.(i)]. Simple dense runs store a transitive chain rather than one
           edge per conflicting pair. Edges follow creation order (source order
-          for [of_rules], inherited order for rewrites). *)
+          for [of_rules], inherited order for rewrites). Shared across the
+          lineage: a committed rewrite conses its edges onto the existing nodes'
+          lists, and each of those points at a node it produced, so an edge to a
+          node past [count] belongs to a later graph and a graph skips it. *)
   key_index : node_id list Decl_tbl.t Key_tbl.t;
       (** overlap key -> (declaration writing it -> node ids), so a rewrite
           finds an external node's potential conflicts without scanning every
           node, and {e without even iterating} the nodes that write the same
-          declaration (which never conflict). Mutable and shared across a
-          graph's rewrites (a graph is consumed before the next is produced);
-          never pruned, dead nodes are skipped at query time. *)
+          declaration (which never conflict). Shared along the lineage and
+          filled as rewrites are accepted; never pruned, dead nodes are skipped
+          at query time. *)
   branch_index : node_id list String_table.t;
       (** selector branch -> node ids that carry it; same role as [key_index]
           for the [share_branch] dimension. *)
+  lineage : lineage;
   mutable reach : reachability;
       (** reachable set per node, over the [succ] above. Filled on demand: a
           graph whose order is never questioned holds nothing. *)
@@ -776,17 +796,26 @@ module Reach = struct
     Bytes.set set byte
       (Char.chr (Char.code (Bytes.get set byte) lor (1 lsl (i land 7))))
 
+  (* The word loops below run once per edge of every cone closed and once per
+     node a commit reaches, and a checked access costs a bounds test per word
+     without flambda. [width] proves every word of both sets in range once, so
+     the loops read and write unchecked. *)
+  external get64 : Bytes.t -> int -> int64 = "%caml_bytes_get64u"
+  external set64 : Bytes.t -> int -> int64 -> unit = "%caml_bytes_set64u"
+
+  let width a b =
+    let len = Bytes.length a in
+    if Bytes.length b <> len then invalid_arg "Rule_graph.Reach: unequal widths";
+    len
+
   (* Whether [a] and [b], of one width, share a node. *)
   let meets a b =
-    let len = Bytes.length a in
+    let len = width a b in
     let words = len / 8 in
     let rec word w =
       w < words
       && ((not
-             (Int64.equal 0L
-                (Int64.logand
-                   (Bytes.get_int64_ne a (w * 8))
-                   (Bytes.get_int64_ne b (w * 8)))))
+             (Int64.equal 0L (Int64.logand (get64 a (w * 8)) (get64 b (w * 8)))))
          || word (w + 1))
     in
     let rec byte at =
@@ -796,13 +825,46 @@ module Reach = struct
     in
     word 0 || byte (words * 8)
 
+  (* The nodes of [a] that [b], of one width, lacks; [None] when there are more
+     of them than words in a set, past which a union is cheaper than adding them
+     one at a time. *)
+  let missing a b =
+    let len = width a b in
+    let words = len / 8 in
+    let found = ref 0 in
+    let rec bits byte at bit acc =
+      if bit = 8 then acc
+      else if byte land (1 lsl bit) = 0 then bits byte at (bit + 1) acc
+      else begin
+        incr found;
+        bits byte at (bit + 1) (((at * 8) + bit) :: acc)
+      end
+    in
+    let rec bytes at stop acc =
+      if at = stop then acc
+      else
+        let byte =
+          Char.code (Bytes.get a at) land lnot (Char.code (Bytes.get b at))
+        in
+        bytes (at + 1) stop (if byte = 0 then acc else bits byte at 0 acc)
+    in
+    let rec word w acc =
+      if !found > words then Option.None
+      else if w = words then Option.Some (bytes (words * 8) len acc)
+      else if
+        Int64.equal 0L
+          (Int64.logand (get64 a (w * 8)) (Int64.lognot (get64 b (w * 8))))
+      then word (w + 1) acc
+      else word (w + 1) (bytes (w * 8) ((w + 1) * 8) acc)
+    in
+    word 0 []
+
   let union ~into set =
-    let len = Bytes.length into in
+    let len = width into set in
     let words = len / 8 in
     for w = 0 to words - 1 do
       let at = w * 8 in
-      Bytes.set_int64_ne into at
-        (Int64.logor (Bytes.get_int64_ne into at) (Bytes.get_int64_ne set at))
+      set64 into at (Int64.logor (get64 into at) (get64 set at))
     done;
     for at = words * 8 to len - 1 do
       Bytes.set into at
@@ -932,7 +994,6 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps rules in
   let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
-  let live = Array.make n true in
   let t =
     {
       generation = 0;
@@ -945,7 +1006,7 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
       rules;
       summaries;
       origin = Array.init n Fun.id;
-      live;
+      death = Array.make n max_int;
       selectors;
       selector_summaries;
       specificities;
@@ -955,6 +1016,7 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
       succ = [||];
       key_index = Key_tbl.create index_capacity;
       branch_index = String_table.create index_capacity;
+      lineage = { head = 0; marks = [||]; stamp = 0; row = Bytes.empty };
       reach = Unbuilt;
       expansions = 0;
     }
@@ -978,38 +1040,63 @@ let node_count t = t.count
 let node_rule t i = t.rules.(i)
 let node_size t i = Summary.size t.summaries.(i)
 let node_origin t i = t.origin.(i)
-let is_live t i = t.live.(i)
+
+(* [i] is a node of [t] that no rewrite up to [t] consumed. *)
+let alive t i = t.death.(i) > t.generation
+let is_live t i = i < t.count && alive t i
 let conflict t i j = nodes_conflict t i j
 let order_constrained = conflict
+
+(* A fresh stamp for [t]'s nodes in the lineage's marks: a walk marks a node
+   visited by writing the stamp and asks by comparing with it, so it never
+   clears what an earlier walk left. *)
+let fresh_stamp t =
+  let lineage = t.lineage in
+  let room = Array.length lineage.marks in
+  if room < t.count then begin
+    let marks = Array.make (2 * t.count) (-1) in
+    Array.blit lineage.marks 0 marks 0 room;
+    lineage.marks <- marks
+  end;
+  lineage.stamp <- lineage.stamp + 1;
+  lineage.stamp
+
+(* Whether [i] was not yet marked with [stamp], marking it. *)
+let first_visit t stamp i =
+  let marks = t.lineage.marks in
+  marks.(i) <> stamp
+  && begin
+    marks.(i) <- stamp;
+    true
+  end
 
 (* Compact source-order chains preserve a constraint by reachability rather than
    by retaining every transitive edge. Dead rewrite inputs remain in the graph
    as relay vertices, so paths through them continue to constrain the surviving
    nodes. *)
+let rec walk t stamp ~stop = function
+  | [] -> false
+  | i :: rest ->
+      if stop i then true
+      else if not (first_visit t stamp i) then walk t stamp ~stop rest
+      else begin
+        t.expansions <- t.expansions + 1;
+        walk t stamp ~stop
+          (List.fold_left
+             (fun acc (j, _) -> if j < t.count then j :: acc else acc)
+             rest t.succ.(i))
+      end
+
 let walk_to t source target =
-  let seen = Bytes.make (max t.count 1) '\000' in
-  let rec visit = function
-    | [] -> false
-    | i :: rest ->
-        if i = target then true
-        else if Bytes.get seen i <> '\000' then visit rest
-        else begin
-          Bytes.set seen i '\001';
-          t.expansions <- t.expansions + 1;
-          let next =
-            List.fold_left (fun acc (j, _) -> j :: acc) rest t.succ.(i)
-          in
-          visit next
-        end
-  in
-  visit [ source ]
+  walk t (fresh_stamp t) ~stop:(Int.equal target) [ source ]
 
 (* One step of the closure walk: [Open] descends into a node, [Close] unions the
    sets of its successors - by then settled - into its own. *)
 type reach_step = Open of int | Close of int
 
-let rec union_successors sets set = function
+let rec union_successors t sets set = function
   | [] -> true
+  | (j, _) :: rest when j >= t.count -> union_successors t sets set rest
   | (j, _) :: rest ->
       let j = Node_id.to_int j in
       Reach.add set j;
@@ -1021,11 +1108,11 @@ let rec union_successors sets set = function
       Reach.is_set sets.(j)
       &&
       (Reach.union ~into:set sets.(j);
-       union_successors sets set rest)
+       union_successors t sets set rest)
 
 let close_node t sets i =
   let set = Reach.row sets in
-  union_successors sets set t.succ.(i)
+  union_successors t sets set t.succ.(i)
   && begin
     sets.(i) <- set;
     t.expansions <- t.expansions + 1;
@@ -1034,22 +1121,21 @@ let close_node t sets i =
 
 (* Settle every node in [source]'s cone, deepest first, skipping what an earlier
    question already settled. The stack is explicit because a source-order chain
-   is as deep as the run is long, and [opened] keeps a node reached twice within
-   one cone from being descended twice. *)
+   is as deep as the run is long, and the stamp keeps a node reached twice
+   within one cone from being descended twice. *)
 let close_cone t sets source =
-  let opened = Bytes.make (max t.count 1) '\000' in
+  let stamp = fresh_stamp t in
   let rec loop = function
     | [] -> true
     | Close i :: rest -> close_node t sets i && loop rest
     | Open i :: rest ->
-        if Reach.is_set sets.(i) || Bytes.get opened i <> '\000' then loop rest
-        else begin
-          Bytes.set opened i '\001';
+        if Reach.is_set sets.(i) || not (first_visit t stamp i) then loop rest
+        else
           loop
             (List.fold_left
-               (fun acc (j, _) -> Open (Node_id.to_int j) :: acc)
+               (fun acc (j, _) ->
+                 if j < t.count then Open (Node_id.to_int j) :: acc else acc)
                (Close i :: rest) t.succ.(i))
-        end
   in
   loop [ Open source ]
 
@@ -1086,15 +1172,45 @@ let path_exists t source target =
   | Option.Some set -> Reach.mem set target
   | Option.None -> walk_to t source target
 
-let precedes t i j = t.live.(i) && t.live.(j) && path_exists t i j
-let successors t i = List.map fst t.succ.(i)
+let precedes t i j = is_live t i && is_live t j && path_exists t i j
+
+(* Whether a node is one of [sources] or reached from one, read before the next
+   question to [t]: the union of the sources' sets when [t] holds them, filled
+   into the lineage's row, else one walk from all of them. *)
+let reached_from t sources =
+  match reach_sets t with
+  | Option.Some sets
+    when List.for_all (fun b -> Option.is_some (reachable_set t b)) sources ->
+      let lineage = t.lineage in
+      let width = Array.length sets / 8 in
+      if Bytes.length lineage.row <> width then
+        lineage.row <- Bytes.make width '\000'
+      else Bytes.fill lineage.row 0 width '\000';
+      let row = lineage.row in
+      List.iter
+        (fun b ->
+          Reach.add row b;
+          Reach.union ~into:row sets.(b))
+        sources;
+      Reach.mem row
+  | _ ->
+      let stamp = fresh_stamp t in
+      ignore (walk t stamp ~stop:(fun _ -> false) sources);
+      let marks = t.lineage.marks in
+      fun a -> marks.(a) = stamp
+
+let successors t i =
+  List.filter_map
+    (fun (j, _) -> if j < t.count then Option.Some j else Option.None)
+    t.succ.(i)
+
 let reachability_expansions t = t.expansions
 let generation t = t.generation
 
 let live_nodes t =
   let acc = ref [] in
   for i = node_count t - 1 downto 0 do
-    if t.live.(i) then acc := i :: !acc
+    if alive t i then acc := i :: !acc
   done;
   !acc
 
@@ -1102,7 +1218,7 @@ let live_nodes t =
    scan that answers no everywhere allocates nothing at all. *)
 let rec exists_live_from t f i =
   i < t.count
-  && ((t.live.(i) && f (Node_id.of_int_exn i)) || exists_live_from t f (i + 1))
+  && ((alive t i && f (Node_id.of_int_exn i)) || exists_live_from t f (i + 1))
 
 let exists_live_node t f = exists_live_from t f 0
 
@@ -1141,7 +1257,9 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
   let slots = max (node_count t) 1 in
   let pred = Array.make slots 0 in
   for i = 0 to t.count - 1 do
-    List.iter (fun (j, _) -> pred.(j) <- pred.(j) + 1) t.succ.(i)
+    List.iter
+      (fun (j, _) -> if j < t.count then pred.(j) <- pred.(j) + 1)
+      t.succ.(i)
   done;
   let out = Array.make n 0 in
   let emitted = Array.make slots false in
@@ -1157,7 +1275,7 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
       | Option.Some ((e, _), queue) ->
           emitted.(e) <- true;
           let o =
-            if t.live.(e) then begin
+            if alive t e then begin
               out.(o) <- e;
               o + 1
             end
@@ -1166,7 +1284,7 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
           let queue =
             List.fold_left
               (fun queue (j, _) ->
-                if not emitted.(j) then begin
+                if j < t.count && not emitted.(j) then begin
                   let count = pred.(j) - 1 in
                   pred.(j) <- count;
                   if count = 0 then
@@ -1198,41 +1316,48 @@ let canonical_order t : node_id array =
 
 let canonical_linearization = canonical_order
 
-(* Replace live nodes [consume] with [produce] as one transaction. Produced
-   nodes inherit each consumed node's still-conflicting external edge (partial
-   order preserved) and are mutually ordered by their position in [produce].
-   Rejected ([Option.None]) if a consumed node is dead/stale or the result has a
-   cycle (the factoring would break the cascade). [generation] bumps so stale
-   captured candidates are detectable. *)
-let duplicate_node xs =
-  let sorted = List.sort Int.compare xs in
-  let rec loop = function
-    | [] | [ _ ] -> Option.None
-    | a :: (b :: _ as rest) -> if a = b then Option.Some a else loop rest
-  in
-  loop sorted
+(* A graph and the graphs rewritten from it share their per-node arrays: an
+   attempt writes its produced nodes into the slots past its parent's [count],
+   which the parent never reads, and keeps the edges it points at existing nodes
+   beside it until it is accepted. A rejected attempt therefore leaves nothing
+   to undo, and neither outcome copies anything sized by the graph. *)
+let rec first_duplicate ids at =
+  if at >= Array.length ids then Option.None
+  else if ids.(at - 1) = ids.(at) then Option.Some ids.(at)
+  else first_duplicate ids (at + 1)
 
+let rec first_unusable t = function
+  | [] -> Option.None
+  | i :: rest ->
+      if i < 0 || i >= t.count then Option.Some (Invalid_node i)
+      else if not (alive t i) then Option.Some (Stale_node i)
+      else first_unusable t rest
+
+(* [consume] sorted, or why it cannot be consumed. *)
 let validate_consume t consume =
-  let total = node_count t in
+  if t.generation <> t.lineage.head then
+    invalid_arg "Rule_graph.rewrite: a later rewrite superseded this graph";
   match consume with
   | [] -> Error Empty_consume
   | _ -> (
-      match duplicate_node consume with
+      let consumed = Array.of_list consume in
+      Array.sort Int.compare consumed;
+      match first_duplicate consumed 1 with
       | Option.Some i -> Error (Duplicate_node i)
-      | Option.None ->
-          let rec loop = function
-            | [] -> Ok ()
-            | i :: rest ->
-                if i < 0 || i >= total then Error (Invalid_node i)
-                else if not t.live.(i) then Error (Stale_node i)
-                else loop rest
-          in
-          loop consume)
+      | Option.None -> (
+          match first_unusable t consume with
+          | Option.Some e -> Error e
+          | Option.None -> Ok consumed))
 
-let consumed_set total consume =
-  let consumed = Array.make total false in
-  List.iter (fun i -> consumed.(i) <- true) consume;
-  consumed
+let rec mem_sorted ids x lo hi =
+  lo < hi
+  &&
+  let mid = (lo + hi) / 2 in
+  let v = ids.(mid) in
+  v = x
+  || if v < x then mem_sorted ids x (mid + 1) hi else mem_sorted ids x lo mid
+
+let is_consumed consumed k = mem_sorted consumed k 0 (Array.length consumed)
 
 let produced_origin t consume =
   match consume with
@@ -1255,39 +1380,40 @@ let produced_origins t consume produced_branches =
       |> fun origin -> if origin = max_int then fallback else origin)
     produced_branches
 
-(* [rewrite] has a single caller, which threads one graph and discards the
-   parent as soon as a rewrite is accepted, so a produced graph can extend these
-   append-only arrays in place and share them: the parent's [count] never covers
-   the new slots, and a rejected rewrite simply leaves them to be overwritten by
-   the next attempt. Growing geometrically turns a full copy of every array per
-   rewrite into an amortised append. [live] and [succ] stay copies, since a
-   rewrite mutates both and the parent must not see that. *)
-let append_slack arr ~count (items : 'a array) =
-  let added = Array.length items in
-  let needed = count + added in
-  let arr =
-    if Array.length arr >= needed then arr
+(* Room in [t]'s node arrays for [added] nodes past its extent. The arrays are
+   shared along the lineage, so [t] keeps what it grows even when the attempt
+   that needed the room is rejected, and growing geometrically leaves room for
+   the attempts after it. *)
+let reserve t added =
+  let needed = t.count + added in
+  let grow : 'a. 'a array -> 'a array =
+   fun arr ->
+    let room = Array.length arr in
+    if room >= needed then arr
     else begin
-      let grown =
-        Array.make (max needed (2 * max 1 (Array.length arr))) items.(0)
-      in
-      Array.blit arr 0 grown 0 count;
+      let grown = Array.make (max needed (2 * room)) arr.(0) in
+      Array.blit arr 0 grown 0 t.count;
       grown
     end
   in
-  Array.blit items 0 arr count added;
-  arr
+  t.rules <- grow t.rules;
+  t.summaries <- grow t.summaries;
+  t.origin <- grow t.origin;
+  t.death <- grow t.death;
+  t.selectors <- grow t.selectors;
+  t.selector_summaries <- grow t.selector_summaries;
+  t.specificities <- grow t.specificities;
+  t.branches <- grow t.branches;
+  t.decl_overlaps <- grow t.decl_overlaps;
+  t.overlap_keys <- grow t.overlap_keys;
+  t.succ <- grow t.succ
 
-let rewrite_live t ~total ~new_n ~consume =
-  let live = Array.make new_n false in
-  Array.blit t.live 0 live 0 total;
-  List.iter (fun i -> live.(i) <- false) consume;
-  for i = total to new_n - 1 do
-    live.(i) <- true
-  done;
-  live
+let place arr ~at items = Array.blit items 0 arr at (Array.length items)
 
-let produced_metadata t produced =
+let produced_graph t ~consume produced =
+  let added = Array.length produced in
+  let total = t.count in
+  reserve t added;
   let summaries = Array.map rule_summary produced in
   let facts =
     Array.map
@@ -1295,82 +1421,30 @@ let produced_metadata t produced =
       produced
   in
   let selectors = Array.map (fun (branches, _, _) -> branches) facts in
-  let selector_summaries =
-    Array.map (fun (_, summaries, _) -> summaries) facts
-  in
-  let specificities = Array.map (fun (_, _, specs) -> specs) facts in
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps produced in
-  let overlap_keys = Array.map rule_overlap_keys decl_overlaps in
-  ( summaries,
-    selectors,
-    selector_summaries,
-    specificities,
-    branches,
-    decl_overlaps,
-    overlap_keys )
-
-let produced_graph t ~consume ~total ~new_n produced =
-  let ( p_summaries,
-        p_selectors,
-        p_selector_summaries,
-        p_specificities,
-        p_branches,
-        p_decl_overlaps,
-        p_overlap_keys ) =
-    produced_metadata t produced
-  in
+  place t.rules ~at:total produced;
+  place t.summaries ~at:total summaries;
+  place t.origin ~at:total (produced_origins t consume branches);
+  Array.fill t.death total added max_int;
+  place t.selectors ~at:total selectors;
+  place t.selector_summaries ~at:total
+    (Array.map (fun (_, summaries, _) -> summaries) facts);
+  place t.specificities ~at:total (Array.map (fun (_, _, specs) -> specs) facts);
+  place t.branches ~at:total branches;
+  place t.decl_overlaps ~at:total decl_overlaps;
+  place t.overlap_keys ~at:total (Array.map rule_overlap_keys decl_overlaps);
+  Array.fill t.succ total added [];
   {
+    t with
     generation = t.generation + 1;
-    closed_world = t.closed_world;
-    pin_shared_branches = t.pin_shared_branches;
-    exclusive = t.exclusive;
-    exclusive_count = t.exclusive_count;
-    parent = t.parent;
-    count = new_n;
-    rules = append_slack t.rules ~count:total produced;
-    summaries = append_slack t.summaries ~count:total p_summaries;
-    origin =
-      append_slack t.origin ~count:total (produced_origins t consume p_branches);
-    live = rewrite_live t ~total ~new_n ~consume;
-    selectors = append_slack t.selectors ~count:total p_selectors;
-    selector_summaries =
-      append_slack t.selector_summaries ~count:total p_selector_summaries;
-    specificities = append_slack t.specificities ~count:total p_specificities;
-    branches = append_slack t.branches ~count:total p_branches;
-    decl_overlaps = append_slack t.decl_overlaps ~count:total p_decl_overlaps;
-    overlap_keys = append_slack t.overlap_keys ~count:total p_overlap_keys;
-    succ =
-      Array.append (Array.sub t.succ 0 total)
-        (Array.make (Array.length produced) []);
-    (* shared with [t]: holds the existing nodes; produced nodes are added by
-       {!rewrite} only once the rewrite is accepted, so [add_external_edges]
-       below sees the pre-rewrite index. *)
-    key_index = t.key_index;
-    branch_index = t.branch_index;
+    count = total + added;
     (* the produced graph's edges are still being written; {!rewrite} hands it
        [t]'s answers once it is accepted *)
     reach = Unbuilt;
-    expansions = t.expansions;
   }
 
-let rewrite_base t ~consume ~produce :
-    (int * bool array * t, rewrite_error) result =
-  match validate_consume t consume with
-  | Error _ as e -> e
-  | Ok () ->
-      if produce = [] then Error Empty_produce
-      else
-        let total = node_count t in
-        let produced = Array.of_list produce in
-        let new_n = total + Array.length produced in
-        Ok
-          ( total,
-            consumed_set total consume,
-            produced_graph t ~consume ~total ~new_n produced )
-
 let add_edge succ i j reason = succ.(i) <- (j, reason) :: succ.(i)
-let old_edge = path_exists
 
 type orientation = Before | After | Ambiguous | New_conflict
 type source_ref = { node : node_id; decl : int option }
@@ -1432,7 +1506,7 @@ let source_ref_orientation t left right =
     | _ -> New_conflict
   else
     match
-      (old_edge t left.node right.node, old_edge t right.node left.node)
+      (path_exists t left.node right.node, path_exists t right.node left.node)
     with
     | true, false -> Before
     | false, true -> After
@@ -1495,15 +1569,22 @@ let produced_pair_orientation t graph consume left right =
 
 let inherited_orientation t consume k =
   match
-    ( List.exists (fun c -> old_edge t c k) consume,
-      List.exists (fun c -> old_edge t k c) consume )
+    ( List.exists (fun c -> path_exists t c k) consume,
+      List.exists (fun c -> path_exists t k c) consume )
   with
   | true, false -> Before
   | false, true -> After
   | true, true -> Ambiguous
   | false, false -> New_conflict
 
-let add_inherited_edge t graph consume succ p k reason =
+(* The edges a rewrite points from existing nodes at the nodes it produces, by
+   produced index. They stay here until the rewrite is accepted, since the
+   existing nodes' edge lists are shared with the parent. *)
+let add_entering entering ~total k p reason =
+  let at = p - total in
+  entering.(at) <- (k, reason) :: entering.(at)
+
+let add_inherited_edge t graph consume entering p k reason =
   let orientation =
     match reason with
     | Cascade_conflict -> produced_external_orientation t graph consume p k
@@ -1511,10 +1592,10 @@ let add_inherited_edge t graph consume succ p k reason =
   in
   match orientation with
   | Before ->
-      add_edge succ p k reason;
+      add_edge graph.succ p k reason;
       Ok ()
   | After ->
-      add_edge succ k p reason;
+      add_entering entering ~total:t.count k p reason;
       Ok ()
   | Ambiguous ->
       Error (Ambiguous_external_order { produced = p; external_ = k })
@@ -1523,10 +1604,10 @@ let add_inherited_edge t graph consume succ p k reason =
 
 (* Existing nodes a produced node [p] could conflict with: those sharing an
    overlap key (or the broad key, which intersects everything) or a selector
-   branch with it, read from the graph's index instead of scanning all [total]
-   nodes. [seen] is stamped with [p] (each produced node has a distinct index)
-   to dedupe without re-clearing. A produced node carrying the broad key
-   conflicts with everything, so it falls back to a full scan (rare: [all]). *)
+   branch with it, read from the graph's index instead of scanning all of
+   [t]'s nodes. A fresh stamp dedupes them. A produced node carrying the broad
+   key conflicts with everything, so it falls back to a full scan (rare:
+   [all]). *)
 (* A merge moves its rules past everything that sits between them, so a node in
    that span is the one that can refuse the move: 93% of the rejections on a
    real sheet are blocked by one. The order the candidates are visited in does
@@ -1537,85 +1618,83 @@ let span_first ~lo ~hi candidates =
   let within, outside = List.partition (fun k -> k > lo && k < hi) candidates in
   List.rev_append (List.rev within) outside
 
-let external_candidates graph ~total ~consumed ~seen p =
+(* Hand [push] the indexed nodes [p] could conflict with. *)
+let indexed_candidates graph p push =
+  let push_ids ids = List.iter (fun id -> push (Node_id.to_int id)) ids in
+  (* For each declaration [p] writes, collect, per overlap key it covers, the
+     nodes whose declaration for that key differs - same-declaration nodes never
+     conflict, so their (often large) bucket is skipped, not walked. *)
+  List.iter
+    (fun (ov : decl_overlap) ->
+      List.iter
+        (fun key ->
+          match Key_tbl.find_opt graph.key_index key with
+          | Some inner ->
+              Decl_tbl.iter
+                (fun decl' ids ->
+                  if not (Declaration.same_minified ov.decl decl') then
+                    push_ids ids)
+                inner
+          | None -> ())
+        ov.footprint)
+    graph.decl_overlaps.(p);
+  (* The broad key ([all]) conflicts with everything, so collect every node
+     under it regardless of declaration. *)
+  (match Key_tbl.find_opt graph.key_index Shorthand.broad_overlap_key with
+  | Some inner -> Decl_tbl.iter (fun _ ids -> push_ids ids) inner
+  | None -> ());
+  List.iter
+    (fun b ->
+      match String_table.find_opt graph.branch_index b with
+      | Some ids -> push_ids ids
+      | None -> ())
+    graph.branches.(p)
+
+let external_candidates t graph ~consumed p =
+  let stamp = fresh_stamp graph in
   let acc = ref [] in
   let push k =
-    if k < total && graph.live.(k) && (not consumed.(k)) && seen.(k) <> p then begin
-      seen.(k) <- p;
-      acc := k :: !acc
-    end
+    if alive t k && (not (is_consumed consumed k)) && first_visit graph stamp k
+    then acc := k :: !acc
   in
-  let keys = graph.overlap_keys.(p) in
-  if Shorthand.overlap_keys_broad keys then
-    for k = 0 to total - 1 do
+  if Shorthand.overlap_keys_broad graph.overlap_keys.(p) then
+    for k = 0 to t.count - 1 do
       push k
     done
-  else begin
-    let push_ids ids = List.iter (fun id -> push (Node_id.to_int id)) ids in
-    (* For each declaration [p] writes, collect, per overlap key it covers, the
-       nodes whose declaration for that key differs - same-declaration nodes
-       never conflict, so their (often large) bucket is skipped, not walked. *)
-    List.iter
-      (fun (ov : decl_overlap) ->
-        List.iter
-          (fun key ->
-            match Key_tbl.find_opt graph.key_index key with
-            | Some inner ->
-                Decl_tbl.iter
-                  (fun decl' ids ->
-                    if not (Declaration.same_minified ov.decl decl') then
-                      push_ids ids)
-                  inner
-            | None -> ())
-          ov.footprint)
-      graph.decl_overlaps.(p);
-    (* The broad key ([all]) conflicts with everything, so collect every node
-       under it regardless of declaration. *)
-    (match Key_tbl.find_opt graph.key_index Shorthand.broad_overlap_key with
-    | Some inner -> Decl_tbl.iter (fun _ ids -> push_ids ids) inner
-    | None -> ());
-    List.iter
-      (fun b ->
-        match String_table.find_opt graph.branch_index b with
-        | Some ids -> push_ids ids
-        | None -> ())
-      graph.branches.(p)
-  end;
+  else indexed_candidates graph p push;
   (* the previous full scan visited externals in ascending index order; preserve
      that so the first orientation error (and thus scheduling) is identical *)
   List.sort Int.compare !acc
 
-let add_external_edges t ~consume ~consumed ~total ~produced_count graph succ =
-  let seen = Array.make (max total 1) (-1) in
-  let lo =
-    List.fold_left (fun a c -> min a (Node_id.to_int c)) max_int consume
-  in
-  let hi = List.fold_left (fun a c -> max a (Node_id.to_int c)) (-1) consume in
-  let rec loop_produced pi =
-    if pi = produced_count then Ok ()
+let add_external_edges t ~consume ~consumed graph entering =
+  let total = t.count in
+  let lo = consumed.(0) in
+  let hi = consumed.(Array.length consumed - 1) in
+  let rec loop_produced p =
+    if p = graph.count then Ok ()
     else
-      let p = total + pi in
       let rec loop_candidates = function
         | [] -> Ok ()
         | k :: rest -> (
             match nodes_conflict_reason graph p k with
             | Option.None -> loop_candidates rest
             | Option.Some reason -> (
-                match add_inherited_edge t graph consume succ p k reason with
+                match
+                  add_inherited_edge t graph consume entering p k reason
+                with
                 | Ok () -> loop_candidates rest
                 | Error _ as e -> e))
       in
       match
         loop_candidates
-          (span_first ~lo ~hi
-             (external_candidates graph ~total ~consumed ~seen p))
+          (span_first ~lo ~hi (external_candidates t graph ~consumed p))
       with
-      | Ok () -> loop_produced (pi + 1)
+      | Ok () -> loop_produced (p + 1)
       | Error _ as e -> e
   in
-  loop_produced 0
+  loop_produced total
 
-let add_produced_edge t graph consume succ left right reason =
+let add_produced_edge t graph consume left right reason =
   let orientation =
     match reason with
     | Cascade_conflict -> produced_pair_orientation t graph consume left right
@@ -1623,10 +1702,10 @@ let add_produced_edge t graph consume succ left right reason =
   in
   match orientation with
   | Before ->
-      add_edge succ left right reason;
+      add_edge graph.succ left right reason;
       Ok ()
   | After ->
-      add_edge succ right left reason;
+      add_edge graph.succ right left reason;
       Ok ()
   | Ambiguous -> Error (Ambiguous_produced_order { left; right })
   | New_conflict -> Error (New_produced_conflict { left; right })
@@ -1635,37 +1714,37 @@ let add_produced_edge t graph consume succ left right reason =
    specificity that can tie, and so might conflict with it. A broad key forces a
    scan of every prior node at those specificities; otherwise the decl-key and
    branch buckets narrow the set further. *)
-let collect_produced_candidates by_decl_key by_spec by_branch graph right seen
-    keys specs =
+let collect_produced_candidates by_decl_key by_spec by_branch graph right keys
+    specs =
+  let stamp = fresh_stamp graph in
+  let seen = graph.lineage.marks in
   let candidates =
     if Shorthand.overlap_keys_broad keys then
-      collect_specs by_spec specs right seen []
+      collect_specs by_spec specs stamp seen []
     else
-      collect_bucket by_decl_key Shorthand.broad_overlap_key specs right seen []
+      collect_bucket by_decl_key Shorthand.broad_overlap_key specs stamp seen []
   in
   let candidates =
     List.fold_left
-      (fun acc key -> collect_bucket by_decl_key key specs right seen acc)
+      (fun acc key -> collect_bucket by_decl_key key specs stamp seen acc)
       candidates keys
   in
   List.fold_left
-    (fun acc branch -> collect_string_bucket by_branch branch right seen acc)
+    (fun acc branch -> collect_string_bucket by_branch branch stamp seen acc)
     candidates graph.branches.(right)
 
-let add_produced_edges t ~consume ~total ~produced_count graph succ =
-  let by_decl_key = Overlap_key_table.create 256 in
-  let by_branch = String_table.create 256 in
+let add_produced_edges t ~consume graph =
+  let by_decl_key = Overlap_key_table.create 16 in
+  let by_branch = String_table.create 16 in
   let by_spec = Spec_table.create 16 in
-  let seen = Array.make (max (total + produced_count) 1) (-1) in
-  let rec loop pi =
-    if pi = produced_count then Ok ()
+  let rec loop right =
+    if right = graph.count then Ok ()
     else
-      let right = total + pi in
       let keys = graph.overlap_keys.(right) in
       let specs = distinct_spec_keys [] graph.specificities.(right) in
       let candidates =
         collect_produced_candidates by_decl_key by_spec by_branch graph right
-          seen keys specs
+          keys specs
       in
       let rec add_edges = function
         | [] ->
@@ -1674,86 +1753,83 @@ let add_produced_edges t ~consume ~total ~produced_count graph succ =
               (fun branch -> String_table.push by_branch branch right)
               graph.branches.(right);
             add_spec_buckets by_spec right specs;
-            loop (pi + 1)
+            loop (right + 1)
         | left :: rest -> (
             match nodes_conflict_reason graph left right with
             | Option.None -> add_edges rest
             | Option.Some reason -> (
-                match
-                  add_produced_edge t graph consume succ left right reason
-                with
+                match add_produced_edge t graph consume left right reason with
                 | Ok () -> add_edges rest
                 | Error _ as e -> e))
       in
       add_edges candidates
   in
-  loop 0
+  loop t.count
 
-let rewrite_successors t ~consume ~consumed ~total graph :
-    ((node_id * edge_reason) list array, rewrite_error) result =
-  let produced_count = node_count graph - total in
-  let succ = graph.succ in
-  match
-    add_external_edges t ~consume ~consumed ~total ~produced_count graph succ
-  with
-  | Error _ as e -> e
-  | Ok () ->
-      add_produced_edges t ~consume ~total ~produced_count graph succ
-      |> Result.map (fun () -> succ)
-
-(* Visit marks for the cycle DFS below. *)
+(* Visit marks for the cycle check below. *)
 let unvisited = '\000'
 let on_stack = '\001'
 let acyclic = '\002'
 
-(* The graph is acyclic before a rewrite and every new edge touches a produced
-   node ([total..node_count)), so any new cycle passes through one. A forward
-   DFS from the produced nodes detects it visiting only their reachable cone
-   (O(reachable) per commit, not the O(n) [topo_order]); shared state across the
-   produced roots walks each node/edge at most once. The marks are a byte per
-   node, read once per edge of that cone: node ids are dense, and a generic
-   [Hashtbl] hashes and structurally compares the key on every probe.
+(* [t] is acyclic and every edge a rewrite adds touches a produced node, so a
+   new cycle passes through one. Between two produced nodes in turn it is either
+   a direct edge or a path [p -> b ->* a -> q] whose middle runs over existing
+   nodes, and so over [t]'s edges alone. Which produced node leads to which is
+   therefore a question to [t]'s reachability, which the orientation has mostly
+   settled already, and the check walks the produced nodes alone, however far
+   their cone reaches.
 
    [None] is a cycle. Otherwise the produced nodes come back in the order the
    walk left them, so each one follows every produced node it reaches. *)
-let produced_finish_order graph ~total =
-  let n = node_count graph in
-  let state = Bytes.make (max n 1) unvisited in
-  let finished = ref [] in
-  let rec dfs i =
-    let mark = Bytes.get state i in
-    if mark = on_stack then true (* back edge to a node still on the stack *)
-    else if mark = acyclic then false (* already proven acyclic *)
-    else begin
-      Bytes.set state i on_stack;
-      let cyclic =
-        List.exists (fun (j, _) -> dfs (Node_id.to_int j)) graph.succ.(i)
-      in
-      Bytes.set state i acyclic;
-      if i >= total then finished := i :: !finished;
-      cyclic
-    end
+let produced_order t graph entering =
+  let total = t.count in
+  let added = graph.count - total in
+  let leads = Array.make_matrix added added false in
+  let entered =
+    Array.exists (function [] -> false | _ :: _ -> true) entering
   in
-  let rec from_root p = p < n && (dfs p || from_root (p + 1)) in
-  if from_root total then Option.None else Option.Some (List.rev !finished)
-
-(* The existing nodes a rewrite pointed at each produced node, by produced
-   index. An accepted rewrite only ever conses onto an existing node's edges, so
-   those are the edges in front of the list the parent holds. *)
-let entering_edges t graph ~total =
-  let entering = Array.make (node_count graph - total) [] in
-  for k = 0 to total - 1 do
-    let before = t.succ.(k) in
-    let rec added = function
-      | (p, _) :: rest as edges when edges != before ->
-          let at = Node_id.to_int p - total in
-          entering.(at) <- k :: entering.(at);
-          added rest
-      | _ -> ()
+  for from = 0 to added - 1 do
+    let exits =
+      List.fold_left
+        (fun exits (j, _) ->
+          if j >= total then begin
+            leads.(from).(j - total) <- true;
+            exits
+          end
+          else j :: exits)
+        []
+        graph.succ.(total + from)
     in
-    added graph.succ.(k)
+    match exits with
+    | _ :: _ when entered ->
+        let reached = reached_from t exits in
+        for at = 0 to added - 1 do
+          if List.exists (fun (a, _) -> reached a) entering.(at) then
+            leads.(from).(at) <- true
+        done
+    | _ -> ()
   done;
-  entering
+  let state = Bytes.make added unvisited in
+  let finished = ref [] in
+  let rec visit from =
+    Bytes.set state from on_stack;
+    let rec through at =
+      at < added
+      && (leads.(from).(at)
+          && (Bytes.get state at = on_stack
+             || (Bytes.get state at = unvisited && visit at))
+         || through (at + 1))
+    in
+    let cyclic = through 0 in
+    Bytes.set state from acyclic;
+    finished := (total + from) :: !finished;
+    cyclic
+  in
+  let rec roots at =
+    at < added
+    && ((Bytes.get state at = unvisited && visit at) || roots (at + 1))
+  in
+  if roots 0 then Option.None else Option.Some (List.rev !finished)
 
 (* The nodes of [entering] a settled node can reach [p] through without passing
    another of them: one that reaches a second is found through the second. One
@@ -1763,14 +1839,28 @@ let entering_edges t graph ~total =
    pointing at a merge. *)
 let entering_frontier sets entering =
   let pointing = Reach.row sets in
-  List.iter (Reach.add pointing) entering;
-  List.filter
-    (fun k -> Reach.is_set sets.(k) && not (Reach.meets sets.(k) pointing))
+  List.iter (fun (k, _) -> Reach.add pointing k) entering;
+  List.filter_map
+    (fun (k, _) ->
+      if Reach.is_set sets.(k) && not (Reach.meets sets.(k) pointing) then
+        Option.Some k
+      else Option.None)
     entering
 
-let rec meets_frontier set a = function
-  | [] -> false
-  | k :: rest -> k = a || Reach.mem set k || meets_frontier set a rest
+(* What a node reaching frontier node [k] gains: what [p] reaches beyond what
+   [k] already did, which the node holds as well. A rewrite that replaces one
+   rule leaves this empty, and a merge leaves what the other merged rules
+   reached. *)
+let rec gain set a = function
+  | [] -> Option.None
+  | (k, gained) :: rest ->
+      if k = a || Reach.mem set k then Option.Some gained else gain set a rest
+
+let add_gain set p reached gained =
+  Reach.add set p;
+  match gained with
+  | Option.Some nodes -> List.iter (Reach.add set) nodes
+  | Option.None -> Reach.union ~into:set reached
 
 (* Settle produced node [p] and add it, with all it reaches, to every settled
    node that reaches one of [entering], the nodes pointing at it. A node that
@@ -1782,13 +1872,17 @@ let settle_produced graph sets ~total entering p =
     | [] -> ()
     | frontier ->
         let reached = sets.(p) in
+        let frontier =
+          List.map (fun k -> (k, Reach.missing reached sets.(k))) frontier
+        in
         for a = 0 to total - 1 do
           let set = sets.(a) in
-          if Reach.is_set set && meets_frontier set a frontier then begin
-            Reach.add set p;
-            Reach.union ~into:set reached;
-            graph.expansions <- graph.expansions + 1
-          end
+          if Reach.is_set set then
+            match gain set a frontier with
+            | Option.None -> ()
+            | Option.Some gained ->
+                add_gain set p reached gained;
+                graph.expansions <- graph.expansions + 1
         done);
     true
   end
@@ -1799,40 +1893,62 @@ let settle_produced graph sets ~total entering p =
    [finished] order: by the time one is closed, every set in its cone already
    holds the produced nodes below it. The parent gives its sets up, and asks
    again from its own edges if it is ever questioned. *)
-let carry_reach t graph ~total finished =
+let carry_reach t graph entering finished =
   match t.reach with
   | Unbuilt | Walked -> ()
   | Held sets ->
       t.reach <- Unbuilt;
       if graph.count <= closure_node_limit then begin
         let sets = Reach.grow sets graph.count in
-        let entering = entering_edges t graph ~total in
         if
           List.for_all
-            (fun p -> settle_produced graph sets ~total entering.(p - total) p)
+            (fun p ->
+              settle_produced graph sets ~total:t.count entering.(p - t.count) p)
             finished
         then graph.reach <- Held sets
       end
 
+(* Make the accepted [graph] the lineage's newest: its consumed nodes die, the
+   edges it pointed at its produced nodes join the existing nodes' lists, and
+   its produced nodes enter the index so later rewrites find them as external
+   candidates. *)
+let commit t graph ~consumed entering finished =
+  let total = t.count in
+  Array.iter (fun c -> graph.death.(c) <- graph.generation) consumed;
+  Array.iteri
+    (fun at edges ->
+      List.iter
+        (fun (k, reason) -> add_edge graph.succ k (total + at) reason)
+        edges)
+    entering;
+  for p = total to graph.count - 1 do
+    index_node graph (Node_id.of_int_exn p)
+  done;
+  t.lineage.head <- graph.generation;
+  carry_reach t graph entering finished
+
 let rewrite t ~consume ~produce : (t, rewrite_error) result =
-  match rewrite_base t ~consume ~produce with
+  match validate_consume t consume with
   | Error _ as e -> e
-  | Ok (total, consumed, graph) -> (
-      match rewrite_successors t ~consume ~consumed ~total graph with
-      | Error _ as e -> e
-      | Ok succ -> (
-          let graph = { graph with succ } in
-          match produced_finish_order graph ~total with
-          | Option.None -> Error Cycle
-          | Option.Some finished ->
-              (* the rewrite is accepted: register its produced nodes in the
-                 shared index so later rewrites find them as external
-                 candidates *)
-              for p = total to node_count graph - 1 do
-                index_node graph (Node_id.of_int_exn p)
-              done;
-              carry_reach t graph ~total finished;
-              Ok graph))
+  | Ok consumed -> (
+      match produce with
+      | [] -> Error Empty_produce
+      | _ -> (
+          let graph = produced_graph t ~consume (Array.of_list produce) in
+          let entering = Array.make (graph.count - t.count) [] in
+          let edges =
+            match add_external_edges t ~consume ~consumed graph entering with
+            | Error _ as e -> e
+            | Ok () -> add_produced_edges t ~consume graph
+          in
+          match edges with
+          | Error _ as e -> e
+          | Ok () -> (
+              match produced_order t graph entering with
+              | Option.None -> Error Cycle
+              | Option.Some finished ->
+                  commit t graph ~consumed entering finished;
+                  Ok graph)))
 
 let try_rewrite t ~consume ~produce : t option =
   match rewrite t ~consume ~produce with

@@ -92,8 +92,8 @@ val node_origin : t -> node_id -> int
     source order. *)
 
 val is_live : t -> node_id -> bool
-(** [is_live t i] is whether node [i] is still present (not consumed by a
-    rewrite). *)
+(** [is_live t i] is whether node [i] is present in [t]: created by [t] or a
+    graph it was rewritten from, and consumed by none of those rewrites. *)
 
 val generation : t -> int
 (** [generation t] increments after every successful rewrite. Candidate queues
@@ -235,4 +235,12 @@ val try_rewrite :
     dead/stale, if [produce] is empty, or if the result would have a cycle (the
     rewrite would not preserve the cascade). On success {!val-generation} is
     bumped so candidates captured against the old graph can be rejected as
-    stale. *)
+    stale.
+
+    The result shares [t]'s storage, so the attempt costs what it touches rather
+    than the size of the graph, accepted or not. [t] still answers every
+    question about itself afterwards, but it can no longer be rewritten: a
+    lineage of graphs is rewritten from its newest member only.
+
+    Raises [Invalid_argument] if a rewrite of [t] or of a graph rewritten from
+    it was already accepted. *)
