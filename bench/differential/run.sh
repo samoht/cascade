@@ -4,12 +4,15 @@
 #   run.sh outputs    --baseline TREE [--candidate TREE] [--corpus TREE]
 #   run.sh candidates --baseline TREE [--candidate TREE] [--quick]
 #   run.sh render     --tool TOOL --output DIR [--pages]
+#   run.sh refresh    [--random COUNT SIZE | PATH...]
 #   run.sh corpus     [bench/corpus_sweep.sh options]
 #
 # outputs and candidates build the same deterministic observation driver in
 # two worktrees and require identical record streams.  render reuses the
-# committed inline browser engine with a chosen minifier.  corpus delegates to
-# the established interleaved performance/byte sweep.
+# committed inline browser engine with a chosen minifier.  refresh checks this
+# tree alone: the candidates carried across rewrites against a full
+# enumeration after every commit, over the SatCSS corpus by default.  corpus
+# delegates to the established interleaved performance/byte sweep.
 
 set -euo pipefail
 
@@ -224,12 +227,27 @@ render_profile() {
   return "$status"
 }
 
+refresh_profile() {
+  local driver
+  driver=$(build_driver "$ROOT")
+  if [ $# -eq 0 ]; then
+    local corpus="$ROOT/bench/satcss/scripts/.tool/benchmarks"
+    [ -d "$corpus" ] || {
+      echo "error: SatCSS corpus not found: $corpus" >&2
+      return 2
+    }
+    set -- "$corpus"/*-stripmq.css
+  fi
+  "$driver" refresh "$@" >/dev/null
+}
+
 [ $# -gt 0 ] || usage
 profile=$1
 shift
 case $profile in
   outputs | candidates) compare_profile "$profile" "$@" ;;
   render) render_profile "$@" ;;
+  refresh) refresh_profile "$@" ;;
   corpus) exec "$ROOT/bench/corpus_sweep.sh" "$@" ;;
   *) usage ;;
 esac

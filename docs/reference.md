@@ -127,6 +127,18 @@ drains. The output is a topological order of the final graph, with the first
 source appearance as the tie-break, so rules keep their source order wherever
 the cascade does not force another.
 
+The candidate set is bounded and deterministic. Rules sharing a declaration,
+or writing a property once, form a bucket, and the factoring candidates are
+subsets of a bucket's members in source order. In a run of at most 128 rules
+they are the whole bucket, the bucket less one member, and runs of neighbouring
+members. Above 128 rules they are runs of up to 24 neighbours spanning at most
+128 source positions, and one budget of 256 subsets per kind is spent on the
+buckets in order of first source position, then size, then the rule and
+declaration where the bucket's key first appears. A run keeps the bounds its
+first graph sets. Subsets that factor the same declarations out of the same
+rules are one candidate. Equal savings rank by rewrite kind, then by the
+produced rules, then by the consumed rules.
+
 ### Approximation and lossless mode
 
 Cascade folds colours only within 0.002 ΔE<sub>OK</sub> (the CSS Color 4

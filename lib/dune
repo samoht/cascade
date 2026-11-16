@@ -10,6 +10,7 @@
   baseline
   block
   common
+  commute
   custom_property_name
   declaration_intf
   declaration_core
@@ -63,6 +64,7 @@
   shorthand_text
   shorthand_timing
   size
+  subsets
   stylesheet_intf
   stylesheet_cascade
   stylesheet_equal

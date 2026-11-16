@@ -34,6 +34,7 @@ let () =
       Test_rule_graph.suite;
       Test_rule_rewrite.suite;
       Test_rule_candidate.suite;
+      Test_subsets.suite;
       Test_rule_scheduler.suite;
       Test_rule_order.suite;
       Test_common.suite;

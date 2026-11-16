@@ -15,6 +15,7 @@ module Priority = struct
     produce : int;
     consume : int array;
     ordinal : int;
+    candidate : Rule_rewrite.candidate;  (** carried, never compared *)
   }
 
   let rec compare_int_arrays a b i =
@@ -83,96 +84,47 @@ let priority ordinal (candidate : Rule_rewrite.candidate) =
       produce = produce_key candidate;
       consume = consume_key candidate;
       ordinal;
+      candidate;
     }
 
-let enqueue candidates_by_key next_key queue candidates =
-  List.fold_left
-    (fun (next_key, queue) candidate ->
-      Hashtbl.replace candidates_by_key next_key candidate;
-      (next_key + 1, Queue.add next_key (priority next_key candidate) queue))
-    (next_key, queue) candidates
+let offer queue offer =
+  let key = Rule_candidate.key offer in
+  Queue.add key (priority key (Rule_candidate.candidate offer)) queue
 
-let produced_ids ~first ~count =
-  List.init count (fun offset -> Rule_graph.Node_id.of_int_exn (first + offset))
-
-let affected_nodes graph (candidate : Rule_rewrite.candidate) =
-  let first_produced = Rule_graph.node_count graph in
-  candidate.consume
-  @ produced_ids ~first:first_produced ~count:(List.length candidate.produce)
-
-let initial_queue ~memo ~ctx ~finalize graph candidates_by_key =
-  Rule_candidate.enumerate ~memo ~ctx ~finalize graph
-  |> enqueue candidates_by_key 0 Queue.empty
-
-(* Refresh affected-neighborhood candidates per commit only for small graphs; on
-   large graphs the cumulative per-commit enumeration cost dominates, so defer
-   to drain-time re-enumeration. *)
-let requeue_after_commit ~refresh_after_commit ~memo ~ctx ~finalize
-    candidates_by_key graph graph' candidate next_key queue =
-  if refresh_after_commit then
-    let touching = affected_nodes graph candidate in
-    let candidates =
-      Rule_candidate.enumerate ~memo ~touching ~ctx ~finalize graph'
-    in
-    enqueue candidates_by_key next_key queue candidates
-  else (next_key, queue)
-
-let scheduler_loop ~max_iterations ~refresh_after_commit ~memo ~ctx ~finalize
-    candidates_by_key =
-  let rec loop iteration refreshed graph next_key queue =
+(* Below 128 nodes the candidates a commit brings about are queued as soon as it
+   lands; above, they wait for the queue to drain, when every candidate of the
+   graph is queued again. A candidate stays queued until it is tried:
+   [Rule_graph.rewrite] refuses one whose rules a later commit consumed. *)
+let run ~ctx ~finalize graph =
+  let max_iterations = max_iterations graph in
+  let refresh_after_commit = Rule_graph.node_count graph <= 128 in
+  let pool = Rule_candidate.start ~ctx ~finalize graph in
+  let rec loop iteration ~committed graph queue =
     if iteration >= max_iterations then graph
     else
       match Queue.pop queue with
       | None ->
-          if refreshed then graph
-          else
-            let candidates =
-              Rule_candidate.enumerate ~memo ~ctx ~finalize graph
-            in
-            if candidates = [] then graph
-            else
-              let next_key, queue =
-                enqueue candidates_by_key next_key Queue.empty candidates
+          if not committed then graph
+          else begin
+            ignore (Rule_candidate.refresh pool);
+            loop iteration ~committed:false graph
+              (List.fold_left offer Queue.empty (Rule_candidate.offers pool))
+          end
+      | Some ((_, { candidate; _ }), queue) -> (
+          match
+            Rule_graph.rewrite graph ~consume:candidate.consume
+              ~produce:candidate.produce
+          with
+          | Error _ -> loop iteration ~committed graph queue
+          | Ok graph' ->
+              Stats.add_saving (Ctx.stats ctx) candidate.saving;
+              Rule_candidate.rewrite pool graph' ~consume:candidate.consume;
+              let queue =
+                if refresh_after_commit then
+                  List.fold_left offer queue (Rule_candidate.refresh pool)
+                else queue
               in
-              loop iteration true graph next_key queue
-      | Some ((key, _), queue) -> (
-          match Hashtbl.find_opt candidates_by_key key with
-          | None -> loop iteration refreshed graph next_key queue
-          | Some candidate -> (
-              Hashtbl.remove candidates_by_key key;
-              match
-                Rule_graph.rewrite graph ~consume:candidate.consume
-                  ~produce:candidate.produce
-              with
-              | Error _ -> loop iteration refreshed graph next_key queue
-              | Ok graph' ->
-                  Stats.add_saving (Ctx.stats ctx) candidate.saving;
-                  let next_key, queue =
-                    requeue_after_commit ~refresh_after_commit ~memo ~ctx
-                      ~finalize candidates_by_key graph graph' candidate
-                      next_key queue
-                  in
-                  loop (iteration + 1) false graph' next_key queue))
+              loop (iteration + 1) ~committed:true graph' queue)
   in
-  loop
-
-let run ~ctx ~finalize graph =
-  let candidates_by_key = Hashtbl.create 256 in
-  (* Every graph the loop enumerates is rewritten from this one, so what one
-     enumeration judged from a subset's rules holds at the next: the drain-time
-     enumeration below works out afresh only the subsets the commits since the
-     last one brought about. *)
-  let memo = Rule_candidate.memo () in
-  let next_key, queue =
-    initial_queue ~memo ~ctx ~finalize graph candidates_by_key
-  in
-  let loop =
-    scheduler_loop ~max_iterations:(max_iterations graph)
-      ~refresh_after_commit:(Rule_graph.node_count graph <= 128)
-      ~memo ~ctx ~finalize candidates_by_key
-  in
-  (* The initial queue was enumerated from this exact graph. If it is empty, or
-     every candidate is rejected without a rewrite, enumerating it again cannot
-     discover anything new. A committed rewrite marks the queue stale below and
-     still gets the usual drain-time refresh. *)
-  loop 0 true graph next_key queue
+  loop 0 ~committed:false graph
+    (List.fold_left offer Queue.empty (Rule_candidate.refresh pool))

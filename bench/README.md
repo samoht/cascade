@@ -21,6 +21,11 @@ bench/differential/run.sh outputs --baseline ../cascade-main
 # Compare internal optimiser candidate sets (quick is suitable while iterating).
 bench/differential/run.sh candidates --baseline ../cascade-main --quick
 
+# Check that the candidates carried across rewrites are a full enumeration's,
+# after every commit, over the SatCSS corpus and over random sheets.
+bench/differential/run.sh refresh
+bench/differential/run.sh refresh --random 20000 8
+
 # Render-check every committed HTML fixture through an external minifier.
 bench/differential/run.sh render --tool lightningcss --output /tmp/render-diff
 

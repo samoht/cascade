@@ -355,12 +355,131 @@ module Candidates = struct
       !sheet_count !candidate_count !default_count
 end
 
+(* The candidates a scheduler carries across rewrites against the ones a full
+   enumeration of each new graph offers. Every sheet's rules run a greedy
+   schedule, largest saving first; after every commit the carried set must equal
+   the enumerated one, and the first sheet where it does not stops the run. This
+   checks one build against itself, so it needs no baseline. *)
+module Refresh = struct
+  let observed candidates =
+    List.map
+      (fun (c : Rule_rewrite.candidate) ->
+        Fmt.str "%s|%a|%d|%s"
+          (Candidates.kind_name c.kind)
+          Fmt.(list ~sep:comma int)
+          (List.map Rule_graph.Node_id.to_int c.consume)
+          c.saving
+          (String.concat ""
+             (List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) c.produce)))
+      candidates
+    |> List.sort String.compare
+
+  let best_commit g candidates =
+    List.stable_sort
+      (fun (a : Rule_rewrite.candidate) (b : Rule_rewrite.candidate) ->
+        Int.compare b.saving a.saving)
+      candidates
+    |> List.find_map (fun (c : Rule_rewrite.candidate) ->
+        match Rule_graph.rewrite g ~consume:c.consume ~produce:c.produce with
+        | Ok g' -> Some (c, g')
+        | Error _ -> None)
+
+  let commits = ref 0
+
+  let check label ctx rules =
+    let g = Rule_graph.of_rules rules in
+    let nodes = Rule_graph.node_count g in
+    let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
+    ignore (Rule_candidate.refresh state);
+    let rec loop step g candidates =
+      match best_commit g candidates with
+      | None -> step
+      | Some (c, g') ->
+          Rule_candidate.rewrite state g' ~consume:c.consume;
+          ignore (Rule_candidate.refresh state);
+          incr commits;
+          let carried = Rule_candidate.candidates state in
+          let expected =
+            observed (Rule_candidate.enumerate ~nodes ~ctx ~finalize:Fun.id g')
+          in
+          let got = observed carried in
+          if not (List.equal String.equal expected got) then begin
+            let missing = List.filter (fun x -> not (List.mem x got)) expected
+            and extra = List.filter (fun x -> not (List.mem x expected)) got in
+            List.iter (Fmt.epr "%s\tmissing\t%s\n" label) missing;
+            List.iter (Fmt.epr "%s\textra\t%s\n" label) extra;
+            fail "%s: carried candidates differ after commit %d" label (step + 1)
+          end;
+          loop (step + 1) g' carried
+    in
+    loop 0 g (Rule_candidate.candidates state)
+
+  (* Random sheets over the candidate profile's selectors and bodies, with
+     longhands under their shorthands so that orders the cascade forces appear
+     and change as rewrites land. *)
+  let atoms =
+    Array.append Candidates.atoms
+      [| "margin-top:3px"; "color:green"; "padding-left:4px"; "margin:0" |]
+
+  let run_random ~count ~size =
+    Candidates.reseed ();
+    let bodies =
+      Array.concat
+        (Array.to_list
+           (Array.map
+              (fun first -> Array.map (fun second -> [ first; second ]) atoms)
+              atoms))
+      |> Array.append (Array.map (fun atom -> [ atom ]) atoms)
+    in
+    let selectors = Candidates.selectors in
+    for index = 0 to count - 1 do
+      let picks =
+        List.init size (fun _ ->
+            ( Candidates.next_int (Array.length selectors),
+              Candidates.next_int (Array.length bodies) ))
+      in
+      let css = Candidates.sheet_of selectors bodies picks in
+      ignore
+        (check
+           (Fmt.str "random:%06d %s" index css)
+           Ctx.fragment (Candidates.rules css))
+    done;
+    Fmt.epr "refresh: %d random sheets, %d commits, every carried set exact\n%!"
+      count !commits
+
+  let run paths =
+    let files =
+      List.concat_map
+        (fun path ->
+          if Sys.is_directory path then css_files path [] else [ path ])
+        paths
+      |> List.sort String.compare
+    in
+    List.iter
+      (fun path ->
+        match Candidates.rules (read_file path) with
+        | [] -> ()
+        | rules ->
+            let steps = check path Ctx.fragment rules in
+            Fmt.pr "%s\t%d\n%!" path steps)
+      files;
+    Fmt.epr "refresh: %d sheets, %d commits, every carried set exact\n%!"
+      (List.length files) !commits
+end
+
 let usage () =
-  fail "usage: driver outputs CORPUS_ROOT\n       driver candidates [--quick]"
+  fail
+    "usage: driver outputs CORPUS_ROOT\n\
+    \       driver candidates [--quick]\n\
+    \       driver refresh PATH...\n\
+    \       driver refresh --random COUNT SIZE"
 
 let () =
   match Array.to_list Sys.argv with
   | [ _; "outputs"; root ] -> run_outputs root
   | [ _; "candidates" ] -> Candidates.run ~quick:false
   | [ _; "candidates"; "--quick" ] -> Candidates.run ~quick:true
+  | [ _; "refresh"; "--random"; count; size ] ->
+      Refresh.run_random ~count:(int_of_string count) ~size:(int_of_string size)
+  | _ :: "refresh" :: (_ :: _ as paths) -> Refresh.run paths
   | _ -> usage ()
