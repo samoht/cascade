@@ -12,6 +12,35 @@ preserves the var() reference for non-descendant uses.
   $ cascade --minify --inline-vars scoped-decl.css
   .theme{--c:red;.descendant{color:red}}.other{color:var(--c)}
 
+A nested rule's selector is its parent's composed as CSS Nesting 1 sec. 3
+composes it. A type selector parent goes inside [:is()] (Selectors 4 sec.
+3.5 keeps it leading its compound), so [.x&] under [a] is [.x:is(a)], an [a]
+element with class [x], and not the class [.xa], which a definition there
+never reaches.
+
+  $ cat > nested-type.css <<EOF
+  > .xa { --c: red }
+  > a { .x& { color: var(--c) } }
+  > EOF
+  $ cascade --minify --inline-vars nested-type.css
+  .xa{--c:red}.x:is(a){color:var(--c)}
+
+A definition on a selector list reaches what each branch matches, so it
+covers a consumer nested under that list, and a consumer under one of its
+branches.
+
+  $ cat > list-scope.css <<EOF
+  > .a, .b { --c: red; .x { color: var(--c) } }
+  > EOF
+  $ cascade --minify --inline-vars list-scope.css
+  .a,.b{.x{color:red}}
+  $ cat > list-branch.css <<EOF
+  > .a, .b { --c: red }
+  > .a .x { color: var(--c) }
+  > EOF
+  $ cascade --minify --inline-vars list-branch.css
+  .a .x{color:red}
+
 A variable declared inside @media is folded only into consumers within
 that @media block. A consumer outside keeps its var() reference, and the
 definition goes to the output with it: the browser answers the reference
