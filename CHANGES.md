@@ -21,11 +21,9 @@
   of a byte range, and `Error.position` gives that line and column (#1299).
 - `cascade diff` names each input in its warnings, and `Css.of_string` without
   `~filename` leaves the name unset, printed as `<CSS input>` (#1299).
-- `Error.t`'s `source` is an `Error.Source.t`, the input text with the index
-  of its positions that `Error.position` reads and the errors of one parse
-  share; `Error.Source.text` gives the string. `Error.in_source` builds an
-  error in a shared source, and `Cursor.of_components` and
-  `Stylesheet.read_stylesheet_of_rules` take an `Error.Source.t` as `?source`
+- `Error.t`'s `source` is an `Error.Source.t`, shared by the errors of one
+  parse; `Error.Source.text` gives the string. `Error.in_source`,
+  `Cursor.of_components` and `Stylesheet.read_stylesheet_of_rules` take one
   (#1310).
 
 ### Printing
@@ -60,14 +58,9 @@
 - `--minify` keeps in order two rules that differ only in the case of a type
   selector (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read
   through an `i` or `s` flag; it could move one past the other (#1295).
-- `--minify` keeps what it knows of rule order across a committed merge instead
-  of working it out again for the whole run. Output is unchanged; a sheet that
-  commits many merges costs about a third less (reddit, 311KB) (#1306).
-- When `--minify` runs out of merges on a long run of rules and looks for more,
-  it reuses what it already worked out about each group of rules it considered
-  before. Output is unchanged; tw_all (661KB) costs 3% less (#1307).
-- `--minify` merges distant `@media` blocks with less work: tw's own sheet
-  takes 5% fewer instructions, with the same output (#1313).
+- `--minify` is faster on large sheets, with the same output: about 30% fewer
+  instructions where it merges many rules or distant `@media` blocks (#1306,
+  #1307, #1313).
 
 ### Parsing
 
@@ -89,14 +82,9 @@
   as written; a rule nested deeper loses its contents with a warning (#1296).
 - A selector nesting `:is()` more than 100 deep drops its rule with a warning
   instead of reading as an `:is()` that matches nothing (#1296).
-- A `var()` fallback that does not match the property's grammar costs the
-  same as one that does. Each one located itself in the source, so a sheet of
-  them cost its size squared; Tailwind's output parses 22% faster (#1311).
-- The tokenizer copies a token's source text only when an escape is in it, and
-  reads a number or a whitespace run straight from the source: Tailwind's
-  output parses 9% faster (#1314).
-- A custom property's value is tokenized once instead of twice: tw's output
-  parses 3% faster (#1315).
+- Parsing is faster, most of all on custom properties and `var()` fallbacks. A
+  sheet of fallbacks that do not match their property's grammar cost its size
+  squared (#1311, #1314, #1315).
 
 ### CLI tools
 
@@ -111,10 +99,8 @@
   declaration blocks the same-selector merge checked against nested blocks
   before them, also read as `Stats.counters.nested_merge_probes` (#1301).
 - Printing parse warnings costs in proportion to the warnings plus the input,
-  where each warning counted its line and column from the first byte. A 2.1 MB
-  sheet of concatenated SatCSS stylesheets takes 0.4 s of CPU under `cascade
-  fmt` instead of 5.0 s. netflix.com's stylesheet minifies in 0.6 s instead of
-  0.8 s (#1310).
+  where each warning counted its line and column from the first byte: a 2 MB
+  sheet takes a fraction of a second instead of seconds (#1310).
 
 ### Diff report
 
@@ -124,18 +110,12 @@
 - A changed rule is reported when the other file holds two identical copies of
   its counterpart. Pairing one copy claimed both, and the change was dropped
   (#1297).
-- `cascade diff --diff=canonical` parses each input once, where it parsed it
-  two or three times: Tailwind's stylesheet against tw's retires 4.85e10
-  instructions instead of 5.32e10, for the same report (#1305).
-- `cascade diff --diff=canonical` builds a rule graph only to order a run of
-  rules, not to fold rules within it. tw's tailwindcss.com sheet against
-  Tailwind's takes 3.2 s of CPU instead of 5.3 s (#1308).
-- `cascade diff --diff=canonical` checks each declaration for a legacy vendor
-  alias once rather than once per other declaration in its rule (#1309).
+- `cascade diff --diff=canonical` is faster and lighter, for the same report:
+  Tailwind's stylesheet against tw's takes about half the time and a third of
+  the memory (#1305, #1308, #1309).
 - A rule or declaration dropped inside an `@media` block counts as unread, as
-  one inside `@supports` does. `cascade diff` reported the two sheets
-  identical when only one of them had lost a rule there, and its warning was
-  `Recovered` in the library (#1312).
+  one inside `@supports` does, where it was `Recovered`: `cascade diff` exits 2
+  instead of reporting two sheets identical when one lost a rule there (#1312).
 
 ### Library
 
