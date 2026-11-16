@@ -582,6 +582,12 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
     at-rule carrying declarations of its own are both covered. Deduplicated, in
     source order. *)
 
+val drop_inert_at_rules : t -> t
+(** [drop_inert_at_rules stylesheet] drops the at-rules no browser applies: an
+    [@font-face] without a [font-family] or a [src] descriptor (CSS Fonts 4 sec.
+    4.1), at any depth, an [@charset "UTF-8"], and every [@charset] after the
+    first (CSS Syntax 3 (ED) sec. 8.3). *)
+
 (** {1 Rendering} *)
 
 val to_string :

@@ -232,48 +232,7 @@ let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
       if body_escapes_its_closer body then Pp.char ctx '\n';
       Pp.char ctx '}'
 
-let font_face_participates descriptors =
-  List.exists (function Font_family _ -> true | _ -> false) descriptors
-  && List.exists (function Src _ -> true | _ -> false) descriptors
-
-let should_print_statement ctx = function
-  | Font_face descriptors when Pp.minified ctx ->
-      font_face_participates descriptors
-  | Font_face _ | Rule _ | Declarations _ | Bang_comment _ | Charset _
-  | Import _ | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
-  | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
-  | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
-  | Webkit_keyframes _ | Moz_keyframes _ | Counter_style _ | Page _
-  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-      true
-
-let printable_statements ctx statements =
-  if Pp.minified ctx then List.filter (should_print_statement ctx) statements
-  else statements
-
 module String_set = Pp.String_set
-
-let normalise_charset statements =
-  (* CSS Syntax 3 (ED) sec. 8.3: [@charset] is an encoding-declaration byte
-     pattern recognised before tokenization, not a stylesheet at-rule after
-     parsing. In minified output the serializer emits UTF-8, so [@charset
-     "UTF-8"] is redundant; keep at most the first non-UTF-8 declaration for
-     byte-level compatibility. *)
-  let is_utf8 encoding =
-    String.equal (String.lowercase_ascii encoding) "utf-8"
-  in
-  let kept_one = ref false in
-  List.filter
-    (fun stmt ->
-      match stmt with
-      | Charset enc when is_utf8 enc -> false
-      | Charset _ when !kept_one -> false
-      | Charset _ ->
-          kept_one := true;
-          true
-      | _ -> true)
-    statements
 
 let color_custom_property_names stylesheet =
   let var_name_of_custom_property = Custom_property_name.strip_prefix in
@@ -382,8 +341,6 @@ let normalise_shadows stylesheet =
       |> map_statement_children (List.map statement)
     in
     List.map statement stylesheet
-
-let normalise statements = statements |> normalise_charset |> normalise_shadows
 
 let import_url_starts_with_url url len =
   len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
@@ -1014,7 +971,6 @@ and pp_statement : statement Pp.t =
 
 and pp_block : block Pp.t =
  fun ctx statements ->
-  let statements = printable_statements ctx statements in
   (* Block printing for at-rules (@media, @supports, etc.) The braces helper
      adds nest 1 and indent for the first item only. Subsequent items need
      explicit indentation and blank line separation to match Tailwind format. *)
@@ -1044,9 +1000,8 @@ let is_layer_block = function Layer _ -> true | _ -> false
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements ->
   let statements =
-    if Pp.minified ctx then normalise statements else statements
+    if Pp.minified ctx then normalise_shadows statements else statements
   in
-  let statements = printable_statements ctx statements in
   let rec loop = function
     | [] -> ()
     | [ s ] -> pp_statement ctx s

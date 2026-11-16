@@ -42,6 +42,12 @@
 
 ### Printing
 
+- `Css.to_string ~minify:true` prints an `@font-face` without `font-family` or
+  `src`, and an `@charset`, as given. `Css.optimize` drops them instead, through
+  `Stylesheet.drop_inert_at_rules`, and `cascade apply` keeps them out of its
+  residual sheet. `--minify` output is unchanged (#1351).
+- A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
+  quote inside `local("...")` print back as that name (#1351).
 - `Css.to_string ~minify:true` prints a selector as it is given: folding
   `:not(:not(X))`, `:is(:link,:visited)`, `:nth-child(1)`, `:not(:dir(ltr))` and
   `input:not(:enabled)` moved to `Selector.canonicalize`, which `--minify` runs

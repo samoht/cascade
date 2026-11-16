@@ -1,5 +1,4 @@
 open Stylesheet_intf
-open Stylesheet_pp
 open Stylesheet_walk
 open Stylesheet_read
 

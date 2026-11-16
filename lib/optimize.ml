@@ -1168,6 +1168,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
+  let stylesheet = Stylesheet.drop_inert_at_rules stylesheet in
   (* Under [lossless] the raw body stands as authored: nothing types it, so
      nothing proves the layout inside it carries no meaning to its reader. *)
   let stylesheet =

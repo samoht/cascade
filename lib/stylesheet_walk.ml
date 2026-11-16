@@ -380,3 +380,39 @@ let container_queries t =
 let vars_of_stylesheet (ss : stylesheet) : Variables.any_var list =
   fold_declarations (fun acc decls -> List.rev_append decls acc) [] ss
   |> List.rev |> Variables.vars_of_declarations
+
+(* {1 Inert at-rules} *)
+
+(* CSS Fonts 4 sec. 4.1: an [@font-face] without a [font-family] or a [src]
+   descriptor is invalid and ignored. *)
+let font_face_participates descriptors =
+  List.exists (function Font_family _ -> true | _ -> false) descriptors
+  && List.exists (function Src _ -> true | _ -> false) descriptors
+
+let rec drop_inert_font_faces stmts =
+  Common.List.filter_map_preserve
+    (function
+      | Font_face descriptors when not (font_face_participates descriptors) ->
+          Option.None
+      | stmt -> Option.Some (map_statement_children drop_inert_font_faces stmt))
+    stmts
+
+(* CSS Syntax 3 (ED) sec. 8.3: [@charset] is a byte pattern read before
+   decoding, not a rule. Output is UTF-8, so [@charset "UTF-8"] says nothing,
+   and only the first of the others can still name the bytes. *)
+let drop_inert_charsets stmts =
+  let is_utf8 encoding =
+    String.equal (String.lowercase_ascii encoding) "utf-8"
+  in
+  let rec go ~kept = function
+    | [] -> []
+    | Charset enc :: rest when kept || is_utf8 enc -> go ~kept rest
+    | (Charset _ as stmt) :: rest -> stmt :: go ~kept:true rest
+    | stmt :: rest -> stmt :: go ~kept rest
+  in
+  if List.exists (function Charset _ -> true | _ -> false) stmts then
+    go ~kept:false stmts
+  else stmts
+
+let drop_inert_at_rules stmts =
+  drop_inert_charsets (drop_inert_font_faces stmts)

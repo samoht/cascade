@@ -494,6 +494,8 @@ module Make (Node : Resolve.NODE) = struct
     let dyn = overlap_probes (dynamic_decls [] stmts) in
     let is_dyn d = overlaps_kept dyn d in
     let keep, inline = split ~is_dyn stmts in
+    (* What no browser applies stays out of the residual sheet. *)
+    let keep = Stylesheet.drop_inert_at_rules keep in
     let keep_css =
       if keep = [] then "" else Css.to_string ~minify:true (Stylesheet.v keep)
     in
