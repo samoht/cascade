@@ -954,9 +954,40 @@ let test_border_image_held_across_rules () =
       ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:#0000}"
     ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}"
 
+(* CSS Backgrounds 3 sec. 3.10: [background] resets every longhand it does not
+   name to its initial value. Under [`Stylesheet] scope a run of [background-*]
+   longhands may contract into a shorthand naming only its own slots, but not
+   after a [background] the same rule wrote earlier: the contraction would reset
+   the image, colour and repeat that one set. Masking 1 sec. 7.9 reads [mask]
+   the same way. *)
+let test_layer_contraction_keeps_an_earlier_shorthand () =
+  let check property css needles =
+    match Css.of_string css with
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        let out =
+          Css.to_string ~minify:true
+            (Css.optimize ~scope:`Stylesheet ~enforce_spec:true stylesheet)
+        in
+        List.iter
+          (fun needle ->
+            if not (Astring.String.is_infix ~affix:needle out) then
+              Alcotest.failf "%s lost %s: %s -> %s" property needle css out)
+          needles
+  in
+  check "background"
+    "a{background:#fff url(a.png) no-repeat center;background-position:0 \
+     50%;background-size:25px 25px}"
+    [ "url(a.png)"; "#fff"; "no-repeat" ];
+  check "mask"
+    "a{mask:url(a.png) no-repeat;mask-position:0 50%;mask-size:25px 25px}"
+    [ "url(a.png)"; "no-repeat" ]
+
 let suite =
   ( "shorthand_compose",
     [
+      Alcotest.test_case "layer contraction keeps an earlier shorthand" `Quick
+        test_layer_contraction_keeps_an_earlier_shorthand;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "transition contraction covers other rules" `Quick
