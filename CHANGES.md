@@ -97,6 +97,9 @@
 - A changed rule is reported when the other file holds two identical copies of
   its counterpart. Pairing one copy claimed both, and the change was dropped
   (#1297).
+- `cascade diff --diff=canonical` parses each input once, where it parsed it
+  two or three times: Tailwind's stylesheet against tw's retires 4.85e10
+  instructions instead of 5.32e10, for the same report (#1305).
 
 ### Library
 

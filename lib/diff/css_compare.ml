@@ -564,42 +564,18 @@ let canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None
 
-(* Parse both sides before canonicalising either. A caller that retries at a
-   different strictness needs only to know that one side failed to parse, and
-   canonicalising the other first is the whole pipeline's work thrown away. *)
-let canonical_both ~strict ~lossless ~enforce_spec ~prune_unused_custom_props
-    expected actual =
-  match (Css.of_string ~strict expected, Css.of_string ~strict actual) with
-  | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } -> (
-      let canonical =
-        canonical_of_stylesheet ~lossless ~enforce_spec
-          ~prune_unused_custom_props
-      in
-      match (canonical expected, canonical actual) with
-      | Some expected, Some actual -> Some (expected, actual)
-      | _ -> None)
-  | _ -> None
-
-let canonical_pair ~strict ~lossless ?(enforce_spec = false) expected actual =
-  canonical_both ~strict ~lossless ~enforce_spec
-    ~prune_unused_custom_props:false expected actual
-  |> Option.map (fun (expected, actual) -> String.equal expected actual)
-
-let canonical_diff_inputs ~strict ~lossless ~enforce_spec
-    ?(prune_unused_custom_props = false) expected actual =
-  canonical_both ~strict ~lossless ~enforce_spec ~prune_unused_custom_props
-    expected actual
-
-let canonical_diff_inputs_with_fallback ~lossless ~enforce_spec
-    ?(prune_unused_custom_props = false) expected actual =
-  match
-    canonical_diff_inputs ~strict:true ~lossless ~enforce_spec
-      ~prune_unused_custom_props expected actual
-  with
-  | Some _ as result -> result
-  | None ->
-      canonical_diff_inputs ~strict:false ~lossless ~enforce_spec
-        ~prune_unused_custom_props expected actual
+(* Both canonical forms, from the two stylesheets the lenient parse returns. A
+   strict parse would only refuse a sheet with warnings: when it succeeds its
+   stylesheet is the lenient one, so there is nothing to retry. *)
+let canonical_both ~lossless ~enforce_spec ~prune_unused_custom_props expected
+    actual =
+  let canonical =
+    canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
+  in
+  match canonical expected with
+  | None -> None
+  | Some expected ->
+      Option.map (fun actual -> (expected, actual)) (canonical actual)
 
 (* Internal: full-stylesheet equality under the canonical minified form. *)
 let semantic_equal ?property ?(lossless = false) expected actual =
@@ -609,14 +585,15 @@ let semantic_equal ?property ?(lossless = false) expected actual =
   else
     let expected_css = css_for_semantic_comparison ?property expected in
     let actual_css = css_for_semantic_comparison ?property actual in
-    match canonical_pair ~strict:true ~lossless expected_css actual_css with
-    | Some equal -> equal
-    | None -> (
+    match (Css.of_string expected_css, Css.of_string actual_css) with
+    | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } -> (
         match
-          canonical_pair ~strict:false ~lossless expected_css actual_css
+          canonical_both ~lossless ~enforce_spec:false
+            ~prune_unused_custom_props:false expected actual
         with
-        | Some equal -> equal
+        | Some (expected, actual) -> String.equal expected actual
         | None -> false)
+    | Error _, _ | _, Error _ -> false
 
 let equivalent_value ?lossless ~property a b =
   semantic_equal ?lossless ~property a b
@@ -812,10 +789,15 @@ let diff_canonical ~lossless ~enforce_spec ~prune_unused_custom_props ~expected
     ~actual ~expected_parse ~actual_parse =
   if expected = actual then No_diff
   else
-    match
-      canonical_diff_inputs_with_fallback ~lossless ~enforce_spec
-        ~prune_unused_custom_props expected actual
-    with
+    let canonical =
+      match (expected_parse, actual_parse) with
+      | Ok { Css.stylesheet = expected; _ }, Ok { Css.stylesheet = actual; _ }
+        ->
+          canonical_both ~lossless ~enforce_spec ~prune_unused_custom_props
+            expected actual
+      | Error _, _ | _, Error _ -> None
+    in
+    match canonical with
     | None -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
     | Some (expected_canon, actual_canon) ->
         (* The canonical form is what this mode compares: equivalent inputs
