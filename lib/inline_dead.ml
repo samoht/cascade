@@ -4,10 +4,7 @@ open Inline_subst
 
 (** {1 Pass 3 - dead-code elimination} *)
 
-let strip_component_ws =
-  List.filter (function
-    | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-    | _ -> true)
+let strip_component_ws = List.filter (Fun.negate Component.is_whitespace)
 
 let rec split_var_fallback acc = function
   | [] -> []

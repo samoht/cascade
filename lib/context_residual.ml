@@ -78,29 +78,24 @@ let map_var_fallback f = function
   | Values.Syntax_fallback value -> Values.Syntax_fallback value
   | Values.Var_fallback name -> Values.Var_fallback name
 
+let rounded_as_printed f = float_of_string (Pp.string_of_float f)
+
 let combine_numeric_values ~to_number ~of_number left op right =
-  let canonical f =
-    try float_of_string (Pp.string_of_float f) with Failure _ -> f
-  in
   match (to_number left, op, to_number right) with
-  | Some a, Values.Add, Some b -> Some (of_number (canonical (a +. b)))
-  | Some a, Values.Sub, Some b -> Some (of_number (canonical (a -. b)))
+  | Some a, Values.Add, Some b -> Some (of_number (rounded_as_printed (a +. b)))
+  | Some a, Values.Sub, Some b -> Some (of_number (rounded_as_printed (a -. b)))
   | _ -> None
 
 let combine_numeric_value_num ~to_number ~of_number value op num =
-  let canonical f =
-    try float_of_string (Pp.string_of_float f) with Failure _ -> f
-  in
   match (to_number value, op) with
-  | Some n, Values.Mul -> Some (of_number (canonical (n *. num)))
-  | Some n, Values.Div when num <> 0. -> Some (of_number (canonical (n /. num)))
+  | Some n, Values.Mul -> Some (of_number (rounded_as_printed (n *. num)))
+  | Some n, Values.Div when num <> 0. ->
+      Some (of_number (rounded_as_printed (n /. num)))
   | _ -> None
 
 let normalize_numeric_value ~to_number ~of_number value =
   match to_number value with
-  | Some n -> (
-      try of_number (float_of_string (Pp.string_of_float n))
-      with Failure _ -> of_number n)
+  | Some n -> of_number (rounded_as_printed n)
   | None -> value
 
 module Var_residual = struct

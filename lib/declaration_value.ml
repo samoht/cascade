@@ -18,19 +18,24 @@ let validate_no_extra_tokens t =
         Cursor.err_invalid ~loc t
           ("unexpected tokens after property value: " ^ trimmed)
 
-(* CSS Position 3 sec. 3.1 gives every inset property [auto |
-   <length-percentage>] and sec. 3.2 builds [inset] from it, so no sizing
-   function reaches any of them. That is the same production CSS Box 4 sec. 3.1
-   gives a margin, so they share its component reader. *)
-let read_inset_length t = Values.read_margin_length ~global:true t
+(* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
+   CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
+   longhand takes as its whole value where a shorthand component cannot. CSS
+   Position 3 sec. 3.1 gives every inset property the same production, and sec.
+   3.2 builds [inset] from it, so the inset readers share this one. *)
+let read_margin_length_or_global t = Values.read_margin_length ~global:true t
 
 let read_length_box t =
-  let values = Cursor.list ~at_least:1 ~at_most:4 read_inset_length t in
+  let values =
+    Cursor.list ~at_least:1 ~at_most:4 read_margin_length_or_global t
+  in
   if values = [] then Cursor.err_expected t "length value";
   values
 
-let read_inset_longhand t = [ read_inset_length t ]
-let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_inset_length t
+let read_inset_longhand t = [ read_margin_length_or_global t ]
+
+let read_inset_axis t =
+  Cursor.list ~at_least:1 ~at_most:2 read_margin_length_or_global t
 
 let read_border_width_box t =
   Cursor.list ~at_least:1 ~at_most:4 read_border_width t
@@ -159,11 +164,6 @@ let read_lp_or_global t =
     ]
     ~default:(Values.read_length_percentage ~with_keywords:false)
     t
-
-(* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
-   CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
-   longhand takes as its whole value where a shorthand component cannot. *)
-let read_margin_length_or_global t = Values.read_margin_length ~global:true t
 
 let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"

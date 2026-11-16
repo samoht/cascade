@@ -530,14 +530,7 @@ let err t cvs reason =
   let at = match cvs with [] -> t | _ :: _ -> Cursor.sub t cvs in
   fail_parse (Cursor.condition_error at ~at_rule:"@media" reason)
 
-let rec drop_whitespace = function
-  | component :: rest when Component.is_whitespace component ->
-      drop_whitespace rest
-  | components -> components
-
-let trim_components components =
-  components |> drop_whitespace |> List.rev |> drop_whitespace |> List.rev
-
+let trim_components = Common.List.trim Component.is_whitespace
 let non_whitespace_components = List.filter (Fun.negate Component.is_whitespace)
 
 let components_empty components =

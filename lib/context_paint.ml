@@ -62,12 +62,9 @@ let simplify_percentage ?layer_order ?layer ctx value =
      the float spelling without collapsing the [Num] / [Pct] distinction, which
      [of_number] would, since it always reissues a [Pct]. *)
   let normalize_value (value : Values.percentage) : Values.percentage =
-    let canon n =
-      try float_of_string (Pp.string_of_float n) with Failure _ -> n
-    in
     match value with
-    | Values.Num n -> Values.Num (canon n)
-    | Values.Pct n -> Values.Pct (canon n)
+    | Values.Num n -> Values.Num (rounded_as_printed n)
+    | Values.Pct n -> Values.Pct (rounded_as_printed n)
     | other -> other
   in
   let simplify_leaf _simplify _simplify_calc ~visited:_ value = value in

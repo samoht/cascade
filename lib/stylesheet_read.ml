@@ -388,13 +388,7 @@ let read_else ~body (r : Cursor.t) : statement =
   Cursor.ws r;
   let prelude = Cursor.drain_until_block r in
   let condition =
-    match
-      List.filter
-        (function
-          | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-          | _ -> true)
-        prelude
-    with
+    match List.filter (Fun.negate Component.is_whitespace) prelude with
     | [] -> Option.None
     | _ -> Some (conditional_components ~at_rule:"@else" (Cursor.sub r prelude))
   in

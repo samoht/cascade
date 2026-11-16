@@ -21,6 +21,12 @@ module List = struct
     in
     loop xs
 
+  let rec drop_while p = function
+    | x :: rest when p x -> drop_while p rest
+    | xs -> xs
+
+  let trim p xs = xs |> drop_while p |> rev |> drop_while p |> rev
+
   let filter_preserve f xs =
     let rec loop = function
       | [] -> []

@@ -70,13 +70,7 @@ let value_has_css_wide_mix value =
 (* Components-form equivalent: skip the round-trip through a string buffer used
    by [value_has_css_wide_mix] when callers already hold the component list. *)
 let components_have_css_wide_mix components =
-  let non_ws =
-    List.filter
-      (function
-        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-        | _ -> true)
-      components
-  in
+  let non_ws = List.filter (Fun.negate Component.is_whitespace) components in
   let lone_css_wide =
     match non_ws with
     | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->

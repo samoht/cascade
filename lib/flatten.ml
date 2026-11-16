@@ -16,20 +16,14 @@ let concat_map_preserve f xs =
   in
   if !changed then ys else xs
 
-let contains_nesting = Nest.contains
-let substitute_nesting = Nest.substitute
-let combine_with_parent = Nest.combine
-let keep_readable_branches = Nest.keep_readable_branches
-
 let scope_selector_in_context (parent : Selector.t) selector =
-  if contains_nesting selector then substitute_nesting ~parent selector
-  else selector
+  if Nest.contains selector then Nest.substitute ~parent selector else selector
 
 let rec flat_rule ?(parent : Selector.t option) (rule : rule) : statement list =
   let selector =
     match parent with
     | None -> Option.Some rule.selector
-    | Some p -> keep_readable_branches (combine_with_parent p rule.selector)
+    | Some p -> Nest.keep_readable_branches (Nest.combine p rule.selector)
   in
   match selector with
   | Option.None -> []

@@ -29,6 +29,14 @@ module List : sig
       returns {!constructor-Keep} for every element. {!constructor-Keep} and
       {!constructor-Drop} avoid per-element option allocation in
       mostly-unchanged filtering walks. *)
+
+  val drop_while : ('a -> bool) -> 'a list -> 'a list
+  (** [drop_while p xs] is [xs] without its longest prefix whose elements
+      satisfy [p]. *)
+
+  val trim : ('a -> bool) -> 'a list -> 'a list
+  (** [trim p xs] is [xs] without its leading and trailing elements that satisfy
+      [p]. *)
 end
 
 module String : sig

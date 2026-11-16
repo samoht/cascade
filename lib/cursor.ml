@@ -94,13 +94,9 @@ let of_reader ?(meta = Loc.default_meta_level) r =
     depth = 0;
   }
 
-let is_ws_cv : Component.t -> bool = function
-  | Preserved { kind = Token.Whitespace _; _ } -> true
-  | _ -> false
-
 let rec drop_ws t =
   match t.cvs with
-  | hd :: rest when is_ws_cv hd ->
+  | hd :: rest when Component.is_whitespace hd ->
       t.cvs <- rest;
       drop_ws t
   | _ -> ()
@@ -228,7 +224,7 @@ let consumed_span t snap =
     else
       match cvs with
       | [] -> None
-      | hd :: tl when is_ws_cv hd -> span acc tl
+      | hd :: tl when Component.is_whitespace hd -> span acc tl
       | hd :: tl ->
           let loc = Component.source_loc hd in
           let acc =
@@ -553,7 +549,9 @@ let drain_to_decl_end t = drain_until_raw ends_declaration_value t
 
 let decl_value_loc t =
   match
-    List.filter (fun cv -> not (is_ws_cv cv)) (lookahead drain_to_decl_end t)
+    List.filter
+      (Fun.negate Component.is_whitespace)
+      (lookahead drain_to_decl_end t)
   with
   | [] -> position t
   | first :: rest ->

@@ -488,10 +488,6 @@ let components_have_generic_family components =
     components
 
 let long_generic_family_start r =
-  let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
-    | _ -> false
-  in
   let is_comma = function
     | Component.Preserved { kind = Token.Comma; _ } -> true
     | _ -> false
@@ -501,10 +497,12 @@ let long_generic_family_start r =
     | l -> l
   in
   let item =
-    Cursor.remaining r |> drop_while is_ws |> List.to_seq
+    Cursor.remaining r
+    |> drop_while Component.is_whitespace
+    |> List.to_seq
     |> Seq.take_while (fun cv -> not (is_comma cv))
     |> List.of_seq
-    |> List.filter (fun cv -> not (is_ws cv))
+    |> List.filter (fun cv -> not (Component.is_whitespace cv))
   in
   match item with
   | Component.Preserved { kind = Token.Ident first; _ } :: _ :: _ ->

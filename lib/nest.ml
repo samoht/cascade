@@ -66,14 +66,7 @@ let nesting_leads_every_compound sel =
   let rec walk ~leading = function
     | Selector.Nesting -> leading
     | Selector.Compound (x :: rest) ->
-        walk ~leading x
-        && List.for_all
-             (fun s ->
-               not
-                 (Selector.any
-                    (function Selector.Nesting -> true | _ -> false)
-                    s))
-             rest
+        walk ~leading x && List.for_all (fun s -> not (contains s)) rest
     | Selector.Combined (l, _, r) ->
         walk ~leading:true l && walk ~leading:true r
     | Selector.Relative (_, r) -> walk ~leading:true r

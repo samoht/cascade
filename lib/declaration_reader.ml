@@ -68,12 +68,7 @@ let custom_property_refusal name value =
    and again from its end, so a stream built from text carries neither. Only the
    ends go: sec. 4.1 of CSS Custom Properties 1 (ED) forbids normalizing what is
    between them. *)
-let trim_declaration_value components =
-  let rec drop_leading = function
-    | cv :: rest when Component.is_whitespace cv -> drop_leading rest
-    | kept -> kept
-  in
-  components |> drop_leading |> List.rev |> drop_leading |> List.rev
+let trim_declaration_value = List.trim Component.is_whitespace
 
 (* Helper for raw custom properties - primarily for internal use *)
 
@@ -587,13 +582,7 @@ let property_allows_keyword_as_ident = function
    [var()] that may resolve to one); detect that directly on the component list,
    ignoring leading and trailing whitespace, without rebuilding a string. *)
 let components_are_lone_css_wide cvs =
-  let non_ws =
-    List.filter
-      (function
-        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-        | _ -> true)
-      cvs
-  in
+  let non_ws = List.filter (Fun.negate Component.is_whitespace) cvs in
   match non_ws with
   | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
       Properties.is_css_wide_keyword ident

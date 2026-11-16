@@ -145,13 +145,7 @@ let lookup_visible_custom_components visible name =
   Option.bind best (fun (_, _, value) ->
       if is_css_wide_keyword_value value then None else Some value)
 
-let trim_components components =
-  let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
-    | _ -> false
-  in
-  let rec drop = function hd :: tl when is_ws hd -> drop tl | xs -> xs in
-  List.rev (drop (List.rev (drop components)))
+let trim_components = Common.List.trim Component.is_whitespace
 
 type subst_result = Components of Component.t list | Cycle
 

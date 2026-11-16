@@ -336,15 +336,7 @@ let rec lower_for_minify c =
       | None -> if c'' == c' then c else Not c'')
   | Style _ | Scroll_state _ -> c
 
-let rec drop_leading_whitespace = function
-  | component :: rest when Component.is_whitespace component ->
-      drop_leading_whitespace rest
-  | components -> components
-
-let trim_components components =
-  components |> drop_leading_whitespace |> List.rev |> drop_leading_whitespace
-  |> List.rev
-
+let trim_components = Common.List.trim Component.is_whitespace
 let components_empty = function [] -> true | _ :: _ -> false
 
 let ident_component = function
@@ -406,7 +398,7 @@ let is_reserved_container_name name =
   | _ -> false
 
 let split_named_components components =
-  match drop_leading_whitespace components with
+  match Common.List.drop_while Component.is_whitespace components with
   | Component.Preserved { kind = Token.Ident name; _ }
     :: (Component.Preserved { kind = Token.Whitespace _; _ } :: _ as after)
     when not (is_reserved_container_name name) ->
@@ -421,10 +413,7 @@ let has_semicolon_component =
     | Component.Preserved { kind = Token.Semicolon; _ } -> true
     | _ -> false)
 
-let style_strip_ws =
-  List.filter (function
-    | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-    | _ -> true)
+let non_whitespace = List.filter (Fun.negate Component.is_whitespace)
 
 (* CSS Conditional Rules 5 sec. 5.4 builds <style-range> out of <mf-comparison>
    and <mf-lt> / <mf-gt>, and Media Queries 4 sec. 3 spells those [<mf-lt> = '<'
@@ -472,7 +461,7 @@ let style_interval lower lower_op middle upper_op upper =
   | _ -> None
 
 let style_range_query cvs =
-  match split_before_range_operator (style_strip_ws cvs) with
+  match split_before_range_operator (non_whitespace cvs) with
   | Some (left, op, rest) when left <> [] -> (
       match split_before_range_operator rest with
       | None ->
@@ -491,7 +480,7 @@ let err t cvs reason =
   Cursor.err_condition at ~at_rule:"@container" reason
 
 let style_leaf_declaration t name_components value =
-  match (style_strip_ws name_components, style_strip_ws value) with
+  match (non_whitespace name_components, non_whitespace value) with
   | [ name_component ], stripped_value when not (has_semicolon_component value)
     -> (
       match ident_component name_component with
@@ -502,7 +491,7 @@ let style_leaf_declaration t name_components value =
   | _ -> err t name_components "invalid style() container query"
 
 let style_leaf_boolean t components =
-  match style_strip_ws components with
+  match non_whitespace components with
   | [ name_component ] -> (
       match ident_component name_component with
       (* CSS Conditional Rules 5 section 6.2: a boolean [style()] query tests
@@ -591,7 +580,7 @@ let scroll_state_query_leaf t components =
   match split_top_level_colon components with
   | Some (name_components, value_components) -> (
       match
-        (style_strip_ws name_components, style_strip_ws value_components)
+        (non_whitespace name_components, non_whitespace value_components)
       with
       | [ name_component ], [ value_component ] -> (
           match
@@ -669,18 +658,6 @@ let range_direction_of_component = function
   | Component.Preserved { kind = Token.Delim ">"; _ } -> Some Gt_range
   | _ -> None
 
-let rec strip_ws = function
-  | Component.Preserved { kind = Token.Whitespace _; _ } :: rest ->
-      strip_ws rest
-  | cvs -> cvs
-
-let non_ws cvs =
-  List.filter
-    (function
-      | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-      | _ -> true)
-    cvs
-
 let has_opposing_interval_components cvs =
   let rec first_op = function
     | [] -> None
@@ -702,7 +679,7 @@ let has_opposing_interval_components cvs =
   | _ -> false
 
 let has_dangling_range_operator cvs =
-  match List.rev (non_ws cvs) with
+  match List.rev (non_whitespace cvs) with
   | Component.Preserved { kind = Token.Delim ("<" | ">"); _ } :: _ -> true
   | _ -> false
 
@@ -721,7 +698,7 @@ let classify_query_surface t components =
    (Component.Block { node = { opening = Token.Paren; value; closed }; _ } as cv);
   ] ->
       if not closed then err t [ cv ] "unmatched container query parentheses";
-      let value = strip_ws value in
+      let value = Common.List.drop_while Component.is_whitespace value in
       if components_empty value then Other_query
       else if has_dangling_range_operator value then
         err t value "dangling range operator in container query"
@@ -767,7 +744,7 @@ let unresolved_media_feature components =
   ] -> (
       match split_top_level_colon value with
       | Some (name_components, value_components) -> (
-          match style_strip_ws name_components with
+          match non_whitespace name_components with
           | [ name_component ] -> (
               match ident_component name_component with
               | Some name

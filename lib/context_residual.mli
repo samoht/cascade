@@ -20,6 +20,10 @@ val read_custom_components :
 val map_var_fallback : ('a -> 'b) -> 'a Values.fallback -> 'b Values.fallback
 (** [map_var_fallback f fb] applies [f] to the typed value of [fb], if any. *)
 
+val rounded_as_printed : float -> float
+(** [rounded_as_printed f] is the float {!Pp.string_of_float}[ f] reads back as.
+*)
+
 val combine_numeric_values :
   to_number:('a -> float option) ->
   of_number:(float -> 'b) ->

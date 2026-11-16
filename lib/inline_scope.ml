@@ -2,15 +2,12 @@ open Stylesheet
 
 (** {1 Selector cover} *)
 
-let contains_nesting sel =
-  Selector.any (function Selector.Nesting -> true | _ -> false) sel
-
 let substitute_nesting ~parent sel =
   Selector.map (function Selector.Nesting -> parent | s -> s) sel
 
 let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
     =
-  if contains_nesting child then substitute_nesting ~parent child
+  if Nest.contains child then substitute_nesting ~parent child
   else Selector.Combined (parent, Selector.Descendant, child)
 
 (* Effective selector after substituting [&] / nesting against any parent
