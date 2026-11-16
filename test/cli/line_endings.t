@@ -21,9 +21,9 @@ A warning on standard error:
 
   $ printf '.a { color: red }\n.b { color: }\n' > bad.css
   $ cascade fmt bad.css 2>&1 >/dev/null | cat -e
-  bad.css:2:14: warning: bad value: expected a value$
+  bad.css:2:13: warning: bad value: expected a value$
     .b { color: }$
-                 ^$
+                ^$
 
 The help page:
 

@@ -636,14 +636,21 @@ let string ?(trim = false) t =
   | Some s -> if trim then String.trim s else s
   | None -> err_expected t "string"
 
-(* Zero-width loc pointing at the block/function closing delimiter. Used as the
-   [eof_loc] for sub-cursors so errors raised at end-of-block point at the
-   closer, not at the end of the whole input. *)
-let closer_loc (node_loc : Loc.t) =
-  Loc.v ~start_pos:node_loc.end_pos ~end_pos:node_loc.end_pos
+(* The closing delimiter of a block or function, the [eof_loc] of a sub-cursor
+   over its contents, so an error raised at the end of them points at the closer
+   rather than at the end of the whole input. A node that was closed ends with
+   its one-byte closer; one the input ended inside has none, and the location is
+   the end itself. *)
+let closer_loc ~closed (node_loc : Loc.t) =
+  let end_pos = node_loc.end_pos in
+  if closed && end_pos > node_loc.start_pos then
+    Loc.v ~start_pos:(end_pos - 1) ~end_pos
+  else Loc.v ~start_pos:end_pos ~end_pos
 
 let func_sub (fn : Component.func Component.node) t =
-  sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments
+  sub
+    ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+    t fn.node.arguments
 
 let url_from_func t (fn : Component.func Component.node) =
   if not fn.node.terminated then err_expected t "terminated url";
@@ -869,17 +876,23 @@ let whole_block f inner =
 
 let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
-  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b ->
+      whole_block f
+        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'('"
 
 let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
-  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b ->
+      whole_block f
+        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'['"
 
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b ->
+      whole_block f
+        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'{'"
 
 let function_call name f t =
@@ -888,14 +901,21 @@ let function_call name f t =
     when String.lowercase_ascii_preserve fn.node.name = name ->
       let _ = next t in
       Some
-        (whole_block f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
+        (whole_block f
+           (sub
+              ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+              t fn.node.arguments))
   | _ -> None
 
 let any_function_call f t =
   match peek t with
   | Some (Component.Func fn) ->
       let _ = next t in
-      let inner = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
+      let inner =
+        sub
+          ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+          t fn.node.arguments
+      in
       Some (whole_block (f fn.node.name) inner)
   | _ -> None
 
@@ -905,7 +925,11 @@ let call name t f =
     when String.lowercase_ascii_preserve fn.node.name
          = String.lowercase_ascii_preserve name ->
       let _ = next t in
-      let arg = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
+      let arg =
+        sub
+          ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+          t fn.node.arguments
+      in
       let arg = { arg with depth = t.depth + 1 } in
       if arg.depth > max_nesting_depth then
         raise_ arg (Error.Too_deep max_nesting_depth) fn.loc;
