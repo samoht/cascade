@@ -142,8 +142,8 @@ let diff_surfaces_parse_warnings () =
     "report mentions the rejected value" true
     (contains_substring rendered "corner");
   Alcotest.(check bool)
-    "report labels the parse warning" true
-    (contains_substring rendered "parse warning")
+    "report labels the warning" true
+    (contains_substring rendered ": warning: ")
 
 let diff_surfaces_parse_warnings_same_ast () =
   (* Both sides parse to the same AST once the bad declaration is dropped; the
@@ -156,8 +156,8 @@ let diff_surfaces_parse_warnings_same_ast () =
   Cascade_diff.Css_compare.pp buf result;
   let rendered = Buffer.contents buf in
   Alcotest.(check bool)
-    "report labels the parse warning" true
-    (contains_substring rendered "parse warning")
+    "report labels the warning" true
+    (contains_substring rendered ": warning: ")
 
 (* ===== strip_tool_header tests ===== *)
 

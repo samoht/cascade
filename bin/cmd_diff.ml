@@ -460,21 +460,40 @@ let json_string_diff (sdiff : Cascade_diff.String_diff.t) =
           ] );
     ]
 
-let json_side side message =
-  J.Obj [ ("side", json_string side); ("message", json_string message) ]
+(* A diagnostic names its file, line and column as members, so a consumer reads
+   them rather than parsing the human rendering; the message is the reason
+   alone. A position the error does not carry is left out. *)
+let json_message e = Cascade.Pp.to_string Cascade.Error.pp_message e
+
+let json_diagnostic side (e : Cascade.Error.t) =
+  let position =
+    match Cascade.Error.position e with
+    | None -> []
+    | Some (line, column) -> [ ("line", J.Int line); ("column", J.Int column) ]
+  in
+  J.Obj
+    ([ ("side", json_string side) ]
+    @ json_opt "file" json_string e.filename
+    @ position
+    @ [ ("message", json_string (json_message e)) ])
 
 (* A parse error is the reason there is nothing to compare on that side, so it
    belongs in the document rather than beside it: a consumer that only reads
    stdout would otherwise see an empty comparison and no cause. Both sides
-   failing the same way is one fact about the input, as it is for a warning. *)
+   failing the same way, at the same place, is one fact about the input, as it
+   is for a warning. *)
 let json_errors = function
   | Cascade_diff.Css_compare.Both_errors (e1, e2) ->
-      let m1 = Cascade.Error.to_string e1 in
-      let m2 = Cascade.Error.to_string e2 in
-      if String.equal m1 m2 then [ json_side "both" m1 ]
-      else [ json_side "expected" m1; json_side "actual" m2 ]
-  | Expected_error e -> [ json_side "expected" (Cascade.Error.to_string e) ]
-  | Actual_error e -> [ json_side "actual" (Cascade.Error.to_string e) ]
+      if
+        String.equal (json_message e1) (json_message e2)
+        && Option.equal
+             (fun (l1, c1) (l2, c2) -> Int.equal l1 l2 && Int.equal c1 c2)
+             (Cascade.Error.position e1)
+             (Cascade.Error.position e2)
+      then [ json_diagnostic "both" e1 ]
+      else [ json_diagnostic "expected" e1; json_diagnostic "actual" e2 ]
+  | Expected_error e -> [ json_diagnostic "expected" e ]
+  | Actual_error e -> [ json_diagnostic "actual" e ]
   | No_diff | Tree_diff _ | String_diff _ -> []
 
 (* The library groups the warnings; this only names the sides. *)
@@ -486,7 +505,7 @@ let json_warnings (result : Cascade_diff.Css_compare.t) =
   in
   J.List
     (List.map
-       (fun (s, w) -> json_side (side s) (Cascade.Error.to_string w))
+       (fun (s, w) -> json_diagnostic (side s) w)
        (Cascade_diff.Css_compare.warnings result))
 
 (* The counts a consumer reads to assert that nothing was hidden from the

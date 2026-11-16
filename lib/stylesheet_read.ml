@@ -355,8 +355,7 @@ let drop_nested_at_rule r ~loc reason : statement option =
   skip_past_rule r;
   Cursor.push_warning r
     ~recovery:Error.Recovery.(dropped Rule)
-    (Cursor.error ~sort:Sort.Property_value r ~loc
-       (Error.Bad_value { property = "rule"; reason }));
+    (Cursor.error ~sort:Sort.Stylesheet r ~loc (Error.Invalid_statement reason));
   None
 
 (* CSS Nesting 1 sec. 3.4 wraps a run of declarations written after a nested
@@ -507,12 +506,9 @@ and read_block (r : Cursor.t) : block =
              stylesheet. Drop a misplaced one rather than emitting it. *)
           Cursor.push_warning r
             ~recovery:Error.Recovery.(dropped Rule)
-            (Cursor.error ~sort:Sort.Property_value r ~loc
-               (Error.Bad_value
-                  {
-                    property = "stylesheet";
-                    reason = "@import is only valid at the top of a stylesheet";
-                  }));
+            (Cursor.error ~sort:Sort.Stylesheet r ~loc
+               (Error.Invalid_statement
+                  "@import is only valid at the top of a stylesheet"));
           read_statements acc
       | Else _ when not (List.exists follows_conditional acc) ->
           Cursor.err_invalid r "@else without preceding @when"

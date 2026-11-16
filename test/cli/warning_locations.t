@@ -13,9 +13,13 @@ it starts, at the top level and inside an @font-face body.
   > @tailwind base;
   > @font-face { font-family: z; @foo bar; src: url(a.woff) }
   > EOF
-  $ cascade --minify unknown.css 2>&1 >/dev/null | grep -o 'unknown at-rule @[a-z]* at [^ ]*'
-  unknown at-rule @tailwind at unknown.css:2:1
-  unknown at-rule @foo at unknown.css:3:30
+  $ cascade --minify unknown.css 2>&1 >/dev/null
+  unknown.css:2:1: warning: unknown at-rule @tailwind
+    @tailwind base;
+    ^^^^^^^^^^^^^^^
+  unknown.css:3:30: warning: unknown at-rule @foo
+    @font-face { font-family: z; @foo bar; src: url(a.woff) }
+                                 ^^^^
 
 An @charset that is not the first bytes of the sheet is dropped and
 reported where it stands.
@@ -24,8 +28,10 @@ reported where it stands.
   > .a { color: red }
   > @charset "utf-8";
   > EOF
-  $ cascade --minify charset.css 2>&1 >/dev/null | grep -o 'at charset.css:[0-9:]*'
-  at charset.css:2:1
+  $ cascade --minify charset.css 2>&1 >/dev/null
+  charset.css:2:1: warning: @charset must be the first bytes of the stylesheet
+    @charset "utf-8";
+    ^^^^^^^^^^^^^^^^^
 
 An @font-face descriptor whose value does not read is reported at that
 value in the sheet, under its own name, rather than at the start of a
@@ -38,8 +44,10 @@ copy of the value.
   >   src: url(a.woff)
   > }
   > EOF
-  $ cascade --minify descriptor.css 2>&1 >/dev/null | grep -o 'bad value for [^:]*: .* at descriptor.css:[0-9:]*'
-  bad value for font-weight: expected number at descriptor.css:3:16
+  $ cascade --minify descriptor.css 2>&1 >/dev/null
+  descriptor.css:3:16: warning: bad value for font-weight: expected number
+      font-weight: banana;
+                   ^^^^^^
 
 The checks made on a statement the reader kept, or dropped whole, point
 at that statement: an @font-face missing its source, an @import after a
@@ -53,9 +61,19 @@ style rule or inside a block, and an @else with no @when before it.
   > @media print { @import "y.css"; }
   > @else { .e { color: red } }
   > EOF
-  $ cascade --minify statements.css 2>&1 >/dev/null | grep -oE ' at ([^ ]+:[0-9]+:[0-9]+|\[[0-9-]+\])'
-   at statements.css:1:1
-   at statements.css:3:1
-   at statements.css:4:22
-   at statements.css:5:16
-   at statements.css:6:1
+  $ cascade --minify statements.css 2>&1 >/dev/null
+  statements.css:1:1: warning: @font-face without a font-family or src descriptor
+    @font-face { font-family: x }
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  statements.css:3:1: warning: @import must precede style rules
+    @import "late.css";
+    ^^^^^^^^^^^^^^^^^^^
+  statements.css:4:22: warning: @import is only valid at the top of a stylesheet
+    @media screen { .c { @import "x.css"; color: red } }
+                         ^^^^^^^
+  statements.css:5:16: warning: @import is only valid at the top of a stylesheet
+    @media print { @import "y.css"; }
+                   ^^^^^^^
+  statements.css:6:1: warning: @else without preceding @when
+    @else { .e { color: red } }
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^

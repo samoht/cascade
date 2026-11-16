@@ -19,15 +19,14 @@ let read_stdin () =
 let read_source path =
   if path = "-" then (read_stdin (), "<stdin>") else (read_file path, path)
 
+(* [Error.to_string] carries the filename the parse was stamped with. *)
 let report_warning w =
-  (* Prefix every line of a multi-line diagnostic so a downstream [grep -v
-     "warning"] filters the whole entry, not just the first line. *)
-  Cascade.Error.to_string w |> String.split_on_char '\n'
-  |> List.iter (fun line -> Fmt.epr "warning: %s@." line)
+  Fmt.epr "%s@." (Cascade.Error.to_string ~severity:`Warning w)
 
-(* [Error.to_string] already carries the filename the parse was stamped with. *)
+let report_error e = Fmt.epr "%s@." (Cascade.Error.to_string ~severity:`Error e)
+
 let die_parse_error e =
-  Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
+  report_error e;
   Stdlib.exit 1
 
 let parse ?(enforce_spec = false) ~filename css =

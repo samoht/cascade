@@ -15,15 +15,16 @@ effect the CLI's "has no effect without --minify" warning must not deny.
   }
 
 `--enforce-spec` alone drops the rule, so the flag did something: no
-warning may say it did not.
+warning may say it did not. The parse warning for the rule, its location
+line and its snippet, is filtered out.
 
-  $ cascade fmt --enforce-spec arrow.css 2>&1 | grep -v "warning"
+  $ cascade fmt --enforce-spec arrow.css 2>&1 | grep -v -e ': warning: ' -e '^  '
   Error: arrow.css: parse dropped every rule; refusing to write an empty stylesheet
 
 Adding `--minify` changes nothing about that outcome - the drop already
 happened at parse time.
 
-  $ cascade fmt --enforce-spec --minify arrow.css 2>&1 | grep -v "warning"
+  $ cascade fmt --enforce-spec --minify arrow.css 2>&1 | grep -v -e ': warning: ' -e '^  '
   Error: arrow.css: parse dropped every rule; refusing to write an empty stylesheet
 
 An input `--enforce-spec` leaves alone stays silent too: no warning fires

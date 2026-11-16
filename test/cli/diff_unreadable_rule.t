@@ -26,10 +26,9 @@ accounted for by the other.
   > .a[[ {color:blue}
   > EOF
   $ cascade diff --diff=canonical rule-a.css rule-b.css
-  rule-a.css and rule-b.css parse warning: unterminated qualified-rule at rule-a.css:2:1 (in qualified-rule)
-  .b{color:red}
-  .a[[ {color:red}
-  ^^^^^^^^^^^^^^^^
+  rule-a.css:2:1: warning: unterminated qualified-rule (also in rule-b.css)
+    .a[[ {color:red}
+    ^^^^^^^^^^^^^^^^
   
   Unreadable rules: rule-a.css 1, rule-b.css 1
   Cannot determine whether the CSS files are identical
@@ -49,10 +48,9 @@ offsets, which the text comparison does not care about.
   > .a[[ {color:red}
   > EOF
   $ cascade diff --diff=canonical same-a.css same-b.css
-  same-a.css and same-b.css parse warning: unterminated qualified-rule at same-a.css:2:1 (in qualified-rule)
-  .b { color: red }
-  .a[[ {color:red}
-  ^^^^^^^^^^^^^^^^
+  same-a.css:2:1: warning: unterminated qualified-rule (also in same-b.css)
+    .a[[ {color:red}
+    ^^^^^^^^^^^^^^^^
   
   CSS files are identical
 
@@ -69,10 +67,9 @@ comparison never saw, so that verdict stays unproven.
   > .b{color:red}
   > EOF
   $ cascade diff --diff=canonical kept-a.css same-b.css
-  same-b.css parse warning: unterminated qualified-rule at same-b.css:2:1 (in qualified-rule)
-  .b{color:red}
-  .a[[ {color:red}
-  ^^^^^^^^^^^^^^^^
+  same-b.css:2:1: warning: unterminated qualified-rule
+    .a[[ {color:red}
+    ^^^^^^^^^^^^^^^^
   
   Unreadable rules: kept-a.css 0, same-b.css 1
   Cannot determine whether the CSS files are identical
@@ -95,10 +92,9 @@ both sides, at the offset where it gave up.
   CSS: 40 chars vs 41 chars (2.5% diff)
   Changes: 1 changed container
   
-  media-a.css and media-b.css parse warning: bad condition for @media: expected media type or condition at media-a.css:2:8 (in at-rule)
-  .b{color:red}
-  @media ^^^{.x{color:red}}
-         ^
+  media-a.css:2:8: warning: bad condition for @media: expected media type or condition (also in media-b.css)
+    @media ^^^{.x{color:red}}
+           ^
   
   --- media-a.css
   +++ media-b.css
@@ -121,10 +117,9 @@ the verdict follows those.
   > @supports ^^^{.x{color:blue}}
   > EOF
   $ cascade diff --diff=canonical sup-a.css sup-b.css
-  sup-a.css and sup-b.css parse warning: bad condition for @supports: Expected supports feature at sup-a.css:2:11 (in at-rule)
-  .b{color:red}
-  @supports ^^^{.x{color:red}}
-            ^
+  sup-a.css:2:11: warning: bad condition for @supports: Expected supports feature (also in sup-b.css)
+    @supports ^^^{.x{color:red}}
+              ^
   
   Unreadable rules: sup-a.css 1, sup-b.css 1
   Cannot determine whether the CSS files are identical
@@ -142,10 +137,9 @@ and that is the same loss.
   > --foo:{color:blue}
   > EOF
   $ cascade diff --diff=canonical decl-a.css decl-b.css
-  decl-a.css and decl-b.css parse warning: expected selector but found declaration at decl-a.css:2:1 (in qualified-rule)
-  .b{color:red}
-  --foo:{color:red}
-  ^^^^^^^^^^^^^^^^^
+  decl-a.css:2:1: warning: expected selector but found declaration (also in decl-b.css)
+    --foo:{color:red}
+    ^^^^^^^^^^^^^^^^^
   
   Unreadable rules: decl-a.css 1, decl-b.css 1
   Cannot determine whether the CSS files are identical
@@ -162,10 +156,9 @@ names the difference and the status stays 1.
   CSS: 31 chars vs 33 chars (6.5% diff)
   Changes: 1 modified rule
   
-  rule-a.css and differ-b.css parse warning: unterminated qualified-rule at rule-a.css:2:1 (in qualified-rule)
-  .b{color:red}
-  .a[[ {color:red}
-  ^^^^^^^^^^^^^^^^
+  rule-a.css:2:1: warning: unterminated qualified-rule (also in differ-b.css)
+    .a[[ {color:red}
+    ^^^^^^^^^^^^^^^^
   
   --- rule-a.css
   +++ differ-b.css
@@ -186,9 +179,9 @@ is the case that reaches cascade from every Tailwind entry stylesheet.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical at-a.css at-b.css
-  at-a.css and at-b.css parse warning: unknown at-rule @tailwind at at-a.css:1:1 (in at-rule)
-  @tailwind base; .b{color:red}
-  ^^^^^^^^^^^^^^^
+  at-a.css:1:1: warning: unknown at-rule @tailwind (also in at-b.css)
+    @tailwind base; .b{color:red}
+    ^^^^^^^^^^^^^^^
   
   CSS files are identical
 
@@ -205,14 +198,12 @@ withholds the verdict here.
   > .a[[ {color:blue}
   > EOF
   $ cascade diff --diff=canonical mix-a.css mix-b.css
-  mix-a.css and mix-b.css parse warning: unterminated qualified-rule at mix-a.css:2:1 (in qualified-rule)
-  template-columns:calc(1 + 2);color:red}
-  .a[[ {color:red}
-  ^^^^^^^^^^^^^^^^
-  mix-a.css and mix-b.css parse warning: read_declaration/grid-template-columns: bad value for grid-template-columns: expected at least 1 items (got 0) at mix-a.css:1:26 (in component)
-  .b{grid-template-columns:calc(1 + 2);color:red}
-                           ^^^^^^^^^^^
-  .a[[ {color:red}
+  mix-a.css:2:1: warning: unterminated qualified-rule (also in mix-b.css)
+    .a[[ {color:red}
+    ^^^^^^^^^^^^^^^^
+  mix-a.css:1:26: warning: bad value for grid-template-columns: expected at least 1 items (got 0) (also in mix-b.css)
+    .b{grid-template-columns:calc(1 + 2);color:red}
+                             ^^^^^^^^^^^
   
   Unreadable declarations: mix-a.css 1, mix-b.css 1
   Unreadable rules: mix-a.css 1, mix-b.css 1

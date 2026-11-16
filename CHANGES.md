@@ -25,6 +25,17 @@
   parse; `Error.Source.text` gives the string. `Error.in_source`,
   `Cursor.of_components` and `Stylesheet.read_stylesheet_of_rules` take one
   (#1310).
+- A parse error or warning prints as `file:line:column: message`, followed by
+  the source line it is about with a caret under the span, the form compilers
+  print and editors jump to; the CLI adds `warning:` or `error:` after the
+  location. The reader's internal breadcrumb (`read_declaration/float:`) and the
+  `(in component)` tag are gone, and so is every line of the source but the one
+  the caret points at. `cascade diff --json` gives each warning and error
+  `file`, `line` and `column` members, and its `message` is the reason alone
+  (#1331).
+- `Error.kind` has an `Invalid_statement` case, for a statement read whole that
+  the rules around it refuse, such as an `@import` after a style rule, which was
+  a `Bad_value` for a property called `stylesheet` (#1331).
 
 ### Printing
 

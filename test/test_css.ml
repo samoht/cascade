@@ -646,7 +646,7 @@ let unnamed_input_placeholder () =
       Alcotest.(check bool)
         (String.concat "" [ "placeholder location in "; first ])
         true
-        (Astring.String.is_infix ~affix:" at <CSS input>:1:10 " first)
+        (Astring.String.is_prefix ~affix:"<CSS input>:1:10: " first)
   | Ok { Css.warnings; _ } ->
       Alcotest.failf "expected one warning, got %d" (List.length warnings)
 

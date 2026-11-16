@@ -985,9 +985,22 @@ let partition_warnings expected actual =
   in
   go [] (List.map keyed actual) [] (List.map keyed expected)
 
-let pp_warning buf label w =
+(* A warning names the file it was read from in its location. One both files
+   raise is located in the first and says on its first line that the second
+   raised it too. *)
+let pp_warning buf ~also w =
   start_line buf;
-  add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ]
+  let text = Error.to_string ~severity:`Warning w in
+  match also with
+  | None -> add_strings buf [ text; "\n" ]
+  | Some other ->
+      let first, rest =
+        match String.index_opt text '\n' with
+        | Some i ->
+            (String.sub text 0 i, String.sub text i (String.length text - i))
+        | None -> (text, "")
+      in
+      add_strings buf [ first; " (also in "; other; ")"; rest; "\n" ]
 
 let pp_overflow buf label hidden =
   start_line buf;
@@ -1008,26 +1021,14 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
       String_diff.pp ~expected_label:expected ~actual_label:actual buf sdiff
   | No_diff -> ()
   | Both_errors (e1, e2) ->
-      let err1 = Error.to_string e1 in
-      let err2 = Error.to_string e2 in
-      if String.equal err1 err2 then
-        add_strings buf [ "Both CSS have same parse error: "; err1 ]
-      else
-        add_strings buf
-          [
-            "Parse errors:\n  ";
-            expected;
-            ": ";
-            err1;
-            "\n  ";
-            actual;
-            ": ";
-            err2;
-          ]
-  | Expected_error e ->
-      add_strings buf [ expected; " CSS parse error: "; Error.to_string e ]
-  | Actual_error e ->
-      add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
+      add_strings buf
+        [
+          Error.to_string ~severity:`Error e1;
+          "\n";
+          Error.to_string ~severity:`Error e2;
+        ]
+  | Expected_error e | Actual_error e ->
+      Buffer.add_string buf (Error.to_string ~severity:`Error e)
 
 (* Render parse warnings so a declaration the parser dropped never reads as a
    phantom structural difference on the side that parsed. A warning both sides
@@ -1053,13 +1054,13 @@ let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
   let remaining = ref (Option.value max ~default:Stdlib.max_int) in
   (* One pass: the count of what was left out is part of the report, so the
      whole list is walked whether or not the budget runs out early. *)
-  let render label ws =
+  let render ?also label ws =
     let hidden = ref 0 in
     List.iter
       (fun w ->
         if !remaining > 0 then begin
           decr remaining;
-          pp_warning buf label w
+          pp_warning buf ~also w
         end
         else incr hidden)
       ws;
@@ -1067,7 +1068,7 @@ let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
   in
   render expected expected_only;
   render actual actual_only;
-  render (String.concat "" [ expected; " and "; actual ]) shared
+  render ~also:actual (String.concat "" [ expected; " and "; actual ]) shared
 
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 

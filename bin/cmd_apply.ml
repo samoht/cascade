@@ -30,7 +30,7 @@ let style_node node = function
 let parse_source ~filename ~note css =
   match Css.of_string ~filename css with
   | Error e ->
-      Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
+      Cli_io.report_error e;
       None
   | Ok { Css.stylesheet; warnings; _ } -> (
       List.iter Cli_io.report_warning warnings;

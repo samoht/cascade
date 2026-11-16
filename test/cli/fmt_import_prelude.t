@@ -45,7 +45,7 @@ unknown at-rule, not one for the import.
   > CSS
   $ cascade fmt --minify unknown.css 2> err.txt
   @foo bar;@import"a.css";.a{color:red}
-  $ grep -c '(in [a-z-]*)$' err.txt
+  $ grep -c ': warning: ' err.txt
   1
 
 A style rule whose selector is invalid is dropped, so it is not a

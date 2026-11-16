@@ -16,11 +16,9 @@ query lands the warning on the junk.
   > .also-ok { color: green }
   > EOF
   $ cascade --minify bad-supports.css 2>&1
-  warning: bad condition for @supports: trailing content at bad-supports.css:2:27 (in at-rule)
-  warning:  color: red }
-  warning: @supports (display: grid) extra-junk { .a { color: blue } }
-  warning:                           ^^^^^^^^^^
-  warning: .also-ok { color
+  bad-supports.css:2:27: warning: bad condition for @supports: trailing content
+    @supports (display: grid) extra-junk { .a { color: blue } }
+                              ^^^^^^^^^^
   .ok{color:red}.also-ok{color:green}
 
 Invalid `@container` query: malformed `style()` reports at the query
@@ -31,11 +29,9 @@ slice, not at the start of the file.
   > @container style() { .a { color: blue } }
   > EOF
   $ cascade --minify bad-container.css 2>&1
-  warning: bad condition for @container: empty style() container query at bad-container.css:2:12 (in at-rule)
-  warning: .ok { color: red }
-  warning: @container style() { .a { color: blue } }
-  warning:            ^^^^^^^
-  warning: 
+  bad-container.css:2:12: warning: bad condition for @container: empty style() container query
+    @container style() { .a { color: blue } }
+               ^^^^^^^
   .ok{color:red}
 
 Invalid `@media` query inside `@import`: the media query list of the
@@ -45,10 +41,8 @@ prelude is read the same way as an `@media` rule's.
   > @import url("a.css") !!!;
   > .ok { color: red }
   > EOF
-  $ cascade --minify bad-media.css 2>&1 | grep -E "warning|color" | head
-  warning: bad condition for @media: expected media type or condition at bad-media.css:1:22 (in at-rule)
-  warning: @import url("a.css") !!!;
-  warning:                      ^
-  warning: .ok { color: red }
-  warning: 
+  $ cascade --minify bad-media.css 2>&1
+  bad-media.css:1:22: warning: bad condition for @media: expected media type or condition
+    @import url("a.css") !!!;
+                         ^
   .ok{color:red}

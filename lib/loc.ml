@@ -73,6 +73,9 @@ end
    and scalars are exact for the ASCII and Latin text CSS is written in. *)
 let scalars = Common.String.utf8_length
 
+(* CSS Syntax 3 (ED) sec. 3.3 ends a line at LF, CR or FF. *)
+let line_break = function '\n' | '\r' | '\x0c' -> true | _ -> false
+
 let snippet ?(window = 40) source loc =
   let len = String.length source in
   let pos = max 0 (min len loc.start_pos) in
@@ -80,22 +83,24 @@ let snippet ?(window = 40) source loc =
   (* [window] is a target radius, not a cap: a boundary that falls inside a code
      point moves outward to the lead byte, widening the snippet by up to three
      bytes a side. A snippet is a diagnostic, so keeping the sequence whole
-     outranks keeping the byte budget. *)
-  let start_pos =
-    Common.String.utf8_lead_before source (max 0 (pos - window))
-  in
-  let stop_pos =
+     outranks keeping the byte budget. Inside the window the snippet stops at
+     the line breaks around [pos], since the caret goes under one line. *)
+  let low = Common.String.utf8_lead_before source (max 0 (pos - window)) in
+  let high =
     Common.String.utf8_lead_after source (min len (end_pos + window))
   in
+  let rec back i =
+    if i > low && not (line_break source.[i - 1]) then back (i - 1) else i
+  in
+  let rec forward i =
+    if i < high && not (line_break source.[i]) then forward (i + 1) else i
+  in
+  let start_pos = back pos and stop_pos = forward pos in
+  let end_pos = min end_pos stop_pos in
   let text = String.sub source start_pos (stop_pos - start_pos) in
   let before = pos - start_pos and marked = end_pos - pos in
   let marker_pos = scalars ~pos:0 ~len:before text in
-  let marked_chars = scalars ~pos:before ~len:marked text in
-  let after_chars =
-    scalars ~pos:(before + marked) ~len:(stop_pos - end_pos) text
-  in
-  {
-    Context.text;
-    marker_pos;
-    marker_len = min (max 1 marked_chars) (marked_chars + after_chars);
-  }
+  (* An empty span still gets one caret, past the end of the line when that is
+     where it points. *)
+  let marker_len = max 1 (scalars ~pos:before ~len:marked text) in
+  { Context.text; marker_pos; marker_len }

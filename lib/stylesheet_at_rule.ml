@@ -27,8 +27,7 @@ let read_charset (r : Cursor.t) : statement =
   let at = Cursor.position r in
   let fail loc reason =
     Error.fail
-      (Cursor.error ~sort:Sort.Property_value r ~loc
-         (Error.Bad_value { property = "@charset"; reason }))
+      (Cursor.error ~sort:Sort.At_rule r ~loc (Error.Invalid_statement reason))
   in
   if at.Loc.start_pos <> 0 then
     fail at "@charset must be the first bytes of the stylesheet";

@@ -50,18 +50,15 @@ let rule_loc : Component.rule -> Loc.t = function
 
 (* A check on a whole statement reports against the statement, in the source [r]
    read it from. *)
-let bad_value r loc ~property ~reason =
-  Cursor.error ~sort:Sort.Property_value r ~loc
-    (Error.Bad_value { property; reason })
+let invalid r loc reason =
+  Cursor.error ~sort:Sort.Stylesheet r ~loc (Error.Invalid_statement reason)
 
 let validate_partial_prelude () =
   let prelude = ref prelude_start in
   fun r loc stmt ->
     let misplaced = misplaced !prelude stmt in
     prelude := prelude_next !prelude stmt;
-    Option.map
-      (fun reason -> bad_value r loc ~property:"stylesheet" ~reason)
-      misplaced
+    Option.map (invalid r loc) misplaced
 
 let validate_partial_statement r loc = function
   | Rule { selector; _ } when Selector.matches_nothing selector ->
@@ -69,9 +66,7 @@ let validate_partial_statement r loc = function
         (Cursor.error ~sort:Sort.Selector r ~loc
            (Error.Bad_selector "selector matches nothing"))
   | Font_face descriptors when not (font_face_participates descriptors) ->
-      Some
-        (bad_value r loc ~property:"@font-face"
-           ~reason:"missing font-family or src descriptor")
+      Some (invalid r loc "@font-face without a font-family or src descriptor")
   (* CSS Fonts 4 sec. 9.2 makes font-family the one mandatory descriptor; sec.
      9.2.2 defaults a missing base-palette to 0. *)
   | Font_palette_values (_, descriptors)
@@ -80,8 +75,7 @@ let validate_partial_statement r loc = function
               (function Palette_font_family _ -> true | _ -> false)
               descriptors) ->
       Some
-        (bad_value r loc ~property:"@font-palette-values"
-           ~reason:"missing font-family descriptor")
+        (invalid r loc "@font-palette-values without a font-family descriptor")
   | _ -> None
 
 (* [fold_declarations] reaches every declaration site, the frames of
@@ -93,9 +87,7 @@ let statement_has_declaration p stmt =
 
 let validate_partial_invalid_declarations r loc stmt =
   if statement_has_declaration Declaration.is_invalid stmt then
-    Some
-      (bad_value r loc ~property:"stylesheet"
-         ~reason:"invalid declaration value")
+    Some (invalid r loc "invalid declaration value")
   else None
 
 let rec declaration_has_strict_warning = function
@@ -106,9 +98,7 @@ let rec declaration_has_strict_warning = function
 
 let validate_partial_strict_warnings r loc stmt =
   if statement_has_declaration declaration_has_strict_warning stmt then
-    Some
-      (bad_value r loc ~property:"stylesheet"
-         ~reason:"strict stylesheet warning")
+    Some (invalid r loc "strict stylesheet warning")
   else None
 
 (* A warning drained from a cursor is stamped where the cursor recorded it. *)
@@ -126,9 +116,7 @@ let validate_else_orphan r previous rule stmt =
   match stmt with
   | Else _
     when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
-      Some
-        (bad_value r (rule_loc rule) ~property:"stylesheet"
-           ~reason:"@else without preceding @when")
+      Some (invalid r (rule_loc rule) "@else without preceding @when")
   | _ -> None
 
 (* These four run on a statement the reader read whole and the sheet keeps, so

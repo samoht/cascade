@@ -53,6 +53,9 @@ type kind =
       (** At-rule prelude (e.g. [@supports]) rejected by its condition grammar.
       *)
   | Unknown_at_rule of string  (** At-keyword name has no registered handler. *)
+  | Invalid_statement of string
+      (** A statement read whole that the rules around it refuse, such as an
+          [@import] after a style rule; payload is the reason. *)
   | Unterminated of Sort.t
       (** Hit EOF inside a {!Sort.t} that needed a closing delimiter. *)
   | Too_deep of int
@@ -92,7 +95,8 @@ type t = {
   recovery : Recovery.t;
 }
 (** {!field-path} is a breadcrumb trail from the outermost context down to the
-    exact sub-production that failed, rendered with ["/"] separators.
+    exact sub-production that failed, for a caller that inspects it; {!pp}
+    leaves it out, since it names the reader's productions, not the source.
     {!field-source} carries the input text, for materialising a snippet on
     demand via {!snippet} and for {!position}; the errors of one parse share
     one. {!field-recovery} is what became of the construct the error is about,
@@ -102,13 +106,26 @@ val pp_kind : kind Pp.t
 (** [pp_kind] renders just the reason, e.g.
     [expected <ident> but found <delim '.'>]. *)
 
+val pp_message : t Pp.t
+(** [pp_message] renders the reason with no location, e.g.
+    [bad value for color: not a color] or [unexpected <delim '.'> in selector]:
+    the kinds that do not name what was being read are followed by the
+    {!field-sort}. *)
+
 val pp : t Pp.t
-(** [pp] renders the located, sort-tagged error. With a {!field-source} the
-    location is [source:line:column] followed by the snippet and its caret, e.g.
-    [bad selector: double dot at theme.css:2:5 (in selector)], the source being
-    [<CSS input>] when the error has no {!field-filename}. Without one it is the
-    byte range, e.g.
-    [expected <ident> but found <delim '.'> at [12-13] (in selector)]. *)
+(** [pp] renders the error as [location: message], then the source line it is
+    about, indented, with a caret line under the span, e.g.
+    {v
+    theme.css:2:5: bad selector: double dot
+      a..b { color: red }
+       ^
+    v}
+    The location is [source:line:column], the source being [<CSS input>] when
+    the error has no {!field-filename}. An error without a {!field-source} has
+    no line to give or quote, and names the source alone. *)
+
+type severity = [ `Error | `Warning ]
+(** The type for how a report ranks an error. *)
 
 val position : t -> (int * int) option
 (** [position t] is the 1-based line and column of [t]'s start in its
@@ -117,8 +134,10 @@ val position : t -> (int * int) option
     point, or one maximal ill-formed subpart, rather than a byte, as
     {!Source.locate} counts them. *)
 
-val to_string : t -> string
-(** [to_string error] renders [error] as source text. *)
+val to_string : ?severity:severity -> t -> string
+(** [to_string error] renders [error] as {!pp} does. With [severity] the word
+    [error:] or [warning:] follows the location, the form compilers print and
+    editors read: [theme.css:2:5: warning: bad selector: double dot]. *)
 
 (** {1 Construction and raising}
 

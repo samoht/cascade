@@ -22,7 +22,7 @@ an error, stdout stays empty and the exit status is non-zero.
 
 The warnings that explain the drop are still reported.
 
-  $ grep -c '(in [a-z-]*)$' err.txt
+  $ grep -c ': warning: ' err.txt
   2
 
 Reading from stdin reports the same way.
@@ -121,7 +121,7 @@ empty. Both were parsed and both were kept.
 The second one is out of place, which is reported, and neither that nor
 the deletion is a rule the parse dropped.
 
-  $ grep -c '(in [a-z-]*)$' err4.txt
+  $ grep -c ': warning: ' err4.txt
   1
 
 A `@font-face` with no `src` is the same shape. CSS Fonts 4 sec. 4.3
@@ -146,5 +146,5 @@ but one formats to itself.
   > EOF
   $ cascade fmt --minify kept.css 2> err6.txt
   @foo bar;
-  $ grep -c '(in [a-z-]*)$' err6.txt
+  $ grep -c ': warning: ' err6.txt
   1

@@ -22,10 +22,9 @@ comparison sees the same thing twice.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical charset-a.css charset-b.css
-  charset-a.css and charset-b.css parse warning: bad value for @charset: @charset only recognises "UTF-8" at charset-a.css:1:1 (in property-value)
-  @charset "a";
-  ^^^^^^^^^^^^^
-  .b{color:red}
+  charset-a.css:1:1: warning: @charset only recognises "UTF-8" (also in charset-b.css)
+    @charset "a";
+    ^^^^^^^^^^^^^
   
   Unreadable rules: charset-a.css 1, charset-b.css 1
   Cannot determine whether the CSS files are identical
@@ -43,10 +42,9 @@ on material the parse kept and the verdict stays proven.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical face-a.css face-b.css
-  face-a.css and face-b.css parse warning: bad value for @font-face: missing font-family or src descriptor at face-a.css:1:1 (in property-value)
-  @font-face{font-family:x}
-  ^^^^^^^^^^^^^^^^^^^^^^^^^
-  .b{color:red}
+  face-a.css:1:1: warning: @font-face without a font-family or src descriptor (also in face-b.css)
+    @font-face{font-family:x}
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
   
   CSS files are identical
 
@@ -59,10 +57,9 @@ names no font to load, so minification drops it from both sides.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical face-a.css face-c.css
-  face-a.css and face-c.css parse warning: bad value for @font-face: missing font-family or src descriptor at face-a.css:1:1 (in property-value)
-  @font-face{font-family:x}
-  ^^^^^^^^^^^^^^^^^^^^^^^^^
-  .b{color:red}
+  face-a.css:1:1: warning: @font-face without a font-family or src descriptor (also in face-c.css)
+    @font-face{font-family:x}
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
   
   CSS files are identical
 
@@ -78,10 +75,9 @@ at-rule and its prelude, so it costs the verdict nothing.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical tw-a.css tw-b.css
-  tw-a.css and tw-b.css parse warning: unknown at-rule @tailwind at tw-a.css:1:1 (in at-rule)
-  @tailwind base;
-  ^^^^^^^^^^^^^^^
-  .b{color:red}
+  tw-a.css:1:1: warning: unknown at-rule @tailwind (also in tw-b.css)
+    @tailwind base;
+    ^^^^^^^^^^^^^^^
   
   CSS files are identical
 

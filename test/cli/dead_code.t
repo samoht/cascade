@@ -344,7 +344,7 @@ Cascade L6 §2 and is dropped during parsing.
   > @import url("late.css");
   > .y { color: blue }
   > EOF
-  $ cascade --minify misplaced-import.css 2>&1 | grep -v "warning"
+  $ cascade --minify misplaced-import.css 2>/dev/null
   .x{color:red}.y{color:#00f}
 
 
@@ -380,11 +380,9 @@ the rule is dead and removed.
   > .x { color: blue }
   > EOF
   $ cascade --minify is-empty.css
-  warning: bad selector: selector matches nothing at is-empty.css:1:1 (in selector)
-  warning: :is(:future-pseudo) { color: red }
-  warning: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  warning: .x { color: blue }
-  warning: 
+  is-empty.css:1:1: warning: bad selector: selector matches nothing
+    :is(:future-pseudo) { color: red }
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   .x{color:#00f}
 
 
