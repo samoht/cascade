@@ -416,3 +416,117 @@ let drop_inert_charsets stmts =
 
 let drop_inert_at_rules stmts =
   drop_inert_charsets (drop_inert_font_faces stmts)
+
+(* {1 Shadow colour variables} *)
+
+let color_custom_property_names stylesheet =
+  let var_name_of_custom_property = Custom_property_name.strip_prefix in
+  let declaration names = function
+    | Declaration.Declaration
+        {
+          property = Properties.Custom_property name;
+          value =
+            Properties.Custom_value
+              { value = Properties.Typed { kind = Properties.Color; _ }; _ };
+          _;
+        } ->
+        Pp.String_set.add (var_name_of_custom_property name) names
+    | _ -> names
+  in
+  let rec statement names stmt =
+    let names =
+      List.fold_left declaration names (statement_declarations stmt)
+    in
+    List.fold_left statement names (statement_children stmt)
+  in
+  List.fold_left statement Pp.String_set.empty stylesheet
+
+let color_fallback_of_length_fallback :
+    Values.length Values.fallback -> Values.color Values.fallback = function
+  | Values.None -> Values.None
+  | Values.Empty -> Values.Empty
+  | Values.Empty2 -> Values.Empty2
+  | Values.Syntax_fallback components -> Values.Syntax_fallback components
+  | Values.Var_fallback name -> Values.Var_fallback name
+  | Values.Fallback value ->
+      Values.Syntax_fallback
+        (Cursor.remaining
+           (Cursor.of_string (Pp.to_string ~minify:true Values.pp_length value)))
+
+(* The shadow rewrite uses the [var(--ring)] reference as the colour slot of a
+   [box-shadow]; the inline [default] (a length) doesn't apply when the var is
+   consumed in colour position, so drop it. *)
+let color_var_of_length_var (var : Values.length Values.var) :
+    Values.color Values.var =
+  {
+    name = var.name;
+    fallback = color_fallback_of_length_fallback var.fallback;
+    default = None;
+    layer = var.layer;
+    meta = var.meta;
+    runtime = var.runtime;
+  }
+
+let rec rewrite_shadow_value color_vars (value : Properties.shadow) :
+    Properties.shadow =
+  match value with
+  | Properties.Shadow
+      ({ blur = Some (Values.Var var); spread = None; color = None; _ } as
+       shadow)
+    when Pp.String_set.mem var.name color_vars ->
+      Properties.Shadow
+        {
+          shadow with
+          blur = Some Values.Zero;
+          color = Some (Values.Var (color_var_of_length_var var));
+        }
+  | Properties.List shadows ->
+      Properties.List (List.map (rewrite_shadow_value color_vars) shadows)
+  | shadow -> shadow
+
+let rewrite_shadow_decl color_vars = function
+  | Declaration.Declaration
+      { property = Properties.Box_shadow as property; value; important; _ } as
+    decl ->
+      let value' = rewrite_shadow_value color_vars value in
+      if value' == value then decl else Declaration.v ~important property value'
+  | Declaration.Declaration
+      {
+        property = Properties.Custom_property _ as property;
+        value =
+          Properties.Custom_value
+            ({
+               value =
+                 Properties.Typed { kind = Properties.Shadow; value = shadow };
+               _;
+             } as custom_value);
+        important;
+        _;
+      } as decl ->
+      let shadow' = rewrite_shadow_value color_vars shadow in
+      if shadow' == shadow then decl
+      else
+        Declaration.v ~important property
+          (Properties.Custom_value
+             {
+               custom_value with
+               value =
+                 Properties.Typed { kind = Properties.Shadow; value = shadow' };
+             })
+  | decl -> decl
+
+(* CSS Properties and Values API 1 sec. 2: an [@property] registration is
+   document-global, so a reference to a registered [<color>] carries a colour
+   wherever it is written, and in a [box-shadow] it fills the colour slot the
+   reader gave the blur. *)
+let normalise_shadow_color_vars stylesheet =
+  let color_vars = color_custom_property_names stylesheet in
+  if Pp.String_set.is_empty color_vars then stylesheet
+  else
+    let declarations = List.map (rewrite_shadow_decl color_vars) in
+    let rec statement stmt =
+      stmt
+      |> map_statement_declarations declarations
+      |> map_statement_children (List.map statement)
+    in
+    List.map statement stylesheet

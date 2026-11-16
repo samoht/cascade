@@ -1178,6 +1178,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     if flatten_nesting then Flatten.block stylesheet else stylesheet
   in
   let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
+  let stylesheet = Stylesheet.normalise_shadow_color_vars stylesheet in
   let registered = registered_foldable stylesheet in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =

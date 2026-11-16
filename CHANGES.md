@@ -42,6 +42,11 @@
 
 ### Printing
 
+- `Css.to_string ~minify:true` prints a `box-shadow` as given. Moving a
+  registered `<color>` variable from the blur slot to the colour slot is
+  `Stylesheet.normalise_shadow_color_vars`, which `Css.optimize` runs, so pretty
+  output of an optimized sheet shows it too. `--minify` output is unchanged
+  (#1354).
 - `Css.to_string ~minify:true` prints an `@font-face` without `font-family` or
   `src`, and an `@charset`, as given. `Css.optimize` drops them instead, through
   `Stylesheet.drop_inert_at_rules`, and `cascade apply` keeps them out of its

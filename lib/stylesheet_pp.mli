@@ -1,5 +1,4 @@
-(** Printing a stylesheet: every statement and at-rule printer, and the
-    minify-time normalisation of shadows. *)
+(** Printing a stylesheet: every statement and at-rule printer. *)
 
 open Stylesheet_intf
 
