@@ -125,6 +125,10 @@
   Tailwind's takes 3.2 s of CPU instead of 5.3 s (#1308).
 - `cascade diff --diff=canonical` checks each declaration for a legacy vendor
   alias once rather than once per other declaration in its rule (#1309).
+- A rule or declaration dropped inside an `@media` block counts as unread, as
+  one inside `@supports` does. `cascade diff` reported the two sheets
+  identical when only one of them had lost a rule there, and its warning was
+  `Recovered` in the library (#1312).
 
 ### Library
 

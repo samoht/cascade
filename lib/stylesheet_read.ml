@@ -521,10 +521,9 @@ and read_media (r : Cursor.t) : statement =
   let condition_components = Cursor.drain_until_block r in
   let query = Cursor.sub r condition_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
+  (* [query] shares [r]'s warnings, so what the condition reports is already
+     there, stamped by the reader that recovered it. *)
   let condition = read_nested_media_condition query in
-  List.iter
-    (fun w -> Cursor.push_warning r ~recovery:Error.Recovery.Recovered w)
-    (Cursor.drain_warnings query);
   Media (condition, content)
 
 and read_supports (r : Cursor.t) : statement =
