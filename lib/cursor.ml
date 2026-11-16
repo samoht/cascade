@@ -243,12 +243,12 @@ exception Parse_error = Error.Parse_error
 
 let sort = Sort.Component
 
-let raise_sort t sort kind loc =
+let error ?(sort = sort) t ~loc kind =
   match (t.meta, t.indexed) with
-  | `Full, Some source -> Error.fail (Error.in_source source ~loc ~sort kind)
-  | _ -> Error.fail (Error.v ~loc ~sort kind)
+  | `Full, Some source -> Error.in_source source ~loc ~sort kind
+  | _ -> Error.v ~loc ~sort kind
 
-let raise_ t kind loc = raise_sort t sort kind loc
+let raise_ t kind loc = Error.fail (error t ~loc kind)
 
 (* [loc] is for a reader that consumed the offending token before deciding it
    was bad: [position t] has moved on to whatever follows by then, and at the
@@ -283,10 +283,8 @@ let err_expected_but_eof t what =
 let err_unexpected t = err t "unexpected token"
 
 let condition_error t ~at_rule reason =
-  let loc = position t and kind = Error.Bad_condition { at_rule; reason } in
-  match (t.meta, t.indexed) with
-  | `Full, Some source -> Error.in_source source ~loc ~sort:Sort.At_rule kind
-  | _ -> Error.v ~loc ~sort:Sort.At_rule kind
+  error ~sort:Sort.At_rule t ~loc:(position t)
+    (Error.Bad_condition { at_rule; reason })
 
 let err_condition t ~at_rule reason =
   Error.fail (condition_error t ~at_rule reason)

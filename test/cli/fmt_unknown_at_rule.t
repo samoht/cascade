@@ -18,7 +18,7 @@ A statement-form at-rule keeps its prelude and its neighbour.
   > CSS
   $ cascade fmt --minify stmt.css 2> err.txt
   @foo bar;a{color:red}
-  $ grep -c '^warning' err.txt
+  $ grep -c '(in [a-z-]*)$' err.txt
   1
 
 A block-form at-rule keeps the rules it contains. Deleting the wrapper

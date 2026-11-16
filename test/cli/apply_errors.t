@@ -22,8 +22,8 @@ the CSS text a browser might still make something of.
 
 The warnings that explain the drop are still reported.
 
-  $ grep -c '^warning' err.txt
-  6
+  $ grep -c '(in [a-z-]*)$' err.txt
+  2
 
 The control: a page whose CSS parses is projected exactly as before, and the
 exit status stays 0.
@@ -92,7 +92,7 @@ serialiser emits anyway, so a redundant one prints nothing.
 The second `@charset` is out of place, which is reported, and both are
 kept: nothing about that parse dropped every rule.
 
-  $ grep -c '^warning' err4.txt
+  $ grep -c '(in [a-z-]*)$' err4.txt
   1
 
 A `@font-face` with no `src` is the same shape. CSS Fonts 4 §4.3 gives it

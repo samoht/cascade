@@ -48,21 +48,29 @@ let read_statement_of_rule ?source ?meta (rule : Component.rule) :
 let rule_loc : Component.rule -> Loc.t = function
   | Qualified { loc; _ } | At { loc; _ } -> loc
 
+(* A check on a whole statement reports against the statement, in the source [r]
+   read it from. *)
+let bad_value r loc ~property ~reason =
+  Cursor.error ~sort:Sort.Property_value r ~loc
+    (Error.Bad_value { property; reason })
+
 let validate_partial_prelude () =
   let prelude = ref prelude_start in
-  fun loc stmt ->
+  fun r loc stmt ->
     let misplaced = misplaced !prelude stmt in
     prelude := prelude_next !prelude stmt;
     Option.map
-      (fun reason -> Error.bad_value loc ~property:"stylesheet" ~reason)
+      (fun reason -> bad_value r loc ~property:"stylesheet" ~reason)
       misplaced
 
-let validate_partial_statement loc = function
+let validate_partial_statement r loc = function
   | Rule { selector; _ } when Selector.matches_nothing selector ->
-      Some (Error.bad_selector loc "selector matches nothing")
+      Some
+        (Cursor.error ~sort:Sort.Selector r ~loc
+           (Error.Bad_selector "selector matches nothing"))
   | Font_face descriptors when not (font_face_participates descriptors) ->
       Some
-        (Error.bad_value loc ~property:"@font-face"
+        (bad_value r loc ~property:"@font-face"
            ~reason:"missing font-family or src descriptor")
   (* CSS Fonts 4 sec. 9.2 makes font-family the one mandatory descriptor; sec.
      9.2.2 defaults a missing base-palette to 0. *)
@@ -72,7 +80,7 @@ let validate_partial_statement loc = function
               (function Palette_font_family _ -> true | _ -> false)
               descriptors) ->
       Some
-        (Error.bad_value loc ~property:"@font-palette-values"
+        (bad_value r loc ~property:"@font-palette-values"
            ~reason:"missing font-family descriptor")
   | _ -> None
 
@@ -83,10 +91,10 @@ let statement_has_declaration p stmt =
     (fun found decls -> found || List.exists p decls)
     false [ stmt ]
 
-let validate_partial_invalid_declarations loc stmt =
+let validate_partial_invalid_declarations r loc stmt =
   if statement_has_declaration Declaration.is_invalid stmt then
     Some
-      (Error.bad_value loc ~property:"stylesheet"
+      (bad_value r loc ~property:"stylesheet"
          ~reason:"invalid declaration value")
   else None
 
@@ -96,10 +104,10 @@ let rec declaration_has_strict_warning = function
   | Declaration.Theme_guarded { decl; _ } -> declaration_has_strict_warning decl
   | _ -> false
 
-let validate_partial_strict_warnings loc stmt =
+let validate_partial_strict_warnings r loc stmt =
   if statement_has_declaration declaration_has_strict_warning stmt then
     Some
-      (Error.bad_value loc ~property:"stylesheet"
+      (bad_value r loc ~property:"stylesheet"
          ~reason:"strict stylesheet warning")
   else None
 
@@ -114,27 +122,27 @@ let add_statement_warning warnings ~recovery warning =
 let drain_statement_warnings warnings cursor =
   List.iter (add_warning warnings) (Cursor.drain_warnings cursor)
 
-let validate_else_orphan previous rule stmt =
+let validate_else_orphan r previous rule stmt =
   match stmt with
   | Else _
     when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
       Some
-        (Error.bad_value (rule_loc rule) ~property:"stylesheet"
+        (bad_value r (rule_loc rule) ~property:"stylesheet"
            ~reason:"@else without preceding @when")
   | _ -> None
 
 (* These four run on a statement the reader read whole and the sheet keeps, so
    the material each reports on reaches the output. *)
-let validate_partial_statement_warnings warnings validate_prelude rule stmt =
+let validate_partial_statement_warnings r warnings validate_prelude rule stmt =
   let loc = rule_loc rule in
   let add =
     Option.iter
       (add_statement_warning warnings ~recovery:Error.Recovery.Recovered)
   in
-  add (validate_prelude loc stmt);
-  add (validate_partial_statement loc stmt);
-  add (validate_partial_invalid_declarations loc stmt);
-  add (validate_partial_strict_warnings loc stmt)
+  add (validate_prelude r loc stmt);
+  add (validate_partial_statement r loc stmt);
+  add (validate_partial_invalid_declarations r loc stmt);
+  add (validate_partial_strict_warnings r loc stmt)
 
 let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
@@ -161,9 +169,9 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
         drain_statement_warnings warnings cursor;
         match result with
         | Ok stmt -> (
-            validate_partial_statement_warnings warnings validate_prelude rule
-              stmt;
-            match validate_else_orphan previous rule stmt with
+            validate_partial_statement_warnings cursor warnings validate_prelude
+              rule stmt;
+            match validate_else_orphan cursor previous rule stmt with
             | Some w ->
                 add_statement_warning warnings ~recovery:(lost ()) w;
                 previous := Some stmt;

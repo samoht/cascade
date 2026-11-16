@@ -203,6 +203,12 @@ val try_typed_call : (t -> 'a) -> t -> ('a, Component.t) result
 exception Parse_error of Error.t
 (** Alias for {!Error.Parse_error}. *)
 
+val error : ?sort:Sort.t -> t -> loc:Loc.t -> Error.kind -> Error.t
+(** [error t ~loc kind] is the error [kind] at [loc], of sort [sort] (defaults
+    to {!Sort.Component}), located in [t]'s source when [t] keeps it ({!meta} is
+    [`Full]), so it renders as [file:line:column]. Every error a reader builds,
+    raised or pushed as a warning, is built here. *)
+
 val err : ?loc:Loc.t -> ?got:string -> t -> string -> 'a
 (** [err ?loc ?got t msg] raises {!Parse_error} at the current position, or at
     [loc] when given. A reader that consumes the offending token before

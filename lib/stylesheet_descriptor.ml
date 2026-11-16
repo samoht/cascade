@@ -59,6 +59,21 @@ let read_descriptor_value read_fn constructor r =
   refuse_css_wide_descriptor r;
   constructor (read_fn r)
 
+(* The font-style, font-weight and font-width descriptors read their value again
+   from its text, and an error a reader raises there is located in that copy. It
+   is moved to the span the value covers in the sheet. *)
+let read_descriptor_text read r =
+  read_descriptor_value
+    (fun r ->
+      let loc = Cursor.decl_value_loc r in
+      (loc, Declaration.read_property_value r))
+    (fun (loc, value) ->
+      match read value with
+      | v -> v
+      | exception Error.Parse_error e ->
+          Error.fail (Cursor.error ~sort:e.sort r ~loc e.kind))
+    r
+
 (* One item of a descriptor body: a descriptor, a stray [;] that CSS Syntax 3
    (ED) sec. 5.5.5 discards with no declaration to validate, or the end of the
    body. [Declaration.read_declaration] answers [None] for an item that opens a
@@ -142,7 +157,7 @@ let refuse_css_wide_endpoint c =
   | Some _ | None -> ()
 
 let read_font_weight_descriptor r =
-  read_descriptor_value Declaration.read_property_value
+  read_descriptor_text
     (fun value ->
       if descriptor_is_auto value then Font_weight_auto
       else
@@ -166,7 +181,7 @@ let read_font_weight_descriptor r =
     r
 
 let read_font_style_descriptor r =
-  read_descriptor_value Declaration.read_property_value
+  read_descriptor_text
     (fun value ->
       if descriptor_is_auto value then Font_style_auto
       else
@@ -193,7 +208,7 @@ let read_font_family_descriptor r =
     r
 
 let read_font_stretch_descriptor r =
-  read_descriptor_value Declaration.read_property_value
+  read_descriptor_text
     (fun value ->
       if descriptor_is_auto value then Font_stretch_auto
       else
@@ -399,8 +414,13 @@ let read_font_face_desc name r =
         r
   (* FONT_FACE_DESCRIPTOR_END - Used by test/spec/browser *)
   | _ ->
-      Cursor.err_invalid r
-        (String.concat "" [ "unknown font-face descriptor: "; name ])
+      Error.fail
+        (Cursor.error ~sort:Sort.Property_value r ~loc:(Cursor.position r)
+           (Error.Bad_value
+              {
+                property = "@font-face";
+                reason = String.concat "" [ "unknown descriptor "; name ];
+              }))
 
 let rec components_upto_semicolon = function
   | [] | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> []
@@ -440,7 +460,9 @@ let descriptor_resolves_var name =
    at its block or at its [;], never at the descriptor after it. A cursor that
    does not recover raises instead, as the other descriptor bodies do. *)
 let skip_font_face_at_rule r name loc =
-  let error = Error.unknown_at_rule loc name in
+  let error =
+    Cursor.error ~sort:Sort.At_rule r ~loc (Error.Unknown_at_rule name)
+  in
   if not (Cursor.recover r) then Error.fail error;
   let start = Cursor.save r in
   skip_past_rule r;
@@ -466,11 +488,15 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
              name at all ([@font-face { : url(a.woff2) }]) fails here, and it is
              dropped like any other bad one rather than taking the rule. *)
           let name = Cursor.ident ~keep_case:false r in
-          if descriptor_value_has_var r && not (descriptor_resolves_var name)
-          then
-            Cursor.err_invalid r
-              (String.concat "" [ "var() in @font-face descriptor: "; name ])
-          else read_font_face_desc name r
+          (* A descriptor's value reader does not know which descriptor it
+             serves, so its error is stamped with the name here. *)
+          try
+            if descriptor_value_has_var r && not (descriptor_resolves_var name)
+            then
+              Cursor.err_invalid r
+                (String.concat "" [ "var() in @font-face descriptor: "; name ])
+            else read_font_face_desc name r
+          with Error.Parse_error e -> Error.fail (Error.with_property name e)
         with
         | descriptor ->
             Cursor.ws r;

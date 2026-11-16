@@ -380,7 +380,11 @@ the rule is dead and removed.
   > .x { color: blue }
   > EOF
   $ cascade --minify is-empty.css
-  warning: is-empty.css: bad selector: selector matches nothing at [0-34] (in selector)
+  warning: bad selector: selector matches nothing at is-empty.css:1:1 (in selector)
+  warning: :is(:future-pseudo) { color: red }
+  warning: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  warning: .x { color: blue }
+  warning: 
   .x{color:#00f}
 
 

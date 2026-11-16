@@ -102,6 +102,11 @@
 - Printing parse warnings costs in proportion to the warnings plus the input,
   where each warning counted its line and column from the first byte: a 2 MB
   sheet takes a fraction of a second instead of seconds (#1310).
+- Every parse warning names its `file:line:column`. An unknown at-rule such as
+  `@tailwind`, a misplaced `@charset` or `@import`, an `@else` without `@when`
+  and an `@font-face` missing its `src` printed a byte range, and a bad
+  `@font-face` `font-weight`, `font-style` or `font-stretch` value pointed at
+  line 1 of a copy of the value and named no descriptor (#1330).
 
 ### Diff report
 

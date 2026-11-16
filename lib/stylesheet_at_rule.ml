@@ -25,7 +25,11 @@ let read_keyframe (r : Cursor.t) : keyframe =
    ["UTF-8"] is recognised. *)
 let read_charset (r : Cursor.t) : statement =
   let at = Cursor.position r in
-  let fail loc reason = Error.fail_bad_value loc ~property:"@charset" ~reason in
+  let fail loc reason =
+    Error.fail
+      (Cursor.error ~sort:Sort.Property_value r ~loc
+         (Error.Bad_value { property = "@charset"; reason }))
+  in
   if at.Loc.start_pos <> 0 then
     fail at "@charset must be the first bytes of the stylesheet";
   Cursor.expect_at_keyword "charset" r;
@@ -155,8 +159,15 @@ let read_import_media (r : Cursor.t) : Media.t option =
     let loc = Cursor.position r in
     let components = drain_until_semicolon r in
     if starts_with_import_keyword components then
-      Error.fail_bad_condition loc ~at_rule:"@media"
-        ~reason:"layer()/supports() must precede the media query, and once only"
+      Error.fail
+        (Cursor.error ~sort:Sort.At_rule r ~loc
+           (Error.Bad_condition
+              {
+                at_rule = "@media";
+                reason =
+                  "layer()/supports() must precede the media query, and once \
+                   only";
+              }))
     else Some (Media.read ~recover:false (Cursor.sub r components))
 
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =

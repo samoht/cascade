@@ -186,7 +186,9 @@ is the case that reaches cascade from every Tailwind entry stylesheet.
   > .b { color: red }
   > EOF
   $ cascade diff --diff=canonical at-a.css at-b.css
-  at-a.css and at-b.css parse warning: at-a.css: unknown at-rule @tailwind at [0-15] (in at-rule)
+  at-a.css and at-b.css parse warning: unknown at-rule @tailwind at at-a.css:1:1 (in at-rule)
+  @tailwind base; .b{color:red}
+  ^^^^^^^^^^^^^^^
   
   CSS files are identical
 

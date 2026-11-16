@@ -378,8 +378,10 @@ let diff_canonical_uses_outputs () =
   let result = Cascade_diff.Css_compare.diff ~mode:`Canonical expected actual in
   match result.Cascade_diff.Css_compare.result with
   | Cascade_diff.Css_compare.Tree_diff _ ->
+      (* The difference alone: the warning for [@unknown] quotes the line it
+         stands on, alias and all. *)
       let buf = Buffer.create 256 in
-      Cascade_diff.Css_compare.pp buf result;
+      Cascade_diff.Css_compare.pp_diff buf result;
       let rendered = Buffer.contents buf in
       Alcotest.(check bool)
         "normalized diff does not report transparent alias" false
