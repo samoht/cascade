@@ -198,3 +198,13 @@ A side read from standard input is named the way the report names it.
 
   $ printf '.x { color: blue }\n' | cascade diff --json - a.css | helpers/jsonq.exe '.expected .actual'
   <stdin> a.css
+
+The manual lists every member the document has, for a tree comparison
+and for one that fell back to the text.
+
+  $ cascade diff --help=plain | sed -n '/^JSON OUTPUT/,/^COMMON OPTIONS/p' > members.txt
+  $ for doc in "a.css d.css" "--diff=string a.css d.css"; do
+  >   cascade diff --json $doc | grep -o '^  "[a-z_]*"' | tr -d ' "'
+  > done | sort -u | while read m; do
+  >   grep -q "$m" members.txt || echo "undocumented: $m"
+  > done

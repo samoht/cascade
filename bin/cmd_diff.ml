@@ -654,6 +654,7 @@ let compare_files file1 file2 style_renderer mode limit json opts document
         | Error e, _ | _, Error e -> Error e)
 
 let canonical_options = "CANONICAL OPTIONS"
+let json_output = "JSON OUTPUT"
 let browser_options = "BROWSER OPTIONS"
 
 let file1_arg =
@@ -716,9 +717,9 @@ let json_arg =
      the human report, so a harness can branch on the exit status and read the \
      detail from the document. The exit status is unchanged. Nothing else \
      reaches standard output: parse warnings and parse errors are members of \
-     the document rather than lines beside it. Colour and $(b,--limit) shape \
-     the human report only and are ignored here, since the document reports \
-     every difference."
+     the document rather than lines beside it. JSON OUTPUT lists the members. \
+     Colour and $(b,--limit) shape the human report only and are ignored here, \
+     since the document reports every difference."
   in
   Arg.(value & flag & info [ "json" ] ~doc)
 
@@ -831,6 +832,42 @@ let man =
     `S Manpage.s_options;
     `S canonical_options;
     `S browser_options;
+    `S json_output;
+    `P
+      "$(b,--json) writes one object. A consumer reads the members it needs \
+       and ignores any it does not know.";
+    `I ("$(b,expected), $(b,actual)", "The names of the two inputs.");
+    `I ("$(b,mode)", "The $(b,--diff) mode.");
+    `I ("$(b,identical)", "$(b,true) exactly when the exit status is 0.");
+    `I
+      ( "$(b,unreadable_declarations), $(b,unreadable_rules)",
+        "What each side's reader dropped, as $(b,{expected, actual}) counts." );
+    `I
+      ( "$(b,stats)",
+        "The summary line: $(b,expected_chars), $(b,actual_chars) and a count \
+         per kind of change." );
+    `I
+      ( "$(b,warnings), $(b,errors)",
+        "The parse diagnostics, each $(b,{side, file, line, column, message}) \
+         with $(b,side) one of $(b,expected), $(b,actual) or $(b,both). A \
+         position the diagnostic does not carry is left out." );
+    `I
+      ( "$(b,changes)",
+        "The differences, each with a $(b,kind): $(b,added), $(b,removed), \
+         $(b,modified), $(b,selector_changed), $(b,reordered), \
+         $(b,rearranged), $(b,regrouped), $(b,layer_order), or $(b,container) \
+         with a $(b,change) and the $(b,changes) inside it." );
+    `I
+      ( "$(b,string_diff)",
+        "Present when the comparison fell back to the text: the first \
+         differing $(b,position) (a byte offset), its 1-based \
+         $(b,line_expected), $(b,column_expected), $(b,line_actual) and \
+         $(b,column_actual), and the two $(b,diff_lines)." );
+    `P
+      "Under $(b,--browser) the object describes the renders instead: \
+       $(b,document), $(b,first), $(b,second), $(b,browser), the \
+       $(b,viewports), $(b,states) and $(b,renders) sampled, and the computed \
+       values that differ under $(b,changes).";
     `S Manpage.s_examples;
     `P "Compare two files, or a build's output on standard input:";
     `Pre

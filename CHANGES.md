@@ -141,6 +141,8 @@
   parse warning does: a difference at the start of the second line read `line 1,
   col 0`. The report's `@@` header names that line instead of a byte offset
   (#1334).
+- `cascade diff --help` lists the members of the `--json` document, and a cram
+  test fails when the document gains one the page does not name (#1335).
 
 - `cascade diff` no longer slows down quadratically with the number of rules
   that moved or changed selector: netflix.com's stylesheet against its own
