@@ -210,11 +210,8 @@ let normalize_font_face stmt descriptors =
 let drop_nesting_prefix (stmt : statement) : statement =
   match stmt with
   | Rule nr ->
-      Rule
-        {
-          nr with
-          selector = Selector.drop_redundant_nesting_prefix nr.selector;
-        }
+      let selector = Selector.drop_redundant_nesting_prefix nr.selector in
+      if selector == nr.selector then stmt else Rule { nr with selector }
   | other -> other
 
 (* A selector list holding a vendor pseudo-element is invalidated as a whole by

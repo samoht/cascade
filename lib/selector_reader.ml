@@ -1143,7 +1143,9 @@ let rec drop_redundant_nesting_prefix (sel : t) : t =
   match sel with
   | Combined (Nesting, Descendant, right) -> right
   | Combined (Nesting, comb, right) -> Relative (comb, right)
-  | List sels -> List (List.map drop_redundant_nesting_prefix sels)
+  | List sels ->
+      let sels' = Common.List.map_preserve drop_redundant_nesting_prefix sels in
+      if sels' == sels then sel else List sels'
   | other -> other
 
 (* CSS Syntax 3 (ED) sec. 4.3.11 builds an identifier from ident code points -
