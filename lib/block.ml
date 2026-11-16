@@ -239,60 +239,44 @@ let has_distant_partner ~prelude ~equal_prelude stmts =
   dup keys
 
 (* Split [out] at the first block whose prelude is [key], into what comes before
-   it, its own body, and what sits between it and the caller. *)
-let split_at_prelude ~prelude ~equal_prelude key out :
-    (statement list * statement list * statement list) option =
-  let rec go before :
-      statement list ->
-      (statement list * statement list * statement list) option = function
-    | [] -> None
-    | stmt :: after -> (
+   it, its own body, and what sits between it and the caller. [out] pairs each
+   statement with what a hoist reads off it. *)
+let split_at_prelude ~prelude ~equal_prelude key out =
+  let rec go before = function
+    | [] -> Option.None
+    | ((stmt, _) as entry) :: after -> (
         match prelude stmt with
-        | Some (k, body) when equal_prelude k key ->
-            Some (List.rev before, body, after)
-        | Some _ | None -> go (stmt :: before) after)
+        | Option.Some (k, body) when equal_prelude k key ->
+            Option.Some (List.rev before, body, after)
+        | Option.Some _ | Option.None -> go (entry :: before) after)
   in
   go [] out
 
-(* [crosses stmt] is [true] when the hoisted block may not move above [stmt]. *)
-let try_distant_merge ~prelude ~equal_prelude ~build ~crosses out key block :
-    statement list option =
+(* [crosses entry] is [true] when the hoisted block may not move above the
+   statement in [entry]. *)
+let try_distant_merge ~prelude ~equal_prelude ~build ~entry ~crosses out key
+    block =
   match split_at_prelude ~prelude ~equal_prelude key out with
   | Option.Some (before, target, after)
-    when List.for_all crossable_by_distant_merge after
+    when List.for_all (fun (stmt, _) -> crossable_by_distant_merge stmt) after
          && not (List.exists crosses after) ->
-      Option.Some (before @ [ build key (target @ block) ] @ after)
+      Option.Some (before @ [ entry (build key (target @ block)) ] @ after)
   | Option.Some _ | Option.None -> Option.None
 
-(* Statements by identity: every hoist attempt reads the run it crosses, which
-   is most of what came before it, so each statement's leaves are read once per
-   pass rather than once per attempt. *)
-module Statement_memo = Hashtbl.Make (struct
-  type t = statement
-
-  let equal = ( == )
-  let hash = Hashtbl.hash
-end)
-
-(* The leaves of a hoisted block, and whether that block may not move above a
-   statement it would cross, under [parent]. *)
+(* The leaves of a hoisted block, a statement paired with the leaves it presents
+   to a block crossing it, and whether that block may not cross it, under
+   [parent]. Every hoist attempt reads the run it crosses, which is most of what
+   came before it, so a statement's leaves are read on the first crossing and
+   kept with it for the rest of the pass. *)
 let crossing ?parent () =
   let facts stmts =
     Option.map (List.map (fun r -> Rule_graph.facts r)) (leaves ?parent stmts)
   in
-  let memo = Statement_memo.create 64 in
-  let crossed stmt =
-    match Statement_memo.find_opt memo stmt with
-    | Option.Some facts -> facts
-    | Option.None ->
-        let f = facts [ stmt ] in
-        Statement_memo.add memo stmt f;
-        f
-  in
+  let entry stmt = (stmt, lazy (facts [ stmt ])) in
   (* The hoisted block is small and the crossed run can be most of the sheet, so
      the scan runs over the crossed rules and stops at the first conflict. *)
-  let crosses hoisted stmt =
-    match crossed stmt with
+  let crosses hoisted (_, crossed) =
+    match Lazy.force crossed with
     | Option.None -> true
     | Option.Some crossed ->
         List.exists
@@ -300,13 +284,13 @@ let crossing ?parent () =
             List.exists (fun h -> Rule_graph.facts_conflict h c) hoisted)
           crossed
   in
-  (facts, crosses)
+  (facts, entry, crosses)
 
 let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
     ~optimize_merged_block stmts =
   if not (has_distant_partner ~prelude ~equal_prelude stmts) then stmts
   else
-    let facts, crosses =
+    let facts, entry, crosses =
       crossing ?parent:(Option.map (fun (r : rule) -> r.selector) owner) ()
     in
     (* The accumulator is carried reversed, as the consecutive-block passes
@@ -318,18 +302,18 @@ let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
       match prelude stmt with
       | Some (key, block) when hoistable block -> (
           match facts block with
-          | Option.None -> stmt :: rout
+          | Option.None -> entry stmt :: rout
           | Option.Some hoisted -> (
               match
-                try_distant_merge ~prelude ~equal_prelude ~build
+                try_distant_merge ~prelude ~equal_prelude ~build ~entry
                   ~crosses:(crosses hoisted) (List.rev rout) key block
               with
               | Some out' -> List.rev out'
-              | None -> stmt :: rout))
-      | Some _ | None -> stmt :: rout
+              | None -> entry stmt :: rout))
+      | Some _ | None -> entry stmt :: rout
     in
     List.fold_left step [] stmts
-    |> List.rev_map (fun stmt ->
+    |> List.rev_map (fun (stmt, _) ->
         match prelude stmt with
         | Some (key, body) -> build key (optimize_merged_block body)
         | None -> stmt)

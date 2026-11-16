@@ -66,6 +66,8 @@
 - When `--minify` runs out of merges on a long run of rules and looks for more,
   it reuses what it already worked out about each group of rules it considered
   before. Output is unchanged; tw_all (661KB) costs 3% less (#1307).
+- `--minify` merges distant `@media` blocks with less work: tw's own sheet
+  takes 5% fewer instructions, with the same output (#1313).
 
 ### Parsing
 
