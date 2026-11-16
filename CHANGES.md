@@ -118,6 +118,12 @@
   and an `@font-face` missing its `src` printed a byte range, and a bad
   `@font-face` `font-weight`, `font-style` or `font-stretch` value pointed at
   line 1 of a copy of the value and named no descriptor (#1330).
+- A parse warning whose message was already printed for the same file is counted
+  under the first, with where the next few are, and a last line gives the total.
+  `-v` prints every warning in full and `-q` none, in `fmt`, `apply`, `prune`
+  and in the `diff` report; `apply` and `prune` take `-q` and `-v` for the first
+  time. On netflix.com's stylesheet that is 43 lines of warnings instead of 478
+  (#1332).
 
 ### Diff report
 

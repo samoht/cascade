@@ -29,21 +29,75 @@ let die_parse_error e =
   report_error e;
   Stdlib.exit 1
 
-let parse ?(enforce_spec = false) ~filename css =
+(* A sheet that trips one unsupported construct a hundred times would bury
+   everything else under the same message. Warnings with the same message are
+   one group, printed once where it first occurs, with a line counting the rest
+   and naming where the next few are. *)
+let max_positions = 3
+
+let position (w : Cascade.Error.t) =
+  match Cascade.Error.position w with
+  | Some (line, column) ->
+      String.concat ":" [ Int.to_string line; Int.to_string column ]
+  | None -> "?"
+
+let report_repeats = function
+  | [] -> ()
+  | rest ->
+      let n = List.length rest in
+      let shown = List.filteri (fun i _ -> i < max_positions) rest in
+      let more = if n > max_positions then [ "..." ] else [] in
+      Fmt.epr "  (%d more like this, at %s)@." n
+        (String.concat ", " (List.map position shown @ more))
+
+let group_warnings ws =
+  let groups = Hashtbl.create 16 in
+  let order =
+    List.fold_left
+      (fun order w ->
+        let key = Cascade.Pp.to_string Cascade.Error.pp_message w in
+        match Hashtbl.find_opt groups key with
+        | Some rest ->
+            Hashtbl.replace groups key (w :: rest);
+            order
+        | None ->
+            Hashtbl.add groups key [];
+            (key, w) :: order)
+      [] ws
+  in
+  List.rev_map (fun (key, w) -> (w, List.rev (Hashtbl.find groups key))) order
+
+let report_warnings (verbosity : Cli_log.verbosity) ~filename ws =
+  match verbosity with
+  | Quiet -> ()
+  | Verbose -> List.iter report_warning ws
+  | Normal ->
+      let groups = group_warnings ws in
+      List.iter
+        (fun (w, rest) ->
+          report_warning w;
+          report_repeats rest)
+        groups;
+      let total = List.length ws and shown = List.length groups in
+      if total > shown then
+        Fmt.epr "%s: %d warnings, %d shown; -v prints every one, -q none@."
+          filename total shown
+
+let parse verbosity ?(enforce_spec = false) ~filename css =
   match Css.of_string ~filename ~enforce_spec css with
   | Ok { Css.stylesheet; warnings; _ } ->
-      List.iter report_warning warnings;
+      report_warnings verbosity ~filename warnings;
       (stylesheet, warnings)
   | Error e -> die_parse_error e
 
-let parse_css ?enforce_spec ~filename css =
-  fst (parse ?enforce_spec ~filename css)
+let parse_css verbosity ?enforce_spec ~filename css =
+  fst (parse verbosity ?enforce_spec ~filename css)
 
 type input = { stylesheet : Css.t; filename : string; recovered : bool }
 
-let read_input ?enforce_spec path =
+let read_input verbosity ?enforce_spec path =
   let css, filename = read_source path in
-  let stylesheet, warnings = parse ?enforce_spec ~filename css in
+  let stylesheet, warnings = parse verbosity ?enforce_spec ~filename css in
   { stylesheet; filename; recovered = warnings <> [] }
 
 (* Recovery that drops every rule leaves nothing to serialise, so [cascade fmt

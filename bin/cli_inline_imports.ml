@@ -45,7 +45,7 @@ let canonical_import_root = function
 (* Walk the parsed stylesheet, follow every [@import] URL on disk and parse each
    referenced file once, recursing through transitive imports. The resulting
    (resolved-url, content) table is what [Css.inline_imports] consumes. *)
-let cache_resolved ~import_root imports resolved =
+let cache_resolved ~verbosity ~import_root imports resolved =
   if Hashtbl.mem imports resolved then None
   else
     try
@@ -54,7 +54,7 @@ let cache_resolved ~import_root imports resolved =
       | Some filename ->
           let content = Cli_io.read_file filename in
           Hashtbl.add imports resolved content;
-          Some (Cli_io.parse_css ~filename content)
+          Some (Cli_io.parse_css verbosity ~filename content)
     with
     | Sys_error msg ->
         warn_cannot_read resolved msg;
@@ -71,7 +71,7 @@ let resolve_import loader url =
       None
   | Ok resolved -> Some resolved
 
-let preload ~base_url ~import_root stylesheet =
+let preload ~verbosity ~base_url ~import_root stylesheet =
   let import_root = canonical_import_root import_root in
   let imports = Hashtbl.create 16 in
   let rec scan_under base sheet =
@@ -87,14 +87,14 @@ let preload ~base_url ~import_root stylesheet =
     match resolve_import loader url with
     | None -> ()
     | Some resolved -> (
-        match cache_resolved ~import_root imports resolved with
+        match cache_resolved ~verbosity ~import_root imports resolved with
         | None -> ()
         | Some inner -> scan_under resolved inner)
   in
   scan_under base_url stylesheet;
   Hashtbl.fold (fun k v acc -> (k, v) :: acc) imports []
 
-let run ~base_url ~import_root stylesheet =
-  let imports = preload ~base_url ~import_root stylesheet in
+let run ~verbosity ~base_url ~import_root stylesheet =
+  let imports = preload ~verbosity ~base_url ~import_root stylesheet in
   let loader = Css.Context.loader ~base_url ~imports () in
   Css.inline_imports loader stylesheet

@@ -64,12 +64,6 @@ let count_lines s =
 (* Parse warnings shown before the rest is counted, across both sides. *)
 let auto_warning_budget = 3
 
-(* [none] bounds nothing, warnings included. Every other setting keeps the
-   report short, which a wall of warnings ahead of it would undo. *)
-let warning_budget = function
-  | All_entries -> None
-  | Fit_entries | Count _ -> Some auto_warning_budget
-
 (* What the parse dropped reaches neither side of the comparison, so nothing it
    holds can affect the verdict. The reader stamps that on the warning at the
    point it recovers, which is the only place that knows: the same [Bad_value]
@@ -139,12 +133,22 @@ let render_diff ~color ~file1 ~file2 ~entries result =
     buf result;
   Buffer.contents buf
 
-let render_warnings ~file1 ~file2 ~max result =
-  let buf = Buffer.create 256 in
-  Cascade_diff.Css_compare.pp_warnings ~expected:file1 ~actual:file2 ?max buf
-    result;
-  if Cascade_diff.Css_compare.has_warnings result then Buffer.add_char buf '\n';
-  Buffer.contents buf
+(* [-q] leaves the warnings out of the report, and [-v] or [--limit=none] prints
+   every one. Any other setting keeps the report short, which a wall of warnings
+   ahead of it would undo. *)
+let render_warnings ~verbosity ~limit ~file1 ~file2 result =
+  let render max =
+    let buf = Buffer.create 256 in
+    Cascade_diff.Css_compare.pp_warnings ~expected:file1 ~actual:file2 ?max buf
+      result;
+    if Cascade_diff.Css_compare.has_warnings result then
+      Buffer.add_char buf '\n';
+    Buffer.contents buf
+  in
+  match ((verbosity : Cli_log.verbosity), limit) with
+  | Quiet, _ -> ""
+  | Verbose, _ | Normal, All_entries -> render None
+  | Normal, (Fit_entries | Count _) -> render (Some auto_warning_budget)
 
 let fits body = count_lines body <= auto_line_budget
 
@@ -182,17 +186,17 @@ let canonical_forms_note mode result =
       "Canonical forms differ:\n"
   | _ -> ""
 
-let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result =
+let print_diff_report ~verbosity ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode
+    result =
   let stats =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
-  let max_warnings = warning_budget limit in
   let buf = Buffer.create 1024 in
   Cascade_diff.Css_compare.pp_stats buf stats;
   Buffer.add_string buf
     (canonical_forms_note mode result.Cascade_diff.Css_compare.result);
   Buffer.add_char buf '\n';
-  Buffer.add_string buf (render_warnings ~file1 ~file2 ~max:max_warnings result);
+  Buffer.add_string buf (render_warnings ~verbosity ~limit ~file1 ~file2 result);
   let body, elided = render_report ~color ~file1 ~file2 ~limit result in
   Buffer.add_string buf body;
   Buffer.add_char buf '\n';
@@ -575,8 +579,8 @@ let print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts =
 
 (* Each side is its text and the name the report gives it, which is the path for
    a file and [<stdin>] for the stream. *)
-let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
-    =
+let compare_sources ~verbosity ~color ~mode ~limit ~json ~opts (css1, file1)
+    (css2, file2) =
   if json then print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts
   else if css1 = css2 then (
     Fmt.pr "CSS files are identical@.";
@@ -591,8 +595,7 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
     | No_diff -> (
         (* Equal ASTs can still hide what the parse dropped; show the warnings
            so the equality verdict is honest about them. *)
-        let max = warning_budget limit in
-        print_string (render_warnings ~file1 ~file2 ~max result);
+        print_string (render_warnings ~verbosity ~limit ~file1 ~file2 result);
         match losses_cancel result with
         | true ->
             Fmt.pr "CSS files are identical@.";
@@ -605,7 +608,8 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
             Stdlib.exit Cli_exit.cannot_determine)
     | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
     | Actual_error _ ->
-        print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result;
+        print_diff_report ~verbosity ~color ~file1 ~file2 ~css1 ~css2 ~limit
+          ~mode result;
         (* Differing inputs are a result, not a usage error: exit 1 as
            documented, distinct from cmdliner's reserved error codes. *)
         Stdlib.exit 1
@@ -621,7 +625,8 @@ let browser_document browser html =
   | true, Some html -> Ok (Some html)
   | false, None -> Ok None
 
-let compare_files file1 file2 style_renderer mode limit json opts document () =
+let compare_files file1 file2 style_renderer mode limit json opts document
+    verbosity =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
@@ -644,7 +649,8 @@ let compare_files file1 file2 style_renderer mode limit json opts document () =
       else
         match (read_source file1, read_source file2) with
         | Ok source1, Ok source2 ->
-            compare_sources ~color ~mode ~limit ~json ~opts source1 source2
+            compare_sources ~verbosity ~color ~mode ~limit ~json ~opts source1
+              source2
         | Error e, _ | _, Error e -> Error e)
 
 let file1_arg =

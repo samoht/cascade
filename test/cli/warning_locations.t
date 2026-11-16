@@ -51,7 +51,8 @@ copy of the value.
 
 The checks made on a statement the reader kept, or dropped whole, point
 at that statement: an @font-face missing its source, an @import after a
-style rule or inside a block, and an @else with no @when before it.
+style rule or inside a block, and an @else with no @when before it. `-v`
+prints the two misplaced imports apart, though their message is the same.
 
   $ cat > statements.css <<EOF
   > @font-face { font-family: x }
@@ -61,7 +62,7 @@ style rule or inside a block, and an @else with no @when before it.
   > @media print { @import "y.css"; }
   > @else { .e { color: red } }
   > EOF
-  $ cascade --minify statements.css 2>&1 >/dev/null
+  $ cascade -v --minify statements.css 2>&1 >/dev/null
   statements.css:1:1: warning: @font-face without a font-family or src descriptor
     @font-face { font-family: x }
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

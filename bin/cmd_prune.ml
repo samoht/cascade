@@ -90,14 +90,14 @@ let emit sheet =
   if Buffer.length buf > 0 then Buffer.add_char buf '\n';
   Buffer.output_buffer stdout buf
 
-let run dry_run files () =
+let run dry_run files verbosity =
   match
     Result.bind (split_inputs files) (fun (docs, css) ->
         Result.map (fun roots -> (docs, css, roots)) (read_documents docs))
   with
   | Error e -> Error e
   | Ok (docs, css, roots) ->
-      let input = Cli_io.read_input css in
+      let input = Cli_io.read_input verbosity css in
       Cli_io.check_not_all_dropped input;
       let analysis = P.analyse ~sheet:input.Cli_io.stylesheet roots in
       (* Nothing to match against makes every rule look unused, which is an
@@ -111,8 +111,11 @@ let run dry_run files () =
       if dry_run then report ~documents:(List.length docs) analysis
       else begin
         let unused, used, unmodelled = split_entries analysis.Prune.entries in
-        counts Fmt.stderr ~unused:(List.length unused) ~used:(List.length used)
-          ~unmodelled:(List.length unmodelled);
+        (match (verbosity : Cli_log.verbosity) with
+        | Quiet -> ()
+        | Normal | Verbose ->
+            counts Fmt.stderr ~unused:(List.length unused)
+              ~used:(List.length used) ~unmodelled:(List.length unmodelled));
         emit analysis.Prune.sheet
       end;
       Ok ()
@@ -130,7 +133,7 @@ let files_arg =
   let doc = "The HTML documents to match against, then the stylesheet." in
   Arg.(value & pos_all file [] & info [] ~docv:"PAGE.html... STYLE.css" ~doc)
 
-let term = Term.(const run $ dry_run_arg $ files_arg $ const ())
+let term = Term.(const run $ dry_run_arg $ files_arg $ Cli_log.term)
 
 let selector_examples_doc =
   let samples =

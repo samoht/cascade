@@ -35,14 +35,16 @@ let report_profile (report : Stats.snapshot) =
   print_iteration_profile report;
   print_factor_profile_footer report.counters
 
-let resolve_inline_imports ~input_path ~import_root stylesheet =
+let resolve_inline_imports ~verbosity ~input_path ~import_root stylesheet =
   if input_path = "-" then begin
     Fmt.epr
       "Error: --inline-imports requires a file path (cannot resolve relative \
        URLs from stdin)@.";
     Stdlib.exit 1
   end
-  else Cli_inline_imports.run ~base_url:input_path ~import_root stylesheet
+  else
+    Cli_inline_imports.run ~verbosity ~base_url:input_path ~import_root
+      stylesheet
 
 let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   let buf = Buffer.create 4096 in
@@ -51,16 +53,16 @@ let emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet =
   if len > 0 && Buffer.nth buf (len - 1) <> '\n' then Buffer.add_char buf '\n';
   Buffer.output_buffer stdout buf
 
-let process_css ~input_path ~minify ~scope ~flatten_nesting ~lossless
+let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~closed_world ~objective ~inline_imports_flag ~import_root
     ~inline_vars_flag ~keep_vars ~profile =
   try
-    let input = Cli_io.read_input ~enforce_spec input_path in
+    let input = Cli_io.read_input verbosity ~enforce_spec input_path in
     Cli_io.check_not_all_dropped input;
     let stylesheet = input.Cli_io.stylesheet in
     let stylesheet =
       if inline_imports_flag then
-        resolve_inline_imports ~input_path ~import_root stylesheet
+        resolve_inline_imports ~verbosity ~input_path ~import_root stylesheet
       else stylesheet
     in
     let stylesheet =
@@ -228,14 +230,34 @@ let profile_arg =
   in
   Arg.(value & flag & info [ "profile" ] ~doc)
 
-(* Flags that only act under [--minify]; warn when set without it. *)
-let warn_minify_only ~minify checks =
-  if not minify then
-    List.iter
-      (fun (active, flag) ->
-        if active then
-          Fmt.epr "Warning: %s has no effect without --minify@." flag)
-      checks
+(* A flag set where it does nothing is noted, unless [-q] asked for errors only.
+   --enforce-spec is not one: it also gates the parser's non-ASCII ident range,
+   which acts with or without --minify. *)
+let note_unused (verbosity : Cli_log.verbosity) ~minify ~scope ~lossless
+    ~closed_world ~objective ~profile ~keep_vars ~inline_vars ~import_root
+    ~inline_imports =
+  let without_minify flag active = (active && not minify, flag, "--minify") in
+  let checks =
+    [
+      (keep_vars <> [] && not inline_vars, "--keep-vars", "--inline-vars");
+      ( Option.is_some import_root && not inline_imports,
+        "--import-root",
+        "--inline-imports" );
+      without_minify "--scope=stylesheet" (scope = `Stylesheet);
+      without_minify "--lossless" lossless;
+      without_minify "--closed-world" closed_world;
+      without_minify "--objective" (objective = `Raw);
+      without_minify "--profile" profile;
+    ]
+  in
+  match verbosity with
+  | Quiet -> ()
+  | Normal | Verbose ->
+      List.iter
+        (fun (active, flag, needs) ->
+          if active then
+            Fmt.epr "Warning: %s has no effect without %s@." flag needs)
+        checks
 
 let term =
   Term.(
@@ -254,7 +276,7 @@ let term =
         inline_vars_flag
         keep_vars_str
         profile
-        ()
+        verbosity
       ->
         let keep_vars = Cli_io.split_comma keep_vars_str in
         if List.mem "*" keep_vars then begin
@@ -264,23 +286,11 @@ let term =
           Fmt.epr "[1]@.";
           Stdlib.exit 1
         end;
-        if keep_vars <> [] && not inline_vars_flag then
-          Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
-        if Option.is_some import_root && not inline_imports_flag then
-          Fmt.epr
-            "Warning: --import-root has no effect without --inline-imports@.";
-        (* --enforce-spec is excluded: it also gates the parser's non-ASCII
-           ident range, which acts with or without --minify. *)
-        warn_minify_only ~minify
-          [
-            (scope = `Stylesheet, "--scope=stylesheet");
-            (lossless, "--lossless");
-            (closed_world, "--closed-world");
-            (objective = `Raw, "--objective");
-            (profile, "--profile");
-          ];
-        process_css ~input_path:input ~minify ~scope ~flatten_nesting ~lossless
-          ~enforce_spec ~closed_world ~objective ~inline_imports_flag
+        note_unused verbosity ~minify ~scope ~lossless ~closed_world ~objective
+          ~profile ~keep_vars ~inline_vars:inline_vars_flag ~import_root
+          ~inline_imports:inline_imports_flag;
+        process_css ~verbosity ~input_path:input ~minify ~scope ~flatten_nesting
+          ~lossless ~enforce_spec ~closed_world ~objective ~inline_imports_flag
           ~import_root ~inline_vars_flag ~keep_vars ~profile)
     $ input_arg $ minify_arg $ scope_arg $ flatten_nesting_arg $ lossless_arg
     $ enforce_spec_arg $ closed_world_arg $ objective_arg $ inline_imports_arg
