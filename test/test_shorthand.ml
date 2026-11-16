@@ -440,6 +440,35 @@ let test_merge_overflow_longhands () =
     [ "overflow-x:hidden"; "overflow:auto"; "overflow-y:hidden" ]
     (decl_strings blocked)
 
+(* A rule of [n] custom properties, none of them a vendor alias. *)
+let custom_properties n =
+  let buffer = Buffer.create (n * 8) in
+  let formatter = Fmt.with_buffer buffer in
+  Fmt.pf formatter ".a{";
+  for i = 0 to n - 1 do
+    Fmt.pf formatter "--p%d:0;" i
+  done;
+  Fmt.pf formatter "}";
+  Fmt.flush formatter ();
+  decls (Buffer.contents buffer)
+
+(* Whether a declaration is a vendor alias is read off its own name, so dropping
+   the aliases from a rule is linear in its declarations: twice the declarations
+   allocate about twice the words, not four times. Allocated words rather than
+   time, so the bound holds on a loaded machine. *)
+let test_alias_drop_scales_linearly () =
+  let words n =
+    let decls = custom_properties n in
+    Css_test_helpers.measure (fun () ->
+        Shorthand.drop_redundant_decoration_color_aliases decls)
+  in
+  let small = words 200 and large = words 400 in
+  Alcotest.(check bool)
+    (Fmt.str "200 declarations %.0f words, 400 %.0f (%.2fx)" small large
+       (large /. small))
+    true
+    (large < 3. *. small)
+
 let test_drop_redundant_longhand_after_shorthand () =
   (* A background shorthand sets every longhand it covers, so a later longhand
      equal to what it set (its slot value, else the initial) is a no-op. *)
@@ -976,6 +1005,8 @@ let suite =
         test_intentionally_duplicated_properties;
       Alcotest.test_case "merge overflow longhands" `Quick
         test_merge_overflow_longhands;
+      Alcotest.test_case "alias drop scales linearly" `Quick
+        test_alias_drop_scales_linearly;
       Alcotest.test_case "drop redundant longhand after shorthand" `Quick
         test_drop_redundant_longhand_after_shorthand;
       Alcotest.test_case "drop redundant flex longhand" `Quick
