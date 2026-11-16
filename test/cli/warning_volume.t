@@ -89,3 +89,9 @@ leaves them out and `-v` prints every one.
   [1]
   $ cascade diff -v noisy.css noisy2.css | grep -c ': warning: '
   7
+
+Past the few the report prints, the line counting the rest says how to
+see them.
+
+  $ cascade diff noisy.css noisy2.css | grep 'more parse warning'
+  noisy.css and noisy2.css: 4 more parse warnings; -v prints every warning
