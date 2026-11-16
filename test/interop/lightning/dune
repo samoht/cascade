@@ -1,6 +1,6 @@
 (test
  (name test)
- (libraries cascade alcotest unix re re.str fmt trace_pairs)
+ (libraries cascade css_test_helpers alcotest unix re re.str fmt trace_pairs)
  (deps
   LICENSE
   UPSTREAM.md

@@ -117,3 +117,11 @@ val measure : (unit -> 'a) -> float
     holds only if both were taken alike. [Sys.opaque_identity] keeps the result
     live to the end of the call, so the compiler cannot satisfy a guard by
     deleting the allocation it counts. *)
+
+val strict_agrees_with_lenient : string -> bool
+(** [strict_agrees_with_lenient css] checks that a strict parse of [css] never
+    reads it differently from a lenient one: where both succeed, the two
+    stylesheets optimise and minify to the same bytes, and a strict parse never
+    succeeds where the lenient one fails. The canonical diff relies on it to
+    parse each input once. It is [true] when both parses succeeded, so a caller
+    can tell the property was exercised. *)
