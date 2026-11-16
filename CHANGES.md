@@ -67,11 +67,13 @@
   rule writes before longhands of the same family. The longhands contracted into
   a shorthand that reset it: `background:#fff url(a.png) no-repeat center`
   followed by `background-position` and `background-size` became
-  `background:0/25px 25px`, dropping the image, colour and repeat.
+  `background:0/25px 25px`, dropping the image, colour and repeat. The same
+  holds for an earlier longhand of the family whatever its value, such as
+  `background-color:inherit` (#1348).
 - `--minify --scope=stylesheet` keeps a `font-weight`, or another of the seven
-  `font` components, that a rule writes before a `font-size` and
-  `font-family` run: the run contracted into a `font` shorthand that reset it,
-  so `font-weight:700` was lost.
+  `font` components, that a rule writes before a `font-size` and `font-family`
+  run: the run contracted into a `font` shorthand that reset it, so
+  `font-weight:700` was lost (#1348).
 - An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
   `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
   and an `@namespace` after a rule, go as browsers ignore them (#1294).
