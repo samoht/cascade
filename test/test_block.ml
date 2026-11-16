@@ -384,6 +384,31 @@ let test_merge_distant_media_is_subquadratic () =
     (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x N)" small_words large_words ratio)
     true (ratio < 3.)
 
+(* [n] plain rules, each followed by an [@media print] block, so every block but
+   the first hoists across every rule written since the first one: [n] merges,
+   each over a run that grows with [n]. *)
+let distant_media_hoists n =
+  let b = Buffer.create ((n * 48) + 64) in
+  let out = Fmt.with_buffer b in
+  Buffer.add_string b "@media print{.m0{color:red}}";
+  for i = 1 to n do
+    Fmt.pf out ".r%d{--p%d:%d}@media print{.m%d{color:red}}" i i i i
+  done;
+  block (Buffer.contents b)
+
+(* A hoist that copies the run it crosses, or rebuilds the body it merges into,
+   costs a square in the statement count. *)
+let test_distant_media_hoists_are_subquadratic () =
+  let small = distant_media_hoists 1_000 in
+  let large = distant_media_hoists 2_000 in
+  let merge stmts = Block.merge_distant_media ~optimize_merged_block:id stmts in
+  let small_words = measure (fun () -> merge small) in
+  let large_words = measure (fun () -> merge large) in
+  let ratio = large_words /. small_words in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x N)" small_words large_words ratio)
+    true (ratio < 3.)
+
 let suite =
   ( "block",
     [
@@ -433,4 +458,6 @@ let suite =
         `Quick test_distant_media_weighs_a_nested_body_by_its_ancestors;
       Alcotest.test_case "merge distant @media is subquadratic" `Quick
         test_merge_distant_media_is_subquadratic;
+      Alcotest.test_case "distant @media hoists are subquadratic" `Quick
+        test_distant_media_hoists_are_subquadratic;
     ] )
