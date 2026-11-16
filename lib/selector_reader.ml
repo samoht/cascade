@@ -1147,7 +1147,7 @@ let rec drop_redundant_nesting_prefix (sel : t) : t =
    letters, digits, [-], [_] and anything non-ASCII - and escapes. The shortcut
    below reads the whole string as one name, so anything else in it means the
    string is not a name: selector punctuation ([:], [>], [,] ...) but equally a
-   [}] or a [;], which name nothing and used to be taken for an element. *)
+   [}] or a [;], which name nothing. *)
 let is_ident_code_point c =
   match c with
   | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true

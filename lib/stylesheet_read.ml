@@ -26,8 +26,8 @@ let css_wide_keyword s =
    exists, so a length that resolves against one has nothing to resolve against;
    the universal syntax stores the value as written and takes every unit. The ED
    binds sec. 4.1 to registerProperty alone, and Chrome enforces it on the CSS
-   path too: the maintainer settled on 2026-09-09 that cascade follows Chrome
-   here, as it already does for the substitution half above. *)
+   path too; cascade follows Chrome here, as it does for the substitution half
+   above. *)
 let read_property_initial_value ~universal r syntax str =
   if css_wide_keyword str then
     Cursor.err_invalid r "@property: initial-value cannot be CSS-wide keyword";

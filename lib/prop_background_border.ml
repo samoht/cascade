@@ -354,10 +354,8 @@ let reduce_border_width_clamp lower value upper =
    spellings of the same value converge to one node.
 
    A [min()]/[max()]/[clamp()] argument that survives grouping still gets its
-   own same-unit terms combined (mirrors what [pp] used to do per-argument via
-   [simplified_border_width_length]); the standalone [calc()] arm instead goes
-   through [Values.normalize_length], the stronger fold [pp] used only when
-   minifying. *)
+   own same-unit terms combined; the standalone [calc()] arm goes through
+   [Values.normalize_length], the stronger fold. *)
 let normalize_border_width_calc_arg (c : border_width calc) : border_width calc
     =
   match simplified_border_width_length c with

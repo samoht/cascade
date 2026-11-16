@@ -4,9 +4,8 @@ open Inline_scope
 (** {1 Pass 2 - substitute var() in every declaration} *)
 
 (* The customs a consumer can see, with an index from name to the declarations
-   that answer to it. Both lookups below used to scan the whole list, and the
-   walk asks once per declaration, so the pass cost a square in the declaration
-   count. The index is built once per consumer scope instead. *)
+   that answer to it. The walk looks a name up once per declaration, so the
+   index is built once per consumer scope. *)
 type visible = {
   decls : Declaration.declaration list;
   by_name : (string, (int * Declaration.declaration) list) Hashtbl.t;

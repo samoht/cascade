@@ -83,8 +83,7 @@ let estimated_gain t = t.identical_body_gain + (t.shared_declaration_gain / 4)
 
 (* The gain is a raw-byte proxy, and the transfer gate in [Factor] later judges
    the same factoring on compressed size, so a segment admitted here can still
-   be thrown away. Measured over the 30-file satcss corpus: 44 fixpoints run, 4
-   reverted, and those 4 account for 0.20s of the 1.01s spent factoring.
+   be thrown away.
 
    Scoring compressed size here instead is not available: the gate compares the
    factored rendering against the unfactored one, and producing the factored

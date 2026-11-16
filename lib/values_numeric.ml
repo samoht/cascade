@@ -64,11 +64,11 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
-(* Evaluate the static CSS math functions on a [<length>] (the folds the printer
-   used to do under minify), so the printer stays a pure serialiser. min / max /
-   clamp reduce to one dimension when the operands share a unit; round / mod /
-   rem / hypot / abs fold on [px] operands; calc folds through the generic
-   simplifier. A non-static operand keeps the call. *)
+(* Evaluate the static CSS math functions on a [<length>], so the printer stays
+   a pure serialiser. min / max / clamp reduce to one dimension when the
+   operands share a unit; round / mod / rem / hypot / abs fold on [px] operands;
+   calc folds through the generic simplifier. A non-static operand keeps the
+   call. *)
 (* CSS Values 4 sec. 6: a zero [<length>] drops its unit ([0px] -> [0]). That
    leaves [<length>] for [<number>], so it is a type-changing rewrite, not a
    shorter spelling - the printer keeps [0px] and the strip happens here. Only a
@@ -248,10 +248,9 @@ let normalize_length_percentage ?(strip = true) ?(non_negative = false)
    range starts at [0] refuses when it is written as a literal. *)
 let negative_number : number -> bool = function Num f -> f < 0. | _ -> false
 
-(* Evaluate the static CSS math functions on [<number>] (the folds the printer
-   used to do under minify), so the printer stays a pure serialiser. Recurses so
-   nested calls fold ([abs(hypot(3, 4))] -> [5]); a non-static operand keeps the
-   call. *)
+(* Evaluate the static CSS math functions on [<number>], so the printer stays a
+   pure serialiser. Recurses so nested calls fold ([abs(hypot(3, 4))] -> [5]); a
+   non-static operand keeps the call. *)
 let rec normalize_number ?(ctx = default_calc_ctx) ?(non_negative = false)
     (n : number) : number =
   (* CSS Values 4 sec. 10.12 checks the property's range on the value the whole

@@ -275,10 +275,9 @@ let visible_refs ~path_visible consumers path =
       if path_visible ~scope_path:path ~consumer_path:cp then refs else [])
     consumers
 
-(* Each question the liveness fixpoint asks used to scan a whole list, which
-   made the walk cost a square in the variable count. Index them once: the
-   reference names a path can see, the customs answering to a name, and the
-   customs sharing a scope. *)
+(* The liveness fixpoint asks each question once per variable, so the answers
+   are indexed once: the reference names a path can see, the customs answering
+   to a name, and the customs sharing a scope. *)
 let index_customs key_of customs =
   let table = Hashtbl.create 64 in
   List.iter

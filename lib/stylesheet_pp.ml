@@ -55,7 +55,7 @@ let pp_property_rule : 'a property_rule Pp.t =
    The two arms give the same name, so the reader keeps the name alone and sec.
    3 settles the arm on output: "the value is serialized as an <ident> unless
    it's a disallowed keyword, in which case it's serialized as a <string>". A
-   name an escape would rewrite takes the string too, which is no longer. *)
+   name that is not a plain ASCII ident takes the string too. *)
 let keyframes_name_reserved name =
   Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
 
