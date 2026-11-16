@@ -538,6 +538,40 @@ let conflicting_block_fold_is_refused () =
     (render (statements css))
     (canonical css)
 
+(* One run of [n] rules on distinct classes that all write [color], so every
+   pair meets on a declaration and none on a selector, and no two fold. *)
+let independent_run n =
+  let buffer = Buffer.create (n * 24) in
+  let formatter = Fmt.with_buffer buffer in
+  for i = n - 1 downto 0 do
+    Fmt.pf formatter ".c%d{color:red;top:%dpx}" i i
+  done;
+  Fmt.flush formatter ();
+  statements (Buffer.contents buffer)
+
+(* Settling a run orders it once, and that order is the only thing a graph of
+   the run is needed for: the folds before and after it ask whether two rules
+   conflict, which is read off the two rules. So the whole projection has to
+   cost less than two graphs of its run. Allocated words rather than time, so
+   the bound holds on a loaded machine. *)
+let settling_a_run_builds_one_graph () =
+  let stmts = independent_run 1_000 in
+  let rules =
+    List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None) stmts
+  in
+  let graph =
+    Css_test_helpers.measure (fun () ->
+        Rule_graph.of_rules ~pin_shared_branches:false rules)
+  in
+  let projection =
+    Css_test_helpers.measure (fun () -> Rule_order.canonicalize stmts)
+  in
+  Alcotest.(check bool)
+    (Fmt.str "projection %.0f words, one graph %.0f (%.2fx)" projection graph
+       (projection /. graph))
+    true
+    (projection < 2. *. graph)
+
 let suite =
   ( "rule_order",
     [
@@ -619,4 +653,6 @@ let suite =
         container_key_keeps_structurally_distinct_queries_apart;
       Alcotest.test_case "conflicting block fold is refused" `Quick
         conflicting_block_fold_is_refused;
+      Alcotest.test_case "settling a run builds one graph" `Quick
+        settling_a_run_builds_one_graph;
     ] )
