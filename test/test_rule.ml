@@ -147,9 +147,36 @@ let test_merge_run_reads_each_selector_once () =
     true
     (a2 < a1 *. 3.)
 
+(* One normalization of a run is its own fixed point: the pipeline relies on it
+   rather than normalizing every run it changed twice. [finalize] can contract a
+   later rule's longhands into a shorthand that shadows an earlier rule of the
+   same selector, which the run's shadowing pass then has to see. *)
+let test_normalize_is_its_own_fixed_point () =
+  let held_of rs =
+    List.fold_left
+      (fun held (r : Stylesheet.rule) -> Shorthand.held_add held r.declarations)
+      Shorthand.held_none rs
+  in
+  let check ctx css =
+    let run = rules css in
+    let once = Rule.normalize ~ctx ~held:(held_of run) run in
+    let twice = Rule.normalize ~ctx ~held:(held_of once) once in
+    Alcotest.(check (list string))
+      (String.concat "" [ "normalizing again changes nothing: "; css ])
+      (rule_strings once) (rule_strings twice)
+  in
+  check Ctx.fragment
+    ".a{background:red}.a{background-color:blue;background-image:none;background-position:0 \
+     0;background-size:auto;background-repeat:repeat;background-attachment:scroll;background-origin:padding-box;background-clip:border-box}";
+  check
+    (Ctx.of_scope (Some `Stylesheet))
+    ".a{background:red}.a{background-color:blue;background-image:none}"
+
 let suite =
   ( "rule",
     [
+      Alcotest.test_case "normalize is its own fixed point" `Quick
+        test_normalize_is_its_own_fixed_point;
       Alcotest.test_case "single deduplicates without box composition" `Quick
         test_single_deduplicates_without_box_composition;
       Alcotest.test_case "finalize composes and canonicalizes selector" `Quick
