@@ -765,6 +765,112 @@ let reachability_settles_once () =
         true (spent <= count))
     [ 200; 400 ]
 
+let ask_every_pair g =
+  let count = Rule_graph.node_count g in
+  for i = 0 to count - 1 do
+    for j = 0 to count - 1 do
+      ignore (Sys.opaque_identity (Rule_graph.precedes g (nid i) (nid j)))
+    done
+  done
+
+let nth_rule rules i = [ List.nth rules i ]
+
+(* A committed rewrite adds edges only at the nodes it produces, so the graph it
+   returns keeps the answers its parent settled and corrects those of the nodes
+   that now reach a produced one. Every graph below is fully settled before it
+   is rewritten, which is the state the optimizer rewrites from, and each result
+   is checked against a walk of its own edges: a node ahead of the rewrite gains
+   the produced node, a multi-rule rewrite orders its own products, a second
+   rewrite builds on the first, and a rewrite that takes a run past the width
+   its sets were allocated at widens them. The parent is asked again afterwards,
+   since it no longer holds the sets it gave away. *)
+let reachability_follows_a_rewrite () =
+  let rewritten label g ~consume ~produce =
+    ask_every_pair g;
+    match Rule_graph.try_rewrite g ~consume:(nids consume) ~produce with
+    | None -> Alcotest.failf "%s: the rewrite should commit" label
+    | Some g' ->
+        check_reachability label g';
+        check_reachability (label ^ ", parent") g;
+        g'
+  in
+  let g' =
+    rewritten "middle of a chain"
+      (g_of
+         ".early{color:black}.mid{color:red}.mid{color:blue}.late{color:white}")
+      ~consume:[ 1; 2 ]
+      ~produce:(rules_of ".mid{color:red}.mid{color:blue}")
+  in
+  ignore
+    (rewritten "a second rewrite" g' ~consume:[ 0 ]
+       ~produce:(rules_of ".early{color:black}"));
+  ignore
+    (rewritten "several products"
+       (g_of
+          ".form-input{display:block;color:red}.marker{z-index:1}.form-select{display:block;color:blue}")
+       ~consume:[ 0; 2 ]
+       ~produce:
+         (rules_of
+            ".form-input,.form-select{display:block}.form-input{color:red}.form-select{color:blue}"));
+  List.iter
+    (fun at ->
+      let rules = dense_conflict 64 in
+      ignore
+        (rewritten
+           (Fmt.str "node %d of a run of 64" at)
+           (Rule_graph.of_rules rules)
+           ~consume:[ at ] ~produce:(nth_rule rules at)))
+    [ 0; 31; 63 ]
+
+(* The sets a rewrite inherits are the reason it is cheap: replacing the head of
+   a run of N rules changes what one node reaches, the node produced, so the
+   rewrite settles that node and the questions asked of the result expand
+   nothing. Settling the run again would cost N per rewrite, which is the whole
+   of a factoring pass on a sheet that commits a thousand of them. *)
+let reachability_survives_a_rewrite () =
+  let rules = dense_conflict 400 in
+  let g = Rule_graph.of_rules rules in
+  ask_every_pair g;
+  let settled = Rule_graph.reachability_expansions g in
+  match
+    Rule_graph.try_rewrite g ~consume:(nids [ 0 ]) ~produce:(nth_rule rules 0)
+  with
+  | None -> Alcotest.fail "replacing the head of the run should commit"
+  | Some g' ->
+      let rewritten = Rule_graph.reachability_expansions g' in
+      ask_every_pair g';
+      Alcotest.(check int)
+        "nodes expanded by the questions asked after the rewrite" 0
+        (Rule_graph.reachability_expansions g' - rewritten);
+      Alcotest.(check int)
+        "nodes the rewrite settled beyond those its parent had" 1
+        (rewritten - settled)
+
+(* The same read by allocation, on a rewrite of a rule that orders against
+   nothing beside a settled run of N. The rewrite copies each per-node array,
+   linear in N, and changes no set, so asking about the run afterwards reads
+   what the parent settled. Settling the run again would allocate a set of N
+   bits for each of N nodes. Doubling N may cost about twice as much, not four
+   times. *)
+let a_rewrite_allocates_linearly () =
+  let rewrite_and_ask n =
+    let g = Rule_graph.of_rules (dense_conflict n @ rules_of ".z{margin:0}") in
+    ignore (Rule_graph.precedes g (nid 0) (nid (n - 1)));
+    measure (fun () ->
+        match
+          Rule_graph.try_rewrite g ~consume:(nids [ n ])
+            ~produce:(rules_of ".z{margin:1px}")
+        with
+        | None -> Alcotest.fail "replacing the lone rule should commit"
+        | Some g' -> Rule_graph.precedes g' (nid 0) (nid (n - 1)))
+  in
+  let a1 = rewrite_and_ask 2000 in
+  let a2 = rewrite_and_ask 4000 in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a1 = 0. || a2 < a1 *. 2.5)
+
 (* Holding a reachable set per node costs a bit per node per node, so past a run
    length the answers come from walking the edges again. Nothing else reaches
    that path once the sets are held, and it decides rule order, so check it
@@ -1029,6 +1135,12 @@ let suite =
         precedes_agrees_with_a_walk;
       Alcotest.test_case "reachability settles once per node" `Quick
         reachability_settles_once;
+      Alcotest.test_case "reachability follows a rewrite" `Quick
+        reachability_follows_a_rewrite;
+      Alcotest.test_case "reachability survives a rewrite" `Quick
+        reachability_survives_a_rewrite;
+      Alcotest.test_case "a rewrite allocates linearly" `Quick
+        a_rewrite_allocates_linearly;
       Alcotest.test_case "a long run answers by walking" `Quick
         a_long_run_answers_by_walking;
       Alcotest.test_case "dense graph build/project is sub-quadratic" `Quick

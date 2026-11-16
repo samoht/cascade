@@ -170,10 +170,12 @@ val successors : t -> node_id -> node_id list
     {!val-precedes} is the reachability question. *)
 
 val reachability_expansions : t -> int
-(** [reachability_expansions t] is how many nodes [t] has expanded to answer
-    {!val-precedes}. Each node's reachable set is settled once and reused, so
-    this stays bounded by the node count however many pairs a caller asks about.
-*)
+(** [reachability_expansions t] is how many nodes [t] and the graphs it was
+    rewritten from have expanded to answer {!val-precedes}. Each node's
+    reachable set is settled once and reused, so on one graph this stays bounded
+    by the node count however many pairs a caller asks about. A graph
+    {!val-rewrite} returns inherits the sets and the count: the rewrite expands
+    the nodes it produces and the settled nodes that reach one, and no other. *)
 
 val canonical_order_by : t -> (node_id -> int) -> node_id array
 (** [canonical_order_by t rank] is the live node indices in a linear extension

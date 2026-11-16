@@ -54,6 +54,9 @@
 - `--minify` keeps in order two rules that differ only in the case of a type
   selector (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read
   through an `i` or `s` flag; it could move one past the other (#1295).
+- `--minify` keeps what it knows of rule order across a committed merge instead
+  of working it out again for the whole run. Output is unchanged; a sheet that
+  commits many merges costs about a third less (reddit, 311KB) (#1306).
 
 ### Parsing
 

@@ -740,8 +740,33 @@ let closure_node_limit = 16384
 (* A node's reachable set, one bit per node. The union below runs once per edge
    of the cone being closed, so it goes a word at a time. *)
 module Reach = struct
+  (* Every set of one graph has the same width, the one its table of sets has
+     room for, so two of them union word for word. *)
+  let capacity count = (max count 1 + 63) / 64 * 64
+  let table count = Array.make (capacity count) Bytes.empty
   let v count = Bytes.make ((count + 7) / 8) '\000'
+  let row sets = Bytes.make (Array.length sets / 8) '\000'
   let is_set set = Bytes.length set > 0
+
+  (* [sets] with room for [count] nodes. A rewrite appends a few nodes at a
+     time, so the room grows by a quarter and the settled sets are widened once
+     per growth rather than once per rewrite. *)
+  let grow sets count =
+    let room = Array.length sets in
+    if count <= room then sets
+    else begin
+      let grown = table (max count (room + (room / 4) + 64)) in
+      let width = Array.length grown / 8 in
+      Array.iteri
+        (fun i set ->
+          if is_set set then begin
+            let wide = Bytes.make width '\000' in
+            Bytes.blit set 0 wide 0 (Bytes.length set);
+            grown.(i) <- wide
+          end)
+        sets;
+      grown
+    end
 
   let mem set i =
     Char.code (Bytes.get set (i lsr 3)) land (1 lsl (i land 7)) <> 0
@@ -750,6 +775,26 @@ module Reach = struct
     let byte = i lsr 3 in
     Bytes.set set byte
       (Char.chr (Char.code (Bytes.get set byte) lor (1 lsl (i land 7))))
+
+  (* Whether [a] and [b], of one width, share a node. *)
+  let meets a b =
+    let len = Bytes.length a in
+    let words = len / 8 in
+    let rec word w =
+      w < words
+      && ((not
+             (Int64.equal 0L
+                (Int64.logand
+                   (Bytes.get_int64_ne a (w * 8))
+                   (Bytes.get_int64_ne b (w * 8)))))
+         || word (w + 1))
+    in
+    let rec byte at =
+      at < len
+      && (Char.code (Bytes.get a at) land Char.code (Bytes.get b at) <> 0
+         || byte (at + 1))
+    in
+    word 0 || byte (words * 8)
 
   let union ~into set =
     let len = Bytes.length into in
@@ -967,7 +1012,7 @@ let rec union_successors sets set = function
        union_successors sets set rest)
 
 let close_node t sets i =
-  let set = Reach.v t.count in
+  let set = Reach.row sets in
   union_successors sets set t.succ.(i)
   && begin
     sets.(i) <- set;
@@ -1006,7 +1051,7 @@ let reach_sets t =
         Option.None
       end
       else begin
-        let sets = Array.make (max t.count 1) Bytes.empty in
+        let sets = Reach.table t.count in
         t.reach <- Held sets;
         Option.Some sets
       end
@@ -1283,10 +1328,10 @@ let produced_graph t ~consume ~total ~new_n produced =
        below sees the pre-rewrite index. *)
     key_index = t.key_index;
     branch_index = t.branch_index;
-    (* the produced graph's edges are still being written; it holds no answers
-       until it is published and questioned *)
+    (* the produced graph's edges are still being written; {!rewrite} hands it
+       [t]'s answers once it is accepted *)
     reach = Unbuilt;
-    expansions = 0;
+    expansions = t.expansions;
   }
 
 let rewrite_base t ~consume ~produce :
@@ -1647,10 +1692,14 @@ let acyclic = '\002'
    (O(reachable) per commit, not the O(n) [topo_order]); shared state across the
    produced roots walks each node/edge at most once. The marks are a byte per
    node, read once per edge of that cone: node ids are dense, and a generic
-   [Hashtbl] hashes and structurally compares the key on every probe. *)
-let rewrite_introduces_cycle graph ~total =
+   [Hashtbl] hashes and structurally compares the key on every probe.
+
+   [None] is a cycle. Otherwise the produced nodes come back in the order the
+   walk left them, so each one follows every produced node it reaches. *)
+let produced_finish_order graph ~total =
   let n = node_count graph in
   let state = Bytes.make (max n 1) unvisited in
+  let finished = ref [] in
   let rec dfs i =
     let mark = Bytes.get state i in
     if mark = on_stack then true (* back edge to a node still on the stack *)
@@ -1661,11 +1710,89 @@ let rewrite_introduces_cycle graph ~total =
         List.exists (fun (j, _) -> dfs (Node_id.to_int j)) graph.succ.(i)
       in
       Bytes.set state i acyclic;
+      if i >= total then finished := i :: !finished;
       cyclic
     end
   in
   let rec from_root p = p < n && (dfs p || from_root (p + 1)) in
-  from_root total
+  if from_root total then Option.None else Option.Some (List.rev !finished)
+
+(* The existing nodes a rewrite pointed at each produced node, by produced
+   index. An accepted rewrite only ever conses onto an existing node's edges, so
+   those are the edges in front of the list the parent holds. *)
+let entering_edges t graph ~total =
+  let entering = Array.make (node_count graph - total) [] in
+  for k = 0 to total - 1 do
+    let before = t.succ.(k) in
+    let rec added = function
+      | (p, _) :: rest as edges when edges != before ->
+          let at = Node_id.to_int p - total in
+          entering.(at) <- k :: entering.(at);
+          added rest
+      | _ -> ()
+    in
+    added graph.succ.(k)
+  done;
+  entering
+
+(* The nodes of [entering] a settled node can reach [p] through without passing
+   another of them: one that reaches a second is found through the second. One
+   with no settled set is reached by no settled node, as a settled node's whole
+   cone is settled, so it is left for whoever closes it to read [p] from its
+   edges. On a source-order chain this leaves a node or two of the dozens
+   pointing at a merge. *)
+let entering_frontier sets entering =
+  let pointing = Reach.row sets in
+  List.iter (Reach.add pointing) entering;
+  List.filter
+    (fun k -> Reach.is_set sets.(k) && not (Reach.meets sets.(k) pointing))
+    entering
+
+let rec meets_frontier set a = function
+  | [] -> false
+  | k :: rest -> k = a || Reach.mem set k || meets_frontier set a rest
+
+(* Settle produced node [p] and add it, with all it reaches, to every settled
+   node that reaches one of [entering], the nodes pointing at it. A node that
+   reaches no produced node keeps the set it had: its cone is untouched. *)
+let settle_produced graph sets ~total entering p =
+  close_cone graph sets p
+  && begin
+    (match entering_frontier sets entering with
+    | [] -> ()
+    | frontier ->
+        let reached = sets.(p) in
+        for a = 0 to total - 1 do
+          let set = sets.(a) in
+          if Reach.is_set set && meets_frontier set a frontier then begin
+            Reach.add set p;
+            Reach.union ~into:set reached;
+            graph.expansions <- graph.expansions + 1
+          end
+        done);
+    true
+  end
+
+(* Hand the accepted [graph] the reachable sets its parent [t] settled. The
+   rewrite added edges only at the produced nodes, so the sets that change are
+   theirs and those of the nodes that reach them. Produced nodes are settled in
+   [finished] order: by the time one is closed, every set in its cone already
+   holds the produced nodes below it. The parent gives its sets up, and asks
+   again from its own edges if it is ever questioned. *)
+let carry_reach t graph ~total finished =
+  match t.reach with
+  | Unbuilt | Walked -> ()
+  | Held sets ->
+      t.reach <- Unbuilt;
+      if graph.count <= closure_node_limit then begin
+        let sets = Reach.grow sets graph.count in
+        let entering = entering_edges t graph ~total in
+        if
+          List.for_all
+            (fun p -> settle_produced graph sets ~total entering.(p - total) p)
+            finished
+        then graph.reach <- Held sets
+      end
 
 let rewrite t ~consume ~produce : (t, rewrite_error) result =
   match rewrite_base t ~consume ~produce with
@@ -1673,18 +1800,19 @@ let rewrite t ~consume ~produce : (t, rewrite_error) result =
   | Ok (total, consumed, graph) -> (
       match rewrite_successors t ~consume ~consumed ~total graph with
       | Error _ as e -> e
-      | Ok succ ->
+      | Ok succ -> (
           let graph = { graph with succ } in
-          if rewrite_introduces_cycle graph ~total then Error Cycle
-          else begin
-            (* the rewrite is accepted: register its produced nodes in the
-               shared index so later rewrites find them as external
-               candidates *)
-            for p = total to node_count graph - 1 do
-              index_node graph (Node_id.of_int_exn p)
-            done;
-            Ok graph
-          end)
+          match produced_finish_order graph ~total with
+          | Option.None -> Error Cycle
+          | Option.Some finished ->
+              (* the rewrite is accepted: register its produced nodes in the
+                 shared index so later rewrites find them as external
+                 candidates *)
+              for p = total to node_count graph - 1 do
+                index_node graph (Node_id.of_int_exn p)
+              done;
+              carry_reach t graph ~total finished;
+              Ok graph))
 
 let try_rewrite t ~consume ~produce : t option =
   match rewrite t ~consume ~produce with
