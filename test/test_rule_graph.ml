@@ -872,30 +872,112 @@ let reachability_survives_a_rewrite () =
         "nodes the rewrite settled beyond those its parent had" 1
         (rewritten - settled)
 
-(* The same read by allocation, on a rewrite of a rule that orders against
-   nothing beside a settled run of N. The rewrite copies each per-node array,
-   linear in N, and changes no set, so asking about the run afterwards reads
-   what the parent settled. Settling the run again would allocate a set of N
-   bits for each of N nodes. Doubling N may cost about twice as much, not four
-   times. *)
-let a_rewrite_allocates_linearly () =
-  let rewrite_and_ask n =
-    let g = Rule_graph.of_rules (dense_conflict n @ rules_of ".z{margin:0}") in
-    ignore (Rule_graph.precedes g (nid 0) (nid (n - 1)));
-    measure (fun () ->
-        match
-          Rule_graph.try_rewrite g ~consume:(nids [ n ])
-            ~produce:(rules_of ".z{margin:1px}")
-        with
-        | None -> Alcotest.fail "replacing the lone rule should commit"
-        | Some g' -> Rule_graph.precedes g' (nid 0) (nid (n - 1)))
+(* A rewrite costs what it reads, never a copy of the graph: an attempt writes
+   its nodes past the last one its parent holds and keeps the edges it points at
+   existing nodes aside until it is accepted, so neither outcome copies a
+   per-node array, and a committed one allocates for the graph's size only the
+   reachable set of the node it produces, a bit per node. The rules rewritten
+   below order against three neighbours and nothing in the run of N beside them,
+   so doubling N must leave the words a rewrite allocates about where they were.
+   The first attempt on a graph makes room past its last node and settles the
+   sets the questions read; the graph keeps both, so each case measures the
+   attempt after it. *)
+let neighbours = ".z{margin:0}.w{margin:1px}.z{margin:2px}"
+
+let a_rejected_rewrite_copies_no_node () =
+  let attempt n =
+    let g = Rule_graph.of_rules (dense_conflict n @ rules_of neighbours) in
+    (* margin:0 and margin:2px would have to sit both before and after .w *)
+    let reject () =
+      match
+        Rule_graph.try_rewrite g
+          ~consume:(nids [ n; n + 2 ])
+          ~produce:(rules_of ".z{margin:0;margin:2px}")
+      with
+      | None -> ()
+      | Some _ -> Alcotest.fail "merging across .w should be rejected"
+    in
+    reject ();
+    measure reject
   in
-  let a1 = rewrite_and_ask 2000 in
-  let a2 = rewrite_and_ask 4000 in
+  let a1 = attempt 2000 in
+  let a2 = attempt 4000 in
   Alcotest.(check bool)
     (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
     true
-    (a1 = 0. || a2 < a1 *. 2.5)
+    (a2 < a1 *. 1.25)
+
+let a_committed_rewrite_copies_no_node () =
+  let commit n =
+    let g = Rule_graph.of_rules (dense_conflict n @ rules_of neighbours) in
+    let replace g at css =
+      match
+        Rule_graph.try_rewrite g ~consume:(nids [ at ]) ~produce:(rules_of css)
+      with
+      | None -> Alcotest.fail "replacing a rule by itself should commit"
+      | Some g' -> g'
+    in
+    let g' = replace g n ".z{margin:0}" in
+    measure (fun () -> replace g' (n + 1) ".w{margin:1px}")
+  in
+  let a1 = commit 2000 in
+  let a2 = commit 4000 in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a2 < a1 *. 1.25)
+
+(* A committed rewrite writes into storage its parent shares, and the parent is
+   still a graph: it keeps its nodes, its edges and its order. Rewriting it
+   again would write over the nodes its child holds, so that is refused. *)
+let a_rewritten_graph_keeps_its_answers () =
+  let g = g_of ".a{color:red}.k{color:green}.b{color:blue}.c{margin:0}" in
+  let before = graph_to_string g in
+  match
+    Rule_graph.try_rewrite g
+      ~consume:(nids [ 0; 3 ])
+      ~produce:(rules_of ".a{color:red}.c{margin:0}")
+  with
+  | None -> Alcotest.fail "replacing .a and .c should commit"
+  | Some g' -> (
+      Alcotest.(check string) "the parent's order" before (graph_to_string g);
+      Alcotest.(check bool)
+        "the parent still holds its consumed nodes" true
+        (Rule_graph.is_live g (nid 0) && Rule_graph.is_live g (nid 3));
+      Alcotest.(check bool)
+        "the parent does not hold its child's nodes" false
+        (Rule_graph.is_live g (nid 4));
+      Alcotest.(check (list int))
+        "the parent's edges" [ 1 ]
+        (List.map Rule_graph.Node_id.to_int (Rule_graph.successors g (nid 0)));
+      check_reachability "parent" g;
+      check_reachability "child" g';
+      match
+        Rule_graph.try_rewrite g ~consume:(nids [ 1 ])
+          ~produce:(rules_of ".k{color:green}")
+      with
+      | _ -> Alcotest.fail "rewriting a superseded graph should be refused"
+      | exception Invalid_argument _ -> ())
+
+(* A cycle a rewrite would close runs through the nodes it produces and, between
+   them, through existing nodes the produced ones point at and are pointed at
+   by. Here [.x,.s] keeps [color:red] ahead of [.y] and [.v,.s] keeps
+   [padding:1px] behind [.z], while [.y] precedes [.z] on [margin] and the
+   shared [.s] branch pins [.v,.s] ahead of [.x,.s]: every edge orients, and
+   together they close a loop through two existing nodes. *)
+let rewrite_rejects_a_cycle_through_existing_nodes () =
+  let g =
+    g_of
+      ".x{color:red}.y{color:blue;margin:0}.z{margin:1px;padding:0}.v{padding:1px}"
+  in
+  match
+    Rule_graph.rewrite g
+      ~consume:(nids [ 0; 3 ])
+      ~produce:(rules_of ".v,.s{padding:1px}.x,.s{color:red}")
+  with
+  | Error Rule_graph.Cycle -> ()
+  | Error _ -> Alcotest.fail "rejected, but not as a cycle"
+  | Ok _ -> Alcotest.fail "the rewrite should be rejected"
 
 (* Holding a reachable set per node costs a bit per node per node, so past a run
    length the answers come from walking the edges again. Nothing else reaches
@@ -1167,8 +1249,14 @@ let suite =
         reachability_follows_a_rewrite;
       Alcotest.test_case "reachability survives a rewrite" `Quick
         reachability_survives_a_rewrite;
-      Alcotest.test_case "a rewrite allocates linearly" `Quick
-        a_rewrite_allocates_linearly;
+      Alcotest.test_case "a rejected rewrite copies no node" `Quick
+        a_rejected_rewrite_copies_no_node;
+      Alcotest.test_case "a committed rewrite copies no node" `Quick
+        a_committed_rewrite_copies_no_node;
+      Alcotest.test_case "a rewritten graph keeps its answers" `Quick
+        a_rewritten_graph_keeps_its_answers;
+      Alcotest.test_case "rewrite rejects a cycle through existing nodes" `Quick
+        rewrite_rejects_a_cycle_through_existing_nodes;
       Alcotest.test_case "a long run answers by walking" `Quick
         a_long_run_answers_by_walking;
       Alcotest.test_case "dense graph build/project is sub-quadratic" `Quick
