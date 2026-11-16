@@ -50,8 +50,6 @@ let add_nth nth s = { s with nth = nth :: s.nth; complex = true }
 
 let nth_of_selector = function
   | Selector_intf.First_child | Selector_intf.Only_child -> Some (Index 1)
-  | Selector_intf.Nth_child (Selector_intf.Odd, None) -> Some Odd
-  | Selector_intf.Nth_child (Selector_intf.Even, None) -> Some Even
   | Selector_intf.Nth_child (Selector_intf.Index n, None) when n >= 1 ->
       Some (Index n)
   | Selector_intf.Nth_child (Selector_intf.An_plus_b (2, 1), None) -> Some Odd
@@ -101,19 +99,9 @@ let rec fold_simple s (sel : Selector.t) =
      element rather than narrowing it. Same predicate as the reader's, so the
      summary calls a compound a pseudo-element exactly when the reader does. *)
   | sel when Selector.is_pseudo_element sel -> (
-      (* Normalize legacy single-colon spellings ([:before] vs [::before]) so
-         the two parses of the same pseudo-element compare equal. *)
-      let canonical : Selector.t =
-        match sel with
-        | Before _ -> Before Double
-        | After _ -> After Double
-        | First_letter _ -> First_letter Double
-        | First_line _ -> First_line Double
-        | other -> other
-      in
       match s.pseudo_element with
-      | None -> { s with pseudo_element = Some canonical }
-      | Some prev when Selector.equal prev canonical -> s
+      | None -> { s with pseudo_element = Some sel }
+      | Some prev when Selector.equal prev sel -> s
       | Some _ -> mark_complex s)
   | Attribute (ns, attr_name, matcher, flag) ->
       {
@@ -141,10 +129,7 @@ let rec of_selector (sel : Selector.t) : t =
   | List _ -> { empty with complex = true; opaque = true }
   | _ -> fold_simple empty sel
 
-let exact_value = function
-  | Selector.Exact s | Exact_quoted (s, _) -> Some s
-  | _ -> None
-
+let exact_value = function Selector.Exact s -> Some s | _ -> None
 let same_attr_key a b = a.key = b.key
 
 (* HTML sec. 4.16.2 lowercases a type selector before comparing it to an HTML

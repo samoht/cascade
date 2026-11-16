@@ -153,7 +153,9 @@ let simple r =
   (* Not [:empty]: every generated element holds a letter, so it would match
      nothing, and the default reading declines it, which would keep every rule
      writing the same slots out of the projection with it. *)
-  | 13 -> Selector.compound [ typ (); Selector.Nth_child (Selector.Even, None) ]
+  | 13 ->
+      Selector.compound
+        [ typ (); Selector.Nth_child (Selector.An_plus_b (2, 0), None) ]
   | 14 ->
       Selector.compound
         [ cls (); Selector.Nth_last_child (Selector.Index 1, None) ]
@@ -165,7 +167,9 @@ let simple r =
   | 16 -> Selector.compound [ typ (); Selector.Only_child ]
   | _ ->
       Selector.compound
-        [ cls (); Selector.Nth_child (Selector.Odd, Some [ cls () ]) ]
+        [
+          cls (); Selector.Nth_child (Selector.An_plus_b (2, 1), Some [ cls () ]);
+        ]
 
 let combinators =
   [

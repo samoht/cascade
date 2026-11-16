@@ -83,16 +83,16 @@ let spec_minifier_semantics () =
     ];
   check_minified_to ":before" ":before";
   check_minified_to ":before" "::before";
-  check_pretty_to ":before" ":before";
+  check_pretty_to "::before" ":before";
   check_minified_to ":after" ":after";
   check_minified_to ":after" "::after";
-  check_pretty_to ":after" ":after";
+  check_pretty_to "::after" ":after";
   check_minified_to ":first-letter" ":first-letter";
   check_minified_to ":first-letter" "::first-letter";
-  check_pretty_to ":first-letter" ":first-letter";
+  check_pretty_to "::first-letter" ":first-letter";
   check_minified_to ":first-line" ":first-line";
   check_minified_to ":first-line" "::first-line";
-  check_pretty_to ":first-line" ":first-line";
+  check_pretty_to "::first-line" ":first-line";
   check_minified_to ":is(.valid,#id)" ":is(.valid,::before,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)"
     ":where(.valid,::before,:future-pseudo,#id)";
@@ -520,16 +520,16 @@ let spec_selector_input_state_pseudos () =
 let spec_selector_pseudo_element_matrix () =
   check ":before";
   check ~expected:":before" "::before";
-  check_pretty_to ":before" ":before";
+  check_pretty_to "::before" ":before";
   check ":after";
   check ~expected:":after" "::after";
-  check_pretty_to ":after" ":after";
+  check_pretty_to "::after" ":after";
   check ":first-line";
   check ~expected:":first-line" "::first-line";
-  check_pretty_to ":first-line" ":first-line";
+  check_pretty_to "::first-line" ":first-line";
   check ":first-letter";
   check ~expected:":first-letter" "::first-letter";
-  check_pretty_to ":first-letter" ":first-letter";
+  check_pretty_to "::first-letter" ":first-letter";
   List.iter check
     [
       "::marker";
@@ -597,7 +597,7 @@ let spec_selector_pseudo_manifest () =
       ":nth-col(odd)";
       ":nth-last-child(2n of:not([hidden]))";
       ":nth-last-child(3n+1 of:where(.visible,:not([hidden])))";
-      ":nth-last-col(even)";
+      ":nth-last-col(2n)";
       ":nth-last-of-type(-n+3)";
       ":nth-of-type(3n)";
       ":only-child";

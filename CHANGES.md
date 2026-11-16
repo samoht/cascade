@@ -2,6 +2,10 @@
 
 ### Breaking
 
+- A selector reads into one node whatever its spelling. `Selector.Before`,
+  `After`, `First_letter` and `First_line` take no colon form, the `*_quoted`
+  attribute matches are gone and every value is held decoded, and `Selector.Odd`
+  and `Even` are `An_plus_b (2, 1)` and `An_plus_b (2, 0)` (#1357).
 - `Component.t` has a `Flat` case: the contents of a block or function nested
   past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
   a tree. A match over `Component.t` needs a case for it (#1296).
@@ -53,6 +57,10 @@
   residual sheet. `--minify` output is unchanged (#1351).
 - A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
   quote inside `local("...")` print back as that name (#1351).
+- Pretty output spells a selector one way: `::before`, a quoted attribute value
+  and `odd`/`even`, whatever the input wrote. Minified output takes the shorter
+  of an attribute value's escaped ident and string, so `[x="a b"]` prints as
+  `[x=a\ b]` (#1357).
 - `Css.to_string ~minify:true` prints a selector as it is given: folding
   `:not(:not(X))`, `:is(:link,:visited)`, `:nth-child(1)`, `:not(:dir(ltr))` and
   `input:not(:enabled)` moved to `Selector.canonicalize`, which `--minify` runs

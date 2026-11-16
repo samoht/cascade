@@ -335,8 +335,9 @@ let selectors_attribute () =
   roundtrip "[lang|=\"en\"] { color: blue }" "[lang|=en]{color:#00f}";
   (* [att^=val] - Prefix *)
   roundtrip "[href^=\"https\"] { color: green }" "[href^=https]{color:green}";
-  (* [att$=val] - Suffix: non-ident values keep quotes *)
-  roundtrip "[href$=\".pdf\"] { color: red }" "[href$=\".pdf\"]{color:red}";
+  (* [att$=val] - Suffix: a value that is no ident takes the shorter of the
+     string and the escaped ident *)
+  roundtrip "[href$=\".pdf\"] { color: red }" "[href$=\\.pdf]{color:red}";
   (* [att*=val] - Substring *)
   roundtrip "[title*=\"hello\"] { color: blue }" "[title*=hello]{color:#00f}"
 
@@ -679,14 +680,17 @@ let property_at_rule () =
 
 (* Minification-only canonicalizations above must not erase authored syntax
    forms in non-minified output. Whitespace is formatter-controlled, so these
-   checks compare whitespace-stripped fragments. *)
+   checks compare whitespace-stripped fragments. A selector's spelling is not
+   such a form: docs/invariants.md, "Source-token fidelity is not a contract",
+   and Selectors 4 sec. 3.6.1 reads [:first-line] and [::first-line] as one
+   pseudo-element, which pretty output spells with two colons. *)
 let non_minified_preserves_css2_forms () =
   preserves_non_minified "@page :left { margin-left: 4cm; margin-right: 3cm }"
     [ "@page :left"; "margin-left: 4cm"; "margin-right: 3cm" ];
   preserves_non_minified "body *[lang|=\"en\"] + p:first-line { color: red }"
-    [ "*[lang|=\"en\"]"; "p:first-line" ];
+    [ "*[lang|=\"en\"]"; "p::first-line" ];
   preserves_non_minified "q:before { content: open-quote }"
-    [ ":before"; "open-quote" ];
+    [ "::before"; "open-quote" ];
   preserves_non_minified "q::after { content: close-quote }"
     [ "::after"; "close-quote" ];
   preserves_non_minified "div { page-break-before: always }"
@@ -765,8 +769,9 @@ let non_minified_preserves_selector_forms () =
     [ "[href$=\".pdf\"]" ];
   preserves_non_minified "[title*=\"hello\"] { color: blue }"
     [ "[title*=\"hello\"]" ];
-  preserves_non_minified ":nth-child(2n+1) { color: red }"
-    [ ":nth-child(2n+1)" ];
+  (* Selectors 4 sec. 14: [2n+1] and [odd] are one [An+B], which pretty output
+     spells [odd]. *)
+  preserves_non_minified ":nth-child(2n+1) { color: red }" [ ":nth-child(odd)" ];
   preserves_non_minified ":nth-child(even) { color: blue }"
     [ ":nth-child(even)" ];
   preserves_non_minified "::before { content: '' }"

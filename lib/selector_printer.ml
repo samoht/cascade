@@ -16,22 +16,6 @@ let pp_attr_flag ctx = function
    ident: [-2] and [-] would come back as a number and a delim. *)
 let attr_value_needs_quoting value = not (Syntax.is_ident value)
 
-(* Under minify, drop the surrounding quotes when the value is a CSS ident since
-   Selectors 4 sec. 6.1 accepts the ident and string forms at the same grammar
-   position and the bare form is shorter. The non-minified path keeps the quotes
-   for source fidelity - the user who wrote [type="text"] expects to read
-   [type="text"] back, even if [type=text] would parse the same way. An unquoted
-   value holds the spelling it was read with, escapes included; a quoted one
-   holds the decoded string, so a backslash in it is a character to escape, not
-   an escape to keep. *)
-let pp_attr_value ?quote ctx value =
-  match quote with
-  | None when String.contains value '\\' -> Pp.string ctx value
-  | _ when Pp.minified ctx && not (attr_value_needs_quoting value) ->
-      Pp.string ctx value
-  | Some quote when not (Pp.minified ctx) -> Pp.quoted_string ~quote ctx value
-  | _ -> Pp.quoted_string ctx value
-
 (* Helper to print a token with pretty spacing when not minifying. *)
 let pp_token : string Pp.t =
  fun ctx token ->
@@ -40,46 +24,6 @@ let pp_token : string Pp.t =
     Pp.space ctx ();
     Pp.string ctx token;
     Pp.space ctx ())
-
-let pp_attribute_match : attribute_match Pp.t =
- fun ctx -> function
-  | Presence -> ()
-  | Exact value ->
-      Pp.char ctx '=';
-      pp_attr_value ctx value
-  | Exact_quoted (value, quote) ->
-      Pp.char ctx '=';
-      pp_attr_value ~quote ctx value
-  | Whitespace_list value ->
-      Pp.string ctx "~=";
-      pp_attr_value ctx value
-  | Whitespace_list_quoted (value, quote) ->
-      Pp.string ctx "~=";
-      pp_attr_value ~quote ctx value
-  | Hyphen_list value ->
-      Pp.string ctx "|=";
-      pp_attr_value ctx value
-  | Hyphen_list_quoted (value, quote) ->
-      Pp.string ctx "|=";
-      pp_attr_value ~quote ctx value
-  | Prefix value ->
-      Pp.string ctx "^=";
-      pp_attr_value ctx value
-  | Prefix_quoted (value, quote) ->
-      Pp.string ctx "^=";
-      pp_attr_value ~quote ctx value
-  | Suffix value ->
-      Pp.string ctx "$=";
-      pp_attr_value ctx value
-  | Suffix_quoted (value, quote) ->
-      Pp.string ctx "$=";
-      pp_attr_value ~quote ctx value
-  | Substring value ->
-      Pp.string ctx "*=";
-      pp_attr_value ctx value
-  | Substring_quoted (value, quote) ->
-      Pp.string ctx "*=";
-      pp_attr_value ~quote ctx value
 
 let pp_aria_attr : aria_attr Pp.t =
  fun ctx a -> Pp.string ctx (string_of_aria_attr a)
@@ -90,31 +34,25 @@ let pp_attr_name : attr_name Pp.t =
 (** Pretty print nth expression *)
 let pp_nth : nth Pp.t =
  fun ctx -> function
-  (* Source-shape preserving: the parser keeps [Odd]/[Even] for the keyword
-     spellings and [An_plus_b (2, 1)] / [An_plus_b (2, 0)] for the explicit An+B
-     forms, so the printer just emits whichever the author actually wrote in
-     pretty mode. Under minify, CSS Selectors 4 14 makes [2n+1]/[odd] and
-     [2n]/[even] spec-equivalent; pick the shorter spelling. *)
-  | An_plus_b (2, 1) when Pp.minified ctx -> Pp.string ctx "odd"
-  | Even when Pp.minified ctx -> Pp.string ctx "2n"
-  | Odd -> Pp.string ctx "odd"
-  | Even -> Pp.string ctx "even"
+  (* CSS Selectors 4 sec. 14 spells [2n+1] as [odd] and [2n] as [even]; minified
+     output takes the shortest of the spellings. *)
+  | An_plus_b (2, 1) -> Pp.string ctx "odd"
+  | An_plus_b (2, 0) -> Pp.string ctx (if Pp.minified ctx then "2n" else "even")
   | Index n -> Pp.int ctx n
+  | An_plus_b (0, b) -> Pp.int ctx b
   | An_plus_b (a, b) ->
-      if a = 0 then Pp.int ctx b
+      (* Print coefficient *)
+      if a = 1 then Pp.string ctx "n"
+      else if a = -1 then Pp.string ctx "-n"
       else (
-        (* Print coefficient *)
-        if a = 1 then Pp.string ctx "n"
-        else if a = -1 then Pp.string ctx "-n"
-        else (
-          Pp.int ctx a;
-          Pp.char ctx 'n');
+        Pp.int ctx a;
+        Pp.char ctx 'n');
 
-        (* Print offset *)
-        if b > 0 then (
-          Pp.char ctx '+';
-          Pp.int ctx b)
-        else if b < 0 then Pp.int ctx b (* b = 0: print nothing *))
+      (* Print offset *)
+      if b > 0 then (
+        Pp.char ctx '+';
+        Pp.int ctx b)
+      else if b < 0 then Pp.int ctx b (* b = 0: print nothing *)
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
@@ -144,14 +82,9 @@ let vendor_elem ctx name =
 
 (* CSS Selectors 4 sec. 3.6.1 keeps [:before] (CSS 2.1) as a deprecated
    compatibility spelling for the four original pseudo-elements. Minified output
-   uses the shorter valid alias; pretty output preserves the parsed colon form
-   so the authored spelling round-trips. *)
-let legacy_elem ctx form name =
-  let prefix =
-    if Pp.minified ctx then ":"
-    else match form with Single -> ":" | Double -> "::"
-  in
-  Pp.string ctx prefix;
+   uses the shorter alias; pretty output the modern double colon. *)
+let legacy_elem ctx name =
+  Pp.string ctx (if Pp.minified ctx then ":" else "::");
   Pp.string ctx name
 
 let func ctx name pp_content value =
@@ -337,6 +270,40 @@ let escape_selector_name name =
     end;
     Buffer.contents buf
 
+(* Minified output takes the shorter of the ident and the string spelling, which
+   Selectors 4 sec. 6.1 accepts at the same grammar position; pretty output
+   quotes every value. *)
+let pp_attr_value ctx value =
+  if not (Pp.minified ctx) then Pp.quoted_string ctx value
+  else if not (attr_value_needs_quoting value) then Pp.string ctx value
+  else
+    let ident = escape_selector_name value in
+    if ident <> "" && String.length ident < Pp.size Pp.quoted_string value then
+      Pp.string ctx ident
+    else Pp.quoted_string ctx value
+
+let pp_attribute_match : attribute_match Pp.t =
+ fun ctx -> function
+  | Presence -> ()
+  | Exact value ->
+      Pp.char ctx '=';
+      pp_attr_value ctx value
+  | Whitespace_list value ->
+      Pp.string ctx "~=";
+      pp_attr_value ctx value
+  | Hyphen_list value ->
+      Pp.string ctx "|=";
+      pp_attr_value ctx value
+  | Prefix value ->
+      Pp.string ctx "^=";
+      pp_attr_value ctx value
+  | Suffix value ->
+      Pp.string ctx "$=";
+      pp_attr_value ctx value
+  | Substring value ->
+      Pp.string ctx "*=";
+      pp_attr_value ctx value
+
 let pp_ns ctx = function
   | Any -> Pp.string ctx "*|"
   | None ->
@@ -358,15 +325,10 @@ let rec can_follow_nth_of = function
   | _ -> true
 
 let pp_nth_col_func ctx name expr =
-  let pp_nth_col ctx = function
-    | Odd -> Pp.string ctx "odd"
-    | Even -> Pp.string ctx "even"
-    | expr -> pp_nth ctx expr
-  in
   Pp.char ctx ':';
   Pp.string ctx name;
   Pp.char ctx '(';
-  pp_nth_col ctx expr;
+  pp_nth ctx expr;
   Pp.char ctx ')'
 
 let comma_space ctx () = Pp.string ctx ", "
@@ -503,10 +465,10 @@ and pp : t Pp.t =
   | Local_call selectors -> func ctx "local" sels selectors
   | Global_call selectors -> func ctx "global" sels selectors
   (* Legacy pseudo-elements (use single colon in minified mode) *)
-  | Before form -> legacy_elem ctx form "before"
-  | After form -> legacy_elem ctx form "after"
-  | First_letter form -> legacy_elem ctx form "first-letter"
-  | First_line form -> legacy_elem ctx form "first-line"
+  | Before -> legacy_elem ctx "before"
+  | After -> legacy_elem ctx "after"
+  | First_letter -> legacy_elem ctx "first-letter"
+  | First_line -> legacy_elem ctx "first-line"
   (* Modern double-colon pseudo-elements *)
   | Backdrop -> elem ctx "backdrop"
   | Marker -> elem ctx "marker"

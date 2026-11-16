@@ -347,8 +347,8 @@ let rec specificity = function
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
-  | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
-  | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
+  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
+  | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
   | Unknown_pseudo_element _ | Unknown_pseudo_element_call _

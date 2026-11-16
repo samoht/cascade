@@ -119,15 +119,14 @@ let pseudo_class_scrollbar_idents =
       Window_inactive;
     ]
 
-let pseudo_element_legacy_idents form =
+(* CSS Selectors 4 sec. 3.6.1: the four CSS 2.1 pseudo-elements read with one
+   colon too, as the same node. *)
+let pseudo_element_legacy_idents =
   [
-    (* Legacy pseudo-elements: parser records [Single] or [Double] colon for
-       tests and compatibility, but the printer canonicalizes pretty output to
-       the modern double-colon spelling. *)
-    ("before", Before form);
-    ("after", After form);
-    ("first-letter", First_letter form);
-    ("first-line", First_line form);
+    ("before", Before);
+    ("after", After);
+    ("first-letter", First_letter);
+    ("first-line", First_line);
   ]
 
 let pseudo_element_modern_idents =
@@ -206,8 +205,8 @@ let pseudo_element_double_colon_idents =
    / [::ng-deep] are unknown [::] names like any other, since Selectors 4 has no
    piercing combinator. *)
 let is_pseudo_element = function
-  | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
-  | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
+  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
+  | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Moz_placeholder | Webkit_input_placeholder
   | Ms_input_placeholder | Webkit_scrollbar _ | Webkit_search_cancel_button
   | Webkit_search_decoration | Webkit_datetime_edit_fields_wrapper
@@ -394,7 +393,7 @@ and pseudo_element_allows_argument pe = function
    element-backed and so belongs here on that reading, and is left out because
    sec. 5 also says it never matches after a pseudo-element. *)
 let is_tree_abiding_pseudo_element = function
-  | Before _ | After _ | Marker | Placeholder | Backdrop | View_transition
+  | Before | After | Marker | Placeholder | Backdrop | View_transition
   | Details_content | File_selector_button ->
       true
   | _ -> false
@@ -432,7 +431,7 @@ let pseudo_element_allows_sub pe sub =
   | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ -> true
   | Part _ | Details_content -> ( match sub with Part _ -> false | _ -> true)
   | Slotted _ -> is_tree_abiding_pseudo_element sub
-  | Before _ | After _ -> ( match sub with Marker -> true | _ -> false)
+  | Before | After -> ( match sub with Marker -> true | _ -> false)
   | _ -> false
 
 (* CSS Selectors 4 sec. 3.6.5: a pseudo-element defined to have internal
@@ -531,13 +530,12 @@ let rec has_refused_simple_in_compound = function
 let pseudo_class_all_idents_lazy =
   lazy
     (pseudo_class_base_idents @ pseudo_class_scrollbar_idents
-    @ pseudo_element_legacy_idents Single
-    @ pseudo_element_modern_idents @ pseudo_vendor_idents)
+   @ pseudo_element_legacy_idents @ pseudo_element_modern_idents
+   @ pseudo_vendor_idents)
 
 let pseudo_class_all_idents () = Lazy.force pseudo_class_all_idents_lazy
 
 let pseudo_element_unknown_idents =
   lazy
     (pseudo_element_modern_idents @ pseudo_vendor_idents
-   @ pseudo_element_double_colon_idents
-    @ pseudo_element_legacy_idents Double)
+   @ pseudo_element_double_colon_idents @ pseudo_element_legacy_idents)

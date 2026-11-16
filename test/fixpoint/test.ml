@@ -29,13 +29,11 @@
     selector that prints like the reader's shape but is another node: every
     later rewrite that compares selectors reads the two apart, and the pass that
     would have fired only fires once the text is read back. Selectors are
-    compared by their tree, and a leaf by its printed spelling, since the
-    selector AST still records how some simple selectors were spelled (a
-    pseudo-element's colons, an attribute value's quotes, [odd] against [2n+1]).
-    Every block reads back with as many statements as it was built with.
-    Declarations are not compared: a custom property's tokens keep the spelling
-    they were written with, which is part of the value, and the minified printer
-    spells some of them shorter.
+    compared structurally, bar an unknown functional pseudo, which keeps the
+    tokens it was read from, and every block reads back with as many statements
+    as it was built with. Declarations are not compared: a custom property's
+    tokens keep the spelling they were written with, which is part of the value,
+    and the minified printer spells some of them shorter.
 
     Failures are reduced before they are reported. A candidate is always a
     concatenation of substrings of the original input, never a re-print of its
@@ -461,7 +459,9 @@ let print_report loaded results =
 let selector_text sel = Selector.to_string ~minify:true sel
 
 (* The tree the reader builds, down to the simple selectors and the selector
-   lists of the pseudo-classes that take one; a leaf is its spelling. *)
+   lists of the pseudo-classes that take one. An unknown functional pseudo is a
+   leaf compared by spelling: it holds the tokens it was read from, positions
+   included. *)
 let rec same_selector (a : Selector.t) (b : Selector.t) =
   match (a, b) with
   | Compound xs, Compound ys
@@ -482,7 +482,9 @@ let rec same_selector (a : Selector.t) (b : Selector.t) =
       ( Compound _ | List _ | Is _ | Where _ | Not _ | Has _ | Combined _
       | Relative _ ) ) ->
       false
-  | a, b -> String.equal (selector_text a) (selector_text b)
+  | (Unknown_pseudo_class_call _ | Unknown_pseudo_element_call _), _ ->
+      String.equal (selector_text a) (selector_text b)
+  | a, b -> Selector.equal a b
 
 (* Every selector a sheet holds, in document order. Only selectors are compared,
    so a statement the printer writes as nothing (an empty [@font-face]) does not
