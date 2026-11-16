@@ -573,6 +573,37 @@ let var_fallback_cost_is_linear () =
     true
     (a1 > 0. && a2 < a1 *. 3.)
 
+(* A warning says what became of the construct it reports on: [Recovered] keeps
+   it in the output and [Dropped] loses it. An [@media] block is no different
+   from an [@supports] one there, and its own condition, which the block keeps,
+   stays [Recovered]. *)
+let warnings_inside_media_keep_their_recovery () =
+  let recoveries css =
+    match of_string ~strict:false css with
+    | Error e -> Alcotest.failf "lenient parse failed: %s" (Error.to_string e)
+    | Ok parsed ->
+        List.map
+          (fun (w : Error.t) ->
+            match w.recovery with
+            | Error.Recovery.Dropped { construct = Rule; _ } -> "dropped rule"
+            | Dropped { construct = Declaration; _ } -> "dropped declaration"
+            | Recovered -> "recovered")
+          parsed.warnings
+  in
+  let check name expected css =
+    Alcotest.(check (list string)) name expected (recoveries css)
+  in
+  check "rule in @supports" [ "dropped rule" ]
+    "@supports (color:red){a!{color:red}}";
+  check "rule in @media" [ "dropped rule" ] "@media screen{a!{color:red}}";
+  check "rule in nested @media" [ "dropped rule" ]
+    "@media screen{@media print{a!{color:red}}}";
+  check "declaration in @media" [ "dropped declaration" ]
+    "@media screen{a{color:red;color:1px}}";
+  check "condition and rule in @media"
+    [ "dropped rule"; "recovered" ]
+    "@media screen,,print{a!{color:red}}"
+
 let suite =
   ( "css_parsing",
     [
@@ -591,4 +622,6 @@ let suite =
         `Quick spec_at_rule_name_case_insensitive;
       Alcotest.test_case "var() fallback cost is linear" `Quick
         var_fallback_cost_is_linear;
+      Alcotest.test_case "warnings inside @media keep their recovery" `Quick
+        warnings_inside_media_keep_their_recovery;
     ] )
