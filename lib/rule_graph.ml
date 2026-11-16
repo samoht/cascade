@@ -459,15 +459,26 @@ let collect_string_bucket bucket key stamp seen acc =
    dimensions in the index skips either whole group without enumerating its
    nodes.
 
-   For a simple one-declaration branch, every distinct declaration at the
-   frontier gets an edge to the new node. Those old frontier nodes are then
-   transitively dominated, so only the new node and any same-declaration peers
-   remain. [all] and [opaque] preserve full history for shapes where that
+   Simple one-declaration branches in one group conflict exactly when their
+   declarations differ, so in source order they form runs of writers of one
+   declaration, each run ordered after the whole run before it. A new node links
+   to the newest run, or to the run before it when the newest writes its own
+   declaration; every older node reaches both through the runs in between. So
+   the group keeps only those two runs. Keeping only the newest would lose a
+   node two runs back that writes neither the newest declaration nor the new
+   node's. [all] and [opaque] preserve full history for shapes where that
    compaction invariant does not apply. *)
+type writers = {
+  decl : Declaration.declaration;
+  mutable members : node_id list;
+}
+
 type decl_groups = {
   all : node_id list Decl_tbl.t;
   opaque : node_id list Decl_tbl.t;
-  frontier : node_id list Decl_tbl.t;
+  mutable newest : writers option;
+      (** the newest run of simple branches writing one declaration *)
+  mutable previous : writers option;  (** the run before [newest] *)
   mutable all_nodes : node_id list;
       (** every node in [all], newest first, for the walk a query takes over the
           whole group *)
@@ -493,7 +504,8 @@ let empty_decl_groups () =
   {
     all = Decl_tbl.create 4;
     opaque = Decl_tbl.create 4;
-    frontier = Decl_tbl.create 4;
+    newest = Option.None;
+    previous = Option.None;
     all_nodes = [];
     all_scanned = -1;
   }
@@ -544,13 +556,13 @@ let add_decl ~compact groups decl value =
   let groups = importance_decl_groups groups decl in
   push_decl groups.all decl value;
   groups.all_nodes <- value :: groups.all_nodes;
-  if compact then begin
-    let same =
-      Decl_tbl.find_opt groups.frontier decl |> Option.value ~default:[]
-    in
-    Decl_tbl.clear groups.frontier;
-    Decl_tbl.replace groups.frontier decl (value :: same)
-  end
+  if compact then (
+    match groups.newest with
+    | Option.Some run when Declaration.same_minified run.decl decl ->
+        run.members <- value :: run.members
+    | newest ->
+        groups.previous <- newest;
+        groups.newest <- Option.Some { decl; members = [ value ] })
   else push_decl groups.opaque decl value
 
 let add_selector_decl ~compact index summary decl value =
@@ -574,6 +586,12 @@ let collect_decl_table decl groups stamp seen acc =
       else add_candidates stamp seen acc ids)
     groups acc
 
+let collect_writers decl run stamp seen acc =
+  match run with
+  | Option.Some run when not (Declaration.same_minified decl run.decl) ->
+      add_candidates stamp seen acc run.members
+  | Option.Some _ | Option.None -> acc
+
 (* The whole group as candidates, once per query. A node writing the same
    declaration is among them, where the walk per distinct declaration left it
    out: it is refused by the conflict test as before, and a candidate the test
@@ -590,7 +608,8 @@ let collect_group_nodes groups stamp seen acc =
 let collect_distinct_decls ~compact decl groups stamp seen acc =
   let groups = importance_decl_groups groups decl in
   if compact then
-    collect_decl_table decl groups.frontier stamp seen acc |> fun acc ->
+    collect_writers decl groups.newest stamp seen acc |> fun acc ->
+    collect_writers decl groups.previous stamp seen acc |> fun acc ->
     collect_decl_table decl groups.opaque stamp seen acc
   else collect_group_nodes groups stamp seen acc
 
