@@ -592,7 +592,8 @@ let read_non_negative_flex_number t =
         let n, unit = Cursor.number_with_unit t in
         match unit with
         | None -> n
-        | Some u -> Cursor.err_invalid t ("flex factor unit: " ^ u))
+        | Some u ->
+            Cursor.err_invalid t (String.concat "" [ "flex factor unit: "; u ]))
     | _ -> (
         match (Values.read_number t : Values.number) with
         | Values.Num value -> value

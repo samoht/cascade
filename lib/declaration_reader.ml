@@ -456,7 +456,9 @@ let read_importance t =
       Cursor.ws t;
       let ident = Cursor.ident t in
       if String.lowercase_ascii_preserve ident = "important" then true
-      else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
+      else
+        Cursor.err_invalid t
+          (String.concat "" [ "invalid !important declaration: !"; ident ])
   | _ -> false
 
 let is_plain_property_name name =
@@ -478,7 +480,8 @@ let is_plain_property_name name =
 
 let validate_printable_property_name t name =
   if not (is_plain_property_name name) then
-    Cursor.err_invalid t ("unprintable property name: " ^ name)
+    Cursor.err_invalid t
+      (String.concat "" [ "unprintable property name: "; name ])
 
 let is_vendor_extension_property_name name =
   let len = String.length name in
@@ -495,7 +498,9 @@ let validate_unknown_property_name t name =
     String.length name > 0
     && name.[0] = '-'
     && not (is_vendor_extension_property_name name)
-  then Cursor.err_invalid t ("invalid vendor extension property name: " ^ name)
+  then
+    Cursor.err_invalid t
+      (String.concat "" [ "invalid vendor extension property name: "; name ])
 
 (* CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last two
    non-whitespace values of the declaration are a [!] delim and an ident
@@ -561,7 +566,8 @@ let read_custom_property_declaration t : declaration =
      original lexer's tokenization: the only validation we still run is the
      [<dashed-ident>] prefix check. *)
   if String.length name <= 2 || name.[0] <> '-' || name.[1] <> '-' then
-    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
+    Cursor.err_invalid t
+      (String.concat "" [ "expected <dashed-ident>, got: "; name ]);
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   read_custom_value_declaration t name
@@ -661,11 +667,15 @@ let validate_anchor_queries t name components =
   if
     components_call_named [ "anchor" ] components
     && not (allowed inset_properties)
-  then Cursor.err_invalid t ("anchor() is not a value of " ^ name);
+  then
+    Cursor.err_invalid t
+      (String.concat "" [ "anchor() is not a value of "; name ]);
   if
     components_call_named [ "anchor-size" ] components
     && not (allowed anchor_size_properties)
-  then Cursor.err_invalid t ("anchor-size() is not a value of " ^ name)
+  then
+    Cursor.err_invalid t
+      (String.concat "" [ "anchor-size() is not a value of "; name ])
 
 let validate_regular_property_components t name components =
   (* CSS Syntax 3 (ED) sec. 5.5.6 gives a declaration a value of one or more

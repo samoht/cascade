@@ -1148,7 +1148,9 @@ let read_webkit_gradient_body t =
       Webkit_gradient
         (Webkit_gradient.Radial
            { inner_center; inner_radius; outer_center; outer_radius; stops })
-  | _ -> Cursor.err_invalid t ("-webkit-gradient kind: " ^ kind)
+  | _ ->
+      Cursor.err_invalid t
+        (String.concat "" [ "-webkit-gradient kind: "; kind ])
 
 let read_repeating_linear_gradient t =
   match Cursor.call "repeating-linear-gradient" t read_linear_gradient_body with

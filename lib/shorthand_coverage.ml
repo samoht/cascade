@@ -311,7 +311,7 @@ let typed_key hash = (hash land (max_int lsr 1)) lsl 1
 let property_key : type a. a Properties.property -> overlap_key =
  fun property ->
   match property with
-  | Custom_property name -> key ("--" ^ name)
+  | Custom_property name -> key (String.concat "" [ "--"; name ])
   | Unknown_property name -> key name
   | property -> typed_key (Hashtbl.seeded_hash 0 property)
 
@@ -991,7 +991,7 @@ let property_slots : type a. a Properties.property -> overlap_key list =
   | Position_try -> [ key "position-try-order"; key "position-try-fallbacks" ]
   | Position_try_order -> [ key "position-try-order" ]
   | Position_try_fallbacks -> [ key "position-try-fallbacks" ]
-  | Custom_property name -> [ key ("--" ^ name) ]
+  | Custom_property name -> [ key (String.concat "" [ "--"; name ]) ]
   | Unknown_property name -> [ key name ]
   | property -> [ property_key property ]
 

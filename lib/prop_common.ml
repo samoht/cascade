@@ -18,7 +18,8 @@ let positive_integer_of_calc : _ calc -> int option = function
   | _ -> None
 
 let err_invalid_value ?loc ?got t prop_name value =
-  Cursor.err ?loc ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
+  Cursor.err ?loc ?got t
+    (String.concat "" [ "invalid "; prop_name; " value: "; value ])
 
 let read_auto_color t =
   Cursor.enum "auto or colour"
@@ -359,7 +360,7 @@ let hex_string n =
 let padded_hex width n =
   let hex = hex_string n in
   if String.length hex >= width then hex
-  else String.make (width - String.length hex) '0' ^ hex
+  else String.concat "" [ String.make (width - String.length hex) '0'; hex ]
 
 (* RGB color helpers *)
 let rgb_black : color = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
@@ -371,7 +372,9 @@ let read_dashed_ident t =
   let loc = Cursor.position t in
   let ident = Cursor.ident ~keep_case:true t in
   if Custom_property_name.is_valid ident then ident
-  else Cursor.err_invalid ~loc t ("expected dashed ident, got: " ^ ident)
+  else
+    Cursor.err_invalid ~loc t
+      (String.concat "" [ "expected dashed ident, got: "; ident ])
 
 let equal_overflow (a : overflow) b = a = b
 let equal_grid_line (a : grid_line) b = a = b

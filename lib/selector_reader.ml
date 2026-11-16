@@ -6,7 +6,8 @@ let read_aria_attr t : aria_attr =
   let s = Cursor.ident t in
   match aria_attr_of_string s with
   | Some v -> v
-  | None -> Cursor.err t ("not a supported aria attribute: " ^ s)
+  | None ->
+      Cursor.err t (String.concat "" [ "not a supported aria attribute: "; s ])
 
 let read_attr_name t : attr_name =
   let s = Cursor.ident t in
@@ -15,7 +16,8 @@ let read_attr_name t : attr_name =
 (* Simple readers that don't need recursion *)
 let ensure_call_done t name =
   Cursor.ws t;
-  if not (Cursor.is_done t) then Cursor.err t ("unexpected tokens after " ^ name)
+  if not (Cursor.is_done t) then
+    Cursor.err t (String.concat "" [ "unexpected tokens after "; name ])
 
 let read_lang_range t =
   match Cursor.ident_opt t with
@@ -504,7 +506,7 @@ let read_nth_ident_tail t s =
       | Some b ->
           Cursor.skip t;
           An_plus_b (-1, -b)
-      | None -> Cursor.err t ("not an An+B ident: " ^ s))
+      | None -> Cursor.err t (String.concat "" [ "not an An+B ident: "; s ]))
 
 (* After a leading [+] delim, only the positive ident forms are valid. *)
 let read_nth_after_plus t =
@@ -577,7 +579,8 @@ let read_unknown_pseudo_class_call ~all_idents t =
         List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
       in
       if is_known_non_functional then
-        Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
+        Cursor.err_invalid t
+          (String.concat "" [ "pseudo-class is not functional: "; name ]);
       Cursor.skip t;
       Unknown_pseudo_class_call (name, arguments)
   | _ -> Cursor.err_expected t "pseudo-class call"

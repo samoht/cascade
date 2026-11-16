@@ -1152,7 +1152,8 @@ let rec read_will_change t : will_change =
   let read_ident t =
     let ident = Cursor.ident ~keep_case:true t in
     if List.mem (String.lowercase_ascii ident) will_change_reserved then
-      Cursor.err_invalid t ("reserved will-change ident: " ^ ident);
+      Cursor.err_invalid t
+        (String.concat "" [ "reserved will-change ident: "; ident ]);
     ident
   in
   Cursor.enum_or_var "will-change"
@@ -1192,7 +1193,9 @@ let read_margin_trim_edge t : margin_trim_edge =
 let margin_trim_axis_of_ident t = function
   | "block" -> (Block : margin_trim_axis)
   | "inline" -> Inline
-  | s -> Cursor.err_invalid t ("invalid margin-trim axis: " ^ s)
+  | s ->
+      Cursor.err_invalid t
+        (String.concat "" [ "invalid margin-trim axis: "; s ])
 
 let read_margin_trim_axes t : margin_trim option =
   let axes = [ "block"; "inline" ] in
@@ -1220,7 +1223,9 @@ let margin_trim_edge_of_ident t = function
   | "inline-start" -> Inline_start
   | "block-end" -> Block_end
   | "inline-end" -> Inline_end
-  | s -> Cursor.err_invalid t ("invalid margin-trim edge: " ^ s)
+  | s ->
+      Cursor.err_invalid t
+        (String.concat "" [ "invalid margin-trim edge: "; s ])
 
 let read_margin_trim_edges t =
   let edges = [ "block-start"; "inline-start"; "block-end"; "inline-end" ] in

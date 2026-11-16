@@ -266,13 +266,16 @@ let err ?loc ?got t msg =
       match got with
       | Some g ->
           raise_ t
-            (Error.Bad_value { property = ""; reason = msg ^ ": got " ^ g })
+            (Error.Bad_value
+               { property = ""; reason = String.concat "" [ msg; ": got "; g ] })
             loc
       | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc)
 
-let err_invalid ?loc t msg = err ?loc t ("invalid: " ^ msg)
+let err_invalid ?loc t msg = err ?loc t (String.concat "" [ "invalid: "; msg ])
 let err_eof t = raise_ t (Error.Unterminated sort) (position t)
-let err_expected ?loc t what = err ?loc t ("expected " ^ what)
+
+let err_expected ?loc t what =
+  err ?loc t (String.concat "" [ "expected "; what ])
 
 let err_expected_but_eof t what =
   raise_ t (Error.Missing_token what) (position t)
@@ -481,7 +484,7 @@ let at_keyword_opt t =
 let expect_at_keyword name t =
   match at_keyword_opt t with
   | Some s when String.lowercase_ascii_preserve s = name -> ()
-  | _ -> err_expected t ("@" ^ name)
+  | _ -> err_expected t (String.concat "" [ "@"; name ])
 
 let drain_until_block t =
   (* Used for at-rule / qualified-rule preludes: drain until the curly block
@@ -619,15 +622,15 @@ let hex t =
         | Token.Ident s when is_hex_string s -> Some s
         | Token.Number_tok n when is_hex_string n.repr -> Some n.repr
         | Token.Dimension { number; unit_ }
-          when is_hex_string (number.repr ^ unit_) ->
-            Some (number.repr ^ unit_)
+          when is_hex_string (String.concat "" [ number.repr; unit_ ]) ->
+            Some (String.concat "" [ number.repr; unit_ ])
         | _ -> None)
       t
   in
   match hex_string_opt with
   | Some s -> (
-      try int_of_string ("0x" ^ s)
-      with Failure _ -> err_invalid t ("hex: " ^ s))
+      try int_of_string (String.concat "" [ "0x"; s ])
+      with Failure _ -> err_invalid t (String.concat "" [ "hex: "; s ]))
   | None -> err_expected t "hex token"
 
 let string ?(trim = false) t =
@@ -707,7 +710,7 @@ let bool t =
   match ident t with
   | "true" -> true
   | "false" -> false
-  | s -> err_invalid t ("boolean: " ^ s)
+  | s -> err_invalid t (String.concat "" [ "boolean: "; s ])
 
 (** {1 Delim helpers} *)
 
@@ -805,7 +808,7 @@ let looking_at t s =
         String.starts_with ~prefix:s
           (String.concat "" [ "@"; String.lowercase_ascii_preserve name ])
     | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
-        String.starts_with ~prefix:s ("#" ^ value)
+        String.starts_with ~prefix:s (String.concat "" [ "#"; value ])
     | Some (Component.Preserved { kind = Token.Url _; _ }) ->
         String.starts_with ~prefix:s "url("
     | _ -> (
@@ -909,7 +912,7 @@ let call name t f =
       if arg.depth > max_nesting_depth then
         raise_ arg (Error.Too_deep max_nesting_depth) fn.loc;
       whole_block f arg
-  | _ -> err_expected t (name ^ "(")
+  | _ -> err_expected t (String.concat "" [ name; "(" ])
 
 (** {1 Enums} *)
 
@@ -935,7 +938,7 @@ let enum ?default label table t =
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown " ^ label ^ ": " ^ s)))
+          | None -> err t (String.concat "" [ "unknown "; label; ": "; s ])))
   | _ -> ( match default with Some f -> f t | None -> err_expected t label)
 
 let enum_calls ?default table t =
@@ -947,7 +950,7 @@ let enum_calls ?default table t =
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown function: " ^ name)))
+          | None -> err t (String.concat "" [ "unknown function: "; name ])))
   | _ -> (
       match default with
       | Some f -> f t
@@ -995,14 +998,16 @@ let enum_or_calls ?default label idents ?(calls = []) t =
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown " ^ label ^ ": " ^ s)))
+          | None -> err t (String.concat "" [ "unknown "; label; ": "; s ])))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
       match List.assoc_opt (String.lowercase_ascii_preserve name) calls with
       | Some f -> f t
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown " ^ label ^ " function: " ^ name)))
+          | None ->
+              err t
+                (String.concat "" [ "unknown "; label; " function: "; name ])))
   | _ -> ( match default with Some f -> f t | None -> err_expected t label)
 
 (** {1 Higher-order combinators} *)

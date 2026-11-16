@@ -470,7 +470,8 @@ let rec read_opacity t : opacity =
     let value =
       match unit with
       | Some "%" -> n /. 100.
-      | Some unit -> Cursor.err_invalid t ("opacity unit: " ^ unit)
+      | Some unit ->
+          Cursor.err_invalid t (String.concat "" [ "opacity unit: "; unit ])
       | None -> n
     in
     Opacity_number value
@@ -538,7 +539,9 @@ let rec read_shape_image_threshold t : shape_image_threshold =
     let n, unit = Cursor.number_with_unit t in
     match unit with
     | Some "%" -> Number (n /. 100.)
-    | Some unit -> Cursor.err_invalid t ("shape-image-threshold unit: " ^ unit)
+    | Some unit ->
+        Cursor.err_invalid t
+          (String.concat "" [ "shape-image-threshold unit: "; unit ])
     | None -> Number n
   in
   Cursor.enum_or_calls "shape-image-threshold"

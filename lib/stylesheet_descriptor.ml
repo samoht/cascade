@@ -47,7 +47,8 @@ let refuse_css_wide_descriptor r =
       Cursor.restore r save;
       if alone then
         Cursor.err_invalid r
-          ("CSS-wide keyword in @font-face descriptor: " ^ name)
+          (String.concat ""
+             [ "CSS-wide keyword in @font-face descriptor: "; name ])
   | _ -> ());
   Cursor.restore r save
 
@@ -135,7 +136,9 @@ let refuse_css_wide_endpoint c =
   match Cursor.peek c with
   | Some (Component.Preserved { kind = Token.Ident name; _ })
     when Properties.is_css_wide_keyword name ->
-      Cursor.err_invalid c ("CSS-wide keyword in @font-face descriptor: " ^ name)
+      Cursor.err_invalid c
+        (String.concat ""
+           [ "CSS-wide keyword in @font-face descriptor: "; name ])
   | Some _ | None -> ()
 
 let read_font_weight_descriptor r =
@@ -176,7 +179,7 @@ let read_font_style_descriptor r =
 
 let validate_nonempty_descriptor r name value =
   if String.trim value = "" then
-    Cursor.err_invalid r ("empty " ^ name ^ " descriptor")
+    Cursor.err_invalid r (String.concat "" [ "empty "; name; " descriptor" ])
 
 let read_font_family_descriptor r =
   read_descriptor_value
@@ -321,7 +324,9 @@ let read_font_variant_descriptor_value r =
   let ident = Cursor.ident ~keep_case:false r in
   match font_variant_desc_value ident with
   | Some value -> value
-  | None -> Cursor.err_invalid r ("font-variant descriptor value: " ^ ident)
+  | None ->
+      Cursor.err_invalid r
+        (String.concat "" [ "font-variant descriptor value: "; ident ])
 
 let read_font_variant_keywords r : font_variant_descriptor =
   let at_value_end () = Cursor.is_done r || Cursor.peek_semicolon r in
@@ -393,7 +398,9 @@ let read_font_face_desc name r =
         (fun v -> Line_gap_override v)
         r
   (* FONT_FACE_DESCRIPTOR_END - Used by test/spec/browser *)
-  | _ -> Cursor.err_invalid r ("unknown font-face descriptor: " ^ name)
+  | _ ->
+      Cursor.err_invalid r
+        (String.concat "" [ "unknown font-face descriptor: "; name ])
 
 let rec components_upto_semicolon = function
   | [] | Component.Preserved { kind = Token.Semicolon; _ } :: _ -> []
@@ -460,7 +467,9 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
              dropped like any other bad one rather than taking the rule. *)
           let name = Cursor.ident ~keep_case:false r in
           if descriptor_value_has_var r && not (descriptor_resolves_var name)
-          then Cursor.err_invalid r ("var() in @font-face descriptor: " ^ name)
+          then
+            Cursor.err_invalid r
+              (String.concat "" [ "var() in @font-face descriptor: "; name ])
           else read_font_face_desc name r
         with
         | descriptor ->
@@ -514,7 +523,9 @@ let read_counter_style_system_value r =
   | "extends" ->
       Cursor.ws r;
       Extends (Cursor.ident ~keep_case:true r)
-  | _ -> Cursor.err_invalid r ("unknown counter-style system: " ^ system)
+  | _ ->
+      Cursor.err_invalid r
+        (String.concat "" [ "unknown counter-style system: "; system ])
 
 let read_counter_style_system_descriptor r =
   read_descriptor_value Declaration.read_property_value
@@ -680,11 +691,14 @@ let read_counter_style_descriptor (r : Cursor.t) : counter_style_descriptor =
           (fun s -> Speak_as s)
           r
     (* COUNTER_STYLE_DESCRIPTOR_END - Used by test/spec/browser *)
-    | _ -> Cursor.err_invalid r ("unknown counter-style descriptor: " ^ name)
+    | _ ->
+        Cursor.err_invalid r
+          (String.concat "" [ "unknown counter-style descriptor: "; name ])
   in
   Cursor.ws r;
   if not (Cursor.is_done r || Cursor.peek_semicolon r) then
-    Cursor.err_invalid r ("trailing tokens after @counter-style " ^ name);
+    Cursor.err_invalid r
+      (String.concat "" [ "trailing tokens after @counter-style "; name ]);
   if Cursor.peek_semicolon r then Cursor.skip r;
   descriptor
 
@@ -749,7 +763,7 @@ let read_counter_style (r : Cursor.t) : statement =
 (* CSS Paged Media 3 sec. 4.2: a page selector is an optional page name followed
    by zero or more pseudo-pages from [:first | :left | :right | :blank]. *)
 let page_selector_error r s =
-  Cursor.err_invalid r ("invalid @page selector: " ^ s)
+  Cursor.err_invalid r (String.concat "" [ "invalid @page selector: "; s ])
 
 let page_selector_is_ident_char c =
   (c >= 'a' && c <= 'z')
@@ -863,7 +877,8 @@ let read_page_margin_rule r =
       (* Sec. 5.2 names the margin boxes, so each name is a keyword. *)
       let name = Common.String.lowercase_ascii_preserve raw in
       if not (List.mem name allowed_page_margin_names) then
-        Cursor.err_invalid r ("unknown page margin rule: @" ^ raw);
+        Cursor.err_invalid r
+          (String.concat "" [ "unknown page margin rule: @"; raw ]);
       Cursor.skip r;
       Cursor.ws r;
       (* Sec. 5 gives the margin at-rule a [<declaration-list>], which CSS
@@ -906,7 +921,8 @@ let read_page (r : Cursor.t) : statement =
 
 let validate_dashed_ident r name context =
   if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid r (context ^ " name must be a dashed ident")
+    Cursor.err_invalid r
+      (String.concat "" [ context; " name must be a dashed ident" ])
 
 let font_palette_descriptor_kind = function
   | Palette_font_family _ -> "font-family"
@@ -967,12 +983,14 @@ let read_font_palette_descriptor outer inner : font_palette_descriptor =
              inner)
     | name ->
         Cursor.err_invalid outer
-          ("unknown font-palette-values descriptor: " ^ name)
+          (String.concat ""
+             [ "unknown font-palette-values descriptor: "; name ])
   in
   Cursor.ws inner;
   if not (Cursor.is_done inner || Cursor.peek_semicolon inner) then
     Cursor.err_invalid outer
-      ("trailing tokens after @font-palette-values " ^ desc_name);
+      (String.concat ""
+         [ "trailing tokens after @font-palette-values "; desc_name ]);
   if Cursor.peek_semicolon inner then Cursor.skip inner;
   desc
 
@@ -1065,7 +1083,8 @@ let read_font_feature_values_block outer inner =
   | Some name ->
       let name = String.lowercase_ascii name in
       if not (valid_font_feature_values_block name) then
-        Cursor.err_invalid outer ("unknown @font-feature-values block: @" ^ name);
+        Cursor.err_invalid outer
+          (String.concat "" [ "unknown @font-feature-values block: @"; name ]);
       (name, read_font_feature_values_entries inner)
 
 (* CSS Fonts 4 sec. 11.1 fills the body with feature value blocks, so it is a
@@ -1151,12 +1170,14 @@ let read_view_transition_descriptor outer inner : view_transition_descriptor =
     | "navigation" -> read_view_transition_navigation inner
     | "types" -> read_view_transition_types inner
     | name ->
-        Cursor.err_invalid outer ("unknown @view-transition descriptor: " ^ name)
+        Cursor.err_invalid outer
+          (String.concat "" [ "unknown @view-transition descriptor: "; name ])
   in
   Cursor.ws inner;
   if not (Cursor.is_done inner || Cursor.peek_semicolon inner) then
     Cursor.err_invalid outer
-      ("trailing tokens after @view-transition " ^ desc_name);
+      (String.concat ""
+         [ "trailing tokens after @view-transition "; desc_name ]);
   if Cursor.peek_semicolon inner then Cursor.skip inner;
   desc
 
@@ -1249,7 +1270,7 @@ let read_viewport_descriptors r =
     r
 
 let read_viewport_with_prefix prefix at_keyword (r : Cursor.t) : statement =
-  Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
+  Cursor.with_context r (String.concat "" [ "@"; at_keyword ]) @@ fun () ->
   Cursor.expect_at_keyword at_keyword r;
   Cursor.ws r;
   Viewport (prefix, read_viewport_descriptors r)

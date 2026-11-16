@@ -77,7 +77,8 @@ let read_length_unit ?(allow_negative = true) ?(length_only = false) t =
              math-arg path constructs a [Dim (n, unit)] leaf via
              [Cursor.number_with_unit] without going through this reader, so
              [calc(1x + 2x)] still parses. *)
-          Cursor.err_invalid t ("unknown dimension unit: " ^ unit))
+          Cursor.err_invalid t
+            (String.concat "" [ "unknown dimension unit: "; unit ]))
 
 (* CSS Values 4 (ED) sec. 6 gives a [<length>] no keyword of its own beyond the
    CSS-wide ones, and [auto] belongs to nearly every property that reads one.
@@ -973,7 +974,8 @@ let read_attr_length_type inner =
   let body = Cursor.consume_remaining_as_string ~trim:true inner in
   match attr_syntax_of_string body with
   | Some syntax -> Type syntax
-  | None -> Cursor.err_invalid inner ("attr() type: " ^ body)
+  | None ->
+      Cursor.err_invalid inner (String.concat "" [ "attr() type: "; body ])
 
 let read_plain_attr_type_hint inner : attr_type option =
   match Cursor.ident_opt inner with

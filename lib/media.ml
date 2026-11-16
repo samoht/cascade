@@ -199,8 +199,8 @@ let rec string_of_name : name -> string = function
   | Inverted_colors -> "inverted-colors"
   | Nav_controls -> "nav-controls"
   | Scripting -> "scripting"
-  | Min name -> "min-" ^ string_of_name name
-  | Max name -> "max-" ^ string_of_name name
+  | Min name -> String.concat "" [ "min-"; string_of_name name ]
+  | Max name -> String.concat "" [ "max-"; string_of_name name ]
   | Other s -> Parser.escape_ident s
 
 let rec name_of_string s : name =
@@ -784,8 +784,12 @@ let validate_range_feature name value =
 let plain_feature name value : feature =
   if not (validate_plain_feature name value) then
     invalid_arg
-      ("Media.feature: value rejected by " ^ string_of_name name
-     ^ "'s grammar (see Media.validate_plain_feature)");
+      (String.concat ""
+         [
+           "Media.feature: value rejected by ";
+           string_of_name name;
+           "'s grammar (see Media.validate_plain_feature)";
+         ]);
   Plain (name, value)
 
 let take_cmp = function

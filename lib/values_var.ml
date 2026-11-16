@@ -199,7 +199,7 @@ let read_attr_syntax t : attr_syntax =
   let body = Cursor.consume_remaining_as_string ~trim:true t in
   match attr_syntax_of_string body with
   | Some syntax -> syntax
-  | None -> Cursor.err_invalid t ("attr() type: " ^ body)
+  | None -> Cursor.err_invalid t (String.concat "" [ "attr() type: "; body ])
 
 let read_attr_type t : attr_type =
   Cursor.ws t;
@@ -224,7 +224,8 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
   (* CSS Custom Properties 1: a [var()] reference must name a [<dashed-ident>]
      other than the bare reserved [--] keyword. *)
   if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid t ("var() requires a custom-property name: " ^ name);
+    Cursor.err_invalid t
+      (String.concat "" [ "var() requires a custom-property name: "; name ]);
   let var_name = Custom_property_name.strip_prefix name in
   Cursor.ws t;
   let fallback : _ fallback =

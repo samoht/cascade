@@ -126,11 +126,21 @@ let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
   Pp.char ctx ')'
 
 (** Helper functions for common patterns *)
-let pseudo ctx name = Pp.string ctx (":" ^ name)
+let pseudo ctx name =
+  Pp.string ctx ":";
+  Pp.string ctx name
 
-let elem ctx name = Pp.string ctx ("::" ^ name)
-let vendor ctx name = Pp.string ctx (":-" ^ name)
-let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
+let elem ctx name =
+  Pp.string ctx "::";
+  Pp.string ctx name
+
+let vendor ctx name =
+  Pp.string ctx ":-";
+  Pp.string ctx name
+
+let vendor_elem ctx name =
+  Pp.string ctx "::-";
+  Pp.string ctx name
 
 (* CSS Selectors 4 sec. 3.6.1 keeps [:before] (CSS 2.1) as a deprecated
    compatibility spelling for the four original pseudo-elements. Minified output
@@ -141,7 +151,8 @@ let legacy_elem ctx form name =
     if Pp.minified ctx then ":"
     else match form with Single -> ":" | Double -> "::"
   in
-  Pp.string ctx (prefix ^ name)
+  Pp.string ctx prefix;
+  Pp.string ctx name
 
 let func ctx name pp_content value =
   pp_func ctx ~prefix:":" name pp_content value

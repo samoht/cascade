@@ -265,7 +265,7 @@ let lookup_custom_property ?layer ?layer_order ctx name =
   match layer with
   | Some scope when not (List.mem scope layer_order) -> None
   | _ -> (
-      let target = "--" ^ name in
+      let target = String.concat "" [ "--"; name ] in
       let candidates =
         List.filter
           (fun d -> Declaration.property_name d = target)
@@ -357,7 +357,11 @@ let validate_value_against_syntax (Variables.Syntax syntax) value =
           if Cursor.is_done cursor then Ok ()
           else
             Error
-              ("value has trailing tokens: " ^ Cursor.string_of_remaining cursor)
+              (String.concat ""
+                 [
+                   "value has trailing tokens: ";
+                   Cursor.string_of_remaining cursor;
+                 ])
         with Error.Parse_error e -> Error (Error.to_string e)
       with
       | Ok () -> Ok ()
@@ -366,7 +370,7 @@ let validate_value_against_syntax (Variables.Syntax syntax) value =
 let validate_registered_custom_property registry decl =
   let name = Declaration.property_name decl in
   if not (Custom_property_name.is_valid name) then
-    Error ("not a custom property: " ^ name)
+    Error (String.concat "" [ "not a custom property: "; name ])
   else
     match registered_property name registry with
     | None -> Ok ()

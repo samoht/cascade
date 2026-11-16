@@ -46,7 +46,7 @@ module Path = struct
 
   let string_of_step = function
     | Mem s -> s
-    | Nth n -> "[" ^ string_of_int n ^ "]"
+    | Nth n -> String.concat "" [ "["; string_of_int n; "]" ]
     | Label s -> s
 
   let to_labels t = List.map string_of_step t

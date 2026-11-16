@@ -120,7 +120,7 @@ let string_of_aria_attr : aria_attr -> string = Aria.to_string
 
 let string_of_attr_name = function
   | Aria a -> string_of_aria_attr a
-  | Data s -> "data-" ^ s
+  | Data s -> String.concat "" [ "data-"; s ]
   | Regular s -> s
 
 let attribute ?ns ?flag name match_type =

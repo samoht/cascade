@@ -94,22 +94,24 @@ module Text_decoration = struct
         then Cursor.err t "text-decoration-line none cannot be mixed"
         else if List.mem l acc.lines then
           Cursor.err t
-            ("duplicate text-decoration-line: "
-            ^
-            match l with
-            | None -> "none"
-            | Underline -> "underline"
-            | Overline -> "overline"
-            | Line_through -> "line-through"
-            | Blink -> "blink"
-            | Spelling_error -> "spelling-error"
-            | Grammar_error -> "grammar-error"
-            | Inherit -> "inherit"
-            | Initial -> "initial"
-            | Unset -> "unset"
-            | Revert -> "revert"
-            | Revert_layer -> "revert-layer"
-            | Var _ -> "var(...)")
+            (String.concat ""
+               [
+                 "duplicate text-decoration-line: ";
+                 (match l with
+                 | None -> "none"
+                 | Underline -> "underline"
+                 | Overline -> "overline"
+                 | Line_through -> "line-through"
+                 | Blink -> "blink"
+                 | Spelling_error -> "spelling-error"
+                 | Grammar_error -> "grammar-error"
+                 | Inherit -> "inherit"
+                 | Initial -> "initial"
+                 | Unset -> "unset"
+                 | Revert -> "revert"
+                 | Revert_layer -> "revert-layer"
+                 | Var _ -> "var(...)");
+               ])
         else { acc with lines = acc.lines @ [ l ] }
     | Style s when acc.style = None -> { acc with style = Some s }
     | Color c when acc.color = None -> { acc with color = Some c }

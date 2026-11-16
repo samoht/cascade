@@ -600,4 +600,6 @@ let read_any_property t =
      catches and falls back to [read_unknown_property_declaration]. *)
   | _ when Custom_property_name.has_prefix prop_name ->
       Prop (Unknown_property prop_name)
-  | _ -> Cursor.err_invalid t ("unknown property: " ^ prop_name)
+  | _ ->
+      Cursor.err_invalid t
+        (String.concat "" [ "unknown property: "; prop_name ])

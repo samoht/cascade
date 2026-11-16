@@ -243,7 +243,7 @@ let read_function_arg name t =
     from_string && value = "" && String.lowercase_ascii name = "local"
   in
   if value = "" && not is_empty_local_string then
-    Cursor.err_invalid inner ("empty " ^ name ^ "()");
+    Cursor.err_invalid inner (String.concat "" [ "empty "; name; "()" ]);
   value
 
 (* CSS Fonts 4 (ED) sec. 4.3.1 writes [<font-src>] as [<url> [format(...)]?

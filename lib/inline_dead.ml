@@ -42,7 +42,7 @@ and refs_of_var_args args =
           refs_of_components components
       | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _ -> []
     in
-    ("--" ^ var.Values.name) :: fallback_refs
+    String.concat "" [ "--"; var.Values.name ] :: fallback_refs
   with Cursor.Parse_error _ -> (
     match strip_component_ws args with
     (* The arguments of a [var()] opened past the parser's depth: the name is
@@ -60,12 +60,14 @@ and refs_of_var_args args =
     | Component.Preserved { kind = Token.Delim "--"; _ }
       :: Component.Preserved { kind = Token.Ident name; _ }
       :: rest ->
-        ("--" ^ name) :: refs_of_components (split_var_fallback [] rest)
+        String.concat "" [ "--"; name ]
+        :: refs_of_components (split_var_fallback [] rest)
     | Component.Preserved { kind = Token.Delim "-"; _ }
       :: Component.Preserved { kind = Token.Delim "-"; _ }
       :: Component.Preserved { kind = Token.Ident name; _ }
       :: rest ->
-        ("--" ^ name) :: refs_of_components (split_var_fallback [] rest)
+        String.concat "" [ "--"; name ]
+        :: refs_of_components (split_var_fallback [] rest)
     | rest -> refs_of_components rest)
 
 let refs_of_component_string value =
@@ -73,7 +75,9 @@ let refs_of_component_string value =
   with Cursor.Parse_error _ -> []
 
 let names_of_vars vars =
-  List.map (fun (Variables.V v) -> "--" ^ v.Values.name) vars
+  List.map
+    (fun (Variables.V v) -> String.concat "" [ "--"; v.Values.name ])
+    vars
 
 let refs_of_media_value : Media.value -> string list = function
   | Ident value -> refs_of_component_string (Media.string_of_ident value)
@@ -223,7 +227,8 @@ let collect_scoped_refs stylesheet =
     Variables.vars_of_declarations [ decl ]
     |> List.iter (fun (Variables.V var) ->
         if var.Values.runtime then
-          runtime_refs := ("--" ^ var.Values.name) :: !runtime_refs);
+          runtime_refs :=
+            String.concat "" [ "--"; var.Values.name ] :: !runtime_refs);
     match custom_name decl with
     | Some name -> customs := (at_path, selector, name, refs) :: !customs
     | None -> consumers := (at_path, selector, refs) :: !consumers

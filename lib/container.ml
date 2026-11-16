@@ -133,7 +133,7 @@ let rec minified_condition = function
       String.concat "" [ minified_operand a; " and "; minified_operand b ]
   | Or (a, b) ->
       String.concat "" [ minified_operand a; " or "; minified_operand b ]
-  | Not c -> "not " ^ minified_operand c
+  | Not c -> String.concat "" [ "not "; minified_operand c ]
   | t -> to_string_with ~pretty:false ~minify:true t
 
 and minified_operand = function

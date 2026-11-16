@@ -416,7 +416,7 @@ let minified_number_repr ?(preserve_sign = false)
           String.sub compact 1 (String.length compact - 1)
         else compact
       in
-      String.make 1 repr.[0] ^ digits
+      String.concat "" [ String.make 1 repr.[0]; digits ]
     else compact
   in
   if shorter candidate then candidate else repr

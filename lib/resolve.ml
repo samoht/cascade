@@ -75,7 +75,7 @@ let ends s p =
    an HTML element. *)
 let attr_key : Selector.attr_name -> string = function
   | Selector.Regular s -> String.lowercase_ascii s
-  | Selector.Data s -> String.lowercase_ascii ("data-" ^ s)
+  | Selector.Data s -> String.lowercase_ascii (String.concat "" [ "data-"; s ])
   | Selector.Aria a -> String.lowercase_ascii (Aria.to_string a)
 
 (* The same section lists the attributes whose VALUE an HTML document compares
@@ -124,7 +124,7 @@ let parent_layer path =
 (* Each unnamed [@layer { }] block is a layer of its own, distinct from every
    other one, so key it by a counter behind a prefix no author can write: NUL
    never survives tokenisation, css-syntax-3 sec. 3.3 turns it into U+FFFD. *)
-let anonymous_layer n = [ "\000" ^ string_of_int n ]
+let anonymous_layer n = [ String.concat "" [ "\000"; string_of_int n ] ]
 let is_anonymous_ident p = p <> "" && p.[0] = '\000'
 
 (* A layer is keyed by the CSS text of its path: each ident with the escapes

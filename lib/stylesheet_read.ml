@@ -71,7 +71,8 @@ let conditional_atom r ~at_rule (fn : Component.func Component.node) =
            (Cursor.of_string
               (Cursor.string_of_components ~trim:true fn.node.arguments)))
   | name ->
-      Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
+      Cursor.err_condition r ~at_rule
+        (String.concat "" [ "unknown condition function: "; name ])
 
 let conditional_components ~at_rule cursor =
   let read_atom () =
@@ -83,7 +84,10 @@ let conditional_components ~at_rule cursor =
         atom
     | _ -> Cursor.err_condition cursor ~at_rule "expected a condition function"
   in
-  let mixed op = Cursor.err_condition cursor ~at_rule ("cannot mix " ^ op) in
+  let mixed op =
+    Cursor.err_condition cursor ~at_rule
+      (String.concat "" [ "cannot mix "; op ])
+  in
   let rec chain op acc =
     Cursor.ws cursor;
     match Cursor.peek_keyword cursor with
@@ -246,7 +250,8 @@ let read_property_descriptor (r : Cursor.t) state =
   in
   Cursor.ws r;
   if not (Cursor.is_done r || Cursor.peek_semicolon r) then
-    Cursor.err_invalid r ("trailing tokens after @property " ^ key);
+    Cursor.err_invalid r
+      (String.concat "" [ "trailing tokens after @property "; key ]);
   state
 
 let read_property_step r state =
@@ -268,7 +273,8 @@ let read_property_rule (r : Cursor.t) : statement =
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
   if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid r ("@property: invalid custom-property name: " ^ name);
+    Cursor.err_invalid r
+      (String.concat "" [ "@property: invalid custom-property name: "; name ]);
   Cursor.ws r;
   let state = Cursor.braces (fun inner -> read_property_descriptors inner) r in
   match (state.syntax, state.inherits) with
@@ -687,7 +693,9 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string) : statement =
   | "@supports" -> read_nested_supports_rule r
   | "@media" -> read_nested_media_rule r
   | "@scope" -> read_nested_scope_rule r
-  | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
+  | _ ->
+      Cursor.err_invalid r
+        (String.concat "" [ "Unexpected nested at-rule: "; at_rule ])
 
 and read_nested_container_rule r =
   let container_name : string option = Cursor.option Cursor.ident r in
@@ -742,7 +750,7 @@ and read_nested_at_within_rule ~prev (r : Cursor.t) : statement option =
    invalid here and dropped; a top-of-sheet rule is invalid here outright. *)
 and read_nested_at_keyword r ~loc ~prev = function
   | ("supports" | "media" | "container" | "scope") as name ->
-      Some (read_nested_at_rule r ("@" ^ name))
+      Some (read_nested_at_rule r (String.concat "" [ "@"; name ]))
   | "layer" -> Some (read_nested_layer_rule r)
   | "starting-style" -> Some (read_starting_style ~body:read_nesting_block r)
   | "-moz-document" -> Some (read_moz_document ~body:read_nesting_block r)
@@ -752,10 +760,12 @@ and read_nested_at_keyword r ~loc ~prev = function
   | "else" -> drop_nested_at_rule r ~loc "@else without preceding @when"
   | ("charset" | "import" | "namespace") as name ->
       drop_nested_at_rule r ~loc
-        ("@" ^ name ^ " is only valid at the top of a stylesheet")
+        (String.concat ""
+           [ "@"; name; " is only valid at the top of a stylesheet" ])
   | name when not (nests_in_style_rule name) ->
       drop_nested_at_rule r ~loc
-        ("@" ^ name ^ " has no style rule in it, so it does not nest")
+        (String.concat ""
+           [ "@"; name; " has no style rule in it, so it does not nest" ])
   | _ -> Some (read_statement r)
 
 and read_rule_item selector inner decls nested =

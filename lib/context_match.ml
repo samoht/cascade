@@ -319,7 +319,7 @@ end
 module Match_selector = struct
   let attr_name : Selector.attr_name -> string = function
     | Aria a -> Aria.to_string a
-    | Data s -> "data-" ^ s
+    | Data s -> String.concat "" [ "data-"; s ]
     | Regular s -> s
 
   let value_match (matcher : Selector.attribute_match) ~flag actual =
@@ -444,7 +444,7 @@ module Url = struct
     | _, Some _ -> Ok (Uri.to_string (Uri.of_string href))
     | _, None -> (
         match loader.base_url with
-        | None -> Error ("no base URL to resolve " ^ href)
+        | None -> Error (String.concat "" [ "no base URL to resolve "; href ])
         | Some base ->
             let reference =
               match Uri.scheme (Uri.of_string href) with
@@ -493,16 +493,20 @@ module Import = struct
 
   let load_resolved loader rule resolved =
     match List.assoc_opt resolved loader.imports with
-    | None -> Error ("import not in loader table: " ^ resolved)
+    | None ->
+        Error (String.concat "" [ "import not in loader table: "; resolved ])
     | Some source -> parse_source rule source
 
   let guards_ok ?query ~layer_order rule =
     let layer_name = (rule : Stylesheet.import_rule).layer in
     if not (layer_known ~layer_order layer_name) then
       Error
-        ("unknown layer "
-        ^ Option.fold ~none:"" ~some:Stylesheet.string_of_layer_name layer_name
-        )
+        (String.concat ""
+           [
+             "unknown layer ";
+             Option.fold ~none:"" ~some:Stylesheet.string_of_layer_name
+               layer_name;
+           ])
     else if not (supports_ok ?query rule) then
       Error "supports() guard rejected the import"
     else if not (media_ok ?query rule) then

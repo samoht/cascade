@@ -76,7 +76,7 @@ let canonical_scroll_timeline_args args =
     | "nearest", "block" -> ""
     | "nearest", axis -> axis
     | scroller, "block" -> scroller
-    | scroller, axis -> scroller ^ " " ^ axis
+    | scroller, axis -> String.concat "" [ scroller; " "; axis ]
   else args
 
 let canonical_view_timeline_args args =

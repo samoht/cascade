@@ -241,7 +241,7 @@ and read_transforms t : transform list =
   let transforms, error_opt = Cursor.many read_transform t in
   if List.length transforms = 0 then
     match error_opt with
-    | Some msg -> Cursor.err_invalid t ("transform: " ^ msg)
+    | Some msg -> Cursor.err_invalid t (String.concat "" [ "transform: "; msg ])
     | None -> Cursor.err_invalid t "transform value"
   else if List.length transforms > 1 && List.exists is_transform_none transforms
   then Cursor.err_invalid t "transform none cannot be combined"

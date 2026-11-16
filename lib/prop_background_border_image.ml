@@ -362,7 +362,8 @@ let read_border_image_box_step ~what read_item t acc =
     match Cursor.option read_item t with
     | Some value ->
         if List.length acc >= 4 then
-          Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
+          Cursor.err_invalid t
+            (String.concat "" [ "too many border-image "; what; " values" ]);
         `Continue (value :: acc)
     | None -> `Stop
 
@@ -373,7 +374,7 @@ let read_border_image_box_values ~what read_item t =
     | `Continue acc -> loop acc
   in
   match loop [] with
-  | [] -> Cursor.err_expected t ("border-image " ^ what)
+  | [] -> Cursor.err_expected t (String.concat "" [ "border-image "; what ])
   | values -> values
 
 let read_border_image_repeat_keywords t =

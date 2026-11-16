@@ -17,7 +17,8 @@ let pp_property : type a. a property Pp.t =
          at a [var()], so one function answers for both sites. *)
       let bare = String.sub name 2 (String.length name - 2) in
       Pp.string ctx
-        (Parser.escape_ident ("--" ^ Pp.rename_custom_property ctx bare))
+        (Parser.escape_ident
+           (String.concat "" [ "--"; Pp.rename_custom_property ctx bare ]))
   | Unknown_property name -> Pp.string ctx name
   | All -> Pp.string ctx "all"
   | Background_color -> Pp.string ctx "background-color"

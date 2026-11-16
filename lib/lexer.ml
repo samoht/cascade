@@ -210,7 +210,10 @@ let consume_escape_hex r first =
   take 5;
   consume_escape_trailing_ws r;
   let hex = Buffer.contents buf in
-  let cp = try int_of_string ("0x" ^ hex) with Failure _ -> 0xFFFD in
+  let cp =
+    try int_of_string (String.concat "" [ "0x"; hex ])
+    with Failure _ -> 0xFFFD
+  in
   utf8_of_codepoint cp
 
 let consume_escape r =
@@ -512,11 +515,15 @@ let unicode_range_has_tail r =
   | Some '-', Some c when is_hex c -> true
   | _ -> false
 
-let unicode_range_value s = int_of_string ("0x" ^ s)
+let unicode_range_value s = int_of_string (String.concat "" [ "0x"; s ])
 
 let unicode_range_wildcard_token start_repr n_q =
-  let start_value = unicode_range_value (start_repr ^ String.make n_q '0') in
-  let end_value = unicode_range_value (start_repr ^ String.make n_q 'F') in
+  let start_value =
+    unicode_range_value (String.concat "" [ start_repr; String.make n_q '0' ])
+  in
+  let end_value =
+    unicode_range_value (String.concat "" [ start_repr; String.make n_q 'F' ])
+  in
   let form =
     Token.Wildcard { prefix_width = String.length start_repr; wildcards = n_q }
   in

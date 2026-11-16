@@ -51,7 +51,8 @@ let read_layer_name_component (r : Cursor.t) : layer_name =
   in
   let part p =
     if reserved (String.lowercase_ascii p) then
-      Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ p);
+      Cursor.err_invalid r
+        (String.concat "" [ "layer name reserves CSS-wide keyword: "; p ]);
     p
   in
   let first = part (Cursor.ident ~keep_case:true r) in
@@ -300,7 +301,8 @@ let read_keyframes_step inner acc =
   else
     match Cursor.peek inner with
     | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-        Cursor.err_invalid inner ("@keyframes nested @" ^ name)
+        Cursor.err_invalid inner
+          (String.concat "" [ "@keyframes nested @"; name ])
     | _ -> `More (read_keyframe_or_skip inner acc)
 
 let read_keyframes_block inner =
@@ -320,7 +322,7 @@ let read_keyframes_name r =
   | None -> Cursor.custom_ident ~reserved:[ "none" ] "keyframes name" r
 
 let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
-  Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
+  Cursor.with_context r (String.concat "" [ "@"; at_keyword ]) @@ fun () ->
   Cursor.expect_at_keyword at_keyword r;
   let name = read_keyframes_name r in
   Cursor.ws r;

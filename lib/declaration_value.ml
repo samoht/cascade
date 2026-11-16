@@ -16,7 +16,8 @@ let validate_no_extra_tokens t =
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
         Cursor.err_invalid ~loc t
-          ("unexpected tokens after property value: " ^ trimmed)
+          (String.concat ""
+             [ "unexpected tokens after property value: "; trimmed ])
 
 (* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
    CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
@@ -128,7 +129,9 @@ let read_shape_outside t =
         [
           check_shape_outside_shape;
           read_shape_image;
-          (fun t -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw));
+          (fun t ->
+            Cursor.err_invalid t
+              (String.concat "" [ "invalid shape-outside: "; raw ]));
         ]
         t);
   Cursor.expect_eof t;
@@ -776,7 +779,7 @@ let read_grid_template_shorthand ~name t =
     if String.equal name "grid" then read_grid t else read_grid_template t
   in
   if not (names_both_axes value) then
-    Cursor.err_invalid t (name ^ " names one axis only");
+    Cursor.err_invalid t (String.concat "" [ name; " names one axis only" ]);
   value
 
 let read_grid_value : type a. a property -> Cursor.t -> declaration option =
@@ -1435,7 +1438,8 @@ let rec read_value_from : type a.
   match readers with
   | [] ->
       Cursor.err_invalid t
-        ("unsupported property reader: " ^ canonical_prop_name prop)
+        (String.concat ""
+           [ "unsupported property reader: "; canonical_prop_name prop ])
   | reader :: rest -> (
       match reader.read_value_opt prop t with
       | Some decl -> decl
@@ -1446,8 +1450,10 @@ let read_value (type a) (prop : a property) t : declaration =
   match prop with
   | Custom_property name ->
       Cursor.err_invalid t
-        ("custom property read through regular property: " ^ name)
+        (String.concat ""
+           [ "custom property read through regular property: "; name ])
   | Unknown_property name ->
       Cursor.err_invalid t
-        ("unknown property read through typed parser: " ^ name)
+        (String.concat ""
+           [ "unknown property read through typed parser: "; name ])
   | _ -> read_value_from read_value_readers prop t
