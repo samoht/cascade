@@ -63,6 +63,11 @@
 
 ### Minification
 
+- `--minify --scope=stylesheet` keeps a `background` or `mask` shorthand that a
+  rule writes before longhands of the same family. The longhands contracted into
+  a shorthand that reset it: `background:#fff url(a.png) no-repeat center`
+  followed by `background-position` and `background-size` became
+  `background:0/25px 25px`, dropping the image, colour and repeat.
 - An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
   `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
   and an `@namespace` after a rule, go as browsers ignore them (#1294).

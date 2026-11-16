@@ -143,20 +143,27 @@ let background_run_is_reset_closed (layer : Properties.background_shorthand) =
   && Option.is_some layer.clip
 
 (* A layer shorthand resets every layer field, so synthesizing it from a run
-   silently reverts any same-family longhand sitting before the run (separated
-   from it by an unrelated declaration). Even [`Stylesheet] scope, which is
-   closed over external CSS only, must not shadow that earlier same-block
-   longhand, so composition refuses when one exists. *)
-let has_prior_family_longhand part_of idx i =
+   silently reverts any same-family write sitting before the run: a longhand
+   separated from it by an unrelated declaration, or the family's own shorthand.
+   Even [`Stylesheet] scope, which is closed over external CSS only, must not
+   shadow that earlier same-block write, so composition refuses when one
+   exists. *)
+let has_prior_family_write part_of ~shorthand idx i =
   let rec aux j =
     if j >= i then false
     else if Rule_index.is_absorbed idx j then aux (j + 1)
     else
-      match part_of (Rule_index.decl_at idx j) with
-      | Some _ -> true
-      | None -> aux (j + 1)
+      let decl = Rule_index.decl_at idx j in
+      if shorthand decl || Option.is_some (part_of decl) then true
+      else aux (j + 1)
   in
   aux 0
+
+let is_background = function
+  | Declaration { property = Background; _ } -> true
+  | _ -> false
+
+let is_mask = function Declaration { property = Mask; _ } -> true | _ -> false
 
 let try_compose_background_at ~ctx idx i =
   let parts, len = take_run_at idx ~part_of:background_part_of i in
@@ -174,7 +181,9 @@ let try_compose_background_at ~ctx idx i =
       let permit =
         match scope ctx with
         | `Stylesheet ->
-            not (has_prior_family_longhand background_part_of idx i)
+            not
+              (has_prior_family_write background_part_of
+                 ~shorthand:is_background idx i)
         | `Fragment -> background_run_is_reset_closed layer
       in
       if not permit then None
@@ -375,7 +384,8 @@ let try_compose_mask_at ~ctx idx i =
       in
       let permit =
         match scope ctx with
-        | `Stylesheet -> not (has_prior_family_longhand mask_part_of idx i)
+        | `Stylesheet ->
+            not (has_prior_family_write mask_part_of ~shorthand:is_mask idx i)
         | `Fragment -> mask_run_is_reset_closed layer
       in
       if not permit then None
