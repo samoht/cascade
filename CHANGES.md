@@ -127,6 +127,11 @@
 - `cascade fmtt a.css` says `fmtt` is an unknown command and suggests `fmt`,
   where it complained about `a.css`; a word that names no file and holds no `.`
   or `/` is not taken for a stylesheet (#1333).
+- The messages cascade writes itself take the `file: error: message` form of its
+  parse warnings, naming `cascade` where no file is at fault: `broken.css:
+  error: parse dropped every rule` and `cascade: warning: --lossless has no
+  effect without --minify`, where they began with `Error:` or `Warning:`
+  (#1337).
 - The help pages group the options by what they act on (minifying, inlining, the
   canonical diff, the browser comparison), give every command examples and
   describe the `diff` report. `--flatten-nesting` without `--minify` is noted as

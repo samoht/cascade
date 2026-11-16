@@ -53,7 +53,7 @@ still says so, and fails.
 
   $ printf '@@@@ }}} {{{' > broken.css
   $ cascade -q broken.css
-  Error: broken.css: parse dropped every rule; refusing to write an empty stylesheet
+  broken.css: error: parse dropped every rule; refusing to write an empty stylesheet
   [1]
 
 The other commands take the same flags. `apply` groups and quiets the

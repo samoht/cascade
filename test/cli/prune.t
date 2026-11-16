@@ -254,8 +254,8 @@ an answer about the input rather than about the stylesheet.
 
   $ printf '' > blank.html
   $ cascade prune blank.html basic.css
-  Error: the documents hold no element, so every rule would look unused
+  cascade: error: the documents hold no element, so every rule would look unused
   [1]
   $ cascade prune --dry-run blank.html basic.css
-  Error: the documents hold no element, so every rule would look unused
+  cascade: error: the documents hold no element, so every rule would look unused
   [1]

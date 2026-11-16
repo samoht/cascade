@@ -19,6 +19,13 @@ let read_stdin () =
 let read_source path =
   if path = "-" then (read_stdin (), "<stdin>") else (read_file path, path)
 
+(* A message the CLI writes itself takes the form compilers use, [FILE:
+   SEVERITY: message], and names the program where no file is at fault. *)
+let error ?(file = "cascade") fmt = Fmt.epr ("%s: error: " ^^ fmt ^^ "@.") file
+
+let warning ?(file = "cascade") fmt =
+  Fmt.epr ("%s: warning: " ^^ fmt ^^ "@.") file
+
 (* [Error.to_string] carries the filename the parse was stamped with. *)
 let report_warning w =
   Fmt.epr "%s@." (Cascade.Error.to_string ~severity:`Warning w)
@@ -116,10 +123,8 @@ let check_not_all_dropped input =
   | _ :: _ -> ()
   | [] ->
       if input.recovered then begin
-        Fmt.epr
-          "Error: %s: parse dropped every rule; refusing to write an empty \
-           stylesheet@."
-          input.filename;
+        error ~file:input.filename
+          "parse dropped every rule; refusing to write an empty stylesheet";
         Stdlib.exit 1
       end
 

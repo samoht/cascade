@@ -17,8 +17,8 @@ an error, stdout stays empty and the exit status is non-zero.
   [1]
   $ wc -c < out.css | tr -d ' '
   0
-  $ grep '^Error' err.txt
-  Error: broken.css: parse dropped every rule; refusing to write an empty stylesheet
+  $ grep ': error: ' err.txt
+  broken.css: error: parse dropped every rule; refusing to write an empty stylesheet
 
 The warnings that explain the drop are still reported.
 
@@ -29,8 +29,8 @@ Reading from stdin reports the same way.
 
   $ cascade fmt - < broken.css > out3.css 2> err3.txt
   [1]
-  $ grep '^Error' err3.txt
-  Error: <stdin>: parse dropped every rule; refusing to write an empty stylesheet
+  $ grep ': error: ' err3.txt
+  <stdin>: error: parse dropped every rule; refusing to write an empty stylesheet
 
 A rule whose only declaration does not validate is a partial loss, not a
 total one. CSS Syntax 3 sec. 5.4.4 discards the declaration and returns
@@ -43,7 +43,7 @@ has nothing to print, so the output is empty all the same.
   $ cascade fmt one-bad-rule.css > out2.css 2> err2.txt
   $ wc -c < out2.css | tr -d ' '
   0
-  $ grep '^Error' err2.txt
+  $ grep ': error: ' err2.txt
   [1]
 
 The declaration that went is still reported.
@@ -115,7 +115,7 @@ empty. Both were parsed and both were kept.
   $ cascade fmt --minify charset.css > out4.css 2> err4.txt
   $ wc -c < out4.css | tr -d ' '
   0
-  $ grep '^Error' err4.txt
+  $ grep ': error: ' err4.txt
   [1]
 
 The second one is out of place, which is reported, and neither that nor
@@ -134,7 +134,7 @@ and the statement was there.
   $ cascade fmt --minify face.css > out5.css 2> err5.txt
   $ wc -c < out5.css | tr -d ' '
   0
-  $ grep '^Error' err5.txt
+  $ grep ': error: ' err5.txt
   [1]
 
 A warning is not a loss either way round: an at-rule this library does

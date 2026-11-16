@@ -13,7 +13,7 @@ can be right; the warning is correct, so the empty report must not print.
   > EOF
   $ cascade --profile small.css > /dev/null 2>profile.txt
   $ cat profile.txt
-  Warning: --profile has no effect without --minify
+  cascade: warning: --profile has no effect without --minify
 
 The formatted output on stdout is unaffected: only the stderr report goes
 away.

@@ -25,7 +25,7 @@ let split_inputs files =
    rather than a document with no element in it. *)
 let read_document path =
   try Ok (Html.roots (Html.parse (Cli_io.read_file path)))
-  with Sys_error msg -> err_msg "Error reading %s: %s" path msg
+  with Sys_error msg -> err_msg "cannot read %s: %s" path msg
 
 let read_documents paths =
   List.fold_left
@@ -103,9 +103,8 @@ let run dry_run files verbosity =
       (* Nothing to match against makes every rule look unused, which is an
          answer about the documents rather than about the stylesheet. *)
       if analysis.Prune.elements = 0 then begin
-        Fmt.epr
-          "Error: the documents hold no element, so every rule would look \
-           unused@.";
+        Cli_io.error
+          "the documents hold no element, so every rule would look unused";
         Stdlib.exit 1
       end;
       if dry_run then report ~documents:(List.length docs) analysis

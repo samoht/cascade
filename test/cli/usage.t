@@ -17,21 +17,21 @@ command it is closest to.
 A missing stylesheet is still a stylesheet, not a command.
 
   $ cascade missing.css
-  Error: missing.css: No such file or directory
+  cascade: error: missing.css: No such file or directory
   [1]
 
 A refused option value is one error line and the exit status, nothing
 else.
 
   $ cascade --inline-vars --keep-vars='*' a.css
-  Error: --keep-vars does not accept the wildcard "*"; list names explicitly.
+  cascade: error: --keep-vars does not accept the wildcard "*"; list names explicitly
   [1]
 
 An option that does nothing without another says so, and `-q` drops the
 note. `--flatten-nesting` is one: it acts on the minifier's output.
 
   $ cascade --flatten-nesting a.css > /dev/null
-  Warning: --flatten-nesting has no effect without --minify
+  cascade: warning: --flatten-nesting has no effect without --minify
   $ cascade -q --flatten-nesting a.css > /dev/null
 
 Every command's page has examples, and the options are grouped by what

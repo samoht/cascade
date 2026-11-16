@@ -63,7 +63,7 @@ so the reference stays.
   $ cat > empty.css <<EOF
   > .a { color: var(--undef,) }
   > EOF
-  $ cascade --minify --inline-vars empty.css 2>&1 | grep -v "warning" || true
+  $ cascade --minify --inline-vars empty.css 2>&1 || true
   .a{color:var(--undef,)}
 
 A non-trivial fallback is NOT eagerly inlined when the var() name

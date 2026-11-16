@@ -2,7 +2,8 @@ open Cmdliner
 
 type mode = Auto | Tree | String | Canonical
 
-let err_read path msg = Error (`Msg (Fmt.str "Error reading %s: %s" path msg))
+let err_read path msg =
+  Error (`Msg (String.concat "" [ "cannot read "; path; ": "; msg ]))
 
 let err_limit s =
   Error

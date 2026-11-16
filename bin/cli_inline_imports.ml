@@ -16,21 +16,25 @@ let path_is_within ~root path =
   if String.ends_with ~suffix:Filename.dir_sep root then true
   else String.length path > root_len && path.[root_len] = Filename.dir_sep.[0]
 
-let canonical_file ~import_root resolved =
+let warn (verbosity : Cli_log.verbosity) ~file fmt =
+  match verbosity with
+  | Quiet -> Format.ifprintf Format.err_formatter fmt
+  | Normal | Verbose -> Cli_io.warning ~file fmt
+
+let canonical_file ~verbosity ~import_root resolved =
   let filename = Syntax.url_file_path resolved in
   let canonical = Unix.realpath filename in
   match import_root with
   | None -> Some canonical
   | Some root when path_is_within ~root canonical -> Some canonical
   | Some root ->
-      Fmt.epr
-        "warning: refusing @import %s: canonical path %s is outside \
-         --import-root %s@."
-        resolved canonical root;
+      warn verbosity ~file:resolved
+        "not inlined: its canonical path %s is outside --import-root %s"
+        canonical root;
       None
 
-let warn_cannot_read resolved msg =
-  Fmt.epr "warning: cannot read %s: %s@." resolved msg
+let warn_cannot_read verbosity resolved msg =
+  warn verbosity ~file:resolved "cannot read: %s" msg
 
 let canonical_import_root = function
   | None -> None
@@ -49,7 +53,7 @@ let cache_resolved ~verbosity ~import_root imports resolved =
   if Hashtbl.mem imports resolved then None
   else
     try
-      match canonical_file ~import_root resolved with
+      match canonical_file ~verbosity ~import_root resolved with
       | None -> None
       | Some filename ->
           let content = Cli_io.read_file filename in
@@ -57,17 +61,17 @@ let cache_resolved ~verbosity ~import_root imports resolved =
           Some (Cli_io.parse_css verbosity ~filename content)
     with
     | Sys_error msg ->
-        warn_cannot_read resolved msg;
+        warn_cannot_read verbosity resolved msg;
         None
     | Unix.Unix_error (error, _, _) ->
-        warn_cannot_read resolved (Unix.error_message error);
+        warn_cannot_read verbosity resolved (Unix.error_message error);
         None
 
-let resolve_import loader url =
+let resolve_import verbosity loader url =
   let path = strip_url_suffix url in
   match Css.Context.resolve_url loader path with
   | Error msg ->
-      Fmt.epr "warning: cannot resolve @import %s: %s@." url msg;
+      warn verbosity ~file:url "cannot resolve @import: %s" msg;
       None
   | Ok resolved -> Some resolved
 
@@ -84,7 +88,7 @@ let preload ~verbosity ~base_url ~import_root stylesheet =
         let url = Css.decode_import_url import_rule.url in
         if not (is_remote url) then handle_import loader url
   and handle_import loader url =
-    match resolve_import loader url with
+    match resolve_import verbosity loader url with
     | None -> ()
     | Some resolved -> (
         match cache_resolved ~verbosity ~import_root imports resolved with

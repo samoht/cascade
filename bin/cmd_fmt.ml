@@ -48,9 +48,9 @@ let report_profile phases (report : Stats.snapshot) =
 
 let resolve_inline_imports ~verbosity ~input_path ~import_root stylesheet =
   if input_path = "-" then begin
-    Fmt.epr
-      "Error: --inline-imports requires a file path (cannot resolve relative \
-       URLs from stdin)@.";
+    Cli_io.error
+      "--inline-imports needs a file path, since relative URLs cannot be \
+       resolved from standard input";
     Stdlib.exit 1
   end
   else
@@ -78,7 +78,8 @@ let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
       else stylesheet
     in
     let stylesheet =
-      if inline_vars_flag then Cli_inline_vars.run ~keep_vars stylesheet
+      if inline_vars_flag then
+        Cli_inline_vars.run verbosity ~keep_vars stylesheet
       else stylesheet
     in
     let stats = Stats.v ~profile () in
@@ -107,7 +108,7 @@ let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
         }
         (Stats.snapshot stats)
   with Sys_error msg ->
-    Fmt.epr "Error: %s@." msg;
+    Cli_io.error "%s" msg;
     Stdlib.exit 1
 
 let minify_options = "MINIFY OPTIONS"
@@ -288,8 +289,7 @@ let note_unused (verbosity : Cli_log.verbosity) ~minify ~scope ~flatten_nesting
   | Normal | Verbose ->
       List.iter
         (fun (active, flag, needs) ->
-          if active then
-            Fmt.epr "Warning: %s has no effect without %s@." flag needs)
+          if active then Cli_io.warning "%s has no effect without %s" flag needs)
         checks
 
 let term =
@@ -313,9 +313,9 @@ let term =
       ->
         let keep_vars = Cli_io.split_comma keep_vars_str in
         if List.mem "*" keep_vars then begin
-          Fmt.epr
-            "Error: --keep-vars does not accept the wildcard \"*\"; list names \
-             explicitly.@.";
+          Cli_io.error
+            "--keep-vars does not accept the wildcard \"*\"; list names \
+             explicitly";
           Stdlib.exit 1
         end;
         note_unused verbosity ~minify ~scope ~flatten_nesting ~lossless

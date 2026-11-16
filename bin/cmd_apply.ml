@@ -41,7 +41,7 @@ let parse_source verbosity ~filename ~note css =
          list, not the text. *)
       match (stylesheet, warnings) with
       | [], _ :: _ ->
-          Fmt.epr "Error: %s: parse dropped every rule%s@." filename note;
+          Cli_io.error ~file:filename "parse dropped every rule%s" note;
           None
       | _ -> Some stylesheet)
 
@@ -90,7 +90,7 @@ let inline_html verbosity ~minimal ~filename ~html ~extra =
 (* ---------- cmdliner ---------- *)
 let read_file path =
   try Ok (Cli_io.read_file path)
-  with Sys_error msg -> err_msg "Error reading %s: %s" path msg
+  with Sys_error msg -> err_msg "cannot read %s: %s" path msg
 
 (* Cmdliner's [file] conv only checks that the path exists, so a directory or a
    file with no read permission reaches the command. That is a usage error, and

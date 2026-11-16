@@ -17,8 +17,8 @@ the CSS text a browser might still make something of.
   $ cat out.html
   <html><head><style>@@@@ }}} {{{ !!! ;;;</style></head><body><p>hi</p>
   </body></html>
-  $ grep '^Error' err.txt
-  Error: broken.html:<style>#1: parse dropped every rule; keeping the block verbatim
+  $ grep ': error: ' err.txt
+  broken.html:<style>#1: error: parse dropped every rule; keeping the block verbatim
 
 The warnings that explain the drop are still reported.
 
@@ -47,8 +47,8 @@ blocks gave it and the exit status says the extra sheet did not apply.
   > EOF
   $ cascade apply page.html bad.css > out2.html 2> err2.txt
   [1]
-  $ grep '^Error' err2.txt
-  Error: bad.css: parse dropped every rule
+  $ grep ': error: ' err2.txt
+  bad.css: error: parse dropped every rule
 
 A supplementary stylesheet that cannot be read at all never reaches the
 parser: cmdliner's `file` conv only checks that the path exists, so a
@@ -58,7 +58,7 @@ not the same thing as no stylesheet.
   $ mkdir extra.d
   $ cascade apply page.html extra.d > out3.html 2> err3.txt
   [124]
-  $ grep -c '^cascade: Error reading extra.d' err3.txt
+  $ grep -c '^cascade: cannot read extra.d' err3.txt
   1
   $ wc -c < out3.html | tr -d ' '
   0
@@ -83,7 +83,7 @@ serialiser emits anyway, so a redundant one prints nothing.
   > <html><head><style>@charset "UTF-8";@charset "UTF-8";</style></head><body><p>hi</p></body></html>
   > EOF
   $ cascade apply charset.html > out4.html 2> err4.txt
-  $ grep '^Error' err4.txt
+  $ grep ': error: ' err4.txt
   [1]
   $ cat out4.html
   <html><head><style></style></head><body><p>hi</p>
@@ -103,7 +103,7 @@ statement is there for the projection to read.
   > <html><head><style>@font-face{font-family:x}</style></head><body><p>hi</p></body></html>
   > EOF
   $ cascade apply face.html > out5.html 2> err5.txt
-  $ grep '^Error' err5.txt
+  $ grep ': error: ' err5.txt
   [1]
   $ cat out5.html
   <html><head><style></style></head><body><p>hi</p>
@@ -117,7 +117,7 @@ its `;`, so it costs itself and the `@font-face` around it still parses.
   > <html><head><style>@font-face{font-family:x;@bogus w;}</style></head><body><p>hi</p></body></html>
   > EOF
   $ cascade apply face2.html > out8.html 2> err8.txt
-  $ grep '^Error' err8.txt
+  $ grep ': error: ' err8.txt
   [1]
   $ cat out8.html
   <html><head><style></style></head><body><p>hi</p>
@@ -130,7 +130,7 @@ is kept, so a block holding nothing else is not a loss either.
   > <html><head><style>@foo bar;</style></head><body><p>hi</p></body></html>
   > EOF
   $ cascade apply unknown.html > out6.html 2> err6.txt
-  $ grep '^Error' err6.txt
+  $ grep ': error: ' err6.txt
   [1]
   $ cat out6.html
   <html><head><style></style><style>@foo bar;</style></head><body><p>hi</p>
@@ -146,8 +146,8 @@ dropped, and nothing is left to project.
   > EOF
   $ cascade apply lower.html > out7.html 2> err7.txt
   [1]
-  $ grep '^Error' err7.txt
-  Error: lower.html:<style>#1: parse dropped every rule; keeping the block verbatim
+  $ grep ': error: ' err7.txt
+  lower.html:<style>#1: error: parse dropped every rule; keeping the block verbatim
   $ cat out7.html
   <html><head><style>@charset "utf-8";</style></head><body><p>hi</p>
   </body></html>

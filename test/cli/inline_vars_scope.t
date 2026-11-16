@@ -66,7 +66,7 @@ single value stands for both.
   > .y { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars layer-selectors.css 2>&1
-  Warning: --c is redefined in a different scope; kept live (cannot inline safely)
+  cascade: warning: --c is redefined in a different scope; kept live (cannot inline safely)
   .x{--c:green}.y{--c:blue}.x,.y{color:var(--c)}
 
 An unlayered definition wins over a layered one, whatever the document
@@ -97,7 +97,7 @@ queries evaluate at layout time, not at the syntax layer).
   > :root { --bp: 30em }
   > @container (min-width: var(--bp)) { .x { color: red } }
   > EOF
-  $ cascade --minify --inline-vars container.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars container.css 2>&1
   :root{--bp:30em}@container(width>=var(--bp)){.x{color:red}}
 
 A variable used in a @media query value is preserved. Custom property
@@ -107,7 +107,7 @@ substitution only happens in property values, not media query syntax.
   > :root { --bp: 30em }
   > @media (min-width: var(--bp)) { .x { color: red } }
   > EOF
-  $ cascade --minify --inline-vars media-query-var.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars media-query-var.css 2>&1
   :root{--bp:30em}@media(width>=var(--bp)){.x{color:red}}
 
 A variable used in an @supports condition is preserved for the same
@@ -117,7 +117,7 @@ reason.
   > :root { --display: grid }
   > @supports (display: var(--display)) { .x { color: red } }
   > EOF
-  $ cascade --minify --inline-vars supports-var.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars supports-var.css 2>&1
   :root{--display:grid}@supports(display:var(--display)){.x{color:red}}
 
 A self-referential variable [--x: var(--x)] is invalid at computed
@@ -128,7 +128,7 @@ the now-unreferenced custom property is dead-stripped.
   > :root { --x: var(--x) }
   > .a { color: var(--x, red) }
   > EOF
-  $ cascade --minify --inline-vars self-cycle.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars self-cycle.css 2>&1
   .a{color:red}
 
 A two-cycle [--a -> --b -> --a] is detected and both definitions stay
@@ -140,7 +140,7 @@ to answer.
   > :root { --a: var(--b); --b: var(--a) }
   > .x { color: var(--a, fallback) }
   > EOF
-  $ cascade --minify --inline-vars two-cycle.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars two-cycle.css 2>&1
   :root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}
 
 A three-step indirect cycle [--a -> --b -> --c -> --a] is detected the
@@ -154,7 +154,7 @@ same way.
   > }
   > .x { color: var(--a, fallback) }
   > EOF
-  $ cascade --minify --inline-vars three-cycle.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars three-cycle.css 2>&1
   :root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}
 
 A var() inside a string token is NOT substituted - per CSS Custom
