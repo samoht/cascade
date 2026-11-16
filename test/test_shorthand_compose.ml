@@ -983,11 +983,40 @@ let test_layer_contraction_keeps_an_earlier_shorthand () =
     "a{mask:url(a.png) no-repeat;mask-position:0 50%;mask-size:25px 25px}"
     [ "url(a.png)"; "no-repeat" ]
 
+(* CSS Fonts 4 sec. 2.9: [font] resets every font longhand it does not name.
+   Under [`Stylesheet] a run of [font-size] and [font-family] may contract into
+   one, but not after the rule set [font-weight]: the shorthand would reset the
+   weight that declaration wrote. *)
+let test_font_contraction_keeps_an_earlier_longhand () =
+  let css =
+    "a{font-weight:700;color:red;font-size:13px;font-family:Arial,sans-serif}"
+  in
+  match Css.of_string css with
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  | Ok { stylesheet; _ } ->
+      let out =
+        Css.to_string ~minify:true (Css.optimize ~scope:`Stylesheet stylesheet)
+      in
+      let bold =
+        Astring.String.is_infix ~affix:"font:700 " out
+        || Astring.String.is_infix ~affix:"font:bold " out
+        ||
+        match Astring.String.find_sub ~sub:"font-weight:700" out with
+        | None -> false
+        | Some at ->
+            not
+              (Astring.String.is_infix ~affix:"font:"
+                 (String.sub out at (String.length out - at)))
+      in
+      if not bold then Alcotest.failf "the weight was reset: %s -> %s" css out
+
 let suite =
   ( "shorthand_compose",
     [
       Alcotest.test_case "layer contraction keeps an earlier shorthand" `Quick
         test_layer_contraction_keeps_an_earlier_shorthand;
+      Alcotest.test_case "font contraction keeps an earlier longhand" `Quick
+        test_font_contraction_keeps_an_earlier_longhand;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "transition contraction covers other rules" `Quick
