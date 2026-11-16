@@ -55,13 +55,20 @@ val unescape_selector_name : string -> string
 
 val combine : t -> combinator -> t -> t
 (** [combine s1 comb s2] joins [s1] and [s2] with [comb], distributed over each
-    entry when [s2] is a list. *)
+    entry when [s2] is a list. A chain [s1] takes [comb] on its rightmost
+    compound, the shape reading the printed selector gives. *)
 
 val ( ++ ) : t -> t -> t
 (** [s1 ++ s2] is [combine s1 Descendant s2]. *)
 
 val ( >> ) : t -> t -> t
 (** [s1 >> s2] is [combine s1 Child s2]. *)
+
+val reshape : t -> t
+(** [reshape sel] is [sel] rebuilt by {!compound} when it is a compound holding
+    a compound or a chain, and by {!combine} when it is a combinator whose left
+    operand is a chain; any other [sel] is itself. It looks at [sel]'s own node
+    only, so [map reshape] reshapes a whole selector. *)
 
 val where : t list -> t
 (** [where sels] is [:where(sels)]. *)
@@ -81,4 +88,7 @@ val as_list : t -> t list option
 (** [as_list s] is the entries of [s] when it is a selector list. *)
 
 val compound : t list -> t
-(** [compound sels] is the compound selector of [sels]. *)
+(** [compound sels] is the compound selector of [sels], in the shape reading its
+    print gives: a compound in [sels] splices in, a chain in [sels] ends the
+    compound on its left and starts the next one on its right, and a single part
+    is itself. *)

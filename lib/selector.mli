@@ -50,7 +50,9 @@ val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
     raises [Invalid_argument] on invalid. *)
 
 val combine : t -> combinator -> t -> t
-(** [combine a comb b] combines selectors with a combinator. *)
+(** [combine a comb b] combines selectors with a combinator, distributed over
+    each entry when [b] is a list. A chain [a] takes [comb] on its rightmost
+    compound, the shape reading the printed selector gives. *)
 
 val ( ++ ) : t -> t -> t
 (** [a ++ b] combines with descendant (space). *)
@@ -76,7 +78,17 @@ val as_list : t -> t list option
     otherwise. Useful for pattern matching on merged selectors. *)
 
 val compound : t list -> t
-(** [compound selectors] compound selector (concatenates simple selectors). *)
+(** [compound selectors] concatenates [selectors] into one compound, in the
+    shape reading its print gives: a compound among [selectors] splices in, a
+    chain ends the compound on its left and starts the next one on its right,
+    and a single part is itself. *)
+
+val reshape : t -> t
+(** [reshape sel] is [sel] rebuilt in the shape reading its print gives, when
+    [sel] is a compound holding a compound or a combinator chain, or a
+    combinator whose left operand is a chain; any other [sel] is itself. It
+    looks at [sel]'s own node only, so [map reshape] reshapes a whole selector.
+*)
 
 val ( && ) : t -> t -> t
 (** [a && b] combines two simple selectors into a compound selector. *)

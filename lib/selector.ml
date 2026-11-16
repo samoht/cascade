@@ -102,26 +102,6 @@ let canonical_compound components =
   | [ single ] -> single
   | components -> Compound components
 
-(* Substituting [&] splices a complex parent into a compound's leading slot,
-   giving [Compound [Combined (.L, a); :where(.dark)]] where reading the same
-   selector back gives [Combined (.L, Compound [a; :where(.dark)])]. The two
-   serialise alike and only the second is a compound in the grammar's sense, a
-   sequence of simple selectors, so the trailing components move onto the
-   subject. Without this the two spellings stay structurally distinct while
-   printing identically, and every structural comparison reads them apart. The
-   subject is a compound built here, after [map] has visited the components, so
-   it takes its canonical form here too: [svg *] under [&:where(.dark)] is [svg
-   :where(.dark)], as reading that text gives. *)
-let rec lift_leading_combinator = function
-  | Combined (left, comb, right) :: rest ->
-      let subject =
-        match lift_leading_combinator (right :: rest) with
-        | Some lifted -> lifted
-        | None -> canonical_compound (right :: rest)
-      in
-      Some (Combined (left, comb, subject))
-  | _ -> None
-
 (* CSS Selectors 4 sec. 4.2: a single-argument [:is(s)] matches the same
    elements as [s] with the same specificity, so it reduces to [s]. Sound only
    when [s] is a single compound: a combinator ([Combined] / [Relative]) or a
@@ -148,7 +128,7 @@ let canonicalize_is node selectors =
    irrelevant to matching and specificity). [map] hands each node over without
    saying where it sits, so every rewrite below has to be sound in any position;
    the one that needs the top of a rule selector is [canonicalize]. *)
-let canonicalize_nodes sel =
+let rec canonicalize_nodes sel =
   map
     (fun node ->
       let canon ctor selectors =
@@ -157,13 +137,21 @@ let canonicalize_nodes sel =
       in
       match node with
       | Compound components -> (
-          match lift_leading_combinator components with
-          | Some lifted -> lifted
-          | None -> (
-              match canonical_compound components with
-              | Compound components' when list_same components' components ->
-                  node
-              | canonical -> canonical))
+          let canonical =
+            match canonical_compound components with
+            | Compound components' when list_same components' components -> node
+            | canonical -> canonical
+          in
+          (* A spliced [:is()] argument keeps its own compound behind a
+             pseudo-element, where [canonical_compound] wraps it whole; anywhere
+             else the compound takes the reader's shape, whose compounds are
+             built here, after [map] visited the parts, so they are
+             canonicalised again: [svg *] then [:where(.dark)] is [svg
+             :where(.dark)], as reading that text gives. *)
+          match reshape canonical with
+          | reshaped when reshaped != canonical -> canonicalize_nodes reshaped
+          | _ -> canonical)
+      | Combined ((Combined _ | Relative _), _, _) -> reshape node
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
       | Is selectors -> canonicalize_is node selectors

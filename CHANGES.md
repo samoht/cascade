@@ -73,6 +73,11 @@
   costs the rules it touches rather than the size of the sheet, about a third
   fewer instructions on real sheets (#1306, #1307, #1313, #1322, #1323, #1324,
   #1325).
+- A selector built by merging a nested rule into its parent is the one reading
+  its print gives, so nesting it under a neighbour happens in the first
+  `--minify` pass, not only when the output is minified again.
+  `Selector.compound` and `Selector.combine` build that shape, and
+  `Selector.reshape` rebuilds one node in it (#1342).
 
 ### Parsing
 
