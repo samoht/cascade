@@ -95,6 +95,8 @@
 - The tokenizer copies a token's source text only when an escape is in it, and
   reads a number or a whitespace run straight from the source: Tailwind's
   output parses 9% faster (#1314).
+- A custom property's value is tokenized once instead of twice: tw's output
+  parses 3% faster (#1315).
 
 ### CLI tools
 

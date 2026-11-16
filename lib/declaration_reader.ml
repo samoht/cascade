@@ -502,19 +502,6 @@ let validate_unknown_property_name t name =
     && not (is_vendor_extension_property_name name)
   then Cursor.err_invalid t ("invalid vendor extension property name: " ^ name)
 
-(* Check if a custom property name is a font-family variable *)
-
-(** Parse a custom property (--name: value) *)
-let is_font_family_var name =
-  let bare = Custom_property_name.strip_prefix name in
-  let starts_with prefix s =
-    String.length s >= String.length prefix
-    && String.sub s 0 (String.length prefix) = prefix
-  in
-  starts_with "font-" bare
-  || starts_with "default-font-family" bare
-  || starts_with "default-mono-font-family" bare
-
 (* CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last two
    non-whitespace values of the declaration are a [!] delim and an ident
    matching [important], so the whitespace [! important] writes between the two
@@ -548,15 +535,6 @@ let split_important value =
     else (trimmed, false)
   else (trimmed, false)
 
-let read_custom_property_payload name value_str =
-  if is_font_family_var name then
-    let trimmed = String.trim value_str in
-    if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
-      read_custom_property_value (Cursor.of_string value_str)
-    else
-      read_custom_property_value ~font_family:true (Cursor.of_string value_str)
-  else read_custom_property_value (Cursor.of_string value_str)
-
 (* The [name] declaration formed over the value at [t]; split from
    [read_custom_property_declaration] for a caller that already holds the
    name. *)
@@ -570,9 +548,10 @@ let read_custom_value_declaration t name : declaration =
   reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let value_str, is_important = split_important raw_value in
-  if not (is_optional_declaration_value value_str) then
+  let value = Cursor.of_string value_str in
+  if not (components_stay_in_declaration (Cursor.remaining value)) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
-  let custom_value = read_custom_property_payload name value_str in
+  let custom_value = read_custom_property_value value in
   let decl =
     v (Custom_property name)
       (Custom_value { value = custom_value; layer = None; meta = None })
