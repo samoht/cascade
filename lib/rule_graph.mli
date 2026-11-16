@@ -91,10 +91,6 @@ val node_origin : t -> node_id -> int
     as its stable tie-break key, so unconstrained nodes keep first-appearance
     source order. *)
 
-val is_live : t -> node_id -> bool
-(** [is_live t i] is whether node [i] is present in [t]: created by [t] or a
-    graph it was rewritten from, and consumed by none of those rewrites. *)
-
 val generation : t -> int
 (** [generation t] increments after every successful rewrite. Candidate queues
     can use it to discard stale work. *)
@@ -118,9 +114,6 @@ val conflict : t -> node_id -> node_id -> bool
     equal-specificity selector branches may match a common element and the rules
     write a shared equal-importance property, or the graph enables structural
     pins and they share a selector branch. Symmetric. *)
-
-val order_constrained : t -> node_id -> node_id -> bool
-(** [order_constrained] is a clearer alias for {!val-conflict}. *)
 
 val rules_conflict :
   ?parent:Selector.t -> Stylesheet.rule -> Stylesheet.rule -> bool
@@ -244,19 +237,6 @@ val canonical_order : t -> node_id array
     algorithm takes the smallest first-appearance source key, then the node id.
     Every constrained pair keeps its required order; unconstrained pairs are
     projected deterministically without inventing a lexicographic CSS order. *)
-
-val canonical_linearization : t -> node_id array
-(** [canonical_linearization] is a clearer alias for {!val-canonical_order}. *)
-
-val canonicalize : t -> t
-(** [canonicalize t] rebuilds [t] from its canonical rule projection, preserving
-    the nesting parent. *)
-
-val to_rules : t -> Stylesheet.rule list
-(** [to_rules t] is the live rules in {!val-canonical_order} order. *)
-
-val to_canonical_rules : t -> Stylesheet.rule list
-(** [to_canonical_rules] is a clearer alias for {!val-to_rules}. *)
 
 val rewrite :
   t ->

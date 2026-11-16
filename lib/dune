@@ -83,7 +83,6 @@
   context_css_wide
   context_paint
   context_keyword
-  summary
   values_intf
   values_color_name
   values_var
@@ -210,7 +209,6 @@
   source_index.mli
   stats.mli
   stylesheet.mli
-  summary.mli
   support.mli
   supports.mli
   syntax.mli

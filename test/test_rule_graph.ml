@@ -10,10 +10,16 @@ let parse s =
 
 let optimize_str s = parse s |> Css.optimize |> Css.to_string ~minify:true
 
+(* The live rules in the graph's canonical order, as the optimizer reads them
+   back out. *)
+let ordered_rules g =
+  Array.to_list
+    (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
+
 let graph_project_str s =
   parse s
   |> List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None)
-  |> Rule_graph.of_rules |> Rule_graph.to_rules
+  |> Rule_graph.of_rules |> ordered_rules
   |> List.map (fun r -> Stylesheet.Rule r)
   |> Css.to_string ~minify:true
 
@@ -76,11 +82,16 @@ let rules_of s =
 let nid i = Rule_graph.Node_id.of_int_exn i
 let nids ids = List.map nid ids
 
+let is_live g i =
+  List.exists
+    (fun n -> Rule_graph.Node_id.to_int n = Rule_graph.Node_id.to_int i)
+    (Rule_graph.live_nodes g)
+
 let int_order order =
   order |> Array.to_list |> List.map Rule_graph.Node_id.to_int
 
 let graph_to_string g =
-  Rule_graph.to_rules g
+  ordered_rules g
   |> List.map (fun r -> Stylesheet.Rule r)
   |> Css.to_string ~minify:true
 
@@ -625,8 +636,7 @@ let try_rewrite_bumps_generation () =
         (Rule_graph.generation g' > g0);
       Alcotest.(check bool)
         "consumed nodes become dead" true
-        ((not (Rule_graph.is_live g' (nid 0)))
-        && not (Rule_graph.is_live g' (nid 1)))
+        ((not (is_live g' (nid 0))) && not (is_live g' (nid 1)))
 
 (* --- declaration_body_key: identical-body bucketing --- *)
 
@@ -713,11 +723,7 @@ let check_reachability label g =
   let count = Rule_graph.node_count g in
   for i = 0 to count - 1 do
     for j = 0 to count - 1 do
-      let expected =
-        reaches g i j
-        && Rule_graph.is_live g (nid i)
-        && Rule_graph.is_live g (nid j)
-      in
+      let expected = reaches g i j && is_live g (nid i) && is_live g (nid j) in
       Alcotest.(check bool)
         (Fmt.str "%s: precedes %d %d" label i j)
         expected
@@ -975,10 +981,10 @@ let a_rewritten_graph_keeps_its_answers () =
       Alcotest.(check string) "the parent's order" before (graph_to_string g);
       Alcotest.(check bool)
         "the parent still holds its consumed nodes" true
-        (Rule_graph.is_live g (nid 0) && Rule_graph.is_live g (nid 3));
+        (is_live g (nid 0) && is_live g (nid 3));
       Alcotest.(check bool)
         "the parent does not hold its child's nodes" false
-        (Rule_graph.is_live g (nid 4));
+        (is_live g (nid 4));
       Alcotest.(check (list int))
         "the parent's edges" [ 1 ]
         (List.map Rule_graph.Node_id.to_int (Rule_graph.successors g (nid 0)));

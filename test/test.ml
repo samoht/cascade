@@ -55,7 +55,6 @@ let () =
       Test_cover.suite;
       Test_flatten.suite;
       Test_preflight.suite;
-      Test_summary.suite;
       Test_pp.suite;
       Test_syntax.suite;
       Test_context.suite;

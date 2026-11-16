@@ -15,7 +15,10 @@ let render rules =
 let optimize_rules css =
   rules css |> Rule_graph.of_rules
   |> Rule_scheduler.run ~ctx:Ctx.fragment ~finalize:Fun.id
-  |> Rule_graph.to_rules |> render
+  |> fun g ->
+  Array.to_list
+    (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
+  |> render
 
 (* Cascade-equivalence oracle for the safety tests: resolve every element the
    class alphabet can describe against the input and against the optimized

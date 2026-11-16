@@ -88,8 +88,8 @@ type t = {
           appended to in place, so their length is a capacity, not a node count.
       *)
   mutable rules : rule array;  (** all nodes ever created, dead ones included *)
-  mutable summaries : Summary.t array;
-      (** declaration-side facts and byte sizes, precomputed once per node *)
+  mutable sizes : int array;
+      (** each node's minified byte size, worked out once *)
   mutable origin : int array;
   mutable death : int array;
       (** the generation of the first graph a node is dead in, [max_int] while
@@ -213,13 +213,6 @@ let rec share_branch a b =
       if c = 0 then true
       else if c < 0 then share_branch xs b
       else share_branch a ys
-
-let declaration_size decl = Pp.size ~minify:true Declaration.pp decl
-
-let rule_summary rule =
-  Summary.v ~rule_size:Size.rule ~decl_size:declaration_size
-    ~selector_size:(Pp.size ~minify:true Selector.pp)
-    rule
 
 let selector_list = function
   | [] -> invalid_arg "Rule_graph.selector_list"
@@ -656,11 +649,10 @@ let rule_facts parent rules =
     decl_overlaps,
     Array.map rule_overlap_keys decl_overlaps )
 
-(* The nodes of [rules] in source order with their edges, the given [summaries],
-   and an empty external index sized for [index_capacity] entries, which the
-   first rewrite fills: enough to project an order, and to rewrite once the
-   summaries are the rules'. *)
-let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
+(* The nodes of [rules] in source order with their edges, their [sizes], and an
+   empty external index sized for [index_capacity] entries, which the first
+   rewrite fills. *)
+let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
     ?(pin_shared_branches = true) ?exclusive (rules : rule array) : t =
   let n = Array.length rules in
   let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
@@ -678,7 +670,7 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
       parent;
       count = n;
       rules;
-      summaries;
+      sizes;
       origin = Array.init n Fun.id;
       death = Array.make n max_int;
       selectors;
@@ -707,20 +699,19 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
 let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
   let rules = Array.of_list rules in
   ordered_nodes
-    ~summaries:(Array.map rule_summary rules)
+    ~sizes:(Array.map Size.rule rules)
     ~index_capacity:(max 16 (Array.length rules * 2))
     ?parent ?closed_world ?pin_shared_branches ?exclusive rules
 
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
-let node_size t i = Summary.size t.summaries.(i)
+let node_size t i = t.sizes.(i)
 let node_origin t i = t.origin.(i)
 
 (* [i] is a node of [t] that no rewrite up to [t] consumed. *)
 let alive t i = t.death.(i) > t.generation
 let is_live t i = i < t.count && alive t i
 let conflict t i j = nodes_conflict t i j
-let order_constrained = conflict
 
 (* A fresh stamp for [t]'s nodes in the lineage's marks: a walk marks a node
    visited by writing the stamp and asks by comparing with it, so it never
@@ -981,8 +972,6 @@ let canonical_order_by t (rank : node_id -> int) : node_id array =
 let canonical_order t : node_id array =
   canonical_order_by t (fun node -> t.origin.(node))
 
-let canonical_linearization = canonical_order
-
 (* A graph and the graphs rewritten from it share their per-node arrays: an
    attempt writes its produced nodes into the slots past its parent's [count],
    which the parent never reads, and keeps the edges it points at existing nodes
@@ -1064,7 +1053,7 @@ let reserve t added =
     end
   in
   t.rules <- grow t.rules;
-  t.summaries <- grow t.summaries;
+  t.sizes <- grow t.sizes;
   t.origin <- grow t.origin;
   t.death <- grow t.death;
   t.selectors <- grow t.selectors;
@@ -1081,7 +1070,7 @@ let produced_graph t ~consume produced =
   let added = Array.length produced in
   let total = t.count in
   reserve t added;
-  let summaries = Array.map rule_summary produced in
+  let sizes = Array.map Size.rule produced in
   let facts =
     Array.map
       (fun rule -> branch_facts (effective_selector t.parent rule))
@@ -1091,7 +1080,7 @@ let produced_graph t ~consume produced =
   let branches = Array.map selector_branch_keys selectors in
   let decl_overlaps = Array.map rule_decl_overlaps produced in
   place t.rules ~at:total produced;
-  place t.summaries ~at:total summaries;
+  place t.sizes ~at:total sizes;
   place t.origin ~at:total (produced_origins t consume branches);
   Array.fill t.death total added max_int;
   place t.selectors ~at:total selectors;
@@ -1636,16 +1625,6 @@ let try_rewrite t ~consume ~produce : t option =
   | Ok graph -> Option.Some graph
   | Error _ -> Option.None
 
-let to_rules t : rule list =
-  let order = canonical_order t in
-  Array.to_list (Array.map (fun i -> t.rules.(i)) order)
-
-let canonicalize t =
-  of_rules ?parent:t.parent ~closed_world:t.closed_world
-    ~pin_shared_branches:t.pin_shared_branches (to_rules t)
-
-let to_canonical_rules = to_rules
-
 (* A run a canonical projection settles: it orders the run, folds some of its
    elements together, and orders it again until nothing folds. Nodes keep the
    edges and the index between rounds rather than being rebuilt each one. A fold
@@ -1682,7 +1661,7 @@ let run ?parent ?exclusive ~folds rules =
       parent;
       count = n;
       rules;
-      summaries = [||];
+      sizes = [||];
       origin = [||];
       death = [||];
       selectors;
