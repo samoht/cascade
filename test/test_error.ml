@@ -448,6 +448,38 @@ let tests_position () =
   error_renders_caret_on_marked_line ();
   error_renders_caret_at_context_start ()
 
+(* --- cost of locating warnings --- *)
+
+(* [n] rules that each draw one warning, [break] between two of them: a line
+   break as an author writes a sheet, nothing as a minifier leaves it. *)
+let warning_sheet ~break n =
+  String.concat break (List.init n (fun _ -> ".x{float:center}"))
+
+let rendering_allocates ~break n =
+  let warnings = parse_warnings (warning_sheet ~break n) in
+  Alcotest.(check int) "one warning a rule" n (List.length warnings);
+  Css_test_helpers.measure (fun () ->
+      List.fold_left
+        (fun bytes w -> bytes + String.length (Error.to_string w))
+        0 warnings)
+
+(* Rendering every warning of a sheet costs in proportion to the sheet plus its
+   warnings. The measure is what the rendering allocates, which no load on the
+   host changes: twice the rules is twice the text and twice the warnings, so a
+   linear rendering allocates twice as much, and one that allocates as it walks
+   the source from its start for each warning four times. *)
+let locating_warnings_is_linear () =
+  List.iter
+    (fun (name, break) ->
+      let rules = 1_000 in
+      let a1 = rendering_allocates ~break rules in
+      let a2 = rendering_allocates ~break (2 * rules) in
+      if a2 > 3. *. a1 then
+        Alcotest.failf
+          "%s: rendering allocates %.0f -> %.0f words (%.2fx for 2x)" name a1 a2
+          (a2 /. a1))
+    [ ("a rule a line", "\n"); ("one line", "") ]
+
 let suite =
   ( "error",
     [
@@ -474,4 +506,6 @@ let suite =
       Alcotest.test_case "bad value reason names something" `Quick
         bad_value_reason_names_something;
       Alcotest.test_case "line and column" `Quick tests_position;
+      Alcotest.test_case "locating warnings is linear" `Quick
+        locating_warnings_is_linear;
     ] )
