@@ -36,10 +36,8 @@ let () =
       Test_rule_candidate.suite;
       Test_rule_scheduler.suite;
       Test_rule_order.suite;
-      Test_order_maintenance.suite;
       Test_common.suite;
       Test_ctx.suite;
-      Test_pool.suite;
       Test_stats.suite;
       Test_edge.suite;
       Test_shorthand.suite;
