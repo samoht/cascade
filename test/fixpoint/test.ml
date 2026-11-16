@@ -33,8 +33,9 @@
     selector AST still records how some simple selectors were spelled (a
     pseudo-element's colons, an attribute value's quotes, [odd] against [2n+1]).
     Every block reads back with as many statements as it was built with.
-    Declarations are not compared: a custom property keeps the tokens it was
-    read from, positions included.
+    Declarations are not compared: a custom property's tokens keep the spelling
+    they were written with, which is part of the value, and the minified printer
+    spells some of them shorter.
 
     Failures are reduced before they are reported. A candidate is always a
     concatenation of substrings of the original input, never a re-print of its

@@ -38,8 +38,22 @@ let intern decl = Interned.merge (Domain.DLS.get interned) decl
 (* Smart constructors. The [hash] field is the stdlib bounded structural hash of
    the payload, so declarations equal under [compare] share a hash, and bounded
    depth keeps construction O(1) on large value subtrees. *)
+(* README: source positions are not kept through formatting, and CSS Custom
+   Properties 1 sec. 2 makes a custom property's value its token sequence, so
+   where the tokens were read is no part of the value. They are dropped here,
+   where every declaration is built, so equality, the hash and interning never
+   see them. *)
+let positionless (type a) (property : a Properties.property) (value : a) : a =
+  match (property, value) with
+  | Custom_property _, Custom_value ({ value = Tokens tokens; _ } as cv) ->
+      let tokens' = Component.without_locs tokens in
+      if tokens' == tokens then value
+      else Custom_value { cv with value = Tokens tokens' }
+  | _ -> value
+
 let v (type a) ?(important = false) (property : a Properties.property)
     (value : a) =
+  let value = positionless property value in
   let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
   intern (Declaration { property; value; important; hash })
 

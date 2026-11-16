@@ -217,6 +217,10 @@
 
 ### Library
 
+- A custom property's tokens carry no source position, so two declarations of
+  one custom property with one value are equal, hash alike and are one object
+  wherever their tokens were read. `Component.without_locs` drops the positions
+  (#1353).
 - `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
   as WHATWG URL does, since a digit cannot open a scheme (#1291).
 - `Cascade.Reader` exposes `origin` and `original_offset`, which map a position
