@@ -1082,19 +1082,11 @@ let normalize_custom_values ~lossless (stmts : statement list) : statement list
    the colour actually moved. So no other value fold rides along, and the
    emitted form is untouched - the two spellings are not interchangeable on
    output, since [color()] needs a browser that parses it. *)
-let canonical_color_spelling decl =
+let canonical_color_spelling ~plain decl =
   let folded = Declaration.normalize ~lossless:true ~exact_srgb:true decl in
   if folded == decl then decl
-  else if
-    Declaration.equal_declaration folded
-      (Declaration.normalize ~lossless:true decl)
-  then decl
+  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
   else folded
-
-let canonical_color_spellings (stmts : statement list) : statement list =
-  Stylesheet.map_declarations
-    (Common.List.map_preserve canonical_color_spelling)
-    stmts
 
 (* A non-terminating quotient the minifier keeps as the author's [calc()]
    renders within the six-significant-figure budget of the number it folds to,
@@ -1102,22 +1094,12 @@ let canonical_color_spellings (stmts : statement list) : statement list =
    [33.3333%]. The projection spends the budget on every typed quotient, as it
    is spent on a number's already, so the two spellings meet; [lossless] keeps
    the quotient and the two apart. *)
-let canonical_quotient decl =
+let canonical_quotient ~plain decl =
   let ctx = { Values.default_calc_ctx with budget = true } in
   let folded = Declaration.normalize ~lossless:true ~ctx decl in
   if folded == decl then decl
-  else if
-    Declaration.equal_declaration folded
-      (Declaration.normalize ~lossless:true decl)
-  then decl
+  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
   else folded
-
-let canonical_quotients ~lossless (stmts : statement list) : statement list =
-  if lossless then stmts
-  else
-    Stylesheet.map_declarations
-      (Common.List.map_preserve canonical_quotient)
-      stmts
 
 (* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
    appropriate unit for that component", for every purpose but the ones that
@@ -1145,36 +1127,63 @@ let canonical_quotients ~lossless (stmts : statement list) : statement list =
 
    Guarded like [canonical_color_spelling]: the flagged normalisation is kept
    only where it moves the colour, so no other value fold rides along. *)
-let canonical_missing_components ~lossless decl =
+let canonical_missing_components ~lossless ~plain decl =
   let folded = Declaration.normalize ~lossless ~resolve_missing:true decl in
   if folded == decl then decl
-  else if
-    Declaration.equal_declaration folded (Declaration.normalize ~lossless decl)
-  then decl
+  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
   else folded
 
-let canonical_missing_components_in_rule ~lossless decls =
-  Common.List.map_preserve
-    (fun decl ->
-      let folded = canonical_missing_components ~lossless decl in
-      if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
-        folded
-      else decl)
-    decls
+(* The three folds above each compare the declaration they fold against its
+   normalisation without their flag, and two of them, and all three under
+   [lossless], compare against one normalisation of one declaration. So a
+   declaration goes through the three in turn and each normalisation it is
+   compared against is worked out once, when a fold first needs it. *)
+let lossless_plain decl = lazy (Declaration.normalize ~lossless:true decl)
 
-let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
+let canonical_value ~lossless decl =
+  let plain = lossless_plain decl in
+  let quotient = if lossless then decl else canonical_quotient ~plain decl in
+  let plain = if quotient == decl then plain else lossless_plain quotient in
+  let color = canonical_color_spelling ~plain quotient in
+  (color, if color == quotient then plain else lossless_plain color)
+
+let canonical_missing ~lossless decls (decl, plain) =
+  let plain =
+    if lossless then plain else lazy (Declaration.normalize ~lossless decl)
+  in
+  let folded = canonical_missing_components ~lossless ~plain decl in
+  if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
+    folded
+  else decl
+
+let canonical_declaration_values ~lossless ~missing decls =
+  let values = List.map (canonical_value ~lossless) decls in
+  let folded =
+    if List.for_all2 (fun d (v, _) -> d == v) decls values then decls
+    else List.map fst values
+  in
+  if not missing then folded
+  else
+    let missed = List.map (canonical_missing ~lossless folded) values in
+    if List.for_all2 ( == ) folded missed then folded else missed
+
+let rec canonical_values ~lossless ~missing (stmts : statement list) :
     statement list =
   Common.List.map_preserve
     (fun stmt ->
-      match stmt with
-      | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Starting_style _ ->
-          stmt
-      | stmt ->
-          stmt
-          |> Stylesheet.map_statement_declarations
-               (canonical_missing_components_in_rule ~lossless)
-          |> Stylesheet.map_statement_children
-               (canonical_missing_component_colors ~lossless))
+      let missing =
+        missing
+        &&
+        match stmt with
+        | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Starting_style _
+          ->
+            false
+        | _ -> true
+      in
+      stmt
+      |> Stylesheet.map_statement_declarations
+           (canonical_declaration_values ~lossless ~missing)
+      |> Stylesheet.map_statement_children (canonical_values ~lossless ~missing))
     stmts
 
 (* CSS Conditional 3 sec. 6.1 makes a [<general-enclosed>] term false, so an
@@ -1855,12 +1864,10 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
       @@ canonical_query_preludes
            (canonical_keyframe_declarations
            @@ sort_property_runs
-                (canonical_missing_component_colors ~lossless
-                   (canonical_color_spellings
-                      (canonical_quotients ~lossless
-                         (normalize_custom_values ~lossless
-                            (canonical_vendor_aliases
-                               (drop_unanswerable_supports stmts))))))))
+                (canonical_values ~lossless ~missing:true
+                   (normalize_custom_values ~lossless
+                      (canonical_vendor_aliases
+                         (drop_unanswerable_supports stmts))))))
   in
   let result =
     canonicalize_block ~ctx
