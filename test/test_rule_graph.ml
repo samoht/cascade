@@ -1140,7 +1140,8 @@ let same_selector_commute_is_subquadratic () =
 (* Selector compatibility is not transitive, so a run of same-body rules groups
    only when EVERY pair in it agrees. [.y] pairs with both of the others and
    they do not pair with each other, so the three never share a selector list
-   and the enumerator settles for the compatible subset. *)
+   and the enumerator settles for a compatible subset. Both pairs save the same,
+   and an equal saving goes to the shorter shared rule. *)
 let grouping_respects_non_transitive_compatibility () =
   let newer = ".x:user-valid{color:red}" in
   let plain = ".y{color:red}" in
@@ -1156,8 +1157,8 @@ let grouping_respects_non_transitive_compatibility () =
     ".x:user-valid{color:red}:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ guarded));
   Alcotest.(check string)
-    "all three settle for the compatible subset"
-    ".x:user-valid{color:red}.y,:is(:where(.group):hover .z){color:red}"
+    "all three settle for the shorter compatible subset"
+    ".x:user-valid,.y{color:red}:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ plain ^ guarded))
 
 (* Every rule here carries the same body and a selector no other rule shares, so
