@@ -92,6 +92,9 @@
 - A `var()` fallback that does not match the property's grammar costs the
   same as one that does. Each one located itself in the source, so a sheet of
   them cost its size squared; Tailwind's output parses 22% faster (#1311).
+- The tokenizer copies a token's source text only when an escape is in it, and
+  reads a number or a whitespace run straight from the source: Tailwind's
+  output parses 9% faster (#1314).
 
 ### CLI tools
 
