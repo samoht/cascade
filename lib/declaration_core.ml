@@ -14,27 +14,38 @@ let rec meta_of_declaration : declaration -> meta option = function
   | Declaration _ -> None
   | Theme_guarded { decl; _ } -> meta_of_declaration decl
 
-(* Smart constructor. The [hash] field is the stdlib bounded structural hash of
-   the (property, value, important) triple, so structurally-equal declarations
-   share a hash (the invariant [same_minified] uses for its O(1) inequality
-   short-circuit). Bounded depth keeps construction O(1) on large value
-   subtrees. *)
-let v (type a) ?(important = false) (property : a Properties.property)
-    (value : a) =
-  let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
-  Declaration { property; value; important; hash }
-
-let theme_guarded ~var_name decl =
-  let hash = Hashtbl.seeded_hash_param 30 100 0 (var_name, decl) in
-  Theme_guarded { var_name; decl; hash }
-
-(* Read the cached structural hash. Two declarations that minify to the same
-   text always produce the same value here; the converse may fail on hash
-   collisions, so callers still confirm with [equal_declaration] before treating
-   two declarations as equal. *)
+(* The cached structural hash. Two declarations equal under [compare] always
+   share it; the converse may fail on hash collisions. *)
 let hash = function
   | Declaration { hash; _ } -> hash
   | Theme_guarded { hash; _ } -> hash
+
+(* The live declarations of this domain, one per class of [compare]. The smart
+   constructors return the member equal to what they build, so declarations
+   equal in one domain are one object and [equal_declaration] answers them with
+   a pointer compare. The set holds its members weakly: one nothing else holds
+   is collected. *)
+module Interned = Weak.Make (struct
+  type t = declaration
+
+  let equal a b = Stdlib.compare a b = 0
+  let hash = hash
+end)
+
+let interned = Domain.DLS.new_key (fun () -> Interned.create 4096)
+let intern decl = Interned.merge (Domain.DLS.get interned) decl
+
+(* Smart constructors. The [hash] field is the stdlib bounded structural hash of
+   the payload, so declarations equal under [compare] share a hash, and bounded
+   depth keeps construction O(1) on large value subtrees. *)
+let v (type a) ?(important = false) (property : a Properties.property)
+    (value : a) =
+  let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
+  intern (Declaration { property; value; important; hash })
+
+let theme_guarded ~var_name decl =
+  let hash = Hashtbl.seeded_hash_param 30 100 0 (var_name, decl) in
+  intern (Theme_guarded { var_name; decl; hash })
 
 let unknown_property ?(important = false) name value =
   let components = Cursor.remaining (Cursor.of_string value) in
@@ -266,21 +277,21 @@ type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
    equal to nothing, itself included, so [(=)] read [opacity:calc(NaN)] as
    different from itself while [hash], which normalises NaN, read it as the
    same. CSS has one NaN, a parse-time keyword of the <number> grammar (Values 4
-   sec. 10.7.2) serialised as calc(NaN) (sec. 10.13). *)
-let equal_declaration (a : declaration) b = Stdlib.compare a b = 0
+   sec. 10.7.2) serialised as calc(NaN) (sec. 10.13).
 
-(* Two declarations minify to the same text exactly when their canonical ASTs
-   are equal (property, value, and importance). After the optimizer's
-   canonicalisation passes the AST is canonical, so structural equality is the
-   minified-equality test - and far cheaper than rendering both to strings. A
+   Interning makes an equal pair built in one domain one object, so the walk is
+   left to a pair built in two domains or one whose hashes collide; differing
+   hashes answer that the pair differs.
+
+   Two declarations minify to the same text exactly when their canonical ASTs
+   are equal (property, value, and importance), so this is also the
+   minified-equality test, far cheaper than rendering both. A
    pp-equal-but-structurally-different pair would be a canonicalisation bug, not
-   something to paper over by comparing rendered text.
+   something to paper over by comparing rendered text. *)
+let equal_declaration (a : declaration) b =
+  a == b || (Int.equal (hash a) (hash b) && Stdlib.compare a b = 0)
 
-   [(==)] short-circuits the same-heap-object case. The cached [hash] (computed
-   once at construction by [v]) short-circuits the (much more common)
-   different-value case in one field-load + int compare without walking the AST;
-   we only fall through to structural equality on a hash collision. *)
-let same_minified a b = a == b || (hash a = hash b && equal_declaration a b)
+let same_minified = equal_declaration
 let equal_prop_key (a : prop_key) b = a = b
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 

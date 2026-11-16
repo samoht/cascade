@@ -60,7 +60,7 @@
   through an `i` or `s` flag; it could move one past the other (#1295).
 - `--minify` is faster on large sheets, with the same output: a merge attempt
   costs the rules it touches rather than the size of the sheet, about a third
-  fewer instructions on real sheets (#1306, #1307, #1313, #1322, #1323).
+  fewer instructions on real sheets (#1306, #1307, #1313, #1322, #1323, #1324).
 
 ### Parsing
 

@@ -209,16 +209,17 @@ val read_block : Cursor.t -> declaration list
 (** {2 Type-driven helper functions} *)
 
 val v : ?important:bool -> 'a Properties.property -> 'a -> declaration
-(** [v ?important property value] creates a typed declaration. *)
+(** [v ?important property value] creates a typed declaration, or returns the
+    live declaration of this domain equal to it. *)
 
 val theme_guarded : var_name:string -> declaration -> declaration
-(** [theme_guarded ~var_name decl] wraps [decl] in a theme guard. *)
+(** [theme_guarded ~var_name decl] wraps [decl] in a theme guard, or returns the
+    live declaration of this domain equal to that. *)
 
 val hash : declaration -> int
 (** [hash decl] returns the structural fingerprint cached at construction. Two
-    declarations that are equal under [=] always return the same value; the
-    converse may fail on hash collisions, so use it only as a cheap pre-filter
-    before falling back to structural equality. *)
+    declarations that are {!equal_declaration} always return the same value; the
+    converse may fail on hash collisions. *)
 
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
@@ -256,16 +257,18 @@ val property_name : declaration -> string
 type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
 val equal_declaration : declaration -> declaration -> bool
-(** [equal_declaration a b] tests declarations for structural equality. A NaN
-    equals itself here, as it does under {!hash}: CSS has one NaN, a keyword of
-    the [<number>] grammar (Values 4 sec. 10.7.2) serialised as [calc(NaN)]
-    (sec. 10.13). *)
+(** [equal_declaration a b] tests declarations for structural equality,
+    [Stdlib.compare a b = 0]. A NaN equals itself here, as it does under
+    {!hash}: CSS has one NaN, a keyword of the [<number>] grammar (Values 4 sec.
+    10.7.2) serialised as [calc(NaN)] (sec. 10.13). {!v} and {!theme_guarded}
+    return one object for equal declarations built in one domain, so such a pair
+    is answered by a pointer compare. *)
 
 val same_minified : declaration -> declaration -> bool
 (** [same_minified a b] is [true] when [a] and [b] render to the same minified
     text. Two declarations do so exactly when their canonical ASTs agree on
-    property, value and importance, so this is {!equal_declaration} behind the
-    {!hash} pre-filter rather than a comparison of rendered strings. *)
+    property, value and importance, so this is {!equal_declaration} rather than
+    a comparison of rendered strings. *)
 
 val equal_prop_key : prop_key -> prop_key -> bool
 (** [equal_prop_key a b] tests property identities for equality. *)
