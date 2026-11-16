@@ -371,84 +371,6 @@ let pp_nth_col_func ctx name expr =
 
 let comma_space ctx () = Pp.string ctx ", "
 
-(* CSS Selectors 4 3.5: when the universal selector [*] is not the only
-   component of a compound, the [*] may be omitted. Namespaced universals
-   ([ns|*], [*|*]) carry namespace information and are preserved. *)
-let drop_redundant_universal = function
-  | [ _ ] as singleton -> singleton
-  | components ->
-      let kept =
-        List.filter (function Universal None -> false | _ -> true) components
-      in
-      if kept = [] then components else kept
-
-(* CSS Selectors 4 3.5: a compound selector that "contains a type selector or
-   universal selector [...] must come first in the sequence". So a rewrite that
-   splices a wrapped selector into the surrounding compound has to leave a
-   type-bearing argument wrapped: spliced, the two names fuse and [.a:is(code)]
-   reads as [.acode], a class nobody wrote. *)
-let rec carries_type_selector = function
-  | Element _ | Universal _ -> true
-  | Compound parts -> List.exists carries_type_selector parts
-  | _ -> false
-
-(* Which elements [HTML] gives each state pseudo-class pair to. The three sets
-   differ. [:enabled] and [:disabled] split every form control plus [optgroup],
-   [option] and [fieldset] (HTML sec. 4.15, sec. 4.16.3). [:valid] and
-   [:invalid] split a [form] and a [fieldset] whole, but reach a form control
-   only while it is a candidate for constraint validation, which a disabled,
-   readonly or [type=hidden] one is not. [:required] and [:optional] split
-   [select] and [textarea]; [:optional] wants an [input] "to which the required
-   attribute applies", and it does not apply in e.g. the Hidden state. *)
-let enabled_carriers =
-  [ "button"; "fieldset"; "input"; "optgroup"; "option"; "select"; "textarea" ]
-
-let validity_carriers = [ "fieldset"; "form" ]
-let optionality_carriers = [ "select"; "textarea" ]
-
-let state_pair = function
-  | Enabled -> Some (Disabled, enabled_carriers)
-  | Disabled -> Some (Enabled, enabled_carriers)
-  | Valid -> Some (Invalid, validity_carriers)
-  | Invalid -> Some (Valid, validity_carriers)
-  | Required -> Some (Optional, optionality_carriers)
-  | Optional -> Some (Required, optionality_carriers)
-  | _ -> None
-
-(* Whether every element [sel] can select is one of [carriers]. A type selector
-   proves it, and [:is()]/[:where()] prove it when every branch does; a class,
-   an attribute, a negation or [:has()] constrains something other than the
-   subject's element type, so it proves nothing. Selectors 4 sec. 3.5: the
-   subject of a complex selector is its rightmost compound. A namespaced type
-   selector is left out: the prefix binds to a namespace declared elsewhere in
-   the stylesheet, and these names are the HTML ones. *)
-let rec selects_only carriers = function
-  | Element (None, name) -> List.mem (String.lowercase_ascii name) carriers
-  | Compound parts -> List.exists (selects_only carriers) parts
-  | Is branches | Where branches ->
-      branches <> [] && List.for_all (selects_only carriers) branches
-  | Combined (_, _, right) -> selects_only carriers right
-  | _ -> false
-
-(* CSS Selectors 4 sec. 12.1.1, 12.3.1 and 12.3.3: an element outside a pair's
-   set matches neither half, so [X:not(:enabled)] is [X:disabled] only inside a
-   compound that proves its subject carries the state. Which elements those are
-   is a [HTML] fact rather than one the CSS text proves, hence the
-   [enforce_spec] gate. *)
-let fold_state_negations ctx components =
-  if (not (Pp.minified ctx)) || ctx.Pp.enforce_spec then components
-  else
-    List.map
-      (function
-        | Not [ state ] as component -> (
-            match state_pair state with
-            | Some (complement, carriers)
-              when List.exists (selects_only carriers) components ->
-                complement
-            | _ -> component)
-        | component -> component)
-      components
-
 let rec pp_nth_func ctx name expr of_sel =
   Pp.char ctx ':';
   Pp.string ctx name;
@@ -476,10 +398,7 @@ and pp_nested_function_lists ctx = function
   | Is selectors -> func ctx "is" spaced_sels_nested_function_lists selectors
   | Where selectors ->
       func ctx "where" spaced_sels_nested_function_lists selectors
-  | Compound selectors ->
-      List.iter
-        (pp_nested_function_lists ctx)
-        (fold_state_negations ctx selectors)
+  | Compound selectors -> List.iter (pp_nested_function_lists ctx) selectors
   | Combined (left, comb, right) ->
       pp_nested_function_lists ctx left;
       pp_combinator ctx comb;
@@ -648,42 +567,10 @@ and pp : t Pp.t =
   | Cue_region None -> elem ctx "cue-region"
   | Cue_region (Some selectors) -> elem_func ctx "cue-region" sels selectors
   (* Functional pseudo-classes *)
-  | Is selectors
-    when Pp.minified ctx && List.sort compare selectors = [ Link; Visited ] ->
-      (* CSS Selectors 4 sec. 8.1: [:any-link] is defined as equivalent to
-         [:is(:link, :visited)], same specificity and shorter. *)
-      pp ctx Any_link
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
-  | Not [ Not [ inner ] ]
-    when Pp.minified ctx && not (carries_type_selector inner) ->
-      (* CSS Selectors 4 sec. 4.3: double negation [:not(:not(X))] is
-         spec-equivalent to [X] (and shorter under minify). [X] is spliced into
-         whatever compound holds the [:not()], so a type-bearing one stays
-         wrapped (Selectors 4 3.5, [carries_type_selector]). *)
-      pp ctx inner
-  | Not [ Dir "ltr" ] when Pp.minified ctx && not ctx.Pp.enforce_spec ->
-      (* CSS Selectors 4 sec. 7.1 leaves directionality to the document
-         language, so CSS alone does not make [ltr] and [rtl] a partition: an
-         element the language gives no directionality matches neither. [HTML]
-         makes it one for every element in an HTML document, which is the host
-         fact [enforce_spec] drops. *)
-      func ctx "dir" Pp.string "rtl"
-  | Not [ Dir "rtl" ] when Pp.minified ctx && not ctx.Pp.enforce_spec ->
-      func ctx "dir" Pp.string "ltr"
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
-  | Nth_child (Index 1, None) when Pp.minified ctx ->
-      (* CSS Selectors 4 14: [:nth-child(1)] is spec-equivalent to
-         [:first-child]; the keyword form is shorter. *)
-      Pp.string ctx ":first-child"
-  | Nth_last_child (Index 1, None) when Pp.minified ctx ->
-      (* Likewise [:nth-last-child(1)] is [:last-child]. *)
-      Pp.string ctx ":last-child"
-  | Nth_of_type (Index 1, None) when Pp.minified ctx ->
-      Pp.string ctx ":first-of-type"
-  | Nth_last_of_type (Index 1, None) when Pp.minified ctx ->
-      Pp.string ctx ":last-of-type"
   | Nth_child (expr, of_sel) -> pp_nth_func ctx "nth-child" expr of_sel
   | Nth_last_child (expr, of_sel) ->
       pp_nth_func ctx "nth-last-child" expr of_sel
@@ -723,8 +610,7 @@ and pp : t Pp.t =
             (if Pp.minified ctx then Parser.to_string_minified args
              else Parser.string_of_components args))
         args
-  | Compound selectors ->
-      List.iter (pp ctx) (fold_state_negations ctx selectors)
+  | Compound selectors -> List.iter (pp ctx) selectors
   | Combined (left, comb, right) ->
       pp ctx left;
       pp_combinator ctx comb;

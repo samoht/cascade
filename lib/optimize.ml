@@ -150,7 +150,8 @@ let factor_rules_until_settled ?factor_cache ~ctx ~held rules =
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
-let canonicalize_scope_selector sel = Selector.canonicalize sel
+let canonicalize_scope_selector ~enforce_spec sel =
+  Selector.canonicalize ~enforce_spec sel
 
 (* CSS Fonts 4 (ED) sec. 4.4 gives the [font-weight] and [font-width]
    descriptors the values of the properties of the same name, so a descriptor
@@ -364,8 +365,12 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
 
 and process_scope_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     acc stmt start end_ block rest =
-  let start' = option_map_preserve canonicalize_scope_selector start in
-  let end_' = option_map_preserve canonicalize_scope_selector end_ in
+  let start' =
+    option_map_preserve (canonicalize_scope_selector ~enforce_spec) start
+  in
+  let end_' =
+    option_map_preserve (canonicalize_scope_selector ~enforce_spec) end_
+  in
   let optimized_block =
     descend_block ?factor_cache ~ctx ~enforce_spec ~owner:scope_owner ~supports
       block
@@ -545,7 +550,7 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   let rule = drop_dead_nested_rules (rule_with_nested rule nested) in
   let rule = hoist_declaration_runs rule in
   let rule =
-    let selector = Selector.canonicalize rule.selector in
+    let selector = Selector.canonicalize ~enforce_spec rule.selector in
     if selector == rule.selector then rule else { rule with selector }
   in
   merge_lone_nested_rule rule

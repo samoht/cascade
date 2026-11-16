@@ -135,15 +135,25 @@ val map : (t -> t) -> t -> t
     node. This is useful for transforming class names throughout a complex
     selector structure. *)
 
-val canonicalize : t -> t
-(** [canonicalize selector] removes lexical-only redundancy so that distinct
-    ASTs denoting the same selector become structurally equal: the implied
-    universal in a compound is dropped ([*::before] -> [::before]), a one-part
-    compound collapses to that part, and a whole-selector [:is(s1, s2, ...)]
-    whose arguments share one specificity becomes the selector list
-    [s1, s2, ...] (CSS Selectors 4 sec. 4.2). [selector] is read as a rule
-    selector, so the split applies at its top level and to the members of its
-    top-level list. Idempotent. *)
+val canonicalize : ?enforce_spec:bool -> t -> t
+(** [canonicalize ?enforce_spec selector] rewrites [selector] to one canonical
+    node among those matching the same elements at the same specificity, so
+    distinct ASTs denoting the same selector become structurally equal:
+    - the implied universal in a compound is dropped ([*::before] -> [::before])
+      and a one-part compound collapses to that part;
+    - selector-list alternatives are deduplicated and sorted;
+    - a single-argument [:is(s)] splices into its compound, and a whole-selector
+      [:is(s1, s2, ...)] whose arguments share one specificity becomes the
+      selector list [s1, s2, ...] (CSS Selectors 4 sec. 4.2);
+    - [:not(:not(s))] is [:is(s)] (sec. 4.3), [:is(:link, :visited)] is
+      [:any-link] (sec. 8.1), and [:nth-child(1)] and its siblings are
+      [:first-child] and its siblings (sec. 14). Unless [enforce_spec] (default
+      [false]), it also takes two [HTML] facts: [:not(:dir(ltr))] is [:dir(rtl)]
+      and back (sec. 7.1), and [X:not(:enabled)] is [X:disabled] where [X]'s
+      element type carries the state, likewise for the [:valid] and [:required]
+      pairs (sec. 12). [selector] is read as a rule selector, so the list split
+      applies at its top level and to the members of its top-level list.
+      Idempotent. *)
 
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)

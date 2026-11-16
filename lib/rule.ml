@@ -240,7 +240,9 @@ let finalize ?held ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
      fixpoint. *)
   let rule =
     if canonicalize_selector then
-      let canon = Selector.canonicalize rule.selector in
+      let canon =
+        Selector.canonicalize ~enforce_spec:(Ctx.enforce_spec ctx) rule.selector
+      in
       if canon == rule.selector then rule else { rule with selector = canon }
     else rule
   in
@@ -373,8 +375,8 @@ let adjacent_merge_eligible ~ctx (r : rule) =
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
-let merged_selector group =
-  Selector.canonicalize
+let merged_selector ~ctx group =
+  Selector.canonicalize ~enforce_spec:(Ctx.enforce_spec ctx)
     (Merge.selector_list
        (List.concat_map (fun (r : rule) -> Edge.selectors r.selector) group))
 
@@ -407,7 +409,7 @@ let merge_adjacent_identical ~ctx (rules : rule list) : rule list =
           | [ _ ] -> r
           | group ->
               changed := true;
-              { r with selector = merged_selector (List.rev group) }
+              { r with selector = merged_selector ~ctx (List.rev group) }
         in
         merged :: go rest
     | r :: rest -> r :: go rest

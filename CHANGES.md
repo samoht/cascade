@@ -42,6 +42,10 @@
 
 ### Printing
 
+- `Css.to_string ~minify:true` prints a selector as it is given: folding
+  `:not(:not(X))`, `:is(:link,:visited)`, `:nth-child(1)`, `:not(:dir(ltr))` and
+  `input:not(:enabled)` moved to `Selector.canonicalize`, which `--minify` runs
+  and which takes `?enforce_spec`. `--minify` output is unchanged (#1350).
 - Very large numbers keep their sign. `width:4611686018427387904px` came out
   negative under `--minify`, and `z-index:calc(1e30)` as `-1` (#1280).
 - `@media (aspect-ratio:1.5/1)` prints as written instead of being rounded down
