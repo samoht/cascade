@@ -1,6 +1,14 @@
 (** Fast local rewrite candidate generation for {!Rule_graph}. *)
 
+type memo
+(** What {!enumerate} worked out from the rules of a subset alone, for the
+    graphs one rewrite lineage passes through. *)
+
+val memo : unit -> memo
+(** [memo ()] holds nothing yet. *)
+
 val enumerate :
+  ?memo:memo ->
   ?touching:Rule_graph.node_id list ->
   ctx:Ctx.t ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
@@ -11,7 +19,15 @@ val enumerate :
     at least one of those nodes are expanded; this is the incremental
     scheduler's neighborhood refresh after a commit. The list is intentionally
     local and heuristic; every candidate still commits through
-    {!Rule_graph.rewrite}. *)
+    {!Rule_graph.rewrite}.
+
+    [memo] (empty by default) is read and extended. Given the one an earlier
+    call filled on an ancestor of [graph], with the same [ctx] and [finalize],
+    the call returns the same candidates as with an empty one, and a subset
+    whose rules it already judged costs only the questions that read the rest of
+    [graph]: which rules are live, and which precede which. Node ids name the
+    same rules on every graph {!Rule_graph.rewrite} derives from one another,
+    and other rules on any other graph. *)
 
 val nested_merge_is_safe : stats:Stats.t -> Stylesheet.rule list -> bool
 (** [nested_merge_is_safe ~stats rules] is whether a run of rules on one

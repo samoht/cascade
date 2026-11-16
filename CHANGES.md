@@ -57,6 +57,9 @@
 - `--minify` keeps what it knows of rule order across a committed merge instead
   of working it out again for the whole run. Output is unchanged; a sheet that
   commits many merges costs about a third less (reddit, 311KB) (#1306).
+- When `--minify` runs out of merges on a long run of rules and looks for more,
+  it reuses what it already worked out about each group of rules it considered
+  before. Output is unchanged; tw_all (661KB) costs 3% less (#1307).
 
 ### Parsing
 

@@ -523,6 +523,29 @@ let ordered_ids g ids =
 let candidate_set_key ids =
   ids |> List.map Rule_graph.Node_id.to_int |> hash_ints
 
+(* A node keeps its rule for as long as it is in the graph, since a rewrite only
+   appends nodes, so on every graph one rewrite lineage passes through a list of
+   node ids names the same rules. *)
+module Ids_table = Hashtbl.Make (struct
+  type t = Rule_graph.node_id list
+
+  let equal = List.equal (fun a b -> Rule_graph.Node_id.compare a b = 0)
+  let hash = candidate_set_key
+end)
+
+let recalled table ids answer =
+  match Ids_table.find_opt table ids with
+  | Option.Some known -> known
+  | Option.None ->
+      let known = answer () in
+      Ids_table.replace table ids known;
+      known
+
+(* A candidate worked out on an earlier graph of the lineage, as [g] offers
+   it. *)
+let offered_on g (candidate : candidate) =
+  { candidate with generation = Rule_graph.generation g }
+
 let unique_ids_preserve_order ids =
   let seen = ref Node_set.empty in
   List.filter
@@ -1090,34 +1113,65 @@ let eligible_ids_from_bucket g ids =
   ids |> ordered_ids g
   |> List.filter (fun id -> rule_eligible (Rule_graph.node_rule g id))
 
-let exact_shared_candidate ?size_cache ~finalize g ~seen common rules_with_ids =
-  match cost_aware_exact_members common rules_with_ids with
-  | [] | [ _ ] -> Option.None
-  | members ->
-      let ids = List.map fst members in
-      let rules = List.map snd members in
-      let key = exact_group_key rules common in
+(* What the rules of a subset make of an exact-shared group, before the one
+   question that reads the rest of the graph: whether the group would cross a
+   live rule it conflicts with. Each step past [key] is only taken for a group
+   not seen earlier in the enumeration, so it waits until one asks. *)
+type exact_group =
+  | No_exact_group
+  | Exact_group of {
+      key : int;
+      ids : Rule_graph.node_id list;
+      grouped : (rule * candidate option Lazy.t) option Lazy.t;
+    }
+
+let exact_group ?size_cache ~finalize g ids =
+  let rules_with_ids = rules_with_ids g ids in
+  match common_exact_decls (List.map snd rules_with_ids) with
+  | [] -> No_exact_group
+  | common -> (
+      match cost_aware_exact_members common rules_with_ids with
+      | [] | [ _ ] -> No_exact_group
+      | members ->
+          let ids = List.map fst members in
+          let rules = List.map snd members in
+          let grouped =
+            lazy
+              (match grouped_rule rules with
+              | Option.None -> Option.None
+              | Option.Some grouped ->
+                  let grouped = { grouped with declarations = common } in
+                  if
+                    unsafe_lift_in_any_member common rules
+                    || unsafe_group_order common rules
+                    || unsafe_cross_member_leftover common rules
+                    || unsafe_lift_over_prior_member g common members
+                  then Option.None
+                  else
+                    let produce = grouped :: exact_leftovers common rules in
+                    Option.Some
+                      ( grouped,
+                        lazy
+                          (candidate ?size_cache ~kind:Exact_shared_declarations
+                             ~finalize g ~consume:ids ~produce) ))
+          in
+          Exact_group { key = exact_group_key rules common; ids; grouped })
+
+let exact_shared_candidate ~recall ?size_cache ~finalize g ~seen ids =
+  match recall ids (fun () -> exact_group ?size_cache ~finalize g ids) with
+  | No_exact_group -> Option.None
+  | Exact_group { key; ids; grouped } ->
       if Int_table.mem seen key then Option.None
       else begin
         Int_table.replace seen key ();
-        match grouped_rule rules with
+        match Lazy.force grouped with
         | Option.None -> Option.None
-        | Option.Some grouped ->
-            let grouped = { grouped with declarations = common } in
-            if
-              unsafe_lift_in_any_member common rules
-              || unsafe_group_order common rules
-              || unsafe_cross_member_leftover common rules
-              || unsafe_lift_over_prior_member g common members
-              || group_crosses_external_conflict g ~ids grouped
-            then Option.None
-            else
-              let produce = grouped :: exact_leftovers common rules in
-              candidate ?size_cache ~kind:Exact_shared_declarations ~finalize g
-                ~consume:ids ~produce
+        | Option.Some (grouped, scored) ->
+            if group_crosses_external_conflict g ~ids grouped then Option.None
+            else Option.map (offered_on g) (Lazy.force scored)
       end
 
-let shared_decl_candidates ?size_cache ?touching ~ctx ~finalize g =
+let shared_decl_candidates ~recall ?size_cache ?touching ~ctx ~finalize g =
   let touching = touching_set touching in
   let budget = exact_subset_budget ~ctx g in
   let budget_state =
@@ -1136,17 +1190,12 @@ let shared_decl_candidates ?size_cache ?touching ~ctx ~finalize g =
         |> subset_candidates g ?budget_state budget
         |> List.iter (fun ids ->
             if touches_any touching ids then
-              let rules_with_ids = rules_with_ids g ids in
-              match common_exact_decls (List.map snd rules_with_ids) with
-              | [] -> ()
-              | common -> (
-                  match
-                    exact_shared_candidate ?size_cache ~finalize g
-                      ~seen:seen_groups common rules_with_ids
-                  with
-                  | Option.None -> ()
-                  | Option.Some candidate ->
-                      candidates := candidate :: !candidates)));
+              match
+                exact_shared_candidate ~recall ?size_cache ~finalize g
+                  ~seen:seen_groups ids
+              with
+              | Option.None -> ()
+              | Option.Some candidate -> candidates := candidate :: !candidates));
   !candidates
 
 (* Keyed on {!Declaration.prop_key}, the property's structural identity, rather
@@ -1443,44 +1492,54 @@ let default_group_key group_decls members =
     (hash_selector_list (List.map (fun member -> member.rule.selector) members))
     (group_decls |> List.map Declaration.hash |> hash_ints)
 
-let default_produce g ~keys ~entries ~exact_common ~group_decls members =
+(* The group rule and, once asked for, the candidate it makes, unless the
+   members' own rules refuse it. Whether it crosses a live rule it conflicts
+   with is the caller's question, as that reads the rest of the graph. *)
+let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
+    ~group_decls members =
   match grouped_rule (default_member_rules members) with
   | Option.None -> Option.None
   | Option.Some grouped ->
       let grouped = { grouped with declarations = group_decls } in
-      let ids = default_member_ids members in
       if
         unsafe_lift_in_any_member group_decls (default_member_rules members)
         || unsafe_group_order group_decls (default_member_rules members)
         || unsafe_lift_over_prior_member g exact_common
              (List.map (fun member -> (member.id, member.rule)) members)
         || unsafe_default_prior_lift g ~keys ~entries ~exact_common members
-        || group_crosses_external_conflict g ~ids grouped
       then Option.None
       else
-        let leftovers =
-          let rec loop prior acc = function
-            | [] -> List.rev acc
-            | member :: rest -> (
-                match
-                  default_member_leftover ~keys ~entries ~exact_common ~prior
-                    member
-                with
-                | [] -> loop (member :: prior) acc rest
-                | declarations ->
-                    let leftover =
-                      {
-                        member.rule with
-                        declarations;
-                        nested = [];
-                        merge_key = Option.None;
-                      }
-                    in
-                    loop (member :: prior) (leftover :: acc) rest)
+        let produce () =
+          let leftovers =
+            let rec loop prior acc = function
+              | [] -> List.rev acc
+              | member :: rest -> (
+                  match
+                    default_member_leftover ~keys ~entries ~exact_common ~prior
+                      member
+                  with
+                  | [] -> loop (member :: prior) acc rest
+                  | declarations ->
+                      let leftover =
+                        {
+                          member.rule with
+                          declarations;
+                          nested = [];
+                          merge_key = Option.None;
+                        }
+                      in
+                      loop (member :: prior) (leftover :: acc) rest)
+            in
+            loop [] [] members
           in
-          loop [] [] members
+          grouped :: leftovers
         in
-        Option.Some (grouped :: leftovers)
+        Option.Some
+          ( grouped,
+            lazy
+              (candidate ?size_cache ~kind:Default_factoring ~finalize g
+                 ~consume:(default_member_ids members)
+                 ~produce:(produce ())) )
 
 (* Pruning keeps a member only two ways: everything it writes disappears into
    the group body, or the body hands it back at least as many bytes as naming
@@ -1510,55 +1569,113 @@ let member_may_survive_pruning provider_decls (member : default_member) =
 let default_group_can_keep_two provider members =
   List.exists (member_may_survive_pruning provider.rule.declarations) members
 
-let default_candidate_from_members ?size_cache ~finalize g ~seen members =
-  match members with
-  | [] | [ _ ] -> Option.None
-  | first :: rest when not (default_group_can_keep_two first rest) ->
-      Option.None
-  | first :: _ -> (
-      let entries =
-        common_property_keys members
-        |> default_entries first
-        |> safe_default_entries members
-        |> List.filter (fun entry ->
-            not (override_precedes_provider g ~provider:first members entry))
-      in
-      let keys = List.map (fun entry -> entry.key) entries in
-      let exact_common = exact_common_without keys members in
-      let group_decls = default_group_decls ~exact_common entries in
-      let members =
-        prune_default_members ~keys ~entries ~exact_common members
-      in
-      let group_key = default_group_key group_decls members in
-      if Int_table.mem seen group_key then Option.None
-      else
-        match members with
-        | [] | [ _ ] -> Option.None
-        | _ -> (
-            match
-              default_produce g ~keys ~entries ~exact_common ~group_decls
-                members
-            with
-            | Option.None -> Option.None
-            | Option.Some produce ->
-                Int_table.replace seen group_key ();
-                candidate ?size_cache ~kind:Default_factoring ~finalize g
-                  ~consume:(default_member_ids members)
-                  ~produce))
+(* A default group once its entries are fixed. Which entries survive reads the
+   graph, whether an overriding member precedes the provider, so a subset keeps
+   one of these for each set of survivors it has met. *)
+type default_group = {
+  group_key : int;
+  ids : Rule_graph.node_id list;
+  grouped : (rule * candidate option Lazy.t) option Lazy.t;
+}
 
-let default_candidate_for_ids ?size_cache ~finalize g ~seen ids =
+type default_members =
+  | No_default_group
+  | Default_members of {
+      first : default_member;
+      members : default_member list;
+      entries : default_entry list;
+      mutable groups : (default_entry list * default_group) list;
+    }
+
+let default_members g ids =
+  let members =
+    ordered_ids g ids |> unique_ids_preserve_order
+    |> List.filter_map (fun id ->
+        let rule = Rule_graph.node_rule g id in
+        if rule_eligible rule then Option.Some { id; rule } else Option.None)
+  in
+  match members with
+  | [] | [ _ ] -> No_default_group
+  | first :: rest when not (default_group_can_keep_two first rest) ->
+      No_default_group
+  | first :: _ ->
+      Default_members
+        {
+          first;
+          members;
+          entries =
+            common_property_keys members
+            |> default_entries first
+            |> safe_default_entries members;
+          groups = [];
+        }
+
+let default_group ?size_cache ~finalize g members entries =
+  let keys = List.map (fun entry -> entry.key) entries in
+  let exact_common = exact_common_without keys members in
+  let group_decls = default_group_decls ~exact_common entries in
+  let members = prune_default_members ~keys ~entries ~exact_common members in
+  {
+    group_key = default_group_key group_decls members;
+    ids = default_member_ids members;
+    grouped =
+      lazy
+        (match members with
+        | [] | [ _ ] -> Option.None
+        | _ ->
+            default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
+              ~group_decls members);
+  }
+
+(* The group [known] makes on [g]: the one met before for the entries that
+   survive here, or a new one. *)
+let surviving_group ?size_cache ~finalize g known =
+  match known with
+  | No_default_group -> Option.None
+  | Default_members known -> (
+      let entries =
+        List.filter
+          (fun entry ->
+            not
+              (override_precedes_provider g ~provider:known.first known.members
+                 entry))
+          known.entries
+      in
+      match
+        List.find_opt
+          (fun (survivors, _) -> List.equal ( == ) survivors entries)
+          known.groups
+      with
+      | Option.Some (_, group) -> Option.Some group
+      | Option.None ->
+          let group =
+            default_group ?size_cache ~finalize g known.members entries
+          in
+          known.groups <- (entries, group) :: known.groups;
+          Option.Some group)
+
+let default_candidate_for_ids ~recall ?size_cache ~finalize g ~seen ids =
   match ids with
   | [] | [ _ ] -> Option.None
-  | ids ->
-      let members =
-        ordered_ids g ids |> unique_ids_preserve_order
-        |> List.filter_map (fun id ->
-            let rule = Rule_graph.node_rule g id in
-            if rule_eligible rule then Option.Some { id; rule } else Option.None)
-      in
-      default_candidate_from_members ?size_cache ~finalize g ~seen members
+  | ids -> (
+      match
+        surviving_group ?size_cache ~finalize g
+          (recall ids (fun () -> default_members g ids))
+      with
+      | Option.None -> Option.None
+      | Option.Some group when Int_table.mem seen group.group_key -> Option.None
+      | Option.Some group -> (
+          match Lazy.force group.grouped with
+          | Option.None -> Option.None
+          | Option.Some (grouped, scored) ->
+              if group_crosses_external_conflict g ~ids:group.ids grouped then
+                Option.None
+              else begin
+                Int_table.replace seen group.group_key ();
+                Option.map (offered_on g) (Lazy.force scored)
+              end))
 
-let default_value_candidates ?size_cache ?touching ~ctx ~finalize g =
+let default_value_candidates ~recall ?size_cache ?touching ~ctx ~finalize g =
   let touching = touching_set touching in
   let budget = default_subset_budget ~ctx g in
   let budget_state =
@@ -1599,7 +1716,7 @@ let default_value_candidates ?size_cache ?touching ~ctx ~finalize g =
         |> List.iter (fun ids ->
             if touches_any touching ids then
               match
-                default_candidate_for_ids ?size_cache ~finalize g
+                default_candidate_for_ids ~recall ?size_cache ~finalize g
                   ~seen:seen_groups ids
               with
               | Option.None -> ()
@@ -1726,7 +1843,14 @@ let selector_branch_inline_candidates ?size_cache ?touching ~finalize g =
     (live_rules g);
   !candidates
 
-let enumerate ?touching ~ctx ~finalize g =
+type memo = {
+  exact : exact_group Ids_table.t;
+  default : default_members Ids_table.t;
+}
+
+let memo () = { exact = Ids_table.create 256; default = Ids_table.create 256 }
+
+let enumerate ?memo:(known = memo ()) ?touching ~ctx ~finalize g =
   let size_cache = Rule_rewrite.size_cache g in
   let candidates =
     identical_body_candidates ~size_cache ?touching ~ctx ~finalize g
@@ -1735,5 +1859,7 @@ let enumerate ?touching ~ctx ~finalize g =
     @ selector_branch_inline_candidates ~size_cache ?touching ~finalize g
   in
   candidates
-  @ shared_decl_candidates ~size_cache ?touching ~ctx ~finalize g
-  @ default_value_candidates ~size_cache ?touching ~ctx ~finalize g
+  @ shared_decl_candidates ~recall:(recalled known.exact) ~size_cache ?touching
+      ~ctx ~finalize g
+  @ default_value_candidates ~recall:(recalled known.default) ~size_cache
+      ?touching ~ctx ~finalize g

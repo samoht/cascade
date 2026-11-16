@@ -100,22 +100,24 @@ let affected_nodes graph (candidate : Rule_rewrite.candidate) =
   candidate.consume
   @ produced_ids ~first:first_produced ~count:(List.length candidate.produce)
 
-let initial_queue ~ctx ~finalize graph candidates_by_key =
-  Rule_candidate.enumerate ~ctx ~finalize graph
+let initial_queue ~memo ~ctx ~finalize graph candidates_by_key =
+  Rule_candidate.enumerate ~memo ~ctx ~finalize graph
   |> enqueue candidates_by_key 0 Queue.empty
 
 (* Refresh affected-neighborhood candidates per commit only for small graphs; on
    large graphs the cumulative per-commit enumeration cost dominates, so defer
    to drain-time re-enumeration. *)
-let requeue_after_commit ~refresh_after_commit ~ctx ~finalize candidates_by_key
-    graph graph' candidate next_key queue =
+let requeue_after_commit ~refresh_after_commit ~memo ~ctx ~finalize
+    candidates_by_key graph graph' candidate next_key queue =
   if refresh_after_commit then
     let touching = affected_nodes graph candidate in
-    let candidates = Rule_candidate.enumerate ~touching ~ctx ~finalize graph' in
+    let candidates =
+      Rule_candidate.enumerate ~memo ~touching ~ctx ~finalize graph'
+    in
     enqueue candidates_by_key next_key queue candidates
   else (next_key, queue)
 
-let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
+let scheduler_loop ~max_iterations ~refresh_after_commit ~memo ~ctx ~finalize
     candidates_by_key =
   let rec loop iteration refreshed graph next_key queue =
     if iteration >= max_iterations then graph
@@ -124,7 +126,9 @@ let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
       | None ->
           if refreshed then graph
           else
-            let candidates = Rule_candidate.enumerate ~ctx ~finalize graph in
+            let candidates =
+              Rule_candidate.enumerate ~memo ~ctx ~finalize graph
+            in
             if candidates = [] then graph
             else
               let next_key, queue =
@@ -144,8 +148,9 @@ let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
               | Ok graph' ->
                   Stats.add_saving (Ctx.stats ctx) candidate.saving;
                   let next_key, queue =
-                    requeue_after_commit ~refresh_after_commit ~ctx ~finalize
-                      candidates_by_key graph graph' candidate next_key queue
+                    requeue_after_commit ~refresh_after_commit ~memo ~ctx
+                      ~finalize candidates_by_key graph graph' candidate
+                      next_key queue
                   in
                   loop (iteration + 1) false graph' next_key queue))
   in
@@ -153,11 +158,18 @@ let scheduler_loop ~max_iterations ~refresh_after_commit ~ctx ~finalize
 
 let run ~ctx ~finalize graph =
   let candidates_by_key = Hashtbl.create 256 in
-  let next_key, queue = initial_queue ~ctx ~finalize graph candidates_by_key in
+  (* Every graph the loop enumerates is rewritten from this one, so what one
+     enumeration judged from a subset's rules holds at the next: the drain-time
+     enumeration below works out afresh only the subsets the commits since the
+     last one brought about. *)
+  let memo = Rule_candidate.memo () in
+  let next_key, queue =
+    initial_queue ~memo ~ctx ~finalize graph candidates_by_key
+  in
   let loop =
     scheduler_loop ~max_iterations:(max_iterations graph)
       ~refresh_after_commit:(Rule_graph.node_count graph <= 128)
-      ~ctx ~finalize candidates_by_key
+      ~memo ~ctx ~finalize candidates_by_key
   in
   (* The initial queue was enumerated from this exact graph. If it is empty, or
      every candidate is rejected without a rewrite, enumerating it again cannot

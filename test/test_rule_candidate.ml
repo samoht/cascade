@@ -327,6 +327,77 @@ let default_factoring_rejects_a_doomed_group_early () =
     true
     (control = 0. || rejected < control *. 0.4)
 
+(* A run past the node count where the enumerator stops offering its wider
+   subsets, the size at which the scheduler enumerates again only when its queue
+   drains. Each run of four neighbours writes one property with differing values
+   and each run of five shares one declaration, so both factoring kinds find
+   groups all along it. *)
+let drained_run n =
+  List.init n (fun i ->
+      Fmt.str ".c%d{--p%d:%d;--q%d:1;color:rgb(%d,%d,0)}" i (i / 4) (i mod 3)
+        (i / 5) (i mod 256) (i / 256))
+  |> String.concat "" |> rules |> Rule_graph.of_rules
+
+let enumerate ?memo g =
+  Rule_candidate.enumerate ?memo ~ctx:Ctx.fragment ~finalize:Fun.id g
+
+let kind_name = function
+  | Rule_rewrite.Identical_body -> "identical-body"
+  | Same_selector -> "same-selector"
+  | Exact_shared_declarations -> "exact-shared"
+  | Selector_branch_inline -> "selector-inline"
+  | Default_factoring -> "default-factoring"
+
+let observed (candidates : Rule_rewrite.candidate list) =
+  List.map
+    (fun (c : Rule_rewrite.candidate) ->
+      Fmt.str "%s|%d|%a|%d|%s" (kind_name c.kind) c.generation
+        Fmt.(list ~sep:comma int)
+        (List.map Rule_graph.Node_id.to_int c.consume)
+        c.saving (render c.produce))
+    candidates
+
+(* The graph the first of [candidates] that commits returns. *)
+let rec committed g = function
+  | [] -> Alcotest.fail "one of the candidates should commit"
+  | (c : Rule_rewrite.candidate) :: rest -> (
+      match Rule_graph.rewrite g ~consume:c.consume ~produce:c.produce with
+      | Ok g' -> g'
+      | Error _ -> committed g rest)
+
+(* The scheduler hands one memo to every enumeration of a rewrite lineage, so a
+   subset's answer is worked out on one graph and read back on the next. Reading
+   it back must change nothing: on the graph a commit returns, an enumeration
+   that recalls what the parent's taught it offers the same candidates, in the
+   same order and stamped with the same generation, as one that starts empty. *)
+let a_recalled_enumeration_offers_the_same_candidates () =
+  let g = drained_run 200 in
+  let memo = Rule_candidate.memo () in
+  let g' = committed g (enumerate ~memo g) in
+  let fresh = observed (enumerate g') in
+  Alcotest.(check bool)
+    "both factoring kinds are offered" true
+    (List.exists (String.starts_with ~prefix:"default-factoring") fresh
+    && List.exists (String.starts_with ~prefix:"exact-shared") fresh);
+  Alcotest.(check (list string))
+    "candidates after a commit" fresh
+    (observed (enumerate ~memo g'))
+
+(* And it is what makes the enumeration the scheduler repeats when its queue
+   drains cost what the commits since the last one changed. One commit leaves
+   most subsets naming the rules they named before, so recalling their answers
+   allocates a fraction of what working them out again does. *)
+let a_recalled_enumeration_costs_what_changed () =
+  let g = drained_run 200 in
+  let memo = Rule_candidate.memo () in
+  let g' = committed g (enumerate ~memo g) in
+  let fresh = measure (fun () -> enumerate g') in
+  let recalled = measure (fun () -> enumerate ~memo g') in
+  Alcotest.(check bool)
+    (Fmt.str "recalled %.0f words, fresh %.0f" recalled fresh)
+    true
+    (fresh = 0. || recalled < fresh *. 0.5)
+
 let suite =
   ( "rule_candidate",
     [
@@ -359,4 +430,8 @@ let suite =
         external_conflict_scan_is_subquadratic;
       Alcotest.test_case "default factoring rejects a doomed group early" `Quick
         default_factoring_rejects_a_doomed_group_early;
+      Alcotest.test_case "a recalled enumeration offers the same candidates"
+        `Quick a_recalled_enumeration_offers_the_same_candidates;
+      Alcotest.test_case "a recalled enumeration costs what changed" `Quick
+        a_recalled_enumeration_costs_what_changed;
     ] )
