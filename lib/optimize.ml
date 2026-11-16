@@ -631,7 +631,7 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
         else walk (kf :: acc) rest
     | stmt :: rest -> walk (stmt :: acc) rest
   in
-  walk [] stmts
+  List.preserve stmts (walk [] stmts)
 
 (* CSS Cascade 5 sec. 6.4.2: rules from all occurrences of a named layer
    accumulate. Merge same-name blocks at the FIRST NON-EMPTY occurrence so
