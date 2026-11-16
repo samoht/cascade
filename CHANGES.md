@@ -118,6 +118,8 @@
   and an `@font-face` missing its `src` printed a byte range, and a bad
   `@font-face` `font-weight`, `font-style` or `font-stretch` value pointed at
   line 1 of a copy of the value and named no descriptor (#1330).
+- A selector the reader refuses is reported as `bad selector: ...`, where it
+  read `bad value: ...` with no property named (#1340).
 - A declaration with no value, such as `.b { color: }`, is reported at the `}`
   that ends it, where the column pointed one past it (#1339).
 - A parse warning whose message was already printed for the same file is counted

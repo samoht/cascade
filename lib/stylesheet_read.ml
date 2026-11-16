@@ -189,14 +189,17 @@ let read_rule_selector ?(nested = false) r =
     | _ -> None
   in
   let c = Cursor.sub ?eof_loc r prelude in
-  (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
+  (* Re-raise the original [Parse_error] so its loc/path/snippet reach the
      caller intact, rather than rewrapping (which erases the structured error
-     and relocates it). CSS Nesting 1 sec. 3: a nested rule's prelude is a
+     and relocates it); {!Error.as_selector} only names its kind for what was
+     read. CSS Nesting 1 sec. 3: a nested rule's prelude is a
      [<relative-selector-list>], so it may start with a combinator ([> .bar])
      implicitly relative to the parent [&]. *)
-  Cursor.with_context c "selector" (fun () ->
-      if nested then Selector.read_relative c
-      else Selector.read_strict_selector_list c)
+  try
+    Cursor.with_context c "selector" (fun () ->
+        if nested then Selector.read_relative c
+        else Selector.read_strict_selector_list c)
+  with Error.Parse_error e -> Error.fail (Error.as_selector e)
 
 let is_bare_nesting_selector : Selector.t -> bool = function
   | Selector.Nesting -> true

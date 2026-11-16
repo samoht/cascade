@@ -223,6 +223,12 @@ let with_property property t =
       { t with kind = Bad_value { property; reason } }
   | _ -> t
 
+let as_selector t =
+  match t.kind with
+  | Bad_value { property = ""; reason } ->
+      { t with kind = Bad_selector reason; sort = Sort.Selector }
+  | _ -> t
+
 let fail e = Stdlib.raise (Parse_error e)
 let catch f = match f () with v -> Ok v | exception Parse_error e -> Error e
 

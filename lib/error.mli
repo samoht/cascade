@@ -200,6 +200,13 @@ val with_property : string -> t -> t
     it back on. A non-{!Bad_value} error, or one that already names a property,
     is returned unchanged. *)
 
+val as_selector : t -> t
+(** [as_selector t] is [t] read as an error in a selector. The selector readers
+    raise through the value readers' helpers, which build a {!Bad_value} with no
+    property; the site that knows it read a selector turns it into a
+    {!Bad_selector} with the same reason. Any other error is returned unchanged.
+*)
+
 val context : t -> Loc.Context.t
 (** [context t] is the structured error context. *)
 
