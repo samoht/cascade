@@ -15,7 +15,7 @@ let render rules =
 let optimize_rules css =
   rules css |> Rule_graph.of_rules
   |> Rule_scheduler.run ~ctx:Ctx.fragment ~finalize:Fun.id
-  |> fun g ->
+  |> fun { Rule_scheduler.graph = g; _ } ->
   Array.to_list
     (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
   |> render
@@ -121,9 +121,58 @@ let factors_default_value_group () =
     (optimize_rules
        ".a{display:flex;margin:1px}.b{display:flex;margin:2px}.c{display:flex;margin:3px}")
 
+(* Neighbours sharing a declaration and writing one property with differing
+   values, so both factoring kinds commit all along the run. *)
+let factoring_run n =
+  List.init n (fun i ->
+      Fmt.str ".c%d{--p%d:%d;--q%d:1;color:rgb(%d,0,0)}" i (i / 4) (i mod 3)
+        (i / 5) i)
+  |> String.concat "" |> rules |> Rule_graph.of_rules
+
+(* A settled run is a fixed point of its search: every candidate of the graph it
+   returns, under the bounds the run started with, is refused there, so running
+   the scheduler again on that graph commits nothing. Both runs stay on one side
+   of the 128 nodes that set those bounds. *)
+let a_settled_run_is_a_fixed_point () =
+  let ctx = Ctx.fragment and finalize = Fun.id in
+  List.iter
+    (fun (label, graph) ->
+      let nodes = Rule_graph.node_count graph in
+      let { Rule_scheduler.graph = settled_graph; settled } =
+        Rule_scheduler.run ~ctx ~finalize graph
+      in
+      Alcotest.(check bool) (label ^ ": settled") true settled;
+      Alcotest.(check bool)
+        (label ^ ": it rewrote") true
+        (Rule_graph.generation settled_graph > 0);
+      Alcotest.(check bool)
+        (label ^ ": on the bounds' side it started on")
+        true
+        (nodes <= 128 = (Rule_graph.node_count settled_graph <= 128));
+      Alcotest.(check (list int))
+        (label ^ ": candidates the settled graph accepts")
+        []
+        (Rule_candidate.enumerate ~nodes ~ctx ~finalize settled_graph
+        |> List.filter_map (fun (c : Rule_rewrite.candidate) ->
+            match
+              Rule_graph.rewrite settled_graph ~consume:c.consume
+                ~produce:c.produce
+            with
+            | Ok _ -> Some c.saving
+            | Error _ -> None));
+      let again = Rule_scheduler.run ~ctx ~finalize settled_graph in
+      Alcotest.(check bool) (label ^ ": settled again") true again.settled;
+      Alcotest.(check int)
+        (label ^ ": running again commits nothing")
+        (Rule_graph.generation settled_graph)
+        (Rule_graph.generation again.graph))
+    [ ("small run", factoring_run 40); ("large run", factoring_run 200) ]
+
 let suite =
   ( "rule_scheduler",
     [
+      Alcotest.test_case "a settled run is a fixed point" `Quick
+        a_settled_run_is_a_fixed_point;
       Alcotest.test_case "merges identical bodies" `Quick merges_identical_body;
       Alcotest.test_case "merges same selector canonically" `Quick
         merges_same_selector_canonically;

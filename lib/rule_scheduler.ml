@@ -94,17 +94,23 @@ let offer queue offer =
 (* Below 128 nodes the candidates a commit brings about are queued as soon as it
    lands; above, they wait for the queue to drain, when every candidate of the
    graph is queued again. A candidate stays queued until it is tried:
-   [Rule_graph.rewrite] refuses one whose rules a later commit consumed. *)
+   [Rule_graph.rewrite] refuses one whose rules a later commit consumed.
+
+   A drain with no commit since the last one leaves every candidate of the graph
+   tried on it and refused: the run is settled. One stopped by [max_iterations]
+   is not. *)
+type outcome = { graph : Rule_graph.t; settled : bool }
+
 let run ~ctx ~finalize graph =
   let max_iterations = max_iterations graph in
   let refresh_after_commit = Rule_graph.node_count graph <= 128 in
   let pool = Rule_candidate.start ~ctx ~finalize graph in
   let rec loop iteration ~committed graph queue =
-    if iteration >= max_iterations then graph
+    if iteration >= max_iterations then { graph; settled = false }
     else
       match Queue.pop queue with
       | None ->
-          if not committed then graph
+          if not committed then { graph; settled = true }
           else begin
             ignore (Rule_candidate.refresh pool);
             loop iteration ~committed:false graph
