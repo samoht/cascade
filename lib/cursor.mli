@@ -622,6 +622,7 @@ val try_parse_err : (t -> 'a) -> t -> ('a, string) result
 (** [try_parse_err p t] returns [Ok v] on success or [Error msg] on parse
     failure (cursor rewound). *)
 
-val try_parse_full_err : (t -> 'a) -> t -> ('a, string) result
-(** [try_parse_full_err p t] is like {!try_parse_err}, but also requires [p] to
-    consume the cursor fully. *)
+val try_parse_full : (t -> 'a) -> t -> 'a option
+(** [try_parse_full p t] is [Some (p t)] when [p] succeeds and consumes the
+    cursor fully, [None] otherwise (cursor rewound). The failure is not
+    formatted, since locating it walks the source. *)

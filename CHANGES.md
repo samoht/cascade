@@ -87,6 +87,9 @@
   as written; a rule nested deeper loses its contents with a warning (#1296).
 - A selector nesting `:is()` more than 100 deep drops its rule with a warning
   instead of reading as an `:is()` that matches nothing (#1296).
+- A `var()` fallback that does not match the property's grammar costs the
+  same as one that does. Each one located itself in the source, so a sheet of
+  them cost its size squared; Tailwind's output parses 22% faster (#1311).
 
 ### CLI tools
 

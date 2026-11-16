@@ -1122,14 +1122,14 @@ let try_parse_err p t =
       restore t snap;
       Error (Error.to_string e)
 
-let try_parse_full_err p t =
+let try_parse_full p t =
   let snap = save t in
   match p t with
   | v ->
-      if is_done t then Ok v
+      if is_done t then Some v
       else (
         restore t snap;
-        Error "trailing tokens")
-  | exception Parse_error e ->
+        None)
+  | exception Parse_error _ ->
       restore t snap;
-      Error (Error.to_string e)
+      None
