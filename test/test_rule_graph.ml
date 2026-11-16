@@ -753,6 +753,36 @@ let precedes_agrees_with_a_walk () =
   | None -> Alcotest.fail "replacement should commit"
   | Some g' -> check_reachability "after rewrite" g'
 
+(* The edges a graph keeps are a reduction of its conflicts, sound only when
+   what it drops is still carried by reachability, so every conflicting pair of
+   a fresh graph has to be ordered with the earlier node first. Writers of one
+   value tie with each other, so a run of them is not a chain: a writer of
+   another value before the run has to reach a writer after it through the run
+   before, whichever group of the index the writers sit in. *)
+let every_conflict_is_ordered () =
+  List.iter
+    (fun (label, css) ->
+      let g = g_of css in
+      let count = Rule_graph.node_count g in
+      for i = 0 to count - 1 do
+        for j = i + 1 to count - 1 do
+          if Rule_graph.conflict g (nid i) (nid j) then
+            Alcotest.(check bool)
+              (Fmt.str "%s: %d precedes %d" label i j)
+              true
+              (Rule_graph.precedes g (nid i) (nid j))
+        done
+      done)
+    [
+      ("a tie after a run", ".z{color:red}.j{color:blue}.a{color:blue}");
+      ( "a value two runs back",
+        ".d{color:red}.f{color:blue}.j{color:red}.k{color:blue}" );
+      ( "a run in another group",
+        "div.a{color:red}div.b{color:blue}.k{color:blue}" );
+      ( "a tie inside a longer run",
+        ".a{color:red}.b{color:blue}.c{color:blue}.d{color:red}.e{color:red}" );
+    ]
+
 (* Orienting a factoring asks which of two nodes has to come first, once per
    ordered pair of source references, so a run of N rules is asked about N^2
    pairs. The edges are settled the moment the graph is published, so all of
@@ -1241,6 +1271,8 @@ let suite =
         try_rewrite_bumps_generation;
       Alcotest.test_case "declaration_body_key buckets identical bodies" `Quick
         declaration_body_key_buckets;
+      Alcotest.test_case "every conflict is ordered" `Quick
+        every_conflict_is_ordered;
       Alcotest.test_case "precedes agrees with a walk of the edges" `Quick
         precedes_agrees_with_a_walk;
       Alcotest.test_case "reachability settles once per node" `Quick

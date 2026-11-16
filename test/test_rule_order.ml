@@ -25,6 +25,16 @@ let keeps_conflicting_rules_in_source_order () =
     "opposite source order keeps the opposite winner" ".a{color:red}"
     (canonical ".a{color:blue}.a{color:red}")
 
+(* Two rules writing one value tie and may swap, but each still follows an
+   earlier rule writing another value to an element both can match: on [class="z
+   a"] the source makes [.a] win, so [.a] stays after [.z] although it sorts
+   first. *)
+let tied_writers_follow_an_earlier_conflict () =
+  Alcotest.(check string)
+    "the second writer of a value stays after the conflict"
+    ".z{color:red}.a{color:blue}.j{color:blue}"
+    (canonical ".z{color:red}.j{color:blue}.a{color:blue}")
+
 let custom_property_position_converges () =
   (* A custom-property definition and a [var()] user are cascade-independent, so
      both source orderings reach one canonical form. *)
@@ -579,6 +589,8 @@ let suite =
         sorts_independent_rules_into_content_order;
       Alcotest.test_case "keeps conflicting order" `Quick
         keeps_conflicting_rules_in_source_order;
+      Alcotest.test_case "tied writers follow an earlier conflict" `Quick
+        tied_writers_follow_an_earlier_conflict;
       Alcotest.test_case "custom-property position converges" `Quick
         custom_property_position_converges;
       Alcotest.test_case "custom-property importance survives" `Quick
