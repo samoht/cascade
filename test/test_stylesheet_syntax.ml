@@ -151,9 +151,11 @@ let spec_s7_block_examples () =
     "@keyframes slide { color: red; 50% { opacity: 1 } }";
   (* A qualified rule is not a descriptor, so it is dropped the way any other
      bad descriptor is and the @font-face is kept. It then carries neither
-     font-family nor src, so nothing is emitted. Chrome 146 keeps an empty
-     CSSFontFaceRule for the same input. *)
-  check_stylesheet ~expected:"" "@font-face { .x { color: red } }"
+     font-family nor src. Chrome 146 keeps an empty CSSFontFaceRule for the same
+     input, so pp prints it, and CSS Fonts 4 sec. 4.1 ignores it, so the
+     optimizer drops it. *)
+  assert_minify_and_optimize "@font-face { .x { color: red } }"
+    ~minified:"@font-face{}" ~optimized:""
 
 (* Not a roundtrip test *)
 let spec_s8_rule_shapes () =

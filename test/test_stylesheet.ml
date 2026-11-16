@@ -643,8 +643,10 @@ let pp_case () =
 (** Test [@charset] rules *)
 let charset_case () =
   (* CSS Syntax 3 section 8.3: parsed UTF-8 [@charset] is compatibility surface,
-     not an emitted stylesheet at-rule. *)
-  check_stylesheet ~expected:"" "@charset \"UTF-8\";"
+     not a rule, and the output is UTF-8: pp prints it, the optimizer drops
+     it. *)
+  assert_minify_and_optimize "@charset \"UTF-8\";"
+    ~minified:"@charset \"UTF-8\";" ~optimized:""
 
 (** Test [@import] rules *)
 let import_case () =
@@ -767,9 +769,14 @@ let spec_fontface_descriptors () =
       "@font-face{font-family:Emoji;src:url(emoji.woff2);unicode-range:U+1F600-1F64F,U+???}"
     "@font-face { font-family: Emoji; src: url(emoji.woff2); unicode-range: \
      U+1F600-1F64F, U+???; }";
-  check_stylesheet ~expected:"" "@font-face { src: url(font.woff2); }";
-  check_stylesheet ~expected:"" "@font-face { font-family: Brand; }";
-  check_stylesheet ~expected:"" "@font-face { font-display: swap; }";
+  (* CSS Fonts 4 sec. 4.1 ignores an [@font-face] missing [font-family] or
+     [src]: pp prints the rule it is given and the optimizer drops it. *)
+  assert_minify_and_optimize "@font-face { src: url(font.woff2); }"
+    ~minified:"@font-face{src:url(font.woff2)}" ~optimized:"";
+  assert_minify_and_optimize "@font-face { font-family: Brand; }"
+    ~minified:"@font-face{font-family:Brand}" ~optimized:"";
+  assert_minify_and_optimize "@font-face { font-display: swap; }"
+    ~minified:"@font-face{font-display:swap}" ~optimized:"";
   (* CSS Fonts 4 (ED) sec. 4.4 writes the font property descriptors' grammars
      out in full, and sec. 4.6 gives the settings descriptors the corresponding
      property's values "except that the CSS-wide keywords are omitted". No
@@ -891,9 +898,11 @@ let spec_fontface_descriptors () =
      inherit normal; }";
   (* sec. 4.2 and 4.3 make font-family and src required, so a CSS-wide keyword
      in either costs the whole rule the way any other missing one does. *)
-  check_stylesheet ~expected:""
-    "@font-face { font-family: inherit; src: url(font.woff2); }";
-  check_stylesheet ~expected:"" "@font-face { font-family: Brand; src: unset; }";
+  assert_minify_and_optimize
+    "@font-face { font-family: inherit; src: url(font.woff2); }"
+    ~minified:"@font-face{src:url(font.woff2)}" ~optimized:"";
+  assert_minify_and_optimize "@font-face { font-family: Brand; src: unset; }"
+    ~minified:"@font-face{font-family:Brand}" ~optimized:"";
   (* Sec. 2.1.1 turns a generic family name away where it could be read as the
      keyword rather than as a name, which is where the name starts: [Foo serif]
      and [Cambria Math] are installed fonts and [serif Foo] is not. The
@@ -907,13 +916,23 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:"@font-face{font-family:\"Foo serif\";src:url(font.woff2)}"
     "@font-face { font-family: Foo serif; src: url(font.woff2); }";
-  check_stylesheet ~expected:""
-    "@font-face { font-family: serif Foo; src: url(font.woff2); }";
+  assert_minify_and_optimize
+    "@font-face { font-family: serif Foo; src: url(font.woff2); }"
+    ~minified:"@font-face{src:url(font.woff2)}" ~optimized:"";
   (* A family name that merely starts with one is a name, not a keyword: sec.
      2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
   check_stylesheet
     ~expected:"@font-face{font-family:inherited Sans;src:url(font.woff2)}"
     "@font-face { font-family: inherited Sans; src: url(font.woff2); }";
+  (* CSS Fonts 4 sec. 4.3: a [local()] name is a string or a run of idents, and
+     either reads as the name it decodes to, so an escape and a quote print back
+     as that name. *)
+  check_stylesheet ~expected:"@font-face{font-family:a;src:local(\"\u{2197}\")}"
+    "@font-face { font-family: a; src: local(\\2197); }";
+  check_stylesheet ~expected:"@font-face{font-family:a;src:local(\"Foo Bar\")}"
+    "@font-face { font-family: a; src: local(Foo   Bar); }";
+  check_stylesheet ~expected:"@font-face{font-family:a;src:local(\"a\\\"b\")}"
+    "@font-face { font-family: a; src: local(\"a\\\"b\"); }";
   (* An unknown descriptor (e.g. Fontsource's non-standard font-named-instance)
      is dropped; the rest of the @font-face is kept, like browsers. *)
   check_stylesheet
@@ -1352,7 +1371,7 @@ let sheet_item_case () =
   (* Test that we can parse stylesheets with various statement types *)
   let test_statements =
     [
-      ("@charset \"UTF-8\";", "");
+      ("@charset \"UTF-8\";", "@charset \"UTF-8\";");
       ("@import 'test.css';", "@import\"test.css\";");
       (".class { color: red; }", ".class{color:red}");
       ( "@media print { .class { color: black; } }",
@@ -1374,7 +1393,8 @@ let ordering () =
   let input =
     "@charset \"UTF-8\";\n@import 'base.css';\n.btn { color: red; }"
   in
-  check_stylesheet ~expected:"@import\"base.css\";.btn{color:red}" input
+  check_stylesheet
+    ~expected:"@charset \"UTF-8\";@import\"base.css\";.btn{color:red}" input
 
 (* Not a roundtrip test *)
 let test_read_stylesheet_basic () =

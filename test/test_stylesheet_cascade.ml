@@ -180,7 +180,8 @@ let c64_import_namespace_order () =
      @import rules. *)
   check_stylesheet
     ~expected:
-      "@layer reset,theme;@import\"theme.css\"layer(theme);@namespace \
+      "@charset \"UTF-8\";@layer \
+       reset,theme;@import\"theme.css\"layer(theme);@namespace \
        \"http://www.w3.org/1999/xhtml\";"
     "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
      layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";

@@ -153,8 +153,10 @@ let test_inline_font_face_var_resolves () =
    reference. Raw and referenced list entries are rejected at the same
    descriptor boundary. *)
 let test_inline_font_face_family_name () =
+  (* With the family rejected the [@font-face] holds no [font-family], so CSS
+     Fonts 4 sec. 4.1 ignores it and the optimizer drops it. *)
   let check (name, css, expected) =
-    let inlined = minified (Css.inline_vars (parse css)) in
+    let inlined = optimized_minified (Css.inline_vars (parse css)) in
     Alcotest.(check string) name expected inlined
   in
   List.iter check

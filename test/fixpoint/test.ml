@@ -32,6 +32,7 @@
     compared by their tree, and a leaf by its printed spelling, since the
     selector AST still records how some simple selectors were spelled (a
     pseudo-element's colons, an attribute value's quotes, [odd] against [2n+1]).
+    Every block reads back with as many statements as it was built with.
     Declarations are not compared: a custom property keeps the tokens it was
     read from, positions included.
 
@@ -509,6 +510,31 @@ let rec first_unread built read =
           (String.concat ""
              [ "built "; selector_text b; ", read back "; selector_text r ])
 
+(* A statement the optimizer keeps is one the printer writes: one it writes as
+   nothing reads back as nothing, and the block holding it comes back one
+   statement short. *)
+let rec first_dropped built read =
+  let built_n = List.length built and read_n = List.length read in
+  if built_n <> read_n then
+    Some
+      (String.concat ""
+         [
+           string_of_int built_n;
+           " statements built, ";
+           string_of_int read_n;
+           " read back";
+         ])
+  else
+    List.fold_left2
+      (fun found b r ->
+        match found with
+        | Some _ -> found
+        | None ->
+            first_dropped
+              (Stylesheet.statement_children b)
+              (Stylesheet.statement_children r))
+      None built read
+
 let unread_selector mode css =
   match read mode css with
   | Error _ -> None
@@ -523,10 +549,13 @@ let unread_selector mode css =
       in
       match read mode printed with
       | Error e -> Some (Error.to_string e)
-      | Ok back ->
-          first_unread
-            (List.rev (selectors [] built))
-            (List.rev (selectors [] back.stylesheet)))
+      | Ok back -> (
+          match first_dropped built back.stylesheet with
+          | Some _ as dropped -> dropped
+          | None ->
+              first_unread
+                (List.rev (selectors [] built))
+                (List.rev (selectors [] back.stylesheet))))
 
 type unread = { unread_input : input; unread_reduced : string; why : string }
 

@@ -75,9 +75,9 @@ The control: a supplementary stylesheet that reads and parses still applies.
 The gate asks a question about the parse: did it produce any statement? It
 is not the question "does this sheet serialise to anything", which a parse
 that kept everything can still answer with nothing. A statement can be
-parsed, held, and still print as the empty string: CSS Syntax 3 §8.3 makes
+parsed, held, and still leave nothing to print: CSS Syntax 3 §8.3 makes
 `@charset` a decoder hint rather than a rule, and UTF-8 is what the
-serialiser emits anyway, so a redundant one prints nothing.
+serialiser emits anyway, so the residual sheet drops a redundant one.
 
   $ cat > charset.html <<EOF
   > <html><head><style>@charset "UTF-8";@charset "UTF-8";</style></head><body><p>hi</p></body></html>
@@ -96,8 +96,8 @@ kept: nothing about that parse dropped every rule.
   1
 
 A `@font-face` with no `src` is the same shape. CSS Fonts 4 §4.3 gives it
-no font to load, so it prints nothing, but the rule itself parsed and the
-statement is there for the projection to read.
+no font to load, so the residual sheet drops it, but the rule itself parsed
+and the statement is there for the projection to read.
 
   $ cat > face.html <<EOF
   > <html><head><style>@font-face{font-family:x}</style></head><body><p>hi</p></body></html>
