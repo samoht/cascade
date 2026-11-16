@@ -16,13 +16,14 @@ the README first; come here to check a detail.
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. See [Scope](#scope). Has no effect without `--minify`. |
-| `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. |
+| `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. Has no effect without `--minify`. |
 | `--inline-imports` | Resolve `@import` against files relative to the input. Without `--import-root`, this may read any local path available to the process and is unsafe for untrusted CSS. |
 | `--import-root=DIR` | Restrict `--inline-imports` to the canonical root and its descendants. Lexical `..` and symlink escapes are rejected; relative roots are resolved from the current working directory. |
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation of the variables it inlines. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
-| `--profile` | Print the optimiser's global factoring fixpoint to stderr after the run: one row per iteration with the rules, bytes, and time on each side, then the committed savings and the preflight's own counters. Has no effect without `--minify`. |
-| `-q, --quiet` / `-v, --verbose` | Standard verbosity controls. |
+| `--profile` | Print to stderr, after the run, the time spent reading, optimising and printing. A table of the global factoring fixpoint follows, one row per iteration with the rules, bytes and time on each side. The committed savings and the preflight's own counters close it. Has no effect without `--minify`. |
+| `-q, --quiet` | Print errors only: no parse warning and no note. |
+| `-v, --verbose` | Print every parse warning in full; a warning whose message was already printed for the file is otherwise counted under the first. Twice (`-vv`) also prints the optimiser's step tracing. |
 
 Cascade parses the stylesheet into an AST and prints it again. Comments are
 discarded during parsing, and empty rules and invalid declarations are dropped

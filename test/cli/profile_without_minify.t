@@ -27,6 +27,7 @@ away.
 positive control that must keep working. Two rules sharing a declaration
 give the global factoring fixpoint real work, so the report is non-empty and
 names its iterations (the header line's counts, and the per-iteration table).
+It opens with where the run spent its time.
 
   $ cat > dup.css <<EOF
   > .a { color: red }
@@ -35,8 +36,10 @@ names its iterations (the header line's counts, and the per-iteration table).
   $ cascade --minify --profile dup.css > /dev/null 2>profile2.txt
   $ grep -o "factor fixpoint ([0-9]* runs, [0-9]* iterations" profile2.txt
   factor fixpoint (2 runs, 2 iterations
-  $ grep -c "rules_in" profile2.txt
+  $ grep -c "rules-in" profile2.txt
   1
+  $ head -1 profile2.txt | sed -E 's/[0-9]+\.[0-9]+s/Ns/g'
+  time: read Ns, optimize Ns, print Ns, total Ns
 
 The footer counts the declaration blocks the nested-merge safety check looked
 up. Neither rule above carries a nested block, so none is looked up. Two

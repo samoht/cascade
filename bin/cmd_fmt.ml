@@ -1,15 +1,19 @@
 open Cascade
 open Cmdliner
 
+(* One row per factoring iteration: the fixpoint run it belongs to, its place in
+   that run and in the whole optimization, the rules and bytes it started from,
+   what it saved, the passes it ran and changed something with, and its time. *)
 let print_iteration_profile (report : Stats.snapshot) =
   match report.iteration_stats with
   | [] -> ()
   | iteration_stats ->
-      Fmt.epr "  %-3s %-4s %-4s %9s %9s %9s %9s %7s %7s %8s@." "fp" "iter"
-        "giter" "rules_in" "rules_out" "bytes_in" "saved" "passes" "chg" "time";
+      Fmt.epr "  %-3s %-4s %-5s %9s %9s %9s %9s %7s %7s %8s@." "run" "iter"
+        "total" "rules-in" "rules-out" "bytes-in" "saved" "passes" "changed"
+        "time";
       List.iter
         (fun (s : Stats.iteration_stat) ->
-          Fmt.epr "  %-3d %-4d %-4d %9d %9d %9d %9d %7d %7d %7.3fs@." s.fixpoint
+          Fmt.epr "  %-3d %-4d %-5d %9d %9d %9d %9d %7d %7d %7.3fs@." s.fixpoint
             s.local_iteration s.iteration s.before_rules s.after_rules
             s.before_bytes s.bytes_saved s.active_passes s.changed_passes
             s.elapsed)
@@ -24,12 +28,19 @@ let print_factor_profile_footer (counters : Stats.counters) =
     Fmt.epr "factor transfer gate: %d segments reverted@."
       counters.factor_transfer_reverts
 
-let report_profile (report : Stats.snapshot) =
+(* Where the run went, then the factoring passes the optimizer spent most of its
+   time in. *)
+type phases = { read : float; optimize : float; print : float }
+
+let report_profile phases (report : Stats.snapshot) =
   let total =
     List.fold_left
       (fun total (s : Stats.iteration_stat) -> total +. s.elapsed)
       0.0 report.iteration_stats
   in
+  Fmt.epr "time: read %.3fs, optimize %.3fs, print %.3fs, total %.3fs@."
+    phases.read phases.optimize phases.print
+    (phases.read +. phases.optimize +. phases.print);
   Fmt.epr "factor fixpoint (%d runs, %d iterations, total %.3fs):@."
     report.counters.factor_fixpoints_run report.counters.iterations total;
   print_iteration_profile report;
@@ -57,6 +68,7 @@ let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
     ~enforce_spec ~closed_world ~objective ~inline_imports_flag ~import_root
     ~inline_vars_flag ~keep_vars ~profile =
   try
+    let start = Unix.gettimeofday () in
     let input = Cli_io.read_input verbosity ~enforce_spec input_path in
     Cli_io.check_not_all_dropped input;
     let stylesheet = input.Cli_io.stylesheet in
@@ -70,6 +82,7 @@ let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
       else stylesheet
     in
     let stats = Stats.v ~profile () in
+    let read = Unix.gettimeofday () in
     let stylesheet =
       if minify then
         (* Raw output ships uncompressed, so the aggressive global-factoring
@@ -80,10 +93,19 @@ let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
           ~closed_world ~objective ~stats stylesheet
       else stylesheet
     in
+    let optimized = Unix.gettimeofday () in
     emit_stylesheet ~minify ~lossless ~enforce_spec stylesheet;
+    let printed = Unix.gettimeofday () in
     (* Without --minify, Css.optimize never runs and the recorder stays empty:
        report only when the fixpoint had a chance to run. *)
-    if profile && minify then report_profile (Stats.snapshot stats)
+    if profile && minify then
+      report_profile
+        {
+          read = read -. start;
+          optimize = optimized -. read;
+          print = printed -. optimized;
+        }
+        (Stats.snapshot stats)
   with Sys_error msg ->
     Fmt.epr "Error: %s@." msg;
     Stdlib.exit 1
@@ -234,9 +256,9 @@ let closed_world_arg =
 
 let profile_arg =
   let doc =
-    "Print the optimizer's factoring passes, with the rules, bytes and time \
-     each took, to standard error after the output. Has no effect without \
-     $(b,--minify)."
+    "Print to standard error, after the output, the time spent reading, \
+     optimizing and printing, then the optimizer's factoring passes with the \
+     rules, bytes and time each took. Has no effect without $(b,--minify)."
   in
   Arg.(value & flag & info [ "profile" ] ~docs:minify_options ~doc)
 

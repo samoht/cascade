@@ -133,6 +133,9 @@
   doing nothing, as the other minifier options are, and `--keep-vars='*'` no
   longer prints a stray `[1]`. The README's formatting check used `--diff=tree`,
   which ignores formatting; it uses `--diff=string` (#1333).
+- `cascade fmt --minify --profile` opens with the time spent reading, optimising
+  and printing, so the factoring table below it reads against the whole run, and
+  the table's columns are named in words (`run`, `rules-in`, `changed`) (#1336).
 
 ### Diff report
 
