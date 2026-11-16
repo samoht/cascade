@@ -1002,14 +1002,18 @@ let pp_warning buf ~also w =
       in
       add_strings buf [ first; " (also in "; other; ")"; rest; "\n" ]
 
-let pp_overflow buf label hidden =
+(* The count of what [max] left out ends with [more], the caller's word on how
+   to see the rest. *)
+let pp_overflow buf ~more label hidden =
   start_line buf;
   add_strings buf
     [
       label;
       ": ";
       string_of_int hidden;
-      (if hidden = 1 then " more parse warning\n" else " more parse warnings\n");
+      (if hidden = 1 then " more parse warning" else " more parse warnings");
+      more;
+      "\n";
     ]
 
 let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
@@ -1047,7 +1051,8 @@ let warnings t =
   let tag side = List.map (fun w -> (side, w)) in
   tag Expected expected_only @ tag Actual actual_only @ tag Both shared
 
-let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
+let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max ?(more = "")
+    buf t =
   let shared, expected_only, actual_only =
     partition_warnings t.expected_warnings t.actual_warnings
   in
@@ -1064,7 +1069,7 @@ let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
         end
         else incr hidden)
       ws;
-    if !hidden > 0 then pp_overflow buf label !hidden
+    if !hidden > 0 then pp_overflow buf ~more label !hidden
   in
   render expected expected_only;
   render actual actual_only;

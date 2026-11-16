@@ -140,8 +140,8 @@ let render_diff ~color ~file1 ~file2 ~entries result =
 let render_warnings ~verbosity ~limit ~file1 ~file2 result =
   let render max =
     let buf = Buffer.create 256 in
-    Cascade_diff.Css_compare.pp_warnings ~expected:file1 ~actual:file2 ?max buf
-      result;
+    Cascade_diff.Css_compare.pp_warnings ~expected:file1 ~actual:file2 ?max
+      ~more:"; -v prints every warning" buf result;
     if Cascade_diff.Css_compare.has_warnings result then
       Buffer.add_char buf '\n';
     Buffer.contents buf

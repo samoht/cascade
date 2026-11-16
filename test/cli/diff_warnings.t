@@ -82,7 +82,7 @@ the two the budget leaves out are counted once rather than once per side.
   e.css:1:13: warning: bad value for float: unknown float-side: center (also in f.css)
     .x { float: center; clear: nope; visibility: nope; z-index
                 ^^^^^^
-  e.css and f.css: 2 more parse warnings
+  e.css and f.css: 2 more parse warnings; -v prints every warning
   
   --- e.css
   +++ f.css
@@ -112,7 +112,7 @@ One warning past the budget keeps the singular form.
   g.css:1:46: warning: bad value for visibility: unknown visibility: nope (also in h.css)
     float: center; clear: nope; visibility: nope; z-index: nope; margin: 0 }
                                             ^^^^
-  g.css and h.css: 1 more parse warning
+  g.css and h.css: 1 more parse warning; -v prints every warning
   
   --- g.css
   +++ h.css
