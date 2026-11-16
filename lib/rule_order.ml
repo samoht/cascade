@@ -230,10 +230,6 @@ let sort_run ?parent changed (run : (statement * rule list) list) :
       if Array.exists (fun c -> c <> []) conditions then Option.Some exclusive
       else Option.None
     in
-    let g =
-      Rule_graph.of_rules ?parent ~pin_shared_branches:false ?exclusive
-        (List.map (fun (stmt, rules) -> element_node stmt rules) run)
-    in
     let keys =
       Array.map
         (fun (stmt, _) -> Pp.to_string ~minify:true pp_stylesheet [ stmt ])
@@ -249,8 +245,9 @@ let sort_run ?parent changed (run : (statement * rule list) list) :
     let rank = Array.make n 0 in
     Array.iteri (fun pos i -> rank.(i) <- pos) ranked;
     let order =
-      Rule_graph.canonical_order_by g (fun node ->
-          rank.(Rule_graph.Node_id.to_int node))
+      Rule_graph.rules_order_by ?parent ?exclusive
+        (List.map (fun (stmt, rules) -> element_node stmt rules) run)
+        (fun node -> rank.(Rule_graph.Node_id.to_int node))
     in
     if is_identity order then List.map fst run
     else begin
@@ -283,11 +280,15 @@ let expand_lists (stmt : statement) : statement list =
 let coalesced_declarations ~ctx decls =
   Shorthand.deduplicate_declarations_with ~ctx decls
 
-(* Mutable state of one coalescing scan: the run's elements, the graph nodes
-   accumulated into each surviving element, which elements remain, and which
-   were plain style rules in the run as it was read. *)
+(* Mutable state of one coalescing scan: the run's elements, the node standing
+   for each element as the run was read and what the conflict test reads off it,
+   the nodes accumulated into each surviving element, which elements remain, and
+   which were plain style rules in the run as it was read. The scan asks about
+   pairs of nodes and never about their order, so it holds each node's facts
+   rather than a graph of the run. *)
 type scan = {
-  graph : Rule_graph.t;
+  nodes : rule array;
+  facts : Rule_graph.facts array;
   arr : (statement * rule list) array;
   plain : bool array;
   members : int list array;
@@ -319,21 +320,21 @@ let overlapping_writes_equal (a : rule) (b : rule) =
   let a = with_keys a and b = with_keys b in
   List.equal Declaration.same_minified (touching a b) (touching b a)
 
+let nodes_conflict scan i j =
+  Rule_graph.facts_conflict scan.facts.(i) scan.facts.(j)
+
 (* Nothing strictly between [lo] and [hi] observes any accumulated occurrence in
-   [mems] moving across it. A graph conflict between two rules that write the
+   [mems] moving across it. A conflict between two rules that write the
    overlapping slots identically is not observable, so it does not count; only
-   plain style rules qualify, since a conditional block stands in the graph for
-   the concatenation of its interior rules and that sequence is not the one any
+   plain style rules qualify, since a conditional block's node is the
+   concatenation of its interior rules and that sequence is not the one any
    single element sees. *)
 let interval_clear scan ~lo ~hi mems =
-  let node i = Rule_graph.Node_id.of_int_exn i in
   let observed m a =
-    Rule_graph.conflict scan.graph (node m) (node a)
+    nodes_conflict scan m a
     && not
          (scan.plain.(m) && scan.plain.(a)
-         && overlapping_writes_equal
-              (Rule_graph.node_rule scan.graph (node m))
-              (Rule_graph.node_rule scan.graph (node a)))
+         && overlapping_writes_equal scan.nodes.(m) scan.nodes.(a))
   in
   let ok = ref true in
   for m = lo + 1 to hi - 1 do
@@ -378,7 +379,6 @@ let supports_merge_down_clear ?parent scan ~from ~into =
   | Supports _, Supports _ ->
       let moving = element_node (fst scan.arr.(from)) (snd scan.arr.(from)) in
       let later_rules = snd scan.arr.(into) in
-      let node i = Rule_graph.Node_id.of_int_exn i in
       let rec clear i =
         if i >= into then true
         else
@@ -388,11 +388,7 @@ let supports_merge_down_clear ?parent scan ~from ~into =
                 let residual = drop_shadowed_by_rules later_rules rule in
                 residual.declarations <> []
                 && Rule_graph.rules_conflict ?parent moving residual
-            | _ ->
-                List.exists
-                  (fun member ->
-                    Rule_graph.conflict scan.graph (node i) (node member))
-                  scan.members.(from)
+            | _ -> List.exists (nodes_conflict scan i) scan.members.(from)
           in
           (not conflicts) && clear (i + 1)
       in
@@ -528,10 +524,11 @@ let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 (* Coalesce same-slot elements within one run. Folding an occurrence into
    another moves its writes past every element in between, which is observable
    only if one of those elements conflicts with what moved; the conflict test is
-   the graph's, against every original occurrence already accumulated into the
-   surviving element. A conditional block stands in the graph for the union of
-   its interior selectors and declarations, a superset of its true edges, so the
-   same test covers a block merge. [blocks] says whether blocks fold at all. *)
+   {!Rule_graph.facts_conflict}, which is the conflict of the graph over the
+   run, against every original occurrence already accumulated into the surviving
+   element. A conditional block's node is the union of its interior selectors
+   and declarations, a superset of its true conflicts, so the same test covers a
+   block merge. [blocks] says whether blocks fold at all. *)
 let coalesce ~blocks ~canon_body ~ctx ?parent changed
     (run : (statement * rule list) list) : (statement * rule list) list =
   match run with
@@ -539,13 +536,13 @@ let coalesce ~blocks ~canon_body ~ctx ?parent changed
   | _ ->
       let arr = Array.of_list run in
       let n = Array.length arr in
-      let graph =
-        Rule_graph.of_rules ?parent ~pin_shared_branches:false
-          (List.map (fun (stmt, rules) -> element_node stmt rules) run)
+      let nodes =
+        Array.map (fun (stmt, rules) -> element_node stmt rules) arr
       in
       let scan =
         {
-          graph;
+          nodes;
+          facts = Array.map (Rule_graph.facts ?parent) nodes;
           arr;
           plain =
             Array.map

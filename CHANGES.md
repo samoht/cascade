@@ -106,6 +106,9 @@
 - `cascade diff --diff=canonical` parses each input once, where it parsed it
   two or three times: Tailwind's stylesheet against tw's retires 4.85e10
   instructions instead of 5.32e10, for the same report (#1305).
+- `cascade diff --diff=canonical` builds a rule graph only to order a run of
+  rules, not to fold rules within it. tw's tailwindcss.com sheet against
+  Tailwind's takes 3.2 s of CPU instead of 5.3 s (#1308).
 
 ### Library
 

@@ -206,6 +206,32 @@ let rewrite_keeps_constraints_through_dead_relays () =
         "live endpoints retain their source constraint" true
         (position 0 0 order < position 2 0 order)
 
+(* The order of a run, asked without holding its graph: a pair is kept in source
+   order when the two rules conflict and follows the rank otherwise. A shared
+   selector branch alone pins nothing, and a pair the caller asserts exclusive
+   is free. *)
+let rules_order_by_follows_rank_between_conflicts () =
+  let reversed ?exclusive css =
+    Rule_graph.rules_order_by ?exclusive (rules_of css) (fun id ->
+        -Rule_graph.Node_id.to_int id)
+    |> int_order
+  in
+  Alcotest.(check (list int))
+    "disjoint properties follow the rank" [ 1; 0 ]
+    (reversed ".a{color:red}.b{margin:0}");
+  Alcotest.(check (list int))
+    "a conflicting pair keeps source order" [ 0; 1 ]
+    (reversed ".a{color:red}.b{color:blue}");
+  Alcotest.(check (list int))
+    "only the conflicting pair is held" [ 2; 0; 1 ]
+    (reversed ".a{color:red}.b{color:blue}.c{margin:0}");
+  Alcotest.(check (list int))
+    "a shared branch is not a pin" [ 1; 0 ]
+    (reversed ".a{color:red}.a{margin:0}");
+  Alcotest.(check (list int))
+    "an exclusive pair follows the rank" [ 1; 0 ]
+    (reversed ~exclusive:(fun _ _ -> true) ".a{color:red}.b{color:blue}")
+
 (* A later rewrite can add a back edge around a consumed node in a compact
    chain. Cycle detection must traverse the dead relay, not just live nodes. *)
 let rewrite_rejects_cycle_through_dead_relay () =
@@ -1119,6 +1145,8 @@ let suite =
         rules_conflict_specificity;
       Alcotest.test_case "optimize keeps case-folded pairs in order" `Quick
         optimize_keeps_case_folded_order;
+      Alcotest.test_case "rules_order_by follows the rank between conflicts"
+        `Quick rules_order_by_follows_rank_between_conflicts;
       Alcotest.test_case "canonical_order pins a conflicting pair" `Quick
         canonical_order_pins_conflict;
       Alcotest.test_case "canonical_order keeps disjoint source order" `Quick

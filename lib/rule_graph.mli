@@ -185,6 +185,18 @@ val canonical_order_by : t -> (node_id -> int) -> node_id array
     comparison passes a content-derived rank so two source orderings of
     cascade-independent rules converge to one form. *)
 
+val rules_order_by :
+  ?parent:Selector.t ->
+  ?exclusive:(int -> int -> bool) ->
+  Stylesheet.rule list ->
+  (node_id -> int) ->
+  node_id array
+(** [rules_order_by ?parent ?exclusive rules rank] is
+    [canonical_order_by (of_rules ?parent ~pin_shared_branches:false ?exclusive
+     rules) rank], for a caller that wants the order and then drops the graph:
+    it builds the nodes and their edges and leaves out the index and the node
+    sizes only {!val-rewrite} and the candidate search read. *)
+
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension
     of the dependency DAG (a path from the earlier to the later node of every

@@ -914,11 +914,13 @@ let index_node t (node : node_id) =
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
-let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
-    ?exclusive (rules : rule list) : t =
-  let rules = Array.of_list rules in
+(* The nodes of [rules] in source order with their edges, the given [summaries],
+   and an empty external index sized for [index_capacity] entries: enough to
+   project an order, and to rewrite once the summaries are the rules' and the
+   index is filled. *)
+let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
+    ?(pin_shared_branches = true) ?exclusive (rules : rule array) : t =
   let n = Array.length rules in
-  let summaries = Array.map rule_summary rules in
   let facts =
     Array.map (fun rule -> branch_facts (effective_selector parent rule)) rules
   in
@@ -951,16 +953,26 @@ let of_rules ?parent ?(closed_world = false) ?(pin_shared_branches = true)
       decl_overlaps;
       overlap_keys;
       succ = [||];
-      key_index = Key_tbl.create (max 16 (n * 2));
-      branch_index = String_table.create (max 16 (n * 2));
+      key_index = Key_tbl.create index_capacity;
+      branch_index = String_table.create index_capacity;
       reach = Unbuilt;
       expansions = 0;
     }
   in
-  for i = 0 to n - 1 do
+  { t with succ = source_order_edges t }
+
+let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
+  let rules = Array.of_list rules in
+  let t =
+    ordered_nodes
+      ~summaries:(Array.map rule_summary rules)
+      ~index_capacity:(max 16 (Array.length rules * 2))
+      ?parent ?closed_world ?pin_shared_branches ?exclusive rules
+  in
+  for i = 0 to t.count - 1 do
     index_node t (Node_id.of_int_exn i)
   done;
-  { t with succ = source_order_edges t }
+  t
 
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
@@ -1172,6 +1184,14 @@ let canonical_order_by t (rank : node_id -> int) : node_id array =
   match topo_order_by t rank with
   | Option.Some order -> order
   | Option.None -> invalid_arg "Rule_graph.canonical_order: cyclic live graph"
+
+(* The order reads only the edges, so the graph it walks holds no summaries and
+   no index. *)
+let rules_order_by ?parent ?exclusive rules rank =
+  canonical_order_by
+    (ordered_nodes ~summaries:[||] ~index_capacity:1 ?parent
+       ~pin_shared_branches:false ?exclusive (Array.of_list rules))
+    rank
 
 let canonical_order t : node_id array =
   canonical_order_by t (fun node -> t.origin.(node))
