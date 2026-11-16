@@ -981,7 +981,15 @@ let test_layer_contraction_keeps_an_earlier_shorthand () =
     [ "url(a.png)"; "#fff"; "no-repeat" ];
   check "mask"
     "a{mask:url(a.png) no-repeat;mask-position:0 50%;mask-size:25px 25px}"
-    [ "url(a.png)"; "no-repeat" ]
+    [ "url(a.png)"; "no-repeat" ];
+  (* A longhand whose value the run could not take still holds its slot. *)
+  check "background-color"
+    "a{background-color:inherit;background-position:50%;background-size:cover;background-repeat:no-repeat}"
+    [ "inherit" ];
+  check "background-image"
+    "a{background-image:none,url(a.png);background-position:0 \
+     0;background-size:4px 4px}"
+    [ "url(a.png)" ]
 
 (* CSS Fonts 4 sec. 2.9: [font] resets every font longhand it does not name.
    Under [`Stylesheet] a run of [font-size] and [font-family] may contract into
