@@ -69,6 +69,37 @@ single value stands for both.
   cascade: warning: --c is redefined in a different scope; kept live (cannot inline safely)
   .x{--c:green}.y{--c:blue}.x,.y{color:var(--c)}
 
+Rules that define a variable with one value give it one binding, wherever
+they sit: an element any of them reaches computes that value. It folds into
+each consumer a definition covers, as it does once --minify has merged the
+definitions into one rule, so inlining the output again changes nothing.
+
+  $ cat > same-value.css <<EOF
+  > .a { --s: 1px; width: var(--s) }
+  > .b { --s: 1px; height: var(--s) }
+  > EOF
+  $ cascade --minify --inline-vars same-value.css > same-value.min.css
+  $ cat same-value.min.css
+  .a{width:1px}.b{height:1px}
+  $ cascade --minify --inline-vars same-value.min.css
+  .a{width:1px}.b{height:1px}
+
+A consumer no definition covers keeps its reference, and the definitions stay
+for it; the covered ones still fold, on the first pass as on the second.
+
+  $ cat > same-value-partial.css <<EOF
+  > .a { --s: 1px; --g: f(var(--s)); width: var(--g) }
+  > .b { --s: 1px; --g: f(var(--s)); height: var(--g) }
+  > .c { --g: f(var(--s, 2px)) }
+  > EOF
+  $ cascade --minify --inline-vars same-value-partial.css 2>&1 > same-value-partial.min.css
+  cascade: warning: --g takes different values in different scopes; kept live (cannot inline safely)
+  $ cat same-value-partial.min.css
+  .a,.b{--s:1px;--g:f(1px)}.a{width:var(--g)}.b{height:var(--g)}.c{--g:f(var(--s,2px))}
+  $ cascade --minify --inline-vars same-value-partial.min.css 2>&1
+  cascade: warning: --g takes different values in different scopes; kept live (cannot inline safely)
+  .a,.b{--s:1px;--g:f(1px)}.a{width:var(--g)}.b{height:var(--g)}.c{--g:f(var(--s,2px))}
+
 An unlayered definition wins over a layered one, whatever the document
 order.
 
