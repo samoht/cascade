@@ -250,6 +250,49 @@ let nan_declaration_is_one_value () =
 
    infinity and -infinity are separate constants of the same sec. 10.7.2 list,
    each with its own serialisation, so they stay three distinct values. *)
+(* README: source positions are not kept through formatting, and CSS Custom
+   Properties 1 sec. 2 makes a custom property's value its token sequence, so
+   the offset a declaration was read at is no part of it. Two declarations of
+   one custom property with one value are one declaration wherever they sit:
+   equal, hashed alike and interned as one object. *)
+let custom_declarations_ignore_offsets () =
+  let decls css =
+    Css.stylesheet css |> Css.statements
+    |> List.concat_map (fun stmt ->
+        Css.Stylesheet.statement_declarations stmt
+        @ List.concat_map Css.Stylesheet.statement_declarations
+            (Css.Stylesheet.statement_children stmt))
+  in
+  let one label a b =
+    match (decls a, decls b) with
+    | [ x ], [ y ] ->
+        Alcotest.(check bool) (label ^ ": equal") true (equal_declaration x y);
+        Alcotest.(check int) (label ^ ": hash") (hash x) (hash y);
+        Alcotest.(check bool) (label ^ ": one object") true (x == y)
+    | _ -> Alcotest.failf "%s: expected one declaration each" label
+  in
+  one "different offsets" "a{--x:f(1px, var(--y, 2px))}"
+    "@media print{.long-selector b{--x:f(1px, var(--y, 2px))}}";
+  one "space before the value" "a{--x:f(1px)}" "a{--x:   f(1px)}";
+  one "space after the value" "a{--x:f(1px)}" "a{--x:f(1px)   }";
+  one "important" "a{--x:1px!important}" "b{--x:1px  !important}";
+  (* CSS Syntax 3 (ED) sec. 4.3.2 consumes a comment as nothing, so the tokens
+     after one are the same tokens, only further along. *)
+  one "a comment before the value" "a{--x:f(1px)}" "a{--x:/* c */f(1px)}";
+  one "a comment inside the value" "a{--x:f(1px)}" "a{--x:f(/* c */1px)}";
+  let same label a b =
+    Alcotest.(check bool) (label ^ ": equal") true (equal_declaration a b);
+    Alcotest.(check int) (label ^ ": hash") (hash a) (hash b);
+    Alcotest.(check bool) (label ^ ": one object") true (a == b)
+  in
+  (* A value built from text reads its tokens at their offsets in that text. *)
+  same "built after a comment"
+    (custom_property "--x" "f(1px)")
+    (custom_property "--x" "/* c */f(1px)");
+  same "built after a nested comment"
+    (custom_property "--x" "f(1px)")
+    (custom_property "--x" "f(/* c */1px)")
+
 let same_text_same_hash label a b =
   let text = Css.Declaration.to_string ~minify:true a in
   Alcotest.(check string)
@@ -694,6 +737,8 @@ let relative_colour_spellings_agree () =
 let suite =
   ( "declaration_identity",
     [
+      test_case "custom declarations ignore offsets" `Quick
+        custom_declarations_ignore_offsets;
       test_case "calc sum shortest spelling" `Quick
         test_calc_sum_shortest_spelling;
       test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;
