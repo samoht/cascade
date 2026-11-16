@@ -61,11 +61,9 @@ let edges_of_rule = Edge.of_rule
 
 (** {1 Declaration Optimization} *)
 
-let duplicate_buggy_properties = Shorthand.duplicate_buggy_properties
 let merge_overflow_longhands = Shorthand.merge_overflow_longhands
 let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
 let compose_shorthands = Shorthand.compose_shorthands
-let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let deduplicate_declarations = Shorthand.deduplicate_declarations
 let single_rule_without_nested = Rule.single
 let declaration_run = Rule.declaration_run
@@ -670,7 +668,8 @@ let single_rule ?scope (rule : rule) : rule =
   in
   {
     rule with
-    declarations = deduplicate_declarations_with ~ctx rule.declarations;
+    declarations =
+      Shorthand.deduplicate_declarations_with ~ctx rule.declarations;
   }
 
 let rules ?scope (rules : rule list) : rule list =
@@ -803,11 +802,6 @@ let add_compatibility_prefixes ~targets stylesheet =
     if stmt == original then Keep else Replace stmt
   in
   edit_statements rewrite stylesheet
-
-(* A WebKit workaround is a property of the declaration, so it applies wherever
-   the declaration sits. *)
-let apply_property_duplication (stylesheet : t) : t =
-  map_declarations duplicate_buggy_properties stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@keyframes] frames, [@page] and its margin boxes,

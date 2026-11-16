@@ -36,6 +36,9 @@
 - `Error.kind` has an `Invalid_statement` case, for a statement read whole that
   the rules around it refuse, such as an `@import` after a style rule, which was
   a `Bad_value` for a property called `stylesheet` (#1331).
+- `Optimize.duplicate_buggy_properties` and
+  `Optimize.apply_property_duplication` are gone: both returned their input
+  unchanged (#1345).
 
 ### Printing
 

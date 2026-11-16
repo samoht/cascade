@@ -48,7 +48,6 @@ type held = Shorthand_held.held
 
 let held_none = Shorthand_held.held_none
 let held_add = Shorthand_held.held_add
-let duplicate_buggy_properties decls = decls
 
 (* Run every index-based composer against the same Rule_index so we pay one
    [build] + [to_list] per rule for the whole group. *)
@@ -130,12 +129,11 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
   (* Composition writes shorthands the input did not carry, so the longhands one
      of them now restates are only visible on a second pass. *)
   let kept = drop_longhands_after_covering_shorthand kept in
-  let result = duplicate_buggy_properties kept in
   (* Each pipeline step keeps untouched declarations, so [preserve_list]
      restores the input list when every declaration is physically unchanged -
      callers detect a no-op by identity (the factoring fixpoint relies on
      it). *)
-  preserve_list props result
+  preserve_list props kept
 
 let deduplicate_declarations ?scope props =
   deduplicate_declarations_with ~ctx:(Ctx.of_scope scope) props

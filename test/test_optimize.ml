@@ -118,48 +118,6 @@ let test_deduplicate_declarations_physical_identity () =
   check bool "re-deduplicating a fixed point preserves physical identity" true
     (again == canon)
 
-(** Test buggy property duplication *)
-let test_duplicate_buggy_properties () =
-  (* Test -webkit-text-decoration:inherit compatibility. Note: Transform is NOT
-     duplicated in Tailwind v4 - they don't emit vendor-prefixed transform. *)
-  let decls = [ v Webkit_text_decoration Inherit ] in
-  let duplicated = duplicate_buggy_properties decls in
-  check (list string) "keeps one webkit-text-decoration inherit fallback"
-    [ "-webkit-text-decoration:inherit" ]
-    (List.map (Css.Declaration.to_string ~minify:true) duplicated);
-
-  (* Synthesizing -webkit-text-decoration-color is the target-driven layer's
-     decision, taken against the declared browser versions;
-     target_evergreen_compatibility_prefixes covers it. This pass carries no
-     targets, so it duplicates only the properties WebKit reads wrongly and
-     leaves authored prefixed and unprefixed spellings distinct. *)
-  let pp_decls decls =
-    List.map (Css.Declaration.to_string ~minify:true) decls
-  in
-  let standard_color =
-    duplicate_buggy_properties [ v Text_decoration_color (hex_color "0000ff") ]
-  in
-  check (list string) "the target-less pass does not prefix a decoration color"
-    [ "text-decoration-color:#00f" ]
-    (pp_decls standard_color);
-  let prefixed_color =
-    duplicate_buggy_properties
-      [ v Webkit_text_decoration_color (hex_color "0000ff") ]
-  in
-  check (list string) "authored webkit decoration color is preserved"
-    [ "-webkit-text-decoration-color:#00f" ]
-    (pp_decls prefixed_color);
-  let pair =
-    deduplicate_declarations
-      [
-        v Webkit_text_decoration_color (hex_color "ff0000");
-        v Text_decoration_color (hex_color "0000ff");
-      ]
-  in
-  check (list string) "prefixed and standard decoration colors both remain"
-    [ "-webkit-text-decoration-color:#f00"; "text-decoration-color:#00f" ]
-    (pp_decls pair)
-
 (** Test rule optimization *)
 let single_rule () =
   let selector = Css.Selector.class_ "test" in
@@ -1173,7 +1131,6 @@ let suite =
       ( "deduplicate declarations preserves physical identity",
         `Quick,
         test_deduplicate_declarations_physical_identity );
-      ("duplicate buggy properties", `Quick, test_duplicate_buggy_properties);
       ("optimize single rule", `Quick, single_rule);
       ("optimize stylesheet", `Quick, optimize_all);
       ("optimize media queries", `Quick, media_queries);

@@ -44,12 +44,6 @@ val evergreen_targets : targets
 
 (** {1 Declaration Optimization} *)
 
-val duplicate_buggy_properties : declaration list -> declaration list
-(** [duplicate_buggy_properties decls] duplicates known buggy properties for
-    browser compatibility. Some WebKit properties need to be duplicated for
-    older Safari versions. See: https://bugs.webkit.org/show_bug.cgi?id=101180.
-*)
-
 val deduplicate_declarations :
   ?scope:scope -> declaration list -> declaration list
 (** [deduplicate_declarations ?scope decls] removes overridden declarations
@@ -264,10 +258,6 @@ val drop_empty_rules : statement list -> statement list
 (** {1 Nested Structure Optimization} *)
 
 (** {1 Stylesheet Optimization} *)
-
-val apply_property_duplication : t -> t
-(** [apply_property_duplication ss] applies only property duplication for
-    browser compatibility without other optimizations. *)
 
 val add_compatibility_prefixes : targets:targets -> t -> t
 (** [add_compatibility_prefixes ~targets ss] adds the vendor-prefixed

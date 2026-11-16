@@ -1,9 +1,5 @@
 (** Declaration deduplication and shorthand composition. *)
 
-val duplicate_buggy_properties :
-  Declaration.declaration list -> Declaration.declaration list
-(** Duplicate compatibility-sensitive properties. *)
-
 val is_intentionally_duplicated : Declaration.declaration -> bool
 (** Whether a declaration may deliberately coexist with same-property writes. *)
 
