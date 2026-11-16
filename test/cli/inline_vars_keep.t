@@ -47,7 +47,7 @@ working through the variable) and a warning names it.
   > .btn { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars --keep-vars=brand dark.css 2>&1
-  cascade: warning: --palette-red is redefined in a different scope; kept live (cannot inline safely)
+  cascade: warning: --palette-red takes different values in different scopes; kept live (cannot inline safely)
   :root{--brand:var(--palette-red);--palette-red:red}.dark{--palette-red:black}.btn{color:var(--brand)}
 
 Custom property names are case-sensitive. Keeping [--brand] must not

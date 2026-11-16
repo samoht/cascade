@@ -105,6 +105,10 @@
 
 ### CLI tools
 
+- `--inline-vars` folds a variable that several rules define with one value, as
+  it already did once `--minify` had merged those rules, so inlining its output
+  again changes nothing. The warning now names a variable whose definitions
+  disagree: `--x takes different values in different scopes` (#1343).
 - On Windows `cascade` ends its lines in LF as elsewhere, where its output and
   help pages ended them in CRLF, and `cascade diff --browser` starts node
   without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).

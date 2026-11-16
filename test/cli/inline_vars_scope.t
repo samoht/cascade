@@ -66,7 +66,7 @@ single value stands for both.
   > .y { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars layer-selectors.css 2>&1
-  cascade: warning: --c is redefined in a different scope; kept live (cannot inline safely)
+  cascade: warning: --c takes different values in different scopes; kept live (cannot inline safely)
   .x{--c:green}.y{--c:blue}.x,.y{color:var(--c)}
 
 Rules that define a variable with one value give it one binding, wherever

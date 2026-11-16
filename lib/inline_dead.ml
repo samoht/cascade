@@ -516,37 +516,57 @@ let mentioned_custom_names stylesheet =
     consumers
   |> List.sort_uniq compare
 
-(* Per custom-property name, how many definitions it has across the whole
-   stylesheet, plus the set of names referenced anywhere. A variable is safe to
-   inline and delete only when it has a single definition: its value is then
-   unambiguous. A variable redefined in another scope is a real cascade override
-   (dark mode, a media query, a component) and must stay a live [var()] so its
-   consumers still track it - inlining it would freeze the value. *)
-let var_census stylesheet =
-  (* Count the distinct cascade scopes (selector + at-rule context) that define
-     each variable, so a redeclaration within one scope counts once while a real
-     override in another scope counts as two. Plus the set of referenced
-     names. *)
-  let scopes_of : (string, (at_node list * string) list) Hashtbl.t =
+(* The number of distinct values each name takes. Within one cascade scope
+   (selector and at-rule context) only the winning declaration of a name is a
+   value: a redeclaration there replaces the earlier one, unless that one is
+   [!important] and it is not. *)
+let value_counts stylesheet =
+  let winners : (at_node list * string * string, bool * string) Hashtbl.t =
     Hashtbl.create 64
-  in
-  let add name key =
-    let prev = Option.value ~default:[] (Hashtbl.find_opt scopes_of name) in
-    if not (List.mem key prev) then Hashtbl.replace scopes_of name (key :: prev)
   in
   List.iter
     (fun (s : scope) ->
-      let key = (s.at_path, Selector.to_string ~minify:true s.selector) in
-      s.customs
-      |> List.filter_map (fun d ->
-          Option.map normalise_var_name (custom_name d))
-      |> List.sort_uniq compare
-      |> List.iter (fun n -> add n key))
+      let selector = Selector.to_string ~minify:true s.selector in
+      List.iter
+        (fun d ->
+          match custom_name d with
+          | None -> ()
+          | Some name ->
+              let key = (s.at_path, selector, normalise_var_name name) in
+              let important = Declaration.is_important d in
+              let value = Declaration.string_of_value ~minify:true d in
+              let replaces =
+                match Hashtbl.find_opt winners key with
+                | Some (was_important, _) -> important || not was_important
+                | None -> true
+              in
+              if replaces then Hashtbl.replace winners key (important, value))
+        s.customs)
     (collect_scopes ~kept:[] stylesheet).all;
+  let values_of : (string, string list) Hashtbl.t = Hashtbl.create 64 in
+  Hashtbl.iter
+    (fun (_, _, name) (_, value) ->
+      let prev = Option.value ~default:[] (Hashtbl.find_opt values_of name) in
+      if not (List.exists (String.equal value) prev) then
+        Hashtbl.replace values_of name (value :: prev))
+    winners;
   let counts : (string, int) Hashtbl.t = Hashtbl.create 64 in
   Hashtbl.iter
-    (fun name keys -> Hashtbl.replace counts name (List.length keys))
-    scopes_of;
+    (fun name values -> Hashtbl.replace counts name (List.length values))
+    values_of;
+  counts
+
+(* Per custom-property name, how many values it takes across the whole
+   stylesheet, plus the set of names referenced anywhere. A variable is safe to
+   inline and delete only when it takes one value: whichever definition reaches
+   an element, the element computes that value. A variable whose definitions
+   disagree is a real cascade override (dark mode, a media query, a component)
+   and must stay a live [var()] so its consumers still track it - inlining it
+   would freeze one of the values. Definitions agreeing on a value count once
+   wherever they sit, as the one rule --minify merges them into does, so
+   inlining reaches the same answer on a sheet and on its minified form. *)
+let var_census stylesheet =
+  let counts = value_counts stylesheet in
   let referenced = ref [] in
   let add_refs decls =
     referenced :=

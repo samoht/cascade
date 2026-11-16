@@ -33,16 +33,17 @@ let vars ?(keep_vars = []) ?(inline_runtime = false) ?(warn = fun _ -> ())
     (not (List.mem name keep)) && Hashtbl.find_opt counts name = Some 1
   in
   (* Everything not inlinable stays live: the keep-set, plus any non-kept
-     variable redefined across scopes. Those are folded by the substitution as
-     if kept, so the single-def variables fold into them and get stripped. *)
+     variable whose definitions disagree. Those are folded by the substitution
+     as if kept, so the single-valued variables fold into them and get
+     stripped. *)
   let kept =
     Hashtbl.fold
       (fun name _ acc -> if inlinable name then acc else name :: acc)
       counts keep
     |> List.sort_uniq compare
   in
-  (* Warn for a non-kept variable kept only because it is redefined in a
-     different scope, so the caller knows it escaped inlining. *)
+  (* Warn for a non-kept variable kept only because its definitions disagree, so
+     the caller knows it escaped inlining. *)
   Hashtbl.iter
     (fun name count ->
       if count > 1 && (not (List.mem name keep)) && List.mem name referenced

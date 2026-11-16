@@ -27,7 +27,7 @@ to the inherited black, so dropping the registration repaints the page.
   > b { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars kept.css
-  cascade: warning: --c is redefined in a different scope; kept live (cannot inline safely)
+  cascade: warning: --c takes different values in different scopes; kept live (cannot inline safely)
   @property --c{syntax:"<color>";inherits:false;initial-value:red}a{--c:#00f}b{color:var(--c)}
 
 An inheriting registration is kept on the same terms.

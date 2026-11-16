@@ -10,7 +10,7 @@ let run (verbosity : Cli_log.verbosity) ~keep_vars stylesheet =
       | Quiet -> ()
       | Normal | Verbose ->
           Cli_io.warning
-            "%s is redefined in a different scope; kept live (cannot inline \
-             safely)"
+            "%s takes different values in different scopes; kept live (cannot \
+             inline safely)"
             name)
     stylesheet
