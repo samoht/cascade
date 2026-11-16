@@ -1181,7 +1181,19 @@ let spec_keyframes_shadow_color_var () =
        (sheet
           (registration
          ^ "@keyframes glow{from{--ring:rgb(255 0 0)}}.a{box-shadow:0 0 \
-            var(--ring)}")))
+            var(--ring)}")));
+  (* The colour slot is the node the optimizer builds, not a spelling the
+     minified printer picks: pretty output of the same optimized sheet shows it
+     too (docs/invariants.md, "pp is a serializer"). *)
+  let pretty =
+    Css.to_string
+      (Css.optimize
+         (sheet (registration ^ ".a{--ring:red;box-shadow:0 0 var(--ring)}")))
+  in
+  Alcotest.(check bool)
+    (String.concat "" [ "optimize fills the colour slot: "; pretty ])
+    true
+    (Astring.String.is_infix ~affix:"box-shadow: 0 0 0 var(--ring)" pretty)
 
 let spec_page_margin_descriptor_matrix () =
   check_stylesheet
