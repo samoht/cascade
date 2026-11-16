@@ -12,8 +12,8 @@ module Priority = struct
   type t = {
     saving : int;
     kind : int;
-    produce : int;
     consume : int array;
+    produce : string list Lazy.t;
     ordinal : int;
     candidate : Rule_rewrite.candidate;  (** carried, never compared *)
   }
@@ -29,6 +29,20 @@ module Priority = struct
       | order -> order
 
   let compare_next order next = if order = 0 then next () else order
+
+  (* Shortest first, then by content. *)
+  let shortlex a b =
+    compare_next
+      (Int.compare (String.length a) (String.length b))
+      (fun () -> String.compare a b)
+
+  let rec compare_texts a b =
+    match (a, b) with
+    | [], [] -> 0
+    | [], _ -> -1
+    | _, [] -> 1
+    | x :: a, y :: b ->
+        compare_next (shortlex x y) (fun () -> compare_texts a b)
 
   (* Consolidation rewrites (identical-body and same-selector merges) run before
      the declaration-factoring rewrites, so a selector's own split shorthand is
@@ -48,7 +62,9 @@ module Priority = struct
         (fun () ->
           compare_next (Int.compare a.saving b.saving) (fun () ->
               compare_next (Int.compare a.kind b.kind) (fun () ->
-                  compare_next (Int.compare a.produce b.produce) (fun () ->
+                  compare_next
+                    (compare_texts (Lazy.force a.produce) (Lazy.force b.produce))
+                    (fun () ->
                       compare_next (compare_int_arrays a.consume b.consume 0)
                         (fun () -> Int.compare a.ordinal b.ordinal)))))
 end
@@ -62,34 +78,36 @@ let kind_rank = function
   | Selector_branch_inline -> 3
   | Default_factoring -> 4
 
-let rule_key (rule : Stylesheet.rule) =
-  Hashtbl.seeded_hash_param 20 100 0
-    ( rule.Stylesheet.selector,
-      List.map Declaration.hash rule.declarations,
-      rule.nested )
-
-let produce_key (candidate : Rule_rewrite.candidate) =
-  candidate.produce |> List.map rule_key |> Hashtbl.seeded_hash 0
-
-let consume_key (candidate : Rule_rewrite.candidate) =
+(* Ties between equal savings break on content and source order, never on a hash
+   or a table's iteration order, which a change to how the syntax tree is built
+   would move: first the produced rules, one by one, shortest first and then by
+   their text, so the candidate that moves the least into a shared rule goes
+   first; then the source positions of the consumed rules, earliest first. Two
+   candidates tied on both are the same rewrite, and [ordinal] only keeps the
+   order total. *)
+let consume_key graph (candidate : Rule_rewrite.candidate) =
   candidate.consume
-  |> List.map Rule_graph.Node_id.to_int
+  |> List.map (Rule_graph.node_origin graph)
   |> List.sort Int.compare |> Array.of_list
 
-let priority ordinal (candidate : Rule_rewrite.candidate) =
+let produce_text (candidate : Rule_rewrite.candidate) =
+  lazy
+    (List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) candidate.produce)
+
+let priority graph ordinal (candidate : Rule_rewrite.candidate) =
   Priority.
     {
       saving = -candidate.saving;
       kind = kind_rank candidate.kind;
-      produce = produce_key candidate;
-      consume = consume_key candidate;
+      consume = consume_key graph candidate;
+      produce = produce_text candidate;
       ordinal;
       candidate;
     }
 
-let offer queue offer =
+let offer graph queue offer =
   let key = Rule_candidate.key offer in
-  Queue.add key (priority key (Rule_candidate.candidate offer)) queue
+  Queue.add key (priority graph key (Rule_candidate.candidate offer)) queue
 
 (* Below 128 nodes the candidates a commit brings about are queued as soon as it
    lands; above, they wait for the queue to drain, when every candidate of the
@@ -114,7 +132,8 @@ let run ~ctx ~finalize graph =
           else begin
             ignore (Rule_candidate.refresh pool);
             loop iteration ~committed:false graph
-              (List.fold_left offer Queue.empty (Rule_candidate.offers pool))
+              (List.fold_left (offer graph) Queue.empty
+                 (Rule_candidate.offers pool))
           end
       | Some ((_, { candidate; _ }), queue) -> (
           match
@@ -127,10 +146,11 @@ let run ~ctx ~finalize graph =
               Rule_candidate.rewrite pool graph' ~consume:candidate.consume;
               let queue =
                 if refresh_after_commit then
-                  List.fold_left offer queue (Rule_candidate.refresh pool)
+                  List.fold_left (offer graph') queue
+                    (Rule_candidate.refresh pool)
                 else queue
               in
               loop (iteration + 1) ~committed:true graph' queue)
   in
   loop 0 ~committed:false graph
-    (List.fold_left offer Queue.empty (Rule_candidate.refresh pool))
+    (List.fold_left (offer graph) Queue.empty (Rule_candidate.refresh pool))

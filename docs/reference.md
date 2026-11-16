@@ -137,7 +137,9 @@ buckets in order of first source position, then size, then the rule and
 declaration where the bucket's key first appears. A run keeps the bounds its
 first graph sets. Subsets that factor the same declarations out of the same
 rules are one candidate. Equal savings rank by rewrite kind, then by the
-produced rules, then by the consumed rules.
+produced rules one by one, shortest first and then by their text, then by the
+source positions of the consumed rules, earliest first; never by a hash or the
+order of a table.
 
 ### Approximation and lossless mode
 

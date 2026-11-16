@@ -102,6 +102,9 @@
   costs the rules it touches rather than the size of the sheet, about a third
   fewer instructions on real sheets (#1306, #1307, #1313, #1322, #1323, #1324,
   #1325, #1344).
+- `--minify` breaks a tie between merges that save the same by the rules they
+  produce, shortest first, and then by source order, never by a hash, so its
+  output no longer depends on how the syntax tree is represented (#1355).
 - A selector built by merging a nested rule into its parent is the one reading
   its print gives, so nesting it under a neighbour happens in the first
   `--minify` pass, not only when the output is minified again.
