@@ -582,6 +582,32 @@ let settling_a_run_builds_one_graph () =
     true
     (projection < 2. *. graph)
 
+(* A round after the first finds the run as the round before left it, except for
+   the elements that folded, so it rereads those and keeps the graph of the
+   rest. The two blocks below fold once the first round has sorted them next to
+   each other, which takes a second round, and the projection still costs less
+   than one and a half graphs of its run. *)
+let a_round_keeps_the_graph () =
+  let stmts =
+    independent_run 1_000
+    @ statements "@media(width>=1px){.m{left:0}}@media(width>=1px){.n{right:0}}"
+  in
+  let rules =
+    List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None) stmts
+  in
+  let graph =
+    Css_test_helpers.measure (fun () ->
+        Rule_graph.of_rules ~pin_shared_branches:false rules)
+  in
+  let projection =
+    Css_test_helpers.measure (fun () -> Rule_order.canonicalize stmts)
+  in
+  Alcotest.(check bool)
+    (Fmt.str "projection %.0f words, one graph %.0f (%.2fx)" projection graph
+       (projection /. graph))
+    true
+    (projection < 1.5 *. graph)
+
 let suite =
   ( "rule_order",
     [
@@ -667,4 +693,6 @@ let suite =
         conflicting_block_fold_is_refused;
       Alcotest.test_case "settling a run builds one graph" `Quick
         settling_a_run_builds_one_graph;
+      Alcotest.test_case "a round keeps the graph" `Quick
+        a_round_keeps_the_graph;
     ] )
