@@ -112,8 +112,8 @@
   its counterpart. Pairing one copy claimed both, and the change was dropped
   (#1297).
 - `cascade diff --diff=canonical` is faster and lighter, for the same report:
-  Tailwind's stylesheet against tw's takes about half the time and a third of
-  the memory (#1305, #1308, #1309).
+  Tailwind's stylesheet against tw's takes about a quarter of the time and a
+  third of the memory (#1305, #1308, #1309, #1327).
 - `cascade diff --diff=canonical` keeps a rule after an earlier one that writes
   another value to an element both match, also when a rule writing its own
   value stands between them: `.z{color:red}.j{color:blue}.a{color:blue}` and

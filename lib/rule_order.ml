@@ -359,7 +359,17 @@ let add_element store e =
   store.elements.(store.count) <- e;
   store.count <- store.count + 1
 
-(* One run being settled: its elements, and the graph of their order kept across
+(* Two nodes of a run, the one whose writes would move and the one they would
+   move to. *)
+module Move_table = Hashtbl.Make (struct
+  type t = int * int
+
+  let equal (a, b) (c, d) = Int.equal a c && Int.equal b d
+  let hash = Hashtbl.hash
+end)
+
+(* One run being settled: its elements, the graph of their order, and for each
+   move a round found observed, the node that observed it, all kept across
    rounds. *)
 type settling = {
   canon_body : statement list -> statement list;
@@ -367,6 +377,7 @@ type settling = {
   parent : Selector.t option;
   store : store;
   graph : Rule_graph.run;
+  observers : int Move_table.t;
 }
 
 (* Mutable state of one coalescing scan over the run's current order: the node
@@ -376,6 +387,7 @@ type settling = {
 type scan = {
   st : settling;
   start : int array;
+  where : int array;  (** the position of each node in [start], or [-1] *)
   current : (statement * rule list) array;
   members : int list array;
   alive : bool array;
@@ -396,18 +408,43 @@ let nodes_conflict scan i j =
    plain style rules qualify, since a conditional block's node is the
    concatenation of its interior rules and that sequence is not the one any
    single element sees. *)
-let interval_clear scan ~lo ~hi mems =
+let observer scan ~lo ~hi mems =
   let observed m a =
     nodes_conflict scan m a
     &&
     let em = start_element scan m and ea = start_element scan a in
     not (em.plain && ea.plain && overlapping_writes_equal em.node ea.node)
   in
-  let ok = ref true in
-  for m = lo + 1 to hi - 1 do
-    if List.exists (observed m) mems then ok := false
-  done;
-  !ok
+  let rec find m =
+    if m >= hi then Option.None
+    else if List.exists (observed m) mems then Option.Some m
+    else find (m + 1)
+  in
+  find (lo + 1)
+
+(* [moving] is [lo] or [hi], and its writes cross the interval. A move of one
+   element no element folded into yet is decided by its two nodes and the nodes
+   between them, and those do not change between rounds, only where they stand:
+   a node that observed it once and still stands between the two observes it
+   again, and the interval need not be read. *)
+let interval_clear scan ~lo ~hi ~moving =
+  match scan.members.(moving) with
+  | [ only ] as mems when only = moving -> (
+      let other = if moving = lo then hi else lo in
+      let move = (scan.start.(moving), scan.start.(other)) in
+      let between node =
+        let p = scan.where.(node) in
+        lo < p && p < hi
+      in
+      match Move_table.find_opt scan.st.observers move with
+      | Option.Some node when between node -> false
+      | _ -> (
+          match observer scan ~lo ~hi mems with
+          | Option.Some m ->
+              Move_table.replace scan.st.observers move scan.start.(m);
+              false
+          | Option.None -> true))
+  | mems -> Option.is_none (observer scan ~lo ~hi mems)
 
 (* Moving an earlier [@supports] block down to a later block with the same
    condition happens only when that condition is true. In that case a
@@ -509,13 +546,13 @@ let merge scan changed ~from ~into =
    nothing in between observes those. *)
 let try_merge scan changed ~last ~key i j =
   if
-    interval_clear scan ~lo:i ~hi:j scan.members.(i)
+    interval_clear scan ~lo:i ~hi:j ~moving:i
     || supports_merge_down_clear scan ~from:i ~into:j
   then begin
     merge scan changed ~from:i ~into:j;
     Shape_table.replace last key j
   end
-  else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
+  else if interval_clear scan ~lo:i ~hi:j ~moving:j then
     merge scan changed ~from:j ~into:i
   else Shape_table.replace last key j
 
@@ -561,6 +598,10 @@ let coalesce ~blocks st changed (ids : int array) : int array =
       {
         st;
         start = ids;
+        where =
+          (let where = Array.make st.store.count (-1) in
+           Array.iteri (fun p id -> where.(id) <- p) ids;
+           where);
         current =
           Array.map
             (fun id ->
@@ -637,6 +678,38 @@ let sort st changed ids =
    sort would instead regroup the rules in the order the input wrote them, and
    the block each rule landed in would decide where it sorts. They fold once the
    sort has put the rules in canonical order. *)
+(* Only two elements of one shape key fold, and folding keeps the key, so an
+   element alone with its key stays in the graph to the end. *)
+let folds elements =
+  let sharing = Shape_table.create 16 in
+  Array.iter
+    (fun e ->
+      Option.iter
+        (fun key ->
+          Shape_table.replace sharing key
+            (1 + Option.value ~default:0 (Shape_table.find_opt sharing key)))
+        e.key)
+    elements;
+  fun id ->
+    match elements.(Rule_graph.Node_id.to_int id).key with
+    | Some key -> Shape_table.find sharing key > 1
+    | None -> false
+
+let settling ~canon_body ~ctx ?parent elements =
+  let store = { elements; count = Array.length elements } in
+  let exclusive i j =
+    let conditions id =
+      store.elements.(Rule_graph.Node_id.to_int id).conditions
+    in
+    let cj = conditions j in
+    List.exists (fun a -> List.exists (excludes a) cj) (conditions i)
+  in
+  let graph =
+    Rule_graph.run ?parent ~exclusive ~folds:(folds elements)
+      (Array.to_list (Array.map (fun e -> e.node) elements))
+  in
+  { canon_body; ctx; parent; store; graph; observers = Move_table.create 16 }
+
 let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
     : statement list =
   match run with
@@ -646,44 +719,15 @@ let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
       let elements =
         Array.of_list (List.map (fun (stmt, rules) -> element stmt rules) run)
       in
-      let n = Array.length elements in
-      let store = { elements; count = n } in
-      (* Only two elements of one shape key fold, and folding keeps the key, so
-         an element alone with its key stays in the graph to the end. *)
-      let sharing = Shape_table.create 16 in
-      Array.iter
-        (fun e ->
-          Option.iter
-            (fun key ->
-              Shape_table.replace sharing key
-                (1 + Option.value ~default:0 (Shape_table.find_opt sharing key)))
-            e.key)
-        elements;
-      let folds id =
-        match elements.(Rule_graph.Node_id.to_int id).key with
-        | Some key -> Shape_table.find sharing key > 1
-        | None -> false
-      in
-      let exclusive i j =
-        let conditions id =
-          store.elements.(Rule_graph.Node_id.to_int id).conditions
-        in
-        let cj = conditions j in
-        List.exists (fun a -> List.exists (excludes a) cj) (conditions i)
-      in
-      let graph =
-        Rule_graph.run ?parent ~exclusive ~folds
-          (Array.to_list (Array.map (fun e -> e.node) elements))
-      in
-      let st = { canon_body; ctx; parent; store; graph } in
+      let st = settling ~canon_body ~ctx ?parent elements in
       let rec rounds ids =
         let ids = coalesce ~blocks:false st changed ids in
         let ids = sort st changed ids in
         let coalesced = coalesce ~blocks:true st changed ids in
         if coalesced == ids then ids else rounds coalesced
       in
-      rounds (Array.init n Fun.id)
-      |> Array.map (fun id -> store.elements.(id).stmt)
+      rounds (Array.init (Array.length elements) Fun.id)
+      |> Array.map (fun id -> st.store.elements.(id).stmt)
       |> Array.to_list
 
 (* A declaration a conditional group repeats from the rule with the identical
