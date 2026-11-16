@@ -23,6 +23,15 @@ end)
 
 module String_table = Common.Table.Make (String)
 
+(* Packed specificities, so the bucket index is keyed by an immediate rather
+   than by a record a generic table would hash and compare field by field. *)
+module Spec_table = Common.Table.Make (struct
+  type t = int
+
+  let equal = Int.equal
+  let hash = Hashtbl.hash
+end)
+
 module Node_id = struct
   type t = int
 
@@ -65,10 +74,13 @@ type reachability = Unbuilt | Held of Bytes.t array | Walked
 (* What the graphs one [of_rules] call starts share as they are rewritten from
    one another: [marks], a mark per node a walk can stamp instead of allocating
    a visited set over every node; [row], a reachable set to fill and read at
-   once; and [head], the generation the newest committed rewrite reached. Only a
-   graph at [head] may be rewritten, because a rewrite writes its nodes into the
-   slots past its parent's extent. *)
+   once; [indexed], whether [key_index] and [branch_index] hold the live nodes,
+   filled on the first rewrite since only a rewrite reads them; and [head], the
+   generation the newest committed rewrite reached. Only a graph at [head] may
+   be rewritten, because a rewrite writes its nodes into the slots past its
+   parent's extent. *)
 type lineage = {
+  mutable indexed : bool;
   mutable head : int;
   mutable marks : int array;
   mutable stamp : int;
@@ -126,10 +138,11 @@ type t = {
           lineage: a committed rewrite conses its edges onto the existing nodes'
           lists, and each of those points at a node it produced, so an edge to a
           node past [count] belongs to a later graph and a graph skips it. *)
-  key_index : node_id list Decl_tbl.t Key_tbl.t;
-      (** overlap key -> (declaration writing it -> node ids), so a rewrite
-          finds an external node's potential conflicts without scanning every
-          node, and {e without even iterating} the nodes that write the same
+  key_index : node_id list Decl_tbl.t Spec_table.t Key_tbl.t;
+      (** overlap key -> branch specificity -> (declaration writing it -> node
+          ids), so a rewrite finds an external node's potential conflicts
+          without scanning every node, without the nodes no branch of which ties
+          with it, and {e without even iterating} the nodes that write the same
           declaration (which never conflict). Shared along the lineage and
           filled as rewrites are accepted; never pruned, dead nodes are skipped
           at query time. *)
@@ -292,15 +305,6 @@ module Overlap_key_table = Hashtbl.Make (struct
 
   let equal = Shorthand.overlap_key_equal
   let hash = Shorthand.overlap_key_hash
-end)
-
-(* Packed specificities, so the bucket index is keyed by an immediate rather
-   than by a record a generic table would hash and compare field by field. *)
-module Spec_table = Common.Table.Make (struct
-  type t = int
-
-  let equal = Int.equal
-  let hash = Hashtbl.hash
 end)
 
 let declaration_overlap decl =
@@ -956,30 +960,43 @@ let decl_index_add tbl key node =
   Decl_tbl.replace tbl key
     (node :: Option.value ~default:[] (Decl_tbl.find_opt tbl key))
 
-let key_inner t key =
-  match Key_tbl.find_opt t.key_index key with
+let key_inner t key spec =
+  let by_spec =
+    match Key_tbl.find_opt t.key_index key with
+    | Some by_spec -> by_spec
+    | None ->
+        let by_spec = Spec_table.create 2 in
+        Key_tbl.replace t.key_index key by_spec;
+        by_spec
+  in
+  match Spec_table.find_opt by_spec spec with
   | Some inner -> inner
   | None ->
       let inner = Decl_tbl.create 4 in
-      Key_tbl.replace t.key_index key inner;
+      Spec_table.replace by_spec spec inner;
       inner
 
-(* Add [node]'s overlap keys (partitioned by the declaration that writes each)
-   and its branches to the graph's external index. *)
+(* Add [node]'s overlap keys, partitioned by the specificity of each of its
+   branches and by the declaration that writes each, and its branches to the
+   graph's external index. *)
 let index_node t (node : node_id) =
   let i = Node_id.to_int node in
+  let specs = distinct_spec_keys [] t.specificities.(i) in
   List.iter
     (fun (ov : decl_overlap) ->
       List.iter
-        (fun key -> decl_index_add (key_inner t key) ov.decl node)
+        (fun key ->
+          List.iter
+            (fun spec -> decl_index_add (key_inner t key spec) ov.decl node)
+            specs)
         ov.footprint)
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
 (* The nodes of [rules] in source order with their edges, the given [summaries],
-   and an empty external index sized for [index_capacity] entries: enough to
-   project an order, and to rewrite once the summaries are the rules' and the
-   index is filled. *)
+   and an empty external index sized for [index_capacity] entries, which the
+   first rewrite fills: enough to project an order, and to rewrite once the
+   summaries are the rules'. *)
 let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
     ?(pin_shared_branches = true) ?exclusive (rules : rule array) : t =
   let n = Array.length rules in
@@ -1016,7 +1033,14 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
       succ = [||];
       key_index = Key_tbl.create index_capacity;
       branch_index = String_table.create index_capacity;
-      lineage = { head = 0; marks = [||]; stamp = 0; row = Bytes.empty };
+      lineage =
+        {
+          indexed = false;
+          head = 0;
+          marks = [||];
+          stamp = 0;
+          row = Bytes.empty;
+        };
       reach = Unbuilt;
       expansions = 0;
     }
@@ -1025,16 +1049,10 @@ let ordered_nodes ~summaries ~index_capacity ?parent ?(closed_world = false)
 
 let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
   let rules = Array.of_list rules in
-  let t =
-    ordered_nodes
-      ~summaries:(Array.map rule_summary rules)
-      ~index_capacity:(max 16 (Array.length rules * 2))
-      ?parent ?closed_world ?pin_shared_branches ?exclusive rules
-  in
-  for i = 0 to t.count - 1 do
-    index_node t (Node_id.of_int_exn i)
-  done;
-  t
+  ordered_nodes
+    ~summaries:(Array.map rule_summary rules)
+    ~index_capacity:(max 16 (Array.length rules * 2))
+    ?parent ?closed_world ?pin_shared_branches ?exclusive rules
 
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
@@ -1621,6 +1639,19 @@ let span_first ~lo ~hi candidates =
 (* Hand [push] the indexed nodes [p] could conflict with. *)
 let indexed_candidates graph p push =
   let push_ids ids = List.iter (fun id -> push (Node_id.to_int id)) ids in
+  (* Only a node with a branch of [p]'s specificity can tie with it. *)
+  let specs = distinct_spec_keys [] graph.specificities.(p) in
+  let at_specs key f =
+    match Key_tbl.find_opt graph.key_index key with
+    | None -> ()
+    | Some by_spec ->
+        List.iter
+          (fun spec ->
+            match Spec_table.find_opt by_spec spec with
+            | Some inner -> Decl_tbl.iter f inner
+            | None -> ())
+          specs
+  in
   (* For each declaration [p] writes, collect, per overlap key it covers, the
      nodes whose declaration for that key differs - same-declaration nodes never
      conflict, so their (often large) bucket is skipped, not walked. *)
@@ -1628,21 +1659,13 @@ let indexed_candidates graph p push =
     (fun (ov : decl_overlap) ->
       List.iter
         (fun key ->
-          match Key_tbl.find_opt graph.key_index key with
-          | Some inner ->
-              Decl_tbl.iter
-                (fun decl' ids ->
-                  if not (Declaration.same_minified ov.decl decl') then
-                    push_ids ids)
-                inner
-          | None -> ())
+          at_specs key (fun decl' ids ->
+              if not (Declaration.same_minified ov.decl decl') then push_ids ids))
         ov.footprint)
     graph.decl_overlaps.(p);
   (* The broad key ([all]) conflicts with everything, so collect every node
      under it regardless of declaration. *)
-  (match Key_tbl.find_opt graph.key_index Shorthand.broad_overlap_key with
-  | Some inner -> Decl_tbl.iter (fun _ ids -> push_ids ids) inner
-  | None -> ());
+  at_specs Shorthand.broad_overlap_key (fun _ ids -> push_ids ids);
   List.iter
     (fun b ->
       match String_table.find_opt graph.branch_index b with
@@ -1927,10 +1950,19 @@ let commit t graph ~consumed entering finished =
   t.lineage.head <- graph.generation;
   carry_reach t graph entering finished
 
+let index_live t =
+  if not t.lineage.indexed then begin
+    t.lineage.indexed <- true;
+    for i = 0 to t.count - 1 do
+      if alive t i then index_node t (Node_id.of_int_exn i)
+    done
+  end
+
 let rewrite t ~consume ~produce : (t, rewrite_error) result =
   match validate_consume t consume with
   | Error _ as e -> e
   | Ok consumed -> (
+      index_live t;
       match produce with
       | [] -> Error Empty_produce
       | _ -> (
