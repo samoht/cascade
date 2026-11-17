@@ -4086,7 +4086,7 @@ val of_string_exn :
   ?enforce_spec:bool ->
   string ->
   t
-[@@deprecated "use Css.stylesheet"]
+[@@deprecated "use Css.stylesheet; removed in 1.4.0"]
 (** [of_string_exn css] is {!val-stylesheet}[ css], but raises
     {!Error.Parse_error} where {!val-stylesheet} raises [Invalid_argument]. *)
 

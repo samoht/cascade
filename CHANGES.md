@@ -16,6 +16,14 @@
 - `Media.of_string_strict` and `value_of_string`, `Keyframe.selector_of_string`,
   `Declaration.with_value` and `Font_face.*_of_string` return a result too, and
   `Aria.of_string` an option (#1299).
+- `Css.of_string_exn` is deprecated and goes in 1.4.0: use `Css.stylesheet`,
+  which raises `Invalid_argument` where it raised `Error.Parse_error`. Until
+  then `of_string_exn` keeps its 1.2 behaviour (#1299, #1367).
+- `Optimize.duplicate_buggy_properties` and
+  `Optimize.apply_property_duplication` are deprecated and go in 1.4.0: drop the
+  call, since both return their input, as they always did.
+  `Optimize.add_compatibility_prefixes` writes the WebKit fallbacks they were
+  documented to add (#1345, #1367).
 - `Declaration.custom_property` and `Supports.property`, `func` and
   `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and
@@ -195,13 +203,6 @@
 
 ### Library
 
-- `Optimize.duplicate_buggy_properties` and
-  `Optimize.apply_property_duplication` are deprecated: both return their input
-  unchanged, as they always did, and `Optimize.add_compatibility_prefixes`
-  writes the WebKit fallbacks they were documented to add (#1345).
-- `Css.stylesheet` reads CSS written in a program and raises `Invalid_argument`
-  if it does not read. `Css.of_string_exn`, which raised `Error.Parse_error`,
-  is kept for this release with its 1.2 behaviour and deprecated (#1299).
 - `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
   as WHATWG URL does, since a digit cannot open a scheme (#1291).
 - `Reader` exposes `origin` and `original_offset`, which map a position in the

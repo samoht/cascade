@@ -52,7 +52,7 @@ val deduplicate_declarations :
     partial-coverage shorthand synthesis; see the {!scope} doc. *)
 
 val duplicate_buggy_properties : declaration list -> declaration list
-[@@deprecated "use add_compatibility_prefixes"]
+[@@deprecated "drop the call, it returns its input; removed in 1.4.0"]
 (** [duplicate_buggy_properties decls] is [decls]. The WebKit fallbacks it was
     documented to add are {!add_compatibility_prefixes}'s. *)
 
@@ -265,7 +265,7 @@ val drop_empty_rules : statement list -> statement list
 (** {1 Stylesheet Optimization} *)
 
 val apply_property_duplication : t -> t
-[@@deprecated "use add_compatibility_prefixes"]
+[@@deprecated "drop the call, it returns its input; removed in 1.4.0"]
 (** [apply_property_duplication ss] is [ss]; see {!duplicate_buggy_properties}.
 *)
 
