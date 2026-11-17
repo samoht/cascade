@@ -91,9 +91,8 @@ let extract_bang_comments (source : string) : (int * string) list =
    inside a rule's span sits in its prelude, its block or one of its values; it
    is part of that rule's text, whose comments are discarded, so it is dropped
    rather than hoisted in front of the rule. *)
-let interleave_bang_comments source rules sheet =
+let interleave_bang_comments source rule_locs sheet =
   let bangs = extract_bang_comments source in
-  let rule_locs = List.map rule_loc rules in
   let rec interleave bangs rule_locs sheet =
     match (bangs, rule_locs, sheet) with
     | [], _, _ -> sheet
@@ -124,30 +123,46 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
           Option.Some (fun comment -> comments := comment :: !comments) )
   in
   let reader = Reader.of_string ~enforce_spec original in
-  let out = Parser.stylesheet ~meta ?on_comment reader in
-  let preprocessed = Reader.source reader in
-  let sheet, typed_warnings =
-    read_stylesheet_of_rules
-      ~source:(Reader.indexed_source reader)
-      ~meta out.value
+  let reading =
+    Stylesheet_partial.reading ~source:(Reader.indexed_source reader) ~meta ()
   in
+  (* Each rule is read to its statement as soon as the parser hands it over, so
+     its component tree is garbage before the next rule is read. Only the
+     snapshot [on_source] asks for keeps the trees. *)
+  let keep_rules = Option.is_some on_source in
+  let out =
+    Parser.fold_stylesheet ~meta ?on_comment reader
+      (fun (locs, rules, sheet) rule ->
+        let sheet =
+          match Stylesheet_partial.read_next reading rule with
+          | Some stmt -> stmt :: sheet
+          | None -> sheet
+        in
+        let rules = if keep_rules then rule :: rules else rules in
+        (Component.rule_loc rule :: locs, rules, sheet))
+      ([], [], [])
+  in
+  let locs, rules, sheet = out.value in
+  let preprocessed = Reader.source reader in
   (* Interleave preserved [/*! ... */] bang comments at their source position by
-     walking the original rules and the bang-comment list in parallel; any bang
+     walking the rule locations and the bang-comment list in parallel; any bang
      comments after the last rule are appended at the end. The typed [sheet] may
-     be shorter than [out.value] when validation drops a rule, but each typed
+     be shorter than the rule list when validation drops a rule, but each typed
      statement still corresponds to the next unconsumed rule, so the position
      mapping survives. *)
-  let sheet = interleave_bang_comments preprocessed out.value sheet in
+  let sheet =
+    interleave_bang_comments preprocessed (List.rev locs) (List.rev sheet)
+  in
   (match (on_source, comments) with
   | Option.Some emit, Option.Some comments ->
       emit
         (Source.v ~original
            ~preprocessed:(Reader.indexed_source reader)
            ~origin:(Reader.origin reader) ~comments:(List.rev !comments)
-           out.value)
+           (List.rev rules))
   | Option.None, Option.None -> ()
   | _ -> assert false);
-  (sheet, out.warnings @ typed_warnings)
+  (sheet, out.warnings @ Stylesheet_partial.reading_warnings reading)
 
 (** {1 Unknown At-Rule Construction} *)
 

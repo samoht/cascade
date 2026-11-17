@@ -1220,35 +1220,38 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
   in
   loop []
 
-let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
-    =
+(* [f] sees each rule as soon as it is read, so a caller that is done with a
+   rule before the next one starts never holds the whole sheet's tree. *)
+let fold_list_of_rules ~meta lexer ~top_level ~warnings f init =
+  let qualified acc tok =
+    match
+      consume_qualified_rule ~meta lexer ~start_loc:tok.Token.loc ~warnings
+    with
+    | Some qr -> f acc (Qualified qr)
+    | None -> acc
+  in
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
-    | Token.Eof -> List.rev acc
+    | Token.Eof -> acc
     | Token.Whitespace _ -> loop acc
     | (Token.Cdo | Token.Cdc) when top_level -> loop acc
-    | Token.Cdo | Token.Cdc -> (
-        Lexer.reconsume lexer tok;
-        match
-          consume_qualified_rule ~meta lexer ~start_loc:tok.loc ~warnings
-        with
-        | Some qr -> loop (Qualified qr :: acc)
-        | None -> loop acc)
     | Token.At_keyword name ->
         let ar =
           consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings
         in
-        loop (At ar :: acc)
-    | _ -> (
+        loop (f acc (At ar))
+    | _ ->
         Lexer.reconsume lexer tok;
-        match
-          consume_qualified_rule ~meta lexer ~start_loc:tok.loc ~warnings
-        with
-        | Some qr -> loop (Qualified qr :: acc)
-        | None -> loop acc)
+        loop (qualified acc tok)
   in
-  loop []
+  loop init
+
+let consume_list_of_rules ~meta lexer ~top_level ~warnings =
+  List.rev
+    (fold_list_of_rules ~meta lexer ~top_level ~warnings
+       (fun acc rule -> rule :: acc)
+       [])
 
 let is_curly_block = function
   | Block { node = { opening = Token.Curly; _ }; _ } -> true
@@ -1425,10 +1428,16 @@ let with_warnings f =
   let value = f ~warnings in
   { value; warnings = List.rev !warnings }
 
-let stylesheet ?(meta = Loc.default_meta_level) ?on_comment r =
+let fold_stylesheet ?(meta = Loc.default_meta_level) ?on_comment r f init =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader ?on_comment r in
-      consume_list_of_rules ~meta lexer ~top_level:true ~warnings)
+      fold_list_of_rules ~meta lexer ~top_level:true ~warnings f init)
+
+let stylesheet ?meta ?on_comment r =
+  let out =
+    fold_stylesheet ?meta ?on_comment r (fun acc rule -> rule :: acc) []
+  in
+  { out with value = List.rev out.value }
 
 let stylesheet_contents ?meta r = stylesheet ?meta r
 

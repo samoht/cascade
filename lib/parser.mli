@@ -162,6 +162,17 @@ val stylesheet :
     snippet attachment on recovery warnings; see {!Loc.meta_level}. [on_comment]
     is the opt-in observer documented by {!Lexer.of_reader}. *)
 
+val fold_stylesheet :
+  ?meta:Loc.meta_level ->
+  ?on_comment:(Lexer.comment -> unit) ->
+  Reader.t ->
+  ('a -> Component.rule -> 'a) ->
+  'a ->
+  'a output
+(** [fold_stylesheet ?meta ?on_comment r f init] is {!stylesheet} folding [f]
+    over the rules in source order as each one is read, so a caller done with a
+    rule before the next never holds the whole sheet's tree. *)
+
 val stylesheet_contents :
   ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
 (** [stylesheet_contents ?meta r] runs section 5.4.4. *)

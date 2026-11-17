@@ -164,9 +164,10 @@
   as written; a rule nested deeper loses its contents with a warning (#1296).
 - A selector nesting `:is()` more than 100 deep drops its rule with a warning
   instead of reading as an `:is()` that matches nothing (#1296).
-- Parsing is faster, most of all on custom properties and `var()` fallbacks. A
-  sheet of fallbacks that do not match their property's grammar cost its size
-  squared (#1311, #1314, #1315).
+- Parsing is faster, most of all on custom properties and `var()` fallbacks, and
+  on a sheet of top-level rules, each read before the next is parsed. A sheet of
+  fallbacks that do not match their property's grammar cost its size squared
+  (#1311, #1314, #1315, #1381).
 
 ### CLI tools
 

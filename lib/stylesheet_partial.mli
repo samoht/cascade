@@ -4,8 +4,18 @@
 
 open Stylesheet_intf
 
-val rule_loc : Component.rule -> Loc.t
-(** [rule_loc rule] is the source range of [rule]. *)
+type reading
+(** The state of a typed read that takes the rules one at a time. *)
+
+val reading : ?source:Error.Source.t -> ?meta:Loc.meta_level -> unit -> reading
+(** [reading ?source ?meta ()] is a read that has seen no rule yet. *)
+
+val read_next : reading -> Component.rule -> statement option
+(** [read_next t rule] validates [rule], the next rule of the sheet, to a
+    statement, or is [None] when it is dropped with a warning. *)
+
+val reading_warnings : reading -> Error.t list
+(** [reading_warnings t] is every warning [t] has recorded, in source order. *)
 
 val read_stylesheet_of_rules :
   ?source:Error.Source.t ->

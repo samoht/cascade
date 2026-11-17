@@ -44,9 +44,6 @@ let read_statement_of_rule ?source ?meta (rule : Component.rule) :
   in
   (r, result)
 
-let rule_loc : Component.rule -> Loc.t = function
-  | Qualified { loc; _ } | At { loc; _ } -> loc
-
 (* A check on a whole statement reports against the statement, in the source [r]
    read it from. *)
 let invalid r loc reason =
@@ -115,13 +112,13 @@ let validate_else_orphan r previous rule stmt =
   match stmt with
   | Else _
     when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
-      Some (invalid r (rule_loc rule) "@else without preceding @when")
+      Some (invalid r (Component.rule_loc rule) "@else without preceding @when")
   | _ -> None
 
 (* These four run on a statement the reader read whole and the sheet keeps, so
    the material each reports on reaches the output. *)
 let validate_partial_statement_warnings r warnings validate_prelude rule stmt =
-  let loc = rule_loc rule in
+  let loc = Component.rule_loc rule in
   let add =
     Option.iter
       (add_statement_warning warnings ~recovery:Error.Recovery.Recovered)
@@ -131,46 +128,60 @@ let validate_partial_statement_warnings r warnings validate_prelude rule stmt =
   add (validate_partial_invalid_declarations r loc stmt);
   add (validate_partial_strict_warnings r loc stmt)
 
-let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
-    stylesheet * Error.t list =
-  let text = Option.map Error.Source.text source in
-  let warnings = ref [] in
-  let validate_prelude = validate_partial_prelude () in
+type reading = {
+  source : Error.Source.t option;
+  meta : Loc.meta_level option;
+  warnings : Error.t list ref;
+  validate_prelude : Cursor.t -> Loc.t -> statement -> Error.t option;
   (* CSS Conditional Rules 5 section 4: [@else] is a continuation rule and must
      follow [@when] or another [@else]. A bare top-level [@else] is a parse
      error. *)
-  let previous : statement option ref = ref Option.None in
-  let statements =
-    List.filter_map
-      (fun rule ->
-        let cursor, result = read_statement_of_rule ?source ?meta rule in
-        (* [rule_loc] spans the rule the parser handed over, prelude and block
-           alike, so it names what a drop costs the sheet. The error's own
-           location marks where the read gave up inside it. *)
-        let lost () =
-          Error.Recovery.(dropped ?source:text ~loc:(rule_loc rule) Rule)
-        in
-        (* Drain declaration-level warnings first so source order is preserved:
-           decl warnings come from inside the rule, the rule-level error (if
-           any) comes after them. *)
-        drain_statement_warnings warnings cursor;
-        match result with
-        | Ok stmt -> (
-            validate_partial_statement_warnings cursor warnings validate_prelude
-              rule stmt;
-            match validate_else_orphan cursor previous rule stmt with
-            | Some w ->
-                add_statement_warning warnings ~recovery:(lost ()) w;
-                previous := Some stmt;
-                None
-            | None ->
-                previous := Some stmt;
-                Some stmt)
-        | Error e ->
-            (* [read_statement] refused the rule, so the sheet loses it whole:
-               its text reaches no caller reading the parse. *)
-            add_statement_warning warnings ~recovery:(lost ()) e;
-            None)
-      rules
+  previous : statement option ref;
+}
+
+let reading ?source ?meta () =
+  {
+    source;
+    meta;
+    warnings = ref [];
+    validate_prelude = validate_partial_prelude ();
+    previous = ref Option.None;
+  }
+
+let read_next t rule : statement option =
+  let source = t.source and meta = t.meta and warnings = t.warnings in
+  let cursor, result = read_statement_of_rule ?source ?meta rule in
+  (* [rule_loc] spans the rule the parser handed over, prelude and block alike,
+     so it names what a drop costs the sheet. The error's own location marks
+     where the read gave up inside it. *)
+  let lost () =
+    let text = Option.map Error.Source.text source in
+    Error.Recovery.(dropped ?source:text ~loc:(Component.rule_loc rule) Rule)
   in
-  (statements, List.rev !warnings)
+  (* Drain declaration-level warnings first so source order is preserved: decl
+     warnings come from inside the rule, the rule-level error (if any) comes
+     after them. *)
+  drain_statement_warnings warnings cursor;
+  match result with
+  | Ok stmt -> (
+      validate_partial_statement_warnings cursor warnings t.validate_prelude
+        rule stmt;
+      let orphan = validate_else_orphan cursor t.previous rule stmt in
+      t.previous := Some stmt;
+      match orphan with
+      | Some w ->
+          add_statement_warning warnings ~recovery:(lost ()) w;
+          None
+      | None -> Some stmt)
+  | Error e ->
+      (* [read_statement] refused the rule, so the sheet loses it whole: its
+         text reaches no caller reading the parse. *)
+      add_statement_warning warnings ~recovery:(lost ()) e;
+      None
+
+let reading_warnings t = List.rev !(t.warnings)
+
+let read_stylesheet_of_rules ?source ?meta rules =
+  let t = reading ?source ?meta () in
+  let statements = List.filter_map (read_next t) rules in
+  (statements, reading_warnings t)
