@@ -59,6 +59,9 @@
 
 ### Printing
 
+- `--minify` keeps the space between an `env()` name and its indices:
+  `env(--branding-padding 2)` came out as `env(--branding-padding2)`, another
+  variable (#1369).
 - `--minify` keeps the string in `animation: "none"`, which names `@keyframes
   "none"`. It came out as the keyword `none`, no animation, and `animation:
   "none" 1s` lost its name (#1368).

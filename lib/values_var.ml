@@ -126,9 +126,10 @@ let pp_env : type a. a Pp.t -> a env Pp.t =
  fun pp_value ctx (env : a env) ->
   Pp.string ctx "env(";
   Pp.string ctx env.name;
+  (* A digit after an ident continues it, so the space is lexical. *)
   List.iter
     (fun i ->
-      Pp.sp ctx ();
+      Pp.space ctx ();
       Pp.string ctx (string_of_int i))
     env.indices;
   (match env.fallback with

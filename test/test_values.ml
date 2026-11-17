@@ -559,6 +559,18 @@ let test_invalid_value () =
   check_invalid_value ~expected:"asin(1deg)" "asin(1deg)";
   check_invalid_value ~expected:"foo(1,2)" "foo(1, 2)"
 
+(* CSS Environment Variables 1 sec. 3: [env()] takes a [<custom-ident>] then
+   [<integer [0,inf]>*] indices, space-separated. An ident followed by a number
+   reads as one ident (CSS Syntax 3 sec. 4.3.11), so the space between the name
+   and the first index, and between indices, is mandatory: Chrome keeps
+   [env(--branding-padding 2)] and [env(--branding-padding2)] apart. *)
+let env_indices_keep_their_space () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  check string "name then index" ".a{padding:env(--branding-padding 2)}"
+    (minify ".a{padding:env(--branding-padding 2)}");
+  check string "two indices" ".a{padding:env(--grid 1 2,1px)}"
+    (minify ".a{padding:env( --grid  1  2 , 1px )}")
+
 let suite =
   ( "values",
     [
@@ -580,4 +592,6 @@ let suite =
       test_case "transition_behavior" `Quick test_transition_behavior;
       test_case "spec minified output reads back" `Quick
         spec_minified_output_reads_back;
+      test_case "env indices keep their space" `Quick
+        env_indices_keep_their_space;
     ] )
