@@ -611,6 +611,20 @@ let parse_promotes_no_component_tree () =
     (Fmt.str "%.0f words promoted per rule" per_rule)
     true (per_rule < 150.)
 
+(* Reading a statement looks its at-keyword up among the at-rules cascade reads.
+   That set is fixed, so the lookup builds nothing: building it as a list of
+   name and reader pairs at every statement cost about 180 words each, and
+   [@layer a;] then allocated 457 words where it now allocates under 300. *)
+let statement_dispatch_allocates_no_table () =
+  let words n =
+    let css = String.concat "" (List.init n (fun _ -> "@layer a;")) in
+    Css_test_helpers.measure (fun () -> of_string ~strict:false css)
+  in
+  let per_statement = (words 2000 -. words 1000) /. 1000. in
+  Alcotest.(check bool)
+    (Fmt.str "%.0f words a statement" per_statement)
+    true (per_statement < 320.)
+
 (* A warning says what became of the construct it reports on: [Recovered] keeps
    it in the output and [Dropped] loses it. An [@media] block is no different
    from an [@supports] one there, and its own condition, which the block keeps,
@@ -662,6 +676,8 @@ let suite =
         var_fallback_cost_is_linear;
       Alcotest.test_case "parse promotes no component tree" `Quick
         parse_promotes_no_component_tree;
+      Alcotest.test_case "statement dispatch allocates no table" `Quick
+        statement_dispatch_allocates_no_table;
       Alcotest.test_case "warnings inside @media keep their recovery" `Quick
         warnings_inside_media_keep_their_recovery;
     ] )
