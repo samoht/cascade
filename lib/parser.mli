@@ -167,16 +167,59 @@ val stylesheet :
     snippet attachment on recovery warnings; see {!Loc.meta_level}. [on_comment]
     is the opt-in observer documented by {!Lexer.of_reader}. *)
 
+(** {1 Streamed blocks} *)
+
+type body = {
+  placeholder : Component.block Component.node;
+      (** Stands for the block among the at-rule's components. It holds no
+          component values and its location covers the [\{] alone. *)
+  mutable taken : bool;
+      (** Whether a reader reads the block from {!field-pull}. *)
+  closed : Component.block Component.node option ref;
+      (** The finished block, holding no component values, once its end is read.
+      *)
+  pull : unit -> Component.t list option;
+      (** The next chunk of the block's contents: the component values up to a
+          curly block or a [;] at the top level of the block, or up to its end;
+          [None] once the end is read. *)
+}
+(** The contents of a block, read as a reader pulls them. *)
+
+type streamed = {
+  name : string;
+  prelude : Component.t list;
+  start_loc : Loc.t;
+  body : body;
+}
+(** An at-rule whose block is handed over as a stream. *)
+
+type item = Rule of Component.rule | Streamed of streamed
+
+val drain : body -> unit
+(** [drain body] reads what is left of the block, discarding it. *)
+
+val materialize : streamed -> Component.rule
+(** [materialize s] is the at-rule [s] with its whole block, for an [s] whose
+    contents nobody pulled. *)
+
+val closed_rule : streamed -> Component.rule
+(** [closed_rule s] drains [s] and is the at-rule with its block's location and
+    no component values in the block. *)
+
 val fold_stylesheet :
   ?meta:Loc.meta_level ->
   ?on_comment:(Lexer.comment -> unit) ->
+  ?stream:(string -> bool) ->
   Reader.t ->
-  ('a -> Component.rule -> 'a) ->
+  ('a -> item -> 'a) ->
   'a ->
   'a output
-(** [fold_stylesheet ?meta ?on_comment r f init] is {!stylesheet} folding [f]
-    over the rules in source order as each one is read, so a caller done with a
-    rule before the next never holds the whole sheet's tree. *)
+(** [fold_stylesheet ?meta ?on_comment ?stream r f init] is {!stylesheet}
+    folding [f] over the rules in source order as each one is read, so a caller
+    done with a rule before the next never holds the whole sheet's tree. An
+    at-rule whose name satisfies [stream] (default none) and that opens a block
+    comes as {!constructor-Streamed}: [f] reads its block, and whatever [f]
+    leaves unread is drained when [f] returns. *)
 
 val stylesheet_contents :
   ?meta:Loc.meta_level -> Reader.t -> Component.rule list output

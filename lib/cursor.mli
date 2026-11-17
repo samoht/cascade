@@ -27,6 +27,20 @@ val of_components :
     controls snippet construction and defaults to {!Loc.default_meta_level}.
     [?eof_loc] anchors end-of-input errors at a specific location. *)
 
+val of_streamed :
+  ?source:Error.Source.t ->
+  ?meta:Loc.meta_level ->
+  Component.t list ->
+  Parser.body ->
+  t
+(** [of_streamed ?source ?meta cvs body] is a recovering cursor over [cvs],
+    among which [body]'s placeholder stands for a block {!braces} reads through
+    [body]'s [pull], a chunk at a time. *)
+
+val forget : t -> unit
+(** [forget t] promises that [t] will not be restored to a snapshot taken before
+    now, so the chunks of a streamed block it has read past are released. *)
+
 val sub : ?eof_loc:Loc.t -> t -> Component.t list -> t
 (** [sub ?eof_loc parent cvs] is a fresh cursor over [cvs] that inherits
     [parent]'s source, warnings list, recovery mode, and {!meta} level. Pass

@@ -1228,14 +1228,138 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
   in
   loop []
 
+(* The contents of a block, read as its reader asks for them: a chunk at a time,
+   each chunk the component values up to a curly block or a [;] at the top level
+   of the block, or up to its end. Nothing links one chunk to the next, so a
+   reader that keeps no earlier chunk leaves what it has read to the minor
+   heap. *)
+type body = {
+  placeholder : Component.block Component.node;
+  mutable taken : bool;
+  closed : Component.block Component.node option ref;
+  pull : unit -> Component.t list option;
+}
+
+type streamed = {
+  name : string;
+  prelude : Component.t list;
+  start_loc : Loc.t;
+  body : body;
+}
+
+type item = Rule of Component.rule | Streamed of streamed
+
+(* The body of a block whose [{] was the token at [open_loc], as
+   [consume_simple_block ~depth:1] reads it: the same component values, and the
+   same report of a block the input leaves open, made when the end is read. *)
+let streamed_body ~meta lexer ~warnings ~open_loc =
+  let closed = ref None in
+  let finish (ended : Token.t) =
+    let node : Component.block Component.node =
+      {
+        node =
+          {
+            opening = Token.Curly;
+            value = [];
+            closed = (match ended.kind with Token.Eof -> false | _ -> true);
+          };
+        loc = Loc.union open_loc ended.loc;
+      }
+    in
+    warn_unclosed ~meta lexer warnings node;
+    closed := Some node
+  in
+  let rec loop acc =
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof | Token.Close Token.Curly ->
+        finish tok;
+        Some (List.rev acc)
+    | _ -> (
+        let cv = consume_nested_value ~depth:1 lexer tok in
+        match cv with
+        | Block { node = { opening = Token.Curly; _ }; _ }
+        | Preserved { kind = Token.Semicolon; _ } ->
+            Some (List.rev (cv :: acc))
+        | _ -> loop (cv :: acc))
+  in
+  let pull () = if Option.is_some !closed then None else loop [] in
+  let placeholder : Component.block Component.node =
+    {
+      node = { opening = Token.Curly; value = []; closed = true };
+      loc = open_loc;
+    }
+  in
+  { placeholder; taken = false; closed; pull }
+
+let drain body =
+  while Option.is_some (body.pull ()) do
+    ()
+  done
+
+let streamed_at s (block : Component.block Component.node) : Component.rule =
+  At
+    {
+      node = { name = s.name; prelude = s.prelude; block = Some block };
+      loc = Loc.union s.start_loc block.loc;
+    }
+
+let materialize s =
+  let rec collect acc =
+    match s.body.pull () with
+    | Some cvs -> collect (cvs :: acc)
+    | None -> List.concat (List.rev acc)
+  in
+  let value = collect [] in
+  match !(s.body.closed) with
+  | Some block -> streamed_at s { block with node = { block.node with value } }
+  | None -> assert false
+
+let closed_rule s =
+  drain s.body;
+  match !(s.body.closed) with
+  | Some block -> streamed_at s block
+  | None -> assert false
+
+(* CSS Syntax 3 (ED) sec. 5.5.2 as [consume_at_rule] has it, but a block, when
+   one opens, is left to [f] as a stream. *)
+let consume_streamed_at_rule ~meta lexer ~name ~start_loc ~warnings f acc =
+  let rec loop prelude =
+    let tok = Lexer.peek lexer in
+    match tok.Token.kind with
+    | Token.Semicolon | Token.Eof ->
+        let _ = Lexer.next lexer in
+        f acc
+          (Rule
+             (At
+                {
+                  node = { name; prelude = List.rev prelude; block = None };
+                  loc = Loc.union start_loc tok.loc;
+                }))
+    | Token.Open Token.Curly ->
+        let _ = Lexer.next lexer in
+        let body = streamed_body ~meta lexer ~warnings ~open_loc:tok.loc in
+        let acc =
+          f acc (Streamed { name; prelude = List.rev prelude; start_loc; body })
+        in
+        drain body;
+        acc
+    | _ ->
+        let _ = Lexer.next lexer in
+        let cv = consume_component_value_from lexer tok in
+        loop (cv :: prelude)
+  in
+  loop []
+
 (* [f] sees each rule as soon as it is read, so a caller that is done with a
-   rule before the next one starts never holds the whole sheet's tree. *)
-let fold_list_of_rules ~meta lexer ~top_level ~warnings f init =
+   rule before the next one starts never holds the whole sheet's tree. The
+   at-rules [stream] names have their block handed over as a stream. *)
+let fold_list_of_rules ~meta lexer ~top_level ~warnings ~stream f init =
   let qualified acc tok =
     match
       consume_qualified_rule ~meta lexer ~start_loc:tok.Token.loc ~warnings
     with
-    | Some qr -> f acc (Qualified qr)
+    | Some qr -> f acc (Rule (Qualified qr))
     | None -> acc
   in
   let rec loop acc =
@@ -1244,21 +1368,28 @@ let fold_list_of_rules ~meta lexer ~top_level ~warnings f init =
     | Token.Eof -> acc
     | Token.Whitespace _ -> loop acc
     | (Token.Cdo | Token.Cdc) when top_level -> loop acc
+    | Token.At_keyword name when stream name ->
+        loop
+          (consume_streamed_at_rule ~meta lexer ~name ~start_loc:tok.loc
+             ~warnings f acc)
     | Token.At_keyword name ->
         let ar =
           consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings
         in
-        loop (f acc (At ar))
+        loop (f acc (Rule (At ar)))
     | _ ->
         Lexer.reconsume lexer tok;
         loop (qualified acc tok)
   in
   loop init
 
+let rule_of_item = function Rule rule -> rule | Streamed s -> materialize s
+
 let consume_list_of_rules ~meta lexer ~top_level ~warnings =
   List.rev
     (fold_list_of_rules ~meta lexer ~top_level ~warnings
-       (fun acc rule -> rule :: acc)
+       ~stream:(fun _ -> false)
+       (fun acc item -> rule_of_item item :: acc)
        [])
 
 let is_curly_block = function
@@ -1440,14 +1571,17 @@ let with_warnings f =
   let value = f ~warnings in
   { value; warnings = List.rev !warnings }
 
-let fold_stylesheet ?(meta = Loc.default_meta_level) ?on_comment r f init =
+let fold_stylesheet ?(meta = Loc.default_meta_level) ?on_comment
+    ?(stream = fun _ -> false) r f init =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader ?on_comment r in
-      fold_list_of_rules ~meta lexer ~top_level:true ~warnings f init)
+      fold_list_of_rules ~meta lexer ~top_level:true ~warnings ~stream f init)
 
 let stylesheet ?meta ?on_comment r =
   let out =
-    fold_stylesheet ?meta ?on_comment r (fun acc rule -> rule :: acc) []
+    fold_stylesheet ?meta ?on_comment r
+      (fun acc item -> rule_of_item item :: acc)
+      []
   in
   { out with value = List.rev out.value }
 

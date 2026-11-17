@@ -165,10 +165,11 @@
 - A selector nesting `:is()` more than 100 deep drops its rule with a warning
   instead of reading as an `:is()` that matches nothing (#1296).
 - Parsing is faster and the lexer allocates half as much per token, most of all
-  on custom properties and `var()` fallbacks, and on a sheet of top-level rules,
-  each read before the next is parsed. A sheet of fallbacks that do not match
-  their property's grammar cost its size squared (#1311, #1314, #1315, #1381,
-  #1382).
+  on custom properties and `var()` fallbacks, and on a sheet of top-level rules
+  or one holding its rules in an `@layer` or `@media` block, as Tailwind output
+  does, each rule read before the next is parsed. A sheet of fallbacks that do
+  not match their property's grammar cost its size squared (#1311, #1314, #1315,
+  #1381, #1382, #1387).
 - A custom property's value is its tokens as read. `--x:\!important` keeps the
   escaped ident as its value instead of becoming a lone backslash flagged
   important, `--x:a/**/b` stays two tokens, written back with the empty comment

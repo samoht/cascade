@@ -148,9 +148,9 @@ let reading ?source ?meta () =
     previous = ref Option.None;
   }
 
-let read_next t rule : statement option =
-  let source = t.source and meta = t.meta and warnings = t.warnings in
-  let cursor, result = read_statement_of_rule ?source ?meta rule in
+(* What becomes of [rule], read through [cursor] to [result]. *)
+let finish_read t cursor result rule : statement option =
+  let source = t.source and warnings = t.warnings in
   (* [rule_loc] spans the rule the parser handed over, prelude and block alike,
      so it names what a drop costs the sheet. The error's own location marks
      where the read gave up inside it. *)
@@ -178,6 +178,48 @@ let read_next t rule : statement option =
          text reaches no caller reading the parse. *)
       add_statement_warning warnings ~recovery:(lost ()) e;
       None
+
+let read_next t rule =
+  let cursor, result =
+    read_statement_of_rule ?source:t.source ?meta:t.meta rule
+  in
+  finish_read t cursor result rule
+
+(* A rule whose block comes as a stream is read as it is parsed, and so is the
+   block; the rule is then whole, and what becomes of it is decided as for any
+   other. The placeholder standing for the block, and the at-keyword before it,
+   carry a location that only covers their first token, so a reader that gave
+   its answer without taking the block may have read one of them: that rule is
+   read again with its whole block, as it would have been. *)
+let read_streamed t (s : Parser.streamed) =
+  let at_kw =
+    Component.Preserved
+      (Token.v ~kind:(Token.At_keyword s.name) ~loc:s.start_loc)
+  in
+  let cursor =
+    Cursor.of_streamed ?source:t.source ?meta:t.meta
+      ((at_kw :: s.prelude) @ [ Component.Block s.body.placeholder ])
+      s.body
+  in
+  let result =
+    match read_statement cursor with
+    | stmt -> Ok stmt
+    | exception Error.Parse_error e -> Error e
+  in
+  if s.body.taken then
+    let rule = Parser.closed_rule s in
+    (finish_read t cursor result rule, rule)
+  else
+    let rule = Parser.materialize s in
+    (read_next t rule, rule)
+
+(* The at-rules whose block holds a list of rules, which a sheet can hold most
+   of itself in, as Tailwind's [@layer]s do: theirs is the block worth
+   streaming. *)
+let streams name =
+  match at_rule_keyword name with
+  | "layer" | "media" | "supports" | "container" -> true
+  | _ -> false
 
 let reading_warnings t = List.rev !(t.warnings)
 

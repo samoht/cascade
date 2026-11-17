@@ -473,6 +473,9 @@ let rec read_statement (r : Cursor.t) : statement =
 
 and read_block (r : Cursor.t) : block =
   let rec read_statements acc =
+    (* A statement read whole is never read again, so a streamed body lets go of
+       it. *)
+    Cursor.forget r;
     Cursor.ws r;
     if Cursor.is_done r then List.rev acc
     else if

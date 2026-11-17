@@ -126,16 +126,23 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
     Stylesheet_partial.reading ~source:(Reader.indexed_source reader) ~meta ()
   in
   (* Each rule is read to its statement as soon as the parser hands it over, so
-     its component tree is garbage before the next rule is read. Only the
-     snapshot [on_source] asks for keeps the trees. *)
+     its component tree is garbage before the next rule is read, and the block
+     of an [@layer] or a [@media] is read as it is parsed, so the rules inside
+     it are too. Only the snapshot [on_source] asks for keeps the trees. *)
   let keep_rules = Option.is_some on_source in
+  let stream =
+    if keep_rules then fun _ -> false else Stylesheet_partial.streams
+  in
   let out =
-    Parser.fold_stylesheet ~meta ?on_comment reader
-      (fun (locs, rules, sheet) rule ->
+    Parser.fold_stylesheet ~meta ?on_comment ~stream reader
+      (fun (locs, rules, sheet) item ->
+        let read, rule =
+          match item with
+          | Parser.Rule rule -> (Stylesheet_partial.read_next reading rule, rule)
+          | Parser.Streamed s -> Stylesheet_partial.read_streamed reading s
+        in
         let sheet =
-          match Stylesheet_partial.read_next reading rule with
-          | Some stmt -> stmt :: sheet
-          | None -> sheet
+          match read with Some stmt -> stmt :: sheet | None -> sheet
         in
         let rules = if keep_rules then rule :: rules else rules in
         (Component.rule_loc rule :: locs, rules, sheet))

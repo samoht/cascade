@@ -14,6 +14,15 @@ val read_next : reading -> Component.rule -> statement option
 (** [read_next t rule] validates [rule], the next rule of the sheet, to a
     statement, or is [None] when it is dropped with a warning. *)
 
+val read_streamed :
+  reading -> Parser.streamed -> statement option * Component.rule
+(** [read_streamed t s] is {!read_next} for an at-rule whose block comes as a
+    stream, read as it is parsed, and the rule once whole. *)
+
+val streams : string -> bool
+(** [streams name] is whether the block of an at-rule named [name] is read as a
+    stream. *)
+
 val reading_warnings : reading -> Error.t list
 (** [reading_warnings t] is every warning [t] has recorded, in source order. *)
 

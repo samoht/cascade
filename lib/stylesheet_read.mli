@@ -11,6 +11,11 @@ val follows_conditional : statement -> bool
 val read_layer_name : Cursor.t -> layer_name
 (** [read_layer_name r] reads a [<layer-name>], refusing a CSS-wide keyword. *)
 
+val at_rule_keyword : string -> string
+(** [at_rule_keyword name] is the at-rule name [name] as {!val-read_statement}
+    dispatches on it: folded to lower case, but for a [charset] in another case,
+    which names no rule. *)
+
 val read_statement : Cursor.t -> statement
 (** [read_statement r] reads one top-level statement. *)
 
