@@ -83,45 +83,41 @@ let overlap_indegrees (arr : Declaration.declaration array) footprints :
   indeg
 
 (* Among not-yet-emitted declarations whose overlapping predecessors are all
-   emitted ([indeg = 0]), the one with the smallest content key (then index). *)
-let ready_min ~emitted ~indeg ~keys =
+   emitted ([indeg = 0]), the one with the smallest key (then index). *)
+let ready_min ~compare ~emitted ~indeg ~keys =
   let best = ref (-1) in
   for i = 0 to Array.length keys - 1 do
     if (not emitted.(i)) && indeg.(i) = 0 then
       if
         !best < 0
         ||
-        let c = String.compare keys.(i) keys.(!best) in
+        let c = compare keys.(i) keys.(!best) in
         c < 0 || (c = 0 && i < !best)
       then best := i
   done;
   !best
 
-(* Canonical order for a rule's declarations. Two declarations whose footprints
-   overlap - the same property, or a shorthand and a longhand writing a common
-   slot - keep their source order because it is cascade-significant; two with
-   disjoint footprints can never change each other's computed value, so they
-   sort into a deterministic content order. The declaration-level analogue of
-   the rule-level reordering, so two rules holding the same declarations in a
-   different commuting order project to one canonical form. Preserves physical
-   identity when the source order is already canonical. *)
-let canonical_declarations (decls : Declaration.declaration list) :
+(* A rule's declarations in the order [compare] gives their [key]s, within what
+   the cascade allows. Two declarations whose footprints overlap - the same
+   property, or a shorthand and a longhand writing a common slot - keep their
+   source order because it is cascade-significant; two with disjoint footprints
+   can never change each other's computed value, so they sort. Preserves
+   physical identity when the source order is already that order. *)
+let ordered_declarations ~key ~compare (decls : Declaration.declaration list) :
     Declaration.declaration list =
   match decls with
   | [] | [ _ ] -> decls
   | _ ->
       let arr = Array.of_list decls in
       let n = Array.length arr in
-      let keys =
-        Array.map (fun d -> Pp.to_string ~minify:true Declaration.pp d) arr
-      in
+      let keys = Array.map key arr in
       let footprints = Array.map Shorthand.declaration_overlap_keys arr in
       let indeg = overlap_indegrees arr footprints in
       let emitted = Array.make n false in
       let order = Array.make n 0 in
       let changed = ref false in
       for pos = 0 to n - 1 do
-        let b = ready_min ~emitted ~indeg ~keys in
+        let b = ready_min ~compare ~emitted ~indeg ~keys in
         if b <> pos then changed := true;
         emitted.(b) <- true;
         order.(pos) <- b;
@@ -135,6 +131,38 @@ let canonical_declarations (decls : Declaration.declaration list) :
       done;
       if not !changed then decls
       else Array.to_list (Array.map (fun i -> arr.(i)) order)
+
+let declaration_text d = Pp.to_string ~minify:true Declaration.pp d
+
+(* Canonical order for a rule's declarations: the commuting ones by content. The
+   declaration-level analogue of the rule-level reordering, so two rules holding
+   the same declarations in a different commuting order project to one canonical
+   form. *)
+let canonical_declarations decls =
+  ordered_declarations ~key:declaration_text ~compare:String.compare decls
+
+(* The order a rule's declarations are composed in. The shorthand composers fold
+   a run of adjacent longhands, so a declaration standing between two longhands
+   of one family keeps them apart, and whether [top], [right], [bottom] and
+   [left] become [inset] would turn on where the source, or the merge of two
+   rules, happened to put an unrelated [position]. Ranking each declaration by
+   its {!Shorthand.footprint_family} first brings every family together wherever
+   the overlap order lets it, so the composers read the declarations a rule
+   holds, not the order it holds them in. Within a family the wider footprint
+   comes first, so [border-width], [border-style] and [border-color] stand
+   together ahead of a [border-top-color] that overrides one side of them. *)
+let gathered_declarations decls =
+  let key d =
+    ( Option.value ~default:max_int (Shorthand.footprint_family d),
+      List.length (Shorthand.declaration_overlap_keys d),
+      declaration_text d )
+  in
+  let compare (f, w, t) (f', w', t') =
+    match Int.compare f f' with
+    | 0 -> ( match Int.compare w' w with 0 -> String.compare t t' | c -> c)
+    | c -> c
+  in
+  ordered_declarations ~key ~compare decls
 
 (* The conditions every rule of an element sits under: a block's own, and those
    of the one block it holds, if it holds exactly one. A condition only some of
@@ -219,9 +247,36 @@ let expand_lists (stmt : statement) : statement list =
    shared default the other specialises) becomes dead. Reduce with the same
    cascade dedup the optimizer uses - keep the last write of each property,
    preserving genuine fallback pairs - so a coalesced rule holds the same
-   declaration set a sheet that never split it would. *)
+   declaration set a sheet that never split it would. Composition waits for
+   {!composed}: a family composed from part of its longhands here could not take
+   the rest when a later merge brings them. *)
 let coalesced_declarations ~ctx decls =
-  Shorthand.deduplicate_declarations_with ~ctx decls
+  canonical_declarations
+    (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false decls)
+
+(* Whether two of [decls] share a footprint family, the least a composer
+   needs. *)
+let composable decls =
+  let rec go seen = function
+    | [] -> false
+    | d :: rest -> (
+        match Shorthand.footprint_family d with
+        | None -> go seen rest
+        | Some f -> List.exists (Int.equal f) seen || go (f :: seen) rest)
+  in
+  go [] decls
+
+(* A rule body once every merge is done, composed over its gathered order. One
+   rule, and the merge of two that hold the same declarations, reach one body:
+   CSSOM serializes a declaration block the same way, composing a shorthand
+   whenever the block holds all of its longhands, wherever they stand. *)
+let composed_declarations ~ctx decls =
+  if not (composable decls) then decls
+  else
+    Common.List.preserve decls
+      (canonical_declarations
+         (Shorthand.deduplicate_declarations_with ~ctx
+            (gathered_declarations decls)))
 
 (* Two rules that agree wherever they meet. Restrict each to the declarations
    that overlap the other rule at all; when those two sequences are equal, the
@@ -520,9 +575,8 @@ let merged_element scan ~from ~into =
         {
           a with
           declarations =
-            canonical_declarations
-              (coalesced_declarations ~ctx:scan.st.ctx
-                 (a.declarations @ b.declarations));
+            coalesced_declarations ~ctx:scan.st.ctx
+              (a.declarations @ b.declarations);
         }
       in
       Some (Rule merged, [ merged ])
@@ -1854,6 +1908,20 @@ let rec canonical_keyframe_declarations (stmts : statement list) :
           Stylesheet.map_statement_children canonical_keyframe_declarations stmt)
     stmts
 
+(* Every rule body of the settled sheet through {!composed_declarations}, at any
+   depth. It runs once the runs have settled, so the longhands a merge gathers
+   are all in one body before any of them composes. *)
+let rec composed ~ctx (stmts : statement list) : statement list =
+  Common.List.map_preserve
+    (fun stmt ->
+      match Stylesheet.map_statement_children (composed ~ctx) stmt with
+      | Rule r as stmt ->
+          let declarations = composed_declarations ~ctx r.declarations in
+          if declarations == r.declarations then stmt
+          else Rule { r with declarations }
+      | stmt -> stmt)
+    stmts
+
 let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
     (stmts : statement list) : statement list =
   let changed = ref false in
@@ -1876,5 +1944,5 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
   in
   (* The runs above leave layer blocks side by side, which is where their order
      can be read. *)
-  canonical_layer_declarations
-    (sort_layer_blocks (if !changed then result else normalized))
+  let settled = if !changed then result else normalized in
+  canonical_layer_declarations (sort_layer_blocks (composed ~ctx settled))

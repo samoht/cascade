@@ -912,6 +912,34 @@ let implied_longhand covering covered : Declaration.declaration option =
       | _ -> None)
   | _ -> None
 
+(* Whether [covering] sets every slot [covered] writes to the value [covered]
+   writes there, so the two agree on every longhand they share and either order
+   computes the same values. Only what {!implied_longhand} can prove counts. *)
+let implies covering covered =
+  (not (Declaration.same_property covering covered))
+  && declaration_covers covering covered
+  &&
+  match implied_longhand covering covered with
+  | Some implied ->
+      (* [implied] is built here from the shorthand's slots and the initials it
+         resets the rest to, so it has not been through the normalisation every
+         parsed declaration carries. Canonicalise it before comparing, or a slot
+         filled by an initial reads as different from the same value written
+         out. *)
+      String.equal
+        (string_of_value ~minify:true (Declaration.normalize implied))
+        (string_of_value ~minify:true covered)
+  | None -> false
+
+(* Source order decides between two declarations only where they write some
+   shared longhand differently: [border:1px solid red] and [border-width:1px]
+   agree on every [border-*-width] they share, so neither order wins anything.
+   The footprint test alone reads them as a conflict because the two are spelt
+   differently. *)
+let declarations_conflict_with_keys a a_keys b b_keys =
+  Shorthand_coverage.declarations_conflict_with_keys a a_keys b b_keys
+  && not (implies a b || implies b a)
+
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
    the initial), so a later longhand in the same rule that writes the same value
    at the same importance is redundant and dropped. Guard on equal value, so
@@ -920,20 +948,7 @@ let drop_longhands_after_covering_shorthand props =
   let arr = Array.of_list props in
   let dropped = Array.make (Array.length arr) false in
   let redundant_via j li =
-    (not (Declaration.same_property arr.(j) li))
-    && Bool.equal (is_important arr.(j)) (is_important li)
-    &&
-    match implied_longhand arr.(j) li with
-    | Some implied ->
-        (* [implied] is built here from the shorthand's slots and the initials
-           it resets the rest to, so it has not been through the normalisation
-           every declaration in [props] already carries. Canonicalise it before
-           comparing, or a slot filled by an initial reads as different from the
-           same value written out. *)
-        String.equal
-          (string_of_value ~minify:true (Declaration.normalize implied))
-          (string_of_value ~minify:true li)
-    | None -> false
+    Bool.equal (is_important arr.(j)) (is_important li) && implies arr.(j) li
   in
   Array.iteri
     (fun i li ->

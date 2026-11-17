@@ -1282,6 +1282,36 @@ let rec declaration_overlap_keys decl =
       [ broad_overlap_key ]
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
+(* Each family head's footprint in the order [footprint_family_heads] lists
+   them, sorted as [declaration_overlap_keys] sorts a declaration's. *)
+let family_footprints =
+  Array.of_list
+    (List.map
+       (fun (Properties.Prop p) -> sorted_keys (property_footprint p))
+       footprint_family_heads)
+
+let rec overlap_keys_within a b =
+  match (a, b) with
+  | [], _ -> true
+  | _ :: _, [] -> false
+  | x :: xs, y :: ys ->
+      let c = overlap_key_compare x y in
+      if c = 0 then overlap_keys_within xs ys
+      else c > 0 && overlap_keys_within a ys
+
+let footprint_family decl =
+  match declaration_overlap_keys decl with
+  | [] -> None
+  | keys when overlap_keys_broad keys -> None
+  | keys ->
+      let n = Array.length family_footprints in
+      let rec find i =
+        if i = n then None
+        else if overlap_keys_within keys family_footprints.(i) then Some i
+        else find (i + 1)
+      in
+      find 0
+
 let declarations_overlap_with_keys a a_keys b b_keys =
   match (unwrap_theme_guard a, unwrap_theme_guard b) with
   | ( Declaration { property = Custom_property a; _ },

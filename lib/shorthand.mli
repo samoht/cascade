@@ -53,6 +53,13 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     for indexing potential declaration overlaps. {!val-broad_overlap_key} means
     [d] is broad and must be checked against every non-exempt property. *)
 
+val footprint_family : Declaration.declaration -> int option
+(** [footprint_family d] is the rank of the first shorthand family whose
+    footprint holds every slot [d] writes. Declarations of one rank are the
+    shorthand and longhands that family composes from: [top] and [inset] share
+    one, [color] has none. This is [None] when [d] is broad, a custom property,
+    or a property no family holds. *)
+
 val declarations_overlap_with_keys :
   Declaration.declaration ->
   overlap_key list ->
@@ -70,9 +77,11 @@ val declarations_conflict_with_keys :
   bool
 (** [declarations_conflict_with_keys a a_keys b b_keys] is [true] when source
     order decides between [a] and [b] on an element both apply to: they are of
-    one importance (CSS Cascade 5 sec. 6.1 ranks importance first), they are not
-    the same declaration, and they overlap by
-    {!val-declarations_overlap_with_keys}. *)
+    one importance (CSS Cascade 5 sec. 6.1 ranks importance first), they overlap
+    by {!val-declarations_overlap_with_keys}, and they write some shared
+    longhand differently. [border:1px solid red] and [border-width:1px] do not
+    conflict: the shorthand sets every [border-*-width] the longhand writes to
+    the same [1px]. *)
 
 val declaration_is_broad : Declaration.declaration -> bool
 (** [declaration_is_broad d] is [true] when [d] may write a cascade slot any
