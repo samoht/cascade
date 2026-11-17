@@ -634,6 +634,22 @@ let stylesheet_raises_on_strict_warning () =
   | _ -> Alcotest.fail "strict read accepted an invalid declaration"
   | exception Invalid_argument _ -> ()
 
+(* [of_string_exn] is the 1.2 name of [stylesheet], kept for one release. It
+   reads what [stylesheet] reads and raises what it raised in 1.2:
+   [Error.Parse_error] carrying the first warning, not [Invalid_argument]. *)
+let of_string_exn_alias () =
+  let of_string_exn = (Css.of_string_exn [@alert "-deprecated"]) in
+  let css = ".x{float:center;color:red}" in
+  Alcotest.(check string)
+    "non-strict drops the invalid declaration" ".x{color:red}"
+    (Css.to_string ~minify:true (of_string_exn css));
+  match of_string_exn ~strict:true css with
+  | _ -> Alcotest.fail "strict read accepted an invalid declaration"
+  | exception Error.Parse_error e ->
+      Alcotest.(check bool)
+        "the warning is a bad value" true
+        (match e.Error.kind with Error.Bad_value _ -> true | _ -> false)
+
 (* An input without a name renders under the one placeholder [Error] uses.
    [center] is not a [float] value (CSS 2 sec. 9.5.1) and starts at the tenth
    code point of line 1 (CSS Syntax 3 (ED) sec. 3.3). *)
@@ -688,4 +704,5 @@ let suite =
         unnamed_input_placeholder;
       Alcotest.test_case "stylesheet raises on a strict warning" `Quick
         stylesheet_raises_on_strict_warning;
+      Alcotest.test_case "of_string_exn alias" `Quick of_string_exn_alias;
     ] )

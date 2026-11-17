@@ -583,6 +583,11 @@ let stylesheet ?strict ?filename ?meta ?enforce_spec css =
   | Error e ->
       invalid_arg (String.concat "" [ "Css.stylesheet: "; Error.to_string e ])
 
+let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
+  match of_string ?strict ?filename ?meta ?enforce_spec css with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error e -> Error.fail e
+
 (* Splicing a [@layer] body into its parent replaces one statement with several,
    which [edit_statements] cannot express and which does not need it: the splice
    is the [concat_map] over a block, and the descent below it is still

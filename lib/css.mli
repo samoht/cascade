@@ -4079,6 +4079,17 @@ val stylesheet :
     @raise Invalid_argument
       if [css] does not read. Use {!of_string} to deal with untrusted input. *)
 
+val of_string_exn :
+  ?strict:bool ->
+  ?filename:string ->
+  ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
+  string ->
+  t
+[@@deprecated "use Css.stylesheet"]
+(** [of_string_exn css] is {!val-stylesheet}[ css], but raises
+    {!Error.Parse_error} where {!val-stylesheet} raises [Invalid_argument]. *)
+
 (** {2:optimization Optimization}
 
     Tools for optimizing CSS output for performance and file size. *)
