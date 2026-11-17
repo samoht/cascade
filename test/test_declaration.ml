@@ -249,11 +249,13 @@ let custom_properties_basic () =
   (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
      a custom property's value, and Chrome 153 returns [a b] for the first of
      these and [a] for the second, so a run survives and the ends are trimmed.
-     The boundary space between two components that would otherwise merge is not
-     whitespace normalization: without it [a/**/b] becomes the ident [ab]. *)
+     Two components with no whitespace between that would otherwise merge are
+     written apart by the empty comment CSS Syntax 3 (ED) sec. 9 asks for: a
+     space would add a whitespace token, and nothing makes [a/**/b] the ident
+     [ab]. *)
   check_declaration ~minify:false ~expected:"--x: a  b" "--x:a  b";
   check_declaration ~minify:false ~expected:"--sp: a" "--sp:  a  ";
-  check_declaration ~minify:false ~expected:"--c: a b" "--c:a/**/b";
+  check_declaration ~minify:false ~expected:"--c: a/**/b" "--c:a/**/b";
   (* Trimming the ends is that same step with nothing left between them: CSS
      Custom Properties 1 (ED) sec. 2 gives the [--*] family [Value:
      <declaration-value>?], and sec. 2.2 calls an empty value written into a
