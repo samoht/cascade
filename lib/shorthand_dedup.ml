@@ -718,17 +718,20 @@ let text_vendor_alias_twin vendor twin =
    property tags instead of rendering one. A name the reader does not type keeps
    its [Unknown_property] tag, which is the shape it reaches
    [drop_vendor_aliases] in as a [text_vendor_alias_twin] twin. *)
+module Key_set = Set.Make (struct
+  type t = prop_key
+
+  let compare = Declaration.compare_prop_key
+end)
+
 let greenfield_keys =
-  let tbl = Hashtbl.create 512 in
-  let add key = Hashtbl.replace tbl key () in
-  List.iter
-    (fun name ->
-      add (Key (Properties.Unknown_property name));
+  List.fold_left
+    (fun keys name ->
+      let keys = Key_set.add (Key (Properties.Unknown_property name)) keys in
       match property_of_name name with
-      | Some (Properties.Prop property) -> add (Key property)
-      | None -> ())
-    Baseline.greenfield_properties;
-  tbl
+      | Some (Properties.Prop property) -> Key_set.add (Key property) keys
+      | None -> keys)
+    Key_set.empty Baseline.greenfield_properties
 
 (* An unprefixed property supersedes its prefix only once every maintained
    browser reads it. {!Baseline.greenfield_properties} lists the properties that
@@ -744,7 +747,7 @@ let unprefixed_is_widely_available twin =
         Key (Properties.Unknown_property (String.lowercase_ascii_preserve name))
     | key -> key
   in
-  not (Hashtbl.mem greenfield_keys key)
+  not (Key_set.mem key greenfield_keys)
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
    same rule with the same value and importance and is widely available. The
