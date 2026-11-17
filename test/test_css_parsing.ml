@@ -611,6 +611,78 @@ let parse_promotes_no_component_tree () =
     (Fmt.str "%.0f words promoted per rule" per_rule)
     true (per_rule < 150.)
 
+(* A sheet that holds its rules in one [@media] or [@layer] block, as Tailwind
+   output does, has one top-level rule, so reading each top-level rule before
+   the next is parsed holds the whole tree all the same. The block is read as it
+   is parsed instead, a rule at a time: about 490 words promoted a rule when the
+   block is held, about 40 when it is not. *)
+let parse_promotes_no_tree_inside_a_block () =
+  let rules =
+    List.init 2000 (fun i ->
+        String.concat ""
+          [
+            ".a";
+            string_of_int i;
+            "{color:red;margin:0 auto;padding:1px 2px 3px 4px;border:1px solid \
+             #abc}";
+          ])
+  in
+  let css = String.concat "" (("@media screen{" :: rules) @ [ "}" ]) in
+  let gc = Gc.get () in
+  Gc.set { gc with minor_heap_size = 262_144 };
+  let promoted =
+    Fun.protect
+      ~finally:(fun () -> Gc.set gc)
+      (fun () ->
+        Gc.full_major ();
+        let _, p0, _ = Gc.counters () in
+        (match of_string ~strict:false css with
+        | Ok _ -> ()
+        | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e));
+        let _, p1, _ = Gc.counters () in
+        p1 -. p0)
+  in
+  let per_rule = promoted /. 2000. in
+  Alcotest.(check bool)
+    (Fmt.str "%.0f words promoted per rule" per_rule)
+    true (per_rule < 150.)
+
+(* The block of an [@layer], [@media], [@supports] or [@container] is read as it
+   is parsed, unless the caller asks for the source snapshot, which keeps the
+   whole tree. Either way the sheet and its warnings are the same, whatever the
+   reader makes of the rule: one it refuses before reaching the block, after it,
+   or inside it, a block the input leaves open, statements nested in it, and
+   stray tokens between them. *)
+let streamed_blocks_read_as_held_ones () =
+  let read ~held css =
+    let on_source = if held then Some (fun _ -> ()) else None in
+    let sheet, warnings = Stylesheet.parse_stylesheet_partial ?on_source css in
+    (Stylesheet.to_string ~minify:true sheet, List.map Error.to_string warnings)
+  in
+  List.iter
+    (fun css ->
+      Alcotest.(check (pair string (list string)))
+        css (read ~held:true css) (read ~held:false css))
+    [
+      "@media screen{.a{color:red}.b{color:blue}}";
+      "@layer a{.a{color:red}@media print{.b{color:blue}}}.c{color:red}";
+      "@layer a, b{.a{color:red}}.b{color:red}";
+      "@layer{.a{color:red}";
+      "@supports{.a{color:red}}";
+      "@supports (display:grid){.a{color:red}}";
+      "@container{.a{color:red}}";
+      "@container card (width>10px){.a{color:red}}";
+      "@media screen,,print{a!{color:red}.b{color:blue}}";
+      "@media screen{;.a{color:red};;@import \"x.css\";.b{color:1px}}";
+      "@media screen{.a{color:red}@else{.b{color:red}}}";
+      "@media screen{.a{color:red}@when media(print){.b{color:red}}@else{.c{}}}";
+      "@media screen{.a{color:red";
+      "@media screen{.a{color:red}.b{}";
+      "@media screen{.a{}}}.b{color:red}";
+      "@layer a{@layer b{.a{color:red}}}@layer c;";
+      "@MEDIA screen{.a{color:red}}";
+    ]
+
 (* Reading a statement looks its at-keyword up among the at-rules cascade reads.
    That set is fixed, so the lookup builds nothing: building it as a list of
    name and reader pairs at every statement cost about 180 words each, and
@@ -676,6 +748,10 @@ let suite =
         var_fallback_cost_is_linear;
       Alcotest.test_case "parse promotes no component tree" `Quick
         parse_promotes_no_component_tree;
+      Alcotest.test_case "parse promotes no tree inside a block" `Quick
+        parse_promotes_no_tree_inside_a_block;
+      Alcotest.test_case "streamed blocks read as held ones" `Quick
+        streamed_blocks_read_as_held_ones;
       Alcotest.test_case "statement dispatch allocates no table" `Quick
         statement_dispatch_allocates_no_table;
       Alcotest.test_case "warnings inside @media keep their recovery" `Quick
