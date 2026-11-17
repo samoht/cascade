@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let rules css =
   match Css.of_string css with
@@ -46,6 +47,23 @@ let test_run_reaches_fixpoint_with_finalizer () =
     "run factors and finalizes leftovers"
     ".a,.b,.c{display:flex;margin:1px}.b{margin:2px}.c{margin:3px}"
     (render optimized)
+
+(* A segment the preflight turns away is left as it came, so skipping it costs
+   the preflight's summary and nothing sized by a rule graph. 1500 rules with
+   nothing in common clear the small-segment threshold and promise no gain. *)
+let test_skipped_segment_builds_no_graph () =
+  let input =
+    rules
+      (String.concat ""
+         (List.init 1500 (fun i -> Fmt.str ".c%d{width:%dpx}" i i)))
+  in
+  let ctx = Ctx.v `Stylesheet in
+  let finalize = Rule.finalize ~ctx in
+  let summary = measure (fun () -> Preflight.summarize input) in
+  let run = measure (fun () -> Factor.run ~ctx ~finalize input) in
+  if run > 2. *. summary then
+    Alcotest.failf "skipping allocated %.0f words, the summary alone %.0f" run
+      summary
 
 let fixpoints_run stats = (Stats.snapshot stats).counters.factor_fixpoints_run
 
@@ -518,6 +536,8 @@ let suite =
     [
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick
         test_run_reaches_fixpoint_with_finalizer;
+      Alcotest.test_case "skipped segment builds no graph" `Quick
+        test_skipped_segment_builds_no_graph;
       Alcotest.test_case "cache reuses identical rule run" `Quick
         test_cache_reuses_identical_rule_run;
       Alcotest.test_case "split shorthand optimises like consolidated" `Quick
