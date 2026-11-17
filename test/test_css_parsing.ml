@@ -573,6 +573,44 @@ let var_fallback_cost_is_linear () =
     true
     (a1 > 0. && a2 < a1 *. 3.)
 
+(* Each top-level rule's component tree is read to its statement before the next
+   rule is parsed, so it is garbage while still in the minor heap. Holding the
+   whole sheet's tree until the typed read instead survives every minor
+   collection the parse runs, and the GC copies all of it to the major heap. The
+   copy shows in the promoted words, which a fixed minor heap makes independent
+   of the host: about 535 a rule when the trees are held, about 40 when they are
+   not. *)
+let parse_promotes_no_component_tree () =
+  let css =
+    String.concat ""
+      (List.init 2000 (fun i ->
+           String.concat ""
+             [
+               ".a";
+               string_of_int i;
+               "{color:red;margin:0 auto;padding:1px 2px 3px 4px;border:1px \
+                solid #abc}";
+             ]))
+  in
+  let gc = Gc.get () in
+  Gc.set { gc with minor_heap_size = 262_144 };
+  let promoted =
+    Fun.protect
+      ~finally:(fun () -> Gc.set gc)
+      (fun () ->
+        Gc.full_major ();
+        let _, p0, _ = Gc.counters () in
+        (match of_string ~strict:false css with
+        | Ok _ -> ()
+        | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e));
+        let _, p1, _ = Gc.counters () in
+        p1 -. p0)
+  in
+  let per_rule = promoted /. 2000. in
+  Alcotest.(check bool)
+    (Fmt.str "%.0f words promoted per rule" per_rule)
+    true (per_rule < 150.)
+
 (* A warning says what became of the construct it reports on: [Recovered] keeps
    it in the output and [Dropped] loses it. An [@media] block is no different
    from an [@supports] one there, and its own condition, which the block keeps,
@@ -622,6 +660,8 @@ let suite =
         `Quick spec_at_rule_name_case_insensitive;
       Alcotest.test_case "var() fallback cost is linear" `Quick
         var_fallback_cost_is_linear;
+      Alcotest.test_case "parse promotes no component tree" `Quick
+        parse_promotes_no_component_tree;
       Alcotest.test_case "warnings inside @media keep their recovery" `Quick
         warnings_inside_media_keep_their_recovery;
     ] )
