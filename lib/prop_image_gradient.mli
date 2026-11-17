@@ -85,6 +85,11 @@ val fold_double_position_stops : gradient_stop list -> gradient_stop list
     single-position stops of one colour into one double-position stop (CSS
     Images 4 sec. 3.5.1). *)
 
+val drop_default_stop_positions : gradient_stop list -> gradient_stop list
+(** [drop_default_stop_positions stops] is [stops] without a [0%] on the first
+    stop or a [100%] on the last, the positions CSS Images 4 sec. 3.5.3 gives a
+    stop that has none. A stop holding two positions keeps both. *)
+
 val drop_to_top_direction :
   gradient_direction ->
   gradient_stop list ->

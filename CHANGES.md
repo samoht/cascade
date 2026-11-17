@@ -46,11 +46,14 @@
   a `Bad_value` for a property called `stylesheet` (#1331).
 - `Css.to_string ~minify:true` prints the sheet it is given. Folding selectors
   such as `:nth-child(1)` and `:is(:link,:visited)`, dropping an `@charset` or
-  an `@font-face` without `font-family` or `src`, and moving a registered
-  `<color>` variable in a `box-shadow` happen in `Css.optimize`. `Css.minify`
-  optimizes and prints in one call; `Selector.canonicalize`,
-  `Stylesheet.drop_inert_at_rules` and `Stylesheet.normalize_shadow_color_vars`
-  each take one step (#1350, #1351, #1354).
+  an `@font-face` without `font-family` or `src`, moving a registered `<color>`
+  variable in a `box-shadow`, rounding a colour's alpha to three decimals,
+  dropping an opaque `/1` from `lab()` and `oklab()`, dropping `0%` and `100%`
+  from a gradient's end stops and folding the spaces and dots inside a
+  `grid-template-areas` row happen in `Css.optimize`. `Css.minify` optimizes and
+  prints in one call; `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules`
+  and `Stylesheet.normalize_shadow_color_vars` each take one step (#1350, #1351,
+  #1354, #1370).
 - Two declarations of one custom property with one value are equal and hash
   alike wherever they were read: a custom property's tokens carry no source
   position, so `Component.source_loc` gives `Loc.dummy` for each. Those
@@ -65,6 +68,9 @@
 - `--minify` keeps the string in `animation: "none"`, which names `@keyframes
   "none"`. It came out as the keyword `none`, no animation, and `animation:
   "none" 1s` lost its name (#1368).
+- `lab()` and `oklab()` print a percentage alpha as written, as the other colour
+  functions do: `lab(50% 20 30 / 40%)` came out as `lab(50% 20 30 / .4)`
+  (#1370).
 - A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
   quote inside `local("...")` print back as that name (#1351).
 - `--minify` prints an attribute value as the shorter of an escaped ident and a
@@ -109,6 +115,11 @@
 - `--minify` breaks a tie between merges that save the same by the shortest
   result, then by source order, so output no longer shifts for unrelated
   reasons; some sheets come out slightly smaller (#1355).
+- `--minify` reverses a `0deg` gradient whose end stops sit at `0%` and `100%`:
+  `linear-gradient(0deg,red 0%,blue 100%)` came out as
+  `linear-gradient(0deg,red,#00f)`, which minifying again shortened to
+  `linear-gradient(#00f,red)`. An opaque `/1` goes from an `oklch()` or `lch()`
+  with a `none` component, as from every other colour (#1370).
 - `--minify` prints `:not(:not(X))` as `:is(X)` when `X` holds a type or a
   combinator: `p:not(:not(.a .b))` came out as `p.a .b`, another selector
   (#1350).

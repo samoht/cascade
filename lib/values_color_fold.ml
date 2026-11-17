@@ -214,12 +214,6 @@ let float_of_percentage = function
   | (Num f : percentage) -> Some (f *. 100.)
   | _ -> None
 
-let alpha_is_full = function
-  | (None : alpha) -> true
-  | Num 1.0 -> true
-  | Pct 100.0 -> true
-  | _ -> false
-
 (* Byte value [0..255] for an alpha component, when the alpha is a static number
    or percentage. Returns [None] for symbolic forms ([Var] / [Calc]) that can't
    fold to a fixed byte. *)

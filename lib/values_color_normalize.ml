@@ -17,10 +17,6 @@ let canonical_color_of_hex r g b a : color =
   | Some name -> Named name
   | None -> Hex { r; g; b; a }
 
-(* Canonicalise a colour's alpha for a colour the static fold leaves alone (e.g.
-   a [var()] channel). CSS Color 4 sec. 4.2: a fully-opaque [/ 1] / [/ 100%] is
-   redundant and drops; an alpha [<percentage>] is the [<number>] divided by 100
-   and serialises as the number. *)
 let alpha_scale ?(exact = true) op (a : alpha) n : alpha option =
   if not (Float.is_finite n) then Option.none
   else
@@ -55,34 +51,6 @@ let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
     ~zero:(Val (Num 0.) : alpha calc)
     ~ctx c
 
-let rec normalize_alpha (a : alpha) : alpha =
-  match a with
-  | Num 1.0 | Pct 100.0 -> None
-  | Pct f -> Num (f /. 100.)
-  | Calc c -> (
-      match eval_alpha_calc c with
-      | Num f -> normalize_alpha (Num f)
-      | Val v -> normalize_alpha v
-      | folded -> Calc folded)
-  | other -> other
-
-let drop_full_alpha (c : color) : color =
-  match c with
-  | Rgba { rgb; a } -> Rgba { rgb; a = normalize_alpha a }
-  | Hsl r -> Hsl { r with a = normalize_alpha r.a }
-  | Hwb r -> Hwb { r with a = normalize_alpha r.a }
-  | Color r -> Color { r with alpha = normalize_alpha r.alpha }
-  | Oklab r -> Oklab { r with alpha = normalize_alpha r.alpha }
-  | Oklch r -> Oklch { r with alpha = normalize_alpha r.alpha }
-  | Lab r -> Lab { r with alpha = normalize_alpha r.alpha }
-  | Lch r -> Lch { r with alpha = normalize_alpha r.alpha }
-  | _ -> c
-
-(* CSS Color 4 secs. 16.3-16.4 makes [<percentage>] and [<number>] equivalent
-   for oklch/oklab/lch/lab lightness ([num = pct *. pct_scale]: ok* L 100% = 1,
-   lch/lab L 100% = 100). Canonicalise to the shorter spelling here, in the AST
-   normalize pass, so [pp_color_lightness] serialises the node faithfully rather
-   than swapping percentage for number at print time. *)
 (* Round a lab/oklab/lch/oklch coefficient to its canonical decimal budget. The
    printer serialises faithfully, so this AST fold owns the value-changing
    precision reduction: [axis_max_decimals] picks the shortest form for the
@@ -95,6 +63,48 @@ let round_color_axis ~lossless ~decimals f =
     let f = Pp.round_sig 6 f in
     let m = 10. ** float_of_int decimals in
     Float.round (f *. m) /. m
+
+(* An alpha coefficient at 3 decimals: alpha reaches the screen as one of 256
+   steps (CSS Color 4 sec. 4.2), 1/255 ~ 0.004 apart, so 3 decimals keep the
+   byte. A [calc()] keeps its operands at that precision. *)
+let rec round_alpha ~lossless (a : alpha) : alpha =
+  match a with
+  | Num f ->
+      let r = round_color_axis ~lossless ~decimals:3 f in
+      if Float.equal r f then a else Num r
+  | Calc c -> Calc (map_calc (round_alpha ~lossless) c)
+  | Var ({ fallback = Fallback f; _ } as v) ->
+      let f' = round_alpha ~lossless f in
+      if f' == f then a else Var { v with fallback = Fallback f' }
+  | Var _ | Pct _ | None -> a
+
+(* Canonicalise a colour's alpha for a colour the static fold leaves alone (e.g.
+   a [var()] channel). CSS Color 4 sec. 4.2: a fully-opaque [/ 1] / [/ 100%] is
+   redundant and drops; an alpha [<percentage>] is the [<number>] divided by 100
+   and serialises as the number. *)
+let rec normalize_alpha ~lossless (a : alpha) : alpha =
+  match a with
+  | Num 1.0 | Pct 100.0 -> None
+  | Pct f -> round_alpha ~lossless (Num (f /. 100.))
+  | Calc c -> (
+      match eval_alpha_calc c with
+      | Num f -> normalize_alpha ~lossless (Num f)
+      | Val v -> normalize_alpha ~lossless v
+      | folded -> round_alpha ~lossless (Calc folded))
+  | other -> round_alpha ~lossless other
+
+let drop_full_alpha ~lossless (c : color) : color =
+  let alpha = normalize_alpha ~lossless in
+  match c with
+  | Rgba { rgb; a } -> Rgba { rgb; a = alpha a }
+  | Hsl r -> Hsl { r with a = alpha r.a }
+  | Hwb r -> Hwb { r with a = alpha r.a }
+  | Color r -> Color { r with alpha = alpha r.alpha }
+  | Oklab r -> Oklab { r with alpha = alpha r.alpha }
+  | Oklch r -> Oklch { r with alpha = alpha r.alpha }
+  | Lab r -> Lab { r with alpha = alpha r.alpha }
+  | Lch r -> Lch { r with alpha = alpha r.alpha }
+  | _ -> c
 
 (* Round an oklch/lch hue to 3 decimals for the canonical (optimize) form and
    collapse every concrete angle unit to canonical bare degrees. A [var()] /
@@ -125,6 +135,11 @@ let canonical_hsl_hue_in_color ~lossless = function
   | Hwb r -> Hwb { r with h = canonical_hsl_hue ~lossless r.h }
   | color -> color
 
+(* CSS Color 4 secs. 16.3-16.4 makes [<percentage>] and [<number>] equivalent
+   for oklch/oklab/lch/lab lightness ([num = pct *. pct_scale]: ok* L 100% = 1,
+   lch/lab L 100% = 100). Canonicalise to the shorter spelling here, in the AST
+   normalize pass, so [pp_color_lightness] serialises the node faithfully rather
+   than swapping percentage for number at print time. *)
 let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
     (l : percentage option) : percentage option =
   let fmt ~max_decimals f =
@@ -173,13 +188,13 @@ let normalize_static_modern_color ~exact_srgb ~lossless c =
             (* The channels are exact but the alpha is not a whole byte, so
                [rgb()] is as far as the fold goes: it is the same spelling the
                lossless path leaves an authored [rgb()] in. *)
-            drop_full_alpha
+            drop_full_alpha ~lossless
               (Rgba
                  {
                    rgb = Channels { r = Int r; g = Int g; b = Int b };
                    a = alpha;
                  }))
-    | Option.None -> drop_full_alpha c
+    | Option.None -> drop_full_alpha ~lossless c
   else
     match static_color_to_linear_srgb c with
     | Some (linear, alpha_f) -> (
@@ -199,8 +214,8 @@ let normalize_static_modern_color ~exact_srgb ~lossless c =
               else Num (Float.of_int alpha_byte /. 255.0)
             in
             hex_of_bytes r g b a
-        | None -> drop_full_alpha c)
-    | None -> drop_full_alpha c
+        | None -> drop_full_alpha ~lossless c)
+    | None -> drop_full_alpha ~lossless c
 
 (* [canonical_color_of_hex] answers a name or the same bytes back, so a [Hex]
    that reaches its own canonical form is shared rather than rebuilt. *)
@@ -482,6 +497,8 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
   | Lch { l = Some _; c = Some _; _ } -> static_fold ()
   | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
+  (* A missing component keeps the colour out of every fold but its alpha's. *)
+  | Oklch _ | Oklab _ | Lch _ | Lab _ -> drop_full_alpha ~lossless c
   | Color _ ->
       let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
       verdict_preserving (round_modern_color_axes ~lossless folded) folded
@@ -498,7 +515,8 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       in
       match bytes with
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
-      | Option.None -> canonical_hsl_hue_in_color ~lossless (drop_full_alpha c))
+      | Option.None ->
+          canonical_hsl_hue_in_color ~lossless (drop_full_alpha ~lossless c))
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
         ~percent2

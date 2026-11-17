@@ -121,8 +121,9 @@ let rec normalize_background_image ?(lossless = false) :
     background_image -> background_image =
  fun value ->
   let stops s =
-    fold_double_position_stops
-      (map_preserve (normalize_gradient_stop ~lossless) s)
+    drop_default_stop_positions
+      (fold_double_position_stops
+         (map_preserve (normalize_gradient_stop ~lossless) s))
   in
   match value with
   | Linear_gradient (d, s) ->

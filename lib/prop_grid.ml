@@ -389,12 +389,9 @@ let normalize_grid_template_area_cell c =
   let rec all_dots i = i >= n || (c.[i] = '.' && all_dots (i + 1)) in
   if n > 1 && all_dots 0 then "." else c
 
-let minify_grid_template_area_row row =
-  String.concat " "
-    (List.map normalize_grid_template_area_cell
-       (grid_template_area_row_cells row))
-
-let minify_grid_template_areas_string value =
+(* [value] with each quoted row replaced by [row] of its text, written between
+   double quotes and separated by [sep]. Whitespace between the rows goes. *)
+let map_area_rows ~sep row value =
   let len = String.length value in
   let buf = Buffer.create len in
   let rec take_quoted quote start i =
@@ -402,29 +399,48 @@ let minify_grid_template_areas_string value =
     else if value.[i] = quote then (String.sub value start (i - start), i + 1)
     else take_quoted quote start (i + 1)
   in
-  let rec loop i =
+  let rec loop ~first i =
     if i < len then
       match value.[i] with
       | ('"' | '\'') as quote ->
-          let row, next = take_quoted quote (i + 1) (i + 1) in
+          let text, next = take_quoted quote (i + 1) (i + 1) in
+          if not first then Buffer.add_string buf sep;
           Buffer.add_char buf '"';
-          Buffer.add_string buf (minify_grid_template_area_row row);
+          Buffer.add_string buf (row text);
           Buffer.add_char buf '"';
-          loop next
-      | ' ' | '\t' | '\n' | '\r' | '\012' -> loop (i + 1)
+          loop ~first:false next
+      | c when grid_area_row_ws c -> loop ~first (i + 1)
       | c ->
           Buffer.add_char buf c;
-          loop (i + 1)
+          loop ~first (i + 1)
   in
-  loop 0;
+  loop ~first:true 0;
   Buffer.contents buf
+
+(* A row spelled as the cells it holds, one space apart, each null cell token a
+   single [.]: the row the reader builds for the text the printer writes. *)
+let canonical_area_row row =
+  String.concat " "
+    (List.map normalize_grid_template_area_cell
+       (grid_template_area_row_cells row))
+
+let rec normalize_grid_template_areas :
+    grid_template_areas -> grid_template_areas =
+ fun value ->
+  match value with
+  | Areas s ->
+      let s' = map_area_rows ~sep:" " canonical_area_row s in
+      if String.equal s' s then value else Areas s'
+  | Var v ->
+      let v' = map_var_preserve normalize_grid_template_areas v in
+      if v' == v then value else Var v'
+  | No_areas | Inherit | Initial | Unset | Revert | Revert_layer -> value
 
 let rec pp_grid_template_areas : grid_template_areas Pp.t =
  fun ctx -> function
   | No_areas -> Pp.string ctx "none"
   | Areas value ->
-      if Pp.minified ctx then
-        Pp.string ctx (minify_grid_template_areas_string value)
+      if Pp.minified ctx then Pp.string ctx (map_area_rows ~sep:"" Fun.id value)
       else Pp.string ctx value
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
