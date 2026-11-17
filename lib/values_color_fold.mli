@@ -31,9 +31,6 @@ val deg_of_hue : hue -> float option
 (** [deg_of_hue h] is [h] in degrees when it is a plain number or a static
     angle. *)
 
-val alpha_is_full : alpha -> bool
-(** [alpha_is_full a] is [true] when [a] is absent or fully opaque. *)
-
 val alpha_value_byte : alpha -> int option
 (** [alpha_value_byte a] is the rounded byte of the static alpha [a]. *)
 

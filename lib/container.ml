@@ -828,6 +828,13 @@ let read t =
   | None -> unnamed_of_components t components
 
 let of_string s = Error.catch @@ fun () -> read (Cursor.of_string s)
+
+let v s =
+  match of_string s with
+  | Ok t -> t
+  | Error e ->
+      invalid_arg (String.concat "" [ "Container.v: "; Error.to_string e ])
+
 let feature name value = Feature_query (Media.feature name value)
 
 let style ?value prop =

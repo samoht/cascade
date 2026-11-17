@@ -35,6 +35,10 @@
     tokens keep the spelling they were written with, which is part of the value,
     and the minified printer spells some of them shorter.
 
+    A fourth property holds without the optimizer: every typed declaration a
+    corpus holds, printed minified, reads back as the declaration it was. The
+    printer may pick the spelling, never the node.
+
     Failures are reduced before they are reported. A candidate is always a
     concatenation of substrings of the original input, never a re-print of its
     parse: re-printing would hide exactly the emission bugs this looks for. A
@@ -610,6 +614,161 @@ let print_unread mode ((_, _, unread) as result) =
         unread;
       print_string (Buffer.contents buf)
 
+(* {1 Values}
+
+   The minified printer prints the node it is given (docs/invariants.md, "pp is
+   a serializer"): a declaration read from a corpus and printed minified,
+   without the optimizer, reads back as the same declaration. Custom properties
+   are left out, for the reason the serialised check gives.
+
+   [pending] names each property for which that does not hold yet, with what
+   still breaks it: the minified printer changing the node, or the reader
+   keeping a spelling the node carries ([#FFF], [0.5em]). The check fails on a
+   property missing from the list and on one listed that no longer fails, so the
+   list can only shrink. *)
+
+let pending =
+  [
+    (* the hue drops [deg], [xyz-d65] prints as [xyz], a [color()] percentage
+       prints as a number, relative colours rewrite their tail *)
+    "color";
+    (* an authored hex keeps its digits *)
+    "border";
+    "outline";
+    (* a quoted [url()] prints unquoted, a string its other quote *)
+    "background";
+    "background-image";
+    "content";
+    "list-style-image";
+    "mask";
+    "mask-border";
+    (* [ms] prints as [s] *)
+    "animation-delay";
+    "animation-duration";
+    "transition";
+    "transition-delay";
+    "transition-duration";
+    (* the reader keeps the case of [none] and the tokens of a [scroll()] or
+       [view()] timeline *)
+    "animation";
+    (* a [calc()] around a number goes *)
+    "filter";
+    "flex";
+    "opacity";
+    (* a default component goes: [span 1], [center center], an axis vector,
+       [symbolic], [nonzero], [0deg] *)
+    "animation-range";
+    "clip-path";
+    "grid";
+    "grid-column-end";
+    "grid-column-start";
+    "grid-row-end";
+    "grid-row-start";
+    "list-style-type";
+    "position-area";
+    "rotate";
+    (* the reader keeps the authored number ([1.0000px], [0.5em]) *)
+    "font-family";
+    "font-size";
+    "margin";
+    "margin-block";
+    "vertical-align";
+    "width";
+  ]
+
+let is_pending name = List.exists (String.equal name) pending
+let declaration_text d = Declaration.to_string ~minify:true d
+
+let unread_value ?(print = declaration_text) d =
+  let printed = print d in
+  match Declaration.of_string printed with
+  | Error e -> Some (String.concat "" [ printed; ": "; Error.to_string e ])
+  | Ok back ->
+      if Declaration.equal_declaration d back then None
+      else
+        Some
+          (String.concat ""
+             [
+               Declaration.to_string d;
+               " prints as ";
+               printed;
+               ", which reads back as ";
+               Declaration.to_string back;
+             ])
+
+let corpus_declarations inputs =
+  List.concat_map
+    (fun input ->
+      match read base input.css with
+      | Error _ -> []
+      | Ok parsed ->
+          Stylesheet.fold_declarations
+            (fun acc ds -> List.rev_append ds acc)
+            [] parsed.stylesheet
+          |> List.rev)
+    inputs
+
+let typed d =
+  not (String.starts_with ~prefix:"--" (Declaration.property_name d))
+
+type value_report = {
+  checked : int;
+  unread : (string * string) list;  (** property, why *)
+  settled : string list;  (** pending properties that read back *)
+}
+
+let values_sweep loaded =
+  let decls =
+    List.concat_map (fun (_, inputs) -> corpus_declarations inputs) loaded
+    |> List.filter typed
+  in
+  let failing = Hashtbl.create 64 in
+  let unread =
+    List.filter_map
+      (fun d ->
+        let name = Declaration.property_name d in
+        match
+          try unread_value d
+          with Failure msg | Invalid_argument msg -> Some msg
+        with
+        | None -> None
+        | Some why ->
+            Hashtbl.replace failing name ();
+            if is_pending name then None else Some (name, why))
+      decls
+  in
+  let settled =
+    List.filter (fun name -> not (Hashtbl.mem failing name)) pending
+  in
+  { checked = List.length decls; unread; settled }
+
+let print_values report =
+  let buf = Buffer.create 1024 in
+  List.iter
+    (fun (name, why) ->
+      Buffer.add_string buf "  ";
+      Buffer.add_string buf name;
+      Buffer.add_string buf " : ";
+      Buffer.add_string buf (String.escaped why);
+      Buffer.add_char buf '\n')
+    report.unread;
+  List.iter
+    (fun name ->
+      Buffer.add_string buf "  ";
+      Buffer.add_string buf name;
+      Buffer.add_string buf " : reads back everywhere, drop it from pending\n")
+    report.settled;
+  print_string (Buffer.contents buf)
+
+let values_case report () =
+  match (report.unread, report.settled) with
+  | [], [] -> ()
+  | unread, settled ->
+      Alcotest.failf
+        "of %d declarations, %d print as a text that reads back as another \
+         node, and %d pending properties now read back"
+        report.checked (List.length unread) (List.length settled)
+
 (* {1 Calibration}
 
    A report of nothing is a clean run or a blind oracle, and the two look alike
@@ -687,8 +846,21 @@ let nested_compound_caught () =
     Alcotest.failf "%s spliced into a compound went unreported"
       (selector_text built)
 
+(* The value class the values check exists for: a printer that writes another
+   node than the one it was given. *)
+let unread_value_caught () =
+  let blue =
+    match Declaration.of_string "color:blue" with
+    | Ok d -> d
+    | Error e -> Alcotest.failf "color:blue: %s" (Error.to_string e)
+  in
+  match unread_value ~print:(fun _ -> "color:red") blue with
+  | Some _ -> ()
+  | None -> Alcotest.fail "a value printed as another went unreported"
+
 let calibration =
   [
+    Alcotest.test_case "unread value caught" `Quick unread_value_caught;
     Alcotest.test_case "unread selector caught" `Quick nested_compound_caught;
     Alcotest.test_case "fixed point accepted" `Quick honest_emitter_passes;
     Alcotest.test_case "unreadable emission caught" `Quick
@@ -759,7 +931,14 @@ let () =
           Some (String.concat "" [ mode.label; " (serialised)" ], cases))
       modes
   in
+  let values = values_sweep loaded in
+  print_values values;
   Alcotest.run "fixpoint"
     (("calibration", calibration)
     :: ("corpora", sizes)
-    :: (List.map snd groups @ serialised))
+    :: (List.map snd groups @ serialised
+       @ [
+           ( "cascade fmt --minify, no optimizer (values)",
+             [ Alcotest.test_case "every corpus" `Quick (values_case values) ]
+           );
+         ]))

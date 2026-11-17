@@ -27,6 +27,20 @@ val of_components :
     controls snippet construction and defaults to {!Loc.default_meta_level}.
     [?eof_loc] anchors end-of-input errors at a specific location. *)
 
+val of_streamed :
+  ?source:Error.Source.t ->
+  ?meta:Loc.meta_level ->
+  Component.t list ->
+  Parser.body ->
+  t
+(** [of_streamed ?source ?meta cvs body] is a recovering cursor over [cvs],
+    among which [body]'s placeholder stands for a block {!braces} reads through
+    [body]'s [pull], a chunk at a time. *)
+
+val forget : t -> unit
+(** [forget t] promises that [t] will not be restored to a snapshot taken before
+    now, so the chunks of a streamed block it has read past are released. *)
+
 val sub : ?eof_loc:Loc.t -> t -> Component.t list -> t
 (** [sub ?eof_loc parent cvs] is a fresh cursor over [cvs] that inherits
     [parent]'s source, warnings list, recovery mode, and {!meta} level. Pass
@@ -222,6 +236,7 @@ val err_invalid : ?loc:Loc.t -> t -> string -> 'a
 (** [err_invalid t msg] is [err t ("invalid: " ^ msg)]. *)
 
 val err_eof : t -> 'a
+[@@deprecated "use Error.fail (Error.unterminated loc sort); removed in 1.4.0"]
 (** [err_eof t] raises an "unexpected end of input" error. *)
 
 val err_expected : ?loc:Loc.t -> t -> string -> 'a
@@ -395,6 +410,10 @@ val drain_until_block : t -> Component.t list
 val drain_until_block_as_string : ?trim:bool -> t -> string
 (** Like {!drain_until_block}, but serializes the drained components. *)
 
+val drain_until_semicolon : t -> Component.t list
+(** [drain_until_semicolon t] consumes the components up to, but not including,
+    the next semicolon, and returns them as read. *)
+
 val consume_until_semicolon : ?trim:bool -> t -> string
 (** [consume_until_semicolon t] consumes and serializes components up to, but
     not including, the next semicolon. *)
@@ -550,6 +569,7 @@ val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
     raises. *)
 
 val try_enum : (string * 'a) list -> t -> 'a option
+[@@deprecated "use Cursor.option (Cursor.enum label table); removed in 1.4.0"]
 (** [try_enum table t] is like {!enum} but returns [None] without raising. Keys
     are given lowercase. *)
 
@@ -631,4 +651,13 @@ val try_parse_err : (t -> 'a) -> t -> ('a, string) result
 val try_parse_full : (t -> 'a) -> t -> 'a option
 (** [try_parse_full p t] is [Some (p t)] when [p] succeeds and consumes the
     cursor fully, [None] otherwise (cursor rewound). The failure is not
-    formatted, since locating it walks the source. *)
+    formatted, since locating it walks the source: use this form when only
+    whether [t] reads matters, as on a hot path that tries one grammar after
+    another. *)
+
+val try_parse_full_err : (t -> 'a) -> t -> ('a, string) result
+(** [try_parse_full_err p t] is [Ok (p t)] when [p] succeeds and consumes the
+    cursor fully. Otherwise the cursor is rewound and it is [Error msg], where
+    [msg] is the reader's message, or ["trailing tokens"] when [p] stopped
+    before the end. Formatting the message walks the source up to the failure,
+    so use {!try_parse_full} when the message would be discarded. *)

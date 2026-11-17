@@ -667,6 +667,7 @@ let normalize_property_value : type a.
   | Grid_auto_columns -> normalize_grid_template value
   | Grid_auto_rows -> normalize_grid_template value
   | Grid_auto_flow -> normalize_grid_auto_flow value
+  | Grid_template_areas -> normalize_grid_template_areas value
   | Aspect_ratio -> normalize_aspect_ratio value
   | Gap -> normalize_gap value
   | Font_size -> normalize_font_size value

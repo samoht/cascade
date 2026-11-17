@@ -697,10 +697,9 @@ let strip_vendor_prefix name =
 (* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
    [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
    its vendor prefix yields [twin]'s name and the component-value lists are
-   structurally equal under matching importance. The typed-twin case (e.g.
-   vendor [Unknown_property "-webkit-animation-delay"] + modern
-   [Animation_delay]) needs typed vendor longhand properties to compare
-   structurally; that remains a follow-up. *)
+   structurally equal under matching importance. An untyped vendor longhand with
+   a typed twin ([-webkit-animation-delay] beside [animation-delay]) is not
+   compared here. *)
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
@@ -718,17 +717,20 @@ let text_vendor_alias_twin vendor twin =
    property tags instead of rendering one. A name the reader does not type keeps
    its [Unknown_property] tag, which is the shape it reaches
    [drop_vendor_aliases] in as a [text_vendor_alias_twin] twin. *)
+module Key_set = Set.Make (struct
+  type t = prop_key
+
+  let compare = Declaration.compare_prop_key
+end)
+
 let greenfield_keys =
-  let tbl = Hashtbl.create 512 in
-  let add key = Hashtbl.replace tbl key () in
-  List.iter
-    (fun name ->
-      add (Key (Properties.Unknown_property name));
+  List.fold_left
+    (fun keys name ->
+      let keys = Key_set.add (Key (Properties.Unknown_property name)) keys in
       match property_of_name name with
-      | Some (Properties.Prop property) -> add (Key property)
-      | None -> ())
-    Baseline.greenfield_properties;
-  tbl
+      | Some (Properties.Prop property) -> Key_set.add (Key property) keys
+      | None -> keys)
+    Key_set.empty Baseline.greenfield_properties
 
 (* An unprefixed property supersedes its prefix only once every maintained
    browser reads it. {!Baseline.greenfield_properties} lists the properties that
@@ -744,7 +746,7 @@ let unprefixed_is_widely_available twin =
         Key (Properties.Unknown_property (String.lowercase_ascii_preserve name))
     | key -> key
   in
-  not (Hashtbl.mem greenfield_keys key)
+  not (Key_set.mem key greenfield_keys)
 
 (* Drop a vendor-prefixed declaration when its unprefixed sibling appears in the
    same rule with the same value and importance and is widely available. The
@@ -799,7 +801,7 @@ let implied_longhand covering covered : Declaration.declaration option =
       | _ -> None)
   | Declaration { property = Properties.Flex; value; _ } -> (
       (* [flex] always sets grow/shrink/basis; expand the keyword and numeric
-         forms. flex-basis (the [0%] default) is left for a follow-up. *)
+         forms of grow and shrink. The basis is not expanded. *)
       let grow_shrink =
         match (value : Properties.flex) with
         | Initial -> Some (0., 1.)

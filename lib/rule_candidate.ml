@@ -94,22 +94,8 @@ let identical_body_eligible ~ctx (r : rule) =
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
-let selector_branch_key selector =
-  Pp.to_string ~minify:true Selector.pp (Selector.canonicalize selector)
-
-let selector_key (r : rule) =
-  Edge.selectors r.selector
-  |> List.map selector_branch_key
-  |> List.sort String.compare
-
-let selector_list_key selectors =
-  List.map selector_branch_key selectors |> List.sort String.compare
-
-let hash_selector_list selectors =
-  selectors |> selector_list_key |> hash_strings
-
-let selector_key_hash (r : rule) =
-  Edge.selectors r.selector |> hash_selector_list
+let selector_branch_key = Rule_graph.selector_branch_key
+let selector_key g id = Rule_graph.node_branches g.graph id
 
 let selector_keys_equal left right =
   let rec loop left right =
@@ -173,11 +159,11 @@ let splits_a_fallback_pair g ~consume ~produce =
         (fallback_pairs (node_rule g id)))
     consume
 
-let rewrite_candidate ?size_cache ~kind ~finalize g ~consume ~produce =
+let rewrite_candidate ~kind ~finalize g ~consume ~produce =
   if splits_a_fallback_pair g ~consume ~produce then Option.None
-  else Rule_rewrite.v ?size_cache ~kind ~finalize g.graph ~consume ~produce
+  else Rule_rewrite.v ~kind ~finalize g.graph ~consume ~produce
 
-let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
+let selector_size g id = Rule_graph.node_selector_size g.graph id
 let decls_inline_cost decls = decls_size decls + List.length decls
 
 let grouped_rule (rules : rule list) : rule option =
@@ -256,14 +242,14 @@ let append_unique_decls base extras =
       if List.exists (same_decl decl) acc then acc else acc @ [ decl ])
     base extras
 
-let keep_cost_aware_member ~removed (rule : rule) =
+let keep_cost_aware_member g ~removed id (rule : rule) =
   match remove_common removed rule.declarations with
   | [] -> true
-  | _ -> selector_size rule + 1 <= decls_inline_cost removed
+  | _ -> selector_size g id + 1 <= decls_inline_cost removed
 
-let cost_aware_exact_members common rules_with_ids =
+let cost_aware_exact_members g common rules_with_ids =
   List.filter
-    (fun (_, rule) -> keep_cost_aware_member ~removed:common rule)
+    (fun (id, rule) -> keep_cost_aware_member g ~removed:common id rule)
     rules_with_ids
 
 let same_body_groups g ids =
@@ -286,7 +272,7 @@ let has_selector_list g ids = List.exists (selector_is_list g) ids
 let non_list_selector_ids g ids =
   List.filter (fun id -> not (selector_is_list g id)) ids
 
-let identical_body_candidate ?size_cache ~finalize g ids =
+let identical_body_candidate ~finalize g ids =
   match ids with
   | [] | [ _ ] -> Option.None
   | ids -> (
@@ -294,8 +280,8 @@ let identical_body_candidate ?size_cache ~finalize g ids =
       match grouped_rule rules with
       | Option.None -> Option.None
       | Option.Some grouped ->
-          rewrite_candidate ?size_cache ~kind:Identical_body ~finalize g
-            ~consume:ids ~produce:[ grouped ])
+          rewrite_candidate ~kind:Identical_body ~finalize g ~consume:ids
+            ~produce:[ grouped ])
 
 let add_candidate candidates = function
   | Option.None -> ()
@@ -305,31 +291,28 @@ let better_than candidate = function
   | Option.None -> true
   | Option.Some baseline -> candidate.saving > baseline.saving
 
-let add_identical_body_group ?size_cache ~ctx ~finalize g ~candidates ids =
+let add_identical_body_group ~ctx ~finalize g ~candidates ids =
   if Ctx.extend_lists ctx && has_selector_list g ids then begin
     let strict =
-      identical_body_candidate ?size_cache ~finalize g
-        (non_list_selector_ids g ids)
+      identical_body_candidate ~finalize g (non_list_selector_ids g ids)
     in
     add_candidate candidates strict;
-    match identical_body_candidate ?size_cache ~finalize g ids with
+    match identical_body_candidate ~finalize g ids with
     | Option.Some extended when better_than extended strict ->
         add_candidate candidates (Option.Some extended)
     | _ -> ()
   end
-  else
-    add_candidate candidates
-      (identical_body_candidate ?size_cache ~finalize g ids)
+  else add_candidate candidates (identical_body_candidate ~finalize g ids)
 
-(* Partition a hash bucket into runs of the exact same selector key, so a
-   [selector_key_hash] collision between two distinct selectors no longer
-   suppresses both groups (mirrors {!same_body_groups}). *)
+(* A hash bucket split into runs of one exact selector key, as
+   {!same_body_groups} splits one by body, so two selectors whose hashes collide
+   make two groups. *)
 let same_selector_groups g ids =
   let rec insert id = function
     | [] -> [ (id, [ id ]) ]
     | (head, ids) :: rest ->
-        let key = selector_key (node_rule g id) in
-        let head_key = selector_key (node_rule g head) in
+        let key = selector_key g id in
+        let head_key = selector_key g head in
         if selector_keys_equal head_key key then (head, id :: ids) :: rest
         else (head, ids) :: insert id rest
   in
@@ -337,7 +320,7 @@ let same_selector_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let add_same_selector_group ?size_cache ~stats ~finalize g ~candidates ids =
+let add_same_selector_group ~stats ~finalize g ~candidates ids =
   let source_order = ordered_ids g ids |> rules_with_ids g in
   let safe = Commute.nested_merge_is_safe ~stats (List.map snd source_order) in
   let rules_with_ids = Commute.merge_order source_order in
@@ -356,8 +339,8 @@ let add_same_selector_group ?size_cache ~stats ~finalize g ~candidates ids =
         }
       in
       match
-        rewrite_candidate ?size_cache ~kind:Same_selector ~finalize g
-          ~consume:ordered ~produce:[ merged ]
+        rewrite_candidate ~kind:Same_selector ~finalize g ~consume:ordered
+          ~produce:[ merged ]
       with
       | Option.None -> ()
       | Option.Some c -> candidates := c :: !candidates)
@@ -507,12 +490,9 @@ let declarations_cross_order grouped external_decls =
         external_decls)
     grouped
 
-(* Keyed on {!Declaration.prop_key}, the property's structural identity, rather
-   than on its name: the name only exists as a string once [pp_property] has
-   rendered it through a [Buffer], and this key is rebuilt for every declaration
-   of every rule the candidate search touches. [prop_key] is [[@@unboxed]] over
-   the property constructor, so for the constant constructors that is an
-   immediate, and both equality and [Hashtbl.hash] are structural on it. *)
+(* Keyed on {!Declaration.prop_key}, the property's typed identity, rather than
+   on its name, which exists only once [pp_property] has printed it: this key is
+   built for every declaration of every rule the candidate search touches. *)
 type property_key = {
   prop : Declaration.prop_key;
   important : bool;
@@ -601,12 +581,12 @@ let share shared ~members ~decls ~props grouped =
    candidate is asked for. *)
 type exact_group = No_exact_group | Exact_group of group
 
-let exact_group ~shared ?size_cache ~finalize g ids =
+let exact_group ~shared ~finalize g ids =
   let rules_with_ids = rules_with_ids g ids in
   match common_exact_decls (List.map snd rules_with_ids) with
   | [] -> No_exact_group
   | common -> (
-      match cost_aware_exact_members common rules_with_ids with
+      match cost_aware_exact_members g common rules_with_ids with
       | [] | [ _ ] -> No_exact_group
       | members ->
           let ids = List.map fst members in
@@ -627,18 +607,15 @@ let exact_group ~shared ?size_cache ~finalize g ids =
                   Option.Some
                     ( grouped,
                       lazy
-                        (rewrite_candidate ?size_cache
-                           ~kind:Exact_shared_declarations ~finalize g
-                           ~consume:ids ~produce) )
+                        (rewrite_candidate ~kind:Exact_shared_declarations
+                           ~finalize g ~consume:ids ~produce) )
           in
           Exact_group
             (share shared ~members:ids ~decls:common ~props:[] grouped))
 
-(* [property_key_equal (declaration_property_key decl) key] reads only the two
-   compared fields, so building the record first buys nothing and costs one
-   allocation per declaration examined. The scans below run once per entry per
-   member per candidate group, which made this the single largest allocation
-   site in the whole candidate search. *)
+(* [property_key_equal (declaration_property_key decl) key] without building
+   [decl]'s key: the scans below ask it of every declaration of every member of
+   every candidate group. *)
 let declaration_has_key key decl =
   Bool.equal (Declaration.is_important decl) key.important
   && Declaration.equal_prop_key (Declaration.property_key decl) key.prop
@@ -838,21 +815,21 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
   in
   loop [] members
 
-let keep_default_member ~keys ~entries ~exact_common ~prior member =
+let keep_default_member g ~keys ~entries ~exact_common ~prior member =
   let leftover =
     default_member_leftover ~keys ~entries ~exact_common ~prior member
   in
   leftover = []
-  || selector_size member.rule + 1
+  || selector_size g member.id + 1
      <= decls_inline_cost
           (exact_common
           @ default_decl_removed_after_reassertion entries ~prior member)
 
-let prune_default_members ~keys ~entries ~exact_common members =
+let prune_default_members g ~keys ~entries ~exact_common members =
   let rec loop prior acc = function
     | [] -> List.rev acc
     | member :: rest ->
-        if keep_default_member ~keys ~entries ~exact_common ~prior member then
+        if keep_default_member g ~keys ~entries ~exact_common ~prior member then
           loop (member :: prior) (member :: acc) rest
         else loop prior acc rest
   in
@@ -861,8 +838,8 @@ let prune_default_members ~keys ~entries ~exact_common members =
 (* The group rule and, once asked for, the candidate it makes, unless the
    members' own rules refuse it. Whether it crosses a live rule it conflicts
    with is the caller's question, as that reads the rest of the graph. *)
-let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
-    ~group_decls members =
+let default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
+    members =
   match grouped_rule (default_member_rules members) with
   | Option.None -> Option.None
   | Option.Some grouped ->
@@ -903,7 +880,7 @@ let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
         Option.Some
           ( grouped,
             lazy
-              (rewrite_candidate ?size_cache ~kind:Default_factoring ~finalize g
+              (rewrite_candidate ~kind:Default_factoring ~finalize g
                  ~consume:(default_member_ids members)
                  ~produce:(produce ())) )
 
@@ -922,18 +899,18 @@ let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
    otherwise reach the same answer. The bound is one-sided: it lets through
    groups that pruning still rejects, never the reverse, so the candidates are
    the same either way. *)
-let member_may_survive_pruning provider_decls (member : default_member) =
+let member_may_survive_pruning g provider_decls (member : default_member) =
   List.for_all
     (fun decl -> decl_mem decl provider_decls)
     member.rule.declarations
-  || selector_size member.rule + 1
+  || selector_size g member.id + 1
      <= decls_inline_cost
           (List.filter
              (fun decl -> decl_mem decl member.rule.declarations)
              provider_decls)
 
-let default_group_can_keep_two provider members =
-  List.exists (member_may_survive_pruning provider.rule.declarations) members
+let default_group_can_keep_two g provider members =
+  List.exists (member_may_survive_pruning g provider.rule.declarations) members
 
 (* Which entries survive reads the graph, whether an overriding member precedes
    the provider, so a subset keeps the group it makes for each set of survivors
@@ -958,7 +935,7 @@ let default_members g ids =
   in
   match members with
   | [] | [ _ ] -> No_default_group
-  | first :: rest when not (default_group_can_keep_two first rest) ->
+  | first :: rest when not (default_group_can_keep_two g first rest) ->
       No_default_group
   | first :: _ ->
       Default_members
@@ -977,18 +954,18 @@ let default_members g ids =
 (* The pruned members, the keys and the group body decide the candidate: the
    body is the members' common declarations followed by the provider's value for
    each key. *)
-let default_group ~shared ?size_cache ~finalize g members entries =
+let default_group ~shared ~finalize g members entries =
   let keys = List.map (fun entry -> entry.key) entries in
   let exact_common = exact_common_without keys members in
   let group_decls = default_group_decls ~exact_common entries in
-  let members = prune_default_members ~keys ~entries ~exact_common members in
+  let members = prune_default_members g ~keys ~entries ~exact_common members in
   share shared ~members:(default_member_ids members)
     ~decls:group_decls ~props:keys (fun () ->
       match members with
       | [] | [ _ ] -> Option.None
       | _ ->
-          default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
-            ~group_decls members)
+          default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
+            members)
 
 (* The group [known] makes on [g] - the one met before for the entries that
    survive here, or a new one - and the order questions that decide those
@@ -996,7 +973,7 @@ let default_group ~shared ?size_cache ~finalize g members entries =
    {!Rule_graph.try_rewrite} preserves the partial order, so an entry dropped
    for an override that precedes the provider stays dropped, and these are the
    only questions a later graph can answer differently. *)
-let surviving_group ~shared ?size_cache ~finalize g known =
+let surviving_group ~shared ~finalize g known =
   match known with
   | No_default_group -> Option.None
   | Default_members known ->
@@ -1019,7 +996,7 @@ let surviving_group ~shared ?size_cache ~finalize g known =
         | Option.Some (_, group) -> group
         | Option.None ->
             let group =
-              default_group ~shared ?size_cache ~finalize g known.members
+              default_group ~shared ~finalize g known.members
                 (List.map fst survivors)
             in
             known.groups <- (survivors, group) :: known.groups;
@@ -1046,12 +1023,13 @@ let single_selector_branch_key (rule : rule) : string option =
   | [ selector ] -> Option.Some (selector_branch_key selector)
   | _ -> Option.None
 
-let selector_branch_size selector = Pp.size ~minify:true Selector.pp selector
+let selector_branch_size = Size.selector
 
-let remaining_selector_branches ~removed_key selectors =
-  List.filter
-    (fun selector -> selector_branch_key selector <> removed_key)
-    selectors
+let remaining_selector_branches ~removed_key keyed =
+  List.filter_map
+    (fun (key, selector) ->
+      if String.equal key removed_key then Option.None else Option.Some selector)
+    keyed
 
 let rule_for_selector_branches rule selectors : rule option =
   match selectors with
@@ -1065,7 +1043,7 @@ let rule_for_selector_branches rule selectors : rule option =
           merge_key = Option.None;
         }
 
-let selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
+let selector_inline_candidate ~finalize g ~receiver_id ~group_id
     ~remaining_selectors =
   let receiver = node_rule g receiver_id in
   let group = node_rule g group_id in
@@ -1083,7 +1061,7 @@ let selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
     | Option.None -> [ receiver ]
     | Option.Some group -> [ receiver; group ]
   in
-  rewrite_candidate ?size_cache ~kind:Selector_branch_inline ~finalize g
+  rewrite_candidate ~kind:Selector_branch_inline ~finalize g
     ~consume:[ receiver_id; group_id ] ~produce
 
 (* The candidates of one graph, kept up to date as the scheduler rewrites it.
@@ -1101,7 +1079,6 @@ type core = {
   ctx : Ctx.t;
   finalize : rule -> rule;
   view : view;
-  mutable sizes : Rule_rewrite.size_cache;
   mutable epoch : int;
   mutable next_key : int;
   mutable offered : offer list;
@@ -1151,7 +1128,8 @@ let grouping_key core grouping id =
       then Option.Some (body_bucket_key core.view id)
       else Option.None
   | Selectors ->
-      if same_selector_eligible rule then Option.Some (selector_key_hash rule)
+      if same_selector_eligible rule then
+        Option.Some (hash_strings (selector_key core.view id))
       else Option.None
 
 let touch_group core groups bucket =
@@ -1186,20 +1164,19 @@ let groups_add core groups id =
       touch_group core groups bucket
 
 let group_candidates core grouping ids =
-  let g = core.view and size_cache = core.sizes in
+  let g = core.view in
   let finalize = core.finalize in
   let candidates = ref [] in
   (match grouping with
   | Bodies ->
       same_body_groups g ids
       |> List.iter
-           (add_identical_body_group ~size_cache ~ctx:core.ctx ~finalize g
-              ~candidates)
+           (add_identical_body_group ~ctx:core.ctx ~finalize g ~candidates)
   | Selectors ->
       same_selector_groups g ids
       |> List.iter
-           (add_same_selector_group ~size_cache ~stats:(Ctx.stats core.ctx)
-              ~finalize g ~candidates));
+           (add_same_selector_group ~stats:(Ctx.stats core.ctx) ~finalize g
+              ~candidates));
   List.rev !candidates
 
 let settle_groups core groups =
@@ -1246,24 +1223,27 @@ let inline_branches (rule : rule) =
     | [] | [ _ ] -> []
     | selectors ->
         let inline_cost = decls_inline_cost rule.declarations in
+        let keyed =
+          List.map
+            (fun selector -> (selector_branch_key selector, selector))
+            selectors
+        in
         List.fold_left
-          (fun acc selector ->
+          (fun acc (key, selector) ->
             if selector_branch_size selector + 1 > inline_cost then
-              let key = selector_branch_key selector in
               if List.exists (fun (other, _) -> String.equal other key) acc then
                 acc
               else
-                (key, remaining_selector_branches ~removed_key:key selectors)
-                :: acc
+                (key, remaining_selector_branches ~removed_key:key keyed) :: acc
             else acc)
-          [] selectors
+          [] keyed
         |> List.rev
 
 let pair_up core group remaining receiver =
   if Rule_graph.precedes core.view.graph receiver group.group then
     match
-      selector_inline_candidate ~size_cache:core.sizes ~finalize:core.finalize
-        core.view ~receiver_id:receiver ~group_id:group.group
+      selector_inline_candidate ~finalize:core.finalize core.view
+        ~receiver_id:receiver ~group_id:group.group
         ~remaining_selectors:remaining
     with
     | Option.None -> ()
@@ -1562,13 +1542,11 @@ let subset_of core family ids =
   match Ids_table.find_opt family.known ids with
   | Option.Some subset -> subset
   | Option.None ->
-      let g = core.view and size_cache = core.sizes in
+      let g = core.view in
       let finalize = core.finalize and shared = family.shared in
       let answer =
         match family.factoring with
-        | Exact ->
-            lazy
-              (Exact_answer (exact_group ~shared ~size_cache ~finalize g ids))
+        | Exact -> lazy (Exact_answer (exact_group ~shared ~finalize g ids))
         | Default -> lazy (Default_answer (default_members g ids))
       in
       let subset =
@@ -1689,8 +1667,8 @@ let resolve core family subset =
     | Exact_answer (Exact_group group) -> Option.Some group
     | Default_answer known -> (
         match
-          surviving_group ~shared:family.shared ~size_cache:core.sizes
-            ~finalize:core.finalize core.view known
+          surviving_group ~shared:family.shared ~finalize:core.finalize
+            core.view known
         with
         | Option.None -> Option.None
         | Option.Some (group, unordered) ->
@@ -1878,7 +1856,6 @@ let v ?nodes ~ctx ~finalize g =
       ctx;
       finalize;
       view;
-      sizes = Rule_rewrite.size_cache g;
       epoch = 0;
       next_key = 0;
       offered = [];
@@ -1930,7 +1907,6 @@ let rewrite t graph ~consume =
   let core = t.core in
   let first = Rule_graph.node_count core.view.graph in
   rewrite_view core.view graph ~consume;
-  core.sizes <- Rule_rewrite.size_cache graph;
   let produced =
     List.init
       (Rule_graph.node_count graph - first)

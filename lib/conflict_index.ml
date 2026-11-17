@@ -29,11 +29,19 @@ module Spec_table = Common.Table.Make (struct
   let hash = Hashtbl.hash
 end)
 
-module Overlap_key_table = Hashtbl.Make (struct
-  type t = Shorthand.overlap_key
+(* An overlap key at a packed specificity: what two rules have to share for a
+   bucket to hold both. One table keyed by the pair serves every bucket, where a
+   table per key would allocate one more small table for each key met. *)
+type slot = { key : Shorthand.overlap_key; spec : int }
 
-  let equal = Shorthand.overlap_key_equal
-  let hash = Shorthand.overlap_key_hash
+module Slot_table = Common.Table.Make (struct
+  type t = slot
+
+  let equal a b =
+    Shorthand.overlap_key_equal a.key b.key && Int.equal a.spec b.spec
+
+  let hash { key; spec } =
+    Common.mix_int (Shorthand.overlap_key_hash key) spec land max_int
 end)
 
 (* A cascade conflict needs two selector branches of equal specificity, so a
@@ -63,22 +71,18 @@ let rec distinct_spec_keys acc = function
       let key = spec_key spec in
       distinct_spec_keys (if spec_key_mem key acc then acc else key :: acc) rest
 
-let spec_bucket bucket key =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.Some inner -> inner
-  | Option.None ->
-      let inner = Spec_table.create 4 in
-      Overlap_key_table.replace bucket key inner;
-      inner
-
 let rec add_spec_buckets bucket value = function
   | [] -> ()
   | spec :: rest ->
       Spec_table.push bucket spec value;
       add_spec_buckets bucket value rest
 
-let add_bucket bucket key specs value =
-  add_spec_buckets (spec_bucket bucket key) value specs
+let rec add_bucket bucket key specs value =
+  match specs with
+  | [] -> ()
+  | spec :: rest ->
+      Slot_table.push bucket { key; spec } value;
+      add_bucket bucket key rest value
 
 (* Values, each at a position, bucketed by what two rules need to share to
    conflict: a branch specificity, and an overlap key or a broad footprint on
@@ -89,22 +93,18 @@ let add_bucket bucket key specs value =
 type 'a entry = { at : int; value : 'a; mutable tested : int }
 
 type 'a positioned = {
-  by_key : 'a entry list Spec_table.t Overlap_key_table.t;
+  by_slot : 'a entry list Slot_table.t;
   by_spec : 'a entry list Spec_table.t;
   mutable stamp : int;
 }
 
 let positioned () =
-  {
-    by_key = Overlap_key_table.create 64;
-    by_spec = Spec_table.create 16;
-    stamp = 0;
-  }
+  { by_slot = Slot_table.create 64; by_spec = Spec_table.create 16; stamp = 0 }
 
 let add_at index ~at ~specs ~keys value =
   let entry = { at; value; tested = 0 } in
   add_spec_buckets index.by_spec entry specs;
-  List.iter (fun key -> add_bucket index.by_key key specs entry) keys
+  List.iter (fun key -> add_bucket index.by_slot key specs entry) keys
 
 (* A bucket lists its values newest first, so the walk stops at the first value
    at or before [after]. *)
@@ -125,6 +125,14 @@ let found_in_specs ~after test stamp table specs =
       | Option.Some entries -> found_in ~after test stamp entries)
     specs
 
+let found_in_slots ~after test stamp table key specs =
+  List.exists
+    (fun spec ->
+      match Slot_table.find_opt table { key; spec } with
+      | Option.None -> false
+      | Option.Some entries -> found_in ~after test stamp entries)
+    specs
+
 (* A rule whose footprint is broad overlaps every key, so it reads every value
    of a shared specificity; any other reads its own keys and the broad one. *)
 let exists_after index ~after ~specs ~keys test =
@@ -134,10 +142,7 @@ let exists_after index ~after ~specs ~keys test =
     found_in_specs ~after test stamp index.by_spec specs
   else
     List.exists
-      (fun key ->
-        match Overlap_key_table.find_opt index.by_key key with
-        | Option.None -> false
-        | Option.Some table -> found_in_specs ~after test stamp table specs)
+      (fun key -> found_in_slots ~after test stamp index.by_slot key specs)
       (Shorthand.broad_overlap_key :: keys)
 
 (* [seen] is a per-target stamp array indexed by node id: [seen.(i) = stamp]
@@ -166,10 +171,16 @@ let rec collect_specs bucket specs stamp seen acc =
       in
       collect_specs bucket rest stamp seen acc
 
-let collect_bucket bucket key specs stamp seen acc =
-  match Overlap_key_table.find_opt bucket key with
-  | Option.None -> acc
-  | Option.Some inner -> collect_specs inner specs stamp seen acc
+let rec collect_bucket bucket key specs stamp seen acc =
+  match specs with
+  | [] -> acc
+  | spec :: rest ->
+      let acc =
+        match Slot_table.find_opt bucket { key; spec } with
+        | Option.None -> acc
+        | Option.Some ids -> add_candidates stamp seen acc ids
+      in
+      collect_bucket bucket key rest stamp seen acc
 
 (* The declaration that writes a key sits below the specificity and the
    selector's exclusive subject facts. Two rules writing the same declaration
@@ -189,8 +200,10 @@ let collect_bucket bucket key specs stamp seen acc =
    compaction invariant does not apply. *)
 type writers = { decl : Declaration.declaration; mutable members : int list }
 
+(* The tables below a group are made when the first node needs one: most groups
+   hold only compact runs, under no element and no ID. *)
 type decl_groups = {
-  opaque : int list Decl_tbl.t;
+  mutable opaque : int list Decl_tbl.t option;
   mutable newest : writers option;
       (** the newest run of simple branches writing one declaration *)
   mutable previous : writers option;  (** the run before [newest] *)
@@ -207,17 +220,17 @@ type importance_decl_groups = { normal : decl_groups; important : decl_groups }
 
 type id_decl_groups = {
   no_id : importance_decl_groups;
-  by_id : importance_decl_groups String_table.t;
+  mutable by_id : importance_decl_groups String_table.t option;
 }
 
 type selector_decl_groups = {
   no_element : id_decl_groups;
-  by_element : id_decl_groups String_table.t;
+  mutable by_element : id_decl_groups String_table.t option;
 }
 
 let empty_decl_groups () =
   {
-    opaque = Decl_tbl.create 4;
+    opaque = Option.None;
     newest = Option.None;
     previous = Option.None;
     all_nodes = [];
@@ -228,43 +241,63 @@ let empty_importance_decl_groups () =
   { normal = empty_decl_groups (); important = empty_decl_groups () }
 
 let empty_id_decl_groups () =
-  { no_id = empty_importance_decl_groups (); by_id = String_table.create 4 }
+  { no_id = empty_importance_decl_groups (); by_id = Option.None }
 
 let empty_selector_decl_groups () =
-  { no_element = empty_id_decl_groups (); by_element = String_table.create 4 }
+  { no_element = empty_id_decl_groups (); by_element = Option.None }
 
-let selector_decl_groups inner spec : selector_decl_groups =
-  match Spec_table.find_opt inner spec with
+let slot_decl_groups bucket key spec : selector_decl_groups =
+  let slot = { key; spec } in
+  match Slot_table.find_opt bucket slot with
   | Option.Some index -> index
   | Option.None ->
       let index = empty_selector_decl_groups () in
-      Spec_table.replace inner spec index;
+      Slot_table.replace bucket slot index;
       index
+
+(* The entry of [name] in a lazily made table of [table], made with [empty]. *)
+let named_entry table set empty name =
+  let table =
+    match table with
+    | Option.Some table -> table
+    | Option.None ->
+        let table = String_table.create 4 in
+        set table;
+        table
+  in
+  match String_table.find_opt table name with
+  | Option.Some entry -> entry
+  | Option.None ->
+      let entry = empty () in
+      String_table.replace table name entry;
+      entry
 
 let element_decl_groups index = function
   | Option.None -> index.no_element
-  | Option.Some element -> (
-      match String_table.find_opt index.by_element element with
-      | Option.Some groups -> groups
-      | Option.None ->
-          let groups = empty_id_decl_groups () in
-          String_table.replace index.by_element element groups;
-          groups)
+  | Option.Some element ->
+      named_entry index.by_element
+        (fun table -> index.by_element <- Option.Some table)
+        empty_id_decl_groups element
 
 let named_decl_groups groups name =
-  match String_table.find_opt groups.by_id name with
-  | Option.Some decls -> decls
-  | Option.None ->
-      let decls = empty_importance_decl_groups () in
-      String_table.replace groups.by_id name decls;
-      decls
+  named_entry groups.by_id
+    (fun table -> groups.by_id <- Option.Some table)
+    empty_importance_decl_groups name
 
 let importance_decl_groups groups decl =
   if Declaration.is_important decl then groups.important else groups.normal
 
 let push_decl groups decl value =
-  Decl_tbl.replace groups decl
-    (value :: Option.value ~default:[] (Decl_tbl.find_opt groups decl))
+  let table =
+    match groups.opaque with
+    | Option.Some table -> table
+    | Option.None ->
+        let table = Decl_tbl.create 4 in
+        groups.opaque <- Option.Some table;
+        table
+  in
+  Decl_tbl.replace table decl
+    (value :: Option.value ~default:[] (Decl_tbl.find_opt table decl))
 
 let add_decl ~compact groups decl value =
   let groups = importance_decl_groups groups decl in
@@ -276,28 +309,35 @@ let add_decl ~compact groups decl value =
     | newest ->
         groups.previous <- newest;
         groups.newest <- Option.Some { decl; members = [ value ] })
-  else push_decl groups.opaque decl value
+  else push_decl groups decl value
 
-let add_selector_decl ~compact index summary decl value =
-  let groups = element_decl_groups index (Selector_summary.element summary) in
-  match Selector_summary.ids summary with
+(* What a branch requires of its subject, read once per node: the element name
+   and the IDs. *)
+type subject = { element : string option; ids : string list }
+
+let add_selector_decl ~compact index subject decl value =
+  let groups = element_decl_groups index subject.element in
+  match subject.ids with
   | [] -> add_decl ~compact groups.no_id decl value
   | ids ->
       List.iter
         (fun id -> add_decl ~compact (named_decl_groups groups id) decl value)
         ids
 
-let add_decl_bucket ~compact bucket key spec summary decl value =
+let add_decl_bucket ~compact bucket key spec subject decl value =
   add_selector_decl ~compact
-    (selector_decl_groups (spec_bucket bucket key) spec)
-    summary decl value
+    (slot_decl_groups bucket key spec)
+    subject decl value
 
 let collect_decl_table decl groups stamp seen acc =
-  Decl_tbl.fold
-    (fun decl' ids acc ->
-      if Declaration.same_minified decl decl' then acc
-      else add_candidates stamp seen acc ids)
-    groups acc
+  match groups.opaque with
+  | Option.None -> acc
+  | Option.Some table ->
+      Decl_tbl.fold
+        (fun decl' ids acc ->
+          if Declaration.same_minified decl decl' then acc
+          else add_candidates stamp seen acc ids)
+        table acc
 
 let collect_writers decl run stamp seen acc =
   match run with
@@ -306,11 +346,10 @@ let collect_writers decl run stamp seen acc =
   | Option.Some _ | Option.None -> acc
 
 (* The whole group as candidates, once per query. A node writing the same
-   declaration is among them, where the walk per distinct declaration left it
-   out: it is refused by the conflict test as before, and a candidate the test
-   refuses adds no edge, so the answer is the same. Walking the group per
-   declaration of the querying node, a block of sixty rules walked each group
-   sixty times over. *)
+   declaration is among them: the conflict test refuses it, and a candidate the
+   test refuses adds no edge, so the answer is the one a walk per distinct
+   declaration gives, without walking the group once per declaration of the
+   querying node. *)
 let collect_group_nodes groups stamp seen acc =
   if groups.all_scanned = stamp then acc
   else begin
@@ -323,81 +362,86 @@ let collect_distinct_decls ~compact decl groups stamp seen acc =
   if compact then
     collect_writers decl groups.newest stamp seen acc |> fun acc ->
     collect_writers decl groups.previous stamp seen acc |> fun acc ->
-    collect_decl_table decl groups.opaque stamp seen acc
+    collect_decl_table decl groups stamp seen acc
   else collect_group_nodes groups stamp seen acc
 
 let collect_all_decls groups stamp seen acc =
   collect_group_nodes groups.normal stamp seen acc |> fun acc ->
   collect_group_nodes groups.important stamp seen acc
 
+let fold_named table f acc =
+  match table with
+  | Option.None -> acc
+  | Option.Some table ->
+      String_table.fold (fun _ entry acc -> f entry acc) table acc
+
+let named table name =
+  match table with
+  | Option.None -> Option.None
+  | Option.Some table -> String_table.find_opt table name
+
 let collect_id_groups collect groups ids stamp seen acc =
   let acc = collect groups.no_id stamp seen acc in
   match ids with
   | [] ->
-      String_table.fold
-        (fun _ decls acc -> collect decls stamp seen acc)
-        groups.by_id acc
+      fold_named groups.by_id
+        (fun decls acc -> collect decls stamp seen acc)
+        acc
   | ids ->
       List.fold_left
         (fun acc id ->
-          match String_table.find_opt groups.by_id id with
+          match named groups.by_id id with
           | Option.None -> acc
           | Option.Some decls -> collect decls stamp seen acc)
         acc ids
 
-let collect_selector_groups collect index summary stamp seen acc =
-  let ids = Selector_summary.ids summary in
+let collect_selector_groups collect index subject stamp seen acc =
+  let ids = subject.ids in
   let acc = collect_id_groups collect index.no_element ids stamp seen acc in
-  match Selector_summary.element summary with
+  match subject.element with
   | Option.None ->
-      String_table.fold
-        (fun _ groups acc ->
-          collect_id_groups collect groups ids stamp seen acc)
-        index.by_element acc
+      fold_named index.by_element
+        (fun groups acc -> collect_id_groups collect groups ids stamp seen acc)
+        acc
   | Option.Some element -> (
-      match String_table.find_opt index.by_element element with
+      match named index.by_element element with
       | Option.None -> acc
       | Option.Some groups ->
           collect_id_groups collect groups ids stamp seen acc)
 
-let collect_decl_bucket ~compact bucket key spec summary decl stamp seen acc =
-  match Overlap_key_table.find_opt bucket key with
+let collect_decl_bucket ~compact bucket key spec subject decl stamp seen acc =
+  match Slot_table.find_opt bucket { key; spec } with
   | Option.None -> acc
-  | Option.Some inner -> (
-      match Spec_table.find_opt inner spec with
-      | Option.None -> acc
-      | Option.Some index ->
-          collect_selector_groups
-            (collect_distinct_decls ~compact decl)
-            index summary stamp seen acc)
+  | Option.Some index ->
+      collect_selector_groups
+        (collect_distinct_decls ~compact decl)
+        index subject stamp seen acc
 
 (* A prior node whose own declaration is broad meets every key, so no single
    declaration of the querying node can rule its group out. *)
-let collect_broad_bucket bucket spec summary stamp seen acc =
-  match Overlap_key_table.find_opt bucket Shorthand.broad_overlap_key with
+let collect_broad_bucket bucket spec subject stamp seen acc =
+  match
+    Slot_table.find_opt bucket { key = Shorthand.broad_overlap_key; spec }
+  with
   | Option.None -> acc
-  | Option.Some inner -> (
-      match Spec_table.find_opt inner spec with
-      | Option.None -> acc
-      | Option.Some index ->
-          collect_selector_groups collect_all_decls index summary stamp seen acc
-      )
+  | Option.Some index ->
+      collect_selector_groups collect_all_decls index subject stamp seen acc
 
-let rec collect_decl_keys ~compact bucket spec summary decl stamp seen acc =
+let rec collect_decl_keys ~compact bucket spec subject decl stamp seen acc =
   function
   | [] -> acc
   | key :: rest ->
-      collect_decl_keys ~compact bucket spec summary decl stamp seen
-        (collect_decl_bucket ~compact bucket key spec summary decl stamp seen
+      collect_decl_keys ~compact bucket spec subject decl stamp seen
+        (collect_decl_bucket ~compact bucket key spec subject decl stamp seen
            acc)
         rest
 
-let rec collect_decl_overlaps ~compact bucket spec summary stamp seen acc =
+let rec collect_decl_overlaps ~compact bucket spec subject stamp seen acc =
   function
   | [] -> acc
   | (ov : decl_overlap) :: rest ->
-      collect_decl_overlaps ~compact bucket spec summary stamp seen
-        (collect_decl_keys ~compact bucket spec summary ov.decl stamp seen acc
+      collect_decl_overlaps ~compact bucket spec subject stamp seen
+        (collect_decl_keys ~compact bucket spec subject ov.decl stamp seen acc
            ov.footprint)
         rest
 
@@ -414,19 +458,13 @@ let compact_rule = function [ { footprint = [ _ ]; _ } ] -> true | _ -> false
    that agree on those, and on whether the node sits in the compact runs through
    them, reach the same groups: a block node holding dozens of class branches
    reaches them once. *)
-type reach = {
-  spec : int;
-  summary : Selector_summary.t;
-  element : string option;
-  ids : string list;
-  compact : bool;
-}
+type reach = { spec : int; subject : subject; compact : bool }
 
 let same_reach a b =
   Int.equal a.spec b.spec
   && Bool.equal a.compact b.compact
-  && Option.equal String.equal a.element b.element
-  && List.equal String.equal a.ids b.ids
+  && Option.equal String.equal a.subject.element b.subject.element
+  && List.equal String.equal a.subject.ids b.subject.ids
 
 let rec reaches ~relay decls acc selectors summaries specificities =
   match (selectors, summaries, specificities) with
@@ -435,9 +473,11 @@ let rec reaches ~relay decls acc selectors summaries specificities =
       let reach =
         {
           spec = spec_key specificity;
-          summary;
-          element = Selector_summary.element summary;
-          ids = Selector_summary.ids summary;
+          subject =
+            {
+              element = Selector_summary.element summary;
+              ids = Selector_summary.ids summary;
+            };
           compact =
             relay && compact_rule decls && simple_subject_selector selector;
         }
@@ -451,29 +491,29 @@ let rec reaches ~relay decls acc selectors summaries specificities =
 let collect_rule_overlaps ~relay bucket decls selectors summaries specificities
     stamp seen acc =
   List.fold_left
-    (fun acc { spec; summary; compact; _ } ->
-      collect_broad_bucket bucket spec summary stamp seen acc |> fun acc ->
-      collect_decl_overlaps ~compact bucket spec summary stamp seen acc decls)
+    (fun acc { spec; subject; compact } ->
+      collect_broad_bucket bucket spec subject stamp seen acc |> fun acc ->
+      collect_decl_overlaps ~compact bucket spec subject stamp seen acc decls)
     acc
     (reaches ~relay decls [] selectors summaries specificities)
 
-let rec add_decl_keys ~compact bucket spec summary decl value = function
+let rec add_decl_keys ~compact bucket spec subject decl value = function
   | [] -> ()
   | key :: rest ->
-      add_decl_bucket ~compact bucket key spec summary decl value;
-      add_decl_keys ~compact bucket spec summary decl value rest
+      add_decl_bucket ~compact bucket key spec subject decl value;
+      add_decl_keys ~compact bucket spec subject decl value rest
 
-let rec add_decl_overlaps ~compact bucket spec summary value = function
+let rec add_decl_overlaps ~compact bucket spec subject value = function
   | [] -> ()
   | (ov : decl_overlap) :: rest ->
-      add_decl_keys ~compact bucket spec summary ov.decl value ov.footprint;
-      add_decl_overlaps ~compact bucket spec summary value rest
+      add_decl_keys ~compact bucket spec subject ov.decl value ov.footprint;
+      add_decl_overlaps ~compact bucket spec subject value rest
 
 let add_rule_overlaps ~relay bucket decls selectors summaries specificities
     value =
   List.iter
-    (fun { spec; summary; compact; _ } ->
-      add_decl_overlaps ~compact bucket spec summary value decls)
+    (fun { spec; subject; compact } ->
+      add_decl_overlaps ~compact bucket spec subject value decls)
     (reaches ~relay decls [] selectors summaries specificities)
 
 (* Every node indexed so far: each bucketed by the keys its declarations write,
@@ -482,14 +522,14 @@ let add_rule_overlaps ~relay bucket decls selectors summaries specificities
    intersects every other. [seen] dedups the candidates of one query, stamped
    with the node asking. *)
 type t = {
-  by_decl_key : selector_decl_groups Spec_table.t Overlap_key_table.t;
+  by_decl_key : selector_decl_groups Slot_table.t;
   nodes_by_spec : int list Spec_table.t;
   mutable seen : int array;
 }
 
 let v n =
   {
-    by_decl_key = Overlap_key_table.create 256;
+    by_decl_key = Slot_table.create 256;
     nodes_by_spec = Spec_table.create 64;
     seen = Array.make (max n 1) (-1);
   }

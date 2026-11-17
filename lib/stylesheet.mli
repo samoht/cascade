@@ -552,9 +552,9 @@ val parse_stylesheet_partial :
   string ->
   stylesheet * Error.t list
 (** [parse_stylesheet_partial ?meta source] runs section 5.3 recovery via
-    {!Parser.stylesheet} and then typed-validates each recovered rule via
-    {!read_stylesheet_of_rules}. Warnings from both stages are combined in
-    source order.
+    {!Parser.fold_stylesheet} and typed-validates each recovered rule as the
+    parser hands it over, as {!read_stylesheet_of_rules} does. Warnings from
+    both stages are combined in source order.
 
     Pass [~on_source] to opt into one immutable authored-syntax snapshot from
     the same parse. It retains the exact input, preprocessed input when

@@ -4079,6 +4079,17 @@ val stylesheet :
     @raise Invalid_argument
       if [css] does not read. Use {!of_string} to deal with untrusted input. *)
 
+val of_string_exn :
+  ?strict:bool ->
+  ?filename:string ->
+  ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
+  string ->
+  t
+[@@deprecated "use Css.stylesheet; removed in 1.4.0"]
+(** [of_string_exn css] is {!val-stylesheet}[ css], but raises
+    {!Error.Parse_error} where {!val-stylesheet} raises [Invalid_argument]. *)
+
 (** {2:optimization Optimization}
 
     Tools for optimizing CSS output for performance and file size. *)
@@ -4222,6 +4233,19 @@ val optimize :
 
     [stats] records what this run did; read it back with {!Stats.snapshot}.
     Without it the run counts into a recorder of its own that nobody reads. *)
+
+val minify :
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
+  t ->
+  string
+(** [minify stylesheet] is [stylesheet] optimized with {!val-optimize} and
+    printed with {!to_string}[ ~minify:true], the two steps of
+    [cascade --minify]. {!to_string} prints the sheet it is given, so a caller
+    that wants the output small calls this. [lossless] and [enforce_spec] go to
+    both steps, [rename_custom_property] to the printing; call the two in turn
+    for any other option. *)
 
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule

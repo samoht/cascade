@@ -23,17 +23,7 @@ type candidate = {
     rules are normalized/finalized, so the greedy scheduler ranks candidates by
     the bytes they would actually commit. *)
 
-type size_cache
-(** Transaction-local minified-size cache for scoring many candidates against
-    the same graph. *)
-
-val size_cache : Rule_graph.t -> size_cache
-(** [size_cache graph] creates an empty cache for candidate scoring over
-    [graph]. The cache is intentionally short-lived: create one per candidate
-    enumeration pass. *)
-
 val v :
-  ?size_cache:size_cache ->
   kind:kind ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
   Rule_graph.t ->

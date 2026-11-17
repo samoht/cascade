@@ -3,14 +3,6 @@
 open Stylesheet
 open Stdlib
 open Conflict_index
-
-module Key_tbl = Hashtbl.Make (struct
-  type t = Shorthand.overlap_key
-
-  let equal = Shorthand.overlap_key_equal
-  let hash = Shorthand.overlap_key_hash
-end)
-
 module String_table = Common.Table.Make (String)
 
 module Node_id = struct
@@ -90,6 +82,8 @@ type t = {
   mutable rules : rule array;  (** all nodes ever created, dead ones included *)
   mutable sizes : int array;
       (** each node's minified byte size, worked out once *)
+  mutable selector_sizes : int array;
+      (** the minified byte size of each node's selector, worked out once *)
   mutable origin : int array;
   mutable death : int array;
       (** the generation of the first graph a node is dead in, [max_int] while
@@ -99,10 +93,8 @@ type t = {
       (** effective selector branches for each node, after applying [parent] *)
   mutable selector_summaries : Selector_summary.t list array;
   mutable specificities : Selector.specificity list array;
-      (** each node's per-branch specificity, computed once. The order test
-          compares specificity on every candidate pair, and recomputing it
-          allocates a record per branch per comparison, which made it one of the
-          largest allocation sites in the optimizer. *)
+      (** each node's per-branch specificity, computed once: the order test
+          compares specificity on every candidate pair *)
   mutable branches : string list array;
   mutable decl_overlaps : decl_overlap list array;
   mutable overlap_keys : Shorthand.overlap_key list array;
@@ -114,8 +106,8 @@ type t = {
           lineage: a committed rewrite conses its edges onto the existing nodes'
           lists, and each of those points at a node it produced, so an edge to a
           node past [count] belongs to a later graph and a graph skips it. *)
-  key_index : node_id list Decl_tbl.t Spec_table.t Key_tbl.t;
-      (** overlap key -> branch specificity -> (declaration writing it -> node
+  key_index : node_id list Decl_tbl.t Slot_table.t;
+      (** overlap key and branch specificity -> (declaration writing it -> node
           ids), so a rewrite finds an external node's potential conflicts
           without scanning every node, without the nodes no branch of which ties
           with it, and {e without even iterating} the nodes that write the same
@@ -145,9 +137,8 @@ let declarations_conflict left right =
   Shorthand.declarations_conflict_with_keys left.decl left.footprint right.decl
     right.footprint
 
-(* Written as plain recursion rather than nested [List.exists]: the inner
-   closure captured the outer element, so it was rebuilt once per element of the
-   left list, and these run on every candidate pair. *)
+(* Plain recursion, so the pair tests below allocate no closure per element:
+   they run on every candidate pair. *)
 let rec declaration_conflicts_with a = function
   | [] -> false
   | b :: rest -> declarations_conflict a b || declaration_conflicts_with a rest
@@ -157,12 +148,8 @@ let rec decls_order_conflict d1 d2 =
   | [] -> false
   | a :: rest -> declaration_conflicts_with a d2 || decls_order_conflict rest d2
 
-(* [List.exists2] over a zipped pair needs the zip built first, and the inner
-   one was built inside the outer closure: B's whole tuple list was rebuilt once
-   per element of A. Walking the three parallel lists in step decides the same
-   question and allocates nothing. Lengths match by construction (one entry per
-   selector branch); [invalid_arg] mirrors [List.exists2] if they ever do
-   not. *)
+(* [List.exists] over three parallel lists walked in step, one entry per
+   selector branch, without zipping them. *)
 let rec exists3 f a b c =
   match (a, b, c) with
   | [], [], [] -> false
@@ -185,15 +172,13 @@ let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
         selectors_b summaries_b specificities_b)
     selectors_a summaries_a specificities_a
 
-(* Canonical, list-order-independent branch strings of a selector: canonicalize
-   each comma branch, then sort. [.foo,.bar] and [.bar,.foo] yield the same
-   list. *)
-(* Sorted, which is what lets [share_branch] merge-walk two of these. *)
+let selector_branch_key selector =
+  Pp.to_string ~minify:true Selector.pp (Selector.canonicalize selector)
+
+(* The keys of a rule's comma branches, sorted, so [.foo,.bar] and [.bar,.foo]
+   have one list and [share_branch] can merge-walk two of them. *)
 let selector_branch_keys selectors =
-  selectors
-  |> List.map (fun s ->
-      Pp.to_string ~minify:true Selector.pp (Selector.canonicalize s))
-  |> List.sort String.compare
+  selectors |> List.map selector_branch_key |> List.sort String.compare
 
 (* Two rules share a selector branch when a factoring produced one as a residual
    of the other (e.g. [.a] and [.a,.b]) or they are the same selector. Such
@@ -201,10 +186,7 @@ let selector_branch_keys selectors =
    order is left to the declaration canonicalization.
 
    Both arguments come from [selector_branch_keys], which sorts, so this walks
-   the two in step rather than scanning one per element of the other: linear
-   instead of quadratic, and it allocates nothing, where the nested
-   [List.exists] built a closure per element of the left list and a partial
-   application per pair. *)
+   the two in step. *)
 let rec share_branch a b =
   match (a, b) with
   | [], _ | _, [] -> false
@@ -605,19 +587,12 @@ let decl_index_add tbl key node =
     (node :: Option.value ~default:[] (Decl_tbl.find_opt tbl key))
 
 let key_inner t key spec =
-  let by_spec =
-    match Key_tbl.find_opt t.key_index key with
-    | Some by_spec -> by_spec
-    | None ->
-        let by_spec = Spec_table.create 2 in
-        Key_tbl.replace t.key_index key by_spec;
-        by_spec
-  in
-  match Spec_table.find_opt by_spec spec with
+  let slot : slot = { key; spec } in
+  match Slot_table.find_opt t.key_index slot with
   | Some inner -> inner
   | None ->
       let inner = Decl_tbl.create 4 in
-      Spec_table.replace by_spec spec inner;
+      Slot_table.replace t.key_index slot inner;
       inner
 
 (* Add [node]'s overlap keys, partitioned by the specificity of each of its
@@ -652,8 +627,9 @@ let rule_facts parent rules =
 (* The nodes of [rules] in source order with their edges, their [sizes], and an
    empty external index sized for [index_capacity] entries, which the first
    rewrite fills. *)
-let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
-    ?(pin_shared_branches = true) ?exclusive (rules : rule array) : t =
+let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
+    ?(closed_world = false) ?(pin_shared_branches = true) ?exclusive
+    (rules : rule array) : t =
   let n = Array.length rules in
   let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
       =
@@ -671,6 +647,7 @@ let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
       count = n;
       rules;
       sizes;
+      selector_sizes;
       origin = Array.init n Fun.id;
       death = Array.make n max_int;
       selectors;
@@ -680,7 +657,7 @@ let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
       decl_overlaps;
       overlap_keys;
       succ = [||];
-      key_index = Key_tbl.create index_capacity;
+      key_index = Slot_table.create index_capacity;
       branch_index = String_table.create index_capacity;
       lineage =
         {
@@ -698,14 +675,23 @@ let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
 
 let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
   let rules = Array.of_list rules in
-  ordered_nodes
-    ~sizes:(Array.map Size.rule rules)
+  let selector_sizes =
+    Array.map (fun (rule : rule) -> Size.selector rule.selector) rules
+  in
+  ordered_nodes ~selector_sizes
+    ~sizes:
+      (Array.mapi
+         (fun i (rule : rule) ->
+           selector_sizes.(i) + Size.body rule.declarations)
+         rules)
     ~index_capacity:(max 16 (Array.length rules * 2))
     ?parent ?closed_world ?pin_shared_branches ?exclusive rules
 
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
 let node_size t i = t.sizes.(i)
+let node_selector_size t i = t.selector_sizes.(i)
+let node_branches t i = t.branches.(i)
 let node_origin t i = t.origin.(i)
 
 (* [i] is a node of [t] that no rewrite up to [t] consumed. *)
@@ -917,9 +903,7 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
   let live = live_nodes t in
   let n = List.length live in
   (* Node ids are dense, so the in-degree and emitted marks are arrays over the
-     whole node space rather than generic tables keyed by id: both are read once
-     per edge, and a generic [Hashtbl] hashes and structurally compares the key
-     on every read. *)
+     node space, read once per edge. *)
   let slots = max (node_count t) 1 in
   let pred = Array.make slots 0 in
   for i = 0 to t.count - 1 do
@@ -977,9 +961,9 @@ let canonical_order t : node_id array =
    which the parent never reads, and keeps the edges it points at existing nodes
    beside it until it is accepted. A rejected attempt therefore leaves nothing
    to undo, and neither outcome copies anything sized by the graph. *)
-let rec first_duplicate ids at =
+let rec first_duplicate (ids : node_id array) at =
   if at >= Array.length ids then Option.None
-  else if ids.(at - 1) = ids.(at) then Option.Some ids.(at)
+  else if Int.equal ids.(at - 1) ids.(at) then Option.Some ids.(at)
   else first_duplicate ids (at + 1)
 
 let rec first_unusable t = function
@@ -1005,12 +989,12 @@ let validate_consume t consume =
           | Option.Some e -> Error e
           | Option.None -> Ok consumed))
 
-let rec mem_sorted ids x lo hi =
+let rec mem_sorted (ids : node_id array) (x : node_id) lo hi =
   lo < hi
   &&
   let mid = (lo + hi) / 2 in
   let v = ids.(mid) in
-  v = x
+  Int.equal v x
   || if v < x then mem_sorted ids x (mid + 1) hi else mem_sorted ids x lo mid
 
 let is_consumed consumed k = mem_sorted consumed k 0 (Array.length consumed)
@@ -1023,18 +1007,17 @@ let produced_origin t consume =
         (fun min_origin id -> min min_origin t.origin.(id))
         t.origin.(first) rest
 
-let produced_origins t consume produced_branches =
-  let fallback = produced_origin t consume in
-  Array.map
-    (fun branches ->
-      List.fold_left
-        (fun origin consumed ->
-          if share_branch branches t.branches.(consumed) then
-            min origin t.origin.(consumed)
-          else origin)
-        max_int consume
-      |> fun origin -> if origin = max_int then fallback else origin)
-    produced_branches
+(* A produced node takes the earliest origin of the consumed nodes it shares a
+   branch with, or of all of them. *)
+let produced_branch_origin t consume branches =
+  List.fold_left
+    (fun origin consumed ->
+      if share_branch branches t.branches.(consumed) then
+        min origin t.origin.(consumed)
+      else origin)
+    max_int consume
+  |> fun origin ->
+  if origin = max_int then produced_origin t consume else origin
 
 (* Room in [t]'s node arrays for [added] nodes past its extent. The arrays are
    shared along the lineage, so [t] keeps what it grows even when the attempt
@@ -1054,6 +1037,7 @@ let reserve t added =
   in
   t.rules <- grow t.rules;
   t.sizes <- grow t.sizes;
+  t.selector_sizes <- grow t.selector_sizes;
   t.origin <- grow t.origin;
   t.death <- grow t.death;
   t.selectors <- grow t.selectors;
@@ -1066,30 +1050,17 @@ let reserve t added =
 
 let place arr ~at items = Array.blit items 0 arr at (Array.length items)
 
-let produced_graph t ~consume produced =
+(* The graph [produced] would make, its nodes holding their rules alone. What
+   the order relation reads off a produced node is placed by {!place_produced}
+   when the rewrite first asks about that node, and its size once the rewrite is
+   accepted: most attempts are refused at the first produced node, and read
+   nothing of the others. *)
+let produced_graph t produced =
   let added = Array.length produced in
   let total = t.count in
   reserve t added;
-  let sizes = Array.map Size.rule produced in
-  let facts =
-    Array.map
-      (fun rule -> branch_facts (effective_selector t.parent rule))
-      produced
-  in
-  let selectors = Array.map (fun (branches, _, _) -> branches) facts in
-  let branches = Array.map selector_branch_keys selectors in
-  let decl_overlaps = Array.map rule_decl_overlaps produced in
   place t.rules ~at:total produced;
-  place t.sizes ~at:total sizes;
-  place t.origin ~at:total (produced_origins t consume branches);
   Array.fill t.death total added max_int;
-  place t.selectors ~at:total selectors;
-  place t.selector_summaries ~at:total
-    (Array.map (fun (_, summaries, _) -> summaries) facts);
-  place t.specificities ~at:total (Array.map (fun (_, _, specs) -> specs) facts);
-  place t.branches ~at:total branches;
-  place t.decl_overlaps ~at:total decl_overlaps;
-  place t.overlap_keys ~at:total (Array.map rule_overlap_keys decl_overlaps);
   Array.fill t.succ total added [];
   {
     t with
@@ -1099,6 +1070,20 @@ let produced_graph t ~consume produced =
        [t]'s answers once it is accepted *)
     reach = Unbuilt;
   }
+
+let place_produced t graph ~consume p =
+  let selectors, summaries, specificities =
+    branch_facts (effective_selector t.parent graph.rules.(p))
+  in
+  let branches = selector_branch_keys selectors in
+  let decl_overlaps = rule_decl_overlaps graph.rules.(p) in
+  graph.origin.(p) <- produced_branch_origin t consume branches;
+  graph.selectors.(p) <- selectors;
+  graph.selector_summaries.(p) <- summaries;
+  graph.specificities.(p) <- specificities;
+  graph.branches.(p) <- branches;
+  graph.decl_overlaps.(p) <- decl_overlaps;
+  graph.overlap_keys.(p) <- rule_overlap_keys decl_overlaps
 
 let add_edge succ i j reason = succ.(i) <- (j, reason) :: succ.(i)
 
@@ -1265,11 +1250,9 @@ let add_inherited_edge t graph consume entering p k reason =
    key conflicts with everything, so it falls back to a full scan (rare:
    [all]). *)
 (* A merge moves its rules past everything that sits between them, so a node in
-   that span is the one that can refuse the move: 93% of the rejections on a
-   real sheet are blocked by one. The order the candidates are visited in does
-   not change whether the rewrite is accepted, only how soon a refusal is found,
-   so putting the span first turns a rejection from a walk of the whole
-   neighbourhood into a walk of the part that can block it. *)
+   that span is the one that usually refuses the move. The order the candidates
+   are visited in does not change whether the rewrite is accepted, only how soon
+   a refusal is found, so the span goes first. *)
 let span_first ~lo ~hi candidates =
   let within, outside = List.partition (fun k -> k > lo && k < hi) candidates in
   List.rev_append (List.rev within) outside
@@ -1280,15 +1263,12 @@ let indexed_candidates graph p push =
   (* Only a node with a branch of [p]'s specificity can tie with it. *)
   let specs = distinct_spec_keys [] graph.specificities.(p) in
   let at_specs key f =
-    match Key_tbl.find_opt graph.key_index key with
-    | None -> ()
-    | Some by_spec ->
-        List.iter
-          (fun spec ->
-            match Spec_table.find_opt by_spec spec with
-            | Some inner -> Decl_tbl.iter f inner
-            | None -> ())
-          specs
+    List.iter
+      (fun spec ->
+        match Slot_table.find_opt graph.key_index ({ key; spec } : slot) with
+        | Some inner -> Decl_tbl.iter f inner
+        | None -> ())
+      specs
   in
   (* For each declaration [p] writes, collect, per overlap key it covers, the
      nodes whose declaration for that key differs - same-declaration nodes never
@@ -1323,8 +1303,8 @@ let external_candidates t graph ~consumed p =
       push k
     done
   else indexed_candidates graph p push;
-  (* the previous full scan visited externals in ascending index order; preserve
-     that so the first orientation error (and thus scheduling) is identical *)
+  (* ascending, so which orientation error comes first, which the scheduler
+     reads, does not follow the index *)
   List.sort Int.compare !acc
 
 let add_external_edges t ~consume ~consumed graph entering =
@@ -1334,6 +1314,7 @@ let add_external_edges t ~consume ~consumed graph entering =
   let rec loop_produced p =
     if p = graph.count then Ok ()
     else
+      let () = place_produced t graph ~consume p in
       let rec loop_candidates = function
         | [] -> Ok ()
         | k :: rest -> (
@@ -1395,7 +1376,7 @@ let collect_produced_candidates by_decl_key by_spec by_branch graph right keys
     candidates graph.branches.(right)
 
 let add_produced_edges t ~consume graph =
-  let by_decl_key = Overlap_key_table.create 16 in
+  let by_decl_key = Slot_table.create 16 in
   let by_branch = String_table.create 16 in
   let by_spec = Spec_table.create 16 in
   let rec loop right =
@@ -1575,6 +1556,12 @@ let carry_reach t graph entering finished =
    candidates. *)
 let commit t graph ~consumed entering finished =
   let total = t.count in
+  for p = total to graph.count - 1 do
+    let rule = graph.rules.(p) in
+    let selector_size = Size.selector rule.selector in
+    graph.selector_sizes.(p) <- selector_size;
+    graph.sizes.(p) <- selector_size + Size.body rule.declarations
+  done;
   Array.iter (fun c -> graph.death.(c) <- graph.generation) consumed;
   Array.iteri
     (fun at edges ->
@@ -1604,7 +1591,7 @@ let rewrite t ~consume ~produce : (t, rewrite_error) result =
       match produce with
       | [] -> Error Empty_produce
       | _ -> (
-          let graph = produced_graph t ~consume (Array.of_list produce) in
+          let graph = produced_graph t (Array.of_list produce) in
           let entering = Array.make (graph.count - t.count) [] in
           let edges =
             match add_external_edges t ~consume ~consumed graph entering with
@@ -1662,6 +1649,7 @@ let run ?parent ?exclusive ~folds rules =
       count = n;
       rules;
       sizes = [||];
+      selector_sizes = [||];
       origin = [||];
       death = [||];
       selectors;
@@ -1671,7 +1659,7 @@ let run ?parent ?exclusive ~folds rules =
       decl_overlaps;
       overlap_keys;
       succ = [||];
-      key_index = Key_tbl.create 1;
+      key_index = Slot_table.create 1;
       branch_index = String_table.create 1;
       lineage =
         {

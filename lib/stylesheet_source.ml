@@ -1,5 +1,3 @@
-open Stylesheet_partial
-
 type comment = { loc : Loc.t; terminated : bool }
 type rule = { syntax : Component.rule; loc : Loc.t; owned_loc : Loc.t }
 type position = { byte : int; line : int; column : int }
@@ -76,7 +74,7 @@ let v ~original ~preprocessed:indexed ~origin ~comments syntax_rules =
   let rules =
     List.map
       (fun syntax ->
-        let loc = rule_loc syntax in
+        let loc = Component.rule_loc syntax in
         let owned_loc =
           Loc.v ~start_pos:!previous_end ~end_pos:loc.Loc.end_pos
         in

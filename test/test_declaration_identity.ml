@@ -28,6 +28,10 @@ let sole_declaration css =
 let minified css =
   Css.to_string ~minify:true (Css.optimize (Css.stylesheet css))
 
+let decls_of css =
+  Css.stylesheet css |> Css.statements
+  |> List.concat_map Css.Stylesheet.statement_declarations
+
 (* CSS Variables 1 sec. 3 makes a shorthand carrying a [var()] a
    pending-substitution value: it is syntax-checked only after substitution, and
    which slot the substituted tokens fill is not known before then. So a slot
@@ -734,11 +738,65 @@ let relative_colour_spellings_agree () =
   sheets_agree "alpha slash" "a{color:rgb(from #639 r g b / alpha)}"
     "a{color:rgb(from #639 r g b/alpha)}"
 
+(* CSS Syntax 3 (ED) sec. 5.5.6 takes the important flag off a declaration whose
+   last two non-whitespace tokens are a [!] delim and an ident matching
+   [important]. [\!important] is one ident token, [!important], written with an
+   escape (sec. 4.3.7): the value of [--x], with no flag. Read as text it lost
+   its escape to the flag and came back as a lone backslash flagged
+   important. *)
+let escaped_ident_is_no_important_flag () =
+  Alcotest.(check string)
+    "the escaped ident is the value" ".a{--x:\\!important}"
+    (minified ".a{--x:\\!important}");
+  match decls_of ".a{--x:\\!important}" with
+  | [ d ] -> Alcotest.(check bool) "not important" false (is_important d)
+  | l -> Alcotest.failf "expected one declaration, got %d" (List.length l)
+
+(* CSS Custom Properties 1 (ED) sec. 2 makes a custom property's value its token
+   sequence, and CSS Syntax 3 (ED) sec. 4.3.2 consumes a comment as nothing:
+   [a/**/b] is the idents [a] and [b] with no whitespace token between them, [a
+   b] the same two with one. They are two values, so the two rules stay apart,
+   and sec. 9 writes the first back with the empty comment that keeps its two
+   tokens two, so minifying the output again changes nothing. *)
+let comment_separated_tokens_are_their_own_value () =
+  let css = ".a{--x:a/**/b}.b{--x:a b}" in
+  let once = minified css in
+  Alcotest.(check string) "two values" ".a{--x:a/**/b}.b{--x:a b}" once;
+  Alcotest.(check string) "a fixed point" once (minified once);
+  match (decls_of ".a{--x:a/**/b}", decls_of ".a{--x:a b}") with
+  | [ x ], [ y ] ->
+      Alcotest.(check bool) "two declarations" false (equal_declaration x y)
+  | _ -> Alcotest.fail "expected one declaration each"
+
+(* CSS Syntax 3 (ED) sec. 4.2 gives a [<string-token>] a value and nothing of
+   the quote it was written with, and CSSOM writes every string double-quoted,
+   so ['a'] and ["a"] are one custom property value whether it was parsed or
+   built from text: one declaration, and the rules merge. *)
+let custom_string_quote_is_no_part_of_the_value () =
+  Alcotest.(check string)
+    "the rules merge" ".a,.b{--x:\"a\"}"
+    (minified ".a{--x:'a'}.b{--x:\"a\"}");
+  let one label a b =
+    Alcotest.(check bool) (label ^ ": equal") true (equal_declaration a b);
+    Alcotest.(check bool) (label ^ ": one object") true (a == b)
+  in
+  match (decls_of ".a{--x:'a'}", decls_of ".a{--x:\"a\"}") with
+  | [ x ], [ y ] ->
+      one "parsed" x y;
+      one "built" (custom_property "--x" "'a'") y
+  | _ -> Alcotest.fail "expected one declaration each"
+
 let suite =
   ( "declaration_identity",
     [
       test_case "custom declarations ignore offsets" `Quick
         custom_declarations_ignore_offsets;
+      test_case "a custom string's quote is no part of the value" `Quick
+        custom_string_quote_is_no_part_of_the_value;
+      test_case "comment-separated tokens are their own value" `Quick
+        comment_separated_tokens_are_their_own_value;
+      test_case "an escaped ident is no important flag" `Quick
+        escaped_ident_is_no_important_flag;
       test_case "calc sum shortest spelling" `Quick
         test_calc_sum_shortest_spelling;
       test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;

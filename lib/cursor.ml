@@ -1,17 +1,34 @@
 open Common
 
+(* The chunks of a streamed block a reader has pulled since it last said none of
+   them will be read again ({!forget}). A chunk is numbered from 0 in pull
+   order, and [chunks] holds those from [first] on, newest first. *)
+type feed = {
+  pull : unit -> Component.t list option;
+  mutable chunks : Component.t list list;
+  mutable first : int;
+  mutable count : int;
+  mutable chunk : int; (* The number of the chunk [cvs] is the rest of. *)
+}
+
+(* How a cursor stands to a streamed block: it holds one among its components,
+   which {!braces} reads through a [Feed], or it reads one. *)
+type stream = No_stream | Holds of Parser.body | Feed of feed
+
 type t = {
   mutable cvs : Component.t list;
+  stream : stream;
   source : string option;
   indexed : Error.Source.t option;
       (* [source] with its index, which every error raised here carries. *)
   warnings : Error.t list ref;
   recover : bool;
   meta : Loc.meta_level;
-  eof_loc : Loc.t option;
+  eof_loc : Loc.t option Lazy.t;
       (* Where to point errors raised at end of this cursor. For a cursor over a
          nested block body this is the block's closing delimiter position, not
-         the end of the whole input. *)
+         the end of the whole input; for a streamed body it is known once the
+         body is read to its end. *)
   depth : int;
       (* Function-call nesting depth, bumped by [call] each time it descends
          into a function's arguments. Bounds recursion ([calc(calc(...))],
@@ -28,17 +45,32 @@ let max_nesting_depth = 100
 let of_components ?source:indexed ?(recover = false)
     ?(meta = Loc.default_meta_level) ?eof_loc cvs =
   let source = Option.map Error.Source.text indexed in
-  { cvs; source; indexed; warnings = ref []; recover; meta; eof_loc; depth = 0 }
+  {
+    cvs;
+    stream = No_stream;
+    source;
+    indexed;
+    warnings = ref [];
+    recover;
+    meta;
+    eof_loc = Lazy.from_val eof_loc;
+    depth = 0;
+  }
+
+let of_streamed ?source ?meta cvs body =
+  { (of_components ?source ~recover:true ?meta cvs) with stream = Holds body }
 
 let sub ?eof_loc t cvs =
   {
     cvs;
+    stream = No_stream;
     source = t.source;
     indexed = t.indexed;
     warnings = t.warnings;
     recover = t.recover;
     meta = t.meta;
-    eof_loc = (match eof_loc with Some _ -> eof_loc | None -> t.eof_loc);
+    eof_loc =
+      (match eof_loc with Some _ -> Lazy.from_val eof_loc | None -> t.eof_loc);
     depth = t.depth;
   }
 
@@ -72,12 +104,13 @@ let of_string ?(meta = Loc.default_meta_level) ?unicode_ranges s =
   let parser = Parser.of_reader ?unicode_ranges reader in
   {
     cvs = lex_to_cv_list parser;
+    stream = No_stream;
     source = Some (Reader.source reader);
     indexed = Some (Reader.indexed_source reader);
     warnings = ref [];
     recover = false;
     meta;
-    eof_loc = None;
+    eof_loc = Lazy.from_val None;
     depth = 0;
   }
 
@@ -85,20 +118,63 @@ let of_reader ?(meta = Loc.default_meta_level) r =
   let parser = Parser.of_reader r in
   {
     cvs = lex_to_cv_list parser;
+    stream = No_stream;
     source = Some (Reader.source r);
     indexed = Some (Reader.indexed_source r);
     warnings = ref [];
     recover = false;
     meta;
-    eof_loc = None;
+    eof_loc = Lazy.from_val None;
     depth = 0;
   }
+
+(* Chunk [n] of [f], pulled if it is the next one; [None] past the end. *)
+let feed_chunk f n =
+  if n < f.first + f.count then
+    Some (List.nth f.chunks (f.first + f.count - 1 - n))
+  else
+    match f.pull () with
+    | Some cvs ->
+        f.chunks <- cvs :: f.chunks;
+        f.count <- f.count + 1;
+        Some cvs
+    | None -> None
+
+let rec fill_from t f =
+  match feed_chunk f (f.chunk + 1) with
+  | Some [] ->
+      f.chunk <- f.chunk + 1;
+      fill_from t f
+  | Some cvs ->
+      t.cvs <- cvs;
+      f.chunk <- f.chunk + 1
+  | None -> ()
+
+(* The next chunk, once [cvs] is used up. *)
+let fill t =
+  match (t.cvs, t.stream) with [], Feed f -> fill_from t f | _ -> ()
 
 let rec drop_ws t =
   match t.cvs with
   | hd :: rest when Component.is_whitespace hd ->
       t.cvs <- rest;
       drop_ws t
+  | [] -> (
+      match t.stream with
+      | Feed f ->
+          let chunk = f.chunk in
+          fill t;
+          if f.chunk <> chunk then drop_ws t
+      | No_stream | Holds _ -> ())
+  | _ -> ()
+
+let forget t =
+  match t.stream with
+  | Feed f when f.chunk > f.first ->
+      let keep = f.first + f.count - f.chunk in
+      f.chunks <- List.filteri (fun i _ -> i < keep) f.chunks;
+      f.count <- keep;
+      f.first <- f.chunk
   | _ -> ()
 
 let ws = drop_ws
@@ -128,7 +204,7 @@ let position t =
       (* Prefer the explicit EOF location (block closer, function ')', etc.)
          over the whole-input end; fall back to the source length only when
          neither is set. *)
-      match t.eof_loc with
+      match Lazy.force t.eof_loc with
       | Some loc -> loc
       | None -> (
           match t.source with
@@ -138,7 +214,16 @@ let position t =
               Loc.v ~start_pos:pos ~end_pos:pos))
   | hd :: _ -> Component.source_loc hd
 
-let remaining t = t.cvs
+(* Every component from chunk [n] on, which pulls the rest of the body. *)
+let rec chunks_from f n =
+  match feed_chunk f n with
+  | Some cvs -> cvs :: chunks_from f (n + 1)
+  | None -> []
+
+let remaining t =
+  match t.stream with
+  | Feed f -> List.concat (t.cvs :: chunks_from f (f.chunk + 1))
+  | No_stream | Holds _ -> t.cvs
 
 let string_of_components ?(trim = false) cvs =
   let s = Parser.string_of_components cvs in
@@ -154,14 +239,19 @@ let string_of_remaining ?(trim = false) t =
   string_of_components ~trim (remaining t)
 
 let consume_remaining t =
-  let cvs = t.cvs in
+  let cvs = remaining t in
   t.cvs <- [];
+  (match t.stream with
+  | Feed f -> f.chunk <- f.first + f.count - 1
+  | No_stream | Holds _ -> ());
   cvs
 
 let consume_remaining_as_string ?(trim = false) t =
   string_of_components ~trim (consume_remaining t)
 
-let peek_raw t = match t.cvs with [] -> None | hd :: _ -> Some hd
+let peek_raw t =
+  fill t;
+  match t.cvs with [] -> None | hd :: _ -> Some hd
 
 type head_shape =
   [ `Eof
@@ -198,6 +288,7 @@ let peek_head_shape t : head_shape =
   match t.cvs with [] -> `Eof | cv :: _ -> component_head_shape cv
 
 let next_raw t =
+  fill t;
   match t.cvs with
   | [] -> None
   | hd :: rest ->
@@ -205,34 +296,71 @@ let next_raw t =
       Some hd
 
 let skip_ws t =
+  fill t;
   let started = t.cvs in
   drop_ws t;
   t.cvs != started
 
 type snapshot = Component.t list
 
-let save t = t.cvs
-let restore t s = t.cvs <- s
+let save t =
+  fill t;
+  t.cvs
+
+let rec ends_with s l =
+  l == s || match l with [] -> false | _ :: tl -> ends_with s tl
+
+(* The chunk of [f] a snapshot is the rest of. [save] fills, so only the end of
+   the body is empty, and the chunks are lists of their own, so a non-empty
+   snapshot is the rest of exactly one. *)
+let chunk_of f s =
+  let last = f.first + f.count - 1 in
+  if s == [] then last
+  else
+    let rec find n = function
+      | [] -> invalid_arg "Cursor.restore: a snapshot from before forget"
+      | c :: rest -> if ends_with s c then n else find (n - 1) rest
+    in
+    find last f.chunks
+
+let restore t s =
+  (match t.stream with
+  | Feed f -> f.chunk <- chunk_of f s
+  | No_stream | Holds _ -> ());
+  t.cvs <- s
+
+let at_snapshot t s =
+  fill t;
+  t.cvs == s
 
 (* The source range covered by the components consumed since [snap]. A recovery
    point holds the snapshot from before the item it gave up on, so this names
    the whole construct it then skipped rather than the point the read failed at.
    Whitespace at either end sits outside the construct and is left out. *)
 let consumed_span t snap =
-  let rec span acc cvs =
-    if cvs == t.cvs then acc
+  let current = match t.stream with Feed f -> f.chunk | _ -> 0 in
+  let rec span acc cvs chunk =
+    if cvs == t.cvs && chunk = current then acc
     else
       match cvs with
-      | [] -> None
-      | hd :: tl when Component.is_whitespace hd -> span acc tl
+      | [] -> (
+          match t.stream with
+          | Feed f when chunk < current -> (
+              match feed_chunk f (chunk + 1) with
+              | Some cvs -> span acc cvs (chunk + 1)
+              | None -> None)
+          | _ -> None)
+      | hd :: tl when Component.is_whitespace hd -> span acc tl chunk
       | hd :: tl ->
           let loc = Component.source_loc hd in
           let acc =
             match acc with None -> Some loc | Some l -> Some (Loc.union l loc)
           in
-          span acc tl
+          span acc tl chunk
   in
-  span None snap
+  match t.stream with
+  | Feed f -> span None snap (chunk_of f snap)
+  | No_stream | Holds _ -> span None snap 0
 
 let dropped_since t snap construct =
   Error.Recovery.dropped ?source:t.source ?loc:(consumed_span t snap) construct
@@ -523,8 +651,10 @@ let is_semicolon_cv = function
    custom property's value, and this is what captures it, so the run each
    whitespace token carries is written back rather than the single space Syntax
    3 sec. 9.1 gives a reserialized stream. *)
+let drain_until_semicolon t = drain_until_raw is_semicolon_cv t
+
 let consume_until_semicolon ?(trim = false) t =
-  let s = Parser.to_string_verbatim (drain_until_raw is_semicolon_cv t) in
+  let s = Parser.to_string_verbatim (drain_until_semicolon t) in
   if trim then String.trim s else s
 
 let rec skip_past_semicolon t =
@@ -591,9 +721,13 @@ let ident ?(keep_case = true) t =
 let custom_ident_reserved =
   [ "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
 
+let rec mem_string s = function
+  | [] -> false
+  | k :: rest -> String.equal k s || mem_string s rest
+
 let is_reserved_custom_ident ?(reserved = []) name =
   let folded = String.lowercase_ascii_preserve name in
-  List.mem folded custom_ident_reserved || List.mem folded reserved
+  mem_string folded custom_ident_reserved || mem_string folded reserved
 
 let custom_ident ?reserved label t =
   let loc = position t in
@@ -888,11 +1022,38 @@ let brackets f t =
         (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'['"
 
+(* A streamed block is read through a feed. Its closer is known once the body is
+   read to its end, so a reader that asks for it before then pulls the rest of
+   the body into the feed, which it reads from anyway. *)
+let streamed_braces f t (body : Parser.body) =
+  body.taken <- true;
+  let feed =
+    { pull = body.pull; chunks = []; first = 0; count = 0; chunk = -1 }
+  in
+  let rec pull_rest () =
+    match feed_chunk feed (feed.first + feed.count) with
+    | Some _ -> pull_rest ()
+    | None -> ()
+  in
+  let eof_loc =
+    lazy
+      (pull_rest ();
+       match !(body.closed) with
+       | Some b -> Some (closer_loc ~closed:b.node.closed b.loc)
+       | None -> None)
+  in
+  whole_block f { (sub t []) with stream = Feed feed; eof_loc }
+
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b ->
-      whole_block f
-        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
+  | Some b -> (
+      match t.stream with
+      | Holds body when b == body.placeholder -> streamed_braces f t body
+      | _ ->
+          whole_block f
+            (sub
+               ~eof_loc:(closer_loc ~closed:b.node.closed b.loc)
+               t b.node.value))
   | None -> err_expected t "'{'"
 
 let function_call name f t =
@@ -938,10 +1099,21 @@ let call name t f =
 
 (** {1 Enums} *)
 
+(* The value [table] binds to the keyword [s], read case-insensitively (CSS
+   Values 4 sec. 4.1). The keys are strings, so they compare as strings and not
+   through the polymorphic compare. *)
+let keyword table s =
+  let key = String.lowercase_ascii_preserve s in
+  let rec find = function
+    | [] -> None
+    | (k, v) :: rest -> if String.equal k key then Some v else find rest
+  in
+  find table
+
 let try_enum table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
+      match keyword table s with
       | Some v ->
           let _ = next t in
           Some v
@@ -952,8 +1124,7 @@ let enum ?default label table t =
   ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (CSS Values 4 section 4.1). *)
-      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
+      match keyword table s with
       | Some v ->
           let _ = next t in
           v
@@ -967,7 +1138,7 @@ let enum_calls ?default table t =
   ws t;
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii_preserve name) table with
+      match keyword table name with
       | Some f -> f t
       | None -> (
           match default with
@@ -1012,8 +1183,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
   ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (CSS Values 4 section 4.1). *)
-      match List.assoc_opt (String.lowercase_ascii_preserve s) idents with
+      match keyword idents s with
       | Some v ->
           let _ = next t in
           v
@@ -1022,7 +1192,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
           | Some f -> f t
           | None -> err t (String.concat "" [ "unknown "; label; ": "; s ])))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii_preserve name) calls with
+      match keyword calls name with
       | Some f -> f t
       | None -> (
           match default with
@@ -1124,7 +1294,7 @@ let list_collect_step sep item t acc n max =
           restore t snap;
           Done (List.rev acc)
       | Some v ->
-          if t.cvs == item_snap then err t "list item consumed no input";
+          if at_snapshot t item_snap then err t "list item consumed no input";
           Continue (v :: acc, n + 1)
 
 let rec list_collect sep item t acc n max =
@@ -1158,3 +1328,15 @@ let try_parse_full p t =
   | exception Parse_error _ ->
       restore t snap;
       None
+
+let try_parse_full_err p t =
+  let snap = save t in
+  match p t with
+  | v ->
+      if is_done t then Ok v
+      else (
+        restore t snap;
+        Error "trailing tokens")
+  | exception Parse_error e ->
+      restore t snap;
+      Error (Error.to_string e)

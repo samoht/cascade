@@ -750,10 +750,26 @@ let test_ray_size () =
     sizes;
   neg_cursor read_ray_size "10px"
 
+(* CSS Animations 1 sec. 3: a [<keyframes-name>] is a [<custom-ident>] or a
+   [<string>], and only the ident excludes [none], so the string ["none"] names
+   [@keyframes "none"] while the keyword [none] names no animation. Chrome reads
+   [animation:"none"1s] with an [animation-name] of ["none"]; the string token
+   ends at its quote, so no space is needed before [1s]. *)
+let quoted_none_names_keyframes () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  check string "shorthand keeps the string" {|.a{animation:"none"}|}
+    (minify {|.a{animation:"none"}|});
+  check string "shorthand with a duration keeps the string"
+    {|.a{animation:"none"1s}|}
+    (minify {|.a{animation:"none" 1s}|});
+  check string "longhand keeps the string" {|.a{animation-name:"none"}|}
+    (minify {|.a{animation-name:"none"}|})
+
 let suite =
   ( "properties_animation",
     [
       test_case "transform" `Quick test_transform;
+      test_case "animation quoted none" `Quick quoted_none_names_keyframes;
       test_case "transforms" `Quick test_transforms;
       test_case "will_change" `Quick test_will_change;
       test_case "perspective_origin" `Quick test_perspective_origin;

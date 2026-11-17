@@ -254,7 +254,8 @@ built from typed values, so an invalid property or value is a compile error:
 ".btn {\n  display: inline-block;\n  background-color: #3b82f6;\n  color: #ffffff;\n  padding: .5rem;\n  border-radius: .375rem;\n}"
 ```
 
-`Css.of_string` parses a stylesheet, `Css.optimize` minifies it, and
+`Css.of_string` parses a stylesheet, `Css.optimize` minifies it,
+`Css.minify` minifies and prints it as `--minify` does, and
 `Css.inline_imports` and `Css.resolve_theme` do what the matching command-line
 options do. The diff lives in the `cascade.diff` sub-library. The core library
 depends only on `uri`, `psq`, `logs` and `mtime`, and compiles to JavaScript

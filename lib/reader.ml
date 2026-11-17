@@ -38,7 +38,7 @@ let has_bom input =
 let rec needs_preprocess input len i =
   i < len
   &&
-  match input.[i] with
+  match String.unsafe_get input i with
   | '\x00' | '\r' | '\x0C' -> true
   | _ -> needs_preprocess input len (i + 1)
 

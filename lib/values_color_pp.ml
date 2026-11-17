@@ -60,16 +60,7 @@ let rec pp_hue : hue Pp.t =
 let rec pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
-  | Num f ->
-      (* CSSOM serialisation (CSSOM 1 sec. 6.7.2) drops a leading zero on
-         fractional numbers: emit [.25] not [0.25] in both modes. Under minify,
-         round to 3 decimals (alpha precision is 1/255 ~ 0.004 in sRGB); alpha
-         is a colour channel, so [lossless] opts out of that fold like the other
-         channels. *)
-      let max_decimals =
-        if Pp.minified ctx && not ctx.Pp.lossless then 3 else 8
-      in
-      Pp.float_n max_decimals ctx f
+  | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
@@ -270,15 +261,7 @@ let string_of_scaled_color_axis ~pct_scale ctx f =
      shortest-spelling minify win, but [%] on these axes is an evergreen-target
      fact; [--enforce-spec] keeps the spec-canonical number serialisation. *)
   if ctx.Pp.minify && (not ctx.Pp.lossless) && not ctx.Pp.enforce_spec then
-    (* Derive the percentage form from what the number string [n] re-parses to,
-       not the raw float [f]: an [f] rounding to [n] ([-0.00798] -> "-.008")
-       could keep the number for a long raw percentage ("-1.995%") while the
-       re-parsed [-0.008] has a short one ("-2%"), flipping on the next pass
-       (non-idempotent). *)
-    let n_value = try float_of_string n with Failure _ -> f in
-    let pct =
-      String.concat "" [ string_of_lab_float (n_value /. pct_scale); "%" ]
-    in
+    let pct = String.concat "" [ string_of_lab_float (f /. pct_scale); "%" ] in
     if String.length pct < String.length n then pct else n
   else n
 
@@ -347,21 +330,6 @@ let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
 let pp_hsl = Pp.call "hsl" pp_hue_pct_pct_alpha
 let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
 
-(** Print a float always dropping leading zeros (for lab-like color axes). Under
-    minify the float rounds to 3 decimals - CSS Color 4 alpha precision is 1/255
-    ~ 0.004 so 3 decimals is more than display-accurate. *)
-let pp_float_drop_zero ctx f =
-  let max_decimals = if Pp.minified ctx && not ctx.Pp.lossless then 3 else 8 in
-  Pp.float_n max_decimals ctx f
-
-let pp_alpha_drop_zero : alpha Pp.t =
- fun ctx -> function
-  | None -> ()
-  | Num f -> pp_float_drop_zero ctx f
-  | Pct f -> pp_float_drop_zero ctx (f /. 100.)
-  | Var v -> pp_var pp_alpha ctx v
-  | Calc c -> pp_calc pp_alpha ctx c
-
 let string_of_lab_axis ~pct_scale ctx f =
   string_of_scaled_color_axis ~pct_scale ctx f
 
@@ -388,12 +356,7 @@ let pp_lab_like_args ~axis_pct_scale :
       && (b.[0] = '-' || b.[0] = '+'))
   then Pp.pct_sp ctx ();
   Pp.string ctx b;
-  match alpha with
-  | None -> ()
-  | a when ctx.Pp.minify && alpha_is_full a -> ()
-  | a ->
-      Pp.op_char ctx '/';
-      pp_alpha_drop_zero ctx a
+  pp_opt_alpha ctx alpha
 
 let pp_lab = Pp.call "lab" (pp_lab_like_args ~axis_pct_scale:1.25)
 let pp_oklab = Pp.call "oklab" (pp_lab_like_args ~axis_pct_scale:0.004)

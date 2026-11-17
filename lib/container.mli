@@ -97,6 +97,13 @@ val of_string : string -> (t, Error.t) result
 (** [of_string s] parses a container condition. This is [Error e] if [s] is
     malformed. *)
 
+val v : string -> t
+(** [v s] is the container condition [s] spells, for condition text written in a
+    program.
+
+    @raise Invalid_argument
+      if [s] is malformed. Use {!of_string} to deal with untrusted input. *)
+
 val read : Cursor.t -> t
 (** [read t] parses the container condition [t] holds, consuming nothing. A
     malformed condition raises {!Cursor.exception-Parse_error} anchored on the

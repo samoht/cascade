@@ -784,10 +784,10 @@ let pp_animation_space_before state ?(ends_with_paren = false)
   state.prev_ends_with_quote := ends_with_quote;
   pp ctx x
 
-let animation_name_is_default_none ctx = function
+(* Only the keyword: the string ["none"] names [@keyframes "none"] (CSS
+   Animations 1 sec. 3), so it is a name like any other. *)
+let animation_name_is_default_none = function
   | Some (None : animation_name) -> true
-  | Some (Quoted s) when Pp.minified ctx && String.lowercase_ascii s = "none" ->
-      true
   | _ -> false
 
 let animation_quote_ambiguous_name ctx anim =
@@ -810,7 +810,7 @@ let pp_animation_initial_none ctx (anim : animation_shorthand)
 
 let pp_animation_name_slot ctx state ~quote_ambiguous_name
     (anim : animation_shorthand) =
-  if not (animation_name_is_default_none ctx anim.name) then
+  if not (animation_name_is_default_none anim.name) then
     Option.iter
       (fun (name : animation_name) ->
         match name with
@@ -835,7 +835,7 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
  fun ctx anim ->
   let state = animation_pp_state () in
   let has_any_non_default = Animation.has_non_defaults anim in
-  let name_is_default_none = animation_name_is_default_none ctx anim.name in
+  let name_is_default_none = animation_name_is_default_none anim.name in
   let quote_ambiguous_name = animation_quote_ambiguous_name ctx anim in
   let ambiguous_name_last =
     Animation.ambiguous_name_kind anim <> None && not quote_ambiguous_name

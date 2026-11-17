@@ -18,22 +18,18 @@ val profile : t -> bool
 (** Whether exact size accounting is enabled for this run. *)
 
 type iteration_stat = {
-  fixpoint : int;
-  iteration : int;
-  local_iteration : int;
+  fixpoint : int;  (** the run's number, from {!start_fixpoint} *)
   before_rules : int;
   after_rules : int;
-  before_bytes : int;
-  after_bytes : int;
+  before_bytes : int;  (** [0] unless {!profile} *)
+  after_bytes : int;  (** [0] unless {!profile} *)
   bytes_saved : int;
-  active_passes : int;
-  changed_passes : int;
-  elapsed : float;
+  changed : bool;  (** whether the run rewrote the rules *)
+  elapsed : float;  (** seconds, [0.] unless {!profile} *)
 }
-(** One global factoring fixpoint iteration. *)
+(** One factoring fixpoint run. *)
 
 type counters = {
-  iterations : int;  (** [factor_rules_to_fixpoint] iterations *)
   factor_fixpoints_run : int;
       (** global factoring fixpoints attempted after the preflight *)
   factor_fixpoints_skipped : int;
@@ -81,17 +77,15 @@ val probe_nested_merge : t -> unit
 val record_iteration :
   t ->
   fixpoint:int ->
-  local_iteration:int ->
   before_rules:int ->
   before_bytes:int ->
   after_rules:int ->
   after_bytes:int ->
   bytes_saved:int ->
-  active_passes:int ->
-  changed_passes:int ->
+  changed:bool ->
   elapsed:float ->
   unit
-(** Record one factor-fixpoint iteration. *)
+(** Record one factoring fixpoint run. *)
 
 val add_saving : t -> int -> unit
 (** Add committed factoring savings for the current iteration. *)

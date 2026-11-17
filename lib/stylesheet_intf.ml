@@ -336,7 +336,7 @@ type stylesheet = statement list
 (** A CSS stylesheet is a list of statements *)
 
 type t = stylesheet
-(** Alias for backwards compatibility *)
+(** [t] is {!stylesheet}. *)
 
 (** A decision made by a structural editing callback: retain an item, replace it
     with another item, or remove it. *)

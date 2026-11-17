@@ -10,13 +10,39 @@
   past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
   a tree. A match over `Component.t` needs a case for it (#1296).
 - `Selector`, `Container`, `Supports` and `Declaration.of_string` return
-  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v`
+  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v` or
+  `Container.v`, which raise `Invalid_argument`, for text written in a program
   (#1299).
 - `Media.of_string_strict` and `value_of_string`, `Keyframe.selector_of_string`,
   `Declaration.with_value` and `Font_face.*_of_string` return a result too, and
   `Aria.of_string` an option (#1299).
-- `Css.of_string_exn` is now `Css.stylesheet`, which raises `Invalid_argument`
-  instead of `Error.Parse_error` (#1299).
+- `Css.of_string_exn` is deprecated and goes in 1.4.0: use `Css.stylesheet`,
+  which raises `Invalid_argument` where it raised `Error.Parse_error`. Until
+  then `of_string_exn` keeps its 1.2 behaviour (#1299, #1367).
+- `Optimize.duplicate_buggy_properties` and
+  `Optimize.apply_property_duplication` are deprecated and go in 1.4.0: drop the
+  call, since both return their input, as they always did.
+  `Optimize.add_compatibility_prefixes` writes the WebKit fallbacks they were
+  documented to add (#1345, #1367).
+- `Error.fail_sort_mismatch` and the seven other `Error.fail_*` raising
+  constructors are deprecated and go in 1.4.0: call `Error.fail` on the
+  constructor's value, as in `Error.fail (Error.bad_value loc ~property
+  ~reason)`. `Cursor.try_enum` and `Cursor.err_eof` are deprecated and go in
+  1.4.0: use `Cursor.option (Cursor.enum label table)`, which also skips leading
+  whitespace, and `Error.fail (Error.unterminated loc sort)`.
+  `Optimize.edges_of_rule` and its `edge` and `packed_property` types are
+  deprecated and go in 1.4.0: build the pairs from
+  `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
+  `Declaration.prop_key`. Until then each keeps its 1.2 behaviour; nothing in
+  Cascade called them (#1371).
+- `Stats.iteration_stat` loses `iteration`, `local_iteration` and
+  `active_passes`, `changed_passes` becomes `changed : bool`, and
+  `Stats.counters` loses `iterations`. A factoring run records exactly one row,
+  so `local_iteration` and `active_passes` were always 1, and `iteration` and
+  `iterations` always repeated the run number: read as counts of separate
+  passes, they described work the optimizer never did. `--profile` prints one
+  row per run with `run`, `rules-in`, `rules-out`, `bytes-in`, `saved`,
+  `changed` and `time` (#1372).
 - `Declaration.custom_property` and `Supports.property`, `func` and
   `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and
@@ -39,21 +65,31 @@
   a `Bad_value` for a property called `stylesheet` (#1331).
 - `Css.to_string ~minify:true` prints the sheet it is given. Folding selectors
   such as `:nth-child(1)` and `:is(:link,:visited)`, dropping an `@charset` or
-  an `@font-face` without `font-family` or `src`, and moving a registered
-  `<color>` variable in a `box-shadow` happen in `Css.optimize`: call it before
-  printing, or `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules` or
-  `Stylesheet.normalize_shadow_color_vars` for one step (#1350, #1351, #1354).
+  an `@font-face` without `font-family` or `src`, moving a registered `<color>`
+  variable in a `box-shadow`, rounding a colour's alpha to three decimals,
+  dropping an opaque `/1` from `lab()` and `oklab()`, dropping `0%` and `100%`
+  from a gradient's end stops and folding the spaces and dots inside a
+  `grid-template-areas` row happen in `Css.optimize`. `Css.minify` optimizes and
+  prints in one call; `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules`
+  and `Stylesheet.normalize_shadow_color_vars` each take one step (#1350, #1351,
+  #1354, #1370).
 - Two declarations of one custom property with one value are equal and hash
   alike wherever they were read: a custom property's tokens carry no source
   position, so `Component.source_loc` gives `Loc.dummy` for each. Those
   positions were offsets into the value's own text and located nothing in the
   sheet. `Component.without_locs` drops the positions from a token list (#1353).
-- `Optimize.duplicate_buggy_properties` and
-  `Optimize.apply_property_duplication` are gone: both returned their input
-  unchanged (#1345).
 
 ### Printing
 
+- `--minify` keeps the space between an `env()` name and its indices:
+  `env(--branding-padding 2)` came out as `env(--branding-padding2)`, another
+  variable (#1369).
+- `--minify` keeps the string in `animation: "none"`, which names `@keyframes
+  "none"`. It came out as the keyword `none`, no animation, and `animation:
+  "none" 1s` lost its name (#1368).
+- `lab()` and `oklab()` print a percentage alpha as written, as the other colour
+  functions do: `lab(50% 20 30 / 40%)` came out as `lab(50% 20 30 / .4)`
+  (#1370).
 - A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
   quote inside `local("...")` print back as that name (#1351).
 - `--minify` prints an attribute value as the shorter of an escaped ident and a
@@ -93,10 +129,17 @@
   selector (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read
   through an `i` or `s` flag; it could move one past the other (#1295).
 - `--minify` is about a third faster on large sheets, with the same output
-  (#1306, #1307, #1313, #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356).
+  (#1306, #1307, #1313, #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356,
+  #1361, #1362, #1363, #1364, #1365, #1374, #1375, #1376, #1377, #1378, #1379,
+  #1380).
 - `--minify` breaks a tie between merges that save the same by the shortest
   result, then by source order, so output no longer shifts for unrelated
   reasons; some sheets come out slightly smaller (#1355).
+- `--minify` reverses a `0deg` gradient whose end stops sit at `0%` and `100%`:
+  `linear-gradient(0deg,red 0%,blue 100%)` came out as
+  `linear-gradient(0deg,red,#00f)`, which minifying again shortened to
+  `linear-gradient(#00f,red)`. An opaque `/1` goes from an `oklch()` or `lch()`
+  with a `none` component, as from every other colour (#1370).
 - `--minify` prints `:not(:not(X))` as `:is(X)` when `X` holds a type or a
   combinator: `p:not(:not(.a .b))` came out as `p.a .b`, another selector
   (#1350).
@@ -121,9 +164,17 @@
   as written; a rule nested deeper loses its contents with a warning (#1296).
 - A selector nesting `:is()` more than 100 deep drops its rule with a warning
   instead of reading as an `:is()` that matches nothing (#1296).
-- Parsing is faster, most of all on custom properties and `var()` fallbacks. A
-  sheet of fallbacks that do not match their property's grammar cost its size
-  squared (#1311, #1314, #1315).
+- Parsing is faster and the lexer allocates half as much per token, most of all
+  on custom properties and `var()` fallbacks, and on a sheet of top-level rules
+  or one holding its rules in an `@layer` or `@media` block, as Tailwind output
+  does, each rule read before the next is parsed. A sheet of fallbacks that do
+  not match their property's grammar cost its size squared (#1311, #1314, #1315,
+  #1381, #1382, #1387).
+- A custom property's value is its tokens as read. `--x:\!important` keeps the
+  escaped ident as its value instead of becoming a lone backslash flagged
+  important, `--x:a/**/b` stays two tokens, written back with the empty comment
+  and kept apart from `--x:a b`, and a single-quoted string is the same value as
+  a double-quoted one whether parsed or built from text (#1386).
 
 ### CLI tools
 

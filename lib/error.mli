@@ -141,13 +141,9 @@ val to_string : ?severity:severity -> t -> string
 
 (** {1 Construction and raising}
 
-    Two flavours, [Stdlib.failwith]-style:
-
-    - Value constructors ([sort_mismatch], [bad_selector], ...) build an {!t}.
-      Use when collecting non-fatal warnings, e.g. {!Parser.stylesheet}.
-    - Raising constructors ([fail_sort_mismatch], [fail_bad_selector], ...)
-      build the same error and immediately raise {!Parse_error}. Use at the
-      point of failure inside a decoder. *)
+    The constructors ([sort_mismatch], [bad_selector], ...) build an {!t}, which
+    a reader collects as a warning, e.g. {!Parser.stylesheet}, or raises with
+    {!fail} at the point of failure. *)
 
 exception Parse_error of t
 (** Raised by parsers (and the {!Cursor} helpers) on the first unrecoverable
@@ -245,29 +241,38 @@ val unterminated : Loc.t -> Sort.t -> t
 
 (** {2 Raising constructors}
 
-    [fail_x args] is [fail (x args)]. *)
+    [fail_x args] is [fail (x args)]. Deprecated, removed in 1.4.0: call {!fail}
+    on the constructor's value. *)
 
 val fail_sort_mismatch :
   Loc.t -> sort:Sort.t -> expected:Sort.t -> found:Sort.t -> 'a
+[@@deprecated "use Error.fail (Error.sort_mismatch ...); removed in 1.4.0"]
 (** [fail_sort_mismatch loc ~sort ~expected ~found] raises {!sort_mismatch}. *)
 
 val fail_unexpected_token : Loc.t -> sort:Sort.t -> Token.kind -> 'a
+[@@deprecated "use Error.fail (Error.unexpected_token ...); removed in 1.4.0"]
 (** [fail_unexpected_token loc ~sort k] raises {!unexpected_token}. *)
 
 val fail_missing_token : Loc.t -> sort:Sort.t -> string -> 'a
+[@@deprecated "use Error.fail (Error.missing_token ...); removed in 1.4.0"]
 (** [fail_missing_token loc ~sort what] raises {!missing_token}. *)
 
 val fail_bad_selector : Loc.t -> string -> 'a
+[@@deprecated "use Error.fail (Error.bad_selector ...); removed in 1.4.0"]
 (** [fail_bad_selector loc reason] raises {!bad_selector}. *)
 
 val fail_bad_value : Loc.t -> property:string -> reason:string -> 'a
+[@@deprecated "use Error.fail (Error.bad_value ...); removed in 1.4.0"]
 (** [fail_bad_value loc ~property ~reason] raises {!bad_value}. *)
 
 val fail_bad_condition : Loc.t -> at_rule:string -> reason:string -> 'a
+[@@deprecated "use Error.fail (Error.bad_condition ...); removed in 1.4.0"]
 (** [fail_bad_condition loc ~at_rule ~reason] raises {!bad_condition}. *)
 
 val fail_unknown_at_rule : Loc.t -> string -> 'a
+[@@deprecated "use Error.fail (Error.unknown_at_rule ...); removed in 1.4.0"]
 (** [fail_unknown_at_rule loc name] raises {!unknown_at_rule}. *)
 
 val fail_unterminated : Loc.t -> Sort.t -> 'a
+[@@deprecated "use Error.fail (Error.unterminated ...); removed in 1.4.0"]
 (** [fail_unterminated loc s] raises {!unterminated}. *)

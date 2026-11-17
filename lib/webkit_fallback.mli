@@ -5,8 +5,7 @@
     This sits apart from {!Optimize} because two passes have to agree about it.
     The prefix synthesis reads it to write a declaration, and the rule factoring
     reads it to refuse a rewrite that would separate the two halves of a pair it
-    wrote. A second table spelling the same relation is how they came to
-    disagree. *)
+    wrote. *)
 
 (** The families with a prefixed spelling. Sealed: a property that grows one
     stops every site that decides about the set from compiling. *)
@@ -44,10 +43,10 @@ val of_declaration :
     has no prefixed spelling, or [decl] heads no family. *)
 
 val holds_a_prefixed_spelling : Declaration.declaration list -> bool
-(** [holds_a_prefixed_spelling decls] is whether any of [decls] is spelled with
-    a [-webkit-] prefix. Every prefixed half of a pair is, so a list this
-    refuses holds no pair: it is the cheap filter in front of {!is_pair}, not
-    the relation itself. *)
+(** [holds_a_prefixed_spelling decls] is whether any of [decls] is the prefixed
+    spelling of a family, read through a theme guard. A list this refuses holds
+    no pair: it is the cheap filter in front of {!is_pair}, not the relation
+    itself. *)
 
 val is_pair : Declaration.declaration -> Declaration.declaration -> bool
 (** [is_pair a b] is whether the two are the two halves of one fallback pair,

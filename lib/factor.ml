@@ -7,21 +7,12 @@ let src = Logs.Src.create "cascade.factor" ~doc:"Cascade rule factoring"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 let rules_pp_size = Size.rules
-let list_map_preserve = Common.List.map_preserve
 
 (* The memo key carries a whole run of rules. The default structural hash reads
    only the first handful of nodes in it, so runs sharing a prefix land in one
    bucket and each probe then compares rule lists in full; folding the cached
-   per-declaration hashes separates the buckets in one cheap integer pass, and
-   the structural check is left to confirm the one entry that matches. *)
-let mix acc x = (acc * 31) + x
-
-let rule_hash (r : rule) =
-  List.fold_left
-    (fun acc d -> mix acc (Declaration.hash d))
-    (Selector.hash r.Stylesheet_intf.selector)
-    r.Stylesheet_intf.declarations
-
+   per-rule hashes separates the buckets in one cheap integer pass, and the
+   structural check is left to confirm the one entry that matches. *)
 module Cache_tbl = Hashtbl.Make (struct
   type t = string * rule list
 
@@ -29,7 +20,7 @@ module Cache_tbl = Hashtbl.Make (struct
 
   let hash (knobs, rules) =
     List.fold_left
-      (fun acc r -> mix acc (rule_hash r))
+      (fun acc r -> (acc * 31) + Stylesheet.rule_hash r)
       (Hashtbl.hash knobs) rules
 end)
 
@@ -100,38 +91,36 @@ let should_run_preflight ~ctx summary =
     Stats.add_preflight_gain (Ctx.stats ctx) (Preflight.estimated_gain summary);
   Preflight.useful summary || Ctx.aggressive ctx
 
-let record_iteration stats ~fixpoint ~local_iteration ~before_rules
-    ~before_bytes ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed =
-  Stats.record_iteration stats ~fixpoint ~local_iteration ~before_rules
-    ~before_bytes ~after_rules ~after_bytes ~bytes_saved ~active_passes:1
-    ~changed_passes:(if changed then 1 else 0)
-    ~elapsed
-
-let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
+let optimize_graph ~ctx ~finalize ~fixpoint rules graph =
   let stats = Ctx.stats ctx in
   Stats.reset_saving stats;
   let before_rules = List.length rules in
   let profile = Stats.profile stats in
   let before_bytes = if profile then rules_pp_size rules else 0 in
-  let timer = Mtime_clock.counter () in
+  let timer = if profile then Some (Mtime_clock.counter ()) else None in
   let { Rule_scheduler.graph; _ } = Rule_scheduler.run ~ctx ~finalize graph in
-  let ordered = ordered_rules rules graph in
-  let rules' = list_map_preserve finalize ordered in
+  (* A produced rule left the scheduler finalized, and an input rule arrives
+     finalized, so the order is the result. *)
+  let rules' = ordered_rules rules graph in
   let after_bytes = if profile then rules_pp_size rules' else 0 in
-  let elapsed = Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9 in
+  let elapsed =
+    match timer with
+    | Some timer -> Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9
+    | None -> 0.
+  in
   let bytes_saved = Stats.saving stats in
   (* Both return the input unchanged by physical identity on a no-op, so a
      pointer compare detects change without rendering to CSS. *)
   let changed = rules' != rules in
   let after_rules = List.length rules' in
-  record_iteration stats ~fixpoint ~local_iteration ~before_rules ~before_bytes
+  Stats.record_iteration stats ~fixpoint ~before_rules ~before_bytes
     ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed;
-  (* Per fixpoint iteration, not per rule, so the closure cost is noise. The
-     byte columns are only computed under [--profile]; rules and savings are
+  (* Per fixpoint, not per rule, so the closure cost is noise. The byte columns
+     and the time are only measured under [--profile]; rules and savings are
      always available. *)
   Log.debug (fun m ->
-      m "fixpoint %d.%d: %d -> %d rules, %d bytes saved, %.3fs%s" fixpoint
-        local_iteration before_rules after_rules bytes_saved elapsed
+      m "fixpoint %d: %d -> %d rules, %d bytes saved%s" fixpoint before_rules
+        after_rules bytes_saved
         (if changed then "" else " (no change)"));
   if changed then rules' else rules
 
@@ -191,9 +180,6 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
   | None ->
       let stats = Ctx.stats ctx in
       let summary = Preflight.summarize rules in
-      let graph =
-        Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
-      in
       let known_revert =
         match cache with
         | Some cache -> near_reverted cache summary
@@ -203,15 +189,17 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
         if known_revert || not (should_run_preflight ~ctx summary) then begin
           Stats.skip_fixpoint stats;
           log_skip ~known_revert summary;
-          settle (ordered_rules rules graph)
+          (* A graph fresh from [rules] orders them as given, so neither this
+             nor the unfactored alternative below needs one. *)
+          settle rules
         end
         else begin
           let fixpoint = Stats.start_fixpoint stats in
-          let unfactored = settle (ordered_rules rules graph) in
-          let optimized =
-            optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules
-              graph
+          let unfactored = settle rules in
+          let graph =
+            Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
           in
+          let optimized = optimize_graph ~ctx ~finalize ~fixpoint rules graph in
           let factored = settle optimized in
           if
             optimized != rules

@@ -583,6 +583,11 @@ let stylesheet ?strict ?filename ?meta ?enforce_spec css =
   | Error e ->
       invalid_arg (String.concat "" [ "Css.stylesheet: "; Error.to_string e ])
 
+let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
+  match of_string ?strict ?filename ?meta ?enforce_spec css with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error e -> Error.fail e
+
 (* Splicing a [@layer] body into its parent replaces one statement with several,
    which [edit_statements] cannot express and which does not need it: the splice
    is the [concat_map] over a block, and the descent below it is still
@@ -686,6 +691,10 @@ let optimize ?scope ?targets ?judge ?flatten_nesting ?lossless ?enforce_spec
   Optimize.stylesheet ?scope ?targets ?judge ?flatten_nesting ?lossless
     ?enforce_spec ?aggressive ?regroup ?closed_world ?objective
     ?prune_unused_custom_props ?stats stylesheet
+
+let minify ?lossless ?enforce_spec ?rename_custom_property stylesheet =
+  optimize ?lossless ?enforce_spec stylesheet
+  |> to_string ~minify:true ?lossless ?enforce_spec ?rename_custom_property
 
 let flatten_nesting = Optimize.flatten_nesting
 let canonicalize_rule_order = Rule_order.canonicalize

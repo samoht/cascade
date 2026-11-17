@@ -820,9 +820,16 @@ let test_grid_flex_math () =
   neg_cursor read_grid_flex_math "calc(100px)"
 
 let test_grid_template_areas () =
-  check_grid_template_areas ~expected:"\"nav main\"\". foot\""
+  check_grid_template_areas ~expected:"\"nav  main\"\".    foot\""
     "\"nav  main\" \".    foot\"";
-  check_grid_template_areas ~expected:"\". .\"" "\".  .\"";
+  check_grid_template_areas ~expected:"\".  .\"" "\".  .\"";
+  (* CSS Grid 2 sec. 7.3: whitespace separates the cells of a row and a run of
+     periods is one null cell token, so the optimizer spells each row as its
+     cells one space apart and each null cell as one [.]. *)
+  decl_optimizes ~prop:"grid-template-areas" ~held:"\"nav  main\"\".    foot\""
+    ~into:"\"nav main\"\". foot\"" "\"nav  main\" \".    foot\"";
+  decl_optimizes ~prop:"grid-template-areas" ~held:"\"..  a\"" ~into:"\". a\""
+    "\"..  a\"";
   check_grid_template_areas ~minify:false
     ~expected:"\"nav  main\" \".    foot\"" "\"nav  main\" \".    foot\"";
   neg_cursor read_grid_template_areas "\"nav/main\"";

@@ -395,8 +395,9 @@ let test_custom_prop_empty_edges _buf =
    declarations it calls equal, built in one domain, are one object, so the
    optimizer's equality tests read a pointer rather than walk two values. The
    pairs hold equal declarations parsed apart, unequal ones, a NaN that only
-   [compare] equates with itself, and custom properties over arbitrary token
-   streams. *)
+   [compare] equates with itself, custom properties over arbitrary token
+   streams, and each of those under a theme guard, so a guarded declaration
+   meets an unguarded one and guards that differ only in their variable. *)
 let test_equal_is_compare buf =
   let texts =
     [
@@ -410,6 +411,8 @@ let test_equal_is_compare buf =
   in
   let parsed = List.filter_map parse_declaration (texts @ texts) in
   let decls = parsed @ List.map Css.Declaration.normalize parsed in
+  let guarded var_name = List.map (Css.Declaration.theme_guarded ~var_name) in
+  let decls = decls @ guarded "--a" decls @ guarded "--b" decls in
   List.iter
     (fun a ->
       List.iter
@@ -423,6 +426,43 @@ let test_equal_is_compare buf =
         decls)
     decls
 
+(* The optimizer tests property identity with [equal_prop_key] and orders it
+   with [compare_prop_key], both typed. Each has to answer what structural
+   equality answers on the packed property, over typed properties, custom
+   properties and properties the model does not know. *)
+let test_prop_key_is_structural buf =
+  let texts =
+    [
+      declaration_text buf 0;
+      declaration_text buf 1;
+      declaration_text buf 2;
+      "color:blue";
+      "margin-top:0";
+      "--" ^ ident buf 3 ^ ":1";
+      "--" ^ ident buf 4 ^ ":2";
+      "-x-" ^ ident buf 5 ^ ":1";
+      "-x-" ^ ident buf 6 ^ ":2";
+    ]
+  in
+  let keys =
+    List.filter_map parse_declaration texts
+    |> List.map Css.Declaration.property_key
+  in
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          let expected = Stdlib.( = ) a b in
+          if Css.Declaration.equal_prop_key a b <> expected then
+            failf "equal_prop_key answers %b, structural equality %b"
+              (not expected) expected;
+          if Int.equal (Css.Declaration.compare_prop_key a b) 0 <> expected then
+            failf "compare_prop_key is %d, structural equality %b"
+              (Css.Declaration.compare_prop_key a b)
+              expected)
+        keys)
+    keys
+
 let suite =
   ( "declaration",
     [
@@ -430,6 +470,8 @@ let suite =
         test_read_declaration_crash_safety;
       test_case "equal_declaration agrees with compare" [ bytes ]
         test_equal_is_compare;
+      test_case "property identity agrees with structural equality" [ bytes ]
+        test_prop_key_is_structural;
       test_case "read_declaration crash safety over non-ascii bytes" [ bytes ]
         test_declaration_unicode_bytes;
       test_case "serialization idempotent" [ bytes ]

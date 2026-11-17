@@ -172,11 +172,70 @@ let test_normalize_is_its_own_fixed_point () =
     (Ctx.of_scope (Some `Stylesheet))
     ".a{background:red}.a{background-color:blue;background-image:none}"
 
+(* [normalize] deduplicates each rule once, in [single]: dropping the
+   declarations a later rule shadows keeps a deduplicated list deduplicated, so
+   the [finalize] after it only composes. Deduplicating again there, as
+   [finalize] does on its own, gives the same rules. The runs hold duplicates at
+   every importance, fallbacks a browser target keeps, vendor aliases, longhands
+   after their shorthand, box longhands to compose, and rules of one selector
+   that shadow each other before and after composition. *)
+let test_normalize_deduplicates_once () =
+  let held_of rs =
+    List.fold_left
+      (fun held (r : Stylesheet.rule) -> Shorthand.held_add held r.declarations)
+      Shorthand.held_none rs
+  in
+  let twice ctx ~held run =
+    List.map (Rule.single ~ctx) run
+    |> Rule.drop_shadowed
+    |> List.map (Rule.finalize ~held ~canonicalize_selector:false ~ctx)
+    |> Rule.drop_shadowed
+  in
+  let runs =
+    [
+      ".a{color:red;color:blue;color:red!important;color:green}";
+      ".a{display:-webkit-box;display:flex;display:grid}";
+      ".a{-webkit-border-radius:2px;border-top-left-radius:1px;border-top-right-radius:1px;border-bottom-right-radius:1px;border-bottom-left-radius:1px}";
+      ".a{margin:0;margin-top:1px;margin-top:2px;padding-left:1px}";
+      ".a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:4px;margin-top:5px}";
+      ".a{margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}.a{margin-top:2px}";
+      ".a{margin-top:1px}.a{margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:4px}";
+      ".a{background:red}.a{background-color:blue;background-image:none;background-position:0 \
+       0;background-size:auto;background-repeat:repeat;background-attachment:scroll;background-origin:padding-box;background-clip:border-box}";
+      ".a{--x:1;--x:2;color:var(--x);color:red}";
+      ".a{font-size:1px;font-family:a;font-weight:700;font-style:italic;line-height:2;font:12px \
+       b;font-size:2px}";
+      ".a,.b{color:red}.b{color:blue}.a{color:green!important}";
+      ".a{border-width:1px;border-style:solid;border-color:red;border-top:0}";
+    ]
+  in
+  let contexts =
+    [
+      ("fragment", Ctx.fragment);
+      ("stylesheet", Ctx.of_scope (Some `Stylesheet));
+      ("evergreen", Ctx.of_scope ~judge:Support.evergreen (Some `Stylesheet));
+    ]
+  in
+  List.iter
+    (fun (label, ctx) ->
+      List.iter
+        (fun css ->
+          let run = rules css in
+          let held = held_of run in
+          Alcotest.(check (list string))
+            (String.concat "" [ label; ": "; css ])
+            (rule_strings (twice ctx ~held run))
+            (rule_strings (Rule.normalize ~ctx ~held run)))
+        runs)
+    contexts
+
 let suite =
   ( "rule",
     [
       Alcotest.test_case "normalize is its own fixed point" `Quick
         test_normalize_is_its_own_fixed_point;
+      Alcotest.test_case "normalize deduplicates once" `Quick
+        test_normalize_deduplicates_once;
       Alcotest.test_case "single deduplicates without box composition" `Quick
         test_single_deduplicates_without_box_composition;
       Alcotest.test_case "finalize composes and canonicalizes selector" `Quick

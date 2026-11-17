@@ -26,18 +26,19 @@ away.
 `--profile --minify` together must still print the full report: this is the
 positive control that must keep working. Two rules sharing a declaration
 give the global factoring fixpoint real work, so the report is non-empty and
-names its iterations (the header line's counts, and the per-iteration table).
-It opens with where the run spent its time.
+counts its runs, then gives one row per run: the rules and bytes it started
+from, the rules it ended with, what it saved, whether it changed anything and
+its time. It opens with where the run spent its time.
 
   $ cat > dup.css <<EOF
   > .a { color: red }
   > .b { color: red }
   > EOF
   $ cascade --minify --profile dup.css > /dev/null 2>profile2.txt
-  $ grep -o "factor fixpoint ([0-9]* runs, [0-9]* iterations" profile2.txt
-  factor fixpoint (2 runs, 2 iterations
-  $ grep -c "rules-in" profile2.txt
-  1
+  $ grep -o "factor fixpoint ([0-9]* runs," profile2.txt
+  factor fixpoint (2 runs,
+  $ grep "rules-in" profile2.txt
+    run  rules-in rules-out  bytes-in     saved changed     time
   $ head -1 profile2.txt | sed -E 's/[0-9]+\.[0-9]+s/Ns/g'
   time: read Ns, optimize Ns, print Ns, total Ns
 

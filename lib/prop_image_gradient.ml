@@ -139,33 +139,6 @@ let rec pp_radial_size : radial_size Pp.t =
       Pp.space ctx ();
       pp_length_percentage ~always:true ctx b
 
-(* CSS Images 4 sec. 3.5.3 color-stop fixup: an omitted position on the first
-   stop defaults to [0%], on the last stop to [100%]. The reverse holds for
-   minify: drop an explicit [Pct 0.] from the first stop and [Pct 100.] from the
-   last when there's no second-position carrier; the resolved color stop list
-   stays identical. *)
-let canonicalise_gradient_stops stops =
-  let strip_pos stop =
-    match stop with
-    | Color_percentage (c, _, _) -> Color_percentage (c, None, None)
-    | _ -> stop
-  in
-  let trailing_default stop expected =
-    match stop with
-    | Color_percentage (_, Some (Pct p), None) when p = expected -> true
-    | _ -> false
-  in
-  let rec strip_last = function
-    | [] -> []
-    | [ last ] when trailing_default last 100. -> [ strip_pos last ]
-    | x :: rest -> x :: strip_last rest
-  in
-  match stops with
-  | [] -> []
-  | first :: rest when trailing_default first 0. ->
-      strip_pos first :: strip_last rest
-  | _ -> strip_last stops
-
 (* CSS Images 3 sec. 3.2.1: an omitted shape defaults to [ellipse], an omitted
    size to [farthest-corner], and an omitted position to [center]. Under minify,
    drop a component that equals its default - the resolved gradient stays
@@ -290,9 +263,7 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | Length len -> pp_length ctx len
   | Channel channel -> pp_channel ctx channel
   | Percentage pct -> pp_percentage ctx pct
-  | List stops ->
-      Pp.list ~sep:Pp.comma pp_gradient_stop ctx
-        (if Pp.minified ctx then canonicalise_gradient_stops stops else stops)
+  | List stops -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
   | Position pos -> pp_gradient_position ctx pos
   | Direction dir -> pp_gradient_direction ctx dir
 
@@ -373,10 +344,7 @@ let pp_conic_gradient_named name ctx (config, stops) =
         match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
-      | _ ->
-          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
-            (if Pp.minified ctx then canonicalise_gradient_stops stops
-             else stops))
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (config, stops)
 
 let pp_linear_gradient_named name ctx (dir, stops) =
@@ -405,10 +373,7 @@ let pp_linear_gradient_named name ctx (dir, stops) =
           match stops with [] -> () | _ -> Pp.comma ctx ()));
       match stops with
       | [] -> ()
-      | _ ->
-          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
-            (if Pp.minified ctx then canonicalise_gradient_stops stops
-             else stops))
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (dir, stops)
 
 let pp_webkit_linear_gradient_named name ctx (dir, stops) =
@@ -422,10 +387,7 @@ let pp_webkit_linear_gradient_named name ctx (dir, stops) =
         match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
-      | _ ->
-          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
-            (if Pp.minified ctx then canonicalise_gradient_stops stops
-             else stops))
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (dir, stops)
 
 let pp_radial_gradient_named name ctx (config, stops) =
@@ -440,10 +402,7 @@ let pp_radial_gradient_named name ctx (config, stops) =
         match stops with [] -> () | _ -> Pp.comma ctx ());
       match stops with
       | [] -> ()
-      | _ ->
-          Pp.list ~sep:Pp.comma pp_gradient_stop ctx
-            (if Pp.minified ctx then canonicalise_gradient_stops stops
-             else stops))
+      | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (config, stops)
 
 let normalize_radial_size : radial_size -> radial_size =
@@ -484,6 +443,29 @@ let rec normalize_gradient_direction : gradient_direction -> gradient_direction
   | (To_top_right | To_bottom_right | To_bottom_left | To_top_left | Var _) as
     other ->
       other
+
+(* CSS Images 4 sec. 3.5.3: an omitted position on the first stop is [0%] and on
+   the last [100%], so a stop holding exactly that one position drops it and the
+   resolved stop list stays the same. *)
+let drop_default_stop_positions stops =
+  let at expected = function
+    | Color_percentage (_, Some (Pct p), None) -> Float.equal p expected
+    | _ -> false
+  in
+  let strip = function
+    | Color_percentage (c, _, _) -> Color_percentage (c, None, None)
+    | stop -> stop
+  in
+  let rec last = function
+    | [] -> []
+    | [ stop ] when at 100. stop -> [ strip stop ]
+    | stop :: rest as stops ->
+        let rest' = last rest in
+        if rest' == rest then stops else stop :: rest'
+  in
+  match stops with
+  | first :: rest when at 0. first -> strip first :: last rest
+  | stops -> last stops
 
 let rec normalize_gradient_stop ?(lossless = false) :
     gradient_stop -> gradient_stop =

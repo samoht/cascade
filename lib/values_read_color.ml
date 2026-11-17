@@ -216,22 +216,6 @@ let rec read_color_components space t acc =
     | _ -> ());
     read_color_components space t (component :: acc)
 
-(** Read hex color digits. The tokenizer represents [#deadbeef] as a single
-    [Hash] token with the digits as value. Kept for parity with callers outside
-    this module. *)
-let _read_hex_color t =
-  let hex =
-    match Cursor.hash_opt t with
-    | Some s -> s
-    | None -> Cursor.err_invalid t "expected hex color"
-  in
-  let len = String.length hex in
-  if len = 0 then Cursor.err_invalid t "empty hex color"
-  else if len = 3 || len = 4 || len = 6 || len = 8 then hex
-  else
-    Cursor.err_invalid t
-      (String.concat "" [ "invalid hex color length: "; string_of_int len ])
-
 (** Normalize hue value to 0-360 range *)
 let normalize_hue (degrees : float) : float =
   let normalized = mod_float degrees 360.0 in

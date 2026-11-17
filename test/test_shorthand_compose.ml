@@ -1018,9 +1018,49 @@ let test_font_contraction_keeps_an_earlier_longhand () =
       in
       if not bold then Alcotest.failf "the weight was reset: %s -> %s" css out
 
+(* Shorthand composition reads a family's declarations together: a longhand run
+   becomes its shorthand, a shorthand and its own longhand fold into one, a
+   reset moves before the shorthand that writes it. None of that happens to a
+   declaration on its own, in either scope, so a body of one declaration
+   composes to itself and the dedup step does not run the composers on it. Asked
+   of every value of every property the grammar inventory models, typed and as
+   the unknown property the reader keeps when a value defeats it, at both
+   importances. The slots the rest of a rule holds only refuse a composition, so
+   the answer stands for any of them. *)
+let test_a_single_declaration_composes_to_itself () =
+  let composes_to_itself ctx decl =
+    match Shorthand.compose_shorthands ~ctx [ (0, decl) ] with
+    | [ (0, composed) ] when composed == decl -> ()
+    | _ ->
+        Alcotest.failf "%s composed on its own"
+          (Declaration.to_string ~minify:true decl)
+  in
+  List.iter
+    (fun scope ->
+      let ctx = Ctx.of_scope (Some scope) in
+      List.iter
+        (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
+          List.iter
+            (fun value ->
+              let decls =
+                match Declaration.of_string (row.property ^ ":" ^ value) with
+                | Error _ -> []
+                | Ok decl -> [ decl; Declaration.with_opaque_value decl value ]
+              in
+              List.iter
+                (fun decl ->
+                  composes_to_itself ctx decl;
+                  composes_to_itself ctx (Declaration.important decl))
+                decls)
+            row.positives)
+        Cascade_spec_inventory.Property_grammar.rows)
+    [ `Fragment; `Stylesheet ]
+
 let suite =
   ( "shorthand_compose",
     [
+      Alcotest.test_case "a single declaration composes to itself" `Quick
+        test_a_single_declaration_composes_to_itself;
       Alcotest.test_case "layer contraction keeps an earlier shorthand" `Quick
         test_layer_contraction_keeps_an_earlier_shorthand;
       Alcotest.test_case "font contraction keeps an earlier longhand" `Quick

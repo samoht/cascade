@@ -556,10 +556,11 @@ let normal_pair_needs_token_boundary prev next =
    have its whitespace normalized, so the stream a var() substitutes keeps the
    runs the author wrote. Syntax 3 sec. 9.1's one-space serialization is the
    right answer for a reserialized token stream and the wrong one here, which is
-   why this is its own entry point rather than a flag on that one. The boundary
-   space {!cvs_to_buffer} inserts between components that would otherwise merge
-   is NOT whitespace normalization and is kept: dropping it turns [a/**/b] into
-   the single ident [ab].
+   why this is its own entry point rather than a flag on that one. Between two
+   components that would otherwise merge it writes the empty comment sec. 9 asks
+   for: a comment is nothing (sec. 4.3.2), where a space would add a whitespace
+   token to the stream, and writing neither turns [a/**/b] into the single ident
+   [ab].
 
    Every printer writes a {!Component.Flat} run this way: its tokens are kept as
    read, so the run prints back the way the tree it stands for would. *)
@@ -593,7 +594,7 @@ and cvs_to_buffer_verbatim buf cvs =
     | cv :: rest ->
         (match prev with
         | Some p when normal_pair_needs_token_boundary p cv ->
-            Buffer.add_char buf ' '
+            Buffer.add_string buf "/**/"
         | _ -> ());
         cv_to_buffer_verbatim buf cv;
         loop (Some cv) rest
@@ -984,13 +985,19 @@ let custom_min_ws_separator ~in_math ~opaque buf prev separated rest =
       true
   | _ -> separated
 
-let custom_min_item_separator ~preserve_numeric_sign buf prev separated cv =
+(* Two tokens the source wrote with no whitespace between, the way [a/**/b]
+   writes them, are two tokens and no whitespace token: CSS Syntax 3 (ED) sec. 9
+   separates them with an empty comment, which is nothing (sec. 4.3.2), where a
+   space would add a whitespace token to the stream. *)
+let custom_min_item_separator ~preserve_numeric_sign ~after_whitespace buf prev
+    separated cv =
   match prev with
   | Some p
     when (not separated)
          && (not preserve_numeric_sign)
          && pair_needs_token_boundary ~minify_numeric:true p cv ->
-      Buffer.add_char buf ' '
+      if after_whitespace then Buffer.add_char buf ' '
+      else Buffer.add_string buf "/**/"
   | _ -> ()
 
 (* Idents are ASCII-case-insensitive per CSS Values 4 sec. 4.1, but the parser
@@ -1071,7 +1078,8 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
           preserve_minified_numeric_sign ~in_math ~keep_authored_whitespace:true
             ~after_whitespace prev cv
         in
-        custom_min_item_separator ~preserve_numeric_sign buf prev separated cv;
+        custom_min_item_separator ~preserve_numeric_sign ~after_whitespace buf
+          prev separated cv;
         cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
           ~preserve_numeric_sign buf cv;
         loop (Some cv) false false rest
@@ -1220,35 +1228,169 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
   in
   loop []
 
-let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
-    =
+(* The contents of a block, read as its reader asks for them: a chunk at a time,
+   each chunk the component values up to a curly block or a [;] at the top level
+   of the block, or up to its end. Nothing links one chunk to the next, so a
+   reader that keeps no earlier chunk leaves what it has read to the minor
+   heap. *)
+type body = {
+  placeholder : Component.block Component.node;
+  mutable taken : bool;
+  closed : Component.block Component.node option ref;
+  pull : unit -> Component.t list option;
+}
+
+type streamed = {
+  name : string;
+  prelude : Component.t list;
+  start_loc : Loc.t;
+  body : body;
+}
+
+type item = Rule of Component.rule | Streamed of streamed
+
+(* The body of a block whose [{] was the token at [open_loc], as
+   [consume_simple_block ~depth:1] reads it: the same component values, and the
+   same report of a block the input leaves open, made when the end is read. *)
+let streamed_body ~meta lexer ~warnings ~open_loc =
+  let closed = ref None in
+  let finish (ended : Token.t) =
+    let node : Component.block Component.node =
+      {
+        node =
+          {
+            opening = Token.Curly;
+            value = [];
+            closed = (match ended.kind with Token.Eof -> false | _ -> true);
+          };
+        loc = Loc.union open_loc ended.loc;
+      }
+    in
+    warn_unclosed ~meta lexer warnings node;
+    closed := Some node
+  in
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
-    | Token.Eof -> List.rev acc
+    | Token.Eof | Token.Close Token.Curly ->
+        finish tok;
+        Some (List.rev acc)
+    | _ -> (
+        let cv = consume_nested_value ~depth:1 lexer tok in
+        match cv with
+        | Block { node = { opening = Token.Curly; _ }; _ }
+        | Preserved { kind = Token.Semicolon; _ } ->
+            Some (List.rev (cv :: acc))
+        | _ -> loop (cv :: acc))
+  in
+  let pull () = if Option.is_some !closed then None else loop [] in
+  let placeholder : Component.block Component.node =
+    {
+      node = { opening = Token.Curly; value = []; closed = true };
+      loc = open_loc;
+    }
+  in
+  { placeholder; taken = false; closed; pull }
+
+let drain body =
+  while Option.is_some (body.pull ()) do
+    ()
+  done
+
+let streamed_at s (block : Component.block Component.node) : Component.rule =
+  At
+    {
+      node = { name = s.name; prelude = s.prelude; block = Some block };
+      loc = Loc.union s.start_loc block.loc;
+    }
+
+let materialize s =
+  let rec collect acc =
+    match s.body.pull () with
+    | Some cvs -> collect (cvs :: acc)
+    | None -> List.concat (List.rev acc)
+  in
+  let value = collect [] in
+  match !(s.body.closed) with
+  | Some block -> streamed_at s { block with node = { block.node with value } }
+  | None -> assert false
+
+let closed_rule s =
+  drain s.body;
+  match !(s.body.closed) with
+  | Some block -> streamed_at s block
+  | None -> assert false
+
+(* CSS Syntax 3 (ED) sec. 5.5.2 as [consume_at_rule] has it, but a block, when
+   one opens, is left to [f] as a stream. *)
+let consume_streamed_at_rule ~meta lexer ~name ~start_loc ~warnings f acc =
+  let rec loop prelude =
+    let tok = Lexer.peek lexer in
+    match tok.Token.kind with
+    | Token.Semicolon | Token.Eof ->
+        let _ = Lexer.next lexer in
+        f acc
+          (Rule
+             (At
+                {
+                  node = { name; prelude = List.rev prelude; block = None };
+                  loc = Loc.union start_loc tok.loc;
+                }))
+    | Token.Open Token.Curly ->
+        let _ = Lexer.next lexer in
+        let body = streamed_body ~meta lexer ~warnings ~open_loc:tok.loc in
+        let acc =
+          f acc (Streamed { name; prelude = List.rev prelude; start_loc; body })
+        in
+        drain body;
+        acc
+    | _ ->
+        let _ = Lexer.next lexer in
+        let cv = consume_component_value_from lexer tok in
+        loop (cv :: prelude)
+  in
+  loop []
+
+(* [f] sees each rule as soon as it is read, so a caller that is done with a
+   rule before the next one starts never holds the whole sheet's tree. The
+   at-rules [stream] names have their block handed over as a stream. *)
+let fold_list_of_rules ~meta lexer ~top_level ~warnings ~stream f init =
+  let qualified acc tok =
+    match
+      consume_qualified_rule ~meta lexer ~start_loc:tok.Token.loc ~warnings
+    with
+    | Some qr -> f acc (Rule (Qualified qr))
+    | None -> acc
+  in
+  let rec loop acc =
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof -> acc
     | Token.Whitespace _ -> loop acc
     | (Token.Cdo | Token.Cdc) when top_level -> loop acc
-    | Token.Cdo | Token.Cdc -> (
-        Lexer.reconsume lexer tok;
-        match
-          consume_qualified_rule ~meta lexer ~start_loc:tok.loc ~warnings
-        with
-        | Some qr -> loop (Qualified qr :: acc)
-        | None -> loop acc)
+    | Token.At_keyword name when stream name ->
+        loop
+          (consume_streamed_at_rule ~meta lexer ~name ~start_loc:tok.loc
+             ~warnings f acc)
     | Token.At_keyword name ->
         let ar =
           consume_at_rule ~meta lexer ~name ~start_loc:tok.loc ~warnings
         in
-        loop (At ar :: acc)
-    | _ -> (
+        loop (f acc (Rule (At ar)))
+    | _ ->
         Lexer.reconsume lexer tok;
-        match
-          consume_qualified_rule ~meta lexer ~start_loc:tok.loc ~warnings
-        with
-        | Some qr -> loop (Qualified qr :: acc)
-        | None -> loop acc)
+        loop (qualified acc tok)
   in
-  loop []
+  loop init
+
+let rule_of_item = function Rule rule -> rule | Streamed s -> materialize s
+
+let consume_list_of_rules ~meta lexer ~top_level ~warnings =
+  List.rev
+    (fold_list_of_rules ~meta lexer ~top_level ~warnings
+       ~stream:(fun _ -> false)
+       (fun acc item -> rule_of_item item :: acc)
+       [])
 
 let is_curly_block = function
   | Block { node = { opening = Token.Curly; _ }; _ } -> true
@@ -1288,6 +1430,20 @@ let value_has_invalid_block ~is_custom value =
       let after_has = non_ws after <> [] in
       if is_custom then before_has && after_has else before_has || after_has
 
+(* CSS Syntax 3 (ED) sec. 5.5.6: a declaration's value is trimmed of whitespace,
+   and when its last two non-whitespace values are a [!] delim and an ident
+   matching [important], those two are the flag and not the value. *)
+let split_important cvs =
+  let value = trim_whitespace cvs in
+  match List.rev value with
+  | Preserved { kind = Token.Ident s; _ } :: rest
+    when String.lowercase_ascii s = "important" -> (
+      match drop_whitespace rest with
+      | Preserved { kind = Token.Delim "!"; _ } :: rest ->
+          (trim_whitespace (List.rev rest), true)
+      | _ -> (value, false))
+  | _ -> (value, false)
+
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
 let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
@@ -1305,17 +1461,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
   in
   match drop_whitespace cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
-      let value1 = trim_whitespace rest in
-      let value, important =
-        match List.rev value1 with
-        | Preserved { kind = Token.Ident s; _ } :: rest
-          when String.lowercase_ascii s = "important" -> (
-            match drop_whitespace rest with
-            | Preserved { kind = Token.Delim "!"; _ } :: rest ->
-                (trim_whitespace (List.rev rest), true)
-            | _ -> (value1, false))
-        | _ -> (value1, false)
-      in
+      let value, important = split_important rest in
       if value_has_invalid_block ~is_custom value || has_bad_token value then (
         warn ~meta lexer warnings ~recovery:(dropped ())
           (Error.unexpected_token name_loc ~sort:Sort.Declaration
@@ -1425,10 +1571,19 @@ let with_warnings f =
   let value = f ~warnings in
   { value; warnings = List.rev !warnings }
 
-let stylesheet ?(meta = Loc.default_meta_level) ?on_comment r =
+let fold_stylesheet ?(meta = Loc.default_meta_level) ?on_comment
+    ?(stream = fun _ -> false) r f init =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader ?on_comment r in
-      consume_list_of_rules ~meta lexer ~top_level:true ~warnings)
+      fold_list_of_rules ~meta lexer ~top_level:true ~warnings ~stream f init)
+
+let stylesheet ?meta ?on_comment r =
+  let out =
+    fold_stylesheet ?meta ?on_comment r
+      (fun acc item -> rule_of_item item :: acc)
+      []
+  in
+  { out with value = List.rev out.value }
 
 let stylesheet_contents ?meta r = stylesheet ?meta r
 
