@@ -172,12 +172,61 @@ let fallback_spec_names = function
 let fallback_spec_by_kind kind =
   List.find_opt (fun spec -> fallback_spec_kind spec = kind) specs
 
-let fallback_spec_by_name select_name name =
+let fallback_spec_by_standard_name name =
   List.find_opt
-    (fun spec -> String.equal (select_name (fallback_spec_names spec)) name)
+    (fun spec -> String.equal (fst (fallback_spec_names spec)) name)
     specs
 
-let fallback_spec_by_standard_name = fallback_spec_by_name fst
+(* How a declaration names its property: typed, or as an unknown property the
+   reader kept opaque. *)
+type spelling = Typed of prop_key | Unknown of string | Guarded
+
+let spelling = function
+  | Theme_guarded _ -> Guarded
+  | Declaration { property = Unknown_property name; _ } -> Unknown name
+  | Declaration _ as decl -> Typed (Declaration.property_key decl)
+
+(* A family's spelling: its typed property, if it has one, and its name. Only
+   custom and unknown properties carry a payload and neither has a prefixed
+   spelling, so a family's property is an immediate and pointer equality is its
+   identity. *)
+type spelled = { key : prop_key option; name : string }
+
+let spells spelled = function
+  | Typed key -> (
+      match spelled.key with Some own -> own == key | None -> false)
+  | Unknown name -> String.equal spelled.name name
+  | Guarded -> false
+
+type family = { spec : spec; standard : spelled; prefixed : spelled }
+
+let families =
+  List.map
+    (fun spec ->
+      let name, webkit_name = fallback_spec_names spec in
+      match spec with
+      | Typed_fallback { property; webkit_property; _ } ->
+          {
+            spec;
+            standard = { key = Some (Key property); name };
+            prefixed = { key = Some (Key webkit_property); name = webkit_name };
+          }
+      | Mask_fallback_spec _ ->
+          (* [-webkit-mask] has no typed property: it is only ever unknown *)
+          {
+            spec;
+            standard = { key = Some (Key Properties.Mask); name };
+            prefixed = { key = None; name = webkit_name };
+          })
+    specs
+
+(* The family [decl] heads, read off its property. *)
+let spec_of_standard decl =
+  let spelling = spelling decl in
+  List.find_map
+    (fun family ->
+      if spells family.standard spelling then Some family.spec else None)
+    families
 
 (* The target contract is deliberately owned here rather than by the printer:
    adding a fallback changes the AST and must therefore be explicit to API
@@ -283,26 +332,16 @@ let of_declaration targets decl : Declaration.declaration option =
           fallback kind (Unknown_property webkit_name) components important
       | Some _ | None -> None)
   | Declaration _ -> (
-      match fallback_spec_by_standard_name (Declaration.property_name decl) with
+      match spec_of_standard decl with
       | Some spec when condition_holds spec -> fallback_from_spec spec
       | Some _ | None -> None)
 
 let is_prefixed kind decl =
-  match (fallback_spec_by_kind kind, decl) with
-  | Some spec, Declaration _ ->
-      let _, webkit_name = fallback_spec_names spec in
-      String.equal (Declaration.property_name decl) webkit_name
-  | None, Declaration _ -> false
-  | (None | Some _), Theme_guarded _ -> false
-
-(* The (standard, prefixed) names of the family [decl]'s property heads, or none
-   where the property has no prefixed spelling. *)
-let fallback_spec_names_of_declaration decl =
-  match decl with
-  | Theme_guarded _ -> None
-  | Declaration _ ->
-      Option.map fallback_spec_names
-        (fallback_spec_by_standard_name (Declaration.property_name decl))
+  let spelling = spelling decl in
+  List.exists
+    (fun family ->
+      fallback_spec_kind family.spec = kind && spells family.prefixed spelling)
+    families
 
 (* The standard property name is what names a family everywhere else, so it is
    what a log line or a test failure should show. *)
@@ -312,11 +351,7 @@ let pp ctx kind =
   | None -> Pp.string ctx "unknown"
 
 let kind_of decl : t option =
-  match decl with
-  | Theme_guarded _ -> None
-  | Declaration _ ->
-      Option.map fallback_spec_kind
-        (fallback_spec_by_standard_name (Declaration.property_name decl))
+  Option.map fallback_spec_kind (spec_of_standard decl)
 
 (* The relation with neither side named the prefixed one, and with no [targets]
    to consult: a caller asking whether two declarations are the two halves of
@@ -327,22 +362,28 @@ let kind_of decl : t option =
    themselves. The two sides are two property types wherever a prefixed
    spelling takes WebKit's older vocabulary, so nothing compares them directly,
    and the text is what the pair was written to make a browser read. *)
-(* Every prefixed spelling in the table above is a [-webkit-] name, so a
-   declaration list holding none of those holds no pair. The scan below is
-   quadratic in a rule's declarations and runs on every rewrite candidate, so it
-   is worth answering the cheap question first. *)
+(* A pair's prefixed half is read through a theme guard; its standard half is
+   not. *)
+let rec unguarded = function
+  | Theme_guarded { decl; _ } -> unguarded decl
+  | Declaration _ as decl -> decl
+
+let spells_prefixed spelling =
+  List.exists (fun family -> spells family.prefixed spelling) families
+
 let holds_a_prefixed_spelling decls =
-  List.exists
-    (fun decl ->
-      String.starts_with ~prefix:"-webkit-" (Declaration.property_name decl))
-    decls
+  List.exists (fun decl -> spells_prefixed (spelling (unguarded decl))) decls
 
 let is_pair a b =
-  let names decl = fallback_spec_names_of_declaration decl in
   let paired standard prefixed =
-    match names standard with
-    | Some (_, webkit_name) ->
-        String.equal (Declaration.property_name prefixed) webkit_name
+    let standard_spelling = spelling standard in
+    match
+      List.find_opt
+        (fun family -> spells family.standard standard_spelling)
+        families
+    with
+    | Some family ->
+        spells family.prefixed (spelling (unguarded prefixed))
         && Bool.equal
              (Declaration.is_important standard)
              (Declaration.is_important prefixed)

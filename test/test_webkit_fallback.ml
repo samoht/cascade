@@ -58,6 +58,47 @@ let test_a_differing_value_is_not_a_pair () =
   emits "a{-webkit-user-select:none}b{-webkit-user-select:none}"
     "a,b{-webkit-user-select:none}"
 
+let decl css = Css_test_helpers.ok (Declaration.of_string css)
+
+let check_pair label expected a b =
+  Alcotest.(check bool)
+    label expected
+    (Webkit_fallback.is_pair (decl a) (decl b));
+  Alcotest.(check bool)
+    (label ^ ", reversed") expected
+    (Webkit_fallback.is_pair (decl b) (decl a))
+
+(* The two halves of a pair are the standard and the prefixed spelling of one
+   family, at one importance, with one value. *)
+let pairs_are_one_family_one_value () =
+  check_pair "user-select" true "user-select:none" "-webkit-user-select:none";
+  check_pair "another value" false "user-select:none" "-webkit-user-select:text";
+  check_pair "another importance" false "user-select:none!important"
+    "-webkit-user-select:none";
+  check_pair "another family" false "backdrop-filter:blur(1px)"
+    "-webkit-user-select:none";
+  check_pair "a property with no prefixed spelling" false "color:red"
+    "-webkit-user-select:none";
+  check_pair "mask-image" true "mask-image:url(a.png)"
+    "-webkit-mask-image:url(a.png)";
+  check_pair "mask, whose prefixed spelling has no typed property" true
+    "mask:url(a.png)" "-webkit-mask:url(a.png)"
+
+(* The filter answers whether a family's prefixed spelling is there, not whether
+   a name starts with [-webkit-]: a prefixed property no family pairs holds no
+   pair. *)
+let filter_reads_the_families () =
+  let holds css =
+    Webkit_fallback.holds_a_prefixed_spelling (List.map decl css)
+  in
+  Alcotest.(check bool)
+    "a prefixed half" true
+    (holds [ "color:red"; "-webkit-user-select:none" ]);
+  Alcotest.(check bool) "no prefixed half" false (holds [ "color:red" ]);
+  Alcotest.(check bool)
+    "a prefixed property of no family" false
+    (holds [ "-webkit-appearance:none" ])
+
 let suite =
   ( "webkit_fallback",
     [
@@ -69,4 +110,8 @@ let suite =
         test_factoring_keeps_a_pair_together;
       Alcotest.test_case "a differing value is not a pair" `Quick
         test_a_differing_value_is_not_a_pair;
+      Alcotest.test_case "pairs are one family with one value" `Quick
+        pairs_are_one_family_one_value;
+      Alcotest.test_case "the filter reads the families" `Quick
+        filter_reads_the_families;
     ] )
