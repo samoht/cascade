@@ -697,10 +697,9 @@ let strip_vendor_prefix name =
 (* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
    [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
    its vendor prefix yields [twin]'s name and the component-value lists are
-   structurally equal under matching importance. The typed-twin case (e.g.
-   vendor [Unknown_property "-webkit-animation-delay"] + modern
-   [Animation_delay]) needs typed vendor longhand properties to compare
-   structurally; that remains a follow-up. *)
+   structurally equal under matching importance. An untyped vendor longhand with
+   a typed twin ([-webkit-animation-delay] beside [animation-delay]) is not
+   compared here. *)
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
@@ -802,7 +801,7 @@ let implied_longhand covering covered : Declaration.declaration option =
       | _ -> None)
   | Declaration { property = Properties.Flex; value; _ } -> (
       (* [flex] always sets grow/shrink/basis; expand the keyword and numeric
-         forms. flex-basis (the [0%] default) is left for a follow-up. *)
+         forms of grow and shrink. The basis is not expanded. *)
       let grow_shrink =
         match (value : Properties.flex) with
         | Initial -> Some (0., 1.)
