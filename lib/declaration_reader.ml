@@ -543,15 +543,15 @@ let read_custom_value_declaration t name : declaration =
      value and again from its end, so [--foo: ;] carries no token at all. CSS
      Custom Properties 1 (ED) sec. 2 writes the [--*] family's value
      [<declaration-value>?] and sec. 2.2 calls that empty value valid, which is
-     what is left. Read the raw text untrimmed all the same: the trim belongs to
-     [split_important], which needs the [!] and the flag word together. *)
+     what is left. CSS Custom Properties 1 sec. 2 makes the value the tokens
+     themselves, so they are kept as the parser read them. *)
   reject_custom_bad_string t;
-  let raw_value = Cursor.consume_until_semicolon ~trim:false t in
-  let value_str, is_important = split_important raw_value in
-  let value = Cursor.of_string value_str in
-  if not (components_stay_in_declaration (Cursor.remaining value)) then
+  let tokens, is_important =
+    Parser.split_important (Cursor.drain_until_semicolon t)
+  in
+  if not (components_stay_in_declaration tokens) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
-  let custom_value = read_custom_property_value value in
+  let custom_value = read_custom_property_value (Cursor.of_components tokens) in
   let decl =
     v (Custom_property name)
       (Custom_value { value = custom_value; layer = None; meta = None })

@@ -53,6 +53,11 @@ val string_of_components : Component.t list -> string
     stream, the opaque custom-property values of CSS Custom Properties 1
     included. *)
 
+val split_important : Component.t list -> Component.t list * bool
+(** [split_important cvs] is a declaration's value [cvs] trimmed of whitespace
+    and without its [!important] flag, and whether it had one (CSS Syntax 3 (ED)
+    sec. 5.5.6). *)
+
 val to_string_verbatim : Component.t list -> string
 (** [to_string_verbatim cvs] is {!string_of_components} except that a
     [<whitespace-token>] writes back the run it was read from. CSS Custom

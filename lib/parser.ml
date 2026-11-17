@@ -556,10 +556,11 @@ let normal_pair_needs_token_boundary prev next =
    have its whitespace normalized, so the stream a var() substitutes keeps the
    runs the author wrote. Syntax 3 sec. 9.1's one-space serialization is the
    right answer for a reserialized token stream and the wrong one here, which is
-   why this is its own entry point rather than a flag on that one. The boundary
-   space {!cvs_to_buffer} inserts between components that would otherwise merge
-   is NOT whitespace normalization and is kept: dropping it turns [a/**/b] into
-   the single ident [ab].
+   why this is its own entry point rather than a flag on that one. Between two
+   components that would otherwise merge it writes the empty comment sec. 9 asks
+   for: a comment is nothing (sec. 4.3.2), where a space would add a whitespace
+   token to the stream, and writing neither turns [a/**/b] into the single ident
+   [ab].
 
    Every printer writes a {!Component.Flat} run this way: its tokens are kept as
    read, so the run prints back the way the tree it stands for would. *)
@@ -593,7 +594,7 @@ and cvs_to_buffer_verbatim buf cvs =
     | cv :: rest ->
         (match prev with
         | Some p when normal_pair_needs_token_boundary p cv ->
-            Buffer.add_char buf ' '
+            Buffer.add_string buf "/**/"
         | _ -> ());
         cv_to_buffer_verbatim buf cv;
         loop (Some cv) rest
@@ -984,13 +985,19 @@ let custom_min_ws_separator ~in_math ~opaque buf prev separated rest =
       true
   | _ -> separated
 
-let custom_min_item_separator ~preserve_numeric_sign buf prev separated cv =
+(* Two tokens the source wrote with no whitespace between, the way [a/**/b]
+   writes them, are two tokens and no whitespace token: CSS Syntax 3 (ED) sec. 9
+   separates them with an empty comment, which is nothing (sec. 4.3.2), where a
+   space would add a whitespace token to the stream. *)
+let custom_min_item_separator ~preserve_numeric_sign ~after_whitespace buf prev
+    separated cv =
   match prev with
   | Some p
     when (not separated)
          && (not preserve_numeric_sign)
          && pair_needs_token_boundary ~minify_numeric:true p cv ->
-      Buffer.add_char buf ' '
+      if after_whitespace then Buffer.add_char buf ' '
+      else Buffer.add_string buf "/**/"
   | _ -> ()
 
 (* Idents are ASCII-case-insensitive per CSS Values 4 sec. 4.1, but the parser
@@ -1071,7 +1078,8 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
           preserve_minified_numeric_sign ~in_math ~keep_authored_whitespace:true
             ~after_whitespace prev cv
         in
-        custom_min_item_separator ~preserve_numeric_sign buf prev separated cv;
+        custom_min_item_separator ~preserve_numeric_sign ~after_whitespace buf
+          prev separated cv;
         cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
           ~preserve_numeric_sign buf cv;
         loop (Some cv) false false rest
@@ -1291,6 +1299,20 @@ let value_has_invalid_block ~is_custom value =
       let after_has = non_ws after <> [] in
       if is_custom then before_has && after_has else before_has || after_has
 
+(* CSS Syntax 3 (ED) sec. 5.5.6: a declaration's value is trimmed of whitespace,
+   and when its last two non-whitespace values are a [!] delim and an ident
+   matching [important], those two are the flag and not the value. *)
+let split_important cvs =
+  let value = trim_whitespace cvs in
+  match List.rev value with
+  | Preserved { kind = Token.Ident s; _ } :: rest
+    when String.lowercase_ascii s = "important" -> (
+      match drop_whitespace rest with
+      | Preserved { kind = Token.Delim "!"; _ } :: rest ->
+          (trim_whitespace (List.rev rest), true)
+      | _ -> (value, false))
+  | _ -> (value, false)
+
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
 let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
@@ -1308,17 +1330,7 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
   in
   match drop_whitespace cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
-      let value1 = trim_whitespace rest in
-      let value, important =
-        match List.rev value1 with
-        | Preserved { kind = Token.Ident s; _ } :: rest
-          when String.lowercase_ascii s = "important" -> (
-            match drop_whitespace rest with
-            | Preserved { kind = Token.Delim "!"; _ } :: rest ->
-                (trim_whitespace (List.rev rest), true)
-            | _ -> (value1, false))
-        | _ -> (value1, false)
-      in
+      let value, important = split_important rest in
       if value_has_invalid_block ~is_custom value || has_bad_token value then (
         warn ~meta lexer warnings ~recovery:(dropped ())
           (Error.unexpected_token name_loc ~sort:Sort.Declaration

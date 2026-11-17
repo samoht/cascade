@@ -187,38 +187,48 @@ let rec is_any_value components =
 (* Every recursion below is bounded by {!Parser.max_nesting_depth}, past which a
    run is [Flat]; the lists themselves can be long, so they are walked with the
    tail-recursive [List.exists] and [List.map]. *)
-let rec located = function
-  | Preserved tok -> tok.Token.loc != Loc.dummy
-  | Block { node; loc } -> loc != Loc.dummy || List.exists located node.value
-  | Func { node; loc } -> loc != Loc.dummy || List.exists located node.arguments
-  | Flat { node; loc } ->
-      loc != Loc.dummy
-      || List.exists (fun (tok : Token.t) -> tok.loc != Loc.dummy) node
+(* What a token carries beyond the value it stands for: where it was read and,
+   for a string, the quote it was written with. *)
+let token_sourced (tok : Token.t) =
+  tok.loc != Loc.dummy
+  ||
+  match tok.kind with
+  | Token.String { quote; _ } -> quote <> '"'
+  | _ -> false
 
-let rec without_loc = function
-  | Preserved tok -> Preserved { tok with loc = Loc.dummy }
+let token_as_value (tok : Token.t) =
+  let kind =
+    match tok.kind with
+    | Token.String s when s.quote <> '"' -> Token.String { s with quote = '"' }
+    | kind -> kind
+  in
+  { tok with kind; loc = Loc.dummy }
+
+let rec sourced = function
+  | Preserved tok -> token_sourced tok
+  | Block { node; loc } -> loc != Loc.dummy || List.exists sourced node.value
+  | Func { node; loc } -> loc != Loc.dummy || List.exists sourced node.arguments
+  | Flat { node; loc } -> loc != Loc.dummy || List.exists token_sourced node
+
+let rec as_value = function
+  | Preserved tok -> Preserved (token_as_value tok)
   | Block { node; _ } ->
       Block
         {
-          node = { node with value = List.map without_loc node.value };
+          node = { node with value = List.map as_value node.value };
           loc = Loc.dummy;
         }
   | Func { node; _ } ->
       Func
         {
-          node = { node with arguments = List.map without_loc node.arguments };
+          node = { node with arguments = List.map as_value node.arguments };
           loc = Loc.dummy;
         }
   | Flat { node; _ } ->
-      Flat
-        {
-          node =
-            List.map (fun (tok : Token.t) -> { tok with loc = Loc.dummy }) node;
-          loc = Loc.dummy;
-        }
+      Flat { node = List.map token_as_value node; loc = Loc.dummy }
 
-let without_locs values =
-  if List.exists located values then List.map without_loc values else values
+let as_values values =
+  if List.exists sourced values then List.map as_value values else values
 
 let is_whitespace = function
   | Preserved { kind = Token.Whitespace _; _ } -> true

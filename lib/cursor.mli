@@ -396,6 +396,10 @@ val drain_until_block : t -> Component.t list
 val drain_until_block_as_string : ?trim:bool -> t -> string
 (** Like {!drain_until_block}, but serializes the drained components. *)
 
+val drain_until_semicolon : t -> Component.t list
+(** [drain_until_semicolon t] consumes the components up to, but not including,
+    the next semicolon, and returns them as read. *)
+
 val consume_until_semicolon : ?trim:bool -> t -> string
 (** [consume_until_semicolon t] consumes and serializes components up to, but
     not including, the next semicolon. *)

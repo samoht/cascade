@@ -111,20 +111,20 @@ let rec size = function
    declaration's size instead of printing it each time they weigh it. *)
 (* README: source positions are not kept through formatting, and CSS Custom
    Properties 1 sec. 2 makes a custom property's value its token sequence, so
-   where the tokens were read is no part of the value. They are dropped here,
-   where every declaration is built, so equality, the hash and interning never
-   see them. *)
-let positionless (type a) (property : a Properties.property) (value : a) : a =
+   where the tokens were read is no part of the value, nor which quote a string
+   token was written with. Both are dropped here, where every declaration is
+   built, so equality, the hash and interning never see them. *)
+let as_value (type a) (property : a Properties.property) (value : a) : a =
   match (property, value) with
   | Custom_property _, Custom_value ({ value = Tokens tokens; _ } as cv) ->
-      let tokens' = Component.without_locs tokens in
+      let tokens' = Component.as_values tokens in
       if tokens' == tokens then value
       else Custom_value { cv with value = Tokens tokens' }
   | _ -> value
 
 let v (type a) ?(important = false) (property : a Properties.property)
     (value : a) =
-  let value = positionless property value in
+  let value = as_value property value in
   let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
   (* Most declarations a parse builds are already interned, so the set is asked
      first and only a new member is measured. *)

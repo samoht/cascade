@@ -523,8 +523,10 @@ let is_semicolon_cv = function
    custom property's value, and this is what captures it, so the run each
    whitespace token carries is written back rather than the single space Syntax
    3 sec. 9.1 gives a reserialized stream. *)
+let drain_until_semicolon t = drain_until_raw is_semicolon_cv t
+
 let consume_until_semicolon ?(trim = false) t =
-  let s = Parser.to_string_verbatim (drain_until_raw is_semicolon_cv t) in
+  let s = Parser.to_string_verbatim (drain_until_semicolon t) in
   if trim then String.trim s else s
 
 let rec skip_past_semicolon t =

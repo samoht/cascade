@@ -169,6 +169,11 @@
   each read before the next is parsed. A sheet of fallbacks that do not match
   their property's grammar cost its size squared (#1311, #1314, #1315, #1381,
   #1382).
+- A custom property's value is its tokens as read. `--x:\!important` keeps the
+  escaped ident as its value instead of becoming a lone backslash flagged
+  important, `--x:a/**/b` stays two tokens, written back with the empty comment
+  and kept apart from `--x:a b`, and a single-quoted string is the same value as
+  a double-quoted one whether parsed or built from text (#1386).
 
 ### CLI tools
 
