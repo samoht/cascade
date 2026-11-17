@@ -99,10 +99,8 @@ type t = {
       (** effective selector branches for each node, after applying [parent] *)
   mutable selector_summaries : Selector_summary.t list array;
   mutable specificities : Selector.specificity list array;
-      (** each node's per-branch specificity, computed once. The order test
-          compares specificity on every candidate pair, and recomputing it
-          allocates a record per branch per comparison, which made it one of the
-          largest allocation sites in the optimizer. *)
+      (** each node's per-branch specificity, computed once: the order test
+          compares specificity on every candidate pair *)
   mutable branches : string list array;
   mutable decl_overlaps : decl_overlap list array;
   mutable overlap_keys : Shorthand.overlap_key list array;
@@ -145,9 +143,8 @@ let declarations_conflict left right =
   Shorthand.declarations_conflict_with_keys left.decl left.footprint right.decl
     right.footprint
 
-(* Written as plain recursion rather than nested [List.exists]: the inner
-   closure captured the outer element, so it was rebuilt once per element of the
-   left list, and these run on every candidate pair. *)
+(* Plain recursion, so the pair tests below allocate no closure per element:
+   they run on every candidate pair. *)
 let rec declaration_conflicts_with a = function
   | [] -> false
   | b :: rest -> declarations_conflict a b || declaration_conflicts_with a rest
@@ -157,12 +154,8 @@ let rec decls_order_conflict d1 d2 =
   | [] -> false
   | a :: rest -> declaration_conflicts_with a d2 || decls_order_conflict rest d2
 
-(* [List.exists2] over a zipped pair needs the zip built first, and the inner
-   one was built inside the outer closure: B's whole tuple list was rebuilt once
-   per element of A. Walking the three parallel lists in step decides the same
-   question and allocates nothing. Lengths match by construction (one entry per
-   selector branch); [invalid_arg] mirrors [List.exists2] if they ever do
-   not. *)
+(* [List.exists] over three parallel lists walked in step, one entry per
+   selector branch, without zipping them. *)
 let rec exists3 f a b c =
   match (a, b, c) with
   | [], [], [] -> false
@@ -201,10 +194,7 @@ let selector_branch_keys selectors =
    order is left to the declaration canonicalization.
 
    Both arguments come from [selector_branch_keys], which sorts, so this walks
-   the two in step rather than scanning one per element of the other: linear
-   instead of quadratic, and it allocates nothing, where the nested
-   [List.exists] built a closure per element of the left list and a partial
-   application per pair. *)
+   the two in step. *)
 let rec share_branch a b =
   match (a, b) with
   | [], _ | _, [] -> false
@@ -917,9 +907,7 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
   let live = live_nodes t in
   let n = List.length live in
   (* Node ids are dense, so the in-degree and emitted marks are arrays over the
-     whole node space rather than generic tables keyed by id: both are read once
-     per edge, and a generic [Hashtbl] hashes and structurally compares the key
-     on every read. *)
+     node space, read once per edge. *)
   let slots = max (node_count t) 1 in
   let pred = Array.make slots 0 in
   for i = 0 to t.count - 1 do
@@ -1265,11 +1253,9 @@ let add_inherited_edge t graph consume entering p k reason =
    key conflicts with everything, so it falls back to a full scan (rare:
    [all]). *)
 (* A merge moves its rules past everything that sits between them, so a node in
-   that span is the one that can refuse the move: 93% of the rejections on a
-   real sheet are blocked by one. The order the candidates are visited in does
-   not change whether the rewrite is accepted, only how soon a refusal is found,
-   so putting the span first turns a rejection from a walk of the whole
-   neighbourhood into a walk of the part that can block it. *)
+   that span is the one that usually refuses the move. The order the candidates
+   are visited in does not change whether the rewrite is accepted, only how soon
+   a refusal is found, so the span goes first. *)
 let span_first ~lo ~hi candidates =
   let within, outside = List.partition (fun k -> k > lo && k < hi) candidates in
   List.rev_append (List.rev within) outside
@@ -1323,8 +1309,8 @@ let external_candidates t graph ~consumed p =
       push k
     done
   else indexed_candidates graph p push;
-  (* the previous full scan visited externals in ascending index order; preserve
-     that so the first orientation error (and thus scheduling) is identical *)
+  (* ascending, so which orientation error comes first, which the scheduler
+     reads, does not follow the index *)
   List.sort Int.compare !acc
 
 let add_external_edges t ~consume ~consumed graph entering =

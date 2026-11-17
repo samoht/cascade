@@ -318,9 +318,9 @@ let add_identical_body_group ~ctx ~finalize g ~candidates ids =
   end
   else add_candidate candidates (identical_body_candidate ~finalize g ids)
 
-(* Partition a hash bucket into runs of the exact same selector key, so a
-   [selector_key_hash] collision between two distinct selectors no longer
-   suppresses both groups (mirrors {!same_body_groups}). *)
+(* A hash bucket split into runs of one exact selector key, as
+   {!same_body_groups} splits one by body, so two selectors whose hashes collide
+   make two groups. *)
 let same_selector_groups g ids =
   let rec insert id = function
     | [] -> [ (id, [ id ]) ]
@@ -627,11 +627,9 @@ let exact_group ~shared ~finalize g ids =
           Exact_group
             (share shared ~members:ids ~decls:common ~props:[] grouped))
 
-(* [property_key_equal (declaration_property_key decl) key] reads only the two
-   compared fields, so building the record first buys nothing and costs one
-   allocation per declaration examined. The scans below run once per entry per
-   member per candidate group, which made this the single largest allocation
-   site in the whole candidate search. *)
+(* [property_key_equal (declaration_property_key decl) key] without building
+   [decl]'s key: the scans below ask it of every declaration of every member of
+   every candidate group. *)
 let declaration_has_key key decl =
   Bool.equal (Declaration.is_important decl) key.important
   && Declaration.equal_prop_key (Declaration.property_key decl) key.prop
