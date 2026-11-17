@@ -118,6 +118,24 @@ let test_deduplicate_declarations_physical_identity () =
   check bool "re-deduplicating a fixed point preserves physical identity" true
     (again == canon)
 
+(* [duplicate_buggy_properties] and [apply_property_duplication] are kept for
+   one release as the identities they always were: no declaration is duplicated,
+   the WebKit fallbacks being [add_compatibility_prefixes]'s. *)
+let test_property_duplication_aliases () =
+  let decls =
+    [
+      v Webkit_text_decoration Inherit;
+      v Text_decoration_color (hex_color "0000ff");
+    ]
+  in
+  check bool "duplicate_buggy_properties returns its input" true
+    ((duplicate_buggy_properties [@alert "-deprecated"]) decls == decls);
+  let sheet = Css.stylesheet ".a{-webkit-text-decoration:inherit;color:red}" in
+  check string "apply_property_duplication returns its input"
+    (Css.to_string ~minify:true sheet)
+    (Css.to_string ~minify:true
+       ((apply_property_duplication [@alert "-deprecated"]) sheet))
+
 (** Test rule optimization *)
 let single_rule () =
   let selector = Css.Selector.class_ "test" in
@@ -1131,6 +1149,7 @@ let suite =
       ( "deduplicate declarations preserves physical identity",
         `Quick,
         test_deduplicate_declarations_physical_identity );
+      ("property duplication aliases", `Quick, test_property_duplication_aliases);
       ("optimize single rule", `Quick, single_rule);
       ("optimize stylesheet", `Quick, optimize_all);
       ("optimize media queries", `Quick, media_queries);

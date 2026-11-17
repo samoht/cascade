@@ -65,6 +65,7 @@ let merge_overflow_longhands = Shorthand.merge_overflow_longhands
 let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
 let compose_shorthands = Shorthand.compose_shorthands
 let deduplicate_declarations = Shorthand.deduplicate_declarations
+let duplicate_buggy_properties decls = decls
 let declaration_run = Rule.declaration_run
 let finalize_rule_without_nested = Rule.finalize
 
@@ -755,6 +756,8 @@ let compatibility_declaration_sites =
     position_fallback = true;
     condition_test = false;
   }
+
+let apply_property_duplication stylesheet = stylesheet
 
 let add_compatibility_prefixes ~targets stylesheet =
   let rewrite original =

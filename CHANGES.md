@@ -46,9 +46,6 @@
   position, so `Component.source_loc` gives `Loc.dummy` for each. Those
   positions were offsets into the value's own text and located nothing in the
   sheet. `Component.without_locs` drops the positions from a token list (#1353).
-- `Optimize.duplicate_buggy_properties` and
-  `Optimize.apply_property_duplication` are gone: both returned their input
-  unchanged (#1345).
 
 ### Printing
 
@@ -196,6 +193,10 @@
 
 ### Library
 
+- `Optimize.duplicate_buggy_properties` and
+  `Optimize.apply_property_duplication` are deprecated: both return their input
+  unchanged, as they always did, and `Optimize.add_compatibility_prefixes`
+  writes the WebKit fallbacks they were documented to add (#1345).
 - `Css.stylesheet` reads CSS written in a program and raises `Invalid_argument`
   if it does not read. `Css.of_string_exn`, which raised `Error.Parse_error`,
   is kept for this release with its 1.2 behaviour and deprecated (#1299).

@@ -51,6 +51,11 @@ val deduplicate_declarations :
     importance the last one wins. [scope] (default [`Fragment]) gates
     partial-coverage shorthand synthesis; see the {!scope} doc. *)
 
+val duplicate_buggy_properties : declaration list -> declaration list
+[@@deprecated "use add_compatibility_prefixes"]
+(** [duplicate_buggy_properties decls] is [decls]. The WebKit fallbacks it was
+    documented to add are {!add_compatibility_prefixes}'s. *)
+
 type ctx
 (** Optimization context: the {!scope} together with the registered-custom-
     property predicate and the [lossless], [aggressive], [extend_lists], and
@@ -258,6 +263,11 @@ val drop_empty_rules : statement list -> statement list
 (** {1 Nested Structure Optimization} *)
 
 (** {1 Stylesheet Optimization} *)
+
+val apply_property_duplication : t -> t
+[@@deprecated "use add_compatibility_prefixes"]
+(** [apply_property_duplication ss] is [ss]; see {!duplicate_buggy_properties}.
+*)
 
 val add_compatibility_prefixes : targets:targets -> t -> t
 (** [add_compatibility_prefixes ~targets ss] adds the vendor-prefixed
