@@ -83,6 +83,10 @@ val node_rule : t -> node_id -> Stylesheet.rule
 val node_size : t -> node_id -> int
 (** [node_size t i] is the cached minified byte size of node [i]'s rule. *)
 
+val node_selector_size : t -> node_id -> int
+(** [node_selector_size t i] is the cached minified byte size of node [i]'s
+    selector. *)
+
 val node_branches : t -> node_id -> string list
 (** [node_branches t i] is the {!selector_branch_key} of each comma branch of
     node [i]'s selector, sorted: two nodes with one list have one selector up to

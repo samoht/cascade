@@ -163,7 +163,7 @@ let rewrite_candidate ~kind ~finalize g ~consume ~produce =
   if splits_a_fallback_pair g ~consume ~produce then Option.None
   else Rule_rewrite.v ~kind ~finalize g.graph ~consume ~produce
 
-let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
+let selector_size g id = Rule_graph.node_selector_size g.graph id
 let decls_inline_cost decls = decls_size decls + List.length decls
 
 let grouped_rule (rules : rule list) : rule option =
@@ -242,14 +242,14 @@ let append_unique_decls base extras =
       if List.exists (same_decl decl) acc then acc else acc @ [ decl ])
     base extras
 
-let keep_cost_aware_member ~removed (rule : rule) =
+let keep_cost_aware_member g ~removed id (rule : rule) =
   match remove_common removed rule.declarations with
   | [] -> true
-  | _ -> selector_size rule + 1 <= decls_inline_cost removed
+  | _ -> selector_size g id + 1 <= decls_inline_cost removed
 
-let cost_aware_exact_members common rules_with_ids =
+let cost_aware_exact_members g common rules_with_ids =
   List.filter
-    (fun (_, rule) -> keep_cost_aware_member ~removed:common rule)
+    (fun (id, rule) -> keep_cost_aware_member g ~removed:common id rule)
     rules_with_ids
 
 let same_body_groups g ids =
@@ -586,7 +586,7 @@ let exact_group ~shared ~finalize g ids =
   match common_exact_decls (List.map snd rules_with_ids) with
   | [] -> No_exact_group
   | common -> (
-      match cost_aware_exact_members common rules_with_ids with
+      match cost_aware_exact_members g common rules_with_ids with
       | [] | [ _ ] -> No_exact_group
       | members ->
           let ids = List.map fst members in
@@ -815,21 +815,21 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
   in
   loop [] members
 
-let keep_default_member ~keys ~entries ~exact_common ~prior member =
+let keep_default_member g ~keys ~entries ~exact_common ~prior member =
   let leftover =
     default_member_leftover ~keys ~entries ~exact_common ~prior member
   in
   leftover = []
-  || selector_size member.rule + 1
+  || selector_size g member.id + 1
      <= decls_inline_cost
           (exact_common
           @ default_decl_removed_after_reassertion entries ~prior member)
 
-let prune_default_members ~keys ~entries ~exact_common members =
+let prune_default_members g ~keys ~entries ~exact_common members =
   let rec loop prior acc = function
     | [] -> List.rev acc
     | member :: rest ->
-        if keep_default_member ~keys ~entries ~exact_common ~prior member then
+        if keep_default_member g ~keys ~entries ~exact_common ~prior member then
           loop (member :: prior) (member :: acc) rest
         else loop prior acc rest
   in
@@ -899,18 +899,18 @@ let default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
    otherwise reach the same answer. The bound is one-sided: it lets through
    groups that pruning still rejects, never the reverse, so the candidates are
    the same either way. *)
-let member_may_survive_pruning provider_decls (member : default_member) =
+let member_may_survive_pruning g provider_decls (member : default_member) =
   List.for_all
     (fun decl -> decl_mem decl provider_decls)
     member.rule.declarations
-  || selector_size member.rule + 1
+  || selector_size g member.id + 1
      <= decls_inline_cost
           (List.filter
              (fun decl -> decl_mem decl member.rule.declarations)
              provider_decls)
 
-let default_group_can_keep_two provider members =
-  List.exists (member_may_survive_pruning provider.rule.declarations) members
+let default_group_can_keep_two g provider members =
+  List.exists (member_may_survive_pruning g provider.rule.declarations) members
 
 (* Which entries survive reads the graph, whether an overriding member precedes
    the provider, so a subset keeps the group it makes for each set of survivors
@@ -935,7 +935,7 @@ let default_members g ids =
   in
   match members with
   | [] | [ _ ] -> No_default_group
-  | first :: rest when not (default_group_can_keep_two first rest) ->
+  | first :: rest when not (default_group_can_keep_two g first rest) ->
       No_default_group
   | first :: _ ->
       Default_members
@@ -958,7 +958,7 @@ let default_group ~shared ~finalize g members entries =
   let keys = List.map (fun entry -> entry.key) entries in
   let exact_common = exact_common_without keys members in
   let group_decls = default_group_decls ~exact_common entries in
-  let members = prune_default_members ~keys ~entries ~exact_common members in
+  let members = prune_default_members g ~keys ~entries ~exact_common members in
   share shared ~members:(default_member_ids members)
     ~decls:group_decls ~props:keys (fun () ->
       match members with
@@ -1023,7 +1023,7 @@ let single_selector_branch_key (rule : rule) : string option =
   | [ selector ] -> Option.Some (selector_branch_key selector)
   | _ -> Option.None
 
-let selector_branch_size selector = Pp.size ~minify:true Selector.pp selector
+let selector_branch_size = Size.selector
 
 let remaining_selector_branches ~removed_key keyed =
   List.filter_map

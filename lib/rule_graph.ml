@@ -82,6 +82,8 @@ type t = {
   mutable rules : rule array;  (** all nodes ever created, dead ones included *)
   mutable sizes : int array;
       (** each node's minified byte size, worked out once *)
+  mutable selector_sizes : int array;
+      (** the minified byte size of each node's selector, worked out once *)
   mutable origin : int array;
   mutable death : int array;
       (** the generation of the first graph a node is dead in, [max_int] while
@@ -625,8 +627,9 @@ let rule_facts parent rules =
 (* The nodes of [rules] in source order with their edges, their [sizes], and an
    empty external index sized for [index_capacity] entries, which the first
    rewrite fills. *)
-let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
-    ?(pin_shared_branches = true) ?exclusive (rules : rule array) : t =
+let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
+    ?(closed_world = false) ?(pin_shared_branches = true) ?exclusive
+    (rules : rule array) : t =
   let n = Array.length rules in
   let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
       =
@@ -644,6 +647,7 @@ let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
       count = n;
       rules;
       sizes;
+      selector_sizes;
       origin = Array.init n Fun.id;
       death = Array.make n max_int;
       selectors;
@@ -671,14 +675,22 @@ let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
 
 let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
   let rules = Array.of_list rules in
-  ordered_nodes
-    ~sizes:(Array.map Size.rule rules)
+  let selector_sizes =
+    Array.map (fun (rule : rule) -> Size.selector rule.selector) rules
+  in
+  ordered_nodes ~selector_sizes
+    ~sizes:
+      (Array.mapi
+         (fun i (rule : rule) ->
+           selector_sizes.(i) + Size.body rule.declarations)
+         rules)
     ~index_capacity:(max 16 (Array.length rules * 2))
     ?parent ?closed_world ?pin_shared_branches ?exclusive rules
 
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
 let node_size t i = t.sizes.(i)
+let node_selector_size t i = t.selector_sizes.(i)
 let node_branches t i = t.branches.(i)
 let node_origin t i = t.origin.(i)
 
@@ -1025,6 +1037,7 @@ let reserve t added =
   in
   t.rules <- grow t.rules;
   t.sizes <- grow t.sizes;
+  t.selector_sizes <- grow t.selector_sizes;
   t.origin <- grow t.origin;
   t.death <- grow t.death;
   t.selectors <- grow t.selectors;
@@ -1544,7 +1557,10 @@ let carry_reach t graph entering finished =
 let commit t graph ~consumed entering finished =
   let total = t.count in
   for p = total to graph.count - 1 do
-    graph.sizes.(p) <- Size.rule graph.rules.(p)
+    let rule = graph.rules.(p) in
+    let selector_size = Size.selector rule.selector in
+    graph.selector_sizes.(p) <- selector_size;
+    graph.sizes.(p) <- selector_size + Size.body rule.declarations
   done;
   Array.iter (fun c -> graph.death.(c) <- graph.generation) consumed;
   Array.iteri
@@ -1633,6 +1649,7 @@ let run ?parent ?exclusive ~folds rules =
       count = n;
       rules;
       sizes = [||];
+      selector_sizes = [||];
       origin = [||];
       death = [||];
       selectors;
