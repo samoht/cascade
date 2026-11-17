@@ -65,6 +65,61 @@ let test_skipped_segment_builds_no_graph () =
     Alcotest.failf "skipping allocated %.0f words, the summary alone %.0f" run
       summary
 
+(* Factoring hands back the rules it does not rewrite as it got them and the
+   ones it produces as [finalize] left them, so its output is finalized only if
+   [finalize] is idempotent and the rule-local passes ahead of it leave rules
+   [finalize] does not change. Each sheet takes a branch of [finalize]: a
+   duplicate, longhands composing into a shorthand, [column-*] into [columns],
+   custom properties sorted on [:root], a selector list out of canonical order,
+   importance, a vendor fallback, and a declaration shadowed by a later rule of
+   the same selector, whose removal could leave another composition. *)
+let finalize_sheets =
+  [
+    ".a{color:red;color:red}.b{color:red}";
+    ".a{margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}.b{margin:1px}";
+    ".a{column-width:10px;column-count:2}.b{column-width:10px;column-count:2}";
+    ":root{--b:1;--a:2}:root{--c:3;--a:2}";
+    ".b,.a{color:red}.c,.a{color:red}";
+    ".a{color:red!important;color:blue}.b{color:red!important}";
+    ".a{display:-webkit-box;display:flex}.b{display:-webkit-box;display:flex}";
+    ".a{column-width:10px!important;column-count:2!important;column-height:10px}.b{column-height:5px}.a{column-width:auto;column-count:auto}";
+    ".a{padding-top:1px;padding-right:2px;padding-bottom:1px}.b{padding-left:2px}.a{padding-left:2px}.c{padding-top:1px;padding-right:2px}";
+  ]
+
+let canonical_selector (r : Stylesheet.rule) =
+  { r with selector = Selector.canonicalize ~enforce_spec:false r.selector }
+
+let check_finalized ~what ~finalize rules =
+  List.iter
+    (fun r ->
+      if finalize r != r then
+        Alcotest.failf "%s: %s is not finalized" what
+          (Pp.to_string ~minify:true Stylesheet.pp_rule r))
+    rules
+
+let test_factoring_output_is_finalized () =
+  List.iter
+    (fun css ->
+      let ctx = Ctx.fragment in
+      let input = List.map canonical_selector (rules css) in
+      let held =
+        List.fold_left
+          (fun held (r : Stylesheet.rule) ->
+            Shorthand.held_add held r.declarations)
+          Shorthand.held_none input
+      in
+      let finalize = Rule.finalize ~held ~ctx in
+      let prepared = Rule.normalize ~ctx ~held input in
+      check_finalized ~what:(Fmt.str "normalized %s" css) ~finalize prepared;
+      check_finalized
+        ~what:(Fmt.str "finalized twice %s" css)
+        ~finalize (List.map finalize input);
+      check_finalized
+        ~what:(Fmt.str "factored %s" css)
+        ~finalize
+        (Factor.run ~ctx ~finalize prepared))
+    finalize_sheets
+
 let fixpoints_run stats = (Stats.snapshot stats).counters.factor_fixpoints_run
 
 let test_cache_reuses_identical_rule_run () =
@@ -536,6 +591,8 @@ let suite =
     [
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick
         test_run_reaches_fixpoint_with_finalizer;
+      Alcotest.test_case "factoring output is finalized" `Quick
+        test_factoring_output_is_finalized;
       Alcotest.test_case "skipped segment builds no graph" `Quick
         test_skipped_segment_builds_no_graph;
       Alcotest.test_case "cache reuses identical rule run" `Quick
