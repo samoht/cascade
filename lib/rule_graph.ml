@@ -3,14 +3,6 @@
 open Stylesheet
 open Stdlib
 open Conflict_index
-
-module Key_tbl = Hashtbl.Make (struct
-  type t = Shorthand.overlap_key
-
-  let equal = Shorthand.overlap_key_equal
-  let hash = Shorthand.overlap_key_hash
-end)
-
 module String_table = Common.Table.Make (String)
 
 module Node_id = struct
@@ -112,8 +104,8 @@ type t = {
           lineage: a committed rewrite conses its edges onto the existing nodes'
           lists, and each of those points at a node it produced, so an edge to a
           node past [count] belongs to a later graph and a graph skips it. *)
-  key_index : node_id list Decl_tbl.t Spec_table.t Key_tbl.t;
-      (** overlap key -> branch specificity -> (declaration writing it -> node
+  key_index : node_id list Decl_tbl.t Slot_table.t;
+      (** overlap key and branch specificity -> (declaration writing it -> node
           ids), so a rewrite finds an external node's potential conflicts
           without scanning every node, without the nodes no branch of which ties
           with it, and {e without even iterating} the nodes that write the same
@@ -595,19 +587,12 @@ let decl_index_add tbl key node =
     (node :: Option.value ~default:[] (Decl_tbl.find_opt tbl key))
 
 let key_inner t key spec =
-  let by_spec =
-    match Key_tbl.find_opt t.key_index key with
-    | Some by_spec -> by_spec
-    | None ->
-        let by_spec = Spec_table.create 2 in
-        Key_tbl.replace t.key_index key by_spec;
-        by_spec
-  in
-  match Spec_table.find_opt by_spec spec with
+  let slot : slot = { key; spec } in
+  match Slot_table.find_opt t.key_index slot with
   | Some inner -> inner
   | None ->
       let inner = Decl_tbl.create 4 in
-      Spec_table.replace by_spec spec inner;
+      Slot_table.replace t.key_index slot inner;
       inner
 
 (* Add [node]'s overlap keys, partitioned by the specificity of each of its
@@ -670,7 +655,7 @@ let ordered_nodes ~sizes ~index_capacity ?parent ?(closed_world = false)
       decl_overlaps;
       overlap_keys;
       succ = [||];
-      key_index = Key_tbl.create index_capacity;
+      key_index = Slot_table.create index_capacity;
       branch_index = String_table.create index_capacity;
       lineage =
         {
@@ -1266,15 +1251,12 @@ let indexed_candidates graph p push =
   (* Only a node with a branch of [p]'s specificity can tie with it. *)
   let specs = distinct_spec_keys [] graph.specificities.(p) in
   let at_specs key f =
-    match Key_tbl.find_opt graph.key_index key with
-    | None -> ()
-    | Some by_spec ->
-        List.iter
-          (fun spec ->
-            match Spec_table.find_opt by_spec spec with
-            | Some inner -> Decl_tbl.iter f inner
-            | None -> ())
-          specs
+    List.iter
+      (fun spec ->
+        match Slot_table.find_opt graph.key_index ({ key; spec } : slot) with
+        | Some inner -> Decl_tbl.iter f inner
+        | None -> ())
+      specs
   in
   (* For each declaration [p] writes, collect, per overlap key it covers, the
      nodes whose declaration for that key differs - same-declaration nodes never
@@ -1381,7 +1363,7 @@ let collect_produced_candidates by_decl_key by_spec by_branch graph right keys
     candidates graph.branches.(right)
 
 let add_produced_edges t ~consume graph =
-  let by_decl_key = Overlap_key_table.create 16 in
+  let by_decl_key = Slot_table.create 16 in
   let by_branch = String_table.create 16 in
   let by_spec = Spec_table.create 16 in
   let rec loop right =
@@ -1657,7 +1639,7 @@ let run ?parent ?exclusive ~folds rules =
       decl_overlaps;
       overlap_keys;
       succ = [||];
-      key_index = Key_tbl.create 1;
+      key_index = Slot_table.create 1;
       branch_index = String_table.create 1;
       lineage =
         {

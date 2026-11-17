@@ -9,10 +9,10 @@
     enumerates only what can meet it on every one of those. A candidate is not
     yet a conflict: the caller tests it. *)
 
-(** Tables keyed by a packed specificity. *)
 module Decl_tbl : Hashtbl.S with type key = Declaration.declaration
 (** Tables keyed by a declaration, compared by its minified text. *)
 
+(** Tables keyed by a packed specificity. *)
 module Spec_table : sig
   include Hashtbl.S with type key = int
 
@@ -20,8 +20,15 @@ module Spec_table : sig
   (** [push tbl key value] prepends [value] to the list bound to [key]. *)
 end
 
-module Overlap_key_table : Hashtbl.S with type key = Shorthand.overlap_key
-(** Tables keyed by an overlap key. *)
+type slot = { key : Shorthand.overlap_key; spec : int }
+(** An overlap key at a packed specificity. *)
+
+module Slot_table : sig
+  include Hashtbl.S with type key = slot
+
+  val push : 'a list t -> key -> 'a -> unit
+  (** [push tbl key value] prepends [value] to the list bound to [key]. *)
+end
 
 type decl_overlap = {
   decl : Declaration.declaration;
@@ -38,11 +45,7 @@ val add_spec_buckets : 'a list Spec_table.t -> 'a -> int list -> unit
 *)
 
 val add_bucket :
-  'a list Spec_table.t Overlap_key_table.t ->
-  Shorthand.overlap_key ->
-  int list ->
-  'a ->
-  unit
+  'a list Slot_table.t -> Shorthand.overlap_key -> int list -> 'a -> unit
 (** [add_bucket table key specs value] pushes [value] under [key] and each of
     [specs]. *)
 
@@ -86,7 +89,7 @@ val collect_specs :
     [specs], as {!add_candidates} does. *)
 
 val collect_bucket :
-  int list Spec_table.t Overlap_key_table.t ->
+  int list Slot_table.t ->
   Shorthand.overlap_key ->
   int list ->
   int ->

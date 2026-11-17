@@ -2,10 +2,12 @@
 
     {!Rule_graph.conflicts_after} reads only the rules sharing a bucket with the
     asking rule, and has to answer what a scan of every later rule with
-    {!Rule_graph.facts_conflict} answers. The runs mix selectors that tie and do
-    not tie on specificity, that overlap and that cannot, and declarations that
-    share a slot through a shorthand, through [all], through a property the
-    model cannot place, or not at all. *)
+    {!Rule_graph.facts_conflict} answers. {!Rule_graph.of_rules} links each rule
+    only to the candidates its index offers, through compact runs, and has to
+    order every pair a scan finds in conflict. The runs mix selectors that tie
+    and do not tie on specificity, that overlap and that cannot, and
+    declarations that share a slot through a shorthand, through [all], through a
+    property the model cannot place, or not at all. *)
 
 open Cascade
 open Alcobar
@@ -88,9 +90,55 @@ let test_index_agrees_with_scan buf =
             (not scan) scan
       done
 
+(* Rules of the shape the compact runs hold, one declaration through a simple
+   subject, mixed with rules of other shapes. *)
+let run_rule buf i =
+  let selector =
+    pick [| ".a"; ".b"; ".c"; "div"; "#x"; ".a.b"; ".a .b" |] buf i
+  in
+  let decls =
+    match byte buf (i + 1) mod 4 with
+    | 0 -> "color:red;margin:0"
+    | k ->
+        pick
+          [| "color:red"; "color:blue"; "color:green"; "margin-top:0" |]
+          buf (i + k)
+  in
+  match Css.of_string ~strict:false (selector ^ "{" ^ decls ^ "}") with
+  | Ok { stylesheet; _ } -> (
+      match Css.statements stylesheet with
+      | [ Stylesheet.Rule r ] -> Some r
+      | _ -> None)
+  | Error _ -> None
+
+(* Every pair of rules in conflict, by a test of the pair alone, is ordered by
+   the graph in source order. Without the pins a shared selector adds, a pair
+   the compact runs drop has no other path to fall back on. *)
+let test_graph_orders_every_conflict buf =
+  let count = byte buf 0 mod 16 in
+  let rules =
+    List.filter_map
+      (fun k -> run_rule buf (3 * (k + 1)))
+      (List.init count Fun.id)
+  in
+  let g =
+    Rule_graph.of_rules ~pin_shared_branches:(byte buf 1 mod 2 = 0) rules
+  in
+  let n = Rule_graph.node_count g in
+  for j = 0 to n - 1 do
+    for i = 0 to j - 1 do
+      let i' = Rule_graph.Node_id.of_int_exn i in
+      let j' = Rule_graph.Node_id.of_int_exn j in
+      if Rule_graph.conflict g i' j' && not (Rule_graph.precedes g i' j') then
+        failf "rules %d and %d conflict but the graph does not order them" i j
+    done
+  done
+
 let suite =
   ( "rule_graph",
     [
       test_case "conflicts_after agrees with a scan" [ bytes ]
         test_index_agrees_with_scan;
+      test_case "the graph orders every conflicting pair" [ bytes ]
+        test_graph_orders_every_conflict;
     ] )
