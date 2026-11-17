@@ -11,16 +11,8 @@ let rules_pp_size = Size.rules
 (* The memo key carries a whole run of rules. The default structural hash reads
    only the first handful of nodes in it, so runs sharing a prefix land in one
    bucket and each probe then compares rule lists in full; folding the cached
-   per-declaration hashes separates the buckets in one cheap integer pass, and
-   the structural check is left to confirm the one entry that matches. *)
-let mix acc x = (acc * 31) + x
-
-let rule_hash (r : rule) =
-  List.fold_left
-    (fun acc d -> mix acc (Declaration.hash d))
-    (Selector.hash r.Stylesheet_intf.selector)
-    r.Stylesheet_intf.declarations
-
+   per-rule hashes separates the buckets in one cheap integer pass, and the
+   structural check is left to confirm the one entry that matches. *)
 module Cache_tbl = Hashtbl.Make (struct
   type t = string * rule list
 
@@ -28,7 +20,7 @@ module Cache_tbl = Hashtbl.Make (struct
 
   let hash (knobs, rules) =
     List.fold_left
-      (fun acc r -> mix acc (rule_hash r))
+      (fun acc r -> (acc * 31) + Stylesheet.rule_hash r)
       (Hashtbl.hash knobs) rules
 end)
 
