@@ -198,6 +198,121 @@ let tests_context_window () =
   context_window_counts_characters ();
   context_window_keeps_code_points ()
 
+(* The 1.2 error API, kept until 1.4.0 with its 1.2 behaviour: the expectations
+   are what 1.2.1 raised and printed. *)
+module Deprecated = struct
+  [@@@alert "-deprecated"]
+
+  let call_stack () =
+    let r = of_string "test" in
+    Alcotest.(check (list string)) "initially empty" [] (callstack r);
+    push_context r "outer";
+    push_context r "inner";
+    Alcotest.(check (list string))
+      "outermost first" [ "outer"; "inner" ] (callstack r);
+    pop_context r;
+    pop_context r;
+    pop_context r;
+    Alcotest.(check (list string)) "popping an empty stack" [] (callstack r);
+    let seen = with_context r "ctx" (fun () -> callstack r) in
+    Alcotest.(check (list string)) "pushed while running" [ "ctx" ] seen;
+    Alcotest.(check (list string)) "popped on return" [] (callstack r);
+    (match with_context r "ctx" (fun () -> failwith "boom") with
+    | () -> Alcotest.fail "with_context swallowed the exception"
+    | exception Failure _ -> ());
+    Alcotest.(check (list string)) "popped on raise" [] (callstack r)
+
+  (* The error [f] raises on a reader over [input] at byte [pos]. *)
+  let raised ?(pos = 0) input f =
+    let r = of_string input in
+    for _ = 1 to pos do
+      skip r
+    done;
+    match f r with
+    | (_ : unit) -> Alcotest.fail "expected Reader.Parse_error"
+    | exception Parse_error e -> e
+
+  let messages () =
+    let message f = (raised "abc" f).message in
+    Alcotest.(check string) "err" "boom" (message (fun r -> err r "boom"));
+    Alcotest.(check string)
+      "err_eof" "unexpected end of input" (message err_eof);
+    Alcotest.(check string)
+      "err_expected" "expected ';'"
+      (message (fun r -> err_expected r "';'"));
+    Alcotest.(check string)
+      "err_expected_but_eof" "Expected '}' but reached end of input"
+      (message (fun r -> err_expected_but_eof r "'}'"));
+    Alcotest.(check string)
+      "err_invalid" "invalid colour"
+      (message (fun r -> err_invalid r "colour"));
+    Alcotest.(check (option string))
+      "got" (Some "x") (raised "abc" (fun r -> err ~got:"x" r "boom")).got;
+    Alcotest.(check (option string)) "no got" None (raised "abc" err_eof).got
+
+  (* Lines and columns are 1-based, a column is one Unicode scalar value, and
+     [position] stays a byte offset. *)
+  let location () =
+    let e = raised ~pos:5 "abc\ndef" err_eof in
+    Alcotest.(check (pair int int)) "line and column" (2, 2) (e.line, e.col);
+    Alcotest.(check int) "byte offset" 5 e.position;
+    Alcotest.(check string) "default source name" "<CSS input>" e.filename;
+    let e = raised ~pos:9 (euros 3) err_eof in
+    Alcotest.(check (pair int int))
+      "column counts characters" (1, 4) (e.line, e.col);
+    Alcotest.(check int) "caret counts characters" 3 e.marker_pos;
+    let stamped = with_filename e "theme.css" in
+    Alcotest.(check string) "stamped source name" "theme.css" stamped.filename;
+    Alcotest.(check (pair int int))
+      "stamping keeps the location" (1, 4)
+      (stamped.line, stamped.col)
+
+  let call_stack_in_error () =
+    let e =
+      raised "abc" (fun r ->
+          with_context r "rule" (fun () ->
+              with_context r "value" (fun () -> err_eof r)))
+    in
+    Alcotest.(check (list string))
+      "error carries the stack" [ "rule"; "value" ] e.callstack
+
+  (* The 1.2 exception is its own: the readers' [Error.Parse_error] is another,
+     and [Error.catch] lets this one through. *)
+  let distinct_exception () =
+    match Error.catch (fun () -> err_eof (of_string "abc")) with
+    | Ok () | Error _ -> Alcotest.fail "Error.catch caught Reader.Parse_error"
+    | exception Parse_error _ -> ()
+
+  let rendering () =
+    Alcotest.(check string)
+      "caret below the marked line"
+      (String.concat ""
+         [
+           "boom at <CSS input>:2:3\n"; "first\n"; "second\n"; "  ^\n"; "third";
+         ])
+      (pp_parse_error
+         (raised ~pos:8 "first\nsecond\nthird" (fun r -> err r "boom")));
+    Alcotest.(check string)
+      "caret at the start, stamped name" "boom at theme.css:1:1\nabc\n^"
+      (pp_parse_error
+         (with_filename (raised "abc" (fun r -> err r "boom")) "theme.css"));
+    Alcotest.(check string)
+      "call stack line"
+      "boom at <CSS input>:1:1\n    [stack: rule -> value]\nab\n^"
+      (pp_parse_error
+         (raised "ab" (fun r ->
+              with_context r "rule" (fun () ->
+                  with_context r "value" (fun () -> err r "boom")))))
+
+  let tests () =
+    call_stack ();
+    messages ();
+    location ();
+    call_stack_in_error ();
+    distinct_exception ();
+    rendering ()
+end
+
 let suite =
   ( "reader",
     [
@@ -206,4 +321,5 @@ let suite =
       test_case "UTF-8 skip" `Quick skips_code_points;
       test_case "UTF-8 peek bounds" `Quick utf8_peek_bounds;
       test_case "context window" `Quick tests_context_window;
+      test_case "1.2 error API" `Quick Deprecated.tests;
     ] )

@@ -15,6 +15,8 @@ type t = {
   enforce_spec : bool;
   indexed : Error.Source.t;
   mutable pos : int;
+  mutable call_stack : string list;
+      (* Innermost first; read only by the deprecated 1.2 error API. *)
 }
 
 (* Pretty-printer for the parser state *)
@@ -85,6 +87,7 @@ let of_string ?(enforce_spec = false) input =
     enforce_spec;
     indexed = Error.Source.v input;
     pos = 0;
+    call_stack = [];
   }
 
 type origin = { map : shift array; length : int }
@@ -208,5 +211,106 @@ let skip t =
 (** Get current position in input *)
 let position t = t.pos
 
-(** Get context window around current position for better error messages *)
-(* Removed duplicate context_window function - already defined above *)
+(** {1 Deprecated, removed in 1.4.0} *)
+
+type parse_error = {
+  message : string;
+  got : string option;
+  position : int;
+  filename : string;
+  line : int;
+  col : int;
+  context_window : string;
+  marker_pos : int;
+  callstack : string list;
+}
+
+exception Parse_error of parse_error
+
+(* The line of [lines] that character [marker_pos] falls on, its column there,
+   an offset past the end clamping to the last line's end. *)
+let marker_line lines marker_pos =
+  let rec find line remaining = function
+    | [] -> (0, 0)
+    | [ last ] -> (line, min remaining (Common.String.utf8_length last))
+    | current :: rest ->
+        let len = Common.String.utf8_length current in
+        if remaining <= len then (line, remaining)
+        else find (line + 1) (remaining - len - 1) rest
+  in
+  find 0 (max 0 marker_pos) lines
+
+let pp_parse_error (err : parse_error) =
+  let buf = Buffer.create 256 in
+  Buffer.add_string buf err.message;
+  Buffer.add_string buf " at ";
+  Buffer.add_string buf err.filename;
+  Buffer.add_char buf ':';
+  Buffer.add_string buf (string_of_int err.line);
+  Buffer.add_char buf ':';
+  Buffer.add_string buf (string_of_int err.col);
+  (match err.callstack with
+  | [] -> ()
+  | callstack ->
+      Buffer.add_string buf "\n    [stack: ";
+      Buffer.add_string buf (String.concat " -> " callstack);
+      Buffer.add_char buf ']');
+  if err.context_window <> "" then begin
+    let lines = String.split_on_char '\n' err.context_window in
+    let marker_line, marker_pos = marker_line lines err.marker_pos in
+    List.iteri
+      (fun i line ->
+        Buffer.add_char buf '\n';
+        Buffer.add_string buf line;
+        if i = marker_line then begin
+          Buffer.add_char buf '\n';
+          Buffer.add_string buf (String.make marker_pos ' ');
+          Buffer.add_char buf '^'
+        end)
+      lines
+  end;
+  Buffer.contents buf
+
+let push_context t context = t.call_stack <- context :: t.call_stack
+
+let pop_context t =
+  match t.call_stack with [] -> () | _ :: rest -> t.call_stack <- rest
+
+let with_context t context f =
+  push_context t context;
+  match f () with
+  | result ->
+      pop_context t;
+      result
+  | exception exn ->
+      pop_context t;
+      raise exn
+
+let callstack t = List.rev t.call_stack
+
+let err ?got t message =
+  let context_window, marker_pos = context_window t in
+  (* The input is preprocessed, so LF is its only line break, as 1.2 counted. *)
+  let line, col = Error.Source.locate t.indexed t.pos in
+  raise
+    (Parse_error
+       {
+         message;
+         got;
+         position = t.pos;
+         filename = "<CSS input>";
+         line;
+         col;
+         context_window;
+         marker_pos;
+         callstack = callstack t;
+       })
+
+let err_eof t = err t "unexpected end of input"
+let err_expected t what = err t (String.concat "" [ "expected "; what ])
+
+let err_expected_but_eof t what =
+  err t (String.concat "" [ "Expected "; what; " but reached end of input" ])
+
+let err_invalid t what = err t (String.concat "" [ "invalid "; what ])
+let with_filename error filename = { error with filename }

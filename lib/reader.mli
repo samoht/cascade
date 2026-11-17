@@ -109,3 +109,96 @@ val skip : t -> unit
 
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] if input starts with [s]. *)
+
+(** {1:deprecated Deprecated, removed in 1.4.0}
+
+    The 1.2 error API, with its 1.2 behaviour. {!err} and its variants raise
+    this module's own {!exception-Parse_error}, which no reader in the library
+    raises and {!Error.catch} does not catch: the readers fail with
+    {!Error.Parse_error}, and a public [of_string] returns that error as a
+    result. *)
+
+include sig
+  [@@@alert "-deprecated"]
+
+  type parse_error = {
+    message : string;
+    got : string option;
+    position : int;
+    filename : string;
+    line : int;
+    col : int;
+    context_window : string;
+    marker_pos : int;
+    callstack : string list;
+  }
+  [@@deprecated "use Error.t; removed in 1.4.0"]
+  (** Parse error information with structured details. {!field-filename} names
+      the source: an error raised by {!err} carries ["<CSS input>"] until
+      {!with_filename} replaces it. {!field-position} is a byte offset in
+      {!source}, {!field-line} and {!field-col} are the 1-based line and column
+      of that offset, and {!field-marker_pos} counts the characters of
+      {!field-context_window} before it. A column is one Unicode scalar value,
+      as for {!context_window}. *)
+
+  exception
+    Parse_error of parse_error
+        [@deprecated "use Error.Parse_error; removed in 1.4.0"]
+  (** [Parse_error error] is raised by {!err} and its variants. *)
+
+  val pp_parse_error : parse_error -> string
+  [@@deprecated "use Error.to_string; removed in 1.4.0"]
+  (** [pp_parse_error error] formats [error], locating it as
+      [filename:line:column], then the call stack when there is one, then the
+      context window with a caret under the error's position. *)
+
+  val push_context : t -> string -> unit
+  [@@deprecated "use Error.with_context; removed in 1.4.0"]
+  (** [push_context t context] pushes [context] onto [t]'s call stack. *)
+
+  val pop_context : t -> unit
+  [@@deprecated "use Error.with_context; removed in 1.4.0"]
+  (** [pop_context t] pops the innermost context off [t]'s call stack, if any.
+  *)
+
+  val with_context : t -> string -> (unit -> 'a) -> 'a
+  [@@deprecated "use Error.with_context; removed in 1.4.0"]
+  (** [with_context t context f] runs [f ()] with [context] pushed onto [t]'s
+      call stack, and pops it when [f] returns or raises. *)
+
+  val callstack : t -> string list
+  [@@deprecated "use the path field of Error.t; removed in 1.4.0"]
+  (** [callstack t] is [t]'s call stack, outermost context first. *)
+
+  val err : ?got:string -> t -> string -> 'a
+  [@@deprecated
+    "use Error.fail (Error.bad_value loc ~property ~reason); removed in 1.4.0"]
+  (** [err ?got t message] raises {!exception-Parse_error} with [message] and
+      [got], located at [t]'s position. *)
+
+  val err_eof : t -> 'a
+  [@@deprecated
+    "use Error.fail (Error.unterminated loc sort); removed in 1.4.0"]
+  (** [err_eof t] is [err t "unexpected end of input"]. *)
+
+  val err_expected : t -> string -> 'a
+  [@@deprecated
+    "use Error.fail (Error.missing_token loc ~sort what); removed in 1.4.0"]
+  (** [err_expected t what] is [err t ("expected " ^ what)]. *)
+
+  val err_expected_but_eof : t -> string -> 'a
+  [@@deprecated
+    "use Error.fail (Error.missing_token loc ~sort what); removed in 1.4.0"]
+  (** [err_expected_but_eof t what] is
+      [err t ("Expected " ^ what ^ " but reached end of input")]. *)
+
+  val err_invalid : t -> string -> 'a
+  [@@deprecated
+    "use Error.fail (Error.bad_value loc ~property ~reason); removed in 1.4.0"]
+  (** [err_invalid t what] is [err t ("invalid " ^ what)]. *)
+
+  val with_filename : parse_error -> string -> parse_error
+  [@@deprecated "use Error.with_filename; removed in 1.4.0"]
+  (** [with_filename error filename] is [error] with [filename] as its source
+      name. The location is unchanged. *)
+end
