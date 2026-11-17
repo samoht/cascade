@@ -519,7 +519,7 @@ let rewrite_shadow_decl color_vars = function
    document-global, so a reference to a registered [<color>] carries a colour
    wherever it is written, and in a [box-shadow] it fills the colour slot the
    reader gave the blur. *)
-let normalise_shadow_color_vars stylesheet =
+let normalize_shadow_color_vars stylesheet =
   let color_vars = color_custom_property_names stylesheet in
   if Pp.String_set.is_empty color_vars then stylesheet
   else

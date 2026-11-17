@@ -588,8 +588,8 @@ val drop_inert_at_rules : t -> t
     4.1), at any depth, an [@charset "UTF-8"], and every [@charset] after the
     first (CSS Syntax 3 (ED) sec. 8.3). *)
 
-val normalise_shadow_color_vars : t -> t
-(** [normalise_shadow_color_vars stylesheet] moves a [var()] the reader put in a
+val normalize_shadow_color_vars : t -> t
+(** [normalize_shadow_color_vars stylesheet] moves a [var()] the reader put in a
     [box-shadow]'s blur slot to its colour slot when the variable is a typed
     [<color>] custom property somewhere in [stylesheet] (CSS Properties and
     Values API 1 sec. 2), so [0 0 var(--ring)] reads as [0 0 0 var(--ring)].
