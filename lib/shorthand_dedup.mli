@@ -36,6 +36,17 @@ val drop_vendor_aliases :
     unprefixed twin carries the same value and importance and is widely
     available. Under {!Ctx.enforce_spec} every declaration is kept. *)
 
+val declarations_conflict_with_keys :
+  Declaration.declaration ->
+  Shorthand_coverage.overlap_key list ->
+  Declaration.declaration ->
+  Shorthand_coverage.overlap_key list ->
+  bool
+(** [declarations_conflict_with_keys a a_keys b b_keys] is
+    {!Shorthand_coverage.declarations_conflict_with_keys} less the pairs where
+    one covers the other and sets every slot the other writes to the value the
+    other writes there. *)
+
 val drop_longhands_after_covering_shorthand :
   Declaration.declaration list -> Declaration.declaration list
 (** [drop_longhands_after_covering_shorthand decls] drops a longhand that writes
