@@ -21,82 +21,68 @@
   `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and
   `Reader.skip` past the end raises `Invalid_argument` (#1299).
-- Parse errors and warnings print their location as `file:line:column` instead
-  of a byte range, and `Error.position` gives that line and column (#1299).
+- A parse error or warning prints as `file:line:column: message`, then the
+  source line with a caret under the span; the CLI adds `warning:` or `error:`
+  after the location. Byte ranges, the reader's breadcrumb
+  (`read_declaration/float:`) and the `(in component)` tag are gone, and
+  `Error.position` gives the line and column (#1299, #1330, #1331).
+- `cascade diff --json` gives each warning and error `file`, `line` and `column`
+  members, and its `message` is the reason alone (#1331).
 - `cascade diff` names each input in its warnings, and `Css.of_string` without
   `~filename` leaves the name unset, printed as `<CSS input>` (#1299).
 - `Error.t`'s `source` is an `Error.Source.t`, shared by the errors of one
   parse; `Error.Source.text` gives the string. `Error.in_source`,
   `Cursor.of_components` and `Stylesheet.read_stylesheet_of_rules` take one
   (#1310).
-- A parse error or warning prints as `file:line:column: message`, followed by
-  the source line it is about with a caret under the span, the form compilers
-  print and editors jump to; the CLI adds `warning:` or `error:` after the
-  location. The reader's internal breadcrumb (`read_declaration/float:`) and the
-  `(in component)` tag are gone, and so is every line of the source but the one
-  the caret points at. `cascade diff --json` gives each warning and error
-  `file`, `line` and `column` members, and its `message` is the reason alone
-  (#1331).
 - `Error.kind` has an `Invalid_statement` case, for a statement read whole that
   the rules around it refuse, such as an `@import` after a style rule, which was
   a `Bad_value` for a property called `stylesheet` (#1331).
+- `Css.to_string ~minify:true` prints the sheet it is given. Folding selectors
+  such as `:nth-child(1)` and `:is(:link,:visited)`, dropping an `@charset` or
+  an `@font-face` without `font-family` or `src`, and moving a registered
+  `<color>` variable in a `box-shadow` happen in `Css.optimize`: call it before
+  printing, or `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules` or
+  `Stylesheet.normalize_shadow_color_vars` for one step (#1350, #1351, #1354).
+- Two declarations of one custom property with one value are equal and hash
+  alike wherever they were read: a custom property's tokens carry no source
+  position, so `Component.source_loc` gives `Loc.dummy` for each. Those
+  positions were offsets into the value's own text and located nothing in the
+  sheet. `Component.without_locs` drops the positions from a token list (#1353).
 - `Optimize.duplicate_buggy_properties` and
   `Optimize.apply_property_duplication` are gone: both returned their input
   unchanged (#1345).
 
 ### Printing
 
-- `Css.to_string ~minify:true` prints a `box-shadow` as given. Moving a
-  registered `<color>` variable from the blur slot to the colour slot is
-  `Stylesheet.normalise_shadow_color_vars`, which `Css.optimize` runs, so pretty
-  output of an optimized sheet shows it too. `--minify` output is unchanged
-  (#1354).
-- `Css.to_string ~minify:true` prints an `@font-face` without `font-family` or
-  `src`, and an `@charset`, as given. `Css.optimize` drops them instead, through
-  `Stylesheet.drop_inert_at_rules`, and `cascade apply` keeps them out of its
-  residual sheet. `--minify` output is unchanged (#1351).
 - A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
   quote inside `local("...")` print back as that name (#1351).
+- `--minify` prints an attribute value as the shorter of an escaped ident and a
+  string that reads back as written, so `[x="a b"]` prints as `[x=a\ b]`.
+  `[x="-2"]` and `[x="-"]` became selectors browsers drop, and `[x="a\\b"]`
+  another value (#1292, #1357).
 - Pretty output spells a selector one way: `::before`, a quoted attribute value
-  and `odd`/`even`, whatever the input wrote. Minified output takes the shorter
-  of an attribute value's escaped ident and string, so `[x="a b"]` prints as
-  `[x=a\ b]` (#1357).
-- `Css.to_string ~minify:true` prints a selector as it is given: folding
-  `:not(:not(X))`, `:is(:link,:visited)`, `:nth-child(1)`, `:not(:dir(ltr))` and
-  `input:not(:enabled)` moved to `Selector.canonicalize`, which `--minify` runs
-  and which takes `?enforce_spec`. `--minify` output is unchanged (#1350).
+  and `odd`/`even`, whatever the input wrote (#1357).
 - Very large numbers keep their sign. `width:4611686018427387904px` came out
   negative under `--minify`, and `z-index:calc(1e30)` as `-1` (#1280).
 - `@media (aspect-ratio:1.5/1)` prints as written instead of being rounded down
   to `1/1` (#1280).
-- Very large numbers print the same on Windows as elsewhere. `3.40282e38px` came
-  out there as `3.40282e038px` (#1286).
-- Numbers round the same way on Windows as elsewhere: `100000000000.5` printed
-  there as `100000000001`. A number with more than 15 significant digits keeps
-  its last decimals: `123456789.12345679` came out as `123456789.1234568`
-  (#1300).
+- Numbers print the same on Windows as elsewhere: `3.40282e38px` came out there
+  as `3.40282e038px`, and `100000000000.5` as `100000000001` (#1286, #1292,
+  #1300).
+- A number with more than 15 significant digits keeps its last decimals:
+  `123456789.12345679` came out as `123456789.1234568` (#1300).
 - Large numbers in media features and keyframe offsets print as `1e30` like
-  everywhere else, and the same on Windows, instead of `1e+30` (#1292).
+  everywhere else, instead of `1e+30` (#1292).
 - A number too small for eight decimals keeps its value. `(min-resolution:
   4e-33dpi)` and `entry 4e-33%` came out as `0dpi` and `0%`, and a negative one
   as `-0` (#1292).
-- An attribute value keeps its quotes unless it reads back as an ident.
-  `--minify` turned `[x="-2"]` and `[x="-"]` into selectors browsers drop, and
-  `[x="a\\b"]` into `[x=a\b]`, another value (#1292).
 
 ### Minification
 
-- `--minify --scope=stylesheet` keeps a `background` or `mask` shorthand that a
-  rule writes before longhands of the same family. The longhands contracted into
-  a shorthand that reset it: `background:#fff url(a.png) no-repeat center`
-  followed by `background-position` and `background-size` became
-  `background:0/25px 25px`, dropping the image, colour and repeat. The same
-  holds for an earlier longhand of the family whatever its value, such as
-  `background-color:inherit` (#1348).
-- `--minify --scope=stylesheet` keeps a `font-weight`, or another of the seven
-  `font` components, that a rule writes before a `font-size` and `font-family`
-  run: the run contracted into a `font` shorthand that reset it, so
-  `font-weight:700` was lost (#1348).
+- `--minify --scope=stylesheet` keeps a declaration written before longhands of
+  its family: `background:#fff url(a.png) no-repeat center` lost its image and
+  colour to `background-position` and `background-size`, and `font-weight:700`
+  to `font-size` and `font-family` (#1348).
 - An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
   `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
   and an `@namespace` after a rule, go as browsers ignore them (#1294).
@@ -106,27 +92,23 @@
 - `--minify` keeps in order two rules that differ only in the case of a type
   selector (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read
   through an `i` or `s` flag; it could move one past the other (#1295).
-- `--minify` is faster on large sheets, with the same output: a merge attempt
-  costs the rules it touches rather than the size of the sheet, about a third
-  fewer instructions on real sheets (#1306, #1307, #1313, #1322, #1323, #1324,
-  #1325, #1344, #1356).
-- `--minify` breaks a tie between merges that save the same by the rules they
-  produce, shortest first, and then by source order, never by a hash, so its
-  output no longer depends on how the syntax tree is represented (#1355).
-- A selector built by merging a nested rule into its parent is the one reading
-  its print gives, so nesting it under a neighbour happens in the first
-  `--minify` pass, not only when the output is minified again.
-  `Selector.compound` and `Selector.combine` build that shape, and
-  `Selector.reshape` rebuilds one node in it (#1342).
+- `--minify` is about a third faster on large sheets, with the same output
+  (#1306, #1307, #1313, #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356).
+- `--minify` breaks a tie between merges that save the same by the shortest
+  result, then by source order, so output no longer shifts for unrelated
+  reasons; some sheets come out slightly smaller (#1355).
+- `--minify` prints `:not(:not(X))` as `:is(X)` when `X` holds a type or a
+  combinator: `p:not(:not(.a .b))` came out as `p.a .b`, another selector
+  (#1350).
+- `--minify` output no longer shrinks when minified again: nesting a merged rule
+  under a neighbour happens in the first pass. `Selector.compound`, `combine`
+  and `reshape` build a selector in the shape the parser reads (#1342).
 
 ### Parsing
 
 - A rule whose attribute selector has a number as its value, such as
   `[data-x=2]`, `[data-x=2px]` or `[data-x=50%]`, is dropped with a warning, as
   browsers drop it, instead of being kept as `[data-x="2"]` (#1292).
-- `Source_index` offsets and slices index the string you passed even when it has
-  CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
-  per CRLF, and a NUL could make `Source_index.v` raise (#1285).
 - An invalid declaration in an `@keyframes` frame warns, as one in a style rule
   does, and so do an `!important` one and an `animation-*` property other than
   `animation-timing-function`, which browsers ignore there. The first went
@@ -145,64 +127,49 @@
 
 ### CLI tools
 
-- `--inline-vars` composes a nested rule's selector as CSS Nesting does, so
-  `.x&` under `a` no longer reads as the class `.xa` and takes a value defined
-  there. A definition on a selector list reaches a consumer under one of its
-  branches (#1352).
-- `--inline-vars` folds a variable that several rules define with one value, as
-  it already did once `--minify` had merged those rules, so inlining its output
-  again changes nothing. The warning now names a variable whose definitions
-  disagree: `--x takes different values in different scopes` (#1343).
-- On Windows `cascade` ends its lines in LF as elsewhere, where its output and
-  help pages ended them in CRLF, and `cascade diff --browser` starts node
-  without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).
+- `--inline-vars` composes a nested rule's selector as CSS Nesting does: `.x&`
+  under `a` no longer reads as the class `.xa`, and a definition on a selector
+  list reaches a consumer under one of its branches (#1352).
+- `--inline-vars` folds a variable that several rules define with one value, so
+  inlining its output again changes nothing. One whose definitions disagree is
+  named: `--x takes different values in different scopes` (#1343).
+- On Windows the lines of `cascade`'s output and help pages end in LF, as
+  elsewhere, and `cascade diff --browser` starts node without a POSIX shell and
+  finds it on `PATH` under `PATHEXT` (#1291).
 - `--inline-imports` inlines Windows drive paths (`C:/a.css`, `C:\a.css`,
   `C:a.css`), UNC paths and `file:` URLs and checks them against
   `--import-root`. It left them alone as remote URLs or looked a UNC path up
   under the importing file's directory (#1291).
-- `cascade fmt --minify --profile` reports `nested-merge probes`, the
-  declaration blocks the same-selector merge checked against nested blocks
-  before them, also read as `Stats.counters.nested_merge_probes` (#1301).
-- Printing parse warnings costs in proportion to the warnings plus the input,
-  where each warning counted its line and column from the first byte: a 2 MB
-  sheet takes a fraction of a second instead of seconds (#1310).
-- Every parse warning names its `file:line:column`. An unknown at-rule such as
-  `@tailwind`, a misplaced `@charset` or `@import`, an `@else` without `@when`
-  and an `@font-face` missing its `src` printed a byte range, and a bad
-  `@font-face` `font-weight`, `font-style` or `font-stretch` value pointed at
-  line 1 of a copy of the value and named no descriptor (#1330).
-- The `cascade diff` line that counts the warnings past the few the report
-  prints ends with `; -v prints every warning` (#1341).
-- A selector the reader refuses is reported as `bad selector: ...`, where it
-  read `bad value: ...` with no property named (#1340).
-- A declaration with no value, such as `.b { color: }`, is reported at the `}`
-  that ends it, where the column pointed one past it (#1339).
-- A parse warning whose message was already printed for the same file is counted
-  under the first, with where the next few are, and a last line gives the total.
-  `-v` prints every warning in full and `-q` none, in `fmt`, `apply`, `prune`
-  and in the `diff` report; `apply` and `prune` take `-q` and `-v` for the first
-  time. On netflix.com's stylesheet that is 43 lines of warnings instead of 478
-  (#1332).
-- `cascade fmtt a.css` says `fmtt` is an unknown command and suggests `fmt`,
-  where it complained about `a.css`; a word that names no file and holds no `.`
-  or `/` is not taken for a stylesheet (#1333).
-- The messages cascade writes itself take the `file: error: message` form of its
-  parse warnings, naming `cascade` where no file is at fault: `broken.css:
-  error: parse dropped every rule` and `cascade: warning: --lossless has no
-  effect without --minify`, where they began with `Error:` or `Warning:`
-  (#1337).
-- `cascade fmt missing.css` exits 124, the command-line error the other commands
-  give a missing file, where it exited 1 as if the file had failed to parse
-  (#1338).
-- The help pages group the options by what they act on (minifying, inlining, the
-  canonical diff, the browser comparison), give every command examples and
-  describe the `diff` report. `--flatten-nesting` without `--minify` is noted as
-  doing nothing, as the other minifier options are, and `--keep-vars='*'` no
-  longer prints a stray `[1]`. The README's formatting check used `--diff=tree`,
-  which ignores formatting; it uses `--diff=string` (#1333).
 - `cascade fmt --minify --profile` opens with the time spent reading, optimising
-  and printing, so the factoring table below it reads against the whole run, and
-  the table's columns are named in words (`run`, `rules-in`, `changed`) (#1336).
+  and printing, names its columns in words and counts `nested-merge probes`,
+  also read as `Stats.counters.nested_merge_probes` (#1301, #1336).
+- Printing the warnings of a large sheet no longer costs its size per warning: a
+  2 MB sheet prints about twenty times faster (#1310).
+- A bad `@font-face` `font-weight`, `font-style` or `font-stretch` value is
+  reported where the sheet holds it and names its descriptor; it pointed at line
+  1 of a copy of the value (#1330).
+- A parse warning already printed for the same file is counted under the first,
+  and a last line gives the total and points to `-v`: netflix.com's sheet prints
+  about 40 lines of warnings, not nearly 500 (#1332, #1341).
+- `-v` prints every warning and `-q` none, in `fmt`, `apply`, `prune` and the
+  `diff` report (#1332).
+- A selector the reader refuses is reported as `bad selector: ...` rather than
+  as a `bad value: ...` naming no property (#1340).
+- A declaration with no value, such as `.b { color: }`, is reported at the `}`
+  that ends it, not one column past it (#1339).
+- `cascade fmtt a.css` says `fmtt` is an unknown command and suggests `fmt`
+  instead of complaining about `a.css`; a word that names no file and holds no
+  `.` or `/` is not taken for a stylesheet (#1333).
+- The messages cascade writes itself take the `file: error: message` form of its
+  parse warnings, such as `broken.css: error: parse dropped every rule`, and
+  name `cascade` when no file is at fault (#1337).
+- `cascade fmt missing.css` exits 124, as the other commands do for a missing
+  file, instead of 1, the status of a file that failed to parse (#1338).
+- The help pages group the options by what they act on, give every command
+  examples and describe the `diff` report and its `--json` members (#1333,
+  #1335).
+- `--flatten-nesting` without `--minify` is noted as doing nothing, and
+  `--keep-vars='*'` no longer prints a stray `[1]` (#1333).
 
 ### Diff report
 
@@ -211,9 +178,6 @@
   parse warning does: a difference at the start of the second line read `line 1,
   col 0`. The report's `@@` header names that line instead of a byte offset
   (#1334).
-- `cascade diff --help` lists the members of the `--json` document, and a cram
-  test fails when the document gains one the page does not name (#1335).
-
 - `cascade diff` no longer slows down quadratically with the number of rules
   that moved or changed selector: netflix.com's stylesheet against its own
   `--minify` output takes 0.2 s of CPU instead of 1.2 s (#1297).
@@ -222,7 +186,7 @@
   (#1297).
 - `cascade diff --diff=canonical` is faster and lighter, for the same report:
   Tailwind's stylesheet against tw's takes about a quarter of the time and a
-  third of the memory (#1305, #1308, #1309, #1327, #1328).
+  third of the memory (#1304, #1305, #1308, #1309, #1327, #1328).
 - `cascade diff --diff=canonical` keeps a rule after an earlier one that writes
   another value to an element both match, also when a rule writing its own
   value stands between them: `.z{color:red}.j{color:blue}.a{color:blue}` and
@@ -233,15 +197,14 @@
 
 ### Library
 
-- A custom property's tokens carry no source position, so two declarations of
-  one custom property with one value are equal, hash alike and are one object
-  wherever their tokens were read. `Component.without_locs` drops the positions
-  (#1353).
 - `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
   as WHATWG URL does, since a digit cannot open a scheme (#1291).
-- `Cascade.Reader` exposes `origin` and `original_offset`, which map a position
-  in the preprocessed input back to a byte offset in the string the reader was
-  given (#1285).
+- `Reader` exposes `origin` and `original_offset`, which map a position in the
+  preprocessed input back to a byte offset in the string the reader was given
+  (#1285).
+- `Source_index` offsets and slices index the string you passed even when it has
+  CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
+  per CRLF, and a NUL could make `Source_index.v` raise (#1285).
 
 ## 1.2.1
 
