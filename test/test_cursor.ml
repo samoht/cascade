@@ -238,6 +238,31 @@ let test_function_call_requires_eof () =
   | (_ : int option) -> Alcotest.fail "expected Parse_error"
   | exception Cursor.Parse_error _ -> ()
 
+(* [try_parse_full_err] answers what [try_parse_full] answers and says why it
+   failed: a parse failure gives the reader's message, a value that leaves
+   tokens behind gives ["trailing tokens"], and either way the cursor is where
+   it started. *)
+let test_try_parse_full_err () =
+  let ok = Cursor.of_string "12" in
+  Alcotest.(check (result int string))
+    "consumes the cursor" (Ok 12)
+    (Cursor.try_parse_full_err Cursor.int ok);
+  Alcotest.(check bool) "cursor at the end" true (Cursor.is_done ok);
+  let trailing = Cursor.of_string "12 13" in
+  Alcotest.(check (result int string))
+    "leaves a token" (Error "trailing tokens")
+    (Cursor.try_parse_full_err Cursor.int trailing);
+  Alcotest.(check (option int))
+    "cursor rewound past the value" (Some 12)
+    (Cursor.integer_opt trailing);
+  let bad = Cursor.of_string "foo" in
+  (match Cursor.try_parse_full_err Cursor.int bad with
+  | Ok _ -> Alcotest.fail "expected Error"
+  | Error msg ->
+      Alcotest.(check bool) "names the failure" true (String.length msg > 0));
+  Alcotest.(check (option string))
+    "cursor rewound past the failure" (Some "foo") (Cursor.ident_opt bad)
+
 let suite =
   ( "cursor",
     [
@@ -279,4 +304,5 @@ let suite =
       Alcotest.test_case "braces requires eof" `Quick test_braces_requires_eof;
       Alcotest.test_case "function call requires eof" `Quick
         test_function_call_requires_eof;
+      Alcotest.test_case "try_parse_full_err" `Quick test_try_parse_full_err;
     ] )

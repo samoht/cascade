@@ -631,4 +631,13 @@ val try_parse_err : (t -> 'a) -> t -> ('a, string) result
 val try_parse_full : (t -> 'a) -> t -> 'a option
 (** [try_parse_full p t] is [Some (p t)] when [p] succeeds and consumes the
     cursor fully, [None] otherwise (cursor rewound). The failure is not
-    formatted, since locating it walks the source. *)
+    formatted, since locating it walks the source: use this form when only
+    whether [t] reads matters, as on a hot path that tries one grammar after
+    another. *)
+
+val try_parse_full_err : (t -> 'a) -> t -> ('a, string) result
+(** [try_parse_full_err p t] is [Ok (p t)] when [p] succeeds and consumes the
+    cursor fully. Otherwise the cursor is rewound and it is [Error msg], where
+    [msg] is the reader's message, or ["trailing tokens"] when [p] stopped
+    before the end. Formatting the message walks the source up to the failure,
+    so use {!try_parse_full} when the message would be discarded. *)
