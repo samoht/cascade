@@ -678,8 +678,8 @@ type flex_basis =
   | Abs of length
   | Dimension of { value : float; unit : string; repr : string }
       (** A dimension whose authored spelling the typed constructors above do
-          not carry, e.g. [1e3px] or [10.0px]. {!type-length} holds one the same
-          way. *)
+          not carry, e.g. [1e3px] or [10.0px]. {!Values.type-length} holds one
+          the same way. *)
   | Calc of flex_basis calc
   | Var of flex_basis var
 
@@ -710,7 +710,7 @@ type border_width =
   | Pct of float
   | Dimension of { value : float; unit : string; repr : string }
       (** A length in a unit [border_width] does not name, carrying the authored
-          spelling in [repr] the way {!length} does. *)
+          spelling in [repr] the way {!Values.type-length} does. *)
   | Zero
   | Auto
   | Max_content

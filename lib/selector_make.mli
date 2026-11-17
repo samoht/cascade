@@ -14,13 +14,13 @@ val skip_css_escape : string -> int ref -> unit
 val element : ?ns:ns -> string -> t
 (** [element ?ns name] is the type selector [name].
 
-    @raise Invalid_argument if [name] is not a valid CSS identifier. *)
+    It raises [Invalid_argument] if [name] is not a valid CSS identifier. *)
 
 val class_ : string -> t
 (** [class_ name] is the class selector [.name], escaped when printed.
 
-    @raise Invalid_argument
-      if [name] is empty, starts with [--] or holds a control character. *)
+    It raises [Invalid_argument] if [name] is empty, starts with [--] or holds a
+    control character. *)
 
 val id : string -> t
 (** [id name] is the ID selector [#name], under the same rules as {!class_}. *)
@@ -48,7 +48,7 @@ val string_of_attr_name : attr_name -> string
 val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
 (** [attribute ?ns ?flag name m] is the attribute selector on [name].
 
-    @raise Invalid_argument if [name] is not a valid CSS identifier. *)
+    It raises [Invalid_argument] if [name] is not a valid CSS identifier. *)
 
 val unescape_selector_name : string -> string
 (** [unescape_selector_name s] is [s] with its CSS escapes decoded. *)
@@ -76,7 +76,7 @@ val where : t list -> t
 val list : t list -> t
 (** [list sels] is the selector list [sels].
 
-    @raise Invalid_argument if [sels] is empty. *)
+    It raises [Invalid_argument] if [sels] is empty. *)
 
 val unescape_attribute_value : string -> string
 (** [unescape_attribute_value s] is {!unescape_selector_name}. *)

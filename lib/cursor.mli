@@ -612,8 +612,7 @@ val list :
     is specified explicitly. A [sep] only commits once another [item] parses
     after it, so a trailing separator with nothing following it is left
     unconsumed for the caller rather than silently dropped. Enforces cardinality
-    bounds. Too few items raise ["expected at least N items (got M)"], the
-    wording {!Reader.list} uses. *)
+    bounds. Too few items raise ["expected at least N items (got M)"]. *)
 
 val fold_many :
   (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option

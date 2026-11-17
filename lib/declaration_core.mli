@@ -113,7 +113,7 @@ val compare_prop_key : prop_key -> prop_key -> int
 (** [compare_prop_key a b] is a total order on property identities, [0] exactly
     where {!equal_prop_key} is [true]. It orders the property tag rather than
     the runtime representation, so an ordered container keyed on a property
-    stays off {!Stdlib.compare}. *)
+    stays off [Stdlib.compare]. *)
 
 val property_key : declaration -> prop_key
 (** [property_key decl] is the identity of [decl]'s property. Two declarations
@@ -130,9 +130,9 @@ val value_of : declaration -> 'a Properties.property -> 'a option
 (** [value_of decl property] is [decl]'s value when {!property_key} names
     [property], and [None] otherwise. The witness ties the result to the type
     that property carries, so a caller reads the typed value without naming the
-    existential {!constructor-Declaration} binds, which no constructor name
-    resolves against. A theme guard is read through, as {!property_key} reads
-    through it. *)
+    existential {!Declaration_intf.constructor-Declaration} binds, which no
+    constructor name resolves against. A theme guard is read through, as
+    {!property_key} reads through it. *)
 
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)

@@ -39,8 +39,8 @@ val of_string : string -> (t, Error.t) result
 val v : string -> t
 (** [v s] is the selector [s] spells, for selector text written in a program.
 
-    @raise Invalid_argument
-      if [s] is malformed. Use {!of_string} to deal with untrusted input. *)
+    It raises [Invalid_argument] if [s] is malformed. Use {!of_string} to deal
+    with untrusted input. *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)

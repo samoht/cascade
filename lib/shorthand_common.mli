@@ -5,7 +5,7 @@ val preserve_list : 'a list -> 'a list -> 'a list
 (** [preserve_list input output] is {!Common.List.preserve}. *)
 
 val scope : Ctx.t -> Ctx.scope
-(** [scope ctx] is {!Ctx.scope}. *)
+(** [scope ctx] is {!Ctx.val-scope}. *)
 
 val compose_fixed3_via_index :
   Rule_index.t ->

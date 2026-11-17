@@ -320,7 +320,7 @@ val stylesheet :
     stylesheet, or [getComputedStyle]) - the same closed-world assumption as
     {!Css.inline_vars}.
 
-    [stats] records what this run did; read it back with {!Stats.snapshot}.
+    [stats] records what this run did; read it back with {!Stats.val-snapshot}.
     Without it the run counts into a recorder of its own that nobody reads. *)
 
 val flatten_nesting : t -> t

@@ -10,7 +10,7 @@ val property_name : ?repr:string -> string -> property_name
     the spelling the author wrote when it differs from [name], which is how an
     escape survives the round trip; a name cascade generates has none.
 
-    @raise Invalid_argument if [name] does not read as one ident. *)
+    It raises [Invalid_argument] if [name] does not read as one ident. *)
 
 type declaration_feature =
   | Declaration of property_name * Declaration.t
@@ -79,20 +79,18 @@ val property : string -> string -> t
 (** [property name value] parses [name: value] as a structured supports
     declaration feature. [value] keeps the spelling it is given.
 
-    @raise Invalid_argument
-      if [name] is not one ident or [value] is not a [<declaration-value>] (CSS
-      Syntax 3 (ED) sec. 7.2). The feature writes the value between its own
-      parentheses, so an unmatched closing bracket closes them and the tail
-      becomes a second branch of the condition. Use {!of_string} to deal with
-      untrusted input. *)
+    It raises [Invalid_argument] if [name] is not one ident or [value] is not a
+    [<declaration-value>] (CSS Syntax 3 (ED) sec. 7.2). The feature writes the
+    value between its own parentheses, so an unmatched closing bracket closes
+    them and the tail becomes a second branch of the condition. Use {!of_string}
+    to deal with untrusted input. *)
 
 val func : string -> string -> t
 (** [func name args] parses [args] as CSS component values for a supports
     function feature.
 
-    @raise Invalid_argument
-      if [args] does not match the grammar of a function [name] names. Use
-      {!of_string} to deal with untrusted input. *)
+    It raises [Invalid_argument] if [args] does not match the grammar of a
+    function [name] names. Use {!of_string} to deal with untrusted input. *)
 
 val to_string : ?minify:bool -> ?verbatim:bool -> t -> string
 (** [to_string ?minify ?verbatim cond] renders the condition as a CSS

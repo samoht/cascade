@@ -32,7 +32,7 @@ val run :
     goes to the file [stderr], and to the null device when [stderr] is absent;
     standard input is the null device.
 
-    @raise Unix.Unix_error when [prog] cannot be started. *)
+    It raises [Unix.Unix_error] when [prog] cannot be started. *)
 
 val chrome_version : string -> (int * int) option
 (** [chrome_version chrome] is the [(major, minor)] the binary reports. The

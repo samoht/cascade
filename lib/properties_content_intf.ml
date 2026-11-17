@@ -8,13 +8,15 @@ open Properties_background_intf
 (* Content Types *)
 
 (** CSS Generated Content 3 sec. 2 [content]: the replacement and list forms
-    both take an [<image>], which is the {!type-background_image} vocabulary
-    without its comma list. *)
+    both take an [<image>], which is the
+    {!Properties_background_intf.type-background_image} vocabulary without its
+    comma list. *)
 type content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
   | Image of background_image
-      (** The [<image>] of {!type-background_image}, aliased below. *)
+      (** The [<image>] of {!Properties_background_intf.type-background_image},
+          aliased below. *)
   | None
   | Normal
   | Open_quote
