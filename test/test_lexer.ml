@@ -319,11 +319,52 @@ let spec_wpt_url_unicode_edges () =
 let bad_string () = check "\"oops\n" "<bad-string> <ws>"
 let bad_url () = check "url(a b)" "<bad-url>"
 
+(* A token costs its record, its location and its payload: about seven words for
+   a comma and ten for a short ident. What the lexer allocates beyond that to
+   look at a byte, to remember the token it read or to build a payload it could
+   have sliced from the source is garbage, and it used to double the cost of
+   every token. The stream is read the way the parser reads it, a [peek] before
+   each [next]. *)
+let lexing_allocates_only_tokens () =
+  let words_per_token tok =
+    let src = String.concat "" (List.init 1000 (fun _ -> tok)) in
+    let lex () =
+      let lexer = Lexer.of_string src in
+      let rec loop n =
+        ignore (Lexer.peek lexer : Token.t);
+        match (Lexer.next lexer).Token.kind with
+        | Token.Eof -> n
+        | _ -> loop (n + 1)
+      in
+      loop 0
+    in
+    let n = lex () in
+    Css_test_helpers.measure lex /. float_of_int n
+  in
+  List.iter
+    (fun (tok, bound) ->
+      let words = words_per_token tok in
+      Alcotest.(check bool)
+        (Fmt.str "%S: %.1f words a token, at most %.0f" tok words bound)
+        true (words <= bound))
+    [
+      ("a ", 12.);
+      ("1px ", 18.);
+      ("1.5e3 ", 17.);
+      (", ", 10.);
+      ("+", 9.);
+      ("\"s\" ", 13.);
+      ("url(x) ", 17.);
+      ("a\n  ", 13.);
+    ]
+
 let suite =
   ( "lexer",
     [
       Alcotest.test_case "spec section 3.3 preprocessing" `Quick
         spec_preprocessing;
+      Alcotest.test_case "lexing allocates only tokens" `Quick
+        lexing_allocates_only_tokens;
       Alcotest.test_case "spec section 4.1 token railroad diagrams" `Quick
         spec_token_railroad_diagrams;
       Alcotest.test_case "spec section 4.1 unicode-range tokens" `Quick
