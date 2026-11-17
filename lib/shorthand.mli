@@ -157,6 +157,16 @@ val deduplicate_declarations_with :
   Declaration.declaration list
 (** Deduplicate and optionally compose declarations under [ctx]. *)
 
+val compose_deduplicated :
+  ?held:held ->
+  ctx:Ctx.t ->
+  Declaration.declaration list ->
+  Declaration.declaration list
+(** [compose_deduplicated ?held ~ctx decls] is what
+    {!val-deduplicate_declarations_with} gives for [decls] in which it finds
+    nothing to deduplicate, such as a sublist of what it returned: only the
+    composition runs. *)
+
 val deduplicate_declarations :
   ?scope:Ctx.scope ->
   Declaration.declaration list ->

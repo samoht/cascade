@@ -110,17 +110,9 @@ let compose_shorthands ?(held = held_none) ~ctx kept =
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
-let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
-    props =
-  let held = held_outside held props in
-  let props = drop_longhands_after_covering_shorthand props in
-  let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
-  let kept =
-    List.rev
-      (List.fold_left
-         (deduplicate_step ?targets:(Ctx.judge ctx))
-         [] indexed_props)
-  in
+(* What follows the reduction of [kept]: composition, when [merge_box], then the
+   vendor aliases and the longhands the shorthands now restate. *)
+let compose_reduced ~held ~ctx ~merge_box props kept =
   let kept =
     (* Composition reads a family's declarations together, so one declaration on
        its own composes to itself in either scope; the test of that asks every
@@ -141,6 +133,24 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
      callers detect a no-op by identity (the factoring fixpoint relies on
      it). *)
   preserve_list props kept
+
+let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
+    props =
+  let held = held_outside held props in
+  let props = drop_longhands_after_covering_shorthand props in
+  let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
+  let kept =
+    List.rev
+      (List.fold_left
+         (deduplicate_step ?targets:(Ctx.judge ctx))
+         [] indexed_props)
+  in
+  compose_reduced ~held ~ctx ~merge_box props kept
+
+let compose_deduplicated ?(held = held_none) ~ctx props =
+  let held = held_outside held props in
+  compose_reduced ~held ~ctx ~merge_box:true props
+    (List.mapi (fun i decl -> (i, decl)) props)
 
 let deduplicate_declarations ?scope props =
   deduplicate_declarations_with ~ctx:(Ctx.of_scope scope) props

@@ -223,14 +223,14 @@ let declaration_run ~ctx decls =
   |> deduplicate_declarations_with ~ctx
   |> synthesize_columns |> synthesize_position_try |> preserve_list decls
 
-let finalize ?held ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
+(* [finalize] with [dedup] for its deduplication. *)
+let finalize_with ~dedup ~canonicalize_selector ~ctx (rule : rule) : rule =
   let normalize_synthesized decl =
     if List.memq decl rule.declarations then decl
     else Declaration.normalize ~lossless:(Ctx.lossless ctx) decl
   in
   let declarations =
-    deduplicate_declarations_with ?held ~ctx rule.declarations
-    |> synthesize_columns |> synthesize_position_try
+    dedup rule.declarations |> synthesize_columns |> synthesize_position_try
     |> list_map_preserve normalize_synthesized
     |> sort_commuting ~selector:rule.selector
     |> preserve_list rule.declarations
@@ -247,6 +247,11 @@ let finalize ?held ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
     else rule
   in
   with_declarations rule declarations
+
+let finalize ?held ?(canonicalize_selector = true) ~ctx rule =
+  finalize_with
+    ~dedup:(deduplicate_declarations_with ?held ~ctx)
+    ~canonicalize_selector ~ctx rule
 
 let drop_shadowed_rules (rules : rule list) : rule list =
   let later_by_selector = Cover.v () in
@@ -356,11 +361,15 @@ let drop_shadowed rules =
 (* The cheap rule-local pipeline, run on a rule run before the factoring and
    independent of the stylesheet-wide factoring budget. Shadowing is read again
    after [finalize], whose shorthands can cover what an earlier rule of the same
-   selector writes. *)
+   selector writes. [single] has deduplicated every rule and dropping shadowed
+   declarations keeps that, so [finalize] only composes. *)
 let normalize ~ctx ~held rules =
   list_map_preserve (single ~ctx) rules
   |> drop_shadowed
-  |> list_map_preserve (finalize ~held ~canonicalize_selector:false ~ctx)
+  |> list_map_preserve
+       (finalize_with
+          ~dedup:(Shorthand.compose_deduplicated ~held ~ctx)
+          ~canonicalize_selector:false ~ctx)
   |> drop_shadowed
 
 (* Adjacent identical-body merging: two neighbouring rules with the same
