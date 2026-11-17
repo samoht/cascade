@@ -35,6 +35,14 @@
   `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
   `Declaration.prop_key`. Until then each keeps its 1.2 behaviour; nothing in
   Cascade called them (#1371).
+- `Stats.iteration_stat` loses `iteration`, `local_iteration` and
+  `active_passes`, `changed_passes` becomes `changed : bool`, and
+  `Stats.counters` loses `iterations`. A factoring run records exactly one
+  row, so `local_iteration` and `active_passes` were always 1, and `iteration`
+  and `iterations` always repeated the run number: read as counts of separate
+  passes, they described work the optimizer never did. `--profile` prints one
+  row per run with `run`, `rules-in`, `rules-out`, `bytes-in`, `saved`,
+  `changed` and `time`.
 - `Declaration.custom_property` and `Supports.property`, `func` and
   `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and

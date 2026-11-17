@@ -65,7 +65,6 @@ let test_report_survives_a_later_run () =
 (* A recorder starts empty, and every optimizer run gets a fresh one. *)
 let test_fresh_recorder_is_empty () =
   let report = S.snapshot (S.v ()) in
-  Alcotest.(check int) "iterations" 0 report.counters.iterations;
   Alcotest.(check int)
     "factor_fixpoints_run" 0 report.counters.factor_fixpoints_run;
   Alcotest.(check int)
@@ -97,25 +96,21 @@ let test_savings_accumulate_per_iteration () =
 
 let test_record_iteration_updates_history_and_counters () =
   let stats = S.v () in
-  S.record_iteration stats ~fixpoint:2 ~local_iteration:5 ~before_rules:17
-    ~before_bytes:300 ~after_rules:13 ~after_bytes:240 ~bytes_saved:60
-    ~active_passes:4 ~changed_passes:3 ~elapsed:0.125;
+  S.record_iteration stats ~fixpoint:2 ~before_rules:17 ~before_bytes:300
+    ~after_rules:13 ~after_bytes:240 ~bytes_saved:60 ~changed:true
+    ~elapsed:0.125;
   let report = S.snapshot stats in
   Alcotest.(check int)
     "factor bytes saved counter updated" 60 report.counters.factor_bytes_saved;
-  Alcotest.(check int) "iteration counted" 1 report.counters.iterations;
   match report.iteration_stats with
   | [ s ] ->
       Alcotest.(check int) "fixpoint" 2 s.fixpoint;
-      Alcotest.(check int) "global iteration" 1 s.iteration;
-      Alcotest.(check int) "local iteration" 5 s.local_iteration;
       Alcotest.(check int) "before rules" 17 s.before_rules;
       Alcotest.(check int) "after rules" 13 s.after_rules;
       Alcotest.(check int) "before bytes" 300 s.before_bytes;
       Alcotest.(check int) "after bytes" 240 s.after_bytes;
       Alcotest.(check int) "bytes saved" 60 s.bytes_saved;
-      Alcotest.(check int) "active passes" 4 s.active_passes;
-      Alcotest.(check int) "changed passes" 3 s.changed_passes;
+      Alcotest.(check bool) "changed" true s.changed;
       Alcotest.(check (float 0.0001)) "elapsed" 0.125 s.elapsed
   | stats ->
       Alcotest.failf "expected one iteration stat, got %d" (List.length stats)

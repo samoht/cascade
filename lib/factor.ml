@@ -99,39 +99,36 @@ let should_run_preflight ~ctx summary =
     Stats.add_preflight_gain (Ctx.stats ctx) (Preflight.estimated_gain summary);
   Preflight.useful summary || Ctx.aggressive ctx
 
-let record_iteration stats ~fixpoint ~local_iteration ~before_rules
-    ~before_bytes ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed =
-  Stats.record_iteration stats ~fixpoint ~local_iteration ~before_rules
-    ~before_bytes ~after_rules ~after_bytes ~bytes_saved ~active_passes:1
-    ~changed_passes:(if changed then 1 else 0)
-    ~elapsed
-
-let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
+let optimize_graph ~ctx ~finalize ~fixpoint rules graph =
   let stats = Ctx.stats ctx in
   Stats.reset_saving stats;
   let before_rules = List.length rules in
   let profile = Stats.profile stats in
   let before_bytes = if profile then rules_pp_size rules else 0 in
-  let timer = Mtime_clock.counter () in
+  let timer = if profile then Some (Mtime_clock.counter ()) else None in
   let { Rule_scheduler.graph; _ } = Rule_scheduler.run ~ctx ~finalize graph in
   (* A produced rule left the scheduler finalized, and an input rule arrives
      finalized, so the order is the result. *)
   let rules' = ordered_rules rules graph in
   let after_bytes = if profile then rules_pp_size rules' else 0 in
-  let elapsed = Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9 in
+  let elapsed =
+    match timer with
+    | Some timer -> Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9
+    | None -> 0.
+  in
   let bytes_saved = Stats.saving stats in
   (* Both return the input unchanged by physical identity on a no-op, so a
      pointer compare detects change without rendering to CSS. *)
   let changed = rules' != rules in
   let after_rules = List.length rules' in
-  record_iteration stats ~fixpoint ~local_iteration ~before_rules ~before_bytes
+  Stats.record_iteration stats ~fixpoint ~before_rules ~before_bytes
     ~after_rules ~after_bytes ~bytes_saved ~changed ~elapsed;
-  (* Per fixpoint iteration, not per rule, so the closure cost is noise. The
-     byte columns are only computed under [--profile]; rules and savings are
+  (* Per fixpoint, not per rule, so the closure cost is noise. The byte columns
+     and the time are only measured under [--profile]; rules and savings are
      always available. *)
   Log.debug (fun m ->
-      m "fixpoint %d.%d: %d -> %d rules, %d bytes saved, %.3fs%s" fixpoint
-        local_iteration before_rules after_rules bytes_saved elapsed
+      m "fixpoint %d: %d -> %d rules, %d bytes saved%s" fixpoint before_rules
+        after_rules bytes_saved
         (if changed then "" else " (no change)"));
   if changed then rules' else rules
 
@@ -210,10 +207,7 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
           let graph =
             Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
           in
-          let optimized =
-            optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules
-              graph
-          in
+          let optimized = optimize_graph ~ctx ~finalize ~fixpoint rules graph in
           let factored = settle optimized in
           if
             optimized != rules

@@ -1,19 +1,15 @@
 type iteration_stat = {
   fixpoint : int;
-  iteration : int;
-  local_iteration : int;
   before_rules : int;
   after_rules : int;
   before_bytes : int;
   after_bytes : int;
   bytes_saved : int;
-  active_passes : int;
-  changed_passes : int;
+  changed : bool;
   elapsed : float;
 }
 
 type counters = {
-  iterations : int;
   factor_fixpoints_run : int;
   factor_fixpoints_skipped : int;
   factor_preflight_gain : int;
@@ -33,7 +29,6 @@ type t = {
 
 let no_counters =
   {
-    iterations = 0;
     factor_fixpoints_run = 0;
     factor_fixpoints_skipped = 0;
     factor_preflight_gain = 0;
@@ -84,28 +79,22 @@ let probe_nested_merge t =
   t.counters <-
     { t.counters with nested_merge_probes = t.counters.nested_merge_probes + 1 }
 
-let record_iteration t ~fixpoint ~local_iteration ~before_rules ~before_bytes
-    ~after_rules ~after_bytes ~bytes_saved ~active_passes ~changed_passes
-    ~elapsed =
-  let iteration = t.counters.iterations + 1 in
+let record_iteration t ~fixpoint ~before_rules ~before_bytes ~after_rules
+    ~after_bytes ~bytes_saved ~changed ~elapsed =
   t.counters <-
     {
       t.counters with
-      iterations = iteration;
       factor_bytes_saved = t.counters.factor_bytes_saved + bytes_saved;
     };
   t.iteration_stats_rev <-
     {
       fixpoint;
-      iteration;
-      local_iteration;
       before_rules;
       after_rules;
       before_bytes;
       after_bytes;
       bytes_saved;
-      active_passes;
-      changed_passes;
+      changed;
       elapsed;
     }
     :: t.iteration_stats_rev

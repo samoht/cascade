@@ -1,21 +1,19 @@
 open Cascade
 open Cmdliner
 
-(* One row per factoring iteration: the fixpoint run it belongs to, its place in
-   that run and in the whole optimization, the rules and bytes it started from,
-   what it saved, the passes it ran and changed something with, and its time. *)
+(* One row per factoring run: the rules and bytes it started from, the rules it
+   ended with, what it saved, whether it changed anything, and its time. *)
 let print_iteration_profile (report : Stats.snapshot) =
   match report.iteration_stats with
   | [] -> ()
   | iteration_stats ->
-      Fmt.epr "  %-3s %-4s %-5s %9s %9s %9s %9s %7s %7s %8s@." "run" "iter"
-        "total" "rules-in" "rules-out" "bytes-in" "saved" "passes" "changed"
-        "time";
+      Fmt.epr "  %-3s %9s %9s %9s %9s %7s %8s@." "run" "rules-in" "rules-out"
+        "bytes-in" "saved" "changed" "time";
       List.iter
         (fun (s : Stats.iteration_stat) ->
-          Fmt.epr "  %-3d %-4d %-5d %9d %9d %9d %9d %7d %7d %7.3fs@." s.fixpoint
-            s.local_iteration s.iteration s.before_rules s.after_rules
-            s.before_bytes s.bytes_saved s.active_passes s.changed_passes
+          Fmt.epr "  %-3d %9d %9d %9d %9d %7s %7.3fs@." s.fixpoint
+            s.before_rules s.after_rules s.before_bytes s.bytes_saved
+            (if s.changed then "yes" else "no")
             s.elapsed)
         (List.rev iteration_stats)
 
@@ -41,8 +39,8 @@ let report_profile phases (report : Stats.snapshot) =
   Fmt.epr "time: read %.3fs, optimize %.3fs, print %.3fs, total %.3fs@."
     phases.read phases.optimize phases.print
     (phases.read +. phases.optimize +. phases.print);
-  Fmt.epr "factor fixpoint (%d runs, %d iterations, total %.3fs):@."
-    report.counters.factor_fixpoints_run report.counters.iterations total;
+  Fmt.epr "factor fixpoint (%d runs, total %.3fs):@."
+    report.counters.factor_fixpoints_run total;
   print_iteration_profile report;
   print_factor_profile_footer report.counters
 
