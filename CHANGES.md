@@ -93,7 +93,8 @@
   selector (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read
   through an `i` or `s` flag; it could move one past the other (#1295).
 - `--minify` is about a third faster on large sheets, with the same output
-  (#1306, #1307, #1313, #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356).
+  (#1306, #1307, #1313, #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356,
+  #1361).
 - `--minify` breaks a tie between merges that save the same by the shortest
   result, then by source order, so output no longer shifts for unrelated
   reasons; some sheets come out slightly smaller (#1355).

@@ -27,33 +27,23 @@ type candidate = {
   saving : int;
 }
 
-type size_cache = {
-  graph : Rule_graph.t;
-  node_sizes : (Rule_graph.node_id, int) Hashtbl.t;
-  rule_sizes : int Rule_tbl.t;
-}
+(* A produced rule's size depends on the rule alone, not on the graph it is
+   scored against, so one cache serves a whole scheduler run. A consumed node's
+   size is already held by the graph. *)
+type size_cache = int Rule_tbl.t
 
-let size_cache graph =
-  { graph; node_sizes = Hashtbl.create 256; rule_sizes = Rule_tbl.create 256 }
-
-let node_size cache id =
-  match Hashtbl.find_opt cache.node_sizes id with
-  | Option.Some size -> size
-  | Option.None ->
-      let size = Rule_graph.node_size cache.graph id in
-      Hashtbl.replace cache.node_sizes id size;
-      size
+let size_cache () = Rule_tbl.create 256
 
 let produced_rule_size cache rule =
-  match Rule_tbl.find_opt cache.rule_sizes rule with
+  match Rule_tbl.find_opt cache rule with
   | Option.Some size -> size
   | Option.None ->
       let size = Size.rule rule in
-      Rule_tbl.replace cache.rule_sizes rule size;
+      Rule_tbl.replace cache rule size;
       size
 
-let consumed_size cache ids =
-  List.fold_left (fun acc id -> acc + node_size cache id) 0 ids
+let consumed_size graph ids =
+  List.fold_left (fun acc id -> acc + Rule_graph.node_size graph id) 0 ids
 
 let produced_size cache rules =
   List.fold_left (fun acc rule -> acc + produced_rule_size cache rule) 0 rules
@@ -76,9 +66,9 @@ let v ?size_cache:cache ~kind ~finalize graph ~consume
       let cache =
         match cache with
         | Option.Some cache -> cache
-        | Option.None -> size_cache graph
+        | Option.None -> size_cache ()
       in
-      let before_size = consumed_size cache consume in
+      let before_size = consumed_size graph consume in
       let after_size = produced_size cache produce in
       let saving = before_size - after_size in
       if saving <= 0 then Option.None

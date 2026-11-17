@@ -24,13 +24,12 @@ type candidate = {
     the bytes they would actually commit. *)
 
 type size_cache
-(** Transaction-local minified-size cache for scoring many candidates against
-    the same graph. *)
+(** Minified sizes of produced rules, for scoring many candidates. *)
 
-val size_cache : Rule_graph.t -> size_cache
-(** [size_cache graph] creates an empty cache for candidate scoring over
-    [graph]. The cache is intentionally short-lived: create one per candidate
-    enumeration pass. *)
+val size_cache : unit -> size_cache
+(** [size_cache ()] is an empty cache. A produced rule's size does not depend on
+    the graph, so one cache serves every candidate of a scheduler run, across
+    its commits. *)
 
 val v :
   ?size_cache:size_cache ->

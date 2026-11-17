@@ -1101,7 +1101,7 @@ type core = {
   ctx : Ctx.t;
   finalize : rule -> rule;
   view : view;
-  mutable sizes : Rule_rewrite.size_cache;
+  sizes : Rule_rewrite.size_cache;
   mutable epoch : int;
   mutable next_key : int;
   mutable offered : offer list;
@@ -1878,7 +1878,7 @@ let v ?nodes ~ctx ~finalize g =
       ctx;
       finalize;
       view;
-      sizes = Rule_rewrite.size_cache g;
+      sizes = Rule_rewrite.size_cache ();
       epoch = 0;
       next_key = 0;
       offered = [];
@@ -1930,7 +1930,6 @@ let rewrite t graph ~consume =
   let core = t.core in
   let first = Rule_graph.node_count core.view.graph in
   rewrite_view core.view graph ~consume;
-  core.sizes <- Rule_rewrite.size_cache graph;
   let produced =
     List.init
       (Rule_graph.node_count graph - first)
