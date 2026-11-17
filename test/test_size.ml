@@ -1,4 +1,5 @@
 open Cascade
+open Css_test_helpers
 
 let rules css =
   match Css.of_string css with
@@ -35,10 +36,36 @@ let test_rules_size_is_sum () =
     (List.fold_left (fun acc r -> acc + Size.rule r) 0 rs)
     (Size.rules rs)
 
+(* Every declaration the optimizer scores is one it already built, so measuring
+   one should not print it again. The declarations below take each branch of the
+   printer: a custom property, [!important], a [page-break-*] value with and
+   without a [break-*] alias. *)
+let tricky_declarations () =
+  let body =
+    String.concat ";"
+      [
+        "--x: a  b";
+        "color:red!important";
+        "page-break-before:always";
+        "page-break-after:avoid";
+        "width:calc(100% - 1px)";
+      ]
+  in
+  (Fmt.kstr rule ".a{%s}" body).declarations
+
+let test_measuring_declarations_allocates_nothing () =
+  let decls = tricky_declarations () in
+  Alcotest.(check (float 0.))
+    "words allocated beyond the measurement's own"
+    (measure (fun () -> 0))
+    (measure (fun () -> Size.decls decls))
+
 let suite =
   ( "size",
     [
       Alcotest.test_case "decl and rule sizes match minified output" `Quick
         test_decl_and_rule_sizes_match_minified_output;
       Alcotest.test_case "rules size is sum" `Quick test_rules_size_is_sum;
+      Alcotest.test_case "measuring declarations allocates nothing" `Quick
+        test_measuring_declarations_allocates_nothing;
     ] )
