@@ -55,11 +55,10 @@ let to_string ?(minify = false) ?indent ?lossless ?enforce_spec (statements : t)
 (* [pair_from source c1 c2 i] is the first offset at or after [i] where [c1] is
    followed by [c2]. *)
 let rec pair_from source c1 c2 i =
-  if i + 1 >= String.length source then Option.None
-  else if
-    String.unsafe_get source i = c1 && String.unsafe_get source (i + 1) = c2
-  then Some i
-  else pair_from source c1 c2 (i + 1)
+  match String.index_from_opt source i c1 with
+  | Option.None -> Option.None
+  | Some j when j + 1 < String.length source && source.[j + 1] = c2 -> Some j
+  | Some j -> pair_from source c1 c2 (j + 1)
 
 (* Scan [source] for [/*! ... */] bang comments. The lexer drops ordinary
    comments per CSS Syntax 3 (ED) sec. 4.3.2; bang comments are the minifier

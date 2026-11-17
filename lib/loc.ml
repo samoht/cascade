@@ -17,7 +17,10 @@ let v ~start_pos ~end_pos = { start_pos; end_pos }
 let dummy = { start_pos = 0; end_pos = 0 }
 
 let union a b =
-  { start_pos = min a.start_pos b.start_pos; end_pos = max a.end_pos b.end_pos }
+  {
+    start_pos = Int.min a.start_pos b.start_pos;
+    end_pos = Int.max a.end_pos b.end_pos;
+  }
 
 let pp : t Pp.t =
  fun ctx { start_pos; end_pos } ->
