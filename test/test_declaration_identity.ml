@@ -752,11 +752,29 @@ let escaped_ident_is_no_important_flag () =
   | [ d ] -> Alcotest.(check bool) "not important" false (is_important d)
   | l -> Alcotest.failf "expected one declaration, got %d" (List.length l)
 
+(* CSS Custom Properties 1 (ED) sec. 2 makes a custom property's value its token
+   sequence, and CSS Syntax 3 (ED) sec. 4.3.2 consumes a comment as nothing:
+   [a/**/b] is the idents [a] and [b] with no whitespace token between them, [a
+   b] the same two with one. They are two values, so the two rules stay apart,
+   and sec. 9 writes the first back with the empty comment that keeps its two
+   tokens two, so minifying the output again changes nothing. *)
+let comment_separated_tokens_are_their_own_value () =
+  let css = ".a{--x:a/**/b}.b{--x:a b}" in
+  let once = minified css in
+  Alcotest.(check string) "two values" ".a{--x:a/**/b}.b{--x:a b}" once;
+  Alcotest.(check string) "a fixed point" once (minified once);
+  match (decls_of ".a{--x:a/**/b}", decls_of ".a{--x:a b}") with
+  | [ x ], [ y ] ->
+      Alcotest.(check bool) "two declarations" false (equal_declaration x y)
+  | _ -> Alcotest.fail "expected one declaration each"
+
 let suite =
   ( "declaration_identity",
     [
       test_case "custom declarations ignore offsets" `Quick
         custom_declarations_ignore_offsets;
+      test_case "comment-separated tokens are their own value" `Quick
+        comment_separated_tokens_are_their_own_value;
       test_case "an escaped ident is no important flag" `Quick
         escaped_ident_is_no_important_flag;
       test_case "calc sum shortest spelling" `Quick
