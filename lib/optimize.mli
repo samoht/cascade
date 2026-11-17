@@ -51,11 +51,6 @@ val deduplicate_declarations :
     importance the last one wins. [scope] (default [`Fragment]) gates
     partial-coverage shorthand synthesis; see the {!scope} doc. *)
 
-val duplicate_buggy_properties : declaration list -> declaration list
-[@@deprecated "drop the call, it returns its input; removed in 1.4.0"]
-(** [duplicate_buggy_properties decls] is [decls]. The WebKit fallbacks it was
-    documented to add are {!add_compatibility_prefixes}'s. *)
-
 type ctx
 (** Optimization context: the {!scope} together with the registered-custom-
     property predicate and the [lossless], [aggressive], [extend_lists], and
@@ -124,40 +119,6 @@ val drop_unknown_at_rules : t -> t
     stylesheet onto what one browser applies of it. Serialisation does not do
     this: the reader of a transform's output is not always a browser, and an
     agent that later implements the name would render the two differently. *)
-
-(** {1 Edge Model}
-
-    Deprecated, removed in 1.4.0: nothing in Cascade reads these. *)
-
-include sig
-  [@@@alert "-deprecated"]
-
-  (** Existential wrapper that hides the value type of a typed property tag, so
-      properties of different value types can live in the same edge list. *)
-  type packed_property = Packed : 'a Properties.property -> packed_property
-  [@@deprecated "use Declaration.prop_key; removed in 1.4.0"]
-
-  type edge = {
-    summary : Selector_summary.t;
-    property : packed_property;
-    important : bool;
-  }
-  [@@deprecated
-    "use Selector_summary.t and Declaration.prop_key; removed in 1.4.0"]
-  (** A single property write in the CSS graph: a selector's subject summary
-      paired with the typed property it writes. This is the (selector, property)
-      edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
-      cheap subject-summary fingerprint used in place of full selector
-      intersection. *)
-
-  val edges_of_rule : rule -> edge list
-  [@@deprecated
-    "use Selector_summary.of_selector and Stylesheet.declarations; removed in \
-     1.4.0"]
-  (** [edges_of_rule r] enumerates the property writes in [r]. If [r.selector]
-      is a comma-separated list, one edge is emitted per (subject summary,
-      property) pair; otherwise one edge per declaration. *)
-end
 
 (** {1 Rule Optimization} *)
 
@@ -273,11 +234,6 @@ val drop_empty_rules : statement list -> statement list
 (** {1 Nested Structure Optimization} *)
 
 (** {1 Stylesheet Optimization} *)
-
-val apply_property_duplication : t -> t
-[@@deprecated "drop the call, it returns its input; removed in 1.4.0"]
-(** [apply_property_duplication ss] is [ss]; see {!duplicate_buggy_properties}.
-*)
 
 val add_compatibility_prefixes : targets:targets -> t -> t
 (** [add_compatibility_prefixes ~targets ss] adds the vendor-prefixed

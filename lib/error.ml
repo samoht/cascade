@@ -253,19 +253,3 @@ let bad_condition loc ~at_rule ~reason =
 
 let unknown_at_rule loc name = v ~loc ~sort:Sort.At_rule (Unknown_at_rule name)
 let unterminated loc s = v ~loc ~sort:s (Unterminated s)
-
-let fail_sort_mismatch loc ~sort ~expected ~found =
-  fail (sort_mismatch loc ~sort ~expected ~found)
-
-let fail_unexpected_token loc ~sort k = fail (unexpected_token loc ~sort k)
-let fail_missing_token loc ~sort what = fail (missing_token loc ~sort what)
-let fail_bad_selector loc reason = fail (bad_selector loc reason)
-
-let fail_bad_value loc ~property ~reason =
-  fail (bad_value loc ~property ~reason)
-
-let fail_bad_condition loc ~at_rule ~reason =
-  fail (bad_condition loc ~at_rule ~reason)
-
-let fail_unknown_at_rule loc name = fail (unknown_at_rule loc name)
-let fail_unterminated loc s = fail (unterminated loc s)

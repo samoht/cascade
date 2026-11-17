@@ -400,7 +400,6 @@ let err ?loc ?got t msg =
       | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc)
 
 let err_invalid ?loc t msg = err ?loc t (String.concat "" [ "invalid: "; msg ])
-let err_eof t = raise_ t (Error.Unterminated sort) (position t)
 
 let err_expected ?loc t what =
   err ?loc t (String.concat "" [ "expected "; what ])
@@ -1109,16 +1108,6 @@ let keyword table s =
     | (k, v) :: rest -> if String.equal k key then Some v else find rest
   in
   find table
-
-let try_enum table t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match keyword table s with
-      | Some v ->
-          let _ = next t in
-          Some v
-      | None -> None)
-  | _ -> None
 
 let enum ?default label table t =
   ws t;
