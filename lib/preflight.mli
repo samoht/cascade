@@ -16,7 +16,9 @@ val source_units : t -> int
 (** [source_units t] is a cheap weighted source-size estimate. *)
 
 val estimated_gain : t -> int
-(** [estimated_gain t] is the cheap byte-saving proxy. *)
+(** [estimated_gain t] is the cheap byte-saving proxy. It is [0] for a segment
+    of at most {!small_declaration_threshold} declarations, which {!useful}
+    admits without one. *)
 
 val useful : t -> bool
 (** [useful t] is [true] when the estimated gain justifies running the full
