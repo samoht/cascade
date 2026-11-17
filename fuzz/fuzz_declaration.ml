@@ -395,8 +395,9 @@ let test_custom_prop_empty_edges _buf =
    declarations it calls equal, built in one domain, are one object, so the
    optimizer's equality tests read a pointer rather than walk two values. The
    pairs hold equal declarations parsed apart, unequal ones, a NaN that only
-   [compare] equates with itself, and custom properties over arbitrary token
-   streams. *)
+   [compare] equates with itself, custom properties over arbitrary token
+   streams, and each of those under a theme guard, so a guarded declaration
+   meets an unguarded one and guards that differ only in their variable. *)
 let test_equal_is_compare buf =
   let texts =
     [
@@ -410,6 +411,8 @@ let test_equal_is_compare buf =
   in
   let parsed = List.filter_map parse_declaration (texts @ texts) in
   let decls = parsed @ List.map Css.Declaration.normalize parsed in
+  let guarded var_name = List.map (Css.Declaration.theme_guarded ~var_name) in
+  let decls = decls @ guarded "--a" decls @ guarded "--b" decls in
   List.iter
     (fun a ->
       List.iter
