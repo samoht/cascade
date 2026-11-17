@@ -99,6 +99,21 @@ A few options trade safety for size, and are off by default:
 [docs/reference.md](docs/reference.md#minification) describes exactly which
 rewrites run and why each one preserves the rendering.
 
+What the parser cannot read it reports on standard error, in the form
+compilers use, and leaves out of the output:
+
+```text
+style.css:12:3: warning: bad value for display: unknown display: box
+    display: box;
+             ^^^
+  (40 more like this, at 57:3, 98:3, 131:3, ...)
+style.css: 44 warnings, 4 shown; -v prints every one, -q none
+```
+
+A repeated warning is counted under the first; `-v` prints every one and
+`-q` none. `cascade fmt` exits 1 only when it could use none of the input,
+so a build can gate on it.
+
 ## Comparing stylesheets
 
 `cascade diff` parses both files and reports added, removed and changed rules
@@ -112,7 +127,7 @@ cascade diff --diff=canonical a.css b.css
 ```
 
 ```text
-CSS: 54 chars vs 54 chars (0.0% diff)
+CSS: 42 chars vs 42 chars (0.0% diff)
 Changes: 1 modified rule
 
 --- a.css
@@ -212,7 +227,7 @@ cascade --minify src/style.css > dist/style.min.css
 
 # CI: fail if the committed file is not formatted
 cascade src/style.css > formatted.css
-cascade diff --diff=tree src/style.css formatted.css
+cascade diff --diff=string src/style.css formatted.css
 
 # before committing: fail if a change alters what the CSS does
 git show HEAD:src/style.css > previous.css

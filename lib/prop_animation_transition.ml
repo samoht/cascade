@@ -306,7 +306,8 @@ let rec read_transition_property_value t : transition_property_value =
        question, not this one's. *)
     if String.equal (String.lowercase_ascii name) "default" then
       Cursor.err_invalid t
-        ("transition-property cannot be reserved keyword: " ^ name)
+        (String.concat ""
+           [ "transition-property cannot be reserved keyword: "; name ])
     else Property name
   in
   Cursor.enum_or_calls "transition-property-value"

@@ -106,11 +106,22 @@ val css_wide_keywords : string list
     specifications. *)
 
 val measure : (unit -> 'a) -> float
-(** [measure f] is the minor words [f] allocates, read as the difference of a
-    counter that only grows, so a collection inside [f] does not disturb it.
+(** [measure f] is the words [f] allocates on either heap, read as the
+    difference of counters that only grow, so a collection inside [f] does not
+    disturb it. Both heaps, because a block too large for the minor heap goes
+    straight to the major one, and so would the strings a quadratic pass copies.
+    The counters are this domain's: another domain does not move them.
     [Gc.full_major] starts every reading from the same heap state, so collection
     and finalisation owed by an earlier case is not charged to whichever thunk
     runs next; the allocation guards compare two readings as a ratio, which
     holds only if both were taken alike. [Sys.opaque_identity] keeps the result
     live to the end of the call, so the compiler cannot satisfy a guard by
     deleting the allocation it counts. *)
+
+val strict_agrees_with_lenient : string -> bool
+(** [strict_agrees_with_lenient css] checks that a strict parse of [css] never
+    reads it differently from a lenient one: where both succeed, the two
+    stylesheets optimise and minify to the same bytes, and a strict parse never
+    succeeds where the lenient one fails. The canonical diff relies on it to
+    parse each input once. It is [true] when both parses succeeded, so a caller
+    can tell the property was exercised. *)

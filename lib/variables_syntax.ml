@@ -10,7 +10,8 @@ let custom_value_ident name =
 let custom_value_var_empty_fallback name =
   let loc = Loc.dummy in
   let ident =
-    Component.Preserved (Token.synthetic (Token.Ident ("--" ^ name)))
+    Component.Preserved
+      (Token.synthetic (Token.Ident (String.concat "" [ "--"; name ])))
   in
   let comma = Component.Preserved (Token.synthetic Token.Comma) in
   [
@@ -257,7 +258,8 @@ let read_simple_syntax_component r s : any_syntax =
   | "<transform-function>" -> Syntax Transform_function
   | "<transform-list>" -> Syntax Transform_list
   | s when is_ident_keyword s -> Syntax (Ident_keyword s)
-  | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
+  | s ->
+      Cursor.err_invalid r (String.concat "" [ "Unsupported CSS syntax: "; s ])
 
 (* CSS Properties and Values API 1 (ED) sec. 5.2: only [+] and [#] are valid
    syntax multipliers. *)
@@ -485,7 +487,8 @@ let read_reference_body_as_string (r : Cursor.t) : string * string option =
      the bare reserved [--] keyword. A further leading dash is part of the
      name. *)
   if not (Custom_property_name.is_valid raw_name) then
-    Cursor.err_invalid r ("not a custom property: " ^ raw_name);
+    Cursor.err_invalid r
+      (String.concat "" [ "not a custom property: "; raw_name ]);
   let name = Custom_property_name.strip_prefix raw_name in
   Cursor.ws r;
   let fallback =

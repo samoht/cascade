@@ -29,13 +29,5 @@ val pp_combinator : combinator Pp.t
 val pp_ns : ns Pp.t
 (** [pp_ns] prints a namespace prefix. *)
 
-val drop_redundant_universal : t list -> t list
-(** [drop_redundant_universal components] drops an un-namespaced [*] from a
-    compound that has other components (CSS Selectors 4 sec. 3.5). *)
-
-val carries_type_selector : t -> bool
-(** [carries_type_selector s] is whether [s] is or holds a type or universal
-    selector, which must come first in a compound. *)
-
 val pp : t Pp.t
 (** [pp] prints a selector. *)

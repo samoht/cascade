@@ -75,7 +75,7 @@ let compare ~json ~html ~file1 ~file2 =
   let css2, _ = Cli_io.read_source file2 in
   match Browser_compare.run ~html:document [ (file1, css1); (file2, css2) ] with
   | Error msg ->
-      Fmt.epr "Error: %s@." msg;
+      Cli_io.error "%s" msg;
       Stdlib.exit Cli_exit.cannot_determine
   | Ok report ->
       if json then (

@@ -229,6 +229,14 @@ val string_of_float :
 (** [string_of_float ?drop_leading_zero ?max_decimals f] is [f] rounded half up
     to [max_decimals] decimal places (defaults to [8]), with trailing zeros and
     a trailing point trimmed.
+
+    The decimal places round the shortest decimal that reads back as [f], the
+    number an author wrote when it has at most 15 significant digits, and a half
+    goes away from zero: [0.8765] at three places is [0.877] although its double
+    lies just below the half. The 12 significant digits below round the exact
+    value of [f] to the nearest with ties to even, so [100000000000.5] prints as
+    [100000000000]. Every digit is computed in OCaml, never by the C library, so
+    the bytes are the same on every platform.
     - An integral [f] prints every digit below [2^62] in magnitude, and 12
       significant digits in exponent notation from there.
     - A fractional [f] whose magnitude, scaled by [10^max_decimals], reaches
@@ -255,8 +263,9 @@ val float : float t
     {!nan_value}'s [calc(NaN)]. *)
 
 val float_n : int -> float t
-(** [float_n n] is {!float} rounded half up to at most [n] decimal places. Used
-    for CSS color channels and opacity where precision matters. *)
+(** [float_n n] is {!float} rounded half up to at most [n] decimal places, by
+    the rule {!string_of_float} states. Used for CSS color channels and opacity
+    where precision matters. *)
 
 val round_sig : int -> float -> float
 (** [round_sig n f] rounds [f] to [n] significant digits. *)

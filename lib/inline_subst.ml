@@ -4,9 +4,8 @@ open Inline_scope
 (** {1 Pass 2 - substitute var() in every declaration} *)
 
 (* The customs a consumer can see, with an index from name to the declarations
-   that answer to it. Both lookups below used to scan the whole list, and the
-   walk asks once per declaration, so the pass cost a square in the declaration
-   count. The index is built once per consumer scope instead. *)
+   that answer to it. The walk looks a name up once per declaration, so the
+   index is built once per consumer scope. *)
 type visible = {
   decls : Declaration.declaration list;
   by_name : (string, (int * Declaration.declaration) list) Hashtbl.t;
@@ -145,13 +144,7 @@ let lookup_visible_custom_components visible name =
   Option.bind best (fun (_, _, value) ->
       if is_css_wide_keyword_value value then None else Some value)
 
-let trim_components components =
-  let is_ws = function
-    | Component.Preserved { kind = Token.Whitespace _; _ } -> true
-    | _ -> false
-  in
-  let rec drop = function hd :: tl when is_ws hd -> drop tl | xs -> xs in
-  List.rev (drop (List.rev (drop components)))
+let trim_components = Common.List.trim Component.is_whitespace
 
 type subst_result = Components of Component.t list | Cycle
 

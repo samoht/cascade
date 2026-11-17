@@ -203,10 +203,6 @@ val minify_gradient_stop : gradient_stop -> gradient_stop
 val minify_webkit_gradient_stop : Webkit_gradient.stop -> Webkit_gradient.stop
 (** [minify_webkit_gradient_stop s] is [s] with its colour minified. *)
 
-val minify_conic_gradient_config :
-  conic_gradient_config -> conic_gradient_config
-(** [minify_conic_gradient_config c] is [c]. *)
-
 val linear_gradient :
   gradient_direction -> gradient_stop list -> background_image
 (** [linear_gradient dir stops] is [linear-gradient(dir, stops)]. *)

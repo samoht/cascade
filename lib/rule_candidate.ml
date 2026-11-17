@@ -4,41 +4,38 @@ open Stylesheet
 open Stdlib
 open Rule_rewrite
 module Node_set = Set.Make (Rule_graph.Node_id)
+module Int_set = Set.Make (Int)
 
+(* The graph the search reads, which a rewrite replaces, and the nodes it has
+   consumed. *)
+type view = { mutable graph : Rule_graph.t; mutable dead : Int_set.t }
+
+let node_rule g id = Rule_graph.node_rule g.graph id
+let is_live g id = not (Int_set.mem (Rule_graph.Node_id.to_int id) g.dead)
+
+let view graph =
+  let live =
+    Int_set.of_list
+      (List.map Rule_graph.Node_id.to_int (Rule_graph.live_nodes graph))
+  in
+  let dead = ref Int_set.empty in
+  for i = 0 to Rule_graph.node_count graph - 1 do
+    if not (Int_set.mem i live) then dead := Int_set.add i !dead
+  done;
+  { graph; dead = !dead }
+
+let rewrite_view g graph ~consume =
+  g.graph <- graph;
+  g.dead <-
+    List.fold_left
+      (fun dead id -> Int_set.add (Rule_graph.Node_id.to_int id) dead)
+      g.dead consume
+
+let same_id a b = Rule_graph.Node_id.compare a b = 0
 let same_decl = Declaration.same_minified
-
-(* How much of a declaration's overlap relation its precomputed footprint
-   settles. [Slots] is decided by the keys alone; [Custom] by the property name,
-   which is the whole of a custom property's footprint; [Broad] by neither,
-   since [all] and an unknown name reach declarations no key of theirs names. *)
-type decl_shape = Slots | Custom of string | Broad
-
-type decl_fact = {
-  decl : Declaration.declaration;
-  important : bool;
-  keys : Shorthand.overlap_key list;
-  shape : decl_shape;
-}
-
-let decl_shape decl =
-  if Shorthand.declaration_is_broad decl then Broad
-  else
-    match Shorthand.custom_property_name decl with
-    | Option.Some name -> Custom name
-    | Option.None -> Slots
-
-let decl_fact decl =
-  {
-    decl;
-    important = Declaration.is_important decl;
-    keys = Shorthand.declaration_overlap_keys decl;
-    shape = decl_shape decl;
-  }
-
-let decl_facts decls = List.map decl_fact decls
-
-let decl_facts_conflict a b =
-  Shorthand.declarations_conflict_with_keys a.decl a.keys b.decl b.keys
+let decl_facts = Commute.facts
+let decl_facts_conflict = Commute.conflict
+let fact_decl = Commute.decl
 
 let declarations_equal (a : Declaration.declaration list)
     (b : Declaration.declaration list) =
@@ -66,137 +63,9 @@ module String_table = Common.Table.Make (struct
   let hash s = hash_string s land max_int
 end)
 
-module Overlap_table = Common.Table.Make (struct
-  type t = Shorthand.overlap_key
-
-  let equal = Shorthand.overlap_key_equal
-  let hash = Shorthand.overlap_key_hash
-end)
-
 let hash_strings strings =
   strings
   |> List.fold_left (fun hash s -> mix_int hash (hash_string s)) 0x123456
-
-(* One side of a commute test, read once into the slots its declarations write,
-   so the other side is walked once rather than once per declaration facing it.
-
-   A slot holds the declarations that write one key at one weight, custom
-   properties under their own name: an overlap key is a property-name hash, and
-   only the name itself separates two custom properties, which write nothing but
-   the slot they name. [decl_facts_conflict] clears a pair of declarations that
-   minify the same, so a slot every declaration filed under it agrees on answers
-   for all of them by comparing that one witness; a slot two of them disagree on
-   conflicts with whatever reaches it, since at most one of the two can be the
-   declaration asking. *)
-type commute_slot = { witness : decl_fact; mutable uniform : bool }
-
-(* [broad] holds the declarations no slot decides. What [all] and an unknown
-   name overlap is read off the name rather than the footprint, so they keep the
-   pairwise test; they are rare enough that keeping it costs nothing. [indexed]
-   is the side itself, for a [Broad] declaration facing it. *)
-type facts_index = {
-  mutable indexed : decl_fact list;
-  written : commute_slot list Overlap_table.t;
-  mutable broad : decl_fact list;
-}
-
-(* Whether two declarations share a slot: one weight, and, for a custom
-   property, one name. *)
-let same_commute_slot (a : decl_fact) (b : decl_fact) =
-  Bool.equal a.important b.important
-  &&
-  match (a.shape, b.shape) with
-  | Custom left, Custom right -> String.equal left right
-  | Custom _, _ | _, Custom _ -> false
-  | _ -> true
-
-(* Spelled as explicit recursion throughout, and reading the table with
-   [mem]/[find] rather than [find_opt]: a closure or an option allocated per
-   declaration would put back the per-pair cost the index exists to remove. *)
-let rec absorb (fact : decl_fact) = function
-  | [] -> false
-  | slot :: rest ->
-      if same_commute_slot slot.witness fact then begin
-        if slot.uniform && not (same_decl slot.witness.decl fact.decl) then
-          slot.uniform <- false;
-        true
-      end
-      else absorb fact rest
-
-let rec file_keys table fact = function
-  | [] -> ()
-  | key :: rest ->
-      let slots =
-        if Overlap_table.mem table key then Overlap_table.find table key else []
-      in
-      if not (absorb fact slots) then
-        Overlap_table.replace table key
-          ({ witness = fact; uniform = true } :: slots);
-      file_keys table fact rest
-
-let index_facts facts =
-  let written = Overlap_table.create 16 in
-  let broad =
-    List.fold_left
-      (fun broad (fact : decl_fact) ->
-        match fact.shape with
-        | Broad -> fact :: broad
-        | Slots | Custom _ ->
-            file_keys written fact fact.keys;
-            broad)
-      [] facts
-  in
-  { indexed = facts; written; broad }
-
-let empty_index () =
-  { indexed = []; written = Overlap_table.create 16; broad = [] }
-
-(* Filing further facts into a built index. A slot answers for the whole
-   multiset filed into it - it conflicts with whatever reaches it once two of
-   them disagree, and otherwise compares the one witness they all match - so an
-   index over a union of footprints answers exactly what asking each of them
-   separately would. *)
-let rec add_facts index = function
-  | [] -> ()
-  | (fact : decl_fact) :: rest ->
-      index.indexed <- fact :: index.indexed;
-      (match fact.shape with
-      | Broad -> index.broad <- fact :: index.broad
-      | Slots | Custom _ -> file_keys index.written fact fact.keys);
-      add_facts index rest
-
-let rec slots_conflict (fact : decl_fact) = function
-  | [] -> false
-  | slot :: rest ->
-      same_commute_slot slot.witness fact
-      && ((not slot.uniform) || not (same_decl slot.witness.decl fact.decl))
-      || slots_conflict fact rest
-
-let rec any_conflicts (fact : decl_fact) = function
-  | [] -> false
-  | other :: rest -> decl_facts_conflict fact other || any_conflicts fact rest
-
-let rec keys_conflict written (fact : decl_fact) = function
-  | [] -> false
-  | key :: rest ->
-      Overlap_table.mem written key
-      && slots_conflict fact (Overlap_table.find written key)
-      || keys_conflict written fact rest
-
-let fact_conflicts index (fact : decl_fact) =
-  match fact.shape with
-  | Broad -> any_conflicts fact index.indexed
-  | Slots | Custom _ ->
-      any_conflicts fact index.broad
-      || keys_conflict index.written fact fact.keys
-
-let rec facts_conflict index = function
-  | [] -> false
-  | fact :: rest -> fact_conflicts index fact || facts_conflict index rest
-
-(* Two footprints commute when no pair of them writes a common cascade slot: the
-   order they are replayed in cannot then be observed. *)
-let facts_commute_with index left = not (facts_conflict index left)
 
 let rule_eligible (r : rule) =
   r.nested = [] && r.merge_key = Option.None
@@ -208,31 +77,6 @@ let rule_eligible (r : rule) =
    rules too - unlike the factoring passes, which reorder declarations and would
    disturb a later [var()] resolution. [try_rewrite]'s acyclicity check still
    rejects a group whose merge would cross a conflicting (re)definition. *)
-(* Merging a run of same-selector rules into the first one moves each later
-   rule's declarations ahead of any nested block an earlier one carries. That
-   only matters where the two write a common cascade slot, so a rule with
-   nested children can still take part as long as those children and the
-   declarations that would move past them commute.
-
-   A slot, not a property name: a nested [margin] and a later [margin-top] name
-   two properties and write one slot, so the nested children are carried as
-   footprints and put through the overlap relation two flat declarations use.
-
-   Read through the exhaustive statement walks: every nested statement sets
-   properties, a nested declarations run as much as a nested style rule, and one
-   this walk cannot see is one the merge would happily hoist past. *)
-let rec nested_decl_facts acc (stmts : statement list) =
-  List.fold_left
-    (fun acc stmt ->
-      let acc =
-        List.fold_left
-          (fun acc d -> decl_fact d :: acc)
-          acc
-          (statement_declarations stmt)
-      in
-      nested_decl_facts acc (statement_children stmt))
-    acc stmts
-
 (* CSS Nesting 1 sec. 3.4 puts a declaration written after a nested rule behind
    it, so a rule's body is not the run of declarations [declarations] holds:
    merging a later same-selector rule into it moves that rule's declarations
@@ -243,45 +87,6 @@ let same_selector_eligible (r : rule) =
   r.merge_key = Option.None
   && (not (contains_vendor_pseudo_element r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
-
-(* [rules] in source order: whether a declaration ends up ahead of a nested
-   block it followed is a question about where the two were written, and the
-   merge order below answers a different one.
-
-   [decl_facts_conflict] is symmetric - every arm of the overlap relation under
-   it is spelled both ways round - so either side of a commute test can be the
-   indexed one. The nested bodies are the side worth indexing, and one index
-   over all of them read so far is what a block moving past them faces: "every
-   nested body before it commutes with this block" is one question about their
-   union, not one per body. So the run is walked once, each block probed once
-   and each nested body read once, rather than every (body, later block) pair
-   being put to the index separately.
-
-   The scan first is what keeps a run carrying no nested block, the common one,
-   from reading a body at all, and the empty index short-circuits the blocks
-   ahead of the first nested body. *)
-let nested_merge_is_safe (rules : rule list) =
-  let rec nested_ahead = function
-    | [] | [ _ ] -> false
-    | (r : rule) :: rest -> r.nested <> [] || nested_ahead rest
-  in
-  let rec go ahead = function
-    | [] -> true
-    | (r : rule) :: rest -> (
-        let block_commutes =
-          match ahead.indexed with
-          | [] -> true
-          | _ -> facts_commute_with ahead (decl_facts r.declarations)
-        in
-        block_commutes
-        &&
-        match rest with
-        | [] -> true
-        | _ ->
-            add_facts ahead (nested_decl_facts [] r.nested);
-            go ahead rest)
-  in
-  (not (nested_ahead rules)) || go (empty_index ()) rules
 
 let identical_body_eligible ~ctx (r : rule) =
   r.nested = [] && r.merge_key = Option.None
@@ -320,29 +125,9 @@ let selector_keys_equal left right =
    match a common box), is exactly equivalent to the separate rules, and the DAG
    enforces cascade-order safety. *)
 let can_group_selectors = Merge.all_compatible
-let body_equal_key g id = Rule_graph.declaration_body_key g id
+let body_equal_key g id = Rule_graph.declaration_body_key g.graph id
 let body_bucket_key g id = body_equal_key g id |> hash_ints
-
-let touching_set = function
-  | Option.None -> Option.None
-  | Option.Some ids -> Option.Some (Node_set.of_list ids)
-
-let touches_node touching id =
-  match touching with
-  | Option.None -> true
-  | Option.Some ids -> Node_set.mem id ids
-
-let touches_any touching ids =
-  match touching with
-  | Option.None -> true
-  | Option.Some touching -> List.exists (fun id -> Node_set.mem id touching) ids
-
-let live_rules g =
-  Rule_graph.live_nodes g
-  |> List.map (fun id -> (id, Rule_graph.node_rule g id))
-
-let rules_with_ids g ids =
-  List.map (fun id -> (id, Rule_graph.node_rule g id)) ids
+let rules_with_ids g ids = List.map (fun id -> (id, node_rule g id)) ids
 
 (* Each declaration of [r] paired with a later one that is the other half of a
    compatibility fallback. Almost every rule has none, and the scan below only
@@ -385,12 +170,12 @@ let splits_a_fallback_pair g ~consume ~produce =
     (fun id ->
       List.exists
         (fun pair -> not (together pair))
-        (fallback_pairs (Rule_graph.node_rule g id)))
+        (fallback_pairs (node_rule g id)))
     consume
 
-let candidate ?size_cache ~kind ~finalize g ~consume ~produce =
+let rewrite_candidate ?size_cache ~kind ~finalize g ~consume ~produce =
   if splits_a_fallback_pair g ~consume ~produce then Option.None
-  else Rule_rewrite.v ?size_cache ~kind ~finalize g ~consume ~produce
+  else Rule_rewrite.v ?size_cache ~kind ~finalize g.graph ~consume ~produce
 
 let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
 let decls_inline_cost decls = decls_size decls + List.length decls
@@ -410,108 +195,12 @@ let grouped_rule (rules : rule list) : rule option =
             merge_key = Option.None;
           }
 
-type declaration_order_key = { property : string; important : bool; hash : int }
-
-let declaration_order_key decl =
-  {
-    property = Declaration.property_name decl;
-    important = Declaration.is_important decl;
-    hash = Declaration.hash decl;
-  }
-
-let compare_declaration_order_key left right =
-  match String.compare left.property right.property with
-  | 0 -> (
-      match Bool.compare left.important right.important with
-      | 0 -> Int.compare left.hash right.hash
-      | order -> order)
-  | order -> order
-
-let rec compare_declaration_order_keys left right =
-  match (left, right) with
-  | [], [] -> 0
-  | [], _ :: _ -> -1
-  | _ :: _, [] -> 1
-  | left :: left_rest, right :: right_rest -> (
-      match compare_declaration_order_key left right with
-      | 0 -> compare_declaration_order_keys left_rest right_rest
-      | order -> order)
-
-(* Read off a rule once. The insertion sort below asks for the same order of the
-   same rule against every rule already queued, and rendering a body into keys
-   per comparison is what made that sort cost a body read per pair. *)
-let rule_order_key (id, (r : rule)) =
-  (List.map declaration_order_key r.declarations, Rule_graph.Node_id.to_int id)
-
-let compare_rule_order_key (left_keys, left_id) (right_keys, right_id) =
-  match compare_declaration_order_keys left_keys right_keys with
-  | 0 -> Int.compare left_id right_id
-  | order -> order
-
-(* The precedence DAG holds every pair the merged rule replays in emission
-   order: its declarations, and its nested blocks, which follow all of them. A
-   pair that competes keeps the order it was written in; the rest is free for
-   [compare_rule_order_key] to canonicalise. *)
-let same_selector_merge_order
-    (rules_with_ids : (Rule_graph.node_id * rule) list) =
-  let rows = Array.of_list rules_with_ids in
-  let n = Array.length rows in
-  let facts =
-    Array.map (fun (_, (r : rule)) -> decl_facts r.declarations) rows
-  in
-  let nested_facts =
-    Array.map (fun (_, (r : rule)) -> nested_decl_facts [] r.nested) rows
-  in
-  (* Indexed once per rule rather than once per pair: every rule below faces
-     every later one, and reading a body is what the pair test costs. *)
-  let body_index = Array.map index_facts facts in
-  let nested_body_index = Array.map index_facts nested_facts in
-  let order_key = Array.map rule_order_key rows in
-  let succ = Array.make n [] in
-  let pred = Array.make n 0 in
-  for i = 0 to n - 1 do
-    for j = i + 1 to n - 1 do
-      if
-        (not (facts_commute_with body_index.(j) facts.(i)))
-        || not (facts_commute_with nested_body_index.(j) nested_facts.(i))
-      then begin
-        succ.(i) <- j :: succ.(i);
-        pred.(j) <- pred.(j) + 1
-      end
-    done
-  done;
-  let rec insert index = function
-    | [] -> [ index ]
-    | head :: rest as queue ->
-        if compare_rule_order_key order_key.(index) order_key.(head) < 0 then
-          index :: queue
-        else head :: insert index rest
-  in
-  let queue = ref [] in
-  for i = 0 to n - 1 do
-    if pred.(i) = 0 then queue := insert i !queue
-  done;
-  let emitted = ref [] in
-  while !queue <> [] do
-    match !queue with
-    | [] -> ()
-    | index :: rest ->
-        queue := rest;
-        emitted := rows.(index) :: !emitted;
-        List.iter
-          (fun next ->
-            pred.(next) <- pred.(next) - 1;
-            if pred.(next) = 0 then queue := insert next !queue)
-          succ.(index)
-  done;
-  match List.rev !emitted with
-  | ordered when List.length ordered = n -> ordered
-  | _ -> rules_with_ids
-
 let ordered_ids g ids =
   let compare_by_origin a b =
     match
-      Int.compare (Rule_graph.node_origin g a) (Rule_graph.node_origin g b)
+      Int.compare
+        (Rule_graph.node_origin g.graph a)
+        (Rule_graph.node_origin g.graph b)
     with
     | 0 -> Rule_graph.Node_id.compare a b
     | order -> order
@@ -521,177 +210,20 @@ let ordered_ids g ids =
 let candidate_set_key ids =
   ids |> List.map Rule_graph.Node_id.to_int |> hash_ints
 
-let unique_ids_preserve_order ids =
-  let seen = ref Node_set.empty in
-  List.filter
-    (fun id ->
-      if Node_set.mem id !seen then false
-      else begin
-        seen := Node_set.add id !seen;
-        true
-      end)
-    ids
+(* A node keeps its rule for as long as it is in the graph, since a rewrite only
+   appends nodes, so on every graph one rewrite lineage passes through a list of
+   node ids names the same rules. *)
+module Ids_table = Hashtbl.Make (struct
+  type t = Rule_graph.node_id list
 
-let bounded_subsets ?(large_bucket_candidates = 32) ~limit ids =
-  let ids = unique_ids_preserve_order ids in
-  let n = List.length ids in
-  let seen = Int_table.create 32 in
-  let max_candidates = if n > limit then large_bucket_candidates else 128 in
-  let add acc ids =
-    match ids with
-    | [] | [ _ ] -> acc
-    | _ ->
-        let key = candidate_set_key ids in
-        if Int_table.mem seen key then acc
-        else begin
-          Int_table.replace seen key ();
-          ids :: acc
-        end
-  in
-  let acc = if n <= limit then add [] ids else [] in
-  let acc =
-    if n <= 2 || n > limit then acc
-    else
-      List.fold_left
-        (fun acc drop ->
-          if List.length acc >= max_candidates then acc
-          else
-            add acc
-              (List.filter
-                 (fun id -> Rule_graph.Node_id.compare id drop <> 0)
-                 ids))
-        acc ids
-  in
-  let rec take n xs =
-    if n <= 0 then []
-    else match xs with [] -> [] | x :: xs -> x :: take (n - 1) xs
-  in
-  let rec drop n xs =
-    if n <= 0 then xs else match xs with [] -> [] | _ :: xs -> drop (n - 1) xs
-  in
-  let window width start = ids |> drop start |> take width in
-  let max_width = if n > limit then min 128 n else min limit n in
-  let rec widths width acc count =
-    if width < 2 || count >= max_candidates then acc
-    else
-      let rec starts start acc count =
-        if start + width > n || count >= max_candidates then (acc, count)
-        else starts (start + 1) (add acc (window width start)) (count + 1)
-      in
-      let acc, count = starts 0 acc count in
-      widths (width - 1) acc count
-  in
-  widths max_width acc (List.length acc) |> List.rev
+  let equal = List.equal (fun a b -> Rule_graph.Node_id.compare a b = 0)
+  let hash = candidate_set_key
+end)
 
-type indexed_budget = {
-  occurrence_window : int;
-  max_span : int;
-  max_candidates : int;
-}
-
-type subset_budget =
-  | Exhaustive of { limit : int; large_bucket_candidates : int }
-  | Indexed of indexed_budget
-
-type subset_budget_state = { mutable remaining : int }
-
-let indexed_budget_state budget = { remaining = budget.max_candidates }
-
-let normal_indexed_budget =
-  { occurrence_window = 24; max_span = 128; max_candidates = 256 }
-
-let exact_subset_budget ~ctx g =
-  if Ctx.aggressive ctx || Rule_graph.node_count g <= 128 then
-    Exhaustive
-      {
-        limit = (if Ctx.aggressive ctx then 12 else 8);
-        large_bucket_candidates = 32;
-      }
-  else Indexed normal_indexed_budget
-
-let default_subset_budget ~ctx g =
-  if Ctx.aggressive ctx || Rule_graph.node_count g <= 128 then
-    Exhaustive
-      {
-        limit = (if Ctx.aggressive ctx then 12 else 8);
-        large_bucket_candidates = (if Ctx.aggressive ctx then 32 else 1);
-      }
-  else Indexed normal_indexed_budget
-
-let origin_span g first last =
-  Rule_graph.node_origin g last - Rule_graph.node_origin g first
-
-let indexed_rows g ids =
-  let ids = ids |> unique_ids_preserve_order |> ordered_ids g in
-  Array.of_list ids
-
-let indexed_candidate_count g budget ids =
-  let rows = indexed_rows g ids in
-  let len = Array.length rows in
-  let count = ref 0 in
-  if len >= 2 then
-    for first = 0 to len - 2 do
-      let last_limit = min (len - 1) (first + budget.occurrence_window - 1) in
-      let last = ref (first + 1) in
-      while
-        !count <= budget.max_candidates
-        && !last <= last_limit
-        && origin_span g rows.(first) rows.(!last) <= budget.max_span
-      do
-        incr count;
-        incr last
-      done
-    done;
-  !count
-
-let indexed_bucket_is_bounded g budget ids =
-  indexed_candidate_count g budget ids <= budget.max_candidates
-
-let indexed_subsets g state budget ids =
-  let rows = indexed_rows g ids in
-  let len = Array.length rows in
-  let seen = Int_table.create 32 in
-  let candidates = ref [] in
-  let add first last =
-    if state.remaining > 0 then
-      let subset =
-        let rec loop index acc =
-          if index < first then acc else loop (index - 1) (rows.(index) :: acc)
-        in
-        loop last []
-      in
-      let key = candidate_set_key subset in
-      if not (Int_table.mem seen key) then begin
-        Int_table.replace seen key ();
-        state.remaining <- state.remaining - 1;
-        candidates := subset :: !candidates
-      end
-  in
-  if len >= 2 then
-    for first = 0 to len - 2 do
-      let last_limit = min (len - 1) (first + budget.occurrence_window - 1) in
-      let last = ref (first + 1) in
-      while
-        state.remaining > 0 && !last <= last_limit
-        && origin_span g rows.(first) rows.(!last) <= budget.max_span
-      do
-        add first !last;
-        incr last
-      done
-    done;
-  List.rev !candidates
-
-let subset_candidates g ?budget_state budget ids =
-  match budget with
-  | Exhaustive { limit; large_bucket_candidates } ->
-      bounded_subsets ~limit ~large_bucket_candidates ids
-  | Indexed indexed -> (
-      if not (indexed_bucket_is_bounded g indexed ids) then []
-      else
-        match budget_state with
-        | Option.Some state -> indexed_subsets g state indexed ids
-        | Option.None ->
-            indexed_subsets g (indexed_budget_state indexed) indexed ids)
+(* A candidate worked out on an earlier graph of the lineage, as [g] offers
+   it. *)
+let offered_on g (candidate : candidate) =
+  { candidate with generation = Rule_graph.generation g.graph }
 
 let unique_decls decls =
   let rec loop seen acc = function
@@ -738,8 +270,8 @@ let same_body_groups g ids =
   let rec insert id = function
     | [] -> [ (id, [ id ]) ]
     | (head, ids) :: rest ->
-        let rule = Rule_graph.node_rule g id in
-        let head_rule = Rule_graph.node_rule g head in
+        let rule = node_rule g id in
+        let head_rule = node_rule g head in
         if declarations_equal head_rule.declarations rule.declarations then
           (head, id :: ids) :: rest
         else (head, ids) :: insert id rest
@@ -748,9 +280,7 @@ let same_body_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let selector_is_list g id =
-  Selector.is_compound_list (Rule_graph.node_rule g id).selector
-
+let selector_is_list g id = Selector.is_compound_list (node_rule g id).selector
 let has_selector_list g ids = List.exists (selector_is_list g) ids
 
 let non_list_selector_ids g ids =
@@ -760,12 +290,12 @@ let identical_body_candidate ?size_cache ~finalize g ids =
   match ids with
   | [] | [ _ ] -> Option.None
   | ids -> (
-      let rules : rule list = List.map (Rule_graph.node_rule g) ids in
+      let rules : rule list = List.map (node_rule g) ids in
       match grouped_rule rules with
       | Option.None -> Option.None
       | Option.Some grouped ->
-          candidate ?size_cache ~kind:Identical_body ~finalize g ~consume:ids
-            ~produce:[ grouped ])
+          rewrite_candidate ?size_cache ~kind:Identical_body ~finalize g
+            ~consume:ids ~produce:[ grouped ])
 
 let add_candidate candidates = function
   | Option.None -> ()
@@ -791,29 +321,6 @@ let add_identical_body_group ?size_cache ~ctx ~finalize g ~candidates ids =
     add_candidate candidates
       (identical_body_candidate ?size_cache ~finalize g ids)
 
-let identical_body_candidates ?size_cache ?touching ~ctx ~finalize g =
-  let touching = touching_set touching in
-  let buckets = Int_table.create 128 in
-  List.iter
-    (fun (id, rule) ->
-      if identical_body_eligible ~ctx rule && rule.declarations <> [] then
-        Int_table.push buckets (body_bucket_key g id) id)
-    (live_rules g);
-  let candidates = ref [] in
-  Int_table.iter
-    (fun _ ids ->
-      match List.rev ids with
-      | [] | [ _ ] -> ()
-      | ids when touches_any touching ids ->
-          same_body_groups g ids
-          |> List.iter (fun ids ->
-              if touches_any touching ids then
-                add_identical_body_group ?size_cache ~ctx ~finalize g
-                  ~candidates ids)
-      | _ -> ())
-    buckets;
-  !candidates
-
 (* Partition a hash bucket into runs of the exact same selector key, so a
    [selector_key_hash] collision between two distinct selectors no longer
    suppresses both groups (mirrors {!same_body_groups}). *)
@@ -821,8 +328,8 @@ let same_selector_groups g ids =
   let rec insert id = function
     | [] -> [ (id, [ id ]) ]
     | (head, ids) :: rest ->
-        let key = selector_key (Rule_graph.node_rule g id) in
-        let head_key = selector_key (Rule_graph.node_rule g head) in
+        let key = selector_key (node_rule g id) in
+        let head_key = selector_key (node_rule g head) in
         if selector_keys_equal head_key key then (head, id :: ids) :: rest
         else (head, ids) :: insert id rest
   in
@@ -830,10 +337,10 @@ let same_selector_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
+let add_same_selector_group ?size_cache ~stats ~finalize g ~candidates ids =
   let source_order = ordered_ids g ids |> rules_with_ids g in
-  let safe = nested_merge_is_safe (List.map snd source_order) in
-  let rules_with_ids = same_selector_merge_order source_order in
+  let safe = Commute.nested_merge_is_safe ~stats (List.map snd source_order) in
+  let rules_with_ids = Commute.merge_order source_order in
   let ordered = List.map fst rules_with_ids in
   let rules = List.map snd rules_with_ids in
   match rules with
@@ -849,79 +356,12 @@ let add_same_selector_group ?size_cache ~finalize g ~candidates ids =
         }
       in
       match
-        candidate ?size_cache ~kind:Same_selector ~finalize g ~consume:ordered
-          ~produce:[ merged ]
+        rewrite_candidate ?size_cache ~kind:Same_selector ~finalize g
+          ~consume:ordered ~produce:[ merged ]
       with
       | Option.None -> ()
       | Option.Some c -> candidates := c :: !candidates)
   | _ -> ()
-
-let same_selector_candidates ?size_cache ?touching ~finalize g =
-  let touching = touching_set touching in
-  let buckets = Int_table.create 128 in
-  List.iter
-    (fun (id, rule) ->
-      if same_selector_eligible rule then
-        Int_table.push buckets (selector_key_hash rule) id)
-    (live_rules g);
-  let candidates = ref [] in
-  Int_table.iter
-    (fun _ ids ->
-      match List.rev ids with
-      | [] | [ _ ] -> ()
-      | ids when touches_any touching ids ->
-          same_selector_groups g ids
-          |> List.iter (fun ids ->
-              if touches_any touching ids then
-                add_same_selector_group ?size_cache ~finalize g ~candidates ids)
-      | _ -> ())
-    buckets;
-  !candidates
-
-let decl_hash_bucket decl = Declaration.hash decl
-
-(* Each entry carries the smallest origin among its ids, kept up to date as ids
-   arrive. The sort below asks for it once per comparison, so deriving it from
-   the id list there recomputed the same answer O(n log n) times. *)
-let add_decl_bucket ~origin buckets decl id =
-  let hash = decl_hash_bucket decl in
-  let entries = Int_table.find_opt buckets hash |> Option.value ~default:[] in
-  let rec insert acc = function
-    | [] -> List.rev ((decl, [ id ], origin) :: acc)
-    | (existing, ids, least) :: rest when same_decl existing decl ->
-        List.rev_append acc ((existing, id :: ids, Int.min least origin) :: rest)
-    | entry :: rest -> insert (entry :: acc) rest
-  in
-  Int_table.replace buckets hash (insert [] entries)
-
-let shared_decl_buckets g =
-  let buckets = Int_table.create 256 in
-  List.iter
-    (fun (id, rule) ->
-      if rule_eligible rule then
-        let origin = Rule_graph.node_origin g id in
-        unique_decls rule.declarations
-        |> List.iter (fun decl -> add_decl_bucket ~origin buckets decl id))
-    (live_rules g);
-  buckets
-
-let shared_decl_buckets_by_origin buckets =
-  Int_table.fold
-    (fun _ entries acc ->
-      List.fold_left
-        (fun acc (_, ids, least) -> (least, ids) :: acc)
-        acc entries)
-    buckets []
-  |> List.sort (fun (left_origin, left) (right_origin, right) ->
-      match Int.compare left_origin right_origin with
-      | 0 -> Int.compare (List.length left) (List.length right)
-      | order -> order)
-  |> List.map snd
-
-let exact_group_key rules common =
-  mix_int
-    (hash_selector_list (List.map (fun (r : rule) -> r.selector) rules))
-    (common |> List.map Declaration.hash |> hash_ints)
 
 let exact_leftovers common rules =
   List.filter_map
@@ -934,7 +374,7 @@ let exact_leftovers common rules =
     rules
 
 let decl_fact_mem fact facts =
-  List.exists (fun other -> same_decl fact.decl other.decl) facts
+  List.exists (fun other -> same_decl (fact_decl fact) (fact_decl other)) facts
 
 let unsafe_lift_over_leftover_facts group_facts decls =
   let decls = decl_facts decls in
@@ -972,14 +412,14 @@ let group_orders_before group_decls left right =
 let unsafe_group_order_in_member group_decls (rule : rule) =
   let grouped =
     decl_facts rule.declarations
-    |> List.filter (fun fact -> decl_mem fact.decl group_decls)
+    |> List.filter (fun fact -> decl_mem (fact_decl fact) group_decls)
   in
   let rec loop prior = function
     | [] -> false
     | fact :: rest ->
         List.exists
           (fun prior ->
-            group_orders_before group_decls fact.decl prior.decl
+            group_orders_before group_decls (fact_decl fact) (fact_decl prior)
             && decl_facts_conflict fact prior)
           prior
         || loop (fact :: prior) rest
@@ -1017,7 +457,7 @@ let unsafe_lift_over_prior_member g group_decls rules_with_ids =
         let unsafe_prior =
           List.exists
             (fun (prior_id, (prior_rule : rule)) ->
-              Rule_graph.conflict g prior_id id
+              Rule_graph.conflict g.graph prior_id id
               && remove_common group_decls prior_rule.declarations
                  |> declarations_conflict_with_group_facts group_facts)
             prior
@@ -1030,11 +470,11 @@ let origin_bounds g ids =
   match ids with
   | [] -> Option.None
   | first :: rest ->
-      let first = Rule_graph.node_origin g first in
+      let first = Rule_graph.node_origin g.graph first in
       let min_origin, max_origin =
         List.fold_left
           (fun (min_origin, max_origin) id ->
-            let origin = Rule_graph.node_origin g id in
+            let origin = Rule_graph.node_origin g.graph id in
             (min min_origin origin, max max_origin origin))
           (first, first) rest
       in
@@ -1048,12 +488,13 @@ let rec id_mem id = function
   | other :: rest -> Rule_graph.Node_id.compare id other = 0 || id_mem id rest
 
 let crosses_bounds g ~min_origin ~max_origin id =
-  let origin = Rule_graph.node_origin g id in
+  let origin = Rule_graph.node_origin g.graph id in
   min_origin < origin && origin < max_origin
 
 let decl_facts_shorthand_order_conflict grouped external_decl =
   decl_facts_conflict grouped external_decl
-  && not (Declaration.same_property grouped.decl external_decl.decl)
+  && not
+       (Declaration.same_property (fact_decl grouped) (fact_decl external_decl))
 
 let declarations_cross_order grouped external_decls =
   let grouped = decl_facts grouped in
@@ -1065,86 +506,6 @@ let declarations_cross_order grouped external_decls =
           decl_facts_shorthand_order_conflict grouped external_decl)
         external_decls)
     grouped
-
-let group_crosses_external_conflict g ~ids (grouped : rule) =
-  match origin_bounds g ids with
-  | Option.None -> false
-  | Option.Some (min_origin, max_origin) ->
-      (* Walk the nodes, materialising neither their rules nor a list of their
-         ids: this runs once per candidate and answers no at almost every node,
-         so anything built to scan over costs more than the scan. The origin
-         range is the cheapest filter, so it goes first. *)
-      Rule_graph.exists_live_node g (fun external_id ->
-          (not (id_mem external_id ids))
-          && crosses_bounds g ~min_origin ~max_origin external_id
-          &&
-          let external_rule : rule = Rule_graph.node_rule g external_id in
-          Rule_graph.selectors_conflict grouped.selector external_rule.selector
-          && declarations_cross_order grouped.declarations
-               external_rule.declarations)
-
-let eligible_ids_from_bucket g ids =
-  ids |> ordered_ids g
-  |> List.filter (fun id -> rule_eligible (Rule_graph.node_rule g id))
-
-let exact_shared_candidate ?size_cache ~finalize g ~seen common rules_with_ids =
-  match cost_aware_exact_members common rules_with_ids with
-  | [] | [ _ ] -> Option.None
-  | members ->
-      let ids = List.map fst members in
-      let rules = List.map snd members in
-      let key = exact_group_key rules common in
-      if Int_table.mem seen key then Option.None
-      else begin
-        Int_table.replace seen key ();
-        match grouped_rule rules with
-        | Option.None -> Option.None
-        | Option.Some grouped ->
-            let grouped = { grouped with declarations = common } in
-            if
-              unsafe_lift_in_any_member common rules
-              || unsafe_group_order common rules
-              || unsafe_cross_member_leftover common rules
-              || unsafe_lift_over_prior_member g common members
-              || group_crosses_external_conflict g ~ids grouped
-            then Option.None
-            else
-              let produce = grouped :: exact_leftovers common rules in
-              candidate ?size_cache ~kind:Exact_shared_declarations ~finalize g
-                ~consume:ids ~produce
-      end
-
-let shared_decl_candidates ?size_cache ?touching ~ctx ~finalize g =
-  let touching = touching_set touching in
-  let budget = exact_subset_budget ~ctx g in
-  let budget_state =
-    match budget with
-    | Exhaustive _ -> Option.None
-    | Indexed budget -> Option.Some (indexed_budget_state budget)
-  in
-  let buckets = shared_decl_buckets g in
-  let seen_groups = Int_table.create 128 in
-  let candidates = ref [] in
-  shared_decl_buckets_by_origin buckets
-  |> List.iter (fun ids ->
-      let ids = ids |> eligible_ids_from_bucket g |> ordered_ids g in
-      if touches_any touching ids then
-        ids
-        |> subset_candidates g ?budget_state budget
-        |> List.iter (fun ids ->
-            if touches_any touching ids then
-              let rules_with_ids = rules_with_ids g ids in
-              match common_exact_decls (List.map snd rules_with_ids) with
-              | [] -> ()
-              | common -> (
-                  match
-                    exact_shared_candidate ?size_cache ~finalize g
-                      ~seen:seen_groups common rules_with_ids
-                  with
-                  | Option.None -> ()
-                  | Option.Some candidate ->
-                      candidates := candidate :: !candidates)));
-  !candidates
 
 (* Keyed on {!Declaration.prop_key}, the property's structural identity, rather
    than on its name: the name only exists as a string once [pp_property] has
@@ -1172,6 +533,106 @@ let property_key_equal left right =
   && Declaration.equal_prop_key left.prop right.prop
 
 let property_key_hash key = key.hash
+
+(* A group rule with the candidate it makes, shared by every subset that reaches
+   it: [members] are the rules it consumes, and [decls] and [props] what it
+   factors out of them, which together decide the candidate. The fields below
+   [grouped] are what the candidate read beyond those rules: whether a live rule
+   strictly inside the source span [(lo, hi)] would be crossed, and [witness] is
+   one that would. *)
+type group = {
+  uid : int;
+  members : Rule_graph.node_id list;
+  decls : Declaration.declaration list;
+  props : property_key list;
+  grouped : (rule * candidate option Lazy.t) option Lazy.t;
+  mutable refs : int;
+  mutable checked : int;
+  mutable lo : int;
+  mutable hi : int;
+  mutable witness : Rule_graph.node_id option;
+  mutable made : candidate option;
+  mutable group_offer : offer option;
+}
+
+and offer = { key : int; candidate : candidate; mutable withdrawn : bool }
+
+(* The groups met so far, by the rules they consume. *)
+type shared = { by_members : group list Ids_table.t; mutable next_group : int }
+
+let shared size = { by_members = Ids_table.create size; next_group = 0 }
+
+let share shared ~members ~decls ~props grouped =
+  let same group =
+    List.equal same_decl group.decls decls
+    && List.equal property_key_equal group.props props
+  in
+  let known =
+    match Ids_table.find_opt shared.by_members members with
+    | Option.Some known -> known
+    | Option.None -> []
+  in
+  match List.find_opt same known with
+  | Option.Some group -> group
+  | Option.None ->
+      let group =
+        {
+          uid = shared.next_group;
+          members;
+          decls;
+          props;
+          grouped = lazy (grouped ());
+          refs = 0;
+          checked = -1;
+          lo = 0;
+          hi = 0;
+          witness = Option.None;
+          made = Option.None;
+          group_offer = Option.None;
+        }
+      in
+      shared.next_group <- shared.next_group + 1;
+      Ids_table.replace shared.by_members members (group :: known);
+      group
+
+(* What the rules of a subset make of an exact-shared group, before the one
+   question that reads the rest of the graph: whether the group would cross a
+   live rule it conflicts with. Each step past the members waits until a
+   candidate is asked for. *)
+type exact_group = No_exact_group | Exact_group of group
+
+let exact_group ~shared ?size_cache ~finalize g ids =
+  let rules_with_ids = rules_with_ids g ids in
+  match common_exact_decls (List.map snd rules_with_ids) with
+  | [] -> No_exact_group
+  | common -> (
+      match cost_aware_exact_members common rules_with_ids with
+      | [] | [ _ ] -> No_exact_group
+      | members ->
+          let ids = List.map fst members in
+          let rules = List.map snd members in
+          let grouped () =
+            match grouped_rule rules with
+            | Option.None -> Option.None
+            | Option.Some grouped ->
+                let grouped = { grouped with declarations = common } in
+                if
+                  unsafe_lift_in_any_member common rules
+                  || unsafe_group_order common rules
+                  || unsafe_cross_member_leftover common rules
+                  || unsafe_lift_over_prior_member g common members
+                then Option.None
+                else
+                  let produce = grouped :: exact_leftovers common rules in
+                  Option.Some
+                    ( grouped,
+                      lazy
+                        (rewrite_candidate ?size_cache
+                           ~kind:Exact_shared_declarations ~finalize g
+                           ~consume:ids ~produce) )
+          in
+          Exact_group
+            (share shared ~members:ids ~decls:common ~props:[] grouped))
 
 (* [property_key_equal (declaration_property_key decl) key] reads only the two
    compared fields, so building the record first buys nothing and costs one
@@ -1211,39 +672,6 @@ let rec has_property_key key = function
   | [] -> false
   | decl :: rest -> declaration_has_key key decl || has_property_key key rest
 
-(* Each entry carries the order in which its key was first seen. The buckets
-   live in a hash table, so folding them yields the hash's order, and the sort
-   below would otherwise leave entries that tie on origin and size in that
-   order: the search's choice would follow the hash rather than the input. *)
-let add_property_buckets ~seq ~origin buckets id (rule : rule) =
-  let add key id =
-    let hash = property_key_hash key in
-    let entries = Int_table.find_opt buckets hash |> Option.value ~default:[] in
-    let rec insert acc = function
-      | [] ->
-          let n = !seq in
-          incr seq;
-          List.rev ((key, [ id ], n, origin) :: acc)
-      | (existing, ids, n, least) :: rest when property_key_equal existing key
-        ->
-          List.rev_append acc
-            ((existing, id :: ids, n, Int.min least origin) :: rest)
-      | entry :: rest -> insert (entry :: acc) rest
-    in
-    Int_table.replace buckets hash (insert [] entries)
-  in
-  let rec loop seen = function
-    | [] -> ()
-    | decl :: rest ->
-        let key = declaration_property_key decl in
-        if List.exists (property_key_equal key) seen then loop seen rest
-        else begin
-          if not (has_property_key key rest) then add key id;
-          loop (key :: seen) rest
-        end
-  in
-  loop [] rule.declarations
-
 let remove_property_declarations keys decls =
   List.filter (fun decl -> not (declaration_has_any_key keys decl)) decls
 
@@ -1256,14 +684,6 @@ type default_entry = {
 
 let default_member_rules members = List.map (fun member -> member.rule) members
 let default_member_ids members = List.map (fun member -> member.id) members
-
-let collect_default_members g key ids =
-  ordered_ids g ids
-  |> List.filter_map (fun id ->
-      let rule = Rule_graph.node_rule g id in
-      match single_declaration_for_property key rule with
-      | Option.None -> Option.None
-      | Option.Some _ -> Option.Some { id; rule })
 
 let common_property_keys members =
   match members with
@@ -1314,14 +734,17 @@ let member_overrides_default entry member =
    cascade whenever [M] is order-constrained to precede the provider: the
    provider's value won originally (it was cascade-later), but the group makes
    [M]'s leftover win. This can arise once same-selector consolidation has moved
-   the provider's declaration earlier than [M]'s conflicting one. Drop the entry
-   so the property stays ungrouped. *)
-let override_precedes_provider g ~provider members entry =
-  List.exists
+   the provider's declaration earlier than [M]'s conflicting one. The entry is
+   dropped, so the property stays ungrouped, once one of the members below
+   precedes the provider. *)
+let overriders ~provider members entry =
+  List.filter_map
     (fun member ->
-      Rule_graph.Node_id.compare member.id provider.id <> 0
-      && member_overrides_default entry member
-      && Rule_graph.precedes g member.id provider.id)
+      if
+        Rule_graph.Node_id.compare member.id provider.id <> 0
+        && member_overrides_default entry member
+      then Option.Some member.id
+      else Option.None)
     members
 
 let needs_default_reassertion entry ~prior member =
@@ -1406,7 +829,7 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
           group_decls <> []
           && List.exists
                (fun prior_member ->
-                 Rule_graph.conflict g prior_member.id member.id
+                 Rule_graph.conflict g.graph prior_member.id member.id
                  && declarations_conflict_with_group_facts group_facts
                       (prior_leftover prior_member))
                prior
@@ -1435,49 +858,54 @@ let prune_default_members ~keys ~entries ~exact_common members =
   in
   loop [] [] members
 
-let default_group_key group_decls members =
-  mix_int
-    (hash_selector_list (List.map (fun member -> member.rule.selector) members))
-    (group_decls |> List.map Declaration.hash |> hash_ints)
-
-let default_produce g ~keys ~entries ~exact_common ~group_decls members =
+(* The group rule and, once asked for, the candidate it makes, unless the
+   members' own rules refuse it. Whether it crosses a live rule it conflicts
+   with is the caller's question, as that reads the rest of the graph. *)
+let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
+    ~group_decls members =
   match grouped_rule (default_member_rules members) with
   | Option.None -> Option.None
   | Option.Some grouped ->
       let grouped = { grouped with declarations = group_decls } in
-      let ids = default_member_ids members in
       if
         unsafe_lift_in_any_member group_decls (default_member_rules members)
         || unsafe_group_order group_decls (default_member_rules members)
         || unsafe_lift_over_prior_member g exact_common
              (List.map (fun member -> (member.id, member.rule)) members)
         || unsafe_default_prior_lift g ~keys ~entries ~exact_common members
-        || group_crosses_external_conflict g ~ids grouped
       then Option.None
       else
-        let leftovers =
-          let rec loop prior acc = function
-            | [] -> List.rev acc
-            | member :: rest -> (
-                match
-                  default_member_leftover ~keys ~entries ~exact_common ~prior
-                    member
-                with
-                | [] -> loop (member :: prior) acc rest
-                | declarations ->
-                    let leftover =
-                      {
-                        member.rule with
-                        declarations;
-                        nested = [];
-                        merge_key = Option.None;
-                      }
-                    in
-                    loop (member :: prior) (leftover :: acc) rest)
+        let produce () =
+          let leftovers =
+            let rec loop prior acc = function
+              | [] -> List.rev acc
+              | member :: rest -> (
+                  match
+                    default_member_leftover ~keys ~entries ~exact_common ~prior
+                      member
+                  with
+                  | [] -> loop (member :: prior) acc rest
+                  | declarations ->
+                      let leftover =
+                        {
+                          member.rule with
+                          declarations;
+                          nested = [];
+                          merge_key = Option.None;
+                        }
+                      in
+                      loop (member :: prior) (leftover :: acc) rest)
+            in
+            loop [] [] members
           in
-          loop [] [] members
+          grouped :: leftovers
         in
-        Option.Some (grouped :: leftovers)
+        Option.Some
+          ( grouped,
+            lazy
+              (rewrite_candidate ?size_cache ~kind:Default_factoring ~finalize g
+                 ~consume:(default_member_ids members)
+                 ~produce:(produce ())) )
 
 (* Pruning keeps a member only two ways: everything it writes disappears into
    the group body, or the body hands it back at least as many bytes as naming
@@ -1507,101 +935,109 @@ let member_may_survive_pruning provider_decls (member : default_member) =
 let default_group_can_keep_two provider members =
   List.exists (member_may_survive_pruning provider.rule.declarations) members
 
-let default_candidate_from_members ?size_cache ~finalize g ~seen members =
-  match members with
-  | [] | [ _ ] -> Option.None
-  | first :: rest when not (default_group_can_keep_two first rest) ->
-      Option.None
-  | first :: _ -> (
-      let entries =
-        common_property_keys members
-        |> default_entries first
-        |> safe_default_entries members
-        |> List.filter (fun entry ->
-            not (override_precedes_provider g ~provider:first members entry))
-      in
-      let keys = List.map (fun entry -> entry.key) entries in
-      let exact_common = exact_common_without keys members in
-      let group_decls = default_group_decls ~exact_common entries in
-      let members =
-        prune_default_members ~keys ~entries ~exact_common members
-      in
-      let group_key = default_group_key group_decls members in
-      if Int_table.mem seen group_key then Option.None
-      else
-        match members with
-        | [] | [ _ ] -> Option.None
-        | _ -> (
-            match
-              default_produce g ~keys ~entries ~exact_common ~group_decls
-                members
-            with
-            | Option.None -> Option.None
-            | Option.Some produce ->
-                Int_table.replace seen group_key ();
-                candidate ?size_cache ~kind:Default_factoring ~finalize g
-                  ~consume:(default_member_ids members)
-                  ~produce))
+(* Which entries survive reads the graph, whether an overriding member precedes
+   the provider, so a subset keeps the group it makes for each set of survivors
+   it has met. *)
+type default_members =
+  | No_default_group
+  | Default_members of {
+      first : default_member;
+      members : default_member list;
+      entries : (default_entry * Rule_graph.node_id list) list;
+          (** each with the members overriding it *)
+      mutable groups :
+        ((default_entry * Rule_graph.node_id list) list * group) list;
+    }
 
-let default_candidate_for_ids ?size_cache ~finalize g ~seen ids =
-  match ids with
-  | [] | [ _ ] -> Option.None
-  | ids ->
-      let members =
-        ordered_ids g ids |> unique_ids_preserve_order
-        |> List.filter_map (fun id ->
-            let rule = Rule_graph.node_rule g id in
-            if rule_eligible rule then Option.Some { id; rule } else Option.None)
-      in
-      default_candidate_from_members ?size_cache ~finalize g ~seen members
-
-let default_value_candidates ?size_cache ?touching ~ctx ~finalize g =
-  let touching = touching_set touching in
-  let budget = default_subset_budget ~ctx g in
-  let budget_state =
-    match budget with
-    | Exhaustive _ -> Option.None
-    | Indexed budget -> Option.Some (indexed_budget_state budget)
+let default_members g ids =
+  let members =
+    ordered_ids g ids
+    |> List.filter_map (fun id ->
+        let rule = node_rule g id in
+        if rule_eligible rule then Option.Some { id; rule } else Option.None)
   in
-  let buckets = Int_table.create 256 in
-  let seq = ref 0 in
-  List.iter
-    (fun (id, rule) ->
-      if rule_eligible rule then
-        let origin = Rule_graph.node_origin g id in
-        add_property_buckets ~seq ~origin buckets id rule)
-    (live_rules g);
-  let seen_groups = Int_table.create 128 in
-  let candidates = ref [] in
-  Int_table.fold (fun _ entries acc -> List.rev_append entries acc) buckets []
-  |> List.sort
-       (fun
-         (_, left, left_seq, left_origin) (_, right, right_seq, right_origin) ->
-         match Int.compare left_origin right_origin with
-         | 0 -> (
-             match Int.compare (List.length left) (List.length right) with
-             | 0 -> Int.compare left_seq right_seq
-             | order -> order)
-         | order -> order)
-  |> List.iter (fun (key, ids, _, _) ->
-      let ids =
-        ids |> Node_set.of_list |> Node_set.elements
-        |> List.filter (fun id -> rule_eligible (Rule_graph.node_rule g id))
-        |> collect_default_members g key
-        |> List.map (fun member -> member.id)
+  match members with
+  | [] | [ _ ] -> No_default_group
+  | first :: rest when not (default_group_can_keep_two first rest) ->
+      No_default_group
+  | first :: _ ->
+      Default_members
+        {
+          first;
+          members;
+          entries =
+            common_property_keys members
+            |> default_entries first
+            |> safe_default_entries members
+            |> List.map (fun entry ->
+                (entry, overriders ~provider:first members entry));
+          groups = [];
+        }
+
+(* The pruned members, the keys and the group body decide the candidate: the
+   body is the members' common declarations followed by the provider's value for
+   each key. *)
+let default_group ~shared ?size_cache ~finalize g members entries =
+  let keys = List.map (fun entry -> entry.key) entries in
+  let exact_common = exact_common_without keys members in
+  let group_decls = default_group_decls ~exact_common entries in
+  let members = prune_default_members ~keys ~entries ~exact_common members in
+  share shared ~members:(default_member_ids members)
+    ~decls:group_decls ~props:keys (fun () ->
+      match members with
+      | [] | [ _ ] -> Option.None
+      | _ ->
+          default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
+            ~group_decls members)
+
+(* The group [known] makes on [g] - the one met before for the entries that
+   survive here, or a new one - and the order questions that decide those
+   entries: whether a member overriding a surviving entry precedes the provider.
+   {!Rule_graph.try_rewrite} preserves the partial order, so an entry dropped
+   for an override that precedes the provider stays dropped, and these are the
+   only questions a later graph can answer differently. *)
+let surviving_group ~shared ?size_cache ~finalize g known =
+  match known with
+  | No_default_group -> Option.None
+  | Default_members known ->
+      let provider = known.first.id in
+      let survivors =
+        List.filter
+          (fun (_, overriders) ->
+            not
+              (List.exists
+                 (fun member -> Rule_graph.precedes g.graph member provider)
+                 overriders))
+          known.entries
       in
-      if touches_any touching ids then
-        ids
-        |> subset_candidates g ?budget_state budget
-        |> List.iter (fun ids ->
-            if touches_any touching ids then
-              match
-                default_candidate_for_ids ?size_cache ~finalize g
-                  ~seen:seen_groups ids
-              with
-              | Option.None -> ()
-              | Option.Some candidate -> candidates := candidate :: !candidates));
-  !candidates
+      let group =
+        match
+          List.find_opt
+            (fun (met, _) -> List.equal ( == ) met survivors)
+            known.groups
+        with
+        | Option.Some (_, group) -> group
+        | Option.None ->
+            let group =
+              default_group ~shared ?size_cache ~finalize g known.members
+                (List.map fst survivors)
+            in
+            known.groups <- (survivors, group) :: known.groups;
+            group
+      in
+      let unordered =
+        List.fold_left
+          (fun unordered (_, overriders) ->
+            List.fold_left
+              (fun unordered member ->
+                if
+                  List.exists (fun (other, _) -> same_id other member) unordered
+                then unordered
+                else (member, provider) :: unordered)
+              unordered overriders)
+          [] survivors
+      in
+      Option.Some (group, unordered)
 
 let selector_branches (rule : rule) = Edge.selectors rule.selector
 
@@ -1611,11 +1047,6 @@ let single_selector_branch_key (rule : rule) : string option =
   | _ -> Option.None
 
 let selector_branch_size selector = Pp.size ~minify:true Selector.pp selector
-
-let add_single_selector_receivers receivers id rule =
-  match single_selector_branch_key rule with
-  | Option.None -> ()
-  | Option.Some key -> String_table.push receivers key id
 
 let remaining_selector_branches ~removed_key selectors =
   List.filter
@@ -1636,8 +1067,8 @@ let rule_for_selector_branches rule selectors : rule option =
 
 let selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
     ~remaining_selectors =
-  let receiver = Rule_graph.node_rule g receiver_id in
-  let group = Rule_graph.node_rule g group_id in
+  let receiver = node_rule g receiver_id in
+  let group = node_rule g group_id in
   let receiver =
     {
       receiver with
@@ -1652,84 +1083,893 @@ let selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
     | Option.None -> [ receiver ]
     | Option.Some group -> [ receiver; group ]
   in
-  candidate ?size_cache ~kind:Selector_branch_inline ~finalize g
+  rewrite_candidate ?size_cache ~kind:Selector_branch_inline ~finalize g
     ~consume:[ receiver_id; group_id ] ~produce
 
-let single_selector_receivers g =
-  let receivers = String_table.create 256 in
+(* The candidates of one graph, kept up to date as the scheduler rewrites it.
+
+   A candidate is decided by a few rules and a few questions about the rest of
+   the graph, so the state below files every live node under the keys that
+   decide which candidates it can take part in, and every candidate under what
+   it read. A rewrite then refiles the nodes it consumed and produced, works out
+   again the candidates of the keys they sit under, and asks again only the
+   questions whose answer the rewrite can have changed. What comes out is the
+   set a full enumeration of the new graph offers: {!enumerate} is that full
+   enumeration, run from an empty state. *)
+
+type core = {
+  ctx : Ctx.t;
+  finalize : rule -> rule;
+  view : view;
+  mutable sizes : Rule_rewrite.size_cache;
+  mutable epoch : int;
+  mutable next_key : int;
+  mutable offered : offer list;
+  mutable consumed : Rule_graph.node_id list;
+  mutable produced : Rule_graph.node_id list;
+}
+
+let key (offer : offer) = offer.key
+let candidate (offer : offer) = offer.candidate
+
+let offer core candidate =
+  let key = core.next_key in
+  core.next_key <- key + 1;
+  let offer =
+    { key; candidate = offered_on core.view candidate; withdrawn = false }
+  in
+  core.offered <- offer :: core.offered;
+  offer
+
+let withdraw (offer : offer) = offer.withdrawn <- true
+let withdraw_option = Option.iter withdraw
+let without id ids = List.filter (fun other -> not (same_id id other)) ids
+
+(* Identical-body and same-selector grouping: the candidates of a bucket read
+   its members' rules and nothing else. *)
+
+type grouping = Bodies | Selectors
+
+type group_bucket = {
+  group_key : int;
+  mutable members : Rule_graph.node_id list;  (** newest first *)
+  mutable offers : offer list;
+  mutable group_stamp : int;
+}
+
+type groups = {
+  grouping : grouping;
+  group_buckets : group_bucket Int_table.t;
+  mutable group_dirty : group_bucket list;
+}
+
+let grouping_key core grouping id =
+  let rule = node_rule core.view id in
+  match grouping with
+  | Bodies ->
+      if identical_body_eligible ~ctx:core.ctx rule && rule.declarations <> []
+      then Option.Some (body_bucket_key core.view id)
+      else Option.None
+  | Selectors ->
+      if same_selector_eligible rule then Option.Some (selector_key_hash rule)
+      else Option.None
+
+let touch_group core groups bucket =
+  if bucket.group_stamp <> core.epoch then begin
+    bucket.group_stamp <- core.epoch;
+    groups.group_dirty <- bucket :: groups.group_dirty
+  end
+
+let groups_remove core groups id =
+  match grouping_key core groups.grouping id with
+  | Option.None -> ()
+  | Option.Some key ->
+      let bucket = Int_table.find groups.group_buckets key in
+      bucket.members <- without id bucket.members;
+      touch_group core groups bucket
+
+let groups_add core groups id =
+  match grouping_key core groups.grouping id with
+  | Option.None -> ()
+  | Option.Some key ->
+      let bucket =
+        match Int_table.find_opt groups.group_buckets key with
+        | Option.Some bucket -> bucket
+        | Option.None ->
+            let bucket =
+              { group_key = key; members = []; offers = []; group_stamp = -1 }
+            in
+            Int_table.replace groups.group_buckets key bucket;
+            bucket
+      in
+      bucket.members <- id :: bucket.members;
+      touch_group core groups bucket
+
+let group_candidates core grouping ids =
+  let g = core.view and size_cache = core.sizes in
+  let finalize = core.finalize in
+  let candidates = ref [] in
+  (match grouping with
+  | Bodies ->
+      same_body_groups g ids
+      |> List.iter
+           (add_identical_body_group ~size_cache ~ctx:core.ctx ~finalize g
+              ~candidates)
+  | Selectors ->
+      same_selector_groups g ids
+      |> List.iter
+           (add_same_selector_group ~size_cache ~stats:(Ctx.stats core.ctx)
+              ~finalize g ~candidates));
+  List.rev !candidates
+
+let settle_groups core groups =
   List.iter
-    (fun (id, rule) ->
-      if rule_eligible rule then add_single_selector_receivers receivers id rule)
-    (live_rules g);
-  receivers
+    (fun bucket ->
+      List.iter withdraw bucket.offers;
+      bucket.offers <-
+        (match bucket.members with
+        | [] | [ _ ] -> []
+        | members ->
+            group_candidates core groups.grouping (List.rev members)
+            |> List.map (offer core));
+      if bucket.members = [] then
+        Int_table.remove groups.group_buckets bucket.group_key)
+    (List.rev groups.group_dirty);
+  groups.group_dirty <- []
 
-let seen_key receiver_id group_id branch_key =
-  mix_int
-    (mix_int
-       (Rule_graph.Node_id.to_int receiver_id)
-       (Rule_graph.Node_id.to_int group_id))
-    (hash_string branch_key)
+(* Selector-branch inlining: a receiver and a group meet on a branch key, and
+   are a candidate when the receiver precedes the group. Both carry that branch,
+   which the graph pins in source order, so the answer is settled when they meet
+   and only their own rewrite changes it. *)
 
-let add_selector_inline_candidate ?size_cache ?touching ~finalize g ~seen
-    ~candidates ~receiver_id ~group_id ~branch_key ~remaining_selectors =
-  if
-    Rule_graph.Node_id.compare receiver_id group_id <> 0
-    && Rule_graph.precedes g receiver_id group_id
-    && (touches_node touching receiver_id || touches_node touching group_id)
-  then
+type inline_group = {
+  group : Rule_graph.node_id;
+  branches : (string * Selector.t list) list;
+  mutable pairs : (Rule_graph.node_id * offer) list;  (** by receiver *)
+}
+
+type inlining = {
+  receivers : Rule_graph.node_id list String_table.t;
+  by_branch : inline_group list String_table.t;
+  inline_groups : inline_group Int_table.t;
+}
+
+let receiver_branch (rule : rule) =
+  if rule_eligible rule then single_selector_branch_key rule else Option.None
+
+(* The branch keys [rule] can hand to a receiver, each once, with the selector
+   list left behind: a branch longer than the declarations it would carry. *)
+let inline_branches (rule : rule) =
+  if not (rule_eligible rule && rule.declarations <> []) then []
+  else
+    match selector_branches rule with
+    | [] | [ _ ] -> []
+    | selectors ->
+        let inline_cost = decls_inline_cost rule.declarations in
+        List.fold_left
+          (fun acc selector ->
+            if selector_branch_size selector + 1 > inline_cost then
+              let key = selector_branch_key selector in
+              if List.exists (fun (other, _) -> String.equal other key) acc then
+                acc
+              else
+                (key, remaining_selector_branches ~removed_key:key selectors)
+                :: acc
+            else acc)
+          [] selectors
+        |> List.rev
+
+let pair_up core group remaining receiver =
+  if Rule_graph.precedes core.view.graph receiver group.group then
     match
-      selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
-        ~remaining_selectors
+      selector_inline_candidate ~size_cache:core.sizes ~finalize:core.finalize
+        core.view ~receiver_id:receiver ~group_id:group.group
+        ~remaining_selectors:remaining
     with
     | Option.None -> ()
     | Option.Some candidate ->
-        let key = seen_key receiver_id group_id branch_key in
-        if not (Int_table.mem seen key) then begin
-          Int_table.replace seen key ();
-          candidates := candidate :: !candidates
-        end
+        group.pairs <- (receiver, offer core candidate) :: group.pairs
 
-let selector_branch_inline_for_group ?size_cache ?touching ~finalize g
-    ~receivers ~seen ~candidates group_id group =
-  if rule_eligible group && group.declarations <> [] then
-    match selector_branches group with
-    | [] | [ _ ] -> ()
-    | selectors ->
-        let inline_cost = decls_inline_cost group.declarations in
-        List.iter
-          (fun selector ->
-            if selector_branch_size selector + 1 > inline_cost then
-              let branch_key = selector_branch_key selector in
-              let remaining_selectors =
-                remaining_selector_branches ~removed_key:branch_key selectors
-              in
-              String_table.find_opt receivers branch_key
-              |> Option.value ~default:[]
-              |> List.iter (fun receiver_id ->
-                  add_selector_inline_candidate ?size_cache ?touching ~finalize
-                    g ~seen ~candidates ~receiver_id ~group_id ~branch_key
-                    ~remaining_selectors))
-          selectors
+let table_list table key =
+  Option.value ~default:[] (String_table.find_opt table key)
 
-let selector_branch_inline_candidates ?size_cache ?touching ~finalize g =
-  let touching = touching_set touching in
-  let receivers = single_selector_receivers g in
-  let seen_groups = Int_table.create 128 in
-  let candidates = ref [] in
-  List.iter
-    (fun (group_id, group) ->
-      selector_branch_inline_for_group ?size_cache ~finalize g ~receivers
-        ~seen:seen_groups ~candidates ?touching group_id group)
-    (live_rules g);
-  !candidates
+let set_table_list table key = function
+  | [] -> String_table.remove table key
+  | values -> String_table.replace table key values
 
-let enumerate ?touching ~ctx ~finalize g =
-  let size_cache = Rule_rewrite.size_cache g in
-  let candidates =
-    identical_body_candidates ~size_cache ?touching ~ctx ~finalize g
-    @ same_selector_candidates ~size_cache ?touching ~finalize g
-    @ selector_branch_inline_candidates ~size_cache ?touching ~finalize g
+let inlining_remove core inlining id =
+  let rule = node_rule core.view id in
+  (match receiver_branch rule with
+  | Option.None -> ()
+  | Option.Some key ->
+      set_table_list inlining.receivers key
+        (without id (table_list inlining.receivers key));
+      List.iter
+        (fun group ->
+          group.pairs <-
+            List.filter
+              (fun (receiver, offer) ->
+                if same_id receiver id then begin
+                  withdraw offer;
+                  false
+                end
+                else true)
+              group.pairs)
+        (table_list inlining.by_branch key));
+  let index = Rule_graph.Node_id.to_int id in
+  match Int_table.find_opt inlining.inline_groups index with
+  | Option.None -> ()
+  | Option.Some group ->
+      List.iter (fun (_, offer) -> withdraw offer) group.pairs;
+      List.iter
+        (fun (key, _) ->
+          set_table_list inlining.by_branch key
+            (List.filter
+               (fun other -> other != group)
+               (table_list inlining.by_branch key)))
+        group.branches;
+      Int_table.remove inlining.inline_groups index
+
+let inlining_add core inlining id =
+  let rule = node_rule core.view id in
+  (match receiver_branch rule with
+  | Option.None -> ()
+  | Option.Some key ->
+      String_table.push inlining.receivers key id;
+      List.iter
+        (fun group ->
+          let remaining =
+            snd
+              (List.find
+                 (fun (other, _) -> String.equal other key)
+                 group.branches)
+          in
+          pair_up core group remaining id)
+        (table_list inlining.by_branch key));
+  match inline_branches rule with
+  | [] -> ()
+  | branches ->
+      let group = { group = id; branches; pairs = [] } in
+      Int_table.replace inlining.inline_groups
+        (Rule_graph.Node_id.to_int id)
+        group;
+      List.iter
+        (fun (key, remaining) ->
+          String_table.push inlining.by_branch key group;
+          List.iter
+            (pair_up core group remaining)
+            (table_list inlining.receivers key))
+        branches
+
+(* Exact-shared and default factoring: a bucket per shared declaration or per
+   property, a run of subsets of each bucket's members, and a candidate per
+   subset. *)
+
+type factoring = Exact | Default
+
+type factoring_key =
+  | Shared of Declaration.declaration
+  | Property of property_key
+
+let factoring_key_equal a b =
+  match (a, b) with
+  | Shared a, Shared b -> same_decl a b
+  | Property a, Property b -> property_key_equal a b
+  | Shared _, Property _ | Property _, Shared _ -> false
+
+let factoring_key_hash = function
+  | Shared decl -> Declaration.hash decl
+  | Property key -> property_key_hash key
+
+(* The keys [rule] is filed under, each with the position of its declaration:
+   every declaration once for exact sharing, and every property written exactly
+   once for default factoring. *)
+let factoring_keys factoring (rule : rule) =
+  if not (rule_eligible rule) then []
+  else
+    match factoring with
+    | Exact ->
+        List.mapi
+          (fun i decl -> (Shared decl, i))
+          (unique_decls rule.declarations)
+    | Default ->
+        let rec loop position seen acc = function
+          | [] -> List.rev acc
+          | decl :: rest ->
+              let key = declaration_property_key decl in
+              if List.exists (property_key_equal key) seen then
+                loop (position + 1) seen acc rest
+              else
+                let acc =
+                  if has_property_key key rest then acc
+                  else (Property key, position) :: acc
+                in
+                loop (position + 1) (key :: seen) acc rest
+        in
+        loop 0 [] [] rule.declarations
+
+type answer = Exact_answer of exact_group | Default_answer of default_members
+
+(* A subset of a bucket's members and the group it reaches on the current graph.
+   An exact-shared subset reaches one group on every graph; a default one
+   reaches the group of the entries that survive, which [unordered] decides. *)
+type subset = {
+  ids : Rule_graph.node_id list;
+  uid : int;
+  answer : answer Lazy.t;
+  mutable taken_by : int;
+  mutable resolved : int;
+  mutable reached : group option;
+  mutable unordered : (Rule_graph.node_id * Rule_graph.node_id) list;
+}
+
+(* Where a bucket stands in the order an indexed budget is spent in: its first
+   source position, its size, then where its key first appears, by node and
+   declaration position. *)
+type rank = { least : int; size : int; first : int; position : int }
+
+let compare_rank a b =
+  match Int.compare a.least b.least with
+  | 0 -> (
+      match Int.compare a.size b.size with
+      | 0 -> (
+          match Int.compare a.first b.first with
+          | 0 -> Int.compare a.position b.position
+          | order -> order)
+      | order -> order)
+  | order -> order
+
+type factoring_bucket = {
+  fkey : factoring_key;
+  mutable fmembers : (Rule_graph.node_id * int) list;
+      (** with the key's position, latest source position first *)
+  mutable subsets : Rule_graph.node_id list list;
+  mutable taken : subset list;
+  mutable taken_count : int;
+  mutable want : int;
+  mutable rank : rank;
+  mutable fstamp : int;
+  mutable asked : int;
+}
+
+module Ranked = Set.Make (struct
+  type t = factoring_bucket
+
+  let compare a b = compare_rank a.rank b.rank
+end)
+
+type family = {
+  factoring : factoring;
+  budget : Subsets.t;
+  fbuckets : factoring_bucket list Int_table.t;
+  mutable ranked : Ranked.t;
+  mutable takers : factoring_bucket list;
+  mutable fdirty : factoring_bucket list;
+  known : subset Ids_table.t;
+  shared : shared;
+  watched : subset Int_table.t;
+  live_groups : group Int_table.t;
+  mutable next_subset : int;
+}
+
+let compare_member g (a, _) (b, _) =
+  match
+    Int.compare
+      (Rule_graph.node_origin g.graph a)
+      (Rule_graph.node_origin g.graph b)
+  with
+  | 0 -> Rule_graph.Node_id.compare a b
+  | order -> order
+
+let rec insert_member g member = function
+  | [] -> [ member ]
+  | other :: rest as members ->
+      if compare_member g member other > 0 then member :: members
+      else other :: insert_member g member rest
+
+let bucket_rank g members =
+  let least, first, position =
+    List.fold_left
+      (fun (least, first, position) (id, at) ->
+        let index = Rule_graph.Node_id.to_int id in
+        let least = Int.min least (Rule_graph.node_origin g.graph id) in
+        if index < first then (least, index, at) else (least, first, position))
+      (max_int, max_int, 0) members
   in
-  candidates
-  @ shared_decl_candidates ~size_cache ?touching ~ctx ~finalize g
-  @ default_value_candidates ~size_cache ?touching ~ctx ~finalize g
+  { least; size = List.length members; first; position }
+
+let touch_bucket core family bucket =
+  if bucket.fstamp <> core.epoch then begin
+    bucket.fstamp <- core.epoch;
+    family.fdirty <- bucket :: family.fdirty
+  end
+
+let bucket_for family key =
+  Int_table.find_opt family.fbuckets (factoring_key_hash key)
+  |> Option.value ~default:[]
+  |> List.find_opt (fun bucket -> factoring_key_equal bucket.fkey key)
+
+let family_remove core family id =
+  List.iter
+    (fun (key, _) ->
+      match bucket_for family key with
+      | Option.None -> ()
+      | Option.Some bucket ->
+          bucket.fmembers <-
+            List.filter
+              (fun (other, _) -> not (same_id id other))
+              bucket.fmembers;
+          touch_bucket core family bucket)
+    (factoring_keys family.factoring (node_rule core.view id))
+
+let empty_rank = { least = 0; size = 0; first = 0; position = 0 }
+
+let family_add core family id =
+  List.iter
+    (fun (key, position) ->
+      let bucket =
+        match bucket_for family key with
+        | Option.Some bucket -> bucket
+        | Option.None ->
+            let bucket =
+              {
+                fkey = key;
+                fmembers = [];
+                subsets = [];
+                taken = [];
+                taken_count = 0;
+                want = 0;
+                rank = empty_rank;
+                fstamp = -1;
+                asked = -1;
+              }
+            in
+            Int_table.push family.fbuckets (factoring_key_hash key) bucket;
+            bucket
+      in
+      bucket.fmembers <- insert_member core.view (id, position) bucket.fmembers;
+      touch_bucket core family bucket)
+    (factoring_keys family.factoring (node_rule core.view id))
+
+let indexed family = Option.is_some (Subsets.shared family.budget)
+
+let drop_bucket family bucket =
+  let hash = factoring_key_hash bucket.fkey in
+  match
+    List.filter
+      (fun other -> other != bucket)
+      (Int_table.find family.fbuckets hash)
+  with
+  | [] -> Int_table.remove family.fbuckets hash
+  | buckets -> Int_table.replace family.fbuckets hash buckets
+
+let refresh_bucket core family bucket =
+  if indexed family && bucket.subsets <> [] then
+    family.ranked <- Ranked.remove bucket family.ranked;
+  bucket.subsets <-
+    (match bucket.fmembers with
+    | [] | [ _ ] -> []
+    | members ->
+        Subsets.of_bucket family.budget
+          ~origin:(Rule_graph.node_origin core.view.graph)
+          (List.rev_map fst members));
+  bucket.rank <- bucket_rank core.view bucket.fmembers;
+  if bucket.fmembers = [] then drop_bucket family bucket;
+  if indexed family && bucket.subsets <> [] then
+    family.ranked <- Ranked.add bucket family.ranked
+
+let subset_of core family ids =
+  match Ids_table.find_opt family.known ids with
+  | Option.Some subset -> subset
+  | Option.None ->
+      let g = core.view and size_cache = core.sizes in
+      let finalize = core.finalize and shared = family.shared in
+      let answer =
+        match family.factoring with
+        | Exact ->
+            lazy
+              (Exact_answer (exact_group ~shared ~size_cache ~finalize g ids))
+        | Default -> lazy (Default_answer (default_members g ids))
+      in
+      let subset =
+        {
+          ids;
+          uid = family.next_subset;
+          answer;
+          taken_by = 0;
+          resolved = -1;
+          reached = Option.None;
+          unordered = [];
+        }
+      in
+      family.next_subset <- family.next_subset + 1;
+      Ids_table.replace family.known ids subset;
+      subset
+
+let all_live core ids = List.for_all (is_live core.view) ids
+
+(* Whether [group] would cross the live rule [id]: one strictly inside its
+   source span, outside it, that matches with it and writes across its
+   declarations' order. *)
+let crosses core (group : group) (grouped : rule) id =
+  crosses_bounds core.view ~min_origin:group.lo ~max_origin:group.hi id
+  && (not (id_mem id group.members))
+  &&
+  let external_rule : rule = node_rule core.view id in
+  Rule_graph.selectors_conflict grouped.selector external_rule.selector
+  && declarations_cross_order grouped.declarations external_rule.declarations
+
+let scan core (group : group) =
+  group.checked <- core.epoch;
+  group.witness <- Option.None;
+  match (Lazy.force group.grouped, origin_bounds core.view group.members) with
+  | Option.None, _ | _, Option.None -> ()
+  | Option.Some (grouped, _), Option.Some (lo, hi) ->
+      group.lo <- lo;
+      group.hi <- hi;
+      let witness = ref Option.None in
+      if
+        Rule_graph.exists_live_node core.view.graph (fun id ->
+            crosses core group grouped id
+            && begin
+              witness := Option.Some id;
+              true
+            end)
+      then group.witness <- !witness
+
+(* A candidate is offered again only when it changed: a group computes its
+   candidate once, so an unchanged one is the same value. *)
+let offer_group core (group : group) =
+  let made =
+    match (group.witness, Lazy.force group.grouped) with
+    | Option.None, Option.Some (_, scored) -> Lazy.force scored
+    | Option.Some _, _ | _, Option.None -> Option.None
+  in
+  if not (Option.equal ( == ) made group.made) then begin
+    withdraw_option group.group_offer;
+    group.made <- made;
+    group.group_offer <- Option.map (offer core) made
+  end
+
+let forget_group family (group : group) =
+  match Ids_table.find_opt family.shared.by_members group.members with
+  | Option.None -> ()
+  | Option.Some groups -> (
+      match List.filter (fun other -> other != group) groups with
+      | [] -> Ids_table.remove family.shared.by_members group.members
+      | groups ->
+          Ids_table.replace family.shared.by_members group.members groups)
+
+let reach core family (group : group) =
+  group.refs <- group.refs + 1;
+  if group.refs = 1 then begin
+    Int_table.replace family.live_groups group.uid group;
+    scan core group;
+    offer_group core group
+  end
+
+let unreach core family (group : group) =
+  group.refs <- group.refs - 1;
+  if group.refs = 0 then begin
+    withdraw_option group.group_offer;
+    group.group_offer <- Option.None;
+    group.made <- Option.None;
+    Int_table.remove family.live_groups group.uid;
+    if not (all_live core group.members) then forget_group family group
+  end
+
+(* A live group is asked again only about what the rewrites since the last
+   refresh changed: a witness they consumed, or a node they produced inside the
+   span. Every live group is asked at every refresh, so the answer it holds is
+   the previous refresh's. *)
+let recheck_group core ~consumed ~produced (group : group) =
+  if group.checked <> core.epoch then begin
+    group.checked <- core.epoch;
+    match (Lazy.force group.grouped, group.witness) with
+    | Option.None, _ -> ()
+    | Option.Some _, Option.Some witness ->
+        if List.exists (same_id witness) consumed then begin
+          scan core group;
+          offer_group core group
+        end
+    | Option.Some (grouped, _), Option.None -> (
+        match List.find_opt (crosses core group grouped) produced with
+        | Option.None -> ()
+        | Option.Some id ->
+            group.witness <- Option.Some id;
+            offer_group core group)
+  end
+
+let resolve core family subset =
+  subset.resolved <- core.epoch;
+  subset.unordered <- [];
+  let group =
+    match Lazy.force subset.answer with
+    | Exact_answer No_exact_group -> Option.None
+    | Exact_answer (Exact_group group) -> Option.Some group
+    | Default_answer known -> (
+        match
+          surviving_group ~shared:family.shared ~size_cache:core.sizes
+            ~finalize:core.finalize core.view known
+        with
+        | Option.None -> Option.None
+        | Option.Some (group, unordered) ->
+            subset.unordered <- unordered;
+            Option.Some group)
+  in
+  (match subset.unordered with
+  | [] -> Int_table.remove family.watched subset.uid
+  | _ -> Int_table.replace family.watched subset.uid subset);
+  group
+
+(* Point [subset] at the group it reaches now, reaching the new one before
+   leaving the old so a group both name stays live. *)
+let reresolve core family subset =
+  let previous = subset.reached in
+  let group = resolve core family subset in
+  if not (Option.equal ( == ) group previous) then begin
+    Option.iter (reach core family) group;
+    Option.iter (unreach core family) previous;
+    subset.reached <- group
+  end
+
+let release core family subset =
+  subset.taken_by <- subset.taken_by - 1;
+  if subset.taken_by = 0 then begin
+    Option.iter (unreach core family) subset.reached;
+    subset.reached <- Option.None;
+    Int_table.remove family.watched subset.uid;
+    if not (all_live core subset.ids) then
+      Ids_table.remove family.known subset.ids
+  end
+
+let rec take n = function
+  | [] -> []
+  | x :: rest -> if n <= 0 then [] else x :: take (n - 1) rest
+
+(* Point [bucket] at its first [n] subsets. A subset some bucket takes reaches
+   its group; one no bucket takes reaches none. *)
+let retake core family ~activated ~released bucket n =
+  let subsets = List.map (subset_of core family) (take n bucket.subsets) in
+  List.iter
+    (fun subset ->
+      subset.taken_by <- subset.taken_by + 1;
+      if subset.taken_by = 1 then activated := subset :: !activated)
+    subsets;
+  released := List.rev_append bucket.taken !released;
+  bucket.taken <- subsets;
+  bucket.taken_count <- n
+
+(* An indexed budget is spent on the buckets in rank order, so every bucket that
+   took subsets before, or might take some now, is asked again; an exhaustive
+   one leaves every bucket all of its subsets. *)
+let wanted family dirty =
+  match Subsets.shared family.budget with
+  | Option.None ->
+      List.iter (fun bucket -> bucket.want <- List.length bucket.subsets) dirty;
+      dirty
+  | Option.Some max_candidates ->
+      let previous = family.takers in
+      List.iter (fun bucket -> bucket.want <- 0) previous;
+      List.iter (fun bucket -> bucket.want <- 0) dirty;
+      let rec spend remaining takers seq =
+        if remaining <= 0 then takers
+        else
+          match seq () with
+          | Seq.Nil -> takers
+          | Seq.Cons (bucket, rest) ->
+              let n = Int.min remaining (List.length bucket.subsets) in
+              bucket.want <- n;
+              spend (remaining - n) (bucket :: takers) rest
+      in
+      let takers = spend max_candidates [] (Ranked.to_seq family.ranked) in
+      family.takers <- takers;
+      List.rev_append takers (List.rev_append previous dirty)
+
+let settle_family core family ~consumed ~produced =
+  let dirty = List.rev family.fdirty in
+  family.fdirty <- [];
+  List.iter (refresh_bucket core family) dirty;
+  let activated = ref [] and released = ref [] in
+  List.iter
+    (fun bucket ->
+      if bucket.asked <> core.epoch then begin
+        bucket.asked <- core.epoch;
+        if bucket.fstamp = core.epoch || bucket.want <> bucket.taken_count then
+          retake core family ~activated ~released bucket bucket.want
+      end)
+    (wanted family dirty);
+  List.iter (reresolve core family) (List.rev !activated);
+  List.iter (release core family) !released;
+  if consumed <> [] then begin
+    Int_table.fold
+      (fun _ subset acc ->
+        if
+          subset.resolved <> core.epoch
+          && List.exists
+               (fun (before, after) ->
+                 Rule_graph.precedes core.view.graph before after)
+               subset.unordered
+        then subset :: acc
+        else acc)
+      family.watched []
+    |> List.iter (reresolve core family);
+    Int_table.fold (fun _ group acc -> group :: acc) family.live_groups []
+    |> List.iter (recheck_group core ~consumed ~produced)
+  end
+
+(* The whole state. *)
+
+type t = {
+  core : core;
+  bodies : groups;
+  selectors : groups;
+  inlining : inlining;
+  exact : family;
+  default : family;
+}
+
+let groups size grouping =
+  { grouping; group_buckets = Int_table.create size; group_dirty = [] }
+
+let family size factoring budget =
+  {
+    factoring;
+    budget;
+    fbuckets = Int_table.create size;
+    ranked = Ranked.empty;
+    takers = [];
+    fdirty = [];
+    known = Ids_table.create size;
+    shared = shared size;
+    watched = Int_table.create 8;
+    live_groups = Int_table.create size;
+    next_subset = 0;
+  }
+
+let remove_node t id =
+  groups_remove t.core t.bodies id;
+  groups_remove t.core t.selectors id;
+  inlining_remove t.core t.inlining id;
+  family_remove t.core t.exact id;
+  family_remove t.core t.default id
+
+let add_node t id =
+  groups_add t.core t.bodies id;
+  groups_add t.core t.selectors id;
+  inlining_add t.core t.inlining id;
+  family_add t.core t.exact id;
+  family_add t.core t.default id
+
+let settle t ~consumed ~produced =
+  settle_groups t.core t.bodies;
+  settle_groups t.core t.selectors;
+  settle_family t.core t.exact ~consumed ~produced;
+  settle_family t.core t.default ~consumed ~produced
+
+module Rule_table = Hashtbl.Make (struct
+  type t = rule
+
+  let equal a b = Stylesheet.equal_statement (Rule a) (Rule b)
+  let hash = Stylesheet.rule_hash
+end)
+
+(* [finalize] is a pure normalisation, and the candidates of one run hand it the
+   same leftover rules over and over: every subset that factors the same
+   declarations out of a member leaves it the same rule. *)
+let remembered size finalize =
+  let known = Rule_table.create size in
+  fun rule ->
+    match Rule_table.find_opt known rule with
+    | Option.Some finalized -> finalized
+    | Option.None ->
+        let finalized = finalize rule in
+        Rule_table.replace known rule finalized;
+        finalized
+
+let v ?nodes ~ctx ~finalize g =
+  (* Tables start at the run's size: most runs hold a handful of rules. *)
+  let size = Rule_graph.node_count g in
+  let finalize = remembered size finalize in
+  let nodes = Option.value nodes ~default:size in
+  let view = view g in
+  let core =
+    {
+      ctx;
+      finalize;
+      view;
+      sizes = Rule_rewrite.size_cache g;
+      epoch = 0;
+      next_key = 0;
+      offered = [];
+      consumed = [];
+      produced = [];
+    }
+  in
+  let t =
+    {
+      core;
+      bodies = groups size Bodies;
+      selectors = groups size Selectors;
+      inlining =
+        {
+          receivers = String_table.create size;
+          by_branch = String_table.create 8;
+          inline_groups = Int_table.create 8;
+        };
+      exact =
+        family size Exact (Subsets.exact ~aggressive:(Ctx.aggressive ctx) nodes);
+      default =
+        family size Default
+          (Subsets.default ~aggressive:(Ctx.aggressive ctx) nodes);
+    }
+  in
+  List.iter (add_node t) (Rule_graph.live_nodes g);
+  t
+
+let refresh t =
+  let core = t.core in
+  if core.epoch > 0 && core.consumed = [] then []
+  else
+    let consumed = core.consumed in
+    let produced = List.filter (is_live core.view) core.produced in
+    settle t ~consumed ~produced;
+    core.epoch <- core.epoch + 1;
+    core.consumed <- [];
+    core.produced <- [];
+    let offered =
+      List.rev
+        (List.filter (fun (offer : offer) -> not offer.withdrawn) core.offered)
+    in
+    core.offered <- [];
+    offered
+
+let start ~ctx ~finalize g = v ~ctx ~finalize g
+
+let rewrite t graph ~consume =
+  let core = t.core in
+  let first = Rule_graph.node_count core.view.graph in
+  rewrite_view core.view graph ~consume;
+  core.sizes <- Rule_rewrite.size_cache graph;
+  let produced =
+    List.init
+      (Rule_graph.node_count graph - first)
+      (fun offset -> Rule_graph.Node_id.of_int_exn (first + offset))
+  in
+  List.iter (remove_node t) consume;
+  List.iter (add_node t) produced;
+  core.consumed <- List.rev_append consume core.consumed;
+  core.produced <- List.rev_append produced core.produced
+
+let offers t =
+  let acc = ref [] in
+  let add = function
+    | Option.None -> ()
+    | Option.Some offer -> acc := offer :: !acc
+  in
+  let groups groups =
+    Int_table.iter
+      (fun _ bucket ->
+        List.iter (fun offer -> add (Option.Some offer)) bucket.offers)
+      groups.group_buckets
+  in
+  groups t.bodies;
+  groups t.selectors;
+  Int_table.iter
+    (fun _ group ->
+      List.iter (fun (_, offer) -> add (Option.Some offer)) group.pairs)
+    t.inlining.inline_groups;
+  let family family =
+    Int_table.iter (fun _ group -> add group.group_offer) family.live_groups
+  in
+  family t.exact;
+  family t.default;
+  List.sort (fun (a : offer) (b : offer) -> Int.compare a.key b.key) !acc
+
+let is_live t id = is_live t.core.view id
+let candidates t = List.map (fun (offer : offer) -> offer.candidate) (offers t)
+
+let enumerate ?nodes ~ctx ~finalize g =
+  let t = v ?nodes ~ctx ~finalize g in
+  ignore (refresh t);
+  candidates t

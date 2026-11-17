@@ -70,7 +70,7 @@ the surrounding function canonicalizes.
   > .b { filter: blur(var(--blur)) }
   > .c { background: linear-gradient(red, var(--r)) }
   > EOF
-  $ cascade --minify --inline-vars functions.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars functions.css 2>&1
   .a{color:red}.b{filter:blur(5px)}.c{background:linear-gradient(red,255)}
 
 A var() used in transition / animation shorthand resolves the

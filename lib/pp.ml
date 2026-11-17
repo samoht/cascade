@@ -336,58 +336,254 @@ let format_decimal ?(drop_leading_zero = false) s max_decimals is_neg =
     add_digits b s pad point frac_end);
   Buffer.contents b
 
-let trim_decimal_suffix s =
-  if String.ends_with ~suffix:".0" s then String.sub s 0 (String.length s - 2)
-  else if String.ends_with ~suffix:"." s then
-    String.sub s 0 (String.length s - 1)
-  else s
+(* Every digit the number printers write is decided below in OCaml, from the
+   bits of the double. The C library's formatting is never asked for a digit, so
+   the bytes are the same whichever runtime rounds an exact half which way. *)
 
-let format_integer is_neg abs_f f =
-  match Common.int_of_float_opt abs_f with
-  | Some i ->
-      let s = string_of_int i in
-      if is_neg then "-" ^ s else s
-  | None ->
-      (* Very large integer - use string_of_float and clean it up *)
-      trim_decimal_suffix (string_of_float f) |> Common.canonical_exponent
+(* [pow10.(k)] is [10^k], exact up to [10^22]. *)
+let pow10 =
+  let a = Array.make 23 1.0 in
+  for k = 1 to 22 do
+    a.(k) <- a.(k - 1) *. 10.0
+  done;
+  a
 
-(* [abs_f] in exponent notation, 12 significant digits. *)
-let format_exponent is_neg abs_f =
-  let s =
-    trim_decimal_suffix (string_of_float abs_f) |> Common.canonical_exponent
-  in
-  if is_neg then String.concat "" [ "-"; s ] else s
+(* A natural number as base-[limb] limbs, least significant first. *)
+let limb = 1_000_000_000
 
-let format_scaled ~drop_leading_zero max_decimals is_neg abs_f scaled =
-  match Common.int_of_float_opt scaled with
-  | Some i ->
-      format_decimal ~drop_leading_zero (string_of_int i) max_decimals is_neg
-  | None ->
-      (* [format_decimal] splices the decimal point into what it takes for a
-         pure digit string, but a scaled magnitude with no [int] only
-         stringifies through exponent notation. Print the magnitude itself, the
-         way [format_integer] does over the same range. *)
-      format_exponent is_neg abs_f
+(* Multiply the first [len] limbs of [a] by [k <= 5^13] in place, so that no
+   intermediate passes [max_int]; the new length. *)
+let mul_limbs a len k =
+  let len = ref len and carry = ref 0 in
+  for i = 0 to !len - 1 do
+    let v = (a.(i) * k) + !carry in
+    a.(i) <- v mod limb;
+    carry := v / limb
+  done;
+  while !carry > 0 do
+    a.(!len) <- !carry mod limb;
+    carry := !carry / limb;
+    incr len
+  done;
+  !len
 
-let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
-  let scale = 10.0 ** float_of_int max_decimals in
-  let scaled = floor ((abs_f *. scale) +. 0.5) in
-  if scaled <> 0.0 then
-    format_scaled ~drop_leading_zero max_decimals is_neg abs_f scaled
+let rec mul_pow a len base n =
+  if n = 0 then len
   else
-    (* A magnitude that would round to "0" keeps [max_decimals] significant
-       digits instead (one at least), so [0.000000001em] keeps its value while a
-       coarse [max_decimals] and colour-channel precision stay untouched. Past
-       24 leading zeros the decimal spelling gives way to exponent notation. *)
-    let leading_zeros = -1 - int_of_float (floor (log10 abs_f)) in
-    if leading_zeros > 24 then format_exponent is_neg abs_f
+    let step = min n 13 in
+    let k = ref 1 in
+    for _ = 1 to step do
+      k := !k * base
+    done;
+    mul_pow a (mul_limbs a len !k) base (n - step)
+
+let digits_of_limbs a len =
+  let b = Bytes.create (9 * len) in
+  for i = 0 to len - 1 do
+    let v = ref a.(i) and last = (9 * (len - i)) - 1 in
+    for j = 0 to 8 do
+      Bytes.set b (last - j) (Char.unsafe_chr (Char.code '0' + (!v mod 10)));
+      v := !v / 10
+    done
+  done;
+  let rec first i = if Bytes.get b i = '0' then first (i + 1) else i in
+  let i = first 0 in
+  Bytes.sub_string b i (Bytes.length b - i)
+
+(* A positive finite [x] as [(m, b)], [x = m * 2^b] with [m < 2^53]. *)
+let binary x =
+  let bits = Int64.bits_of_float x in
+  let biased = Int64.to_int (Int64.shift_right_logical bits 52) in
+  let m = Int64.to_int (Int64.logand bits 0xF_FFFF_FFFF_FFFFL) in
+  if biased = 0 then (m, -1074) else (m lor (1 lsl 52), biased - 1075)
+
+(* [m * 2^b], for [0 < m < 2^55], as [(s, e)]: [s * 10^e] with [s] a digit
+   string and no leading zero. It is an integer for [b >= 0], and [m * 5^-b *
+   10^b] below; the longest, [m * 5^1076], has 769 digits, 86 limbs. *)
+let exact_digits m b =
+  let a = Array.make 90 0 in
+  a.(0) <- m mod limb;
+  a.(1) <- m / limb;
+  let len = if a.(1) = 0 then 1 else 2 in
+  let len = if b >= 0 then mul_pow a len 2 b else mul_pow a len 5 (-b) in
+  (digits_of_limbs a len, min b 0)
+
+(* The digit string [s] plus one. *)
+let succ_digits s =
+  let b = Bytes.of_string s in
+  let rec carry i =
+    if i < 0 then true
+    else if Bytes.get b i = '9' then (
+      Bytes.set b i '0';
+      carry (i - 1))
+    else (
+      Bytes.set b i (Char.chr (Char.code (Bytes.get b i) + 1));
+      false)
+  in
+  if carry (String.length s - 1) then
+    String.concat "" [ "1"; Bytes.to_string b ]
+  else Bytes.to_string b
+
+type tie = Even | Away
+
+(* The digit string [s] read as an integer, divided by [10^(length s - k)] and
+   rounded to nearest, a half going to the even neighbour or away from zero by
+   [tie]: [s] cut to its first [k] digits. *)
+let round_digits ~tie s k =
+  let n = String.length s in
+  if k >= n then String.concat "" [ s; String.make (k - n) '0' ]
+  else if k < 0 then "0"
+  else
+    let rec nonzero i = i < n && (s.[i] <> '0' || nonzero (i + 1)) in
+    let odd i = i >= 0 && (Char.code s.[i] - Char.code '0') land 1 = 1 in
+    let up =
+      match s.[k] with
+      | '6' .. '9' -> true
+      | '5' -> (
+          nonzero (k + 1) || match tie with Away -> true | Even -> odd (k - 1))
+      | _ -> false
+    in
+    if k = 0 then if up then "1" else "0"
+    else if up then succ_digits (String.sub s 0 k)
+    else String.sub s 0 k
+
+(* Two positive [(s, e)] values in order. *)
+let compare_decimal (s1, e1) (s2, e2) =
+  let n1 = String.length s1 and n2 = String.length s2 in
+  let c = Int.compare (n1 + e1) (n2 + e2) in
+  if c <> 0 then c
+  else
+    let digit s n i = if i < n then s.[i] else '0' in
+    let rec go i =
+      if i = max n1 n2 then 0
+      else
+        let c = Char.compare (digit s1 n1 i) (digit s2 n2 i) in
+        if c <> 0 then c else go (i + 1)
+    in
+    go 0
+
+(* The shortest decimal that reads back as the positive finite [x], as [(s, e)]:
+   the fewest significant digits whose value lies within [x]'s rounding
+   interval, the midpoints to its neighbouring doubles included when [x]'s
+   significand is even, and of two such the nearer to [x]. It is the number an
+   author wrote whenever that number has 15 significant digits or fewer. *)
+let shortest_digits x =
+  let m, b = binary x in
+  let s, e = exact_digits m b in
+  let high = exact_digits ((2 * m) + 1) (b - 1) in
+  let low =
+    if m = 1 lsl 52 && b > -1074 then exact_digits ((4 * m) - 1) (b - 2)
+    else exact_digits ((2 * m) - 1) (b - 1)
+  in
+  let inside c =
+    let lo = compare_decimal low c and hi = compare_decimal c high in
+    if m land 1 = 0 then lo <= 0 && hi <= 0 else lo < 0 && hi < 0
+  in
+  let n = String.length s in
+  let rec go p =
+    if p >= n then (s, e)
     else
-      let d = max 1 max_decimals + leading_zeros in
-      format_scaled ~drop_leading_zero d is_neg abs_f
-        (floor ((abs_f *. (10.0 ** float_of_int d)) +. 0.5))
+      let scale = e + n - p in
+      let down = String.sub s 0 p in
+      let near = round_digits ~tie:Even s p in
+      let far = if near = down then succ_digits down else down in
+      if inside (near, scale) then (near, scale)
+      else if inside (far, scale) then (far, scale)
+      else go (p + 1)
+  in
+  go 1
+
+(* Whether the digit string [s] is at least [2^62], the [int] range the
+   positional spelling stays within. *)
+let reaches_int_limit s =
+  let limit = "4611686018427387904" in
+  let n = String.length s and l = String.length limit in
+  n > l || (n = l && String.compare s limit >= 0)
+
+(* [abs_f] with 12 significant digits, its exact value rounded to nearest with
+   ties to even as C's [%.12g] does on glibc and macOS, and spelt the same way
+   with the exponent made canonical: positional while the decimal exponent is in
+   [[-4, 12)], exponent notation otherwise, trailing zeros dropped. CSS Syntax 3
+   sec. 4.3.13 reads [1e30] and [4e-33] without a [+] or a padded exponent. *)
+let format_significant is_neg abs_f =
+  let m, b = binary abs_f in
+  let s, e = exact_digits m b in
+  let r = round_digits ~tie:Even s 12 in
+  let point = String.length s - 1 + e in
+  let r, point =
+    if String.length r > 12 then (String.sub r 0 12, point + 1) else (r, point)
+  in
+  let rec sig_end i = if i > 1 && r.[i - 1] = '0' then sig_end (i - 1) else i in
+  let n = sig_end 12 in
+  let b = Buffer.create 24 in
+  if is_neg then Buffer.add_char b '-';
+  if point < -4 || point >= 12 then (
+    Buffer.add_char b r.[0];
+    if n > 1 then (
+      Buffer.add_char b '.';
+      Buffer.add_substring b r 1 (n - 1));
+    Buffer.add_char b 'e';
+    Buffer.add_string b (string_of_int point))
+  else if point < 0 then (
+    Buffer.add_string b "0.";
+    Buffer.add_string b (String.make (-point - 1) '0');
+    Buffer.add_substring b r 0 n)
+  else (
+    for i = 0 to point do
+      Buffer.add_char b (if i < n then r.[i] else '0')
+    done;
+    if n > point + 1 then (
+      Buffer.add_char b '.';
+      Buffer.add_substring b r (point + 1) (n - point - 1)));
+  Buffer.contents b
+
+let format_integer is_neg abs_f =
+  match Common.int_of_float_opt abs_f with
+  | Some i -> string_of_int (if is_neg then -i else i)
+  | None -> format_significant is_neg abs_f
+
+(* [abs_f] at [d] decimal places: its shortest decimal, rounded with a half
+   going away from zero. One that rounds to [0] keeps [max 1 d] significant
+   digits instead, positional up to 24 leading zeros; one whose scaled magnitude
+   reaches [2^62], or that has more leading zeros, takes 12 significant
+   digits. *)
+let format_shortest ~drop_leading_zero d is_neg abs_f =
+  let s, e = shortest_digits abs_f in
+  let scaled d = round_digits ~tie:Away s (String.length s + e + d) in
+  let write r d =
+    if reaches_int_limit r then format_significant is_neg abs_f
+    else format_decimal ~drop_leading_zero r d is_neg
+  in
+  match scaled d with
+  | "0" ->
+      let leading_zeros = -(String.length s + e) in
+      if leading_zeros > 24 then format_significant is_neg abs_f
+      else
+        let d = max 1 d + leading_zeros in
+        write (scaled d) d
+  | r -> write r d
+
+(* The hot path. [p], [abs_f] times an exact [10^d], is off the shortest decimal
+   times [10^d] by one and a half of its ulps at most, and below [2^52] an ulp
+   of [p] is at most [p * 2^-52]. A fractional part of [p] further than [p *
+   2^-51] from [0.5] therefore lies on the same side of the half as the shortest
+   decimal's, and fixes the rounding. A near half, a product past [2^52], a [d]
+   past the exact powers and a value that rounds to [0] take the shortest
+   digits. *)
+let format_decimal_value ~drop_leading_zero d is_neg abs_f =
+  let p = if d >= 0 && d <= 22 then abs_f *. pow10.(d) else Float.infinity in
+  let f = Float.floor p in
+  let frac = p -. f in
+  if
+    p < 0x1p52
+    && Float.abs (frac -. 0.5) > p *. 0x1p-51
+    && (f > 0.0 || frac > 0.5)
+  then
+    let n = int_of_float f + if frac > 0.5 then 1 else 0 in
+    format_decimal ~drop_leading_zero (string_of_int n) d is_neg
+  else format_shortest ~drop_leading_zero d is_neg abs_f
 
 let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
-  (* Handle special cases first *)
   match classify_float f with
   | FP_zero -> "0"
   (* Raw float formatting, not a CSS value sink: [Context] round-trips a float
@@ -399,8 +595,7 @@ let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   | FP_normal | FP_subnormal ->
       let is_neg = f < 0.0 in
       let abs_f = if is_neg then -.f else f in
-      (* Check if this is an integer or needs decimal handling *)
-      if abs_f = floor abs_f then format_integer is_neg abs_f f
+      if abs_f = floor abs_f then format_integer is_neg abs_f
       else format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f
 
 let round_sig n f =

@@ -103,15 +103,16 @@ let pseudo_class_cases () =
   check_construct ":first-child" First_child;
   check_construct ":last-child" Last_child;
   check_construct ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
-  check_construct ":nth-child(odd)" (nth_child Odd);
+  check_construct ":nth-child(odd)" (nth_child (An_plus_b (2, 1)));
   (* Per CSS Selectors 4 section 13.3.1 the printer canonicalizes [even] to [2n]
      and [2n+1] to [odd] under minify. *)
-  check_construct ":nth-child(2n)" (nth_child Even);
+  check_construct ":nth-child(2n)" (nth_child (An_plus_b (2, 0)));
   check_construct ":nth-child(odd)" (nth_child (An_plus_b (2, 1)));
   (* nth with Index and of clause. Per CSS Selectors 4 section 13.3.1 the
-     printer canonicalizes [<an+b>] to the shortest equivalent spelling -
-     [(0n+5)] -> [(5)] / [(1)] -> [:first-child]. *)
-  check ~expected:":first-child" ":nth-child(1)";
+     printer spells [<an+b>] the shortest way - [(0n+5)] -> [(5)]. Turning
+     [:nth-child(1)] into the [:first-child] node is [Selector.canonicalize]'s,
+     so pp keeps it. *)
+  check ":nth-child(1)";
   check ":nth-child(5)";
   check ~expected:":nth-child(odd of.item)" ":nth-child( odd of .item )";
   check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";
@@ -157,30 +158,30 @@ let pseudo_class_cases () =
 (* Not a roundtrip test *)
 let pseudo_element_cases () =
   (* Test pseudo-element selectors *)
-  check_construct ":before" (Before Single);
-  check_construct ":after" (After Single);
-  check_construct ":first-line" (First_line Single);
-  check_construct ":first-letter" (First_letter Single);
+  check_construct ":before" Before;
+  check_construct ":after" After;
+  check_construct ":first-line" First_line;
+  check_construct ":first-letter" First_letter;
   check_construct "::marker" Marker;
 
-  (* Selectors 4: legacy single-colon syntax remains accepted for the CSS2
-     pseudo-elements. Minified output uses the shorter (single-colon) spelling;
-     pretty output preserves the authored form. *)
+  (* Selectors 4 sec. 3.6.1: the CSS2 pseudo-elements read with one colon or two
+     as the same node. Minified output uses the shorter single colon, pretty
+     output the double colon. *)
   check ":before";
   check ~expected:":before" "::before";
-  check_pretty_to ":before" ":before";
+  check_pretty_to "::before" ":before";
   check_pretty_to "::before" "::before";
   check ":after";
   check ~expected:":after" "::after";
-  check_pretty_to ":after" ":after";
+  check_pretty_to "::after" ":after";
   check_pretty_to "::after" "::after";
   check ":first-line";
   check ~expected:":first-line" "::first-line";
-  check_pretty_to ":first-line" ":first-line";
+  check_pretty_to "::first-line" ":first-line";
   check_pretty_to "::first-line" "::first-line";
   check ":first-letter";
   check ~expected:":first-letter" "::first-letter";
-  check_pretty_to ":first-letter" ":first-letter";
+  check_pretty_to "::first-letter" ":first-letter";
   check_pretty_to "::first-letter" "::first-letter";
 
   (* Additional modern pseudo-elements *)
@@ -208,7 +209,7 @@ let attribute_cases () =
   check_construct "[class~=active]"
     (attribute "class" (Whitespace_list "active"));
   check_construct "[href^=https]" (attribute "href" (Prefix "https"));
-  check_construct "[href$=\".pdf\"]" (attribute "href" (Suffix ".pdf"));
+  check_construct "[href$=\\.pdf]" (attribute "href" (Suffix ".pdf"));
   check_construct "[title*=hello]" (attribute "title" (Substring "hello"));
   check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"));
 
@@ -221,24 +222,24 @@ let attribute_cases () =
   check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"));
 
   (* Test attribute value quoting according to CSS spec *)
-  (* Test cases where quotes are REQUIRED per CSS spec *)
-  (* Values with spaces always require quotes *)
-  check "[class=\"my class\"]";
-  check "[data-value=\"hello world\"]";
+  (* A value that is no ident takes the shorter of the string and the escaped
+     ident (Selectors 4 sec. 6.1 takes either): an escaped space is shorter than
+     the quotes. *)
+  check ~expected:"[class=my\\ class]" "[class=\"my class\"]";
+  check ~expected:"[data-value=hello\\ world]" "[data-value=\"hello world\"]";
 
-  (* Values starting with digits require quotes *)
+  (* A leading digit escapes into more bytes than the quotes cost. *)
   check "[data-id=\"123\"]";
   check "[data-version=\"2.0\"]";
 
-  (* Values with special characters require quotes *)
+  (* So do several escapes. *)
   check "[href=\"http://example.com\"]";
 
-  (* Test attribute values for prose type selectors that need quoting *)
-  (* Values with spaces like "A s", "a s", "I s", "i s" require quotes *)
-  check_construct "[type=\"A s\"]" (attribute "type" (Exact "A s"));
-  check_construct "[type=\"a s\"]" (attribute "type" (Exact "a s"));
-  check_construct "[type=\"I s\"]" (attribute "type" (Exact "I s"));
-  check_construct "[type=\"i s\"]" (attribute "type" (Exact "i s"));
+  (* An escaped space before [s] or [i] stays part of the value, not a flag. *)
+  check_construct "[type=A\\ s]" (attribute "type" (Exact "A s"));
+  check_construct "[type=a\\ s]" (attribute "type" (Exact "a s"));
+  check_construct "[type=I\\ s]" (attribute "type" (Exact "I s"));
+  check_construct "[type=i\\ s]" (attribute "type" (Exact "i s"));
 
   (* Single letter values don't need quotes *)
   check_construct "[type=A]" (attribute "type" (Exact "A"));
@@ -265,9 +266,14 @@ let attribute_cases () =
      test/render/parse_recovery.ml), so the quotes stay. *)
   List.iter
     (fun value -> check (String.concat "" [ "[x=\""; value; "\"]" ]))
-    [ "2"; "-2"; "+2"; ".5"; "-.5"; "1e3"; "2px"; "-" ];
+    [ "2"; "-2"; "1e3"; "2px" ];
+  (* Where escaping the first code point costs one byte, the escaped ident is
+     the shorter spelling of the same value. *)
+  check ~expected:"[x=\\+2]" "[x=\"+2\"]";
+  check ~expected:"[x=\\.5]" "[x=\".5\"]";
+  check ~expected:"[x=\\-]" "[x=\"-\"]";
   check_construct "[x=\"-2\"]" (attribute "x" (Exact "-2"));
-  check_construct "[x=\"-\"]" (attribute "x" (Exact "-"));
+  check_construct "[x=\\-]" (attribute "x" (Exact "-"));
   (* Selectors 4 sec. 7.2 takes an <ident> or a <string> as a :lang() range, by
      the same rule. *)
   check ":lang(\"-2\")";
@@ -277,18 +283,20 @@ let attribute_cases () =
   check "[x=--2]";
   check "[x=-a]";
   check ~expected:"[x=-a]" "[x=\"-a\"]";
-  (* An escape starts one too: [\32] is the value "2" and [-\32] the value "-2",
-     kept as written (curated/attr_escaped_digit_value,
-     curated/attr_dash_escaped_digit_value). *)
-  check "[x=\\32]";
-  check "[x=-\\32]";
+  (* An escape starts one too: [\32] is the value "2" and [-\32] the value "-2"
+     (curated/attr_escaped_digit_value, curated/attr_dash_escaped_digit_value).
+     The value is held decoded, and the string spells it shorter. *)
+  check ~expected:"[x=\"2\"]" "[x=\\32]";
+  check ~expected:"[x=\"-2\"]" "[x=-\\32]";
+  check ~expected:"[x=foo\\ bar]" "[x=\"foo bar\"]";
   (* CSS Syntax 3 sec. 4.3.5: a backslash in a string escapes the next code
-     point, so the string ["a\\b"] holds [a\b]. Printed bare, [a\b] is [a] then
-     the hex escape [\b], U+000B (sec. 4.3.7), which Chrome reads as another
-     value (curated/attr_string_backslash_value). *)
-  check "[x=\"a\\\\b\"]";
+     point, so the string ["a\\b"] holds [a\b]. Printed bare, [a\b] would be [a]
+     then the hex escape [\b], U+000B (sec. 4.3.7), which Chrome reads as
+     another value (curated/attr_string_backslash_value); the escaped ident
+     [a\\b] spells [a\b] itself. *)
+  check ~expected:"[x=a\\\\b]" "[x=\"a\\\\b\"]";
   check ~minify:false "[x=\"a\\\\b\"]";
-  check ~minify:false "[x='a\\\\b']";
+  check ~minify:false ~expected:"[x=\"a\\\\b\"]" "[x='a\\\\b']";
 
   (* Test cases where quotes are OPTIONAL per CSS spec *)
   (* Simple identifiers don't need quotes - test both forms are accepted and normalized *)
@@ -314,7 +322,7 @@ let attribute_cases () =
   check ~expected:"[data-foo=bar_baz]" "[data-foo=bar_baz]";
 
   (* Values that need quotes should remain quoted *)
-  check ~expected:"[class=\"my class\"]" "[class=\"my class\"]";
+  check ~expected:"[class=my\\ class]" "[class=\"my class\"]";
   check ~expected:"[data-id=\"123\"]" "[data-id=\"123\"]";
   check ~expected:"[href=\"http://example.com\"]"
     "[href=\"http://example.com\"]";
@@ -326,12 +334,12 @@ let attribute_cases () =
 
   (* Test different matching operators with quoting *)
   check "[class~=foo]";
-  check "[class~=\"foo bar\"]";
+  check ~expected:"[class~=foo\\ bar]" "[class~=\"foo bar\"]";
   (* Needs quotes due to space *)
   check "[lang|=en]";
   check "[href^=\"http://\"]";
   (* Needs quotes due to special chars *)
-  check "[href$=\".pdf\"]";
+  check ~expected:"[href$=\\.pdf]" "[href$=\".pdf\"]";
   (* Needs quotes due to dot *)
   check "[href*=example]";
 
@@ -340,8 +348,8 @@ let attribute_cases () =
   check ~expected:"[type=button i]" "[type=button I]";
   check ~expected:"[type=button i]" "[type=\"button\" i]";
   (* Normalizes to unquoted *)
-  check "[class=\"My Class\" s]";
-  check ~expected:"[class=\"My Class\" s]" "[class=\"My Class\" S]";
+  check ~expected:"[class=My\\ Class s]" "[class=\"My Class\" s]";
+  check ~expected:"[class=My\\ Class s]" "[class=\"My Class\" S]";
 
   (* Case modifiers *)
   check_construct "[attr=v i]" (attribute ~flag:Insensitive "attr" (Exact "v"));
@@ -639,7 +647,7 @@ let invalid () =
      content. *)
   check ~expected:"[href]" "[href";
   check ~expected:"[attr=value]" "[attr=value";
-  check ~expected:"[attr=\"value]\"]" "[attr=\"value]";
+  check ~expected:"[attr=value\\]]" "[attr=\"value]";
   neg_parse ":nth-child(2n+)" "invalid nth-child syntax";
   neg_parse ".class,,.other" "double comma in list";
   neg_parse "div > > span" "double combinator";
@@ -799,10 +807,19 @@ let callstack_accuracy () =
     ".test[[attr]] { color: red; }"
     [ "rule"; "selector"; "list" ]
 
+(* The optimizer reads a no-op off physical identity, so a list with no member
+   to strip comes back as the same node. *)
+let nesting_prefix_keeps_an_untouched_list () =
+  let sel = v ".a,.b" in
+  if Cascade.Selector.drop_redundant_nesting_prefix sel != sel then
+    Alcotest.fail "a list with no nesting prefix was rebuilt"
+
 let suite =
   let open Alcotest in
   ( "selector",
     [
+      test_case "nesting prefix keeps an untouched list" `Quick
+        nesting_prefix_keeps_an_untouched_list;
       (* Basic selector types *)
       test_case "element" `Quick element_cases;
       test_case "class" `Quick class_cases;

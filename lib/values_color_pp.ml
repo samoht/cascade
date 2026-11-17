@@ -276,7 +276,9 @@ let string_of_scaled_color_axis ~pct_scale ctx f =
        re-parsed [-0.008] has a short one ("-2%"), flipping on the next pass
        (non-idempotent). *)
     let n_value = try float_of_string n with Failure _ -> f in
-    let pct = string_of_lab_float (n_value /. pct_scale) ^ "%" in
+    let pct =
+      String.concat "" [ string_of_lab_float (n_value /. pct_scale); "%" ]
+    in
     if String.length pct < String.length n then pct else n
   else n
 

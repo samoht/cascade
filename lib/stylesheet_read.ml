@@ -26,8 +26,8 @@ let css_wide_keyword s =
    exists, so a length that resolves against one has nothing to resolve against;
    the universal syntax stores the value as written and takes every unit. The ED
    binds sec. 4.1 to registerProperty alone, and Chrome enforces it on the CSS
-   path too: the maintainer settled on 2026-09-09 that cascade follows Chrome
-   here, as it already does for the substitution half above. *)
+   path too; cascade follows Chrome here, as it does for the substitution half
+   above. *)
 let read_property_initial_value ~universal r syntax str =
   if css_wide_keyword str then
     Cursor.err_invalid r "@property: initial-value cannot be CSS-wide keyword";
@@ -71,7 +71,8 @@ let conditional_atom r ~at_rule (fn : Component.func Component.node) =
            (Cursor.of_string
               (Cursor.string_of_components ~trim:true fn.node.arguments)))
   | name ->
-      Cursor.err_condition r ~at_rule ("unknown condition function: " ^ name)
+      Cursor.err_condition r ~at_rule
+        (String.concat "" [ "unknown condition function: "; name ])
 
 let conditional_components ~at_rule cursor =
   let read_atom () =
@@ -83,7 +84,10 @@ let conditional_components ~at_rule cursor =
         atom
     | _ -> Cursor.err_condition cursor ~at_rule "expected a condition function"
   in
-  let mixed op = Cursor.err_condition cursor ~at_rule ("cannot mix " ^ op) in
+  let mixed op =
+    Cursor.err_condition cursor ~at_rule
+      (String.concat "" [ "cannot mix "; op ])
+  in
   let rec chain op acc =
     Cursor.ws cursor;
     match Cursor.peek_keyword cursor with
@@ -185,14 +189,17 @@ let read_rule_selector ?(nested = false) r =
     | _ -> None
   in
   let c = Cursor.sub ?eof_loc r prelude in
-  (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
+  (* Re-raise the original [Parse_error] so its loc/path/snippet reach the
      caller intact, rather than rewrapping (which erases the structured error
-     and relocates it). CSS Nesting 1 sec. 3: a nested rule's prelude is a
+     and relocates it); {!Error.as_selector} only names its kind for what was
+     read. CSS Nesting 1 sec. 3: a nested rule's prelude is a
      [<relative-selector-list>], so it may start with a combinator ([> .bar])
      implicitly relative to the parent [&]. *)
-  Cursor.with_context c "selector" (fun () ->
-      if nested then Selector.read_relative c
-      else Selector.read_strict_selector_list c)
+  try
+    Cursor.with_context c "selector" (fun () ->
+        if nested then Selector.read_relative c
+        else Selector.read_strict_selector_list c)
+  with Error.Parse_error e -> Error.fail (Error.as_selector e)
 
 let is_bare_nesting_selector : Selector.t -> bool = function
   | Selector.Nesting -> true
@@ -246,7 +253,8 @@ let read_property_descriptor (r : Cursor.t) state =
   in
   Cursor.ws r;
   if not (Cursor.is_done r || Cursor.peek_semicolon r) then
-    Cursor.err_invalid r ("trailing tokens after @property " ^ key);
+    Cursor.err_invalid r
+      (String.concat "" [ "trailing tokens after @property "; key ]);
   state
 
 let read_property_step r state =
@@ -268,7 +276,8 @@ let read_property_rule (r : Cursor.t) : statement =
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
   if not (Custom_property_name.is_valid name) then
-    Cursor.err_invalid r ("@property: invalid custom-property name: " ^ name);
+    Cursor.err_invalid r
+      (String.concat "" [ "@property: invalid custom-property name: "; name ]);
   Cursor.ws r;
   let state = Cursor.braces (fun inner -> read_property_descriptors inner) r in
   match (state.syntax, state.inherits) with
@@ -349,7 +358,7 @@ let drop_nested_at_rule r ~loc reason : statement option =
   skip_past_rule r;
   Cursor.push_warning r
     ~recovery:Error.Recovery.(dropped Rule)
-    (Error.bad_value loc ~property:"rule" ~reason);
+    (Cursor.error ~sort:Sort.Stylesheet r ~loc (Error.Invalid_statement reason));
   None
 
 (* CSS Nesting 1 sec. 3.4 wraps a run of declarations written after a nested
@@ -388,13 +397,7 @@ let read_else ~body (r : Cursor.t) : statement =
   Cursor.ws r;
   let prelude = Cursor.drain_until_block r in
   let condition =
-    match
-      List.filter
-        (function
-          | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-          | _ -> true)
-        prelude
-    with
+    match List.filter (Fun.negate Component.is_whitespace) prelude with
     | [] -> Option.None
     | _ -> Some (conditional_components ~at_rule:"@else" (Cursor.sub r prelude))
   in
@@ -469,7 +472,7 @@ let rec read_statement (r : Cursor.t) : statement =
           ignore (Cursor.next_raw r);
           let stmt = read_unknown_at_rule name r in
           Cursor.push_warning r ~recovery:Error.Recovery.Recovered
-            (Error.unknown_at_rule loc name);
+            (Cursor.error ~sort:Sort.At_rule r ~loc (Error.Unknown_at_rule name));
           stmt)
   | _ -> Rule (read_rule r)
 
@@ -506,8 +509,9 @@ and read_block (r : Cursor.t) : block =
              stylesheet. Drop a misplaced one rather than emitting it. *)
           Cursor.push_warning r
             ~recovery:Error.Recovery.(dropped Rule)
-            (Error.bad_value loc ~property:"stylesheet"
-               ~reason:"@import is only valid at the top of a stylesheet");
+            (Cursor.error ~sort:Sort.Stylesheet r ~loc
+               (Error.Invalid_statement
+                  "@import is only valid at the top of a stylesheet"));
           read_statements acc
       | Else _ when not (List.exists follows_conditional acc) ->
           Cursor.err_invalid r "@else without preceding @when"
@@ -521,10 +525,9 @@ and read_media (r : Cursor.t) : statement =
   let condition_components = Cursor.drain_until_block r in
   let query = Cursor.sub r condition_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
+  (* [query] shares [r]'s warnings, so what the condition reports is already
+     there, stamped by the reader that recovered it. *)
   let condition = read_nested_media_condition query in
-  List.iter
-    (fun w -> Cursor.push_warning r ~recovery:Error.Recovery.Recovered w)
-    (Cursor.drain_warnings query);
   Media (condition, content)
 
 and read_supports (r : Cursor.t) : statement =
@@ -694,7 +697,9 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string) : statement =
   | "@supports" -> read_nested_supports_rule r
   | "@media" -> read_nested_media_rule r
   | "@scope" -> read_nested_scope_rule r
-  | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
+  | _ ->
+      Cursor.err_invalid r
+        (String.concat "" [ "Unexpected nested at-rule: "; at_rule ])
 
 and read_nested_container_rule r =
   let container_name : string option = Cursor.option Cursor.ident r in
@@ -749,7 +754,7 @@ and read_nested_at_within_rule ~prev (r : Cursor.t) : statement option =
    invalid here and dropped; a top-of-sheet rule is invalid here outright. *)
 and read_nested_at_keyword r ~loc ~prev = function
   | ("supports" | "media" | "container" | "scope") as name ->
-      Some (read_nested_at_rule r ("@" ^ name))
+      Some (read_nested_at_rule r (String.concat "" [ "@"; name ]))
   | "layer" -> Some (read_nested_layer_rule r)
   | "starting-style" -> Some (read_starting_style ~body:read_nesting_block r)
   | "-moz-document" -> Some (read_moz_document ~body:read_nesting_block r)
@@ -759,10 +764,12 @@ and read_nested_at_keyword r ~loc ~prev = function
   | "else" -> drop_nested_at_rule r ~loc "@else without preceding @when"
   | ("charset" | "import" | "namespace") as name ->
       drop_nested_at_rule r ~loc
-        ("@" ^ name ^ " is only valid at the top of a stylesheet")
+        (String.concat ""
+           [ "@"; name; " is only valid at the top of a stylesheet" ])
   | name when not (nests_in_style_rule name) ->
       drop_nested_at_rule r ~loc
-        ("@" ^ name ^ " has no style rule in it, so it does not nest")
+        (String.concat ""
+           [ "@"; name; " has no style rule in it, so it does not nest" ])
   | _ -> Some (read_statement r)
 
 and read_rule_item selector inner decls nested =

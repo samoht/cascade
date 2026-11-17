@@ -84,7 +84,7 @@ and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
       (length_function_readers ~allow_negative ~length_only ~with_keywords)
   with
   | Some read -> read inner
-  | None -> Cursor.err t ("unknown function " ^ name)
+  | None -> Cursor.err t (String.concat "" [ "unknown function "; name ])
 
 and length_function_readers ~allow_negative ~length_only ~with_keywords =
   (* CSS Sizing 4 sec. 3.2 puts [fit-content()] and [calc-size()] in
@@ -335,7 +335,9 @@ let read_atan2_scalar t : atan2_category * float =
   | "s" -> (Time, n *. 1000.)
   | "hz" -> (Frequency, n)
   | "khz" -> (Frequency, n *. 1000.)
-  | _ -> Cursor.err_invalid t ("invalid atan2 argument unit: " ^ unit)
+  | _ ->
+      Cursor.err_invalid t
+        (String.concat "" [ "invalid atan2 argument unit: "; unit ])
 
 (** Read an angle value *)
 let read_angle_round read_angle t =
@@ -418,7 +420,8 @@ let read_angle_unit ~unitless_zero t =
   | "" ->
       Cursor.err_invalid t
         "angle values must have units (deg, rad, turn, or grad)"
-  | unit -> Cursor.err_invalid t ("invalid angle unit: " ^ unit)
+  | unit ->
+      Cursor.err_invalid t (String.concat "" [ "invalid angle unit: "; unit ])
 
 let rec read_angle_with ~unitless_zero t : angle =
   Cursor.ws t;
@@ -470,7 +473,7 @@ let read_duration_number ~allow_negative t : duration =
     | "s" -> S n
     | "ms" -> Ms n
     | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
-    | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
+    | _ -> Cursor.err_invalid t (String.concat "" [ "duration unit: "; unit ])
 
 let read_time_number t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
@@ -479,7 +482,7 @@ let read_time_number t : duration =
   | "s" -> S n
   | "ms" -> Ms n
   | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
-  | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
+  | _ -> Cursor.err_invalid t (String.concat "" [ "time unit: "; unit ])
 
 let read_duration_round read_duration_self t =
   read_round_call
@@ -842,7 +845,6 @@ let rec read_margin_length ?(global = false) t : length =
       t
 
 let read_margin_shorthand t : length list =
-  let read_margin_component = read_margin_length in
   Cursor.enum "margin"
     [
       ("inherit", [ (Inherit : length) ]);
@@ -852,5 +854,5 @@ let read_margin_shorthand t : length list =
       ("revert-layer", [ Revert_layer ]);
     ]
     ~default:(fun t ->
-      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_margin_component t)
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_margin_length t)
     t

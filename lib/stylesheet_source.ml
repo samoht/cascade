@@ -12,7 +12,7 @@ type t = {
   rules : rule list;
   trailing_loc : Loc.t;
   origin : Reader.origin;
-  line_starts : int array;
+  indexed : Error.Source.t;
 }
 
 let contents t = t.original_source
@@ -63,33 +63,15 @@ let original_slice t loc =
 
 let position t offset =
   let byte = original_offset t offset in
-  let starts = t.line_starts in
-  let low = ref 0 in
-  let high = ref (Array.length starts) in
-  while !low + 1 < !high do
-    let middle = (!low + !high) / 2 in
-    if starts.(middle) <= offset then low := middle else high := middle
-  done;
-  let line_start = starts.(!low) in
-  let column =
-    Common.String.utf8_length ~pos:line_start ~len:(offset - line_start)
-      t.preprocessed_source
-    + 1
-  in
-  { byte; line = !low + 1; column }
+  let line, column = Error.Source.locate t.indexed offset in
+  { byte; line; column }
 
 let span t ({ Loc.start_pos; end_pos } as loc) =
   check_loc t loc;
   { start = position t start_pos; end_ = position t end_pos }
 
-let line_starts source =
-  let starts = ref [ 0 ] in
-  String.iteri
-    (fun index byte -> if byte = '\n' then starts := (index + 1) :: !starts)
-    source;
-  Array.of_list (List.rev !starts)
-
-let v ~original ~preprocessed ~origin ~comments syntax_rules =
+let v ~original ~preprocessed:indexed ~origin ~comments syntax_rules =
+  let preprocessed = Error.Source.text indexed in
   let previous_end = ref 0 in
   let rules =
     List.map
@@ -115,5 +97,5 @@ let v ~original ~preprocessed ~origin ~comments syntax_rules =
     rules;
     trailing_loc;
     origin;
-    line_starts = line_starts preprocessed;
+    indexed;
   }

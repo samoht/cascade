@@ -157,7 +157,7 @@ let nested_merge_reads_a_slot_as_a_multiset () =
   let case name expected css =
     Alcotest.(check bool)
       name expected
-      (Rule_candidate.nested_merge_is_safe (rules css))
+      (Commute.nested_merge_is_safe ~stats:(Stats.v ()) (rules css))
   in
   case "a later nested writer still blocks a matching earlier one" false
     ".q{top:0;&:hover{color:red}}.q{left:0;&:hover{color:blue}}.q{color:red}";
@@ -192,11 +192,13 @@ let nested_merge_reads_a_slot_as_a_multiset () =
    pair leaves [front] alone, since it has one block, and makes [spread] cost a
    probe per pair.
 
-   The comparison is between the two runs, never against a wall-clock budget:
-   [Sys.time] is this process's own CPU, alcotest runs its cases one after
-   another, and the two measurements therefore sit under the same load. *)
+   The probes are counted, not timed: a probe allocates nothing, so allocation
+   cannot tell the two ways apart, and a time ratio moves with whatever else the
+   host runs. Each block after the first faces the nested bodies ahead of it
+   once, so both runs make [n - 1] probes; asking per pair makes [spread] make
+   [n (n - 1) / 2]. *)
 let nested_merge_safety_reads_each_block_once () =
-  let n = 2000 and reps = 100 in
+  let n = 200 in
   let spread =
     List.init n (fun i -> Fmt.str ".q{--a%d:%d;&:hover{--n%d:%d}}" i i i i)
     |> String.concat "" |> rules
@@ -210,26 +212,17 @@ let nested_merge_safety_reads_each_block_once () =
       |> String.concat "")
     |> rules
   in
-  Alcotest.(check bool)
-    "neither run writes a slot twice, so both merge" true
-    (Rule_candidate.nested_merge_is_safe spread
-    && Rule_candidate.nested_merge_is_safe front);
-  let cost rules =
-    Gc.full_major ();
-    let t0 = Sys.time () in
-    for _ = 1 to reps do
-      ignore (Sys.opaque_identity (Rule_candidate.nested_merge_is_safe rules))
-    done;
-    Sys.time () -. t0
+  let probes rules =
+    let stats = Stats.v () in
+    let safe = Commute.nested_merge_is_safe ~stats rules in
+    Alcotest.(check bool)
+      "neither run writes a slot twice, so it merges" true safe;
+    (Stats.snapshot stats).counters.nested_merge_probes
   in
-  let a = cost spread in
-  let b = cost front in
-  Alcotest.(check bool)
-    (Fmt.str
-       "%d nested blocks over %d rules costs %.3fs, all on one %.3fs (%.1fx)" n
-       n a b (a /. b))
-    true
-    (b = 0. || a < b *. 3.)
+  Alcotest.(check int)
+    "nested blocks spread over the run" (n - 1) (probes spread);
+  Alcotest.(check int)
+    "nested blocks all on the first rule" (n - 1) (probes front)
 
 (* --- allocation / complexity guards --- *)
 
@@ -334,6 +327,154 @@ let default_factoring_rejects_a_doomed_group_early () =
     true
     (control = 0. || rejected < control *. 0.4)
 
+(* Each run of four neighbours writes one property with differing values and
+   each run of five shares one declaration, so both factoring kinds find groups
+   all along it. Past 128 nodes the search spends one budget of subsets on the
+   earliest buckets, so a rewrite there moves what the later ones are given. *)
+let factoring_run n =
+  List.init n (fun i ->
+      Fmt.str ".c%d{--p%d:%d;--q%d:1;color:rgb(%d,%d,0)}" i (i / 4) (i mod 3)
+        (i / 5) (i mod 256) (i / 256))
+  |> String.concat ""
+
+(* Identical bodies, repeated selectors and long selector branches a receiver
+   can take, so every candidate kind is offered. *)
+let mixed_run n =
+  List.init n (fun i ->
+      match i mod 5 with
+      | 0 -> Fmt.str ".m%d{margin:0;padding:%dpx}" (i / 10) (i mod 7)
+      | 1 -> Fmt.str ".same{color:red;--s%d:1}" (i mod 3)
+      | 2 -> Fmt.str ".r%d{top:0}" (i mod 4)
+      | 3 ->
+          Fmt.str ".r%d,.a-long-selector-branch-%d .x{top:0;left:%dpx}"
+            (i mod 4) i (i mod 3)
+      | _ -> ".t{display:flex;align-items:center}")
+  |> String.concat ""
+
+let kind_name = function
+  | Rule_rewrite.Identical_body -> "identical-body"
+  | Same_selector -> "same-selector"
+  | Exact_shared_declarations -> "exact-shared"
+  | Selector_branch_inline -> "selector-inline"
+  | Default_factoring -> "default-factoring"
+
+(* A candidate set as a sorted list: which candidates a graph offers, not the
+   order they were found in or the graph that first offered them. *)
+let observed (candidates : Rule_rewrite.candidate list) =
+  List.map
+    (fun (c : Rule_rewrite.candidate) ->
+      Fmt.str "%s|%a|%d|%s" (kind_name c.kind)
+        Fmt.(list ~sep:comma int)
+        (List.map Rule_graph.Node_id.to_int c.consume)
+        c.saving (render c.produce))
+    candidates
+  |> List.sort String.compare
+
+(* The largest saving that commits, as the scheduler would take it. *)
+let best_commit g candidates =
+  List.sort
+    (fun (a : Rule_rewrite.candidate) (b : Rule_rewrite.candidate) ->
+      Int.compare b.saving a.saving)
+    candidates
+  |> List.find_map (fun (c : Rule_rewrite.candidate) ->
+      match Rule_graph.rewrite g ~consume:c.consume ~produce:c.produce with
+      | Ok g' -> Some (c, g')
+      | Error _ -> None)
+
+(* A rewrite carries the candidate set to the new graph without enumerating it
+   again. What it carries must be what a full enumeration of the new graph
+   offers, for every kind, whether it is refreshed after every commit of a
+   greedy run or after several. *)
+let a_refresh_leaves_what_a_full_enumeration_offers () =
+  let check ?(commits_at_least = 3) ~ctx ~every label css =
+    let g = Rule_graph.of_rules (rules css) in
+    let nodes = Rule_graph.node_count g in
+    let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
+    ignore (Rule_candidate.refresh state);
+    let rec loop step g candidates =
+      match best_commit g candidates with
+      | None -> step
+      | Some (c, g') ->
+          Rule_candidate.rewrite state g' ~consume:c.consume;
+          let step = step + 1 in
+          if step mod every <> 0 then
+            let live = Rule_graph.live_nodes g' in
+            loop step g'
+              (List.filter
+                 (fun (other : Rule_rewrite.candidate) ->
+                   List.for_all
+                     (fun id ->
+                       List.exists
+                         (fun live -> Rule_graph.Node_id.compare live id = 0)
+                         live)
+                     other.consume)
+                 candidates)
+          else begin
+            ignore (Rule_candidate.refresh state);
+            let candidates = Rule_candidate.candidates state in
+            Alcotest.(check (list string))
+              (Fmt.str "%s: candidates after commit %d" label step)
+              (observed
+                 (Rule_candidate.enumerate ~nodes ~ctx ~finalize:Fun.id g'))
+              (observed candidates);
+            loop step g' candidates
+          end
+    in
+    let commits = loop 0 g (Rule_candidate.candidates state) in
+    Alcotest.(check bool)
+      (Fmt.str "%s: %d commits" label commits)
+      true
+      (commits >= commits_at_least)
+  in
+  let fragment = Ctx.fragment
+  and aggressive = Ctx.v ~aggressive:true `Fragment in
+  check ~ctx:fragment ~every:1 "indexed" (factoring_run 200);
+  check ~ctx:fragment ~every:3 "indexed, refreshed every third commit"
+    (factoring_run 200);
+  check ~ctx:fragment ~every:1 "exhaustive" (factoring_run 60);
+  check ~ctx:fragment ~every:1 "mixed indexed" (mixed_run 180);
+  check ~ctx:fragment ~every:1 "mixed exhaustive" (mixed_run 50);
+  check ~ctx:aggressive ~every:1 "aggressive" (mixed_run 60);
+  (* The first commit merges the [#d] rules, which puts the member that
+     overrides [display] ahead of the provider and drops that entry from the
+     default group. *)
+  check ~commits_at_least:1 ~ctx:fragment ~every:1 "an order the rewrite forces"
+    "#d{display:flex;color:red!important}#d{padding-left:4px}#d{display:flex;color:blue}.e.f{display:block;color:blue}.e.f{color:red;color:red!important}";
+  (* The second commit produces a [.cccccccc] rule inside the span of a group it
+     crosses. *)
+  check ~commits_at_least:2 ~ctx:fragment ~every:1 "a crossing a rewrite adds"
+    "a:hover{padding-left:4px}.g>.h{color:green;padding:0}.cccccccc{display:block;padding-left:4px}.a{margin:1px;padding:0}.cccccccc{padding-left:4px;color:blue}";
+  (* The second commit consumes the only rule a group would have crossed. *)
+  check ~commits_at_least:2 ~ctx:fragment ~every:1
+    "a crossing a rewrite removes"
+    ".e.f{display:block;margin:0}p{margin:2px;font-weight:700}#d{display:flex;margin-top:3px}p{display:flex;margin:0}p{margin-top:3px;margin:2px}"
+
+(* And it costs what the rewrite changed: one commit leaves most buckets and
+   most of the groups they reach as they were, so carrying the set allocates a
+   fraction of what enumerating the new graph does. *)
+let a_refresh_costs_what_the_rewrite_changed () =
+  let g = Rule_graph.of_rules (rules (factoring_run 200)) in
+  let nodes = Rule_graph.node_count g in
+  let ctx = Ctx.fragment in
+  let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
+  ignore (Rule_candidate.refresh state);
+  match best_commit g (Rule_candidate.candidates state) with
+  | None -> Alcotest.fail "one of the candidates should commit"
+  | Some (c, g') ->
+      let carried =
+        measure (fun () ->
+            Rule_candidate.rewrite state g' ~consume:c.consume;
+            Rule_candidate.refresh state)
+      in
+      let fresh =
+        measure (fun () ->
+            Rule_candidate.enumerate ~nodes ~ctx ~finalize:Fun.id g')
+      in
+      Alcotest.(check bool)
+        (Fmt.str "carried %.0f words, fresh %.0f" carried fresh)
+        true
+        (fresh = 0. || carried < fresh *. 0.2)
+
 let suite =
   ( "rule_candidate",
     [
@@ -366,4 +507,8 @@ let suite =
         external_conflict_scan_is_subquadratic;
       Alcotest.test_case "default factoring rejects a doomed group early" `Quick
         default_factoring_rejects_a_doomed_group_early;
+      Alcotest.test_case "a refresh leaves what a full enumeration offers"
+        `Quick a_refresh_leaves_what_a_full_enumeration_offers;
+      Alcotest.test_case "a refresh costs what the rewrite changed" `Quick
+        a_refresh_costs_what_the_rewrite_changed;
     ] )

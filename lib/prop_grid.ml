@@ -583,7 +583,7 @@ let read_place_items_safe t =
   | "start" -> Start_safe
   | "end" -> End_safe
   | "center" -> Center_safe
-  | kw -> Cursor.err_invalid t ("place-items safe " ^ kw)
+  | kw -> Cursor.err_invalid t (String.concat "" [ "place-items safe "; kw ])
 
 (* css-align-3 (ED) sec. 5.2 spells [place-items] as [<'align-items'>
    <'justify-items'>?], and [stretch] is one value of each, so the slot after it
@@ -1103,7 +1103,9 @@ module Grid_template = struct
           match Cursor.ident t with
           | "auto-fill" -> Auto_fill
           | "auto-fit" -> Auto_fit
-          | ident -> Cursor.err_invalid t ("repeat count: " ^ ident))
+          | ident ->
+              Cursor.err_invalid t
+                (String.concat "" [ "repeat count: "; ident ]))
 
   let read_line_names t : grid_template =
     Cursor.brackets
@@ -1354,7 +1356,8 @@ let grid_area_ident_cell cell =
 
 let validate_grid_area_cell t cell =
   if not (grid_area_null_cell cell || grid_area_ident_cell cell) then
-    Cursor.err_invalid t ("invalid grid-template-areas cell: " ^ cell)
+    Cursor.err_invalid t
+      (String.concat "" [ "invalid grid-template-areas cell: "; cell ])
 
 let validate_grid_area_width t (expected : int option) cells =
   match expected with
@@ -1581,7 +1584,9 @@ let read_grid_template_areas_row t rows rendered =
   match Cursor.string_opt t with
   | None -> `Stop
   | Some s ->
-      `Continue (grid_area_row_cells s :: rows, ("\"" ^ s ^ "\"") :: rendered)
+      `Continue
+        ( grid_area_row_cells s :: rows,
+          String.concat "" [ "\""; s; "\"" ] :: rendered )
 
 let read_grid_template_areas_rows t =
   let rec loop rows rendered =

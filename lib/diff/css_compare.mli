@@ -195,15 +195,22 @@ val warnings : t -> (warning_side * Error.t) list
     the same place in the grammar, whatever offset each side reached it at. *)
 
 val pp_warnings :
-  ?expected:string -> ?actual:string -> ?max:int -> Buffer.t -> t -> unit
-(** [pp_warnings ?expected ?actual ?max buf result] renders only the parse
+  ?expected:string ->
+  ?actual:string ->
+  ?max:int ->
+  ?more:string ->
+  Buffer.t ->
+  t ->
+  unit
+(** [pp_warnings ?expected ?actual ?max ?more buf result] renders only the parse
     warnings each side accumulated. A warning both sides raise is rendered once
     under a label naming both files, with the expected side's snippet, and it
     counts once against [max]. One-sided warnings lead: expected-only, then
     actual-only, then shared. [max] caps the total printed across all groups
     (default: all); the remainder of each group is reported as a count, so a
     stylesheet that trips the same unsupported syntax hundreds of times cannot
-    bury the diff those warnings qualify. *)
+    bury the diff those warnings qualify. Each count ends with [more] (default:
+    nothing), the caller's word on how to see the rest. *)
 
 val pp_diff :
   ?expected:string ->

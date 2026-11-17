@@ -12,6 +12,35 @@ preserves the var() reference for non-descendant uses.
   $ cascade --minify --inline-vars scoped-decl.css
   .theme{--c:red;.descendant{color:red}}.other{color:var(--c)}
 
+A nested rule's selector is its parent's composed as CSS Nesting 1 sec. 3
+composes it. A type selector parent goes inside [:is()] (Selectors 4 sec.
+3.5 keeps it leading its compound), so [.x&] under [a] is [.x:is(a)], an [a]
+element with class [x], and not the class [.xa], which a definition there
+never reaches.
+
+  $ cat > nested-type.css <<EOF
+  > .xa { --c: red }
+  > a { .x& { color: var(--c) } }
+  > EOF
+  $ cascade --minify --inline-vars nested-type.css
+  .xa{--c:red}.x:is(a){color:var(--c)}
+
+A definition on a selector list reaches what each branch matches, so it
+covers a consumer nested under that list, and a consumer under one of its
+branches.
+
+  $ cat > list-scope.css <<EOF
+  > .a, .b { --c: red; .x { color: var(--c) } }
+  > EOF
+  $ cascade --minify --inline-vars list-scope.css
+  .a,.b{.x{color:red}}
+  $ cat > list-branch.css <<EOF
+  > .a, .b { --c: red }
+  > .a .x { color: var(--c) }
+  > EOF
+  $ cascade --minify --inline-vars list-branch.css
+  .a .x{color:red}
+
 A variable declared inside @media is folded only into consumers within
 that @media block. A consumer outside keeps its var() reference, and the
 definition goes to the output with it: the browser answers the reference
@@ -66,8 +95,39 @@ single value stands for both.
   > .y { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars layer-selectors.css 2>&1
-  Warning: --c is redefined in a different scope; kept live (cannot inline safely)
+  cascade: warning: --c takes different values in different scopes; kept live (cannot inline safely)
   .x{--c:green}.y{--c:blue}.x,.y{color:var(--c)}
+
+Rules that define a variable with one value give it one binding, wherever
+they sit: an element any of them reaches computes that value. It folds into
+each consumer a definition covers, as it does once --minify has merged the
+definitions into one rule, so inlining the output again changes nothing.
+
+  $ cat > same-value.css <<EOF
+  > .a { --s: 1px; width: var(--s) }
+  > .b { --s: 1px; height: var(--s) }
+  > EOF
+  $ cascade --minify --inline-vars same-value.css > same-value.min.css
+  $ cat same-value.min.css
+  .a{width:1px}.b{height:1px}
+  $ cascade --minify --inline-vars same-value.min.css
+  .a{width:1px}.b{height:1px}
+
+A consumer no definition covers keeps its reference, and the definitions stay
+for it; the covered ones still fold, on the first pass as on the second.
+
+  $ cat > same-value-partial.css <<EOF
+  > .a { --s: 1px; --g: f(var(--s)); width: var(--g) }
+  > .b { --s: 1px; --g: f(var(--s)); height: var(--g) }
+  > .c { --g: f(var(--s, 2px)) }
+  > EOF
+  $ cascade --minify --inline-vars same-value-partial.css 2>&1 > same-value-partial.min.css
+  cascade: warning: --g takes different values in different scopes; kept live (cannot inline safely)
+  $ cat same-value-partial.min.css
+  .a,.b{--s:1px;--g:f(1px)}.a{width:var(--g)}.b{height:var(--g)}.c{--g:f(var(--s,2px))}
+  $ cascade --minify --inline-vars same-value-partial.min.css 2>&1
+  cascade: warning: --g takes different values in different scopes; kept live (cannot inline safely)
+  .a,.b{--s:1px;--g:f(1px)}.a{width:var(--g)}.b{height:var(--g)}.c{--g:f(var(--s,2px))}
 
 An unlayered definition wins over a layered one, whatever the document
 order.
@@ -97,7 +157,7 @@ queries evaluate at layout time, not at the syntax layer).
   > :root { --bp: 30em }
   > @container (min-width: var(--bp)) { .x { color: red } }
   > EOF
-  $ cascade --minify --inline-vars container.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars container.css 2>&1
   :root{--bp:30em}@container(width>=var(--bp)){.x{color:red}}
 
 A variable used in a @media query value is preserved. Custom property
@@ -107,7 +167,7 @@ substitution only happens in property values, not media query syntax.
   > :root { --bp: 30em }
   > @media (min-width: var(--bp)) { .x { color: red } }
   > EOF
-  $ cascade --minify --inline-vars media-query-var.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars media-query-var.css 2>&1
   :root{--bp:30em}@media(width>=var(--bp)){.x{color:red}}
 
 A variable used in an @supports condition is preserved for the same
@@ -117,7 +177,7 @@ reason.
   > :root { --display: grid }
   > @supports (display: var(--display)) { .x { color: red } }
   > EOF
-  $ cascade --minify --inline-vars supports-var.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars supports-var.css 2>&1
   :root{--display:grid}@supports(display:var(--display)){.x{color:red}}
 
 A self-referential variable [--x: var(--x)] is invalid at computed
@@ -128,7 +188,7 @@ the now-unreferenced custom property is dead-stripped.
   > :root { --x: var(--x) }
   > .a { color: var(--x, red) }
   > EOF
-  $ cascade --minify --inline-vars self-cycle.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars self-cycle.css 2>&1
   .a{color:red}
 
 A two-cycle [--a -> --b -> --a] is detected and both definitions stay
@@ -140,7 +200,7 @@ to answer.
   > :root { --a: var(--b); --b: var(--a) }
   > .x { color: var(--a, fallback) }
   > EOF
-  $ cascade --minify --inline-vars two-cycle.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars two-cycle.css 2>&1
   :root{--a:var(--b);--b:var(--a)}.x{color:var(--a,fallback)}
 
 A three-step indirect cycle [--a -> --b -> --c -> --a] is detected the
@@ -154,7 +214,7 @@ same way.
   > }
   > .x { color: var(--a, fallback) }
   > EOF
-  $ cascade --minify --inline-vars three-cycle.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-vars three-cycle.css 2>&1
   :root{--a:var(--b);--b:var(--c);--c:var(--a)}.x{color:var(--a,fallback)}
 
 A var() inside a string token is NOT substituted - per CSS Custom

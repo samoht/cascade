@@ -130,13 +130,14 @@ let call t ~name i =
    is not one of these. *)
 let at_rule t ~name i =
   match Hashtbl.find_opt t.at i with
-  | Some (n, header) when "@" ^ n = name -> Some header
+  | Some (n, header) when String.concat "" [ "@"; n ] = name -> Some header
   | _ -> None
 
 (* A blockless [@name PRELUDE;] starting at [i]. *)
 let at_statement t ~name i =
   match Hashtbl.find_opt t.statement i with
-  | Some (n, statement) when "@" ^ n = name -> Some statement
+  | Some (n, statement) when String.concat "" [ "@"; n ] = name ->
+      Some statement
   | _ -> None
 
 (* Every [name( ... )] in the source, with the offset each starts at. *)
@@ -148,5 +149,6 @@ let calls t ~name =
 (* Every blockless [@name PRELUDE;], the same way. *)
 let at_statements t ~name =
   Hashtbl.fold
-    (fun i (n, s) acc -> if "@" ^ n = name then (i, s) :: acc else acc)
+    (fun i (n, s) acc ->
+      if String.concat "" [ "@"; n ] = name then (i, s) :: acc else acc)
     t.statement []

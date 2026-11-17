@@ -49,6 +49,11 @@ let font_family_of : declaration -> Properties.font_family option = function
    The bits below number the twenty in that order. They answer one question,
    whether the run writes every slot the shorthand resets, and are read nowhere
    else. *)
+(* The seven slots the [font] shorthand writes, the CSS Fonts 4 sec. 5.3
+   components: style, the caps subset, weight, width, size, line height and
+   family. *)
+let font_component_bits = (1 lsl 7) - 1
+
 let font_slot_bits d =
   match unwrap_theme_guard d with
   | Declaration { property = Font_style; _ } -> 1 lsl 0
@@ -179,7 +184,23 @@ let try_compose_font_at ~allow_partial idx i =
       land lnot
              (slots_written_after ~slots_of:font_slot_bits idx ~from:(i + len))
     in
-    if unanswered <> 0 && not allow_partial then None
+    (* Under [`Stylesheet] no unseen CSS writes an unanswered slot, but an
+       earlier declaration in the rule may. One of the seven components the
+       shorthand writes would be reset under it, unless it is [!important] and
+       the run is not; one of the thirteen it only resets is moved past the run
+       by the reordering pass. *)
+    let important = is_important (List.hd raw_decls) in
+    let reset_earlier =
+      slots_written_before
+        ~slots_of:(fun d ->
+          if is_important d && not important then 0 else font_slot_bits d)
+        idx ~upto:i
+      land font_component_bits
+    in
+    if
+      unanswered <> 0
+      && ((not allow_partial) || unanswered land reset_earlier <> 0)
+    then None
     else
       Option.map
         (fun font_value ->

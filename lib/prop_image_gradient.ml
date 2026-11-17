@@ -1148,7 +1148,9 @@ let read_webkit_gradient_body t =
       Webkit_gradient
         (Webkit_gradient.Radial
            { inner_center; inner_radius; outer_center; outer_radius; stops })
-  | _ -> Cursor.err_invalid t ("-webkit-gradient kind: " ^ kind)
+  | _ ->
+      Cursor.err_invalid t
+        (String.concat "" [ "-webkit-gradient kind: "; kind ])
 
 let read_repeating_linear_gradient t =
   match Cursor.call "repeating-linear-gradient" t read_linear_gradient_body with
@@ -1230,7 +1232,6 @@ let minify_webkit_gradient_stop = function
   | Webkit_gradient.Color_stop (position, color) ->
       Webkit_gradient.Color_stop (position, minify_color color)
 
-let minify_conic_gradient_config config = config
 let linear_gradient dir stops = Linear_gradient (dir, stops)
 
 let radial_gradient

@@ -152,10 +152,7 @@ and pp_src_entry ctx = function
          shorter when the family name parses as a valid [<custom-ident>]
          (alphanumeric + dashes, no leading digit, not a CSS-wide keyword). *)
       if Pp.minified ctx && local_name_can_unquote name then Pp.string ctx name
-      else (
-        Pp.char ctx '"';
-        Pp.string ctx name;
-        Pp.char ctx '"');
+      else Pp.quoted_string ctx name;
       Pp.char ctx ')'
 
 let string_of_src_entry entry =
@@ -229,22 +226,40 @@ let size_adjust_of_string = read_whole read_size_adjust
 let read_function_arg name t =
   Cursor.call name t @@ fun inner ->
   Cursor.ws inner;
-  let value, from_string =
+  let value =
     match Cursor.string_opt inner with
-    | Some s -> (s, true)
-    | None -> (Cursor.consume_remaining_as_string ~trim:true inner, false)
+    | Some s -> s
+    | None -> Cursor.consume_remaining_as_string ~trim:true inner
   in
   Cursor.expect_eof inner;
-  (* CSS Fonts 4 sec. 4.3: each of [local()] / [format()] / [tech()] takes
-     exactly one argument, so an empty body ([format()], [local()]) is invalid.
-     The one exception browsers accept is [local("")] - an explicit empty
-     <string> family name - so keep that. *)
-  let is_empty_local_string =
-    from_string && value = "" && String.lowercase_ascii name = "local"
-  in
-  if value = "" && not is_empty_local_string then
-    Cursor.err_invalid inner ("empty " ^ name ^ "()");
+  (* CSS Fonts 4 sec. 4.3: [format()] and [tech()] take exactly one argument, so
+     an empty body is invalid. *)
+  if value = "" then
+    Cursor.err_invalid inner (String.concat "" [ "empty "; name; "()" ]);
   value
+
+(* CSS Fonts 4 sec. 4.3: [local(<family-name>)], where a [<family-name>] is a
+   [<string>] or a run of [<custom-ident>]s naming the family joined by single
+   spaces (sec. 4.2). Either is held as the name it decodes to. An empty string
+   is a name browsers accept. *)
+let read_local_name t =
+  Cursor.call "local" t @@ fun inner ->
+  Cursor.ws inner;
+  let name =
+    match Cursor.string_opt inner with
+    | Some s -> s
+    | None -> (
+        let rec idents acc =
+          Cursor.ws inner;
+          if Cursor.is_done inner then List.rev acc
+          else idents (Cursor.ident ~keep_case:true inner :: acc)
+        in
+        match idents [] with
+        | [] -> Cursor.err_invalid inner "empty local()"
+        | names -> String.concat " " names)
+  in
+  Cursor.expect_eof inner;
+  name
 
 (* CSS Fonts 4 (ED) sec. 4.3.1 writes [<font-src>] as [<url> [format(...)]?
    [tech(...)]? | local(...)], and puts no emptiness rule on the [<url>]. sec.
@@ -302,7 +317,7 @@ let rec read_src_entry t =
   match Cursor.peek_raw t with
   | Some (Component.Func { node = { name; _ }; _ })
     when String.lowercase_ascii name = "local" ->
-      Local (read_function_arg "local" t)
+      Local (read_local_name t)
   | Some (Component.Func { node = { name; _ }; _ })
     when String.lowercase_ascii name = "var" ->
       Var (Values.read_var read_src t)

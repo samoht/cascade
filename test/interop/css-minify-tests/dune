@@ -1,6 +1,6 @@
 (test
  (name test)
- (libraries cascade alcotest astring fmt)
+ (libraries cascade css_test_helpers alcotest astring fmt)
  (deps
   LICENSE.md
   UPSTREAM.md

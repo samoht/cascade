@@ -25,7 +25,7 @@ let split_inputs files =
    rather than a document with no element in it. *)
 let read_document path =
   try Ok (Html.roots (Html.parse (Cli_io.read_file path)))
-  with Sys_error msg -> err_msg "Error reading %s: %s" path msg
+  with Sys_error msg -> err_msg "cannot read %s: %s" path msg
 
 let read_documents paths =
   List.fold_left
@@ -90,29 +90,31 @@ let emit sheet =
   if Buffer.length buf > 0 then Buffer.add_char buf '\n';
   Buffer.output_buffer stdout buf
 
-let run dry_run files () =
+let run dry_run files verbosity =
   match
     Result.bind (split_inputs files) (fun (docs, css) ->
         Result.map (fun roots -> (docs, css, roots)) (read_documents docs))
   with
   | Error e -> Error e
   | Ok (docs, css, roots) ->
-      let input = Cli_io.read_input css in
+      let input = Cli_io.read_input verbosity css in
       Cli_io.check_not_all_dropped input;
       let analysis = P.analyse ~sheet:input.Cli_io.stylesheet roots in
       (* Nothing to match against makes every rule look unused, which is an
          answer about the documents rather than about the stylesheet. *)
       if analysis.Prune.elements = 0 then begin
-        Fmt.epr
-          "Error: the documents hold no element, so every rule would look \
-           unused@.";
+        Cli_io.error
+          "the documents hold no element, so every rule would look unused";
         Stdlib.exit 1
       end;
       if dry_run then report ~documents:(List.length docs) analysis
       else begin
         let unused, used, unmodelled = split_entries analysis.Prune.entries in
-        counts Fmt.stderr ~unused:(List.length unused) ~used:(List.length used)
-          ~unmodelled:(List.length unmodelled);
+        (match (verbosity : Cli_log.verbosity) with
+        | Quiet -> ()
+        | Normal | Verbose ->
+            counts Fmt.stderr ~unused:(List.length unused)
+              ~used:(List.length used) ~unmodelled:(List.length unmodelled));
         emit analysis.Prune.sheet
       end;
       Ok ()
@@ -130,7 +132,7 @@ let files_arg =
   let doc = "The HTML documents to match against, then the stylesheet." in
   Arg.(value & pos_all file [] & info [] ~docv:"PAGE.html... STYLE.css" ~doc)
 
-let term = Term.(const run $ dry_run_arg $ files_arg $ const ())
+let term = Term.(const run $ dry_run_arg $ files_arg $ Cli_log.term)
 
 let selector_examples_doc =
   let samples =
@@ -191,6 +193,11 @@ let cmd =
         "Nesting is flattened before anything is judged, since a nested \
          selector is written against its parent. Pipe the result through \
          $(b,cascade --minify) to nest it again.";
+      `S Manpage.s_examples;
+      `P "See what would go, then write the pruned stylesheet:";
+      `Pre
+        "cascade prune --dry-run src/*.html style.css\n\
+         cascade prune src/*.html style.css > style.pruned.css";
     ]
   in
   Cmd.v (Cmd.info "prune" ~doc ~man ~exits) Term.(term_result term)

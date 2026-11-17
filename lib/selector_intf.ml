@@ -2,20 +2,17 @@ type component_values = Values.component_values
 (** Parsed CSS component values preserved inside unknown functional selectors.
 *)
 
+(* Selectors 4 sec. 6.1: an attribute value is an [<ident-token>] or a
+   [<string-token>], and the two spell the same value. It is held decoded; the
+   printer picks the spelling. *)
 type attribute_match =
   | Presence
   | Exact of string
-  | Exact_quoted of string * char
   | Whitespace_list of string
-  | Whitespace_list_quoted of string * char
   | Hyphen_list of string
-  | Hyphen_list_quoted of string * char
   | Prefix of string
-  | Prefix_quoted of string * char
   | Suffix of string
-  | Suffix_quoted of string * char
   | Substring of string
-  | Substring_quoted of string * char
 
 type combinator =
   | Descendant
@@ -33,12 +30,6 @@ type combinator =
 type ns = Any | None | Prefix of string
 type attr_flag = Insensitive | Sensitive
 type specificity = { ids : int; classes : int; elements : int }
-
-(** CSS Selectors 4 3.6.1 colon-prefix form for the legacy pseudo-elements
-    [::before], [::after], [::first-letter], [::first-line]. [Single] is the CSS
-    2.1 spelling kept as a backwards-compatibility alias; [Double] is the modern
-    canonical spelling. *)
-type colon_form = Single | Double
 
 (** WebKit's scrollbar pseudo-classes (WebKit, "Styling Scrollbars"): the state
     a scrollbar part reports about itself, and the one the whole window reports.
@@ -78,11 +69,11 @@ type attr_name =
   | Data of string  (** data-* attributes *)
   | Regular of string  (** All other attributes (class, type, etc.) *)
 
+(* Selectors 4 sec. 14: [odd] and [even] are [2n+1] and [2n], and [0n+B] is [B];
+   the printer picks the spelling. *)
 type nth =
-  | Odd (* 2n+1 *)
-  | Even (* 2n *)
-  | Index of int (* Just B: matches a single index *)
-  | An_plus_b of int * int (* An+B: a is coefficient, b is offset *)
+  | Index of int  (** [B]: a single index. *)
+  | An_plus_b of int * int  (** [An+B] with [A] not zero. *)
 
 type vt_class_selector = { name : string option; classes : string list }
 (** CSS View Transitions 2 sec. 10.4 [<vt-class-selector>]: an optional vt-name
@@ -167,16 +158,13 @@ type t =
       (** CSS Modules [:local(<selector-list>)] - functional form. *)
   | Global_scope  (** CSS Modules [:global] - opposite of [:local]. *)
   | Global_call of t list  (** CSS Modules [:global(<selector-list>)]. *)
-  (* CSS Selectors 4 3.6.1: [::before] / [::after] / [::first-letter] /
-     [::first-line] are the modern double-colon pseudo-element forms; the CSS
-     2.1 single-colon spelling is preserved as a backwards-compatibility alias.
-     The [colon_form] field records which form the source used. Minified output
-     always picks the [Single]-colon form since it is one character shorter;
-     pretty output uses the modern double-colon spelling. *)
-  | Before of colon_form
-  | After of colon_form
-  | First_letter of colon_form
-  | First_line of colon_form
+  (* CSS Selectors 4 sec. 3.6.1: [::before], [::after], [::first-letter] and
+     [::first-line] also read with one colon, the CSS 2.1 spelling, as the same
+     pseudo-element. The printer picks the spelling. *)
+  | Before
+  | After
+  | First_letter
+  | First_line
   (* Modern double-colon pseudo-elements *)
   | Backdrop
   | Marker

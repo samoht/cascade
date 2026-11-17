@@ -1,9 +1,5 @@
 (** Declaration deduplication and shorthand composition. *)
 
-val duplicate_buggy_properties :
-  Declaration.declaration list -> Declaration.declaration list
-(** Duplicate compatibility-sensitive properties. *)
-
 val is_intentionally_duplicated : Declaration.declaration -> bool
 (** Whether a declaration may deliberately coexist with same-property writes. *)
 
@@ -89,9 +85,6 @@ val custom_property_name : Declaration.declaration -> string option
     theme guard. Such a declaration overlaps the declarations writing that same
     name and nothing else, so a caller indexing footprints files it under the
     name rather than under {!val-declaration_overlap_keys}. *)
-
-val same_property : Declaration.declaration -> Declaration.declaration -> bool
-(** Same CSS property. *)
 
 val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** Same declaration value ignoring importance. *)

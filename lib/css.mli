@@ -4244,17 +4244,18 @@ val inline_vars :
   t
 (** [inline_vars ?keep_vars ?inline_runtime ?warn stylesheet] substitutes
     [var(--name)] references with the value of the corresponding [--name]
-    declaration and deletes the definition, but only for a variable with a
-    single definition. A variable in [keep_vars], or one redefined in a
-    different scope (a real cascade override such as dark mode), keeps its
-    definition and stays a live [var()] reference; [warn] is called with each
-    such name. The transform assumes no runtime mutation of the variables it
-    inlines: a reference marked [~runtime] on {!var_ref} also stays live,
-    fallback included, so a browser-time override point survives, unless
-    [inline_runtime] (default [false]) is [true], in which case such a reference
-    folds like any other whose variable the sheet defines once. A [style()]
-    container query reads the computed value of the custom property it names, so
-    that property stays live as well.
+    declaration and deletes the definition, but only for a variable that takes
+    one value: definitions agreeing on a value are one binding wherever they
+    sit. A variable in [keep_vars], or one whose definitions disagree (a real
+    cascade override such as dark mode), keeps its definitions and stays a live
+    [var()] reference; [warn] is called with each such name. The transform
+    assumes no runtime mutation of the variables it inlines: a reference marked
+    [~runtime] on {!var_ref} also stays live, fallback included, so a
+    browser-time override point survives, unless [inline_runtime] (default
+    [false]) is [true], in which case such a reference folds like any other
+    whose variable the sheet defines once. A [style()] container query reads the
+    computed value of the custom property it names, so that property stays live
+    as well.
 
     Every [@layer] wrapper is spliced into its parent and the [@layer-decl]
     rules ordering them go with it. A [@property] registration goes only when

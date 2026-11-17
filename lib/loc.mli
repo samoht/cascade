@@ -90,10 +90,11 @@ val snippet : ?window:int -> string -> t -> Context.snippet
     {!Reader.source}; a caller's original BOM/CRLF/NUL/FF-containing string is
     in a different coordinate space.
 
-    {!Context.field-text} is the window (default: 40 bytes on each side of the
-    location), {!Context.field-marker_pos} counts the characters of
-    {!Context.field-text} before [loc.start_pos], and
-    {!Context.field-marker_len} counts the characters the located range spans.
+    {!Context.field-text} is the line holding [loc.start_pos], cut to [window]
+    bytes (default 40) on each side of the location, so it holds no line break.
+    {!Context.field-marker_pos} counts the characters of {!Context.field-text}
+    before [loc.start_pos], and {!Context.field-marker_len} the characters the
+    located range spans on that line.
 
     A column is one Unicode scalar value, which a combining mark and a wide
     glyph each make approximate on a terminal. [window] is a target rather than

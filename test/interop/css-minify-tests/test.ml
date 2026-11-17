@@ -700,6 +700,23 @@ let pair_case pair () =
         \    actual:           %s"
         pair.source pair.expected expected actual
 
+let strict_case category () =
+  let both =
+    load_category category
+    |> List.concat_map (fun pair -> [ pair.source; pair.expected ])
+    |> List.filter Css_test_helpers.strict_agrees_with_lenient
+  in
+  match both with
+  | [] ->
+      Alcotest.failf
+        "no %s fixture parses strictly: the property went unchecked" category
+  | _ :: _ -> ()
+
+let strict_cases () =
+  categories ()
+  |> List.map (fun category ->
+      Alcotest.test_case category `Quick (strict_case category))
+
 let () =
   let cases =
     categories ()
@@ -712,4 +729,5 @@ let () =
         in
         (category, pair_cases))
   in
-  Alcotest.run "css_minify_tests" cases
+  Alcotest.run "css_minify_tests"
+    (cases @ [ ("strict and lenient parse", strict_cases ()) ])

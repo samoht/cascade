@@ -3,6 +3,8 @@ open Common
 type t = {
   mutable cvs : Component.t list;
   source : string option;
+  indexed : Error.Source.t option;
+      (* [source] with its index, which every error raised here carries. *)
   warnings : Error.t list ref;
   recover : bool;
   meta : Loc.meta_level;
@@ -23,14 +25,16 @@ type t = {
    small enough that the per-level selector validation walks stay linear. *)
 let max_nesting_depth = 100
 
-let of_components ?source ?(recover = false) ?(meta = Loc.default_meta_level)
-    ?eof_loc cvs =
-  { cvs; source; warnings = ref []; recover; meta; eof_loc; depth = 0 }
+let of_components ?source:indexed ?(recover = false)
+    ?(meta = Loc.default_meta_level) ?eof_loc cvs =
+  let source = Option.map Error.Source.text indexed in
+  { cvs; source; indexed; warnings = ref []; recover; meta; eof_loc; depth = 0 }
 
 let sub ?eof_loc t cvs =
   {
     cvs;
     source = t.source;
+    indexed = t.indexed;
     warnings = t.warnings;
     recover = t.recover;
     meta = t.meta;
@@ -69,6 +73,7 @@ let of_string ?(meta = Loc.default_meta_level) ?unicode_ranges s =
   {
     cvs = lex_to_cv_list parser;
     source = Some (Reader.source reader);
+    indexed = Some (Reader.indexed_source reader);
     warnings = ref [];
     recover = false;
     meta;
@@ -81,6 +86,7 @@ let of_reader ?(meta = Loc.default_meta_level) r =
   {
     cvs = lex_to_cv_list parser;
     source = Some (Reader.source r);
+    indexed = Some (Reader.indexed_source r);
     warnings = ref [];
     recover = false;
     meta;
@@ -88,13 +94,9 @@ let of_reader ?(meta = Loc.default_meta_level) r =
     depth = 0;
   }
 
-let is_ws_cv : Component.t -> bool = function
-  | Preserved { kind = Token.Whitespace _; _ } -> true
-  | _ -> false
-
 let rec drop_ws t =
   match t.cvs with
-  | hd :: rest when is_ws_cv hd ->
+  | hd :: rest when Component.is_whitespace hd ->
       t.cvs <- rest;
       drop_ws t
   | _ -> ()
@@ -222,7 +224,7 @@ let consumed_span t snap =
     else
       match cvs with
       | [] -> None
-      | hd :: tl when is_ws_cv hd -> span acc tl
+      | hd :: tl when Component.is_whitespace hd -> span acc tl
       | hd :: tl ->
           let loc = Component.source_loc hd in
           let acc =
@@ -241,11 +243,12 @@ exception Parse_error = Error.Parse_error
 
 let sort = Sort.Component
 
-let raise_sort t sort kind loc =
-  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
-  Error.fail (Error.v ?source ~loc ~sort kind)
+let error ?(sort = sort) t ~loc kind =
+  match (t.meta, t.indexed) with
+  | `Full, Some source -> Error.in_source source ~loc ~sort kind
+  | _ -> Error.v ~loc ~sort kind
 
-let raise_ t kind loc = raise_sort t sort kind loc
+let raise_ t kind loc = Error.fail (error t ~loc kind)
 
 (* [loc] is for a reader that consumed the offending token before deciding it
    was bad: [position t] has moved on to whatever follows by then, and at the
@@ -263,13 +266,16 @@ let err ?loc ?got t msg =
       match got with
       | Some g ->
           raise_ t
-            (Error.Bad_value { property = ""; reason = msg ^ ": got " ^ g })
+            (Error.Bad_value
+               { property = ""; reason = String.concat "" [ msg; ": got "; g ] })
             loc
       | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc)
 
-let err_invalid ?loc t msg = err ?loc t ("invalid: " ^ msg)
+let err_invalid ?loc t msg = err ?loc t (String.concat "" [ "invalid: "; msg ])
 let err_eof t = raise_ t (Error.Unterminated sort) (position t)
-let err_expected ?loc t what = err ?loc t ("expected " ^ what)
+
+let err_expected ?loc t what =
+  err ?loc t (String.concat "" [ "expected "; what ])
 
 let err_expected_but_eof t what =
   raise_ t (Error.Missing_token what) (position t)
@@ -277,8 +283,7 @@ let err_expected_but_eof t what =
 let err_unexpected t = err t "unexpected token"
 
 let condition_error t ~at_rule reason =
-  let source = match (t.meta, t.source) with `Full, s -> s | _ -> None in
-  Error.v ?source ~loc:(position t) ~sort:Sort.At_rule
+  error ~sort:Sort.At_rule t ~loc:(position t)
     (Error.Bad_condition { at_rule; reason })
 
 let err_condition t ~at_rule reason =
@@ -477,7 +482,7 @@ let at_keyword_opt t =
 let expect_at_keyword name t =
   match at_keyword_opt t with
   | Some s when String.lowercase_ascii_preserve s = name -> ()
-  | _ -> err_expected t ("@" ^ name)
+  | _ -> err_expected t (String.concat "" [ "@"; name ])
 
 let drain_until_block t =
   (* Used for at-rule / qualified-rule preludes: drain until the curly block
@@ -545,7 +550,9 @@ let drain_to_decl_end t = drain_until_raw ends_declaration_value t
 
 let decl_value_loc t =
   match
-    List.filter (fun cv -> not (is_ws_cv cv)) (lookahead drain_to_decl_end t)
+    List.filter
+      (Fun.negate Component.is_whitespace)
+      (lookahead drain_to_decl_end t)
   with
   | [] -> position t
   | first :: rest ->
@@ -613,15 +620,15 @@ let hex t =
         | Token.Ident s when is_hex_string s -> Some s
         | Token.Number_tok n when is_hex_string n.repr -> Some n.repr
         | Token.Dimension { number; unit_ }
-          when is_hex_string (number.repr ^ unit_) ->
-            Some (number.repr ^ unit_)
+          when is_hex_string (String.concat "" [ number.repr; unit_ ]) ->
+            Some (String.concat "" [ number.repr; unit_ ])
         | _ -> None)
       t
   in
   match hex_string_opt with
   | Some s -> (
-      try int_of_string ("0x" ^ s)
-      with Failure _ -> err_invalid t ("hex: " ^ s))
+      try int_of_string (String.concat "" [ "0x"; s ])
+      with Failure _ -> err_invalid t (String.concat "" [ "hex: "; s ]))
   | None -> err_expected t "hex token"
 
 let string ?(trim = false) t =
@@ -629,14 +636,21 @@ let string ?(trim = false) t =
   | Some s -> if trim then String.trim s else s
   | None -> err_expected t "string"
 
-(* Zero-width loc pointing at the block/function closing delimiter. Used as the
-   [eof_loc] for sub-cursors so errors raised at end-of-block point at the
-   closer, not at the end of the whole input. *)
-let closer_loc (node_loc : Loc.t) =
-  Loc.v ~start_pos:node_loc.end_pos ~end_pos:node_loc.end_pos
+(* The closing delimiter of a block or function, the [eof_loc] of a sub-cursor
+   over its contents, so an error raised at the end of them points at the closer
+   rather than at the end of the whole input. A node that was closed ends with
+   its one-byte closer; one the input ended inside has none, and the location is
+   the end itself. *)
+let closer_loc ~closed (node_loc : Loc.t) =
+  let end_pos = node_loc.end_pos in
+  if closed && end_pos > node_loc.start_pos then
+    Loc.v ~start_pos:(end_pos - 1) ~end_pos
+  else Loc.v ~start_pos:end_pos ~end_pos
 
 let func_sub (fn : Component.func Component.node) t =
-  sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments
+  sub
+    ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+    t fn.node.arguments
 
 let url_from_func t (fn : Component.func Component.node) =
   if not fn.node.terminated then err_expected t "terminated url";
@@ -701,7 +715,7 @@ let bool t =
   match ident t with
   | "true" -> true
   | "false" -> false
-  | s -> err_invalid t ("boolean: " ^ s)
+  | s -> err_invalid t (String.concat "" [ "boolean: "; s ])
 
 (** {1 Delim helpers} *)
 
@@ -799,7 +813,7 @@ let looking_at t s =
         String.starts_with ~prefix:s
           (String.concat "" [ "@"; String.lowercase_ascii_preserve name ])
     | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
-        String.starts_with ~prefix:s ("#" ^ value)
+        String.starts_with ~prefix:s (String.concat "" [ "#"; value ])
     | Some (Component.Preserved { kind = Token.Url _; _ }) ->
         String.starts_with ~prefix:s "url("
     | _ -> (
@@ -862,17 +876,23 @@ let whole_block f inner =
 
 let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
-  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b ->
+      whole_block f
+        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'('"
 
 let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
-  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b ->
+      whole_block f
+        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'['"
 
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b -> whole_block f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b ->
+      whole_block f
+        (sub ~eof_loc:(closer_loc ~closed:b.node.closed b.loc) t b.node.value)
   | None -> err_expected t "'{'"
 
 let function_call name f t =
@@ -881,14 +901,21 @@ let function_call name f t =
     when String.lowercase_ascii_preserve fn.node.name = name ->
       let _ = next t in
       Some
-        (whole_block f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
+        (whole_block f
+           (sub
+              ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+              t fn.node.arguments))
   | _ -> None
 
 let any_function_call f t =
   match peek t with
   | Some (Component.Func fn) ->
       let _ = next t in
-      let inner = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
+      let inner =
+        sub
+          ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+          t fn.node.arguments
+      in
       Some (whole_block (f fn.node.name) inner)
   | _ -> None
 
@@ -898,12 +925,16 @@ let call name t f =
     when String.lowercase_ascii_preserve fn.node.name
          = String.lowercase_ascii_preserve name ->
       let _ = next t in
-      let arg = sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments in
+      let arg =
+        sub
+          ~eof_loc:(closer_loc ~closed:fn.node.terminated fn.loc)
+          t fn.node.arguments
+      in
       let arg = { arg with depth = t.depth + 1 } in
       if arg.depth > max_nesting_depth then
         raise_ arg (Error.Too_deep max_nesting_depth) fn.loc;
       whole_block f arg
-  | _ -> err_expected t (name ^ "(")
+  | _ -> err_expected t (String.concat "" [ name; "(" ])
 
 (** {1 Enums} *)
 
@@ -929,7 +960,7 @@ let enum ?default label table t =
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown " ^ label ^ ": " ^ s)))
+          | None -> err t (String.concat "" [ "unknown "; label; ": "; s ])))
   | _ -> ( match default with Some f -> f t | None -> err_expected t label)
 
 let enum_calls ?default table t =
@@ -941,7 +972,7 @@ let enum_calls ?default table t =
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown function: " ^ name)))
+          | None -> err t (String.concat "" [ "unknown function: "; name ])))
   | _ -> (
       match default with
       | Some f -> f t
@@ -989,14 +1020,16 @@ let enum_or_calls ?default label idents ?(calls = []) t =
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown " ^ label ^ ": " ^ s)))
+          | None -> err t (String.concat "" [ "unknown "; label; ": "; s ])))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
       match List.assoc_opt (String.lowercase_ascii_preserve name) calls with
       | Some f -> f t
       | None -> (
           match default with
           | Some f -> f t
-          | None -> err t ("unknown " ^ label ^ " function: " ^ name)))
+          | None ->
+              err t
+                (String.concat "" [ "unknown "; label; " function: "; name ])))
   | _ -> ( match default with Some f -> f t | None -> err_expected t label)
 
 (** {1 Higher-order combinators} *)
@@ -1114,14 +1147,14 @@ let try_parse_err p t =
       restore t snap;
       Error (Error.to_string e)
 
-let try_parse_full_err p t =
+let try_parse_full p t =
   let snap = save t in
   match p t with
   | v ->
-      if is_done t then Ok v
+      if is_done t then Some v
       else (
         restore t snap;
-        Error "trailing tokens")
-  | exception Parse_error e ->
+        None)
+  | exception Parse_error _ ->
       restore t snap;
-      Error (Error.to_string e)
+      None

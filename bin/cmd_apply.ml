@@ -27,13 +27,13 @@ let style_node node = function
    statement at all from an input that had something to drop. Neither is a
    source that was legitimately empty, which parses without a word and
    contributes nothing. [note] says what the caller does about the loss. *)
-let parse_source ~filename ~note css =
+let parse_source verbosity ~filename ~note css =
   match Css.of_string ~filename css with
   | Error e ->
-      Fmt.epr "Error: %s@." (Cascade.Error.to_string e);
+      Cli_io.report_error e;
       None
   | Ok { Css.stylesheet; warnings; _ } -> (
-      List.iter Cli_io.report_warning warnings;
+      Cli_io.report_warnings verbosity ~filename warnings;
       (* Whether the parse produced anything is a question about the statement
          list. Serialising the sheet to answer it asks a different one, and gets
          it wrong: [@charset "UTF-8"] and an [src]-less [@font-face] parse, are
@@ -41,11 +41,11 @@ let parse_source ~filename ~note css =
          list, not the text. *)
       match (stylesheet, warnings) with
       | [], _ :: _ ->
-          Fmt.epr "Error: %s: parse dropped every rule%s@." filename note;
+          Cli_io.error ~file:filename "parse dropped every rule%s" note;
           None
       | _ -> Some stylesheet)
 
-let inline_html ~minimal ~filename ~html ~extra =
+let inline_html verbosity ~minimal ~filename ~html ~extra =
   let doc = Html.parse html in
   (* Each <style> block parses on its own, which is how a browser reads them
      too, so a block the parser cannot use is known apart from the rest. *)
@@ -54,7 +54,9 @@ let inline_html ~minimal ~filename ~html ~extra =
     |> List.mapi (fun i node ->
         let filename = Fmt.str "%s:<style>#%d" filename (i + 1) in
         let css = Html.text node in
-        (node, parse_source ~filename ~note:"; keeping the block verbatim" css))
+        ( node,
+          parse_source verbosity ~filename ~note:"; keeping the block verbatim"
+            css ))
   in
   let sheet =
     List.concat_map (fun (_, s) -> Option.value s ~default:[]) blocks @ extra
@@ -88,7 +90,7 @@ let inline_html ~minimal ~filename ~html ~extra =
 (* ---------- cmdliner ---------- *)
 let read_file path =
   try Ok (Cli_io.read_file path)
-  with Sys_error msg -> err_msg "Error reading %s: %s" path msg
+  with Sys_error msg -> err_msg "cannot read %s: %s" path msg
 
 (* Cmdliner's [file] conv only checks that the path exists, so a directory or a
    file with no read permission reaches the command. That is a usage error, and
@@ -96,23 +98,28 @@ let read_file path =
    stylesheet nobody can read is not the same thing as no stylesheet. A file
    that reads but does not parse is reported and the page is still written,
    without it. *)
-let read_extra = function
+let read_extra verbosity = function
   | None -> Ok (Some Sheet.empty)
-  | Some f -> Result.map (parse_source ~filename:f ~note:"") (read_file f)
+  | Some f ->
+      Result.map (parse_source verbosity ~filename:f ~note:"") (read_file f)
 
-let run minimal html_file css_file () =
+let run minimal html_file css_file verbosity =
   match
     Result.bind (read_file html_file) (fun html ->
-        Result.map (fun extra -> (html, extra)) (read_extra css_file))
+        Result.map (fun extra -> (html, extra)) (read_extra verbosity css_file))
   with
   | Error e -> Error e
   | Ok (html, extra) ->
       let out, kept, lost =
-        inline_html ~minimal ~filename:html_file ~html
+        inline_html verbosity ~minimal ~filename:html_file ~html
           ~extra:(Option.value extra ~default:Sheet.empty)
       in
-      if kept > 0 then
-        Fmt.epr "Kept %d rule(s) with no inline form in a <style> block.@." kept;
+      (match verbosity with
+      | Cli_log.Quiet -> ()
+      | Normal | Verbose ->
+          if kept > 0 then
+            Fmt.epr "Kept %d rule(s) with no inline form in a <style> block.@."
+              kept);
       print_string out;
       (* CSS that went missing is a result, not a usage error: exit 1, distinct
          from cmdliner's reserved codes, so a build can gate on it. *)
@@ -136,7 +143,7 @@ let minimal_arg =
   in
   Arg.(value & flag & info [ "minimal" ] ~doc)
 
-let term = Term.(const run $ minimal_arg $ html_arg $ css_arg $ const ())
+let term = Term.(const run $ minimal_arg $ html_arg $ css_arg $ Cli_log.term)
 
 let cmd =
   let doc = "Resolve a stylesheet into an HTML page's inline styles" in
@@ -172,6 +179,10 @@ let cmd =
          element is a sibling like any other, and a kept rule may select \
          across it. A block the parser cannot use keeps its text as well, \
          rather than being emptied along with the blocks that were projected.";
+      `S Manpage.s_examples;
+      `Pre "cascade apply page.html > inlined.html";
+      `P "With an extra stylesheet, and without restating inherited values:";
+      `Pre "cascade apply --minimal page.html theme.css > inlined.html";
     ]
   in
   Cmd.v (Cmd.info "apply" ~doc ~man ~exits) Term.(term_result term)

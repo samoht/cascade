@@ -10,10 +10,16 @@ let parse s =
 
 let optimize_str s = parse s |> Css.optimize |> Css.to_string ~minify:true
 
+(* The live rules in the graph's canonical order, as the optimizer reads them
+   back out. *)
+let ordered_rules g =
+  Array.to_list
+    (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
+
 let graph_project_str s =
   parse s
   |> List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None)
-  |> Rule_graph.of_rules |> Rule_graph.to_rules
+  |> Rule_graph.of_rules |> ordered_rules
   |> List.map (fun r -> Stylesheet.Rule r)
   |> Css.to_string ~minify:true
 
@@ -76,11 +82,16 @@ let rules_of s =
 let nid i = Rule_graph.Node_id.of_int_exn i
 let nids ids = List.map nid ids
 
+let is_live g i =
+  List.exists
+    (fun n -> Rule_graph.Node_id.to_int n = Rule_graph.Node_id.to_int i)
+    (Rule_graph.live_nodes g)
+
 let int_order order =
   order |> Array.to_list |> List.map Rule_graph.Node_id.to_int
 
 let graph_to_string g =
-  Rule_graph.to_rules g
+  ordered_rules g
   |> List.map (fun r -> Stylesheet.Rule r)
   |> Css.to_string ~minify:true
 
@@ -205,6 +216,34 @@ let rewrite_keeps_constraints_through_dead_relays () =
       Alcotest.(check bool)
         "live endpoints retain their source constraint" true
         (position 0 0 order < position 2 0 order)
+
+(* The order of a run, asked without holding its graph: a pair is kept in source
+   order when the two rules conflict and follows the rank otherwise. A shared
+   selector branch alone pins nothing, and a pair the caller asserts exclusive
+   is free. *)
+let run_order_follows_rank_between_conflicts () =
+  let reversed ?exclusive css =
+    let rules = rules_of css in
+    Rule_graph.run_order
+      (Rule_graph.run ?exclusive ~folds:(fun _ -> false) rules)
+      (fun id -> -Rule_graph.Node_id.to_int id)
+    |> int_order
+  in
+  Alcotest.(check (list int))
+    "disjoint properties follow the rank" [ 1; 0 ]
+    (reversed ".a{color:red}.b{margin:0}");
+  Alcotest.(check (list int))
+    "a conflicting pair keeps source order" [ 0; 1 ]
+    (reversed ".a{color:red}.b{color:blue}");
+  Alcotest.(check (list int))
+    "only the conflicting pair is held" [ 2; 0; 1 ]
+    (reversed ".a{color:red}.b{color:blue}.c{margin:0}");
+  Alcotest.(check (list int))
+    "a shared branch is not a pin" [ 1; 0 ]
+    (reversed ".a{color:red}.a{margin:0}");
+  Alcotest.(check (list int))
+    "an exclusive pair follows the rank" [ 1; 0 ]
+    (reversed ~exclusive:(fun _ _ -> true) ".a{color:red}.b{color:blue}")
 
 (* A later rewrite can add a back edge around a consumed node in a compact
    chain. Cycle detection must traverse the dead relay, not just live nodes. *)
@@ -597,8 +636,7 @@ let try_rewrite_bumps_generation () =
         (Rule_graph.generation g' > g0);
       Alcotest.(check bool)
         "consumed nodes become dead" true
-        ((not (Rule_graph.is_live g' (nid 0)))
-        && not (Rule_graph.is_live g' (nid 1)))
+        ((not (is_live g' (nid 0))) && not (is_live g' (nid 1)))
 
 (* --- declaration_body_key: identical-body bucketing --- *)
 
@@ -685,11 +723,7 @@ let check_reachability label g =
   let count = Rule_graph.node_count g in
   for i = 0 to count - 1 do
     for j = 0 to count - 1 do
-      let expected =
-        reaches g i j
-        && Rule_graph.is_live g (nid i)
-        && Rule_graph.is_live g (nid j)
-      in
+      let expected = reaches g i j && is_live g (nid i) && is_live g (nid j) in
       Alcotest.(check bool)
         (Fmt.str "%s: precedes %d %d" label i j)
         expected
@@ -726,6 +760,36 @@ let precedes_agrees_with_a_walk () =
   with
   | None -> Alcotest.fail "replacement should commit"
   | Some g' -> check_reachability "after rewrite" g'
+
+(* The edges a graph keeps are a reduction of its conflicts, sound only when
+   what it drops is still carried by reachability, so every conflicting pair of
+   a fresh graph has to be ordered with the earlier node first. Writers of one
+   value tie with each other, so a run of them is not a chain: a writer of
+   another value before the run has to reach a writer after it through the run
+   before, whichever group of the index the writers sit in. *)
+let every_conflict_is_ordered () =
+  List.iter
+    (fun (label, css) ->
+      let g = g_of css in
+      let count = Rule_graph.node_count g in
+      for i = 0 to count - 1 do
+        for j = i + 1 to count - 1 do
+          if Rule_graph.conflict g (nid i) (nid j) then
+            Alcotest.(check bool)
+              (Fmt.str "%s: %d precedes %d" label i j)
+              true
+              (Rule_graph.precedes g (nid i) (nid j))
+        done
+      done)
+    [
+      ("a tie after a run", ".z{color:red}.j{color:blue}.a{color:blue}");
+      ( "a value two runs back",
+        ".d{color:red}.f{color:blue}.j{color:red}.k{color:blue}" );
+      ( "a run in another group",
+        "div.a{color:red}div.b{color:blue}.k{color:blue}" );
+      ( "a tie inside a longer run",
+        ".a{color:red}.b{color:blue}.c{color:blue}.d{color:red}.e{color:red}" );
+    ]
 
 (* Orienting a factoring asks which of two nodes has to come first, once per
    ordered pair of source references, so a run of N rules is asked about N^2
@@ -764,6 +828,194 @@ let reachability_settles_once () =
            spent)
         true (spent <= count))
     [ 200; 400 ]
+
+let ask_every_pair g =
+  let count = Rule_graph.node_count g in
+  for i = 0 to count - 1 do
+    for j = 0 to count - 1 do
+      ignore (Sys.opaque_identity (Rule_graph.precedes g (nid i) (nid j)))
+    done
+  done
+
+let nth_rule rules i = [ List.nth rules i ]
+
+(* A committed rewrite adds edges only at the nodes it produces, so the graph it
+   returns keeps the answers its parent settled and corrects those of the nodes
+   that now reach a produced one. Every graph below is fully settled before it
+   is rewritten, which is the state the optimizer rewrites from, and each result
+   is checked against a walk of its own edges: a node ahead of the rewrite gains
+   the produced node, a multi-rule rewrite orders its own products, a second
+   rewrite builds on the first, and a rewrite that takes a run past the width
+   its sets were allocated at widens them. The parent is asked again afterwards,
+   since it no longer holds the sets it gave away. *)
+let reachability_follows_a_rewrite () =
+  let rewritten label g ~consume ~produce =
+    ask_every_pair g;
+    match Rule_graph.try_rewrite g ~consume:(nids consume) ~produce with
+    | None -> Alcotest.failf "%s: the rewrite should commit" label
+    | Some g' ->
+        check_reachability label g';
+        check_reachability (label ^ ", parent") g;
+        g'
+  in
+  let g' =
+    rewritten "middle of a chain"
+      (g_of
+         ".early{color:black}.mid{color:red}.mid{color:blue}.late{color:white}")
+      ~consume:[ 1; 2 ]
+      ~produce:(rules_of ".mid{color:red}.mid{color:blue}")
+  in
+  ignore
+    (rewritten "a second rewrite" g' ~consume:[ 0 ]
+       ~produce:(rules_of ".early{color:black}"));
+  ignore
+    (rewritten "several products"
+       (g_of
+          ".form-input{display:block;color:red}.marker{z-index:1}.form-select{display:block;color:blue}")
+       ~consume:[ 0; 2 ]
+       ~produce:
+         (rules_of
+            ".form-input,.form-select{display:block}.form-input{color:red}.form-select{color:blue}"));
+  List.iter
+    (fun at ->
+      let rules = dense_conflict 64 in
+      ignore
+        (rewritten
+           (Fmt.str "node %d of a run of 64" at)
+           (Rule_graph.of_rules rules)
+           ~consume:[ at ] ~produce:(nth_rule rules at)))
+    [ 0; 31; 63 ]
+
+(* The sets a rewrite inherits are the reason it is cheap: replacing the head of
+   a run of N rules changes what one node reaches, the node produced, so the
+   rewrite settles that node and the questions asked of the result expand
+   nothing. Settling the run again would cost N per rewrite, which is the whole
+   of a factoring pass on a sheet that commits a thousand of them. *)
+let reachability_survives_a_rewrite () =
+  let rules = dense_conflict 400 in
+  let g = Rule_graph.of_rules rules in
+  ask_every_pair g;
+  let settled = Rule_graph.reachability_expansions g in
+  match
+    Rule_graph.try_rewrite g ~consume:(nids [ 0 ]) ~produce:(nth_rule rules 0)
+  with
+  | None -> Alcotest.fail "replacing the head of the run should commit"
+  | Some g' ->
+      let rewritten = Rule_graph.reachability_expansions g' in
+      ask_every_pair g';
+      Alcotest.(check int)
+        "nodes expanded by the questions asked after the rewrite" 0
+        (Rule_graph.reachability_expansions g' - rewritten);
+      Alcotest.(check int)
+        "nodes the rewrite settled beyond those its parent had" 1
+        (rewritten - settled)
+
+(* A rewrite costs what it reads, never a copy of the graph: an attempt writes
+   its nodes past the last one its parent holds and keeps the edges it points at
+   existing nodes aside until it is accepted, so neither outcome copies a
+   per-node array, and a committed one allocates for the graph's size only the
+   reachable set of the node it produces, a bit per node. The rules rewritten
+   below order against three neighbours and nothing in the run of N beside them,
+   so doubling N must leave the words a rewrite allocates about where they were.
+   The first attempt on a graph makes room past its last node and settles the
+   sets the questions read; the graph keeps both, so each case measures the
+   attempt after it. *)
+let neighbours = ".z{margin:0}.w{margin:1px}.z{margin:2px}"
+
+let a_rejected_rewrite_copies_no_node () =
+  let attempt n =
+    let g = Rule_graph.of_rules (dense_conflict n @ rules_of neighbours) in
+    (* margin:0 and margin:2px would have to sit both before and after .w *)
+    let reject () =
+      match
+        Rule_graph.try_rewrite g
+          ~consume:(nids [ n; n + 2 ])
+          ~produce:(rules_of ".z{margin:0;margin:2px}")
+      with
+      | None -> ()
+      | Some _ -> Alcotest.fail "merging across .w should be rejected"
+    in
+    reject ();
+    measure reject
+  in
+  let a1 = attempt 2000 in
+  let a2 = attempt 4000 in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a2 < a1 *. 1.25)
+
+let a_committed_rewrite_copies_no_node () =
+  let commit n =
+    let g = Rule_graph.of_rules (dense_conflict n @ rules_of neighbours) in
+    let replace g at css =
+      match
+        Rule_graph.try_rewrite g ~consume:(nids [ at ]) ~produce:(rules_of css)
+      with
+      | None -> Alcotest.fail "replacing a rule by itself should commit"
+      | Some g' -> g'
+    in
+    let g' = replace g n ".z{margin:0}" in
+    measure (fun () -> replace g' (n + 1) ".w{margin:1px}")
+  in
+  let a1 = commit 2000 in
+  let a2 = commit 4000 in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.1fx for 2x N)" a1 a2 (a2 /. a1))
+    true
+    (a2 < a1 *. 1.25)
+
+(* A committed rewrite writes into storage its parent shares, and the parent is
+   still a graph: it keeps its nodes, its edges and its order. Rewriting it
+   again would write over the nodes its child holds, so that is refused. *)
+let a_rewritten_graph_keeps_its_answers () =
+  let g = g_of ".a{color:red}.k{color:green}.b{color:blue}.c{margin:0}" in
+  let before = graph_to_string g in
+  match
+    Rule_graph.try_rewrite g
+      ~consume:(nids [ 0; 3 ])
+      ~produce:(rules_of ".a{color:red}.c{margin:0}")
+  with
+  | None -> Alcotest.fail "replacing .a and .c should commit"
+  | Some g' -> (
+      Alcotest.(check string) "the parent's order" before (graph_to_string g);
+      Alcotest.(check bool)
+        "the parent still holds its consumed nodes" true
+        (is_live g (nid 0) && is_live g (nid 3));
+      Alcotest.(check bool)
+        "the parent does not hold its child's nodes" false
+        (is_live g (nid 4));
+      Alcotest.(check (list int))
+        "the parent's edges" [ 1 ]
+        (List.map Rule_graph.Node_id.to_int (Rule_graph.successors g (nid 0)));
+      check_reachability "parent" g;
+      check_reachability "child" g';
+      match
+        Rule_graph.try_rewrite g ~consume:(nids [ 1 ])
+          ~produce:(rules_of ".k{color:green}")
+      with
+      | _ -> Alcotest.fail "rewriting a superseded graph should be refused"
+      | exception Invalid_argument _ -> ())
+
+(* A cycle a rewrite would close runs through the nodes it produces and, between
+   them, through existing nodes the produced ones point at and are pointed at
+   by. Here [.x,.s] keeps [color:red] ahead of [.y] and [.v,.s] keeps
+   [padding:1px] behind [.z], while [.y] precedes [.z] on [margin] and the
+   shared [.s] branch pins [.v,.s] ahead of [.x,.s]: every edge orients, and
+   together they close a loop through two existing nodes. *)
+let rewrite_rejects_a_cycle_through_existing_nodes () =
+  let g =
+    g_of
+      ".x{color:red}.y{color:blue;margin:0}.z{margin:1px;padding:0}.v{padding:1px}"
+  in
+  match
+    Rule_graph.rewrite g
+      ~consume:(nids [ 0; 3 ])
+      ~produce:(rules_of ".v,.s{padding:1px}.x,.s{color:red}")
+  with
+  | Error Rule_graph.Cycle -> ()
+  | Error _ -> Alcotest.fail "rejected, but not as a cycle"
+  | Ok _ -> Alcotest.fail "the rewrite should be rejected"
 
 (* Holding a reachable set per node costs a bit per node per node, so past a run
    length the answers come from walking the edges again. Nothing else reaches
@@ -888,7 +1140,8 @@ let same_selector_commute_is_subquadratic () =
 (* Selector compatibility is not transitive, so a run of same-body rules groups
    only when EVERY pair in it agrees. [.y] pairs with both of the others and
    they do not pair with each other, so the three never share a selector list
-   and the enumerator settles for the compatible subset. *)
+   and the enumerator settles for a compatible subset. Both pairs save the same,
+   and an equal saving goes to the shorter shared rule. *)
 let grouping_respects_non_transitive_compatibility () =
   let newer = ".x:user-valid{color:red}" in
   let plain = ".y{color:red}" in
@@ -904,8 +1157,8 @@ let grouping_respects_non_transitive_compatibility () =
     ".x:user-valid{color:red}:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ guarded));
   Alcotest.(check string)
-    "all three settle for the compatible subset"
-    ".x:user-valid{color:red}.y,:is(:where(.group):hover .z){color:red}"
+    "all three settle for the shorter compatible subset"
+    ".x:user-valid,.y{color:red}:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ plain ^ guarded))
 
 (* Every rule here carries the same body and a selector no other rule shares, so
@@ -1013,6 +1266,8 @@ let suite =
         rules_conflict_specificity;
       Alcotest.test_case "optimize keeps case-folded pairs in order" `Quick
         optimize_keeps_case_folded_order;
+      Alcotest.test_case "run_order follows the rank between conflicts" `Quick
+        run_order_follows_rank_between_conflicts;
       Alcotest.test_case "canonical_order pins a conflicting pair" `Quick
         canonical_order_pins_conflict;
       Alcotest.test_case "canonical_order keeps disjoint source order" `Quick
@@ -1025,10 +1280,24 @@ let suite =
         try_rewrite_bumps_generation;
       Alcotest.test_case "declaration_body_key buckets identical bodies" `Quick
         declaration_body_key_buckets;
+      Alcotest.test_case "every conflict is ordered" `Quick
+        every_conflict_is_ordered;
       Alcotest.test_case "precedes agrees with a walk of the edges" `Quick
         precedes_agrees_with_a_walk;
       Alcotest.test_case "reachability settles once per node" `Quick
         reachability_settles_once;
+      Alcotest.test_case "reachability follows a rewrite" `Quick
+        reachability_follows_a_rewrite;
+      Alcotest.test_case "reachability survives a rewrite" `Quick
+        reachability_survives_a_rewrite;
+      Alcotest.test_case "a rejected rewrite copies no node" `Quick
+        a_rejected_rewrite_copies_no_node;
+      Alcotest.test_case "a committed rewrite copies no node" `Quick
+        a_committed_rewrite_copies_no_node;
+      Alcotest.test_case "a rewritten graph keeps its answers" `Quick
+        a_rewritten_graph_keeps_its_answers;
+      Alcotest.test_case "rewrite rejects a cycle through existing nodes" `Quick
+        rewrite_rejects_a_cycle_through_existing_nodes;
       Alcotest.test_case "a long run answers by walking" `Quick
         a_long_run_answers_by_walking;
       Alcotest.test_case "dense graph build/project is sub-quadratic" `Quick

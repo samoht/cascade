@@ -72,6 +72,82 @@ let canonicalize_unordered_list selectors =
   in
   List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) uniq |> List.map snd
 
+(* CSS Selectors 4 3.5: when the universal selector [*] is not the only
+   component of a compound, the [*] may be omitted. Namespaced universals
+   ([ns|*], [*|*]) carry namespace information and are preserved. *)
+let drop_redundant_universal = function
+  | [ _ ] as singleton -> singleton
+  | components ->
+      let kept =
+        List.filter (function Universal None -> false | _ -> true) components
+      in
+      if kept = [] then components else kept
+
+(* CSS Selectors 4 3.5: a compound selector that "contains a type selector or
+   universal selector [...] must come first in the sequence". So a rewrite that
+   splices a wrapped selector into the surrounding compound has to leave a
+   type-bearing argument wrapped: spliced, the two names fuse and [.a:is(code)]
+   reads as [.acode], a class nobody wrote. *)
+let rec carries_type_selector = function
+  | Element _ | Universal _ -> true
+  | Compound parts -> List.exists carries_type_selector parts
+  | _ -> false
+
+(* Which elements [HTML] gives each state pseudo-class pair to. The three sets
+   differ. [:enabled] and [:disabled] split every form control plus [optgroup],
+   [option] and [fieldset] (HTML sec. 4.15, sec. 4.16.3). [:valid] and
+   [:invalid] split a [form] and a [fieldset] whole, but reach a form control
+   only while it is a candidate for constraint validation, which a disabled,
+   readonly or [type=hidden] one is not. [:required] and [:optional] split
+   [select] and [textarea]; [:optional] wants an [input] "to which the required
+   attribute applies", and it does not apply in e.g. the Hidden state. *)
+let enabled_carriers =
+  [ "button"; "fieldset"; "input"; "optgroup"; "option"; "select"; "textarea" ]
+
+let validity_carriers = [ "fieldset"; "form" ]
+let optionality_carriers = [ "select"; "textarea" ]
+
+let state_pair = function
+  | Enabled -> Some (Disabled, enabled_carriers)
+  | Disabled -> Some (Enabled, enabled_carriers)
+  | Valid -> Some (Invalid, validity_carriers)
+  | Invalid -> Some (Valid, validity_carriers)
+  | Required -> Some (Optional, optionality_carriers)
+  | Optional -> Some (Required, optionality_carriers)
+  | _ -> None
+
+(* Whether every element [sel] can select is one of [carriers]. A type selector
+   proves it, and [:is()]/[:where()] prove it when every branch does; a class,
+   an attribute, a negation or [:has()] constrains something other than the
+   subject's element type, so it proves nothing. Selectors 4 sec. 3.5: the
+   subject of a complex selector is its rightmost compound. A namespaced type
+   selector is left out: the prefix binds to a namespace declared elsewhere in
+   the stylesheet, and these names are the HTML ones. *)
+let rec selects_only carriers = function
+  | Element (None, name) -> List.mem (String.lowercase_ascii name) carriers
+  | Compound parts -> List.exists (selects_only carriers) parts
+  | Is branches | Where branches ->
+      branches <> [] && List.for_all (selects_only carriers) branches
+  | Combined (_, _, right) -> selects_only carriers right
+  | _ -> false
+
+(* CSS Selectors 4 sec. 12.1.1, 12.3.1 and 12.3.3: an element outside a pair's
+   set matches neither half, so [X:not(:enabled)] is [X:disabled] only inside a
+   compound that proves its subject carries the state. Which elements those are
+   is a [HTML] fact rather than one the CSS text proves, so the caller asks only
+   outside [enforce_spec]. *)
+let fold_state_negations components =
+  list_map_preserve
+    (function
+      | Not [ state ] as component -> (
+          match state_pair state with
+          | Some (complement, carriers)
+            when List.exists (selects_only carriers) components ->
+              complement
+          | _ -> component)
+      | component -> component)
+    components
+
 (* [map] rewrites a compound's components before the compound itself, so the
    [Is] branch below has already spliced a single-argument [:is()] into this
    list. A component the reader refuses after the pseudo-element can only have
@@ -102,26 +178,6 @@ let canonical_compound components =
   | [ single ] -> single
   | components -> Compound components
 
-(* Substituting [&] splices a complex parent into a compound's leading slot,
-   giving [Compound [Combined (.L, a); :where(.dark)]] where reading the same
-   selector back gives [Combined (.L, Compound [a; :where(.dark)])]. The two
-   serialise alike and only the second is a compound in the grammar's sense, a
-   sequence of simple selectors, so the trailing components move onto the
-   subject. Without this the two spellings stay structurally distinct while
-   printing identically, and every structural comparison reads them apart. The
-   subject is a compound built here, after [map] has visited the components, so
-   it takes its canonical form here too: [svg *] under [&:where(.dark)] is [svg
-   :where(.dark)], as reading that text gives. *)
-let rec lift_leading_combinator = function
-  | Combined (left, comb, right) :: rest ->
-      let subject =
-        match lift_leading_combinator (right :: rest) with
-        | Some lifted -> lifted
-        | None -> canonical_compound (right :: rest)
-      in
-      Some (Combined (left, comb, subject))
-  | _ -> None
-
 (* CSS Selectors 4 sec. 4.2: a single-argument [:is(s)] matches the same
    elements as [s] with the same specificity, so it reduces to [s]. Sound only
    when [s] is a single compound: a combinator ([Combined] / [Relative]) or a
@@ -138,7 +194,25 @@ let canonicalize_is node selectors =
          | Combined _ | Relative _ | List _ -> false
          | _ -> not (carries_type_selector single) ->
       single
+  (* Sec. 8.1 defines [:any-link] as [:is(:link, :visited)], at the same
+     specificity. *)
+  | [ Link; Visited ] -> Any_link
   | _ -> if list_same sorted selectors then node else Is sorted
+
+(* CSS Selectors 4 sec. 7.1 leaves directionality to the document language, so
+   CSS alone does not make [ltr] and [rtl] a partition: an element the language
+   gives no directionality matches neither. [HTML] makes it one for every
+   element in an HTML document, which is the host fact [enforce_spec] drops. *)
+let canonicalize_not ~enforce_spec node selectors =
+  match selectors with
+  (* Sec. 4.3: [:not(:not(s1, ...))] matches what [:is(s1, ...)] matches, and
+     both weigh their most specific argument. *)
+  | [ Not inner ] -> canonicalize_is (Is inner) inner
+  | [ Dir "ltr" ] when not enforce_spec -> Dir "rtl"
+  | [ Dir "rtl" ] when not enforce_spec -> Dir "ltr"
+  | _ ->
+      let sorted = canonicalize_unordered_list selectors in
+      if list_same sorted selectors then node else Not sorted
 
 (* Canonicalise so selectors denoting the same thing are structurally equal:
    drop the implied [*] from a multi-part compound ([*.foo] -> [.foo]), collapse
@@ -148,7 +222,7 @@ let canonicalize_is node selectors =
    irrelevant to matching and specificity). [map] hands each node over without
    saying where it sits, so every rewrite below has to be sound in any position;
    the one that needs the top of a rule selector is [canonicalize]. *)
-let canonicalize_nodes sel =
+let rec canonicalize_nodes ~enforce_spec sel =
   map
     (fun node ->
       let canon ctor selectors =
@@ -156,22 +230,23 @@ let canonicalize_nodes sel =
         if list_same sorted selectors then node else ctor sorted
       in
       match node with
-      | Compound components -> (
-          match lift_leading_combinator components with
-          | Some lifted -> lifted
-          | None -> (
-              match canonical_compound components with
-              | Compound components' when list_same components' components ->
-                  node
-              | canonical -> canonical))
+      | Compound components ->
+          canonicalize_compound ~enforce_spec node components
+      | Combined ((Combined _ | Relative _), _, _) -> reshape node
       | List selectors -> canon (fun xs -> List xs) selectors
       | Where selectors -> canon (fun xs -> Where xs) selectors
       | Is selectors -> canonicalize_is node selectors
-      | Not selectors -> canon (fun xs -> Not xs) selectors
+      | Not selectors -> canonicalize_not ~enforce_spec node selectors
       | Has selectors -> canon (fun xs -> Has xs) selectors
       | Moz_any_call selectors -> canon (fun xs -> Moz_any_call xs) selectors
       | Webkit_any_call selectors ->
           canon (fun xs -> Webkit_any_call xs) selectors
+      (* Sec. 14: the first and last index are the [:first-*] and [:last-*]
+         keywords, at the same specificity. *)
+      | Nth_child (Index 1, None) -> First_child
+      | Nth_last_child (Index 1, None) -> Last_child
+      | Nth_of_type (Index 1, None) -> First_of_type
+      | Nth_last_of_type (Index 1, None) -> Last_of_type
       | Nth_child (nth, Some selectors) ->
           canon (fun xs -> Nth_child (nth, Some xs)) selectors
       | Nth_last_child (nth, Some selectors) ->
@@ -182,6 +257,25 @@ let canonicalize_nodes sel =
           canon (fun xs -> Nth_last_of_type (nth, Some xs)) selectors
       | other -> other)
     sel
+
+(* A spliced [:is()] argument keeps its own compound behind a pseudo-element,
+   where [canonical_compound] wraps it whole; anywhere else the compound takes
+   the reader's shape, whose compounds are built here, after [map] visited the
+   parts, so they are canonicalised again: [svg *] then [:where(.dark)] is [svg
+   :where(.dark)], as reading that text gives. *)
+and canonicalize_compound ~enforce_spec node components =
+  let folded =
+    if enforce_spec then components else fold_state_negations components
+  in
+  let canonical =
+    match canonical_compound folded with
+    | Compound components' when list_same components' components -> node
+    | canonical -> canonical
+  in
+  match reshape canonical with
+  | reshaped when reshaped != canonical ->
+      canonicalize_nodes ~enforce_spec reshaped
+  | _ -> canonical
 
 let is_ sels = Is sels
 let has sels = Has sels
@@ -253,8 +347,8 @@ let rec specificity = function
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
-  | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
-  | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
+  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
+  | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
   | Unknown_pseudo_element _ | Unknown_pseudo_element_call _
@@ -345,7 +439,9 @@ let rec top_level_is_unwrap sel =
       else List (canonicalize_unordered_list expanded)
   | _ -> sel
 
-let canonicalize sel = top_level_is_unwrap (canonicalize_nodes sel)
+let canonicalize ?(enforce_spec = false) sel =
+  top_level_is_unwrap (canonicalize_nodes ~enforce_spec sel)
+
 let to_string ?minify t = Pp.to_string ?minify pp t
 let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
 

@@ -433,7 +433,7 @@ let s417_is_unwrap_top_level () =
    selector or universal selector, that selector must come first". So a
    single-argument [:is(<type>)] unwraps only into a compound it leads: spliced
    anywhere else the two names fuse, and [.a:is(code)] turns into [.acode],
-   which matches a class nobody wrote. Same for [:not(:not(<type>))]. *)
+   which matches a class nobody wrote. *)
 let s442_compound_type_first () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -456,8 +456,10 @@ let s442_compound_type_first () =
   Alcotest.(check string)
     "a namespaced universal keeps its wrapper" ".a:is(svg|*){color:red}"
     (normalize ".a:is(svg|*) { color: red }");
+  (* Sec. 4.3 makes [:not(:not(code))] the [:is(code)] above, which keeps its
+     wrapper for the same reason. *)
   Alcotest.(check string)
-    ":not(:not(code)) keeps its wrappers" ".a:not(:not(code)){color:red}"
+    ":not(:not(code)) is a wrapped :is(code)" ".a:is(code){color:red}"
     (normalize ".a:not(:not(code)) { color: red }");
   (* Leading its compound the type selector would be where it belongs, and
      unwrapping there is sound - but the rewrite is node-local, so it declines

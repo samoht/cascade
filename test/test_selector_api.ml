@@ -329,16 +329,16 @@ let test_attr_case_sensitivity_flags () =
   check_selector_with_flag "foo" (Some Sensitive) "[type=foo s]";
   check ~expected:"[type=foo s]" "[type=foo S]";
 
-  (* Values with spaces should be quoted regardless of flag *)
+  (* A value with a space takes the shorter of the escaped ident and the string,
+     and the flag follows either. *)
   let sel = S.attribute ~flag:Sensitive "type" (Exact "A B") in
   let output = Css.Pp.to_string ~minify:true S.pp sel in
-  Alcotest.(check string)
-    "value with space and s flag" "[type=\"A B\" s]" output;
+  Alcotest.(check string) "value with space and s flag" "[type=A\\ B s]" output;
 
-  let sel = S.attribute ~flag:Insensitive "type" (Exact "foo bar") in
+  let sel = S.attribute ~flag:Insensitive "type" (Exact "a  b") in
   let output = Css.Pp.to_string ~minify:true S.pp sel in
   Alcotest.(check string)
-    "value with space and i flag" "[type=\"foo bar\" i]" output;
+    "value with two spaces and i flag" "[type=\"a  b\" i]" output;
   ()
 
 let test_combinator () =
@@ -429,13 +429,17 @@ let column_combinator_vs_namespace () =
   check "svg|a[*|href]"
 
 let test_nth () =
-  (* Test nth type -- odd/even are canonicalized to 2n+1/2n *)
+  (* Selectors 4 sec. 14: [odd] and [even] are [2n+1] and [2n], and [0n+B] is
+     [B], so each reads as that node. *)
   Alcotest.(check bool)
-    "odd parses to Odd AST" true
-    (read_nth (Cursor.of_string "odd") = Odd);
+    "odd reads as 2n+1" true
+    (read_nth (Cursor.of_string "odd") = An_plus_b (2, 1));
   Alcotest.(check bool)
-    "even parses to Even AST" true
-    (read_nth (Cursor.of_string "even") = Even);
+    "even reads as 2n" true
+    (read_nth (Cursor.of_string "EVEN") = An_plus_b (2, 0));
+  Alcotest.(check bool)
+    "0n+3 reads as 3" true
+    (read_nth (Cursor.of_string "0n+3") = Index 3);
   (* Per CSS Selectors 4 section 14 the printer canonicalizes [<an+b>] to the
      shortest spec-equivalent spelling under minify. *)
   check_nth ~expected:"odd" "2n+1";

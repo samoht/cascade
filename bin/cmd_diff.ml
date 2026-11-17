@@ -2,7 +2,8 @@ open Cmdliner
 
 type mode = Auto | Tree | String | Canonical
 
-let err_read path msg = Error (`Msg (Fmt.str "Error reading %s: %s" path msg))
+let err_read path msg =
+  Error (`Msg (String.concat "" [ "cannot read "; path; ": "; msg ]))
 
 let err_limit s =
   Error
@@ -63,12 +64,6 @@ let count_lines s =
 
 (* Parse warnings shown before the rest is counted, across both sides. *)
 let auto_warning_budget = 3
-
-(* [none] bounds nothing, warnings included. Every other setting keeps the
-   report short, which a wall of warnings ahead of it would undo. *)
-let warning_budget = function
-  | All_entries -> None
-  | Fit_entries | Count _ -> Some auto_warning_budget
 
 (* What the parse dropped reaches neither side of the comparison, so nothing it
    holds can affect the verdict. The reader stamps that on the warning at the
@@ -139,12 +134,22 @@ let render_diff ~color ~file1 ~file2 ~entries result =
     buf result;
   Buffer.contents buf
 
-let render_warnings ~file1 ~file2 ~max result =
-  let buf = Buffer.create 256 in
-  Cascade_diff.Css_compare.pp_warnings ~expected:file1 ~actual:file2 ?max buf
-    result;
-  if Cascade_diff.Css_compare.has_warnings result then Buffer.add_char buf '\n';
-  Buffer.contents buf
+(* [-q] leaves the warnings out of the report, and [-v] or [--limit=none] prints
+   every one. Any other setting keeps the report short, which a wall of warnings
+   ahead of it would undo. *)
+let render_warnings ~verbosity ~limit ~file1 ~file2 result =
+  let render max =
+    let buf = Buffer.create 256 in
+    Cascade_diff.Css_compare.pp_warnings ~expected:file1 ~actual:file2 ?max
+      ~more:"; -v prints every warning" buf result;
+    if Cascade_diff.Css_compare.has_warnings result then
+      Buffer.add_char buf '\n';
+    Buffer.contents buf
+  in
+  match ((verbosity : Cli_log.verbosity), limit) with
+  | Quiet, _ -> ""
+  | Verbose, _ | Normal, All_entries -> render None
+  | Normal, (Fit_entries | Count _) -> render (Some auto_warning_budget)
 
 let fits body = count_lines body <= auto_line_budget
 
@@ -182,17 +187,17 @@ let canonical_forms_note mode result =
       "Canonical forms differ:\n"
   | _ -> ""
 
-let print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result =
+let print_diff_report ~verbosity ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode
+    result =
   let stats =
     Cascade_diff.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
   in
-  let max_warnings = warning_budget limit in
   let buf = Buffer.create 1024 in
   Cascade_diff.Css_compare.pp_stats buf stats;
   Buffer.add_string buf
     (canonical_forms_note mode result.Cascade_diff.Css_compare.result);
   Buffer.add_char buf '\n';
-  Buffer.add_string buf (render_warnings ~file1 ~file2 ~max:max_warnings result);
+  Buffer.add_string buf (render_warnings ~verbosity ~limit ~file1 ~file2 result);
   let body, elided = render_report ~color ~file1 ~file2 ~limit result in
   Buffer.add_string buf body;
   Buffer.add_char buf '\n';
@@ -460,21 +465,40 @@ let json_string_diff (sdiff : Cascade_diff.String_diff.t) =
           ] );
     ]
 
-let json_side side message =
-  J.Obj [ ("side", json_string side); ("message", json_string message) ]
+(* A diagnostic names its file, line and column as members, so a consumer reads
+   them rather than parsing the human rendering; the message is the reason
+   alone. A position the error does not carry is left out. *)
+let json_message e = Cascade.Pp.to_string Cascade.Error.pp_message e
+
+let json_diagnostic side (e : Cascade.Error.t) =
+  let position =
+    match Cascade.Error.position e with
+    | None -> []
+    | Some (line, column) -> [ ("line", J.Int line); ("column", J.Int column) ]
+  in
+  J.Obj
+    ([ ("side", json_string side) ]
+    @ json_opt "file" json_string e.filename
+    @ position
+    @ [ ("message", json_string (json_message e)) ])
 
 (* A parse error is the reason there is nothing to compare on that side, so it
    belongs in the document rather than beside it: a consumer that only reads
    stdout would otherwise see an empty comparison and no cause. Both sides
-   failing the same way is one fact about the input, as it is for a warning. *)
+   failing the same way, at the same place, is one fact about the input, as it
+   is for a warning. *)
 let json_errors = function
   | Cascade_diff.Css_compare.Both_errors (e1, e2) ->
-      let m1 = Cascade.Error.to_string e1 in
-      let m2 = Cascade.Error.to_string e2 in
-      if String.equal m1 m2 then [ json_side "both" m1 ]
-      else [ json_side "expected" m1; json_side "actual" m2 ]
-  | Expected_error e -> [ json_side "expected" (Cascade.Error.to_string e) ]
-  | Actual_error e -> [ json_side "actual" (Cascade.Error.to_string e) ]
+      if
+        String.equal (json_message e1) (json_message e2)
+        && Option.equal
+             (fun (l1, c1) (l2, c2) -> Int.equal l1 l2 && Int.equal c1 c2)
+             (Cascade.Error.position e1)
+             (Cascade.Error.position e2)
+      then [ json_diagnostic "both" e1 ]
+      else [ json_diagnostic "expected" e1; json_diagnostic "actual" e2 ]
+  | Expected_error e -> [ json_diagnostic "expected" e ]
+  | Actual_error e -> [ json_diagnostic "actual" e ]
   | No_diff | Tree_diff _ | String_diff _ -> []
 
 (* The library groups the warnings; this only names the sides. *)
@@ -486,7 +510,7 @@ let json_warnings (result : Cascade_diff.Css_compare.t) =
   in
   J.List
     (List.map
-       (fun (s, w) -> json_side (side s) (Cascade.Error.to_string w))
+       (fun (s, w) -> json_diagnostic (side s) w)
        (Cascade_diff.Css_compare.warnings result))
 
 (* The counts a consumer reads to assert that nothing was hidden from the
@@ -556,8 +580,8 @@ let print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts =
 
 (* Each side is its text and the name the report gives it, which is the path for
    a file and [<stdin>] for the stream. *)
-let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
-    =
+let compare_sources ~verbosity ~color ~mode ~limit ~json ~opts (css1, file1)
+    (css2, file2) =
   if json then print_json_report ~file1 ~file2 ~mode ~css1 ~css2 ~opts
   else if css1 = css2 then (
     Fmt.pr "CSS files are identical@.";
@@ -572,8 +596,7 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
     | No_diff -> (
         (* Equal ASTs can still hide what the parse dropped; show the warnings
            so the equality verdict is honest about them. *)
-        let max = warning_budget limit in
-        print_string (render_warnings ~file1 ~file2 ~max result);
+        print_string (render_warnings ~verbosity ~limit ~file1 ~file2 result);
         match losses_cancel result with
         | true ->
             Fmt.pr "CSS files are identical@.";
@@ -586,7 +609,8 @@ let compare_sources ~color ~mode ~limit ~json ~opts (css1, file1) (css2, file2)
             Stdlib.exit Cli_exit.cannot_determine)
     | String_diff _ | Tree_diff _ | Both_errors _ | Expected_error _
     | Actual_error _ ->
-        print_diff_report ~color ~file1 ~file2 ~css1 ~css2 ~limit ~mode result;
+        print_diff_report ~verbosity ~color ~file1 ~file2 ~css1 ~css2 ~limit
+          ~mode result;
         (* Differing inputs are a result, not a usage error: exit 1 as
            documented, distinct from cmdliner's reserved error codes. *)
         Stdlib.exit 1
@@ -602,7 +626,8 @@ let browser_document browser html =
   | true, Some html -> Ok (Some html)
   | false, None -> Ok None
 
-let compare_files file1 file2 style_renderer mode limit json opts document () =
+let compare_files file1 file2 style_renderer mode limit json opts document
+    verbosity =
   Fmt_tty.setup_std_outputs
     ?style_renderer:(resolve_style_renderer style_renderer)
     ();
@@ -625,23 +650,26 @@ let compare_files file1 file2 style_renderer mode limit json opts document () =
       else
         match (read_source file1, read_source file2) with
         | Ok source1, Ok source2 ->
-            compare_sources ~color ~mode ~limit ~json ~opts source1 source2
+            compare_sources ~verbosity ~color ~mode ~limit ~json ~opts source1
+              source2
         | Error e, _ | _, Error e -> Error e)
 
+let canonical_options = "CANONICAL OPTIONS"
+let json_output = "JSON OUTPUT"
+let browser_options = "BROWSER OPTIONS"
+
 let file1_arg =
-  let doc = "First CSS file to compare (expected/reference; use - for stdin)" in
+  let doc = "The reference stylesheet; $(b,-) reads standard input." in
   Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE1" ~doc)
 
 let file2_arg =
-  let doc = "Second CSS file to compare (actual/test; use - for stdin)" in
+  let doc = "The stylesheet compared with it; $(b,-) reads standard input." in
   Arg.(required & pos 1 (some file) None & info [] ~docv:"FILE2" ~doc)
 
 let mode_arg =
   let doc =
-    "Diff mode: 'auto' (smart detection), 'tree' (force structural diff), \
-     'string' (force string diff), or 'canonical' (independently optimize and \
-     minify both inputs with the same canonical settings, then compare the \
-     resulting bytes)"
+    "What counts as a difference: $(b,auto), $(b,tree), $(b,string) or \
+     $(b,canonical), as the description says."
   in
   let mode_conv =
     Arg.enum
@@ -690,9 +718,9 @@ let json_arg =
      the human report, so a harness can branch on the exit status and read the \
      detail from the document. The exit status is unchanged. Nothing else \
      reaches standard output: parse warnings and parse errors are members of \
-     the document rather than lines beside it. Colour and $(b,--limit) shape \
-     the human report only and are ignored here, since the document reports \
-     every difference."
+     the document rather than lines beside it. JSON OUTPUT lists the members. \
+     Colour and $(b,--limit) shape the human report only and are ignored here, \
+     since the document reports every difference."
   in
   Arg.(value & flag & info [ "json" ] ~doc)
 
@@ -706,7 +734,7 @@ let lossless_arg =
      report as different rather than collapsing to equal. Has no effect \
      outside $(b,--diff=canonical)."
   in
-  Arg.(value & flag & info [ "lossless" ] ~doc)
+  Arg.(value & flag & info [ "lossless" ] ~docs:canonical_options ~doc)
 
 let enforce_spec_arg =
   let doc =
@@ -719,7 +747,7 @@ let enforce_spec_arg =
      targets reads it, so two sheets that differ there report as different. \
      Has no effect outside $(b,--diff=canonical)."
   in
-  Arg.(value & flag & info [ "enforce-spec" ] ~doc)
+  Arg.(value & flag & info [ "enforce-spec" ] ~docs:canonical_options ~doc)
 
 let prune_unused_custom_props_arg =
   let doc =
@@ -729,7 +757,9 @@ let prune_unused_custom_props_arg =
      dead-custom-property divergences (a render-no-op); enable only when that \
      difference is immaterial. Has no effect outside $(b,--diff=canonical)."
   in
-  Arg.(value & flag & info [ "prune-unused-custom-props" ] ~doc)
+  Arg.(
+    value & flag
+    & info [ "prune-unused-custom-props" ] ~docs:canonical_options ~doc)
 
 let browser_arg =
   let doc =
@@ -746,11 +776,14 @@ let browser_arg =
      headless Chromium ($(b,NODE), $(b,CHROME), or the usual places) and exits \
      2 without them."
   in
-  Arg.(value & flag & info [ "browser" ] ~doc)
+  Arg.(value & flag & info [ "browser" ] ~docs:browser_options ~doc)
 
 let html_arg =
   let doc = "The HTML document $(b,--browser) renders both files over." in
-  Arg.(value & opt (some file) None & info [ "html" ] ~docv:"FILE" ~doc)
+  Arg.(
+    value
+    & opt (some file) None
+    & info [ "html" ] ~docs:browser_options ~docv:"FILE" ~doc)
 
 let term =
   let open Term in
@@ -778,35 +811,83 @@ let man =
   [
     `S Manpage.s_description;
     `P
-      "$(tname) compares two CSS files and reports structural differences \
-       using a tree-based diff format with syntax highlighting.";
-    `P "The comparison parses both CSS files and detects:";
-    `I ("-", "Added, removed, or modified rules");
-    `I ("-", "Property value changes");
-    `I ("-", "Reordered rules");
-    `I ("-", "Changes in @media, @layer, and other at-rules");
-    `S Manpage.s_examples;
-    `P "Compare two CSS files:";
-    `Pre "  cascade diff reference.css output.css";
-    `P "Compare a stylesheet on standard input against a reference:";
-    `Pre "  cascade fmt --minify src.css | cascade diff reference.css -";
-    `P "Read the comparison as JSON instead of the report:";
-    `Pre "  cascade diff --json reference.css output.css";
+      "$(tname) parses $(i,FILE1) (the reference) and $(i,FILE2) and reports \
+       the rules and declarations that were added, removed, changed or moved \
+       between them. $(b,--diff) chooses what counts as a difference: \
+       $(b,auto) compares the structure and falls back to the text so that a \
+       formatting change still shows, $(b,tree) compares the structure only, \
+       $(b,string) the text, and $(b,canonical) minifies both sides the same \
+       way and compares the results, so two sheets that give every element the \
+       same computed values are the same.";
     `P
-      "Render both files over a document in a headless browser and report the \
-       computed styles that differ, as a report or as JSON:";
-    `Pre "  cascade diff --browser --html page.html reference.css output.css";
+      "The report opens with a summary: the size of each file and how many \
+       rules each kind of change touched. The parse warnings come next, a few \
+       and a count of the rest ($(b,-v) prints every one, $(b,-q) none), then \
+       the changes as a tree under $(b,---) $(i,FILE1) and $(b,+++) \
+       $(i,FILE2). A long report keeps as many changes as stay readable and \
+       says how to see the rest; $(b,--limit) sets that bound.";
+    `P
+      "The exit status is the verdict, described under EXIT STATUS: a script \
+       treats 1 as different and 2 as a failure to decide.";
+    `S Manpage.s_arguments;
+    `S Manpage.s_options;
+    `S canonical_options;
+    `S browser_options;
+    `S json_output;
+    `P
+      "$(b,--json) writes one object. A consumer reads the members it needs \
+       and ignores any it does not know.";
+    `I ("$(b,expected), $(b,actual)", "The names of the two inputs.");
+    `I ("$(b,mode)", "The $(b,--diff) mode.");
+    `I ("$(b,identical)", "$(b,true) exactly when the exit status is 0.");
+    `I
+      ( "$(b,unreadable_declarations), $(b,unreadable_rules)",
+        "What each side's reader dropped, as $(b,{expected, actual}) counts." );
+    `I
+      ( "$(b,stats)",
+        "The summary line: $(b,expected_chars), $(b,actual_chars) and a count \
+         per kind of change." );
+    `I
+      ( "$(b,warnings), $(b,errors)",
+        "The parse diagnostics, each $(b,{side, file, line, column, message}) \
+         with $(b,side) one of $(b,expected), $(b,actual) or $(b,both). A \
+         position the diagnostic does not carry is left out." );
+    `I
+      ( "$(b,changes)",
+        "The differences, each with a $(b,kind): $(b,added), $(b,removed), \
+         $(b,modified), $(b,selector_changed), $(b,reordered), \
+         $(b,rearranged), $(b,regrouped), $(b,layer_order), or $(b,container) \
+         with a $(b,change) and the $(b,changes) inside it." );
+    `I
+      ( "$(b,string_diff)",
+        "Present when the comparison fell back to the text: the first \
+         differing $(b,position) (a byte offset), its 1-based \
+         $(b,line_expected), $(b,column_expected), $(b,line_actual) and \
+         $(b,column_actual), and the two $(b,diff_lines)." );
+    `P
+      "Under $(b,--browser) the object describes the renders instead: \
+       $(b,document), $(b,first), $(b,second), $(b,browser), the \
+       $(b,viewports), $(b,states) and $(b,renders) sampled, and the computed \
+       values that differ under $(b,changes).";
+    `S Manpage.s_examples;
+    `P "Compare two files, or a build's output on standard input:";
     `Pre
-      "  cascade diff --browser --html page.html --json reference.css \
-       output.css";
-    `P "Disable colors using flag:";
-    `Pre "  cascade diff --color=never reference.css output.css";
-    `P "Disable colors using NO_COLOR environment variable:";
-    `Pre "  NO_COLOR=1 cascade diff reference.css output.css";
+      "cascade diff reference.css output.css\n\
+       cascade --minify src.css | cascade diff reference.css -";
+    `P "Check that a refactor or a minifier did not change the page:";
+    `Pre "cascade diff --diff=canonical before.css after.css";
+    `P "Read the comparison as JSON instead of the report:";
+    `Pre "cascade diff --json reference.css output.css";
+    `P
+      "Render both files over a page in a headless browser and report the \
+       computed styles that differ:";
+    `Pre "cascade diff --browser --html page.html reference.css output.css";
+    `P "Without colours:";
+    `Pre "NO_COLOR=1 cascade diff reference.css output.css";
   ]
 
 let cmd =
-  let doc = "Compare two CSS files with structural analysis" in
+  let doc = "Compare two stylesheets by what they do" in
   let exits =
     Cli_exit.with_defaults
       [

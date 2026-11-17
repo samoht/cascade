@@ -14,8 +14,9 @@ type position =
 let string_of_position = function
   | From -> "from"
   | To -> "to"
-  | Percent p -> Pp.string_of_float p ^ "%"
-  | Timeline_range (name, p) -> name ^ " " ^ Pp.string_of_float p ^ "%"
+  | Percent p -> String.concat "" [ Pp.string_of_float p; "%" ]
+  | Timeline_range (name, p) ->
+      String.concat "" [ name; " "; Pp.string_of_float p; "%" ]
 
 (** A keyframe selector (one or more positions). *)
 type selector = Positions of position list

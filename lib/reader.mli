@@ -32,6 +32,11 @@ val source : t -> string
 (** [source t] is the input [t] was built from after CSS Syntax 3 sec. 3.3
     preprocessing, which every position of [t] indexes. *)
 
+val indexed_source : t -> Error.Source.t
+(** [indexed_source t] is {!source} with the index of its positions. Every error
+    located in [t]'s input carries this one value, so the input is walked once
+    however many positions are asked for. *)
+
 type origin
 (** [origin] maps positions in {!source} back to the string {!val-of_string} was
     given. *)

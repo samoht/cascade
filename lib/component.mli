@@ -77,6 +77,11 @@ val source_loc : t -> Loc.t
 val rule_loc : rule -> Loc.t
 (** [rule_loc r] is the source range spanned by rule [r]. *)
 
+val without_locs : t list -> t list
+(** [without_locs values] is [values] with every source location, its tokens'
+    included, set to {!Loc.dummy}: the same value read anywhere. Physically
+    unchanged when none is set. *)
+
 val is_whitespace : t -> bool
 (** [is_whitespace cv] is [true] for a preserved whitespace token. *)
 

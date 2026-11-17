@@ -177,11 +177,11 @@ The --diff=string mode falls back to character-level diffing.
   CSS: 18 chars vs 19 chars (5.6% diff)
   Changes: none classified structurally (see report below)
   
-  Strings differ at position 12 (line 0, col 12)
+  Strings differ at line 1, column 13 (byte 12)
   
   --- g.css
   +++ h.css
-  @@ position 12 @@
+  @@ line 1 @@
   -.x { color: red }
   +.x { color: blue }
                ^

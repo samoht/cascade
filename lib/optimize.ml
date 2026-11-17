@@ -61,13 +61,10 @@ let edges_of_rule = Edge.of_rule
 
 (** {1 Declaration Optimization} *)
 
-let duplicate_buggy_properties = Shorthand.duplicate_buggy_properties
 let merge_overflow_longhands = Shorthand.merge_overflow_longhands
 let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
 let compose_shorthands = Shorthand.compose_shorthands
-let deduplicate_declarations_with = Shorthand.deduplicate_declarations_with
 let deduplicate_declarations = Shorthand.deduplicate_declarations
-let single_rule_without_nested = Rule.single
 let declaration_run = Rule.declaration_run
 let finalize_rule_without_nested = Rule.finalize
 
@@ -128,16 +125,6 @@ let factor_rules_incremental ?cache ~settle ~ctx ~held rules =
     ~finalize:(finalize_rule_without_nested ~held ~ctx)
     rules
 
-(* Keep the cheap rule-local pipeline independent of the stylesheet-wide
-   factoring budget. [Rule.finalize] normalizes any shorthand it synthesizes, so
-   one linear preparation pass reaches the local fixed point even when a large
-   stylesheet limits the global walks. *)
-let normalize_rules_locally ~ctx ~held rules =
-  list_map_preserve (single_rule_without_nested ~ctx) rules
-  |> Rule.drop_shadowed
-  |> list_map_preserve
-       (finalize_rule_without_nested ~held ~canonicalize_selector:false ~ctx)
-
 let merge_adjacent_and_mark ~ctx invalidated rules =
   let settled = Rule.merge_adjacent_identical ~ctx rules in
   (* Each produced rule is fully normalized by the scheduler's finalizer. A node
@@ -163,7 +150,8 @@ let factor_rules_until_settled ?factor_cache ~ctx ~held rules =
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)
-let canonicalize_scope_selector sel = Selector.canonicalize sel
+let canonicalize_scope_selector ~enforce_spec sel =
+  Selector.canonicalize ~enforce_spec sel
 
 (* CSS Fonts 4 (ED) sec. 4.4 gives the [font-weight] and [font-width]
    descriptors the values of the properties of the same name, so a descriptor
@@ -212,11 +200,8 @@ let normalize_font_face stmt descriptors =
 let drop_nesting_prefix (stmt : statement) : statement =
   match stmt with
   | Rule nr ->
-      Rule
-        {
-          nr with
-          selector = Selector.drop_redundant_nesting_prefix nr.selector;
-        }
+      let selector = Selector.drop_redundant_nesting_prefix nr.selector in
+      if selector == nr.selector then stmt else Rule { nr with selector }
   | other -> other
 
 (* A selector list holding a vendor pseudo-element is invalidated as a whole by
@@ -380,8 +365,12 @@ and process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
 
 and process_scope_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     acc stmt start end_ block rest =
-  let start' = option_map_preserve canonicalize_scope_selector start in
-  let end_' = option_map_preserve canonicalize_scope_selector end_ in
+  let start' =
+    option_map_preserve (canonicalize_scope_selector ~enforce_spec) start
+  in
+  let end_' =
+    option_map_preserve (canonicalize_scope_selector ~enforce_spec) end_
+  in
   let optimized_block =
     descend_block ?factor_cache ~ctx ~enforce_spec ~owner:scope_owner ~supports
       block
@@ -561,7 +550,7 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   let rule = drop_dead_nested_rules (rule_with_nested rule nested) in
   let rule = hoist_declaration_runs rule in
   let rule =
-    let selector = Selector.canonicalize rule.selector in
+    let selector = Selector.canonicalize ~enforce_spec rule.selector in
     if selector == rule.selector then rule else { rule with selector }
   in
   merge_lone_nested_rule rule
@@ -586,7 +575,7 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   in
   (* Apply local rule normalization before the DAG factor scheduler decides
      global selector/declaration grouping. *)
-  let prepared = normalize_rules_locally ~ctx ~held with_optimized_nested in
+  let prepared = Rule.normalize ~ctx ~held with_optimized_nested in
   (* Factoring is greedy and global: extracting one shared declaration subset
      can leave behind leftovers that are themselves factorable. The local linear
      optimizations above always run; this incremental gate only decides whether
@@ -636,7 +625,7 @@ let drop_shadowed_keyframes (stmts : statement list) : statement list =
         else walk (kf :: acc) rest
     | stmt :: rest -> walk (stmt :: acc) rest
   in
-  walk [] stmts
+  List.preserve stmts (walk [] stmts)
 
 (* CSS Cascade 5 sec. 6.4.2: rules from all occurrences of a named layer
    accumulate. Merge same-name blocks at the FIRST NON-EMPTY occurrence so
@@ -670,7 +659,8 @@ let single_rule ?scope (rule : rule) : rule =
   in
   {
     rule with
-    declarations = deduplicate_declarations_with ~ctx rule.declarations;
+    declarations =
+      Shorthand.deduplicate_declarations_with ~ctx rule.declarations;
   }
 
 let rules ?scope (rules : rule list) : rule list =
@@ -803,11 +793,6 @@ let add_compatibility_prefixes ~targets stylesheet =
     if stmt == original then Keep else Replace stmt
   in
   edit_statements rewrite stylesheet
-
-(* A WebKit workaround is a property of the declaration, so it applies wherever
-   the declaration sits. *)
-let apply_property_duplication (stylesheet : t) : t =
-  map_declarations duplicate_buggy_properties stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@keyframes] frames, [@page] and its margin boxes,
@@ -1183,6 +1168,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let scope = Option.value scope ~default:`Fragment in
   let ctx = single_valued_calc_ctx stylesheet in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
+  let stylesheet = Stylesheet.drop_inert_at_rules stylesheet in
   (* Under [lossless] the raw body stands as authored: nothing types it, so
      nothing proves the layout inside it carries no meaning to its reader. *)
   let stylesheet =
@@ -1192,6 +1178,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     if flatten_nesting then Flatten.block stylesheet else stylesheet
   in
   let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
+  let stylesheet = Stylesheet.normalise_shadow_color_vars stylesheet in
   let registered = registered_foldable stylesheet in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =

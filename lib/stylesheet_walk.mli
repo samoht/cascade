@@ -116,3 +116,24 @@ val container_queries :
   stylesheet -> (string option * Container.t option * rule list) list
 (** [container_queries ss] is every [@container] in [ss] with every rule below
     its brace. *)
+
+(** {1 Inert at-rules} *)
+
+val font_face_participates : font_face_descriptor list -> bool
+(** [font_face_participates descriptors] holds when [descriptors] carry both
+    [font-family] and [src], without which CSS Fonts 4 sec. 4.1 ignores the
+    [@font-face]. *)
+
+val drop_inert_at_rules : stylesheet -> stylesheet
+(** [drop_inert_at_rules stylesheet] drops the at-rules no browser applies: an
+    [@font-face] without a [font-family] or a [src] descriptor (CSS Fonts 4 sec.
+    4.1), at any depth, an [@charset "UTF-8"], and every [@charset] after the
+    first (CSS Syntax 3 (ED) sec. 8.3). Physically unchanged when nothing goes.
+*)
+
+val normalise_shadow_color_vars : stylesheet -> stylesheet
+(** [normalise_shadow_color_vars stylesheet] moves a [var()] the reader put in a
+    [box-shadow]'s blur slot to its colour slot when the variable is a typed
+    [<color>] custom property somewhere in [stylesheet] (CSS Properties and
+    Values API 1 sec. 2), so [0 0 var(--ring)] reads as [0 0 0 var(--ring)].
+    Physically unchanged when no such variable exists. *)

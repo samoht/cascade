@@ -68,12 +68,7 @@ let custom_property_refusal name value =
    and again from its end, so a stream built from text carries neither. Only the
    ends go: sec. 4.1 of CSS Custom Properties 1 (ED) forbids normalizing what is
    between them. *)
-let trim_declaration_value components =
-  let rec drop_leading = function
-    | cv :: rest when Component.is_whitespace cv -> drop_leading rest
-    | kept -> kept
-  in
-  components |> drop_leading |> List.rev |> drop_leading |> List.rev
+let trim_declaration_value = List.trim Component.is_whitespace
 
 (* Helper for raw custom properties - primarily for internal use *)
 
@@ -461,7 +456,9 @@ let read_importance t =
       Cursor.ws t;
       let ident = Cursor.ident t in
       if String.lowercase_ascii_preserve ident = "important" then true
-      else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
+      else
+        Cursor.err_invalid t
+          (String.concat "" [ "invalid !important declaration: !"; ident ])
   | _ -> false
 
 let is_plain_property_name name =
@@ -483,7 +480,8 @@ let is_plain_property_name name =
 
 let validate_printable_property_name t name =
   if not (is_plain_property_name name) then
-    Cursor.err_invalid t ("unprintable property name: " ^ name)
+    Cursor.err_invalid t
+      (String.concat "" [ "unprintable property name: "; name ])
 
 let is_vendor_extension_property_name name =
   let len = String.length name in
@@ -500,20 +498,9 @@ let validate_unknown_property_name t name =
     String.length name > 0
     && name.[0] = '-'
     && not (is_vendor_extension_property_name name)
-  then Cursor.err_invalid t ("invalid vendor extension property name: " ^ name)
-
-(* Check if a custom property name is a font-family variable *)
-
-(** Parse a custom property (--name: value) *)
-let is_font_family_var name =
-  let bare = Custom_property_name.strip_prefix name in
-  let starts_with prefix s =
-    String.length s >= String.length prefix
-    && String.sub s 0 (String.length prefix) = prefix
-  in
-  starts_with "font-" bare
-  || starts_with "default-font-family" bare
-  || starts_with "default-mono-font-family" bare
+  then
+    Cursor.err_invalid t
+      (String.concat "" [ "invalid vendor extension property name: "; name ])
 
 (* CSS Syntax 3 (ED) sec. 5.5.6 takes the flag off when the last two
    non-whitespace values of the declaration are a [!] delim and an ident
@@ -548,15 +535,6 @@ let split_important value =
     else (trimmed, false)
   else (trimmed, false)
 
-let read_custom_property_payload name value_str =
-  if is_font_family_var name then
-    let trimmed = String.trim value_str in
-    if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
-      read_custom_property_value (Cursor.of_string value_str)
-    else
-      read_custom_property_value ~font_family:true (Cursor.of_string value_str)
-  else read_custom_property_value (Cursor.of_string value_str)
-
 (* The [name] declaration formed over the value at [t]; split from
    [read_custom_property_declaration] for a caller that already holds the
    name. *)
@@ -570,9 +548,10 @@ let read_custom_value_declaration t name : declaration =
   reject_custom_bad_string t;
   let raw_value = Cursor.consume_until_semicolon ~trim:false t in
   let value_str, is_important = split_important raw_value in
-  if not (is_optional_declaration_value value_str) then
+  let value = Cursor.of_string value_str in
+  if not (components_stay_in_declaration (Cursor.remaining value)) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
-  let custom_value = read_custom_property_payload name value_str in
+  let custom_value = read_custom_property_value value in
   let decl =
     v (Custom_property name)
       (Custom_value { value = custom_value; layer = None; meta = None })
@@ -587,7 +566,8 @@ let read_custom_property_declaration t : declaration =
      original lexer's tokenization: the only validation we still run is the
      [<dashed-ident>] prefix check. *)
   if String.length name <= 2 || name.[0] <> '-' || name.[1] <> '-' then
-    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name);
+    Cursor.err_invalid t
+      (String.concat "" [ "expected <dashed-ident>, got: "; name ]);
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   read_custom_value_declaration t name
@@ -608,13 +588,7 @@ let property_allows_keyword_as_ident = function
    [var()] that may resolve to one); detect that directly on the component list,
    ignoring leading and trailing whitespace, without rebuilding a string. *)
 let components_are_lone_css_wide cvs =
-  let non_ws =
-    List.filter
-      (function
-        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-        | _ -> true)
-      cvs
-  in
+  let non_ws = List.filter (Fun.negate Component.is_whitespace) cvs in
   match non_ws with
   | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
       Properties.is_css_wide_keyword ident
@@ -693,11 +667,15 @@ let validate_anchor_queries t name components =
   if
     components_call_named [ "anchor" ] components
     && not (allowed inset_properties)
-  then Cursor.err_invalid t ("anchor() is not a value of " ^ name);
+  then
+    Cursor.err_invalid t
+      (String.concat "" [ "anchor() is not a value of "; name ]);
   if
     components_call_named [ "anchor-size" ] components
     && not (allowed anchor_size_properties)
-  then Cursor.err_invalid t ("anchor-size() is not a value of " ^ name)
+  then
+    Cursor.err_invalid t
+      (String.concat "" [ "anchor-size() is not a value of "; name ])
 
 let validate_regular_property_components t name components =
   (* CSS Syntax 3 (ED) sec. 5.5.6 gives a declaration a value of one or more

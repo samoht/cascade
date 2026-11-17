@@ -123,27 +123,34 @@ let strip_tool_header css =
   String.trim (String.sub css start (String.length css - start))
 
 (* A warning located in the stripped text, moved back to its place in the file:
-   the stripped prefix, preprocessed as the reader would (CSS Syntax 3 (ED) sec.
-   3.3), goes back in front of the source and of the location. *)
-let relocate ~prefix (e : Error.t) =
-  if prefix = "" then e
-  else
-    let prefix = Reader.source (Reader.of_string prefix) in
-    let shift = String.length prefix in
-    {
-      e with
-      loc =
-        Loc.v ~start_pos:(e.loc.start_pos + shift)
-          ~end_pos:(e.loc.end_pos + shift);
-      source = Option.map (fun s -> String.concat "" [ prefix; s ]) e.source;
-    }
+   [shift] bytes further on, in [source], the stripped prefix in front of the
+   stripped text. *)
+let relocate ~shift ~source (e : Error.t) =
+  {
+    e with
+    loc =
+      Loc.v ~start_pos:(e.loc.start_pos + shift) ~end_pos:(e.loc.end_pos + shift);
+    source = (match e.source with Some _ -> Some source | None -> None);
+  }
 
 (* [css] read the way [diff] compares it, with its warnings and error placed in
-   the file [filename] names. *)
+   the file [filename] names. The warnings of one parse share one source, so the
+   moved one is built once, from both parts preprocessed as the reader does (CSS
+   Syntax 3 (ED) sec. 3.3), and they share its index in turn. *)
 let parse_input ?filename css =
-  let prefix = String.sub css 0 (tool_header_end css) in
-  let relocate = relocate ~prefix in
-  match Css.of_string ?filename (strip_tool_header css) with
+  let stripped = strip_tool_header css in
+  let relocate =
+    match tool_header_end css with
+    | 0 -> Fun.id
+    | header_end ->
+        let preprocess s = Reader.source (Reader.of_string s) in
+        let prefix = preprocess (String.sub css 0 header_end) in
+        let source =
+          Error.Source.v (String.concat "" [ prefix; preprocess stripped ])
+        in
+        relocate ~shift:(String.length prefix) ~source
+  in
+  match Css.of_string ?filename stripped with
   | Ok parse ->
       Ok { parse with Css.warnings = List.map relocate parse.warnings }
   | Error e -> Error (relocate e)
@@ -564,42 +571,18 @@ let canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
       |> Css.to_string ~minify:true ~lossless)
   with Invalid_argument _ -> None
 
-(* Parse both sides before canonicalising either. A caller that retries at a
-   different strictness needs only to know that one side failed to parse, and
-   canonicalising the other first is the whole pipeline's work thrown away. *)
-let canonical_both ~strict ~lossless ~enforce_spec ~prune_unused_custom_props
-    expected actual =
-  match (Css.of_string ~strict expected, Css.of_string ~strict actual) with
-  | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } -> (
-      let canonical =
-        canonical_of_stylesheet ~lossless ~enforce_spec
-          ~prune_unused_custom_props
-      in
-      match (canonical expected, canonical actual) with
-      | Some expected, Some actual -> Some (expected, actual)
-      | _ -> None)
-  | _ -> None
-
-let canonical_pair ~strict ~lossless ?(enforce_spec = false) expected actual =
-  canonical_both ~strict ~lossless ~enforce_spec
-    ~prune_unused_custom_props:false expected actual
-  |> Option.map (fun (expected, actual) -> String.equal expected actual)
-
-let canonical_diff_inputs ~strict ~lossless ~enforce_spec
-    ?(prune_unused_custom_props = false) expected actual =
-  canonical_both ~strict ~lossless ~enforce_spec ~prune_unused_custom_props
-    expected actual
-
-let canonical_diff_inputs_with_fallback ~lossless ~enforce_spec
-    ?(prune_unused_custom_props = false) expected actual =
-  match
-    canonical_diff_inputs ~strict:true ~lossless ~enforce_spec
-      ~prune_unused_custom_props expected actual
-  with
-  | Some _ as result -> result
-  | None ->
-      canonical_diff_inputs ~strict:false ~lossless ~enforce_spec
-        ~prune_unused_custom_props expected actual
+(* Both canonical forms, from the two stylesheets the lenient parse returns. A
+   strict parse would only refuse a sheet with warnings: when it succeeds its
+   stylesheet is the lenient one, so there is nothing to retry. *)
+let canonical_both ~lossless ~enforce_spec ~prune_unused_custom_props expected
+    actual =
+  let canonical =
+    canonical_of_stylesheet ~lossless ~enforce_spec ~prune_unused_custom_props
+  in
+  match canonical expected with
+  | None -> None
+  | Some expected ->
+      Option.map (fun actual -> (expected, actual)) (canonical actual)
 
 (* Internal: full-stylesheet equality under the canonical minified form. *)
 let semantic_equal ?property ?(lossless = false) expected actual =
@@ -609,14 +592,15 @@ let semantic_equal ?property ?(lossless = false) expected actual =
   else
     let expected_css = css_for_semantic_comparison ?property expected in
     let actual_css = css_for_semantic_comparison ?property actual in
-    match canonical_pair ~strict:true ~lossless expected_css actual_css with
-    | Some equal -> equal
-    | None -> (
+    match (Css.of_string expected_css, Css.of_string actual_css) with
+    | Ok { stylesheet = expected; _ }, Ok { stylesheet = actual; _ } -> (
         match
-          canonical_pair ~strict:false ~lossless expected_css actual_css
+          canonical_both ~lossless ~enforce_spec:false
+            ~prune_unused_custom_props:false expected actual
         with
-        | Some equal -> equal
+        | Some (expected, actual) -> String.equal expected actual
         | None -> false)
+    | Error _, _ | _, Error _ -> false
 
 let equivalent_value ?lossless ~property a b =
   semantic_equal ?lossless ~property a b
@@ -812,10 +796,15 @@ let diff_canonical ~lossless ~enforce_spec ~prune_unused_custom_props ~expected
     ~actual ~expected_parse ~actual_parse =
   if expected = actual then No_diff
   else
-    match
-      canonical_diff_inputs_with_fallback ~lossless ~enforce_spec
-        ~prune_unused_custom_props expected actual
-    with
+    let canonical =
+      match (expected_parse, actual_parse) with
+      | Ok { Css.stylesheet = expected; _ }, Ok { Css.stylesheet = actual; _ }
+        ->
+          canonical_both ~lossless ~enforce_spec ~prune_unused_custom_props
+            expected actual
+      | Error _, _ | _, Error _ -> None
+    in
+    match canonical with
     | None -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
     | Some (expected_canon, actual_canon) ->
         (* The canonical form is what this mode compares: equivalent inputs
@@ -996,18 +985,35 @@ let partition_warnings expected actual =
   in
   go [] (List.map keyed actual) [] (List.map keyed expected)
 
-let pp_warning buf label w =
+(* A warning names the file it was read from in its location. One both files
+   raise is located in the first and says on its first line that the second
+   raised it too. *)
+let pp_warning buf ~also w =
   start_line buf;
-  add_strings buf [ label; " parse warning: "; Error.to_string w; "\n" ]
+  let text = Error.to_string ~severity:`Warning w in
+  match also with
+  | None -> add_strings buf [ text; "\n" ]
+  | Some other ->
+      let first, rest =
+        match String.index_opt text '\n' with
+        | Some i ->
+            (String.sub text 0 i, String.sub text i (String.length text - i))
+        | None -> (text, "")
+      in
+      add_strings buf [ first; " (also in "; other; ")"; rest; "\n" ]
 
-let pp_overflow buf label hidden =
+(* The count of what [max] left out ends with [more], the caller's word on how
+   to see the rest. *)
+let pp_overflow buf ~more label hidden =
   start_line buf;
   add_strings buf
     [
       label;
       ": ";
       string_of_int hidden;
-      (if hidden = 1 then " more parse warning\n" else " more parse warnings\n");
+      (if hidden = 1 then " more parse warning" else " more parse warnings");
+      more;
+      "\n";
     ]
 
 let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
@@ -1019,26 +1025,14 @@ let pp_result ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
       String_diff.pp ~expected_label:expected ~actual_label:actual buf sdiff
   | No_diff -> ()
   | Both_errors (e1, e2) ->
-      let err1 = Error.to_string e1 in
-      let err2 = Error.to_string e2 in
-      if String.equal err1 err2 then
-        add_strings buf [ "Both CSS have same parse error: "; err1 ]
-      else
-        add_strings buf
-          [
-            "Parse errors:\n  ";
-            expected;
-            ": ";
-            err1;
-            "\n  ";
-            actual;
-            ": ";
-            err2;
-          ]
-  | Expected_error e ->
-      add_strings buf [ expected; " CSS parse error: "; Error.to_string e ]
-  | Actual_error e ->
-      add_strings buf [ actual; " CSS parse error: "; Error.to_string e ]
+      add_strings buf
+        [
+          Error.to_string ~severity:`Error e1;
+          "\n";
+          Error.to_string ~severity:`Error e2;
+        ]
+  | Expected_error e | Actual_error e ->
+      Buffer.add_string buf (Error.to_string ~severity:`Error e)
 
 (* Render parse warnings so a declaration the parser dropped never reads as a
    phantom structural difference on the side that parsed. A warning both sides
@@ -1057,28 +1051,29 @@ let warnings t =
   let tag side = List.map (fun w -> (side, w)) in
   tag Expected expected_only @ tag Actual actual_only @ tag Both shared
 
-let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max buf t =
+let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max ?(more = "")
+    buf t =
   let shared, expected_only, actual_only =
     partition_warnings t.expected_warnings t.actual_warnings
   in
   let remaining = ref (Option.value max ~default:Stdlib.max_int) in
   (* One pass: the count of what was left out is part of the report, so the
      whole list is walked whether or not the budget runs out early. *)
-  let render label ws =
+  let render ?also label ws =
     let hidden = ref 0 in
     List.iter
       (fun w ->
         if !remaining > 0 then begin
           decr remaining;
-          pp_warning buf label w
+          pp_warning buf ~also w
         end
         else incr hidden)
       ws;
-    if !hidden > 0 then pp_overflow buf label !hidden
+    if !hidden > 0 then pp_overflow buf ~more label !hidden
   in
   render expected expected_only;
   render actual actual_only;
-  render (String.concat "" [ expected; " and "; actual ]) shared
+  render ~also:actual (String.concat "" [ expected; " and "; actual ]) shared
 
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 

@@ -43,5 +43,5 @@ val mentioned_custom_names : Stylesheet.t -> string list
     [stylesheet] declares or references. *)
 
 val var_census : Stylesheet.t -> (string, int) Hashtbl.t * string list
-(** [var_census stylesheet] is the number of scopes defining each custom
-    property, and the names referenced anywhere. *)
+(** [var_census stylesheet] is the number of distinct values each custom
+    property takes, and the names referenced anywhere. *)

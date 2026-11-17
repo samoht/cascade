@@ -551,6 +551,59 @@ let spec_at_rule_name_case_insensitive () =
   rejects "@media with a malformed prelude" "@media (bad{a{color:red}}";
   rejects "@MEDIA with a malformed prelude" "@MEDIA (bad{a{color:red}}"
 
+(* A var() fallback that does not parse as the property's grammar is kept as
+   tokens, which is an ordinary outcome and not a diagnostic. Describing the
+   failure anyway means locating it, a walk over the source up to the fallback,
+   so a sheet of them would cost its size squared. Allocation shows it without a
+   clock: twice the rules allocate twice as much in a linear parse. *)
+let var_fallback_cost_is_linear () =
+  let sheet n =
+    String.concat ""
+      (List.init n (fun i ->
+           String.concat ""
+             [ ".a"; string_of_int i; "{color:var(--c,10px 20px)}\n" ]))
+  in
+  let words n =
+    let css = sheet n in
+    Css_test_helpers.measure (fun () -> of_string ~strict:false css)
+  in
+  let a1 = words 1000 and a2 = words 2000 in
+  Alcotest.(check bool)
+    (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x rules)" a1 a2 (a2 /. a1))
+    true
+    (a1 > 0. && a2 < a1 *. 3.)
+
+(* A warning says what became of the construct it reports on: [Recovered] keeps
+   it in the output and [Dropped] loses it. An [@media] block is no different
+   from an [@supports] one there, and its own condition, which the block keeps,
+   stays [Recovered]. *)
+let warnings_inside_media_keep_their_recovery () =
+  let recoveries css =
+    match of_string ~strict:false css with
+    | Error e -> Alcotest.failf "lenient parse failed: %s" (Error.to_string e)
+    | Ok parsed ->
+        List.map
+          (fun (w : Error.t) ->
+            match w.recovery with
+            | Error.Recovery.Dropped { construct = Rule; _ } -> "dropped rule"
+            | Dropped { construct = Declaration; _ } -> "dropped declaration"
+            | Recovered -> "recovered")
+          parsed.warnings
+  in
+  let check name expected css =
+    Alcotest.(check (list string)) name expected (recoveries css)
+  in
+  check "rule in @supports" [ "dropped rule" ]
+    "@supports (color:red){a!{color:red}}";
+  check "rule in @media" [ "dropped rule" ] "@media screen{a!{color:red}}";
+  check "rule in nested @media" [ "dropped rule" ]
+    "@media screen{@media print{a!{color:red}}}";
+  check "declaration in @media" [ "dropped declaration" ]
+    "@media screen{a{color:red;color:1px}}";
+  check "condition and rule in @media"
+    [ "dropped rule"; "recovered" ]
+    "@media screen,,print{a!{color:red}}"
+
 let suite =
   ( "css_parsing",
     [
@@ -567,4 +620,8 @@ let suite =
         `Quick spec_author_ident_case_sensitive;
       Alcotest.test_case "spec section 4.1 at-rule name case is insensitive"
         `Quick spec_at_rule_name_case_insensitive;
+      Alcotest.test_case "var() fallback cost is linear" `Quick
+        var_fallback_cost_is_linear;
+      Alcotest.test_case "warnings inside @media keep their recovery" `Quick
+        warnings_inside_media_keep_their_recovery;
     ] )

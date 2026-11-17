@@ -71,8 +71,8 @@ let restore sp saved =
   sp.fill <- saved.fill
 
 let is_pseudo_element = function
-  | Selector.Before _ | Selector.After _ | Selector.First_line _
-  | Selector.First_letter _ | Selector.Marker | Selector.Placeholder
+  | Selector.Before | Selector.After | Selector.First_line
+  | Selector.First_letter | Selector.Marker | Selector.Placeholder
   | Selector.Selection | Selector.Backdrop | Selector.File_selector_button
   | Selector.Target_text | Selector.Spelling_error | Selector.Grammar_error
   | Selector.Highlight _ | Selector.Part _ | Selector.Slotted _ | Selector.Cue _
@@ -171,17 +171,12 @@ let set_attr sp name value =
    agrees rather than merely the synthesiser. *)
 let operand_value = function
   | Selector.Presence -> ""
-  | Selector.Exact v | Selector.Exact_quoted (v, _) -> v
-  | Selector.Whitespace_list v | Selector.Whitespace_list_quoted (v, _) ->
-      String.concat "" [ "zz "; v; " yy" ]
-  | Selector.Hyphen_list v | Selector.Hyphen_list_quoted (v, _) ->
-      String.concat "" [ v; "-zz" ]
-  | Selector.Prefix v | Selector.Prefix_quoted (v, _) ->
-      String.concat "" [ v; "zz" ]
-  | Selector.Suffix v | Selector.Suffix_quoted (v, _) ->
-      String.concat "" [ "zz"; v ]
-  | Selector.Substring v | Selector.Substring_quoted (v, _) ->
-      String.concat "" [ "zz"; v; "yy" ]
+  | Selector.Exact v -> v
+  | Selector.Whitespace_list v -> String.concat "" [ "zz "; v; " yy" ]
+  | Selector.Hyphen_list v -> String.concat "" [ v; "-zz" ]
+  | Selector.Prefix v -> String.concat "" [ v; "zz" ]
+  | Selector.Suffix v -> String.concat "" [ "zz"; v ]
+  | Selector.Substring v -> String.concat "" [ "zz"; v; "yy" ]
 
 let swap_case =
   String.map (function
@@ -202,23 +197,16 @@ let attribute_value flag m =
    Selectors 4 sec. 6.1 and 6.2. *)
 let attribute_matchable = function
   | Selector.Whitespace_list ""
-  | Selector.Whitespace_list_quoted ("", _)
   | Selector.Hyphen_list ""
-  | Selector.Hyphen_list_quoted ("", _)
   | Selector.Prefix ""
-  | Selector.Prefix_quoted ("", _)
   | Selector.Suffix ""
-  | Selector.Suffix_quoted ("", _)
-  | Selector.Substring ""
-  | Selector.Substring_quoted ("", _) ->
+  | Selector.Substring "" ->
       false
   | _ -> true
 
 (* The smallest 1-based index An+B selects, or none when the sequence never
    reaches a real position. *)
 let nth_index = function
-  | Selector.Odd -> Some 1
-  | Selector.Even -> Some 2
   | Selector.Index b -> if b >= 1 then Some b else None
   | Selector.An_plus_b (a, b) ->
       if a = 0 then if b >= 1 then Some b else None
@@ -389,8 +377,8 @@ let rec add sp part =
       want_tag sp "input";
       set_attr sp "type" "file"
   | Selector.Marker -> want_tag sp "li"
-  | Selector.Before _ | Selector.After _ | Selector.First_line _
-  | Selector.First_letter _ | Selector.Backdrop | Selector.Selection ->
+  | Selector.Before | Selector.After | Selector.First_line
+  | Selector.First_letter | Selector.Backdrop | Selector.Selection ->
       ()
   (* Pseudo-elements that need a shadow tree, a highlight registry or a running
      view transition. *)

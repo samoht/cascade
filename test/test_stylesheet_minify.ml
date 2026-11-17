@@ -1157,14 +1157,17 @@ let c61_merge_across_nonconflicting () =
    Each canonicalization above is a minify-only optimization; the pretty printer
    must keep the source spelling. *)
 
-let fidelity_nth_child_form_preserved () =
-  pretty_preserves ".x :nth-child(2n+1) { color: red }" [ "2n+1" ];
-  pretty_preserves ".x :nth-child(even) { color: red }" [ "even" ];
+(* docs/invariants.md: "Source-token fidelity is not a contract." A selector
+   reads into one node whatever its spelling (Selectors 4 sec. 6.1, sec. 14),
+   and pretty output spells that node one way. *)
+let pretty_nth_child_spells_the_node () =
+  pretty_preserves ".x :nth-child(2n+1) { color: red }" [ ":nth-child(odd)" ];
+  pretty_preserves ".x :nth-child(even) { color: red }" [ ":nth-child(even)" ];
   pretty_preserves ".x :nth-child(1) { color: red }" [ ":nth-child(1)" ]
 
-let fidelity_attribute_quotes_preserved () =
-  pretty_preserves ".x [type=\"text\"] { color: red }" [ "[type=\"text\"]" ];
-  pretty_preserves ".x [data-x='hello'] { color: red }" [ "[data-x='hello']" ]
+let pretty_attribute_value_spells_the_node () =
+  pretty_preserves ".x [type=text] { color: red }" [ "[type=\"text\"]" ];
+  pretty_preserves ".x [data-x='hello'] { color: red }" [ "[data-x=\"hello\"]" ]
 
 let fidelity_scientific_notation_preserved () =
   pretty_preserves ".x { width: 1e3px }" [ "1e3px" ];
@@ -1318,12 +1321,12 @@ let suite =
       ( "spec cascade 6.1 merge across non-conflicting intervening rule pair",
         `Quick,
         c61_merge_across_nonconflicting );
-      ( "fidelity nth-child form preserved",
+      ( "pretty nth-child spells the node",
         `Quick,
-        fidelity_nth_child_form_preserved );
-      ( "fidelity attribute quotes preserved",
+        pretty_nth_child_spells_the_node );
+      ( "pretty attribute value spells the node",
         `Quick,
-        fidelity_attribute_quotes_preserved );
+        pretty_attribute_value_spells_the_node );
       ( "fidelity scientific notation preserved",
         `Quick,
         fidelity_scientific_notation_preserved );

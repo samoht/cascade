@@ -175,10 +175,35 @@ let check_construct name to_string expected value =
 (** Common CSS-wide keywords *)
 let css_wide_keywords = [ "inherit"; "unset"; "revert"; "revert-layer" ]
 
-(** Minor words allocated by a thunk, for the allocation guards *)
+(* A promoted word is counted in both [major] and [promoted]. *)
+let allocated_words () =
+  let minor, promoted, major = Gc.counters () in
+  minor +. major -. promoted
+
 let measure f =
   Gc.full_major ();
-  let w0 = Gc.minor_words () in
+  let w0 = allocated_words () in
   let r = f () in
   ignore (Sys.opaque_identity r);
-  Gc.minor_words () -. w0
+  allocated_words () -. w0
+
+let strict_agrees_with_lenient css =
+  let minified (parse : Css.parse) =
+    match
+      parse.stylesheet
+      |> Css.optimize ~scope:`Stylesheet
+      |> Css.to_string ~minify:true
+    with
+    | s -> Some s
+    | exception Invalid_argument _ -> None
+  in
+  match (Css.of_string ~strict:true css, Css.of_string ~strict:false css) with
+  | Ok strict, Ok lenient ->
+      Alcotest.(check (option string))
+        (Fmt.str "strict and lenient minify alike: %s" css)
+        (minified lenient) (minified strict);
+      true
+  | Ok _, Error e ->
+      Alcotest.failf "strict reads what lenient refuses (%s): %s"
+        (Error.to_string e) css
+  | Error _, _ -> false

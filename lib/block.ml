@@ -38,67 +38,50 @@ let has_nested_preference_media block =
       | _ -> false)
     block
 
-(* CSS Cascade 6.4: consecutive named [@layer] blocks with the same name are
-   spec-equivalent to a single block. Merge them when no rule with a conflicting
-   condition appears between. Anonymous layers stay distinct because each
-   [@layer { ... }] without a name creates a new layer. *)
-let rec needs_layer_merge = function
-  | Layer (Some prev_name, _) :: Layer (Some name, _) :: _
-    when equal_layer_name prev_name name ->
-      true
-  | _ :: rest -> needs_layer_merge rest
-  | [] -> false
-
-let merge_layer_blocks ~optimize_merged_block stmts =
-  let rec merge acc prev = function
-    | [] -> (
-        match prev with
-        | Some (Some name, block) ->
-            List.rev (Layer (Some name, optimize_merged_block block) :: acc)
-        | Some (None, block) -> List.rev (Layer (None, block) :: acc)
-        | None -> List.rev acc)
-    | Layer (Some name, block) :: rest -> (
-        match prev with
-        | Some (Some prev_name, prev_block) when equal_layer_name prev_name name
-          ->
-            merge acc (Some (Some name, prev_block @ block)) rest
-        | Some (Some prev_name, prev_block) ->
-            merge
-              (Layer (Some prev_name, optimize_merged_block prev_block) :: acc)
-              (Some (Some name, block))
-              rest
-        | Some (None, prev_block) ->
-            merge
-              (Layer (None, prev_block) :: acc)
-              (Some (Some name, block))
-              rest
-        | None -> merge acc (Some (Some name, block)) rest)
-    | (Layer (None, _) as anon) :: rest -> (
-        match prev with
-        | Some (Some prev_name, prev_block) ->
-            merge
-              (Layer (Some prev_name, optimize_merged_block prev_block) :: acc)
-              None (anon :: rest)
-        | Some (None, prev_block) ->
-            merge (Layer (None, prev_block) :: acc) None (anon :: rest)
-        | None -> merge (anon :: acc) None rest)
-    | stmt :: rest -> (
-        match prev with
-        | Some (Some name, block) ->
-            merge
-              (stmt :: Layer (Some name, optimize_merged_block block) :: acc)
-              None rest
-        | Some (None, block) ->
-            merge (stmt :: Layer (None, block) :: acc) None rest
-        | None -> merge (stmt :: acc) None rest)
+(* Join each run of adjacent blocks that [prelude] reads as one prelude, by
+   [same], into one block over their bodies in order, under the last block's
+   prelude, and hand the joined body to [optimize_merged_block]. A block with no
+   neighbour to join keeps its node, and a pass that joins nothing returns
+   [stmts]. *)
+let merge_adjacent ~prelude ~same ~build ~optimize_merged_block stmts =
+  let rec needs_merge = function
+    | a :: (b :: _ as rest) -> (
+        match (prelude a, prelude b) with
+        | Option.Some (k, _), Option.Some (k', _) when same k k' -> true
+        | _ -> needs_merge rest)
+    | [] | [ _ ] -> false
   in
-  merge [] None stmts
+  (* A run is its first statement, the prelude so far and its bodies, last
+     first. *)
+  let flush acc = function
+    | Option.None -> acc
+    | Option.Some (first, _, [ _ ]) -> first :: acc
+    | Option.Some (_, key, bodies) ->
+        build key (optimize_merged_block (List.concat (List.rev bodies))) :: acc
+  in
+  let rec merge acc run = function
+    | [] -> List.rev (flush acc run)
+    | stmt :: rest -> (
+        match (prelude stmt, run) with
+        | Option.Some (key, body), Option.Some (first, key', bodies)
+          when same key' key ->
+            merge acc (Option.Some (first, key, body :: bodies)) rest
+        | Option.Some (key, body), _ ->
+            merge (flush acc run) (Option.Some (stmt, key, [ body ])) rest
+        | Option.None, _ -> merge (stmt :: flush acc run) Option.None rest)
+  in
+  if needs_merge stmts then merge [] Option.None stmts else stmts
 
-let merge_consecutive_layers ?(optimize_merged_block = Fun.id)
-    (stmts : statement list) : statement list =
-  if needs_layer_merge stmts then
-    merge_layer_blocks ~optimize_merged_block stmts
-  else stmts
+(* CSS Cascade 6.4: consecutive named [@layer] blocks with the same name are
+   spec-equivalent to a single block. Anonymous layers stay distinct because
+   each [@layer { ... }] without a name creates a new layer. *)
+let merge_consecutive_layers ?(optimize_merged_block = Fun.id) stmts =
+  merge_adjacent
+    ~prelude:(function
+      | Layer (Some name, block) -> Option.Some (name, block) | _ -> Option.None)
+    ~same:equal_layer_name
+    ~build:(fun name block -> Layer (Some name, block))
+    ~optimize_merged_block stmts
 
 (* Media Queries 4 sec. 2: two adjacent [@media] blocks with one condition are
    evaluated identically, so concatenating their bodies in order is the same
@@ -106,45 +89,13 @@ let merge_consecutive_layers ?(optimize_merged_block = Fun.id)
    what a nested query gates is gated the same either way, and no statement
    moves past another. [merge_distant_media] is the pass that hoists across an
    intervening statement, and it keeps its own gate. *)
-let rec needs_media_merge = function
-  | Media (prev_cond, _) :: Media (cond, _) :: _ when Media.equal prev_cond cond
-    ->
-      true
-  | _ :: rest -> needs_media_merge rest
-  | [] -> false
-
-let merge_media_blocks ~optimize_merged_block stmts =
-  let rec merge acc prev_media = function
-    | [] -> (
-        match prev_media with
-        | Some (cond, block) ->
-            List.rev (Media (cond, optimize_merged_block block) :: acc)
-        | None -> List.rev acc)
-    | Media (cond, block) :: rest -> (
-        match prev_media with
-        | Some (prev_cond, prev_block) when Media.equal prev_cond cond ->
-            merge acc (Some (cond, prev_block @ block)) rest
-        | Some (prev_cond, prev_block) ->
-            merge
-              (Media (prev_cond, optimize_merged_block prev_block) :: acc)
-              (Some (cond, block))
-              rest
-        | None -> merge acc (Some (cond, block)) rest)
-    | stmt :: rest -> (
-        match prev_media with
-        | Some (cond, block) ->
-            merge
-              (stmt :: Media (cond, optimize_merged_block block) :: acc)
-              None rest
-        | None -> merge (stmt :: acc) None rest)
-  in
-  merge [] None stmts
-
-let merge_consecutive_media ?(optimize_merged_block = Fun.id)
-    (stmts : statement list) : statement list =
-  if needs_media_merge stmts then
-    merge_media_blocks ~optimize_merged_block stmts
-  else stmts
+let merge_consecutive_media ?(optimize_merged_block = Fun.id) stmts =
+  merge_adjacent
+    ~prelude:(function
+      | Media (cond, block) -> Option.Some (cond, block) | _ -> Option.None)
+    ~same:Media.equal
+    ~build:(fun cond block -> Media (cond, block))
+    ~optimize_merged_block stmts
 
 (* The style rules reachable from a statement, in source order, descending into
    nested blocks, each under the selector the cascade weighs it by. [parent] is
@@ -229,110 +180,141 @@ let crossable_by_distant_merge = function
    selector the cascade weighs it by. A declarations run in that body sets
    properties on [owner] (CSS Nesting 1 sec. 3.4), so the analysis below only
    sees it once it can name the rule the run belongs to, and a rule nested in
-   the body weighs [&] as that selector. *)
-let has_distant_partner ~prelude ~equal_prelude stmts =
-  let keys = List.filter_map (fun s -> Option.map fst (prelude s)) stmts in
-  let rec dup = function
-    | [] -> false
-    | k :: rest -> List.exists (equal_prelude k) rest || dup rest
-  in
-  dup keys
+   the body weighs [&] as that selector.
 
-(* Split [out] at the first block whose prelude is [key], into what comes before
-   it, its own body, and what sits between it and the caller. *)
-let split_at_prelude ~prelude ~equal_prelude key out :
-    (statement list * statement list * statement list) option =
-  let rec go before :
-      statement list ->
-      (statement list * statement list * statement list) option = function
-    | [] -> None
-    | stmt :: after -> (
-        match prelude stmt with
-        | Some (k, body) when equal_prelude k key ->
-            Some (List.rev before, body, after)
-        | Some _ | None -> go (stmt :: before) after)
-  in
-  go [] out
+   A block merges into the first kept block of its prelude, its partner, and so
+   crosses every statement kept after that. A pass keeps statements by position
+   and reads each one's leaves once a hoist first needs them, from [unread] on:
+   [index] holds the leaves of every kept statement but a partner, a partner
+   holds its own, which grow as blocks merge into it, and [blocked] is the last
+   position a block may not cross, a statement the cascade does not read in
+   source order or one whose leaves refuse.
 
-(* [crosses stmt] is [true] when the hoisted block may not move above [stmt]. *)
-let try_distant_merge ~prelude ~equal_prelude ~build ~crosses out key block :
-    statement list option =
-  match split_at_prelude ~prelude ~equal_prelude key out with
-  | Option.Some (before, target, after)
-    when List.for_all crossable_by_distant_merge after
-         && not (List.exists crosses after) ->
-      Option.Some (before @ [ build key (target @ block) ] @ after)
-  | Option.Some _ | Option.None -> Option.None
+   A block that merged nothing keeps its node; a partner that took blocks in is
+   rebuilt over [optimize_merged_block] of its joined body. *)
+type 'k partner = {
+  at : int;
+  first : statement;  (** the block as written *)
+  mutable key : 'k;
+  mutable chunks : statement list list;  (** the body, last chunk first *)
+  leaves : Rule_graph.facts_index;
+}
 
-(* Statements by identity: every hoist attempt reads the run it crosses, which
-   is most of what came before it, so each statement's leaves are read once per
-   pass rather than once per attempt. *)
-module Statement_memo = Hashtbl.Make (struct
-  type t = statement
+type 'k kept =
+  | Plain of statement
+  | Block of statement * 'k * statement list
+  | Partner of 'k partner
 
-  let equal = ( == )
-  let hash = Hashtbl.hash
-end)
+type 'k pass = {
+  build : 'k -> statement list -> statement;
+  parent : Selector.t option;
+  kept : 'k kept Dynarray.t;
+  index : Rule_graph.facts_index;
+  mutable partners : 'k partner list;
+  mutable blocked : int;
+  mutable unread : int;
+}
 
-(* The leaves of a hoisted block, and whether that block may not move above a
-   statement it would cross, under [parent]. *)
-let crossing ?parent () =
-  let facts stmts =
-    Option.map (List.map (fun r -> Rule_graph.facts r)) (leaves ?parent stmts)
-  in
-  let memo = Statement_memo.create 64 in
-  let crossed stmt =
-    match Statement_memo.find_opt memo stmt with
-    | Option.Some facts -> facts
-    | Option.None ->
-        let f = facts [ stmt ] in
-        Statement_memo.add memo stmt f;
-        f
-  in
-  (* The hoisted block is small and the crossed run can be most of the sheet, so
-     the scan runs over the crossed rules and stops at the first conflict. *)
-  let crosses hoisted stmt =
-    match crossed stmt with
-    | Option.None -> true
-    | Option.Some crossed ->
-        List.exists
-          (fun c ->
-            List.exists (fun h -> Rule_graph.facts_conflict h c) hoisted)
-          crossed
-  in
-  (facts, crosses)
+let body p = List.concat (List.rev p.chunks)
+
+let facts pass stmts =
+  Option.map
+    (List.map (fun r -> Rule_graph.facts r))
+    (leaves ?parent:pass.parent stmts)
+
+let read_kept pass =
+  for at = pass.unread to Dynarray.length pass.kept - 1 do
+    let stmt, into =
+      match Dynarray.get pass.kept at with
+      | Plain stmt -> (stmt, pass.index)
+      | Block (stmt, _, _) -> (stmt, pass.index)
+      | Partner p -> (pass.build p.key (body p), p.leaves)
+    in
+    match facts pass [ stmt ] with
+    | Option.Some rules when crossable_by_distant_merge stmt ->
+        List.iter (Rule_graph.index_facts into ~at) rules
+    | Option.Some _ | Option.None -> pass.blocked <- at
+  done;
+  pass.unread <- Dynarray.length pass.kept
+
+let crosses pass ~after h =
+  Rule_graph.conflicts_after pass.index ~after h
+  || List.exists
+       (fun q -> Rule_graph.conflicts_after q.leaves ~after h)
+       pass.partners
+
+(* Merge [block], under [key], into its partner [p] when nothing kept after [p]
+   stops it. *)
+let merge pass p key block =
+  read_kept pass;
+  pass.blocked <= p.at
+  &&
+  match facts pass block with
+  | Option.None -> false
+  | Option.Some hoisted ->
+      (not (List.exists (crosses pass ~after:p.at) hoisted))
+      && begin
+        List.iter (Rule_graph.index_facts p.leaves ~at:p.at) hoisted;
+        p.key <- key;
+        p.chunks <- block :: p.chunks;
+        true
+      end
+
+(* Keep a block of the family, or merge it into its partner; [true] when it has
+   one. *)
+let keep_block pass ~equal_prelude ~hoistable stmt key block =
+  match List.find_opt (fun p -> equal_prelude p.key key) pass.partners with
+  | Option.None ->
+      let p =
+        {
+          at = Dynarray.length pass.kept;
+          first = stmt;
+          key;
+          chunks = [ block ];
+          leaves = Rule_graph.facts_index ();
+        }
+      in
+      pass.partners <- p :: pass.partners;
+      Dynarray.add_last pass.kept (Partner p);
+      false
+  | Option.Some p ->
+      if not (hoistable block && merge pass p key block) then
+        Dynarray.add_last pass.kept (Block (stmt, key, block));
+      true
 
 let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
     ~optimize_merged_block stmts =
-  if not (has_distant_partner ~prelude ~equal_prelude stmts) then stmts
-  else
-    let facts, crosses =
-      crossing ?parent:(Option.map (fun (r : rule) -> r.selector) owner) ()
-    in
-    (* The accumulator is carried reversed, as the consecutive-block passes
-       nearby carry theirs: appending to the end copies it once per statement,
-       which costs a square in the statement count. Only a block of the family
-       needs it in order, to find the partner it merges into, and [rev_map] puts
-       the result back in source order. *)
-    let step rout stmt =
-      match prelude stmt with
-      | Some (key, block) when hoistable block -> (
-          match facts block with
-          | Option.None -> stmt :: rout
-          | Option.Some hoisted -> (
-              match
-                try_distant_merge ~prelude ~equal_prelude ~build
-                  ~crosses:(crosses hoisted) (List.rev rout) key block
-              with
-              | Some out' -> List.rev out'
-              | None -> stmt :: rout))
-      | Some _ | None -> stmt :: rout
-    in
-    List.fold_left step [] stmts
-    |> List.rev_map (fun stmt ->
+  let pass =
+    {
+      build;
+      parent = Option.map (fun (r : rule) -> r.selector) owner;
+      kept = Dynarray.create ();
+      index = Rule_graph.facts_index ();
+      partners = [];
+      blocked = -1;
+      unread = 0;
+    }
+  in
+  let partnered =
+    List.fold_left
+      (fun partnered stmt ->
         match prelude stmt with
-        | Some (key, body) -> build key (optimize_merged_block body)
-        | None -> stmt)
+        | Option.None ->
+            Dynarray.add_last pass.kept (Plain stmt);
+            partnered
+        | Option.Some (key, block) ->
+            keep_block pass ~equal_prelude ~hoistable stmt key block
+            || partnered)
+      false stmts
+  in
+  if not partnered then stmts
+  else
+    Dynarray.to_list pass.kept
+    |> List.map (function
+      | Plain stmt | Block (stmt, _, _) -> stmt
+      | Partner { first; chunks = [ _ ]; _ } -> first
+      | Partner p -> build p.key (optimize_merged_block (body p)))
+    |> List.preserve stmts
 
 let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
   merge_distant
@@ -345,43 +327,13 @@ let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
    the [@media] approach. *)
-let merge_consecutive_supports ?(optimize_merged_block = Fun.id)
-    (stmts : statement list) : statement list =
-  let rec needs_merge = function
-    | Supports (prev_cond, _) :: Supports (cond, _) :: _
-      when Supports.equal prev_cond cond ->
-        true
-    | _ :: rest -> needs_merge rest
-    | [] -> false
-  in
-  if not (needs_merge stmts) then stmts
-  else
-    (* [acc] holds output in REVERSE order; reverse once at the end. *)
-    let rec merge acc prev = function
-      | [] -> (
-          match prev with
-          | Some (cond, block) ->
-              List.rev (Supports (cond, optimize_merged_block block) :: acc)
-          | None -> List.rev acc)
-      | Supports (cond, block) :: rest -> (
-          match prev with
-          | Some (prev_cond, prev_block) when Supports.equal prev_cond cond ->
-              merge acc (Some (cond, prev_block @ block)) rest
-          | Some (prev_cond, prev_block) ->
-              merge
-                (Supports (prev_cond, optimize_merged_block prev_block) :: acc)
-                (Some (cond, block))
-                rest
-          | None -> merge acc (Some (cond, block)) rest)
-      | stmt :: rest -> (
-          match prev with
-          | Some (cond, block) ->
-              merge
-                (stmt :: Supports (cond, optimize_merged_block block) :: acc)
-                None rest
-          | None -> merge (stmt :: acc) None rest)
-    in
-    merge [] None stmts
+let merge_consecutive_supports ?(optimize_merged_block = Fun.id) stmts =
+  merge_adjacent
+    ~prelude:(function
+      | Supports (cond, block) -> Option.Some (cond, block) | _ -> Option.None)
+    ~same:Supports.equal
+    ~build:(fun cond block -> Supports (cond, block))
+    ~optimize_merged_block stmts
 
 (* The whole [@container] merge gate: a name and a condition, read once to
    decide the pass has work and once per adjacent pair. A [<container-name>] is
@@ -393,49 +345,14 @@ let same_container (prev_name, prev_cond) (name, cond) =
   Option.equal String.equal prev_name name
   && Option.equal Container.equal prev_cond cond
 
-let merge_consecutive_containers ?(optimize_merged_block = Fun.id)
-    (stmts : statement list) : statement list =
-  let rec needs_merge = function
-    | Container (prev_name, prev_cond, _) :: Container (name, cond, _) :: _
-      when same_container (prev_name, prev_cond) (name, cond) ->
-        true
-    | _ :: rest -> needs_merge rest
-    | [] -> false
-  in
-  if not (needs_merge stmts) then stmts
-  else
-    (* [acc] holds output in REVERSE order; reverse once at the end. *)
-    let rec merge acc prev = function
-      | [] -> (
-          match prev with
-          | Some (name, cond, block) ->
-              List.rev
-                (Container (name, cond, optimize_merged_block block) :: acc)
-          | None -> List.rev acc)
-      | Container (name, cond, block) :: rest -> (
-          match prev with
-          | Some (prev_name, prev_cond, prev_block)
-            when same_container (prev_name, prev_cond) (name, cond) ->
-              merge acc (Some (name, cond, prev_block @ block)) rest
-          | Some (prev_name, prev_cond, prev_block) ->
-              merge
-                (Container
-                   (prev_name, prev_cond, optimize_merged_block prev_block)
-                :: acc)
-                (Some (name, cond, block))
-                rest
-          | None -> merge acc (Some (name, cond, block)) rest)
-      | stmt :: rest -> (
-          match prev with
-          | Some (name, cond, block) ->
-              merge
-                (stmt
-                :: Container (name, cond, optimize_merged_block block)
-                :: acc)
-                None rest
-          | None -> merge (stmt :: acc) None rest)
-    in
-    merge [] None stmts
+let merge_consecutive_containers ?(optimize_merged_block = Fun.id) stmts =
+  merge_adjacent
+    ~prelude:(function
+      | Container (name, cond, block) -> Option.Some ((name, cond), block)
+      | _ -> Option.None)
+    ~same:same_container
+    ~build:(fun (name, cond) block -> Container (name, cond, block))
+    ~optimize_merged_block stmts
 
 (* Reaching the partner a statement is written between is the move
    [merge_distant] argues for, and a [@container] keys it on the whole prelude.
@@ -457,35 +374,13 @@ let merge_distant_containers ?owner ?(optimize_merged_block = Fun.id) stmts =
    adjacent blocks hold the same starting styles, in the same order, as one
    block over their concatenation. Adjacency is the whole gate; the conditional
    passes above compare a condition this rule does not have. *)
-let merge_consecutive_starting_style ?(optimize_merged_block = Fun.id)
-    (stmts : statement list) : statement list =
-  let rec needs_merge = function
-    | Starting_style _ :: Starting_style _ :: _ -> true
-    | _ :: rest -> needs_merge rest
-    | [] -> false
-  in
-  if not (needs_merge stmts) then stmts
-  else
-    (* [acc] holds output in REVERSE order; reverse once at the end. *)
-    let rec merge acc prev = function
-      | [] -> (
-          match prev with
-          | Some block ->
-              List.rev (Starting_style (optimize_merged_block block) :: acc)
-          | None -> List.rev acc)
-      | Starting_style block :: rest -> (
-          match prev with
-          | Some prev_block -> merge acc (Some (prev_block @ block)) rest
-          | None -> merge acc (Some block) rest)
-      | stmt :: rest -> (
-          match prev with
-          | Some block ->
-              merge
-                (stmt :: Starting_style (optimize_merged_block block) :: acc)
-                None rest
-          | None -> merge (stmt :: acc) None rest)
-    in
-    merge [] None stmts
+let merge_consecutive_starting_style ?(optimize_merged_block = Fun.id) stmts =
+  merge_adjacent
+    ~prelude:(function
+      | Starting_style block -> Option.Some ((), block) | _ -> Option.None)
+    ~same:(fun () () -> true)
+    ~build:(fun () block -> Starting_style block)
+    ~optimize_merged_block stmts
 
 (* Whether a layer block holds nothing the cascade can act on. A rule that
    writes no declarations of its own still carries whatever it nests, so reading
@@ -543,7 +438,7 @@ let merge_layer_declarations (stmts : statement list) : statement list =
         merge (stmt :: acc) rest
     | stmt :: rest -> merge (stmt :: acc) rest
   in
-  merge [] stmts
+  List.preserve stmts (merge [] stmts)
 
 let add_new_layer_names seen names =
   let seen, added_rev =
@@ -626,7 +521,7 @@ let drop_redundant_layer_decls stmts =
         in
         loop seen (stmt :: acc) rest
   in
-  loop [] [] stmts
+  List.preserve stmts (loop [] [] stmts)
 
 (* CSS Cascade 6.1: an empty rule (no declarations, no nested rules) contributes
    nothing, so drop it under [~optimize:true]. A conditional group rule applies

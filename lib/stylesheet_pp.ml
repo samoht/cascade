@@ -1,5 +1,4 @@
 open Stylesheet_intf
-open Stylesheet_walk
 
 (** {1 Pretty Printing} *)
 
@@ -55,7 +54,7 @@ let pp_property_rule : 'a property_rule Pp.t =
    The two arms give the same name, so the reader keeps the name alone and sec.
    3 settles the arm on output: "the value is serialized as an <ident> unless
    it's a disallowed keyword, in which case it's serialized as a <string>". A
-   name an escape would rewrite takes the string too, which is no longer. *)
+   name that is not a plain ASCII ident takes the string too. *)
 let keyframes_name_reserved name =
   Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
 
@@ -231,159 +230,6 @@ let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
          token it was. *)
       if body_escapes_its_closer body then Pp.char ctx '\n';
       Pp.char ctx '}'
-
-let font_face_participates descriptors =
-  List.exists (function Font_family _ -> true | _ -> false) descriptors
-  && List.exists (function Src _ -> true | _ -> false) descriptors
-
-let should_print_statement ctx = function
-  | Font_face descriptors when Pp.minified ctx ->
-      font_face_participates descriptors
-  | Font_face _ | Rule _ | Declarations _ | Bang_comment _ | Charset _
-  | Import _ | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
-  | Container _ | Supports _ | Moz_document _ | Starting_style _ | When _
-  | Else _ | Supports_condition _ | Origin _ | Scope _ | Keyframes _
-  | Webkit_keyframes _ | Moz_keyframes _ | Counter_style _ | Page _
-  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-      true
-
-let printable_statements ctx statements =
-  if Pp.minified ctx then List.filter (should_print_statement ctx) statements
-  else statements
-
-module String_set = Pp.String_set
-
-let normalise_charset statements =
-  (* CSS Syntax 3 (ED) sec. 8.3: [@charset] is an encoding-declaration byte
-     pattern recognised before tokenization, not a stylesheet at-rule after
-     parsing. In minified output the serializer emits UTF-8, so [@charset
-     "UTF-8"] is redundant; keep at most the first non-UTF-8 declaration for
-     byte-level compatibility. *)
-  let is_utf8 encoding =
-    String.equal (String.lowercase_ascii encoding) "utf-8"
-  in
-  let kept_one = ref false in
-  List.filter
-    (fun stmt ->
-      match stmt with
-      | Charset enc when is_utf8 enc -> false
-      | Charset _ when !kept_one -> false
-      | Charset _ ->
-          kept_one := true;
-          true
-      | _ -> true)
-    statements
-
-let color_custom_property_names stylesheet =
-  let var_name_of_custom_property = Custom_property_name.strip_prefix in
-  let declaration names = function
-    | Declaration.Declaration
-        {
-          property = Properties.Custom_property name;
-          value =
-            Properties.Custom_value
-              { value = Properties.Typed { kind = Properties.Color; _ }; _ };
-          _;
-        } ->
-        String_set.add (var_name_of_custom_property name) names
-    | _ -> names
-  in
-  let rec statement names stmt =
-    let names =
-      List.fold_left declaration names (statement_declarations stmt)
-    in
-    List.fold_left statement names (statement_children stmt)
-  in
-  List.fold_left statement String_set.empty stylesheet
-
-let color_fallback_of_length_fallback :
-    Values.length Values.fallback -> Values.color Values.fallback = function
-  | Values.None -> Values.None
-  | Values.Empty -> Values.Empty
-  | Values.Empty2 -> Values.Empty2
-  | Values.Syntax_fallback components -> Values.Syntax_fallback components
-  | Values.Var_fallback name -> Values.Var_fallback name
-  | Values.Fallback value ->
-      Values.Syntax_fallback
-        (Cursor.remaining
-           (Cursor.of_string (Pp.to_string ~minify:true Values.pp_length value)))
-
-(* The shadow rewrite uses the [var(--ring)] reference as the colour slot of a
-   [box-shadow]; the inline [default] (a length) doesn't apply when the var is
-   consumed in colour position, so drop it. *)
-let color_var_of_length_var (var : Values.length Values.var) :
-    Values.color Values.var =
-  {
-    name = var.name;
-    fallback = color_fallback_of_length_fallback var.fallback;
-    default = None;
-    layer = var.layer;
-    meta = var.meta;
-    runtime = var.runtime;
-  }
-
-let rec rewrite_shadow_value color_vars (value : Properties.shadow) :
-    Properties.shadow =
-  match value with
-  | Properties.Shadow
-      ({ blur = Some (Values.Var var); spread = None; color = None; _ } as
-       shadow)
-    when String_set.mem var.name color_vars ->
-      Properties.Shadow
-        {
-          shadow with
-          blur = Some Values.Zero;
-          color = Some (Values.Var (color_var_of_length_var var));
-        }
-  | Properties.List shadows ->
-      Properties.List (List.map (rewrite_shadow_value color_vars) shadows)
-  | shadow -> shadow
-
-let rewrite_shadow_decl color_vars = function
-  | Declaration.Declaration
-      { property = Properties.Box_shadow as property; value; important; _ } as
-    decl ->
-      let value' = rewrite_shadow_value color_vars value in
-      if value' == value then decl else Declaration.v ~important property value'
-  | Declaration.Declaration
-      {
-        property = Properties.Custom_property _ as property;
-        value =
-          Properties.Custom_value
-            ({
-               value =
-                 Properties.Typed { kind = Properties.Shadow; value = shadow };
-               _;
-             } as custom_value);
-        important;
-        _;
-      } as decl ->
-      let shadow' = rewrite_shadow_value color_vars shadow in
-      if shadow' == shadow then decl
-      else
-        Declaration.v ~important property
-          (Properties.Custom_value
-             {
-               custom_value with
-               value =
-                 Properties.Typed { kind = Properties.Shadow; value = shadow' };
-             })
-  | decl -> decl
-
-let normalise_shadows stylesheet =
-  let color_vars = color_custom_property_names stylesheet in
-  if String_set.is_empty color_vars then stylesheet
-  else
-    let declarations = List.map (rewrite_shadow_decl color_vars) in
-    let rec statement stmt =
-      stmt
-      |> map_statement_declarations declarations
-      |> map_statement_children (List.map statement)
-    in
-    List.map statement stylesheet
-
-let normalise statements = statements |> normalise_charset |> normalise_shadows
 
 let import_url_starts_with_url url len =
   len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
@@ -1014,7 +860,6 @@ and pp_statement : statement Pp.t =
 
 and pp_block : block Pp.t =
  fun ctx statements ->
-  let statements = printable_statements ctx statements in
   (* Block printing for at-rules (@media, @supports, etc.) The braces helper
      adds nest 1 and indent for the first item only. Subsequent items need
      explicit indentation and blank line separation to match Tailwind format. *)
@@ -1043,10 +888,6 @@ let is_layer_block = function Layer _ -> true | _ -> false
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements ->
-  let statements =
-    if Pp.minified ctx then normalise statements else statements
-  in
-  let statements = printable_statements ctx statements in
   let rec loop = function
     | [] -> ()
     | [ s ] -> pp_statement ctx s

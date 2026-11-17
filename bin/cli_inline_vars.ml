@@ -3,11 +3,14 @@
 
 open Cascade
 
-let run ~keep_vars stylesheet =
+let run (verbosity : Cli_log.verbosity) ~keep_vars stylesheet =
   Css.inline_vars ?keep_vars:(Some keep_vars)
     ~warn:(fun name ->
-      Fmt.epr
-        "Warning: %s is redefined in a different scope; kept live (cannot \
-         inline safely)@."
-        name)
+      match verbosity with
+      | Quiet -> ()
+      | Normal | Verbose ->
+          Cli_io.warning
+            "%s takes different values in different scopes; kept live (cannot \
+             inline safely)"
+            name)
     stylesheet

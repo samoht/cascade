@@ -25,8 +25,10 @@ let unicode_range_wildcard start end_ : string option =
     else
       let prefix = start / size in
       let prefix = if prefix = 0 then "" else hex_string prefix in
-      let wildcard = "U+" ^ prefix ^ String.make q '?' in
-      let range = "U+" ^ hex_string start ^ "-" ^ hex_string end_ in
+      let wildcard = String.concat "" [ "U+"; prefix; String.make q '?' ] in
+      let range =
+        String.concat "" [ "U+"; hex_string start; "-"; hex_string end_ ]
+      in
       if String.length wildcard < String.length range then
         (Some wildcard : string option)
       else (None : string option)

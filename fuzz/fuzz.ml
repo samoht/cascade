@@ -22,9 +22,12 @@ let () =
       Fuzz_stylesheet.suite;
       Fuzz_optimize.suite;
       Fuzz_rule_order.suite;
+      Fuzz_rule_graph.suite;
       Fuzz_css.suite;
       Fuzz_supports.suite;
       Fuzz_font_face.suite;
       Fuzz_keyframe.suite;
       Fuzz_apply.suite;
+      Fuzz_pp.suite;
+      Fuzz_gzip_size.suite;
     ]

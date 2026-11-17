@@ -184,6 +184,42 @@ let rec is_any_value components =
       | Preserved _ -> true)
     components
 
+(* Every recursion below is bounded by {!Parser.max_nesting_depth}, past which a
+   run is [Flat]; the lists themselves can be long, so they are walked with the
+   tail-recursive [List.exists] and [List.map]. *)
+let rec located = function
+  | Preserved tok -> tok.Token.loc != Loc.dummy
+  | Block { node; loc } -> loc != Loc.dummy || List.exists located node.value
+  | Func { node; loc } -> loc != Loc.dummy || List.exists located node.arguments
+  | Flat { node; loc } ->
+      loc != Loc.dummy
+      || List.exists (fun (tok : Token.t) -> tok.loc != Loc.dummy) node
+
+let rec without_loc = function
+  | Preserved tok -> Preserved { tok with loc = Loc.dummy }
+  | Block { node; _ } ->
+      Block
+        {
+          node = { node with value = List.map without_loc node.value };
+          loc = Loc.dummy;
+        }
+  | Func { node; _ } ->
+      Func
+        {
+          node = { node with arguments = List.map without_loc node.arguments };
+          loc = Loc.dummy;
+        }
+  | Flat { node; _ } ->
+      Flat
+        {
+          node =
+            List.map (fun (tok : Token.t) -> { tok with loc = Loc.dummy }) node;
+          loc = Loc.dummy;
+        }
+
+let without_locs values =
+  if List.exists located values then List.map without_loc values else values
+
 let is_whitespace = function
   | Preserved { kind = Token.Whitespace _; _ } -> true
   | Preserved _ | Block _ | Func _ | Flat _ -> false

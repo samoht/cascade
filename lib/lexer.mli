@@ -43,6 +43,9 @@ val with_unicode_ranges : t -> (unit -> 'a) -> 'a
 val source : t -> string
 (** [source t] is the full input string the underlying reader was built from. *)
 
+val indexed_source : t -> Error.Source.t
+(** [indexed_source t] is the underlying reader's {!Reader.indexed_source}. *)
+
 val next : t -> Token.t
 (** [next t] consumes the next token. Returns {!Token.Eof} at end of input.
     Honours any token pushed back by {!reconsume}. *)

@@ -16,7 +16,8 @@ let read_percentage_float t : float =
     let n, unit = Cursor.number_with_unit t in
     match unit with
     | Some "%" | None -> max 0. (min 100. n)
-    | Some unit -> Cursor.err_invalid t ("percentage unit: " ^ unit)
+    | Some unit ->
+        Cursor.err_invalid t (String.concat "" [ "percentage unit: "; unit ])
 
 (** Read an alpha value *)
 let rec read_alpha t : alpha =
@@ -37,7 +38,8 @@ let rec read_alpha t : alpha =
     let n, _repr, unit = Cursor.number_repr_with_unit t in
     (match unit with
     | None -> ()
-    | Some unit -> Cursor.err_invalid t ("alpha unit: " ^ unit));
+    | Some unit ->
+        Cursor.err_invalid t (String.concat "" [ "alpha unit: "; unit ]));
     (* Clamp numeric alpha to 0-1 range per CSS spec *)
     Num (max 0. (min 1. n))
   in
@@ -180,7 +182,8 @@ let read_color_space t : color_space =
   | "oklch" -> Oklch
   | "hsl" -> Hsl
   | "hwb" -> Hwb
-  | _ -> Cursor.err_invalid t ("color space: " ^ space_ident)
+  | _ ->
+      Cursor.err_invalid t (String.concat "" [ "color space: "; space_ident ])
 
 let rec read_color_component t : component =
   Cursor.ws t;
@@ -194,7 +197,7 @@ let rec read_color_component t : component =
     let n, unit = Cursor.number_with_unit t in
     match unit with
     | Some "%" -> Pct n
-    | Some u -> Cursor.err_invalid t ("unit: " ^ u)
+    | Some u -> Cursor.err_invalid t (String.concat "" [ "unit: "; u ])
     | None -> Num n
 
 (** Read color components until the alpha separator ['/'] or end of input. *)
@@ -225,7 +228,9 @@ let _read_hex_color t =
   let len = String.length hex in
   if len = 0 then Cursor.err_invalid t "empty hex color"
   else if len = 3 || len = 4 || len = 6 || len = 8 then hex
-  else Cursor.err_invalid t ("invalid hex color length: " ^ string_of_int len)
+  else
+    Cursor.err_invalid t
+      (String.concat "" [ "invalid hex color length: "; string_of_int len ])
 
 (** Normalize hue value to 0-360 range *)
 let normalize_hue (degrees : float) : float =
@@ -250,7 +255,7 @@ let rec read_hue t : hue =
     | "rad" -> Angle (Rad n)
     | "turn" -> Angle (Turn n)
     | "grad" -> Angle (Grad n)
-    | _ -> Cursor.err_invalid t ("hue unit: " ^ unit)
+    | _ -> Cursor.err_invalid t (String.concat "" [ "hue unit: "; unit ])
 
 let read_separated_values t p1 p2 =
   let v1 = p1 t in
@@ -316,7 +321,8 @@ let read_ok_lightness t : percentage option =
     match unit with
     | Some "%" -> Some (Pct (max 0. (min 100. n)) : percentage)
     | None -> Some (Num (max 0. (min 1. n)) : percentage)
-    | Some u -> Cursor.err_invalid t ("oklch() L unit: " ^ u)
+    | Some u ->
+        Cursor.err_invalid t (String.concat "" [ "oklch() L unit: "; u ])
 
 let read_number_or_none ?pct_scale t : float option =
   Cursor.ws t;
@@ -334,7 +340,8 @@ let read_number_or_none ?pct_scale t : float option =
           | Some scale -> scale
           | None -> Cursor.err_invalid t "unexpected percentage")
     | None -> Some n
-    | Some unit -> Cursor.err_invalid t ("invalid unit: " ^ unit)
+    | Some unit ->
+        Cursor.err_invalid t (String.concat "" [ "invalid unit: "; unit ])
 
 let read_oklch t : color =
   Cursor.ws t;
@@ -376,7 +383,8 @@ let read_lab t : color =
         (match unit with
          | Some "%" -> Pct (max 0. (min 100. n))
          | None -> Num (max 0. (min 100. n))
-         | Some u -> Cursor.err_invalid t ("lab L unit: " ^ u)
+         | Some u ->
+             Cursor.err_invalid t (String.concat "" [ "lab L unit: "; u ])
           : percentage)
   in
   let a = read_number_or_none ~pct_scale:1.25 t in
@@ -402,7 +410,8 @@ let read_lch t : color =
         (match unit with
          | Some "%" -> Pct (max 0. (min 100. n))
          | None -> Num (max 0. (min 100. n))
-         | Some u -> Cursor.err_invalid t ("lch L unit: " ^ u)
+         | Some u ->
+             Cursor.err_invalid t (String.concat "" [ "lch L unit: "; u ])
           : percentage)
   in
   let read_c = read_number_or_none ~pct_scale:1.5 in
@@ -871,7 +880,8 @@ and read_relative_color name t : color =
         Cursor.consume_remaining_as_string ~trim:true t
         |> normalize_relative_color_tail
       in
-      if tail = "" then Cursor.err_expected t (name ^ " channels");
+      if tail = "" then
+        Cursor.err_expected t (String.concat "" [ name; " channels" ]);
       match fold_relative_color_pass_through name origin tail with
       | Some color -> color
       | None -> Relative_color (name, origin, tail))
@@ -931,13 +941,17 @@ and read_color t : color =
           || ('A' <= c && c <= 'F')
         in
         if not (len = 3 || len = 4 || len = 6 || len = 8) then
-          Cursor.err_invalid ~loc t ("hex color length: " ^ string_of_int len)
+          Cursor.err_invalid ~loc t
+            (String.concat "" [ "hex color length: "; string_of_int len ])
         else if not (String.for_all is_hex value) then
-          Cursor.err_invalid ~loc t ("hex color digits: " ^ value)
+          Cursor.err_invalid ~loc t
+            (String.concat "" [ "hex color digits: "; value ])
         else
           match rgba_of_hex value with
           | Some (r, g, b, a) -> Authored_hex { value; r; g; b; a }
-          | None -> Cursor.err_invalid ~loc t ("hex color digits: " ^ value))
+          | None ->
+              Cursor.err_invalid ~loc t
+                (String.concat "" [ "hex color digits: "; value ]))
     | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
         (* CSS Values 4 sec. 4.1: a function name is a keyword, so it names the
            same function in whatever case it was written. *)
@@ -947,14 +961,17 @@ and read_color t : color =
             Cursor.skip t;
             parser (Cursor.func_sub fn t)
         | None when fn_name = "var" -> Var (read_var read_color t)
-        | None -> Cursor.err t ("unknown color function: " ^ name))
+        | None ->
+            Cursor.err t (String.concat "" [ "unknown color function: "; name ])
+        )
     | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
         Cursor.skip t;
         (* CSS color keywords are case-insensitive. *)
         match read_color_keyword_of_string (String.lowercase_ascii ident) with
         | Some Auto -> Cursor.err_invalid ~loc t "auto is not a colour"
         | Some color -> color
-        | None -> Cursor.err ~loc t ("unknown color: " ^ ident))
+        | None ->
+            Cursor.err ~loc t (String.concat "" [ "unknown color: "; ident ]))
     | _ -> Cursor.err t "color"
   in
   Cursor.ws t;
@@ -1045,7 +1062,7 @@ let read_system_color t : system_color =
   | "selecteditemtext" -> Selected_item_text
   | "visitedtext" -> Visited_text
   | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
-  | _ -> Cursor.err_invalid t ("system color: " ^ keyword)
+  | _ -> Cursor.err_invalid t (String.concat "" [ "system color: "; keyword ])
 
 (** Read color_name value *)
 let read_color_name t : color_name =
@@ -1053,7 +1070,7 @@ let read_color_name t : color_name =
   let s = Cursor.ident t in
   match color_name_of_string (String.lowercase_ascii s) with
   | Some name -> name
-  | None -> Cursor.err_invalid t ("color name: " ^ s)
+  | None -> Cursor.err_invalid t (String.concat "" [ "color name: "; s ])
 
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =

@@ -1,5 +1,4 @@
 open Stylesheet_intf
-open Stylesheet_pp
 open Stylesheet_walk
 open Stylesheet_read
 
@@ -8,7 +7,8 @@ open Stylesheet_read
    original [At_keyword] token was already consumed during section 5.3, so
    synthesize one at the rule's location so dispatch in [read_statement] still
    sees the opening [\@name]. [?source] flows through so errors raised by
-   validators downstream pick up source-context snippets. *)
+   validators downstream pick up source-context snippets, all of them sharing
+   its one index. *)
 let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
   | Qualified { node = { prelude; block }; _ } ->
       Cursor.of_components ?source ?meta ~recover:true
@@ -47,22 +47,25 @@ let read_statement_of_rule ?source ?meta (rule : Component.rule) :
 let rule_loc : Component.rule -> Loc.t = function
   | Qualified { loc; _ } | At { loc; _ } -> loc
 
+(* A check on a whole statement reports against the statement, in the source [r]
+   read it from. *)
+let invalid r loc reason =
+  Cursor.error ~sort:Sort.Stylesheet r ~loc (Error.Invalid_statement reason)
+
 let validate_partial_prelude () =
   let prelude = ref prelude_start in
-  fun loc stmt ->
+  fun r loc stmt ->
     let misplaced = misplaced !prelude stmt in
     prelude := prelude_next !prelude stmt;
-    Option.map
-      (fun reason -> Error.bad_value loc ~property:"stylesheet" ~reason)
-      misplaced
+    Option.map (invalid r loc) misplaced
 
-let validate_partial_statement loc = function
+let validate_partial_statement r loc = function
   | Rule { selector; _ } when Selector.matches_nothing selector ->
-      Some (Error.bad_selector loc "selector matches nothing")
-  | Font_face descriptors when not (font_face_participates descriptors) ->
       Some
-        (Error.bad_value loc ~property:"@font-face"
-           ~reason:"missing font-family or src descriptor")
+        (Cursor.error ~sort:Sort.Selector r ~loc
+           (Error.Bad_selector "selector matches nothing"))
+  | Font_face descriptors when not (font_face_participates descriptors) ->
+      Some (invalid r loc "@font-face without a font-family or src descriptor")
   (* CSS Fonts 4 sec. 9.2 makes font-family the one mandatory descriptor; sec.
      9.2.2 defaults a missing base-palette to 0. *)
   | Font_palette_values (_, descriptors)
@@ -71,8 +74,7 @@ let validate_partial_statement loc = function
               (function Palette_font_family _ -> true | _ -> false)
               descriptors) ->
       Some
-        (Error.bad_value loc ~property:"@font-palette-values"
-           ~reason:"missing font-family descriptor")
+        (invalid r loc "@font-palette-values without a font-family descriptor")
   | _ -> None
 
 (* [fold_declarations] reaches every declaration site, the frames of
@@ -82,11 +84,9 @@ let statement_has_declaration p stmt =
     (fun found decls -> found || List.exists p decls)
     false [ stmt ]
 
-let validate_partial_invalid_declarations loc stmt =
+let validate_partial_invalid_declarations r loc stmt =
   if statement_has_declaration Declaration.is_invalid stmt then
-    Some
-      (Error.bad_value loc ~property:"stylesheet"
-         ~reason:"invalid declaration value")
+    Some (invalid r loc "invalid declaration value")
   else None
 
 let rec declaration_has_strict_warning = function
@@ -95,11 +95,9 @@ let rec declaration_has_strict_warning = function
   | Declaration.Theme_guarded { decl; _ } -> declaration_has_strict_warning decl
   | _ -> false
 
-let validate_partial_strict_warnings loc stmt =
+let validate_partial_strict_warnings r loc stmt =
   if statement_has_declaration declaration_has_strict_warning stmt then
-    Some
-      (Error.bad_value loc ~property:"stylesheet"
-         ~reason:"strict stylesheet warning")
+    Some (invalid r loc "strict stylesheet warning")
   else None
 
 (* A warning drained from a cursor is stamped where the cursor recorded it. *)
@@ -113,30 +111,29 @@ let add_statement_warning warnings ~recovery warning =
 let drain_statement_warnings warnings cursor =
   List.iter (add_warning warnings) (Cursor.drain_warnings cursor)
 
-let validate_else_orphan previous rule stmt =
+let validate_else_orphan r previous rule stmt =
   match stmt with
   | Else _
     when not (Option.fold ~none:false ~some:follows_conditional !previous) ->
-      Some
-        (Error.bad_value (rule_loc rule) ~property:"stylesheet"
-           ~reason:"@else without preceding @when")
+      Some (invalid r (rule_loc rule) "@else without preceding @when")
   | _ -> None
 
 (* These four run on a statement the reader read whole and the sheet keeps, so
    the material each reports on reaches the output. *)
-let validate_partial_statement_warnings warnings validate_prelude rule stmt =
+let validate_partial_statement_warnings r warnings validate_prelude rule stmt =
   let loc = rule_loc rule in
   let add =
     Option.iter
       (add_statement_warning warnings ~recovery:Error.Recovery.Recovered)
   in
-  add (validate_prelude loc stmt);
-  add (validate_partial_statement loc stmt);
-  add (validate_partial_invalid_declarations loc stmt);
-  add (validate_partial_strict_warnings loc stmt)
+  add (validate_prelude r loc stmt);
+  add (validate_partial_statement r loc stmt);
+  add (validate_partial_invalid_declarations r loc stmt);
+  add (validate_partial_strict_warnings r loc stmt)
 
 let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
+  let text = Option.map Error.Source.text source in
   let warnings = ref [] in
   let validate_prelude = validate_partial_prelude () in
   (* CSS Conditional Rules 5 section 4: [@else] is a continuation rule and must
@@ -151,7 +148,7 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
            alike, so it names what a drop costs the sheet. The error's own
            location marks where the read gave up inside it. *)
         let lost () =
-          Error.Recovery.(dropped ?source ~loc:(rule_loc rule) Rule)
+          Error.Recovery.(dropped ?source:text ~loc:(rule_loc rule) Rule)
         in
         (* Drain declaration-level warnings first so source order is preserved:
            decl warnings come from inside the rule, the rule-level error (if
@@ -159,9 +156,9 @@ let read_stylesheet_of_rules ?source ?meta (rules : Component.rule list) :
         drain_statement_warnings warnings cursor;
         match result with
         | Ok stmt -> (
-            validate_partial_statement_warnings warnings validate_prelude rule
-              stmt;
-            match validate_else_orphan previous rule stmt with
+            validate_partial_statement_warnings cursor warnings validate_prelude
+              rule stmt;
+            match validate_else_orphan cursor previous rule stmt with
             | Some w ->
                 add_statement_warning warnings ~recovery:(lost ()) w;
                 previous := Some stmt;

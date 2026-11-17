@@ -94,8 +94,6 @@ let () =
     \  safari : version option;\n\
     \  safari_ios : version option;\n\
      }\n\n\
-     let dataset_version = ";
-  print_string (string dataset);
-  print_string "\n\nlet support : (string * support) list = [\n";
+     let support : (string * support) list = [\n";
   List.iter print_string (List.rev !support);
   print_string "]\n"

@@ -319,7 +319,7 @@ end
 module Match_selector = struct
   let attr_name : Selector.attr_name -> string = function
     | Aria a -> Aria.to_string a
-    | Data s -> "data-" ^ s
+    | Data s -> String.concat "" [ "data-"; s ]
     | Regular s -> s
 
   let value_match (matcher : Selector.attribute_match) ~flag actual =
@@ -334,25 +334,25 @@ module Match_selector = struct
     in
     match matcher with
     | Presence -> true
-    | Exact v | Exact_quoted (v, _) -> String.equal actual (normalize v)
-    | Whitespace_list v | Whitespace_list_quoted (v, _) ->
+    | Exact v -> String.equal actual (normalize v)
+    | Whitespace_list v ->
         let v = normalize v in
         List.exists (String.equal v) (words actual)
-    | Hyphen_list v | Hyphen_list_quoted (v, _) ->
+    | Hyphen_list v ->
         let v = normalize v in
         String.equal actual v
         || String.length actual > String.length v
            && String.sub actual 0 (String.length v) = v
            && actual.[String.length v] = '-'
-    | Prefix v | Prefix_quoted (v, _) ->
+    | Prefix v ->
         let v = normalize v in
         String.length actual >= String.length v
         && String.sub actual 0 (String.length v) = v
-    | Suffix v | Suffix_quoted (v, _) ->
+    | Suffix v ->
         let v = normalize v in
         let la = String.length actual and lv = String.length v in
         la >= lv && String.sub actual (la - lv) lv = v
-    | Substring v | Substring_quoted (v, _) ->
+    | Substring v ->
         let v = normalize v in
         let la = String.length actual and lv = String.length v in
         let rec scan i =
@@ -416,10 +416,10 @@ module Match_selector = struct
     | Optional -> List.mem "optional" doc.pseudo_classes
     | Open -> List.mem "open" doc.pseudo_classes
     | Popover_open -> List.mem "popover-open" doc.pseudo_classes
-    | Before _ -> List.mem "before" doc.pseudo_elements
-    | After _ -> List.mem "after" doc.pseudo_elements
-    | First_letter _ -> List.mem "first-letter" doc.pseudo_elements
-    | First_line _ -> List.mem "first-line" doc.pseudo_elements
+    | Before -> List.mem "before" doc.pseudo_elements
+    | After -> List.mem "after" doc.pseudo_elements
+    | First_letter -> List.mem "first-letter" doc.pseudo_elements
+    | First_line -> List.mem "first-line" doc.pseudo_elements
     | Backdrop -> List.mem "backdrop" doc.pseudo_elements
     | Marker -> List.mem "marker" doc.pseudo_elements
     | Placeholder -> List.mem "placeholder" doc.pseudo_elements
@@ -444,7 +444,7 @@ module Url = struct
     | _, Some _ -> Ok (Uri.to_string (Uri.of_string href))
     | _, None -> (
         match loader.base_url with
-        | None -> Error ("no base URL to resolve " ^ href)
+        | None -> Error (String.concat "" [ "no base URL to resolve "; href ])
         | Some base ->
             let reference =
               match Uri.scheme (Uri.of_string href) with
@@ -493,16 +493,20 @@ module Import = struct
 
   let load_resolved loader rule resolved =
     match List.assoc_opt resolved loader.imports with
-    | None -> Error ("import not in loader table: " ^ resolved)
+    | None ->
+        Error (String.concat "" [ "import not in loader table: "; resolved ])
     | Some source -> parse_source rule source
 
   let guards_ok ?query ~layer_order rule =
     let layer_name = (rule : Stylesheet.import_rule).layer in
     if not (layer_known ~layer_order layer_name) then
       Error
-        ("unknown layer "
-        ^ Option.fold ~none:"" ~some:Stylesheet.string_of_layer_name layer_name
-        )
+        (String.concat ""
+           [
+             "unknown layer ";
+             Option.fold ~none:"" ~some:Stylesheet.string_of_layer_name
+               layer_name;
+           ])
     else if not (supports_ok ?query rule) then
       Error "supports() guard rejected the import"
     else if not (media_ok ?query rule) then

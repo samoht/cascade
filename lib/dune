@@ -10,6 +10,7 @@
   baseline
   block
   common
+  commute
   custom_property_name
   declaration_intf
   declaration_core
@@ -23,6 +24,7 @@
   inline_dead
   inline_layer
   inline_import
+  line_col
   merge
   properties_intf
   properties_layout_intf
@@ -62,6 +64,7 @@
   shorthand_text
   shorthand_timing
   size
+  subsets
   stylesheet_intf
   stylesheet_cascade
   stylesheet_equal
@@ -82,7 +85,6 @@
   context_css_wide
   context_paint
   context_keyword
-  summary
   values_intf
   values_color_name
   values_var
@@ -104,9 +106,8 @@
   variables_layout
   variables_property
   rule_graph
+  conflict_index
   rule_scheduler
-  pool
-  order_maintenance
   preflight
   ctx
   cover
@@ -194,7 +195,6 @@
   optimize.mli
   flatten.mli
   parser.mli
-  pool.mli
   preflight.mli
   pp.mli
   prune.mli
@@ -211,7 +211,6 @@
   source_index.mli
   stats.mli
   stylesheet.mli
-  summary.mli
   support.mli
   supports.mli
   syntax.mli

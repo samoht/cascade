@@ -184,7 +184,7 @@ let canonical_reports_reset_crossing_declaration () =
          { selector; old_declarations = Some _; new_declarations = Some _; _ };
       ] ->
           Alcotest.(check string)
-            "the rule the reset crosses" "p:after" selector
+            "the rule the reset crosses" "p::after" selector
       | _ -> Alcotest.fail "expected one declaration-level reorder")
   | Cascade_diff.Css_compare.String_diff _ ->
       Alcotest.fail "fell back to a byte diff of the canonical forms"

@@ -66,14 +66,7 @@ let nesting_leads_every_compound sel =
   let rec walk ~leading = function
     | Selector.Nesting -> leading
     | Selector.Compound (x :: rest) ->
-        walk ~leading x
-        && List.for_all
-             (fun s ->
-               not
-                 (Selector.any
-                    (function Selector.Nesting -> true | _ -> false)
-                    s))
-             rest
+        walk ~leading x && List.for_all (fun s -> not (contains s)) rest
     | Selector.Combined (l, _, r) ->
         walk ~leading:true l && walk ~leading:true r
     | Selector.Relative (_, r) -> walk ~leading:true r
@@ -89,7 +82,12 @@ let substitute ?(leftmost = true) ~parent sel =
     && ((not (leads_compound parent)) || nesting_leads_every_compound sel)
   in
   let parent = if verbatim then parent else Selector.Is [ parent ] in
-  Selector.map (function Selector.Nesting -> parent | s -> s) sel
+  (* A parent spliced in verbatim lands as a part of a compound or as the left
+     operand of a combinator, where it prints the same as the reader's shape but
+     reads back as another node, so the node around it takes that shape. *)
+  Selector.map
+    (function Selector.Nesting -> parent | node -> Selector.reshape node)
+    sel
 
 (* A parent the nested selector never names still lands inside it, to the left
    of a combinator, so it needs the same wrapper. *)
@@ -103,10 +101,10 @@ let rec combine parent child =
   match child with
   | Selector.List branches -> Selector.List (List.map (combine parent) branches)
   | Selector.Relative (comb, right) ->
-      Selector.Combined
-        (grouped parent, comb, substitute ~leftmost:false ~parent right)
+      Selector.combine (grouped parent) comb
+        (substitute ~leftmost:false ~parent right)
   | _ when contains child -> substitute ~parent child
-  | _ -> Selector.Combined (grouped parent, Selector.Descendant, child)
+  | _ -> Selector.combine (grouped parent) Selector.Descendant child
 
 (* CSS Selectors 4 sec. 3.6.3 to sec. 3.6.5 bound what may follow a
    pseudo-element: no combinator, and in its own compound only the

@@ -185,7 +185,8 @@ let read_animation_count_number t : animation_iteration_count =
       (match unit with
       | Some u ->
           Cursor.err_invalid t
-            ("animation-iteration-count must be unitless, got: " ^ u)
+            (String.concat ""
+               [ "animation-iteration-count must be unitless, got: "; u ])
       | None ->
           if n < 0. then
             Cursor.err_invalid t "animation-iteration-count cannot be negative");
@@ -376,11 +377,11 @@ module Animation = struct
 
   let set_string_name t label name_seen acc = function
     | Some name when not !name_seen -> set_name name_seen acc (Ambiguous name)
-    | _ -> Cursor.err t ("duplicate " ^ label)
+    | _ -> Cursor.err t (String.concat "" [ "duplicate "; label ])
 
   let set_animation_name t label name_seen acc = function
     | Some name when not !name_seen -> set_name name_seen acc name
-    | _ -> Cursor.err t ("duplicate " ^ label)
+    | _ -> Cursor.err t (String.concat "" [ "duplicate "; label ])
 
   type read_state = {
     duration_count : int ref;
@@ -519,7 +520,9 @@ module Animation = struct
       | Some "reverse" -> Direction Reverse
       | Some "alternate" -> Direction Alternate
       | Some "alternate-reverse" -> Direction Alternate_reverse
-      | Some s -> Cursor.err t ("unknown animation-direction-item: " ^ s)
+      | Some s ->
+          Cursor.err t
+            (String.concat "" [ "unknown animation-direction-item: "; s ])
       | None -> Cursor.err_expected t "animation-direction-item"
     in
     let read_fill t =
@@ -528,14 +531,18 @@ module Animation = struct
       | Some "forwards" -> Fill_mode Forwards
       | Some "backwards" -> Fill_mode Backwards
       | Some "both" -> Fill_mode Both
-      | Some s -> Cursor.err t ("unknown animation-fill-mode-item: " ^ s)
+      | Some s ->
+          Cursor.err t
+            (String.concat "" [ "unknown animation-fill-mode-item: "; s ])
       | None -> Cursor.err_expected t "animation-fill-mode-item"
     in
     let read_play t =
       match Option.map String.lowercase_ascii (Cursor.ident_opt t) with
       | Some "running" -> Play_state (Running : animation_play_state)
       | Some "paused" -> Play_state Paused
-      | Some s -> Cursor.err t ("unknown animation-play-state-item: " ^ s)
+      | Some s ->
+          Cursor.err t
+            (String.concat "" [ "unknown animation-play-state-item: "; s ])
       | None -> Cursor.err_expected t "animation-play-state-item"
     in
     let read_timeline t = Timeline (read_animation_timeline t) in
@@ -553,7 +560,8 @@ module Animation = struct
       then
         (* This identifier is for another property, not animation-name *)
         Cursor.err t
-          ("'" ^ v ^ "' is a reserved keyword for animation properties")
+          (String.concat ""
+             [ "'"; v; "' is a reserved keyword for animation properties" ])
       else Name (Some (Name v))
     in
     let keyword = Cursor.peek_ident t in

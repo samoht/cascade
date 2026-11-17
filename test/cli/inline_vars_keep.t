@@ -47,7 +47,7 @@ working through the variable) and a warning names it.
   > .btn { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars --keep-vars=brand dark.css 2>&1
-  Warning: --palette-red is redefined in a different scope; kept live (cannot inline safely)
+  cascade: warning: --palette-red takes different values in different scopes; kept live (cannot inline safely)
   :root{--brand:var(--palette-red);--palette-red:red}.dark{--palette-red:black}.btn{color:var(--brand)}
 
 Custom property names are case-sensitive. Keeping [--brand] must not
@@ -70,12 +70,12 @@ Whitespace around list entries is tolerated.
 effect on its own.
 
   $ cascade --minify --keep-vars=brand theme.css 2>&1 | head -2
-  Warning: --keep-vars has no effect without --inline-vars
+  cascade: warning: --keep-vars has no effect without --inline-vars
   :root{--brand:red;--spacing-3:12px}.btn{color:var(--brand);padding:var(--spacing-3)}
 
 A wildcard [*] is rejected with a clear error - names must be listed
 explicitly.
 
-  $ cascade --minify --inline-vars --keep-vars="*" theme.css 2>&1 | head -3
-  Error: --keep-vars does not accept the wildcard "*"; list names explicitly.
+  $ cascade --minify --inline-vars --keep-vars="*" theme.css
+  cascade: error: --keep-vars does not accept the wildcard "*"; list names explicitly
   [1]

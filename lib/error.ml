@@ -42,6 +42,7 @@ type kind =
   | Bad_value of { property : string; reason : string }
   | Bad_condition of { at_rule : string; reason : string }
   | Unknown_at_rule of string
+  | Invalid_statement of string
   | Unterminated of Sort.t
   | Too_deep of int
 
@@ -49,12 +50,20 @@ type kind =
    by the user-facing pretty-printer. Most raised errors are caught and
    discarded inside speculative parsers ([Cursor.option] / [Cursor.one_of]), so
    building the snippet eagerly was pure waste in the hot path. *)
+module Source = struct
+  type t = Line_col.t
+
+  let v = Line_col.v
+  let text = Line_col.source
+  let locate t pos = Line_col.locate t pos
+end
+
 type t = {
   loc : Loc.t;
   sort : Sort.t;
   path : string list;
   kind : kind;
-  source : string option;
+  source : Source.t option;
   filename : string option;
   recovery : Recovery.t;
 }
@@ -62,34 +71,12 @@ type t = {
 let snippet t =
   match t.source with
   | None -> None
-  | Some source -> Some (Loc.snippet source t.loc)
-
-(* CSS Syntax 3 (ED) sec. 3.3 turns CR, FF and the CRLF pair into one LF before
-   tokenizing, and a column is one element of the decoded stream: a code point,
-   or one U+FFFD per maximal ill-formed subpart (sec. 3.2). A source the reader
-   already preprocessed holds only LF; counting the other breaks as well gives
-   the same answer on a raw string. *)
-let line_col source pos =
-  let len = max 0 (min pos (String.length source)) in
-  let line, col, _ =
-    Common.String.utf8_fold ~len
-      (fun (line, col, after_cr) _ decoded ->
-        match decoded with
-        | Common.String.Scalar u -> (
-            match Uchar.to_int u with
-            | 0x0A when after_cr -> (line, col, false)
-            | 0x0A | 0x0C -> (line + 1, 1, false)
-            | 0x0D -> (line + 1, 1, true)
-            | _ -> (line, col + 1, false))
-        | Common.String.Malformed _ -> (line, col + 1, false))
-      (1, 1, false) source
-  in
-  (line, col)
+  | Some source -> Some (Loc.snippet (Source.text source) t.loc)
 
 let position t =
   match t.source with
   | None -> None
-  | Some source -> Some (line_col source t.loc.start_pos)
+  | Some source -> Some (Source.locate source t.loc.start_pos)
 
 let context t =
   {
@@ -115,6 +102,9 @@ let pp_kind : kind Pp.t =
   | Bad_selector reason ->
       Pp.string ctx "bad selector: ";
       Pp.string ctx reason
+  | Bad_value { property = ""; reason } ->
+      Pp.string ctx "bad value: ";
+      Pp.string ctx reason
   | Bad_value { property; reason } ->
       Pp.string ctx "bad value for ";
       Pp.string ctx property;
@@ -128,6 +118,7 @@ let pp_kind : kind Pp.t =
   | Unknown_at_rule name ->
       Pp.string ctx "unknown at-rule @";
       Pp.string ctx name
+  | Invalid_statement reason -> Pp.string ctx reason
   | Unterminated s ->
       Pp.string ctx "unterminated ";
       Sort.pp ctx s
@@ -136,57 +127,62 @@ let pp_kind : kind Pp.t =
       Pp.int ctx limit;
       Pp.string ctx " levels"
 
-(* A source names the line and column, as [source:line:column] an editor can
-   jump to; an error without one only has its byte range. *)
-let pp : t Pp.t =
- fun ctx ({ loc; sort; path; kind; source = _; filename; recovery = _ } as t) ->
-  let position = position t in
-  (match (position, filename) with
-  | None, Some f when f <> "" ->
-      Pp.string ctx f;
-      Pp.string ctx ": "
-  | _ -> ());
-  (match path with
-  | [] -> ()
-  | _ ->
-      Pp.string ctx (String.concat "/" path);
-      Pp.string ctx ": ");
-  pp_kind ctx kind;
-  Pp.string ctx " at ";
-  (match position with
+(* A kind that names what was being read says enough; the others say it after
+   the reason. *)
+let pp_message : t Pp.t =
+ fun ctx t ->
+  pp_kind ctx t.kind;
+  match t.kind with
+  | Unexpected_token _ | Missing_token _ | Too_deep _ ->
+      Pp.string ctx " in ";
+      Sort.pp ctx t.sort
+  | Sort_mismatch _ | Bad_selector _ | Bad_value _ | Bad_condition _
+  | Unknown_at_rule _ | Invalid_statement _ | Unterminated _ ->
+      ()
+
+(* [source:line:column], the form an editor jumps to. An error without a source
+   has no line to give, and a byte range means nothing to a reader without the
+   text, so it names the source alone. *)
+let pp_location ctx t =
+  Pp.string ctx
+    (match t.filename with Some f when f <> "" -> f | _ -> "<CSS input>");
+  match position t with
   | Some (line, col) ->
-      Pp.string ctx
-        (match filename with Some f when f <> "" -> f | _ -> "<CSS input>");
       Pp.char ctx ':';
       Pp.string ctx (Int.to_string line);
       Pp.char ctx ':';
       Pp.string ctx (Int.to_string col)
-  | None -> Loc.pp ctx loc);
-  Pp.string ctx " (in ";
-  Sort.pp ctx sort;
-  Pp.char ctx ')';
+  | None -> ()
+
+(* The snippet is one line of the source, indented under the location, with the
+   caret under the marked span. Both counts are columns rather than bytes, so a
+   space and a caret apiece line the marker up under a multibyte snippet. *)
+let pp_snippet ctx t =
   match snippet t with
   | None -> ()
   | Some { text; marker_pos; marker_len } ->
-      (* The caret line goes under the line it marks rather than under the whole
-         window. Both counts are columns rather than bytes, so a space and a
-         caret apiece line the marker up under a multibyte snippet. *)
-      let lines = String.split_on_char '\n' text in
-      let marker_line, marker_pos, line_len =
-        Common.String.marker_line lines marker_pos
-      in
-      let marker_len = max 1 (min marker_len (line_len - marker_pos)) in
-      List.iteri
-        (fun i line ->
-          Pp.cut ctx ();
-          Pp.string ctx line;
-          if i = marker_line then (
-            Pp.cut ctx ();
-            Pp.string ctx (String.make marker_pos ' ');
-            Pp.string ctx (String.make marker_len '^')))
-        lines
+      Pp.cut ctx ();
+      Pp.string ctx "  ";
+      Pp.string ctx text;
+      Pp.cut ctx ();
+      Pp.string ctx "  ";
+      Pp.string ctx (String.make marker_pos ' ');
+      Pp.string ctx (String.make marker_len '^')
 
-let to_string t = Pp.to_string pp t
+type severity = [ `Error | `Warning ]
+
+let pp_with ?severity ctx t =
+  pp_location ctx t;
+  Pp.string ctx ": ";
+  (match severity with
+  | Some `Error -> Pp.string ctx "error: "
+  | Some `Warning -> Pp.string ctx "warning: "
+  | None -> ());
+  pp_message ctx t;
+  pp_snippet ctx t
+
+let pp ctx t = pp_with ctx t
+let to_string ?severity t = Pp.to_string (pp_with ?severity) t
 
 exception Parse_error of t
 
@@ -198,8 +194,19 @@ let v ?(path = Loc.Path.empty) ?source ?filename ~loc ~sort kind =
     sort;
     path = Loc.Path.to_labels path;
     kind;
-    source;
+    source = Option.map Source.v source;
     filename;
+    recovery = Recovery.Recovered;
+  }
+
+let in_source source ~loc ~sort kind =
+  {
+    loc;
+    sort;
+    path = [];
+    kind;
+    source = Some source;
+    filename = None;
     recovery = Recovery.Recovered;
   }
 
@@ -214,6 +221,12 @@ let with_property property t =
   match t.kind with
   | Bad_value { property = ""; reason } ->
       { t with kind = Bad_value { property; reason } }
+  | _ -> t
+
+let as_selector t =
+  match t.kind with
+  | Bad_value { property = ""; reason } ->
+      { t with kind = Bad_selector reason; sort = Sort.Selector }
   | _ -> t
 
 let fail e = Stdlib.raise (Parse_error e)

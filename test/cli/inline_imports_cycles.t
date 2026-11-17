@@ -7,7 +7,7 @@ visit's content stays; the second visit drops the @import line.
   > @import url("self.css");
   > .self { color: red }
   > EOF
-  $ cascade --minify --inline-imports self.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-imports self.css 2>&1
   .self{color:red}
 
 A two-cycle (A imports B which imports A) is detected and broken at
@@ -21,7 +21,7 @@ the second visit.
   > @import url("a.css");
   > .b { color: blue }
   > EOF
-  $ cascade --minify --inline-imports a.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-imports a.css 2>&1
   .b{color:#00f}.a{color:red}
 
 A three-level cycle (A -> B -> C -> A) is detected and broken.
@@ -38,5 +38,5 @@ A three-level cycle (A -> B -> C -> A) is detected and broken.
   > @import url("cyc-a.css");
   > .c { color: green }
   > EOF
-  $ cascade --minify --inline-imports cyc-a.css 2>&1 | grep -v "warning"
+  $ cascade --minify --inline-imports cyc-a.css 2>&1
   .c{color:green}.b{color:#00f}.a{color:red}

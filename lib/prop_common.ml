@@ -18,7 +18,8 @@ let positive_integer_of_calc : _ calc -> int option = function
   | _ -> None
 
 let err_invalid_value ?loc ?got t prop_name value =
-  Cursor.err ?loc ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
+  Cursor.err ?loc ?got t
+    (String.concat "" [ "invalid "; prop_name; " value: "; value ])
 
 let read_auto_color t =
   Cursor.enum "auto or colour"
@@ -70,13 +71,7 @@ let value_has_css_wide_mix value =
 (* Components-form equivalent: skip the round-trip through a string buffer used
    by [value_has_css_wide_mix] when callers already hold the component list. *)
 let components_have_css_wide_mix components =
-  let non_ws =
-    List.filter
-      (function
-        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-        | _ -> true)
-      components
-  in
+  let non_ws = List.filter (Fun.negate Component.is_whitespace) components in
   let lone_css_wide =
     match non_ws with
     | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
@@ -365,7 +360,7 @@ let hex_string n =
 let padded_hex width n =
   let hex = hex_string n in
   if String.length hex >= width then hex
-  else String.make (width - String.length hex) '0' ^ hex
+  else String.concat "" [ String.make (width - String.length hex) '0'; hex ]
 
 (* RGB color helpers *)
 let rgb_black : color = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
@@ -377,7 +372,9 @@ let read_dashed_ident t =
   let loc = Cursor.position t in
   let ident = Cursor.ident ~keep_case:true t in
   if Custom_property_name.is_valid ident then ident
-  else Cursor.err_invalid ~loc t ("expected dashed ident, got: " ^ ident)
+  else
+    Cursor.err_invalid ~loc t
+      (String.concat "" [ "expected dashed ident, got: "; ident ])
 
 let equal_overflow (a : overflow) b = a = b
 let equal_grid_line (a : grid_line) b = a = b

@@ -20,6 +20,7 @@ let () =
       Test_support.suite;
       Test_webkit_fallback.suite;
       Test_loc.suite;
+      Test_line_col.suite;
       Test_token.suite;
       Test_lexer.suite;
       Test_source_index.suite;
@@ -33,12 +34,11 @@ let () =
       Test_rule_graph.suite;
       Test_rule_rewrite.suite;
       Test_rule_candidate.suite;
+      Test_subsets.suite;
       Test_rule_scheduler.suite;
       Test_rule_order.suite;
-      Test_order_maintenance.suite;
       Test_common.suite;
       Test_ctx.suite;
-      Test_pool.suite;
       Test_stats.suite;
       Test_edge.suite;
       Test_shorthand.suite;
@@ -48,6 +48,7 @@ let () =
       Test_size.suite;
       Test_rule.suite;
       Test_rule_index.suite;
+      Test_conflict_index.suite;
       Test_apply.suite;
       Test_prune.suite;
       Test_factor.suite;
@@ -55,7 +56,6 @@ let () =
       Test_cover.suite;
       Test_flatten.suite;
       Test_preflight.suite;
-      Test_summary.suite;
       Test_pp.suite;
       Test_syntax.suite;
       Test_context.suite;

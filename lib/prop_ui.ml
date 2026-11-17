@@ -285,7 +285,8 @@ let read_nav_scope t : nav_scope =
         match Cursor.ident t with
         | "current" -> Current
         | "root" -> Root
-        | ident -> Cursor.err_invalid t ("nav scope: " ^ ident));
+        | ident ->
+            Cursor.err_invalid t (String.concat "" [ "nav scope: "; ident ]));
       (fun t ->
         let name = Cursor.string t in
         if String.equal name "_self" then Cursor.err_invalid t "nav target"

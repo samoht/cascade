@@ -13,15 +13,15 @@ val vars :
   Stylesheet.t
 (** [vars ?keep_vars ?inline_runtime ?warn stylesheet] substitutes [var(--name)]
     references with the value of the corresponding [--name] declaration and
-    deletes the definition, but only for a variable with a single definition
-    (its value is then unambiguous). A variable in [keep_vars], or one redefined
-    in a different scope (a real cascade override such as dark mode), keeps its
-    definition and stays a live [var()] reference. So does a variable a
-    reference marked [~runtime] reads, unless [inline_runtime] (default [false])
-    is [true]: it then folds like any other, for a caller that wants every
-    variable the sheet defines resolved away. [warn] is called with each name
-    (leading [--]) that could not be inlined because it is redefined in a
-    different scope. *)
+    deletes the definition, but only for a variable that takes one value
+    (definitions agreeing on a value are one binding wherever they sit). A
+    variable in [keep_vars], or one whose definitions disagree (a real cascade
+    override such as dark mode), keeps its definitions and stays a live [var()]
+    reference. So does a variable a reference marked [~runtime] reads, unless
+    [inline_runtime] (default [false]) is [true]: it then folds like any other,
+    for a caller that wants every variable the sheet defines resolved away.
+    [warn] is called with each name (leading [--]) that could not be inlined
+    because its definitions disagree. *)
 
 val mentioned_custom_names : Stylesheet.t -> string list
 (** [mentioned_custom_names stylesheet] is every custom-property name (leading
@@ -30,25 +30,15 @@ val mentioned_custom_names : Stylesheet.t -> string list
     included), or queried by a [style()] container query. A [@property] body is
     not a mention, so a registration never keeps itself. *)
 
-val layer_order : Stylesheet.t -> string list option
-(** [layer_order stylesheet] is the cascade layer order [stylesheet] declares,
-    weakest first, as one dotted path per layer, or [None] when the order
-    depends on something static analysis cannot settle: a layer first named
-    inside a conditional group is introduced there only when the condition
-    holds, and one named inside an {!Stylesheet.Origin} block belongs to that
-    origin's own stack. This is the order {!vars} resolves a custom property
-    defined across several layers against, and [None] is the answer that stops
-    it. *)
-
 val flattening_layers_is_safe : Stylesheet.t -> bool
 (** [flattening_layers_is_safe stylesheet] is [true] when dropping every
     [@layer] wrapper in [stylesheet] leaves the same declaration winning each
     cascade slot. Unwrapping a layer replays the stack as document order and
     lets specificity speak again, which only holds where the two already agree
     on every slot two layers write. [false] also answers for a sheet where that
-    is out of reach: an order {!layer_order} cannot rank, an anonymous layer,
-    another origin's stack, a [@scope] block, a nested rule, or a declaration
-    broad enough to write any slot. *)
+    is out of reach: a layer first named inside a conditional group, an
+    anonymous layer, another origin's stack, a [@scope] block, a nested rule, or
+    a declaration broad enough to write any slot. *)
 
 val decode_import_url : string -> string
 (** [decode_import_url s] strips the [url(...)] wrapper and any surrounding

@@ -14,10 +14,10 @@ type config = {
 
 type t = {
   position : int;  (** Character position of first difference. *)
-  line_expected : int;  (** Line number in expected string. *)
-  column_expected : int;  (** Column in expected string. *)
-  line_actual : int;  (** Line number in actual string. *)
-  column_actual : int;  (** Column in actual string. *)
+  line_expected : int;  (** 1-based line of the difference in expected. *)
+  column_expected : int;  (** 1-based byte column in expected. *)
+  line_actual : int;  (** 1-based line of the difference in actual. *)
+  column_actual : int;  (** 1-based byte column in actual. *)
   context_before : (string * string) list;  (** Lines before difference. *)
   diff_lines : string * string;  (** Lines containing the difference. *)
   context_after : (string * string) list;  (** Lines after difference. *)

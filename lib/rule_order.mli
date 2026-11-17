@@ -16,14 +16,6 @@
     reordering of the input, which is what lets the canonical diff treat such
     reorderings as no-ops. *)
 
-val canonical_declarations :
-  Declaration.declaration list -> Declaration.declaration list
-(** [canonical_declarations decls] reorders a rule's declarations into a
-    deterministic content order for cross-rule gzip alignment, keeping the
-    relative order of any two whose footprints overlap (same property, or a
-    shorthand and a longhand) since that is cascade-significant. Physically
-    unchanged when already canonical. *)
-
 val canonicalize :
   ?lossless:bool ->
   ?enforce_spec:bool ->

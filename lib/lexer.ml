@@ -39,6 +39,7 @@ let with_unicode_ranges t f =
   Fun.protect ~finally:(fun () -> t.unicode_ranges <- saved) f
 
 let source t = Reader.source t.reader
+let indexed_source t = Reader.indexed_source t.reader
 
 (** {1 Tokenization} *)
 
@@ -209,7 +210,10 @@ let consume_escape_hex r first =
   take 5;
   consume_escape_trailing_ws r;
   let hex = Buffer.contents buf in
-  let cp = try int_of_string ("0x" ^ hex) with Failure _ -> 0xFFFD in
+  let cp =
+    try int_of_string (String.concat "" [ "0x"; hex ])
+    with Failure _ -> 0xFFFD
+  in
   utf8_of_codepoint cp
 
 let consume_escape r =
@@ -246,6 +250,14 @@ let rec scan_ident_fast r src src_len =
           scan_ident_fast r src src_len
       | Some _ -> `End
 
+let is_ascii_name c = is_name_start_ascii c || is_digit c || c = '-'
+
+let rec skip_ascii_name r =
+  let b = Reader.peek_byte r in
+  if b >= 0 && is_ascii_name (Char.unsafe_chr b) then (
+    Reader.skip r;
+    skip_ascii_name r)
+
 (* Slow path: an escape has been encountered. Seeded with the already-consumed
    no-escape prefix in [buf], extend [buf] byte-by-byte from here on. *)
 let scan_ident_slow r src buf =
@@ -264,12 +276,21 @@ let scan_ident_slow r src buf =
           match Reader.peek_at r 1 with Some c -> is_hex c | None -> false
         in
         Reader.skip r;
-        Buffer.add_string buf (consume_escape r);
+        (match Reader.peek r with
+        | Some c when not (is_hex c) ->
+            Buffer.add_char buf c;
+            Reader.skip r
+        | _ -> Buffer.add_string buf (consume_escape r));
         let consumed_hex_terminator =
           let pos = Reader.position r in
           hex_escape && pos > esc_start + 2 && is_ws src.[pos - 1]
         in
         if not consumed_hex_terminator then consume_hash_suffix ();
+        loop ()
+    | Some c when is_ascii_name c ->
+        let p = Reader.position r in
+        skip_ascii_name r;
+        Buffer.add_substring buf src p (Reader.position r - p);
         loop ()
     | Some _ -> (
         match Reader.peek_utf8 r with
@@ -335,30 +356,21 @@ let consume_string_token ~quote r =
   in
   loop ()
 
-let take_number_digits r buf =
-  let rec loop () =
-    let b = Reader.peek_byte r in
-    if b >= Char.code '0' && b <= Char.code '9' then (
-      Buffer.add_char buf (Char.unsafe_chr b);
-      Reader.skip r;
-      loop ())
-  in
-  loop ()
+let rec skip_number_digits r =
+  let b = Reader.peek_byte r in
+  if b >= Char.code '0' && b <= Char.code '9' then (
+    Reader.skip r;
+    skip_number_digits r)
 
-let consume_number_sign r buf =
-  match Reader.peek r with
-  | Some (('+' | '-') as c) ->
-      Buffer.add_char buf c;
-      Reader.skip r
-  | _ -> ()
+let skip_number_sign r =
+  match Reader.peek r with Some ('+' | '-') -> Reader.skip r | _ -> ()
 
-let consume_fraction r buf is_int =
+let skip_fraction r is_int =
   match (Reader.peek r, Reader.peek_at r 1) with
   | Some '.', Some c when is_digit c ->
-      Buffer.add_char buf '.';
       Reader.skip r;
       is_int := false;
-      take_number_digits r buf
+      skip_number_digits r
   | _ -> ()
 
 let exponent_continues_number r =
@@ -367,24 +379,23 @@ let exponent_continues_number r =
   | Some ('e' | 'E'), Some ('+' | '-'), Some c when is_digit c -> true
   | _ -> false
 
-let consume_exponent r buf is_int =
-  let b = Reader.peek_byte r in
-  if b >= 0 && exponent_continues_number r then (
-    Buffer.add_char buf (Char.unsafe_chr b);
+let skip_exponent r is_int =
+  if exponent_continues_number r then (
     Reader.skip r;
     is_int := false;
-    consume_number_sign r buf;
-    take_number_digits r buf)
+    skip_number_sign r;
+    skip_number_digits r)
 
-(* 4.3.14 Consume a number. *)
+(* 4.3.14 Consume a number. Its representation is the run of source it spans,
+   which no escape can enter. *)
 let consume_number r =
-  let buf = Buffer.create 16 in
+  let start = Reader.position r in
   let is_int = ref true in
-  consume_number_sign r buf;
-  take_number_digits r buf;
-  consume_fraction r buf is_int;
-  consume_exponent r buf is_int;
-  let repr = Buffer.contents buf in
+  skip_number_sign r;
+  skip_number_digits r;
+  skip_fraction r is_int;
+  skip_exponent r is_int;
+  let repr = String.sub (Reader.source r) start (Reader.position r - start) in
   let value = try float_of_string repr with Failure _ -> 0.0 in
   let number_flag = if !is_int then Integer else Number in
   { value; repr; number_flag }
@@ -504,11 +515,15 @@ let unicode_range_has_tail r =
   | Some '-', Some c when is_hex c -> true
   | _ -> false
 
-let unicode_range_value s = int_of_string ("0x" ^ s)
+let unicode_range_value s = int_of_string (String.concat "" [ "0x"; s ])
 
 let unicode_range_wildcard_token start_repr n_q =
-  let start_value = unicode_range_value (start_repr ^ String.make n_q '0') in
-  let end_value = unicode_range_value (start_repr ^ String.make n_q 'F') in
+  let start_value =
+    unicode_range_value (String.concat "" [ start_repr; String.make n_q '0' ])
+  in
+  let end_value =
+    unicode_range_value (String.concat "" [ start_repr; String.make n_q 'F' ])
+  in
   let form =
     Token.Wildcard { prefix_width = String.length start_repr; wildcards = n_q }
   in
@@ -545,11 +560,17 @@ let consume_unicode_range_token r =
       let form = Token.Single { width = String.length start_repr } in
       Unicode_range { start_value; end_value = start_value; form }
 
+(* [name] is [url] in any ASCII case. *)
+let is_url_name name =
+  String.length name = 3
+  && Char.equal (Char.lowercase_ascii name.[0]) 'u'
+  && Char.equal (Char.lowercase_ascii name.[1]) 'r'
+  && Char.equal (Char.lowercase_ascii name.[2]) 'l'
+
 (* 4.3.10 Consume an ident-like token. *)
 let consume_ident_like_token ?(force_url_function = false) r =
   let name = consume_ident_sequence r in
-  let lower = String.lowercase_ascii name in
-  if lower = "url" && Reader.peek_byte r = Char.code '(' then (
+  if is_url_name name && Reader.peek_byte r = Char.code '(' then (
     Reader.skip r;
     (* While the next two code points are whitespace, consume one. *)
     let rec skip_ws_keep_one () =
@@ -612,6 +633,13 @@ let rec skip_comment_run on_comment r =
    forbids normalizing the whitespace of a custom property's token stream, so
    the run's own text is what the token carries; a comment inside it is not
    whitespace and does not join it. *)
+let rec skip_ws_chars r =
+  match Reader.peek r with
+  | Some c when is_ws c ->
+      Reader.skip r;
+      skip_ws_chars r
+  | _ -> ()
+
 let rec consume_whitespace_run ?buf on_comment r =
   match Reader.peek r with
   | Some c when is_ws c ->
@@ -696,9 +724,16 @@ let next_token ?(force_url_function = false) ?(unicode_ranges = false)
   else
     let c = Char.unsafe_chr b in
     if is_ws c then (
-      let buf = Buffer.create 8 in
-      consume_whitespace_run ~buf on_comment r;
-      Whitespace (Buffer.contents buf))
+      let src = Reader.source r in
+      let start = Reader.position r in
+      skip_ws_chars r;
+      let stop = Reader.position r in
+      if Reader.looking_at r "/*" then (
+        let buf = Buffer.create 8 in
+        Buffer.add_substring buf src start (stop - start);
+        consume_whitespace_run ~buf on_comment r;
+        Whitespace (Buffer.contents buf))
+      else Whitespace (String.sub src start (stop - start)))
     else
       match c with
       | '"' ->
@@ -765,6 +800,12 @@ let next_token ?(force_url_function = false) ?(unicode_ranges = false)
 
 (** {1 Stream API (uniform with other stages)} *)
 
+(* Whether [src] holds a [\\] in [\[i, stop)]. *)
+let rec has_backslash src i stop =
+  i < stop
+  && (Char.equal (String.unsafe_get src i) '\\'
+     || has_backslash src (i + 1) stop)
+
 (* Wrap a tokenizer step with source-location capture. The comments before a
    token are skipped first, so its location and source text start at the token
    itself: a rule opened by that token does not span a comment written in front
@@ -781,10 +822,10 @@ let tokenize_with_loc ?(force_url_function = false) ?(unicode_ranges = false)
      the author wrote with any other escape does not come back byte for byte.
      Keep the source text for exactly those; a backslash is what marks one. *)
   let repr =
-    let text =
-      String.sub (Reader.source reader) start_pos (end_pos - start_pos)
-    in
-    if String.contains text '\\' then Some text else None
+    let src = Reader.source reader in
+    if has_backslash src start_pos end_pos then
+      Some (String.sub src start_pos (end_pos - start_pos))
+    else None
   in
   Token.of_source ~repr ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 

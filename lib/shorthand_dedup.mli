@@ -3,9 +3,6 @@
     dropped once the unprefixed twin is widely available, and the longhands a
     preceding shorthand already sets. *)
 
-val same_property : Declaration.declaration -> Declaration.declaration -> bool
-(** [same_property a b] is [true] when [a] and [b] write the same property. *)
-
 val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** [same_value a b] is value equality ignoring importance. *)
 

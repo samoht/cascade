@@ -416,7 +416,7 @@ let minified_number_repr ?(preserve_sign = false)
           String.sub compact 1 (String.length compact - 1)
         else compact
       in
-      String.make 1 repr.[0] ^ digits
+      String.concat "" [ String.make 1 repr.[0]; digits ]
     else compact
   in
   if shorter candidate then candidate else repr
@@ -441,12 +441,11 @@ let closing_char : Token.bracket -> char = function
   | Paren -> ')'
   | Square -> ']'
 
+let drop_whitespace = Common.List.drop_while is_whitespace
+let trim_whitespace = Common.List.trim is_whitespace
+
 let is_backslash_delim = function
   | Preserved { kind = Token.Delim "\\"; _ } -> true
-  | _ -> false
-
-let is_whitespace = function
-  | Preserved { kind = Token.Whitespace _; _ } -> true
   | _ -> false
 
 let numeric_repr ~minify number =
@@ -855,14 +854,10 @@ let rec cv_to_buffer_min ~minify_numbers ~in_math ~preserve_numeric_sign buf =
   | Flat _ as cv -> cv_to_buffer_verbatim buf cv
 
 and cvs_to_buffer_min ~minify_numbers ~in_math buf cvs =
-  let rec drop_ws = function
-    | cv :: rest when is_whitespace cv -> drop_ws rest
-    | other -> other
-  in
   let rec loop prev separated after_whitespace = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
-        let rest' = drop_ws rest in
+        let rest' = drop_whitespace rest in
         let separated' =
           match rest' with
           | next :: _
@@ -920,22 +915,12 @@ let url_string_can_unquote s =
    bare-URL form [url(X)] when X has no special characters - per CSS Values L4
    sec. 4.5 the two notations are equivalent and the bare form is shorter. *)
 let url_args_as_bare_string args =
-  let stripped =
-    List.filter
-      (function
-        | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-        | _ -> true)
-      args
-  in
+  let stripped = List.filter (Fun.negate is_whitespace) args in
   match stripped with
   | [ Component.Preserved { kind = Token.String { value; _ }; _ } ]
     when url_string_can_unquote value ->
       Some value
   | _ -> None
-
-let rec drop_whitespace_components = function
-  | cv :: rest when is_whitespace cv -> drop_whitespace_components rest
-  | other -> other
 
 let custom_min_is_math_delim = function
   | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
@@ -952,7 +937,7 @@ let custom_min_is_important = function
   | _ -> false
 
 let custom_min_after_bang rest =
-  match rest with _ :: more -> drop_whitespace_components more | [] -> []
+  match rest with _ :: more -> drop_whitespace more | [] -> []
 
 let custom_min_bang_boundary prev next rest =
   match (prev, next) with
@@ -1076,7 +1061,7 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
   let rec loop prev separated after_whitespace = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
-        let rest' = drop_whitespace_components rest in
+        let rest' = drop_whitespace rest in
         let separated' =
           custom_min_ws_separator ~in_math ~opaque buf prev separated rest'
         in
@@ -1125,8 +1110,9 @@ let warn ~meta lexer (warnings : Error.t list ref) ~recovery (e : Error.t) =
   let e =
     match meta with
     | `Full ->
-        let source = Lexer.source lexer in
-        Error.v ~source ~loc:e.loc ~sort:e.sort e.kind
+        Error.in_source
+          (Lexer.indexed_source lexer)
+          ~loc:e.loc ~sort:e.sort e.kind
     | `None | `Locs -> e
   in
   warnings := Error.with_recovery recovery e :: !warnings
@@ -1177,15 +1163,10 @@ let consume_at_rule ?(nested = false) ~meta lexer ~name ~start_loc ~warnings :
    [--] followed by ':' reads as a declaration rather than a selector. The
    prelude is held reversed, as [consume_qualified_rule] accumulates it. *)
 let is_custom_property_shape prelude =
-  let rec drop_ws = function
-    | Component.Preserved { kind = Token.Whitespace _; _ } :: rest ->
-        drop_ws rest
-    | other -> other
-  in
-  match drop_ws (List.rev prelude) with
+  match drop_whitespace (List.rev prelude) with
   | Component.Preserved { kind = Token.Ident name; _ } :: rest
     when Custom_property_name.has_prefix name -> (
-      match drop_ws rest with
+      match drop_whitespace rest with
       | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
       | _ -> false)
   | _ -> false
@@ -1269,14 +1250,6 @@ let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
   in
   loop []
 
-(* Skip leading whitespace components from a buffered component-value list. *)
-let rec drop_leading_ws = function
-  | hd :: rest when is_whitespace hd -> drop_leading_ws rest
-  | other -> other
-
-(* Trim whitespace components from both ends of a buffered list. *)
-let trim_ws cvs = drop_leading_ws cvs |> List.rev |> drop_leading_ws |> List.rev
-
 let is_curly_block = function
   | Block { node = { opening = Token.Curly; _ }; _ } -> true
   | _ -> false
@@ -1298,7 +1271,7 @@ let has_bad_token value =
   List.exists walk value
 
 let value_has_invalid_block ~is_custom value =
-  let trimmed = trim_ws value in
+  let trimmed = trim_whitespace value in
   let blocks = List.filter is_curly_block trimmed in
   match blocks with
   | [] -> false
@@ -1325,21 +1298,21 @@ let declaration_of_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     let loc =
       List.fold_left
         (fun l cv -> Loc.union l (Component.source_loc cv))
-        name_loc (trim_ws cvs)
+        name_loc (trim_whitespace cvs)
     in
     Error.Recovery.dropped ~source:(Lexer.source lexer) ~loc
       Error.Recovery.Declaration
   in
-  match drop_leading_ws cvs with
+  match drop_whitespace cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
-      let value1 = trim_ws rest in
+      let value1 = trim_whitespace rest in
       let value, important =
         match List.rev value1 with
         | Preserved { kind = Token.Ident s; _ } :: rest
           when String.lowercase_ascii s = "important" -> (
-            match drop_leading_ws rest with
+            match drop_whitespace rest with
             | Preserved { kind = Token.Delim "!"; _ } :: rest ->
-                (trim_ws (List.rev rest), true)
+                (trim_whitespace (List.rev rest), true)
             | _ -> (value1, false))
         | _ -> (value1, false)
       in
@@ -1638,35 +1611,19 @@ let csv_component_values r =
   let out = list_of_component_values r in
   { out with value = split_comma_groups out.value }
 
-let trim_component_value_whitespace cvs =
-  let is_ws = function
-    | Preserved { kind = Token.Whitespace _; _ } -> true
-    | _ -> false
-  in
-  let rec drop_leading = function
-    | cv :: rest when is_ws cv -> drop_leading rest
-    | rest -> rest
-  in
-  cvs |> drop_leading |> List.rev |> drop_leading |> List.rev
-
-let component_values_are_whitespace_only cvs =
-  List.for_all
-    (function Preserved { kind = Token.Whitespace _; _ } -> true | _ -> false)
-    cvs
-
 let matches_grammar r grammar =
   let out = list_of_component_values r in
-  let value = trim_component_value_whitespace out.value in
+  let value = trim_whitespace out.value in
   if grammar value then { out with value = Some value }
   else { out with value = None }
 
 let csv_by_grammar r grammar =
   let raw = list_of_component_values r in
-  if component_values_are_whitespace_only raw.value then { raw with value = [] }
+  if List.for_all is_whitespace raw.value then { raw with value = [] }
   else
     let out = { raw with value = split_comma_groups raw.value } in
     let match_group group =
-      let group = trim_component_value_whitespace group in
+      let group = trim_whitespace group in
       if grammar group then Some group else None
     in
     { out with value = List.map match_group out.value }
@@ -1693,7 +1650,7 @@ let rec arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level =
 
 let arbitrary_value r ~allow_top_level_semicolon_bang =
   let out = list_of_component_values r in
-  let value = trim_component_value_whitespace out.value in
+  let value = trim_whitespace out.value in
   if
     value <> []
     && arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level:true

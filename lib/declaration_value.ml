@@ -16,21 +16,27 @@ let validate_no_extra_tokens t =
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
         Cursor.err_invalid ~loc t
-          ("unexpected tokens after property value: " ^ trimmed)
+          (String.concat ""
+             [ "unexpected tokens after property value: "; trimmed ])
 
-(* CSS Position 3 sec. 3.1 gives every inset property [auto |
-   <length-percentage>] and sec. 3.2 builds [inset] from it, so no sizing
-   function reaches any of them. That is the same production CSS Box 4 sec. 3.1
-   gives a margin, so they share its component reader. *)
-let read_inset_length t = Values.read_margin_length ~global:true t
+(* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
+   CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
+   longhand takes as its whole value where a shorthand component cannot. CSS
+   Position 3 sec. 3.1 gives every inset property the same production, and sec.
+   3.2 builds [inset] from it, so the inset readers share this one. *)
+let read_margin_length_or_global t = Values.read_margin_length ~global:true t
 
 let read_length_box t =
-  let values = Cursor.list ~at_least:1 ~at_most:4 read_inset_length t in
+  let values =
+    Cursor.list ~at_least:1 ~at_most:4 read_margin_length_or_global t
+  in
   if values = [] then Cursor.err_expected t "length value";
   values
 
-let read_inset_longhand t = [ read_inset_length t ]
-let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_inset_length t
+let read_inset_longhand t = [ read_margin_length_or_global t ]
+
+let read_inset_axis t =
+  Cursor.list ~at_least:1 ~at_most:2 read_margin_length_or_global t
 
 let read_border_width_box t =
   Cursor.list ~at_least:1 ~at_most:4 read_border_width t
@@ -123,7 +129,9 @@ let read_shape_outside t =
         [
           check_shape_outside_shape;
           read_shape_image;
-          (fun t -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw));
+          (fun t ->
+            Cursor.err_invalid t
+              (String.concat "" [ "invalid shape-outside: "; raw ]));
         ]
         t);
   Cursor.expect_eof t;
@@ -159,11 +167,6 @@ let read_lp_or_global t =
     ]
     ~default:(Values.read_length_percentage ~with_keywords:false)
     t
-
-(* CSS Box 4 sec. 3.1 gives a margin longhand [<length-percentage> | auto], and
-   CSS Cascade 5 sec. 7.3 gives every property the CSS-wide keywords, which a
-   longhand takes as its whole value where a shorthand component cannot. *)
-let read_margin_length_or_global t = Values.read_margin_length ~global:true t
 
 let read_nn_length_or_global ?(length_only = false) t =
   Cursor.enum "non-negative length"
@@ -776,7 +779,7 @@ let read_grid_template_shorthand ~name t =
     if String.equal name "grid" then read_grid t else read_grid_template t
   in
   if not (names_both_axes value) then
-    Cursor.err_invalid t (name ^ " names one axis only");
+    Cursor.err_invalid t (String.concat "" [ name; " names one axis only" ]);
   value
 
 let read_grid_value : type a. a property -> Cursor.t -> declaration option =
@@ -1435,7 +1438,8 @@ let rec read_value_from : type a.
   match readers with
   | [] ->
       Cursor.err_invalid t
-        ("unsupported property reader: " ^ canonical_prop_name prop)
+        (String.concat ""
+           [ "unsupported property reader: "; canonical_prop_name prop ])
   | reader :: rest -> (
       match reader.read_value_opt prop t with
       | Some decl -> decl
@@ -1446,8 +1450,10 @@ let read_value (type a) (prop : a property) t : declaration =
   match prop with
   | Custom_property name ->
       Cursor.err_invalid t
-        ("custom property read through regular property: " ^ name)
+        (String.concat ""
+           [ "custom property read through regular property: "; name ])
   | Unknown_property name ->
       Cursor.err_invalid t
-        ("unknown property read through typed parser: " ^ name)
+        (String.concat ""
+           [ "unknown property read through typed parser: "; name ])
   | _ -> read_value_from read_value_readers prop t

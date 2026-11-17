@@ -8,7 +8,7 @@ val rule_loc : Component.rule -> Loc.t
 (** [rule_loc rule] is the source range of [rule]. *)
 
 val read_stylesheet_of_rules :
-  ?source:string ->
+  ?source:Error.Source.t ->
   ?meta:Loc.meta_level ->
   Component.rule list ->
   stylesheet * Error.t list

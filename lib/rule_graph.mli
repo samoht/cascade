@@ -91,10 +91,6 @@ val node_origin : t -> node_id -> int
     as its stable tie-break key, so unconstrained nodes keep first-appearance
     source order. *)
 
-val is_live : t -> node_id -> bool
-(** [is_live t i] is whether node [i] is still present (not consumed by a
-    rewrite). *)
-
 val generation : t -> int
 (** [generation t] increments after every successful rewrite. Candidate queues
     can use it to discard stale work. *)
@@ -118,9 +114,6 @@ val conflict : t -> node_id -> node_id -> bool
     equal-specificity selector branches may match a common element and the rules
     write a shared equal-importance property, or the graph enables structural
     pins and they share a selector branch. Symmetric. *)
-
-val order_constrained : t -> node_id -> node_id -> bool
-(** [order_constrained] is a clearer alias for {!val-conflict}. *)
 
 val rules_conflict :
   ?parent:Selector.t -> Stylesheet.rule -> Stylesheet.rule -> bool
@@ -152,6 +145,22 @@ val facts_conflict : facts -> facts -> bool
 (** [facts_conflict (facts ?parent a) (facts ?parent b)] is
     [rules_conflict ?parent a b]. *)
 
+type facts_index
+(** Rules read by {!val-facts}, each at a position, indexed by what
+    {!val-facts_conflict} needs two rules to share. *)
+
+val facts_index : unit -> facts_index
+(** [facts_index ()] is an empty index. *)
+
+val index_facts : facts_index -> at:int -> facts -> unit
+(** [index_facts index ~at f] adds [f] to [index] at position [at], which is no
+    less than any position added before. *)
+
+val conflicts_after : facts_index -> after:int -> facts -> bool
+(** [conflicts_after index ~after f] is [true] when some [g] added to [index] at
+    a position greater than [after] has [facts_conflict f g]. It tests only the
+    rules after [after] sharing a specificity and an overlap key with [f]. *)
+
 val selectors_conflict : Selector.t -> Selector.t -> bool
 (** [selectors_conflict a b] is the selector half of {!val-rules_conflict}: some
     branch of [a] and some branch of [b] have equal specificity and may match
@@ -170,10 +179,12 @@ val successors : t -> node_id -> node_id list
     {!val-precedes} is the reachability question. *)
 
 val reachability_expansions : t -> int
-(** [reachability_expansions t] is how many nodes [t] has expanded to answer
-    {!val-precedes}. Each node's reachable set is settled once and reused, so
-    this stays bounded by the node count however many pairs a caller asks about.
-*)
+(** [reachability_expansions t] is how many nodes [t] and the graphs it was
+    rewritten from have expanded to answer {!val-precedes}. Each node's
+    reachable set is settled once and reused, so on one graph this stays bounded
+    by the node count however many pairs a caller asks about. A graph
+    {!val-rewrite} returns inherits the sets and the count: the rewrite expands
+    the nodes it produces and the settled nodes that reach one, and no other. *)
 
 val canonical_order_by : t -> (node_id -> int) -> node_id array
 (** [canonical_order_by t rank] is the live node indices in a linear extension
@@ -183,6 +194,42 @@ val canonical_order_by : t -> (node_id -> int) -> node_id array
     comparison passes a content-derived rank so two source orderings of
     cascade-independent rules converge to one form. *)
 
+type run
+(** The order of one run of rules a canonical projection settles, kept while
+    some of its rules fold together. Unlike {!t}, a consumed node leaves no
+    relay behind: once it is gone, two rules only it ordered are free. *)
+
+val run :
+  ?parent:Selector.t ->
+  ?exclusive:(node_id -> node_id -> bool) ->
+  folds:(node_id -> bool) ->
+  Stylesheet.rule list ->
+  run
+(** [run ?parent ?exclusive ~folds rules] is the run of [rules], node [i] the
+    [i]th rule standing at position [i]. Until a fold, {!run_order} orders it as
+    {!canonical_order_by} orders
+    [of_rules ?parent ~pin_shared_branches:false ?exclusive rules]. [folds i]
+    says whether node [i] may later be consumed by {!fold}; the fewer that may,
+    the fewer edges the run holds. [exclusive i j] asserts that nodes [i] and
+    [j] never apply to one element together, so no cascade conflict is recorded
+    between them, and it speaks for the nodes {!fold} produces too. *)
+
+val run_order : run -> (node_id -> int) -> node_id array
+(** [run_order r rank] is the live nodes of [r] in a linear extension of their
+    conflicts, choosing among the nodes free to come next the one with the
+    smallest [rank]. That order becomes where the nodes stand. [rank] must be
+    injective on the live nodes. *)
+
+val run_conflict : run -> node_id -> node_id -> bool
+(** [run_conflict r i j] is {!rules_conflict} between the rules of nodes [i] and
+    [j], whatever [exclusive] says. *)
+
+val fold : run -> node_id list -> Stylesheet.rule -> at:node_id -> node_id
+(** [fold r consumed rule ~at] replaces the live nodes [consumed], each one
+    [run]'s [folds] allowed or one an earlier fold produced, by a new node for
+    [rule] standing where [at] stood, and is that node. [at] is one of
+    [consumed]. *)
+
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension
     of the dependency DAG (a path from the earlier to the later node of every
@@ -190,19 +237,6 @@ val canonical_order : t -> node_id array
     algorithm takes the smallest first-appearance source key, then the node id.
     Every constrained pair keeps its required order; unconstrained pairs are
     projected deterministically without inventing a lexicographic CSS order. *)
-
-val canonical_linearization : t -> node_id array
-(** [canonical_linearization] is a clearer alias for {!val-canonical_order}. *)
-
-val canonicalize : t -> t
-(** [canonicalize t] rebuilds [t] from its canonical rule projection, preserving
-    the nesting parent. *)
-
-val to_rules : t -> Stylesheet.rule list
-(** [to_rules t] is the live rules in {!val-canonical_order} order. *)
-
-val to_canonical_rules : t -> Stylesheet.rule list
-(** [to_canonical_rules] is a clearer alias for {!val-to_rules}. *)
 
 val rewrite :
   t ->
@@ -221,4 +255,12 @@ val try_rewrite :
     dead/stale, if [produce] is empty, or if the result would have a cycle (the
     rewrite would not preserve the cascade). On success {!val-generation} is
     bumped so candidates captured against the old graph can be rejected as
-    stale. *)
+    stale.
+
+    The result shares [t]'s storage, so the attempt costs what it touches rather
+    than the size of the graph, accepted or not. [t] still answers every
+    question about itself afterwards, but it can no longer be rewritten: a
+    lineage of graphs is rewritten from its newest member only.
+
+    Raises [Invalid_argument] if a rewrite of [t] or of a graph rewritten from
+    it was already accepted. *)

@@ -13,6 +13,7 @@ type t = {
      every [_at] predicate reaches it without threading a parameter through the
      tokenizer. *)
   enforce_spec : bool;
+  indexed : Error.Source.t;
   mutable pos : int;
 }
 
@@ -77,7 +78,14 @@ let preprocess input =
 
 let of_string ?(enforce_spec = false) input =
   let input, shifts = preprocess input in
-  { input; len = String.length input; shifts; enforce_spec; pos = 0 }
+  {
+    input;
+    len = String.length input;
+    shifts;
+    enforce_spec;
+    indexed = Error.Source.v input;
+    pos = 0;
+  }
 
 type origin = { map : shift array; length : int }
 
@@ -108,6 +116,7 @@ let original_offset { map; length } i =
     if i < s.upto then s.source_from else s.source_upto + (i - s.upto)
 
 let source t = t.input
+let indexed_source t = t.indexed
 let enforce_spec t = t.enforce_spec
 let is_done t = t.pos >= t.len
 

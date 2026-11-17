@@ -25,7 +25,10 @@ let read_keyframe (r : Cursor.t) : keyframe =
    ["UTF-8"] is recognised. *)
 let read_charset (r : Cursor.t) : statement =
   let at = Cursor.position r in
-  let fail loc reason = Error.fail_bad_value loc ~property:"@charset" ~reason in
+  let fail loc reason =
+    Error.fail
+      (Cursor.error ~sort:Sort.At_rule r ~loc (Error.Invalid_statement reason))
+  in
   if at.Loc.start_pos <> 0 then
     fail at "@charset must be the first bytes of the stylesheet";
   Cursor.expect_at_keyword "charset" r;
@@ -51,7 +54,8 @@ let read_layer_name_component (r : Cursor.t) : layer_name =
   in
   let part p =
     if reserved (String.lowercase_ascii p) then
-      Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ p);
+      Cursor.err_invalid r
+        (String.concat "" [ "layer name reserves CSS-wide keyword: "; p ]);
     p
   in
   let first = part (Cursor.ident ~keep_case:true r) in
@@ -154,8 +158,15 @@ let read_import_media (r : Cursor.t) : Media.t option =
     let loc = Cursor.position r in
     let components = drain_until_semicolon r in
     if starts_with_import_keyword components then
-      Error.fail_bad_condition loc ~at_rule:"@media"
-        ~reason:"layer()/supports() must precede the media query, and once only"
+      Error.fail
+        (Cursor.error ~sort:Sort.At_rule r ~loc
+           (Error.Bad_condition
+              {
+                at_rule = "@media";
+                reason =
+                  "layer()/supports() must precede the media query, and once \
+                   only";
+              }))
     else Some (Media.read ~recover:false (Cursor.sub r components))
 
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
@@ -300,7 +311,8 @@ let read_keyframes_step inner acc =
   else
     match Cursor.peek inner with
     | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
-        Cursor.err_invalid inner ("@keyframes nested @" ^ name)
+        Cursor.err_invalid inner
+          (String.concat "" [ "@keyframes nested @"; name ])
     | _ -> `More (read_keyframe_or_skip inner acc)
 
 let read_keyframes_block inner =
@@ -320,7 +332,7 @@ let read_keyframes_name r =
   | None -> Cursor.custom_ident ~reserved:[ "none" ] "keyframes name" r
 
 let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
-  Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
+  Cursor.with_context r (String.concat "" [ "@"; at_keyword ]) @@ fun () ->
   Cursor.expect_at_keyword at_keyword r;
   let name = read_keyframes_name r in
   Cursor.ws r;

@@ -143,20 +143,46 @@ let background_run_is_reset_closed (layer : Properties.background_shorthand) =
   && Option.is_some layer.clip
 
 (* A layer shorthand resets every layer field, so synthesizing it from a run
-   silently reverts any same-family longhand sitting before the run (separated
-   from it by an unrelated declaration). Even [`Stylesheet] scope, which is
-   closed over external CSS only, must not shadow that earlier same-block
-   longhand, so composition refuses when one exists. *)
-let has_prior_family_longhand part_of idx i =
+   silently reverts any same-family write sitting before the run: a longhand,
+   whatever its value, or the family's own shorthand. Even [`Stylesheet] scope,
+   which is closed over external CSS only, must not shadow that earlier
+   same-block write, so composition refuses when one exists. A longhand whose
+   value the reader refused still names its property. *)
+let has_prior_family_write family idx i =
+  let writes d =
+    match Shorthand_coverage.unwrap_theme_guard d with
+    | Declaration { property = Unknown_property name; _ } -> (
+        match property_of_name name with Some p -> family p | None -> false)
+    | Declaration { property; _ } -> family (Properties.Prop property)
+    | _ -> false
+  in
   let rec aux j =
     if j >= i then false
     else if Rule_index.is_absorbed idx j then aux (j + 1)
-    else
-      match part_of (Rule_index.decl_at idx j) with
-      | Some _ -> true
-      | None -> aux (j + 1)
+    else writes (Rule_index.decl_at idx j) || aux (j + 1)
   in
   aux 0
+
+let background_family (Properties.Prop p) =
+  match p with
+  | Background | Background_color | Background_image | Background_position
+  | Background_position_x | Background_position_y | Background_size
+  | Background_repeat | Background_attachment | Background_origin
+  | Background_clip ->
+      true
+  | _ -> false
+
+(* [mask] also resets [mask-border]; the [-webkit-] twins name the same
+   slots. *)
+let mask_family (Properties.Prop p) =
+  match p with
+  | Mask | Mask_border | Mask_image | Mask_position | Mask_size | Mask_repeat
+  | Mask_origin | Mask_clip | Mask_mode | Mask_composite | Webkit_mask_image
+  | Webkit_mask_position | Webkit_mask_position_x | Webkit_mask_position_y
+  | Webkit_mask_size | Webkit_mask_repeat | Webkit_mask_origin
+  | Webkit_mask_clip | Webkit_mask_composite | Webkit_mask_source_type ->
+      true
+  | _ -> false
 
 let try_compose_background_at ~ctx idx i =
   let parts, len = take_run_at idx ~part_of:background_part_of i in
@@ -173,8 +199,7 @@ let try_compose_background_at ~ctx idx i =
          shorthand could shadow. *)
       let permit =
         match scope ctx with
-        | `Stylesheet ->
-            not (has_prior_family_longhand background_part_of idx i)
+        | `Stylesheet -> not (has_prior_family_write background_family idx i)
         | `Fragment -> background_run_is_reset_closed layer
       in
       if not permit then None
@@ -375,7 +400,7 @@ let try_compose_mask_at ~ctx idx i =
       in
       let permit =
         match scope ctx with
-        | `Stylesheet -> not (has_prior_family_longhand mask_part_of idx i)
+        | `Stylesheet -> not (has_prior_family_write mask_family idx i)
         | `Fragment -> mask_run_is_reset_closed layer
       in
       if not permit then None

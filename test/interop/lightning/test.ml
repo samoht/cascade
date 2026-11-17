@@ -797,9 +797,24 @@ let labelling_cases =
       [ "failed:t" ];
   ]
 
+let strict_case pairs =
+  Alcotest.test_case "every input" `Quick (fun () ->
+      let both =
+        List.filter
+          (fun (pair : Trace_pairs.t) ->
+            Css_test_helpers.strict_agrees_with_lenient pair.input)
+          pairs
+      in
+      match both with
+      | [] ->
+          Alcotest.fail "no input parses strictly: the property went unchecked"
+      | _ :: _ -> ())
+
 let () =
   reset_upstream_report ();
   let pairs = Trace_pairs.read trace_path in
   Alcotest.run "lightning_minify"
     (("labelling", labelling_cases)
-    :: ("verdict", verdict_cases) :: grouped_cases pairs)
+    :: ("verdict", verdict_cases)
+    :: ("strict and lenient parse", [ strict_case pairs ])
+    :: grouped_cases pairs)

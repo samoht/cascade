@@ -452,7 +452,7 @@ val read : Cursor.t -> t
     instead. *)
 
 val read_stylesheet_of_rules :
-  ?source:string ->
+  ?source:Error.Source.t ->
   ?meta:Loc.meta_level ->
   Component.rule list ->
   stylesheet * Error.t list
@@ -461,7 +461,7 @@ val read_stylesheet_of_rules :
     validator failure on one rule is captured as a warning and the rule is
     dropped; the remaining rules are returned. Pass [?source] (and keep [?meta]
     at its default [`Full]) so dropped-rule warnings carry source- context
-    snippets. *)
+    snippets; they share its index. *)
 
 module Source : sig
   (** Immutable source fidelity captured by
@@ -581,6 +581,19 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
     declarations {!fold_declarations} reaches, so a rule nested in a rule and an
     at-rule carrying declarations of its own are both covered. Deduplicated, in
     source order. *)
+
+val drop_inert_at_rules : t -> t
+(** [drop_inert_at_rules stylesheet] drops the at-rules no browser applies: an
+    [@font-face] without a [font-family] or a [src] descriptor (CSS Fonts 4 sec.
+    4.1), at any depth, an [@charset "UTF-8"], and every [@charset] after the
+    first (CSS Syntax 3 (ED) sec. 8.3). *)
+
+val normalise_shadow_color_vars : t -> t
+(** [normalise_shadow_color_vars stylesheet] moves a [var()] the reader put in a
+    [box-shadow]'s blur slot to its colour slot when the variable is a typed
+    [<color>] custom property somewhere in [stylesheet] (CSS Properties and
+    Values API 1 sec. 2), so [0 0 var(--ring)] reads as [0 0 0 var(--ring)].
+    Physically unchanged when no such variable exists. *)
 
 (** {1 Rendering} *)
 

@@ -63,13 +63,6 @@ let element_node (stmt : statement) (rules : rule list) : rule =
         merge_key = None;
       }
 
-let is_identity order =
-  let id = ref true in
-  Array.iteri
-    (fun i v -> if i <> Rule_graph.Node_id.to_int v then id := false)
-    order;
-  !id
-
 (* Source-order-preserving edge count: [indeg.(j)] is the number of
    source-earlier declarations that overlap [j], which must all be emitted
    before [j]. [footprints] is the overlap key list of each declaration, hoisted
@@ -206,59 +199,6 @@ let excludes a b =
          || Container.equal y (Container.Not x))
   | _ -> false
 
-(* Reorder one maximal run of elements into a canonical linear extension of its
-   dependency graph, breaking ties among independent elements by serialized
-   statement content so two source orderings converge to one form, while
-   preserving physical identity when that order already matches the input.
-   [parent], when set, is the enclosing nesting context: the graph expands each
-   element's relative selectors against it so overlap is computed on the
-   effective selector. Two elements under a condition and its negation never
-   apply together, so the graph records no conflict between them. *)
-let sort_run ?parent changed (run : (statement * rule list) list) :
-    statement list =
-  let arr = Array.of_list run in
-  let n = Array.length arr in
-  if n < 2 then List.map fst run
-  else
-    let conditions = Array.map (fun (stmt, _) -> element_conditions stmt) arr in
-    let exclusive i j =
-      List.exists
-        (fun a -> List.exists (excludes a) conditions.(j))
-        conditions.(i)
-    in
-    let exclusive =
-      if Array.exists (fun c -> c <> []) conditions then Option.Some exclusive
-      else Option.None
-    in
-    let g =
-      Rule_graph.of_rules ?parent ~pin_shared_branches:false ?exclusive
-        (List.map (fun (stmt, rules) -> element_node stmt rules) run)
-    in
-    let keys =
-      Array.map
-        (fun (stmt, _) -> Pp.to_string ~minify:true pp_stylesheet [ stmt ])
-        arr
-    in
-    let ranked = Array.init n (fun i -> i) in
-    Array.sort
-      (fun a b ->
-        match String.compare keys.(a) keys.(b) with
-        | 0 -> Int.compare a b
-        | c -> c)
-      ranked;
-    let rank = Array.make n 0 in
-    Array.iteri (fun pos i -> rank.(i) <- pos) ranked;
-    let order =
-      Rule_graph.canonical_order_by g (fun node ->
-          rank.(Rule_graph.Node_id.to_int node))
-    in
-    if is_identity order then List.map fst run
-    else begin
-      changed := true;
-      Array.to_list
-        (Array.map (fun i -> fst arr.(Rule_graph.Node_id.to_int i)) order)
-    end
-
 (* A grouped rule is the sequence of its per-branch rules, and a hoisted shared
    declaration is the same declaration written inline, so two sheets that factor
    the same content differently ([.absolute,.sr-only {position:absolute}] vs the
@@ -283,18 +223,6 @@ let expand_lists (stmt : statement) : statement list =
 let coalesced_declarations ~ctx decls =
   Shorthand.deduplicate_declarations_with ~ctx decls
 
-(* Mutable state of one coalescing scan: the run's elements, the graph nodes
-   accumulated into each surviving element, which elements remain, and which
-   were plain style rules in the run as it was read. *)
-type scan = {
-  graph : Rule_graph.t;
-  arr : (statement * rule list) array;
-  plain : bool array;
-  members : int list array;
-  alive : bool array;
-  mutable merged_any : bool;
-}
-
 (* Two rules that agree wherever they meet. Restrict each to the declarations
    that overlap the other rule at all; when those two sequences are equal, the
    writes reaching any one property are the same declarations in the same order
@@ -318,86 +246,6 @@ let overlapping_writes_equal (a : rule) (b : rule) =
   in
   let a = with_keys a and b = with_keys b in
   List.equal Declaration.same_minified (touching a b) (touching b a)
-
-(* Nothing strictly between [lo] and [hi] observes any accumulated occurrence in
-   [mems] moving across it. A graph conflict between two rules that write the
-   overlapping slots identically is not observable, so it does not count; only
-   plain style rules qualify, since a conditional block stands in the graph for
-   the concatenation of its interior rules and that sequence is not the one any
-   single element sees. *)
-let interval_clear scan ~lo ~hi mems =
-  let node i = Rule_graph.Node_id.of_int_exn i in
-  let observed m a =
-    Rule_graph.conflict scan.graph (node m) (node a)
-    && not
-         (scan.plain.(m) && scan.plain.(a)
-         && overlapping_writes_equal
-              (Rule_graph.node_rule scan.graph (node m))
-              (Rule_graph.node_rule scan.graph (node a)))
-  in
-  let ok = ref true in
-  for m = lo + 1 to hi - 1 do
-    if List.exists (observed m) mems then ok := false
-  done;
-  !ok
-
-(* Moving an earlier [@supports] block down to a later block with the same
-   condition happens only when that condition is true. In that case a
-   declaration in the later block can make an intervening declaration
-   irrelevant: an identical selector writing the same non-important property
-   wins after both the original and merged order. Remove only those exact
-   shadowed writes before asking whether the earlier block still conflicts with
-   the interval. Other statements and importance combinations stay pinned. *)
-let drop_shadowed_by_rules later_rules (rule : rule) : rule =
-  let selector = Pp.to_string ~minify:true Selector.pp rule.selector in
-  let shadowed : (Declaration.prop_key, unit) Hashtbl.t = Hashtbl.create 8 in
-  List.iter
-    (fun (later : rule) ->
-      if
-        String.equal selector
-          (Pp.to_string ~minify:true Selector.pp later.selector)
-      then
-        List.iter
-          (fun decl ->
-            if not (Declaration.is_important decl) then
-              Hashtbl.replace shadowed (Declaration.property_key decl) ())
-          later.declarations)
-    later_rules;
-  let declarations =
-    List.filter
-      (fun decl ->
-        Declaration.is_important decl
-        || not (Hashtbl.mem shadowed (Declaration.property_key decl)))
-      rule.declarations
-  in
-  if List.compare_lengths declarations rule.declarations = 0 then rule
-  else { rule with declarations }
-
-let supports_merge_down_clear ?parent scan ~from ~into =
-  match (fst scan.arr.(from), fst scan.arr.(into)) with
-  | Supports _, Supports _ ->
-      let moving = element_node (fst scan.arr.(from)) (snd scan.arr.(from)) in
-      let later_rules = snd scan.arr.(into) in
-      let node i = Rule_graph.Node_id.of_int_exn i in
-      let rec clear i =
-        if i >= into then true
-        else
-          let conflicts =
-            match fst scan.arr.(i) with
-            | Rule rule ->
-                let residual = drop_shadowed_by_rules later_rules rule in
-                residual.declarations <> []
-                && Rule_graph.rules_conflict ?parent moving residual
-            | _ ->
-                List.exists
-                  (fun member ->
-                    Rule_graph.conflict scan.graph (node i) (node member))
-                  scan.members.(from)
-          in
-          (not conflicts) && clear (i + 1)
-      in
-      clear (from + 1)
-  | _ -> false
 
 (* The shape a run element folds in: a style rule merges declaration lists under
    one selector, a conditional block concatenates bodies under an unchanged
@@ -434,44 +282,6 @@ let block_statement prelude body =
   | Feature_query c -> Supports (c, body)
   | Container_query (name, cond) -> Container (name, cond, body)
 
-(* The element a merge produces. Two elements only ever pair on an equal
-   [element_key], and the key carries the slot's shape, so the two sides always
-   agree; a pair that did not agree declines to merge, which is always sound
-   since leaving a run alone is what the coalescing scan starts from. A block
-   merge concatenates the bodies in source order and re-canonicalises the
-   result: the two halves were each canonical alone, but their concatenation
-   need not be. *)
-let merged_element ~canon_body ~ctx scan ~from ~into =
-  let earlier, later = if from < into then (from, into) else (into, from) in
-  match
-    ( element_shape (fst scan.arr.(earlier)),
-      element_shape (fst scan.arr.(later)) )
-  with
-  | Some (Style a), Some (Style b) ->
-      let merged =
-        {
-          a with
-          declarations =
-            canonical_declarations
-              (coalesced_declarations ~ctx (a.declarations @ b.declarations));
-        }
-      in
-      Some (Rule merged, [ merged ])
-  | Some (Block (prelude, ba)), Some (Block (_, bb)) ->
-      let stmt = block_statement prelude (canon_body (ba @ bb)) in
-      Some (stmt, Option.value ~default:[] (element_rules stmt))
-  | (Some (Style _ | Block _) | None), _ -> None
-
-let merge ~canon_body ~ctx scan changed ~from ~into =
-  match merged_element ~canon_body ~ctx scan ~from ~into with
-  | None -> ()
-  | Some element ->
-      scan.arr.(into) <- element;
-      scan.members.(into) <- scan.members.(from) @ scan.members.(into);
-      scan.alive.(from) <- false;
-      scan.merged_any <- true;
-      changed := true
-
 (* What makes two run elements the same cascade slot, so that one can fold into
    the other. Style, media and supports shapes retain their text keys, while a
    container condition uses the structural equality that decides whether two
@@ -500,21 +310,6 @@ end
 
 module Shape_table = Hashtbl.Make (Shape_key)
 
-(* Fold the earlier occurrence [i] down into [j] when nothing in between
-   observes its writes moving; otherwise fold [j]'s writes up into [i] when
-   nothing in between observes those. *)
-let try_merge ~canon_body ~ctx ?parent scan changed ~last ~key i j =
-  if
-    interval_clear scan ~lo:i ~hi:j scan.members.(i)
-    || supports_merge_down_clear ?parent scan ~from:i ~into:j
-  then begin
-    merge ~canon_body ~ctx scan changed ~from:i ~into:j;
-    Shape_table.replace last key j
-  end
-  else if interval_clear scan ~lo:i ~hi:j scan.members.(j) then
-    merge ~canon_body ~ctx scan changed ~from:j ~into:i
-  else Shape_table.replace last key j
-
 let shape_key = function
   | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
   | Block (Media_query m, _) ->
@@ -525,60 +320,351 @@ let shape_key = function
 
 let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 
+(* A run element and what the rounds of {!settle} read off it, worked out once:
+   the graph node standing for it, its shape key, the conditions every rule of
+   it sits under, and its serialized text, which ranks it among the elements it
+   is free to pass. *)
+type element = {
+  stmt : statement;
+  rules : rule list;
+  node : rule;
+  plain : bool;
+  key : Shape_key.t option;
+  conditions : condition list;
+  text : string Lazy.t;
+}
+
+let element stmt rules =
+  {
+    stmt;
+    rules;
+    node = element_node stmt rules;
+    plain = (match stmt with Rule _ -> true | _ -> false);
+    key = element_key stmt;
+    conditions = element_conditions stmt;
+    text = lazy (Pp.to_string ~minify:true pp_stylesheet [ stmt ]);
+  }
+
+(* The elements a run has held, by graph node: the ones it started with, then
+   each one a fold produced, numbered as {!Rule_graph.fold} numbers its
+   nodes. *)
+type store = { mutable elements : element array; mutable count : int }
+
+let add_element store e =
+  if store.count = Array.length store.elements then begin
+    let grown = Array.make (2 * store.count) e in
+    Array.blit store.elements 0 grown 0 store.count;
+    store.elements <- grown
+  end;
+  store.elements.(store.count) <- e;
+  store.count <- store.count + 1
+
+(* Two nodes of a run, the one whose writes would move and the one they would
+   move to. *)
+module Move_table = Hashtbl.Make (struct
+  type t = int * int
+
+  let equal (a, b) (c, d) = Int.equal a c && Int.equal b d
+  let hash = Hashtbl.hash
+end)
+
+(* One run being settled: its elements, the graph of their order, and for each
+   move a round found observed, the node that observed it, all kept across
+   rounds. *)
+type settling = {
+  canon_body : statement list -> statement list;
+  ctx : Ctx.t;
+  parent : Selector.t option;
+  store : store;
+  graph : Rule_graph.run;
+  observers : int Move_table.t;
+}
+
+(* Mutable state of one coalescing scan over the run's current order: the node
+   standing at each position as the scan found it, which is what the conflict
+   test reads, the element each position holds once the scan has folded into it,
+   the positions accumulated into each surviving one, and which remain. *)
+type scan = {
+  st : settling;
+  start : int array;
+  where : int array;  (** the position of each node in [start], or [-1] *)
+  current : (statement * rule list) array;
+  members : int list array;
+  alive : bool array;
+  mutable merged_any : bool;
+}
+
+let start_element scan i = scan.st.store.elements.(scan.start.(i))
+let node = Rule_graph.Node_id.of_int_exn
+
+let nodes_conflict scan i j =
+  Rule_graph.run_conflict scan.st.graph
+    (node scan.start.(i))
+    (node scan.start.(j))
+
+(* Nothing strictly between [lo] and [hi] observes any accumulated occurrence in
+   [mems] moving across it. A conflict between two rules that write the
+   overlapping slots identically is not observable, so it does not count; only
+   plain style rules qualify, since a conditional block's node is the
+   concatenation of its interior rules and that sequence is not the one any
+   single element sees. *)
+let observer scan ~lo ~hi mems =
+  let observed m a =
+    nodes_conflict scan m a
+    &&
+    let em = start_element scan m and ea = start_element scan a in
+    not (em.plain && ea.plain && overlapping_writes_equal em.node ea.node)
+  in
+  let rec find m =
+    if m >= hi then Option.None
+    else if List.exists (observed m) mems then Option.Some m
+    else find (m + 1)
+  in
+  find (lo + 1)
+
+(* [moving] is [lo] or [hi], and its writes cross the interval. A move of one
+   element no element folded into yet is decided by its two nodes and the nodes
+   between them, and those do not change between rounds, only where they stand:
+   a node that observed it once and still stands between the two observes it
+   again, and the interval need not be read. *)
+let interval_clear scan ~lo ~hi ~moving =
+  match scan.members.(moving) with
+  | [ only ] as mems when only = moving -> (
+      let other = if moving = lo then hi else lo in
+      let move = (scan.start.(moving), scan.start.(other)) in
+      let between node =
+        let p = scan.where.(node) in
+        lo < p && p < hi
+      in
+      match Move_table.find_opt scan.st.observers move with
+      | Option.Some node when between node -> false
+      | _ -> (
+          match observer scan ~lo ~hi mems with
+          | Option.Some m ->
+              Move_table.replace scan.st.observers move scan.start.(m);
+              false
+          | Option.None -> true))
+  | mems -> Option.is_none (observer scan ~lo ~hi mems)
+
+(* Moving an earlier [@supports] block down to a later block with the same
+   condition happens only when that condition is true. In that case a
+   declaration in the later block can make an intervening declaration
+   irrelevant: an identical selector writing the same non-important property
+   wins after both the original and merged order. Remove only those exact
+   shadowed writes before asking whether the earlier block still conflicts with
+   the interval. Other statements and importance combinations stay pinned. *)
+let drop_shadowed_by_rules later_rules (rule : rule) : rule =
+  let selector = Pp.to_string ~minify:true Selector.pp rule.selector in
+  let shadowed : (Declaration.prop_key, unit) Hashtbl.t = Hashtbl.create 8 in
+  List.iter
+    (fun (later : rule) ->
+      if
+        String.equal selector
+          (Pp.to_string ~minify:true Selector.pp later.selector)
+      then
+        List.iter
+          (fun decl ->
+            if not (Declaration.is_important decl) then
+              Hashtbl.replace shadowed (Declaration.property_key decl) ())
+          later.declarations)
+    later_rules;
+  let declarations =
+    List.filter
+      (fun decl ->
+        Declaration.is_important decl
+        || not (Hashtbl.mem shadowed (Declaration.property_key decl)))
+      rule.declarations
+  in
+  if List.compare_lengths declarations rule.declarations = 0 then rule
+  else { rule with declarations }
+
+let supports_merge_down_clear scan ~from ~into =
+  match (fst scan.current.(from), fst scan.current.(into)) with
+  | Supports _, Supports _ ->
+      let moving =
+        element_node (fst scan.current.(from)) (snd scan.current.(from))
+      in
+      let later_rules = snd scan.current.(into) in
+      let rec clear i =
+        if i >= into then true
+        else
+          let conflicts =
+            match fst scan.current.(i) with
+            | Rule rule ->
+                let residual = drop_shadowed_by_rules later_rules rule in
+                residual.declarations <> []
+                && Rule_graph.rules_conflict ?parent:scan.st.parent moving
+                     residual
+            | _ -> List.exists (nodes_conflict scan i) scan.members.(from)
+          in
+          (not conflicts) && clear (i + 1)
+      in
+      clear (from + 1)
+  | _ -> false
+
+(* The element a merge produces. Two elements only ever pair on an equal
+   [element_key], and the key carries the slot's shape, so the two sides always
+   agree; a pair that did not agree declines to merge, which is always sound
+   since leaving a run alone is what the coalescing scan starts from. A block
+   merge concatenates the bodies in source order and re-canonicalises the
+   result: the two halves were each canonical alone, but their concatenation
+   need not be. *)
+let merged_element scan ~from ~into =
+  let earlier, later = if from < into then (from, into) else (into, from) in
+  match
+    ( element_shape (fst scan.current.(earlier)),
+      element_shape (fst scan.current.(later)) )
+  with
+  | Some (Style a), Some (Style b) ->
+      let merged =
+        {
+          a with
+          declarations =
+            canonical_declarations
+              (coalesced_declarations ~ctx:scan.st.ctx
+                 (a.declarations @ b.declarations));
+        }
+      in
+      Some (Rule merged, [ merged ])
+  | Some (Block (prelude, ba)), Some (Block (_, bb)) ->
+      let stmt = block_statement prelude (scan.st.canon_body (ba @ bb)) in
+      Some (stmt, Option.value ~default:[] (element_rules stmt))
+  | (Some (Style _ | Block _) | None), _ -> None
+
+let merge scan changed ~from ~into =
+  match merged_element scan ~from ~into with
+  | None -> ()
+  | Some element ->
+      scan.current.(into) <- element;
+      scan.members.(into) <- scan.members.(from) @ scan.members.(into);
+      scan.alive.(from) <- false;
+      scan.merged_any <- true;
+      changed := true
+
+(* Fold the earlier occurrence [i] down into [j] when nothing in between
+   observes its writes moving; otherwise fold [j]'s writes up into [i] when
+   nothing in between observes those. *)
+let try_merge scan changed ~last ~key i j =
+  if
+    interval_clear scan ~lo:i ~hi:j ~moving:i
+    || supports_merge_down_clear scan ~from:i ~into:j
+  then begin
+    merge scan changed ~from:i ~into:j;
+    Shape_table.replace last key j
+  end
+  else if interval_clear scan ~lo:i ~hi:j ~moving:j then
+    merge scan changed ~from:j ~into:i
+  else Shape_table.replace last key j
+
 (* Coalesce same-slot elements within one run. Folding an occurrence into
    another moves its writes past every element in between, which is observable
    only if one of those elements conflicts with what moved; the conflict test is
-   the graph's, against every original occurrence already accumulated into the
-   surviving element. A conditional block stands in the graph for the union of
-   its interior selectors and declarations, a superset of its true edges, so the
-   same test covers a block merge. [blocks] says whether blocks fold at all. *)
-let coalesce ~blocks ~canon_body ~ctx ?parent changed
-    (run : (statement * rule list) list) : (statement * rule list) list =
-  match run with
-  | [] | [ _ ] -> run
-  | _ ->
-      let arr = Array.of_list run in
-      let n = Array.length arr in
-      let graph =
-        Rule_graph.of_rules ?parent ~pin_shared_branches:false
-          (List.map (fun (stmt, rules) -> element_node stmt rules) run)
-      in
-      let scan =
-        {
-          graph;
-          arr;
-          plain =
-            Array.map
-              (fun (stmt, _) -> match stmt with Rule _ -> true | _ -> false)
-              arr;
-          members = Array.init n (fun i -> [ i ]);
-          alive = Array.make n true;
-          merged_any = false;
-        }
-      in
-      let last = Shape_table.create 16 in
-      let key stmt =
-        match stmt with
-        | Rule _ -> element_key stmt
-        | _ -> if blocks then element_key stmt else None
-      in
-      for j = 0 to n - 1 do
-        match key (fst arr.(j)) with
-        | None -> ()
-        | Some key -> (
-            match Shape_table.find_opt last key with
-            | Some i when scan.alive.(i) ->
-                try_merge ~canon_body ~ctx ?parent scan changed ~last ~key i j
-            | _ -> Shape_table.replace last key j)
-      done;
-      if not scan.merged_any then run
-      else Array.to_list arr |> List.filteri (fun i _ -> scan.alive.(i))
+   {!Rule_graph.facts_conflict}, which is the conflict of the graph over the
+   run, against every original occurrence already accumulated into the surviving
+   element. A conditional block's node is the union of its interior selectors
+   and declarations, a superset of its true conflicts, so the same test covers a
+   block merge. [blocks] says whether blocks fold at all. An element the scan
+   folded into becomes one new node of the graph. *)
+(* The run after [scan]: each surviving element, an element the scan folded
+   into standing as one new node of the graph in place of every node folded
+   into it. *)
+let folded scan =
+  let st = scan.st and ids = scan.start in
+  let survivor p =
+    match scan.members.(p) with
+    | [ q ] when q = p -> ids.(p)
+    | members ->
+        let stmt, rules = scan.current.(p) in
+        let e = element stmt rules in
+        (* the graph asks [exclusive] about the node it adds *)
+        add_element st.store e;
+        Rule_graph.Node_id.to_int
+          (Rule_graph.fold st.graph
+             (List.map (fun q -> node ids.(q)) members)
+             e.node
+             ~at:(node ids.(p)))
+  in
+  let rec collect p acc =
+    if p < 0 then acc
+    else collect (p - 1) (if scan.alive.(p) then survivor p :: acc else acc)
+  in
+  Array.of_list (collect (Array.length ids - 1) [])
+
+let coalesce ~blocks st changed (ids : int array) : int array =
+  let n = Array.length ids in
+  if n < 2 then ids
+  else
+    let scan =
+      {
+        st;
+        start = ids;
+        where =
+          (let where = Array.make st.store.count (-1) in
+           Array.iteri (fun p id -> where.(id) <- p) ids;
+           where);
+        current =
+          Array.map
+            (fun id ->
+              let e = st.store.elements.(id) in
+              (e.stmt, e.rules))
+            ids;
+        members = Array.init n (fun i -> [ i ]);
+        alive = Array.make n true;
+        merged_any = false;
+      }
+    in
+    let last = Shape_table.create 16 in
+    let key e =
+      match e.stmt with Rule _ -> e.key | _ -> if blocks then e.key else None
+    in
+    for j = 0 to n - 1 do
+      match key (start_element scan j) with
+      | None -> ()
+      | Some key -> (
+          match Shape_table.find_opt last key with
+          | Some i when scan.alive.(i) -> try_merge scan changed ~last ~key i j
+          | _ -> Shape_table.replace last key j)
+    done;
+    if scan.merged_any then folded scan else ids
+
+(* Reorder a run into a canonical linear extension of its dependency graph,
+   breaking ties among independent elements by serialized statement content so
+   two source orderings converge to one form, while preserving the run as it
+   stands when that order already matches it. The graph expands each element's
+   relative selectors against the enclosing nesting context, so overlap is
+   computed on the effective selector, and records no conflict between two
+   elements under a condition and its negation, which never apply together. *)
+let sort st changed ids =
+  let n = Array.length ids in
+  if n < 2 then ids
+  else
+    let text i = Lazy.force st.store.elements.(ids.(i)).text in
+    let ranked = Array.init n Fun.id in
+    Array.sort
+      (fun a b ->
+        match String.compare (text a) (text b) with
+        | 0 -> Int.compare a b
+        | c -> c)
+      ranked;
+    let rank = Array.make st.store.count 0 in
+    Array.iteri (fun pos i -> rank.(ids.(i)) <- pos) ranked;
+    let order =
+      Array.map Rule_graph.Node_id.to_int
+        (Rule_graph.run_order st.graph (fun id ->
+             rank.(Rule_graph.Node_id.to_int id)))
+    in
+    if Array.for_all2 Int.equal order ids then ids
+    else begin
+      changed := true;
+      order
+    end
 
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept
    apart, enabling a merge the source order hid, so equivalent sheets converge
    regardless of which arrangement they started from. Each merging round removes
-   at least one element, so this terminates.
+   at least one element, so this terminates. Each round reads the graph and the
+   elements the rounds before it left, so a round costs what changed since.
 
    Fold what the run already offers before sorting it. Sorting is free to move
    two same-selector occurrences apart, and a pair the input wrote adjacent has
@@ -592,23 +678,57 @@ let coalesce ~blocks ~canon_body ~ctx ?parent changed
    sort would instead regroup the rules in the order the input wrote them, and
    the block each rule landed in would decide where it sorts. They fold once the
    sort has put the rules in canonical order. *)
-let rec settle ~canon_body ~ctx ?parent changed
-    (run : (statement * rule list) list) : statement list =
-  let run = coalesce ~blocks:false ~canon_body ~ctx ?parent changed run in
-  let stmts = sort_run ?parent changed run in
-  let sorted =
-    List.filter_map
-      (fun s ->
-        match element_rules s with
-        | Some rules -> Some (s, rules)
-        | None -> None)
-      stmts
+(* Only two elements of one shape key fold, and folding keeps the key, so an
+   element alone with its key stays in the graph to the end. *)
+let folds elements =
+  let sharing = Shape_table.create 16 in
+  Array.iter
+    (fun e ->
+      Option.iter
+        (fun key ->
+          Shape_table.replace sharing key
+            (1 + Option.value ~default:0 (Shape_table.find_opt sharing key)))
+        e.key)
+    elements;
+  fun id ->
+    match elements.(Rule_graph.Node_id.to_int id).key with
+    | Some key -> Shape_table.find sharing key > 1
+    | None -> false
+
+let settling ~canon_body ~ctx ?parent elements =
+  let store = { elements; count = Array.length elements } in
+  let exclusive i j =
+    let conditions id =
+      store.elements.(Rule_graph.Node_id.to_int id).conditions
+    in
+    let cj = conditions j in
+    List.exists (fun a -> List.exists (excludes a) cj) (conditions i)
   in
-  let coalesced =
-    coalesce ~blocks:true ~canon_body ~ctx ?parent changed sorted
+  let graph =
+    Rule_graph.run ?parent ~exclusive ~folds:(folds elements)
+      (Array.to_list (Array.map (fun e -> e.node) elements))
   in
-  if coalesced == sorted then stmts
-  else settle ~canon_body ~ctx ?parent changed coalesced
+  { canon_body; ctx; parent; store; graph; observers = Move_table.create 16 }
+
+let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
+    : statement list =
+  match run with
+  | [] -> []
+  | [ (stmt, _) ] -> [ stmt ]
+  | run ->
+      let elements =
+        Array.of_list (List.map (fun (stmt, rules) -> element stmt rules) run)
+      in
+      let st = settling ~canon_body ~ctx ?parent elements in
+      let rec rounds ids =
+        let ids = coalesce ~blocks:false st changed ids in
+        let ids = sort st changed ids in
+        let coalesced = coalesce ~blocks:true st changed ids in
+        if coalesced == ids then ids else rounds coalesced
+      in
+      rounds (Array.init (Array.length elements) Fun.id)
+      |> Array.map (fun id -> st.store.elements.(id).stmt)
+      |> Array.to_list
 
 (* A declaration a conditional group repeats from the rule with the identical
    selector before it, value and all, changes nothing: an engine reading the
@@ -962,19 +1082,11 @@ let normalize_custom_values ~lossless (stmts : statement list) : statement list
    the colour actually moved. So no other value fold rides along, and the
    emitted form is untouched - the two spellings are not interchangeable on
    output, since [color()] needs a browser that parses it. *)
-let canonical_color_spelling decl =
+let canonical_color_spelling ~plain decl =
   let folded = Declaration.normalize ~lossless:true ~exact_srgb:true decl in
   if folded == decl then decl
-  else if
-    Declaration.equal_declaration folded
-      (Declaration.normalize ~lossless:true decl)
-  then decl
+  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
   else folded
-
-let canonical_color_spellings (stmts : statement list) : statement list =
-  Stylesheet.map_declarations
-    (Common.List.map_preserve canonical_color_spelling)
-    stmts
 
 (* A non-terminating quotient the minifier keeps as the author's [calc()]
    renders within the six-significant-figure budget of the number it folds to,
@@ -982,22 +1094,12 @@ let canonical_color_spellings (stmts : statement list) : statement list =
    [33.3333%]. The projection spends the budget on every typed quotient, as it
    is spent on a number's already, so the two spellings meet; [lossless] keeps
    the quotient and the two apart. *)
-let canonical_quotient decl =
+let canonical_quotient ~plain decl =
   let ctx = { Values.default_calc_ctx with budget = true } in
   let folded = Declaration.normalize ~lossless:true ~ctx decl in
   if folded == decl then decl
-  else if
-    Declaration.equal_declaration folded
-      (Declaration.normalize ~lossless:true decl)
-  then decl
+  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
   else folded
-
-let canonical_quotients ~lossless (stmts : statement list) : statement list =
-  if lossless then stmts
-  else
-    Stylesheet.map_declarations
-      (Common.List.map_preserve canonical_quotient)
-      stmts
 
 (* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
    appropriate unit for that component", for every purpose but the ones that
@@ -1025,36 +1127,63 @@ let canonical_quotients ~lossless (stmts : statement list) : statement list =
 
    Guarded like [canonical_color_spelling]: the flagged normalisation is kept
    only where it moves the colour, so no other value fold rides along. *)
-let canonical_missing_components ~lossless decl =
+let canonical_missing_components ~lossless ~plain decl =
   let folded = Declaration.normalize ~lossless ~resolve_missing:true decl in
   if folded == decl then decl
-  else if
-    Declaration.equal_declaration folded (Declaration.normalize ~lossless decl)
-  then decl
+  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
   else folded
 
-let canonical_missing_components_in_rule ~lossless decls =
-  Common.List.map_preserve
-    (fun decl ->
-      let folded = canonical_missing_components ~lossless decl in
-      if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
-        folded
-      else decl)
-    decls
+(* The three folds above each compare the declaration they fold against its
+   normalisation without their flag, and two of them, and all three under
+   [lossless], compare against one normalisation of one declaration. So a
+   declaration goes through the three in turn and each normalisation it is
+   compared against is worked out once, when a fold first needs it. *)
+let lossless_plain decl = lazy (Declaration.normalize ~lossless:true decl)
 
-let rec canonical_missing_component_colors ~lossless (stmts : statement list) :
+let canonical_value ~lossless decl =
+  let plain = lossless_plain decl in
+  let quotient = if lossless then decl else canonical_quotient ~plain decl in
+  let plain = if quotient == decl then plain else lossless_plain quotient in
+  let color = canonical_color_spelling ~plain quotient in
+  (color, if color == quotient then plain else lossless_plain color)
+
+let canonical_missing ~lossless decls (decl, plain) =
+  let plain =
+    if lossless then plain else lazy (Declaration.normalize ~lossless decl)
+  in
+  let folded = canonical_missing_components ~lossless ~plain decl in
+  if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
+    folded
+  else decl
+
+let canonical_declaration_values ~lossless ~missing decls =
+  let values = List.map (canonical_value ~lossless) decls in
+  let folded =
+    if List.for_all2 (fun d (v, _) -> d == v) decls values then decls
+    else List.map fst values
+  in
+  if not missing then folded
+  else
+    let missed = List.map (canonical_missing ~lossless folded) values in
+    if List.for_all2 ( == ) folded missed then folded else missed
+
+let rec canonical_values ~lossless ~missing (stmts : statement list) :
     statement list =
   Common.List.map_preserve
     (fun stmt ->
-      match stmt with
-      | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Starting_style _ ->
-          stmt
-      | stmt ->
-          stmt
-          |> Stylesheet.map_statement_declarations
-               (canonical_missing_components_in_rule ~lossless)
-          |> Stylesheet.map_statement_children
-               (canonical_missing_component_colors ~lossless))
+      let missing =
+        missing
+        &&
+        match stmt with
+        | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Starting_style _
+          ->
+            false
+        | _ -> true
+      in
+      stmt
+      |> Stylesheet.map_statement_declarations
+           (canonical_declaration_values ~lossless ~missing)
+      |> Stylesheet.map_statement_children (canonical_values ~lossless ~missing))
     stmts
 
 (* CSS Conditional 3 sec. 6.1 makes a [<general-enclosed>] term false, so an
@@ -1735,12 +1864,10 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
       @@ canonical_query_preludes
            (canonical_keyframe_declarations
            @@ sort_property_runs
-                (canonical_missing_component_colors ~lossless
-                   (canonical_color_spellings
-                      (canonical_quotients ~lossless
-                         (normalize_custom_values ~lossless
-                            (canonical_vendor_aliases
-                               (drop_unanswerable_supports stmts))))))))
+                (canonical_values ~lossless ~missing:true
+                   (normalize_custom_values ~lossless
+                      (canonical_vendor_aliases
+                         (drop_unanswerable_supports stmts))))))
   in
   let result =
     canonicalize_block ~ctx

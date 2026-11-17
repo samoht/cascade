@@ -4,10 +4,7 @@ open Inline_subst
 
 (** {1 Pass 3 - dead-code elimination} *)
 
-let strip_component_ws =
-  List.filter (function
-    | Component.Preserved { kind = Token.Whitespace _; _ } -> false
-    | _ -> true)
+let strip_component_ws = List.filter (Fun.negate Component.is_whitespace)
 
 let rec split_var_fallback acc = function
   | [] -> []
@@ -45,7 +42,7 @@ and refs_of_var_args args =
           refs_of_components components
       | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _ -> []
     in
-    ("--" ^ var.Values.name) :: fallback_refs
+    String.concat "" [ "--"; var.Values.name ] :: fallback_refs
   with Cursor.Parse_error _ -> (
     match strip_component_ws args with
     (* The arguments of a [var()] opened past the parser's depth: the name is
@@ -63,12 +60,14 @@ and refs_of_var_args args =
     | Component.Preserved { kind = Token.Delim "--"; _ }
       :: Component.Preserved { kind = Token.Ident name; _ }
       :: rest ->
-        ("--" ^ name) :: refs_of_components (split_var_fallback [] rest)
+        String.concat "" [ "--"; name ]
+        :: refs_of_components (split_var_fallback [] rest)
     | Component.Preserved { kind = Token.Delim "-"; _ }
       :: Component.Preserved { kind = Token.Delim "-"; _ }
       :: Component.Preserved { kind = Token.Ident name; _ }
       :: rest ->
-        ("--" ^ name) :: refs_of_components (split_var_fallback [] rest)
+        String.concat "" [ "--"; name ]
+        :: refs_of_components (split_var_fallback [] rest)
     | rest -> refs_of_components rest)
 
 let refs_of_component_string value =
@@ -76,7 +75,9 @@ let refs_of_component_string value =
   with Cursor.Parse_error _ -> []
 
 let names_of_vars vars =
-  List.map (fun (Variables.V v) -> "--" ^ v.Values.name) vars
+  List.map
+    (fun (Variables.V v) -> String.concat "" [ "--"; v.Values.name ])
+    vars
 
 let refs_of_media_value : Media.value -> string list = function
   | Ident value -> refs_of_component_string (Media.string_of_ident value)
@@ -226,7 +227,8 @@ let collect_scoped_refs stylesheet =
     Variables.vars_of_declarations [ decl ]
     |> List.iter (fun (Variables.V var) ->
         if var.Values.runtime then
-          runtime_refs := ("--" ^ var.Values.name) :: !runtime_refs);
+          runtime_refs :=
+            String.concat "" [ "--"; var.Values.name ] :: !runtime_refs);
     match custom_name decl with
     | Some name -> customs := (at_path, selector, name, refs) :: !customs
     | None -> consumers := (at_path, selector, refs) :: !consumers
@@ -278,10 +280,9 @@ let visible_refs ~path_visible consumers path =
       if path_visible ~scope_path:path ~consumer_path:cp then refs else [])
     consumers
 
-(* Each question the liveness fixpoint asks used to scan a whole list, which
-   made the walk cost a square in the variable count. Index them once: the
-   reference names a path can see, the customs answering to a name, and the
-   customs sharing a scope. *)
+(* The liveness fixpoint asks each question once per variable, so the answers
+   are indexed once: the reference names a path can see, the customs answering
+   to a name, and the customs sharing a scope. *)
 let index_customs key_of customs =
   let table = Hashtbl.create 64 in
   List.iter
@@ -515,37 +516,57 @@ let mentioned_custom_names stylesheet =
     consumers
   |> List.sort_uniq compare
 
-(* Per custom-property name, how many definitions it has across the whole
-   stylesheet, plus the set of names referenced anywhere. A variable is safe to
-   inline and delete only when it has a single definition: its value is then
-   unambiguous. A variable redefined in another scope is a real cascade override
-   (dark mode, a media query, a component) and must stay a live [var()] so its
-   consumers still track it - inlining it would freeze the value. *)
-let var_census stylesheet =
-  (* Count the distinct cascade scopes (selector + at-rule context) that define
-     each variable, so a redeclaration within one scope counts once while a real
-     override in another scope counts as two. Plus the set of referenced
-     names. *)
-  let scopes_of : (string, (at_node list * string) list) Hashtbl.t =
+(* The number of distinct values each name takes. Within one cascade scope
+   (selector and at-rule context) only the winning declaration of a name is a
+   value: a redeclaration there replaces the earlier one, unless that one is
+   [!important] and it is not. *)
+let value_counts stylesheet =
+  let winners : (at_node list * string * string, bool * string) Hashtbl.t =
     Hashtbl.create 64
-  in
-  let add name key =
-    let prev = Option.value ~default:[] (Hashtbl.find_opt scopes_of name) in
-    if not (List.mem key prev) then Hashtbl.replace scopes_of name (key :: prev)
   in
   List.iter
     (fun (s : scope) ->
-      let key = (s.at_path, Selector.to_string ~minify:true s.selector) in
-      s.customs
-      |> List.filter_map (fun d ->
-          Option.map normalise_var_name (custom_name d))
-      |> List.sort_uniq compare
-      |> List.iter (fun n -> add n key))
+      let selector = Selector.to_string ~minify:true s.selector in
+      List.iter
+        (fun d ->
+          match custom_name d with
+          | None -> ()
+          | Some name ->
+              let key = (s.at_path, selector, normalise_var_name name) in
+              let important = Declaration.is_important d in
+              let value = Declaration.string_of_value ~minify:true d in
+              let replaces =
+                match Hashtbl.find_opt winners key with
+                | Some (was_important, _) -> important || not was_important
+                | None -> true
+              in
+              if replaces then Hashtbl.replace winners key (important, value))
+        s.customs)
     (collect_scopes ~kept:[] stylesheet).all;
+  let values_of : (string, string list) Hashtbl.t = Hashtbl.create 64 in
+  Hashtbl.iter
+    (fun (_, _, name) (_, value) ->
+      let prev = Option.value ~default:[] (Hashtbl.find_opt values_of name) in
+      if not (List.exists (String.equal value) prev) then
+        Hashtbl.replace values_of name (value :: prev))
+    winners;
   let counts : (string, int) Hashtbl.t = Hashtbl.create 64 in
   Hashtbl.iter
-    (fun name keys -> Hashtbl.replace counts name (List.length keys))
-    scopes_of;
+    (fun name values -> Hashtbl.replace counts name (List.length values))
+    values_of;
+  counts
+
+(* Per custom-property name, how many values it takes across the whole
+   stylesheet, plus the set of names referenced anywhere. A variable is safe to
+   inline and delete only when it takes one value: whichever definition reaches
+   an element, the element computes that value. A variable whose definitions
+   disagree is a real cascade override (dark mode, a media query, a component)
+   and must stay a live [var()] so its consumers still track it - inlining it
+   would freeze one of the values. Definitions agreeing on a value count once
+   wherever they sit, as the one rule --minify merges them into does, so
+   inlining reaches the same answer on a sheet and on its minified form. *)
+let var_census stylesheet =
+  let counts = value_counts stylesheet in
   let referenced = ref [] in
   let add_refs decls =
     referenced :=

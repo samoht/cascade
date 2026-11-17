@@ -142,7 +142,9 @@ rather than a rule change hoisted to the top level.
 
 A parse warning is a member of the document, not a line beside it, so the
 document is the only thing on standard output whether or not the parser had
-a complaint. A warning both files raise names both sides once.
+a complaint. Each one names its file, line and column as members beside the
+message, which is the reason alone. A warning both files raise names both
+sides once, at its place in the first file.
 
   $ cat > w1.css <<EOF
   > .x { color: red; float: center; margin: 0 }
@@ -153,9 +155,9 @@ a complaint. A warning both files raise names both sides once.
   $ cascade diff --json w1.css w2.css | helpers/jsonq.exe; echo $?
   0
   $ cascade diff --json w1.css w2.css | helpers/jsonq.exe .errors \
-  >   --each .warnings '.side | .message:first-line'
+  >   --each .warnings '.side | .file .line .column | .message'
   []
-  both | read_declaration/float: bad value for float: unknown float-side: center at w1.css:1:25 (in component)
+  both | w1.css 1 25 | bad value for float: unknown float-side: center
 
 A warning only one file raises names that side.
 
@@ -166,9 +168,9 @@ A warning only one file raises names that side.
   > .x { position: nope; margin: 1px }
   > EOF
   $ cascade diff --json p1.css p2.css | helpers/jsonq.exe \
-  >   --each .warnings '.side | .message:first-line'
-  expected | read_declaration/clear: bad value for clear: unknown clear: nope at p1.css:1:13 (in component)
-  actual | read_declaration/position: bad value for position: unknown position: nope at p2.css:1:16 (in component)
+  >   --each .warnings '.side | .file .line .column | .message'
+  expected | p1.css 1 13 | bad value for clear: unknown clear: nope
+  actual | p2.css 1 16 | bad value for position: unknown position: nope
 
 The character-diff fallback carries the position and the two lines instead
 of a change list.
@@ -178,7 +180,7 @@ of a change list.
   >   '.string_diff.position .string_diff.line_expected .string_diff.column_expected' \
   >   .string_diff.diff_lines.expected .string_diff.diff_lines.actual
   string []
-  12 0 12
+  12 1 13
   .x { color: red }
   .x { color: blue }
 
@@ -196,3 +198,13 @@ A side read from standard input is named the way the report names it.
 
   $ printf '.x { color: blue }\n' | cascade diff --json - a.css | helpers/jsonq.exe '.expected .actual'
   <stdin> a.css
+
+The manual lists every member the document has, for a tree comparison
+and for one that fell back to the text.
+
+  $ cascade diff --help=plain | sed -n '/^JSON OUTPUT/,/^COMMON OPTIONS/p' > members.txt
+  $ for doc in "a.css d.css" "--diff=string a.css d.css"; do
+  >   cascade diff --json $doc | grep -o '^  "[a-z_]*"' | tr -d ' "'
+  > done | sort -u | while read m; do
+  >   grep -q "$m" members.txt || echo "undocumented: $m"
+  > done

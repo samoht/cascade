@@ -43,6 +43,58 @@ let test_combine_relative_nested_and_descendant () =
        (Nest.combine parent
           (Selector.Relative (Selector.Child, Selector.class_ "title"))))
 
+(* pp is a serializer (docs/invariants.md), so a selector nesting composes has
+   to be the one reading its print gives back. The reader takes a compound as
+   one flat run of simple selectors and nests a combinator chain to the right;
+   splicing a parent in verbatim would leave a compound inside a compound, or a
+   chain on the left of a combinator, which prints the same and reads apart. *)
+let test_combine_reads_back () =
+  let check parent child expected =
+    let combined = Nest.combine parent child in
+    let printed = sel_string combined in
+    Alcotest.(check string) expected expected printed;
+    Alcotest.(check bool)
+      (String.concat "" [ expected; " reads back as built" ])
+      true
+      (Selector.equal combined (Selector.v printed))
+  in
+  check
+    (Selector.v "&:where(.s,.s *)")
+    (Selector.v "&:hover") "&:where(.s,.s *):hover";
+  check (Selector.v ".a:hover") (Selector.v "&.b") ".a:hover.b";
+  check (Selector.v ".a.b") (Selector.v ".x&") ".x.a.b";
+  check (Selector.v ".l a") (Selector.v "&:hover") ".l a:hover";
+  check (Selector.v ".a .b") (Selector.v "&>.c") ".a .b>.c";
+  check (Selector.v ".a .b") (Selector.v ".c") ".a .b .c";
+  check (Selector.v ".a>.b")
+    (Selector.Relative (Selector.Next_sibling, Selector.class_ "c"))
+    ".a>.b+.c"
+
+(* The same composition reached through the optimizer: merging a [&:where(...)]
+   wrapper into its lone [&:hover] child builds the selector that nesting
+   synthesis then compares with its neighbour's. Built in the reader's shape,
+   the pair nests on the first pass instead of only once the printed text is
+   read back, so minifying the output again changes nothing. *)
+let test_merged_selector_nests_on_first_pass () =
+  let minify css =
+    match Css.of_string css with
+    | Ok { stylesheet; _ } ->
+        Css.to_string ~minify:true (Css.optimize stylesheet)
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  let once =
+    minify
+      ".b{color:red;@media (prefers-color-scheme:dark){&:where(.s,.s \
+       *){color:blue}}@media (prefers-color-scheme:dark){&:where(.s,.s \
+       *){&:hover{@media (hover:hover){color:green}}}}}"
+  in
+  Alcotest.(check string)
+    "nested on the first pass"
+    ".b{color:red;@media(prefers-color-scheme:dark){&:where(.s,.s \
+     *){color:#00f;&:hover{@media(hover:hover){color:green}}}}}"
+    once;
+  Alcotest.(check string) "a fixed point" once (minify once)
+
 let test_merge_lone_wrapper () =
   let merged = Nest.merge_lone (rule ".card{.title{color:red}}") in
   Alcotest.(check string)
@@ -158,6 +210,9 @@ let suite =
         test_contains_and_substitute;
       Alcotest.test_case "combine relative nested and descendant" `Quick
         test_combine_relative_nested_and_descendant;
+      Alcotest.test_case "combine reads back" `Quick test_combine_reads_back;
+      Alcotest.test_case "merged selector nests on first pass" `Quick
+        test_merged_selector_nests_on_first_pass;
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
       Alcotest.test_case "merge_lone pseudo-element parent" `Quick
         test_merge_lone_pseudo_element_parent;

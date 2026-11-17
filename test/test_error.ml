@@ -22,27 +22,27 @@ let sort_mismatch () =
   check "sort mismatch"
     (Error.sort_mismatch loc ~sort:Sort.Selector ~expected:Sort.Component
        ~found:Sort.Block)
-    "expected component but found block at [12-13] (in selector)"
+    "<CSS input>: expected component but found block"
 
 let unexpected_token () =
   check "unexpected token"
     (Error.unexpected_token loc ~sort:Sort.Declaration (Token.Delim "."))
-    "unexpected <delim '.'> at [12-13] (in declaration)"
+    "<CSS input>: unexpected <delim '.'> in declaration"
 
 let missing_token () =
   check "missing token"
     (Error.missing_token loc ~sort:Sort.Declaration "':'")
-    "missing ':' at [12-13] (in declaration)"
+    "<CSS input>: missing ':' in declaration"
 
 let bad_selector () =
   check "bad selector"
     (Error.bad_selector loc "double dot")
-    "bad selector: double dot at [12-13] (in selector)"
+    "<CSS input>: bad selector: double dot"
 
 let bad_value () =
   check "bad value"
     (Error.bad_value loc ~property:"color" ~reason:"not a color")
-    "bad value for color: not a color at [12-13] (in property-value)"
+    "<CSS input>: bad value for color: not a color"
 
 let with_property () =
   (* A value reader raises [Bad_value] without a property name; the declaration
@@ -50,26 +50,26 @@ let with_property () =
   check "fills an empty property"
     (Error.with_property "width"
        (Error.bad_value loc ~property:"" ~reason:"bad"))
-    "bad value for width: bad at [12-13] (in property-value)";
+    "<CSS input>: bad value for width: bad";
   (* An already-named property is left as-is. *)
   check "keeps an existing property"
     (Error.with_property "width"
        (Error.bad_value loc ~property:"color" ~reason:"bad"))
-    "bad value for color: bad at [12-13] (in property-value)";
+    "<CSS input>: bad value for color: bad";
   (* A non-[Bad_value] error is untouched. *)
   check "leaves a non-bad-value error"
     (Error.with_property "width" (Error.bad_selector loc "double dot"))
-    "bad selector: double dot at [12-13] (in selector)"
+    "<CSS input>: bad selector: double dot"
 
 let unknown_at_rule () =
   check "unknown at-rule"
     (Error.unknown_at_rule loc "weird")
-    "unknown at-rule @weird at [12-13] (in at-rule)"
+    "<CSS input>: unknown at-rule @weird"
 
 let unterminated () =
   check "unterminated"
     (Error.unterminated loc Sort.Function)
-    "unterminated function at [12-13] (in function)"
+    "<CSS input>: unterminated function"
 
 let caret_counts_characters () =
   (* Four EURO SIGNs are twelve bytes but four columns, so the caret belongs
@@ -79,10 +79,10 @@ let caret_counts_characters () =
     (located ~source ~start_pos:12 ~end_pos:13)
     (String.concat ""
        [
-         "bad selector: boom at <CSS input>:1:5 (in selector)\n";
+         "<CSS input>:1:5: bad selector: boom\n  ";
          repeat 4 eur;
          "!\n";
-         "    ^";
+         "      ^";
        ])
 
 let marker_spans_characters () =
@@ -92,10 +92,10 @@ let marker_spans_characters () =
     (located ~source ~start_pos:1 ~end_pos:10)
     (String.concat ""
        [
-         "bad selector: boom at <CSS input>:1:2 (in selector)\n.";
+         "<CSS input>:1:2: bad selector: boom\n  .";
          repeat 3 eur;
          "!\n";
-         " ^^^";
+         "   ^^^";
        ])
 
 let window_never_splits_a_code_point () =
@@ -110,10 +110,10 @@ let window_never_splits_a_code_point () =
   check "window opens on a lead byte" e
     (String.concat ""
        [
-         "bad selector: boom at <CSS input>:1:31 (in selector)\n";
+         "<CSS input>:1:31: bad selector: boom\n  ";
          repeat 14 eur;
          "!\n";
-         "              ^";
+         "                ^";
        ])
 
 let ascii_caret_unmoved () =
@@ -130,13 +130,13 @@ let ascii_caret_unmoved () =
     "renders valid utf-8" true
     (String.is_valid_utf_8 (Error.to_string e));
   check "ascii caret unmoved" e
-    "bad value for color: not a color at <CSS input>:1:12 (in property-value)\n\
-     a { color: bogus; }\n\
-    \           ^^^^^"
+    "<CSS input>:1:12: bad value for color: not a color\n\
+    \  a { color: bogus; }\n\
+    \             ^^^^^"
 
 let caret_marks_the_line_it_points_at () =
-  (* The marked value sits on the third line of the window, so the caret line
-     comes straight after that line, at that line's own column. *)
+  (* The marked value sits on the third line, so the snippet is that line alone
+     and the caret goes under it, at that line's own column. *)
   let source =
     ".header {\n  color: red;\n  float: center;\n  margin: 0;\n}\n"
   in
@@ -150,15 +150,9 @@ let caret_marks_the_line_it_points_at () =
   check "caret marks the line it points at" e
     (String.concat "\n"
        [
-         "bad value for float: unknown float-side at <CSS input>:3:10 (in \
-          property-value)";
-         ".header {";
-         "  color: red;";
-         "  float: center;";
-         "         ^^^^^^";
-         "  margin: 0;";
-         "}";
-         "";
+         "<CSS input>:3:10: bad value for float: unknown float-side";
+         "    float: center;";
+         "           ^^^^^^";
        ])
 
 let source_context () =
@@ -169,9 +163,7 @@ let source_context () =
       try Cursor.err_expected t "':'"
       with Cursor.Parse_error e ->
         check "source context" e
-          "bad value for : expected ':' at <CSS input>:1:1 (in component)\n\
-           color red;\n\
-           ^^^^^")
+          "<CSS input>:1:1: bad value: expected ':'\n  color red;\n  ^^^^^")
 
 (* A reader that consumes the offending token before rejecting it still owns
    that token: the span marks the value the author wrote, not whatever follows
@@ -401,27 +393,24 @@ let error_renders_three_part_location () =
   let e = error_at "abc\ndef" 5 in
   Alcotest.(check string)
     "renders source:line:column"
-    "missing a character the input never holds at <CSS input>:2:2 (in \
-     component)"
+    "<CSS input>:2:2: missing a character the input never holds in component"
     (first_line e);
   Alcotest.(check string)
     "renders the stamped source name"
-    "missing a character the input never holds at theme.css:2:2 (in component)"
+    "theme.css:2:2: missing a character the input never holds in component"
     (first_line (Error.with_filename ~filename:"theme.css" e))
 
-(* The window can span both sides of the failing line; its caret goes right
-   under that line, at a column measured from the line start. *)
+(* The snippet is the failing line alone, though the window spans the lines on
+   both sides; its caret is at a column measured from the line start. *)
 let error_renders_caret_on_marked_line () =
-  check "caret interrupts the context below the marked line"
+  check "snippet is the marked line"
     (error_at "first\nsecond\nthird" 8)
     (String.concat ""
        [
-         "missing a character the input never holds at <CSS input>:2:3 (in \
-          component)\n";
-         "first\n";
-         "second\n";
-         "  ^\n";
-         "third";
+         "<CSS input>:2:3: missing a character the input never holds in \
+          component\n";
+         "  second\n";
+         "    ^";
        ])
 
 (* Position zero is a valid marker. *)
@@ -429,10 +418,10 @@ let error_renders_caret_at_context_start () =
   check "caret at zero" (error_at "abc" 0)
     (String.concat ""
        [
-         "missing a character the input never holds at <CSS input>:1:1 (in \
-          component)\n";
-         "abc\n";
-         "^";
+         "<CSS input>:1:1: missing a character the input never holds in \
+          component\n";
+         "  abc\n";
+         "  ^";
        ])
 
 let tests_position () =
@@ -447,6 +436,59 @@ let tests_position () =
   error_renders_three_part_location ();
   error_renders_caret_on_marked_line ();
   error_renders_caret_at_context_start ()
+
+(* --- cost of locating warnings --- *)
+
+(* [n] rules that each draw one warning, [break] between two of them: a line
+   break as an author writes a sheet, nothing as a minifier leaves it. *)
+let warning_sheet ~break n =
+  String.concat break (List.init n (fun _ -> ".x{float:center}"))
+
+let rendering_allocates ~break n =
+  let warnings = parse_warnings (warning_sheet ~break n) in
+  Alcotest.(check int) "one warning a rule" n (List.length warnings);
+  Css_test_helpers.measure (fun () ->
+      List.fold_left
+        (fun bytes w -> bytes + String.length (Error.to_string w))
+        0 warnings)
+
+(* Rendering every warning of a sheet costs in proportion to the sheet plus its
+   warnings. The measure is what the rendering allocates, which no load on the
+   host changes: twice the rules is twice the text and twice the warnings, so a
+   linear rendering allocates twice as much, and one that allocates as it walks
+   the source from its start for each warning four times. *)
+let locating_warnings_is_linear () =
+  List.iter
+    (fun (name, break) ->
+      let rules = 1_000 in
+      let a1 = rendering_allocates ~break rules in
+      let a2 = rendering_allocates ~break (2 * rules) in
+      if a2 > 3. *. a1 then
+        Alcotest.failf
+          "%s: rendering allocates %.0f -> %.0f words (%.2fx for 2x)" name a1 a2
+          (a2 /. a1))
+    [ ("a rule a line", "\n"); ("one line", "") ]
+
+(* What rendering allocates does not see a walk that allocates nothing, so the
+   sharing that keeps the walks to one is checked as well: the parser's warnings
+   (the unterminated block) and the typed reader's (each [float]) carry the one
+   index of the parse, whose lookups test_line_col bounds. *)
+let warnings_share_one_index () =
+  let css = warning_sheet ~break:"\n" 3 ^ "\n.y{a:(" in
+  let indexes =
+    List.map
+      (fun (w : Error.t) ->
+        match w.source with
+        | Some source -> source
+        | None -> Alcotest.failf "no source: %s" (Error.to_string w))
+      (parse_warnings css)
+  in
+  Alcotest.(check int) "warnings" 5 (List.length indexes);
+  List.iter
+    (fun index ->
+      if not (index == List.hd indexes) then
+        Alcotest.fail "two indexes of one source")
+    indexes
 
 let suite =
   ( "error",
@@ -474,4 +516,8 @@ let suite =
       Alcotest.test_case "bad value reason names something" `Quick
         bad_value_reason_names_something;
       Alcotest.test_case "line and column" `Quick tests_position;
+      Alcotest.test_case "locating warnings is linear" `Quick
+        locating_warnings_is_linear;
+      Alcotest.test_case "warnings share one index" `Quick
+        warnings_share_one_index;
     ] )

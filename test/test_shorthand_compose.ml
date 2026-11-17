@@ -954,9 +954,77 @@ let test_border_image_held_across_rules () =
       ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:#0000}"
     ".y{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}"
 
+(* CSS Backgrounds 3 sec. 3.10: [background] resets every longhand it does not
+   name to its initial value. Under [`Stylesheet] scope a run of [background-*]
+   longhands may contract into a shorthand naming only its own slots, but not
+   after a [background] the same rule wrote earlier: the contraction would reset
+   the image, colour and repeat that one set. Masking 1 sec. 7.9 reads [mask]
+   the same way. *)
+let test_layer_contraction_keeps_an_earlier_shorthand () =
+  let check property css needles =
+    match Css.of_string css with
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+    | Ok { stylesheet; _ } ->
+        let out =
+          Css.to_string ~minify:true
+            (Css.optimize ~scope:`Stylesheet ~enforce_spec:true stylesheet)
+        in
+        List.iter
+          (fun needle ->
+            if not (Astring.String.is_infix ~affix:needle out) then
+              Alcotest.failf "%s lost %s: %s -> %s" property needle css out)
+          needles
+  in
+  check "background"
+    "a{background:#fff url(a.png) no-repeat center;background-position:0 \
+     50%;background-size:25px 25px}"
+    [ "url(a.png)"; "#fff"; "no-repeat" ];
+  check "mask"
+    "a{mask:url(a.png) no-repeat;mask-position:0 50%;mask-size:25px 25px}"
+    [ "url(a.png)"; "no-repeat" ];
+  (* A longhand whose value the run could not take still holds its slot. *)
+  check "background-color"
+    "a{background-color:inherit;background-position:50%;background-size:cover;background-repeat:no-repeat}"
+    [ "inherit" ];
+  check "background-image"
+    "a{background-image:none,url(a.png);background-position:0 \
+     0;background-size:4px 4px}"
+    [ "url(a.png)" ]
+
+(* CSS Fonts 4 sec. 2.9: [font] resets every font longhand it does not name.
+   Under [`Stylesheet] a run of [font-size] and [font-family] may contract into
+   one, but not after the rule set [font-weight]: the shorthand would reset the
+   weight that declaration wrote. *)
+let test_font_contraction_keeps_an_earlier_longhand () =
+  let css =
+    "a{font-weight:700;color:red;font-size:13px;font-family:Arial,sans-serif}"
+  in
+  match Css.of_string css with
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  | Ok { stylesheet; _ } ->
+      let out =
+        Css.to_string ~minify:true (Css.optimize ~scope:`Stylesheet stylesheet)
+      in
+      let bold =
+        Astring.String.is_infix ~affix:"font:700 " out
+        || Astring.String.is_infix ~affix:"font:bold " out
+        ||
+        match Astring.String.find_sub ~sub:"font-weight:700" out with
+        | None -> false
+        | Some at ->
+            not
+              (Astring.String.is_infix ~affix:"font:"
+                 (String.sub out at (String.length out - at)))
+      in
+      if not bold then Alcotest.failf "the weight was reset: %s -> %s" css out
+
 let suite =
   ( "shorthand_compose",
     [
+      Alcotest.test_case "layer contraction keeps an earlier shorthand" `Quick
+        test_layer_contraction_keeps_an_earlier_shorthand;
+      Alcotest.test_case "font contraction keeps an earlier longhand" `Quick
+        test_font_contraction_keeps_an_earlier_longhand;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "transition contraction covers other rules" `Quick

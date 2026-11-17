@@ -25,6 +25,16 @@ let keeps_conflicting_rules_in_source_order () =
     "opposite source order keeps the opposite winner" ".a{color:red}"
     (canonical ".a{color:blue}.a{color:red}")
 
+(* Two rules writing one value tie and may swap, but each still follows an
+   earlier rule writing another value to an element both can match: on [class="z
+   a"] the source makes [.a] win, so [.a] stays after [.z] although it sorts
+   first. *)
+let tied_writers_follow_an_earlier_conflict () =
+  Alcotest.(check string)
+    "the second writer of a value stays after the conflict"
+    ".z{color:red}.a{color:blue}.j{color:blue}"
+    (canonical ".z{color:red}.j{color:blue}.a{color:blue}")
+
 let custom_property_position_converges () =
   (* A custom-property definition and a [var()] user are cascade-independent, so
      both source orderings reach one canonical form. *)
@@ -538,6 +548,66 @@ let conflicting_block_fold_is_refused () =
     (render (statements css))
     (canonical css)
 
+(* One run of [n] rules on distinct classes that all write [color], so every
+   pair meets on a declaration and none on a selector, and no two fold. *)
+let independent_run n =
+  let buffer = Buffer.create (n * 24) in
+  let formatter = Fmt.with_buffer buffer in
+  for i = n - 1 downto 0 do
+    Fmt.pf formatter ".c%d{color:red;top:%dpx}" i i
+  done;
+  Fmt.flush formatter ();
+  statements (Buffer.contents buffer)
+
+(* Settling a run orders it once, and that order is the only thing a graph of
+   the run is needed for: the folds before and after it ask whether two rules
+   conflict, which is read off the two rules. So the whole projection has to
+   cost less than two graphs of its run. Allocated words rather than time, so
+   the bound holds on a loaded machine. *)
+let settling_a_run_builds_one_graph () =
+  let stmts = independent_run 1_000 in
+  let rules =
+    List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None) stmts
+  in
+  let graph =
+    Css_test_helpers.measure (fun () ->
+        Rule_graph.of_rules ~pin_shared_branches:false rules)
+  in
+  let projection =
+    Css_test_helpers.measure (fun () -> Rule_order.canonicalize stmts)
+  in
+  Alcotest.(check bool)
+    (Fmt.str "projection %.0f words, one graph %.0f (%.2fx)" projection graph
+       (projection /. graph))
+    true
+    (projection < 2. *. graph)
+
+(* A round after the first finds the run as the round before left it, except for
+   the elements that folded, so it rereads those and keeps the graph of the
+   rest. The two blocks below fold once the first round has sorted them next to
+   each other, which takes a second round, and the projection still costs less
+   than one and a half graphs of its run. *)
+let a_round_keeps_the_graph () =
+  let stmts =
+    independent_run 1_000
+    @ statements "@media(width>=1px){.m{left:0}}@media(width>=1px){.n{right:0}}"
+  in
+  let rules =
+    List.filter_map (function Stylesheet.Rule r -> Some r | _ -> None) stmts
+  in
+  let graph =
+    Css_test_helpers.measure (fun () ->
+        Rule_graph.of_rules ~pin_shared_branches:false rules)
+  in
+  let projection =
+    Css_test_helpers.measure (fun () -> Rule_order.canonicalize stmts)
+  in
+  Alcotest.(check bool)
+    (Fmt.str "projection %.0f words, one graph %.0f (%.2fx)" projection graph
+       (projection /. graph))
+    true
+    (projection < 1.5 *. graph)
+
 let suite =
   ( "rule_order",
     [
@@ -545,6 +615,8 @@ let suite =
         sorts_independent_rules_into_content_order;
       Alcotest.test_case "keeps conflicting order" `Quick
         keeps_conflicting_rules_in_source_order;
+      Alcotest.test_case "tied writers follow an earlier conflict" `Quick
+        tied_writers_follow_an_earlier_conflict;
       Alcotest.test_case "custom-property position converges" `Quick
         custom_property_position_converges;
       Alcotest.test_case "custom-property importance survives" `Quick
@@ -619,4 +691,8 @@ let suite =
         container_key_keeps_structurally_distinct_queries_apart;
       Alcotest.test_case "conflicting block fold is refused" `Quick
         conflicting_block_fold_is_refused;
+      Alcotest.test_case "settling a run builds one graph" `Quick
+        settling_a_run_builds_one_graph;
+      Alcotest.test_case "a round keeps the graph" `Quick
+        a_round_keeps_the_graph;
     ] )

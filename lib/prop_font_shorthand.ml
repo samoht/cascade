@@ -22,7 +22,8 @@ let read_line_height_length ?(allow_negative = false) t : line_height =
        carry still reads and a time, an angle or a name no unit table holds does
        not. *)
     | Some u when Values.is_length_unit u -> authored ()
-    | Some u -> Cursor.err_invalid t ("line-height unit: " ^ u)
+    | Some u ->
+        Cursor.err_invalid t (String.concat "" [ "line-height unit: "; u ])
 
 let rec numeric_line_height_calc_leaves : line_height calc -> line_height calc =
   function

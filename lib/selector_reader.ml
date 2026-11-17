@@ -6,7 +6,8 @@ let read_aria_attr t : aria_attr =
   let s = Cursor.ident t in
   match aria_attr_of_string s with
   | Some v -> v
-  | None -> Cursor.err t ("not a supported aria attribute: " ^ s)
+  | None ->
+      Cursor.err t (String.concat "" [ "not a supported aria attribute: "; s ])
 
 let read_attr_name t : attr_name =
   let s = Cursor.ident t in
@@ -15,7 +16,8 @@ let read_attr_name t : attr_name =
 (* Simple readers that don't need recursion *)
 let ensure_call_done t name =
   Cursor.ws t;
-  if not (Cursor.is_done t) then Cursor.err t ("unexpected tokens after " ^ name)
+  if not (Cursor.is_done t) then
+    Cursor.err t (String.concat "" [ "unexpected tokens after "; name ])
 
 let read_lang_range t =
   match Cursor.ident_opt t with
@@ -86,39 +88,19 @@ let read_part_content t =
 let read_part t = Cursor.call "part" t read_part_content
 let err_expected t what = Cursor.err_expected t what
 
-(** Parse attribute value (quoted or unquoted) *)
-let read_attribute_value_ident t s (loc : Loc.t) =
-  Cursor.skip t;
-  let raw =
-    match Cursor.source t with
-    | Some source ->
-        Some (String.sub source loc.start_pos (loc.end_pos - loc.start_pos))
-    | None -> None
-  in
-  match raw with Some raw when String.contains raw '\\' -> raw | _ -> s
-
 (* Selectors 4 sec. 6.1: an unquoted value is an [<ident-token>]; a number, a
-   dimension or a percentage there is an invalid selector, as Chrome reads
-   it. *)
-let read_attribute_value_unquoted t =
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident s; loc; _ }) ->
-      read_attribute_value_ident t s loc
-  | _ -> ""
-
+   dimension or a percentage there is an invalid selector, as Chrome reads it.
+   Either form is held as the value it decodes to. *)
 let read_attribute_value t =
-  (* Check if we start with a quote - if so, we MUST parse as quoted string *)
-  let value, quote =
-    match Cursor.string_with_quote_opt t with
-    | Some (s, quote) -> (s, Some quote)
-    | None -> (read_attribute_value_unquoted t, None)
-  in
-  (* CSS spec allows empty quoted strings but not empty unquoted values *)
-  if value = "" && Option.is_none quote then
-    match Cursor.peek t with
-    | None -> Cursor.err_expected_but_eof t "']'"
-    | Some _ -> Cursor.err_invalid t "attribute value"
-  else (value, quote)
+  match Cursor.string_with_quote_opt t with
+  | Some (s, _) -> s
+  | None -> (
+      match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+          Cursor.skip t;
+          s
+      | None -> Cursor.err_expected_but_eof t "']'"
+      | Some _ -> Cursor.err_invalid t "attribute value")
 
 (* Selectors 4 sec. 5.1 spells a class as a [.] "immediately followed by" an
    ident, and sec. 3.5 a pseudo-class or pseudo-element as its colons followed
@@ -273,45 +255,23 @@ let read_combinator t =
     | None when Cursor.is_done t -> Cursor.err t "empty combinator"
     | _ -> Descendant
 
-let attribute_match cons cons_quoted (value, quote) =
-  match quote with Some quote -> cons_quoted value quote | None -> cons value
-
-let try_attribute_op c cons cons_quoted t : attribute_match option =
+let try_attribute_op c cons t : attribute_match option =
   if Cursor.try_kind_pair (Token.Delim (String.make 1 c)) (Token.Delim "=") t
-  then Some (attribute_match cons cons_quoted (read_attribute_value t))
+  then Some (cons (read_attribute_value t))
   else None
 
-let try_whitespace_list_match t =
-  try_attribute_op '~'
-    (fun v -> Whitespace_list v)
-    (fun v q -> Whitespace_list_quoted (v, q))
-    t
+let try_whitespace_list_match =
+  try_attribute_op '~' (fun v -> Whitespace_list v)
 
-let try_hyphen_list_match t =
-  try_attribute_op '|'
-    (fun v -> Hyphen_list v)
-    (fun v q -> Hyphen_list_quoted (v, q))
-    t
-
-let try_prefix_match t =
-  try_attribute_op '^' (fun v -> Prefix v) (fun v q -> Prefix_quoted (v, q)) t
-
-let try_suffix_match t =
-  try_attribute_op '$' (fun v -> Suffix v) (fun v q -> Suffix_quoted (v, q)) t
-
-let try_substring_match t =
-  try_attribute_op '*'
-    (fun v -> Substring v)
-    (fun v q -> Substring_quoted (v, q))
-    t
+let try_hyphen_list_match = try_attribute_op '|' (fun v -> Hyphen_list v)
+let try_prefix_match = try_attribute_op '^' (fun v -> Prefix v)
+let try_suffix_match = try_attribute_op '$' (fun v -> Suffix v)
+let try_substring_match = try_attribute_op '*' (fun v -> Substring v)
 
 let read_exact_or_presence t =
   if Cursor.peek_delim t = Some '=' then (
     Cursor.skip t;
-    attribute_match
-      (fun v -> Exact v)
-      (fun v q -> Exact_quoted (v, q))
-      (read_attribute_value t))
+    Exact (read_attribute_value t))
   else Presence
 
 let read_attribute_match t : attribute_match =
@@ -504,7 +464,7 @@ let read_nth_ident_tail t s =
       | Some b ->
           Cursor.skip t;
           An_plus_b (-1, -b)
-      | None -> Cursor.err t ("not an An+B ident: " ^ s))
+      | None -> Cursor.err t (String.concat "" [ "not an An+B ident: "; s ]))
 
 (* After a leading [+] delim, only the positive ident forms are valid. *)
 let read_nth_after_plus t =
@@ -525,17 +485,17 @@ let read_nth_after_plus t =
       | None -> Cursor.err_expected t "An+B after '+'")
   | _ -> Cursor.err_expected t "An+B after '+'"
 
-let read_nth t : nth =
+let read_nth_spelling t : nth =
   Cursor.ws t;
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ })
     when String.lowercase_ascii s = "odd" ->
       Cursor.skip t;
-      Odd
+      An_plus_b (2, 1)
   | Some (Component.Preserved { kind = Token.Ident s; _ })
     when String.lowercase_ascii s = "even" ->
       Cursor.skip t;
-      Even
+      An_plus_b (2, 0)
   | Some
       (Component.Preserved
          { kind = Token.Number_tok { number_flag = Integer; _ }; _ }) ->
@@ -565,6 +525,11 @@ let read_nth t : nth =
       read_nth_after_plus t
   | _ -> Cursor.err t "expected 'odd', 'even', or An+B expression"
 
+(* Selectors 4 sec. 14: every spelling of one [An+B] reads as one node, the
+   keywords as their [An+B] and [0n+B] as [B]. *)
+let read_nth t =
+  match read_nth_spelling t with An_plus_b (0, b) -> Index b | nth -> nth
+
 let read_unknown_pseudo_class_call ~all_idents t =
   match Cursor.peek t with
   | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
@@ -577,7 +542,8 @@ let read_unknown_pseudo_class_call ~all_idents t =
         List.exists (fun (n, _) -> String.lowercase_ascii n = lower) all_idents
       in
       if is_known_non_functional then
-        Cursor.err_invalid t ("pseudo-class is not functional: " ^ name);
+        Cursor.err_invalid t
+          (String.concat "" [ "pseudo-class is not functional: "; name ]);
       Cursor.skip t;
       Unknown_pseudo_class_call (name, arguments)
   | _ -> Cursor.err_expected t "pseudo-class call"
@@ -1140,14 +1106,16 @@ let rec drop_redundant_nesting_prefix (sel : t) : t =
   match sel with
   | Combined (Nesting, Descendant, right) -> right
   | Combined (Nesting, comb, right) -> Relative (comb, right)
-  | List sels -> List (List.map drop_redundant_nesting_prefix sels)
+  | List sels ->
+      let sels' = Common.List.map_preserve drop_redundant_nesting_prefix sels in
+      if sels' == sels then sel else List sels'
   | other -> other
 
 (* CSS Syntax 3 (ED) sec. 4.3.11 builds an identifier from ident code points -
    letters, digits, [-], [_] and anything non-ASCII - and escapes. The shortcut
    below reads the whole string as one name, so anything else in it means the
    string is not a name: selector punctuation ([:], [>], [,] ...) but equally a
-   [}] or a [;], which name nothing and used to be taken for an element. *)
+   [}] or a [;], which name nothing. *)
 let is_ident_code_point c =
   match c with
   | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
@@ -1203,7 +1171,9 @@ let of_string_fallback s =
   | _ -> Element (None, unescape_selector_name s)
 
 let of_string s =
-  Error.catch @@ fun () ->
+  Result.map_error Error.as_selector
+  @@ Error.catch
+  @@ fun () ->
   try read (Cursor.of_string s)
   with Cursor.Parse_error _ as exn ->
     if not (can_fallback_shortcut s) then raise exn else of_string_fallback s

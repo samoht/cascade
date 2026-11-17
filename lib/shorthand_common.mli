@@ -36,6 +36,11 @@ val slots_written_after :
 (** [slots_written_after ~slots_of idx ~from] is the union of [slots_of] over
     the unabsorbed declarations of [idx] at [from] and after. *)
 
+val slots_written_before :
+  slots_of:(Declaration.declaration -> int) -> Rule_index.t -> upto:int -> int
+(** [slots_written_before ~slots_of idx ~upto] is the union of [slots_of] over
+    the unabsorbed declarations of [idx] before [upto]. *)
+
 val same_importance : Declaration.declaration list -> bool
 (** [same_importance decls] is [true] when every declaration of [decls] has the
     same importance. *)

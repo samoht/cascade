@@ -29,6 +29,14 @@ module List : sig
       returns {!constructor-Keep} for every element. {!constructor-Keep} and
       {!constructor-Drop} avoid per-element option allocation in
       mostly-unchanged filtering walks. *)
+
+  val drop_while : ('a -> bool) -> 'a list -> 'a list
+  (** [drop_while p xs] is [xs] without its longest prefix whose elements
+      satisfy [p]. *)
+
+  val trim : ('a -> bool) -> 'a list -> 'a list
+  (** [trim p xs] is [xs] without its leading and trailing elements that satisfy
+      [p]. *)
 end
 
 module String : sig
@@ -72,13 +80,6 @@ module String : sig
   val utf8_lead_after : string -> int -> int
   (** [utf8_lead_after s i] moves [i] forward out of the UTF-8 sequence it falls
       inside, on the same terms as {!utf8_lead_before}. *)
-
-  val marker_line : string list -> int -> int * int * int
-  (** [marker_line lines marker_pos] resolves a character offset into [lines],
-      some text split on newlines, as the index of the line holding it, its
-      column inside that line, and that line's length. Characters are counted as
-      {!utf8_length} counts them, and an offset past the last line clamps to
-      that line's end. *)
 end
 
 val int_of_float_opt : float -> int option
@@ -86,12 +87,6 @@ val int_of_float_opt : float -> int option
     between [-2^62] and [2^62], where every integer-valued float is an [int],
     and [None] otherwise, NaN included. Past that bound [int_of_float] returns
     [min_int] or a value that depends on the platform. *)
-
-val canonical_exponent : string -> string
-(** [canonical_exponent s] is [s] with the exponent after its first [e] written
-    without a [+] sign or leading zeros, keeping at least one digit, so
-    [canonical_exponent "3.40282e+038"] is ["3.40282e38"]. A string with no [e]
-    is returned unchanged. *)
 
 val mix_int : int -> int -> int
 (** [mix_int acc x] folds the integer [x] into the running hash [acc]. *)

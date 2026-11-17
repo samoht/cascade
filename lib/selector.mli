@@ -50,7 +50,9 @@ val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
     raises [Invalid_argument] on invalid. *)
 
 val combine : t -> combinator -> t -> t
-(** [combine a comb b] combines selectors with a combinator. *)
+(** [combine a comb b] combines selectors with a combinator, distributed over
+    each entry when [b] is a list. A chain [a] takes [comb] on its rightmost
+    compound, the shape reading the printed selector gives. *)
 
 val ( ++ ) : t -> t -> t
 (** [a ++ b] combines with descendant (space). *)
@@ -76,7 +78,17 @@ val as_list : t -> t list option
     otherwise. Useful for pattern matching on merged selectors. *)
 
 val compound : t list -> t
-(** [compound selectors] compound selector (concatenates simple selectors). *)
+(** [compound selectors] concatenates [selectors] into one compound, in the
+    shape reading its print gives: a compound among [selectors] splices in, a
+    chain ends the compound on its left and starts the next one on its right,
+    and a single part is itself. *)
+
+val reshape : t -> t
+(** [reshape sel] is [sel] rebuilt in the shape reading its print gives, when
+    [sel] is a compound holding a compound or a combinator chain, or a
+    combinator whose left operand is a chain; any other [sel] is itself. It
+    looks at [sel]'s own node only, so [map reshape] reshapes a whole selector.
+*)
 
 val ( && ) : t -> t -> t
 (** [a && b] combines two simple selectors into a compound selector. *)
@@ -123,15 +135,25 @@ val map : (t -> t) -> t -> t
     node. This is useful for transforming class names throughout a complex
     selector structure. *)
 
-val canonicalize : t -> t
-(** [canonicalize selector] removes lexical-only redundancy so that distinct
-    ASTs denoting the same selector become structurally equal: the implied
-    universal in a compound is dropped ([*::before] -> [::before]), a one-part
-    compound collapses to that part, and a whole-selector [:is(s1, s2, ...)]
-    whose arguments share one specificity becomes the selector list
-    [s1, s2, ...] (CSS Selectors 4 sec. 4.2). [selector] is read as a rule
-    selector, so the split applies at its top level and to the members of its
-    top-level list. Idempotent. *)
+val canonicalize : ?enforce_spec:bool -> t -> t
+(** [canonicalize ?enforce_spec selector] rewrites [selector] to one canonical
+    node among those matching the same elements at the same specificity, so
+    distinct ASTs denoting the same selector become structurally equal:
+    - the implied universal in a compound is dropped ([*::before] -> [::before])
+      and a one-part compound collapses to that part;
+    - selector-list alternatives are deduplicated and sorted;
+    - a single-argument [:is(s)] splices into its compound, and a whole-selector
+      [:is(s1, s2, ...)] whose arguments share one specificity becomes the
+      selector list [s1, s2, ...] (CSS Selectors 4 sec. 4.2);
+    - [:not(:not(s))] is [:is(s)] (sec. 4.3), [:is(:link, :visited)] is
+      [:any-link] (sec. 8.1), and [:nth-child(1)] and its siblings are
+      [:first-child] and its siblings (sec. 14). Unless [enforce_spec] (default
+      [false]), it also takes two [HTML] facts: [:not(:dir(ltr))] is [:dir(rtl)]
+      and back (sec. 7.1), and [X:not(:enabled)] is [X:disabled] where [X]'s
+      element type carries the state, likewise for the [:valid] and [:required]
+      pairs (sec. 12). [selector] is read as a rule selector, so the list split
+      applies at its top level and to the members of its top-level list.
+      Idempotent. *)
 
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)

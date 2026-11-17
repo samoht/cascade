@@ -23,14 +23,15 @@ type span = { start : position; end_ : position }
 
 val v :
   original:string ->
-  preprocessed:string ->
+  preprocessed:Error.Source.t ->
   origin:Reader.origin ->
   comments:Lexer.comment list ->
   Component.rule list ->
   t
 (** [v ~original ~preprocessed ~origin ~comments rules] is the snapshot of a
-    parse of [original] whose preprocessed form is [preprocessed], with [origin]
-    mapping its offsets back to [original]. *)
+    parse of [original] whose preprocessed form is the source of [preprocessed],
+    the index {!position} reads, with [origin] mapping its offsets back to
+    [original]. *)
 
 val contents : t -> string
 (** [contents t] is the caller's input, byte for byte. *)

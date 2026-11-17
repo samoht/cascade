@@ -120,7 +120,7 @@ let string_of_aria_attr : aria_attr -> string = Aria.to_string
 
 let string_of_attr_name = function
   | Aria a -> string_of_aria_attr a
-  | Data s -> "data-" ^ s
+  | Data s -> String.concat "" [ "data-"; s ]
   | Regular s -> s
 
 let attribute ?ns ?flag name match_type =
@@ -189,15 +189,19 @@ let unescape_selector_name s =
   loop 0;
   Buffer.contents buf
 
+(* The reader nests a combinator chain to the right: [.a .b>.c] reads as [.a]
+   then [.b>.c]. A left operand that is itself a chain hands the new link to its
+   rightmost compound, so the node built is the one its print reads back as. *)
+let rec chain left comb right =
+  match left with
+  | Combined (l, c, r) -> Combined (l, c, chain r comb right)
+  | Relative (c, r) -> Relative (c, chain r comb right)
+  | _ -> Combined (left, comb, right)
+
 let rec combine s1 comb s2 =
   match s2 with
-  | List selectors ->
-      (* When combining with a List, distribute the combinator over each
-         element *)
-      List (List.map (combine s1 comb) selectors)
-  | _ ->
-      (* For all other cases, create a Combined node *)
-      Combined (s1, comb, s2)
+  | List selectors -> List (List.map (combine s1 comb) selectors)
+  | _ -> chain s1 comb s2
 
 let ( ++ ) s1 s2 = combine s1 Descendant s2
 let ( >> ) s1 s2 = combine s1 Child s2
@@ -211,4 +215,38 @@ let list selectors =
 let unescape_attribute_value = unescape_selector_name
 let is_compound_list = function List _ -> true | _ -> false
 let as_list = function List sels -> Some sels | _ -> None
-let compound selectors = Compound selectors
+
+(* The reader takes a compound as one flat run of simple selectors, the subject
+   of the combinator before it. A part that is a compound splices into the run,
+   and a part carrying a combinator closes the run on its left operand and opens
+   a new one on its subject: [.l a] then [:hover] prints [.l a:hover], which
+   reads back as [.l] then [a:hover]. A run of one is that part. *)
+let compound parts =
+  let close run =
+    match List.rev run with [ part ] -> part | run -> Compound run
+  in
+  let rec run acc = function
+    | [] -> close acc
+    | Compound inner :: rest -> run acc (inner @ rest)
+    | Combined (l, c, r) :: rest -> chain (run acc [ l ]) c (run [] (r :: rest))
+    | Relative (c, r) :: rest when List.is_empty acc ->
+        Relative (c, run [] (r :: rest))
+    | part :: rest -> run (part :: acc) rest
+  in
+  run [] parts
+
+(* Exactly the compounds {!compound} changes, so a reshaped node is a new
+   one. *)
+let reshapes = function
+  | Relative _ :: _ -> true
+  | parts ->
+      List.exists
+        (function Compound _ | Combined _ -> true | _ -> false)
+        parts
+
+let reshape node =
+  match node with
+  | Compound parts when reshapes parts -> compound parts
+  | Combined (((Combined _ | Relative _) as left), comb, right) ->
+      chain left comb right
+  | node -> node

@@ -5,10 +5,7 @@
     This sits apart from {!Optimize} because two passes have to agree about it.
     The prefix synthesis reads it to write a declaration, and the rule factoring
     reads it to refuse a rewrite that would separate the two halves of a pair it
-    wrote. A second table spelling the same relation is how they came to
-    disagree: the factoring used to ask {!Shorthand.vendor_alias_pair}, which
-    has no [mask-*] arm, so the two halves were split and the synthesis wrote
-    the missing one back into a rule the group above it already served. *)
+    wrote. *)
 
 open Declaration
 

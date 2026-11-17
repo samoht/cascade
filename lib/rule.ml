@@ -240,7 +240,9 @@ let finalize ?held ?(canonicalize_selector = true) ~ctx (rule : rule) : rule =
      fixpoint. *)
   let rule =
     if canonicalize_selector then
-      let canon = Selector.canonicalize rule.selector in
+      let canon =
+        Selector.canonicalize ~enforce_spec:(Ctx.enforce_spec ctx) rule.selector
+      in
       if canon == rule.selector then rule else { rule with selector = canon }
     else rule
   in
@@ -351,6 +353,16 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
 let drop_shadowed rules =
   rules |> drop_shadowed_declarations |> drop_shadowed_rules
 
+(* The cheap rule-local pipeline, run on a rule run before the factoring and
+   independent of the stylesheet-wide factoring budget. Shadowing is read again
+   after [finalize], whose shorthands can cover what an earlier rule of the same
+   selector writes. *)
+let normalize ~ctx ~held rules =
+  list_map_preserve (single ~ctx) rules
+  |> drop_shadowed
+  |> list_map_preserve (finalize ~held ~canonicalize_selector:false ~ctx)
+  |> drop_shadowed
+
 (* Adjacent identical-body merging: two neighbouring rules with the same
    declarations apply identically whether split or grouped, so the merge is
    cascade-safe for any DOM with no ordering analysis. It runs locally because
@@ -363,8 +375,8 @@ let adjacent_merge_eligible ~ctx (r : rule) =
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
-let merged_selector group =
-  Selector.canonicalize
+let merged_selector ~ctx group =
+  Selector.canonicalize ~enforce_spec:(Ctx.enforce_spec ctx)
     (Merge.selector_list
        (List.concat_map (fun (r : rule) -> Edge.selectors r.selector) group))
 
@@ -397,7 +409,7 @@ let merge_adjacent_identical ~ctx (rules : rule list) : rule list =
           | [ _ ] -> r
           | group ->
               changed := true;
-              { r with selector = merged_selector (List.rev group) }
+              { r with selector = merged_selector ~ctx (List.rev group) }
         in
         merged :: go rest
     | r :: rest -> r :: go rest

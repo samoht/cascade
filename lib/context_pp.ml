@@ -161,7 +161,7 @@ let pp_animation : animation Pp.t =
       | None -> Pp.string ctx "None"
       | Some f ->
           Pp.string ctx "Some ";
-          Pp.string ctx (Float.to_string f))
+          Pp.string ctx (Pp.string_of_float f))
     a.progress;
   pp_field ctx ~first "animated_properties" pp_string_list a.animated_properties;
   Pp.char ctx '}'

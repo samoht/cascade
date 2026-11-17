@@ -20,9 +20,20 @@
     spec-derived property grammar vectors. Nothing here is generated, and
     nothing here needs regenerating.
 
-    Every output mode the CLI offers is checked. None of them is a fixed point
-    today, so checking only [--minify] would be picking the mode that makes the
-    smallest list.
+    Every output mode the CLI offers is checked, so a defect one mode alone
+    reaches is not hidden behind the mode that happens to be clean.
+
+    A third property holds for the optimizing modes: {b serialised}, the
+    selectors the optimizer builds are the ones reading its print gives back
+    (docs/invariants.md, "pp is a serializer"). Text stability alone misses a
+    selector that prints like the reader's shape but is another node: every
+    later rewrite that compares selectors reads the two apart, and the pass that
+    would have fired only fires once the text is read back. Selectors are
+    compared structurally, bar an unknown functional pseudo, which keeps the
+    tokens it was read from, and every block reads back with as many statements
+    as it was built with. Declarations are not compared: a custom property's
+    tokens keep the spelling they were written with, which is part of the value,
+    and the minified printer spells some of them shorter.
 
     Failures are reduced before they are reported. A candidate is always a
     concatenation of substrings of the original input, never a re-print of its
@@ -443,6 +454,162 @@ let print_report loaded results =
   Buffer.add_char buf '\n';
   print_string (Buffer.contents buf)
 
+(* {1 Serialised} *)
+
+let selector_text sel = Selector.to_string ~minify:true sel
+
+(* The tree the reader builds, down to the simple selectors and the selector
+   lists of the pseudo-classes that take one. An unknown functional pseudo is a
+   leaf compared by spelling: it holds the tokens it was read from, positions
+   included. *)
+let rec same_selector (a : Selector.t) (b : Selector.t) =
+  match (a, b) with
+  | Compound xs, Compound ys
+  | List xs, List ys
+  | Is xs, Is ys
+  | Where xs, Where ys
+  | Not xs, Not ys
+  | Has xs, Has ys ->
+      List.equal same_selector xs ys
+  | Combined (l, c, r), Combined (l', c', r') ->
+      Selector.equal_combinator c c' && same_selector l l' && same_selector r r'
+  | Relative (c, r), Relative (c', r') ->
+      Selector.equal_combinator c c' && same_selector r r'
+  | ( ( Compound _ | List _ | Is _ | Where _ | Not _ | Has _ | Combined _
+      | Relative _ ),
+      _ )
+  | ( _,
+      ( Compound _ | List _ | Is _ | Where _ | Not _ | Has _ | Combined _
+      | Relative _ ) ) ->
+      false
+  | (Unknown_pseudo_class_call _ | Unknown_pseudo_element_call _), _ ->
+      String.equal (selector_text a) (selector_text b)
+  | a, b -> Selector.equal a b
+
+(* Every selector a sheet holds, in document order. Only selectors are compared,
+   so a statement the printer writes as nothing (an empty [@font-face]) does not
+   shift the ones after it. *)
+let rec selectors acc (stmts : Stylesheet.statement list) =
+  List.fold_left
+    (fun acc (stmt : Stylesheet.statement) ->
+      let acc =
+        match stmt with
+        | Rule r -> r.selector :: acc
+        | Scope (start, stop, _) ->
+            List.rev_append (List.filter_map Fun.id [ start; stop ]) acc
+        | _ -> acc
+      in
+      selectors acc (Stylesheet.statement_children stmt))
+    acc stmts
+
+let rec first_unread built read =
+  match (built, read) with
+  | [], [] -> None
+  | [], _ :: _ | _ :: _, [] -> Some "the selectors read back differ in number"
+  | b :: built, r :: read ->
+      if same_selector b r then first_unread built read
+      else
+        Some
+          (String.concat ""
+             [ "built "; selector_text b; ", read back "; selector_text r ])
+
+(* A statement the optimizer keeps is one the printer writes: one it writes as
+   nothing reads back as nothing, and the block holding it comes back one
+   statement short. *)
+let rec first_dropped built read =
+  let built_n = List.length built and read_n = List.length read in
+  if built_n <> read_n then
+    Some
+      (String.concat ""
+         [
+           string_of_int built_n;
+           " statements built, ";
+           string_of_int read_n;
+           " read back";
+         ])
+  else
+    List.fold_left2
+      (fun found b r ->
+        match found with
+        | Some _ -> found
+        | None ->
+            first_dropped
+              (Stylesheet.statement_children b)
+              (Stylesheet.statement_children r))
+      None built read
+
+let unread_selector mode css =
+  match read mode css with
+  | Error _ -> None
+  | Ok parsed -> (
+      let built =
+        Css.optimize ~scope:mode.scope ~lossless:mode.lossless
+          ~enforce_spec:mode.enforce_spec parsed.stylesheet
+      in
+      let printed =
+        Css.to_string ~minify:mode.minify ~lossless:mode.lossless
+          ~enforce_spec:mode.enforce_spec built
+      in
+      match read mode printed with
+      | Error e -> Some (Error.to_string e)
+      | Ok back -> (
+          match first_dropped built back.stylesheet with
+          | Some _ as dropped -> dropped
+          | None ->
+              first_unread
+                (List.rev (selectors [] built))
+                (List.rev (selectors [] back.stylesheet))))
+
+type unread = { unread_input : input; unread_reduced : string; why : string }
+
+let serialised_sweep mode (corpus, inputs) =
+  let check css = try unread_selector mode css with Failure _ -> None in
+  let unread =
+    List.filter_map
+      (fun input ->
+        Option.map
+          (fun why ->
+            let reproduces candidate = Option.is_some (check candidate) in
+            {
+              unread_input = input;
+              unread_reduced = reduce ~reproduces input.css;
+              why;
+            })
+          (check input.css))
+      inputs
+  in
+  (corpus, List.length inputs, unread)
+
+let unread_headline (corpus, exercised, unread) mode =
+  String.concat ""
+    [
+      string_of_int (List.length unread);
+      " of ";
+      string_of_int exercised;
+      " ";
+      corpus.corpus_name;
+      " inputs build a selector `";
+      mode.label;
+      "` does not read back";
+    ]
+
+let print_unread mode ((_, _, unread) as result) =
+  match unread with
+  | [] -> ()
+  | unread ->
+      let buf = Buffer.create 1024 in
+      Buffer.add_string buf (unread_headline result mode);
+      Buffer.add_char buf '\n';
+      List.iter
+        (fun u ->
+          Buffer.add_string buf "  ";
+          Buffer.add_string buf u.unread_input.name;
+          Buffer.add_char buf '\n';
+          add_line buf "input " u.unread_reduced;
+          add_line buf "reader" u.why)
+        unread;
+      print_string (Buffer.contents buf)
+
 (* {1 Calibration}
 
    A report of nothing is a clean run or a blind oracle, and the two look alike
@@ -505,8 +672,24 @@ let reduction_keeps_the_failure () =
       if Option.is_none (check ~read:reader ~emit:keyword_component reduced)
       then Alcotest.failf "reduced input %s no longer fails" reduced
 
+(* The selector class the serialised check exists for: a compound spliced into a
+   compound, which prints like the flat one the reader builds. *)
+let nested_compound_caught () =
+  let built =
+    Selector.Compound
+      [
+        Selector.compound [ Selector.class_ "a"; Selector.Hover ];
+        Selector.Focus;
+      ]
+  in
+  let read = Selector.v (selector_text built) in
+  if same_selector built read then
+    Alcotest.failf "%s spliced into a compound went unreported"
+      (selector_text built)
+
 let calibration =
   [
+    Alcotest.test_case "unread selector caught" `Quick nested_compound_caught;
     Alcotest.test_case "fixed point accepted" `Quick honest_emitter_passes;
     Alcotest.test_case "unreadable emission caught" `Quick
       unreadable_emitter_caught;
@@ -555,5 +738,28 @@ let () =
         List.exists (fun r -> not (List.is_empty r.failures)) results)
       groups
   then print_report loaded (List.concat_map fst groups);
+  let serialised =
+    List.filter_map
+      (fun mode ->
+        if not mode.optimize then None
+        else
+          let cases =
+            List.map
+              (fun loaded ->
+                let ((corpus, _, unread) as result) =
+                  serialised_sweep mode loaded
+                in
+                print_unread mode result;
+                Alcotest.test_case corpus.corpus_name `Quick (fun () ->
+                    match unread with
+                    | [] -> ()
+                    | _ -> Alcotest.fail (unread_headline result mode)))
+              loaded
+          in
+          Some (String.concat "" [ mode.label; " (serialised)" ], cases))
+      modes
+  in
   Alcotest.run "fixpoint"
-    (("calibration", calibration) :: ("corpora", sizes) :: List.map snd groups)
+    (("calibration", calibration)
+    :: ("corpora", sizes)
+    :: (List.map snd groups @ serialised))

@@ -2,10 +2,6 @@
     [\@layer] wrappers keeps every winner, and the folding of a custom property
     whose definitions across layers have a statically decided winner. *)
 
-val layer_order : Stylesheet.t -> string list option
-(** [layer_order stylesheet] is the cascade layer order [stylesheet] declares,
-    weakest first, or [None] when static analysis cannot settle it. *)
-
 val flattening_layers_is_safe : Stylesheet.t -> bool
 (** [flattening_layers_is_safe stylesheet] is [true] when dropping every
     [\@layer] wrapper leaves the same declaration winning each cascade slot. *)

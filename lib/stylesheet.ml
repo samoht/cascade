@@ -127,7 +127,9 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
   let out = Parser.stylesheet ~meta ?on_comment reader in
   let preprocessed = Reader.source reader in
   let sheet, typed_warnings =
-    read_stylesheet_of_rules ~source:preprocessed ~meta out.value
+    read_stylesheet_of_rules
+      ~source:(Reader.indexed_source reader)
+      ~meta out.value
   in
   (* Interleave preserved [/*! ... */] bang comments at their source position by
      walking the original rules and the bang-comment list in parallel; any bang
@@ -139,8 +141,10 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
   (match (on_source, comments) with
   | Option.Some emit, Option.Some comments ->
       emit
-        (Source.v ~original ~preprocessed ~origin:(Reader.origin reader)
-           ~comments:(List.rev !comments) out.value)
+        (Source.v ~original
+           ~preprocessed:(Reader.indexed_source reader)
+           ~origin:(Reader.origin reader) ~comments:(List.rev !comments)
+           out.value)
   | Option.None, Option.None -> ()
   | _ -> assert false);
   (sheet, out.warnings @ typed_warnings)
