@@ -43,38 +43,12 @@ let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
 let rule_with_nested (rule : rule) nested =
   if nested == rule.nested then rule else { rule with nested }
 
-(** {1 Edge Model} *)
-
-type packed_property = Packed : 'a Properties.property -> packed_property
-
-type edge = {
-  summary : Selector_summary.t;
-  property : packed_property;
-  important : bool;
-}
-
-let edges_of_rule (rule : rule) =
-  let edge summary = function
-    | Declaration.Declaration { property; _ } as d ->
-        Some
-          {
-            summary;
-            property = Packed property;
-            important = Declaration.is_important d;
-          }
-    | _ -> None
-  in
-  List.concat_map
-    (fun summary -> List.filter_map (edge summary) rule.declarations)
-    (List.map Selector_summary.of_selector (Edge.selectors rule.selector))
-
 (** {1 Declaration Optimization} *)
 
 let merge_overflow_longhands = Shorthand.merge_overflow_longhands
 let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
 let compose_shorthands = Shorthand.compose_shorthands
 let deduplicate_declarations = Shorthand.deduplicate_declarations
-let duplicate_buggy_properties decls = decls
 
 (** {1 Statement Optimization} *)
 
@@ -750,8 +724,6 @@ let compatibility_declaration_sites =
     position_fallback = true;
     condition_test = false;
   }
-
-let apply_property_duplication stylesheet = stylesheet
 
 let add_compatibility_prefixes ~targets stylesheet =
   let rewrite original =
