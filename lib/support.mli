@@ -3,7 +3,7 @@
     Cascade reads against the specifications, so it accepts grammar a browser
     has not shipped. Whether that is true of a given production is a fact about
     browsers, and this answers it from the web-features dataset
-    {!Baseline.support} carries rather than from a list written by hand. A
+    {!Baseline.val-support} carries rather than from a list written by hand. A
     browser that catches up moves the answer at the next
     [scripts/gen_baseline.sh] run.
 
@@ -61,8 +61,8 @@ type measurement = {
     library knows. *)
 
 val self_measured : string -> bool
-(** [self_measured key] is whether [key] is answered by {!measured} rather than
-    by the generated table. A caller reporting on a gap should say which,
+(** [self_measured key] is whether [key] is answered by {!val-measured} rather
+    than by the generated table. A caller reporting on a gap should say which,
     because a fact this project measured can drift from the browser and a
     generated one cannot. *)
 

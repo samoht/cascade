@@ -86,13 +86,13 @@ val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a custom property declaration from
     authored CSS text.
 
-    @raise Invalid_argument
-      if the pair does not make the one declaration it names. [name] has to be a
-      [<dashed-ident>], and [value] the [<declaration-value>?] CSS Variables 1
-      sec. 2 gives a custom property: no top-level [;], no unmatched closing
-      bracket, no unterminated function, block or string. A [name] holding a
-      code point no bare ident carries is written back with the escapes that
-      read it. {!parse_custom_property} is the same check as an option. *)
+    It raises [Invalid_argument] if the pair does not make the one declaration
+    it names. [name] has to be a [<dashed-ident>], and [value] the
+    [<declaration-value>?] CSS Variables 1 sec. 2 gives a custom property: no
+    top-level [;], no unmatched closing bracket, no unterminated function, block
+    or string. A [name] holding a code point no bare ident carries is written
+    back with the escapes that read it. {!parse_custom_property} is the same
+    check as an option. *)
 
 val parse_declaration : ?layer:string -> string -> string -> declaration option
 (** [parse_declaration ?layer property value] reads [property] and [value] with
@@ -285,7 +285,7 @@ val compare_prop_key : prop_key -> prop_key -> int
 (** [compare_prop_key a b] is a total order on property identities, [0] exactly
     where {!equal_prop_key} is [true]. It orders the property tag rather than
     the runtime representation, so an ordered container keyed on a property
-    stays off {!Stdlib.compare}. *)
+    stays off [Stdlib.compare]. *)
 
 val property_key : declaration -> prop_key
 (** [property_key decl] is the identity of [decl]'s property. Two declarations

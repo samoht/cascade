@@ -4,7 +4,7 @@
 open Values_intf
 
 val pp_color_name : color_name Pp.t
-(** [pp_color_name] pretty-prints {!type-color_name} values. *)
+(** [pp_color_name] pretty-prints {!Values_intf.type-color_name} values. *)
 
 val minify_relative_color_alpha : string -> string
 (** [minify_relative_color_alpha body] rewrites a trailing percentage alpha in a

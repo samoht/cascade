@@ -2,7 +2,7 @@
 
     A recorder is threaded through only the optimizer run that receives it, so
     an optimization started while another is in progress counts its own work.
-    Readers take a {!snapshot}: a value, not a view, so a later run cannot
+    Readers take a {!val-snapshot}: a value, not a view, so a later run cannot
     rewrite what an earlier one reported. *)
 
 type t

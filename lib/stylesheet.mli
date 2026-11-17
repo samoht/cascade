@@ -47,9 +47,9 @@ val resolve_font_face_var :
     [\@font-face] descriptor is not a property, so no descriptor grammar accepts
     one and browsers drop the declaration that holds it. cascade substitutes at
     build time instead, and this table is the whole set it can reach: the parser
-    keeps a [var()] only for a descriptor named here, and {!Inline} supplies the
-    resolvers. A descriptor added to the table takes another resolver argument,
-    so both sides have to answer for it. *)
+    keeps a [var()] only for a descriptor named here, and {!module-Inline}
+    supplies the resolvers. A descriptor added to the table takes another
+    resolver argument, so both sides have to answer for it. *)
 
 (** {1 Construction Functions} *)
 
@@ -303,7 +303,7 @@ val selector : rule -> Selector.t
 val declarations : rule -> declaration list
 (** [declarations rule] returns the run of declarations written before the
     rule's first nested statement. CSS Nesting 1 sec. 3.4 wraps a run written
-    after one in a nested declarations rule, so it stays in {!nested} at the
+    after one in a nested declarations rule, so it stays in {!val-nested} at the
     position it was written; this is the whole body only for a rule that nests
     nothing. *)
 
@@ -442,8 +442,8 @@ val read_block : Cursor.t -> block
 
 val read_font_variant_descriptor : Cursor.t -> font_variant_descriptor
 (** [read_font_variant_descriptor r] reads the [font-variant] descriptor of an
-    [\@font-face] rule, or a [var()] standing for one. {!Inline} reads a custom
-    property back through it when resolving such a reference. *)
+    [\@font-face] rule, or a [var()] standing for one. {!module-Inline} reads a
+    custom property back through it when resolving such a reference. *)
 
 val read : Cursor.t -> t
 (** [read r] reads a complete CSS stylesheet from the cursor. Raises
@@ -542,7 +542,7 @@ module Source : sig
       original byte offset plus CSS line and Unicode-scalar column. *)
 
   val span : t -> Loc.t -> span
-  (** [span t loc] maps both boundaries of [loc] with {!position}. *)
+  (** [span t loc] maps both boundaries of [loc] with {!val-position}. *)
 end
 
 val parse_stylesheet_partial :

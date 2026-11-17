@@ -91,7 +91,8 @@ val property_registration :
   property_registration
 (** [property_registration ~inherits name syntax] is the registration of [name].
 
-    @raise Invalid_argument if [name] is not a dashed custom-property name. *)
+    It raises [Invalid_argument] if [name] is not a dashed custom-property name.
+*)
 
 val property_registry :
   ?property_registrations:property_registration list ->
