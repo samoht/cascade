@@ -4234,6 +4234,19 @@ val optimize :
     [stats] records what this run did; read it back with {!Stats.snapshot}.
     Without it the run counts into a recorder of its own that nobody reads. *)
 
+val minify :
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?rename_custom_property:(string -> string) ->
+  t ->
+  string
+(** [minify stylesheet] is [stylesheet] optimized with {!val-optimize} and
+    printed with {!to_string}[ ~minify:true], the two steps of
+    [cascade --minify]. {!to_string} prints the sheet it is given, so a caller
+    that wants the output small calls this. [lossless] and [enforce_spec] go to
+    both steps, [rename_custom_property] to the printing; call the two in turn
+    for any other option. *)
+
 val flatten_nesting : t -> t
 (** [flatten_nesting stylesheet] returns the stylesheet with every nested rule
     flattened into a top-level rule (without running the rest of the

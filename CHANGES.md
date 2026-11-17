@@ -38,9 +38,10 @@
 - `Css.to_string ~minify:true` prints the sheet it is given. Folding selectors
   such as `:nth-child(1)` and `:is(:link,:visited)`, dropping an `@charset` or
   an `@font-face` without `font-family` or `src`, and moving a registered
-  `<color>` variable in a `box-shadow` happen in `Css.optimize`: call it before
-  printing, or `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules` or
-  `Stylesheet.normalize_shadow_color_vars` for one step (#1350, #1351, #1354).
+  `<color>` variable in a `box-shadow` happen in `Css.optimize`. `Css.minify`
+  optimizes and prints in one call; `Selector.canonicalize`,
+  `Stylesheet.drop_inert_at_rules` and `Stylesheet.normalize_shadow_color_vars`
+  each take one step (#1350, #1351, #1354).
 - Two declarations of one custom property with one value are equal and hash
   alike wherever they were read: a custom property's tokens carry no source
   position, so `Component.source_loc` gives `Loc.dummy` for each. Those

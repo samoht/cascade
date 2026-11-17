@@ -272,6 +272,31 @@ let minify_flag () =
   Alcotest.(check string)
     "minified optimize+minify" ".btn{color:red}" (minify stylesheet)
 
+(* [minify] is the one call for what [to_string ~minify:true] did in 1.2 and
+   more: it optimizes, then prints. Selectors 4 defines [:first-child] as
+   [:nth-child(1)]; an [@font-face] without [font-family] or [src] defines no
+   face (CSS Fonts 4 sec. 4.1); two rules writing one declaration share it.
+   [oklch(62.8% .2577 29.23)] is within the README's 0.002 Oklab rounding of
+   [red], which [~lossless:true] turns off. *)
+let minify_optimizes_and_prints () =
+  let check name want css =
+    Alcotest.(check string) name want (Css.minify (Css.stylesheet css))
+  in
+  check "nth-child(1)" "a:first-child{color:red}" "a:nth-child(1){color:red}";
+  check "inert font-face" ".a{color:red}"
+    "@font-face{font-display:swap}.a{color:red}";
+  check "shared declaration" ".a,.b{color:red}" ".a{color:red}.b{color:red}";
+  let red = ".a{color:oklch(62.8% .2577 29.23)}" in
+  check "rounds a colour" ".a{color:red}" red;
+  Alcotest.(check string)
+    "lossless keeps the colour exact" ".a{color:oklch(.628 .2577 29.23)}"
+    (Css.minify ~lossless:true (Css.stylesheet red));
+  Alcotest.(check string)
+    "renames custom properties" ".a{--tw-x:1px;width:var(--tw-x)}"
+    (Css.minify
+       ~rename_custom_property:(fun n -> String.concat "" [ "tw-"; n ])
+       (Css.stylesheet ".a{--x:1px;width:var(--x)}"))
+
 let pure_minify_value_fallbacks () =
   let stylesheet =
     v
@@ -685,6 +710,8 @@ let suite =
       Alcotest.test_case "layers integration" `Quick layers_integration;
       Alcotest.test_case "media queries integration" `Quick media_integration;
       Alcotest.test_case "minify flag" `Quick minify_flag;
+      Alcotest.test_case "minify optimizes and prints" `Quick
+        minify_optimizes_and_prints;
       Alcotest.test_case "pure minify value fallbacks" `Quick
         pure_minify_value_fallbacks;
       Alcotest.test_case "constructed offset shorthand" `Quick

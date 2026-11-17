@@ -692,6 +692,10 @@ let optimize ?scope ?targets ?judge ?flatten_nesting ?lossless ?enforce_spec
     ?enforce_spec ?aggressive ?regroup ?closed_world ?objective
     ?prune_unused_custom_props ?stats stylesheet
 
+let minify ?lossless ?enforce_spec ?rename_custom_property stylesheet =
+  optimize ?lossless ?enforce_spec stylesheet
+  |> to_string ~minify:true ?lossless ?enforce_spec ?rename_custom_property
+
 let flatten_nesting = Optimize.flatten_nesting
 let canonicalize_rule_order = Rule_order.canonicalize
 
