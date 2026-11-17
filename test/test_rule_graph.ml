@@ -172,6 +172,34 @@ let try_rewrite_rejects_unsafe_cross () =
   | Some _ ->
       Alcotest.fail "merging across a conflicting rule should be rejected"
 
+(* A rewrite is refused at the first produced node that cannot be ordered, and
+   names the outside node it cannot be ordered around, whatever the produced
+   nodes after it hold. A refused attempt leaves nothing behind: the next
+   rewrite of the same graph commits, and its node weighs what it prints. *)
+let refusal_names_the_first_unordered_node () =
+  let g =
+    Rule_graph.of_rules (rules_of ".a{color:red}.k{color:green}.b{color:blue}")
+  in
+  (match
+     Rule_graph.rewrite g
+       ~consume:(nids [ 0; 2 ])
+       ~produce:(rules_of ".a,.b{color:red}.x{top:0}")
+   with
+  | Error (Rule_graph.Ambiguous_external_order { produced; external_ }) ->
+      Alcotest.(check (pair int int))
+        "first produced node, around the middle rule" (3, 1)
+        (Rule_graph.Node_id.to_int produced, Rule_graph.Node_id.to_int external_)
+  | Error _ -> Alcotest.fail "refused for another reason"
+  | Ok _ -> Alcotest.fail "merging across a conflicting rule should be refused");
+  let produce = rules_of ".k{color:green;top:0}" in
+  match Rule_graph.rewrite g ~consume:(nids [ 1 ]) ~produce with
+  | Error _ -> Alcotest.fail "a rewrite after a refusal should commit"
+  | Ok g' ->
+      Alcotest.(check int)
+        "the produced node weighs its printed size"
+        (Size.rule (List.hd produce))
+        (Rule_graph.node_size g' (nid 3))
+
 let try_rewrite_preserves_residual_source_slots () =
   let g =
     Rule_graph.of_rules
@@ -1230,6 +1258,8 @@ let suite =
         conflicting_pair_is_pinned;
       Alcotest.test_case "try_rewrite commits a safe factoring" `Quick
         try_rewrite_safe_factoring;
+      Alcotest.test_case "a refusal names the first unordered node" `Quick
+        refusal_names_the_first_unordered_node;
       Alcotest.test_case "try_rewrite rejects a stale consumed node" `Quick
         try_rewrite_rejects_stale;
       Alcotest.test_case "try_rewrite rejects an out-of-range node" `Quick

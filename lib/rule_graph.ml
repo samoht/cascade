@@ -996,18 +996,17 @@ let produced_origin t consume =
         (fun min_origin id -> min min_origin t.origin.(id))
         t.origin.(first) rest
 
-let produced_origins t consume produced_branches =
-  let fallback = produced_origin t consume in
-  Array.map
-    (fun branches ->
-      List.fold_left
-        (fun origin consumed ->
-          if share_branch branches t.branches.(consumed) then
-            min origin t.origin.(consumed)
-          else origin)
-        max_int consume
-      |> fun origin -> if origin = max_int then fallback else origin)
-    produced_branches
+(* A produced node takes the earliest origin of the consumed nodes it shares a
+   branch with, or of all of them. *)
+let produced_branch_origin t consume branches =
+  List.fold_left
+    (fun origin consumed ->
+      if share_branch branches t.branches.(consumed) then
+        min origin t.origin.(consumed)
+      else origin)
+    max_int consume
+  |> fun origin ->
+  if origin = max_int then produced_origin t consume else origin
 
 (* Room in [t]'s node arrays for [added] nodes past its extent. The arrays are
    shared along the lineage, so [t] keeps what it grows even when the attempt
@@ -1039,30 +1038,17 @@ let reserve t added =
 
 let place arr ~at items = Array.blit items 0 arr at (Array.length items)
 
-let produced_graph t ~consume produced =
+(* The graph [produced] would make, its nodes holding their rules alone. What
+   the order relation reads off a produced node is placed by {!place_produced}
+   when the rewrite first asks about that node, and its size once the rewrite is
+   accepted: most attempts are refused at the first produced node, and read
+   nothing of the others. *)
+let produced_graph t produced =
   let added = Array.length produced in
   let total = t.count in
   reserve t added;
-  let sizes = Array.map Size.rule produced in
-  let facts =
-    Array.map
-      (fun rule -> branch_facts (effective_selector t.parent rule))
-      produced
-  in
-  let selectors = Array.map (fun (branches, _, _) -> branches) facts in
-  let branches = Array.map selector_branch_keys selectors in
-  let decl_overlaps = Array.map rule_decl_overlaps produced in
   place t.rules ~at:total produced;
-  place t.sizes ~at:total sizes;
-  place t.origin ~at:total (produced_origins t consume branches);
   Array.fill t.death total added max_int;
-  place t.selectors ~at:total selectors;
-  place t.selector_summaries ~at:total
-    (Array.map (fun (_, summaries, _) -> summaries) facts);
-  place t.specificities ~at:total (Array.map (fun (_, _, specs) -> specs) facts);
-  place t.branches ~at:total branches;
-  place t.decl_overlaps ~at:total decl_overlaps;
-  place t.overlap_keys ~at:total (Array.map rule_overlap_keys decl_overlaps);
   Array.fill t.succ total added [];
   {
     t with
@@ -1072,6 +1058,20 @@ let produced_graph t ~consume produced =
        [t]'s answers once it is accepted *)
     reach = Unbuilt;
   }
+
+let place_produced t graph ~consume p =
+  let selectors, summaries, specificities =
+    branch_facts (effective_selector t.parent graph.rules.(p))
+  in
+  let branches = selector_branch_keys selectors in
+  let decl_overlaps = rule_decl_overlaps graph.rules.(p) in
+  graph.origin.(p) <- produced_branch_origin t consume branches;
+  graph.selectors.(p) <- selectors;
+  graph.selector_summaries.(p) <- summaries;
+  graph.specificities.(p) <- specificities;
+  graph.branches.(p) <- branches;
+  graph.decl_overlaps.(p) <- decl_overlaps;
+  graph.overlap_keys.(p) <- rule_overlap_keys decl_overlaps
 
 let add_edge succ i j reason = succ.(i) <- (j, reason) :: succ.(i)
 
@@ -1302,6 +1302,7 @@ let add_external_edges t ~consume ~consumed graph entering =
   let rec loop_produced p =
     if p = graph.count then Ok ()
     else
+      let () = place_produced t graph ~consume p in
       let rec loop_candidates = function
         | [] -> Ok ()
         | k :: rest -> (
@@ -1543,6 +1544,9 @@ let carry_reach t graph entering finished =
    candidates. *)
 let commit t graph ~consumed entering finished =
   let total = t.count in
+  for p = total to graph.count - 1 do
+    graph.sizes.(p) <- Size.rule graph.rules.(p)
+  done;
   Array.iter (fun c -> graph.death.(c) <- graph.generation) consumed;
   Array.iteri
     (fun at edges ->
@@ -1572,7 +1576,7 @@ let rewrite t ~consume ~produce : (t, rewrite_error) result =
       match produce with
       | [] -> Error Empty_produce
       | _ -> (
-          let graph = produced_graph t ~consume (Array.of_list produce) in
+          let graph = produced_graph t (Array.of_list produce) in
           let entering = Array.make (graph.count - t.count) [] in
           let edges =
             match add_external_edges t ~consume ~consumed graph entering with
