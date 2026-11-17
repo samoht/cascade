@@ -126,9 +126,9 @@ val diff :
     located in that side's text as given, banner included. [lossless] preserves
     exact colour channels and non-terminating numeric arithmetic during
     canonical comparison. Canonical comparison judges for the browsers
-    {!Css.optimize} targets by default, so a [@supports] guard every target
-    satisfies, a prefix a target needs and a fallback every target parses past
-    are no difference; [enforce_spec] (default [false]) keeps every one of
+    {!Cascade.Css.optimize} targets by default, so a [@supports] guard every
+    target satisfies, a prefix a target needs and a fallback every target parses
+    past are no difference; [enforce_spec] (default [false]) keeps every one of
     those, since an engine outside the targets reads them.
 
     Two sheets that hold the same rules and the same declarations, and differ

@@ -56,7 +56,7 @@ val compound_refusal : seen:t list -> t -> compound_refusal option
 
 val has_refused_simple_in_compound : t -> bool
 (** [has_refused_simple_in_compound s] is whether a compound of [s] carries a
-    component {!compound_refusal} refuses. *)
+    component {!val-compound_refusal} refuses. *)
 
 val pseudo_class_all_idents : unit -> (string * t) list
 (** [pseudo_class_all_idents ()] is every name read after a single colon. *)

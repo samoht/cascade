@@ -73,8 +73,8 @@ val position : t -> int
 
 val context_window : ?before:int -> ?after:int -> t -> string * int
 (** [context_window ~before ~after t] returns [(context, marker_pos)] where
-    [context] is text around the current position and {!field-marker_pos} counts
-    the characters of [context] before it. Used for better error messages.
+    [context] is text around the current position and [marker_pos] counts the
+    characters of [context] before it. Used for better error messages.
 
     A character is one Unicode scalar value, which a combining mark and a wide
     glyph each make approximate on a terminal. [before] and [after] are target
@@ -105,7 +105,7 @@ val peek_string : t -> int -> string
 val skip : t -> unit
 (** [skip t] consumes one character.
 
-    @raise Invalid_argument if [t] is at end of input. *)
+    It raises [Invalid_argument] if [t] is at end of input. *)
 
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] if input starts with [s]. *)

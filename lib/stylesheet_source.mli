@@ -30,7 +30,7 @@ val v :
   t
 (** [v ~original ~preprocessed ~origin ~comments rules] is the snapshot of a
     parse of [original] whose preprocessed form is the source of [preprocessed],
-    the index {!position} reads, with [origin] mapping its offsets back to
+    the index {!val-position} reads, with [origin] mapping its offsets back to
     [original]. *)
 
 val contents : t -> string
@@ -62,4 +62,4 @@ val position : t -> int -> position
 (** [position t offset] is the input position of the preprocessed [offset]. *)
 
 val span : t -> Loc.t -> span
-(** [span t loc] maps both boundaries of [loc] with {!position}. *)
+(** [span t loc] maps both boundaries of [loc] with {!val-position}. *)

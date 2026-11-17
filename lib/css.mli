@@ -103,13 +103,13 @@ module Gradient_direction : sig
       [<angle>], or a [<direction> in <color-interpolation>] form). *)
 end
 
-(** {2:types Value and property types}
+(** {2:value_types Value and property types}
 
-    The CSS value and property types are the ones {!Values}, {!Properties},
-    {!Variables} and {!Stylesheet} define, re-exported here with their
-    constructors so that [open Cascade.Css] brings them into scope. A
-    stylesheet's own AST types and the cascade's internal records stay in
-    {!Stylesheet} and {!Properties}. *)
+    The CSS value and property types are the ones {!Values},
+    {!module-Properties}, {!module-Variables} and {!Stylesheet} define,
+    re-exported here with their constructors so that [open Cascade.Css] brings
+    them into scope. A stylesheet's own AST types and the cascade's internal
+    records stay in {!Stylesheet} and {!module-Properties}. *)
 
 include module type of struct
     include Values_intf
@@ -2470,7 +2470,7 @@ val border_radius : border_radius -> declaration
 (** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property; takes a typed value with 1-4 horizontal radii and
-    optional 1-4 vertical radii separated by {!val-/}. *)
+    optional 1-4 vertical radii separated by [/]. *)
 
 val border_top_left_radius : length -> declaration
 (** [border_top_left_radius radius] is the
@@ -3150,7 +3150,7 @@ val container_type : container_type -> declaration
      container-type} property for container queries.
 
     The shorthand that sets this and the name together is
-    {!val-Declaration.container}, because {!val-container} at this level is the
+    {!Declaration.val-container}, because {!val-container} at this level is the
     at-rule builder. *)
 
 val contain_intrinsic_size : contain_intrinsic_size -> declaration
@@ -3975,7 +3975,7 @@ val custom_declaration_layer : declaration -> string option
 
     CSS output generation and performance optimization tools. *)
 
-(** {2:rendering Printing}
+(** {2:printing Printing}
 
     Functions for converting CSS structures to string output. *)
 
@@ -4076,8 +4076,8 @@ val stylesheet :
     written in a program. It discards the {!field-warnings}; with [~strict:true]
     any warning is an error.
 
-    @raise Invalid_argument
-      if [css] does not read. Use {!of_string} to deal with untrusted input. *)
+    It raises [Invalid_argument] if [css] does not read. Use {!of_string} to
+    deal with untrusted input. *)
 
 (** {2:optimization Optimization}
 
@@ -4220,7 +4220,7 @@ val optimize :
     complete stylesheet with no out-of-band reader (another stylesheet, or
     [getComputedStyle]), the same closed-world assumption as {!inline_vars}.
 
-    [stats] records what this run did; read it back with {!Stats.snapshot}.
+    [stats] records what this run did; read it back with {!Stats.val-snapshot}.
     Without it the run counts into a recorder of its own that nobody reads. *)
 
 val minify :

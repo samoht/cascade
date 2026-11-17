@@ -521,7 +521,7 @@ type mask =
 
 (** CSS Backgrounds 3 sec. 5.2 to 5.4 write the numeric halves of the
     border-image slots as [<number [0,inf]>], which a [calc()] satisfies, so
-    each carries a {!type-number} rather than a float. *)
+    each carries a {!Values.type-number} rather than a float. *)
 type border_image_slice_item =
   | Number of number
   | Pct of float

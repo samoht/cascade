@@ -20,7 +20,7 @@ type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
     spellings render alike. *)
 
 val pp_calc_op : calc_op Pp.t
-(** [pp_calc_op] pretty-prints {!calc_op} values. *)
+(** [pp_calc_op] pretty-prints {!Values_intf.calc_op} values. *)
 
 val pp_math_const : Pp.ctx -> math_const -> unit
 (** [pp_math_const] pretty-prints a math constant. *)
