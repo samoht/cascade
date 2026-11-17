@@ -76,7 +76,13 @@ let complex_values () =
     "linear-gradient(0deg, red, green, blue)";
   (* A positioned stop would have to mirror to [100% - p] to survive the
      reversal, which is not shorter, so the angle stays. *)
-  decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,#00f)"
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(0deg,red 10%,#00f 90%)"
+    "linear-gradient(0deg, red 10%, blue 90%)";
+  (* CSS Images 4 sec. 3.5.3: [0%] on the first stop and [100%] on the last are
+     the positions they take without one, so those stops are unpositioned and
+     the reversal applies. *)
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(#00f,red)"
     "linear-gradient(0deg, red 0%, blue 100%)";
   (* An interpolation hint is positional in the same way. *)
   decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,30%,#00f)"
