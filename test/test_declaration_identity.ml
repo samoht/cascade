@@ -768,11 +768,31 @@ let comment_separated_tokens_are_their_own_value () =
       Alcotest.(check bool) "two declarations" false (equal_declaration x y)
   | _ -> Alcotest.fail "expected one declaration each"
 
+(* CSS Syntax 3 (ED) sec. 4.2 gives a [<string-token>] a value and nothing of
+   the quote it was written with, and CSSOM writes every string double-quoted,
+   so ['a'] and ["a"] are one custom property value whether it was parsed or
+   built from text: one declaration, and the rules merge. *)
+let custom_string_quote_is_no_part_of_the_value () =
+  Alcotest.(check string)
+    "the rules merge" ".a,.b{--x:\"a\"}"
+    (minified ".a{--x:'a'}.b{--x:\"a\"}");
+  let one label a b =
+    Alcotest.(check bool) (label ^ ": equal") true (equal_declaration a b);
+    Alcotest.(check bool) (label ^ ": one object") true (a == b)
+  in
+  match (decls_of ".a{--x:'a'}", decls_of ".a{--x:\"a\"}") with
+  | [ x ], [ y ] ->
+      one "parsed" x y;
+      one "built" (custom_property "--x" "'a'") y
+  | _ -> Alcotest.fail "expected one declaration each"
+
 let suite =
   ( "declaration_identity",
     [
       test_case "custom declarations ignore offsets" `Quick
         custom_declarations_ignore_offsets;
+      test_case "a custom string's quote is no part of the value" `Quick
+        custom_string_quote_is_no_part_of_the_value;
       test_case "comment-separated tokens are their own value" `Quick
         comment_separated_tokens_are_their_own_value;
       test_case "an escaped ident is no important flag" `Quick
