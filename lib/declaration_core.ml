@@ -20,31 +20,40 @@ let hash = function
   | Declaration { hash; _ } -> hash
   | Theme_guarded { hash; _ } -> hash
 
-type payload = Payload : 'a property * 'a * bool -> payload
-
-(* Equality under [compare] of everything but the cached [size], which follows
-   from the rest and which a lookup leaves unset. *)
-let same_payload a b =
-  match (a, b) with
-  | Declaration x, Declaration y ->
-      Stdlib.compare
-        (Payload (x.property, x.value, x.important))
-        (Payload (y.property, y.value, y.important))
-      = 0
-  | Theme_guarded _, Theme_guarded _ -> Stdlib.compare a b = 0
-  | Declaration _, Theme_guarded _ | Theme_guarded _, Declaration _ -> false
-
 (* The live declarations of this domain, one per class of [compare]. The smart
    constructors return the member equal to what they build, so declarations
    equal in one domain are one object and [equal_declaration] answers them with
    a pointer compare. The set holds its members weakly: one nothing else holds
    is collected. *)
-module Interned = Weak.Make (struct
+module Same = struct
   type t = declaration
 
-  let equal = same_payload
+  (* [Stdlib.compare a b = 0] but for the cached [size], which follows from the
+     rest and which a lookup leaves unset, with the types doing what they can
+     before the walk: the hashes and the flags settle most pairs that differ,
+     and the property is compared by identity, which also proves the two values
+     of one type. Only the values are walked. *)
+  let rec equal a b =
+    a == b
+    ||
+    match (a, b) with
+    | ( Declaration { property = p; value = v; important = i; hash = h; _ },
+        Declaration { property = q; value = w; important = j; hash = k; _ } )
+      -> (
+        Int.equal h k && Bool.equal i j
+        &&
+        match Properties.eq_property p q with
+        | Some Equal -> Stdlib.compare v w = 0
+        | None -> false)
+    | ( Theme_guarded { var_name = n; decl = d; hash = h; _ },
+        Theme_guarded { var_name = m; decl = e; hash = k; _ } ) ->
+        Int.equal h k && String.equal n m && equal d e
+    | Declaration _, Theme_guarded _ | Theme_guarded _, Declaration _ -> false
+
   let hash = hash
-end)
+end
+
+module Interned = Weak.Make (Same)
 
 let interned = Domain.DLS.new_key (fun () -> Interned.create 4096)
 let intern decl = Interned.merge (Domain.DLS.get interned) decl
@@ -363,8 +372,8 @@ let rec property_name decl =
    property name" directly - no [Pp], no [Obj.repr]. *)
 type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
 
-(* The pack hides the value's type, so nothing witnesses a per-property
-   comparison and the value is compared by walking its representation - the same
+(* No value type has a comparison of its own, so once [Same.equal] has matched
+   the property the value is compared by walking its representation - the same
    walk [v] hashes. That walk has to be [compare], not [(=)]: IEEE leaves a NaN
    equal to nothing, itself included, so [(=)] read [opacity:calc(NaN)] as
    different from itself while [hash], which normalises NaN, read it as the
@@ -380,9 +389,7 @@ type prop_key = Key : 'a Properties.property -> prop_key [@@unboxed]
    minified-equality test, far cheaper than rendering both. A
    pp-equal-but-structurally-different pair would be a canonicalisation bug, not
    something to paper over by comparing rendered text. *)
-let equal_declaration (a : declaration) b =
-  a == b || (Int.equal (hash a) (hash b) && Stdlib.compare a b = 0)
-
+let equal_declaration = Same.equal
 let same_minified = equal_declaration
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 
