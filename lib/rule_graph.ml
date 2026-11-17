@@ -977,9 +977,9 @@ let canonical_order t : node_id array =
    which the parent never reads, and keeps the edges it points at existing nodes
    beside it until it is accepted. A rejected attempt therefore leaves nothing
    to undo, and neither outcome copies anything sized by the graph. *)
-let rec first_duplicate ids at =
+let rec first_duplicate (ids : node_id array) at =
   if at >= Array.length ids then Option.None
-  else if ids.(at - 1) = ids.(at) then Option.Some ids.(at)
+  else if Int.equal ids.(at - 1) ids.(at) then Option.Some ids.(at)
   else first_duplicate ids (at + 1)
 
 let rec first_unusable t = function
@@ -1005,12 +1005,12 @@ let validate_consume t consume =
           | Option.Some e -> Error e
           | Option.None -> Ok consumed))
 
-let rec mem_sorted ids x lo hi =
+let rec mem_sorted (ids : node_id array) (x : node_id) lo hi =
   lo < hi
   &&
   let mid = (lo + hi) / 2 in
   let v = ids.(mid) in
-  v = x
+  Int.equal v x
   || if v < x then mem_sorted ids x (mid + 1) hi else mem_sorted ids x lo mid
 
 let is_consumed consumed k = mem_sorted consumed k 0 (Array.length consumed)

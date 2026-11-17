@@ -423,6 +423,43 @@ let test_equal_is_compare buf =
         decls)
     decls
 
+(* The optimizer tests property identity with [equal_prop_key] and orders it
+   with [compare_prop_key], both typed. Each has to answer what structural
+   equality answers on the packed property, over typed properties, custom
+   properties and properties the model does not know. *)
+let test_prop_key_is_structural buf =
+  let texts =
+    [
+      declaration_text buf 0;
+      declaration_text buf 1;
+      declaration_text buf 2;
+      "color:blue";
+      "margin-top:0";
+      "--" ^ ident buf 3 ^ ":1";
+      "--" ^ ident buf 4 ^ ":2";
+      "-x-" ^ ident buf 5 ^ ":1";
+      "-x-" ^ ident buf 6 ^ ":2";
+    ]
+  in
+  let keys =
+    List.filter_map parse_declaration texts
+    |> List.map Css.Declaration.property_key
+  in
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          let expected = Stdlib.( = ) a b in
+          if Css.Declaration.equal_prop_key a b <> expected then
+            failf "equal_prop_key answers %b, structural equality %b"
+              (not expected) expected;
+          if Int.equal (Css.Declaration.compare_prop_key a b) 0 <> expected then
+            failf "compare_prop_key is %d, structural equality %b"
+              (Css.Declaration.compare_prop_key a b)
+              expected)
+        keys)
+    keys
+
 let suite =
   ( "declaration",
     [
@@ -430,6 +467,8 @@ let suite =
         test_read_declaration_crash_safety;
       test_case "equal_declaration agrees with compare" [ bytes ]
         test_equal_is_compare;
+      test_case "property identity agrees with structural equality" [ bytes ]
+        test_prop_key_is_structural;
       test_case "read_declaration crash safety over non-ascii bytes" [ bytes ]
         test_declaration_unicode_bytes;
       test_case "serialization idempotent" [ bytes ]

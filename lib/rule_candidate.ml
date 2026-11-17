@@ -504,12 +504,9 @@ let declarations_cross_order grouped external_decls =
         external_decls)
     grouped
 
-(* Keyed on {!Declaration.prop_key}, the property's structural identity, rather
-   than on its name: the name only exists as a string once [pp_property] has
-   rendered it through a [Buffer], and this key is rebuilt for every declaration
-   of every rule the candidate search touches. [prop_key] is [[@@unboxed]] over
-   the property constructor, so for the constant constructors that is an
-   immediate, and both equality and [Hashtbl.hash] are structural on it. *)
+(* Keyed on {!Declaration.prop_key}, the property's typed identity, rather than
+   on its name, which exists only once [pp_property] has printed it: this key is
+   built for every declaration of every rule the candidate search touches. *)
 type property_key = {
   prop : Declaration.prop_key;
   important : bool;

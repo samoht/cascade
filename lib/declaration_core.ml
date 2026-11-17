@@ -384,13 +384,16 @@ let equal_declaration (a : declaration) b =
   a == b || (Int.equal (hash a) (hash b) && Stdlib.compare a b = 0)
 
 let same_minified = equal_declaration
-let equal_prop_key (a : prop_key) b = a = b
 let hash_prop_key (key : prop_key) = Hashtbl.hash key
 
 (* The pack hides the value's type but not the property's identity, so the order
    is the one [Properties] gives that identity. *)
 let compare_prop_key (a : prop_key) b =
   match (a, b) with Key p, Key q -> Properties.compare_property p q
+
+(* A nullary property is an immediate, so the pointer test answers most equal
+   pairs; the tag order answers the rest without a runtime comparison. *)
+let equal_prop_key (a : prop_key) b = a == b || compare_prop_key a b = 0
 
 let rec property_key decl =
   match decl with
