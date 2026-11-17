@@ -235,10 +235,6 @@ val err : ?loc:Loc.t -> ?got:string -> t -> string -> 'a
 val err_invalid : ?loc:Loc.t -> t -> string -> 'a
 (** [err_invalid t msg] is [err t ("invalid: " ^ msg)]. *)
 
-val err_eof : t -> 'a
-[@@deprecated "use Error.fail (Error.unterminated loc sort); removed in 1.4.0"]
-(** [err_eof t] raises an "unexpected end of input" error. *)
-
 val err_expected : ?loc:Loc.t -> t -> string -> 'a
 (** [err_expected t what] raises with "expected [what]". *)
 
@@ -567,11 +563,6 @@ val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
 (** [enum ?default label table t] skips leading whitespace, consumes an ident,
     and looks it up in [table]. Falls back to [default] if provided, otherwise
     raises. *)
-
-val try_enum : (string * 'a) list -> t -> 'a option
-[@@deprecated "use Cursor.option (Cursor.enum label table); removed in 1.4.0"]
-(** [try_enum table t] is like {!enum} but returns [None] without raising. Keys
-    are given lowercase. *)
 
 val enum_calls : ?default:(t -> 'a) -> (string * (t -> 'a)) list -> t -> 'a
 (** [enum_calls ?default table t] skips leading whitespace, then dispatches on
