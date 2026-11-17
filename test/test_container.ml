@@ -8,6 +8,18 @@ let rejects_invalid input =
       Alcotest.failf "invalid container query parsed: %s -> %s" input
         (to_string query)
 
+(* [v] is [of_string] for a condition written in a program: what reads is the
+   condition, and a malformed one is an [Invalid_argument]. CSS Conditional 5
+   requires a [<style-query>] inside [style()], so an empty one is malformed. *)
+let test_v () =
+  let open Css.Container in
+  Alcotest.(check string)
+    "reads as of_string reads" "style(--a)"
+    (to_string (v "style(--a)"));
+  match v "style()" with
+  | c -> Alcotest.failf "malformed condition read as %s" (to_string c)
+  | exception Invalid_argument _ -> ()
+
 let test_string_output () =
   let open Css.Container in
   Alcotest.(check string)
@@ -500,6 +512,7 @@ let tests =
   Alcotest.
     [
       test_case "to_string" `Quick test_string_output;
+      test_case "v" `Quick test_v;
       test_case "named container name round-trips" `Quick
         named_container_name_round_trips;
       test_case "component parser edges" `Quick component_parser_edges;

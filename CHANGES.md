@@ -10,7 +10,8 @@
   past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
   a tree. A match over `Component.t` needs a case for it (#1296).
 - `Selector`, `Container`, `Supports` and `Declaration.of_string` return
-  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v`
+  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v` or
+  `Container.v`, which raise `Invalid_argument`, for text written in a program
   (#1299).
 - `Media.of_string_strict` and `value_of_string`, `Keyframe.selector_of_string`,
   `Declaration.with_value` and `Font_face.*_of_string` return a result too, and
