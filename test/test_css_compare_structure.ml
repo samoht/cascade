@@ -526,6 +526,71 @@ let canonical_folds_an_adjacent_same_selector_pair () =
     "two writes of one property stay distinct" false
     (equal ".w{color:red}.w{color:blue}" ".w{color:blue}.w{color:red}")
 
+(* CSS Position 3 sec. 3.1 makes [inset] the [top right bottom left] shorthand,
+   so the four longhands written in one rule and the same four gathered from two
+   rules are one sheet whichever side composes them, and whatever stands between
+   them in either rule. *)
+let canonical_composes_gathered_longhands () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "longhands from one rule and from two compose alike" true
+    (equal
+       ".c{position:absolute;right:0}.a \
+        .b{bottom:40px;left:0;position:absolute;right:0;top:0;z-index:1}"
+       ".a .b,.c{position:absolute;right:0}.a \
+        .b{bottom:40px;left:0;top:0;z-index:1}");
+  Alcotest.(check bool)
+    "a declaration between the longhands does not keep them apart" true
+    (equal ".x{top:0;position:absolute;right:0;bottom:40px;left:0}"
+       ".x{position:absolute;top:0;right:0;bottom:40px;left:0}");
+  (* Composing part of a family before the merge brings the rest would leave
+     [grid-row] and [grid-column] where the whole rule gives [grid-area]. *)
+  Alcotest.(check bool)
+    "a merged rule composes once it holds every longhand" true
+    (equal
+       ".ca{grid-row-start:1;grid-column-start:2;grid-row-end:3;grid-column-end:4}"
+       ".ca{grid-row-start:1}.ca{grid-column-start:2;grid-row-end:3;grid-column-end:4}");
+  (* A side the other does not write is still a difference. *)
+  Alcotest.(check bool)
+    "three longhands are not the shorthand" false
+    (equal ".x{top:0;position:absolute;right:0;bottom:40px}"
+       ".x{position:absolute;inset:0 0 40px}")
+
+(* CSS Backgrounds 3 sec. 3.4: [border:1px solid red] sets every
+   [border-*-width] to [1px], which is all [border-width:1px] writes, so the two
+   rules agree on every longhand they share and their order is no difference.
+   The reorder report has to answer the same way: a rule that only moved between
+   two writes of itself, as [.t] does here, is not reported as moved because the
+   shorthand on one side was composed and on the other was not. *)
+let canonical_order_reads_shared_longhands () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a shorthand and a longhand that agree commute" true
+    (equal ".i{border:1px solid red}.d{border-width:1px}"
+       ".d{border-width:1px}.i{border:1px solid red}");
+  Alcotest.(check bool)
+    "a longhand the shorthand overrides does not" false
+    (equal ".i{border:2px solid red}.d{border-width:1px}"
+       ".d{border-width:1px}.i{border:2px solid red}");
+  let report a b =
+    let buf = Buffer.create 256 in
+    Cascade_diff.Css_compare.pp_diff buf
+      (Cascade_diff.Css_compare.diff ~mode:`Canonical a b);
+    Buffer.contents buf
+  in
+  let r =
+    report
+      ".i{border-color:red;border-style:solid;color:blue;border-width:1px}.d{border-width:1px;right:0}.t{padding:5px}.w{padding-bottom:0}.t{padding:5px}.x{color:red}"
+      ".i{border:1px solid \
+       red;color:blue}.d{border-width:1px;right:0}.w{padding-bottom:0}.t{padding:5px}.x{color:green}"
+  in
+  Alcotest.(check bool)
+    "the real difference is reported" true
+    (Astring.String.is_infix ~affix:"color: red -> green" r);
+  Alcotest.(check bool)
+    "no rule is reported moved" false
+    (Astring.String.is_infix ~affix:"moved" r)
+
 (* Factoring writes one declaration list into every branch of a selector list,
    so the expanded copies are identical wherever they meet. A prefixed property
    beside its unprefixed twin writes one cascade slot twice, and the pairwise
@@ -1188,6 +1253,10 @@ let suite =
         canonical_movable_at_rule_ignores_nesting;
       Alcotest.test_case "canonical folds an adjacent same-selector pair" `Quick
         canonical_folds_an_adjacent_same_selector_pair;
+      Alcotest.test_case "canonical composes gathered longhands" `Quick
+        canonical_composes_gathered_longhands;
+      Alcotest.test_case "canonical order reads shared longhands" `Quick
+        canonical_order_reads_shared_longhands;
       Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
         canonical_folds_a_factored_vendor_twin_group;
       Alcotest.test_case "canonical ignores how a block groups its rules" `Quick

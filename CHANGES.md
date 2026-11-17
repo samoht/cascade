@@ -255,6 +255,17 @@ to call instead, and moving off most of them is a rename or a deleted call.
 - `cascade diff` dropped a changed rule when the other file held two identical
   copies of its counterpart, because pairing one copy claimed both. The change
   is reported (#1297).
+- `cascade diff --diff=canonical` reported a difference between two equivalent
+  sheets when one wrote `top`, `right`, `bottom` and `left` in one rule and the
+  other split them across two rules, or put an unrelated declaration between
+  them: the comparison folded the longhands into `inset` on one side only. It
+  now composes a rule's longhands wherever they stand, so the two compare
+  identical, and so do `border-width`, `border-style` and `border-color` against
+  `border`. Re-minifying cascade's own output of `facebook1` and `tumblr-3` in
+  the SatCSS corpus reported this difference. Two rules whose declarations agree
+  on every longhand they share, such as `border:1px solid red` and
+  `border-width:1px`, no longer count as ordered, so the comparison does not
+  report one of them as moved (#1394).
 
 ### Speed
 

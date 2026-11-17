@@ -57,6 +57,13 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     keys touched by [d], sorted by {!val-overlap_key_compare} without repeats.
 *)
 
+val footprint_family : Declaration.declaration -> int option
+(** [footprint_family d] is the rank of the first shorthand family whose
+    footprint holds every slot [d] writes, among the families that together
+    spell out every longhand the model knows. Declarations of one rank are the
+    shorthand and longhands that family composes from. This is [None] when [d]
+    is broad, a custom property, or a property no family holds. *)
+
 val declarations_overlap_with_keys :
   Declaration.declaration ->
   overlap_key list ->
