@@ -7,7 +7,6 @@ let src = Logs.Src.create "cascade.factor" ~doc:"Cascade rule factoring"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 let rules_pp_size = Size.rules
-let list_map_preserve = Common.List.map_preserve
 
 (* The memo key carries a whole run of rules. The default structural hash reads
    only the first handful of nodes in it, so runs sharing a prefix land in one
@@ -115,8 +114,9 @@ let optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration rules graph =
   let before_bytes = if profile then rules_pp_size rules else 0 in
   let timer = Mtime_clock.counter () in
   let { Rule_scheduler.graph; _ } = Rule_scheduler.run ~ctx ~finalize graph in
-  let ordered = ordered_rules rules graph in
-  let rules' = list_map_preserve finalize ordered in
+  (* A produced rule left the scheduler finalized, and an input rule arrives
+     finalized, so the order is the result. *)
+  let rules' = ordered_rules rules graph in
   let after_bytes = if profile then rules_pp_size rules' else 0 in
   let elapsed = Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9 in
   let bytes_saved = Stats.saving stats in
