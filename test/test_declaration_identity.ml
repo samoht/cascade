@@ -28,6 +28,10 @@ let sole_declaration css =
 let minified css =
   Css.to_string ~minify:true (Css.optimize (Css.stylesheet css))
 
+let decls_of css =
+  Css.stylesheet css |> Css.statements
+  |> List.concat_map Css.Stylesheet.statement_declarations
+
 (* CSS Variables 1 sec. 3 makes a shorthand carrying a [var()] a
    pending-substitution value: it is syntax-checked only after substitution, and
    which slot the substituted tokens fill is not known before then. So a slot
@@ -734,11 +738,27 @@ let relative_colour_spellings_agree () =
   sheets_agree "alpha slash" "a{color:rgb(from #639 r g b / alpha)}"
     "a{color:rgb(from #639 r g b/alpha)}"
 
+(* CSS Syntax 3 (ED) sec. 5.5.6 takes the important flag off a declaration whose
+   last two non-whitespace tokens are a [!] delim and an ident matching
+   [important]. [\!important] is one ident token, [!important], written with an
+   escape (sec. 4.3.7): the value of [--x], with no flag. Read as text it lost
+   its escape to the flag and came back as a lone backslash flagged
+   important. *)
+let escaped_ident_is_no_important_flag () =
+  Alcotest.(check string)
+    "the escaped ident is the value" ".a{--x:\\!important}"
+    (minified ".a{--x:\\!important}");
+  match decls_of ".a{--x:\\!important}" with
+  | [ d ] -> Alcotest.(check bool) "not important" false (is_important d)
+  | l -> Alcotest.failf "expected one declaration, got %d" (List.length l)
+
 let suite =
   ( "declaration_identity",
     [
       test_case "custom declarations ignore offsets" `Quick
         custom_declarations_ignore_offsets;
+      test_case "an escaped ident is no important flag" `Quick
+        escaped_ident_is_no_important_flag;
       test_case "calc sum shortest spelling" `Quick
         test_calc_sum_shortest_spelling;
       test_case "aspect-ratio has one node" `Quick aspect_ratio_has_one_node;
