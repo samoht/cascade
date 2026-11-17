@@ -59,6 +59,9 @@
 
 ### Printing
 
+- `--minify` keeps the string in `animation: "none"`, which names `@keyframes
+  "none"`. It came out as the keyword `none`, no animation, and `animation:
+  "none" 1s` lost its name (#1368).
 - A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
   quote inside `local("...")` print back as that name (#1351).
 - `--minify` prints an attribute value as the shorter of an escaped ident and a
