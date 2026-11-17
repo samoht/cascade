@@ -191,9 +191,6 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
   | None ->
       let stats = Ctx.stats ctx in
       let summary = Preflight.summarize rules in
-      let graph =
-        Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
-      in
       let known_revert =
         match cache with
         | Some cache -> near_reverted cache summary
@@ -203,11 +200,16 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
         if known_revert || not (should_run_preflight ~ctx summary) then begin
           Stats.skip_fixpoint stats;
           log_skip ~known_revert summary;
-          settle (ordered_rules rules graph)
+          (* A graph fresh from [rules] orders them as given, so neither this
+             nor the unfactored alternative below needs one. *)
+          settle rules
         end
         else begin
           let fixpoint = Stats.start_fixpoint stats in
-          let unfactored = settle (ordered_rules rules graph) in
+          let unfactored = settle rules in
+          let graph =
+            Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules
+          in
           let optimized =
             optimize_graph ~ctx ~finalize ~fixpoint ~local_iteration:1 rules
               graph
