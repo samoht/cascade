@@ -591,9 +591,13 @@ let ident ?(keep_case = true) t =
 let custom_ident_reserved =
   [ "default"; "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
 
+let rec mem_string s = function
+  | [] -> false
+  | k :: rest -> String.equal k s || mem_string s rest
+
 let is_reserved_custom_ident ?(reserved = []) name =
   let folded = String.lowercase_ascii_preserve name in
-  List.mem folded custom_ident_reserved || List.mem folded reserved
+  mem_string folded custom_ident_reserved || mem_string folded reserved
 
 let custom_ident ?reserved label t =
   let loc = position t in
@@ -938,10 +942,21 @@ let call name t f =
 
 (** {1 Enums} *)
 
+(* The value [table] binds to the keyword [s], read case-insensitively (CSS
+   Values 4 sec. 4.1). The keys are strings, so they compare as strings and not
+   through the polymorphic compare. *)
+let keyword table s =
+  let key = String.lowercase_ascii_preserve s in
+  let rec find = function
+    | [] -> None
+    | (k, v) :: rest -> if String.equal k key then Some v else find rest
+  in
+  find table
+
 let try_enum table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
+      match keyword table s with
       | Some v ->
           let _ = next t in
           Some v
@@ -952,8 +967,7 @@ let enum ?default label table t =
   ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (CSS Values 4 section 4.1). *)
-      match List.assoc_opt (String.lowercase_ascii_preserve s) table with
+      match keyword table s with
       | Some v ->
           let _ = next t in
           v
@@ -967,7 +981,7 @@ let enum_calls ?default table t =
   ws t;
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii_preserve name) table with
+      match keyword table name with
       | Some f -> f t
       | None -> (
           match default with
@@ -1012,8 +1026,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
   ws t;
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (CSS Values 4 section 4.1). *)
-      match List.assoc_opt (String.lowercase_ascii_preserve s) idents with
+      match keyword idents s with
       | Some v ->
           let _ = next t in
           v
@@ -1022,7 +1035,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
           | Some f -> f t
           | None -> err t (String.concat "" [ "unknown "; label; ": "; s ])))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt (String.lowercase_ascii_preserve name) calls with
+      match keyword calls name with
       | Some f -> f t
       | None -> (
           match default with

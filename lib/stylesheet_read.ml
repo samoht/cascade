@@ -429,41 +429,36 @@ let at_rule_keyword name =
 
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
-  let table : (string * (Cursor.t -> statement)) list =
-    [
-      ("charset", read_charset);
-      ("import", read_import);
-      ("namespace", read_namespace);
-      ("layer", read_layer);
-      ("media", read_media);
-      ("container", read_container);
-      ("supports", read_supports);
-      ("-moz-document", read_moz_document ~body:read_block);
-      ("when", read_when ~body:read_block);
-      ("else", read_else ~body:read_block);
-      ("supports-condition", read_supports_condition);
-      ("starting-style", read_starting_style ~body:read_block);
-      ("scope", read_scope);
-      ("keyframes", read_keyframes);
-      ("-webkit-keyframes", read_webkit_keyframes);
-      ("-moz-keyframes", read_moz_keyframes);
-      ("font-face", read_font_face);
-      ("counter-style", read_counter_style);
-      ("page", read_page);
-      ("font-palette-values", read_font_palette_values);
-      ("font-feature-values", read_font_feature_values);
-      ("view-transition", read_view_transition);
-      ("position-try", read_position_try);
-      ("viewport", read_viewport);
-      ("-ms-viewport", read_ms_viewport);
-      ("property", read_property_rule);
-    ]
-  in
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword name; loc; _ }) -> (
-      match List.assoc_opt (at_rule_keyword name) table with
-      | Some p -> p r
-      | None ->
+      match at_rule_keyword name with
+      | "charset" -> read_charset r
+      | "import" -> read_import r
+      | "namespace" -> read_namespace r
+      | "layer" -> read_layer r
+      | "media" -> read_media r
+      | "container" -> read_container r
+      | "supports" -> read_supports r
+      | "-moz-document" -> read_moz_document ~body:read_block r
+      | "when" -> read_when ~body:read_block r
+      | "else" -> read_else ~body:read_block r
+      | "supports-condition" -> read_supports_condition r
+      | "starting-style" -> read_starting_style ~body:read_block r
+      | "scope" -> read_scope r
+      | "keyframes" -> read_keyframes r
+      | "-webkit-keyframes" -> read_webkit_keyframes r
+      | "-moz-keyframes" -> read_moz_keyframes r
+      | "font-face" -> read_font_face r
+      | "counter-style" -> read_counter_style r
+      | "page" -> read_page r
+      | "font-palette-values" -> read_font_palette_values r
+      | "font-feature-values" -> read_font_feature_values r
+      | "view-transition" -> read_view_transition r
+      | "position-try" -> read_position_try r
+      | "viewport" -> read_viewport r
+      | "-ms-viewport" -> read_ms_viewport r
+      | "property" -> read_property_rule r
+      | _ ->
           (* CSS Syntax 3 (ED) sec. 5.5.2 consumes an at-rule whatever its name,
              so the prelude and block stay in the AST as [Unknown_at_rule] and
              reach the output. The typed warning tells the caller cascade could
