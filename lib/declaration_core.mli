@@ -21,6 +21,17 @@ val hash : declaration -> int
     converse may fail on hash collisions, so use it only as a cheap pre-filter
     before falling back to structural equality. *)
 
+val canonical_prop_name : 'a Properties.property -> string
+(** [canonical_prop_name prop] is the unminified name of [prop], the spelling it
+    parses back from and a diagnostic names. *)
+
+val pp : declaration Pp.t
+(** [pp] is the pretty-printer for declarations. *)
+
+val size : declaration -> int
+(** [size decl] is the length of [decl]'s minified rendering under {!pp}, cached
+    at construction. *)
+
 val unknown_property : ?important:bool -> string -> string -> declaration
 (** [unknown_property ?important name value] is [name: value] kept as the
     component values of [value], for a property cascade does not type. *)

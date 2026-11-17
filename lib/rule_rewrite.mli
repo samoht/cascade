@@ -23,16 +23,7 @@ type candidate = {
     rules are normalized/finalized, so the greedy scheduler ranks candidates by
     the bytes they would actually commit. *)
 
-type size_cache
-(** Minified sizes of produced rules, for scoring many candidates. *)
-
-val size_cache : unit -> size_cache
-(** [size_cache ()] is an empty cache. A produced rule's size does not depend on
-    the graph, so one cache serves every candidate of a scheduler run, across
-    its commits. *)
-
 val v :
-  ?size_cache:size_cache ->
   kind:kind ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
   Rule_graph.t ->

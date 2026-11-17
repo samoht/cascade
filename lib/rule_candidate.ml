@@ -173,9 +173,9 @@ let splits_a_fallback_pair g ~consume ~produce =
         (fallback_pairs (node_rule g id)))
     consume
 
-let rewrite_candidate ?size_cache ~kind ~finalize g ~consume ~produce =
+let rewrite_candidate ~kind ~finalize g ~consume ~produce =
   if splits_a_fallback_pair g ~consume ~produce then Option.None
-  else Rule_rewrite.v ?size_cache ~kind ~finalize g.graph ~consume ~produce
+  else Rule_rewrite.v ~kind ~finalize g.graph ~consume ~produce
 
 let selector_size (r : rule) = Pp.size ~minify:true Selector.pp r.selector
 let decls_inline_cost decls = decls_size decls + List.length decls
@@ -286,7 +286,7 @@ let has_selector_list g ids = List.exists (selector_is_list g) ids
 let non_list_selector_ids g ids =
   List.filter (fun id -> not (selector_is_list g id)) ids
 
-let identical_body_candidate ?size_cache ~finalize g ids =
+let identical_body_candidate ~finalize g ids =
   match ids with
   | [] | [ _ ] -> Option.None
   | ids -> (
@@ -294,8 +294,8 @@ let identical_body_candidate ?size_cache ~finalize g ids =
       match grouped_rule rules with
       | Option.None -> Option.None
       | Option.Some grouped ->
-          rewrite_candidate ?size_cache ~kind:Identical_body ~finalize g
-            ~consume:ids ~produce:[ grouped ])
+          rewrite_candidate ~kind:Identical_body ~finalize g ~consume:ids
+            ~produce:[ grouped ])
 
 let add_candidate candidates = function
   | Option.None -> ()
@@ -305,21 +305,18 @@ let better_than candidate = function
   | Option.None -> true
   | Option.Some baseline -> candidate.saving > baseline.saving
 
-let add_identical_body_group ?size_cache ~ctx ~finalize g ~candidates ids =
+let add_identical_body_group ~ctx ~finalize g ~candidates ids =
   if Ctx.extend_lists ctx && has_selector_list g ids then begin
     let strict =
-      identical_body_candidate ?size_cache ~finalize g
-        (non_list_selector_ids g ids)
+      identical_body_candidate ~finalize g (non_list_selector_ids g ids)
     in
     add_candidate candidates strict;
-    match identical_body_candidate ?size_cache ~finalize g ids with
+    match identical_body_candidate ~finalize g ids with
     | Option.Some extended when better_than extended strict ->
         add_candidate candidates (Option.Some extended)
     | _ -> ()
   end
-  else
-    add_candidate candidates
-      (identical_body_candidate ?size_cache ~finalize g ids)
+  else add_candidate candidates (identical_body_candidate ~finalize g ids)
 
 (* Partition a hash bucket into runs of the exact same selector key, so a
    [selector_key_hash] collision between two distinct selectors no longer
@@ -337,7 +334,7 @@ let same_selector_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let add_same_selector_group ?size_cache ~stats ~finalize g ~candidates ids =
+let add_same_selector_group ~stats ~finalize g ~candidates ids =
   let source_order = ordered_ids g ids |> rules_with_ids g in
   let safe = Commute.nested_merge_is_safe ~stats (List.map snd source_order) in
   let rules_with_ids = Commute.merge_order source_order in
@@ -356,8 +353,8 @@ let add_same_selector_group ?size_cache ~stats ~finalize g ~candidates ids =
         }
       in
       match
-        rewrite_candidate ?size_cache ~kind:Same_selector ~finalize g
-          ~consume:ordered ~produce:[ merged ]
+        rewrite_candidate ~kind:Same_selector ~finalize g ~consume:ordered
+          ~produce:[ merged ]
       with
       | Option.None -> ()
       | Option.Some c -> candidates := c :: !candidates)
@@ -601,7 +598,7 @@ let share shared ~members ~decls ~props grouped =
    candidate is asked for. *)
 type exact_group = No_exact_group | Exact_group of group
 
-let exact_group ~shared ?size_cache ~finalize g ids =
+let exact_group ~shared ~finalize g ids =
   let rules_with_ids = rules_with_ids g ids in
   match common_exact_decls (List.map snd rules_with_ids) with
   | [] -> No_exact_group
@@ -627,9 +624,8 @@ let exact_group ~shared ?size_cache ~finalize g ids =
                   Option.Some
                     ( grouped,
                       lazy
-                        (rewrite_candidate ?size_cache
-                           ~kind:Exact_shared_declarations ~finalize g
-                           ~consume:ids ~produce) )
+                        (rewrite_candidate ~kind:Exact_shared_declarations
+                           ~finalize g ~consume:ids ~produce) )
           in
           Exact_group
             (share shared ~members:ids ~decls:common ~props:[] grouped))
@@ -861,8 +857,8 @@ let prune_default_members ~keys ~entries ~exact_common members =
 (* The group rule and, once asked for, the candidate it makes, unless the
    members' own rules refuse it. Whether it crosses a live rule it conflicts
    with is the caller's question, as that reads the rest of the graph. *)
-let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
-    ~group_decls members =
+let default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
+    members =
   match grouped_rule (default_member_rules members) with
   | Option.None -> Option.None
   | Option.Some grouped ->
@@ -903,7 +899,7 @@ let default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
         Option.Some
           ( grouped,
             lazy
-              (rewrite_candidate ?size_cache ~kind:Default_factoring ~finalize g
+              (rewrite_candidate ~kind:Default_factoring ~finalize g
                  ~consume:(default_member_ids members)
                  ~produce:(produce ())) )
 
@@ -977,7 +973,7 @@ let default_members g ids =
 (* The pruned members, the keys and the group body decide the candidate: the
    body is the members' common declarations followed by the provider's value for
    each key. *)
-let default_group ~shared ?size_cache ~finalize g members entries =
+let default_group ~shared ~finalize g members entries =
   let keys = List.map (fun entry -> entry.key) entries in
   let exact_common = exact_common_without keys members in
   let group_decls = default_group_decls ~exact_common entries in
@@ -987,8 +983,8 @@ let default_group ~shared ?size_cache ~finalize g members entries =
       match members with
       | [] | [ _ ] -> Option.None
       | _ ->
-          default_produce ?size_cache ~finalize g ~keys ~entries ~exact_common
-            ~group_decls members)
+          default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
+            members)
 
 (* The group [known] makes on [g] - the one met before for the entries that
    survive here, or a new one - and the order questions that decide those
@@ -996,7 +992,7 @@ let default_group ~shared ?size_cache ~finalize g members entries =
    {!Rule_graph.try_rewrite} preserves the partial order, so an entry dropped
    for an override that precedes the provider stays dropped, and these are the
    only questions a later graph can answer differently. *)
-let surviving_group ~shared ?size_cache ~finalize g known =
+let surviving_group ~shared ~finalize g known =
   match known with
   | No_default_group -> Option.None
   | Default_members known ->
@@ -1019,7 +1015,7 @@ let surviving_group ~shared ?size_cache ~finalize g known =
         | Option.Some (_, group) -> group
         | Option.None ->
             let group =
-              default_group ~shared ?size_cache ~finalize g known.members
+              default_group ~shared ~finalize g known.members
                 (List.map fst survivors)
             in
             known.groups <- (survivors, group) :: known.groups;
@@ -1065,7 +1061,7 @@ let rule_for_selector_branches rule selectors : rule option =
           merge_key = Option.None;
         }
 
-let selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
+let selector_inline_candidate ~finalize g ~receiver_id ~group_id
     ~remaining_selectors =
   let receiver = node_rule g receiver_id in
   let group = node_rule g group_id in
@@ -1083,7 +1079,7 @@ let selector_inline_candidate ?size_cache ~finalize g ~receiver_id ~group_id
     | Option.None -> [ receiver ]
     | Option.Some group -> [ receiver; group ]
   in
-  rewrite_candidate ?size_cache ~kind:Selector_branch_inline ~finalize g
+  rewrite_candidate ~kind:Selector_branch_inline ~finalize g
     ~consume:[ receiver_id; group_id ] ~produce
 
 (* The candidates of one graph, kept up to date as the scheduler rewrites it.
@@ -1101,7 +1097,6 @@ type core = {
   ctx : Ctx.t;
   finalize : rule -> rule;
   view : view;
-  sizes : Rule_rewrite.size_cache;
   mutable epoch : int;
   mutable next_key : int;
   mutable offered : offer list;
@@ -1186,20 +1181,19 @@ let groups_add core groups id =
       touch_group core groups bucket
 
 let group_candidates core grouping ids =
-  let g = core.view and size_cache = core.sizes in
+  let g = core.view in
   let finalize = core.finalize in
   let candidates = ref [] in
   (match grouping with
   | Bodies ->
       same_body_groups g ids
       |> List.iter
-           (add_identical_body_group ~size_cache ~ctx:core.ctx ~finalize g
-              ~candidates)
+           (add_identical_body_group ~ctx:core.ctx ~finalize g ~candidates)
   | Selectors ->
       same_selector_groups g ids
       |> List.iter
-           (add_same_selector_group ~size_cache ~stats:(Ctx.stats core.ctx)
-              ~finalize g ~candidates));
+           (add_same_selector_group ~stats:(Ctx.stats core.ctx) ~finalize g
+              ~candidates));
   List.rev !candidates
 
 let settle_groups core groups =
@@ -1262,8 +1256,8 @@ let inline_branches (rule : rule) =
 let pair_up core group remaining receiver =
   if Rule_graph.precedes core.view.graph receiver group.group then
     match
-      selector_inline_candidate ~size_cache:core.sizes ~finalize:core.finalize
-        core.view ~receiver_id:receiver ~group_id:group.group
+      selector_inline_candidate ~finalize:core.finalize core.view
+        ~receiver_id:receiver ~group_id:group.group
         ~remaining_selectors:remaining
     with
     | Option.None -> ()
@@ -1562,13 +1556,11 @@ let subset_of core family ids =
   match Ids_table.find_opt family.known ids with
   | Option.Some subset -> subset
   | Option.None ->
-      let g = core.view and size_cache = core.sizes in
+      let g = core.view in
       let finalize = core.finalize and shared = family.shared in
       let answer =
         match family.factoring with
-        | Exact ->
-            lazy
-              (Exact_answer (exact_group ~shared ~size_cache ~finalize g ids))
+        | Exact -> lazy (Exact_answer (exact_group ~shared ~finalize g ids))
         | Default -> lazy (Default_answer (default_members g ids))
       in
       let subset =
@@ -1689,8 +1681,8 @@ let resolve core family subset =
     | Exact_answer (Exact_group group) -> Option.Some group
     | Default_answer known -> (
         match
-          surviving_group ~shared:family.shared ~size_cache:core.sizes
-            ~finalize:core.finalize core.view known
+          surviving_group ~shared:family.shared ~finalize:core.finalize
+            core.view known
         with
         | Option.None -> Option.None
         | Option.Some (group, unordered) ->
@@ -1878,7 +1870,6 @@ let v ?nodes ~ctx ~finalize g =
       ctx;
       finalize;
       view;
-      sizes = Rule_rewrite.size_cache ();
       epoch = 0;
       next_key = 0;
       offered = [];

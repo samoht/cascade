@@ -20,6 +20,20 @@ let hash = function
   | Declaration { hash; _ } -> hash
   | Theme_guarded { hash; _ } -> hash
 
+type payload = Payload : 'a property * 'a * bool -> payload
+
+(* Equality under [compare] of everything but the cached [size], which follows
+   from the rest and which a lookup leaves unset. *)
+let same_payload a b =
+  match (a, b) with
+  | Declaration x, Declaration y ->
+      Stdlib.compare
+        (Payload (x.property, x.value, x.important))
+        (Payload (y.property, y.value, y.important))
+      = 0
+  | Theme_guarded _, Theme_guarded _ -> Stdlib.compare a b = 0
+  | Declaration _, Theme_guarded _ | Theme_guarded _, Declaration _ -> false
+
 (* The live declarations of this domain, one per class of [compare]. The smart
    constructors return the member equal to what they build, so declarations
    equal in one domain are one object and [equal_declaration] answers them with
@@ -28,16 +42,64 @@ let hash = function
 module Interned = Weak.Make (struct
   type t = declaration
 
-  let equal a b = Stdlib.compare a b = 0
+  let equal = same_payload
   let hash = hash
 end)
 
 let interned = Domain.DLS.new_key (fun () -> Interned.create 4096)
 let intern decl = Interned.merge (Domain.DLS.get interned) decl
 
+(* The spelling a property parses back from, and the one a diagnostic names: a
+   minified [page-break-*] is the CSS Fragmentation 3 sec. 3.4 [break-*] alias
+   of a different property, which reports the failure against a property the
+   declaration never wrote. *)
+let canonical_prop_name (type a) (prop : a property) =
+  Pp.to_string ~minify:false pp_property prop
+
+let pp_important ctx important =
+  if important then
+    Pp.string ctx (if ctx.Pp.minify then "!important" else " !important")
+
+let pp_fields (type a) ctx (property : a property) (value : a) important =
+  match (property, value) with
+  | Custom_property name, Custom_value { value; layer; _ } ->
+      pp_property ctx (Custom_property name);
+      Pp.string ctx ":";
+      Pp.space_if_pretty ctx ();
+      pp_property_value ctx
+        (Custom_property name, Custom_value { value; layer; meta = None });
+      pp_important ctx important
+  | _ ->
+      (* Under minify [pp_property] gives a [page-break-*] property the
+         [break-*] property it aliases, which CSS Fragmentation 3 sec. 3.4
+         defines by a value mapping table. A value the table does not name has
+         no alias spelling, so the name follows the value back to the legacy
+         property rather than writing it under one that cannot express it. *)
+      if minified_name_carries property value then pp_property ctx property
+      else Pp.string ctx (canonical_prop_name property);
+      Pp.string ctx ":";
+      Pp.space_if_pretty ctx ();
+      pp_property_value ctx (property, value);
+      pp_important ctx important
+
+let rec pp : declaration Pp.t =
+ fun ctx -> function
+  | Declaration { property; value; important; _ } ->
+      pp_fields ctx property value important
+  | Theme_guarded { decl; _ } ->
+      (* Theme guards are resolved by the transform layer; if one survives to
+         print time, emit the wrapped declaration. *)
+      pp ctx decl
+
+let rec size = function
+  | Declaration { size; _ } -> size
+  | Theme_guarded { decl; _ } -> size decl
+
 (* Smart constructors. The [hash] field is the stdlib bounded structural hash of
    the payload, so declarations equal under [compare] share a hash, and bounded
-   depth keeps construction O(1) on large value subtrees. *)
+   depth keeps construction O(1) on large value subtrees. The [size] field is
+   the length of the minified rendering, so the optimizer's cost models read a
+   declaration's size instead of printing it each time they weigh it. *)
 (* README: source positions are not kept through formatting, and CSS Custom
    Properties 1 sec. 2 makes a custom property's value its token sequence, so
    where the tokens were read is no part of the value. They are dropped here,
@@ -55,7 +117,23 @@ let v (type a) ?(important = false) (property : a Properties.property)
     (value : a) =
   let value = positionless property value in
   let hash = Hashtbl.seeded_hash_param 30 100 0 (property, value, important) in
-  intern (Declaration { property; value; important; hash })
+  (* Most declarations a parse builds are already interned, so the set is asked
+     first and only a new member is measured. *)
+  let set = Domain.DLS.get interned in
+  match
+    Interned.find_opt set
+      (Declaration { property; value; important; hash; size = 0 })
+  with
+  | Some decl -> decl
+  | None ->
+      let size =
+        Pp.size ~minify:true
+          (fun ctx () -> pp_fields ctx property value important)
+          ()
+      in
+      let decl = Declaration { property; value; important; hash; size } in
+      Interned.add set decl;
+      decl
 
 let theme_guarded ~var_name decl =
   let hash = Hashtbl.seeded_hash_param 30 100 0 (var_name, decl) in

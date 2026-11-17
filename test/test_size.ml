@@ -53,6 +53,15 @@ let tricky_declarations () =
   in
   (Fmt.kstr rule ".a{%s}" body).declarations
 
+let test_declaration_size_is_its_rendering () =
+  List.iter
+    (fun d ->
+      Alcotest.(check int)
+        (min_decl d)
+        (String.length (min_decl d))
+        (Declaration.size d))
+    (tricky_declarations ())
+
 let test_measuring_declarations_allocates_nothing () =
   let decls = tricky_declarations () in
   Alcotest.(check (float 0.))
@@ -66,6 +75,8 @@ let suite =
       Alcotest.test_case "decl and rule sizes match minified output" `Quick
         test_decl_and_rule_sizes_match_minified_output;
       Alcotest.test_case "rules size is sum" `Quick test_rules_size_is_sum;
+      Alcotest.test_case "declaration size is its rendering" `Quick
+        test_declaration_size_is_its_rendering;
       Alcotest.test_case "measuring declarations allocates nothing" `Quick
         test_measuring_declarations_allocates_nothing;
     ] )

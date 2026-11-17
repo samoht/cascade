@@ -417,13 +417,6 @@ let read_place_self_value t =
 let read_background_blend_mode_value t =
   v Background_blend_mode (Cursor.list ~sep:Cursor.comma read_blend_mode t)
 
-(* The spelling a property parses back from, and the one a diagnostic names: a
-   minified [page-break-*] is the CSS Fragmentation 3 sec. 3.4 [break-*] alias
-   of a different property, which reports the failure against a property the
-   declaration never wrote. *)
-let canonical_prop_name (type a) (prop : a property) =
-  Pp.to_string ~minify:false pp_property prop
-
 type value_reader = {
   read_value_opt : 'a. 'a property -> Cursor.t -> declaration option;
 }

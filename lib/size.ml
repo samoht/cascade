@@ -1,6 +1,4 @@
-let decls ds =
-  let pp ctx ds = List.iter (Declaration.pp ctx) ds in
-  Pp.size ~minify:true pp ds
+let decls ds = List.fold_left (fun acc d -> acc + Declaration.size d) 0 ds
 
 let rule (r : Stylesheet.rule) =
   let sel = Pp.size ~minify:true Selector.pp r.Stylesheet_intf.selector in

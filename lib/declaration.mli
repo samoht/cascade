@@ -3,14 +3,15 @@
 type 'a kind = 'a Properties_intf.kind
 
 (** A typed declaration. Constructors remain available for pattern matching, but
-    values must be built with {!v} or {!theme_guarded} so the cached hash
-    matches the payload. *)
+    values must be built with {!v} or {!theme_guarded} so the cached hash and
+    size match the payload. *)
 type declaration = private
   | Declaration : {
       property : 'a Properties_intf.property;
       value : 'a;
       important : bool;
       hash : int;
+      size : int;
     }
       -> declaration
   | Theme_guarded : {
@@ -220,6 +221,10 @@ val hash : declaration -> int
 (** [hash decl] returns the structural fingerprint cached at construction. Two
     declarations that are {!equal_declaration} always return the same value; the
     converse may fail on hash collisions. *)
+
+val size : declaration -> int
+(** [size decl] is the length of [decl]'s minified rendering, cached at
+    construction: [String.length (Pp.to_string ~minify:true pp decl)]. *)
 
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
@@ -1256,7 +1261,7 @@ val webkit_text_stroke : webkit_text_stroke -> declaration
 (** [webkit_text_stroke v] is the [-webkit-text-stroke] shorthand. *)
 
 val page_size : page_size -> declaration
-(** [page_size v] is the [size] descriptor of an [\@page] rule. *)
+(** [page_size v] is the size descriptor of an [\@page] rule ([size: v]). *)
 
 val white_space_collapse : white_space_collapse -> declaration
 (** [white_space_collapse v] is the [white-space-collapse] property. *)
