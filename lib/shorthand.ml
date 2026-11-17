@@ -122,7 +122,14 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
          [] indexed_props)
   in
   let kept =
-    let kept = if merge_box then compose_shorthands ~held ~ctx kept else kept in
+    (* Composition reads a family's declarations together, so one declaration on
+       its own composes to itself in either scope; the test of that asks every
+       value the grammar inventory models. *)
+    let kept =
+      match kept with
+      | _ :: _ :: _ when merge_box -> compose_shorthands ~held ~ctx kept
+      | _ -> kept
+    in
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
