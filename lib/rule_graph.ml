@@ -170,15 +170,13 @@ let selectors_order_conflict ?(closed_world = false) selectors_a summaries_a
         selectors_b summaries_b specificities_b)
     selectors_a summaries_a specificities_a
 
-(* Canonical, list-order-independent branch strings of a selector: canonicalize
-   each comma branch, then sort. [.foo,.bar] and [.bar,.foo] yield the same
-   list. *)
-(* Sorted, which is what lets [share_branch] merge-walk two of these. *)
+let selector_branch_key selector =
+  Pp.to_string ~minify:true Selector.pp (Selector.canonicalize selector)
+
+(* The keys of a rule's comma branches, sorted, so [.foo,.bar] and [.bar,.foo]
+   have one list and [share_branch] can merge-walk two of them. *)
 let selector_branch_keys selectors =
-  selectors
-  |> List.map (fun s ->
-      Pp.to_string ~minify:true Selector.pp (Selector.canonicalize s))
-  |> List.sort String.compare
+  selectors |> List.map selector_branch_key |> List.sort String.compare
 
 (* Two rules share a selector branch when a factoring produced one as a residual
    of the other (e.g. [.a] and [.a,.b]) or they are the same selector. Such
@@ -681,6 +679,7 @@ let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
 let node_size t i = t.sizes.(i)
+let node_branches t i = t.branches.(i)
 let node_origin t i = t.origin.(i)
 
 (* [i] is a node of [t] that no rewrite up to [t] consumed. *)

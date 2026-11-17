@@ -94,22 +94,8 @@ let identical_body_eligible ~ctx (r : rule) =
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
-let selector_branch_key selector =
-  Pp.to_string ~minify:true Selector.pp (Selector.canonicalize selector)
-
-let selector_key (r : rule) =
-  Edge.selectors r.selector
-  |> List.map selector_branch_key
-  |> List.sort String.compare
-
-let selector_list_key selectors =
-  List.map selector_branch_key selectors |> List.sort String.compare
-
-let hash_selector_list selectors =
-  selectors |> selector_list_key |> hash_strings
-
-let selector_key_hash (r : rule) =
-  Edge.selectors r.selector |> hash_selector_list
+let selector_branch_key = Rule_graph.selector_branch_key
+let selector_key g id = Rule_graph.node_branches g.graph id
 
 let selector_keys_equal left right =
   let rec loop left right =
@@ -325,8 +311,8 @@ let same_selector_groups g ids =
   let rec insert id = function
     | [] -> [ (id, [ id ]) ]
     | (head, ids) :: rest ->
-        let key = selector_key (node_rule g id) in
-        let head_key = selector_key (node_rule g head) in
+        let key = selector_key g id in
+        let head_key = selector_key g head in
         if selector_keys_equal head_key key then (head, id :: ids) :: rest
         else (head, ids) :: insert id rest
   in
@@ -1039,10 +1025,11 @@ let single_selector_branch_key (rule : rule) : string option =
 
 let selector_branch_size selector = Pp.size ~minify:true Selector.pp selector
 
-let remaining_selector_branches ~removed_key selectors =
-  List.filter
-    (fun selector -> selector_branch_key selector <> removed_key)
-    selectors
+let remaining_selector_branches ~removed_key keyed =
+  List.filter_map
+    (fun (key, selector) ->
+      if String.equal key removed_key then Option.None else Option.Some selector)
+    keyed
 
 let rule_for_selector_branches rule selectors : rule option =
   match selectors with
@@ -1141,7 +1128,8 @@ let grouping_key core grouping id =
       then Option.Some (body_bucket_key core.view id)
       else Option.None
   | Selectors ->
-      if same_selector_eligible rule then Option.Some (selector_key_hash rule)
+      if same_selector_eligible rule then
+        Option.Some (hash_strings (selector_key core.view id))
       else Option.None
 
 let touch_group core groups bucket =
@@ -1235,17 +1223,20 @@ let inline_branches (rule : rule) =
     | [] | [ _ ] -> []
     | selectors ->
         let inline_cost = decls_inline_cost rule.declarations in
+        let keyed =
+          List.map
+            (fun selector -> (selector_branch_key selector, selector))
+            selectors
+        in
         List.fold_left
-          (fun acc selector ->
+          (fun acc (key, selector) ->
             if selector_branch_size selector + 1 > inline_cost then
-              let key = selector_branch_key selector in
               if List.exists (fun (other, _) -> String.equal other key) acc then
                 acc
               else
-                (key, remaining_selector_branches ~removed_key:key selectors)
-                :: acc
+                (key, remaining_selector_branches ~removed_key:key keyed) :: acc
             else acc)
-          [] selectors
+          [] keyed
         |> List.rev
 
 let pair_up core group remaining receiver =

@@ -83,6 +83,15 @@ val node_rule : t -> node_id -> Stylesheet.rule
 val node_size : t -> node_id -> int
 (** [node_size t i] is the cached minified byte size of node [i]'s rule. *)
 
+val node_branches : t -> node_id -> string list
+(** [node_branches t i] is the {!selector_branch_key} of each comma branch of
+    node [i]'s selector, sorted: two nodes with one list have one selector up to
+    branch order. *)
+
+val selector_branch_key : Selector.t -> string
+(** [selector_branch_key s] is the minified text of [s] canonicalized, the key
+    under which a branch is pinned and shared. *)
+
 val node_origin : t -> node_id -> int
 (** [node_origin t i] is source-position metadata for local scheduling. Authored
     nodes use their original position. Produced grouped nodes use the earliest
