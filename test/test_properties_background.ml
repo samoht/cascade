@@ -306,6 +306,22 @@ let test_gradient_stop () =
   decl_optimizes ~prop:"background-image" ~into:"linear-gradient(red 10px,#00f)"
     "linear-gradient(rgb(255,0,0) 10px,blue)";
 
+  (* CSS Images 4 sec. 3.5.3 positions an unpositioned first stop at [0%] and
+     last at [100%]. pp prints the positions it is given; dropping the default
+     ones is the optimizer's. *)
+  decl_optimizes ~prop:"background-image"
+    ~held:"linear-gradient(red 0%,blue 100%)" ~into:"linear-gradient(red,#00f)"
+    "linear-gradient(red 0%, blue 100%)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"radial-gradient(circle,red 0%,blue 50%,green 100%)"
+    ~into:"radial-gradient(circle,red,#00f 50%,green)"
+    "radial-gradient(circle, red 0%, blue 50%, green 100%)";
+  (* A stop holding two positions keeps both. *)
+  decl_optimizes ~prop:"background-image"
+    ~held:"linear-gradient(red 0% 20%,blue 100%)"
+    ~into:"linear-gradient(red 0% 20%,#00f)"
+    "linear-gradient(red 0% 20%, blue 100%)";
+
   (* Double position stops *)
   check_gradient_stop ~expected:"green 20% 40%" "green 20% 40%";
 

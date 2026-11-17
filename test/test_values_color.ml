@@ -230,6 +230,26 @@ let lossless_alpha () =
   decl_optimizes ~prop:"color" ~into:"color(display-p3 .977 .123 .018/.746)"
     "color(display-p3 0.97654 0.12345 0.01789 / 0.74567)"
 
+(* pp prints the alpha it is given; rounding it, dropping an opaque one and
+   spelling a percentage as a number are the optimizer's, for every colour
+   function alike. *)
+let alpha_folds_in_optimize () =
+  decl_optimizes ~prop:"color" ~held:"rgb(10 20 30/.74567)" ~into:"#0a141ebe"
+    "rgb(10 20 30 / 0.74567)";
+  decl_optimizes ~prop:"color" ~held:"oklch(.55432 .12276 180.4567/.74567)"
+    ~into:"oklch(.554 .123 180.457/.746)"
+    "oklch(0.55432 0.12276 180.4567 / 0.74567)";
+  decl_optimizes ~prop:"color" ~held:"lab(50%none 30/1)" ~into:"lab(50%none 30)"
+    "lab(50% none 30 / 1)";
+  decl_optimizes ~prop:"color" ~held:"lab(50%none 30/40%)"
+    ~into:"lab(50%none 30/.4)" "lab(50% none 30 / 40%)";
+  decl_optimizes ~prop:"color" ~held:"oklch(50%none 30/1)"
+    ~into:"oklch(50%none 30)" "oklch(50% none 30 / 1)";
+  decl_optimizes ~prop:"color" ~held:"oklab(50%none .1/.12345)"
+    ~into:"oklab(50%none .1/.123)" "oklab(50% none 0.1 / 0.12345)";
+  check_value_cursor "color" read_color pp_color ~minify:false
+    ~expected:"lab(50% 20 30 / 40%)" "lab(50% 20 30 / 40%)"
+
 (* Not a roundtrip test *)
 let test_color_oklch_printing () =
   let open Css.Values in
@@ -968,6 +988,7 @@ let suite =
       test_case "color" `Quick test_color;
       test_case "lossless color" `Quick lossless_color;
       test_case "lossless alpha" `Quick lossless_alpha;
+      test_case "alpha folds in optimize" `Quick alpha_folds_in_optimize;
       test_case "oklch printing" `Quick test_color_oklch_printing;
       test_case "oklch none hue" `Quick test_color_oklch_none_hue;
       test_case "gamut map colour into sRGB" `Quick test_gamut_map_color;

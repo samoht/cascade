@@ -1013,9 +1013,11 @@ let grid () =
   check_declaration
     ~expected:"grid-template-areas:\"header header\"\"sidebar main\""
     "grid-template-areas: \"header header\" \"sidebar main\"";
-  check_declaration ~expected:"grid-template-areas:\"nav main\"\". foot\""
+  (* pp prints the rows it is given, without the space between them; folding the
+     space inside a row and a run of dots is the optimizer's. *)
+  check_declaration ~expected:"grid-template-areas:\"nav  main\"\".    foot\""
     "grid-template-areas: \"nav  main\" \".    foot\"";
-  check_declaration ~expected:"grid-template-areas:\". .\""
+  check_declaration ~expected:"grid-template-areas:\".  .\""
     "grid-template-areas: \".  .\"";
   check_declaration ~expected:"grid-area:header" "grid-area: header";
 
