@@ -222,6 +222,7 @@ val err_invalid : ?loc:Loc.t -> t -> string -> 'a
 (** [err_invalid t msg] is [err t ("invalid: " ^ msg)]. *)
 
 val err_eof : t -> 'a
+[@@deprecated "use Error.fail (Error.unterminated loc sort); removed in 1.4.0"]
 (** [err_eof t] raises an "unexpected end of input" error. *)
 
 val err_expected : ?loc:Loc.t -> t -> string -> 'a
@@ -550,6 +551,7 @@ val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
     raises. *)
 
 val try_enum : (string * 'a) list -> t -> 'a option
+[@@deprecated "use Cursor.option (Cursor.enum label table); removed in 1.4.0"]
 (** [try_enum table t] is like {!enum} but returns [None] without raising. Keys
     are given lowercase. *)
 

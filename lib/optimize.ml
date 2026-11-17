@@ -9,7 +9,7 @@ let src = Logs.Src.create "cascade.optimize" ~doc:"Cascade CSS optimizer"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
-(** {1 Edge Model} *)
+(** {1 Configuration} *)
 
 type scope = Ctx.scope
 type objective = [ `Raw | `Transfer ]
@@ -32,9 +32,6 @@ let evergreen_targets = Support.evergreen
 type ctx = Ctx.t
 
 let ctx_of_scope = Ctx.of_scope
-let list_map_preserve = List.map_preserve
-let list_filter_preserve = List.filter_preserve
-let list_edit_preserve = List.edit_preserve
 
 let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
   match value with
@@ -43,21 +40,33 @@ let option_map_preserve (f : 'a -> 'a) (value : 'a option) : 'a option =
       let y = f x in
       if y == x then value else Some y
 
-let preserve_list = List.preserve
-
 let rule_with_nested (rule : rule) nested =
   if nested == rule.nested then rule else { rule with nested }
 
-type packed_property = Edge.packed_property =
-  | Packed : 'a Properties.property -> packed_property
+(** {1 Edge Model} *)
 
-type edge = Edge.t = {
+type packed_property = Packed : 'a Properties.property -> packed_property
+
+type edge = {
   summary : Selector_summary.t;
   property : packed_property;
   important : bool;
 }
 
-let edges_of_rule = Edge.of_rule
+let edges_of_rule (rule : rule) =
+  let edge summary = function
+    | Declaration.Declaration { property; _ } as d ->
+        Some
+          {
+            summary;
+            property = Packed property;
+            important = Declaration.is_important d;
+          }
+    | _ -> None
+  in
+  List.concat_map
+    (fun summary -> List.filter_map (edge summary) rule.declarations)
+    (List.map Selector_summary.of_selector (Edge.selectors rule.selector))
 
 (** {1 Declaration Optimization} *)
 
@@ -66,8 +75,6 @@ let merge_box_shorthand_longhands = Shorthand.merge_box_shorthand_longhands
 let compose_shorthands = Shorthand.compose_shorthands
 let deduplicate_declarations = Shorthand.deduplicate_declarations
 let duplicate_buggy_properties decls = decls
-let declaration_run = Rule.declaration_run
-let finalize_rule_without_nested = Rule.finalize
 
 (** {1 Statement Optimization} *)
 
@@ -78,17 +85,8 @@ let merge_consecutive_supports = Block.merge_consecutive_supports
 let merge_consecutive_containers = Block.merge_consecutive_containers
 let merge_distant_containers = Block.merge_distant_containers
 let merge_consecutive_starting_style = Block.merge_consecutive_starting_style
-let is_layer_empty = Block.is_layer_empty
-let collect_empty_layer_names = Block.collect_empty_layer_names
-let merge_layer_declarations = Block.merge_layer_declarations
-let drop_redundant_layer_decls = Block.drop_redundant_layer_decls
 let drop_empty_rules = Block.drop_empty_rules
-let drop_misplaced_prelude = Block.drop_misplaced_prelude
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
-let drop_dead_nested_rules = Nest.drop_dead_nested
-let merge_lone_nested_rule = Nest.merge_lone
-let hoist_declaration_runs = Nest.hoist_declaration_runs
-let synthesize_nesting_statements = Nest.statements
 
 (* A guard the enclosing context leaves open is put to the browsers the run
    judges for, when it judges for any: one every target satisfies asks a
@@ -122,9 +120,7 @@ let rec collect_rules ~holds (stmt_acc : statement list) (rules_acc : rule list)
   | rest -> (List.rev stmt_acc, List.rev rules_acc, rest)
 
 let factor_rules_incremental ?cache ~settle ~ctx ~held rules =
-  Factor.run ?cache ~settle ~ctx
-    ~finalize:(finalize_rule_without_nested ~held ~ctx)
-    rules
+  Factor.run ?cache ~settle ~ctx ~finalize:(Rule.finalize ~held ~ctx) rules
 
 let merge_adjacent_and_mark ~ctx invalidated rules =
   let settled = Rule.merge_adjacent_identical ~ctx rules in
@@ -192,7 +188,7 @@ let normalize_font_face_descriptor (desc : font_face_descriptor) :
    reads a no-op off physical identity. *)
 let normalize_font_face stmt descriptors =
   let descriptors' =
-    list_map_preserve normalize_font_face_descriptor descriptors
+    List.map_preserve normalize_font_face_descriptor descriptors
   in
   if descriptors' == descriptors then stmt else Font_face descriptors'
 
@@ -253,24 +249,22 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           ~ctx:(Ctx.with_recurse_blocks false ctx)
           ~enforce_spec ~owner ~supports
       in
-      (* [drop_misplaced_prelude] runs first: an [@import] after a style rule is
-         invalid and ignored by browsers (CSS Cascade 5 sec. 2), so it must not
-         act as a cascade boundary. Stripping it up front lets the rules it
-         falsely separated merge in this same pass, keeping [statements]
-         idempotent (stripping after the merge would leave a re-run to combine
-         them). *)
+      (* [Block.drop_misplaced_prelude] runs first: an [@import] after a style
+         rule is invalid and ignored by browsers (CSS Cascade 5 sec. 2), so it
+         must not act as a cascade boundary. Stripping it up front lets the
+         rules it falsely separated merge in this same pass, keeping
+         [statements] idempotent (stripping after the merge would leave a re-run
+         to combine them). *)
       let stmts' =
         let stmts =
-          drop_misplaced_prelude stmts
+          Block.drop_misplaced_prelude stmts
           |> merge_named_layers_by_name |> split_vendor_selector_lists
         in
         let stmts =
           process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
             [] stmts
         in
-        let stmts =
-          if Ctx.regroup ctx then synthesize_nesting_statements stmts else stmts
-        in
+        let stmts = if Ctx.regroup ctx then Nest.statements stmts else stmts in
         let stmts =
           stmts
           |> merge_consecutive_media ~optimize_merged_block
@@ -280,9 +274,9 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           |> merge_distant_containers ?owner ~optimize_merged_block
           |> merge_consecutive_starting_style ~optimize_merged_block
         in
-        stmts |> merge_layer_declarations |> drop_empty_rules
+        stmts |> Block.merge_layer_declarations |> drop_empty_rules
       in
-      preserve_list stmts stmts'
+      List.preserve stmts stmts'
 
 (* Walk the statement list left to right over a reversed accumulator.
 
@@ -393,7 +387,7 @@ and descend_block ?factor_cache ~ctx ~enforce_spec ~owner ~supports block =
    gets applies (CSS Cascade 5 sec. 6.4.4: the later write wins). *)
 and process_declarations_statement ?factor_cache ~ctx ~enforce_spec ~owner
     ~supports acc stmt decls rest =
-  let decls' = declaration_run ~ctx decls in
+  let decls' = Rule.declaration_run ~ctx decls in
   let stmt = if decls' == decls then stmt else Declarations decls' in
   process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (stmt :: acc) rest
@@ -495,7 +489,7 @@ and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   let optimized_block =
     descend_block ?factor_cache ~ctx ~enforce_spec ~owner ~supports block
   in
-  if is_layer_empty optimized_block then
+  if Block.is_layer_empty optimized_block then
     match name with
     (* A style rule holds no layer-order declaration, so inside one the empty
        block keeps its block form; folding it to [Layer_decl] emits CSS every
@@ -506,7 +500,7 @@ and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           rest
     | Some layer_name ->
         let all_names, remaining =
-          collect_empty_layer_names [ layer_name ] rest
+          Block.collect_empty_layer_names [ layer_name ] rest
         in
         process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           (Layer_decl all_names :: acc)
@@ -546,20 +540,20 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
             ~supports nested
         in
         if enforce_spec then nested
-        else list_map_preserve drop_nesting_prefix nested
+        else List.map_preserve drop_nesting_prefix nested
   in
-  let rule = drop_dead_nested_rules (rule_with_nested rule nested) in
-  let rule = hoist_declaration_runs rule in
+  let rule = Nest.drop_dead_nested (rule_with_nested rule nested) in
+  let rule = Nest.hoist_declaration_runs rule in
   let rule =
     let selector = Selector.canonicalize ~enforce_spec rule.selector in
     if selector == rule.selector then rule else { rule with selector }
   in
-  merge_lone_nested_rule rule
+  Nest.merge_lone rule
 
 and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (rules : rule list) : rule list =
   let with_optimized_nested =
-    list_map_preserve
+    List.map_preserve
       (rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner
          ~supports)
       rules
@@ -643,14 +637,14 @@ let statements_top_level ?factor_cache ~ctx ~enforce_spec
   let stmts' =
     statements ?factor_cache ~ctx ~enforce_spec ~owner:None ~supports:[] stmts
     |> merge_consecutive_layers ~optimize_merged_block
-    |> drop_redundant_layer_decls |> drop_shadowed_keyframes
+    |> Block.drop_redundant_layer_decls |> drop_shadowed_keyframes
   in
-  preserve_list stmts stmts'
+  List.preserve stmts stmts'
 
 let single_rule ?scope (rule : rule) : rule =
   let ctx = ctx_of_scope scope in
   let rule =
-    hoist_declaration_runs
+    Nest.hoist_declaration_runs
       {
         rule with
         nested =
@@ -803,7 +797,7 @@ let add_compatibility_prefixes ~targets stylesheet =
     value contains an [Invalid] arm. *)
 let drop_invalid (stylesheet : t) : t =
   map_declarations
-    (list_filter_preserve (fun d -> not (Declaration.is_invalid d)))
+    (List.filter_preserve (fun d -> not (Declaration.is_invalid d)))
     stylesheet
 
 (* CSS Syntax 3 (ED) sec. 5.5.2 keeps an unrecognised at-rule's body as raw
@@ -898,7 +892,7 @@ let promote_registered_custom_properties ~lossless (stmts : statement list) =
       | _ -> ())
     stmts;
   let promote_decls =
-    list_map_preserve (promote_registered_custom_decl ~lossless registry)
+    List.map_preserve (promote_registered_custom_decl ~lossless registry)
   in
   (* A registration is document-global, so every declaration of that name is
      typed wherever it is written: through the declaration walker rather than a
@@ -943,7 +937,7 @@ let rec prune_position_try_decl known (decl : Declaration.declaration) :
                 | _ -> true)
               group
       in
-      match list_filter_preserve keep items with
+      match List.filter_preserve keep items with
       | [] -> None
       | kept when kept == items -> Some decl
       | kept ->
@@ -963,7 +957,7 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
   | `Stylesheet ->
       let known = collect_position_try_names stylesheet in
       let prune_decls decls =
-        list_edit_preserve
+        List.edit_preserve
           (fun decl ->
             match prune_position_try_decl known decl with
             | Some decl' when decl' == decl -> List.Keep
@@ -1030,7 +1024,7 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
   }
 
 let normalize_live_declarations ~ctx ~lossless decls =
-  list_edit_preserve
+  List.edit_preserve
     (fun decl ->
       let decl' = Declaration.normalize ~ctx ~lossless decl in
       if Declaration.is_invalid decl' then List.Drop
@@ -1152,16 +1146,16 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
   let rec prune stmt =
     match stmt with
     | Rule r ->
-        let declarations = list_filter_preserve keep_decl r.declarations in
-        let nested = list_map_preserve prune r.nested in
+        let declarations = List.filter_preserve keep_decl r.declarations in
+        let nested = List.map_preserve prune r.nested in
         if declarations == r.declarations && nested == r.nested then stmt
         else Rule { r with declarations; nested }
     | Declarations decls ->
-        let decls' = list_filter_preserve keep_decl decls in
+        let decls' = List.filter_preserve keep_decl decls in
         if decls' == decls then stmt else Declarations decls'
-    | _ -> map_statement_children (list_map_preserve prune) stmt
+    | _ -> map_statement_children (List.map_preserve prune) stmt
   in
-  list_map_preserve prune stmts
+  List.map_preserve prune stmts
 
 let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     ?(flatten_nesting = false) ?(lossless = false) ?(enforce_spec = false)

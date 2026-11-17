@@ -1,21 +1,5 @@
-(** Selector/property write edges. *)
-
-(** Existential wrapper for typed property tags. *)
-type packed_property = Packed : 'a Properties.property -> packed_property
-
-type t = {
-  summary : Selector_summary.t;
-  property : packed_property;
-  important : bool;
-}
-(** A selector-summary/property write edge. *)
+(** Selector-list branches. *)
 
 val selectors : Selector.t -> Selector.t list
 (** [selectors sel] returns the selector-list branches of [sel], or [sel] alone.
 *)
-
-val of_rule : Stylesheet.rule -> t list
-(** [of_rule rule] enumerates property writes in [rule]. *)
-
-val pp : t Pp.t
-(** Pretty-printer for debugging. *)

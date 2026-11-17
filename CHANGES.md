@@ -24,6 +24,17 @@
   call, since both return their input, as they always did.
   `Optimize.add_compatibility_prefixes` writes the WebKit fallbacks they were
   documented to add (#1345, #1367).
+- `Error.fail_sort_mismatch` and the seven other `Error.fail_*` raising
+  constructors are deprecated and go in 1.4.0: call `Error.fail` on the
+  constructor's value, as in `Error.fail (Error.bad_value loc ~property
+  ~reason)`. `Cursor.try_enum` and `Cursor.err_eof` are deprecated and go in
+  1.4.0: use `Cursor.option (Cursor.enum label table)`, which also skips leading
+  whitespace, and `Error.fail (Error.unterminated loc sort)`.
+  `Optimize.edges_of_rule` and its `edge` and `packed_property` types are
+  deprecated and go in 1.4.0: build the pairs from
+  `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
+  `Declaration.prop_key`. Until then each keeps its 1.2 behaviour; nothing in
+  Cascade called them (#1371).
 - `Declaration.custom_property` and `Supports.property`, `func` and
   `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
 - `Reader` loses `Parse_error`, the `err` functions and its call stack, and

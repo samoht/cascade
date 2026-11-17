@@ -125,29 +125,39 @@ val drop_unknown_at_rules : t -> t
     this: the reader of a transform's output is not always a browser, and an
     agent that later implements the name would render the two differently. *)
 
-(** {1 Edge Model} *)
+(** {1 Edge Model}
 
-(** Existential wrapper that hides the value type of a typed property tag, so
-    properties of different value types can live in the same edge list. *)
-type packed_property = Packed : 'a Properties.property -> packed_property
+    Deprecated, removed in 1.4.0: nothing in Cascade reads these. *)
 
-type edge = {
-  summary : Selector_summary.t;
-  property : packed_property;
-  important : bool;
-}
-(** A single property write in the CSS graph: a selector's subject summary
-    paired with the typed property it writes. This is the (selector, property)
-    edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
-    cheap subject-summary fingerprint used in place of full selector
-    intersection. *)
+include sig
+  [@@@alert "-deprecated"]
 
-val edges_of_rule : rule -> edge list
-(** [edges_of_rule r] enumerates the property writes in [r]. If [r.selector] is
-    a comma-separated list, one edge is emitted per (subject summary, property)
-    pair; otherwise one edge per declaration. Useful for asserting no-new-edges
-    invariants on rule rewrites and for the fuzz harness's selector-intersection
-    and biclique vectors. *)
+  (** Existential wrapper that hides the value type of a typed property tag, so
+      properties of different value types can live in the same edge list. *)
+  type packed_property = Packed : 'a Properties.property -> packed_property
+  [@@deprecated "use Declaration.prop_key; removed in 1.4.0"]
+
+  type edge = {
+    summary : Selector_summary.t;
+    property : packed_property;
+    important : bool;
+  }
+  [@@deprecated
+    "use Selector_summary.t and Declaration.prop_key; removed in 1.4.0"]
+  (** A single property write in the CSS graph: a selector's subject summary
+      paired with the typed property it writes. This is the (selector, property)
+      edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
+      cheap subject-summary fingerprint used in place of full selector
+      intersection. *)
+
+  val edges_of_rule : rule -> edge list
+  [@@deprecated
+    "use Selector_summary.of_selector and Stylesheet.declarations; removed in \
+     1.4.0"]
+  (** [edges_of_rule r] enumerates the property writes in [r]. If [r.selector]
+      is a comma-separated list, one edge is emitted per (subject summary,
+      property) pair; otherwise one edge per declaration. *)
+end
 
 (** {1 Rule Optimization} *)
 
