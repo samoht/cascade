@@ -118,11 +118,28 @@ let compose_reduced ~held ~ctx ~merge_box props kept =
     (* Composition reads a family's declarations together, so one declaration on
        its own composes to itself in either scope; the test of that asks every
        value the grammar inventory models. *)
-    let kept =
+    (* A shorthand composition writes can override an earlier declaration of
+       the same property whole, which only the deduplication sees; what that
+       drops can let another composition through. Each round drops a
+       declaration, so this ends. *)
+    let rec compose kept =
       match kept with
-      | _ :: _ :: _ when merge_box -> compose_shorthands ~held ~ctx kept
+      | _ :: _ :: _ when merge_box ->
+          let composed = compose_shorthands ~held ~ctx kept in
+          if List.equal (fun (_, a) (_, b) -> a == b) composed kept then kept
+          else
+            let deduplicated =
+              List.rev
+                (List.fold_left
+                   (deduplicate_step ?targets:(Ctx.judge ctx))
+                   [] composed)
+            in
+            if List.length deduplicated < List.length composed then
+              compose deduplicated
+            else composed
       | _ -> kept
     in
+    let kept = compose kept in
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
