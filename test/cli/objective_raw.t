@@ -25,3 +25,14 @@ input the preflight predicts no compressed gain from.
   $ cascade --minify --objective=raw --profile big.css > /dev/null 2>profile-raw.txt
   $ grep "factor preflight" profile-raw.txt
   factor preflight: 0 skipped, estimated gain 0 bytes
+
+The transfer objective merges rules only within 128 printed rules of each
+other; raw merges at any distance. Two identical bodies with 200 unrelated
+rules between them stay apart by default and merge under raw.
+
+  $ { printf '.a{color:red;margin:0}'; for i in $(seq 1 200); do printf '.p%s{order:%s}' "$i" "$i"; done; printf '.b{color:red;margin:0}'; echo; } > far.css
+  $ cascade --minify far.css | grep -o '[.a-z,]*{color:red;margin:0}'
+  .a{color:red;margin:0}
+  .b{color:red;margin:0}
+  $ cascade --minify --objective=raw far.css | grep -o '[.a-z,]*{color:red;margin:0}'
+  .a,.b{color:red;margin:0}
