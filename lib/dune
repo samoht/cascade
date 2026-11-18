@@ -115,9 +115,9 @@
   cover
   edge
   rule_candidate
+  lift
   rule_rewrite
   webkit_fallback
-  gzip_size
   prop_common
   prop_svg
   prop_multicol
