@@ -181,17 +181,10 @@ let grouped_rule (rules : rule list) : rule option =
             merge_key = Option.None;
           }
 
+(* [ids] once each, in the order the graph prints them. *)
 let ordered_ids g ids =
-  let compare_by_origin a b =
-    match
-      Int.compare
-        (Rule_graph.node_origin g.graph a)
-        (Rule_graph.node_origin g.graph b)
-    with
-    | 0 -> Rule_graph.Node_id.compare a b
-    | order -> order
-  in
-  ids |> Node_set.of_list |> Node_set.elements |> List.sort compare_by_origin
+  ids |> Node_set.of_list |> Node_set.elements
+  |> List.sort (Rule_graph.compare_position g.graph)
 
 let candidate_set_key ids =
   ids |> List.map Rule_graph.Node_id.to_int |> hash_ints
@@ -449,19 +442,18 @@ let unsafe_lift_over_prior_member g group_decls rules_with_ids =
   in
   loop [] rules_with_ids
 
-let origin_bounds g ids =
+(* The first and the last of [ids] in the order the graph prints them. *)
+let printed_bounds g ids =
   match ids with
   | [] -> Option.None
   | first :: rest ->
-      let first = Rule_graph.node_origin g.graph first in
-      let min_origin, max_origin =
-        List.fold_left
-          (fun (min_origin, max_origin) id ->
-            let origin = Rule_graph.node_origin g.graph id in
-            (min min_origin origin, max max_origin origin))
-          (first, first) rest
-      in
-      Option.Some (min_origin, max_origin)
+      let compare = Rule_graph.compare_position g.graph in
+      Option.Some
+        (List.fold_left
+           (fun (lo, hi) id ->
+             ( (if compare id lo < 0 then id else lo),
+               if compare id hi > 0 then id else hi ))
+           (first, first) rest)
 
 (* Recursive rather than [List.exists] over a closure: the closure captures
    [id], so it is allocated afresh at every node the external scan walks
@@ -470,9 +462,9 @@ let rec id_mem id = function
   | [] -> false
   | other :: rest -> Rule_graph.Node_id.compare id other = 0 || id_mem id rest
 
-let crosses_bounds g ~min_origin ~max_origin id =
-  let origin = Rule_graph.node_origin g.graph id in
-  min_origin < origin && origin < max_origin
+let crosses_bounds g ~lo ~hi id =
+  Rule_graph.compare_position g.graph lo id < 0
+  && Rule_graph.compare_position g.graph id hi < 0
 
 let decl_facts_shorthand_order_conflict grouped external_decl =
   decl_facts_conflict grouped external_decl
@@ -518,8 +510,8 @@ let property_key_hash key = key.hash
    it: [members] are the rules it consumes, and [decls] and [props] what it
    factors out of them, which together decide the candidate. The fields below
    [grouped] are what the candidate read beyond those rules: whether a live rule
-   strictly inside the source span [(lo, hi)] would be crossed, and [witness] is
-   one that would. *)
+   printed strictly between the members [lo] and [hi], the first and the last
+   the graph prints, would be crossed, and [witness] is one that would. *)
 type group = {
   uid : int;
   members : Rule_graph.node_id list;
@@ -528,8 +520,8 @@ type group = {
   grouped : (rule * candidate option Lazy.t) option Lazy.t;
   mutable refs : int;
   mutable checked : int;
-  mutable lo : int;
-  mutable hi : int;
+  mutable lo : Rule_graph.node_id;
+  mutable hi : Rule_graph.node_id;
   mutable witness : Rule_graph.node_id option;
   mutable made : candidate option;
   mutable group_offer : offer option;
@@ -564,8 +556,9 @@ let share shared ~members ~decls ~props grouped =
           grouped = lazy (grouped ());
           refs = 0;
           checked = -1;
-          lo = 0;
-          hi = 0;
+          (* settled by the first scan *)
+          lo = Rule_graph.Node_id.of_int_exn 0;
+          hi = Rule_graph.Node_id.of_int_exn 0;
           witness = Option.None;
           made = Option.None;
           group_offer = Option.None;
@@ -1084,6 +1077,7 @@ type core = {
   mutable offered : offer list;
   mutable consumed : Rule_graph.node_id list;
   mutable produced : Rule_graph.node_id list;
+  mutable moved : Rule_graph.node_id list;
 }
 
 let key (offer : offer) = offer.key
@@ -1145,6 +1139,12 @@ let groups_remove core groups id =
       let bucket = Int_table.find groups.group_buckets key in
       bucket.members <- without id bucket.members;
       touch_group core groups bucket
+
+let groups_touch core groups id =
+  match grouping_key core groups.grouping id with
+  | Option.None -> ()
+  | Option.Some key ->
+      touch_group core groups (Int_table.find groups.group_buckets key)
 
 let groups_add core groups id =
   match grouping_key core groups.grouping id with
@@ -1383,9 +1383,9 @@ type subset = {
   mutable unordered : (Rule_graph.node_id * Rule_graph.node_id) list;
 }
 
-(* Where a bucket stands in the order an indexed budget is spent in: its first
-   source position, its size, then where its key first appears, by node and
-   declaration position. *)
+(* Where a bucket stands in the order an indexed budget is spent in: the slot of
+   its first printed member, its size, then where its key first appears, by node
+   and declaration position. *)
 type rank = { least : int; size : int; first : int; position : int }
 
 let compare_rank a b =
@@ -1402,7 +1402,7 @@ let compare_rank a b =
 type factoring_bucket = {
   fkey : factoring_key;
   mutable fmembers : (Rule_graph.node_id * int) list;
-      (** with the key's position, latest source position first *)
+      (** with the key's position, the last printed first *)
   mutable subsets : Rule_graph.node_id list list;
   mutable taken : subset list;
   mutable taken_count : int;
@@ -1432,14 +1432,7 @@ type family = {
   mutable next_subset : int;
 }
 
-let compare_member g (a, _) (b, _) =
-  match
-    Int.compare
-      (Rule_graph.node_origin g.graph a)
-      (Rule_graph.node_origin g.graph b)
-  with
-  | 0 -> Rule_graph.Node_id.compare a b
-  | order -> order
+let compare_member g (a, _) (b, _) = Rule_graph.compare_position g.graph a b
 
 let rec insert_member g member = function
   | [] -> [ member ]
@@ -1452,7 +1445,7 @@ let bucket_rank g members =
     List.fold_left
       (fun (least, first, position) (id, at) ->
         let index = Rule_graph.Node_id.to_int id in
-        let least = Int.min least (Rule_graph.node_origin g.graph id) in
+        let least = Int.min least (Rule_graph.node_slot g.graph id) in
         if index < first then (least, index, at) else (least, first, position))
       (max_int, max_int, 0) members
   in
@@ -1531,7 +1524,7 @@ let refresh_bucket core family bucket =
     | [] | [ _ ] -> []
     | members ->
         Subsets.of_bucket family.budget
-          ~origin:(Rule_graph.node_origin core.view.graph)
+          ~slot:(Rule_graph.node_slot core.view.graph)
           (List.rev_map fst members));
   bucket.rank <- bucket_rank core.view bucket.fmembers;
   if bucket.fmembers = [] then drop_bucket family bucket;
@@ -1566,33 +1559,37 @@ let subset_of core family ids =
 
 let all_live core ids = List.for_all (is_live core.view) ids
 
-(* Whether [group] would cross the live rule [id]: one strictly inside its
-   source span, outside it, that matches with it and writes across its
-   declarations' order. *)
-let crosses core (group : group) (grouped : rule) id =
-  crosses_bounds core.view ~min_origin:group.lo ~max_origin:group.hi id
-  && (not (id_mem id group.members))
+(* Whether [group] would cross the live rule [id], printed between its first and
+   last member: [id] is not a member, matches with the group and writes across
+   its declarations' order. *)
+let crossed core (group : group) (grouped : rule) id =
+  (not (id_mem id group.members))
   &&
   let external_rule : rule = node_rule core.view id in
   Rule_graph.selectors_conflict grouped.selector external_rule.selector
   && declarations_cross_order grouped.declarations external_rule.declarations
 
+(* Whether [group] would cross the live rule [id], wherever it prints. *)
+let crosses core (group : group) (grouped : rule) id =
+  crosses_bounds core.view ~lo:group.lo ~hi:group.hi id
+  && crossed core group grouped id
+
 let scan core (group : group) =
   group.checked <- core.epoch;
   group.witness <- Option.None;
-  match (Lazy.force group.grouped, origin_bounds core.view group.members) with
+  match (Lazy.force group.grouped, printed_bounds core.view group.members) with
   | Option.None, _ | _, Option.None -> ()
   | Option.Some (grouped, _), Option.Some (lo, hi) ->
       group.lo <- lo;
       group.hi <- hi;
       let witness = ref Option.None in
+      let found id =
+        witness := Option.Some id;
+        true
+      in
       if
-        Rule_graph.exists_live_node core.view.graph (fun id ->
-            crosses core group grouped id
-            && begin
-              witness := Option.Some id;
-              true
-            end)
+        Rule_graph.exists_live_between core.view.graph lo hi (fun id ->
+            crossed core group grouped id && found id)
       then group.witness <- !witness
 
 (* A candidate is offered again only when it changed: a group computes its
@@ -1637,21 +1634,23 @@ let unreach core family (group : group) =
   end
 
 (* A live group is asked again only about what the rewrites since the last
-   refresh changed: a witness they consumed, or a node they produced inside the
-   span. Every live group is asked at every refresh, so the answer it holds is
-   the previous refresh's. *)
-let recheck_group core ~consumed ~produced (group : group) =
+   refresh changed: a witness they consumed or moved, a member they moved, or a
+   node they produced or moved into the span. Every live group is asked at every
+   refresh, so the answer it holds is the previous refresh's. *)
+let recheck_group core ~consumed ~produced ~moved ~is_moved (group : group) =
   if group.checked <> core.epoch then begin
     group.checked <- core.epoch;
+    let rescan () =
+      scan core group;
+      offer_group core group
+    in
     match (Lazy.force group.grouped, group.witness) with
     | Option.None, _ -> ()
+    | Option.Some _, _ when List.exists is_moved group.members -> rescan ()
     | Option.Some _, Option.Some witness ->
-        if List.exists (same_id witness) consumed then begin
-          scan core group;
-          offer_group core group
-        end
+        if id_mem witness consumed || is_moved witness then rescan ()
     | Option.Some (grouped, _), Option.None -> (
-        match List.find_opt (crosses core group grouped) produced with
+        match List.find_opt (crosses core group grouped) (produced @ moved) with
         | Option.None -> ()
         | Option.Some id ->
             group.witness <- Option.Some id;
@@ -1744,7 +1743,7 @@ let wanted family dirty =
       family.takers <- takers;
       List.rev_append takers (List.rev_append previous dirty)
 
-let settle_family core family ~consumed ~produced =
+let settle_family core family ~consumed ~produced ~moved =
   let dirty = List.rev family.fdirty in
   family.fdirty <- [];
   List.iter (refresh_bucket core family) dirty;
@@ -1772,8 +1771,10 @@ let settle_family core family ~consumed ~produced =
         else acc)
       family.watched []
     |> List.iter (reresolve core family);
+    let moved_set = Node_set.of_list moved in
+    let is_moved id = Node_set.mem id moved_set in
     Int_table.fold (fun _ group acc -> group :: acc) family.live_groups []
-    |> List.iter (recheck_group core ~consumed ~produced)
+    |> List.iter (recheck_group core ~consumed ~produced ~moved ~is_moved)
   end
 
 (* The whole state. *)
@@ -1819,11 +1820,48 @@ let add_node t id =
   family_add t.core t.exact id;
   family_add t.core t.default id
 
-let settle t ~consumed ~produced =
+(* The nodes a rewrite moved keep their rules and keys. A factoring bucket holds
+   its members in printed order, so a bucket holding one is sorted again, and
+   asked again when its order changed or, for an indexed budget, which reads
+   where its members print, whatever changed; a grouping bucket holds them in
+   creation order, and its candidates read the printed order afresh. *)
+let reorder_family core family moved =
+  let buckets = ref [] in
+  List.iter
+    (fun id ->
+      List.iter
+        (fun (key, _) ->
+          match bucket_for family key with
+          | Option.Some bucket when not (List.memq bucket !buckets) ->
+              buckets := bucket :: !buckets
+          | _ -> ())
+        (factoring_keys family.factoring (node_rule core.view id)))
+    moved;
+  List.iter
+    (fun bucket ->
+      let sorted =
+        List.stable_sort
+          (fun a b -> compare_member core.view b a)
+          bucket.fmembers
+      in
+      let reordered =
+        not
+          (List.equal (fun (a, _) (b, _) -> same_id a b) sorted bucket.fmembers)
+      in
+      bucket.fmembers <- sorted;
+      if reordered || indexed family then touch_bucket core family bucket)
+    !buckets
+
+let reorder_moved t moved =
+  List.iter (groups_touch t.core t.selectors) moved;
+  reorder_family t.core t.exact moved;
+  reorder_family t.core t.default moved
+
+let settle t ~consumed ~produced ~moved =
   settle_groups t.core t.bodies;
   settle_groups t.core t.selectors;
-  settle_family t.core t.exact ~consumed ~produced;
-  settle_family t.core t.default ~consumed ~produced
+  settle_family t.core t.exact ~consumed ~produced ~moved;
+  settle_family t.core t.default ~consumed ~produced ~moved
 
 module Rule_table = Hashtbl.Make (struct
   type t = rule
@@ -1861,6 +1899,7 @@ let v ?nodes ~ctx ~finalize g =
       offered = [];
       consumed = [];
       produced = [];
+      moved = [];
     }
   in
   let t =
@@ -1890,10 +1929,12 @@ let refresh t =
   else
     let consumed = core.consumed in
     let produced = List.filter (is_live core.view) core.produced in
-    settle t ~consumed ~produced;
+    let moved = List.filter (is_live core.view) core.moved in
+    settle t ~consumed ~produced ~moved;
     core.epoch <- core.epoch + 1;
     core.consumed <- [];
     core.produced <- [];
+    core.moved <- [];
     let offered =
       List.rev
         (List.filter (fun (offer : offer) -> not offer.withdrawn) core.offered)
@@ -1914,8 +1955,11 @@ let rewrite t graph ~consume =
   in
   List.iter (remove_node t) consume;
   List.iter (add_node t) produced;
+  let moved = Rule_graph.moved graph in
+  if moved <> [] then reorder_moved t moved;
   core.consumed <- List.rev_append consume core.consumed;
-  core.produced <- List.rev_append produced core.produced
+  core.produced <- List.rev_append produced core.produced;
+  core.moved <- List.rev_append moved core.moved
 
 let offers t =
   let acc = ref [] in

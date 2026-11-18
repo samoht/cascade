@@ -38,7 +38,8 @@ val refresh : t -> offer list
     Afterwards {!candidates} [t] is {!enumerate}[ ~nodes graph] for the last
     graph [graph] and the [nodes] of the graph [t] started from. The cost
     follows what the rewrites changed: the keys their rules are filed under, and
-    the candidates that read a source span or an order they touched. *)
+    the candidates that read a span or an order of the printed rules they
+    touched, moved or reslotted. *)
 
 val offers : t -> offer list
 (** [offers t] is every offer [t] makes as of the last {!refresh}, in the order

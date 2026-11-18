@@ -143,30 +143,32 @@ it in that order: where it prints, on the source scale.
 
 The candidate set is bounded and deterministic. Rules sharing a declaration,
 or writing a property once, form a bucket, and the factoring candidates are
-subsets of a bucket's members in source order. In a run of at most 128 rules
-they are the whole bucket, the bucket less one member, and runs of neighbouring
-members. Above 128 rules they are runs of up to 24 neighbours spanning at most
-128 source positions, and one budget of 256 subsets per kind is spent on the
-buckets in order of first source position, then size, then the rule and
+subsets of a bucket's members in the order they print. In a run of at most 128
+rules they are the whole bucket, the bucket less one member, and runs of
+neighbouring members. Above 128 rules they are runs of up to 24 neighbours
+spanning at most 128 slots, and one budget of 256 subsets per kind is spent on
+the buckets in order of their first slot, then size, then the rule and
 declaration where the bucket's key first appears. A run keeps the bounds its
 first graph sets. Subsets that factor the same declarations out of the same
-rules are one candidate. Equal savings rank by rewrite kind, then by the
-produced rules one by one, shortest first and then by their text, then by the
-source positions of the consumed rules, earliest first; never by a hash or the
-order of a table.
+rules are one candidate. The test for a rule standing between the members of a
+merge reads the printed order, and the provider of a default is the member
+printed first. Equal savings rank by rewrite kind, then by the produced rules
+one by one, shortest first and then by their text, then by the slots of the
+consumed rules when the candidate was queued, earliest first; never by a hash
+or the order of a table.
 
 These bounds make the output of a large sheet short of a fixed point. Above 128
 input rules the pipeline makes one pass, and the search in that pass is
-bounded: a run of members spans at most 128 source positions, the budget stops
-at 256 subsets per kind, and only runs of neighbouring members are tried. A
-rule a merge produces also keeps the earliest source position of the rules it
-consumed, even where the cascade places it later in the output. The bounds, and
-the test for a rule standing between the members, read that position. A merge
-the pass leaves out is found when the output is minified again. Of the 504
-SatCSS sheets, 67 shrink on a second `--minify`, by 4070 bytes in all and by at
-most 434 bytes (guardian-stripmq-cleancss). Making up to five passes above 128
-rules as well brings all 504 to a fixed point in one run, at about 23% more CPU
-time over the corpus.
+bounded: a run of members spans at most 128 slots, the budget stops at 256
+subsets per kind, and only runs of neighbouring members are tried. A merge the
+pass leaves out is found when the output is minified again. The transfer gate
+also decides a segment again on the second pass, and can keep a factoring it
+reverted on the first. Of the 504 SatCSS sheets, 46 shrink on a second
+`--minify`, by 14525 bytes in all and by at most 3240 bytes; four nytimes
+sheets, where the gate reverts the first pass's factoring and keeps the
+second's, account for 12960 of them, and the other 42 shrink by 1565 bytes.
+Making up to five passes above 128 rules as well brought all 504 to a fixed
+point in one run, at about 23% more CPU time over the corpus.
 
 ### Approximation and lossless mode
 

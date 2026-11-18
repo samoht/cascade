@@ -24,9 +24,9 @@ val shared : t -> int option
 
 val of_bucket :
   t ->
-  origin:(Rule_graph.node_id -> int) ->
+  slot:(Rule_graph.node_id -> int) ->
   Rule_graph.node_id list ->
   Rule_graph.node_id list list
-(** [of_bucket b ~origin ids] is the subsets of the bucket [ids], given in
-    source order, that [b] tries, in the order it tries them. [origin] is each
-    rule's source position. *)
+(** [of_bucket b ~slot ids] is the subsets of the bucket [ids], given in the
+    order they print, that [b] tries, in the order it tries them. [slot] is the
+    source position where each rule prints ({!Rule_graph.node_slot}). *)
