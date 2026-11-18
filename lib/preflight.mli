@@ -22,9 +22,4 @@ val estimated_gain : t -> int
 
 val useful : t -> bool
 (** [useful t] is [true] when the estimated gain justifies running the full
-    factoring fixpoint. Small inputs always return [true].
-
-    The gain is a raw-byte proxy. A segment it admits can still be reverted by
-    the compressed-size gate that judges the finished factoring, and the
-    estimate cannot anticipate that: deciding it needs the factored rendering,
-    which is the work this gate exists to avoid. *)
+    factoring fixpoint. Small inputs always return [true]. *)

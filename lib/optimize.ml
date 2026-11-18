@@ -96,26 +96,23 @@ let rec collect_rules ~holds (stmt_acc : statement list) (rules_acc : rule list)
 let factor_rules_incremental ?cache ~settle ~ctx ~held rules =
   Factor.run ?cache ~settle ~ctx ~finalize:(Rule.finalize ~held ~ctx) rules
 
-let merge_adjacent_and_mark ~ctx invalidated rules =
+let merge_adjacent_and_mark ~ctx merged rules =
   let settled = Rule.merge_adjacent_identical ~ctx rules in
   (* Each produced rule is fully normalized by the scheduler's finalizer. A node
      merge is therefore the only settling step that changes the candidate graph
      and requires another global walk. *)
-  if settled != rules then invalidated := settled :: !invalidated;
+  if settled != rules then merged := true;
   settled
 
 let factor_rules_until_settled ?factor_cache ~ctx ~held rules =
   let rec loop remaining rules =
-    let invalidated = ref [] in
+    let merged = ref false in
     let next =
       factor_rules_incremental ?cache:factor_cache
-        ~settle:(merge_adjacent_and_mark ~ctx invalidated)
+        ~settle:(merge_adjacent_and_mark ~ctx merged)
         ~ctx ~held rules
     in
-    let needs_refactor =
-      List.exists (fun rules -> rules == next) !invalidated
-    in
-    if needs_refactor && remaining > 1 then loop (remaining - 1) next else next
+    if !merged && remaining > 1 then loop (remaining - 1) next else next
   in
   loop 2 rules
 
@@ -554,16 +551,16 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     if Ctx.regroup ctx then begin
       (* The global scheduler reaches a fixed point for the graph it receives,
          but settling its result can merge nodes and expose a new graph. Repeat
-         only when that cheap postprocessing changed one of the transfer gate's
-         alternatives; most sheets still pay for one global walk. *)
+         only when that cheap postprocessing changed the result; most sheets
+         still pay for one global walk. *)
       factor_rules_until_settled ?factor_cache ~ctx ~held prepared
     end
-    else merge_adjacent_and_mark ~ctx (ref []) prepared
+    else merge_adjacent_and_mark ~ctx (ref false) prepared
   in
   (* After factoring so the greedy scheduler sees the unconstrained input (a
      local pre-merge can lock a pair together and hide a larger group): this
      only picks up the merges factoring did not make because its preflight
-     skipped the run or the transfer gate discarded its result. *)
+     skipped the run. *)
   factored
 
 (* CSS Animations 1 sec. 3: [@keyframes name] re-declaration overrides the
@@ -1200,9 +1197,6 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let result = if flatten_nesting then Flatten.block result else result in
   Log.debug (fun m ->
       let c = (Stats.snapshot (Ctx.stats ctx)).counters in
-      m
-        "optimized: %d factoring fixpoints run, %d skipped, %d reverted by the \
-         transfer gate, %d bytes saved"
-        c.factor_fixpoints_run c.factor_fixpoints_skipped
-        c.factor_transfer_reverts c.factor_bytes_saved);
+      m "optimized: %d factoring fixpoints run, %d skipped, %d bytes saved"
+        c.factor_fixpoints_run c.factor_fixpoints_skipped c.factor_bytes_saved);
   result

@@ -73,8 +73,6 @@ let test_fresh_recorder_is_empty () =
     "factor_preflight_gain" 0 report.counters.factor_preflight_gain;
   Alcotest.(check int) "factor_bytes_saved" 0 report.counters.factor_bytes_saved;
   Alcotest.(check int)
-    "factor_transfer_reverts" 0 report.counters.factor_transfer_reverts;
-  Alcotest.(check int)
     "nested_merge_probes" 0 report.counters.nested_merge_probes;
   Alcotest.(check int) "iteration stats" 0 (List.length report.iteration_stats);
   Alcotest.(check bool) "profile off by default" false (S.profile (S.v ()));
@@ -120,15 +118,12 @@ let test_fixpoints_are_numbered_within_the_run () =
   Alcotest.(check int) "first fixpoint" 1 (S.start_fixpoint stats);
   Alcotest.(check int) "second fixpoint" 2 (S.start_fixpoint stats);
   S.skip_fixpoint stats;
-  S.revert_fixpoint stats;
   S.add_preflight_gain stats 40;
   S.add_preflight_gain stats 2;
   let report = S.snapshot stats in
   Alcotest.(check int) "fixpoints run" 2 report.counters.factor_fixpoints_run;
   Alcotest.(check int)
     "fixpoints skipped" 1 report.counters.factor_fixpoints_skipped;
-  Alcotest.(check int)
-    "transfer reverts" 1 report.counters.factor_transfer_reverts;
   Alcotest.(check int) "preflight gain" 42 report.counters.factor_preflight_gain;
   Alcotest.(check int)
     "a fresh recorder numbers from one again" 1

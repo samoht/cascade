@@ -42,7 +42,6 @@ the public API has to update:
   Factor
   Flatten
   Font_face
-  Gzip_size
   Keyframe
   Lexer
   Line_col
