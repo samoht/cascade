@@ -211,15 +211,6 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
   match stmts with
   | [] -> stmts
   | _ ->
-      (* A merge concatenates blocks whose children [process_statements] has
-         already optimized. Re-enter only at that new seam: descending again
-         walks a nested child once per ancestor and turns linear depth into
-         quadratic work. Further merges in the seam pass stay shallow too. *)
-      let optimize_merged_block =
-        statements ?factor_cache
-          ~ctx:(Ctx.with_recurse_blocks false ctx)
-          ~enforce_spec ~owner ~supports
-      in
       (* [Block.drop_misplaced_prelude] runs first: an [@import] after a style
          rule is invalid and ignored by browsers (CSS Cascade 5 sec. 2), so it
          must not act as a cascade boundary. Stripping it up front lets the
@@ -237,17 +228,82 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         in
         let stmts = if Ctx.regroup ctx then Nest.statements stmts else stmts in
         let stmts =
-          stmts
-          |> merge_consecutive_media ~optimize_merged_block
-          |> merge_distant_media ?owner ~optimize_merged_block
-          |> merge_consecutive_supports ~optimize_merged_block
-          |> merge_consecutive_containers ~optimize_merged_block
-          |> merge_distant_containers ?owner ~optimize_merged_block
-          |> merge_consecutive_starting_style ~optimize_merged_block
+          let merged =
+            merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts
+          in
+          if merged == stmts then stmts
+          else
+            rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+              ~before:stmts merged
         in
         stmts |> Block.merge_layer_declarations |> drop_empty_rules
       in
       List.preserve stmts stmts'
+
+(* Join the conditional and [@starting-style] blocks of [stmts] the cascade lets
+   join. A merge concatenates blocks whose children are already optimized, so
+   only that new seam is optimized again: descending again walks a nested child
+   once per ancestor and turns linear depth into quadratic work. Further merges
+   in the seam pass stay shallow too. *)
+and merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts =
+  let optimize_merged_block =
+    statements ?factor_cache
+      ~ctx:(Ctx.with_recurse_blocks false ctx)
+      ~enforce_spec ~owner ~supports
+  in
+  stmts
+  |> merge_consecutive_media ~optimize_merged_block
+  |> merge_distant_media ?owner ~optimize_merged_block
+  |> merge_consecutive_supports ~optimize_merged_block
+  |> merge_consecutive_containers ~optimize_merged_block
+  |> merge_distant_containers ?owner ~optimize_merged_block
+  |> merge_consecutive_starting_style ~optimize_merged_block
+
+(* A block a merge took away can leave two rule runs of [merged] adjacent, and
+   the run they make was optimized as two. [before] is the list the merge read:
+   it holds every rule statement [merged] does, in the same order, so a run is
+   joined where two of its rules sit apart there. Each joined run is optimized
+   again as the one run it now is, its rules' bodies aside, which are already,
+   and the regrouping reads the list again when one changed. *)
+and rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports ~before merged
+    =
+  let shallow = Ctx.with_recurse_blocks false ctx in
+  let changed = ref false in
+  let flush acc run joined =
+    let stmts = List.rev_map fst run in
+    if not joined then List.rev_append stmts acc
+    else
+      let rules = List.rev_map snd run in
+      let rules' =
+        rules_aux ?factor_cache ~ctx:shallow ~enforce_spec ~owner ~supports
+          rules
+      in
+      if rules' == rules then List.rev_append stmts acc
+      else begin
+        changed := true;
+        List.rev_append (List.map (fun r -> Rule r) rules') acc
+      end
+  in
+  (* Whether a statement of [before] comes before [stmt], and what follows. *)
+  let rec find stmt skipped = function
+    | s :: rest when s == stmt -> (skipped, rest)
+    | _ :: rest -> find stmt true rest
+    | [] -> (true, [])
+  in
+  let rec walk acc run joined before = function
+    | [] -> List.rev (flush acc run joined)
+    | (Rule r as stmt) :: rest ->
+        let skipped, before = find stmt false before in
+        let joined =
+          joined || match run with [] -> false | _ :: _ -> skipped
+        in
+        walk acc ((stmt, r) :: run) joined before rest
+    | stmt :: rest -> walk (stmt :: flush acc run joined) [] false before rest
+  in
+  let rejoined = walk [] [] false before merged in
+  if not !changed then merged
+  else if Ctx.regroup ctx then Nest.statements rejoined
+  else rejoined
 
 (* Walk the statement list left to right over a reversed accumulator.
 
@@ -492,29 +548,41 @@ and process_layer_statement ?factor_cache ~ctx ~enforce_spec ~owner ~supports
    the rule's, so it optimizes with the rule as owner, under its selector
    expanded against [owner]'s: CSS Nesting 1 sec. 3 weighs [&] as the enclosing
    rule's selector, and that one may itself be nested. Dead nested rules go
-   before the hoist, so a declaration behind one is no longer held back. *)
+   before the hoist, so a declaration behind one is no longer held back. A run
+   the hoist takes out of the body can leave two blocks it separated adjacent,
+   so the body's blocks are joined again once it moved one. *)
 and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
-    rule =
+    (rule : rule) =
+  let body_owner =
+    lazy
+      (match owner with
+      | Option.None -> rule
+      | Option.Some (o : rule) ->
+          { rule with selector = Nest.combine o.selector rule.selector })
+  in
   let nested =
     match (Ctx.recurse_blocks ctx, rule.nested) with
     | false, nested -> nested
     | true, [] -> []
     | true, nested ->
-        let owner =
-          match owner with
-          | Option.None -> rule
-          | Option.Some (o : rule) ->
-              { rule with selector = Nest.combine o.selector rule.selector }
-        in
         let nested =
-          statements ?factor_cache ~ctx ~enforce_spec ~owner:(Option.Some owner)
+          statements ?factor_cache ~ctx ~enforce_spec
+            ~owner:(Option.Some (Lazy.force body_owner))
             ~supports nested
         in
         if enforce_spec then nested
         else List.map_preserve drop_nesting_prefix nested
   in
   let rule = Nest.drop_dead_nested (rule_with_nested rule nested) in
-  let rule = Nest.hoist_declaration_runs rule in
+  let rule =
+    let hoisted = Nest.hoist_declaration_runs rule in
+    if hoisted == rule then rule
+    else
+      rule_with_nested hoisted
+        (merge_blocks ?factor_cache ~ctx ~enforce_spec
+           ~owner:(Option.Some (Lazy.force body_owner))
+           ~supports hoisted.nested)
+  in
   let rule =
     let selector = Selector.canonicalize ~enforce_spec rule.selector in
     if selector == rule.selector then rule else { rule with selector }

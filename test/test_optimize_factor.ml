@@ -221,6 +221,56 @@ let test_large_stylesheet_normalizes_vendor_aliases () =
   Alcotest.(check string)
     "large-sheet aliases compare normalized values" once (minify_str once)
 
+(* A rule whose nested blocks are merged before its declaration runs are
+   hoisted: hoisting [--b:1] back into the rule's own declarations leaves the
+   two [@supports] blocks adjacent, and nothing merged them until the output was
+   optimized again. The padding takes the sheet past the size where the pipeline
+   makes more than one pass. *)
+let test_large_stylesheet_hoist_rejoins_blocks () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".hoist-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    ".p{--a:1;@supports (color:color-mix(in \
+     lab,red,red)){--a:2}--b:1;@supports (color:color-mix(in \
+     lab,red,red)){--b:2}}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the hoisted declarations leave one block" true
+    (Astring.String.is_prefix
+       ~affix:
+         ".p{--a:1;--b:1;@supports(color:color-mix(in \
+          lab,red,red)){--a:2;--b:2}}"
+       once);
+  Alcotest.(check string)
+    "hoisting then merging converges in one pass" once (minify_str once)
+
+(* A distant [@media] merge takes the block between [.a] and [.b] away, which
+   joins the two rule runs it separated. The factoring had read them apart, so
+   the declarations [.a] and [.b] share were only factored when the output was
+   optimized again. *)
+let test_large_stylesheet_block_merge_rejoins_runs () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".media-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    "@media \
+     (prefers-color-scheme:dark){.z:where(.s){color:red}}.a:where(.d){--f:red;--s:var(--v,var(--p),var(--f) \
+     var(--fp),var(--t) var(--tp))}@media \
+     (prefers-color-scheme:dark){.a:where(.s){--f:red}}.b:where(.d){--f:blue;--s:var(--v,var(--p),var(--f) \
+     var(--fp),var(--t) var(--tp))}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the joined run shares its declarations" true
+    (Astring.String.is_infix ~affix:".a:where(.d),.b:where(.d){--f:red;--s:"
+       once);
+  Alcotest.(check string)
+    "merging blocks then factoring converges in one pass" once (minify_str once)
+
 let test_large_stylesheet_factoring_reaches_fixpoint () =
   (* Large graphs refresh candidates in batches. The refreshed batch can itself
      expose another profitable grouping, which must be enumerated before the
@@ -739,6 +789,12 @@ let suite =
       ( "large stylesheet factoring reaches fixpoint",
         `Quick,
         test_large_stylesheet_factoring_reaches_fixpoint );
+      ( "large stylesheet hoist rejoins blocks",
+        `Quick,
+        test_large_stylesheet_hoist_rejoins_blocks );
+      ( "large stylesheet block merge rejoins runs",
+        `Quick,
+        test_large_stylesheet_block_merge_rejoins_runs );
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
