@@ -45,6 +45,16 @@ val offers : t -> offer list
 (** [offers t] is every offer [t] makes as of the last {!refresh}, in the order
     they were made. *)
 
+val afresh : t -> bool
+(** [afresh t] is [true] when a graph built afresh from the rules the graph [t]
+    last refreshed on prints, in that order, would accept no candidate [t] has
+    not offered. Such a graph searches the same buckets, but each rule's slot
+    there is its rank and the run's size picks the budget, so an indexed search
+    can take other subsets; and it orders two rules only through live rules that
+    conflict, so a default group can keep an entry [t] drops. The candidates
+    either brings about are asked {!Rule_graph.refused_afresh}. It reads the
+    graph and leaves the offers of [t] as they are. *)
+
 val is_live : t -> Rule_graph.node_id -> bool
 (** [is_live t id] is [true] if the rule [id] is live in the graph [t] last
     refreshed on. *)

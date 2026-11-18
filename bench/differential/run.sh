@@ -5,6 +5,7 @@
 #   run.sh candidates --baseline TREE [--candidate TREE] [--quick]
 #   run.sh render     --tool TOOL --output DIR [--pages]
 #   run.sh refresh    [--random COUNT SIZE | PATH...]
+#   run.sh settle     [PATH...]
 #   run.sh hashseed   [PATH...]
 #   run.sh corpus     [bench/corpus_sweep.sh options]
 #
@@ -12,7 +13,9 @@
 # two worktrees and require identical record streams.  render reuses the
 # committed inline browser engine with a chosen minifier.  refresh checks this
 # tree alone: the candidates carried across rewrites against a full
-# enumeration after every commit, over the SatCSS corpus by default.  corpus
+# enumeration after every commit, over the SatCSS corpus by default.  settle
+# checks that a scheduler run which says a graph built afresh from its output
+# would change nothing is right, over every SatCSS sheet by default.  corpus
 # delegates to the established interleaved performance/byte sweep.  hashseed
 # minifies each sheet twice, the second time with randomized hash tables
 # (OCAMLRUNPARAM=R), and requires byte-identical output: no output may follow a
@@ -245,6 +248,20 @@ refresh_profile() {
   "$driver" refresh "$@" >/dev/null
 }
 
+settle_profile() {
+  local driver
+  driver=$(build_driver "$ROOT")
+  if [ $# -eq 0 ]; then
+    local corpus="$ROOT/bench/satcss/scripts/.tool/benchmarks"
+    [ -d "$corpus" ] || {
+      echo "error: SatCSS corpus not found: $corpus" >&2
+      return 2
+    }
+    set -- "$corpus"/*.css
+  fi
+  "$driver" settle "$@" >/dev/null
+}
+
 hashseed_profile() {
   (cd "$ROOT" && "$ROOT/scripts/with_switch.sh" dune build bin/main.exe) >&2
   local bin="$ROOT/_build/default/bin/main.exe" status=0 work
@@ -277,6 +294,7 @@ case $profile in
   outputs | candidates) compare_profile "$profile" "$@" ;;
   render) render_profile "$@" ;;
   refresh) refresh_profile "$@" ;;
+  settle) settle_profile "$@" ;;
   hashseed) hashseed_profile "$@" ;;
   corpus) exec "$ROOT/bench/corpus_sweep.sh" "$@" ;;
   *) usage ;;

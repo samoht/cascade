@@ -53,3 +53,10 @@ val is_pair : Declaration.declaration -> Declaration.declaration -> bool
     carrying the same value and importance, in either order. It takes no
     targets: by the time a caller asks, the synthesis has already decided the
     targets needed the pair, and separating the halves is what breaks it. *)
+
+val pairs :
+  Declaration.declaration list ->
+  (Declaration.declaration * Declaration.declaration) list
+(** [pairs decls] is each declaration of [decls] paired with a later one that is
+    the other half of its fallback pair ({!is_pair}). Almost every list has
+    none, and {!holds_a_prefixed_spelling} says so before any pair is asked. *)

@@ -393,3 +393,17 @@ let is_pair a b =
     | None -> false
   in
   paired a b || paired b a
+
+let pairs decls =
+  let rec walk acc = function
+    | [] -> acc
+    | decl :: rest ->
+        let acc =
+          List.fold_left
+            (fun acc other ->
+              if is_pair decl other then (decl, other) :: acc else acc)
+            acc rest
+        in
+        walk acc rest
+  in
+  if holds_a_prefixed_spelling decls then walk [] decls else []
