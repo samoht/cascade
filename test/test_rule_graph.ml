@@ -44,6 +44,42 @@ let idempotent_after_reparse () =
       Alcotest.(check string) ("fixed point: " ^ s) once twice)
     cases
 
+(* Above 128 rules the optimizer makes one pass, so whatever the search reads of
+   where a rule stands has to be where it prints. In each case below a merge
+   produces a rule that prints later than the first rule it replaced, because it
+   must follow a rule standing in between; a second merge is safe only by where
+   that rule prints (the leftover of the first merge does not stand between the
+   members of the second, and the provider of a default is the first member
+   printed), so a search reading the first source position finds it only on a
+   second pass. Unrelated rules take the run past 128. *)
+let fixed_point_when_a_merged_rule_prints_late () =
+  let padding =
+    String.concat "" (List.init 130 (fun i -> Fmt.str ".pad%d{order:%d}" i i))
+  in
+  List.iter
+    (fun (name, css) ->
+      let once = optimize_str (css ^ padding) in
+      let twice = optimize_str once in
+      Alcotest.(check string) ("fixed point: " ^ name) once twice)
+    [
+      ( "a leftover printed after the members",
+        ".a .k{border:1px solid \
+         red;border-right:none;height:28px;padding-left:10px}.a .b{border:1px \
+         solid \
+         red;cursor:pointer;height:30px;padding-right:5px;padding-top:3px;width:30px}.a.c \
+         .k{border:1px solid \
+         red;border-right:none;font-size:12px;height:28px;padding-left:10px}.a.c \
+         .b{cursor:pointer;height:30px;padding-right:5px;padding-top:3px;width:30px}"
+      );
+      ( "a provider printed first",
+        ".drop-down>.body{background:#fff;margin:0;padding:4px;position:absolute;width:200px}#search>.js-only.drop-down>.head{background:#fff \
+         url(a.png) no-repeat left center;padding:0 0 0 \
+         12px;width:20px}#search>.drop-down{margin-right:.5em}#search \
+         .results,#search>form>input{width:175px}#search \
+         .results{background:#fff;margin:0;padding:4px;position:absolute;width:200px;z-index:22}"
+      );
+    ]
+
 (* The graph projection is source-stable: independent nodes keep first
    appearance order, and real cascade dependencies still pin source order. *)
 let graph_projection_keeps_source_order () =
@@ -1423,6 +1459,8 @@ let suite =
         try_rewrite_rejects_unsafe_cross;
       Alcotest.test_case "try_rewrite preserves residual source slots" `Quick
         try_rewrite_preserves_residual_source_slots;
+      Alcotest.test_case "fixed point when a merged rule prints late" `Quick
+        fixed_point_when_a_merged_rule_prints_late;
       Alcotest.test_case "the printed order holds after every commit" `Quick
         printed_order_after_every_commit;
       Alcotest.test_case "a late merged rule drags its successors" `Quick
