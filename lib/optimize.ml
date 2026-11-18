@@ -725,6 +725,34 @@ let compatibility_declaration_sites =
     condition_test = false;
   }
 
+(* A twin can cover what an earlier rule of its run writes for the same
+   selectors. [Rule.normalize] drops such a declaration, but it read the run
+   before the twin existed, and above 128 rules no pass follows to read it
+   again. So each run of [after] whose declarations the synthesis changed has
+   its shadowing read once more: linear, and it moves no rule. [before] is the
+   block the synthesis read, statement for statement. *)
+let drop_shadowed_in_prefixed_runs ~before after =
+  let flush acc run touched =
+    let stmts = List.rev run in
+    let rules =
+      List.filter_map (function Rule r -> Some r | _ -> None) stmts
+    in
+    let kept = if touched then Rule.drop_shadowed rules else rules in
+    if kept == rules then List.rev_append stmts acc
+    else List.rev_append (List.map (fun r -> Rule r) kept) acc
+  in
+  let rec walk acc run touched before after =
+    match (before, after) with
+    | Rule b :: before, (Rule a as stmt) :: after ->
+        walk acc (stmt :: run)
+          (touched || a.declarations != b.declarations)
+          before after
+    | _ :: before, stmt :: after ->
+        walk (stmt :: flush acc run touched) [] false before after
+    | _ -> List.rev (flush acc run touched)
+  in
+  walk [] [] false before after
+
 let add_compatibility_prefixes ~targets stylesheet =
   let rewrite original =
     let stmt =
@@ -754,14 +782,20 @@ let add_compatibility_prefixes ~targets stylesheet =
       | Position_try _ | Viewport _ | Unknown_at_rule _ ->
           original
     in
-    let stmt =
-      if at_declaration_site compatibility_declaration_sites stmt then
-        map_statement_declarations (add_declaration_prefixes ~targets) stmt
-      else stmt
-    in
-    if stmt == original then Keep else Replace stmt
+    if at_declaration_site compatibility_declaration_sites stmt then
+      map_statement_declarations (add_declaration_prefixes ~targets) stmt
+    else stmt
   in
-  edit_statements rewrite stylesheet
+  let rec block stmts =
+    let stmts' =
+      List.map_preserve
+        (fun stmt -> map_statement_children block (rewrite stmt))
+        stmts
+    in
+    if stmts' == stmts then stmts
+    else drop_shadowed_in_prefixed_runs ~before:stmts stmts'
+  in
+  block stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@keyframes] frames, [@page] and its margin boxes,

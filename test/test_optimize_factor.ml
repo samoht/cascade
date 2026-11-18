@@ -284,6 +284,22 @@ let test_prefix_synthesis_reaches_fixpoint () =
        1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
     ]
 
+let test_large_stylesheet_prefix_twin_shadows_in_one_pass () =
+  (* Above 128 rules the pipeline makes one pass, so the prefix pass is the last
+     word. The twins it writes into [label] and [.b] cover what the first rule
+     writes for both of its selectors, and a pass that leaves that rule standing
+     leaves the drop to the next caller. *)
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".p%d{order:%d}" i i) |> String.concat ""
+  in
+  let input =
+    ".b,label{-webkit-user-select:none}label{-o-user-select:none;user-select:none}.b{user-select:none}"
+    ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet prefix twins shadow in one pass" once (minify_str once)
+
 let test_prefixed_longhand_contracts_in_one_pass () =
   (* [`Stylesheet] licenses the partial-coverage shorthand, so the synthesised
      [-webkit-mask-image] contracts with its unprefixed twin. That contraction
@@ -726,6 +742,9 @@ let suite =
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
+      ( "large stylesheet prefix twin shadows in one pass",
+        `Quick,
+        test_large_stylesheet_prefix_twin_shadows_in_one_pass );
       ( "prefixed longhand contracts in one pass",
         `Quick,
         test_prefixed_longhand_contracts_in_one_pass );

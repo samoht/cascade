@@ -238,6 +238,9 @@ to call instead, and moving off most of them is a rename or a deleted call.
   with a `none` component, as from every other colour. For library users,
   `Selector.compound`, `combine` and `reshape` build a selector in the shape
   the parser reads (#1342, #1370).
+- In a sheet of more than 128 rules, a `-webkit-` twin cascade adds, such as
+  `-webkit-user-select`, could cover an earlier rule that only a second
+  `--minify` dropped. That rule now goes in the first pass (#1395).
 - Output read the same number in two spellings. Large numbers in media
   features and keyframe offsets print as `1e30` like everywhere else, instead
   of `1e+30` (#1292).
