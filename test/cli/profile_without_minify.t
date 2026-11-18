@@ -36,7 +36,7 @@ its time. It opens with where the run spent its time.
   > EOF
   $ cascade --minify --profile dup.css > /dev/null 2>profile2.txt
   $ grep -o "factor fixpoint ([0-9]* runs," profile2.txt
-  factor fixpoint (2 runs,
+  factor fixpoint (1 runs,
   $ grep "rules-in" profile2.txt
     run  rules-in rules-out  bytes-in     saved changed     time
   $ head -1 profile2.txt | sed -E 's/[0-9]+\.[0-9]+s/Ns/g'

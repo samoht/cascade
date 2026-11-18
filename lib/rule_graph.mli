@@ -40,16 +40,28 @@ type node_id = Node_id.t
     structural pin used to keep produced selector residuals contiguous. *)
 type edge_reason = Cascade_conflict | Shared_branch_pin
 
-(** Why a graph rewrite was rejected. *)
+(** Why a graph rewrite was rejected. An ambiguous order carries [afresh], the
+    live rules a graph built afresh from the live rules, in the order they
+    print, orders the sources through both ways too, when it does: the refusal
+    stands there while those rules stay live. Otherwise only rules a rewrite
+    consumed make the order ambiguous. *)
 type rewrite_error =
   | Empty_consume
   | Empty_produce
   | Invalid_node of node_id
   | Duplicate_node of node_id
   | Stale_node of node_id
-  | Ambiguous_external_order of { produced : node_id; external_ : node_id }
+  | Ambiguous_external_order of {
+      produced : node_id;
+      external_ : node_id;
+      afresh : node_id list option;
+    }
   | New_external_conflict of { produced : node_id; external_ : node_id }
-  | Ambiguous_produced_order of { left : node_id; right : node_id }
+  | Ambiguous_produced_order of {
+      left : node_id;
+      right : node_id;
+      afresh : node_id list option;
+    }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
 
@@ -210,6 +222,14 @@ val precedes : t -> node_id -> node_id -> bool
     local candidate ordering; use {!val-canonical_order} when a full output
     projection is needed. *)
 
+val precedes_afresh : t -> node_id -> node_id -> node_id list option
+(** [precedes_afresh t i j] is the live rules a graph built afresh from the live
+    rules of [t], in the order they print, puts between [i] and [j] to require
+    [i] before [j], when it does: [i] prints first, and each rule on the way
+    conflicts with the one before. It implies {!precedes}; the converse fails
+    where only a rule a rewrite consumed orders the two. The answer holds on
+    every graph rewritten from [t] while the rules it names stay live. *)
+
 val successors : t -> node_id -> node_id list
 (** [successors t i] is the nodes [i] has a direct edge to. A dense run is
     stored as a transitive chain rather than one edge per constrained pair, so a
@@ -290,6 +310,14 @@ val rewrite :
   produce:Stylesheet.rule list ->
   (t, rewrite_error) result
 (** [rewrite] is {!val-try_rewrite} with rejection diagnostics. *)
+
+val refused_afresh :
+  t -> consume:node_id list -> produce:Stylesheet.rule list -> bool
+(** [refused_afresh t ~consume ~produce] is [true] when a graph built afresh
+    from the live rules of [t], in the order they print, would refuse {!rewrite}
+    [~consume ~produce]: a node is not live, or a produced rule conflicts with a
+    rule its sources order both ways, or in no way, there. A rewrite it does not
+    refuse may still close a cycle. *)
 
 val try_rewrite :
   t -> consume:node_id list -> produce:Stylesheet.rule list -> t option

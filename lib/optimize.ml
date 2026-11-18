@@ -104,17 +104,18 @@ let merge_adjacent_and_mark ~ctx merged rules =
   if settled != rules then merged := true;
   settled
 
-let factor_rules_until_settled ?factor_cache ~ctx ~held rules =
-  let rec loop remaining rules =
-    let merged = ref false in
-    let next =
-      factor_rules_incremental ?cache:factor_cache
-        ~settle:(merge_adjacent_and_mark ~ctx merged)
-        ~ctx ~held rules
-    in
-    if !merged && remaining > 1 then loop (remaining - 1) next else next
+(* A merge of adjacent rules that settling makes is a new graph, so the run is
+   factored again until settling merges nothing. Every merge drops a rule, so
+   the loop ends. *)
+let rec factor_rules_until_settled ?factor_cache ~ctx ~held rules =
+  let merged = ref false in
+  let next =
+    factor_rules_incremental ?cache:factor_cache
+      ~settle:(merge_adjacent_and_mark ~ctx merged)
+      ~ctx ~held rules
   in
-  loop 2 rules
+  if !merged then factor_rules_until_settled ?factor_cache ~ctx ~held next
+  else next
 
 (* [@scope] bounds are parsed selectors; canonicalize them like any other
    selector so a list bound is de-duplicated and ordered consistently. *)

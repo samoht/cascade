@@ -138,7 +138,7 @@ let a_settled_run_is_a_fixed_point () =
   List.iter
     (fun (label, graph) ->
       let nodes = Rule_graph.node_count graph in
-      let { Rule_scheduler.graph = settled_graph; settled } =
+      let { Rule_scheduler.graph = settled_graph; settled; _ } =
         Rule_scheduler.run ~ctx ~finalize graph
       in
       Alcotest.(check bool) (label ^ ": settled") true settled;
@@ -168,11 +168,60 @@ let a_settled_run_is_a_fixed_point () =
         (Rule_graph.generation again.graph))
     [ ("small run", factoring_run 40); ("large run", factoring_run 200) ]
 
+(* Rules the run printed, in that order. *)
+let printed graph =
+  Array.to_list
+    (Array.map (Rule_graph.node_rule graph) (Rule_graph.canonical_order graph))
+
+(* [.x] and [.y] share [color:red], 141 source positions apart, beyond the 128
+   an indexed search spans, with pairs of identical bodies between them. Once
+   the pairs merge, the two print 71 rules apart: a graph built afresh from what
+   the run prints searches them together, the run's own graph never does. *)
+let spanned_run =
+  let pairs =
+    List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
+  in
+  String.concat ""
+    ((".x{color:red;margin:0}" :: pairs) @ [ ".y{color:red;padding:0}" ])
+  |> rules |> Rule_graph.of_rules
+
+(* A run that says [afresh] is a fixed point of a graph built afresh from what
+   it prints: a run over that graph commits nothing. One that does not say so is
+   one where that run commits. *)
+let afresh_is_a_fresh_fixed_point () =
+  let ctx = Ctx.fragment and finalize = Fun.id in
+  List.iter
+    (fun (label, graph, expected) ->
+      let { Rule_scheduler.graph = settled_graph; settled; afresh } =
+        Rule_scheduler.run ~ctx ~finalize graph
+      in
+      Alcotest.(check bool) (label ^ ": settled") true settled;
+      Alcotest.(check bool) (label ^ ": afresh") expected afresh;
+      let again =
+        Rule_scheduler.run ~ctx ~finalize
+          (Rule_graph.of_rules (printed settled_graph))
+      in
+      Alcotest.(check bool)
+        (label ^ ": a run afresh commits")
+        (not afresh)
+        (Rule_graph.generation again.graph > 0);
+      if not afresh then
+        Alcotest.(check bool)
+          (label ^ ": the run afresh says afresh")
+          true again.afresh)
+    [
+      ("small run", factoring_run 40, true);
+      ("large run", factoring_run 200, true);
+      ("spanned run", spanned_run, false);
+    ]
+
 let suite =
   ( "rule_scheduler",
     [
       Alcotest.test_case "a settled run is a fixed point" `Quick
         a_settled_run_is_a_fixed_point;
+      Alcotest.test_case "a run afresh is a fixed point of a fresh graph" `Quick
+        afresh_is_a_fresh_fixed_point;
       Alcotest.test_case "merges identical bodies" `Quick merges_identical_body;
       Alcotest.test_case "merges same selector canonically" `Quick
         merges_same_selector_canonically;
