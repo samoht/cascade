@@ -221,6 +221,32 @@ let test_large_stylesheet_normalizes_vendor_aliases () =
   Alcotest.(check string)
     "large-sheet aliases compare normalized values" once (minify_str once)
 
+(* A rule whose nested blocks are merged before its declaration runs are
+   hoisted: hoisting [--b:1] back into the rule's own declarations leaves the
+   two [@supports] blocks adjacent, and nothing merged them until the output was
+   optimized again. The padding takes the sheet past the size where the pipeline
+   makes more than one pass. *)
+let test_large_stylesheet_hoist_rejoins_blocks () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".hoist-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    ".p{--a:1;@supports (color:color-mix(in \
+     lab,red,red)){--a:2}--b:1;@supports (color:color-mix(in \
+     lab,red,red)){--b:2}}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the hoisted declarations leave one block" true
+    (Astring.String.is_prefix
+       ~affix:
+         ".p{--a:1;--b:1;@supports(color:color-mix(in \
+          lab,red,red)){--a:2;--b:2}}"
+       once);
+  Alcotest.(check string)
+    "hoisting then merging converges in one pass" once (minify_str once)
+
 let test_large_stylesheet_factoring_reaches_fixpoint () =
   (* Large graphs refresh candidates in batches. The refreshed batch can itself
      expose another profitable grouping, which must be enumerated before the
@@ -739,6 +765,9 @@ let suite =
       ( "large stylesheet factoring reaches fixpoint",
         `Quick,
         test_large_stylesheet_factoring_reaches_fixpoint );
+      ( "large stylesheet hoist rejoins blocks",
+        `Quick,
+        test_large_stylesheet_hoist_rejoins_blocks );
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
