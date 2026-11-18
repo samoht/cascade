@@ -475,6 +475,31 @@ let a_refresh_costs_what_the_rewrite_changed () =
         true
         (fresh = 0. || carried < fresh *. 0.2)
 
+(* Whether a group would cross a rule printed between its members reads the
+   rule's selector branches, which the graph holds for every rule, and the
+   group's own, read once per scan. So walking past a rule reads no selector:
+   the group of [.a] and [.b] below walks past 100 rules between them, and costs
+   under a hundred words for each over the same rules printed after both. *)
+let a_scan_reads_no_selector_again () =
+  let n = 100 in
+  let fillers =
+    String.concat ""
+      (List.init n (fun i -> Fmt.str ".f%d .g%d>a:hover{top:%dpx}" i i i))
+  in
+  let first = ".a{color:red;margin:0}" and last = ".b{color:red;margin:0}" in
+  let cost css =
+    let g = Rule_graph.of_rules (rules css) in
+    measure (fun () ->
+        Rule_candidate.refresh
+          (Rule_candidate.start ~ctx:Ctx.fragment ~finalize:Fun.id g))
+  in
+  let across = cost (first ^ fillers ^ last) in
+  let beside = cost (first ^ last ^ fillers) in
+  Alcotest.(check bool)
+    (Fmt.str "across %.0f words, beside %.0f" across beside)
+    true
+    (across -. beside < float n *. 100.)
+
 let suite =
   ( "rule_candidate",
     [
@@ -511,4 +536,6 @@ let suite =
         `Quick a_refresh_leaves_what_a_full_enumeration_offers;
       Alcotest.test_case "a refresh costs what the rewrite changed" `Quick
         a_refresh_costs_what_the_rewrite_changed;
+      Alcotest.test_case "a scan reads no selector again" `Quick
+        a_scan_reads_no_selector_again;
     ] )
