@@ -407,6 +407,28 @@ let test_large_stylesheet_prefix_twin_shadows_in_one_pass () =
   Alcotest.(check string)
     "large-sheet prefix twins shadow in one pass" once (minify_str once)
 
+(* The prefix pass writes [-webkit-mask-composite:xor] for [exclude] and a twin
+   of the [env()] value. The vendor-alias drop reads the twin as dead, and [xor]
+   then makes the prefixed property the author's, so nothing writes the twin
+   back: a second pass dropped it. *)
+let test_large_stylesheet_prefix_twins_settle_in_one_pass () =
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".twin-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  List.iter
+    (fun rule ->
+      let once = minify_str (rule ^ padding) in
+      Alcotest.(check string)
+        (rule ^ ": prefix twins settle in one pass")
+        once (minify_str once))
+    [
+      "a{mask-composite:exclude;mask-composite:env(safe-area-inset-top)}";
+      "a{mask-composite:env(safe-area-inset-top);mask-composite:exclude}";
+      "a{mask-composite:env(safe-area-inset-top);mask-composite:exclude!important}";
+      "a{mask-composite:exclude;mask-composite:env(safe-area-inset-top)!important}";
+    ]
+
 let test_prefixed_longhand_contracts_in_one_pass () =
   (* [`Stylesheet] licenses the partial-coverage shorthand, so the synthesised
      [-webkit-mask-image] contracts with its unprefixed twin. That contraction
@@ -864,6 +886,9 @@ let suite =
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
+      ( "large stylesheet prefix twins settle in one pass",
+        `Quick,
+        test_large_stylesheet_prefix_twins_settle_in_one_pass );
       ( "large stylesheet prefix twin shadows in one pass",
         `Quick,
         test_large_stylesheet_prefix_twin_shadows_in_one_pass );

@@ -722,7 +722,7 @@ let flatten_nesting = Flatten.block
 (* Once an author supplied a prefix for a property, that spelling is theirs:
    synthesising another value could change what WebKit sees. Otherwise mirror
    every standard declaration so source-order fallback semantics stay intact. *)
-let add_declaration_prefixes ~targets decls =
+let synthesise_declaration_prefixes ~targets decls =
   let author_owns kind = List.exists (Webkit_fallback.is_prefixed kind) decls in
   let rec loop changed acc = function
     | [] -> if changed then List.rev acc else decls
@@ -735,6 +735,25 @@ let add_declaration_prefixes ~targets decls =
         | Some _ | None -> loop changed (decl :: acc) rest)
   in
   loop false [] decls
+
+(* The next pass reads what this one writes. Its vendor-alias drop reads
+   Baseline where the synthesis reads [targets], so it drops a twin written here
+   as dead; a prefixed declaration of the same property that stays, one whose
+   value the prefix spells differently, then makes the property the author's,
+   and nothing writes the twin back. So what this writes is what that pass
+   settles on: the twins the drop leaves, written again where no prefixed
+   declaration of their property is left. The synthesis never runs under
+   [enforce_spec], the one setting the drop reads. *)
+let add_declaration_prefixes ~targets decls =
+  let written = synthesise_declaration_prefixes ~targets decls in
+  if written == decls then decls
+  else
+    let kept =
+      Shorthand_dedup.drop_vendor_aliases ~ctx:Ctx.fragment
+        (List.mapi (fun i decl -> (i, decl)) written)
+    in
+    if List.compare_lengths kept written = 0 then written
+    else synthesise_declaration_prefixes ~targets (List.map snd kept)
 
 let rec condition_has_webkit kind = function
   | Supports.Property (Supports.Declaration (_, decl)) ->
