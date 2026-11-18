@@ -9,6 +9,16 @@ val reorder_is_significant :
 (** [reorder_is_significant d1 d2] is [true] when going from [d1] to [d2] swaps
     the relative order of two overlapping declarations. *)
 
+val same_declarations : Css.declaration list -> Css.declaration list -> bool
+(** [same_declarations d1 d2] is [true] when [d1] and [d2] hold the same
+    declarations in the same order. Two declarations are the same when they
+    share a name, an importance and a minified value, so two spellings of one
+    value are one declaration. *)
+
+val same_declaration_set : Css.declaration list -> Css.declaration list -> bool
+(** [same_declaration_set d1 d2] is [true] when [d1] and [d2] hold the same
+    declarations, as {!same_declarations} compares them, in any order. *)
+
 val selector_key_of_selector : Css.Selector.t -> Css.Selector.t
 (** [selector_key_of_selector sel] is [sel] with the items of a selector list
     sorted, the key two rules pair on. *)
