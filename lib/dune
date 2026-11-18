@@ -106,6 +106,8 @@
   variables_layout
   variables_property
   rule_graph
+  order_maintenance
+  printed_order
   conflict_index
   rule_scheduler
   preflight

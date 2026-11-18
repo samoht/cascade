@@ -127,6 +127,20 @@ drains. The output is a topological order of the final graph, with the first
 source appearance as the tie-break, so rules keep their source order wherever
 the cascade does not force another.
 
+The graph keeps that order as rewrites land, in an order-maintenance list
+(Dietz and Sleator; the list labelling of Bender et al.) that tells which of
+two rules prints first in constant time, rather than working it out at the
+end. A merged rule's first source appearance is the earliest of the rules it
+replaces that share a selector branch with it, or of all of them when none
+does. It prints right after the last rule it must follow, as soon as no rule
+free to come first appears earlier in the source; the replaced rules stay in
+the order as relays, so every order they imposed still holds. When that last
+rule prints after the merged rule's first appearance, the rules the merged
+rule must precede that printed before it wait for it, and come after it
+interleaved by first appearance with the rules that follow; every other rule
+keeps its place. Each rule's slot is the largest first source position up to
+it in that order: where it prints, on the source scale.
+
 The candidate set is bounded and deterministic. Rules sharing a declaration,
 or writing a property once, form a bucket, and the factoring candidates are
 subsets of a bucket's members in source order. In a run of at most 128 rules

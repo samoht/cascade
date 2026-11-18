@@ -97,12 +97,30 @@ val selector_branch_key : Selector.t -> string
     under which a branch is pinned and shared. *)
 
 val node_origin : t -> node_id -> int
-(** [node_origin t i] is source-position metadata for local scheduling. Authored
-    nodes use their original position. Produced grouped nodes use the earliest
-    matching consumed selector branch, while single-source residuals keep their
-    original consumed node's position. The canonical projection uses this value
-    as its stable tie-break key, so unconstrained nodes keep first-appearance
-    source order. *)
+(** [node_origin t i] is the first source appearance of node [i], the key
+    {!canonical_order} breaks ties on: an authored node's position, and for a
+    node a rewrite produced the earliest origin of the consumed nodes it shares
+    a selector branch with (of all of them when it shares none). *)
+
+val compare_position : t -> node_id -> node_id -> int
+(** [compare_position t i j] orders nodes [i] and [j] as {!canonical_order}
+    prints them: negative when [i] comes first. It answers in constant time for
+    every node of [t], consumed ones included, which keep the place they had.
+    The order is the lineage's, kept by its newest graph: an older graph reads
+    it restricted to its own nodes, a linear extension of its edges too. *)
+
+val node_slot : t -> node_id -> int
+(** [node_slot t i] is the source position where node [i] prints: the largest
+    {!node_origin} of the nodes up to it in {!compare_position}, consumed ones
+    included. It never decreases along the order, is never below
+    [node_origin t i], and is [i]'s own position for a graph {!of_rules} built.
+*)
+
+val moved : t -> node_id list
+(** [moved t] is the live nodes, besides the nodes it produced, whose place in
+    {!compare_position} or whose {!node_slot} the rewrite that made [t] changed:
+    the nodes that had to wait for a produced node, and the nodes whose slot
+    that changed. Empty for a graph {!of_rules} built. *)
 
 val generation : t -> int
 (** [generation t] increments after every successful rewrite. Candidate queues
@@ -117,6 +135,13 @@ val exists_live_node : t -> (node_id -> bool) -> bool
     [List.exists f (live_nodes t)] without the list: the candidate search runs
     it once per proposed group over the whole graph, and answers no at almost
     every node, so the list was the scan's whole cost. *)
+
+val exists_live_between : t -> node_id -> node_id -> (node_id -> bool) -> bool
+(** [exists_live_between t lo hi f] is whether [f] holds of some live node
+    printed strictly between [lo] and [hi], asked in printed order and stopping
+    at the first that says yes. It walks those nodes alone, consumed ones
+    included, so a test of what stands between two rules costs their distance
+    rather than the size of the graph. *)
 
 val declaration_body_key : t -> node_id -> int list
 (** [declaration_body_key t i] is a hash key for bucketing nodes with identical
@@ -247,9 +272,17 @@ val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension
     of the dependency DAG (a path from the earlier to the later node of every
     conflicting pair). Among the nodes currently free to come next, Kahn's
-    algorithm takes the smallest first-appearance source key, then the node id.
-    Every constrained pair keeps its required order; unconstrained pairs are
-    projected deterministically without inventing a lexicographic CSS order. *)
+    algorithm takes the smallest {!node_origin}, then the node id, consumed
+    nodes taking their turn as relays. Every constrained pair keeps its required
+    order; unconstrained pairs are projected deterministically without inventing
+    a lexicographic CSS order.
+
+    The lineage keeps that order as rewrites land rather than running Kahn again
+    ({!compare_position} reads it), so this walks it in time linear in the
+    nodes. A node a rewrite produces prints after its last predecessor, before
+    the first node free then whose origin is later than its own; the nodes it
+    must precede that printed before that predecessor wait for it and come after
+    it, interleaved by origin with the nodes that follow. *)
 
 val rewrite :
   t ->
