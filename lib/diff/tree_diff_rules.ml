@@ -101,6 +101,14 @@ let decls_signature (decls : Css.declaration list) =
 
 let equal_decls_signature = List.equal equal_prop_value
 
+let same_declaration_set d1 d2 =
+  equal_decls_signature (decls_signature d1) (decls_signature d2)
+
+let same_declarations d1 d2 =
+  List.equal
+    (fun x y -> equal_prop_value (decl_to_prop_value x) (decl_to_prop_value y))
+    d1 d2
+
 (* Normalize a selector string by sorting comma-separated selector items. This
    ensures we consider ".a,.b" equivalent to ".b,.a" when matching.
 
@@ -560,8 +568,7 @@ let add_ordering_issue ~moved map2 acc sel1 decls1 sel2 decls2 =
     (* Same selector at this position: a difference only when its declarations
        differ, i.e. same-selector rules were reordered so the cascade winner
        flips. *)
-    if equal_decls_signature (decls_signature decls1) (decls_signature decls2)
-    then acc
+    if same_declaration_set decls1 decls2 then acc
     else (sel1, sel2, decls1, decls2) :: acc
   else if selector_moved moved sel1_key then
     (* Report the selector that moved, not the ones it displaced: a rule pulled
@@ -1051,7 +1058,7 @@ let is_pure_decl_reordering decls1 decls2 =
   in
   let pure =
     property_changes = [] && added_props = [] && removed_props = []
-    && equal_decls_signature (decls_signature decls1) (decls_signature decls2)
+    && same_declaration_set decls1 decls2
   in
   (pure, property_changes, added_props, removed_props)
 
@@ -1066,12 +1073,6 @@ let decl_level_reorder selector decls1 decls2 : rule_diff =
        new_declarations = Some decls2;
      }
     : rule_diff)
-
-let decls_str_equal d1 d2 =
-  List.length d1 = List.length d2
-  && List.for_all2
-       (fun x y -> decl_to_prop_value x = decl_to_prop_value y)
-       d1 d2
 
 let convert_modified_rule ~moved ~positions (sel1, sel2, decls1, decls2) =
   let sel1_str = Css.Selector.to_string sel1 in
@@ -1110,7 +1111,7 @@ let convert_modified_rule ~moved ~positions (sel1, sel2, decls1, decls2) =
       in
       if pure then
         if position_changed () then Some (reordered sel1_str)
-        else if decls_str_equal decls1 decls2 then
+        else if same_declarations decls1 decls2 then
           (* OCaml ASTs differ but string output is identical (e.g., Nested vs
              bare expression after calc() normalization) -- no real
              difference *)
@@ -1170,10 +1171,8 @@ let declarations_of_selector sel stmts =
 let merge_selector_group ~rules1 ~rules2 sel peers =
   let old_all = declarations_of_selector sel rules1
   and new_all = declarations_of_selector sel rules2 in
-  if
-    old_all <> []
-    && equal_decls_signature (decls_signature old_all) (decls_signature new_all)
-  then Rearranged { selector = sel; declarations = new_all }
+  if old_all <> [] && same_declaration_set old_all new_all then
+    Rearranged { selector = sel; declarations = new_all }
   else
     content_changed sel
       (List.concat_map (fun d -> fst (change_sides d)) peers)

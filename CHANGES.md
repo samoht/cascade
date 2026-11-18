@@ -297,6 +297,14 @@ to call instead, and moving off most of them is a rename or a deleted call.
   on every longhand they share, such as `border:1px solid red` and
   `border-width:1px`, no longer count as ordered, so the comparison does not
   report one of them as moved (#1394).
+- `cascade diff` without `--diff` reported a colour written two ways, such as
+  `color:#ffffff` against `color:#fff`, as a modified rule annotated
+  "(declarations differ in subtle ways)". Over `outlook-3` and its cssnano
+  output in the SatCSS corpus it listed 12 such rules. It now compares
+  declarations the way `--diff=tree` does. When the two files parse to the same
+  stylesheet, the report says "no structural change; the text differs" above the
+  text diff, instead of "none classified structurally". It still exits 1,
+  because the default mode counts any difference in the text (#1400).
 
 ### Speed
 
