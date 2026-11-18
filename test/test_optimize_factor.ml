@@ -311,6 +311,23 @@ let test_large_stylesheet_factoring_past_consumed_rules () =
   Alcotest.(check string)
     "factoring past consumed rules converges in one pass" once (minify_str once)
 
+(* The rule nested in [@media] under a pseudo-element matches nothing and goes
+   once the rule's body is optimized, which leaves the [@media] empty after the
+   body's own pass dropped its empty blocks. Below 129 rules the pipeline's next
+   pass dropped it; above, nothing did until the output was minified again. *)
+let test_large_stylesheet_drops_block_left_empty () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".empty-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input = padding ^ ".a::before { @media print { .b { color: blue } } }" in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the emptied block goes" false
+    (Astring.String.is_infix ~affix:"@media" once);
+  Alcotest.(check string)
+    "dropping dead nested rules converges in one pass" once (minify_str once)
+
 let test_large_stylesheet_factoring_reaches_fixpoint () =
   (* Large graphs refresh candidates in batches. The refreshed batch can itself
      expose another profitable grouping, which must be enumerated before the
@@ -841,6 +858,9 @@ let suite =
       ( "large stylesheet factoring past consumed rules",
         `Quick,
         test_large_stylesheet_factoring_past_consumed_rules );
+      ( "large stylesheet drops block left empty",
+        `Quick,
+        test_large_stylesheet_drops_block_left_empty );
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
