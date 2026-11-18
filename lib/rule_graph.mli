@@ -216,6 +216,18 @@ val selectors_conflict : Selector.t -> Selector.t -> bool
     branch of [a] and some branch of [b] have equal specificity and may match
     one element. *)
 
+type branches
+(** The comma branches of a selector, each with what {!selectors_conflict} reads
+    off it. *)
+
+val branches : Selector.t -> branches
+(** [branches s] is what {!selectors_conflict} reads off [s]. *)
+
+val node_selector_conflict : t -> branches -> node_id -> bool
+(** [node_selector_conflict t (branches a) i] is
+    [selectors_conflict a (node_rule t i).selector], read off what [t] holds for
+    node [i] rather than off its selector again. *)
+
 val precedes : t -> node_id -> node_id -> bool
 (** [precedes t i j] is [true] when the graph requires node [i] to be emitted
     before node [j], directly or through a compact transitive chain. This is for
