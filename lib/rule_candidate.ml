@@ -6,9 +6,13 @@ open Rule_rewrite
 module Node_set = Set.Make (Rule_graph.Node_id)
 module Int_set = Set.Make (Int)
 
-(* The graph the search reads, which a rewrite replaces, and the nodes it has
-   consumed. *)
-type view = { mutable graph : Rule_graph.t; mutable dead : Int_set.t }
+(* The graph the search reads, which a rewrite replaces, the nodes it has
+   consumed and how many it prints. *)
+type view = {
+  mutable graph : Rule_graph.t;
+  mutable dead : Int_set.t;
+  mutable live : int;
+}
 
 let node_rule g id = Rule_graph.node_rule g.graph id
 let is_live g id = not (Int_set.mem (Rule_graph.Node_id.to_int id) g.dead)
@@ -22,9 +26,11 @@ let view graph =
   for i = 0 to Rule_graph.node_count graph - 1 do
     if not (Int_set.mem i live) then dead := Int_set.add i !dead
   done;
-  { graph; dead = !dead }
+  { graph; dead = !dead; live = Int_set.cardinal live }
 
 let rewrite_view g graph ~consume =
+  let produced = Rule_graph.node_count graph - Rule_graph.node_count g.graph in
+  g.live <- g.live - List.length consume + produced;
   g.graph <- graph;
   g.dead <-
     List.fold_left
@@ -959,6 +965,10 @@ type grouping = Bodies | Selectors
 type group_bucket = {
   group_key : int;
   mutable members : Rule_graph.node_id list;  (** newest first *)
+  mutable bodies : Rule_graph.node_id list list;
+      (** the members split by exact body, as {!same_body_groups} splits them *)
+  mutable runs : Rule_graph.node_id list list;
+      (** the runs of {!field-bodies} the offers were made for *)
   mutable offers : offer list;
   mutable group_stamp : int;
 }
@@ -967,6 +977,7 @@ type groups = {
   grouping : grouping;
   group_buckets : group_bucket Int_table.t;
   mutable group_dirty : group_bucket list;
+  mutable spanned : bool;  (** whether the last settle split runs by span *)
 }
 
 let grouping_key core grouping id =
@@ -1010,7 +1021,14 @@ let groups_add core groups id =
         | Option.Some bucket -> bucket
         | Option.None ->
             let bucket =
-              { group_key = key; members = []; offers = []; group_stamp = -1 }
+              {
+                group_key = key;
+                members = [];
+                bodies = [];
+                runs = [];
+                offers = [];
+                group_stamp = -1;
+              }
             in
             Int_table.replace groups.group_buckets key bucket;
             bucket
@@ -1018,36 +1036,119 @@ let groups_add core groups id =
       bucket.members <- id :: bucket.members;
       touch_group core groups bucket
 
-let group_candidates core grouping ids =
+(* The transfer objective merges identical bodies only within
+   {!Subsets.max_span} printed rules: a compressor encodes a repeated body in a
+   few bytes wherever it sits, but a selector moved away from its neighbours
+   stops compressing against them. A run of members starts at the first member
+   printed and takes every member printed within that many rules of it. *)
+let spans core = Ctx.objective core.ctx = `Transfer
+
+(* The rank of every live rule in the order the graph prints, or [None] while
+   the graph prints too few rules for a run to need splitting. *)
+let printed_ranks core =
+  let g = core.view in
+  if not (spans core && g.live > Subsets.max_span + 1) then Option.None
+  else begin
+    let ranks = Array.make (Rule_graph.node_count g.graph) 0 in
+    Array.iteri
+      (fun rank id -> ranks.(Rule_graph.Node_id.to_int id) <- rank)
+      (Rule_graph.canonical_order g.graph);
+    Option.Some ranks
+  end
+
+let split_runs ~ranks = function
+  | [] -> []
+  | first :: rest ->
+      let rank id = ranks.(Rule_graph.Node_id.to_int id) in
+      let rec go first run runs = function
+        | [] -> List.rev (List.rev run :: runs)
+        | id :: rest ->
+            if rank id - rank first <= Subsets.max_span then
+              go first (id :: run) runs rest
+            else go id [ id ] (List.rev run :: runs) rest
+      in
+      go first [ first ] [] rest
+
+(* Under the transfer objective a body's members in the order they print, split
+   into runs when [ranks] says the graph needs it; otherwise the members as
+   filed. *)
+let body_runs core ~ranks ids =
+  if not (spans core) then [ ids ]
+  else
+    let sorted = List.sort (Rule_graph.compare_position core.view.graph) ids in
+    match ranks with
+    | Option.None -> [ sorted ]
+    | Option.Some ranks -> split_runs ~ranks sorted
+
+let group_candidates core grouping runs =
   let g = core.view in
   let finalize = core.finalize in
   let candidates = ref [] in
   (match grouping with
   | Bodies ->
-      same_body_groups g ids
-      |> List.iter
-           (add_identical_body_group ~ctx:core.ctx ~finalize g ~candidates)
+      List.iter
+        (add_identical_body_group ~ctx:core.ctx ~finalize g ~candidates)
+        runs
   | Selectors ->
-      same_selector_groups g ids
-      |> List.iter
-           (add_same_selector_group ~stats:(Ctx.stats core.ctx) ~finalize g
-              ~candidates));
+      List.iter
+        (add_same_selector_group ~stats:(Ctx.stats core.ctx) ~finalize g
+           ~candidates)
+        runs);
   List.rev !candidates
 
+let reoffer core groups bucket runs =
+  List.iter withdraw bucket.offers;
+  bucket.runs <- runs;
+  bucket.offers <-
+    group_candidates core groups.grouping runs |> List.map (offer core)
+
+let same_runs a b = List.equal (List.equal same_id) a b
+
+(* A commit anywhere moves the ranks, so while runs are split by span every
+   bucket of two or more members is split again, and offered again when its runs
+   changed. *)
 let settle_groups core groups =
+  let ranks =
+    match groups.grouping with
+    | Bodies -> printed_ranks core
+    | Selectors -> Option.None
+  in
   List.iter
     (fun bucket ->
-      List.iter withdraw bucket.offers;
-      bucket.offers <-
-        (match bucket.members with
-        | [] | [ _ ] -> []
-        | members ->
-            group_candidates core groups.grouping (List.rev members)
-            |> List.map (offer core));
+      (match bucket.members with
+      | [] | [ _ ] ->
+          bucket.bodies <- [];
+          reoffer core groups bucket []
+      | members -> (
+          let members = List.rev members in
+          match groups.grouping with
+          | Bodies ->
+              bucket.bodies <- same_body_groups core.view members;
+              reoffer core groups bucket
+                (List.concat_map (body_runs core ~ranks) bucket.bodies)
+          | Selectors ->
+              reoffer core groups bucket
+                (same_selector_groups core.view members)));
       if bucket.members = [] then
         Int_table.remove groups.group_buckets bucket.group_key)
     (List.rev groups.group_dirty);
-  groups.group_dirty <- []
+  groups.group_dirty <- [];
+  let spanned = Option.is_some ranks in
+  if spanned || groups.spanned then
+    Int_table.iter
+      (fun _ bucket ->
+        match bucket.members with
+        | [] | [ _ ] -> ()
+        | _ ->
+            if bucket.group_stamp <> core.epoch then begin
+              let runs =
+                List.concat_map (body_runs core ~ranks) bucket.bodies
+              in
+              if not (same_runs runs bucket.runs) then
+                reoffer core groups bucket runs
+            end)
+      groups.group_buckets;
+  groups.spanned <- spanned
 
 (* Selector-branch inlining: a receiver and a group meet on a branch key, and
    are a candidate when the receiver precedes the group. Both carry that branch,
@@ -1645,7 +1746,12 @@ type t = {
 }
 
 let groups size grouping =
-  { grouping; group_buckets = Int_table.create size; group_dirty = [] }
+  {
+    grouping;
+    group_buckets = Int_table.create size;
+    group_dirty = [];
+    spanned = false;
+  }
 
 let family size factoring budget =
   {
@@ -1680,7 +1786,9 @@ let add_node t id =
    its members in printed order, so a bucket holding one is sorted again, and
    asked again when its order changed or, for an indexed budget, which reads
    where its members print, whatever changed; a grouping bucket holds them in
-   creation order, and its candidates read the printed order afresh. *)
+   creation order, and its candidates read the printed order afresh: a
+   same-selector merge always, an identical-body merge under the transfer
+   objective. *)
 let reorder_family core family moved =
   let buckets = ref [] in
   List.iter
@@ -1710,6 +1818,7 @@ let reorder_family core family moved =
 
 let reorder_moved t moved =
   List.iter (groups_touch t.core t.selectors) moved;
+  if spans t.core then List.iter (groups_touch t.core t.bodies) moved;
   reorder_family t.core t.exact moved;
   reorder_family t.core t.default moved
 
