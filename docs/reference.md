@@ -141,6 +141,19 @@ produced rules one by one, shortest first and then by their text, then by the
 source positions of the consumed rules, earliest first; never by a hash or the
 order of a table.
 
+These bounds make the output of a large sheet short of a fixed point. Above 128
+input rules the pipeline makes one pass, and the search in that pass is
+bounded: a run of members spans at most 128 source positions, the budget stops
+at 256 subsets per kind, and only runs of neighbouring members are tried. A
+rule a merge produces also keeps the earliest source position of the rules it
+consumed, even where the cascade places it later in the output. The bounds, and
+the test for a rule standing between the members, read that position. A merge
+the pass leaves out is found when the output is minified again. Of the 504
+SatCSS sheets, 67 shrink on a second `--minify`, by 4070 bytes in all and by at
+most 434 bytes (guardian-stripmq-cleancss). Making up to five passes above 128
+rules as well brings all 504 to a fixed point in one run, at about 23% more CPU
+time over the corpus.
+
 ### Approximation and lossless mode
 
 Cascade folds colours only within 0.002 ΔE<sub>OK</sub> (the CSS Color 4
