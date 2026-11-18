@@ -823,10 +823,10 @@ let compatibility_declaration_sites =
 
 (* A twin can cover what an earlier rule of its run writes for the same
    selectors. [Rule.normalize] drops such a declaration, but it read the run
-   before the twin existed, and above 128 rules no pass follows to read it
-   again. So each run of [after] whose declarations the synthesis changed has
-   its shadowing read once more: linear, and it moves no rule. [before] is the
-   block the synthesis read, statement for statement. *)
+   before the twin existed, and no pass follows to read it again. So each run of
+   [after] whose declarations the synthesis changed has its shadowing read once
+   more: linear, and it moves no rule. [before] is the block the synthesis read,
+   statement for statement. *)
 let drop_shadowed_in_prefixed_runs ~before after =
   let flush acc run touched =
     let stmts = List.rev run in
@@ -1164,53 +1164,27 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
 let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
   edit_statements (sanitize_statement ~ctx ~lossless) b
 
-let rec statement_rule_count = function
-  | Rule _ -> 1
-  | stmt ->
-      let count = ref 0 in
-      List.iter
-        (fun stmt -> count := !count + statement_rule_count stmt)
-        (statement_children stmt);
-      !count
-
-let stylesheet_rule_count stmts =
-  List.fold_left (fun count stmt -> count + statement_rule_count stmt) 0 stmts
-
-let run_pipeline ~ctx ~targets ~enforce_spec ~aggressive stylesheet =
-  (* Re-run the top-level pipeline until the AST stops changing or a small cap
-     fires. A pass may shrink the input again because an earlier one
-     (vendor-alias drop, shorthand composition, media/support merging) exposed a
-     rule run the DAG factor pass can now optimize. Rule count is
-     non-increasing, so this converges; [aggressive] only widens the cap. *)
-  let cap =
-    if aggressive then 6
-    else if stylesheet_rule_count stylesheet > 128 then 1
-    else 5
-  in
+(* One pass, and optimizing its output again returns it. Each rule run is
+   factored until a graph built afresh from its output would change nothing
+   ({!Factor.run}); every other step finishes what it starts in the same pass: a
+   merge optimizes the blocks and runs it joins, a hoist joins the blocks it
+   leaves adjacent, a dead nested rule takes the blocks it empties, and the
+   prefixes are the ones the next pass would settle on. A pass that changes
+   nothing hands back its input. *)
+let run_pipeline ~ctx ~targets ~enforce_spec stylesheet =
   let factor_cache = Factor.cache () in
-  (* Inside the loop, not after it: a synthesised prefix is a declaration the
-     rest of the pipeline decides about. It is a rule's shared subset for the
-     factoring and a longhand for the shorthand contraction, and a pass that
-     runs once the loop has settled leaves both to the next caller, whose
-     emission then differs from this one.
-
-     It runs last in the body because the vendor-alias drop reads {!Baseline}
-     where this reads [targets]. The two disagree wherever a target trails
-     Baseline, and a prefix synthesised into the next pass's input would be
+  (* The prefixes come last: the vendor-alias drop reads {!Baseline} where the
+     synthesis reads [targets], and the two disagree wherever a target trails
+     Baseline, so a twin synthesised before the rule-local passes would be
      dropped there as dead. *)
   let prefixes stmts =
     if enforce_spec then stmts else add_compatibility_prefixes ~targets stmts
   in
-  let rec loop n stmts =
-    if n <= 0 then stmts
-    else
-      let next =
-        prefixes (statements_top_level ~factor_cache ~ctx ~enforce_spec stmts)
-      in
-      if next == stmts || Stylesheet.equal next stmts then stmts
-      else loop (n - 1) next
+  let result =
+    prefixes (statements_top_level ~factor_cache ~ctx ~enforce_spec stylesheet)
   in
-  loop cap stylesheet
+  if result == stylesheet || Stylesheet.equal result stylesheet then stylesheet
+  else result
 
 (* Bare names of every custom property referenced through [var()] in the tree.
    Scans the serialized declarations, so it sees references inside opaque values
@@ -1287,7 +1261,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let result =
     run_pipeline
       ~ctx:(Ctx.with_extend_lists true ctx)
-      ~targets ~enforce_spec ~aggressive stylesheet
+      ~targets ~enforce_spec stylesheet
   in
   let result =
     if prune_unused_custom_props then drop_unused_custom_props result
