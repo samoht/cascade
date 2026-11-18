@@ -7,6 +7,11 @@
 type t
 (** A budget. *)
 
+val max_span : int
+(** [max_span] is how far a merge reaches: [128]. A run of members spans at most
+    this many source positions above 128 rules, and under the transfer objective
+    identical bodies merge only within this many printed rules. *)
+
 val exact : aggressive:bool -> int -> t
 (** [exact ~aggressive nodes] is the budget of exact-shared factoring in a run
     of [nodes] rules: every small bucket whole, less one member, and as runs of

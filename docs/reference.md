@@ -157,6 +157,15 @@ one by one, shortest first and then by their text, then by the slots of the
 consumed rules when the candidate was queued, earliest first; never by a hash
 or the order of a table.
 
+Rules with one body form a bucket too. Under `--objective=transfer` its
+members merge in runs, read in the order they print. A run starts at the first
+member no earlier run holds. It takes every member printed within 128 rules of
+that one, counting only the rules that print. A commit anywhere changes how many
+rules print between two members, so every time the queue drains each bucket of
+two or more members is split again, and offered again where its runs changed.
+While at most 129 rules print, no run can be split. Under `--objective=raw` a
+bucket merges whole.
+
 These bounds make the output of a large sheet short of a fixed point. Above 128
 input rules the pipeline makes one pass, and the search in that pass is
 bounded: a run of members spans at most 128 slots, the budget stops at 256

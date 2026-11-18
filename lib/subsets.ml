@@ -67,8 +67,10 @@ type t =
   | Exhaustive of { limit : int; large_bucket_candidates : int }
   | Indexed of indexed_budget
 
+let max_span = 128
+
 let normal_indexed_budget =
-  { occurrence_window = 24; max_span = 128; max_candidates = 256 }
+  { occurrence_window = 24; max_span; max_candidates = 256 }
 
 let exact ~aggressive nodes =
   if aggressive || nodes <= 128 then
