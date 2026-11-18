@@ -24,7 +24,10 @@ and makes cascade cheaper to run.
   `-q` and `-v` work.
 - **Stable output.** Minified output no longer depends on hash order, and a
   rule merged into a nested parent is nested in the first pass rather than on
-  a second run. Numbers print the same on Windows as elsewhere.
+  a second run. Numbers print the same on Windows as elsewhere. Above 128
+  rules one pass still leaves some merges to a second run: 67 of the 504
+  SatCSS sheets shrink again, by at most 434 bytes, as docs/reference.md
+  states under "How rule merging scales".
 
 The price is under [Breaking](#breaking). Scripts that read cascade's
 diagnostics need a new pattern. In the library, parsers return a `result`
