@@ -14,10 +14,10 @@ and makes cascade cheaper to run.
   identical when one lost a rule inside `@media` to a parse error. It now
   exits 2, as it does for a rule lost inside `@supports`.
 - **Speed.** `--minify` is more than twice as fast as 1.2.1, over the 504
-  sheets of the SatCSS corpus and on Tailwind's output, and no sheet's output
-  grows by more than 3 bytes. `cascade diff --diff=canonical` of Tailwind's
-  stylesheet against tw's is about five times cheaper and uses less than half
-  the memory. Parsing is faster too, most of all on Tailwind's output.
+  sheets of the SatCSS corpus and on Tailwind's output. `cascade diff
+  --diff=canonical` of Tailwind's stylesheet against tw's is about five times
+  cheaper and uses less than half the memory. Parsing is faster too, most of
+  all on Tailwind's output.
 - **Readable warnings.** A warning reads `file:line:column: warning: message`
   over the source line and a caret. Repeats are counted under the first, so
   netflix.com's sheet prints about 40 lines where it printed nearly 500, and
