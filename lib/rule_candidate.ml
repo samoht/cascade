@@ -34,8 +34,6 @@ let rewrite_view g graph ~consume =
 let same_id a b = Rule_graph.Node_id.compare a b = 0
 let same_decl = Declaration.same_minified
 let decl_facts = Commute.facts
-let decl_facts_conflict = Commute.conflict
-let fact_decl = Commute.decl
 
 let declarations_equal (a : Declaration.declaration list)
     (b : Declaration.declaration list) =
@@ -204,39 +202,8 @@ end)
 let offered_on g (candidate : candidate) =
   { candidate with generation = Rule_graph.generation g.graph }
 
-let unique_decls decls =
-  let rec loop seen acc = function
-    | [] -> List.rev acc
-    | decl :: rest ->
-        if List.exists (same_decl decl) seen then loop seen acc rest
-        else loop (decl :: seen) (decl :: acc) rest
-  in
-  loop [] [] decls
-
-let contains_decl (rule : rule) decl =
-  List.exists (same_decl decl) rule.declarations
-
-let common_exact_decls (rules : rule list) =
-  match rules with
-  | [] -> []
-  | first :: rest ->
-      unique_decls first.declarations
-      |> List.filter (fun decl ->
-          List.for_all (fun r -> contains_decl r decl) rest)
-
-let remove_common common decls =
-  List.filter
-    (fun decl -> not (List.exists (fun common -> same_decl common decl) common))
-    decls
-
-let append_unique_decls base extras =
-  List.fold_left
-    (fun acc decl ->
-      if List.exists (same_decl decl) acc then acc else acc @ [ decl ])
-    base extras
-
 let keep_cost_aware_member g ~removed id (rule : rule) =
-  match remove_common removed rule.declarations with
+  match Lift.remove_common removed rule.declarations with
   | [] -> true
   | _ -> selector_size g id + 1 <= decls_inline_cost removed
 
@@ -339,109 +306,6 @@ let add_same_selector_group ~stats ~finalize g ~candidates ids =
       | Option.Some c -> candidates := c :: !candidates)
   | _ -> ()
 
-let exact_leftovers common rules =
-  List.filter_map
-    (fun (r : rule) ->
-      match remove_common common r.declarations with
-      | [] -> Option.None
-      | declarations ->
-          Option.Some
-            { r with declarations; nested = []; merge_key = Option.None })
-    rules
-
-let decl_fact_mem fact facts =
-  List.exists (fun other -> same_decl (fact_decl fact) (fact_decl other)) facts
-
-let unsafe_lift_over_leftover_facts group_facts decls =
-  let decls = decl_facts decls in
-  let rec loop prior_leftovers = function
-    | [] -> false
-    | fact :: rest ->
-        if decl_fact_mem fact group_facts then
-          List.exists
-            (fun prior -> decl_facts_conflict fact prior)
-            prior_leftovers
-          || loop prior_leftovers rest
-        else loop (fact :: prior_leftovers) rest
-  in
-  loop [] decls
-
-let unsafe_lift_in_any_member group_decls rules =
-  let group_facts = decl_facts group_decls in
-  List.exists
-    (fun (rule : rule) ->
-      unsafe_lift_over_leftover_facts group_facts rule.declarations)
-    rules
-
-let decl_mem decl decls = List.exists (same_decl decl) decls
-
-let group_orders_before group_decls left right =
-  let rec loop = function
-    | [] -> false
-    | decl :: rest ->
-        if same_decl decl left then true
-        else if same_decl decl right then false
-        else loop rest
-  in
-  loop group_decls
-
-let unsafe_group_order_in_member group_decls (rule : rule) =
-  let grouped =
-    decl_facts rule.declarations
-    |> List.filter (fun fact -> decl_mem (fact_decl fact) group_decls)
-  in
-  let rec loop prior = function
-    | [] -> false
-    | fact :: rest ->
-        List.exists
-          (fun prior ->
-            group_orders_before group_decls (fact_decl fact) (fact_decl prior)
-            && decl_facts_conflict fact prior)
-          prior
-        || loop (fact :: prior) rest
-  in
-  loop [] grouped
-
-let unsafe_group_order group_decls rules =
-  List.exists (unsafe_group_order_in_member group_decls) rules
-
-let declarations_conflict_with_group_facts group_facts declarations =
-  let declarations = decl_facts declarations in
-  List.exists
-    (fun decl ->
-      List.exists (fun group -> decl_facts_conflict decl group) group_facts)
-    declarations
-
-let unsafe_cross_member_leftover group_decls rules =
-  let group_facts = decl_facts group_decls in
-  List.exists
-    (fun (rule : rule) ->
-      let leftovers = remove_common group_decls rule.declarations in
-      declarations_conflict_with_group_facts group_facts leftovers
-      && List.exists
-           (fun (other : rule) ->
-             other != rule
-             && Rule_graph.selectors_conflict rule.selector other.selector)
-           rules)
-    rules
-
-let unsafe_lift_over_prior_member g group_decls rules_with_ids =
-  let group_facts = decl_facts group_decls in
-  let rec loop prior = function
-    | [] -> false
-    | (id, (rule : rule)) :: rest ->
-        let unsafe_prior =
-          List.exists
-            (fun (prior_id, (prior_rule : rule)) ->
-              Rule_graph.conflict g.graph prior_id id
-              && remove_common group_decls prior_rule.declarations
-                 |> declarations_conflict_with_group_facts group_facts)
-            prior
-        in
-        unsafe_prior || loop ((id, rule) :: prior) rest
-  in
-  loop [] rules_with_ids
-
 (* The first and the last of [ids] in the order the graph prints them. *)
 let printed_bounds g ids =
   match ids with
@@ -465,22 +329,6 @@ let rec id_mem id = function
 let crosses_bounds g ~lo ~hi id =
   Rule_graph.compare_position g.graph lo id < 0
   && Rule_graph.compare_position g.graph id hi < 0
-
-let decl_facts_shorthand_order_conflict grouped external_decl =
-  decl_facts_conflict grouped external_decl
-  && not
-       (Declaration.same_property (fact_decl grouped) (fact_decl external_decl))
-
-let declarations_cross_order grouped external_decls =
-  let grouped = decl_facts grouped in
-  let external_decls = decl_facts external_decls in
-  List.exists
-    (fun grouped ->
-      List.exists
-        (fun external_decl ->
-          decl_facts_shorthand_order_conflict grouped external_decl)
-        external_decls)
-    grouped
 
 (* Keyed on {!Declaration.prop_key}, the property's typed identity, rather than
    on its name, which exists only once [pp_property] has printed it: this key is
@@ -576,7 +424,7 @@ type exact_group = No_exact_group | Exact_group of group
 
 let exact_group ~shared ~finalize g ids =
   let rules_with_ids = rules_with_ids g ids in
-  match common_exact_decls (List.map snd rules_with_ids) with
+  match Lift.common_exact_decls (List.map snd rules_with_ids) with
   | [] -> No_exact_group
   | common -> (
       match cost_aware_exact_members g common rules_with_ids with
@@ -590,13 +438,15 @@ let exact_group ~shared ~finalize g ids =
             | Option.Some grouped ->
                 let grouped = { grouped with declarations = common } in
                 if
-                  unsafe_lift_in_any_member common rules
-                  || unsafe_group_order common rules
-                  || unsafe_cross_member_leftover common rules
-                  || unsafe_lift_over_prior_member g common members
+                  Lift.unsafe_lift_in_any_member common rules
+                  || Lift.unsafe_group_order common rules
+                  || Lift.unsafe_cross_member_leftover common rules
+                  || Lift.unsafe_lift_over_prior_member
+                       ~conflict:(Rule_graph.conflict g.graph)
+                       common members
                 then Option.None
                 else
-                  let produce = grouped :: exact_leftovers common rules in
+                  let produce = grouped :: Lift.exact_leftovers common rules in
                   Option.Some
                     ( grouped,
                       lazy
@@ -760,15 +610,16 @@ let removed_default_declarations entries member =
     entries
 
 let exact_common_without keys members =
-  common_exact_decls (default_member_rules members)
+  Lift.common_exact_decls (default_member_rules members)
   |> List.filter (fun decl -> not (declaration_has_any_key keys decl))
 
 let default_group_decls ~exact_common entries =
-  append_unique_decls exact_common
+  Lift.append_unique_decls exact_common
     (List.map (fun entry -> entry.default_decl) entries)
 
 let default_member_leftover ~keys ~entries ~exact_common ~prior member =
-  member.rule.declarations |> remove_common exact_common
+  member.rule.declarations
+  |> Lift.remove_common exact_common
   |> remove_property_declarations keys
   |> fun kept ->
   kept
@@ -777,14 +628,15 @@ let default_member_leftover ~keys ~entries ~exact_common ~prior member =
 
 let default_decl_removed_after_reassertion entries ~prior member =
   removed_default_declarations entries member
-  |> remove_common (reassert_default_declarations entries ~prior member)
+  |> Lift.remove_common (reassert_default_declarations entries ~prior member)
 
 let default_member_group_decls ~exact_common entries member =
   exact_common @ removed_default_declarations entries member
 
 let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
   let prior_leftover member =
-    member.rule.declarations |> remove_common exact_common
+    member.rule.declarations
+    |> Lift.remove_common exact_common
     |> remove_property_declarations keys
     |> fun kept -> kept @ override_declarations entries member
   in
@@ -800,7 +652,7 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
           && List.exists
                (fun prior_member ->
                  Rule_graph.conflict g.graph prior_member.id member.id
-                 && declarations_conflict_with_group_facts group_facts
+                 && Lift.declarations_conflict_with_group_facts group_facts
                       (prior_leftover prior_member))
                prior
         in
@@ -838,9 +690,12 @@ let default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
   | Option.Some grouped ->
       let grouped = { grouped with declarations = group_decls } in
       if
-        unsafe_lift_in_any_member group_decls (default_member_rules members)
-        || unsafe_group_order group_decls (default_member_rules members)
-        || unsafe_lift_over_prior_member g exact_common
+        Lift.unsafe_lift_in_any_member group_decls
+          (default_member_rules members)
+        || Lift.unsafe_group_order group_decls (default_member_rules members)
+        || Lift.unsafe_lift_over_prior_member
+             ~conflict:(Rule_graph.conflict g.graph)
+             exact_common
              (List.map (fun member -> (member.id, member.rule)) members)
         || unsafe_default_prior_lift g ~keys ~entries ~exact_common members
       then Option.None
@@ -894,12 +749,12 @@ let default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
    the same either way. *)
 let member_may_survive_pruning g provider_decls (member : default_member) =
   List.for_all
-    (fun decl -> decl_mem decl provider_decls)
+    (fun decl -> Lift.decl_mem decl provider_decls)
     member.rule.declarations
   || selector_size g member.id + 1
      <= decls_inline_cost
           (List.filter
-             (fun decl -> decl_mem decl member.rule.declarations)
+             (fun decl -> Lift.decl_mem decl member.rule.declarations)
              provider_decls)
 
 let default_group_can_keep_two g provider members =
@@ -1044,7 +899,7 @@ let selector_inline_candidate ~finalize g ~receiver_id ~group_id
     {
       receiver with
       declarations =
-        append_unique_decls receiver.declarations group.declarations;
+        Lift.append_unique_decls receiver.declarations group.declarations;
       nested = [];
       merge_key = Option.None;
     }
@@ -1351,7 +1206,7 @@ let factoring_keys factoring (rule : rule) =
     | Exact ->
         List.mapi
           (fun i decl -> (Shared decl, i))
-          (unique_decls rule.declarations)
+          (Lift.unique_decls rule.declarations)
     | Default ->
         let rec loop position seen acc = function
           | [] -> List.rev acc
@@ -1567,7 +1422,8 @@ let crossed core (group : group) (grouped : rule) id =
   &&
   let external_rule : rule = node_rule core.view id in
   Rule_graph.selectors_conflict grouped.selector external_rule.selector
-  && declarations_cross_order grouped.declarations external_rule.declarations
+  && Lift.declarations_cross_order grouped.declarations
+       external_rule.declarations
 
 (* Whether [group] would cross the live rule [id], wherever it prints. *)
 let crosses core (group : group) (grouped : rule) id =

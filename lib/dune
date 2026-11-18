@@ -115,6 +115,7 @@
   cover
   edge
   rule_candidate
+  lift
   rule_rewrite
   webkit_fallback
   gzip_size
