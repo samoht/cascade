@@ -356,6 +356,23 @@ let branch_facts selector =
     List.map Selector_summary.of_selector branches,
     List.map Selector.specificity branches )
 
+type branches =
+  Selector.t list * Selector_summary.t list * Selector.specificity list
+
+let branches = branch_facts
+
+(* A graph without a nesting parent holds each node's branches as [branch_facts]
+   reads them off its selector. *)
+let node_selector_conflict t (branches_a, summaries_a, specificities_a) i =
+  let branches_b, summaries_b, specificities_b =
+    match t.parent with
+    | Option.None ->
+        (t.selectors.(i), t.selector_summaries.(i), t.specificities.(i))
+    | Option.Some _ -> branch_facts t.rules.(i).selector
+  in
+  selectors_order_conflict ~closed_world:false branches_a summaries_a
+    specificities_a branches_b summaries_b specificities_b
+
 let selectors_conflict a b =
   let branches_a, summaries_a, specificities_a = branch_facts a in
   let branches_b, summaries_b, specificities_b = branch_facts b in
