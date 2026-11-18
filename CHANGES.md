@@ -399,7 +399,7 @@ to call instead, and moving off most of them is a rename or a deleted call.
   Each step left the output byte for byte as it was (#1306, #1307, #1313,
   #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356, #1361, #1362, #1363,
   #1364, #1365, #1374, #1375, #1376, #1377, #1378, #1379, #1380, #1384,
-  #1385).
+  #1385, #1420).
 - `cascade diff --diff=canonical` of Tailwind's stylesheet against tw's takes
   about a fifth of the instructions of 1.2.1 and less than half the memory.
   The faster ordering keeps a rule after an earlier one that writes another

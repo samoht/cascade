@@ -1436,18 +1436,16 @@ let all_live core ids = List.for_all (is_live core.view) ids
 (* Whether [group] would cross the live rule [id], printed between its first and
    last member: [id] is not a member, matches with the group and writes across
    its declarations' order. *)
-let crossed core (group : group) (grouped : rule) id =
+let crossed core (group : group) branches (grouped : rule) id =
   (not (id_mem id group.members))
-  &&
-  let external_rule : rule = node_rule core.view id in
-  Rule_graph.selectors_conflict grouped.selector external_rule.selector
+  && Rule_graph.node_selector_conflict core.view.graph (Lazy.force branches) id
   && Lift.declarations_cross_order grouped.declarations
-       external_rule.declarations
+       (node_rule core.view id).declarations
 
 (* Whether [group] would cross the live rule [id], wherever it prints. *)
-let crosses core (group : group) (grouped : rule) id =
+let crosses core (group : group) branches (grouped : rule) id =
   crosses_bounds core.view ~lo:group.lo ~hi:group.hi id
-  && crossed core group grouped id
+  && crossed core group branches grouped id
 
 let scan core (group : group) =
   group.checked <- core.epoch;
@@ -1462,9 +1460,10 @@ let scan core (group : group) =
         witness := Option.Some id;
         true
       in
+      let branches = lazy (Rule_graph.branches grouped.selector) in
       if
         Rule_graph.exists_live_between core.view.graph lo hi (fun id ->
-            crossed core group grouped id && found id)
+            crossed core group branches grouped id && found id)
       then group.witness <- !witness
 
 (* A candidate is offered again only when it changed: a group computes its
@@ -1525,7 +1524,10 @@ let recheck_group core ~consumed ~produced ~moved ~is_moved (group : group) =
     | Option.Some _, Option.Some witness ->
         if id_mem witness consumed || is_moved witness then rescan ()
     | Option.Some (grouped, _), Option.None -> (
-        match List.find_opt (crosses core group grouped) (produced @ moved) with
+        let branches = lazy (Rule_graph.branches grouped.selector) in
+        match
+          List.find_opt (crosses core group branches grouped) (produced @ moved)
+        with
         | Option.None -> ()
         | Option.Some id ->
             group.witness <- Option.Some id;
