@@ -4,6 +4,7 @@ open Stylesheet
 open Stdlib
 open Conflict_index
 module String_table = Common.Table.Make (String)
+module Int_table = Common.Table.Make (Int)
 
 module Node_id = struct
   type t = int
@@ -53,6 +54,9 @@ type lineage = {
   mutable marks : int array;
   mutable stamp : int;
   mutable row : Bytes.t;
+  order : Order_maintenance.t;
+      (** every node the newest graph holds, consumed ones included, in the
+          order it prints them: a topological order of its edges. *)
 }
 
 type t = {
@@ -85,6 +89,16 @@ type t = {
   mutable selector_sizes : int array;
       (** the minified byte size of each node's selector, worked out once *)
   mutable origin : int array;
+      (** each node's first source appearance, which [lineage.order] breaks ties
+          on: an authored node's position, and for a produced node the earliest
+          origin of the consumed nodes it shares a selector branch with, or of
+          all of them *)
+  mutable slot : int array;
+      (** the source position where each node prints: the largest origin up to
+          it in [lineage.order] *)
+  mutable moved : node_id list;
+      (** the live nodes the rewrite that made this graph moved in
+          [lineage.order], besides the ones it produced *)
   mutable death : int array;
       (** the generation of the first graph a node is dead in, [max_int] while
           it lives. Shared across the lineage like [rules], so a graph reads
@@ -649,6 +663,8 @@ let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
       sizes;
       selector_sizes;
       origin = Array.init n Fun.id;
+      slot = Array.init n Fun.id;
+      moved = [];
       death = Array.make n max_int;
       selectors;
       selector_summaries;
@@ -666,6 +682,7 @@ let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
           marks = [||];
           stamp = 0;
           row = Bytes.empty;
+          order = Order_maintenance.v n;
         };
       reach = Unbuilt;
       expansions = 0;
@@ -692,7 +709,10 @@ let node_rule t i = t.rules.(i)
 let node_size t i = t.sizes.(i)
 let node_selector_size t i = t.selector_sizes.(i)
 let node_branches t i = t.branches.(i)
+let node_slot t i = t.slot.(i)
 let node_origin t i = t.origin.(i)
+let compare_position t i j = Order_maintenance.compare t.lineage.order i j
+let moved t = t.moved
 
 (* [i] is a node of [t] that no rewrite up to [t] consumed. *)
 let alive t i = t.death.(i) > t.generation
@@ -874,6 +894,10 @@ let rec exists_live_from t f i =
 
 let exists_live_node t f = exists_live_from t f 0
 
+let exists_live_between t lo hi f =
+  Order_maintenance.exists_between t.lineage.order lo hi (fun i ->
+      i < t.count && alive t i && f i)
+
 (* The interned declaration-body hash list of a node, for bucketing nodes by
    identical declaration body. *)
 let declaration_body_key t i =
@@ -953,8 +977,18 @@ let canonical_order_by t (rank : node_id -> int) : node_id array =
   | Option.Some order -> order
   | Option.None -> invalid_arg "Rule_graph.canonical_order: cyclic live graph"
 
+(* The lineage's order, keeping [t]'s live nodes. *)
 let canonical_order t : node_id array =
-  canonical_order_by t (fun node -> t.origin.(node))
+  let order = t.lineage.order in
+  let out = ref [] in
+  let rec loop = function
+    | Option.None -> ()
+    | Option.Some i ->
+        if i < t.count && alive t i then out := i :: !out;
+        loop (Order_maintenance.next order i)
+  in
+  loop (Order_maintenance.first order);
+  Array.of_list (List.rev !out)
 
 (* A graph and the graphs rewritten from it share their per-node arrays: an
    attempt writes its produced nodes into the slots past its parent's [count],
@@ -1039,6 +1073,7 @@ let reserve t added =
   t.sizes <- grow t.sizes;
   t.selector_sizes <- grow t.selector_sizes;
   t.origin <- grow t.origin;
+  t.slot <- grow t.slot;
   t.death <- grow t.death;
   t.selectors <- grow t.selectors;
   t.selector_summaries <- grow t.selector_summaries;
@@ -1066,6 +1101,7 @@ let produced_graph t produced =
     t with
     generation = t.generation + 1;
     count = total + added;
+    moved = [];
     (* the produced graph's edges are still being written; {!rewrite} hands it
        [t]'s answers once it is accepted *)
     reach = Unbuilt;
@@ -1550,6 +1586,35 @@ let carry_reach t graph entering finished =
         then graph.reach <- Held sets
       end
 
+(* Add produced node [p] to [graph]'s printed order. [placed q] says whether
+   node [q] is in it: every existing node, and the produced nodes added before
+   [p]. *)
+let place_in_order graph ~placed ~moved entering p =
+  let total = graph.count - Array.length entering in
+  let preds =
+    let rec siblings q acc =
+      if q >= graph.count then acc
+      else
+        siblings (q + 1)
+          (if
+             q <> p && placed q
+             && List.exists (fun (j, _) -> j = p) graph.succ.(q)
+           then q :: acc
+           else acc)
+    in
+    siblings total (List.map fst entering.(p - total))
+  in
+  Printed_order.add
+    {
+      order = graph.lineage.order;
+      origin = graph.origin;
+      slot = graph.slot;
+      succ = graph.succ;
+      death = graph.death;
+      generation = graph.generation;
+    }
+    ~preds ~moved p
+
 (* Make the accepted [graph] the lineage's newest: its consumed nodes die, the
    edges it pointed at its produced nodes join the existing nodes' lists, and
    its produced nodes enter the index so later rewrites find them as external
@@ -1573,6 +1638,17 @@ let commit t graph ~consumed entering finished =
     index_node graph (Node_id.of_int_exn p)
   done;
   t.lineage.head <- graph.generation;
+  let placed = Array.make (graph.count - total) false in
+  let moved = Int_table.create 16 in
+  for at = 0 to graph.count - total - 1 do
+    place_in_order graph
+      ~placed:(fun q -> placed.(q - total))
+      ~moved:(fun k -> if k < total then Int_table.replace moved k ())
+      entering (total + at);
+    placed.(at) <- true
+  done;
+  graph.moved <-
+    Int_table.fold (fun k () acc -> k :: acc) moved [] |> List.sort Int.compare;
   carry_reach t graph entering finished
 
 let index_live t =
@@ -1650,7 +1726,9 @@ let run ?parent ?exclusive ~folds rules =
       rules;
       sizes = [||];
       selector_sizes = [||];
+      slot = [||];
       origin = [||];
+      moved = [];
       death = [||];
       selectors;
       selector_summaries;
@@ -1668,6 +1746,7 @@ let run ?parent ?exclusive ~folds rules =
           marks = [||];
           stamp = 0;
           row = Bytes.empty;
+          order = Order_maintenance.v 0;
         };
       reach = Unbuilt;
       expansions = 0;
