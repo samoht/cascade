@@ -24,20 +24,18 @@ and makes cascade cheaper to run.
   `-q` and `-v` work.
 - **Stable output.** Minified output no longer depends on hash order, and a
   rule merged into a nested parent is nested in the first pass rather than on
-  a second run. Numbers print the same on Windows as elsewhere. Above 128
-  rules the merge search reads where each rule prints, so a merge with a
-  rule that only seemed to stand between its members is no longer left to a
-  second run. One pass still leaves some merges to a second run: 53 of the
-  504 SatCSS sheets shrink again, by 1996 bytes in all and at most 296 bytes,
-  as docs/reference.md states under "How rule merging scales".
+  a second run. Numbers print the same on Windows as elsewhere. Minifying
+  `--minify` output again returns it byte for byte, on all 504 SatCSS sheets
+  and on Tailwind's output, where 53 of those sheets and Tailwind's own
+  stylesheet shrank again.
 - **Smaller output that follows one stated rule.** Over the 504 SatCSS
   sheets and Tailwind's output, `--minify` output is 1.3% smaller raw than
   with 1.2.1, and the same within 0.1% under gzip and brotli. Merges keep
   every selector within 128 rules of where it was written, and within that
   bound the output is as small as cascade can make it. A sheet can still come
-  out a little larger than with 1.2.1 in one metric: 10 grow by more than 1%
-  under gzip (at most 2.2%) and 25 under brotli (at most 7%, on one cnn
-  sheet), while 143 shrink by more than 1% raw.
+  out a little larger than with 1.2.1 in one metric: 11 grow by more than 1%
+  under gzip (at most 2.2%) and 24 under brotli (at most 7%, on one cnn
+  sheet), while 148 shrink by more than 1% raw.
 
 The price is under [Breaking](#breaking). Scripts that read cascade's
 diagnostics need a new pattern. In the library, parsers return a `result`
@@ -198,6 +196,24 @@ to call instead, and moving off most of them is a rename or a deleted call.
 
 ### Output
 
+- Minifying `--minify` output again could shrink it further: 53 of the 504
+  SatCSS sheets did, by up to 296 bytes, and so did Tailwind's stylesheet. One
+  run left work behind. Above 128 rules the merge search judged distances and
+  orders on its own working state, where rules already merged away still stood
+  between the others and still ordered them, so a search of the output reached
+  merges it had not. Joining two `@media` blocks put two runs of rules side by
+  side after each had been optimised alone, and moving a declaration back into
+  its rule left two nested blocks adjacent and unmerged. Dropping a nested rule
+  that matches nothing left its `@media` empty, a composed `transition` left the
+  one it overrode, and a `-webkit-mask-composite` twin was written that the next
+  run dropped. Each run's merge search now ends only when a search of its output
+  would find nothing more, and each of the others is finished in the same pass.
+  The optimiser makes one pass at every size, where it made up to five below 129
+  rules. The output of 69 SatCSS sheets is 2115 bytes smaller raw in all, and
+  none is larger raw; 40 are 213 bytes larger in all under gzip, as minifying
+  their earlier output again made them. `--minify` takes about 9% more CPU over
+  the corpus, about 4% on Tailwind's stylesheet and 2% on tw's, most of it on
+  the sheets whose output shrinks (#1401, #1402, #1403).
 - `--minify` merged rules at any distance, then threw a whole factoring run
   away when an estimate of the gzip size grew, so near merges were lost with
   far ones and a second run could decide the other way. The default
