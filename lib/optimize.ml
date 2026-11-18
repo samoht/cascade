@@ -207,6 +207,12 @@ let scope_owner =
       merge_key = None;
     }
 
+(* The blocks of [stmts] a rule dropped from left empty, at any depth: the pass
+   that optimized them dropped the empty blocks it saw before the rule went. *)
+let rec drop_emptied_blocks stmts =
+  drop_empty_rules
+    (List.map_preserve (map_statement_children drop_emptied_blocks) stmts)
+
 let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (stmts : statement list) : statement list =
   match stmts with
@@ -574,7 +580,12 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         if enforce_spec then nested
         else List.map_preserve drop_nesting_prefix nested
   in
-  let rule = Nest.drop_dead_nested (rule_with_nested rule nested) in
+  let rule =
+    let rule = rule_with_nested rule nested in
+    let live = Nest.drop_dead_nested rule in
+    if live == rule then rule
+    else rule_with_nested live (drop_emptied_blocks live.nested)
+  in
   let rule =
     let hoisted = Nest.hoist_declaration_runs rule in
     if hoisted == rule then rule
