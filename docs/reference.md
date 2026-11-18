@@ -10,7 +10,7 @@ the README first; come here to check a detail.
 
 | Flag | Purpose |
 |---|---|
-| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
+| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline makes one pass at every size, and each step finishes in it what it starts, so minifying the output again returns it. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes over merges that keep every selector within 128 rules of where it was written, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
@@ -166,14 +166,27 @@ two or more members is split again, and offered again where its runs changed.
 While at most 129 rules print, no run can be split. Under `--objective=raw` a
 bucket merges whole.
 
-These bounds make the output of a large sheet short of a fixed point. Above 128
-input rules the pipeline makes one pass, and the search in that pass is
-bounded: a run of members spans at most 128 slots, the budget stops at 256
-subsets per kind, and only runs of neighbouring members are tried. A merge the
-pass leaves out is found when the output is minified again. Of the 504 SatCSS
-sheets, 53 shrink on a second `--minify`, by 1996 bytes in all and by at most
-296 bytes. Making up to five passes above 128 rules as well brought all 504 to
-a fixed point in one run, at about 23% more CPU time over the corpus.
+These bounds are read on the graph a run's rewrites reach, and a second
+`--minify` reads them on a graph built afresh from the output. There a rule's
+slot is its rank in the printed order, the budget follows the number of rules
+that print, and the rules a rewrite consumed are gone, so no order runs
+through them. A run is settled when such a graph would accept no candidate
+the run has not offered. The run works out the subsets that graph takes, and
+the entries a default group keeps when an overrider precedes the provider only
+through live rules that conflict; each candidate these bring about, and each
+refusal the run made, is asked as that graph would orient it. A run that is not
+settled factors again on a graph built from its output. Every run that changes
+the rules saves bytes, so this ends.
+
+The pipeline makes one pass, at every size, and nothing runs to confirm it.
+Each step finishes what it starts in that pass instead: a block merge
+optimizes again the rule runs it joins, a hoist joins the blocks it leaves
+adjacent, a dead nested rule takes the blocks it empties, a shorthand
+composition deduplicates what it overrides, and the compatibility prefixes are
+the ones a second pass would settle on. The corpus tests check that optimizing
+the output again returns it. Of the 504 SatCSS sheets and Tailwind's two, none
+changes on a second `--minify`. In those sheets 97 factoring runs are not
+settled at first, and each of them changes when it runs again.
 
 ### Approximation and lossless mode
 

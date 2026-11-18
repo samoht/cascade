@@ -4192,9 +4192,9 @@ val optimize :
     selector keeps its [&] prefix.
 
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
-    runs even when the preflight predicts low gain, and the top-level
-    statement-optimisation pipeline iterates until the AST reaches a structural
-    fixpoint (capped at a small bound).
+    runs even when the preflight predicts low gain. In every mode the top-level
+    statement-optimisation pipeline makes one pass, and optimising the result
+    again returns it.
 
     When [regroup] is [true] (the default), order-dependent adjacent rule runs
     may be regrouped by factoring shared declarations and synthesising nesting.

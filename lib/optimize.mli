@@ -296,8 +296,9 @@ val stylesheet :
     prefix.
 
     When [aggressive] is [true] (default [false]), global factoring runs even
-    when its preflight predicts low or no gain, candidate limits widen, and the
-    top-level statement pipeline uses a larger structural-fixpoint cap.
+    when its preflight predicts low or no gain and candidate limits widen. In
+    every mode the top-level statement pipeline makes one pass, and optimising
+    the result again returns it.
 
     When [regroup] is [true] (the default), order-dependent adjacent rule runs
     may be regrouped by factoring shared declarations and synthesising nesting.
