@@ -87,7 +87,7 @@ let kind_rank = function
    order total. *)
 let consume_key graph (candidate : Rule_rewrite.candidate) =
   candidate.consume
-  |> List.map (Rule_graph.node_origin graph)
+  |> List.map (Rule_graph.node_slot graph)
   |> List.sort Int.compare |> Array.of_list
 
 let produce_text (candidate : Rule_rewrite.candidate) =
