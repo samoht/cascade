@@ -1,8 +1,8 @@
 CLI: one size/speed dial. --objective=raw subsumes the old --aggressive flag.
 
-The aggressive global-factoring fixpoint only pays for uncompressed output (the
-transfer gate discards its extra raw-byte wins as gzip growth), so it is folded
-into --objective=raw rather than exposed as a separate flag.
+The aggressive global-factoring fixpoint only pays its wall clock back on
+uncompressed output, so it is folded into --objective=raw rather than exposed
+as a separate flag.
 
 --aggressive is no longer accepted.
 

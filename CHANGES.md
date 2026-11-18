@@ -27,9 +27,17 @@ and makes cascade cheaper to run.
   a second run. Numbers print the same on Windows as elsewhere. Above 128
   rules the merge search reads where each rule prints, so a merge with a
   rule that only seemed to stand between its members is no longer left to a
-  second run. One pass still leaves some merges to a second run: 46 of the
-  504 SatCSS sheets shrink again, 42 of them by 1565 bytes in all, as
-  docs/reference.md states under "How rule merging scales".
+  second run. One pass still leaves some merges to a second run: 53 of the
+  504 SatCSS sheets shrink again, by 1996 bytes in all and at most 296 bytes,
+  as docs/reference.md states under "How rule merging scales".
+- **Smaller output that follows one stated rule.** Over the 504 SatCSS
+  sheets and Tailwind's output, `--minify` output is 1.3% smaller raw than
+  with 1.2.1, and the same within 0.1% under gzip and brotli. Merges keep
+  every selector within 128 rules of where it was written, and within that
+  bound the output is as small as cascade can make it. A sheet can still come
+  out a little larger than with 1.2.1 in one metric: 10 grow by more than 1%
+  under gzip (at most 2.2%) and 25 under brotli (at most 7%, on one cnn
+  sheet), while 143 shrink by more than 1% raw.
 
 The price is under [Breaking](#breaking). Scripts that read cascade's
 diagnostics need a new pattern. In the library, parsers return a `result`
@@ -142,6 +150,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   and test `changed` where you tested `changed_passes > 0`. `--profile` prints
   one row per run, with `run`, `rules-in`, `rules-out`, `bytes-in`, `saved`,
   `changed` and `time` (#1372).
+- **`Stats` no longer counts transfer reverts.** `Stats.revert_fixpoint` and
+  `Stats.counters`'s `factor_transfer_reverts` counted factoring runs thrown
+  away because an estimate of the gzip size grew. The optimizer no longer
+  judges a run on that estimate, so the count would always be 0. Delete the
+  call and the field read; `--profile` no longer prints a `factor transfer
+  gate` line (#1399).
 - **`Reader` has no error type of its own.** `Reader.Parse_error`, its
   `Reader.parse_error` record, `Reader.pp_parse_error`, `Reader.with_filename`,
   the `err` functions (`err`, `err_eof`, `err_expected`, `err_expected_but_eof`,
@@ -184,6 +198,15 @@ to call instead, and moving off most of them is a rename or a deleted call.
 
 ### Output
 
+- `--minify` merged rules at any distance, then threw a whole factoring run
+  away when an estimate of the gzip size grew, so near merges were lost with
+  far ones and a second run could decide the other way. The default
+  `--objective=transfer` now minimises output bytes over merges that keep
+  every selector within 128 rules of where it was written, because a
+  compressor encodes a repeated declaration in two or three bytes wherever it
+  sits, but a selector moved away from its neighbours stops compressing
+  against them. Nothing judges the result afterwards. `--objective=raw` merges
+  at any distance (#1399).
 - `--minify --scope=stylesheet` dropped declarations a page needs. A
   declaration written before longhands of its family was reset by the shorthand
   built from them: `background:#fff url(a.png) no-repeat center` lost its image

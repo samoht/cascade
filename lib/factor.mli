@@ -16,8 +16,7 @@ val run :
   Stylesheet.rule list ->
   Stylesheet.rule list
 (** Run the DAG-backed factor fixpoint. [settle] (default identity) applies
-    cheap postprocessing to both sides of the transfer-size gate, so the gate
-    compares the actual alternatives returned to its caller.
+    cheap postprocessing to the result, factored or not.
 
     A rule the scheduler produces is passed through [finalize]; one it leaves
     alone is returned as given, so the result is finalized when the input is. *)

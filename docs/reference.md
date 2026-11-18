@@ -11,7 +11,7 @@ the README first; come here to check a detail.
 | Flag | Purpose |
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
-| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
+| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes over merges that keep every selector within 128 rules of where it was written, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
@@ -170,14 +170,10 @@ These bounds make the output of a large sheet short of a fixed point. Above 128
 input rules the pipeline makes one pass, and the search in that pass is
 bounded: a run of members spans at most 128 slots, the budget stops at 256
 subsets per kind, and only runs of neighbouring members are tried. A merge the
-pass leaves out is found when the output is minified again. The transfer gate
-also decides a segment again on the second pass, and can keep a factoring it
-reverted on the first. Of the 504 SatCSS sheets, 46 shrink on a second
-`--minify`, by 14525 bytes in all and by at most 3240 bytes; four nytimes
-sheets, where the gate reverts the first pass's factoring and keeps the
-second's, account for 12960 of them, and the other 42 shrink by 1565 bytes.
-Making up to five passes above 128 rules as well brought all 504 to a fixed
-point in one run, at about 23% more CPU time over the corpus.
+pass leaves out is found when the output is minified again. Of the 504 SatCSS
+sheets, 53 shrink on a second `--minify`, by 1996 bytes in all and by at most
+296 bytes. Making up to five passes above 128 rules as well brought all 504 to
+a fixed point in one run, at about 23% more CPU time over the corpus.
 
 ### Approximation and lossless mode
 

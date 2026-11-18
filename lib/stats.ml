@@ -14,7 +14,6 @@ type counters = {
   factor_fixpoints_skipped : int;
   factor_preflight_gain : int;
   factor_bytes_saved : int;
-  factor_transfer_reverts : int;
   nested_merge_probes : int;
 }
 
@@ -33,7 +32,6 @@ let no_counters =
     factor_fixpoints_skipped = 0;
     factor_preflight_gain = 0;
     factor_bytes_saved = 0;
-    factor_transfer_reverts = 0;
     nested_merge_probes = 0;
   }
 
@@ -59,13 +57,6 @@ let skip_fixpoint t =
     {
       t.counters with
       factor_fixpoints_skipped = t.counters.factor_fixpoints_skipped + 1;
-    }
-
-let revert_fixpoint t =
-  t.counters <-
-    {
-      t.counters with
-      factor_transfer_reverts = t.counters.factor_transfer_reverts + 1;
     }
 
 let add_preflight_gain t gain =
