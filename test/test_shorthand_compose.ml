@@ -1056,6 +1056,32 @@ let test_a_single_declaration_composes_to_itself () =
         Cascade_spec_inventory.Property_grammar.rows)
     [ `Fragment; `Stylesheet ]
 
+(* The contraction writes [transition:opacity 2s] after the earlier
+   [transition], which it then overrides whole; one optimization drops the
+   earlier one too. The padding takes the sheet past the size where the pipeline
+   makes more than one pass, which hid it. *)
+let test_contraction_drops_what_it_overrides () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".contract-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let css =
+    padding
+    ^ ".x{transition:color \
+       1s;transition-property:opacity;transition-duration:2s}"
+  in
+  match Css.of_string ~strict:false css with
+  | Error _ -> Alcotest.fail "parse failed"
+  | Ok p ->
+      let out =
+        Css.to_string ~minify:true
+          (Css.optimize ~scope:`Stylesheet p.stylesheet)
+      in
+      Alcotest.(check bool)
+        "the composed shorthand stands alone" true
+        (Astring.String.is_suffix ~affix:".x{transition:opacity 2s}"
+           (String.trim out))
+
 let suite =
   ( "shorthand_compose",
     [
@@ -1065,6 +1091,8 @@ let suite =
         test_layer_contraction_keeps_an_earlier_shorthand;
       Alcotest.test_case "font contraction keeps an earlier longhand" `Quick
         test_font_contraction_keeps_an_earlier_longhand;
+      Alcotest.test_case "contraction drops what it overrides" `Quick
+        test_contraction_drops_what_it_overrides;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "transition contraction covers other rules" `Quick
