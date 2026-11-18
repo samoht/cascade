@@ -221,7 +221,7 @@ let refusal_names_the_first_unordered_node () =
        ~consume:(nids [ 0; 2 ])
        ~produce:(rules_of ".a,.b{color:red}.x{top:0}")
    with
-  | Error (Rule_graph.Ambiguous_external_order { produced; external_ }) ->
+  | Error (Rule_graph.Ambiguous_external_order { produced; external_; _ }) ->
       Alcotest.(check (pair int int))
         "first produced node, around the middle rule" (3, 1)
         (Rule_graph.Node_id.to_int produced, Rule_graph.Node_id.to_int external_)

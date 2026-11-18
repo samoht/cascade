@@ -467,12 +467,67 @@ module Refresh = struct
       (List.length files) !commits
 end
 
+(* A run that says [afresh] is a fixed point of a graph built afresh from the
+   rules it prints, in that order: a run over that graph commits nothing. Each
+   sheet's rules are scheduled once, and the first sheet whose afresh run moves
+   again stops the run. A run that does not say [afresh] is counted, with
+   whether the fresh run moved it. This checks one build against itself, so it
+   needs no baseline. *)
+module Settle = struct
+  let printed g =
+    Array.to_list
+      (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
+
+  let run paths =
+    let files =
+      List.concat_map
+        (fun path ->
+          if Sys.is_directory path then css_files path [] else [ path ])
+        paths
+      |> List.sort String.compare
+    in
+    let ctx = Ctx.fragment and finalize = Fun.id in
+    let afresh = ref 0 and unsettled = ref 0 and moved = ref 0 in
+    List.iter
+      (fun path ->
+        match Candidates.rules (read_file path) with
+        | [] -> ()
+        | rules ->
+            let outcome =
+              Rule_scheduler.run ~ctx ~finalize (Rule_graph.of_rules rules)
+            in
+            let again =
+              Rule_scheduler.run ~ctx ~finalize
+                (Rule_graph.of_rules (printed outcome.graph))
+            in
+            let commits = Rule_graph.generation again.graph > 0 in
+            if outcome.afresh then begin
+              incr afresh;
+              if commits then
+                fail "%s: the run said afresh, and a fresh run commits" path
+            end
+            else begin
+              incr unsettled;
+              if commits then incr moved
+            end;
+            Fmt.pr "%s\t%s\t%s\n%!" path
+              (if outcome.afresh then "afresh" else "unsettled")
+              (if commits then "moves" else "stays"))
+      files;
+    Fmt.epr
+      "settle: %d sheets, %d afresh and none moves on a fresh graph, %d not \
+       afresh of which %d move\n\
+       %!"
+      (List.length files) !afresh !unsettled !moved
+end
+
 let usage () =
   fail
     "usage: driver outputs CORPUS_ROOT\n\
     \       driver candidates [--quick]\n\
     \       driver refresh PATH...\n\
-    \       driver refresh --random COUNT SIZE"
+    \       driver refresh --random COUNT SIZE\n\
+    \       driver settle PATH..."
 
 let () =
   match Array.to_list Sys.argv with
@@ -482,4 +537,5 @@ let () =
   | [ _; "refresh"; "--random"; count; size ] ->
       Refresh.run_random ~count:(int_of_string count) ~size:(int_of_string size)
   | _ :: "refresh" :: (_ :: _ as paths) -> Refresh.run paths
+  | _ :: "settle" :: (_ :: _ as paths) -> Settle.run paths
   | _ -> usage ()

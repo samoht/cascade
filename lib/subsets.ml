@@ -135,3 +135,21 @@ let of_bucket budget ~slot ids =
   | Exhaustive { limit; large_bucket_candidates } ->
       bounded_subsets ~limit ~large_bucket_candidates ids
   | Indexed indexed -> indexed_windows ~slot indexed (Array.of_list ids)
+
+let take budget buckets =
+  match shared budget with
+  | Option.None -> List.concat buckets
+  | Option.Some max_candidates ->
+      let rec spend remaining acc = function
+        | [] -> List.rev acc
+        | subsets :: rest ->
+            if remaining <= 0 then List.rev acc
+            else
+              let rec first n acc = function
+                | x :: xs when n > 0 -> first (n - 1) (x :: acc) xs
+                | _ -> acc
+              in
+              let n = Int.min remaining (List.length subsets) in
+              spend (remaining - n) (first n acc subsets) rest
+      in
+      spend max_candidates [] buckets

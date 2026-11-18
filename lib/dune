@@ -26,6 +26,7 @@
   inline_import
   line_col
   merge
+  property_key
   properties_intf
   properties_layout_intf
   properties_text_intf

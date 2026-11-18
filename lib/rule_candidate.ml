@@ -50,7 +50,6 @@ let contains_vendor_pseudo_element = Merge.vendor
 let decls_size = Size.decls
 let mix_int = Common.mix_int
 let hash_string = Common.hash_string
-let hash_bool = function false -> 0 | true -> 1
 let hash_ints xs = List.fold_left mix_int 0x345678 xs
 
 module Int_table = Common.Table.Make (struct
@@ -119,26 +118,6 @@ let body_equal_key g id = Rule_graph.declaration_body_key g.graph id
 let body_bucket_key g id = body_equal_key g id |> hash_ints
 let rules_with_ids g ids = List.map (fun id -> (id, node_rule g id)) ids
 
-(* Each declaration of [r] paired with a later one that is the other half of a
-   compatibility fallback. Almost every rule has none, and the scan below only
-   reaches the produced rules for a rule that has one. *)
-let fallback_pairs (r : rule) =
-  let rec walk acc = function
-    | [] -> acc
-    | decl :: rest ->
-        let acc =
-          List.fold_left
-            (fun acc other ->
-              if Webkit_fallback.is_pair decl other then (decl, other) :: acc
-              else acc)
-            acc rest
-        in
-        walk acc rest
-  in
-  if Webkit_fallback.holds_a_prefixed_spelling r.declarations then
-    walk [] r.declarations
-  else []
-
 (* The prefix synthesis reads one rule at a time and asks only whether THAT rule
    already carries the prefixed spelling. So a rewrite that leaves the two
    halves of a pair in two rules has the missing half written back beside the
@@ -160,7 +139,7 @@ let splits_a_fallback_pair g ~consume ~produce =
     (fun id ->
       List.exists
         (fun pair -> not (together pair))
-        (fallback_pairs (node_rule g id)))
+        (Webkit_fallback.pairs (node_rule g id).declarations))
     consume
 
 let rewrite_candidate ~kind ~finalize g ~consume ~produce =
@@ -336,30 +315,6 @@ let crosses_bounds g ~lo ~hi id =
   Rule_graph.compare_position g.graph lo id < 0
   && Rule_graph.compare_position g.graph id hi < 0
 
-(* Keyed on {!Declaration.prop_key}, the property's typed identity, rather than
-   on its name, which exists only once [pp_property] has printed it: this key is
-   built for every declaration of every rule the candidate search touches. *)
-type property_key = {
-  prop : Declaration.prop_key;
-  important : bool;
-  hash : int;
-}
-
-let declaration_property_key decl : property_key =
-  let prop = Declaration.property_key decl in
-  let important = Declaration.is_important decl in
-  {
-    prop;
-    important;
-    hash = mix_int (Declaration.hash_prop_key prop) (hash_bool important);
-  }
-
-let property_key_equal left right =
-  Bool.equal left.important right.important
-  && Declaration.equal_prop_key left.prop right.prop
-
-let property_key_hash key = key.hash
-
 (* A group rule with the candidate it makes, shared by every subset that reaches
    it: [members] are the rules it consumes, and [decls] and [props] what it
    factors out of them, which together decide the candidate. The fields below
@@ -370,7 +325,7 @@ type group = {
   uid : int;
   members : Rule_graph.node_id list;
   decls : Declaration.declaration list;
-  props : property_key list;
+  props : Property_key.t list;
   grouped : (rule * candidate option Lazy.t) option Lazy.t;
   mutable refs : int;
   mutable checked : int;
@@ -391,7 +346,7 @@ let shared size = { by_members = Ids_table.create size; next_group = 0 }
 let share shared ~members ~decls ~props grouped =
   let same group =
     List.equal same_decl group.decls decls
-    && List.equal property_key_equal group.props props
+    && List.equal Property_key.equal group.props props
   in
   let known =
     match Ids_table.find_opt shared.by_members members with
@@ -462,49 +417,10 @@ let exact_group ~shared ~finalize g ids =
           Exact_group
             (share shared ~members:ids ~decls:common ~props:[] grouped))
 
-(* [property_key_equal (declaration_property_key decl) key] without building
-   [decl]'s key: the scans below ask it of every declaration of every member of
-   every candidate group. *)
-let declaration_has_key key decl =
-  Bool.equal (Declaration.is_important decl) key.important
-  && Declaration.equal_prop_key (Declaration.property_key decl) key.prop
-
-let declaration_has_any_key keys decl =
-  List.exists (fun key -> declaration_has_key key decl) keys
-
-let single_declaration_in_list key decls =
-  let rec loop found = function
-    | [] -> found
-    | decl :: rest ->
-        if declaration_has_key key decl then
-          match found with
-          | Option.None -> loop (Option.Some decl) rest
-          | Option.Some _ -> Option.None
-        else loop found rest
-  in
-  loop Option.None decls
-
-let single_declaration_for_property key (r : rule) =
-  single_declaration_in_list key r.declarations
-
-let property_keys (r : rule) =
-  List.fold_left
-    (fun keys decl ->
-      let key = declaration_property_key decl in
-      if List.exists (property_key_equal key) keys then keys else key :: keys)
-    [] r.declarations
-
-let rec has_property_key key = function
-  | [] -> false
-  | decl :: rest -> declaration_has_key key decl || has_property_key key rest
-
-let remove_property_declarations keys decls =
-  List.filter (fun decl -> not (declaration_has_any_key keys decl)) decls
-
 type default_member = { id : Rule_graph.node_id; rule : rule }
 
 type default_entry = {
-  key : property_key;
+  key : Property_key.t;
   default_decl : Declaration.declaration;
 }
 
@@ -515,24 +431,24 @@ let common_property_keys members =
   match members with
   | [] -> []
   | first :: _ ->
-      property_keys first.rule
+      Property_key.of_declarations first.rule.declarations
       |> List.filter (fun key ->
           List.for_all
             (fun member ->
-              single_declaration_for_property key member.rule <> Option.None)
+              Property_key.single key member.rule.declarations <> Option.None)
             members)
       |> List.rev
 
 let default_entries first keys =
   List.filter_map
     (fun key ->
-      match single_declaration_for_property key first.rule with
+      match Property_key.single key first.rule.declarations with
       | Option.None -> Option.None
       | Option.Some default_decl -> Option.Some { key; default_decl })
     keys
 
 let member_declaration entry member =
-  single_declaration_for_property entry.key member.rule
+  Property_key.single entry.key member.rule.declarations
 
 let override_declarations entries member =
   List.filter_map
@@ -617,7 +533,7 @@ let removed_default_declarations entries member =
 
 let exact_common_without keys members =
   Lift.common_exact_decls (default_member_rules members)
-  |> List.filter (fun decl -> not (declaration_has_any_key keys decl))
+  |> List.filter (fun decl -> not (Property_key.has_any keys decl))
 
 let default_group_decls ~exact_common entries =
   Lift.append_unique_decls exact_common
@@ -626,7 +542,7 @@ let default_group_decls ~exact_common entries =
 let default_member_leftover ~keys ~entries ~exact_common ~prior member =
   member.rule.declarations
   |> Lift.remove_common exact_common
-  |> remove_property_declarations keys
+  |> Property_key.remove keys
   |> fun kept ->
   kept
   @ reassert_default_declarations entries ~prior member
@@ -643,7 +559,7 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
   let prior_leftover member =
     member.rule.declarations
     |> Lift.remove_common exact_common
-    |> remove_property_declarations keys
+    |> Property_key.remove keys
     |> fun kept -> kept @ override_declarations entries member
   in
   let rec loop prior = function
@@ -827,7 +743,8 @@ let default_group ~shared ~finalize g members entries =
    {!Rule_graph.try_rewrite} preserves the partial order, so an entry dropped
    for an override that precedes the provider stays dropped, and these are the
    only questions a later graph can answer differently. *)
-let surviving_group ~shared ~finalize g known =
+let surviving_group ?(precedes = fun g -> Rule_graph.precedes g.graph) ~shared
+    ~finalize g known =
   match known with
   | No_default_group -> Option.None
   | Default_members known ->
@@ -837,7 +754,7 @@ let surviving_group ~shared ~finalize g known =
           (fun (_, overriders) ->
             not
               (List.exists
-                 (fun member -> Rule_graph.precedes g.graph member provider)
+                 (fun member -> precedes g member provider)
                  overriders))
           known.entries
       in
@@ -1285,17 +1202,17 @@ type factoring = Exact | Default
 
 type factoring_key =
   | Shared of Declaration.declaration
-  | Property of property_key
+  | Property of Property_key.t
 
 let factoring_key_equal a b =
   match (a, b) with
   | Shared a, Shared b -> same_decl a b
-  | Property a, Property b -> property_key_equal a b
+  | Property a, Property b -> Property_key.equal a b
   | Shared _, Property _ | Property _, Shared _ -> false
 
 let factoring_key_hash = function
   | Shared decl -> Declaration.hash decl
-  | Property key -> property_key_hash key
+  | Property key -> Property_key.hash key
 
 (* The keys [rule] is filed under, each with the position of its declaration:
    every declaration once for exact sharing, and every property written exactly
@@ -1312,12 +1229,12 @@ let factoring_keys factoring (rule : rule) =
         let rec loop position seen acc = function
           | [] -> List.rev acc
           | decl :: rest ->
-              let key = declaration_property_key decl in
-              if List.exists (property_key_equal key) seen then
+              let key = Property_key.of_declaration decl in
+              if List.exists (Property_key.equal key) seen then
                 loop (position + 1) seen acc rest
               else
                 let acc =
-                  if has_property_key key rest then acc
+                  if Property_key.written key rest then acc
                   else (Property key, position) :: acc
                 in
                 loop (position + 1) (key :: seen) acc rest
@@ -1950,6 +1867,123 @@ let offers t =
   family t.exact;
   family t.default;
   List.sort (fun (a : offer) (b : offer) -> Int.compare a.key b.key) !acc
+
+(* The subsets a graph built afresh from the rules [core]'s graph prints, in
+   that order, takes in [family]: there each rule's slot and node are its rank,
+   and the budget is chosen for that many rules. *)
+let fresh_subsets core family ~ranks =
+  let rank id = ranks.(Rule_graph.Node_id.to_int id) in
+  let aggressive = Ctx.aggressive core.ctx in
+  let budget =
+    match family.factoring with
+    | Exact -> Subsets.exact ~aggressive core.view.live
+    | Default -> Subsets.default ~aggressive core.view.live
+  in
+  let buckets =
+    Int_table.fold
+      (fun _ buckets acc ->
+        List.fold_left
+          (fun acc bucket ->
+            match List.rev bucket.fmembers with
+            | [] | [ _ ] -> acc
+            | (first, position) :: _ as members -> (
+                match
+                  Subsets.of_bucket budget ~slot:rank (List.map fst members)
+                with
+                | [] -> acc
+                | subsets ->
+                    let at = rank first in
+                    ( {
+                        least = at;
+                        size = List.length members;
+                        first = at;
+                        position;
+                      },
+                      subsets )
+                    :: acc))
+          acc buckets)
+      family.fbuckets []
+  in
+  Subsets.take budget
+    (List.map snd (List.sort (fun (a, _) (b, _) -> compare_rank a b) buckets))
+
+(* The group [subset] reaches on a graph built afresh from the printed rules: an
+   exact-shared group reads only the rules, and a default one keeps each entry
+   no overrider precedes the provider of through live rules. *)
+let fresh_group core family subset =
+  match Lazy.force subset.answer with
+  | Exact_answer No_exact_group -> Option.None
+  | Exact_answer (Exact_group group) -> Option.Some group
+  | Default_answer known ->
+      Option.map fst
+        (surviving_group
+           ~precedes:(fun g member provider ->
+             Option.is_some (Rule_graph.precedes_afresh g.graph member provider))
+           ~shared:family.shared ~finalize:core.finalize core.view known)
+
+(* Whether a graph built afresh accepts the candidate of [group], unoffered. *)
+let accepted_afresh core (group : group) =
+  group.refs = 0
+  &&
+  (scan core group;
+   match (group.witness, Lazy.force group.grouped) with
+   | Option.None, Option.Some (_, scored) -> (
+       match Lazy.force scored with
+       | Option.None -> false
+       | Option.Some (candidate : candidate) ->
+           not
+             (Rule_graph.refused_afresh core.view.graph
+                ~consume:candidate.consume ~produce:candidate.produce))
+   | Option.Some _, _ | _, Option.None -> false)
+
+(* Whether a graph built afresh from the rules the graph prints would accept a
+   candidate of [family] the current graph has not offered: one a subset the
+   buckets take reaches only there, or one a subset only there would take
+   reaches. [ranks] gives each live rule its rank in the printed order. *)
+let unsearched core family ~ranks =
+  let taken = Ids_table.create 64 in
+  let reaches_another subset =
+    match fresh_group core family subset with
+    | Option.None -> false
+    | Option.Some group ->
+        (not (Option.equal ( == ) (Option.Some group) subset.reached))
+        && accepted_afresh core group
+  in
+  Int_table.fold
+    (fun _ buckets found ->
+      found
+      || List.exists
+           (fun bucket ->
+             List.exists
+               (fun subset ->
+                 Ids_table.replace taken subset.ids ();
+                 reaches_another subset)
+               bucket.taken)
+           buckets)
+    family.fbuckets false
+  || indexed family
+     && List.exists
+          (fun ids ->
+            (not (Ids_table.mem taken ids))
+            &&
+            match fresh_group core family (subset_of core family ids) with
+            | Option.None -> false
+            | Option.Some group -> accepted_afresh core group)
+          (fresh_subsets core family ~ranks:(Lazy.force ranks))
+
+let afresh t =
+  let core = t.core in
+  let g = core.view.graph in
+  let ranks =
+    lazy
+      (let ranks = Array.make (Rule_graph.node_count g) 0 in
+       Array.iteri
+         (fun rank id -> ranks.(Rule_graph.Node_id.to_int id) <- rank)
+         (Rule_graph.canonical_order g);
+       ranks)
+  in
+  let searched f = not (unsearched core f ~ranks) in
+  searched t.exact && searched t.default
 
 let is_live t id = is_live t.core.view id
 let candidates t = List.map (fun (offer : offer) -> offer.candidate) (offers t)

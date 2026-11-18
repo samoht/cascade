@@ -271,6 +271,63 @@ let test_large_stylesheet_block_merge_rejoins_runs () =
   Alcotest.(check string)
     "merging blocks then factoring converges in one pass" once (minify_str once)
 
+(* Factoring on a large sheet searches neighbours within 128 source positions.
+   [.x] and [.y] sit 141 apart, so the search on the input never pairs them, but
+   once the pairs between them merge they print 71 rules apart, and a search on
+   the output does: minifying the output again factored [color:red] out of
+   them. *)
+let test_large_stylesheet_factoring_reaches_span () =
+  let pairs =
+    List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
+  in
+  let input =
+    String.concat ""
+      ((".x{color:red;margin:0}" :: pairs) @ [ ".y{color:red;padding:0}" ])
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the rules the merges brought within reach share their declaration" true
+    (Astring.String.is_prefix ~affix:".x,.y{color:red}" once);
+  Alcotest.(check string)
+    "factoring over the printed span converges in one pass" once
+    (minify_str once)
+
+(* A rewrite leaves the rules it consumed in the graph's order, and the orders
+   they imposed stand. Here they made [.MomentCapsuleCoverAttribution] and a
+   later rule ambiguous to merge across, an order a graph of the output, which
+   holds only the rules it prints, does not have: minifying the output again
+   merged them. *)
+let test_large_stylesheet_factoring_past_consumed_rules () =
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".relay-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    ".MomentMediaItem-entity--image{display:block}.MomentButton{display:inline-block}.MomentCapsuleCoverAttribution{display:block}.MomentCapsuleCoverAttribution,.MomentCapsuleCoverAttribution:hover{color:#aab8c2}.MomentSportsScores--portrait \
+     .MomentSportsScores-sportsTeamScore{-ms-flex-negative:0}.MomentCapsuleCover \
+     .MomentUserByline-nameBreak{display:block}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "factoring past consumed rules converges in one pass" once (minify_str once)
+
+(* The rule nested in [@media] under a pseudo-element matches nothing and goes
+   once the rule's body is optimized, which leaves the [@media] empty after the
+   body's own pass dropped its empty blocks. Below 129 rules the pipeline's next
+   pass dropped it; above, nothing did until the output was minified again. *)
+let test_large_stylesheet_drops_block_left_empty () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".empty-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input = padding ^ ".a::before { @media print { .b { color: blue } } }" in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the emptied block goes" false
+    (Astring.String.is_infix ~affix:"@media" once);
+  Alcotest.(check string)
+    "dropping dead nested rules converges in one pass" once (minify_str once)
+
 let test_large_stylesheet_factoring_reaches_fixpoint () =
   (* Large graphs refresh candidates in batches. The refreshed batch can itself
      expose another profitable grouping, which must be enumerated before the
@@ -349,6 +406,28 @@ let test_large_stylesheet_prefix_twin_shadows_in_one_pass () =
   let once = minify_str input in
   Alcotest.(check string)
     "large-sheet prefix twins shadow in one pass" once (minify_str once)
+
+(* The prefix pass writes [-webkit-mask-composite:xor] for [exclude] and a twin
+   of the [env()] value. The vendor-alias drop reads the twin as dead, and [xor]
+   then makes the prefixed property the author's, so nothing writes the twin
+   back: a second pass dropped it. *)
+let test_large_stylesheet_prefix_twins_settle_in_one_pass () =
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".twin-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  List.iter
+    (fun rule ->
+      let once = minify_str (rule ^ padding) in
+      Alcotest.(check string)
+        (rule ^ ": prefix twins settle in one pass")
+        once (minify_str once))
+    [
+      "a{mask-composite:exclude;mask-composite:env(safe-area-inset-top)}";
+      "a{mask-composite:env(safe-area-inset-top);mask-composite:exclude}";
+      "a{mask-composite:env(safe-area-inset-top);mask-composite:exclude!important}";
+      "a{mask-composite:exclude;mask-composite:env(safe-area-inset-top)!important}";
+    ]
 
 let test_prefixed_longhand_contracts_in_one_pass () =
   (* [`Stylesheet] licenses the partial-coverage shorthand, so the synthesised
@@ -795,9 +874,21 @@ let suite =
       ( "large stylesheet block merge rejoins runs",
         `Quick,
         test_large_stylesheet_block_merge_rejoins_runs );
+      ( "large stylesheet factoring reaches span",
+        `Quick,
+        test_large_stylesheet_factoring_reaches_span );
+      ( "large stylesheet factoring past consumed rules",
+        `Quick,
+        test_large_stylesheet_factoring_past_consumed_rules );
+      ( "large stylesheet drops block left empty",
+        `Quick,
+        test_large_stylesheet_drops_block_left_empty );
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
+      ( "large stylesheet prefix twins settle in one pass",
+        `Quick,
+        test_large_stylesheet_prefix_twins_settle_in_one_pass );
       ( "large stylesheet prefix twin shadows in one pass",
         `Quick,
         test_large_stylesheet_prefix_twin_shadows_in_one_pass );
