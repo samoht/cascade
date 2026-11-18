@@ -228,7 +228,13 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
         in
         let stmts = if Ctx.regroup ctx then Nest.statements stmts else stmts in
         let stmts =
-          merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts
+          let merged =
+            merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts
+          in
+          if merged == stmts then stmts
+          else
+            rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports
+              ~before:stmts merged
         in
         stmts |> Block.merge_layer_declarations |> drop_empty_rules
       in
@@ -252,6 +258,52 @@ and merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts =
   |> merge_consecutive_containers ~optimize_merged_block
   |> merge_distant_containers ?owner ~optimize_merged_block
   |> merge_consecutive_starting_style ~optimize_merged_block
+
+(* A block a merge took away can leave two rule runs of [merged] adjacent, and
+   the run they make was optimized as two. [before] is the list the merge read:
+   it holds every rule statement [merged] does, in the same order, so a run is
+   joined where two of its rules sit apart there. Each joined run is optimized
+   again as the one run it now is, its rules' bodies aside, which are already,
+   and the regrouping reads the list again when one changed. *)
+and rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports ~before merged
+    =
+  let shallow = Ctx.with_recurse_blocks false ctx in
+  let changed = ref false in
+  let flush acc run joined =
+    let stmts = List.rev_map fst run in
+    if not joined then List.rev_append stmts acc
+    else
+      let rules = List.rev_map snd run in
+      let rules' =
+        rules_aux ?factor_cache ~ctx:shallow ~enforce_spec ~owner ~supports
+          rules
+      in
+      if rules' == rules then List.rev_append stmts acc
+      else begin
+        changed := true;
+        List.rev_append (List.map (fun r -> Rule r) rules') acc
+      end
+  in
+  (* Whether a statement of [before] comes before [stmt], and what follows. *)
+  let rec find stmt skipped = function
+    | s :: rest when s == stmt -> (skipped, rest)
+    | _ :: rest -> find stmt true rest
+    | [] -> (true, [])
+  in
+  let rec walk acc run joined before = function
+    | [] -> List.rev (flush acc run joined)
+    | (Rule r as stmt) :: rest ->
+        let skipped, before = find stmt false before in
+        let joined =
+          joined || match run with [] -> false | _ :: _ -> skipped
+        in
+        walk acc ((stmt, r) :: run) joined before rest
+    | stmt :: rest -> walk (stmt :: flush acc run joined) [] false before rest
+  in
+  let rejoined = walk [] [] false before merged in
+  if not !changed then merged
+  else if Ctx.regroup ctx then Nest.statements rejoined
+  else rejoined
 
 (* Walk the statement list left to right over a reversed accumulator.
 
