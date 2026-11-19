@@ -23,6 +23,15 @@ val shared : t -> int option
 (** [shared b] is the number of subsets all the buckets of a run share, taken in
     the order the caller ranks them, when [b] bounds the run as a whole. *)
 
-val of_bucket : t -> Rule_graph.node_id list -> Rule_graph.node_id list list
-(** [of_bucket b ids] is the subsets of the bucket [ids], given in the order
-    they print, that [b] tries, in the order it tries them. *)
+type bucket
+(** The subsets of one bucket. *)
+
+val bucket : t -> Rule_graph.node_id list -> bucket
+(** [bucket b ids] is the subsets of the bucket [ids], given in the order they
+    print, that [b] tries. *)
+
+val count : bucket -> int
+(** [count s] is how many subsets [s] holds. *)
+
+val take : bucket -> int -> Rule_graph.node_id list list
+(** [take s n] is the first [n] subsets of [s], in the order they are tried. *)
