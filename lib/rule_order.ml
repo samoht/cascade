@@ -68,16 +68,21 @@ let element_node (stmt : statement) (rules : rule list) : rule =
    before [j]. [footprints] is the overlap key list of each declaration, hoisted
    out of the pair loop: computing it names the property, which serializes the
    declaration's property through a fresh buffer. *)
+(* CSS Cascade 5 sec. 6.1 sorts by importance before order of appearance, so two
+   declarations of different importance never decide each other in one rule,
+   whatever they write. *)
+let orders a a_keys b b_keys =
+  Bool.equal (Declaration.is_important a) (Declaration.is_important b)
+  && Shorthand.declarations_overlap_with_keys a a_keys b b_keys
+
 let overlap_indegrees (arr : Declaration.declaration array) footprints :
     int array =
   let n = Array.length arr in
   let indeg = Array.make n 0 in
   for j = 0 to n - 1 do
     for i = 0 to j - 1 do
-      if
-        Shorthand.declarations_overlap_with_keys arr.(i) footprints.(i) arr.(j)
-          footprints.(j)
-      then indeg.(j) <- indeg.(j) + 1
+      if orders arr.(i) footprints.(i) arr.(j) footprints.(j) then
+        indeg.(j) <- indeg.(j) + 1
     done
   done;
   indeg
@@ -124,8 +129,7 @@ let ordered_declarations ~key ~compare (decls : Declaration.declaration list) :
         for j = b + 1 to n - 1 do
           if
             (not emitted.(j))
-            && Shorthand.declarations_overlap_with_keys arr.(b) footprints.(b)
-                 arr.(j) footprints.(j)
+            && orders arr.(b) footprints.(b) arr.(j) footprints.(j)
           then indeg.(j) <- indeg.(j) - 1
         done
       done;

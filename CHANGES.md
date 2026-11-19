@@ -353,6 +353,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   touches every property, so the same pair written as one selector list
   compared different. An element both match takes the declarations twice
   either way, and the two compare identical (#1410).
+- `cascade diff --diff=canonical` kept a normal and an important declaration
+  of one rule in their written order when they touch, so the rule written the
+  other way round compared different. Importance sorts before order of
+  appearance (CSS Cascade 5 sec. 6.1), and the two commute (#1411).
 
 ### Speed
 
