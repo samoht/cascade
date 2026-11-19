@@ -305,6 +305,11 @@ to call instead, and moving off most of them is a rename or a deleted call.
   `:-webkit-full-screen-ancestor` and `:-moz-full-screen` as unknown
   pseudo-classes, though Chromium, WebKit and Firefox read them. They are kept
   as written (#1408).
+- `--minify` kept both declarations of `.a{content:"a";content:"b"}`, since a
+  later `content` can be a value some browser rejects and the earlier its
+  fallback. After a string, a quote keyword, a counter, `none` or a CSS-wide
+  keyword, which every browser reads, nothing is left to fall back to, and the
+  earlier declaration is dropped (#1417).
 
 ### Comparing stylesheets
 
