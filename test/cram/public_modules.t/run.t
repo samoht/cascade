@@ -62,6 +62,7 @@ the public API has to update:
   Rule_graph
   Rule_index
   Rule_order
+  Rule_order_layer
   Rule_rewrite
   Rule_scheduler
   Selector
