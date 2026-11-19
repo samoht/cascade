@@ -92,6 +92,33 @@ let complex_values () =
   decl_optimizes ~prop:"background"
     ~into:"-webkit-linear-gradient(0deg,red,#00f)"
     "-webkit-linear-gradient(0deg, red, blue)";
+  (* CSS Image Values 3 (W3C Working Draft, 17 February 2011) sec. 5.1.1, the
+     syntax the Compatibility Standard sec. 3.3.1 gives the prefixed linear
+     gradients: a side keyword names where the gradient starts, [left],
+     [bottom], [right] and [top] being 0deg, 90deg, 180deg and 270deg, and an
+     omitted direction defaults to [top]. So [top] and 270deg are the default,
+     and a side stays the side it starts from, where the unprefixed reading
+     would turn it into the opposite one. *)
+  List.iter
+    (fun (fn, into, css) ->
+      decl_optimizes ~prop:"background-image"
+        ~into:(String.concat "" [ fn; into ])
+        (String.concat "" [ fn; css ]))
+    (List.concat_map
+       (fun fn ->
+         [
+           (fn, "(red,#00f)", "(red, blue)");
+           (fn, "(red,#00f)", "(top, red, blue)");
+           (fn, "(red,#00f)", "(270deg, red, blue)");
+           (fn, "(red,#00f)", "(-90deg, red, blue)");
+           (fn, "(left,red,#00f)", "(left, red, blue)");
+           (fn, "(bottom,red,#00f)", "(bottom, red, blue)");
+           (fn, "(right,red,#00f)", "(right, red, blue)");
+           (fn, "(180deg,red,#00f)", "(180deg, red, blue)");
+         ])
+       [
+         "-webkit-linear-gradient"; "-moz-linear-gradient"; "-o-linear-gradient";
+       ]);
 
   (* The SVG and filter opacities are <alpha-value>, so they minify like
      [opacity] rather than surviving as opaque unknown-property text. *)
