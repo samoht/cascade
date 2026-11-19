@@ -154,6 +154,9 @@ let pseudo_vendor_idents =
     ("-ms-input-placeholder", Ms_input_placeholder);
     ("-moz-ui-invalid", Moz_ui_invalid);
     ("-moz-ui-valid", Moz_ui_valid);
+    ("-webkit-full-screen", Webkit_full_screen);
+    ("-webkit-full-screen-ancestor", Webkit_full_screen_ancestor);
+    ("-moz-full-screen", Moz_full_screen);
     ("-webkit-scrollbar", Webkit_scrollbar Scrollbar);
     ("-webkit-search-cancel-button", Webkit_search_cancel_button);
     ("-webkit-search-decoration", Webkit_search_decoration);

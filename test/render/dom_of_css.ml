@@ -413,10 +413,11 @@ let rec add sp part =
       raise (Skip "user-interaction pseudo-class")
   | Selector.Target | Selector.Visited | Selector.Local_link ->
       raise (Skip "navigation-dependent pseudo-class")
-  | Selector.Fullscreen | Selector.Modal | Selector.Picture_in_picture
-  | Selector.Popover_open | Selector.Playing | Selector.Paused
-  | Selector.Seeking | Selector.Buffering | Selector.Stalled | Selector.Muted
-  | Selector.Volume_locked ->
+  | Selector.Fullscreen | Selector.Webkit_full_screen
+  | Selector.Webkit_full_screen_ancestor | Selector.Moz_full_screen
+  | Selector.Modal | Selector.Picture_in_picture | Selector.Popover_open
+  | Selector.Playing | Selector.Paused | Selector.Seeking | Selector.Buffering
+  | Selector.Stalled | Selector.Muted | Selector.Volume_locked ->
       raise (Skip "live-state pseudo-class")
   | Selector.Indeterminate | Selector.Blank ->
       raise (Skip "script-only pseudo-class")

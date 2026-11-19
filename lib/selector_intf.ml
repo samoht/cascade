@@ -185,6 +185,9 @@ type t =
   | Ms_input_placeholder
   | Moz_ui_invalid
   | Moz_ui_valid
+  | Webkit_full_screen
+  | Webkit_full_screen_ancestor
+  | Moz_full_screen
   | Scrollbar_state of scrollbar_state
   | Webkit_scrollbar of scrollbar_part
   | Webkit_search_cancel_button
