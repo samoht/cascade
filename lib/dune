@@ -44,6 +44,7 @@
   properties_custom
   properties_normalize
   properties_printer
+  reach
   rule
   rule_index
   rule_order
