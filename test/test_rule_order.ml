@@ -597,6 +597,54 @@ let shadowing_keeps_what_dedup_keeps () =
         ".a{content:'x';content:'y'}.b{top:0}" );
     ]
 
+(* A rule between two occurrences that meets a declaration only on slots the
+   later occurrence writes again does not hold the declaration back: whichever
+   side of it the declaration stands, the later occurrence decides those slots.
+   [border-bottom] meets [:hover]'s [border-color] only on the bottom colour,
+   which the second [a.n.p] writes, at the same specificity, so the two sheets
+   render alike, as the browser confirms in both states. *)
+let a_rewritten_slot_does_not_hold () =
+  let want =
+    "a.n:hover{border-bottom:3px \
+     solid;border-color:#cc181e;height:29px}a.n.p{border-bottom:3px \
+     solid;border-color:#767676;height:29px}"
+  in
+  Alcotest.(check string)
+    "written in the later" want
+    (canonical
+       "a.n:hover{border-bottom:3px \
+        solid;border-color:#cc181e;height:29px}a.n.p{border-bottom:3px \
+        solid;height:29px}a.n.p{border-color:#767676}");
+  Alcotest.(check string)
+    "written in the earlier" want
+    (canonical
+       "a.n.p{border-bottom:3px solid}a.n:hover{border-bottom:3px \
+        solid;border-color:#cc181e;height:29px}a.n.p{border-color:#767676;height:29px}")
+
+(* A declaration that sinks still precedes every rule after the later occurrence
+   it conflicts with: [button.r .i] follows the first [a.n.p], which wrote
+   [height], so it follows the occurrence [height] sinks into, though that one
+   alone writes nothing it meets. *)
+let a_sunk_declaration_keeps_its_followers () =
+  let hover =
+    "a.n:hover{border-bottom:3px solid;border-color:#cc181e;height:29px}"
+  in
+  Alcotest.(check string)
+    "the later rule stays after"
+    (String.concat ""
+       [
+         hover;
+         "a.n.p{border-bottom:3px \
+          solid;border-color:#767676;height:29px}button.r .i{height:5px}";
+       ])
+    (canonical
+       (String.concat ""
+          [
+            "a.n.p,";
+            hover;
+            "a.n.p{border-color:#767676}button.r .i{height:5px}";
+          ]))
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -838,6 +886,10 @@ let suite =
         agreeing_writes_never_conflict;
       Alcotest.test_case "shadowing keeps what dedup keeps" `Quick
         shadowing_keeps_what_dedup_keeps;
+      Alcotest.test_case "a rewritten slot does not hold" `Quick
+        a_rewritten_slot_does_not_hold;
+      Alcotest.test_case "a sunk declaration keeps its followers" `Quick
+        a_sunk_declaration_keeps_its_followers;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
