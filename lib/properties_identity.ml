@@ -447,6 +447,7 @@ let property_tag : type a. a property -> int = function
   | Hyphens -> 414
   | Webkit_hyphens -> 415
   | Text_rendering -> 550
+  | Webkit_touch_callout -> 551
   | Font_stretch -> 416
   | Font_optical_sizing -> 417
   | Font_kerning -> 418
@@ -1030,6 +1031,7 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Hyphens, Hyphens -> Some Equal
   | Webkit_hyphens, Webkit_hyphens -> Some Equal
   | Text_rendering, Text_rendering -> Some Equal
+  | Webkit_touch_callout, Webkit_touch_callout -> Some Equal
   | Font_stretch, Font_stretch -> Some Equal
   | Font_optical_sizing, Font_optical_sizing -> Some Equal
   | Font_kerning, Font_kerning -> Some Equal

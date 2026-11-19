@@ -726,17 +726,18 @@ let strip_vendor_prefix name =
 (* Whether [decl]'s property is one no browser a judge can name reads. Chrome
    151 and WebKit 26.5 list no [-ms-] or [-o-] property and support none, and
    Firefox's property tables carry only the [moz] and [webkit] prefixes: those
-   were Internet Explorer's and Presto's. Nor is [font-smooth] or
-   [font-smoothing] a property of any target: neither engine parses either,
-   Firefox's longhands.toml lists neither, and MDN's compatibility data records
-   [font-smooth] only under the prefixed names the reader types. *)
+   were Internet Explorer's and Presto's, and neither parses a [-khtml-] one,
+   Konqueror's. Nor is [font-smooth] or [font-smoothing] a property of any
+   target: neither engine parses either, Firefox's longhands.toml lists neither,
+   and MDN's compatibility data records [font-smooth] only under the prefixed
+   names the reader types. *)
 let read_by_no_target decl =
   let name = String.lowercase_ascii (Declaration.property_name decl) in
   let has p =
     String.length name > String.length p
     && String.equal (String.sub name 0 (String.length p)) p
   in
-  has "-ms-" || has "-o-"
+  has "-ms-" || has "-o-" || has "-khtml-"
   || match name with "font-smooth" | "font-smoothing" -> true | _ -> false
 
 (* Structural vendor-alias drop for an [Unknown_property] [vendor]: we drop

@@ -438,6 +438,17 @@ let rec pp_text_rendering : text_rendering Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let rec pp_webkit_touch_callout : webkit_touch_callout Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_webkit_touch_callout ctx v
+  | Default -> Pp.string ctx "default"
+  | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
 let rec pp_hyphens : hyphens Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_hyphens ctx v
@@ -772,6 +783,20 @@ let rec read_text_rendering t : text_rendering =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_text_rendering t))
+    t
+
+let rec read_webkit_touch_callout t : webkit_touch_callout =
+  Cursor.enum_or_var "-webkit-touch-callout"
+    [
+      ("default", (Default : webkit_touch_callout));
+      ("none", None);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_webkit_touch_callout t))
     t
 
 let rec read_hyphens t : hyphens =

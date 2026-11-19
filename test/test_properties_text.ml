@@ -9,6 +9,10 @@ open Properties_helpers
 let check_text_rendering =
   check_value_cursor "text-rendering" read_text_rendering pp_text_rendering
 
+let check_webkit_touch_callout =
+  check_value_cursor "-webkit-touch-callout" read_webkit_touch_callout
+    pp_webkit_touch_callout
+
 let check_text_overflow =
   check_value_cursor "text-overflow" read_text_overflow pp_text_overflow
 
@@ -202,6 +206,14 @@ let test_text_rendering () =
   check_text_rendering "inherit";
   neg_cursor read_text_rendering "crisp";
   neg_cursor ~allow_partial:true read_text_rendering "auto optimizeSpeed"
+
+(* Apple's Safari CSS Reference: [default | none]. *)
+let test_webkit_touch_callout () =
+  check_webkit_touch_callout "default";
+  check_webkit_touch_callout "none";
+  check_webkit_touch_callout "inherit";
+  neg_cursor read_webkit_touch_callout "auto";
+  neg_cursor ~allow_partial:true read_webkit_touch_callout "none default"
 
 let test_hyphens () =
   check_hyphens "none";
@@ -559,6 +571,7 @@ let suite =
       test_case "overflow-wrap" `Quick test_overflow_wrap;
       test_case "hyphens" `Quick test_hyphens;
       test_case "text-rendering" `Quick test_text_rendering;
+      test_case "-webkit-touch-callout" `Quick test_webkit_touch_callout;
       test_case "line-height" `Quick test_line_height;
       test_case "list-style-type" `Quick test_list_style_type;
       test_case "list-style-position" `Quick test_list_style_position;

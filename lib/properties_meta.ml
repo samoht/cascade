@@ -423,6 +423,7 @@ let pp_property : type a. a property Pp.t =
   | Hyphens -> Pp.string ctx "hyphens"
   | Webkit_hyphens -> Pp.string ctx "-webkit-hyphens"
   | Text_rendering -> Pp.string ctx "text-rendering"
+  | Webkit_touch_callout -> Pp.string ctx "-webkit-touch-callout"
   | Font_stretch -> Pp.string ctx "font-stretch"
   | Font_optical_sizing -> Pp.string ctx "font-optical-sizing"
   | Font_kerning -> Pp.string ctx "font-kerning"
@@ -714,6 +715,7 @@ let property_class : type a. a property -> a property_class = function
   | Hyphens -> Inherited
   | Webkit_hyphens -> Inherited
   | Text_rendering -> Inherited
+  | Webkit_touch_callout -> Inherited
   | Font_stretch -> Inherited
   | Font_optical_sizing -> Inherited
   | Font_kerning -> Inherited

@@ -534,6 +534,7 @@ type 'a property =
   | Line_break : line_break property
   | Hyphens : hyphens property
   | Text_rendering : text_rendering property
+  | Webkit_touch_callout : webkit_touch_callout property
   | Webkit_hyphens : hyphens property
   | Font_stretch : font_stretch property
   | Font_optical_sizing : font_optical_sizing property

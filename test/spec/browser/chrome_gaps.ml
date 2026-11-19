@@ -70,6 +70,8 @@ let unimplemented =
     "-webkit-mask-source-type";
     "-webkit-text-decoration";
     "-webkit-text-decoration-color";
+    (* iOS Safari's own longhand: MDN records no other engine. *)
+    "-webkit-touch-callout";
   ]
 
 let unimplemented_property name = List.exists (String.equal name) unimplemented
