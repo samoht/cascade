@@ -345,6 +345,9 @@ to call instead, and moving off most of them is a rename or a deleted call.
   `.o{width:76px}.g,.o{display:none}.p{display:block}.g{width:24px}` identical
   to a sheet that gives an element of both classes a width of 76px instead of
   24px. The two now compare different (#1406).
+- `cascade diff --diff=canonical` called `.a,.b{speak:none}.a,.b{top:7px}`
+  different from `.a,.b{speak:none;top:7px}`. Two adjacent rules over one
+  selector list compare as one rule (#1409).
 
 ### Speed
 
