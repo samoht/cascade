@@ -129,7 +129,7 @@ type outcome = { graph : Rule_graph.t; settled : bool; afresh : bool }
 type refusal = Retry | Stands of Rule_graph.node_id list
 
 let refusal : Rule_graph.rewrite_error -> refusal = function
-  | Cycle -> Retry
+  | Cycle | Relay_cycle -> Retry
   | New_external_conflict { external_; _ }
   | Ambiguous_external_order { external_; _ } ->
       Stands [ external_ ]
@@ -145,54 +145,61 @@ let still_refused pool refused o =
 
 (* Whether a graph built afresh from the rules [graph] prints would refuse every
    candidate [graph] refused, and offer no other it accepts. With no rewrite,
-   [graph] is that graph. A refusal for an order reads what such a graph reads,
-   and stands at a settled drain, where its rules are live; a cycle is asked
-   again as that graph would orient it. *)
-let afresh graph pool refused =
-  Rule_graph.generation graph = 0
-  || List.for_all
-       (fun o ->
-         match Hashtbl.find_opt refused (Rule_candidate.key o) with
-         | Option.Some (Stands _) -> true
-         | Option.Some Retry | Option.None ->
-             let { Rule_rewrite.consume; produce; _ } =
-               Rule_candidate.candidate o
-             in
-             Rule_graph.refuses graph ~consume ~produce)
-       (Rule_candidate.offers pool)
-     && Rule_candidate.afresh pool
+   [graph] is that graph. Every refusal reads the live rules and where they
+   print, as that graph reads them, and at a settled drain each stands: an order
+   while the rules it read are live, and a cycle tried on [graph] itself. What
+   is left to ask is whether that graph offers a candidate [graph] did not. *)
+let afresh graph pool =
+  Rule_graph.generation graph = 0 || Rule_candidate.afresh pool
+
+(* The candidates of one graph lineage and the refusals made on it. *)
+type search = { pool : Rule_candidate.t; refused : (int, refusal) Hashtbl.t }
+
+(* Every candidate of [pool] whose refusal does not stand, queued on [graph]. *)
+let requeue graph { pool; refused } =
+  List.fold_left
+    (fun queue o ->
+      if still_refused pool refused o then queue else offer graph queue o)
+    Queue.empty
+    (Rule_candidate.offers pool)
 
 let run ~ctx ~finalize graph =
   let max_iterations = max_iterations graph in
-  let refresh_after_commit = Rule_graph.node_count graph <= 128 in
-  let pool = Rule_candidate.start ~ctx ~finalize graph in
-  let refused = Hashtbl.create 64 in
-  let rec loop iteration ~committed graph queue =
+  let nodes = Rule_graph.node_count graph in
+  let refresh_after_commit = nodes <= 128 in
+  let search graph =
+    let pool = Rule_candidate.start ~nodes ~ctx ~finalize graph in
+    ( { pool; refused = Hashtbl.create 64 },
+      List.fold_left (offer graph) Queue.empty (Rule_candidate.refresh pool) )
+  in
+  let rec loop iteration ~committed graph ({ pool; refused } as s) queue =
     if iteration >= max_iterations then
       { graph; settled = false; afresh = false }
     else
       match Queue.pop queue with
       | None ->
           if not committed then
-            { graph; settled = true; afresh = afresh graph pool refused }
+            { graph; settled = true; afresh = afresh graph pool }
           else begin
             ignore (Rule_candidate.refresh pool);
-            loop iteration ~committed:false graph
-              (List.fold_left
-                 (fun queue o ->
-                   if still_refused pool refused o then queue
-                   else offer graph queue o)
-                 Queue.empty
-                 (Rule_candidate.offers pool))
+            loop iteration ~committed:false graph s (requeue graph s)
           end
       | Some ((key, { candidate; _ }), queue) -> (
           match
             Rule_graph.rewrite graph ~consume:candidate.consume
               ~produce:candidate.produce
           with
+          | Error Relay_cycle ->
+              (* Only rules earlier rewrites consumed close the cycle, and a
+                 graph built afresh from the rules [graph] prints holds none of
+                 them: the search starts again there. It holds no consumed rule
+                 until a commit, so a commit separates two rebuilds. *)
+              let graph = Rule_graph.rebuild graph in
+              let s, queue = search graph in
+              loop iteration ~committed:false graph s queue
           | Error e ->
               Hashtbl.replace refused key (refusal e);
-              loop iteration ~committed graph queue
+              loop iteration ~committed graph s queue
           | Ok graph' ->
               Stats.add_saving (Ctx.stats ctx) candidate.saving;
               Rule_candidate.rewrite pool graph' ~consume:candidate.consume;
@@ -202,7 +209,7 @@ let run ~ctx ~finalize graph =
                     (Rule_candidate.refresh pool)
                 else queue
               in
-              loop (iteration + 1) ~committed:true graph' queue)
+              loop (iteration + 1) ~committed:true graph' s queue)
   in
-  loop 0 ~committed:false graph
-    (List.fold_left (offer graph) Queue.empty (Rule_candidate.refresh pool))
+  let s, queue = search graph in
+  loop 0 ~committed:false graph s queue

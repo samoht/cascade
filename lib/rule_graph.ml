@@ -31,6 +31,7 @@ type rewrite_error =
   | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
+  | Relay_cycle
 
 (* Which nodes each node can reach, as a bitset per node. Orienting a factoring
    asks the question once per ordered pair of source references, so a run of [n]
@@ -1425,9 +1426,10 @@ let acyclic = '\002'
    settled already, and the check walks the produced nodes alone, however far
    their cone reaches.
 
+   [reached exits] says which existing nodes the existing nodes [exits] reach.
    [None] is a cycle. Otherwise the produced nodes come back in the order the
    walk left them, so each one follows every produced node it reaches. *)
-let produced_order t graph entering =
+let produced_order ~reached t graph entering =
   let total = t.count in
   let added = graph.count - total in
   let leads = Array.make_matrix added added false in
@@ -1448,7 +1450,7 @@ let produced_order t graph entering =
     in
     match exits with
     | _ :: _ when entered ->
-        let reached = reached_from t exits in
+        let reached = reached exits in
         for at = 0 to added - 1 do
           if List.exists (fun (a, _) -> reached a) entering.(at) then
             leads.(from).(at) <- true
@@ -1632,7 +1634,7 @@ let index_live t =
    they print reads off them. The sources of a produced rule are live, and so is
    every rule it is ordered against, so a rule a rewrite consumed decides no
    order: what orders two rules only through it leaves them free. *)
-let live_order t a b = nodes_conflict t a b && compare_position t a b < 0
+let live_order t a b = compare_position t a b < 0 && nodes_conflict t a b
 
 (* The graph [~consume ~produce] would make, with every edge at its produced
    nodes oriented, or why one cannot be. *)
@@ -1656,17 +1658,64 @@ let orient t ~consume ~produce =
               | Error _ as e -> e
               | Ok () -> Ok (consumed, graph, entering))))
 
+(* What a graph built afresh from the live rules in the order they print reaches
+   from [exits]: a rule printed after one of them through live rules each
+   conflicting with the one before. *)
+let live_reached t exits a =
+  List.exists (fun e -> e = a || Option.is_some (fresh_path t e a)) exits
+
+(* Whether the rewrite [orient] made closes a cycle, read first on [t]'s
+   reachability, which runs through the rules earlier rewrites consumed and so
+   holds every cycle the live rules close, and then, for a cycle found there, on
+   the live rules alone. *)
+type closing = Acyclic of node_id list | Live_cycle | Through_relays
+
+let closing t graph entering =
+  match produced_order ~reached:(reached_from t) t graph entering with
+  | Option.Some finished -> Acyclic finished
+  | Option.None -> (
+      match produced_order ~reached:(live_reached t) t graph entering with
+      | Option.None -> Live_cycle
+      | Option.Some _ -> Through_relays)
+
 let rewrite t ~consume ~produce : (t, rewrite_error) result =
   match orient t ~consume ~produce with
   | Error _ as e -> e
   | Ok (consumed, graph, entering) -> (
-      match produced_order t graph entering with
-      | Option.None -> Error Cycle
-      | Option.Some finished ->
+      match closing t graph entering with
+      | Live_cycle -> Error Cycle
+      | Through_relays -> Error Relay_cycle
+      | Acyclic finished ->
           commit t graph ~consumed entering finished;
           Ok graph)
 
-let refuses t ~consume ~produce = Result.is_error (orient t ~consume ~produce)
+let refuses t ~consume ~produce =
+  match orient t ~consume ~produce with
+  | Error _ -> true
+  | Ok (_, graph, entering) -> (
+      match closing t graph entering with
+      | Live_cycle -> true
+      | Through_relays | Acyclic _ -> false)
+
+let rebuild t =
+  let order = canonical_order t in
+  let pick values = Array.map (fun i -> values.(i)) order in
+  let exclusive =
+    Option.map
+      (fun exclusive i j ->
+        let i = order.(i) and j = order.(j) in
+        i < t.exclusive_count && j < t.exclusive_count && exclusive i j)
+      t.exclusive
+  in
+  let g =
+    ordered_nodes ~selector_sizes:(pick t.selector_sizes) ~sizes:(pick t.sizes)
+      ~index_capacity:(max 16 (Array.length order * 2))
+      ?parent:t.parent ~closed_world:t.closed_world
+      ~pin_shared_branches:t.pin_shared_branches ?exclusive (pick t.rules)
+  in
+  let generation = t.generation + 1 in
+  g.lineage.head <- generation;
+  { g with generation }
 
 let try_rewrite t ~consume ~produce : t option =
   match rewrite t ~consume ~produce with
