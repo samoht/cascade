@@ -531,6 +531,37 @@ let important_shadows_an_earlier_write () =
     "normal under important" ".a{color:green!important}.b{top:0}"
     (canonical ".a{color:green!important}.b{top:0}.a{color:red}")
 
+(* A declaration may stand in either of two occurrences of its selector when no
+   chain of conflicts orders it before the later one, even where a chain holds
+   the two occurrences apart. Here [.l] holds the [.h] occurrences apart (width,
+   then background-position), and [display] may stand in either, so the sheet
+   that wrote it in the first projects as the one that wrote it in the
+   second. *)
+let declaration_sinks_to_the_later_occurrence () =
+  let want =
+    "#c{display:inline-block}.h{width:40px}.l{background-position:0 \
+     0;width:132px}.h{background-position:-84px -98px;display:inline-block}"
+  in
+  Alcotest.(check string)
+    "written in the later" want
+    (canonical
+       "#c{display:inline-block}.h{width:40px}.l{background-position:0 \
+        0;width:132px}.h{background-position:-84px -98px;display:inline-block}");
+  Alcotest.(check string)
+    "written in the earlier" want
+    (canonical
+       ".h{width:40px}#c,.h{display:inline-block}.l{background-position:0 \
+        0;width:132px}.h{background-position:-84px -98px}");
+  (* [.l] writing [display] too orders the declaration before the later [.h],
+     through [background-position], and it stays where it was written *)
+  Alcotest.(check string)
+    "a chain keeps it"
+    ".h{display:inline-block;width:40px}.l{background-position:0 \
+     0;display:block;width:132px}.h{background-position:-84px -98px}"
+    (canonical
+       ".h{width:40px;display:inline-block}.l{display:block;width:132px;background-position:0 \
+        0}.h{background-position:-84px -98px}")
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -766,6 +797,8 @@ let suite =
         importance_commutes_within_a_rule;
       Alcotest.test_case "important shadows an earlier write" `Quick
         important_shadows_an_earlier_write;
+      Alcotest.test_case "declaration sinks to the later occurrence" `Quick
+        declaration_sinks_to_the_later_occurrence;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
