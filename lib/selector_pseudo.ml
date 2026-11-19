@@ -257,6 +257,49 @@ let has_unknown_pseudo_class =
     | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true
     | _ -> false)
 
+(* The pseudo-classes no browser the minifier targets reads, by name. MDN's
+   browser-compat-data records [:-moz-any-link] for Firefox 1 to 50 alone and
+   [:-ms-fullscreen] for Internet Explorer 11 alone, and records the other
+   prefixed ones and [:selected] and [:full-screen] for no browser. Firefox's
+   parser (Servo's non_ts_pseudo_class_list.rs and its aliases) lists none of
+   them, and Chrome 151 and WebKit 26.5 drop a rule holding any one. The
+   pseudo-element names after one colon are here for the same reason: Firefox
+   reads one colon as a pseudo-element for the CSS 2.1 four alone, and Chrome
+   and WebKit drop each of these with one colon. [:-moz-placeholder] is not:
+   Firefox still lists it as a pseudo-class. *)
+let untargeted_pseudo_class name =
+  match String.lowercase_ascii name with
+  | "-o-prefocus" | "-moz-submit-invalid" | "selected" | "-moz-any-link"
+  | "-ms-fullscreen" | "-ms-full-screen" | "-o-full-screen" | "full-screen"
+  | "-webkit-input-placeholder" | "-ms-input-placeholder" | "placeholder"
+  | "selection" | "marker" | "backdrop" | "target-text" | "spelling-error"
+  | "grammar-error" | "file-selector-button" | "details-content"
+  | "view-transition" | "-webkit-scrollbar" | "-webkit-search-cancel-button"
+  | "-webkit-search-decoration" | "-webkit-inner-spin-button"
+  | "-webkit-outer-spin-button" | "-webkit-details-marker"
+  | "-webkit-datetime-edit" | "-webkit-calendar-picker-indicator" ->
+      true
+  | _ -> false
+
+(* Selectors 4 sec. 3.9 drops a whole rule over an invalid selector, and sec.
+   4.2 and 4.3 let [:is()] and [:where()] drop an invalid argument alone, so
+   only a pseudo-class outside them takes the rule with it. *)
+let rec untargeted = function
+  | Unknown_pseudo_class name when untargeted_pseudo_class name ->
+      Option.Some name
+  | Compound xs | List xs | Not xs | Has xs -> List.find_map untargeted xs
+  | Combined (a, _, b) -> (
+      match untargeted a with
+      | Option.Some _ as n -> n
+      | Option.None -> untargeted b)
+  | Relative (_, b) -> untargeted b
+  | Nth_child (_, Some xs)
+  | Nth_last_child (_, Some xs)
+  | Nth_of_type (_, Some xs)
+  | Nth_last_of_type (_, Some xs) ->
+      List.find_map untargeted xs
+  | _ -> Option.None
+
 (* CSS Selectors 4 17.1: a forgiving [:is()] / [:where()] with no surviving
    valid argument matches nothing, and a compound or combined selector that
    contains such a sub-selector inherits the same behaviour. A selector list

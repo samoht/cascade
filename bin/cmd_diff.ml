@@ -742,10 +742,12 @@ let enforce_spec_arg =
      default $(b,--minify) targets. By default a @supports guard every target \
      satisfies is no difference and neither is the fallback written before it, \
      a vendor prefix a target needs is written on both sides and one no target \
-     needs is dropped from both, and a fallback every target parses past is \
-     dead. With this flag each of those is kept, since an engine outside the \
-     targets reads it, so two sheets that differ there report as different. \
-     Has no effect outside $(b,--diff=canonical)."
+     needs is dropped from both, a fallback every target parses past is dead, \
+     and a rule whose selector holds a pseudo-class no target reads, \
+     $(b,:-o-prefocus) for one, is dropped from both. With this flag each of \
+     those is kept, since an engine outside the targets reads it, so two \
+     sheets that differ there report as different. Has no effect outside \
+     $(b,--diff=canonical)."
   in
   Arg.(value & flag & info [ "enforce-spec" ] ~docs:canonical_options ~doc)
 

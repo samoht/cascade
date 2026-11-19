@@ -158,8 +158,10 @@ let enforce_spec_arg =
      or container feature, the $(b,&) prefix on a nested selector, the \
      author's :not(:dir(ltr)) and input:not(:enabled), the number form of an \
      oklab/oklch axis, and the quotes around a multi-word font family. It also \
-     holds the reader to the CSS Syntax 3 sec. 4.2 ident code points, which \
-     applies with or without $(b,--minify)."
+     has the reader keep a rule whose selector holds a pseudo-class no target \
+     reads, $(b,:-o-prefocus) for one, which it otherwise drops with a \
+     warning, and holds it to the CSS Syntax 3 sec. 4.2 ident code points; \
+     both apply with or without $(b,--minify)."
   in
   Arg.(value & flag & info [ "enforce-spec" ] ~docs:minify_options ~doc)
 

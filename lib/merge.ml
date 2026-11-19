@@ -20,11 +20,14 @@ let rec vendor : Selector.t -> bool = function
    not read one of its pseudo-classes. These are the prefixed ones some target
    lacks: Chromium and WebKit read neither [:-moz-] form, Firefox neither
    [:-webkit-any] nor the scrollbar states. [:-webkit-autofill] is read by every
-   target, Firefox since 86, and is left out. *)
+   target, Firefox since 86, and is left out. A pseudo-class cascade does not
+   know, which a top-level selector holds only under [--enforce-spec], may be
+   read by no target at all. *)
 let rec engine_specific : Selector.t -> bool = function
   | Moz_focusring | Moz_any_call _ | Webkit_any | Webkit_any_call _
   | Moz_ui_invalid | Moz_ui_valid | Webkit_full_screen
-  | Webkit_full_screen_ancestor | Moz_full_screen | Scrollbar_state _ ->
+  | Webkit_full_screen_ancestor | Moz_full_screen | Scrollbar_state _
+  | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ ->
       true
   | Compound sels -> List.exists engine_specific sels
   | Combined (left, _, right) -> engine_specific left || engine_specific right
