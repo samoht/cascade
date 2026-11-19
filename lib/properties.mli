@@ -2867,6 +2867,11 @@ val pp_any_property : any_property Pp.t
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
 
+val of_name : string -> any_property
+(** [of_name name] is the property [name] spells, in any case, or
+    [Unknown_property] when the reader types none. It reads no tokens, so it
+    answers for a name already read as an identifier. *)
+
 val property_value_kind : 'a property -> 'a property_value_kind option
 (** [property_value_kind property] returns the optional property-specific
     evaluator for a value shape. Generic context evaluation, including direct
