@@ -257,26 +257,32 @@ let asserted_exclusive t i j =
   | Option.Some exclusive ->
       i < t.exclusive_count && j < t.exclusive_count && exclusive i j
 
-(* The declarations of [a] that touch one of [b]'s. *)
-let touching (a : decl_overlap list) (b : decl_overlap list) =
-  List.filter
-    (fun (x : decl_overlap) ->
-      List.exists
-        (fun (y : decl_overlap) ->
-          Shorthand.declarations_overlap_with_keys x.decl x.footprint y.decl
-            y.footprint)
-        b)
-    a
-
 (* Two rules whose declarations touching the other's are the same sequence: on
    an element both match, every slot both write takes that sequence twice,
    whichever comes first, and each one's other writes meet nothing of the
-   other's. *)
+   other's. The two sequences are walked side by side, so a pair that differs
+   stops at the first declaration where they part. *)
 let writes_agree a b =
-  List.equal
-    (fun (x : decl_overlap) (y : decl_overlap) ->
-      Declaration.same_minified x.decl y.decl)
-    (touching a b) (touching b a)
+  let touches others (x : decl_overlap) =
+    List.exists
+      (fun (y : decl_overlap) ->
+        Shorthand.declarations_overlap_with_keys x.decl x.footprint y.decl
+          y.footprint)
+      others
+  in
+  let rec next others = function
+    | [] -> Option.None
+    | x :: rest ->
+        if touches others x then Option.Some (x, rest) else next others rest
+  in
+  let rec walk xs ys =
+    match (next b xs, next a ys) with
+    | Option.None, Option.None -> true
+    | Option.Some (x, xs), Option.Some (y, ys) ->
+        Declaration.same_minified x.decl y.decl && walk xs ys
+    | Option.Some _, Option.None | Option.None, Option.Some _ -> false
+  in
+  walk a b
 
 let nodes_conflict_reason t i j =
   if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
