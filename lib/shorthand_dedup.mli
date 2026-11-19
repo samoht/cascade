@@ -23,6 +23,10 @@ val deduplicate_step :
     dropping the declarations of [kept] that [d] makes dead under [targets], or
     drops [d] when an important declaration of [kept] already covers it. *)
 
+val read_by_no_target : Declaration.declaration -> bool
+(** [read_by_no_target decl] is whether [decl]'s property carries the [-ms-] or
+    [-o-] prefix, which no browser a {!Support.targets} names reads. *)
+
 val drop_redundant_decoration_color_aliases :
   Declaration.declaration list -> Declaration.declaration list
 (** [drop_redundant_decoration_color_aliases decls] drops an identical WebKit

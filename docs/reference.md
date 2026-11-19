@@ -317,8 +317,9 @@ cascade's six-figure `1.55556`; under `--lossless` it equals no finite decimal.
 For browsers, the comparison assumes the targets `--minify` uses: a
 `@supports` guard every target satisfies is unwrapped, a prefix a target
 needs is added on both sides and one no target needs is dropped from both, a
-colour fallback every target parses past is dead, and a rule whose selector no
-target reads ([Target browsers](#target-browsers)) is dropped from both.
+colour fallback every target parses past is dead, a `-ms-` or `-o-`
+declaration, which no target reads, is dropped from both, and so is a rule
+whose selector no target reads ([Target browsers](#target-browsers)).
 `--enforce-spec` turns these off. An `@supports` guard that no browser can answer yes to, such as one
 over a `<general-enclosed>` term that CSS Conditional 3 section 6.1 makes
 false, selects nothing on either side, and its block is dropped from both.

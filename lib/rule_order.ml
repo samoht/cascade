@@ -1559,9 +1559,21 @@ let rec drop_unanswerable_supports (stmts : statement list) : statement list =
 (* The normal optimizer drops this typed alias under its maintained-browser
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
-   canonical comparison, at every declaration site. *)
-let canonical_vendor_aliases (stmts : statement list) : statement list =
-  Stylesheet.map_declarations Shorthand.drop_redundant_decoration_color_aliases
+   canonical comparison, at every declaration site. A comparison that judges for
+   targets also drops, from both sides, a declaration of a prefix no target
+   reads ({!Shorthand.read_by_no_target}): every target ignores it, and one the
+   reader cannot type would otherwise touch every other declaration. *)
+let canonical_vendor_aliases ~judged (stmts : statement list) : statement list =
+  let unread decls =
+    if judged then
+      Common.List.filter_preserve
+        (fun d -> not (Shorthand.read_by_no_target d))
+        decls
+    else decls
+  in
+  Stylesheet.map_declarations
+    (fun decls ->
+      unread (Shorthand.drop_redundant_decoration_color_aliases decls))
     stmts
 
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
@@ -1755,7 +1767,7 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
            @@ sort_property_runs
                 (canonical_values ~lossless ~missing:true
                    (normalize_custom_values ~lossless
-                      (canonical_vendor_aliases
+                      (canonical_vendor_aliases ~judged:(Option.is_some judge)
                          (drop_unanswerable_supports stmts))))))
   in
   let result =

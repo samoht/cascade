@@ -723,6 +723,18 @@ let strip_vendor_prefix name =
           | Some _ as r -> r
           | None -> try_prefix "-o-"))
 
+(* Whether [decl]'s property carries a prefix no browser a judge can name reads:
+   Chrome 151 and WebKit 26.5 list no [-ms-] or [-o-] property and support none,
+   and Firefox's property tables carry only the [moz] and [webkit] prefixes.
+   Those were Internet Explorer's and Presto's. *)
+let read_by_no_target decl =
+  let name = String.lowercase_ascii (Declaration.property_name decl) in
+  let has p =
+    String.length name > String.length p
+    && String.equal (String.sub name 0 (String.length p)) p
+  in
+  has "-ms-" || has "-o-"
+
 (* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
    [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
    its vendor prefix yields [twin]'s name and the component-value lists are

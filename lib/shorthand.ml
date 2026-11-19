@@ -40,6 +40,7 @@ let declarations_commute = Shorthand_dedup.declarations_commute
 let drop_redundant_decoration_color_aliases =
   Shorthand_dedup.drop_redundant_decoration_color_aliases
 
+let read_by_no_target = Shorthand_dedup.read_by_no_target
 let is_all_declaration = Shorthand_dedup.is_all_declaration
 let transitioned_in_rule = Shorthand_timing.transitioned_in_rule
 let merge_box_shorthand_longhands = Shorthand_box.merge_box_shorthand_longhands
