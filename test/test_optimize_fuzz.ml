@@ -164,11 +164,14 @@ let nested_declaration_run_dedupes () =
        ".a{& \
         b{margin:9px}margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}")
 
-(* A selector list holding a vendor pseudo-element is invalidated as a whole by
-   a browser that does not know it, so the other selectors silently lose the
-   declarations. The grouping passes refuse to build such a list; one the author
-   wrote is split so the risky branches stand alone. *)
-let vendor_pseudo_list_is_split () =
+(* Selectors 4 sec. 3.9: a browser that does not read one selector of a list
+   drops the whole rule, so a list the author wrote holding a vendor
+   pseudo-element styles nothing there, and splitting it would style the other
+   branches where the source did not. Headless Chromium 153 paints the file
+   button of [input::file-selector-button,b::-moz-selection {background:red}] in
+   its default colour, the rule split in two red. The list stays whole, and a
+   rule after it stays out of it. *)
+let vendor_pseudo_list_is_kept () =
   let of_string css =
     match Css.of_string css with
     | Ok p -> p.Css.stylesheet
@@ -179,16 +182,15 @@ let vendor_pseudo_list_is_split () =
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
   in
-  Alcotest.(check string)
-    "the risky branches leave the list"
-    ".i::-webkit-search-cancel-button{display:none}.i::-webkit-search-decoration{display:none}.i::-webkit-search-results-button,.reset{display:none}"
-    (canon
-       ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration,.i::-webkit-search-results-button{display:none}.reset{display:none}");
-  Alcotest.(check string)
-    "a list of only risky branches is left alone"
+  (* Each list is written with its branches in the order the optimizer sorts
+     them to, so what is left to see is that none leaves it. *)
+  let kept css = Alcotest.(check string) css css (canon css) in
+  kept "b::-moz-selection,input::file-selector-button{background:red}";
+  kept "b,input::-webkit-search-decoration{color:red}";
+  kept
+    ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration,.i::-webkit-search-results-button{display:none}.reset{display:none}";
+  kept
     ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration{display:none}"
-    (canon
-       ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration{display:none}")
 
 (* Property-based fuzz tests for [Css.optimize]'s high-level invariants. *)
 module Fuzz = struct
@@ -708,8 +710,8 @@ module Fuzz = struct
         nested_merge_reads_the_slot_from_either_side;
       Alcotest.test_case "a nested declarations run is deduplicated" `Quick
         nested_declaration_run_dedupes;
-      Alcotest.test_case "vendor pseudo-element list is split" `Quick
-        vendor_pseudo_list_is_split;
+      Alcotest.test_case "vendor pseudo-element list is kept" `Quick
+        vendor_pseudo_list_is_kept;
       Alcotest.test_case "cascade-neutral permutations stay equivalent" `Slow
         fuzz_neutral_permutation_soundness;
       Alcotest.test_case "shorthand longhand cascade preserved" `Slow
