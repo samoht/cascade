@@ -257,6 +257,36 @@ let asserted_exclusive t i j =
   | Option.Some exclusive ->
       i < t.exclusive_count && j < t.exclusive_count && exclusive i j
 
+(* Whether [x] and [y] write one value to the same slots at one importance, as
+   [-moz-transform] and [-webkit-transform] do when they carry one value: an
+   engine reads one of the two spellings or both as one property, so in either
+   order the slots end at that value. *)
+let same_write (x : decl_overlap) (y : decl_overlap) =
+  Declaration.same_minified x.decl y.decl
+  || Bool.equal
+       (Declaration.is_important x.decl)
+       (Declaration.is_important y.decl)
+     && List.equal Shorthand.overlap_key_equal x.footprint y.footprint
+     && String.equal
+          (Declaration.string_of_value ~minify:true x.decl)
+          (Declaration.string_of_value ~minify:true y.decl)
+
+(* Every declaration of [a] meeting one of [b] writes what that one writes. On
+   an element both rules match, every declaration either writes to a slot both
+   write carries one value, so the slot ends at it in an engine that reads any
+   of them, whichever rule comes first. *)
+let writes_one_value a b =
+  List.for_all
+    (fun (x : decl_overlap) ->
+      List.for_all
+        (fun (y : decl_overlap) ->
+          (not
+             (Shorthand.declarations_overlap_with_keys x.decl x.footprint y.decl
+                y.footprint))
+          || same_write x y)
+        b)
+    a
+
 (* Two rules whose declarations touching the other's are the same sequence: on
    an element both match, every slot both write takes that sequence twice,
    whichever comes first, and each one's other writes meet nothing of the
@@ -282,7 +312,7 @@ let writes_agree a b =
         Declaration.same_minified x.decl y.decl && walk xs ys
     | Option.Some _, Option.None | Option.None, Option.Some _ -> false
   in
-  walk a b
+  walk a b || writes_one_value a b
 
 let nodes_conflict_reason t i j =
   if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then

@@ -475,6 +475,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   only itself, `--minify` drops one a later `text-rendering` overrides, and
   a value outside `auto | optimizeSpeed | optimizeLegibility |
   geometricPrecision` is dropped with a warning, as browsers drop it (#1440).
+- `cascade diff --diff=canonical` ordered two rules that write one slot
+  through two spellings of a property with one value, as
+  `-moz-transform:rotate(180deg)` and `-webkit-transform:rotate(180deg)` do,
+  so a sheet and its `--minify` output that put the two rules the other way
+  round compared different. Every engine ends at that value whichever rule
+  comes first, and the order is no difference (#1441).
 
 ### Speed
 
