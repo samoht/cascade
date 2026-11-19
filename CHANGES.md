@@ -36,13 +36,13 @@ and makes cascade cheaper to run.
   and on Tailwind's output, where with 1.2.1 69 of those sheets and both
   Tailwind stylesheets shrank again.
 - **Smaller output that follows one stated rule.** Over the 504 SatCSS sheets
-  and Tailwind's output, `--minify` output is 1.1% smaller raw than with
-  1.2.1, 0.15% smaller under gzip and 0.03% smaller under brotli. By default,
+  and Tailwind's output, `--minify` output is 1.7% smaller raw than with
+  1.2.1, 0.46% smaller under gzip and 0.30% smaller under brotli. By default,
   rules with identical bodies merge only within 128 printed rules of each
   other, and within that bound the output is as small as cascade can make it.
   A sheet can still come out a little larger than with 1.2.1 in one metric:
-  20 grow by more than 1% under gzip (at most 2.8%, on one tmall sheet) and 23
-  under brotli (at most 6.8%, on one cnn sheet), while 137 shrink by more than
+  21 grow by more than 1% under gzip (at most 2.8%, on one tmall sheet) and 27
+  under brotli (at most 6.8%, on one cnn sheet), while 182 shrink by more than
   1% raw.
 
 The price is under [Breaking](#breaking). Scripts that read cascade's
