@@ -118,6 +118,10 @@
   cover
   edge
   rule_candidate
+  candidate_kind
+  candidate_groups
+  candidate_inlining
+  candidate_factoring
   lift
   rule_rewrite
   webkit_fallback
