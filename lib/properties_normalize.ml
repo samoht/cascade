@@ -433,6 +433,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Line_break, value -> value
   | (Hyphens | Webkit_hyphens), value -> value
   | Text_rendering, value -> value
+  | Webkit_touch_callout, value -> value
   | Font_stretch, value -> value
   | Font_optical_sizing, value -> value
   | Font_kerning, value -> value

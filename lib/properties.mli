@@ -1282,6 +1282,14 @@ val pp_text_rendering : text_rendering Pp.t
 val read_text_rendering : Cursor.t -> text_rendering
 (** [read_text_rendering t] is the [text_rendering] parsed from [t]. *)
 
+val pp_webkit_touch_callout : webkit_touch_callout Pp.t
+(** [pp_webkit_touch_callout] is the pretty-printer for [webkit_touch_callout].
+*)
+
+val read_webkit_touch_callout : Cursor.t -> webkit_touch_callout
+(** [read_webkit_touch_callout t] is the [webkit_touch_callout] parsed from [t].
+*)
+
 val pp_hyphens : hyphens Pp.t
 (** [pp_hyphens] is the pretty-printer for [hyphens]. *)
 

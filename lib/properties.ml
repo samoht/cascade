@@ -441,6 +441,7 @@ let read_any_property t =
   | "grid-template-areas" -> Prop Grid_template_areas
   | "hyphens" -> Prop Hyphens
   | "text-rendering" -> Prop Text_rendering
+  | "-webkit-touch-callout" -> Prop Webkit_touch_callout
   | "isolation" -> Prop Isolation
   | "justify-items" -> Prop Justify_items
   | "justify-self" -> Prop Justify_self

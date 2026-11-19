@@ -2027,6 +2027,11 @@ val hyphens : hyphens -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens} hyphens}
     property. *)
 
+val webkit_touch_callout : webkit_touch_callout -> declaration
+(** [webkit_touch_callout callout] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-touch-callout}
+     -webkit-touch-callout} property. *)
+
 val text_rendering : text_rendering -> declaration
 (** [text_rendering rendering] is the
     {{:https://svgwg.org/svg2-draft/painting.html#TextRenderingProperty}

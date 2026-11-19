@@ -114,8 +114,8 @@ val drop_redundant_decoration_color_aliases :
 
 val read_by_no_target : Declaration.declaration -> bool
 (** [read_by_no_target decl] is whether no browser a {!Support.targets} names
-    reads [decl]'s property: one with the [-ms-] or [-o-] prefix, [font-smooth]
-    or [font-smoothing]. *)
+    reads [decl]'s property: one with the [-ms-], [-o-] or [-khtml-] prefix,
+    [font-smooth] or [font-smoothing]. *)
 
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)

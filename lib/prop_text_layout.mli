@@ -82,6 +82,9 @@ val pp_overflow_wrap : overflow_wrap Pp.t
 val pp_text_rendering : text_rendering Pp.t
 (** [pp_text_rendering] prints a [text-rendering] value. *)
 
+val pp_webkit_touch_callout : webkit_touch_callout Pp.t
+(** [pp_webkit_touch_callout] prints a [-webkit-touch-callout] value. *)
+
 val pp_hyphens : hyphens Pp.t
 (** [pp_hyphens] prints a [hyphens]. *)
 
@@ -127,6 +130,10 @@ val read_overflow_wrap : Cursor.t -> overflow_wrap
 
 val read_text_rendering : Cursor.t -> text_rendering
 (** [read_text_rendering t] reads a [text-rendering] value from [t]. *)
+
+val read_webkit_touch_callout : Cursor.t -> webkit_touch_callout
+(** [read_webkit_touch_callout t] reads a [-webkit-touch-callout] value from
+    [t]. *)
 
 val read_hyphens : Cursor.t -> hyphens
 (** [read_hyphens t] reads a [hyphens] from [t]. *)
