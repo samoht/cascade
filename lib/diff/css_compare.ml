@@ -838,10 +838,11 @@ let diff_tree ~expected_parse ~actual_parse =
    the same, and it is not a loss the verdict answers for. The warning still
    says where the reader may have lagged. A rule is: nothing holds the rule
    reader to a browser, and the rule takes everything it held with it. The
-   exception is a rule over a pseudo-class no target reads
+   exception is a rule over a selector no target reads
    ({!Error.Untargeted_selector}): every target drops it too, and the comparison
-   judges for those targets. Under [--enforce-spec] the reader keeps that rule,
-   and the comparison sees it. *)
+   judges for those targets. Under [--enforce-spec] the reader keeps such a rule
+   over a pseudo-class, and the comparison sees it; a keyframe selector outside
+   the grammar is one every engine drops. *)
 let losses ws =
   List.filter_map
     (fun (w : Error.t) ->

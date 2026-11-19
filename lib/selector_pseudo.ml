@@ -266,7 +266,19 @@ let has_unknown_pseudo_class =
    pseudo-element names after one colon are here for the same reason: Firefox
    reads one colon as a pseudo-element for the CSS 2.1 four alone, and Chrome
    and WebKit drop each of these with one colon. [:-moz-placeholder] is not:
-   Firefox still lists it as a pseudo-class. *)
+   Firefox still lists it as a pseudo-class.
+
+   Past the list, a name with no vendor prefix that the compatibility data does
+   not record: every pseudo-class an engine ships unprefixed is a standard one,
+   which the data records, so no target reads such a name ([:h], which Chrome
+   151 and WebKit 26.5 drop and Firefox's parser does not list). A prefixed one
+   may be any engine's own and stays undecided. *)
+let unrecorded name =
+  (String.length name = 0 || not (Char.equal name.[0] '-'))
+  && Option.is_none
+       (Support.implemented Support.evergreen
+          (String.concat "" [ "css.selectors."; name ]))
+
 let untargeted_pseudo_class name =
   match String.lowercase_ascii name with
   | "-o-prefocus" | "-moz-submit-invalid" | "selected" | "-moz-any-link"
@@ -279,7 +291,7 @@ let untargeted_pseudo_class name =
   | "-webkit-outer-spin-button" | "-webkit-details-marker"
   | "-webkit-datetime-edit" | "-webkit-calendar-picker-indicator" ->
       true
-  | _ -> false
+  | name -> unrecorded name
 
 (* Selectors 4 sec. 3.9 drops a whole rule over an invalid selector, and sec.
    4.2 and 4.3 let [:is()] and [:where()] drop an invalid argument alone, so
