@@ -296,6 +296,11 @@ to call instead, and moving off most of them is a rename or a deleted call.
   `.a{color:red;border:1px solid #ccc;border-top-color:red}` beside
   `.b{color:red;border:1px solid #ddd}` lost its red top border. What a rule
   keeps now stays in the order it wrote it (#1404).
+- `--minify` listed a rule over a vendor pseudo-class with others, as in
+  `.a:-moz-focusring,.b{color:red}`, and a browser that does not read the
+  pseudo-class drops the whole list, so Chromium lost `.b`'s colour. A
+  pseudo-class some default target does not read stays out of a list, as a
+  vendor pseudo-element did (#1407).
 
 ### Comparing stylesheets
 
