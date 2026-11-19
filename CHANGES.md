@@ -455,6 +455,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   needs is kept on both sides, and such a declaration is dropped from both
   unless `--enforce-spec` is given. yahoo-uk-2 and yahoo-uk-3 in SatCSS
   compare identical to their output (#1430, #1431).
+- `cascade diff --diff=canonical` let `font-smooth` and `font-smoothing`
+  hold a rule apart, so yahoo-uk-2 differed from its `--minify
+  --objective=raw` output. Neither is a property any target reads: Chrome
+  and WebKit parse neither, Firefox lists neither, and MDN records
+  `font-smooth` only under its prefixed names. Both are dropped from both
+  sides, as a `-ms-` declaration is, unless `--enforce-spec` is given (#1438).
 
 ### Speed
 
