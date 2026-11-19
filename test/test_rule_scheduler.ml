@@ -173,10 +173,10 @@ let printed graph =
   Array.to_list
     (Array.map (Rule_graph.node_rule graph) (Rule_graph.canonical_order graph))
 
-(* [.x] and [.y] share [color:red], 141 source positions apart, beyond the 128
-   an indexed search spans, with pairs of identical bodies between them. Once
-   the pairs merge, the two print 71 rules apart: a graph built afresh from what
-   the run prints searches them together, the run's own graph never does. *)
+(* [.x] and [.y] share [color:red], 141 source positions apart, with pairs of
+   identical bodies between them. A search reads the members of a bucket in the
+   order they print, wherever that is, so the run's own graph searches the two
+   together, as a graph built afresh from what it prints does. *)
 let spanned_run =
   let pairs =
     List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
@@ -212,7 +212,7 @@ let afresh_is_a_fresh_fixed_point () =
     [
       ("small run", factoring_run 40, true);
       ("large run", factoring_run 200, true);
-      ("spanned run", spanned_run, false);
+      ("spanned run", spanned_run, true);
     ]
 
 (* A rule a rewrite consumed stays in the graph as a relay. Here [p.k] and
