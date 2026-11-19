@@ -315,6 +315,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   omitted direction for `bottom`. A prefixed gradient's side keyword names the
   side it starts from (CSS Image Values 3, Working Draft of 17 February 2011,
   sec. 5.1.1), and is read that way (#1418).
+- `--minify` dropped a normal `content` written before an important one whose
+  value every browser reads, but kept it when written after, as in
+  `.a{content:"a"!important;content:"b"}`. The important one wins either way,
+  and the normal one goes in both orders (#1419).
 
 ### Comparing stylesheets
 
