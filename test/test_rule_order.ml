@@ -467,6 +467,29 @@ let coalesce_reads_writes_a_fold_moved () =
     (canonical
        ".o{width:76px;display:none}.g{display:none;width:24px}.p{display:block}")
 
+(* Reduced from tmall-1 against its [--objective=raw] output. Each conflict is
+   one declaration against one other: [.t]'s colour precedes [.l]'s, its width
+   precedes [.v]'s, and [.l]'s [padding-top] precedes [.t]'s. Neither [.t]
+   occurrence is ordered against the other or against the second [.l], so the
+   sheet that folds [.t] and the one that leaves it split are one sheet, and
+   Chromium paints them alike. Folding one held pair first must not strand the
+   other. Moving [.t]'s [padding-top] before [.l]'s is another sheet. *)
+let fold_order_does_not_decide_the_form () =
+  let split =
+    ".t{color:red;width:20px}.l{padding-top:0}.v{width:30px}.t{padding-top:10px}.l{color:blue}"
+  in
+  let folded =
+    ".l{padding-top:0}.t{color:red;width:20px;padding-top:10px}.v{width:30px}.l{color:blue}"
+  in
+  let reordered =
+    ".t{color:red;width:20px;padding-top:10px}.l{padding-top:0}.v{width:30px}.l{color:blue}"
+  in
+  Alcotest.(check string)
+    "the split and the folded sheet" (canonical folded) (canonical split);
+  Alcotest.(check bool)
+    "a padding moved past the one it follows stays apart" true
+    (canonical split <> canonical reordered)
+
 (* Two adjacent rules over one selector list hold, for every element, the
    declarations of the one rule that list over both bodies, in the same order.
    Read branch by branch, [speak], which the footprint model cannot place and so
@@ -909,6 +932,8 @@ let suite =
         coalesce_through_two_held_occurrences;
       Alcotest.test_case "coalesce reads writes a fold moved" `Quick
         coalesce_reads_writes_a_fold_moved;
+      Alcotest.test_case "fold order does not decide the form" `Quick
+        fold_order_does_not_decide_the_form;
       Alcotest.test_case "adjacent lists join before expanding" `Quick
         adjacent_lists_join_before_expanding;
       Alcotest.test_case "identical bodies never conflict" `Quick
