@@ -442,6 +442,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   order, so that second search would find nothing and is gone, saving 1.1% of
   instructions over the SatCSS corpus. A run that nesting changes is optimised
   again in the same pass (#1424).
+- `cascade diff --diff=canonical` folded one pair of occurrences of a
+  selector per round and re-sorted the whole sheet before the next, which
+  made the 504 SatCSS sheets against their `--minify` output take 132 s of
+  CPU instead of 106 s. A round now folds every pair that stands clear of the
+  ones it already folded, and reads each rule's key and conflict facts once:
+  86 s, with every report unchanged (#1426).
 
 ### Warnings and errors
 
