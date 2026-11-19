@@ -37,68 +37,35 @@ let test_declarations_equal_fast_and_structural_paths () =
     "different length" false
     (Merge.declarations_equal ~same:same_decl r.declarations r3.declarations)
 
-(* [compatible] is reflexive and symmetric but NOT transitive. A plain selector
-   sits beside one carrying a newer pseudo-class, and beside an
-   [:is(:where(...))] variant, while those two never sit together: a browser
-   that does not know [:user-valid] drops the whole rule, where the forgiving
-   variant would have survived. Grouping by sorting a run and checking only
-   neighbours is unsound for exactly this reason. *)
-let test_compatible_is_not_transitive () =
-  let newer = Selector.v ".x:user-valid" in
-  let plain = Selector.v ".y" in
-  let guarded = Selector.v ":is(:where(.group):hover .z)" in
-  Alcotest.(check bool) "newer with plain" true (Merge.compatible newer plain);
-  Alcotest.(check bool)
-    "plain with guarded" true
-    (Merge.compatible plain guarded);
-  Alcotest.(check bool)
-    "newer with guarded" false
-    (Merge.compatible newer guarded);
-  Alcotest.(check bool)
-    "and the other way round" false
-    (Merge.compatible guarded newer);
-  Alcotest.(check bool) "reflexive on newer" true (Merge.compatible newer newer);
-  Alcotest.(check bool)
-    "reflexive on guarded" true
-    (Merge.compatible guarded guarded)
-
-(* Every shape [compatible] distinguishes: a selector with neither marker, one
-   carrying a newer pseudo-class where a browser can see it, one carrying it
-   inside a forgiving [:is()], an [:is(:where(.group))] and an
-   [:is(:where(.peer))] variant, one that is both, and a [:where()] holding
-   neither marker. *)
+(* Selectors 4 sec. 3.9: a browser drops a whole list when it does not parse one
+   of its selectors, so two selectors share a list only when the same default
+   targets drop each. Chrome 111 and Safari 16.4 predate [:user-valid] and
+   [:user-invalid] (Chrome 119, Safari 16.5 in MDN's compatibility data), and
+   every target parses the rest of the pool. Inside a forgiving [:is()] or
+   [:where()] (sec. 4.2 and 4.3) a selector a browser does not parse drops that
+   argument alone, so it drops nothing there. Each entry carries whether the two
+   targets drop it. *)
 let compat_pool =
-  List.map Selector.v
-    [
-      ".a";
-      ".b:hover";
-      ".c:user-valid";
-      ".d:user-invalid .e";
-      ":is(:where(.group):hover .f)";
-      ":is(:where(.peer):checked~.g)";
-      ":is(:where(.group):hover .h):user-valid";
-      ":where(.i,.j) .k";
-      ":is(.l:user-valid) .m";
-      ".n::before";
-    ]
+  [
+    (".a", false);
+    (".b:hover", false);
+    (".c:user-valid", true);
+    (".d:user-invalid .e", true);
+    (":is(:where(.group):hover .f)", false);
+    (":is(:where(.peer):checked~.g)", false);
+    (":is(:where(.group):hover .h):user-valid", true);
+    (":where(.i,.j) .k", false);
+    (":is(.l:user-valid) .m", false);
+    (".n::before", false);
+  ]
+  |> List.map (fun (s, newer) -> (Selector.v s, newer))
 
-(* The relation as it was written before [all_compatible]: read
-   [has_is_where_pattern] off both, and where they disagree read
-   [has_newer_pseudo_class] off the one that lacks it. *)
-let compatible_by_hand sel1 sel2 =
-  let sel1_complex = Selector.has_is_where_pattern sel1 in
-  let sel2_complex = Selector.has_is_where_pattern sel2 in
-  if sel1_complex <> sel2_complex then
-    let plain_sel = if sel1_complex then sel2 else sel1 in
-    not (Selector.has_newer_pseudo_class plain_sel)
-  else true
-
-let test_compatible_matches_the_predicates () =
+let test_compatible_reads_which_targets_drop () =
   List.iter
-    (fun a ->
+    (fun (a, newer_a) ->
       List.iter
-        (fun b ->
-          if Merge.compatible a b <> compatible_by_hand a b then
+        (fun (b, newer_b) ->
+          if Merge.compatible a b <> Bool.equal newer_a newer_b then
             Alcotest.failf "compatible %s %s" (Selector.to_string a)
               (Selector.to_string b))
         compat_pool)
@@ -121,7 +88,7 @@ let check_agrees sels =
       (String.concat "; " (List.map Selector.to_string sels))
 
 let test_all_compatible_matches_the_pair_loop () =
-  let pool = Array.of_list compat_pool in
+  let pool = Array.of_list (List.map fst compat_pool) in
   let rec exhaustive depth acc =
     check_agrees (List.rev acc);
     if depth > 0 then
@@ -165,7 +132,7 @@ let check_take sels =
       (String.concat "; " (List.map Selector.to_string sels))
 
 let test_run_matches_the_pair_loop () =
-  let pool = Array.of_list compat_pool in
+  let pool = Array.of_list (List.map fst compat_pool) in
   let rec exhaustive depth acc =
     check_take (List.rev acc);
     if depth > 0 then
@@ -244,10 +211,8 @@ let suite =
   ( "merge",
     [
       Alcotest.test_case "vendor detection" `Quick test_vendor_detection;
-      Alcotest.test_case "compatible is not transitive" `Quick
-        test_compatible_is_not_transitive;
-      Alcotest.test_case "compatible matches the two predicates" `Quick
-        test_compatible_matches_the_predicates;
+      Alcotest.test_case "compatible reads which targets drop" `Quick
+        test_compatible_reads_which_targets_drop;
       Alcotest.test_case "all_compatible matches the pair loop" `Quick
         test_all_compatible_matches_the_pair_loop;
       Alcotest.test_case "run matches the pair loop" `Quick
