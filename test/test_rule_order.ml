@@ -481,6 +481,23 @@ let adjacent_lists_join_before_expanding () =
     "one rule over the list" want
     (canonical ".a,.b{speak:none;top:7px}")
 
+(* Two rules with one declaration list apply that list twice to an element both
+   match, whichever comes first, so they never decide each other. Two different
+   declarations in the list may still touch, as an unplaced [-moz-] longhand
+   touches everything, and that alone must not order the two. *)
+let identical_bodies_never_conflict () =
+  let body =
+    "{-moz-animation-duration:.1s;-webkit-animation-duration:.1s;animation-fill-mode:both}"
+  in
+  let css parts = String.concat "" parts in
+  let want = css [ ".d"; body; ".u"; body; "html .u{animation-name:a}" ] in
+  Alcotest.(check string)
+    "written apart" want
+    (canonical (css [ ".u"; body; "html .u{animation-name:a}.d"; body ]));
+  Alcotest.(check string)
+    "written as one list" want
+    (canonical (css [ ".d,.u"; body; "html .u{animation-name:a}" ]))
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -710,6 +727,8 @@ let suite =
         coalesce_reads_writes_a_fold_moved;
       Alcotest.test_case "adjacent lists join before expanding" `Quick
         adjacent_lists_join_before_expanding;
+      Alcotest.test_case "identical bodies never conflict" `Quick
+        identical_bodies_never_conflict;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
