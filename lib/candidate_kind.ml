@@ -108,10 +108,18 @@ let grouped_rule (rules : rule list) : rule option =
             merge_key = Option.None;
           }
 
-(* [ids] once each, in the order the graph prints them. *)
+(* [ids] once each, in the order the graph prints them: a bucket's windows are
+   in that order already, and are handed back as they are. *)
 let ordered_ids g ids =
-  ids |> Node_set.of_list |> Node_set.elements
-  |> List.sort (Rule_graph.compare_position g.graph)
+  let rec printed = function
+    | a :: (b :: _ as rest) ->
+        Rule_graph.compare_position g.graph a b < 0 && printed rest
+    | [ _ ] | [] -> true
+  in
+  if printed ids then ids
+  else
+    ids |> Node_set.of_list |> Node_set.elements
+    |> List.sort (Rule_graph.compare_position g.graph)
 
 type offer = { key : int; candidate : candidate; mutable withdrawn : bool }
 

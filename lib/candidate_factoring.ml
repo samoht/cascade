@@ -7,7 +7,9 @@ module Node_set = Set.Make (Rule_graph.Node_id)
 let decl_facts = Commute.facts
 
 let candidate_set_key ids =
-  ids |> List.map Rule_graph.Node_id.to_int |> hash_ints
+  List.fold_left
+    (fun hash id -> Common.mix_int hash (Rule_graph.Node_id.to_int id))
+    0x345678 ids
 
 (* A node keeps its rule for as long as it is in the graph, since a rewrite only
    appends nodes, so on every graph one rewrite lineage passes through a list of
@@ -25,12 +27,17 @@ let printed_bounds g ids =
   | [] -> Option.None
   | first :: rest ->
       let compare = Rule_graph.compare_position (graph g) in
-      Option.Some
-        (List.fold_left
-           (fun (lo, hi) id ->
-             ( (if compare id lo < 0 then id else lo),
-               if compare id hi > 0 then id else hi ))
-           (first, first) rest)
+      let lo =
+        List.fold_left
+          (fun lo id -> if compare id lo < 0 then id else lo)
+          first rest
+      in
+      let hi =
+        List.fold_left
+          (fun hi id -> if compare id hi > 0 then id else hi)
+          first rest
+      in
+      Option.Some (lo, hi)
 
 (* Recursive rather than [List.exists] over a closure: the closure captures
    [id], so it is allocated afresh at every node the external scan walks
@@ -364,14 +371,14 @@ let member_overrides_default entry member =
    dropped, so the property stays ungrouped, once one of the members below
    precedes the provider. *)
 let overriders ~provider members entry =
-  List.filter_map
-    (fun member ->
+  List.fold_left
+    (fun overriders member ->
       if
         Rule_graph.Node_id.compare member.id provider.id <> 0
         && member_overrides_default entry member
-      then Option.Some member.id
-      else Option.None)
-    members
+      then member.id :: overriders
+      else overriders)
+    [] members
 
 let needs_default_reassertion g entry ~prior member =
   member_has_default entry member
@@ -686,7 +693,7 @@ let extended_known g known ~first members member =
                    needs_default_reassertion g entry ~prior:known.members member
                  then Option.None
                  else if member_overrides_default entry member then
-                   Option.Some (entry, overriders @ [ member.id ])
+                   Option.Some (entry, member.id :: overriders)
                  else Option.Some (entry, overriders))
            (Lazy.force known.entries));
     groups = [];
@@ -1044,9 +1051,14 @@ let crosses core (group : group) branches (grouped : rule) id =
    declarations and scanned on this epoch, with the member it lacks, which
    prints after all of its own. *)
 let narrower core shared (group : group) =
-  match List.rev group.members with
-  | last :: (_ :: _ :: _ as prior) -> (
-      match Ids_table.find_opt shared.by_members (List.rev prior) with
+  let rec drop_last = function
+    | [] | [ _ ] -> []
+    | id :: rest -> id :: drop_last rest
+  in
+  match group.members with
+  | first :: _ :: _ :: _ as members -> (
+      let last = List.fold_left (fun _ id -> id) first members in
+      match Ids_table.find_opt shared.by_members (drop_last members) with
       | Option.None -> Option.None
       | Option.Some groups ->
           List.find_map
