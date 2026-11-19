@@ -524,3 +524,12 @@ regeneration command.
 The [SatCSS benchmark](../bench/satcss/) is regenerated locally and not part
 of the normal tests, because its upstream repository carries no licence for
 redistributing the website stylesheets.
+
+## Release criteria
+
+For each of the 504 SatCSS sheets and Tailwind's output, `cascade diff
+--diff=canonical SHEET <(cascade fmt --minify -q SHEET)` exits 0 under the
+default and under `--objective=raw`; an exit 1 or 2 blocks the release until
+fixed. Canonical diff reads both sides through one normaliser, so each minimal
+reduction of a change is also rendered against its source with `cascade diff
+--browser`.
