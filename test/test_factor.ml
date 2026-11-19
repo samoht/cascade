@@ -611,13 +611,13 @@ let occurrences ~sub s =
 let check_contains what ~sub s =
   if not (contains ~sub s) then Alcotest.failf "%s: %s not in %s" what sub s
 
-(* The transfer objective merges only rules within 128 printed rules of each
-   other, since a compressor encodes a repeated declaration in a few bytes
-   wherever it sits, while a selector moved away from its neighbours stops
-   compressing against them; the raw objective merges at any distance. The
-   padding rules write a property nothing else writes, so no rule stands in the
-   way of either merge. *)
-let test_transfer_merges_within_span () =
+(* The transfer objective merges a run of identical bodies only within 128
+   printed rules, and the raw objective at any distance; under both, factoring
+   reads the members of a bucket in the order they print, wherever that is, so
+   it takes [.a] and [.b], 262 rules apart, out of their places. The padding
+   rules write a property nothing else writes, so no rule stands in the way of
+   either merge. *)
+let test_transfer_factors_at_any_distance () =
   let padding first count =
     String.concat ""
       (List.init count (fun i -> Fmt.str ".pad%d{order:%d}" (first + i) i))
@@ -634,9 +634,7 @@ let test_transfer_merges_within_span () =
       ]
   in
   let transfer = optimize_with css in
-  check_contains "transfer keeps far rules apart" ~sub:".a{color:red;margin:0}"
-    transfer;
-  check_contains "transfer keeps far rules apart" ~sub:".b{color:red;margin:0}"
+  check_contains "transfer factors far rules" ~sub:".a,.b{color:red;margin:0}"
     transfer;
   check_contains "transfer merges near rules"
     ~sub:".c,.d{float:right;padding:0}" transfer;
@@ -646,14 +644,13 @@ let test_transfer_merges_within_span () =
   Alcotest.(check string)
     "transfer is a fixed point" transfer (optimize_with transfer)
 
-(* Eighty sprite rules share three declarations. Factoring them out shrinks the
-   raw output by a third, and every member lies within 128 rules of the others,
-   so the transfer objective keeps the factoring; nothing judges it again on an
-   estimate of the compressed size. *)
+(* Twenty sprite rules share three declarations. Factoring them out shrinks the
+   raw output by a third, and the transfer objective keeps the factoring;
+   nothing judges it again on an estimate of the compressed size. *)
 let test_transfer_keeps_near_factoring () =
   let css =
     String.concat ""
-      (List.init 80 (fun i ->
+      (List.init 20 (fun i ->
            Fmt.str
              ".icon-%d{background-position:-%dpx \
               0;display:inline-block;width:16px;height:16px}"
@@ -669,8 +666,8 @@ let test_transfer_keeps_near_factoring () =
 let suite =
   ( "factor",
     [
-      Alcotest.test_case "transfer merges within 128 rules, raw at any distance"
-        `Quick test_transfer_merges_within_span;
+      Alcotest.test_case "transfer factors at any distance" `Quick
+        test_transfer_factors_at_any_distance;
       Alcotest.test_case "transfer keeps a near factoring" `Quick
         test_transfer_keeps_near_factoring;
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick

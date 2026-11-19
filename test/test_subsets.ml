@@ -2,23 +2,24 @@ open Cascade
 
 let ids n = List.init n Rule_graph.Node_id.of_int_exn
 let ints subsets = List.map (List.map Rule_graph.Node_id.to_int) subsets
-let at_index id = Rule_graph.Node_id.to_int id
 let sorted subsets = List.sort (List.compare Int.compare) (ints subsets)
 
 let rec contiguous = function
   | a :: (b :: _ as rest) -> b = a + 1 && contiguous rest
   | [ _ ] | [] -> true
 
+let at_index id = Rule_graph.Node_id.to_int id
+let normal = Subsets.exact ~aggressive:false 50
+let aggressive = Subsets.exact ~aggressive:true 50
+
+(* Under --aggressive a small bucket is tried whole, then less each member. *)
 let small_bucket_is_tried_whole_and_less_one () =
-  let budget = Subsets.exact ~aggressive:false 50 in
   Alcotest.(check (list (list int)))
     "the whole bucket, then each member left out"
     [ [ 0; 1; 2 ]; [ 1; 2 ]; [ 0; 2 ]; [ 0; 1 ] ]
-    (ints (Subsets.of_bucket budget ~slot:at_index (ids 3)))
+    (ints (Subsets.of_bucket aggressive ~slot:at_index (ids 3)))
 
 let a_lone_member_is_no_subset () =
-  let small = Subsets.exact ~aggressive:false 50 in
-  let large = Subsets.exact ~aggressive:false 500 in
   List.iter
     (fun (label, budget) ->
       Alcotest.(check (list (list int)))
@@ -27,13 +28,12 @@ let a_lone_member_is_no_subset () =
       Alcotest.(check (list (list int)))
         (label ^ ": no member") []
         (ints (Subsets.of_bucket budget ~slot:at_index [])))
-    [ ("small run", small); ("large run", large) ]
+    [ ("normal", normal); ("aggressive", aggressive) ]
 
-(* Past 128 rules a bucket offers every run of neighbours: ten members make the
-   45 runs of two to ten, each of consecutive members. *)
-let a_large_run_tries_runs_of_neighbours () =
-  let budget = Subsets.exact ~aggressive:false 500 in
-  let subsets = Subsets.of_bucket budget ~slot:at_index (ids 10) in
+(* A bucket offers every run of neighbours: ten members make the 45 runs of two
+   to ten, each of consecutive members. *)
+let a_bucket_tries_runs_of_neighbours () =
+  let subsets = Subsets.of_bucket normal ~slot:at_index (ids 10) in
   Alcotest.(check int) "every run of two or more" 45 (List.length subsets);
   Alcotest.(check bool)
     "each is a run of neighbours" true
@@ -42,47 +42,43 @@ let a_large_run_tries_runs_of_neighbours () =
 (* A run reaches at most 24 members: thirty in a row would offer more than the
    256 subsets a bucket may take, so the bucket offers none. *)
 let a_bucket_past_its_bound_offers_nothing () =
-  let budget = Subsets.default ~aggressive:false 500 in
   Alcotest.(check (list (list int)))
     "thirty neighbours" []
-    (ints (Subsets.of_bucket budget ~slot:at_index (ids 30)))
+    (ints (Subsets.of_bucket normal ~slot:at_index (ids 30)))
 
-(* A run spans at most 128 source positions, so members far apart in the source
-   never share one. *)
-let a_run_spans_at_most_128_positions () =
-  let budget = Subsets.exact ~aggressive:false 500 in
-  let slot id = 100 * Rule_graph.Node_id.to_int id in
+(* A run is of neighbours in the bucket, wherever they print: three members are
+   the whole bucket and its two pairs of neighbours. *)
+let a_run_reads_neighbours_alone () =
+  let spread id = 100 * Rule_graph.Node_id.to_int id in
   Alcotest.(check (list (list int)))
-    "members 100 positions apart pair only with their neighbour"
-    [ [ 0; 1 ]; [ 1; 2 ] ]
-    (sorted (Subsets.of_bucket budget ~slot (ids 3)))
+    "every run of neighbours"
+    [ [ 0; 1 ]; [ 0; 1; 2 ]; [ 1; 2 ] ]
+    (sorted (Subsets.of_bucket normal ~slot:spread (ids 3)))
 
-let one_budget_is_shared_past_128_rules () =
+let one_budget_is_shared_outside_aggressive () =
+  Alcotest.(check (option int)) "normal" (Some 256) (Subsets.shared normal);
   Alcotest.(check (option int))
-    "small run" None
-    (Subsets.shared (Subsets.exact ~aggressive:false 128));
-  Alcotest.(check (option int))
-    "large run" (Some 256)
-    (Subsets.shared (Subsets.exact ~aggressive:false 129));
-  Alcotest.(check (option int))
-    "aggressive" None
-    (Subsets.shared (Subsets.default ~aggressive:true 5000))
+    "normal, large" (Some 256)
+    (Subsets.shared (Subsets.default ~aggressive:false 500));
+  Alcotest.(check (option int)) "aggressive" None (Subsets.shared aggressive)
 
-(* A bucket too large to try whole in a small run is tried as runs of
-   neighbours, widest first: up to 32 for exact sharing, one for default
-   factoring. *)
-let a_large_bucket_in_a_small_run_is_tried_as_runs () =
-  let exact = Subsets.exact ~aggressive:false 100 in
-  let default = Subsets.default ~aggressive:false 100 in
-  let exact_subsets = Subsets.of_bucket exact ~slot:at_index (ids 20) in
-  Alcotest.(check int) "exact" 32 (List.length exact_subsets);
+(* Under --aggressive a bucket too large to try whole is tried as up to 32 runs
+   of neighbours, widest first. *)
+let a_large_bucket_is_tried_as_runs_under_aggressive () =
+  let subsets = Subsets.of_bucket aggressive ~slot:at_index (ids 20) in
+  Alcotest.(check int) "runs" 32 (List.length subsets);
   Alcotest.(check bool)
-    "exact runs are runs of neighbours" true
-    (List.for_all contiguous (ints exact_subsets));
-  Alcotest.(check (list (list int)))
-    "default takes the whole bucket as one run"
-    [ List.init 20 Fun.id ]
-    (ints (Subsets.of_bucket default ~slot:at_index (ids 20)))
+    "runs of neighbours" true
+    (List.for_all contiguous (ints subsets));
+  Alcotest.(check (list int))
+    "the widest first" (List.init 20 Fun.id)
+    (List.hd (ints subsets));
+  Alcotest.(check int)
+    "default factoring as many" 32
+    (List.length
+       (Subsets.of_bucket
+          (Subsets.default ~aggressive:true 50)
+          ~slot:at_index (ids 20)))
 
 let suite =
   ( "subsets",
@@ -91,14 +87,14 @@ let suite =
         small_bucket_is_tried_whole_and_less_one;
       Alcotest.test_case "a lone member is no subset" `Quick
         a_lone_member_is_no_subset;
-      Alcotest.test_case "a large run tries runs of neighbours" `Quick
-        a_large_run_tries_runs_of_neighbours;
+      Alcotest.test_case "a bucket tries runs of neighbours" `Quick
+        a_bucket_tries_runs_of_neighbours;
       Alcotest.test_case "a bucket past its bound offers nothing" `Quick
         a_bucket_past_its_bound_offers_nothing;
-      Alcotest.test_case "a run spans at most 128 positions" `Quick
-        a_run_spans_at_most_128_positions;
-      Alcotest.test_case "one budget is shared past 128 rules" `Quick
-        one_budget_is_shared_past_128_rules;
-      Alcotest.test_case "a large bucket in a small run is tried as runs" `Quick
-        a_large_bucket_in_a_small_run_is_tried_as_runs;
+      Alcotest.test_case "a run reads neighbours alone" `Quick
+        a_run_reads_neighbours_alone;
+      Alcotest.test_case "one budget is shared outside aggressive" `Quick
+        one_budget_is_shared_outside_aggressive;
+      Alcotest.test_case "a large bucket is tried as runs under aggressive"
+        `Quick a_large_bucket_is_tried_as_runs_under_aggressive;
     ] )

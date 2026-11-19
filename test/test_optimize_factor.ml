@@ -271,11 +271,11 @@ let test_large_stylesheet_block_merge_rejoins_runs () =
   Alcotest.(check string)
     "merging blocks then factoring converges in one pass" once (minify_str once)
 
-(* Factoring on a large sheet searches neighbours within 128 source positions.
-   [.x] and [.y] sit 141 apart, so the search on the input never pairs them, but
-   once the pairs between them merge they print 71 rules apart, and a search on
-   the output does: minifying the output again factored [color:red] out of
-   them. *)
+(* [.x] and [.y] share [color:red] and sit 141 rules apart, with pairs of
+   identical bodies between them that merge. Factoring reads a bucket's members
+   in the order they print, wherever that is, so it pairs the two on the input
+   as on the output: a search limited to 128 source positions paired them only
+   when the output was minified again. *)
 let test_large_stylesheet_factoring_reaches_span () =
   let pairs =
     List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
