@@ -539,14 +539,18 @@ let default_group_decls ~exact_common entries =
   Lift.append_unique_decls exact_common
     (List.map (fun entry -> entry.default_decl) entries)
 
-let default_member_leftover ~keys ~entries ~exact_common ~prior member =
-  member.rule.declarations
-  |> Lift.remove_common exact_common
-  |> Property_key.remove keys
-  |> fun kept ->
-  kept
-  @ reassert_default_declarations entries ~prior member
-  @ override_declarations entries member
+(* What a member keeps, in the order it wrote it: an override is often a
+   shorthand resetting a longhand written after it ([border] then
+   [border-top-color]). A reassertion keeps the member's own default. *)
+let default_member_leftover ~entries ~exact_common ~prior member =
+  let kept decl =
+    match List.find_opt (fun e -> Property_key.has e.key decl) entries with
+    | Option.None -> true
+    | Option.Some entry ->
+        (not (same_decl decl entry.default_decl))
+        || needs_default_reassertion entry ~prior member
+  in
+  List.filter kept (Lift.remove_common exact_common member.rule.declarations)
 
 let default_decl_removed_after_reassertion entries ~prior member =
   removed_default_declarations entries member
@@ -582,21 +586,19 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
   in
   loop [] members
 
-let keep_default_member g ~keys ~entries ~exact_common ~prior member =
-  let leftover =
-    default_member_leftover ~keys ~entries ~exact_common ~prior member
-  in
+let keep_default_member g ~entries ~exact_common ~prior member =
+  let leftover = default_member_leftover ~entries ~exact_common ~prior member in
   leftover = []
   || selector_size g member.id + 1
      <= decls_inline_cost
           (exact_common
           @ default_decl_removed_after_reassertion entries ~prior member)
 
-let prune_default_members g ~keys ~entries ~exact_common members =
+let prune_default_members g ~entries ~exact_common members =
   let rec loop prior acc = function
     | [] -> List.rev acc
     | member :: rest ->
-        if keep_default_member g ~keys ~entries ~exact_common ~prior member then
+        if keep_default_member g ~entries ~exact_common ~prior member then
           loop (member :: prior) (member :: acc) rest
         else loop prior acc rest
   in
@@ -628,8 +630,7 @@ let default_produce ~finalize g ~keys ~entries ~exact_common ~group_decls
               | [] -> List.rev acc
               | member :: rest -> (
                   match
-                    default_member_leftover ~keys ~entries ~exact_common ~prior
-                      member
+                    default_member_leftover ~entries ~exact_common ~prior member
                   with
                   | [] -> loop (member :: prior) acc rest
                   | declarations ->
@@ -728,7 +729,7 @@ let default_group ~shared ~finalize g members entries =
   let keys = List.map (fun entry -> entry.key) entries in
   let exact_common = exact_common_without keys members in
   let group_decls = default_group_decls ~exact_common entries in
-  let members = prune_default_members g ~keys ~entries ~exact_common members in
+  let members = prune_default_members g ~entries ~exact_common members in
   share shared ~members:(default_member_ids members)
     ~decls:group_decls ~props:keys (fun () ->
       match members with
