@@ -498,6 +498,18 @@ let identical_bodies_never_conflict () =
     "written as one list" want
     (canonical (css [ ".d,.u"; body; "html .u{animation-name:a}" ]))
 
+(* CSS Cascade 5 sec. 6.1 sorts by importance before order of appearance, so in
+   one rule a normal and an important declaration never decide each other,
+   whichever is written first. *)
+let importance_commutes_within_a_rule () =
+  let want = ".a{content:\"a\";content:\"b\"!important}" in
+  Alcotest.(check string)
+    "important written first" want
+    (canonical ".a{content:'b'!important}.a{content:'a'}");
+  Alcotest.(check string)
+    "important written last" want
+    (canonical ".a{content:'a';content:'b'!important}")
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -729,6 +741,8 @@ let suite =
         adjacent_lists_join_before_expanding;
       Alcotest.test_case "identical bodies never conflict" `Quick
         identical_bodies_never_conflict;
+      Alcotest.test_case "importance commutes within a rule" `Quick
+        importance_commutes_within_a_rule;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
