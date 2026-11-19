@@ -340,6 +340,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   pseudo-elements after one colon (Selectors 4 sec. 3.6.1); any other
   pseudo-element name there is an unknown pseudo-class, and its rule is
   dropped with a warning, as every target drops it (#1427).
+- `--minify` split an author's selector list holding a vendor pseudo-element
+  into one rule per vendor branch and one for the rest, so a browser without
+  the pseudo-element styled the rest, which it dropped with the source's list:
+  Chromium painted the file button of
+  `input::file-selector-button,b::-moz-selection{background:red}` red. The
+  list stays as the author wrote it (#1428).
 
 ### Comparing stylesheets
 
