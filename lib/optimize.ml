@@ -233,7 +233,11 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
           process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
             [] stmts
         in
-        let stmts = if Ctx.regroup ctx then Nest.statements stmts else stmts in
+        let stmts =
+          if Ctx.regroup ctx then
+            nest ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts
+          else stmts
+        in
         let stmts =
           let merged =
             merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts
@@ -309,8 +313,64 @@ and rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports ~before merged
   in
   let rejoined = walk [] [] false before merged in
   if not !changed then merged
-  else if Ctx.regroup ctx then Nest.statements rejoined
+  else if Ctx.regroup ctx then
+    nest ?factor_cache ~ctx ~enforce_spec ~owner ~supports rejoined
   else rejoined
+
+(* Nesting takes a flat rule into the rule before it, which changes the run both
+   were optimized in: the rule taken is gone, and its parent, which now nests a
+   rule, is no member of the run's factoring buckets. Each run nesting changed
+   is optimized again as the run it now is, its rules' bodies aside, which are
+   already, and nested again. Nesting and factoring each shorten the run, so
+   this ends. *)
+and nest ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts =
+  let nested = Nest.statements stmts in
+  if nested == stmts then stmts
+  else
+    let shallow = Ctx.with_recurse_blocks false ctx in
+    let changed = ref false in
+    (* The rule runs of [stmts] and [nested] pair up in order: nesting changes
+       no other statement and leaves every run at least its first rule. *)
+    let rec runs acc run = function
+      | (Rule r as stmt) :: rest -> runs acc ((stmt, r) :: run) rest
+      | rest -> (
+          let acc = match run with [] -> acc | _ -> List.rev run :: acc in
+          match rest with [] -> List.rev acc | _ :: rest -> runs acc [] rest)
+    in
+    let before = runs [] [] stmts in
+    let rec walk acc before = function
+      | [] -> List.rev acc
+      | Rule _ :: _ as stmts -> (
+          let rec take run = function
+            | (Rule r as stmt) :: rest -> take ((stmt, r) :: run) rest
+            | rest -> (List.rev run, rest)
+          in
+          let run, rest = take [] stmts in
+          match before with
+          | old :: before ->
+              let same = List.equal (fun (a, _) (b, _) -> a == b) old run in
+              let acc =
+                if same then List.rev_append (List.map fst run) acc
+                else
+                  let rules = List.map snd run in
+                  let rules' =
+                    rules_aux ?factor_cache ~ctx:shallow ~enforce_spec ~owner
+                      ~supports rules
+                  in
+                  if rules' == rules then List.rev_append (List.map fst run) acc
+                  else begin
+                    changed := true;
+                    List.rev_append (List.map (fun r -> Rule r) rules') acc
+                  end
+              in
+              walk acc before rest
+          | [] -> walk (List.rev_append (List.map fst run) acc) [] rest)
+      | stmt :: rest -> walk (stmt :: acc) before rest
+    in
+    let optimized = walk [] before nested in
+    if !changed then
+      nest ?factor_cache ~ctx ~enforce_spec ~owner ~supports optimized
+    else nested
 
 (* Walk the statement list left to right over a reversed accumulator.
 
