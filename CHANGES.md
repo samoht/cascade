@@ -549,6 +549,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   CPU instead of 106 s. A round now folds every pair that stands clear of the
   ones it already folded, and reads each rule's key and conflict facts once:
   86 s, with every report unchanged (#1426).
+- `cascade diff --diff=canonical` walked every rule a moved declaration's
+  rule reached, once per move, so 1000 pairs of `.aK{color;margin-top}
+  .bK{margin:0} .aK{margin-left}` took 152 billion instructions. The walk now
+  stops once it has placed the rules the move conflicts with, and skips those
+  no rule after it can reach: 89 billion, with every verdict and report over
+  the SatCSS corpus unchanged (#1447).
 
 ### Warnings and errors
 
