@@ -233,6 +233,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   the order they print, the same at every size, and only rules with identical
   bodies are bounded, to 128 printed rules apart. Output is 0.15% larger raw,
   and 0.02% and 0.05% smaller under gzip and brotli (#1423).
+- Below 129 rules the merge search tried the merges each merge made possible
+  as soon as it landed, and above that only once it ran out of others, so the
+  same rules could merge one way alone and another among more rules. It now
+  waits at every size (#1425).
 - `--minify --scope=stylesheet` dropped declarations a page needs. A
   declaration written before longhands of its family was reset by the shorthand
   built from them: `background:#fff url(a.png) no-repeat center` lost its image
