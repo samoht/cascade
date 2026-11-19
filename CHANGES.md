@@ -291,6 +291,11 @@ to call instead, and moving off most of them is a rename or a deleted call.
 - Pretty output kept whichever spelling the input used. It now spells a
   selector one way: `::before`, a quoted attribute value and `odd`/`even`
   (#1357).
+- `--minify` could lose a border side. Factoring out what two rules share
+  wrote a rule's own `border` after the longhands it had written later, so
+  `.a{color:red;border:1px solid #ccc;border-top-color:red}` beside
+  `.b{color:red;border:1px solid #ddd}` lost its red top border. What a rule
+  keeps now stays in the order it wrote it (#1404).
 
 ### Comparing stylesheets
 
