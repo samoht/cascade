@@ -548,16 +548,24 @@ let read_unknown_pseudo_class_call ~all_idents t =
       Unknown_pseudo_class_call (name, arguments)
   | _ -> Cursor.err_expected t "pseudo-class call"
 
-let read_unknown_pseudo_class_ident t =
+(* The converse: a functional pseudo-class ([:lang()], [:not()], [:-moz-any()])
+   written without its argument is no pseudo-class at all, which Chrome 151 and
+   WebKit 26.5 drop and Firefox's parser reads only as a function. *)
+let read_unknown_pseudo_class_ident ~calls t =
   match Cursor.ident_opt t with
-  | Some name -> Unknown_pseudo_class name
+  | Some name ->
+      let lower = String.lowercase_ascii name in
+      if List.exists (fun (n, _) -> String.equal n lower) calls then
+        Cursor.err_invalid t
+          (String.concat "" [ "pseudo-class is functional: "; name ]);
+      Unknown_pseudo_class name
   | None -> Cursor.err_expected t "pseudo-class"
 
-let read_unknown_pseudo_class ~all_idents t =
+let read_unknown_pseudo_class ~all_idents ~calls t =
   Cursor.one_of
     [
       read_unknown_pseudo_class_call ~all_idents;
-      read_unknown_pseudo_class_ident;
+      read_unknown_pseudo_class_ident ~calls;
     ]
     t
 
@@ -687,7 +695,7 @@ and read_forgiving_complex_list t =
 and read_forgiving_complex_item t =
   let sel = read_complex t in
   if has_pseudo_element sel then Cursor.err t "pseudo-element not allowed here";
-  if has_unknown_pseudo_class sel then Cursor.err t "unknown pseudo-class";
+  if Option.is_some (untargeted sel) then Cursor.err t "unknown pseudo-class";
   sel
 
 (** Read nth selector with optional "of S" clause *)
@@ -746,7 +754,7 @@ and read_has_content t =
       if contains_has sel then Cursor.err t ":has() cannot contain :has()";
       if has_pseudo_element sel then
         Cursor.err t ":has() cannot contain pseudo-elements";
-      if has_unknown_pseudo_class sel then
+      if Option.is_some (untargeted sel) then
         Cursor.err t ":has() cannot contain an unknown pseudo-class")
     selectors;
   Has selectors
@@ -757,13 +765,12 @@ and read_not_content t =
      which sec. 16 builds out of [<compound-selector>]s alone, with no
      [<pseudo-compound-selector>] and so no pseudo-element. It is also
      non-forgiving, so a pseudo-element or an unknown selector anywhere in the
-     argument invalidates the whole rule instead of just its own item. Top-level
-     lists keep unknown pseudo-classes for forward compatibility. *)
+     argument invalidates the whole rule instead of just its own item. *)
   List.iter
     (fun sel ->
       if has_pseudo_element sel then
         Cursor.err t ":not() cannot contain pseudo-elements";
-      if has_unknown_pseudo_class sel then
+      if Option.is_some (untargeted sel) then
         Cursor.err t ":not() cannot contain an unknown pseudo-class")
     selectors;
   Not selectors
@@ -872,7 +879,7 @@ and read_pseudo_class ?(allow_unknown = false) t =
   expect_adjacent t "pseudo-class name";
   let all_idents = pseudo_class_all_idents () in
   let calls = pseudo_class_calls () in
-  let read_unknown = read_unknown_pseudo_class ~all_idents in
+  let read_unknown = read_unknown_pseudo_class ~all_idents ~calls in
   if allow_unknown then
     Cursor.enum_or_calls "pseudo-class" all_idents ~calls ~default:read_unknown
       t
@@ -978,9 +985,9 @@ and read_compound t =
   let prepend_simple acc =
     (* CSS Selectors 4 sec. 3.5: tolerate unknown pseudo-classes for forward
        compat (vendor pseudos, authored future-pseudos must round-trip).
-       Non-forgiving rejection lives where the spec requires it: inside
+       Rejecting one no target reads lives where the spec requires it: inside
        [:not()]/[:has()] ([read_not_content]/[read_has_content]) and in the rule
-       reader when a whole selector list is unknown. *)
+       reader for the whole selector list. *)
     let s = read_simple ~allow_unknown_pseudo_class:true t in
     match compound_refusal ~seen:acc s with
     | Some Sub_pseudo_element ->
@@ -1043,21 +1050,20 @@ and read_complex t =
 
 (* CSS Selectors 4 section 3.9: the top-level rule selector list is an
    unforgiving site. [read_compound] keeps [Unknown_pseudo_class] so vendor and
-   forward-compat pseudos round-trip, but one at top level is a spec deviation;
-   raise so [Selector.of_string ".ok,:future-pseudo"] surfaces a [Parse_error],
-   naming the pseudo-class when no target reads it ({!untargeted}). A cursor
-   that reads for every engine ({!Cursor.enforce_spec}) keeps it: an engine
-   cascade does not know may read the pseudo-class, and the rule is kept as
-   written. *)
+   forward-compat pseudos round-trip. One that no target reads ({!untargeted})
+   drops the rule in each of them, so raise and name it; one that a target
+   reads, or may read, keeps the rule as written, as Firefox does
+   [a:-moz-only-whitespace]. A cursor that reads for every engine
+   ({!Cursor.enforce_spec}) keeps them all: an engine outside the targets may
+   read the pseudo-class. *)
 let validate_unforgiving_pseudo t sel =
-  if has_unknown_pseudo_class sel && not (Cursor.enforce_spec t) then
+  if not (Cursor.enforce_spec t) then
     match untargeted sel with
     | Option.Some name ->
         Error.fail
           (Cursor.error ~sort:Sort.Selector t ~loc:(Cursor.position t)
              (Error.Untargeted_selector (String.concat "" [ ":"; name ])))
-    | Option.None ->
-        Cursor.err t "unknown pseudo-class in unforgiving selector list"
+    | Option.None -> ()
 
 let read_selector_list t =
   Cursor.with_context t "list" @@ fun () ->
