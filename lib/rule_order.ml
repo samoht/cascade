@@ -1136,17 +1136,31 @@ let drop_guarded_repeats outer_changed stmts =
    appearance, then the later wins. Dropping it lets a sheet that hoisted the
    declaration into a shared group converge with one that wrote it inline - the
    hoisted copy survives expansion only to be overridden. A later normal write
-   leaves an earlier important one standing. *)
-(* One backward pass: [later] holds, per selector, the properties the
-   statements already walked write, each with whether one of those writes is
-   important, and those are exactly the statements after the current one.
-   Consulting it is a lookup rather than a rescan of the tail, so no selector is
-   serialised more than once. *)
-let drop_shadowed_declarations stmts =
+   leaves an earlier important one standing. A property whose duplicates the
+   declaration dedup keeps verbatim ([content], [outline]) is shadowed only
+   where that dedup would drop the earlier write in one rule, so a sheet that
+   wrote the two in one rule converges with one that wrote them in two. *)
+(* Whether the later write [l] of [d]'s property shadows [d]. *)
+let shadows ~ctx d l =
+  if Shorthand.is_intentionally_duplicated d then
+    not
+      (List.memq d
+         (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false [ d; l ]))
+  else Declaration.is_important l || not (Declaration.is_important d)
+
+(* One backward pass: [later] holds, per selector, the declarations of each
+   property the statements already walked write, in source order, and those are
+   exactly the statements after the current one. Consulting it is a lookup
+   rather than a rescan of the tail, so no selector is serialised more than
+   once. *)
+let drop_shadowed_declarations ~ctx stmts =
   (* Properties are keyed by their AST identity: two constructors that print
      alike are different properties, and a name-keyed table would have one
      shadow the other. *)
-  let later : (string, (Declaration.prop_key, bool) Hashtbl.t) Hashtbl.t =
+  let later :
+      ( string,
+        (Declaration.prop_key, Declaration.declaration list) Hashtbl.t )
+      Hashtbl.t =
     Hashtbl.create 64
   in
   let written sel =
@@ -1157,34 +1171,31 @@ let drop_shadowed_declarations stmts =
         Hashtbl.replace later sel props;
         props
   in
-  let record sel declarations =
-    let props = written sel in
+  let record props declarations =
     List.iter
       (fun d ->
         let key = Declaration.property_key d in
-        let important =
-          Declaration.is_important d
-          || Option.value ~default:false (Hashtbl.find_opt props key)
-        in
-        Hashtbl.replace props key important)
-      declarations
+        let laters = Option.value ~default:[] (Hashtbl.find_opt props key) in
+        Hashtbl.replace props key (d :: laters))
+      (List.rev declarations)
   in
   let shadowed props d =
     match Hashtbl.find_opt props (Declaration.property_key d) with
     | None -> false
-    | Some important -> important || not (Declaration.is_important d)
+    | Some laters -> List.exists (shadows ~ctx d) laters
   in
   let rec go = function
     | [] -> []
     | (Rule r as stmt) :: rest ->
         (* The tail first, so [later] describes it by the time [stmt] asks. *)
         let rest = go rest in
-        let sel = Pp.to_string ~minify:true Selector.pp r.selector in
-        let props = written sel in
+        let props =
+          written (Pp.to_string ~minify:true Selector.pp r.selector)
+        in
         let kept =
           List.filter (fun d -> not (shadowed props d)) r.declarations
         in
-        record sel r.declarations;
+        record props r.declarations;
         if List.compare_lengths kept r.declarations = 0 then stmt :: rest
         else Rule { r with declarations = kept } :: rest
     | stmt :: rest -> stmt :: go rest
@@ -1237,7 +1248,7 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
   let expanded =
     join_adjacent_lists ~ctx changed stmts
     |> List.concat_map expand_lists
-    |> drop_shadowed_declarations
+    |> drop_shadowed_declarations ~ctx
     |> drop_guarded_repeats changed
     |> List.concat_map expand_blocks
   in

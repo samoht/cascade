@@ -581,6 +581,22 @@ let agreeing_writes_never_conflict () =
     "the wider rule written first" want
     (canonical (css [ ".f{"; shared; ";outline:0}.h{"; shared; "}" ]))
 
+(* The declaration dedup keeps a [content] or [outline] sequence written in one
+   rule verbatim, as a fallback pattern, so a later rule with the identical
+   selector does not shadow an earlier write of one either: the sheet that wrote
+   the two in one rule then projects as the one that wrote them in two. *)
+let shadowing_keeps_what_dedup_keeps () =
+  List.iter
+    (fun (name, want, two, one) ->
+      Alcotest.(check string) (name ^ ", two rules") want (canonical two);
+      Alcotest.(check string) (name ^ ", one rule") want (canonical one))
+    [
+      ( "content",
+        ".a{content:\"x\";content:\"y\"}.b{top:0}",
+        ".a{content:'x'}.b{top:0}.a{content:'y'}",
+        ".a{content:'x';content:'y'}.b{top:0}" );
+    ]
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -820,6 +836,8 @@ let suite =
         declaration_sinks_to_the_later_occurrence;
       Alcotest.test_case "agreeing writes never conflict" `Quick
         agreeing_writes_never_conflict;
+      Alcotest.test_case "shadowing keeps what dedup keeps" `Quick
+        shadowing_keeps_what_dedup_keeps;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
