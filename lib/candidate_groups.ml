@@ -26,13 +26,11 @@ let hash_strings strings =
    the whole body and decides that per property, so a rule carrying nested
    content stands on the same terms as any other. *)
 let same_selector_eligible (r : rule) =
-  r.merge_key = Option.None
-  && (not (Merge.engine_specific r.selector))
+  r.merge_key = Option.None && Merge.listable r.selector
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
 let identical_body_eligible ~ctx (r : rule) =
-  r.nested = [] && r.merge_key = Option.None
-  && (not (Merge.engine_specific r.selector))
+  r.nested = [] && r.merge_key = Option.None && Merge.listable r.selector
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
@@ -50,19 +48,25 @@ let selector_keys_equal left right =
 let body_equal_key g id = Rule_graph.declaration_body_key (graph g) id
 let body_bucket_key g id = body_equal_key g id |> hash_ints
 
+(* A bucket's members split by exact body, and by which targets drop each
+   selector ({!Merge.compatible}), so that every group can share one list. *)
 let same_body_groups g ids =
-  let rec insert id = function
-    | [] -> [ (id, [ id ]) ]
-    | (head, ids) :: rest ->
-        let rule = node_rule g id in
-        let head_rule = node_rule g head in
-        if declarations_equal head_rule.declarations rule.declarations then
-          (head, id :: ids) :: rest
-        else (head, ids) :: insert id rest
+  let rec insert id (rule : rule) compat = function
+    | [] -> [ (rule, compat, [ id ]) ]
+    | ((head_rule : rule), head_compat, ids) :: rest ->
+        if
+          Merge.equal_compatibility head_compat compat
+          && declarations_equal head_rule.declarations rule.declarations
+        then (head_rule, head_compat, id :: ids) :: rest
+        else (head_rule, head_compat, ids) :: insert id rule compat rest
   in
   ids
-  |> List.fold_left (fun groups id -> insert id groups) []
-  |> List.map (fun (_, ids) -> List.rev ids)
+  |> List.fold_left
+       (fun groups id ->
+         let rule = node_rule g id in
+         insert id rule (Merge.compatibility rule.selector) groups)
+       []
+  |> List.map (fun (_, _, ids) -> List.rev ids)
 
 let selector_is_list g id = Selector.is_compound_list (node_rule g id).selector
 let has_selector_list g ids = List.exists (selector_is_list g) ids

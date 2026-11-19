@@ -1,13 +1,11 @@
 (** Rule merge helpers. *)
 
-val vendor : Selector.t -> bool
-(** Whether a selector contains a vendor-specific pseudo-element. *)
-
-val engine_specific : Selector.t -> bool
-(** [engine_specific sel] is whether [sel] holds a vendor-specific
-    pseudo-element, or a prefixed pseudo-class some target browser does not
-    read, either of which makes a selector list holding [sel] invalid there as a
-    whole. A grouping pass never lists such a selector with another. *)
+val listable : Selector.t -> bool
+(** [listable sel] is whether a selector list may hold [sel] beside another
+    selector: whether the evergreen targets that drop [sel] are known, and drop
+    each of its branches alike. A browser drops a whole list when it does not
+    parse one of its selectors (Selectors 4 sec. 3.9), so a grouping pass lists
+    only selectors {!compatible} with each other. *)
 
 val key : Selector.t -> Selector.t list
 (** Canonical key for same-target selector comparison. *)
@@ -22,9 +20,22 @@ val declarations_equal :
   bool
 (** Compare declaration lists with physical-identity fast path. *)
 
+type compatibility
+(** What {!compatible} reads off a selector. *)
+
+val compatibility : Selector.t -> compatibility
+(** [compatibility sel] is what {!compatible} reads off [sel], to compare many
+    times without reading [sel] again. *)
+
+val equal_compatibility : compatibility -> compatibility -> bool
+(** [equal_compatibility a b] is whether selectors of compatibility [a] and [b]
+    are {!compatible}. It is false whenever one is not {!listable}. *)
+
 val compatible : Selector.t -> Selector.t -> bool
-(** Whether two selector-list branches can safely share one selector list. The
-    relation is reflexive and symmetric but not transitive. *)
+(** [compatible sel1 sel2] is whether [sel1] and [sel2] can share one selector
+    list: whether both are {!listable} and the same evergreen targets drop each,
+    so that every target reads the list as it reads them apart. The relation is
+    an equivalence on listable selectors. *)
 
 val all_compatible : Selector.t list -> bool
 (** [all_compatible sels] is whether every pair in [sels] is {!compatible}, read

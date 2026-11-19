@@ -354,6 +354,17 @@ to call instead, and moving off most of them is a rename or a deleted call.
   Chromium painted the file button of
   `input::file-selector-button,b::-moz-selection{background:red}` red. The
   list stays as the author wrote it (#1428).
+- `--minify` still listed most selectors some default target does not parse
+  with others: `a::-moz-placeholder` with `a::-webkit-input-placeholder`,
+  `::-ms-input-placeholder`, an unknown `::-moz-selection`, `:user-valid`,
+  `:dir()`, a `:lang()` list and the `s` attribute flag. That target dropped
+  the whole list, so arxiv.org's search box lost its placeholder colour in
+  Chromium. Which targets drop a selector is now read for every kind of
+  selector from MDN's compatibility data, Firefox's selector parser and
+  browser probes, and two selectors share a list only when the same targets
+  drop each (Selectors 4 sec. 3.9). Two `::-moz-placeholder` rules still
+  merge, and so do a `::-webkit-` pseudo-element and `::file-selector-button`,
+  which every target parses (#1437).
 
 ### Comparing stylesheets
 

@@ -15,13 +15,28 @@ let rule css =
 
 let same_decl a b = a == b || a = b
 
-let test_vendor_detection () =
+(* Selectors 4 sec. 3.9: a list is read as its selectors are only when every
+   target drops all of them or none. Chromium and WebKit drop
+   [::-moz-placeholder], which Firefox reads, so two of them list together and
+   apart from a plain selector. Every target parses a [::-webkit-]
+   pseudo-element (Chromium and WebKit take any such name, Firefox an unknown
+   one since 91 at least, Servo's [PseudoElement::UnknownWebkit]). Which targets
+   read a pseudo-element cascade does not know is not known, so it lists with
+   nothing. *)
+let test_listable () =
+  let v = Selector.v in
   Alcotest.(check bool)
-    "vendor pseudo detected" true
-    (Merge.vendor (Selector.v ".a::-webkit-scrollbar"));
+    "two -moz- pseudo-elements" true
+    (Merge.compatible (v ".a::-moz-placeholder") (v ".b::-moz-placeholder"));
   Alcotest.(check bool)
-    "regular selector is not vendor" false
-    (Merge.vendor (Selector.v ".a::before"))
+    "-moz- and plain" false
+    (Merge.compatible (v ".a::-moz-placeholder") (v ".b"));
+  Alcotest.(check bool)
+    "-webkit- and plain" true
+    (Merge.compatible (v ".a::-webkit-scrollbar") (v ".b"));
+  Alcotest.(check bool)
+    "unknown pseudo-element" false
+    (Merge.listable (v ".a::-moz-selection"))
 
 let test_declarations_equal_fast_and_structural_paths () =
   let r = rule ".a{color:red;width:1px}" in
@@ -210,7 +225,7 @@ let test_key_is_the_selector_set () =
 let suite =
   ( "merge",
     [
-      Alcotest.test_case "vendor detection" `Quick test_vendor_detection;
+      Alcotest.test_case "listable" `Quick test_listable;
       Alcotest.test_case "compatible reads which targets drop" `Quick
         test_compatible_reads_which_targets_drop;
       Alcotest.test_case "all_compatible matches the pair loop" `Quick
