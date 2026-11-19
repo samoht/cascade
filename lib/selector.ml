@@ -353,9 +353,8 @@ let rec specificity = function
   | File_selector_button | Part _ | View_transition | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
   | Unknown_pseudo_element _ | Unknown_pseudo_element_call _
-  (* Sec. 17 counts a pseudo-element in C. [::-webkit-scrollbar] is read with
-     one colon too and weighs a class above, as every [pseudo_vendor_idents]
-     name does; the parts are [::]-only. *)
+  (* Sec. 17 counts a pseudo-element in C. [::-webkit-scrollbar] weighs a class
+     above, as every [pseudo_vendor_idents] name does; its parts do not. *)
   | Webkit_scrollbar (Button | Track | Track_piece | Thumb | Corner | Resizer)
   | Cue None
   | Cue_region None ->
