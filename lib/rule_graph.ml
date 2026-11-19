@@ -224,16 +224,18 @@ let selector_list = function
 (* The effective selector a rule's overlap is computed against: under a nesting
    [parent], a relative nested selector ([&:hover], [> .icon]) is expanded to
    its parent-qualified form so the conflict model uses the real subject. *)
-let effective_selector (parent : Selector.t option) (r : rule) =
+let selector_under (parent : Selector.t option) selector =
   match parent with
-  | Option.None -> r.selector
+  | Option.None -> selector
   | Option.Some parent ->
       let parents = Edge.selectors parent in
-      let children = Edge.selectors r.selector in
+      let children = Edge.selectors selector in
       List.concat_map
         (fun parent -> List.map (Nest.combine parent) children)
         parents
       |> selector_list
+
+let effective_selector parent (r : rule) = selector_under parent r.selector
 
 (* The cascade half of the order relation, over each rule's overlap keys,
    declaration footprints and selector branches: the one decision every caller
@@ -402,6 +404,22 @@ let node_selector_conflict t (branches_a, summaries_a, specificities_a) i =
 
 let node_selectors_conflict t i j =
   node_selector_conflict t (node_branch_facts t i) j
+
+let branches_conflict (branches_a, summaries_a, specificities_a)
+    (branches_b, summaries_b, specificities_b) =
+  match (summaries_a, specificities_a, summaries_b, specificities_b) with
+  | [ summary_a ], [ specificity_a ], [ summary_b ], [ specificity_b ] ->
+      (* one branch each, the common case, asked without a closure *)
+      Selector.equal_specificity specificity_a specificity_b
+      && Selector_summary.may_overlap summary_a summary_b
+  | _ ->
+      selectors_order_conflict ~closed_world:false branches_a summaries_a
+        specificities_a branches_b summaries_b specificities_b
+
+let branches_under ?parent selector =
+  branch_facts (selector_under parent selector)
+
+let branch_specificities (_, _, specificities) = specificities
 
 (* What the order relation reads off one rule, read once so a caller asking
    about many pairs pays for each rule once rather than once per pair. The
@@ -1741,255 +1759,3 @@ let try_rewrite t ~consume ~produce : t option =
   match rewrite t ~consume ~produce with
   | Ok graph -> Option.Some graph
   | Error _ -> Option.None
-
-(* A run a canonical projection settles: it orders the run, folds some of its
-   elements together, and orders it again until nothing folds. Nodes keep the
-   edges and the index between rounds rather than being rebuilt each one. A fold
-   consumes nodes outright, with no relay left behind, so an edge the reduction
-   dropped must not have depended on one: the nodes a caller says may fold relay
-   nothing ({!link_candidates}) and never join a compact run, and a node a fold
-   produces holds an edge to every live node it conflicts with. *)
-type run = {
-  mutable nodes : t;
-      (** every rule the run has held, by node id, and what the order reads off
-          each *)
-  mutable live : bool array;  (** whether no fold consumed each node yet *)
-  mutable pos : int array;
-      (** where each live node stands in the run, which orients its edges *)
-  mutable edges : node_id list array;
-      (** the successors of each node; an edge to a dead node is skipped *)
-  mutable back : int;  (** past this position every edge runs forward *)
-  index : Conflict_index.t;
-}
-
-let run ?parent ?exclusive ~folds rules =
-  let rules = Array.of_list rules in
-  let n = Array.length rules in
-  let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
-      =
-    rule_facts parent rules
-  in
-  let nodes =
-    {
-      generation = 0;
-      closed_world = false;
-      pin_shared_branches = false;
-      agreeing_ties = true;
-      exclusive;
-      exclusive_count = max_int;
-      parent;
-      count = n;
-      rules;
-      sizes = [||];
-      selector_sizes = [||];
-      slot = [||];
-      origin = [||];
-      moved = [];
-      death = [||];
-      selectors;
-      selector_summaries;
-      specificities;
-      branches = [||];
-      decl_overlaps;
-      overlap_keys;
-      succ = [||];
-      key_index = Slot_table.create 1;
-      branch_index = String_table.create 1;
-      lineage =
-        {
-          indexed = false;
-          head = 0;
-          marks = [||];
-          stamp = 0;
-          row = Bytes.empty;
-          order = Order_maintenance.v 0;
-        };
-      reach = Unbuilt;
-      expansions = 0;
-    }
-  in
-  let succ, index = source_order_edges ~relays:(fun i -> not (folds i)) nodes in
-  {
-    nodes;
-    live = Array.make n true;
-    pos = Array.init n Fun.id;
-    edges = Array.map (List.map fst) succ;
-    back = -1;
-    index;
-  }
-
-let run_conflict r i j =
-  let t = r.nodes in
-  cascade_conflict ~closed_world:false t.overlap_keys.(i) t.decl_overlaps.(i)
-    t.selectors.(i) t.selector_summaries.(i) t.specificities.(i)
-    t.overlap_keys.(j) t.decl_overlaps.(j) t.selectors.(j)
-    t.selector_summaries.(j) t.specificities.(j)
-
-(* Kahn's algorithm over the live nodes, the smallest rank first among those
-   free to come next. *)
-let run_order r rank =
-  let count = r.nodes.count in
-  let pred = Array.make (max count 1) 0 in
-  let live = ref 0 in
-  for i = 0 to count - 1 do
-    if r.live.(i) then begin
-      incr live;
-      List.iter
-        (fun j -> if r.live.(j) then pred.(j) <- pred.(j) + 1)
-        r.edges.(i)
-    end
-  done;
-  let out = Array.make !live 0 in
-  let queue = ref Topo_queue.empty in
-  for i = 0 to count - 1 do
-    if r.live.(i) && pred.(i) = 0 then
-      queue := Topo_queue.add i (topo_priority rank i) !queue
-  done;
-  let rec loop queue o =
-    match Topo_queue.pop queue with
-    | Option.None ->
-        if o < !live then invalid_arg "Rule_graph.run_order: cyclic run"
-    | Option.Some ((e, _), queue) ->
-        out.(o) <- e;
-        r.pos.(e) <- o;
-        let queue =
-          List.fold_left
-            (fun queue j ->
-              if r.live.(j) then begin
-                pred.(j) <- pred.(j) - 1;
-                if pred.(j) = 0 then
-                  Topo_queue.add j (topo_priority rank j) queue
-                else queue
-              end
-              else queue)
-            queue r.edges.(e)
-        in
-        loop queue (o + 1)
-  in
-  loop !queue 0;
-  r.back <- -1;
-  out
-
-(* [arr] with [item] at [count], growing it geometrically. *)
-let append arr ~count item =
-  let arr =
-    if Array.length arr > count then arr
-    else begin
-      let grown = Array.make (max 1 (2 * count)) item in
-      Array.blit arr 0 grown 0 count;
-      grown
-    end
-  in
-  arr.(count) <- item;
-  arr
-
-(* Whether a path of edges leads from [i] to [j] through some other live node.
-   The edges run forward in the order the run stands in, so a node standing past
-   [j] reaches nothing before it and is not entered. *)
-let run_reaches r starts j =
-  let seen = Array.make r.nodes.count false in
-  let limit = r.pos.(j) in
-  let rec visit = function
-    | [] -> false
-    | k :: rest ->
-        if Int.equal k j then true
-        else if seen.(k) || (not r.live.(k)) || r.pos.(k) > limit then
-          visit rest
-        else begin
-          seen.(k) <- true;
-          visit (List.rev_append r.edges.(k) rest)
-        end
-  in
-  visit starts
-
-let run_orders r i j =
-  run_reaches r (List.filter (fun k -> not (Int.equal k j)) r.edges.(i)) j
-
-(* [follow] and what a path of live nodes from [from] or [follow] reaches, as
-   far as [conflicting] needs. Past [r.back] every edge runs forward, so a node
-   before every start is reached by none; the walk stops at the last sought. *)
-let reached_of r ~from ~follow conflicting =
-  let n = r.nodes.count in
-  let after = Array.make n false and seen = Array.make n false in
-  let sought = Array.make n false and missing = ref 0 in
-  List.iter (fun i -> after.(i) <- true) follow;
-  List.iter
-    (fun f ->
-      List.iter (fun k -> after.(k) <- after.(k) || r.live.(k)) r.edges.(f))
-    from;
-  let starts = from @ follow in
-  let first = List.fold_left (fun p f -> min p r.pos.(f)) max_int starts in
-  List.iter
-    (fun i ->
-      if not (after.(i) || sought.(i) || (r.back < first && r.pos.(i) < first))
-      then begin
-        sought.(i) <- true;
-        incr missing
-      end)
-    conflicting;
-  let rec visit = function
-    | [] -> ()
-    | _ when !missing = 0 -> ()
-    | [] :: rest -> visit rest
-    | (k :: ks) :: rest when seen.(k) || not r.live.(k) -> visit (ks :: rest)
-    | (k :: ks) :: rest ->
-        seen.(k) <- true;
-        after.(k) <- true;
-        if sought.(k) then decr missing;
-        visit (r.edges.(k) :: ks :: rest)
-  in
-  visit (List.map (fun f -> r.edges.(f)) starts);
-  after
-
-(* [orient conflicting] says which of the nodes the new one conflicts with
-   precede it, reading the run as it stood with [consumed] live. *)
-let fold_oriented r consumed rule ~at ~orient =
-  let t = r.nodes in
-  let m = t.count in
-  let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
-      =
-    rule_facts t.parent [| rule |]
-  in
-  let t =
-    {
-      t with
-      count = m + 1;
-      rules = append t.rules ~count:m rule;
-      selectors = append t.selectors ~count:m selectors.(0);
-      selector_summaries =
-        append t.selector_summaries ~count:m selector_summaries.(0);
-      specificities = append t.specificities ~count:m specificities.(0);
-      decl_overlaps = append t.decl_overlaps ~count:m decl_overlaps.(0);
-      overlap_keys = append t.overlap_keys ~count:m overlap_keys.(0);
-    }
-  in
-  r.nodes <- t;
-  r.live <- append r.live ~count:m true;
-  r.pos <- append r.pos ~count:m r.pos.(at);
-  r.edges <- append r.edges ~count:m [];
-  Conflict_index.grow r.index (m + 1);
-  let conflicts i = Option.is_some (nodes_conflict_reason t i m) in
-  let live i = r.live.(i) && not (List.mem i consumed) in
-  let candidates = index_candidates t r.index ~relay:false m in
-  let conflicting = List.filter (fun i -> live i && conflicts i) candidates in
-  let before = orient conflicting in
-  List.iter (fun i -> r.live.(i) <- false) consumed;
-  let edge src dst =
-    r.edges.(src) <- dst :: r.edges.(src);
-    if r.pos.(src) > r.pos.(dst) then r.back <- max r.back r.pos.(src)
-  in
-  List.iter (fun i -> if before i then edge i m else edge m i) conflicting;
-  index_insert t r.index ~relay:false m;
-  m
-
-let fold r consumed rule ~at =
-  fold_oriented r consumed rule ~at ~orient:(fun _ i -> r.pos.(i) < r.pos.(at))
-
-(* A node [from] (the joined ones by default) or [follow] reach follows the
-   join, and so do the nodes of [follow]; every other node it conflicts with
-   conflicts with one of them, so precedes it. *)
-let join ?(follow = []) ?from r consumed rule ~at =
-  let from = Option.value ~default:consumed from in
-  fold_oriented r consumed rule ~at ~orient:(fun conflicting ->
-      let after = reached_of r ~from ~follow conflicting in
-      fun i -> not after.(i))

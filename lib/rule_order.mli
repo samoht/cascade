@@ -6,15 +6,15 @@
     selectors may match a common element {e and} they write a common property.
     Disjoint in either dimension means reordering them is cascade-neutral.
 
-    Within a maximal run of consecutive reorderable rules, the dependency forms
-    a DAG (an edge from the earlier to the later rule of every conflicting
-    pair). [canonicalize] emits the canonical linear extension of that DAG: a
-    topological order that, among the rules currently free to come next, always
-    takes the one smallest by [(selector, body)]. Selector-first keeps a nesting
-    chain's prefixes contiguous and parent-before-child, so downstream nesting
-    synthesis still fires. The result is invariant under any cascade-neutral
-    reordering of the input, which is what lets the canonical diff treat such
-    reorderings as no-ops. *)
+    A maximal run of consecutive reorderable rules is read one declaration at a
+    time ({!Rule_trace}): each declaration is an entry under its selector and
+    block conditions, two entries are ordered only where they conflict in both
+    dimensions, and the run prints as one linear extension of that order, chosen
+    from the order and the entries' text alone. Where the run's rules begin and
+    end is not read, so neither a cascade-neutral reordering of the input nor
+    which occurrences of a selector were folded, or in which order, moves the
+    result. That is what lets the canonical diff treat such rewrites as no-ops.
+*)
 
 val canonicalize :
   ?lossless:bool ->
@@ -22,10 +22,10 @@ val canonicalize :
   ?judge:Support.targets ->
   Stylesheet.statement list ->
   Stylesheet.statement list
-(** [canonicalize stmts] reorders each maximal run of consecutive reorderable
-    style rules into the canonical order described above. At-rules, nested
-    rules, and custom-property rules are barriers: they keep their position and
-    split runs.
+(** [canonicalize stmts] rewrites each maximal run of consecutive reorderable
+    style rules into the canonical form described above. At-rules, nested rules,
+    and custom-property rules are barriers: they keep their position and split
+    runs.
 
     A run of consecutive [@property] rules is the one at-rule exception: it
     sorts by name, keeping the last registration of each. CSS Properties and

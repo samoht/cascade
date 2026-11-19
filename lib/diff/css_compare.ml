@@ -658,7 +658,22 @@ let commutes a b =
   let canon stmts =
     Css.to_string ~minify:true (Css.canonicalize_rule_order stmts)
   in
-  String.equal (canon [ a; b ]) (canon [ b; a ])
+  let single = function Css.Selector.List _ -> false | _ -> true in
+  (match (a, b) with
+    | ( Css.Stylesheet.Rule ({ nested = []; _ } as ra),
+        Css.Stylesheet.Rule ({ nested = []; _ } as rb) )
+      when single ra.selector && single rb.selector ->
+        (* The projection orders two rules on different selectors only where a
+           declaration of one decides one of the other, which
+           {!Rule_graph.rules_conflict} answers on the safe side, so the
+           projection is asked only when it says they may. *)
+        (not
+           (String.equal
+              (Css.Selector.to_string ra.selector)
+              (Css.Selector.to_string rb.selector)))
+        && not (Rule_graph.rules_conflict ra rb)
+    | _ -> false)
+  || String.equal (canon [ a; b ]) (canon [ b; a ])
 
 let statement_key stmt =
   match Css.as_rule stmt with

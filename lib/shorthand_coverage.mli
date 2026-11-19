@@ -57,6 +57,13 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     keys touched by [d], sorted by {!val-overlap_key_compare} without repeats.
 *)
 
+val declaration_slot_keys : Declaration.declaration -> overlap_key list
+(** [declaration_slot_keys d] is the keys of the slots [d] writes in every
+    engine that reads it, sorted like {!val-declaration_overlap_keys}: the slots
+    its property names, without the physical sides a flow-relative slot may
+    resolve to. It is empty for [all], a custom property, a property the model
+    cannot place and a vendor-prefixed property. *)
+
 val footprint_family : Declaration.declaration -> int option
 (** [footprint_family d] is the rank of the first shorthand family whose
     footprint holds every slot [d] writes, among the families that together

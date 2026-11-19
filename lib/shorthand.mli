@@ -53,6 +53,14 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     for indexing potential declaration overlaps. {!val-broad_overlap_key} means
     [d] is broad and must be checked against every non-exempt property. *)
 
+val declaration_slot_keys : Declaration.declaration -> overlap_key list
+(** [declaration_slot_keys d] is the keys of the slots [d] writes in every
+    engine that reads it, a subset of {!val-declaration_overlap_keys} sorted the
+    same way: the slots its property names, without the physical sides a
+    flow-relative slot may resolve to. It is empty for [all], a custom property,
+    a property the model cannot place and a vendor-prefixed property, which
+    write slots of their own only in some engines or none the model names. *)
+
 val footprint_family : Declaration.declaration -> int option
 (** [footprint_family d] is the rank of the first shorthand family whose
     footprint holds every slot [d] writes. Declarations of one rank are the

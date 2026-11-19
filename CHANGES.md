@@ -525,7 +525,22 @@ to call instead, and moving off most of them is a rename or a deleted call.
   screen `.a` gets a top margin of 1px against 0. The same happened with
   `all` in between, or another selector's write earlier in the same block.
   A write now counts by the cascade slots it sets, so a shorthand writes its
-  longhands and `all` writes every slot. `--minify` output does not change.
+  longhands and `all` writes every slot. `--minify` output does not change
+  (#1451).
+- `cascade diff --diff=canonical` called tmall-1 and its four minifier
+  variants in the SatCSS corpus different from their `--minify
+  --objective=raw` output, reporting three rules moved, though Chromium paints
+  them alike. The comparison joined two occurrences of one selector at a time,
+  and which pair it joined first decided whether another still could. It now
+  reads a run of rules one declaration at a time, each under its selector and
+  conditions, orders two only where swapping them could change a value, and
+  prints that order the same whatever rules held the declarations. All 504
+  SatCSS sheets and Tailwind's output now compare identical to their
+  `--minify` output under both objectives. Comparing the 504 sheets and
+  Tailwind's output against their `--minify` output takes 16% less CPU (19%
+  under `--objective=raw`), though Tailwind's output and instagram's take
+  longer. On 1000 rules that each fold with a later occurrence of their
+  selector it takes a third of the CPU (#1450).
 
 ### Speed
 
