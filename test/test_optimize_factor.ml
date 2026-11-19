@@ -909,6 +909,26 @@ let test_no_merge_pseudo_some_target_lacks () =
     "a pseudo-element every target reads lists" ".a::placeholder,.b{color:red}"
     (minify_str ".a::placeholder{color:red}.b{color:red}")
 
+(* A prefixed copy of a widely available property, with its value and
+   importance, is dead beside the unprefixed declaration whatever the reader
+   types: cascade drops [-webkit-animation-delay] beside [animation-delay], and
+   [-webkit-flex-grow] beside [flex-grow] is the same pair (MDN: flex-grow in
+   Chrome 29, Firefox 20, Safari 9). A copy with another value, and every copy
+   under [--enforce-spec], stays. *)
+let test_untyped_vendor_alias_of_typed_twin () =
+  Alcotest.(check string)
+    "an untyped copy of a typed property" "a{flex-grow:1}"
+    (minify_str "a{-webkit-flex-grow:1;flex-grow:1}");
+  Alcotest.(check string)
+    "read under the twin's grammar" "a{background-size:cover}"
+    (minify_str "a{-moz-background-size:COVER;background-size:cover}");
+  Alcotest.(check string)
+    "another value" "a{-moz-background-size:cover;background-size:contain}"
+    (minify_str "a{-moz-background-size:cover;background-size:contain}");
+  Alcotest.(check string)
+    "enforce-spec" "a{-webkit-flex-grow:1;flex-grow:1}"
+    (optimized_string ~enforce_spec:true "a{-webkit-flex-grow:1;flex-grow:1}")
+
 (* The prefixed spellings of [:fullscreen] are read by the targets: Chromium and
    WebKit keep a [:-webkit-full-screen] rule, and MDN's compatibility data lists
    [:-moz-full-screen] in Firefox since 9 with no removal. A rule over one is
@@ -1082,6 +1102,9 @@ let suite =
         `Quick,
         test_merge_pseudo_element_every_target_reads );
       ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
+      ( "untyped vendor alias of a typed twin",
+        `Quick,
+        test_untyped_vendor_alias_of_typed_twin );
       ( "no merge pseudo some target lacks",
         `Quick,
         test_no_merge_pseudo_some_target_lacks );
