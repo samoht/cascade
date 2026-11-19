@@ -32,3 +32,14 @@ val v :
   candidate option
 (** [v] finalizes {!field-produce}, compares its minified size to
     {!field-consume}, and returns a positive-saving candidate. *)
+
+val of_finalized :
+  kind:kind ->
+  Rule_graph.t ->
+  consume:Rule_graph.node_id list ->
+  produce:Stylesheet.rule list ->
+  size:int ->
+  candidate option
+(** [of_finalized ~kind g ~consume ~produce ~size] is the candidate {!v} makes
+    of rules it finalized into [produce], none of them empty, whose minified
+    size is [size]. *)
