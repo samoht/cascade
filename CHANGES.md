@@ -361,6 +361,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   rule with the same selector writes again at the same importance, so a sheet
   holding it in a shared rule compared different from one without it. It is
   dropped, as a normal one already was (#1412).
+- `cascade diff --diff=canonical` called two sheets different when they wrote
+  a declaration in either of two occurrences of its selector that other rules
+  hold apart, though nothing between the two meets it. The declaration
+  compares as written in the later occurrence (#1413).
 
 ### Speed
 

@@ -1819,7 +1819,7 @@ let append arr ~count item =
 (* Whether a path of edges leads from [i] to [j] through some other live node.
    The edges run forward in the order the run stands in, so a node standing past
    [j] reaches nothing before it and is not entered. *)
-let run_orders r i j =
+let run_reaches r starts j =
   let seen = Array.make r.nodes.count false in
   let limit = r.pos.(j) in
   let rec visit = function
@@ -1833,7 +1833,10 @@ let run_orders r i j =
           visit (List.rev_append r.edges.(k) rest)
         end
   in
-  visit (List.filter (fun k -> not (Int.equal k j)) r.edges.(i))
+  visit starts
+
+let run_orders r i j =
+  run_reaches r (List.filter (fun k -> not (Int.equal k j)) r.edges.(i)) j
 
 (* The live nodes a path of edges reaches from one of [from]. *)
 let run_reached r from =
@@ -1888,8 +1891,10 @@ let fold_oriented r consumed rule ~at ~before =
 let fold r consumed rule ~at =
   fold_oriented r consumed rule ~at ~before:(fun i -> r.pos.(i) < r.pos.(at))
 
-(* A node the joined ones reach follows the join, and every other node it
-   conflicts with conflicts with one of them, so precedes it. *)
-let join r consumed rule ~at =
-  let after = run_reached r consumed in
+(* A node the joined ones or [follow] reach follows the join, and so do the
+   nodes of [follow]; every other node it conflicts with conflicts with one of
+   them, so precedes it. *)
+let join ?(follow = []) r consumed rule ~at =
+  let after = run_reached r (consumed @ follow) in
+  List.iter (fun i -> after.(i) <- true) follow;
   fold_oriented r consumed rule ~at ~before:(fun i -> not after.(i))
