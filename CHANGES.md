@@ -429,6 +429,13 @@ to call instead, and moving off most of them is a rename or a deleted call.
   reader keeps such a rule, `cascade fmt --minify --enforce-spec` keeps it
   as written and out of every list, and the comparison reports a sheet that
   lost it (#1429).
+- `cascade diff --diff=canonical` called `.a{hyphens:auto}.a{color:red}`
+  different from its `--minify` output, dropping on one side only the
+  `-webkit-hyphens` that Safari 16.4 needs, and let a `-ms-` or `-o-`
+  declaration, which no target reads, hold two rules apart. The twin a target
+  needs is kept on both sides, and such a declaration is dropped from both
+  unless `--enforce-spec` is given. yahoo-uk-2 and yahoo-uk-3 in SatCSS
+  compare identical to their output (#1430, #1431).
 
 ### Speed
 
