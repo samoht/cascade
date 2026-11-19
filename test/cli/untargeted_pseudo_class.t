@@ -46,10 +46,11 @@ The same holds for each pseudo-class of the other SatCSS sheets that
 `:-moz-any-link` (Firefox 1 to 50 in browser-compat-data), `:-ms-fullscreen`
 (Internet Explorer 11 there), and `:-moz-submit-invalid`, `:selected`,
 `:-ms-full-screen`, `:-o-full-screen` and `:full-screen`, which it records
-for no browser and Firefox's parser does not list. Chrome 151 and WebKit
+for no browser and Firefox's parser does not list, and `:-moz-locale-dir()`,
+which Firefox's parser reads in its own sheets alone. Chrome 151 and WebKit
 26.5 drop a rule holding any of them.
 
-  $ for pc in -moz-submit-invalid -moz-any-link -ms-fullscreen selected -ms-full-screen -o-full-screen full-screen; do
+  $ for pc in -moz-submit-invalid -moz-any-link -ms-fullscreen selected -ms-full-screen -o-full-screen full-screen '-moz-locale-dir(rtl)'; do
   >   printf 'a:%s{color:red}b{color:red}\n' $pc > one.css
   >   printf 'b{color:red}\n' > other.css
   >   cascade diff --diff=canonical one.css other.css > /dev/null 2>&1; echo "$pc $?"
@@ -61,13 +62,50 @@ for no browser and Firefox's parser does not list. Chrome 151 and WebKit
   -ms-full-screen 0
   -o-full-screen 0
   full-screen 0
+  -moz-locale-dir(rtl) 0
 
-A pseudo-class cascade does not know is not one of these: nothing says no
-target reads it, so a rule lost to it still withholds the verdict.
+A vendor-prefixed pseudo-class cascade does not know is not one of these:
+nothing says no target reads it, so its rule stays, out of every list,
+and a sheet that lost it differs.
 
   $ printf 'a:-x-future{color:red}b{color:red}\n' > future.css
+  $ cascade fmt --minify future.css
+  a:-x-future{color:red}b{color:red}
   $ cascade diff --diff=canonical future.css other.css > /dev/null 2>&1
-  [2]
+  [1]
+
+Firefox 128 reads several such names in an author sheet (Servo's
+non_ts_pseudo_class_list.rs and the aliases in selector_parser.rs, ESR
+128), which Chrome 151 and WebKit 26.5 drop: `:-moz-only-whitespace`,
+`:-moz-window-inactive`, `:-moz-first-node`, `:-moz-drag-over` and,
+with one colon, `:-moz-placeholder`; Chrome 151 and WebKit 26.5 read
+`:-webkit-any-link` and `:-webkit-drag`. A target reads each rule below, so each stays as written, at every site
+Selectors 4 makes unforgiving and inside a forgiving `:is()`.
+
+  $ cat > vendor.css <<EOF
+  > a:-moz-only-whitespace{z-index:1}
+  > a:-moz-window-inactive{z-index:2}
+  > a:not(:-moz-first-node){z-index:3}
+  > a:has(:-moz-only-whitespace){z-index:4}
+  > a:-moz-drag-over{z-index:5}
+  > :is(a:-webkit-any-link,c){z-index:6}
+  > a:-webkit-drag{z-index:7}
+  > a:-moz-placeholder{z-index:8}
+  > EOF
+  $ cascade fmt --minify vendor.css
+  a:-moz-only-whitespace{z-index:1}a:-moz-window-inactive{z-index:2}a:not(:-moz-first-node){z-index:3}a:has(:-moz-only-whitespace){z-index:4}a:-moz-drag-over{z-index:5}:is(a:-webkit-any-link,c){z-index:6}a:-webkit-drag{z-index:7}a:-moz-placeholder{z-index:8}
+  $ cascade fmt --minify -q vendor.css > vendor.min.css
+  $ cascade diff --diff=canonical vendor.css vendor.min.css
+  CSS files are identical
+
+A functional pseudo-class written without its argument is read by no
+engine, whatever its name: Chrome 151 and WebKit 26.5 drop `a:lang`,
+`a:not` and `a:-moz-any`, and Firefox's parser takes each of them only
+as a function.
+
+  $ printf 'a:lang{color:red}a:not{color:red}a:-moz-any{color:red}b{color:red}\n' > bare.css
+  $ cascade fmt --minify -q bare.css
+  b{color:red}
 
 Inside a forgiving `:is()` the pseudo-class costs only its own argument in a
 browser, and the rest of the rule stays, so it is not a rule no target

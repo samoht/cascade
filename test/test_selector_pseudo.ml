@@ -760,7 +760,11 @@ let scrollbar_state_pseudo_classes_read () =
    WebKit 26.5 drop [.a:-webkit-input-placeholder] and every other name below
    with one colon while they keep it with two. One colon there is an unknown
    pseudo-class, so a rule holding one stays as invalid as its author wrote it,
-   and never reads as the [::] node that a browser does read. *)
+   and never reads as the [::] node that a browser does read.
+
+   [:-moz-placeholder] is the exception: Firefox's parser lists it as a
+   pseudo-class (Servo's non_ts_pseudo_class_list.rs, ESR 128), so Firefox reads
+   the rule, which stays, as the unknown pseudo-class it is. *)
 let single_colon_pseudo_elements () =
   let one_colon =
     List.filter_map
@@ -776,9 +780,15 @@ let single_colon_pseudo_elements () =
   let legacy = [ ":before"; ":after"; ":first-line"; ":first-letter" ] in
   List.iter
     (fun pe ->
-      if Stdlib.not (List.mem pe legacy) then
+      if Stdlib.not (List.mem pe (":-moz-placeholder" :: legacy)) then
         neg_cursor read (String.concat "" [ ".a"; pe ]))
     one_colon;
+  (match Cursor.option read (Cursor.of_string ".a:-moz-placeholder") with
+  | None -> Alcotest.fail "selector should parse: .a:-moz-placeholder"
+  | Some sel ->
+      Alcotest.(check string)
+        "round trip .a:-moz-placeholder" ".a:-moz-placeholder"
+        (to_string ~minify:true sel));
   neg_cursor read ".a:-webkit-input-placeholder";
   neg_cursor read ".a:-ms-input-placeholder,.b"
 
