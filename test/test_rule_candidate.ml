@@ -449,6 +449,68 @@ let a_refresh_leaves_what_a_full_enumeration_offers () =
     "a crossing a rewrite removes"
     ".e.f{display:block;margin:0}p{margin:2px;font-weight:700}#d{display:flex;margin-top:3px}p{display:flex;margin:0}p{margin-top:3px;margin:2px}"
 
+(* A candidate set read on the printed rules alone: each consumed rule by where
+   it prints, so the candidates of two graphs that print the same rules compare
+   whatever node ids they gave them. *)
+let printed_observed g (candidates : Rule_rewrite.candidate list) =
+  let ranks = Array.make (Rule_graph.node_count g) (-1) in
+  Array.iteri
+    (fun rank id -> ranks.(Rule_graph.Node_id.to_int id) <- rank)
+    (Rule_graph.canonical_order g);
+  List.map
+    (fun (c : Rule_rewrite.candidate) ->
+      Fmt.str "%s|%a|%d|%s" (kind_name c.kind)
+        Fmt.(list ~sep:comma int)
+        (List.sort Int.compare
+           (List.map (fun id -> ranks.(Rule_graph.Node_id.to_int id)) c.consume))
+        c.saving (render c.produce))
+    candidates
+  |> List.sort String.compare
+
+let printed_rules g =
+  Array.to_list
+    (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
+
+(* Pairs of identical bodies, which merge, so a run of [2 * n] rules ends with
+   [n]. *)
+let shrinking_run n =
+  List.init n (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
+  |> String.concat ""
+
+(* The candidates are a function of the rules a graph prints: after each commit
+   of a greedy run, the run's own graph offers exactly what a graph built afresh
+   from the rules it prints offers, though its rules print at other source
+   positions and fewer of them print than it started with. *)
+let a_rewritten_graph_offers_what_a_fresh_one_does () =
+  let check ?(commits_at_least = 3) ~ctx label css =
+    let g = Rule_graph.of_rules (rules css) in
+    let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
+    ignore (Rule_candidate.refresh state);
+    let rec loop step g =
+      match best_commit g (Rule_candidate.candidates state) with
+      | None -> step
+      | Some (c, g') ->
+          Rule_candidate.rewrite state g' ~consume:c.consume;
+          ignore (Rule_candidate.refresh state);
+          let step = step + 1 in
+          let fresh = Rule_graph.of_rules (printed_rules g') in
+          Alcotest.(check (list string))
+            (Fmt.str "%s: candidates after commit %d" label step)
+            (printed_observed fresh
+               (Rule_candidate.enumerate ~ctx ~finalize:Fun.id fresh))
+            (printed_observed g' (Rule_candidate.candidates state));
+          loop step g'
+    in
+    let commits = loop 0 g in
+    Alcotest.(check bool)
+      (Fmt.str "%s: %d commits" label commits)
+      true
+      (commits >= commits_at_least)
+  in
+  check ~ctx:Ctx.fragment "a run that shrinks past 128 rules"
+    (shrinking_run 70 ^ factoring_run 20);
+  check ~ctx:Ctx.fragment "mixed" (mixed_run 180)
+
 (* And it costs what the rewrite changed: one commit leaves most buckets and
    most of the groups they reach as they were, so carrying the set allocates a
    fraction of what enumerating the new graph does. *)
@@ -534,6 +596,8 @@ let suite =
         default_factoring_rejects_a_doomed_group_early;
       Alcotest.test_case "a refresh leaves what a full enumeration offers"
         `Quick a_refresh_leaves_what_a_full_enumeration_offers;
+      Alcotest.test_case "a rewritten graph offers what a fresh one does" `Quick
+        a_rewritten_graph_offers_what_a_fresh_one_does;
       Alcotest.test_case "a refresh costs what the rewrite changed" `Quick
         a_refresh_costs_what_the_rewrite_changed;
       Alcotest.test_case "a scan reads no selector again" `Quick
