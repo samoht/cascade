@@ -55,6 +55,7 @@ the public API has to update:
   Preflight
   Properties
   Prune
+  Reach
   Reader
   Resolve
   Rule
