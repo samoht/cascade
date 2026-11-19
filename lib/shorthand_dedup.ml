@@ -784,11 +784,21 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
     (int * declaration) list =
   if Ctx.enforce_spec ctx then kept (* spec-literal: keep every vendor prefix *)
   else
+    (* A comparison that judges for targets one of which reads only the prefixed
+       spelling keeps the twin there, as the minifier's synthesis writes it for
+       those targets. *)
+    let target_needs other =
+      match Ctx.judge ctx with
+      | Option.None -> false
+      | Option.Some targets ->
+          Option.is_some (Webkit_fallback.of_declaration targets other)
+    in
     let has_dead_prefix (_, decl) =
       List.exists
         (fun (_, other) ->
           (vendor_alias_twin decl other || text_vendor_alias_twin decl other)
-          && unprefixed_is_widely_available other)
+          && unprefixed_is_widely_available other
+          && not (target_needs other))
         kept
     in
     filter_preserve (fun item -> not (has_dead_prefix item)) kept
