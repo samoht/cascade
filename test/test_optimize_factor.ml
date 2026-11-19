@@ -871,6 +871,46 @@ let test_no_merge_vendor_pseudo_class () =
     "a prefix every target reads lists" ".b,input:-webkit-autofill{color:red}"
     (minify_str "input:-webkit-autofill{color:red}.b{color:red}")
 
+(* Selectors 4 sec. 3.9 again, for every kind of selector some target does not
+   parse, not only the prefixed pseudo-classes. Chromium 151 and WebKit 26.5
+   drop a rule over [::-moz-placeholder], [::-ms-input-placeholder],
+   [::-moz-selection] or [:lang(en,fr)]; MDN's compatibility data puts
+   [:user-valid] in Chrome 119 and [:dir()] in Chrome 120, after the Chrome 111
+   target, gives the [s] attribute flag to Firefox alone, and records no engine
+   for the column combinator. Listing any of them with another selector takes
+   that selector's rule away there. [::placeholder] is read by every target
+   (Chrome 57, Firefox 51, Safari 10.1), so it lists. *)
+let test_no_merge_pseudo_some_target_lacks () =
+  List.iter
+    (fun (name, css) -> Alcotest.(check string) name css (minify_str css))
+    [
+      ( "-moz- and -webkit- placeholder",
+        "a::-moz-placeholder{color:#999}a::-webkit-input-placeholder{color:#999}"
+      );
+      ("-ms- placeholder", ".a::-ms-input-placeholder{color:red}.b{color:red}");
+      ("unknown pseudo-element", ".a::-moz-selection{color:red}.b{color:red}");
+      ("newer pseudo-class", ".a:user-valid{color:red}.b{color:red}");
+      ("dir()", ".a:dir(rtl){color:red}.b{color:red}");
+      ("lang() list", ".a:lang(en,fr){color:red}.b{color:red}");
+      ("case-sensitive attribute", "[a=b s]{color:red}.b{color:red}");
+      ("column combinator", ".a||.b{color:red}.c{color:red}");
+    ];
+  (* A grouping pass that factors a shared declaration out builds a list too. *)
+  let out =
+    minify_str
+      ".a{color:red;margin:0}.b::-moz-placeholder{color:red}.c{margin:0}"
+  in
+  let listed =
+    String.split_on_char '}' out
+    |> List.exists (fun rule ->
+        Astring.String.is_infix ~affix:"-moz-placeholder" rule
+        && String.contains rule ',')
+  in
+  Alcotest.(check bool) (Fmt.str "factored: %s" out) false listed;
+  Alcotest.(check string)
+    "a pseudo-element every target reads lists" ".a::placeholder,.b{color:red}"
+    (minify_str ".a::placeholder{color:red}.b{color:red}")
+
 (* The prefixed spellings of [:fullscreen] are read by the targets: Chromium and
    WebKit keep a [:-webkit-full-screen] rule, and MDN's compatibility data lists
    [:-moz-full-screen] in Firefox since 9 with no removal. A rule over one is
@@ -1042,6 +1082,9 @@ let suite =
       ("pp minify is idempotent", `Quick, test_pp_minify_is_idempotent);
       ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
       ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
+      ( "no merge pseudo some target lacks",
+        `Quick,
+        test_no_merge_pseudo_some_target_lacks );
       ( "fullscreen vendor pseudo-classes",
         `Quick,
         test_fullscreen_vendor_pseudo_classes );
