@@ -251,6 +251,14 @@ let equal_canonical_targets () =
     "a prefix a target needs is on both sides" true
     (equal ".a{-webkit-user-select:none;user-select:none}"
        ".a{user-select:none}");
+  (* Safari 16.4 reads [hyphens] only prefixed, so the twin a target needs is on
+     both sides however the declarations were split across rules: the
+     projection's merge of two occurrences of one selector must not drop it
+     where the minifier writes it. yahoo-uk-2 in SatCSS. *)
+  Alcotest.(check bool)
+    "a prefix a target needs survives a merge" true
+    (equal ".a{hyphens:auto}.a{color:red}"
+       ".a{color:red;-webkit-hyphens:auto;hyphens:auto}");
   Alcotest.(check bool)
     "a mask composite's prefixed vocabulary too" true
     (equal ".a{-webkit-mask-composite:source-in;mask-composite:intersect}"
