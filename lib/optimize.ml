@@ -173,29 +173,6 @@ let drop_nesting_prefix (stmt : statement) : statement =
       if selector == nr.selector then stmt else Rule { nr with selector }
   | other -> other
 
-(* A selector list holding a vendor pseudo-element is invalidated as a whole by
-   a browser that does not know that pseudo-element, so every other selector in
-   the list silently loses the declarations too. The grouping passes already
-   refuse to build such a list; one the author wrote gets the same treatment
-   here, so the risky branches stand alone and the rest keep their rule. *)
-let split_vendor_selector_lists (stmts : statement list) : statement list =
-  List.concat_map
-    (fun stmt ->
-      match stmt with
-      | Rule ({ selector = Selector.List parts; _ } as nr)
-        when List.length parts > 1
-             && List.exists Merge.vendor parts
-             && not (List.for_all Merge.vendor parts) ->
-          let risky, safe = List.partition Merge.vendor parts in
-          let of_parts = function
-            | [] -> []
-            | [ one ] -> [ Rule { nr with selector = one } ]
-            | many -> [ Rule { nr with selector = Selector.List many } ]
-          in
-          List.concat_map (fun sel -> of_parts [ sel ]) risky @ of_parts safe
-      | other -> [ other ])
-    stmts
-
 (* CSS Cascade 6 sec. 2.5.2: an [@scope] body's rules and declarations stand for
    the scoping root, which [&] names there, not for the enclosing rule. *)
 let scope_owner =
@@ -226,8 +203,7 @@ let rec statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
          to combine them). *)
       let stmts' =
         let stmts =
-          Block.drop_misplaced_prelude stmts
-          |> merge_named_layers_by_name |> split_vendor_selector_lists
+          Block.drop_misplaced_prelude stmts |> merge_named_layers_by_name
         in
         let stmts =
           process_statements ?factor_cache ~ctx ~enforce_spec ~owner ~supports
