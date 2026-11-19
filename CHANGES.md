@@ -487,6 +487,14 @@ to call instead, and moving off most of them is a rename or a deleted call.
   so a sheet and its `--minify` output that put the two rules the other way
   round compared different. Every engine ends at that value whichever rule
   comes first, and the order is no difference (#1441).
+- A prefixed spelling cascade does not type, such as `-moz-transform-origin`,
+  was taken to write every property, so it held apart rules that write
+  nothing in common, in `--minify` and in `cascade diff --diff=canonical`,
+  where taobao-1 differed from its `--minify --objective=raw` output. An
+  engine that reads such a name reads it as the property it spells, so it
+  now writes that property's slots alone. The comparison also drops a
+  prefixed copy no target needs beside one that one does, such as
+  `-moz-hyphens` beside `-webkit-hyphens` and `hyphens` (#1443).
 
 ### Speed
 

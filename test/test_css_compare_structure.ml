@@ -698,6 +698,12 @@ let canonical_alias_writes_agree () =
     "and no other slot" true
     (equal ".a{-webkit-transform-origin:0 0}.b{top:1px}"
        ".b{top:1px}.a{-webkit-transform-origin:0 0}");
+  (* Safari 16.4 needs [-webkit-hyphens], and Firefox 128 reads [hyphens], so
+     [-moz-hyphens] beside them is dead on every target whatever it writes. *)
+  Alcotest.(check bool)
+    "only the prefix a target needs is kept" true
+    (equal ".a{-moz-hyphens:none;-webkit-hyphens:none;hyphens:none}"
+       ".a{-webkit-hyphens:none;hyphens:none}");
   Alcotest.(check bool)
     "two prefixed spellings of one property are ordered" false
     (equal ".a{-webkit-transform-origin:0 0}.b{-moz-transform-origin:1px 1px}"

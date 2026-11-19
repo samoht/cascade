@@ -45,6 +45,10 @@ val same_importance : Declaration.declaration list -> bool
 (** [same_importance decls] is [true] when every declaration of [decls] has the
     same importance. *)
 
+val strip_vendor_prefix : string -> string option
+(** [strip_vendor_prefix name] is [name] without its [-webkit-], [-moz-], [-ms-]
+    or [-o-] prefix, or [None] when it carries none. *)
+
 val property_of_name : string -> Properties.any_property option
 (** [property_of_name name] is the typed property [name] spells, if the reader
     types one. *)
