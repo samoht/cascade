@@ -1921,7 +1921,41 @@ let append arr ~count item =
   arr.(count) <- item;
   arr
 
-let fold r consumed rule ~at =
+(* Whether a path of edges leads from [i] to [j] through some other live node.
+   The edges run forward in the order the run stands in, so a node standing past
+   [j] reaches nothing before it and is not entered. *)
+let run_orders r i j =
+  let seen = Array.make r.nodes.count false in
+  let limit = r.pos.(j) in
+  let rec visit = function
+    | [] -> false
+    | k :: rest ->
+        if Int.equal k j then true
+        else if seen.(k) || (not r.live.(k)) || r.pos.(k) > limit then
+          visit rest
+        else begin
+          seen.(k) <- true;
+          visit (List.rev_append r.edges.(k) rest)
+        end
+  in
+  visit (List.filter (fun k -> not (Int.equal k j)) r.edges.(i))
+
+(* The live nodes a path of edges reaches from one of [from]. *)
+let run_reached r from =
+  let seen = Array.make r.nodes.count false in
+  let rec visit = function
+    | [] -> ()
+    | k :: rest ->
+        if seen.(k) || not r.live.(k) then visit rest
+        else begin
+          seen.(k) <- true;
+          visit (List.rev_append r.edges.(k) rest)
+        end
+  in
+  List.iter (fun f -> visit r.edges.(f)) from;
+  seen
+
+let fold_oriented r consumed rule ~at ~before =
   let t = r.nodes in
   let m = t.count in
   List.iter (fun i -> r.live.(i) <- false) consumed;
@@ -1950,8 +1984,17 @@ let fold r consumed rule ~at =
   List.iter
     (fun i ->
       if r.live.(i) && Option.is_some (nodes_conflict_reason t i m) then
-        if r.pos.(i) < r.pos.(m) then r.edges.(i) <- m :: r.edges.(i)
+        if before i then r.edges.(i) <- m :: r.edges.(i)
         else r.edges.(m) <- i :: r.edges.(m))
     (index_candidates t r.index ~relay:false m);
   index_insert t r.index ~relay:false m;
   m
+
+let fold r consumed rule ~at =
+  fold_oriented r consumed rule ~at ~before:(fun i -> r.pos.(i) < r.pos.(at))
+
+(* A node the joined ones reach follows the join, and every other node it
+   conflicts with conflicts with one of them, so precedes it. *)
+let join r consumed rule ~at =
+  let after = run_reached r consumed in
+  fold_oriented r consumed rule ~at ~before:(fun i -> not after.(i))
