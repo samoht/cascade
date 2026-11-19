@@ -500,15 +500,16 @@ let identical_bodies_never_conflict () =
 
 (* CSS Cascade 5 sec. 6.1 sorts by importance before order of appearance, so in
    one rule a normal and an important declaration never decide each other,
-   whichever is written first. *)
+   whichever is written first. [margin] still writes three sides the important
+   [margin-top] leaves it, so neither is dead. *)
 let importance_commutes_within_a_rule () =
-  let want = ".a{content:\"a\";content:\"b\"!important}" in
-  Alcotest.(check string)
-    "important written first" want
-    (canonical ".a{content:'b'!important}.a{content:'a'}");
+  let want = ".a{margin-top:1px!important;margin:0}" in
   Alcotest.(check string)
     "important written last" want
-    (canonical ".a{content:'a';content:'b'!important}")
+    (canonical ".a{margin:0}.a{margin-top:1px!important}");
+  Alcotest.(check string)
+    "important written first" want
+    (canonical ".a{margin-top:1px!important;margin:0}")
 
 (* A later rule with the identical selector shadows an earlier declaration of a
    property it writes at the same importance or above: the same element set at
