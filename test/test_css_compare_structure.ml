@@ -294,6 +294,19 @@ let equal_canonical_targets () =
         b{color:#fff}"
        ".e,.v{font-smooth:always;font-smoothing:antialiased}.s{z-index:-1}.c \
         b,.c i{vertical-align:middle}.e,.v,.c b,.t .v{color:#fff}");
+  (* Nor a [-khtml-] one, Konqueror's: Chrome 151 and WebKit 26.5 parse no
+     [-khtml-user-select], and Firefox's tables carry no such prefix. *)
+  Alcotest.(check bool)
+    "a -khtml- property is read by no target" true
+    (equal ".a{color:red;-khtml-user-select:none}" ".a{color:red}");
+  (* [-webkit-touch-callout] is iOS Safari's own longhand (MDN: iOS Safari 2, no
+     other engine), so it touches only itself, and a rule it shares a selector
+     list with folds as any other. w3schools-cleancss in SatCSS. *)
+  Alcotest.(check bool)
+    "-webkit-touch-callout touches only itself" true
+    (equal
+       ".f,.l,.o{-webkit-touch-callout:none;user-select:none}.f,.l{display:inline-block}.b{color:#fff;display:inline-block}"
+       ".f,.l,.o{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}.b,.f,.l{display:inline-block}.b{color:#fff}");
   Alcotest.(check bool)
     "font-smooth under enforce-spec" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
