@@ -108,22 +108,26 @@ let interleave_bang_comments source rule_locs sheet =
   in
   interleave bangs rule_locs sheet
 
+(* The comments a snapshot [on_source] asks for, and the parser's callback that
+   collects them. *)
+let comment_collector = function
+  | Option.None -> (Option.None, Option.None)
+  | Option.Some _ ->
+      let comments = ref [] in
+      ( Option.Some comments,
+        Option.Some (fun comment -> comments := comment :: !comments) )
+
 (* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
    from [Parser.stylesheet] with per-rule typed-validation warnings. *)
 let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
     ?(enforce_spec = false) ?on_source (original : string) :
     stylesheet * Error.t list =
-  let comments, on_comment =
-    match on_source with
-    | Option.None -> (Option.None, Option.None)
-    | Option.Some _ ->
-        let comments = ref [] in
-        ( Option.Some comments,
-          Option.Some (fun comment -> comments := comment :: !comments) )
-  in
+  let comments, on_comment = comment_collector on_source in
   let reader = Reader.of_string ~enforce_spec original in
   let reading =
-    Stylesheet_partial.reading ~source:(Reader.indexed_source reader) ~meta ()
+    Stylesheet_partial.reading
+      ~source:(Reader.indexed_source reader)
+      ~meta ~enforce_spec ()
   in
   (* Each rule is read to its statement as soon as the parser hands it over, so
      its component tree is garbage before the next rule is read, and the block
