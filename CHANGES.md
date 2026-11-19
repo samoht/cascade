@@ -301,6 +301,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   pseudo-class drops the whole list, so Chromium lost `.b`'s colour. A
   pseudo-class some default target does not read stays out of a list, as a
   vendor pseudo-element did (#1407).
+- `--minify` dropped rules over `:-webkit-full-screen`,
+  `:-webkit-full-screen-ancestor` and `:-moz-full-screen` as unknown
+  pseudo-classes, though Chromium, WebKit and Firefox read them. They are kept
+  as written (#1408).
 
 ### Comparing stylesheets
 
