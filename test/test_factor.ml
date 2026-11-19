@@ -645,9 +645,10 @@ let test_transfer_factors_at_any_distance () =
     "transfer is a fixed point" transfer (optimize_with transfer)
 
 (* Twenty sprite rules share three declarations. Factoring them out shrinks the
-   raw output by a third, and the transfer objective keeps the factoring;
-   nothing judges it again on an estimate of the compressed size. *)
-let test_transfer_keeps_near_factoring () =
+   raw output by a third, so the raw objective takes it; the transfer objective
+   weighs it by what it saves once compressed, which [objective_transfer.t]
+   checks against gzip. Both outputs are fixed points. *)
+let test_raw_keeps_near_factoring () =
   let css =
     String.concat ""
       (List.init 20 (fun i ->
@@ -656,10 +657,14 @@ let test_transfer_keeps_near_factoring () =
               0;display:inline-block;width:16px;height:16px}"
              i (i * 16)))
   in
-  let transfer = optimize_with css in
+  let raw = optimize_with ~objective:`Raw css in
   Alcotest.(check int)
     "shared declarations written once" 1
-    (occurrences ~sub:"display:inline-block" transfer);
+    (occurrences ~sub:"display:inline-block" raw);
+  Alcotest.(check string)
+    "raw is a fixed point" raw
+    (optimize_with ~objective:`Raw raw);
+  let transfer = optimize_with css in
   Alcotest.(check string)
     "transfer is a fixed point" transfer (optimize_with transfer)
 
@@ -685,8 +690,8 @@ let suite =
     [
       Alcotest.test_case "transfer factors at any distance" `Quick
         test_transfer_factors_at_any_distance;
-      Alcotest.test_case "transfer keeps a near factoring" `Quick
-        test_transfer_keeps_near_factoring;
+      Alcotest.test_case "raw keeps a near factoring" `Quick
+        test_raw_keeps_near_factoring;
       Alcotest.test_case "the schedule ignores the run's size" `Quick
         test_schedule_ignores_run_size;
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick
