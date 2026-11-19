@@ -93,7 +93,7 @@ let refresh t =
       settle t changes;
       Candidate_kind.close t.core
 
-let start ~ctx ~finalize g = v ~ctx ~finalize g
+let start ?nodes ~ctx ~finalize g = v ?nodes ~ctx ~finalize g
 
 let rewrite t graph ~consume =
   let changes = Candidate_kind.rewrite t.core graph ~consume in

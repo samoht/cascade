@@ -17,15 +17,17 @@ val candidate : offer -> Rule_rewrite.candidate
 (** [candidate o] is the candidate [o] offers. *)
 
 val start :
+  ?nodes:int ->
   ctx:Ctx.t ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
   Rule_graph.t ->
   t
-(** [start ~ctx ~finalize graph] files the rules of [graph]; the first
+(** [start ?nodes ~ctx ~finalize graph] files the rules of [graph]; the first
     {!refresh} offers its candidates. [finalize] scores and normalizes every
-    produced rule, and the size of [graph] sets how widely subsets are searched
-    on every graph {!rewrite} reaches from it. [graph] pins rules that share a
-    selector branch, as {!Rule_graph.of_rules} does by default. *)
+    produced rule, and [nodes] (default the node count of [graph]) sets how
+    widely subsets are searched on every graph {!rewrite} reaches from it.
+    [graph] pins rules that share a selector branch, as {!Rule_graph.of_rules}
+    does by default. *)
 
 val rewrite : t -> Rule_graph.t -> consume:Rule_graph.node_id list -> unit
 (** [rewrite t graph ~consume] refiles the rules [Rule_graph.rewrite] consumed
@@ -52,8 +54,8 @@ val afresh : t -> bool
     there is its rank and the run's size picks the budget, so an indexed search
     can take other subsets; and it orders two rules only through live rules that
     conflict, so a default group can keep an entry [t] drops. The candidates
-    either brings about are asked {!Rule_graph.refused_afresh}. It reads the
-    graph and leaves the offers of [t] as they are. *)
+    either brings about are asked {!Rule_graph.refuses}. It reads the graph and
+    leaves the offers of [t] as they are. *)
 
 val is_live : t -> Rule_graph.node_id -> bool
 (** [is_live t id] is [true] if the rule [id] is live in the graph [t] last
