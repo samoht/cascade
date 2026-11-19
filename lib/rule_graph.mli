@@ -206,22 +206,24 @@ val conflicts_after : facts_index -> after:int -> facts -> bool
     a position greater than [after] has [facts_conflict f g]. It tests only the
     rules after [after] sharing a specificity and an overlap key with [f]. *)
 
-val selectors_conflict : Selector.t -> Selector.t -> bool
-(** [selectors_conflict a b] is the selector half of {!val-rules_conflict}: some
-    branch of [a] and some branch of [b] have equal specificity and may match
-    one element. *)
-
 type branches
-(** The comma branches of a selector, each with what {!selectors_conflict} reads
-    off it. *)
+(** The comma branches of a selector, each with its summary and its specificity:
+    what the selector half of {!val-rules_conflict} reads off it. *)
 
 val branches : Selector.t -> branches
-(** [branches s] is what {!selectors_conflict} reads off [s]. *)
+(** [branches s] is the branches of [s]. *)
 
 val node_selector_conflict : t -> branches -> node_id -> bool
-(** [node_selector_conflict t (branches a) i] is
-    [selectors_conflict a (node_rule t i).selector], read off what [t] holds for
-    node [i] rather than off its selector again. *)
+(** [node_selector_conflict t (branches a) i] is the selector half of
+    {!val-rules_conflict} between a rule selecting [a] and node [i]: some branch
+    of [a] and some branch of the selector of [i] have equal specificity and may
+    match one element. It reads what [t] holds for [i] rather than its selector
+    again. *)
+
+val node_selectors_conflict : t -> node_id -> node_id -> bool
+(** [node_selectors_conflict t i j] is
+    [node_selector_conflict t (branches (node_rule t i).selector) j], read off
+    what [t] holds for both nodes. *)
 
 val precedes : t -> node_id -> node_id -> bool
 (** [precedes t i j] is [true] when the graph requires node [i] to be emitted

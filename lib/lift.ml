@@ -38,21 +38,11 @@ let append_unique_decls base extras =
       if List.exists (same_decl decl) acc then acc else acc @ [ decl ])
     base extras
 
-let exact_leftovers common rules =
-  List.filter_map
-    (fun (r : rule) ->
-      match remove_common common r.declarations with
-      | [] -> Option.None
-      | declarations ->
-          Option.Some
-            { r with declarations; nested = []; merge_key = Option.None })
-    rules
-
 let decl_fact_mem fact facts =
   List.exists (fun other -> same_decl (fact_decl fact) (fact_decl other)) facts
 
-let unsafe_lift_over_leftover_facts group_facts decls =
-  let decls = decl_facts decls in
+let lifts_over_leftover group_facts (rule : rule) =
+  let decls = decl_facts rule.declarations in
   let rec loop prior_leftovers = function
     | [] -> false
     | fact :: rest ->
@@ -64,13 +54,6 @@ let unsafe_lift_over_leftover_facts group_facts decls =
         else loop (fact :: prior_leftovers) rest
   in
   loop [] decls
-
-let unsafe_lift_in_any_member group_decls rules =
-  let group_facts = decl_facts group_decls in
-  List.exists
-    (fun (rule : rule) ->
-      unsafe_lift_over_leftover_facts group_facts rule.declarations)
-    rules
 
 let decl_mem decl decls = List.exists (same_decl decl) decls
 
@@ -84,7 +67,7 @@ let group_orders_before group_decls left right =
   in
   loop group_decls
 
-let unsafe_group_order_in_member group_decls (rule : rule) =
+let reorders_group group_decls (rule : rule) =
   let grouped =
     decl_facts rule.declarations
     |> List.filter (fun fact -> decl_mem (fact_decl fact) group_decls)
@@ -101,49 +84,12 @@ let unsafe_group_order_in_member group_decls (rule : rule) =
   in
   loop [] grouped
 
-let unsafe_group_order group_decls rules =
-  List.exists (unsafe_group_order_in_member group_decls) rules
-
 let declarations_conflict_with_group_facts group_facts declarations =
   let declarations = decl_facts declarations in
   List.exists
     (fun decl ->
       List.exists (fun group -> decl_facts_conflict decl group) group_facts)
     declarations
-
-let unsafe_cross_member_leftover group_decls rules =
-  let group_facts = decl_facts group_decls in
-  List.exists
-    (fun (rule : rule) ->
-      let leftovers = remove_common group_decls rule.declarations in
-      declarations_conflict_with_group_facts group_facts leftovers
-      && List.exists
-           (fun (other : rule) ->
-             other != rule
-             && Rule_graph.selectors_conflict rule.selector other.selector)
-           rules)
-    rules
-
-(* Whether a member's leftover conflicts with the group depends on that member
-   alone, so it is asked once, and only the members it holds for are asked
-   whether they conflict with a later one. *)
-let unsafe_lift_over_prior_member ~conflict group_decls rules_with_ids =
-  let group_facts = decl_facts group_decls in
-  let rec loop prior = function
-    | [] -> false
-    | (id, (rule : rule)) :: rest ->
-        List.exists (fun prior_id -> conflict prior_id id) prior
-        ||
-        let prior =
-          if
-            remove_common group_decls rule.declarations
-            |> declarations_conflict_with_group_facts group_facts
-          then id :: prior
-          else prior
-        in
-        loop prior rest
-  in
-  loop [] rules_with_ids
 
 let decl_facts_shorthand_order_conflict grouped external_decl =
   decl_facts_conflict grouped external_decl
