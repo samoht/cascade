@@ -379,8 +379,7 @@ let normalize ~ctx ~held rules =
    gain and discards its result when the transfer estimate grows - neither
    gamble should cost the obvious local merge. *)
 let adjacent_merge_eligible ~ctx (r : rule) =
-  r.nested = [] && r.merge_key = None
-  && (not (Merge.engine_specific r.selector))
+  r.nested = [] && r.merge_key = None && Merge.listable r.selector
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
