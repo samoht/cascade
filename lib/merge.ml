@@ -16,6 +16,22 @@ let rec vendor : Selector.t -> bool = function
       List.exists vendor sels
   | _ -> false
 
+(* Selectors 4 sec. 3.9 makes a list invalid as a whole in a browser that does
+   not read one of its pseudo-classes. These are the prefixed ones some target
+   lacks: Chromium and WebKit read neither [:-moz-] form, Firefox neither
+   [:-webkit-any] nor the scrollbar states. [:-webkit-autofill] is read by every
+   target, Firefox since 86, and is left out. *)
+let rec engine_specific : Selector.t -> bool = function
+  | Moz_focusring | Moz_any_call _ | Webkit_any | Webkit_any_call _
+  | Moz_ui_invalid | Moz_ui_valid | Scrollbar_state _ ->
+      true
+  | Compound sels -> List.exists engine_specific sels
+  | Combined (left, _, right) -> engine_specific left || engine_specific right
+  | Relative (_, right) -> engine_specific right
+  | List sels | Not sels | Is sels | Where sels | Has sels ->
+      List.exists engine_specific sels
+  | sel -> vendor sel
+
 let key sel =
   match Selector.as_list sel with
   | Some xs -> List.sort compare xs

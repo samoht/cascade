@@ -46,7 +46,7 @@ let declarations_equal (a : Declaration.declaration list)
   Merge.declarations_equal ~same:same_decl a b
 
 let merge_selector_list = Merge.selector_list
-let contains_vendor_pseudo_element = Merge.vendor
+let contains_vendor_pseudo_element = Merge.engine_specific
 let decls_size = Size.decls
 let mix_int = Common.mix_int
 let hash_string = Common.hash_string

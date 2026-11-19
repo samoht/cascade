@@ -380,7 +380,7 @@ let normalize ~ctx ~held rules =
    gamble should cost the obvious local merge. *)
 let adjacent_merge_eligible ~ctx (r : rule) =
   r.nested = [] && r.merge_key = None
-  && (not (Merge.vendor r.selector))
+  && (not (Merge.engine_specific r.selector))
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
