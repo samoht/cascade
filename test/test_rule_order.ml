@@ -449,6 +449,24 @@ let coalesce_through_two_held_occurrences () =
     (canonical
        ".a{width:1px}.b{width:2px;color:blue}.d{color:red;height:6px}.a{height:4px}")
 
+(* A fold moves an occurrence's writes to the position it folds into, so a later
+   fold across that position meets them there. The first [.o] folds down into
+   the second; the second [.g] then may not climb past that position, where
+   [width:76px] now stands, since on [class="g o"] the source makes [.g]'s width
+   win. *)
+let coalesce_reads_writes_a_fold_moved () =
+  let want =
+    ".o{display:none;width:76px}.g{display:none;width:24px}.p{display:block}"
+  in
+  Alcotest.(check string)
+    "the moved width still holds the climb" want
+    (canonical
+       ".o{width:76px}.g,.o{display:none}.p{display:block}.g{width:24px}");
+  Alcotest.(check string)
+    "the folded sheet" want
+    (canonical
+       ".o{width:76px;display:none}.g{display:none;width:24px}.p{display:block}")
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -674,6 +692,8 @@ let suite =
         selector_list_expands_when_a_branch_is_shared;
       Alcotest.test_case "coalesce through two held occurrences" `Quick
         coalesce_through_two_held_occurrences;
+      Alcotest.test_case "coalesce reads writes a fold moved" `Quick
+        coalesce_reads_writes_a_fold_moved;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
