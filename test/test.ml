@@ -38,6 +38,7 @@ let () =
       Test_subsets.suite;
       Test_rule_scheduler.suite;
       Test_rule_order.suite;
+      Test_rule_order_layer.suite;
       Test_common.suite;
       Test_ctx.suite;
       Test_stats.suite;
