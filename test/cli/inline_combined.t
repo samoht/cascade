@@ -38,7 +38,8 @@ listed names retain their var() reference; everything else inlines.
 
 A multi-file design system: tokens in one file, components in another,
 entry pulls both. Variables defined in either imported file resolve
-into the entry's rules.
+into the entry's rules, which the raw objective then merges by their raw
+bytes.
 
   $ cat > tokens-ds.css <<EOF
   > :root { --brand: #ff0000; --radius: 4px }
@@ -52,7 +53,7 @@ into the entry's rules.
   > @import url("components.css");
   > .extra { color: var(--brand) }
   > EOF
-  $ cascade --minify --inline-imports --inline-vars app-ds.css
+  $ cascade --minify --objective=raw --inline-imports --inline-vars app-ds.css
   .btn,.extra{color:red}.btn{border-radius:4px}.card{background:red;padding:4px}
 
 A conditional import combined with --inline-vars: the variables are

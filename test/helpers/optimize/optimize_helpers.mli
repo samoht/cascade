@@ -28,6 +28,7 @@ val rule_of_statement : Css.statement -> Css.Stylesheet.rule
 
 val optimized_string :
   ?scope:Css.Optimize.scope ->
+  ?objective:Css.Optimize.objective ->
   ?targets:Css.Optimize.targets ->
   ?enforce_spec:bool ->
   string ->

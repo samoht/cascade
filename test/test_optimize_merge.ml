@@ -468,7 +468,7 @@ let factor_same_value_descendant_tie_groups () =
      declarations is unobservable, so the shared block factors across the
      tie. *)
   let output =
-    optimized_string ~scope:`Stylesheet
+    optimized_string ~scope:`Stylesheet ~objective:`Raw
       ".a .log{color:red;float:left;width:10px}.h .a{float:left}.b \
        .hx{color:red;float:left;width:20px}"
   in
@@ -483,7 +483,7 @@ let factor_prefers_size_minimal_subset () =
      is a net loss, so it keeps [position:absolute] inline while the three short
      selectors form the shared group. *)
   let output =
-    optimized_string ~scope:`Stylesheet
+    optimized_string ~scope:`Stylesheet ~objective:`Raw
       "#f{top:0;position:absolute;width:100%}.b{padding:16px;position:absolute;z-index:1}.b-arrow{position:absolute}.very-long-closebtn-selector{height:21px;position:absolute;width:21px}"
   in
   Alcotest.(check bool)
@@ -503,7 +503,7 @@ let factor_steps_over_same_value_nesting_boundary () =
      same-value members group while closebtn stays inline with its nested
      rule. *)
   let output =
-    optimized_string ~scope:`Stylesheet
+    optimized_string ~scope:`Stylesheet ~objective:`Raw
       "#footer{position:absolute;width:100%}.jfk-bubble{padding:16px;position:absolute}.jfk-bubble-closebtn{position:absolute;right:2px;&:focus{opacity:.8}}.jfk-bubble-arrow{position:absolute}"
   in
   Alcotest.(check bool)
@@ -571,7 +571,7 @@ let factor_groups_single_property_past_other_shared_decl () =
      the cluster. Seeding the scan per anchor declaration recovers the
      [position] group across the intervening [.fll]. *)
   let output =
-    optimized_string ~scope:`Stylesheet
+    optimized_string ~scope:`Stylesheet ~objective:`Raw
       "#footer{bottom:0;position:absolute;width:100%}.fll{float:right;width:100%}.jfk-bubble{padding:16px;position:absolute}.jfk-bubble-arrow{position:absolute}"
   in
   Alcotest.(check bool)

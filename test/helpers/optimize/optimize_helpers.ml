@@ -32,9 +32,9 @@ let rule_of_statement stmt =
         : Css.Stylesheet.rule)
   | None -> failwith "Expected Rule"
 
-let optimized_string ?scope ?targets ?(enforce_spec = false) css =
+let optimized_string ?scope ?objective ?targets ?(enforce_spec = false) css =
   css |> Cursor.of_string |> Css.Stylesheet.read
-  |> Css.Optimize.stylesheet ?scope ?targets ~enforce_spec
+  |> Css.Optimize.stylesheet ?scope ?objective ?targets ~enforce_spec
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 

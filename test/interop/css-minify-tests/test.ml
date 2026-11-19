@@ -685,14 +685,15 @@ let normalize_expected ~category ~id expected =
    [scope:`Stylesheet]: closed over the fixture's CSS text for source-order,
    cascade, dependency, and dead-code reasoning, but still open over runtime
    layout state such as DOM shape, writing mode, direction, user styles, and
-   runtime custom-property mutation. *)
+   runtime custom-property mutation. The fixtures are raw-size oracles, so it
+   optimizes for raw bytes. *)
 let cascade_minify ?targets input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok parsed -> (
       match
         parsed.stylesheet
-        |> Css.optimize ~scope:`Stylesheet ?targets
+        |> Css.optimize ~scope:`Stylesheet ?targets ~objective:`Raw
         |> Css.to_string ~minify:true
       with
       | s -> Ok s

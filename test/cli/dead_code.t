@@ -425,7 +425,8 @@ Zero-length unit dropped where unambiguous.
 # Cascading dead code (multi-pass)
 
 
-A combination produces cascading elimination across all levels.
+A combination produces cascading elimination across all levels. The raw
+objective scores the merges that follow by their raw bytes.
 
   $ cat > multi.css <<EOF
   > @media screen { }
@@ -436,7 +437,7 @@ A combination produces cascading elimination across all levels.
   > .e { color: blue } .f { color: blue }
   > @media screen { .g { color: red } } @media screen { .h { color: blue } }
   > EOF
-  $ cascade --minify multi.css
+  $ cascade --minify --objective=raw multi.css
   .a,.d{color:red}.c,.d{padding:10px}.e,.f{color:#00f}@media screen{.g{color:red}.h{color:#00f}}
 
 
