@@ -157,6 +157,27 @@ let test_factor_interval_keeps_overrides () =
     (minify_str
        ".a{display:block;color:red}.b{display:block;color:blue}.a{display:block;color:red}.c{display:block;color:red}")
 
+let test_factor_override_keeps_its_longhand () =
+  (* A member that overrides the group's default [border] keeps its own [border]
+     in the leftover, and a longhand it wrote after that shorthand has to stay
+     after it: [border] resets [border-top-color], so the longhand written first
+     would be dead and the element's top border would take the shorthand's
+     colour. Every border longhand is a reset of the same kind. *)
+  Alcotest.(check string)
+    "an override keeps the longhand written after it"
+    ".a,.b{color:red;border:1px solid#ddd}.a{border:1px \
+     solid#ccc;border-top-color:red}"
+    (minify_str
+       ".b{color:red;border:1px solid #ddd}.a{color:red;border:1px solid \
+        #ccc;border-top-color:red}");
+  Alcotest.(check string)
+    "and a side shorthand written after it"
+    ".a,.b{color:red;border:1px solid#ddd}.a{border:1px \
+     solid#ccc;border-top:3px solid red}"
+    (minify_str
+       ".b{color:red;border:1px solid #ddd}.a{color:red;border:1px solid \
+        #ccc;border-top:3px solid red}")
+
 let test_factor_selector_branch_keeps_later_override () =
   (* Extracting the shared overflow/position declarations must not let the
      earlier selector-list branch overwrite the later .scroll-item a z-index.
@@ -853,6 +874,9 @@ let suite =
       ("factor shared declarations", `Quick, test_factor_shared_declarations);
       ("factor weighted intervals", `Quick, test_factor_interval_schedule);
       ("factor interval overrides", `Quick, test_factor_interval_keeps_overrides);
+      ( "factor override keeps its longhand",
+        `Quick,
+        test_factor_override_keeps_its_longhand );
       ( "factor selector branch keeps later override",
         `Quick,
         test_factor_selector_branch_keeps_later_override );
