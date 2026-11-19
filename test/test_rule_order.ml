@@ -839,16 +839,24 @@ let container_key_keeps_structurally_distinct_queries_apart () =
     (List.length projected)
 
 let conflicting_block_fold_is_refused () =
-  (* Folding either way moves a conditional write of [color] on [.a] past an
-     unconditional write of [color] on [.a], which changes the winner when the
-     query matches, so both blocks stay. *)
+  (* Folding the second block up moves a conditional write of [color] on [.a]
+     before an unconditional write of [color] on [.a], which changes the winner
+     when the query matches, so the guarded [blue] stays after [green]. The
+     first block's [red] never wins: whenever it applies, [blue] applies too,
+     under the same selector, and comes later, and CSS Cascade 5 sec. 6.1
+     (Cascade Sorting Order) has the last declaration in order of appearance
+     win. The sheet is the one without it. *)
   let css =
     "@media print{.a{color:red}}.a{color:green}@media print{.a{color:blue}}"
   in
   Alcotest.(check string)
-    "both blocks stay"
-    (render (statements css))
-    (canonical css)
+    "the overridden guarded write is dead"
+    (canonical ".a{color:green}@media print{.a{color:blue}}")
+    (canonical css);
+  Alcotest.(check bool)
+    "the guarded write stays after the unconditional one" true
+    (canonical css
+    <> canonical "@media print{.a{color:red;color:blue}}.a{color:green}")
 
 (* One run of [n] rules on distinct classes that all write [color], so every
    pair meets on a declaration and none on a selector, and no two fold. *)
