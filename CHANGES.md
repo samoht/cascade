@@ -333,6 +333,13 @@ to call instead, and moving off most of them is a rename or a deleted call.
   value every browser reads, but kept it when written after, as in
   `.a{content:"a"!important;content:"b"}`. The important one wins either way,
   and the normal one goes in both orders (#1419).
+- `--minify` printed `input:-webkit-input-placeholder`, a rule Chrome,
+  WebKit and Firefox all drop, as `input::-webkit-input-placeholder`, which
+  they read, so the placeholder took the rule's colour where the source left
+  it grey. Only `:before`, `:after`, `:first-line` and `:first-letter` read as
+  pseudo-elements after one colon (Selectors 4 sec. 3.6.1); any other
+  pseudo-element name there is an unknown pseudo-class, and its rule is
+  dropped with a warning, as every target drops it (#1427).
 
 ### Comparing stylesheets
 
