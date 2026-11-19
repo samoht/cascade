@@ -298,6 +298,21 @@ let equal_canonical_targets () =
     "font-smooth under enforce-spec" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
        ".a{color:red;font-smooth:always}" ".a{color:red}");
+  (* SVG 2, "The 'text-rendering' property": a longhand of its own, read by
+     every target, that touches no other declaration. networkx-theme and
+     netflix-csso in SatCSS. *)
+  Alcotest.(check bool)
+    "text-rendering touches only itself" true
+    (equal
+       ".h,.k{font-size:inherit;text-rendering:auto}.p{float:right}.h,.k{font-family:inherit}"
+       ".h,.k{font-size:inherit;text-rendering:auto;font-family:inherit}.p{float:right}");
+  Alcotest.(check bool)
+    "so the rules it shares a selector with fold" true
+    (equal
+       "h2{color:#fff}a:last-child{margin-bottom:0}a .n,a .t{color:#fff}a .e,a \
+        .n,a .t{text-rendering:optimizeLegibility}"
+       "h2,a .n,a .t{color:#fff}a:last-child{margin-bottom:0}a .e,a .n,a \
+        .t{text-rendering:optimizeLegibility}");
   Alcotest.(check bool)
     "a mask composite's prefixed vocabulary too" true
     (equal ".a{-webkit-mask-composite:source-in;mask-composite:intersect}"
