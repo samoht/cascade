@@ -418,6 +418,31 @@ let normalize_radial_size : radial_size -> radial_size =
         (Circle_radius (Values.normalize_length ~strip:false r))
   | other -> other
 
+(* CSS Image Values 3 (W3C Working Draft, 17 February 2011) sec. 5.1.1, the
+   syntax the Compatibility Standard sec. 3.3.1 gives the prefixed linear
+   gradients: a side keyword names where the gradient starts, [left], [bottom],
+   [right] and [top] being 0deg, 90deg, 180deg and 270deg measured
+   counterclockwise from the right, and an omitted direction defaults to [top].
+   The reader keeps the keyword the sheet wrote in the [To_] constructor of the
+   same name, and the legacy printer writes it back, so only the default folds:
+   [top], and an angle on 270deg. *)
+let rec normalize_legacy_gradient_direction :
+    gradient_direction -> gradient_direction =
+ fun value ->
+  match value with
+  | Default_direction -> value
+  | To_top -> Default_direction
+  | Angle a -> (
+      match Values.angle_degrees_opt a with
+      | Some deg when Float.rem (deg -. 270.) 360. = 0. -> Default_direction
+      | _ -> preserve_if_equal value (Angle (Values.normalize_angle a)))
+  | With_interpolation (dir, interp) ->
+      preserve_if_equal value
+        (With_interpolation (normalize_legacy_gradient_direction dir, interp))
+  | To_right | To_bottom | To_left | To_top_right | To_bottom_right
+  | To_bottom_left | To_top_left | Var _ ->
+      value
+
 let rec normalize_gradient_direction : gradient_direction -> gradient_direction
     =
  fun value ->
@@ -975,7 +1000,8 @@ let read_webkit_linear_gradient_body t =
   let stops = read_gradient_stops t in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in -webkit-linear-gradient()";
-  Webkit_linear_gradient (Option.value ~default:To_bottom direction, stops)
+  Webkit_linear_gradient
+    (Option.value ~default:Default_direction direction, stops)
 
 let read_radial_gradient_body_stops t =
   Cursor.ws t;

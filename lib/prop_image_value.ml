@@ -152,11 +152,11 @@ let rec normalize_background_image ?(lossless = false) :
         (Repeating_conic_gradient (normalize_conic_config c, stops s))
   | Webkit_linear_gradient (d, s) ->
       preserve_if_equal value
-        (Webkit_linear_gradient (normalize_gradient_direction d, stops s))
+        (Webkit_linear_gradient (normalize_legacy_gradient_direction d, stops s))
   | Webkit_repeating_linear_gradient (d, s) ->
       preserve_if_equal value
         (Webkit_repeating_linear_gradient
-           (normalize_gradient_direction d, stops s))
+           (normalize_legacy_gradient_direction d, stops s))
   | Webkit_radial_gradient (c, s) ->
       preserve_if_equal value
         (Webkit_radial_gradient (normalize_radial_config c, stops s))
@@ -165,10 +165,11 @@ let rec normalize_background_image ?(lossless = false) :
         (Webkit_repeating_radial_gradient (normalize_radial_config c, stops s))
   | Moz_linear_gradient (d, s) ->
       preserve_if_equal value
-        (Moz_linear_gradient (normalize_gradient_direction d, stops s))
+        (Moz_linear_gradient (normalize_legacy_gradient_direction d, stops s))
   | Moz_repeating_linear_gradient (d, s) ->
       preserve_if_equal value
-        (Moz_repeating_linear_gradient (normalize_gradient_direction d, stops s))
+        (Moz_repeating_linear_gradient
+           (normalize_legacy_gradient_direction d, stops s))
   | Moz_radial_gradient (c, s) ->
       preserve_if_equal value
         (Moz_radial_gradient (normalize_radial_config c, stops s))
@@ -177,10 +178,11 @@ let rec normalize_background_image ?(lossless = false) :
         (Moz_repeating_radial_gradient (normalize_radial_config c, stops s))
   | O_linear_gradient (d, s) ->
       preserve_if_equal value
-        (O_linear_gradient (normalize_gradient_direction d, stops s))
+        (O_linear_gradient (normalize_legacy_gradient_direction d, stops s))
   | O_repeating_linear_gradient (d, s) ->
       preserve_if_equal value
-        (O_repeating_linear_gradient (normalize_gradient_direction d, stops s))
+        (O_repeating_linear_gradient
+           (normalize_legacy_gradient_direction d, stops s))
   | O_radial_gradient (c, s) ->
       preserve_if_equal value
         (O_radial_gradient (normalize_radial_config c, stops s))
