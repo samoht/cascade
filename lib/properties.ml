@@ -440,6 +440,7 @@ let read_any_property t =
   | "grid-template" -> Prop Grid_template
   | "grid-template-areas" -> Prop Grid_template_areas
   | "hyphens" -> Prop Hyphens
+  | "text-rendering" -> Prop Text_rendering
   | "isolation" -> Prop Isolation
   | "justify-items" -> Prop Justify_items
   | "justify-self" -> Prop Justify_self

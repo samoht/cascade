@@ -331,6 +331,10 @@ val vars_of_dominant_baseline :
 val vars_of_hyphens : Properties.hyphens -> Variables_intf.any_var list
 (** [vars_of_hyphens v] is the variables [v] references. *)
 
+val vars_of_text_rendering :
+  Properties.text_rendering -> Variables_intf.any_var list
+(** [vars_of_text_rendering v] is the variables [v] references. *)
+
 val vars_of_initial_letter_align :
   Properties.initial_letter_align -> Variables_intf.any_var list
 (** [vars_of_initial_letter_align v] is the variables [v] references. *)

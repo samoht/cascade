@@ -533,6 +533,7 @@ type 'a property =
   | Overflow_wrap : overflow_wrap property
   | Line_break : line_break property
   | Hyphens : hyphens property
+  | Text_rendering : text_rendering property
   | Webkit_hyphens : hyphens property
   | Font_stretch : font_stretch property
   | Font_optical_sizing : font_optical_sizing property

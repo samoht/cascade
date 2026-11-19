@@ -2092,6 +2092,9 @@ val line_break : line_break -> declaration
 val hyphens : hyphens -> declaration
 (** [hyphens v] is the CSS [hyphens] property. *)
 
+val text_rendering : text_rendering -> declaration
+(** [text_rendering v] is the SVG 2 [text-rendering] property. *)
+
 val webkit_hyphens : hyphens -> declaration
 (** [webkit_hyphens v] is the WebKit-only [-webkit-hyphens] property. *)
 

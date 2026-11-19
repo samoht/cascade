@@ -6,6 +6,9 @@ open Css.Properties
 open Css_test_helpers
 open Properties_helpers
 
+let check_text_rendering =
+  check_value_cursor "text-rendering" read_text_rendering pp_text_rendering
+
 let check_text_overflow =
   check_value_cursor "text-overflow" read_text_overflow pp_text_overflow
 
@@ -189,6 +192,16 @@ let test_overflow_wrap () =
   (* missing hyphen *)
   (* not a valid value *)
   neg_cursor read_overflow_wrap "everywhere"
+
+(* SVG 2, "The 'text-rendering' property". *)
+let test_text_rendering () =
+  check_text_rendering "auto";
+  check_text_rendering "optimizeSpeed";
+  check_text_rendering "optimizeLegibility";
+  check_text_rendering "geometricPrecision";
+  check_text_rendering "inherit";
+  neg_cursor read_text_rendering "crisp";
+  neg_cursor ~allow_partial:true read_text_rendering "auto optimizeSpeed"
 
 let test_hyphens () =
   check_hyphens "none";
@@ -545,6 +558,7 @@ let suite =
       test_case "word-break" `Quick test_word_break;
       test_case "overflow-wrap" `Quick test_overflow_wrap;
       test_case "hyphens" `Quick test_hyphens;
+      test_case "text-rendering" `Quick test_text_rendering;
       test_case "line-height" `Quick test_line_height;
       test_case "list-style-type" `Quick test_list_style_type;
       test_case "list-style-position" `Quick test_list_style_position;

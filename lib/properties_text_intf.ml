@@ -824,6 +824,19 @@ type overflow_wrap =
   | Revert_layer
   | Var of overflow_wrap var
 
+(** SVG 2 [text-rendering] values ("The 'text-rendering' property"). *)
+type text_rendering =
+  | Auto
+  | Optimize_speed
+  | Optimize_legibility
+  | Geometric_precision
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_rendering var
+
 (** CSS hyphens values *)
 type hyphens =
   | None
