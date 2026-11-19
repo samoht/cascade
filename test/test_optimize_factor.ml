@@ -831,7 +831,10 @@ let test_pp_minify_is_idempotent () =
   assert_pp_idempotent normalize_pairs;
   assert_pp_idempotent gradient_shape_pairs
 
-let test_no_merge_vendor_pseudo () =
+(* [::file-selector-button] is read by every target (Chrome 89, Firefox 82,
+   Safari 14.1, iOS Safari 14.5), so a list holding it is one each of them
+   parses, and two rules with one body share it. *)
+let test_merge_pseudo_element_every_target_reads () =
   let input =
     [
       Css.rule ~selector:Css.Selector.File_selector_button
@@ -843,13 +846,8 @@ let test_no_merge_vendor_pseudo () =
   in
   let optimized = stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let has_file_selector =
-    Astring.String.is_infix ~affix:"::file-selector-button{" output_str
-  in
-  let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
-  Alcotest.(check bool)
-    "doesn't merge vendor pseudo-elements" true
-    (has_file_selector && has_foo)
+  let rules = List.length (String.split_on_char '{' output_str) - 1 in
+  Alcotest.(check int) (Fmt.str "one rule: %s" output_str) 1 rules
 
 (* Selectors 4 sec. 3.9: a selector list holding a pseudo-class the browser does
    not support is invalid as a whole, so listing a vendor pseudo-class with
@@ -1080,7 +1078,9 @@ let suite =
         `Quick,
         test_pp_picks_shortest_same_node );
       ("pp minify is idempotent", `Quick, test_pp_minify_is_idempotent);
-      ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
+      ( "merge pseudo-element every target reads",
+        `Quick,
+        test_merge_pseudo_element_every_target_reads );
       ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
       ( "no merge pseudo some target lacks",
         `Quick,

@@ -1402,12 +1402,16 @@ let same_selector_commute_is_subquadratic () =
    they do not pair with each other, so the three never share a selector list
    and the enumerator settles for a compatible subset. Both pairs save the same,
    and an equal saving goes to the shorter shared rule. *)
+(* Chrome 111, a default target, predates [:user-valid] (Chrome 119), so it
+   drops a list holding one whole (Selectors 4 sec. 3.9): [.x:user-valid] groups
+   with nothing. A plain selector still groups with an [:is(:where(...))]
+   variant, which every target parses. *)
 let grouping_respects_non_transitive_compatibility () =
   let newer = ".x:user-valid{color:red}" in
   let plain = ".y{color:red}" in
   let guarded = ":is(:where(.group):hover .z){color:red}" in
   Alcotest.(check string)
-    "newer groups with plain" ".x:user-valid,.y{color:red}"
+    "newer never groups with plain" ".x:user-valid{color:red}.y{color:red}"
     (optimize_str (newer ^ plain));
   Alcotest.(check string)
     "plain groups with guarded" ".y,:is(:where(.group):hover .z){color:red}"
@@ -1417,8 +1421,8 @@ let grouping_respects_non_transitive_compatibility () =
     ".x:user-valid{color:red}:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ guarded));
   Alcotest.(check string)
-    "all three settle for the shorter compatible subset"
-    ".x:user-valid,.y{color:red}:is(:where(.group):hover .z){color:red}"
+    "all three group only the two every target parses"
+    ".x:user-valid{color:red}.y,:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ plain ^ guarded))
 
 (* Every rule here carries the same body and a selector no other rule shares, so
