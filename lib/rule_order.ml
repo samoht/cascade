@@ -378,59 +378,79 @@ let block_statement prelude body =
    the other. Style, media and supports shapes retain their text keys, while a
    container condition uses the structural equality that decides whether two
    queries select the same containers. Its normalised spelling is only a hash:
-   collisions still reach [equal] instead of becoming merges. *)
+   collisions still reach [equal] instead of becoming merges. A key carries its
+   hash, worked out once: the rounds of {!settle} look every element's key up
+   several times each. *)
 module Shape_key = struct
-  type t = Text of string | Container of string option * Container.t option
+  type shape =
+    | Text of string
+    | Container of string option * Container.t option
+
+  type t = { shape : shape; hash : int }
+
+  let v shape =
+    let hash =
+      match shape with
+      | Text text -> Hashtbl.hash (0, text)
+      | Container (name, cond) ->
+          let cond =
+            Option.map
+              (fun c ->
+                Container.to_string ~minify:true (Container.normalize c))
+              cond
+          in
+          Hashtbl.hash (1, name, cond)
+    in
+    { shape; hash }
 
   let equal a b =
-    match (a, b) with
+    Int.equal a.hash b.hash
+    &&
+    match (a.shape, b.shape) with
     | Text a, Text b -> String.equal a b
     | Container (an, ac), Container (bn, bc) ->
         Option.equal String.equal an bn && Option.equal Container.equal ac bc
     | (Text _ | Container _), _ -> false
 
-  let hash = function
-    | Text text -> Hashtbl.hash (0, text)
-    | Container (name, cond) ->
-        let cond =
-          Option.map
-            (fun c -> Container.to_string ~minify:true (Container.normalize c))
-            cond
-        in
-        Hashtbl.hash (1, name, cond)
+  let hash t = t.hash
 end
 
 module Shape_table = Hashtbl.Make (Shape_key)
 
-let shape_key = function
-  | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
-  | Block (Media_query m, _) ->
-      Shape_key.Text (String.concat "" [ "@media "; Media.to_string m ])
-  | Block (Feature_query c, _) ->
-      Shape_key.Text (String.concat "" [ "@supports "; Supports.to_string c ])
-  | Block (Container_query (name, cond), _) -> Shape_key.Container (name, cond)
+let shape_key shape =
+  Shape_key.v
+    (match shape with
+    | Style r -> Text (Pp.to_string ~minify:true Selector.pp r.selector)
+    | Block (Media_query m, _) ->
+        Text (String.concat "" [ "@media "; Media.to_string m ])
+    | Block (Feature_query c, _) ->
+        Text (String.concat "" [ "@supports "; Supports.to_string c ])
+    | Block (Container_query (name, cond), _) -> Container (name, cond))
 
 let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 
 (* A run element and what the rounds of {!settle} read off it, worked out once:
-   the graph node standing for it, its shape key, the conditions every rule of
-   it sits under, and its serialized text, which ranks it among the elements it
-   is free to pass. *)
+   the graph node standing for it, what {!Rule_graph.facts_conflict} reads off
+   that node, its shape key, the conditions every rule of it sits under, and its
+   serialized text, which ranks it among the elements it is free to pass. *)
 type element = {
   stmt : statement;
   rules : rule list;
   node : rule;
+  facts : Rule_graph.facts Lazy.t;
   plain : bool;
   key : Shape_key.t option;
   conditions : condition list;
   text : string Lazy.t;
 }
 
-let element stmt rules =
+let element ?parent stmt rules =
+  let node = element_node stmt rules in
   {
     stmt;
     rules;
-    node = element_node stmt rules;
+    node;
+    facts = lazy (Rule_graph.facts ?parent node);
     plain = (match stmt with Rule _ -> true | _ -> false);
     key = element_key stmt;
     conditions = element_conditions stmt;
@@ -672,7 +692,7 @@ let folded scan =
     | [ q ] when q = p -> ids.(p)
     | members ->
         let stmt, rules = scan.current.(p) in
-        let e = element stmt rules in
+        let e = element ?parent:st.parent stmt rules in
         (* the graph asks [exclusive] about the node it adds *)
         add_element st.store e;
         Rule_graph.Node_id.to_int
@@ -763,18 +783,63 @@ let style_at st ids p =
   | Option.Some (Style r), Option.Some key -> Option.Some (r, key)
   | _ -> Option.None
 
+(* The consecutive occurrences of one selector among the style rules of the run
+   as it stands, as [(i, a, p, b)] with [a] at [i] and [b] at [p], by increasing
+   [p]. *)
+let selector_pairs st ids =
+  let last = Shape_table.create 16 in
+  let pairs = ref [] in
+  for p = 0 to Array.length ids - 1 do
+    match style_at st ids p with
+    | Option.None -> ()
+    | Option.Some (b, key) ->
+        (match Shape_table.find_opt last key with
+        | Option.Some (i, a) -> pairs := (i, a, p, b) :: !pairs
+        | Option.None -> ());
+        Shape_table.replace last key (p, b)
+  done;
+  List.rev !pairs
+
+(* [ids] without position [i]. *)
+let without ids i =
+  Array.init
+    (Array.length ids - 1)
+    (fun q -> if q < i then ids.(q) else ids.(q + 1))
+
+(* Apply [step] to the pairs of [selector_pairs] in turn, each one only when it
+   stands wholly after every position an earlier step rewrote. A step rewrites
+   the positions from its first occurrence to its later one: what it produced
+   may have to follow nodes standing between the two, so only there does the
+   order the run last stood in stop being one its graph allows. The nodes past
+   the later occurrence keep their places and still follow every node before it,
+   so what is read about a pair standing among them, every chain of conflicts
+   leading to its later occurrence and what stands between the two, is what a
+   fresh order would show. The first pair taken is the one a run that took one
+   pair a round would take. [step] returns the run it leaves, [shift] the
+   positions it removed from before its later occurrence, or [None] to leave the
+   pair alone. *)
+let batched st ids step =
+  let ids, _, _ =
+    List.fold_left
+      (fun ((ids, shift, reach) as acc) (i, a, p, b) ->
+        if i <= reach then acc
+        else
+          match step ids (i - shift, a, p - shift, b) with
+          | Option.None -> acc
+          | Option.Some (ids, removed) -> (ids, shift + removed, p))
+      (ids, 0, -1) (selector_pairs st ids)
+  in
+  ids
+
 (* Fold two occurrences of one selector that {!coalesce} keeps apart because
    each is held by a rule between them that conflicts with it, when no chain of
    conflicts through another rule orders the first before the second: the rules
    the first must precede then follow the fold and the rest precede it, an order
    that keeps every constrained pair. A chain found once stays, since a fold
-   only joins nodes, so a pair it orders is not asked again. The first pair that
-   folds is folded, on a run standing as {!sort} left it. *)
+   only joins nodes, so a pair it orders is not asked again. Every pair that
+   folds is folded, on a run standing as {!sort} left it, through {!batched}. *)
 let join_held st changed ids =
-  let n = Array.length ids in
-  let last = Shape_table.create 16 in
-  let style = style_at st ids in
-  let held i p =
+  let held ids i p =
     let pair = (ids.(i), ids.(p)) in
     Move_table.mem st.held pair
     || Rule_graph.run_orders st.graph (node ids.(i)) (node ids.(p))
@@ -782,23 +847,11 @@ let join_held st changed ids =
        (Move_table.replace st.held pair ();
         true)
   in
-  let rec find p =
-    if p >= n then Option.None
+  let join ids (i, a, p, b) =
+    if held ids i p then Option.None
     else
-      match style p with
-      | Option.None -> find (p + 1)
-      | Option.Some (b, key) -> (
-          match Shape_table.find_opt last key with
-          | Option.Some (i, a) when not (held i p) -> Option.Some (i, a, p, b)
-          | _ ->
-              Shape_table.replace last key (p, b);
-              find (p + 1))
-  in
-  match find 0 with
-  | Option.None -> Option.None
-  | Option.Some (i, a, p, b) ->
       let merged = merged_rule ~ctx:st.ctx a b in
-      let e = element (Rule merged) [ merged ] in
+      let e = element ?parent:st.parent (Rule merged) [ merged ] in
       add_element st.store e;
       let id =
         Rule_graph.Node_id.to_int
@@ -810,11 +863,10 @@ let join_held st changed ids =
       changed := true;
       let joined = Array.copy ids in
       joined.(p) <- id;
-      Option.Some
-        (Array.of_list
-           (List.filteri
-              (fun q _ -> not (Int.equal q i))
-              (Array.to_list joined)))
+      Option.Some (without joined i, 1)
+  in
+  let joined = batched st ids join in
+  if joined == ids then Option.None else Option.Some joined
 
 (* Move into the later of two held occurrences of one selector every declaration
    of the earlier that no chain of conflicts orders before the later: the rules
@@ -827,11 +879,14 @@ let join_held st changed ids =
    it stand in either, so meet. *)
 (* The rules standing after position [i], other than the later occurrence [b]
    at [p], that [d], written in [a], conflicts with and so has to precede
-   wherever it stands. A rule between the two whose every declaration [d]
-   conflicts with [b] writes again is not one: [b] then decides those slots on
-   whichever side of the rule [d] stands. *)
-let followers st ids i p (a : rule) (b : rule) d =
-  let alone = { a with declarations = [ d ] } in
+   wherever it stands, those past [p] only when [past]. A rule between the two
+   whose every declaration [d] conflicts with [b] writes again is not one: [b]
+   then decides those slots on whichever side of the rule [d] stands. *)
+let followers ~past st ids i p (a : rule) (b : rule) d =
+  let alone =
+    Rule_graph.facts ?parent:st.parent { a with declarations = [ d ] }
+  in
+  let conflicts e = Rule_graph.facts_conflict alone (Lazy.force e.facts) in
   let rewritten x =
     List.exists
       (fun e ->
@@ -839,8 +894,8 @@ let followers st ids i p (a : rule) (b : rule) d =
         && Shorthand.declaration_covers e x)
       b.declarations
   in
-  let held_by (node_rule : rule) =
-    Rule_graph.rules_conflict ?parent:st.parent alone node_rule
+  let held_by e =
+    conflicts e
     && not
          (List.for_all
             (fun x ->
@@ -850,95 +905,74 @@ let followers st ids i p (a : rule) (b : rule) d =
                     x
                     (Shorthand.declaration_overlap_keys x)))
               || rewritten x)
-            node_rule.declarations)
+            e.node.declarations)
   in
-  let n = Array.length ids in
+  let n = if past then Array.length ids else p in
   let rec collect q acc =
     if q >= n then acc
     else
-      let node_rule = st.store.elements.(ids.(q)).node in
-      let follows =
-        if q < p then held_by node_rule
-        else
-          q > p && Rule_graph.rules_conflict ?parent:st.parent alone node_rule
-      in
+      let e = st.store.elements.(ids.(q)) in
+      let follows = if q < p then held_by e else q > p && conflicts e in
       collect (q + 1) (if follows then node ids.(q) :: acc else acc)
   in
   collect (i + 1) []
 
 (* [a]'s declarations no chain of conflicts orders before position [p], and the
-   rest. *)
+   rest. A chain reaching [p] stands before it, so the rules past [p] that a
+   declaration has to precede start none and are not collected. *)
 let movable st ids i p (a : rule) b =
   List.partition
     (fun d ->
       not
         (Rule_graph.run_reaches st.graph
-           (followers st ids i p a b d)
+           (followers ~past:false st ids i p a b d)
            (node ids.(p))))
     a.declarations
 
-(* The first held pair with a declaration to move, and what moves. *)
-let pair_to_sink st ids =
-  let n = Array.length ids in
-  let last = Shape_table.create 16 in
-  let rec find q =
-    if q >= n then Option.None
-    else
-      match style_at st ids q with
-      | Option.None -> find (q + 1)
-      | Option.Some (b, key) -> (
-          let next () =
-            Shape_table.replace last key (q, b);
-            find (q + 1)
-          in
-          match Shape_table.find_opt last key with
-          | Option.Some (i, a)
-            when not (Move_table.mem st.sunk (ids.(i), ids.(q))) -> (
-              match movable st ids i q a b with
-              | [], _ ->
-                  Move_table.replace st.sunk (ids.(i), ids.(q)) ();
-                  next ()
-              | moved, kept -> Option.Some (i, a, q, b, moved, kept))
-          | _ -> next ())
-  in
-  find 0
-
+(* Sink every held pair with a declaration to move, through {!batched}. A pair
+   none of whose declarations moves is remembered as such. *)
 let sink_held st changed ids =
-  match pair_to_sink st ids with
-  | Option.None -> Option.None
-  | Option.Some (i, a, p, b, moved, kept) -> (
-      let follow =
-        List.sort_uniq Rule_graph.Node_id.compare
-          (List.concat_map (followers st ids i p a b) moved)
-      in
-      let replace q rule fold =
-        let e = element (Rule rule) [ rule ] in
-        add_element st.store e;
-        Rule_graph.Node_id.to_int (fold e.node ~at:(node ids.(q)))
-      in
-      let into = merged_rule ~ctx:st.ctx { a with declarations = moved } b in
-      let sunk = Array.copy ids in
-      changed := true;
-      match kept with
-      | [] ->
-          sunk.(p) <-
-            replace p into (fun rule ~at ->
-                Rule_graph.join ~follow ~from:[ at ] st.graph
-                  [ node ids.(i); at ]
-                  rule ~at);
-          Option.Some
-            (Array.of_list
-               (List.filteri
-                  (fun q _ -> not (Int.equal q i))
-                  (Array.to_list sunk)))
-      | _ :: _ ->
-          sunk.(i) <-
-            replace i { a with declarations = kept } (fun rule ~at ->
-                Rule_graph.fold st.graph [ at ] rule ~at);
-          sunk.(p) <-
-            replace p into (fun rule ~at ->
-                Rule_graph.join ~follow st.graph [ at ] rule ~at);
-          Option.Some sunk)
+  let sink ids (i, a, p, b) =
+    if Move_table.mem st.sunk (ids.(i), ids.(p)) then Option.None
+    else
+      match movable st ids i p a b with
+      | [], _ ->
+          Move_table.replace st.sunk (ids.(i), ids.(p)) ();
+          Option.None
+      | moved, kept -> (
+          let follow =
+            List.sort_uniq Rule_graph.Node_id.compare
+              (List.concat_map (followers ~past:true st ids i p a b) moved)
+          in
+          let replace q rule fold =
+            let e = element ?parent:st.parent (Rule rule) [ rule ] in
+            add_element st.store e;
+            Rule_graph.Node_id.to_int (fold e.node ~at:(node ids.(q)))
+          in
+          let into =
+            merged_rule ~ctx:st.ctx { a with declarations = moved } b
+          in
+          let sunk = Array.copy ids in
+          changed := true;
+          match kept with
+          | [] ->
+              sunk.(p) <-
+                replace p into (fun rule ~at ->
+                    Rule_graph.join ~follow ~from:[ at ] st.graph
+                      [ node ids.(i); at ]
+                      rule ~at);
+              Option.Some (without sunk i, 1)
+          | _ :: _ ->
+              sunk.(i) <-
+                replace i { a with declarations = kept } (fun rule ~at ->
+                    Rule_graph.fold st.graph [ at ] rule ~at);
+              sunk.(p) <-
+                replace p into (fun rule ~at ->
+                    Rule_graph.join ~follow st.graph [ at ] rule ~at);
+              Option.Some (sunk, 0))
+  in
+  let sunk = batched st ids sink in
+  if sunk == ids then Option.None else Option.Some sunk
 
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept
@@ -1007,7 +1041,8 @@ let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
   | [ (stmt, _) ] -> [ stmt ]
   | run ->
       let elements =
-        Array.of_list (List.map (fun (stmt, rules) -> element stmt rules) run)
+        Array.of_list
+          (List.map (fun (stmt, rules) -> element ?parent stmt rules) run)
       in
       let st = settling ~canon_body ~ctx ?parent elements in
       let rec rounds ids =
