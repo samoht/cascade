@@ -48,7 +48,10 @@ let crosses_bounds g ~lo ~hi id =
    factors out of them, which together decide the candidate. The fields below
    [grouped] are what the candidate read beyond those rules: whether a live rule
    printed strictly between the members [lo] and [hi], the first and the last
-   the graph prints, would be crossed, and [witness] is one that would. *)
+   the graph prints, would be crossed, and [witness] is one that would. When the
+   scan of epoch [scanned] found none, [clear] holds the rules it walked past
+   whose selectors no member's may match at once, the only ones a group one
+   member wider could cross there. *)
 type group = {
   uid : int;
   members : Rule_graph.node_id list;
@@ -60,6 +63,8 @@ type group = {
   mutable lo : Rule_graph.node_id;
   mutable hi : Rule_graph.node_id;
   mutable witness : Rule_graph.node_id option;
+  mutable scanned : int;
+  mutable clear : Rule_graph.node_id list;
   mutable made : candidate option;
   mutable group_offer : offer option;
 }
@@ -95,6 +100,8 @@ let share shared ~members ~decls ~props grouped =
           lo = Rule_graph.Node_id.of_int_exn 0;
           hi = Rule_graph.Node_id.of_int_exn 0;
           witness = Option.None;
+          scanned = -1;
+          clear = [];
           made = Option.None;
           group_offer = Option.None;
         }
@@ -1033,28 +1040,82 @@ let crosses core (group : group) branches (grouped : rule) id =
   crosses_bounds (view core) ~lo:group.lo ~hi:group.hi id
   && crossed core group branches grouped id
 
-let scan core (group : group) =
+(* The group [shared] holds one member narrower than [group], lifting the same
+   declarations and scanned on this epoch, with the member it lacks, which
+   prints after all of its own. *)
+let narrower core shared (group : group) =
+  match List.rev group.members with
+  | last :: (_ :: _ :: _ as prior) -> (
+      match Ids_table.find_opt shared.by_members (List.rev prior) with
+      | Option.None -> Option.None
+      | Option.Some groups ->
+          List.find_map
+            (fun (other : group) ->
+              if
+                other.scanned = epoch core
+                && List.equal same_decl other.decls group.decls
+                && List.equal Property_key.equal other.props group.props
+                && Rule_graph.compare_position (graph (view core)) other.hi last
+                   < 0
+              then Option.Some (other, last)
+              else Option.None)
+            groups)
+  | _ -> Option.None
+
+(* The scan reads each live rule between the members once per epoch for a run of
+   groups each one member wider than the one before: the group rule's selector
+   lists the members' in order, so a rule the narrower group crosses the wider
+   one crosses too, and a rule it walked past is crossed only when the new
+   member's selector may match with it. Past the narrower group's last member
+   the rules are walked as for any group. *)
+let scan core shared (group : group) =
   group.checked <- epoch core;
   group.witness <- Option.None;
+  group.clear <- [];
   match
     (Lazy.force group.grouped, printed_bounds (view core) group.members)
   with
   | Option.None, _ | _, Option.None -> ()
-  | Option.Some (grouped, _), Option.Some (lo, hi) ->
+  | Option.Some (grouped, _), Option.Some (lo, hi) -> (
       group.lo <- lo;
       group.hi <- hi;
-      let witness = ref Option.None in
-      let found id =
-        witness := Option.Some id;
-        true
+      group.scanned <- epoch core;
+      let g = view core in
+      let witness = ref Option.None and clear = ref [] in
+      let cross branches id =
+        if Rule_graph.node_selector_conflict (graph g) (Lazy.force branches) id
+        then
+          Lift.declarations_cross_order grouped.declarations
+            (node_rule g id).declarations
+          && begin
+            witness := Option.Some id;
+            true
+          end
+        else begin
+          clear := id :: !clear;
+          false
+        end
       in
-      let branches = lazy (Rule_graph.branches grouped.selector) in
-      if
-        Rule_graph.exists_live_between
-          (graph (view core))
-          lo hi
-          (fun id -> crossed core group branches grouped id && found id)
-      then group.witness <- !witness
+      let walk lo =
+        let branches = lazy (Rule_graph.branches grouped.selector) in
+        Rule_graph.exists_live_between (graph g) lo hi (fun id ->
+            (not (id_mem id group.members)) && cross branches id)
+      in
+      (match narrower core shared group with
+      | Option.None -> ignore (walk lo)
+      | Option.Some ({ witness = Option.Some _ as crossing; _ }, _) ->
+          witness := crossing
+      | Option.Some (narrower, last) ->
+          let branches =
+            Lazy.from_val (Rule_graph.branches (node_rule g last).selector)
+          in
+          ignore
+            (List.exists (cross branches) (List.rev narrower.clear)
+            || walk narrower.hi));
+      group.witness <- !witness;
+      match !witness with
+      | Option.None -> group.clear <- !clear
+      | Option.Some _ -> ())
 
 (* A candidate is offered again only when it changed: a group computes its
    candidate once, so an unchanged one is the same value. *)
@@ -1083,7 +1144,7 @@ let reach core family (group : group) =
   group.refs <- group.refs + 1;
   if group.refs = 1 then begin
     Int_table.replace family.live_groups group.uid group;
-    scan core group;
+    scan core family.shared group;
     offer_group core group
   end
 
@@ -1093,6 +1154,8 @@ let unreach core family (group : group) =
     withdraw_option group.group_offer;
     group.group_offer <- Option.None;
     group.made <- Option.None;
+    group.scanned <- -1;
+    group.clear <- [];
     Int_table.remove family.live_groups group.uid;
     if not (all_live core group.members) then forget_group family group
   end
@@ -1101,11 +1164,12 @@ let unreach core family (group : group) =
    refresh changed: a witness they consumed or moved, a member they moved, or a
    node they produced or moved into the span. Every live group is asked at every
    refresh, so the answer it holds is the previous refresh's. *)
-let recheck_group core ~consumed ~produced ~moved ~is_moved (group : group) =
+let recheck_group core shared ~consumed ~produced ~moved ~is_moved
+    (group : group) =
   if group.checked <> epoch core then begin
     group.checked <- epoch core;
     let rescan () =
-      scan core group;
+      scan core shared group;
       offer_group core group
     in
     match (Lazy.force group.grouped, group.witness) with
@@ -1246,7 +1310,8 @@ let settle core family { consumed; produced; moved } =
     let moved_set = Node_set.of_list moved in
     let is_moved id = Node_set.mem id moved_set in
     Int_table.fold (fun _ group acc -> group :: acc) family.live_groups []
-    |> List.iter (recheck_group core ~consumed ~produced ~moved ~is_moved)
+    |> List.iter
+         (recheck_group core family.shared ~consumed ~produced ~moved ~is_moved)
   end
 
 let v size factoring budget =
