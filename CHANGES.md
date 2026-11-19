@@ -373,6 +373,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   that a later rule with the same selector writes again, while it kept both in
   one rule as a fallback, so the two spellings compared different. Across
   rules it now drops only what it would drop in one (#1415).
+- `cascade diff --diff=canonical` kept a declaration in the earlier of two
+  occurrences of its selector when a rule between them touches it only where
+  the later occurrence writes again, as a `border-bottom` against a `:hover`
+  rule's `border-color`. Such a rule no longer holds it back (#1416).
 
 ### Speed
 
