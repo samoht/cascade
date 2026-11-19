@@ -832,6 +832,26 @@ let test_no_merge_vendor_pseudo () =
     "doesn't merge vendor pseudo-elements" true
     (has_file_selector && has_foo)
 
+(* Selectors 4 sec. 3.9: a selector list holding a pseudo-class the browser does
+   not support is invalid as a whole, so listing a vendor pseudo-class with
+   another selector takes that selector's rule away in every engine without the
+   prefix. Chromium drops [.a:-moz-focusring,.b] and [.b] loses its colour;
+   Firefox drops a list holding [:-webkit-any()]. [:-webkit-autofill] is one
+   every target reads (Firefox since 86), so it lists. *)
+let test_no_merge_vendor_pseudo_class () =
+  List.iter
+    (fun (name, css) -> Alcotest.(check string) name css (minify_str css))
+    [
+      ("focus ring", ".a:-moz-focusring{color:red}.b{color:red}");
+      ("ui-invalid", ".a:-moz-ui-invalid{color:red}.b{color:red}");
+      ("-webkit-any()", ":-webkit-any(a,b) p{color:red}.b{color:red}");
+      ( "scrollbar state",
+        "::-webkit-scrollbar:horizontal{width:1px}.b{width:1px}" );
+    ];
+  Alcotest.(check string)
+    "a prefix every target reads lists" ".b,input:-webkit-autofill{color:red}"
+    (minify_str "input:-webkit-autofill{color:red}.b{color:red}")
+
 let test_no_merge_with_nested () =
   let input =
     [
@@ -958,5 +978,6 @@ let suite =
         test_pp_picks_shortest_same_node );
       ("pp minify is idempotent", `Quick, test_pp_minify_is_idempotent);
       ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
+      ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
       ("no merge with nested", `Quick, test_no_merge_with_nested);
     ] )
