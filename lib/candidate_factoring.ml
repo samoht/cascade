@@ -1105,7 +1105,7 @@ let accepted_afresh core (group : group) =
        | Option.None -> false
        | Option.Some (candidate : candidate) ->
            not
-             (Rule_graph.refused_afresh
+             (Rule_graph.refuses
                 (graph (view core))
                 ~consume:candidate.consume ~produce:candidate.produce))
    | Option.Some _, _ | _, Option.None -> false)

@@ -1176,9 +1176,9 @@ let reachability_survives_a_rewrite () =
    reachable set of the node it produces, a bit per node. The rules rewritten
    below order against three neighbours and nothing in the run of N beside them,
    so doubling N must leave the words a rewrite allocates about where they were.
-   The first attempt on a graph makes room past its last node and settles the
-   sets the questions read; the graph keeps both, so each case measures the
-   attempt after it. *)
+   The first attempt on a graph makes room past its last node, and the first
+   question to its reachability makes the table of sets, a word per node; the
+   graph keeps both, so each case measures an attempt after them. *)
 let neighbours = ".z{margin:0}.w{margin:1px}.z{margin:2px}"
 
 let a_rejected_rewrite_copies_no_node () =
@@ -1215,6 +1215,7 @@ let a_committed_rewrite_copies_no_node () =
       | Some g' -> g'
     in
     let g' = replace g n ".z{margin:0}" in
+    ignore (Rule_graph.precedes g' (nid (n + 1)) (nid (n + 2)));
     measure (fun () -> replace g' (n + 1) ".w{margin:1px}")
   in
   let a1 = commit 2000 in

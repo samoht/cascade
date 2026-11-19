@@ -40,28 +40,19 @@ type node_id = Node_id.t
     structural pin used to keep produced selector residuals contiguous. *)
 type edge_reason = Cascade_conflict | Shared_branch_pin
 
-(** Why a graph rewrite was rejected. An ambiguous order carries [afresh], the
-    live rules a graph built afresh from the live rules, in the order they
-    print, orders the sources through both ways too, when it does: the refusal
-    stands there while those rules stay live. Otherwise only rules a rewrite
-    consumed make the order ambiguous. *)
+(** Why a graph rewrite was rejected. A produced rule is ordered against a rule
+    it conflicts with as the sources it draws on that conflict with that rule
+    are, by where they print: an ambiguous order has them on both sides of it,
+    and a new conflict has none. Neither reads a rule a rewrite consumed. *)
 type rewrite_error =
   | Empty_consume
   | Empty_produce
   | Invalid_node of node_id
   | Duplicate_node of node_id
   | Stale_node of node_id
-  | Ambiguous_external_order of {
-      produced : node_id;
-      external_ : node_id;
-      afresh : node_id list option;
-    }
+  | Ambiguous_external_order of { produced : node_id; external_ : node_id }
   | New_external_conflict of { produced : node_id; external_ : node_id }
-  | Ambiguous_produced_order of {
-      left : node_id;
-      right : node_id;
-      afresh : node_id list option;
-    }
+  | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
 
@@ -351,13 +342,13 @@ val rewrite :
   (t, rewrite_error) result
 (** [rewrite] is {!val-try_rewrite} with rejection diagnostics. *)
 
-val refused_afresh :
-  t -> consume:node_id list -> produce:Stylesheet.rule list -> bool
-(** [refused_afresh t ~consume ~produce] is [true] when a graph built afresh
-    from the live rules of [t], in the order they print, would refuse {!rewrite}
-    [~consume ~produce]: a node is not live, or a produced rule conflicts with a
-    rule its sources order both ways, or in no way, there. A rewrite it does not
-    refuse may still close a cycle. *)
+val refuses : t -> consume:node_id list -> produce:Stylesheet.rule list -> bool
+(** [refuses t ~consume ~produce] is [true] when {!rewrite} [~consume ~produce]
+    refuses for another reason than a cycle: a node is not live, or a produced
+    rule conflicts with a rule its sources print on both sides of, or with none
+    of them. That reads the live rules alone and where they print, so a graph
+    built afresh from the rules [t] prints, in that order, refuses it too. A
+    rewrite it does not refuse may still close a cycle. *)
 
 val try_rewrite :
   t -> consume:node_id list -> produce:Stylesheet.rule list -> t option
