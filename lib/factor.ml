@@ -75,9 +75,7 @@ let optimize_graph ~ctx ~finalize ~fixpoint rules graph =
   let profile = Stats.profile stats in
   let before_bytes = if profile then rules_pp_size rules else 0 in
   let timer = if profile then Some (Mtime_clock.counter ()) else None in
-  let { Rule_scheduler.graph; afresh; _ } =
-    Rule_scheduler.run ~ctx ~finalize graph
-  in
+  let { Rule_scheduler.graph; _ } = Rule_scheduler.run ~ctx ~finalize graph in
   (* A produced rule left the scheduler finalized, and an input rule arrives
      finalized, so the order is the result. *)
   let rules' = ordered_rules rules graph in
@@ -101,17 +99,13 @@ let optimize_graph ~ctx ~finalize ~fixpoint rules graph =
       m "fixpoint %d: %d -> %d rules, %d bytes saved%s" fixpoint before_rules
         after_rules bytes_saved
         (if changed then "" else " (no change)"));
-  ((if changed then rules' else rules), afresh)
+  if changed then rules' else rules
 
-(* Factor [rules] on a graph built from them, then on one built from the result,
-   until a run says a graph built afresh from its result would change nothing. A
-   run that changes the rules commits rewrites that each save bytes, so the loop
-   ends. *)
-let rec run_afresh ~ctx ~finalize ~fixpoint rules =
+(* Factor [rules] on a graph built from them, once: the candidates and their
+   acceptance read the rules it prints. *)
+let run_once ~ctx ~finalize ~fixpoint rules =
   let graph = Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules in
-  let rules', afresh = optimize_graph ~ctx ~finalize ~fixpoint rules graph in
-  if afresh || rules' == rules then rules'
-  else run_afresh ~ctx ~finalize ~fixpoint rules'
+  optimize_graph ~ctx ~finalize ~fixpoint rules graph
 
 let log_skip summary =
   Log.debug (fun m ->
@@ -139,7 +133,7 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
         end
         else begin
           let fixpoint = Stats.start_fixpoint stats in
-          let factored = run_afresh ~ctx ~finalize ~fixpoint rules in
+          let factored = run_once ~ctx ~finalize ~fixpoint rules in
           let settled = settle factored in
           (* A result [settle] left alone is its own result: what a later pass
              hands back finds it here. *)

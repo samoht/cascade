@@ -1139,9 +1139,6 @@ let fresh_path t a b =
                end));
     !found
 
-let precedes_afresh t i j =
-  if is_live t i && is_live t j then fresh_path t i j else Option.None
-
 let source_ref_orientation ~path left right =
   if left.node = right.node then
     match (left.decl, right.decl) with
@@ -1688,14 +1685,6 @@ let rewrite t ~consume ~produce : (t, rewrite_error) result =
       | Acyclic finished ->
           commit t graph ~consumed entering finished;
           Ok graph)
-
-let refuses t ~consume ~produce =
-  match orient t ~consume ~produce with
-  | Error _ -> true
-  | Ok (_, graph, entering) -> (
-      match closing t graph entering with
-      | Live_cycle -> true
-      | Through_relays | Acyclic _ -> false)
 
 let rebuild t =
   let order = canonical_order t in

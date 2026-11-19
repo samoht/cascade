@@ -229,14 +229,6 @@ val precedes : t -> node_id -> node_id -> bool
     local candidate ordering; use {!val-canonical_order} when a full output
     projection is needed. *)
 
-val precedes_afresh : t -> node_id -> node_id -> node_id list option
-(** [precedes_afresh t i j] is the live rules a graph built afresh from the live
-    rules of [t], in the order they print, puts between [i] and [j] to require
-    [i] before [j], when it does: [i] prints first, and each rule on the way
-    conflicts with the one before. It implies {!precedes}; the converse fails
-    where only a rule a rewrite consumed orders the two. The answer holds on
-    every graph rewritten from [t] while the rules it names stay live. *)
-
 val successors : t -> node_id -> node_id list
 (** [successors t i] is the nodes [i] has a direct edge to. A dense run is
     stored as a transitive chain rather than one edge per constrained pair, so a
@@ -345,15 +337,6 @@ val rewrite :
   produce:Stylesheet.rule list ->
   (t, rewrite_error) result
 (** [rewrite] is {!val-try_rewrite} with rejection diagnostics. *)
-
-val refuses : t -> consume:node_id list -> produce:Stylesheet.rule list -> bool
-(** [refuses t ~consume ~produce] is [true] when {!rewrite} [~consume ~produce]
-    refuses for another reason than a {!constructor-Relay_cycle}: a node is not
-    live, a produced rule conflicts with a rule its sources print on both sides
-    of, or with none of them, or the rewrite closes a cycle through live rules.
-    That reads the live rules alone and where they print, so it is [true]
-    exactly when a graph built afresh from the rules [t] prints, in that order,
-    refuses the rewrite. *)
 
 val rebuild : t -> t
 (** [rebuild t] is the graph {!of_rules} builds from the live rules of [t] in

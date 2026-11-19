@@ -14,9 +14,3 @@ include Candidate_kind.S
 val v : int -> factoring -> Subsets.t -> t
 (** [v size factoring budget] has filed no rule, and searches the subsets
     [budget] takes; [size] sizes its tables. *)
-
-val searched : Candidate_kind.core -> t -> ranks:int array Lazy.t -> bool
-(** [searched core t ~ranks] is [true] when a graph built afresh from the rules
-    the graph of [core] prints would accept no candidate of [t] the current
-    graph has not offered. [ranks] gives each live rule its rank in the printed
-    order. *)

@@ -26,10 +26,3 @@ val shared : t -> int option
 val of_bucket : t -> Rule_graph.node_id list -> Rule_graph.node_id list list
 (** [of_bucket b ids] is the subsets of the bucket [ids], given in the order
     they print, that [b] tries, in the order it tries them. *)
-
-val take :
-  t -> Rule_graph.node_id list list list -> Rule_graph.node_id list list
-(** [take b buckets] is the subsets [b] takes from [buckets], each the subsets
-    {!of_bucket} offers for one bucket, given in the order a shared budget is
-    spent in: all of them when [b] does not bound the run as a whole, else the
-    first {!shared} [b] of them in that order. *)
