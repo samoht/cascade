@@ -154,6 +154,15 @@ val grouped_rule : Stylesheet.rule list -> Stylesheet.rule option
     of them, with nothing nested, or [None] when the selectors cannot share a
     list. *)
 
+val splits_a_fallback_pair :
+  view ->
+  consume:Rule_graph.node_id list ->
+  produce:Stylesheet.rule list ->
+  bool
+(** [splits_a_fallback_pair g ~consume ~produce] is whether replacing [consume]
+    with [produce] leaves the two halves of a WebKit fallback pair of a consumed
+    rule in two rules. *)
+
 val rewrite_candidate :
   kind:Rule_rewrite.kind ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->

@@ -362,21 +362,19 @@ let branches = branch_facts
 
 (* A graph without a nesting parent holds each node's branches as [branch_facts]
    reads them off its selector. *)
+let node_branch_facts t i =
+  match t.parent with
+  | Option.None ->
+      (t.selectors.(i), t.selector_summaries.(i), t.specificities.(i))
+  | Option.Some _ -> branch_facts t.rules.(i).selector
+
 let node_selector_conflict t (branches_a, summaries_a, specificities_a) i =
-  let branches_b, summaries_b, specificities_b =
-    match t.parent with
-    | Option.None ->
-        (t.selectors.(i), t.selector_summaries.(i), t.specificities.(i))
-    | Option.Some _ -> branch_facts t.rules.(i).selector
-  in
+  let branches_b, summaries_b, specificities_b = node_branch_facts t i in
   selectors_order_conflict ~closed_world:false branches_a summaries_a
     specificities_a branches_b summaries_b specificities_b
 
-let selectors_conflict a b =
-  let branches_a, summaries_a, specificities_a = branch_facts a in
-  let branches_b, summaries_b, specificities_b = branch_facts b in
-  selectors_order_conflict ~closed_world:false branches_a summaries_a
-    specificities_a branches_b summaries_b specificities_b
+let node_selectors_conflict t i j =
+  node_selector_conflict t (node_branch_facts t i) j
 
 (* What the order relation reads off one rule, read once so a caller asking
    about many pairs pays for each rule once rather than once per pair. The
