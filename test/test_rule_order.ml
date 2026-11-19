@@ -510,6 +510,27 @@ let importance_commutes_within_a_rule () =
     "important written last" want
     (canonical ".a{content:'a';content:'b'!important}")
 
+(* A later rule with the identical selector shadows an earlier declaration of a
+   property it writes at the same importance or above: the same element set at
+   the same specificity, and CSS Cascade 5 sec. 6.1 puts importance first, then
+   order of appearance. A later normal one leaves an earlier important one
+   standing. *)
+let important_shadows_an_earlier_write () =
+  Alcotest.(check string)
+    "important over important, a rule apart"
+    ".b{margin:0!important}.a{float:left;margin:0 0 0 8px!important}"
+    (canonical
+       ".a{margin:0 8px!important;float:left}.b{margin:0!important}.a{margin:0 \
+        0 0 8px!important}");
+  Alcotest.(check string)
+    "important over normal, a rule apart"
+    ".a{color:green!important;top:0}.b{top:1px}"
+    (canonical ".a{color:red;top:0}.b{top:1px}.a{color:green!important}");
+  (* and the other way round, the later normal one is the dead write *)
+  Alcotest.(check string)
+    "normal under important" ".a{color:green!important}.b{top:0}"
+    (canonical ".a{color:green!important}.b{top:0}.a{color:red}")
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -743,6 +764,8 @@ let suite =
         identical_bodies_never_conflict;
       Alcotest.test_case "importance commutes within a rule" `Quick
         importance_commutes_within_a_rule;
+      Alcotest.test_case "important shadows an earlier write" `Quick
+        important_shadows_an_earlier_write;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
