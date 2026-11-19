@@ -61,7 +61,19 @@ let test_spec_selector_specificity () =
   check_specificity "has takes max" ".card:has(> img.selected)" 0 2 1;
   check_specificity "nth child with selector list" ":nth-child(2n of .a,#b)" 1 1
     0;
-  check_specificity "selector list takes max" ".a,#b,main section" 1 0 0
+  check_specificity "selector list takes max" ".a,#b,main section" 1 0 0;
+  (* Sec. 17 counts a pseudo-element with the type selectors, prefixed or not:
+     Chromium 151 and WebKit 26.5 let [.x::placeholder] beat a later
+     [input::-webkit-input-placeholder], and [.y::-webkit-scrollbar] a later
+     [div::-webkit-scrollbar], as (0,1,1) beats (0,0,2). *)
+  check_specificity "prefixed placeholder" "input::-webkit-input-placeholder" 0
+    0 2;
+  check_specificity "-moz- placeholder" "input::-moz-placeholder" 0 0 2;
+  check_specificity "-ms- placeholder" "input::-ms-input-placeholder" 0 0 2;
+  check_specificity "scrollbar" "div::-webkit-scrollbar" 0 0 2;
+  check_specificity "search decoration" "input::-webkit-search-decoration" 0 0 2;
+  check_specificity "spin button" "input::-webkit-inner-spin-button" 0 0 2;
+  check_specificity "details content" "details::details-content" 0 0 2
 
 let spec_minifier_semantics () =
   let check_specificity name input ids classes elements =
