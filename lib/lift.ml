@@ -124,20 +124,24 @@ let unsafe_cross_member_leftover group_decls rules =
            rules)
     rules
 
+(* Whether a member's leftover conflicts with the group depends on that member
+   alone, so it is asked once, and only the members it holds for are asked
+   whether they conflict with a later one. *)
 let unsafe_lift_over_prior_member ~conflict group_decls rules_with_ids =
   let group_facts = decl_facts group_decls in
   let rec loop prior = function
     | [] -> false
     | (id, (rule : rule)) :: rest ->
-        let unsafe_prior =
-          List.exists
-            (fun (prior_id, (prior_rule : rule)) ->
-              conflict prior_id id
-              && remove_common group_decls prior_rule.declarations
-                 |> declarations_conflict_with_group_facts group_facts)
-            prior
+        List.exists (fun prior_id -> conflict prior_id id) prior
+        ||
+        let prior =
+          if
+            remove_common group_decls rule.declarations
+            |> declarations_conflict_with_group_facts group_facts
+          then id :: prior
+          else prior
         in
-        unsafe_prior || loop ((id, rule) :: prior) rest
+        loop prior rest
   in
   loop [] rules_with_ids
 
