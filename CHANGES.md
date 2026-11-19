@@ -628,6 +628,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   (#1285).
 - `Css.Context.resolve_url` resolves `1:/x` against the base as a relative
   path, as WHATWG URL does, since a digit cannot open a scheme (#1291).
+- A prefixed pseudo-element, such as `::-webkit-input-placeholder` or
+  `::-webkit-scrollbar`, and `::details-content` counted as a class in
+  `Selector.specificity`, so `input::-webkit-input-placeholder` weighed
+  (0,1,1) where Selectors 4 sec. 17 and the browsers give (0,0,2). It
+  counts with the type selectors. No SatCSS sheet's `--minify` output
+  changes (#1444).
 
 ## 1.2.1
 
