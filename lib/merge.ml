@@ -218,11 +218,27 @@ let drops key (engine, version) =
   | Some false -> Some true
   | None -> None
 
-let dropped_by_key key =
+let read_dropped_by_key key =
   match List.map (drops key) engines with
   | [ Some chrome; Some firefox; Some safari; Some ios_safari ] ->
       Some { chrome; firefox; safari; ios_safari }
   | _ -> None
+
+(* Every selector key the data carries, read once: a grouping pass asks about
+   each rule's selector many times. *)
+let selector_keys =
+  lazy
+    (let keys = Support.keys_under "css.selectors." in
+     let table = Hashtbl.create (List.length keys) in
+     List.iter
+       (fun key -> Hashtbl.replace table key (read_dropped_by_key key))
+       keys;
+     table)
+
+let dropped_by_key key =
+  match Hashtbl.find_opt (Lazy.force selector_keys) key with
+  | Some dropped -> dropped
+  | None -> read_dropped_by_key key
 
 (* The union of what drops each node of [sel], or [None] when [reach] has no
    answer for one. *)
