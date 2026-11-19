@@ -369,6 +369,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   declarations in the same order wherever they touch, such as a `border` then
   a `border-bottom-color` in both, so the pair written the other way round
   compared different. They compare identical (#1414).
+- `cascade diff --diff=canonical` dropped an earlier `content` or `outline`
+  that a later rule with the same selector writes again, while it kept both in
+  one rule as a fallback, so the two spellings compared different. Across
+  rules it now drops only what it would drop in one (#1415).
 
 ### Speed
 
