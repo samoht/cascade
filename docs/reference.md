@@ -11,7 +11,7 @@ the README first; come here to check a detail.
 | Flag | Purpose |
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline makes one pass at every size, and each step finishes in it what it starts, so minifying the output again returns it. |
-| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes over merges that keep every selector within 128 rules of where it was written, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
+| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes, but merges rules with one body only where they print within 128 rules of each other, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges them at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
 | `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
@@ -141,16 +141,17 @@ interleaved by first appearance with the rules that follow; every other rule
 keeps its place. Each rule's slot is the largest first source position up to
 it in that order: where it prints, on the source scale.
 
-The candidate set is bounded and deterministic. Rules sharing a declaration,
-or writing a property once, form a bucket, and the factoring candidates are
-subsets of a bucket's members in the order they print. In a run of at most 128
-rules they are the whole bucket, the bucket less one member, and runs of
-neighbouring members. Above 128 rules they are runs of up to 24 neighbours
-spanning at most 128 slots, and one budget of 256 subsets per kind is spent on
-the buckets in order of their first slot, then size, then the rule and
-declaration where the bucket's key first appears. A run keeps the bounds its
-first graph sets. Subsets that factor the same declarations out of the same
-rules are one candidate. The test for a rule standing between the members of a
+The candidate set is bounded and deterministic, and reads the rules a run
+prints and their order, never where they were written. Rules sharing a
+declaration, or writing a property once, form a bucket, and the factoring
+candidates are runs of up to 24 neighbouring members of a bucket, in the order
+they print, wherever that is; a bucket with more than 256 such runs offers
+none. One budget of 256 subsets per kind is spent on the buckets in the order
+their first members print, then by size, then by where the key's declaration
+stands in that first member. Under `--objective=raw` a bucket of up to 12 members
+is tried whole, less one member and as runs of neighbours, a larger one as up
+to 32 runs, and no budget is shared. Subsets that factor the same declarations
+out of the same rules are one candidate. The test for a rule standing between the members of a
 merge reads the printed order, and the provider of a default is the member
 printed first. Equal savings rank by rewrite kind, then by the produced rules
 one by one, shortest first and then by their text, then by the slots of the
@@ -166,15 +167,14 @@ two or more members is split again, and offered again where its runs changed.
 While at most 129 rules print, no run can be split. Under `--objective=raw` a
 bucket merges whole.
 
-These bounds are read on the graph a run's rewrites reach, and a second
-`--minify` reads them on a graph built afresh from the output. There a rule's
-slot is its rank in the printed order, the budget follows the number of rules
-that print, and the rules a rewrite consumed are gone, so no order runs
-through them. A run is settled when such a graph would accept no candidate
-the run has not offered. The run works out the subsets that graph takes, and
-the entries a default group keeps when an overrider precedes the provider only
-through live rules that conflict; each candidate these bring about, and each
-refusal the run made, is asked as that graph would orient it. A run that is not
+These bounds read the rules a run prints and their order, so a second
+`--minify`, which reads them on a graph built afresh from the output, searches
+the same subsets. There the rules a rewrite consumed are gone, so no order runs
+through them. A run is settled when such a graph would accept no candidate the
+run has not offered. The run works out the entries a default group keeps there
+when an overrider precedes the provider only through live rules that conflict;
+each candidate these bring about, and each refusal the run made, is asked as
+that graph would orient it. A run that is not
 settled factors again on a graph built from its output. Every run that changes
 the rules saves bytes, so this ends.
 

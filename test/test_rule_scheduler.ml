@@ -130,14 +130,12 @@ let factoring_run n =
   |> String.concat "" |> rules |> Rule_graph.of_rules
 
 (* A settled run is a fixed point of its search: every candidate of the graph it
-   returns, under the bounds the run started with, is refused there, so running
-   the scheduler again on that graph commits nothing. Both runs stay on one side
-   of the 128 nodes that set those bounds. *)
+   returns is refused there, so running the scheduler again on that graph
+   commits nothing. *)
 let a_settled_run_is_a_fixed_point () =
   let ctx = Ctx.fragment and finalize = Fun.id in
   List.iter
     (fun (label, graph) ->
-      let nodes = Rule_graph.node_count graph in
       let { Rule_scheduler.graph = settled_graph; settled; _ } =
         Rule_scheduler.run ~ctx ~finalize graph
       in
@@ -145,14 +143,10 @@ let a_settled_run_is_a_fixed_point () =
       Alcotest.(check bool)
         (label ^ ": it rewrote") true
         (Rule_graph.generation settled_graph > 0);
-      Alcotest.(check bool)
-        (label ^ ": on the bounds' side it started on")
-        true
-        (nodes <= 128 = (Rule_graph.node_count settled_graph <= 128));
       Alcotest.(check (list int))
         (label ^ ": candidates the settled graph accepts")
         []
-        (Rule_candidate.enumerate ~nodes ~ctx ~finalize settled_graph
+        (Rule_candidate.enumerate ~ctx ~finalize settled_graph
         |> List.filter_map (fun (c : Rule_rewrite.candidate) ->
             match
               Rule_graph.rewrite settled_graph ~consume:c.consume
@@ -173,10 +167,10 @@ let printed graph =
   Array.to_list
     (Array.map (Rule_graph.node_rule graph) (Rule_graph.canonical_order graph))
 
-(* [.x] and [.y] share [color:red], 141 source positions apart, beyond the 128
-   an indexed search spans, with pairs of identical bodies between them. Once
-   the pairs merge, the two print 71 rules apart: a graph built afresh from what
-   the run prints searches them together, the run's own graph never does. *)
+(* [.x] and [.y] share [color:red], 141 source positions apart, with pairs of
+   identical bodies between them. A search reads the members of a bucket in the
+   order they print, wherever that is, so the run's own graph searches the two
+   together, as a graph built afresh from what it prints does. *)
 let spanned_run =
   let pairs =
     List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
@@ -212,7 +206,7 @@ let afresh_is_a_fresh_fixed_point () =
     [
       ("small run", factoring_run 40, true);
       ("large run", factoring_run 200, true);
-      ("spanned run", spanned_run, false);
+      ("spanned run", spanned_run, true);
     ]
 
 (* A rule a rewrite consumed stays in the graph as a relay. Here [p.k] and

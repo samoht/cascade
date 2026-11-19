@@ -4209,12 +4209,12 @@ val optimize :
     the CSS you control). The default is safe for any page.
 
     [objective] (default [`Transfer]) is the size metric factoring is judged by:
-    under [`Transfer], it minimises output bytes over merges that keep every
-    selector within 128 rules of where it was written, because a compressor
+    under [`Transfer], it minimises output bytes, but merges rules with one body
+    only where they print within 128 rules of each other, because a compressor
     encodes a repeated declaration in two or three bytes wherever it sits, but a
     selector moved away from its neighbours stops compressing against them. Pass
-    [`Raw] to merge at any distance, the right objective when the output ships
-    uncompressed (inline HTML style attributes, email HTML).
+    [`Raw] to merge them at any distance, the right objective when the output
+    ships uncompressed (inline HTML style attributes, email HTML).
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a
