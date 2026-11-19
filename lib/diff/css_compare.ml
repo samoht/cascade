@@ -137,8 +137,9 @@ let relocate ~shift ~source (e : Error.t) =
 (* [css] read the way [diff] compares it, with its warnings and error placed in
    the file [filename] names. The warnings of one parse share one source, so the
    moved one is built once, from both parts preprocessed as the reader does (CSS
-   Syntax 3 (ED) sec. 3.3), and they share its index in turn. *)
-let parse_input ?filename css =
+   Syntax 3 (ED) sec. 3.3), and they share its index in turn. [enforce_spec]
+   reads it for every engine, as [--enforce-spec] has {!Css.of_string} read. *)
+let parse_input ?filename ?enforce_spec css =
   let stripped = strip_tool_header css in
   let relocate =
     match tool_header_end css with
@@ -151,7 +152,7 @@ let parse_input ?filename css =
         in
         relocate ~shift:(String.length prefix) ~source
   in
-  match Css.of_string ?filename stripped with
+  match Css.of_string ?filename ?enforce_spec stripped with
   | Ok parse ->
       Ok { parse with Css.warnings = List.map relocate parse.warnings }
   | Error e -> Error (relocate e)
@@ -836,13 +837,18 @@ let diff_tree ~expected_parse ~actual_parse =
    accept set, so the browser drops it from whichever sheet holds it and paints
    the same, and it is not a loss the verdict answers for. The warning still
    says where the reader may have lagged. A rule is: nothing holds the rule
-   reader to a browser, and the rule takes everything it held with it. *)
+   reader to a browser, and the rule takes everything it held with it. The
+   exception is a rule over a pseudo-class no target reads
+   ({!Error.Untargeted_selector}): every target drops it too, and the comparison
+   judges for those targets. Under [--enforce-spec] the reader keeps that rule,
+   and the comparison sees it. *)
 let losses ws =
   List.filter_map
     (fun (w : Error.t) ->
-      match w.recovery with
-      | Error.Recovery.Dropped { construct = Rule; text } -> Some text
-      | Dropped { construct = Declaration; _ } | Recovered -> None)
+      match (w.kind, w.recovery) with
+      | Untargeted_selector _, _ -> None
+      | _, Error.Recovery.Dropped { construct = Rule; text } -> Some text
+      | _, (Dropped { construct = Declaration; _ } | Recovered) -> None)
     ws
 
 (* One loss accounts for another when the two readers threw away the same text.
@@ -889,10 +895,16 @@ let diff ?(mode = `Auto) ?(lossless = false) ?(enforce_spec = false)
           text_only = false;
         }
     | (`Auto | `Tree | `Canonical) as mode ->
-        let expected_parse =
-          parse_input ?filename:expected_filename expected_input
+        (* [--enforce-spec] shapes the canonical comparison alone. *)
+        let enforce_spec =
+          match mode with `Canonical -> enforce_spec | `Auto | `Tree -> false
         in
-        let actual_parse = parse_input ?filename:actual_filename actual_input in
+        let expected_parse =
+          parse_input ?filename:expected_filename ~enforce_spec expected_input
+        in
+        let actual_parse =
+          parse_input ?filename:actual_filename ~enforce_spec actual_input
+        in
         let result =
           match mode with
           | `Auto -> diff_auto ~expected ~actual ~expected_parse ~actual_parse

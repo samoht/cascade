@@ -1044,11 +1044,20 @@ and read_complex t =
 (* CSS Selectors 4 section 3.9: the top-level rule selector list is an
    unforgiving site. [read_compound] keeps [Unknown_pseudo_class] so vendor and
    forward-compat pseudos round-trip, but one at top level is a spec deviation;
-   raise so [Selector.of_string ".ok,:future-pseudo"] surfaces a
-   [Parse_error]. *)
+   raise so [Selector.of_string ".ok,:future-pseudo"] surfaces a [Parse_error],
+   naming the pseudo-class when no target reads it ({!untargeted}). A cursor
+   that reads for every engine ({!Cursor.enforce_spec}) keeps it: an engine
+   cascade does not know may read the pseudo-class, and the rule is kept as
+   written. *)
 let validate_unforgiving_pseudo t sel =
-  if has_unknown_pseudo_class sel then
-    Cursor.err t "unknown pseudo-class in unforgiving selector list"
+  if has_unknown_pseudo_class sel && not (Cursor.enforce_spec t) then
+    match untargeted sel with
+    | Option.Some name ->
+        Error.fail
+          (Cursor.error ~sort:Sort.Selector t ~loc:(Cursor.position t)
+             (Error.Untargeted_selector (String.concat "" [ ":"; name ])))
+    | Option.None ->
+        Cursor.err t "unknown pseudo-class in unforgiving selector list"
 
 let read_selector_list t =
   Cursor.with_context t "list" @@ fun () ->
