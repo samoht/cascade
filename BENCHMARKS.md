@@ -4,8 +4,8 @@
 compressed transfer size. Repeated declaration text is nearly free once
 gzipped, while a selector moved away from its neighbours stops compressing
 against them, so the default objective (`--objective=transfer`) merges rules
-only within 128 rules of where each selector was written; `--objective=raw`
-merges at any distance, for output that ships uncompressed (inline style
+with one body only where they print within 128 rules of each other;
+`--objective=raw` merges them at any distance, for output that ships uncompressed (inline style
 attributes, email HTML).
 
 Measured on the SatCSS corpus (Hague, Lin, Hong, TOPLAS 2019) of real-world

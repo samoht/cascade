@@ -66,21 +66,19 @@ let remembered size finalize =
         Rule_table.replace known rule finalized;
         finalized
 
-let v ?nodes ~ctx ~finalize g =
+let v ~ctx ~finalize g =
   (* Tables start at the run's size: most runs hold a handful of rules. *)
   let size = Rule_graph.node_count g in
   let finalize = remembered size finalize in
-  let nodes = Option.value nodes ~default:size in
-  let aggressive = Ctx.aggressive ctx in
+  let budget = Subsets.v ~aggressive:(Ctx.aggressive ctx) in
   let t =
     {
       core = Candidate_kind.v ~ctx ~finalize g;
       bodies = Candidate_groups.v size Bodies;
       selectors = Candidate_groups.v size Selectors;
       inlining = Candidate_inlining.v size;
-      exact = Candidate_factoring.v size Exact (Subsets.exact ~aggressive nodes);
-      default =
-        Candidate_factoring.v size Default (Subsets.default ~aggressive nodes);
+      exact = Candidate_factoring.v size Exact budget;
+      default = Candidate_factoring.v size Default budget;
     }
   in
   List.iter (add_node t) (Rule_graph.live_nodes g);
@@ -93,7 +91,7 @@ let refresh t =
       settle t changes;
       Candidate_kind.close t.core
 
-let start ?nodes ~ctx ~finalize g = v ?nodes ~ctx ~finalize g
+let start ~ctx ~finalize g = v ~ctx ~finalize g
 
 let rewrite t graph ~consume =
   let changes = Candidate_kind.rewrite t.core graph ~consume in
@@ -126,7 +124,7 @@ let afresh t =
 let is_live t id = Candidate_kind.is_live (Candidate_kind.view t.core) id
 let candidates t = List.map candidate (offers t)
 
-let enumerate ?nodes ~ctx ~finalize g =
-  let t = v ?nodes ~ctx ~finalize g in
+let enumerate ~ctx ~finalize g =
+  let t = v ~ctx ~finalize g in
   ignore (refresh t);
   candidates t

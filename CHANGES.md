@@ -28,14 +28,14 @@ and makes cascade cheaper to run.
   `--minify` output again returns it byte for byte, on all 504 SatCSS sheets
   and on Tailwind's output, where 53 of those sheets and Tailwind's own
   stylesheet shrank again.
-- **Smaller output that follows one stated rule.** Over the 504 SatCSS
-  sheets and Tailwind's output, `--minify` output is 1.3% smaller raw than
-  with 1.2.1, and the same within 0.1% under gzip and brotli. Merges keep
-  every selector within 128 rules of where it was written, and within that
-  bound the output is as small as cascade can make it. A sheet can still come
-  out a little larger than with 1.2.1 in one metric: 11 grow by more than 1%
-  under gzip (at most 2.2%) and 24 under brotli (at most 7%, on one cnn
-  sheet), while 148 shrink by more than 1% raw.
+- **Smaller output that follows one stated rule.** Over the 504 SatCSS sheets
+  and Tailwind's output, `--minify` output is 1.3% smaller raw than with
+  1.2.1, and the same within 0.1% under gzip and brotli. By default, rules
+  with identical bodies merge only within 128 printed rules of each other, and
+  within that bound the output is as small as cascade can make it. A sheet can
+  still come out a little larger than with 1.2.1 in one metric: 11 grow by
+  more than 1% under gzip (at most 2.2%) and 24 under brotli (at most 7%, on
+  one cnn sheet), while 148 shrink by more than 1% raw.
 
 The price is under [Breaking](#breaking). Scripts that read cascade's
 diagnostics need a new pattern. In the library, parsers return a `result`
@@ -217,16 +217,22 @@ to call instead, and moving off most of them is a rename or a deleted call.
 - `--minify` merged rules at any distance, then threw a whole factoring run
   away when an estimate of the gzip size grew, so near merges were lost with
   far ones and a second run could decide the other way. The default
-  `--objective=transfer` now minimises output bytes over merges that keep
-  every selector within 128 rules of where it was written, because a
+  `--objective=transfer` now minimises output bytes, and merges rules with
+  identical bodies only within 128 printed rules of each other, because a
   compressor encodes a repeated declaration in two or three bytes wherever it
   sits, but a selector moved away from its neighbours stops compressing
   against them. Nothing judges the result afterwards. `--objective=raw` merges
-  at any distance (#1399).
+  at any distance (#1399, #1423).
 - `--minify` refused a merge for an order that only a rule merged away earlier
   implied, so whether two rules merged depended on what had merged before
   them. A merge is now ordered and checked for cycles against the rules still
   printed (#1422).
+- Under the default `--objective=transfer`, a declaration shared by rules more
+  than 128 source positions apart was never factored out, and a short sheet
+  was searched differently from a long one. The search now reads the rules in
+  the order they print, the same at every size, and only rules with identical
+  bodies are bounded, to 128 printed rules apart. Output is 0.15% larger raw,
+  and 0.02% and 0.05% smaller under gzip and brotli (#1423).
 - `--minify --scope=stylesheet` dropped declarations a page needs. A
   declaration written before longhands of its family was reset by the shorthand
   built from them: `background:#fff url(a.png) no-repeat center` lost its image

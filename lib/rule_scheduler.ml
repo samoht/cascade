@@ -168,7 +168,7 @@ let run ~ctx ~finalize graph =
   let nodes = Rule_graph.node_count graph in
   let refresh_after_commit = nodes <= 128 in
   let search graph =
-    let pool = Rule_candidate.start ~nodes ~ctx ~finalize graph in
+    let pool = Rule_candidate.start ~ctx ~finalize graph in
     ( { pool; refused = Hashtbl.create 64 },
       List.fold_left (offer graph) Queue.empty (Rule_candidate.refresh pool) )
   in
