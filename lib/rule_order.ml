@@ -1038,20 +1038,23 @@ let drop_guarded_repeats outer_changed stmts =
     result)
   else stmts
 
-(* A declaration a later rule with the *identical* selector also writes is dead:
-   same element set, same specificity, later wins. Dropping it lets a sheet that
-   hoisted the declaration into a shared group converge with one that wrote it
-   inline - the hoisted copy survives expansion only to be overridden. Neither
-   may carry [!important], which changes the winner. *)
-(* One backward pass: [later] holds, per selector, the properties that the
-   statements already walked write without [!important], and those are exactly
-   the statements after the current one. Consulting it is a lookup rather than a
-   rescan of the tail, so no selector is serialised more than once. *)
+(* A declaration a later rule with the *identical* selector also writes is dead
+   when the later one is at least as important: same element set, same
+   specificity, and CSS Cascade 5 sec. 6.1 ranks importance before order of
+   appearance, then the later wins. Dropping it lets a sheet that hoisted the
+   declaration into a shared group converge with one that wrote it inline - the
+   hoisted copy survives expansion only to be overridden. A later normal write
+   leaves an earlier important one standing. *)
+(* One backward pass: [later] holds, per selector, the properties the
+   statements already walked write, each with whether one of those writes is
+   important, and those are exactly the statements after the current one.
+   Consulting it is a lookup rather than a rescan of the tail, so no selector is
+   serialised more than once. *)
 let drop_shadowed_declarations stmts =
   (* Properties are keyed by their AST identity: two constructors that print
      alike are different properties, and a name-keyed table would have one
      shadow the other. *)
-  let later : (string, (Declaration.prop_key, unit) Hashtbl.t) Hashtbl.t =
+  let later : (string, (Declaration.prop_key, bool) Hashtbl.t) Hashtbl.t =
     Hashtbl.create 64
   in
   let written sel =
@@ -1066,9 +1069,18 @@ let drop_shadowed_declarations stmts =
     let props = written sel in
     List.iter
       (fun d ->
-        if not (Declaration.is_important d) then
-          Hashtbl.replace props (Declaration.property_key d) ())
+        let key = Declaration.property_key d in
+        let important =
+          Declaration.is_important d
+          || Option.value ~default:false (Hashtbl.find_opt props key)
+        in
+        Hashtbl.replace props key important)
       declarations
+  in
+  let shadowed props d =
+    match Hashtbl.find_opt props (Declaration.property_key d) with
+    | None -> false
+    | Some important -> important || not (Declaration.is_important d)
   in
   let rec go = function
     | [] -> []
@@ -1076,13 +1088,9 @@ let drop_shadowed_declarations stmts =
         (* The tail first, so [later] describes it by the time [stmt] asks. *)
         let rest = go rest in
         let sel = Pp.to_string ~minify:true Selector.pp r.selector in
-        let shadowed = written sel in
+        let props = written sel in
         let kept =
-          List.filter
-            (fun d ->
-              Declaration.is_important d
-              || not (Hashtbl.mem shadowed (Declaration.property_key d)))
-            r.declarations
+          List.filter (fun d -> not (shadowed props d)) r.declarations
         in
         record sel r.declarations;
         if List.compare_lengths kept r.declarations = 0 then stmt :: rest
