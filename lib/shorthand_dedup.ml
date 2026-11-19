@@ -739,12 +739,14 @@ let read_by_no_target decl =
   has "-ms-" || has "-o-"
   || match name with "font-smooth" | "font-smoothing" -> true | _ -> false
 
-(* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
-   [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
-   its vendor prefix yields [twin]'s name and the component-value lists are
-   structurally equal under matching importance. An untyped vendor longhand with
-   a typed twin ([-webkit-animation-delay] beside [animation-delay]) is not
-   compared here. *)
+(* Structural vendor-alias drop for an [Unknown_property] [vendor]: we drop
+   [vendor] when stripping its vendor prefix yields [twin]'s name and the two
+   values agree under matching importance. When [twin] is untyped too their
+   component-value lists are compared; when the reader types [twin], [vendor]'s
+   value is read under [twin]'s grammar and the two minified values compared, as
+   the next pass would see them, so typing the unprefixed property does not keep
+   a prefixed copy the untyped pair would drop. A typed vendor longhand
+   ([-webkit-animation-delay] beside [animation-delay]) is not compared here. *)
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
@@ -755,6 +757,24 @@ let text_vendor_alias_twin vendor twin =
       match strip_vendor_prefix vname with
       | Some modern -> String.equal tname modern && vv = tv
       | None -> false)
+  | ( Declaration { property = Unknown_property vname; important = vi; _ },
+      Declaration { important = ti; _ } )
+    when Bool.equal vi ti -> (
+      match strip_vendor_prefix vname with
+      | Some modern
+        when String.equal
+               (String.lowercase_ascii modern)
+               (Declaration.property_name twin) -> (
+          match
+            Declaration.with_value twin
+              (Declaration.string_of_value ~minify:true vendor)
+          with
+          | Ok read ->
+              String.equal
+                (Declaration.string_of_value ~minify:true read)
+                (Declaration.string_of_value ~minify:true twin)
+          | Error _ -> false)
+      | _ -> false)
   | _ -> false
 
 (* {!Baseline.greenfield_properties} is generated from web-features as names.
