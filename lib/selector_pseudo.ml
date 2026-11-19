@@ -180,11 +180,8 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
-(* Names the [::] reader takes and the [:] reader does not. Chrome 151 and
-   WebKit 26.5 drop [:cue] and [:-webkit-scrollbar-thumb] while keeping the [::]
-   spelling of both, so these stay out of [pseudo_class_all_idents];
-   [::-webkit-scrollbar] itself keeps the single-colon spelling cascade has
-   always read for it and stays in [pseudo_vendor_idents].
+(* Names the [::] reader alone takes, as it does every pseudo-element name but
+   the CSS 2.1 four ([pseudo_class_all_idents]); these have no other table.
 
    WebVTT 1 sec. 8.2 requires "the ::cue, ::cue(selector), ::cue-region and
    ::cue-region(selector) pseudo-elements", and sec. 8.2.1 and sec. 8.2.3 define
@@ -529,12 +526,21 @@ let rec has_refused_simple_in_compound = function
 
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
-   only happens once instead of per [:foo] / [::foo] pseudo read. *)
+   only happens once instead of per [:foo] / [::foo] pseudo read.
+
+   Selectors 4 sec. 3.6.1 reads the four CSS 2.1 pseudo-elements after one colon
+   and no other: Firefox takes one colon for those four alone, and Chrome 151
+   and WebKit 26.5 drop [:-webkit-input-placeholder], [:selection] and every
+   other pseudo-element name with one colon. So the [:] reader takes the vendor
+   pseudo-classes and leaves every other pseudo-element name to the unknown
+   pseudo-class it is there. *)
 let pseudo_class_all_idents_lazy =
   lazy
     (pseudo_class_base_idents @ pseudo_class_scrollbar_idents
-   @ pseudo_element_legacy_idents @ pseudo_element_modern_idents
-   @ pseudo_vendor_idents)
+   @ pseudo_element_legacy_idents
+    @ List.filter
+        (fun (_, pc) -> not (is_pseudo_element pc))
+        pseudo_vendor_idents)
 
 let pseudo_class_all_idents () = Lazy.force pseudo_class_all_idents_lazy
 
