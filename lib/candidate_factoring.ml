@@ -480,8 +480,7 @@ let default_group ~shared ~finalize g members entries =
    {!Rule_graph.try_rewrite} preserves the partial order, so an entry dropped
    for an override that precedes the provider stays dropped, and these are the
    only questions a later graph can answer differently. *)
-let surviving_group ?(precedes = fun g -> Rule_graph.precedes (graph g)) ~shared
-    ~finalize g known =
+let surviving_group ~shared ~finalize g known =
   match known with
   | No_default_group -> Option.None
   | Default_members known ->
@@ -491,7 +490,7 @@ let surviving_group ?(precedes = fun g -> Rule_graph.precedes (graph g)) ~shared
           (fun (_, overriders) ->
             not
               (List.exists
-                 (fun member -> precedes g member provider)
+                 (fun member -> Rule_graph.precedes (graph g) member provider)
                  overriders))
           known.entries
       in
@@ -1039,96 +1038,3 @@ let offers family acc =
       | Option.None -> acc
       | Option.Some offer -> offer :: acc)
     family.live_groups acc
-
-(* The subsets a graph built afresh from the rules [core]'s graph prints, in
-   that order, takes in [family]: there each rule's node is its rank. *)
-let fresh_subsets family ~ranks =
-  let rank id = ranks.(Rule_graph.Node_id.to_int id) in
-  let compare a b = Int.compare (rank a) (rank b) in
-  let buckets =
-    Int_table.fold
-      (fun _ buckets acc ->
-        List.fold_left
-          (fun acc bucket ->
-            match bucket.fmembers with
-            | [] | [ _ ] -> acc
-            | members -> (
-                match
-                  Subsets.of_bucket family.budget (List.rev_map fst members)
-                with
-                | [] -> acc
-                | subsets -> (bucket.lead, subsets) :: acc))
-          acc buckets)
-      family.fbuckets []
-  in
-  Subsets.take family.budget
-    (List.map snd
-       (List.sort (fun (a, _) (b, _) -> compare_lead compare a b) buckets))
-
-(* The group [subset] reaches on a graph built afresh from the printed rules: an
-   exact-shared group reads only the rules, and a default one keeps each entry
-   no overrider precedes the provider of through live rules. *)
-let fresh_group core family subset =
-  match Lazy.force subset.answer with
-  | Exact_answer No_exact_group -> Option.None
-  | Exact_answer (Exact_group group) -> Option.Some group
-  | Default_answer known ->
-      Option.map fst
-        (surviving_group
-           ~precedes:(fun g member provider ->
-             Option.is_some
-               (Rule_graph.precedes_afresh (graph g) member provider))
-           ~shared:family.shared ~finalize:(finalize core) (view core) known)
-
-(* Whether a graph built afresh accepts the candidate of [group], unoffered. *)
-let accepted_afresh core (group : group) =
-  group.refs = 0
-  &&
-  (scan core group;
-   match (group.witness, Lazy.force group.grouped) with
-   | Option.None, Option.Some (_, scored) -> (
-       match Lazy.force scored with
-       | Option.None -> false
-       | Option.Some (candidate : candidate) ->
-           not
-             (Rule_graph.refuses
-                (graph (view core))
-                ~consume:candidate.consume ~produce:candidate.produce))
-   | Option.Some _, _ | _, Option.None -> false)
-
-(* Whether a graph built afresh from the rules the graph prints would accept a
-   candidate of [family] the current graph has not offered: one a subset the
-   buckets take reaches only there, or one a subset only there would take
-   reaches. [ranks] gives each live rule its rank in the printed order. *)
-let unsearched core family ~ranks =
-  let taken = Ids_table.create 64 in
-  let reaches_another subset =
-    match fresh_group core family subset with
-    | Option.None -> false
-    | Option.Some group ->
-        (not (Option.equal ( == ) (Option.Some group) subset.reached))
-        && accepted_afresh core group
-  in
-  Int_table.fold
-    (fun _ buckets found ->
-      found
-      || List.exists
-           (fun bucket ->
-             List.exists
-               (fun subset ->
-                 Ids_table.replace taken subset.ids ();
-                 reaches_another subset)
-               bucket.taken)
-           buckets)
-    family.fbuckets false
-  || indexed family
-     && List.exists
-          (fun ids ->
-            (not (Ids_table.mem taken ids))
-            &&
-            match fresh_group core family (subset_of core family ids) with
-            | Option.None -> false
-            | Option.Some group -> accepted_afresh core group)
-          (fresh_subsets family ~ranks:(Lazy.force ranks))
-
-let searched core family ~ranks = not (unsearched core family ~ranks)

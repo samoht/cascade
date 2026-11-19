@@ -433,6 +433,11 @@ to call instead, and moving off most of them is a rename or a deleted call.
   It counts `nested-merge probes`, also read as
   `Stats.counters.nested_merge_probes`, and prints one row per factoring run
   (#1301, #1336, #1372).
+- `--minify` searched each factored run's output again to confirm nothing was
+  left to merge. The search now reads only the rules it prints and their
+  order, so that second search would find nothing and is gone, saving 1.1% of
+  instructions over the SatCSS corpus. A run that nesting changes is optimised
+  again in the same pass (#1424).
 
 ### Warnings and errors
 

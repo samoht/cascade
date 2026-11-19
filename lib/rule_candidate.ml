@@ -108,19 +108,6 @@ let offers t =
   |> Candidate_factoring.offers t.default
   |> List.sort (fun a b -> Int.compare (key a) (key b))
 
-let afresh t =
-  let g = Candidate_kind.graph (Candidate_kind.view t.core) in
-  let ranks =
-    lazy
-      (let ranks = Array.make (Rule_graph.node_count g) 0 in
-       Array.iteri
-         (fun rank id -> ranks.(Rule_graph.Node_id.to_int id) <- rank)
-         (Rule_graph.canonical_order g);
-       ranks)
-  in
-  Candidate_factoring.searched t.core t.exact ~ranks
-  && Candidate_factoring.searched t.core t.default ~ranks
-
 let is_live t id = Candidate_kind.is_live (Candidate_kind.view t.core) id
 let candidates t = List.map candidate (offers t)
 
