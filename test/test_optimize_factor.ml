@@ -888,6 +888,9 @@ let test_content_superseded_by_a_plain_value () =
       ( "a counter",
         ".a{content:counter(n)}",
         ".a{content:\"a\";content:counter(n)}" );
+      ( "a normal value after an important one",
+        ".a{content:\"a\"!important}",
+        ".a{content:\"a\"!important;content:\"b\"}" );
     ]
 
 let test_no_merge_with_nested () =
