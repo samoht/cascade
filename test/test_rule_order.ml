@@ -562,6 +562,25 @@ let declaration_sinks_to_the_later_occurrence () =
        ".h{width:40px;display:inline-block}.l{display:block;width:132px;background-position:0 \
         0}.h{background-position:-84px -98px}")
 
+(* Two rules that write the same declarations wherever they touch never decide
+   each other either: [outline] meets nothing in [.h], so on an element both
+   match the [border] and [margin] they share are written twice, once in each
+   order, and [outline] once. *)
+let agreeing_writes_never_conflict () =
+  let shared = "border:1px solid #ddd;border-bottom-color:#ccc;margin:0" in
+  let css parts = String.concat "" parts in
+  let want =
+    ".f{border:1px \
+     solid#ddd;border-bottom-color:#ccc;margin:0;outline:0}.h{border:1px \
+     solid#ddd;border-bottom-color:#ccc;margin:0}"
+  in
+  Alcotest.(check string)
+    "the wider rule written second" want
+    (canonical (css [ ".h{"; shared; "}.f{"; shared; ";outline:0}" ]));
+  Alcotest.(check string)
+    "the wider rule written first" want
+    (canonical (css [ ".f{"; shared; ";outline:0}.h{"; shared; "}" ]))
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -799,6 +818,8 @@ let suite =
         important_shadows_an_earlier_write;
       Alcotest.test_case "declaration sinks to the later occurrence" `Quick
         declaration_sinks_to_the_later_occurrence;
+      Alcotest.test_case "agreeing writes never conflict" `Quick
+        agreeing_writes_never_conflict;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
