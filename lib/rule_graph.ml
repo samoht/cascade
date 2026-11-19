@@ -77,6 +77,11 @@ type t = {
       (** whether equal selector branches add conservative structural edges;
           optimizer rewrites need them, while a canonical projection over
           already-expanded rules does not *)
+  same_body_ties : bool;
+      (** whether two rules with one declaration list record no conflict: an
+          element both match takes that list twice whichever comes first, which
+          a canonical projection reads as no order; optimizer rewrites keep the
+          edge *)
   exclusive : (int -> int -> bool) option;
       (** a caller's assertion over the nodes {!of_rules} built, by index: the
           two rules never apply to one element together, so they never
@@ -268,6 +273,10 @@ let nodes_conflict_reason t i j =
       t.decl_overlaps.(i) t.selectors.(i) t.selector_summaries.(i)
       t.specificities.(i) t.overlap_keys.(j) t.decl_overlaps.(j) t.selectors.(j)
       t.selector_summaries.(j) t.specificities.(j)
+    && not
+         (t.same_body_ties
+         && List.equal Declaration.same_minified t.rules.(i).declarations
+              t.rules.(j).declarations)
   then Option.Some Cascade_conflict
   else Option.None
 
@@ -547,6 +556,7 @@ let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
       generation = 0;
       closed_world;
       pin_shared_branches;
+      same_body_ties = false;
       exclusive;
       exclusive_count = n;
       parent;
@@ -1699,6 +1709,7 @@ let run ?parent ?exclusive ~folds rules =
       generation = 0;
       closed_world = false;
       pin_shared_branches = false;
+      same_body_ties = true;
       exclusive;
       exclusive_count = max_int;
       parent;

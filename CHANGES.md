@@ -348,6 +348,11 @@ to call instead, and moving off most of them is a rename or a deleted call.
 - `cascade diff --diff=canonical` called `.a,.b{speak:none}.a,.b{top:7px}`
   different from `.a,.b{speak:none;top:7px}`. Two adjacent rules over one
   selector list compare as one rule (#1409).
+- `cascade diff --diff=canonical` ordered two rules with the same declarations
+  when two of those declarations touch, as an unplaced `-moz-` longhand
+  touches every property, so the same pair written as one selector list
+  compared different. An element both match takes the declarations twice
+  either way, and the two compare identical (#1410).
 
 ### Speed
 
