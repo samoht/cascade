@@ -487,6 +487,46 @@ let rewrite_rejects_cycle_through_dead_relay () =
       | None -> ()
       | Some _ -> Alcotest.fail "cycle through dead relay should be rejected")
 
+(* A consumed rule stays in the graph as a relay, and orders the rules on either
+   side of it even when they do not conflict. Here [.a] writes [color] and [.b]
+   writes [margin], and only [.x], which wrote both, stood between them; once it
+   is consumed, a graph built afresh from the rules the graph prints leaves them
+   free and accepts merging [.c] into [.b] ahead of [.a]. Whether a rewrite is
+   accepted reads the live rules alone, so the rewritten graph accepts it
+   too. *)
+let acceptance_reads_live_rules () =
+  let g =
+    Rule_graph.of_rules
+      (rules_of
+         ".c{color:green}.a{color:red}.x{color:blue;margin:0}.b{margin:1px}")
+  in
+  let merge = rules_of ".b,.c{color:green;margin:1px}" in
+  match
+    Rule_graph.try_rewrite g ~consume:(nids [ 2 ])
+      ~produce:(rules_of ".x{padding:0}")
+  with
+  | None -> Alcotest.fail "a disjoint replacement commits"
+  | Some g' ->
+      let printed = int_order (Rule_graph.canonical_order g') in
+      let rank id =
+        let rec find at = function
+          | [] -> Alcotest.failf "node %d does not print" id
+          | x :: rest -> if Int.equal x id then at else find (at + 1) rest
+        in
+        nid (find 0 printed)
+      in
+      let afresh = Rule_graph.of_rules (ordered_rules g') in
+      Alcotest.(check bool)
+        "a graph built afresh accepts the merge" true
+        (Option.is_some
+           (Rule_graph.try_rewrite afresh
+              ~consume:[ rank 0; rank 3 ]
+              ~produce:merge));
+      Alcotest.(check bool)
+        "the rewritten graph accepts it too" true
+        (Option.is_some
+           (Rule_graph.try_rewrite g' ~consume:(nids [ 0; 3 ]) ~produce:merge))
+
 (* --- conflict predicate: the bidimensional + specificity edge --- *)
 
 let g_of s = Rule_graph.of_rules (rules_of s)
@@ -1469,6 +1509,8 @@ let suite =
         rewrite_keeps_constraints_through_dead_relays;
       Alcotest.test_case "rewrite rejects cycle through a dead relay" `Quick
         rewrite_rejects_cycle_through_dead_relay;
+      Alcotest.test_case "acceptance reads live rules only" `Quick
+        acceptance_reads_live_rules;
       Alcotest.test_case "conflict: same-property tied pair" `Quick
         conflict_same_property_tie;
       Alcotest.test_case "conflict: higher specificity is not an edge" `Quick
