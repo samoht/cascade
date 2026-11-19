@@ -332,6 +332,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   `.a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}` against
   `.c{height:3px}.a{height:4px;width:1px}.b{width:2px}`. They compare
   identical (#1405).
+- `cascade diff --diff=canonical` called
+  `.o{width:76px}.g,.o{display:none}.p{display:block}.g{width:24px}` identical
+  to a sheet that gives an element of both classes a width of 76px instead of
+  24px. The two now compare different (#1406).
 
 ### Speed
 
