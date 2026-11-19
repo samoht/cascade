@@ -67,7 +67,9 @@ val declarations_overlap_with_keys :
   overlap_key list ->
   bool
 (** [declarations_overlap_with_keys a a_keys b b_keys] is
-    {!val-declarations_overlap} using precomputed declaration footprints. *)
+    {!val-declarations_overlap} using precomputed declaration footprints:
+    [a_keys] is [declaration_overlap_keys a] and [b_keys] is
+    [declaration_overlap_keys b]. *)
 
 val declarations_conflict_with_keys :
   Declaration.declaration ->

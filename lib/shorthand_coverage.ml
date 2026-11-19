@@ -1237,18 +1237,18 @@ let is_known_footprint_key k =
   done;
   !found
 
-(* Whether an [Unknown_property] name can be placed in the footprint model. A
-   name a typed footprint mentions writes the slot it names and, for a
-   flow-relative name, the physical slots [add_logical_aliases] gives it: a
-   typed longhand is recovered under its own name when its value defeats the
-   typed reader ([margin-top:var(--a) var(--b)] parses that way), and it
-   conflicts with the same declarations the typed spelling would - the name
-   carries the same footprint either way. Any other name may be a shorthand, a
-   legacy alias, or a longhand of a family the footprints do not model -
-   [background-position-x] writes part of [background], [grid-row-gap] is
-   [row-gap] - so it has to be treated as touching whatever it is compared
-   against. *)
-let unknown_name_is_placeable name = is_known_footprint_key (key name)
+(* The typed property an untyped prefixed name spells. An engine that reads
+   [-moz-transform-origin] reads it as [transform-origin] (Firefox's
+   longhands.toml gives that property the [moz] and [webkit] prefixes, and
+   Chromium and WebKit alias their [-webkit-] names), and one that does not
+   reads nothing, so such a name writes that property's slots at most. *)
+let prefixed_spelling name =
+  match Shorthand_common.strip_vendor_prefix name with
+  | None -> None
+  | Some unprefixed -> (
+      match Properties.of_name unprefixed with
+      | Properties.Prop (Unknown_property _) -> None
+      | spelled -> Some spelled)
 
 (* Whether one name is the other with a further hyphenated component, the shape
    a longhand takes under its shorthand. Two placeable names of that shape write
@@ -1270,16 +1270,33 @@ let sorted_keys keys =
   if strictly_ascending keys then keys
   else List.sort_uniq overlap_key_compare keys
 
-(* A name the model cannot place takes the broad key, not a key naming itself:
-   [declarations_overlap_with_keys] treats it as touching whatever it meets, and
-   a footprint naming only itself let a caller's key prefilter judge the pair
+(* Whether an [Unknown_property] name can be placed in the footprint model. A
+   prefixed spelling of a typed property writes that property's slots. A name a
+   typed footprint mentions writes the slot it names and, for a flow-relative
+   name, the physical slots [add_logical_aliases] gives it: a typed longhand is
+   recovered under its own name when its value defeats the typed reader
+   ([margin-top:var(--a) var(--b)] parses that way), and it conflicts with the
+   same declarations the typed spelling would - the name carries the same
+   footprint either way. Any other name may be a shorthand, a legacy alias, or a
+   longhand of a family the footprints do not model - [background-position-x]
+   writes part of [background], [grid-row-gap] is [row-gap] - so it has to be
+   treated as touching whatever it is compared against.
+
+   Such a name takes the broad key, not a key naming itself:
+   [overlap_keys_intersect] takes the broad key to meet every key, and a
+   footprint naming only itself let a caller's key prefilter judge the pair
    disjoint and rule the real test out. *)
 let rec declaration_overlap_keys decl =
   match decl with
   | Theme_guarded { decl; _ } -> declaration_overlap_keys decl
-  | Declaration { property = Unknown_property name; _ }
-    when not (unknown_name_is_placeable name) ->
-      [ broad_overlap_key ]
+  | Declaration { property = Unknown_property name; _ } -> (
+      match prefixed_spelling name with
+      | Some (Properties.Prop property) ->
+          sorted_keys (property_footprint property)
+      | None ->
+          if is_known_footprint_key (key name) then
+            sorted_keys (property_footprint (Unknown_property name))
+          else [ broad_overlap_key ])
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
 (* Each family head's footprint in the order [footprint_family_heads] lists
@@ -1323,15 +1340,11 @@ let declarations_overlap_with_keys a a_keys b b_keys =
       not (is_excluded_from_all_reset property)
   | Declaration { property; _ }, Declaration { property = All; _ } ->
       not (is_excluded_from_all_reset property)
+  (* An unknown name the model cannot place holds the broad key, which meets
+     every key. *)
   | ( Declaration { property = Unknown_property a; _ },
       Declaration { property = Unknown_property b; _ } ) ->
       String.equal a b || name_extends a b || name_extends b a
-      || not (unknown_name_is_placeable a && unknown_name_is_placeable b)
-  | Declaration { property = Unknown_property name; _ }, Declaration _ ->
-      (not (unknown_name_is_placeable name))
-      || overlap_keys_intersect a_keys b_keys
-  | Declaration _, Declaration { property = Unknown_property name; _ } ->
-      (not (unknown_name_is_placeable name))
       || overlap_keys_intersect a_keys b_keys
   | Declaration _, Declaration _ -> overlap_keys_intersect a_keys b_keys
   | _ -> false

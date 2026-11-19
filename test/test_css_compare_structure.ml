@@ -679,6 +679,35 @@ let canonical_alias_writes_agree () =
     (equal
        ".a{-moz-transform:rotate(180deg);-webkit-transform:rotate(180deg)}.c{-moz-transform:rotate(180deg)}"
        ".a,.c{-moz-transform:rotate(180deg)}.a{-webkit-transform:rotate(180deg)}");
+  (* [-moz-transform-origin] is no typed property, but an engine that reads it
+     reads it as [transform-origin] (Firefox's longhands.toml gives that
+     property the [moz] and [webkit] prefixes), so it writes that slot and no
+     other one, and two rules whose every shared write carries one value commute
+     through it too. The two prefixes still write one slot. *)
+  Alcotest.(check bool)
+    "an untyped prefixed spelling writes its property's slot" true
+    (equal
+       ".a,.b{-moz-transform:rotate(180deg);-moz-transform-origin:50% \
+        30%;-moz-transition:-moz-transform .2s \
+        ease-in;-webkit-transform:rotate(180deg)}.c{-moz-transform:rotate(180deg);-moz-transform-origin:50% \
+        30%;-moz-transition:-moz-transform .2s ease-in}"
+       ".a,.b,.c{-moz-transform:rotate(180deg);-moz-transform-origin:50% \
+        30%;-moz-transition:-moz-transform .2s \
+        ease-in}.a,.b{-webkit-transform:rotate(180deg)}");
+  Alcotest.(check bool)
+    "and no other slot" true
+    (equal ".a{-webkit-transform-origin:0 0}.b{top:1px}"
+       ".b{top:1px}.a{-webkit-transform-origin:0 0}");
+  (* Safari 16.4 needs [-webkit-hyphens], and Firefox 128 reads [hyphens], so
+     [-moz-hyphens] beside them is dead on every target whatever it writes. *)
+  Alcotest.(check bool)
+    "only the prefix a target needs is kept" true
+    (equal ".a{-moz-hyphens:none;-webkit-hyphens:none;hyphens:none}"
+       ".a{-webkit-hyphens:none;hyphens:none}");
+  Alcotest.(check bool)
+    "two prefixed spellings of one property are ordered" false
+    (equal ".a{-webkit-transform-origin:0 0}.b{-moz-transform-origin:1px 1px}"
+       ".b{-moz-transform-origin:1px 1px}.a{-webkit-transform-origin:0 0}");
   Alcotest.(check bool)
     "alias writes of two values do not" false
     (equal
