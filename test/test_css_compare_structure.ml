@@ -653,6 +653,25 @@ let canonical_order_reads_shared_longhands () =
     "no rule is reported moved" false
     (Astring.String.is_infix ~affix:"moved" r)
 
+(* [-moz-transform] and [-webkit-transform] write one slot: Firefox reads both
+   as [transform], Chromium and WebKit the second alone. Two rules whose every
+   write to it carries [rotate(180deg)] leave it at that value in each engine,
+   whichever comes first, so their order is no difference. taobao-1 in SatCSS,
+   whose reduced pair Chromium renders alike. A rule that writes the slot with
+   another value is still ordered. *)
+let canonical_alias_writes_agree () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "alias writes of one value commute" true
+    (equal
+       ".a{-moz-transform:rotate(180deg);-webkit-transform:rotate(180deg)}.c{-moz-transform:rotate(180deg)}"
+       ".a,.c{-moz-transform:rotate(180deg)}.a{-webkit-transform:rotate(180deg)}");
+  Alcotest.(check bool)
+    "alias writes of two values do not" false
+    (equal
+       ".a{-moz-transform:rotate(1deg);-webkit-transform:rotate(2deg)}.c{-moz-transform:rotate(1deg)}"
+       ".a,.c{-moz-transform:rotate(1deg)}.a{-webkit-transform:rotate(2deg)}")
+
 (* Factoring writes one declaration list into every branch of a selector list,
    so the expanded copies are identical wherever they meet. A prefixed property
    beside its unprefixed twin writes one cascade slot twice, and the pairwise
@@ -1319,6 +1338,8 @@ let suite =
         canonical_composes_gathered_longhands;
       Alcotest.test_case "canonical order reads shared longhands" `Quick
         canonical_order_reads_shared_longhands;
+      Alcotest.test_case "alias writes of one value agree" `Quick
+        canonical_alias_writes_agree;
       Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
         canonical_folds_a_factored_vendor_twin_group;
       Alcotest.test_case "canonical ignores how a block groups its rules" `Quick
