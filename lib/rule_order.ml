@@ -464,7 +464,8 @@ let nodes_conflict scan i j =
    overlapping slots identically is not observable, so it does not count; only
    plain style rules qualify, since a conditional block's node is the
    concatenation of its interior rules and that sequence is not the one any
-   single element sees. *)
+   single element sees. A position holds the writes of every occurrence the scan
+   folded into it, so each of them observes the move too. *)
 let observer scan ~lo ~hi mems =
   let observed m a =
     nodes_conflict scan m a
@@ -472,9 +473,11 @@ let observer scan ~lo ~hi mems =
     let em = start_element scan m and ea = start_element scan a in
     not (em.plain && ea.plain && overlapping_writes_equal em.node ea.node)
   in
+  let writers m = if scan.alive.(m) then scan.members.(m) else [ m ] in
   let rec find m =
     if m >= hi then Option.None
-    else if List.exists (observed m) mems then Option.Some m
+    else if List.exists (fun w -> List.exists (observed w) mems) (writers m)
+    then Option.Some m
     else find (m + 1)
   in
   find (lo + 1)
