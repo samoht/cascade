@@ -97,6 +97,10 @@
   variables_property
   order_maintenance
   printed_order
+  candidate_kind
+  candidate_groups
+  candidate_inlining
+  candidate_factoring
   lift
   prop_common
   prop_svg
