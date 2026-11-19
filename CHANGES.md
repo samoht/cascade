@@ -365,6 +365,14 @@ to call instead, and moving off most of them is a rename or a deleted call.
   drop each (Selectors 4 sec. 3.9). Two `::-moz-placeholder` rules still
   merge, and so do a `::-webkit-` pseudo-element and `::file-selector-button`,
   which every target parses (#1437).
+- `--minify` dropped a rule over a prefixed pseudo-class it did not know,
+  such as `a:-moz-only-whitespace` or `a:not(:-moz-first-node)`, which
+  Firefox reads, or `:-webkit-any-link`, which Chrome and Safari read, and
+  dropped one from an `:is()` list. Such a rule now stays as written, out of
+  every list. A pseudo-class is dropped only when no target reads it: one
+  MDN's compatibility data, Firefox's selector parser and probes of Chrome
+  and WebKit show none reads, a pseudo-element name after one colon, and an
+  unprefixed name the data does not record (#1449).
 - `--minify` dropped a prefixed copy of a widely available property, such as
   `-webkit-animation-delay:1s` beside `animation-delay:1s`, only when the
   reader typed both spellings or neither, so it kept `-webkit-flex-grow:1`
