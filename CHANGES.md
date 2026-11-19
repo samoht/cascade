@@ -365,6 +365,13 @@ to call instead, and moving off most of them is a rename or a deleted call.
   drop each (Selectors 4 sec. 3.9). Two `::-moz-placeholder` rules still
   merge, and so do a `::-webkit-` pseudo-element and `::file-selector-button`,
   which every target parses (#1437).
+- `--minify` dropped a prefixed copy of a widely available property, such as
+  `-webkit-animation-delay:1s` beside `animation-delay:1s`, only when the
+  reader typed both spellings or neither, so it kept `-webkit-flex-grow:1`
+  beside `flex-grow:1`. An untyped copy is now read under the unprefixed
+  property's grammar and dropped when the values agree, which shrinks the
+  SatCSS output by 0.65% raw and 0.33% under gzip. `--enforce-spec` keeps every
+  copy (#1439).
 
 ### Comparing stylesheets
 
