@@ -663,6 +663,23 @@ let test_transfer_keeps_near_factoring () =
   Alcotest.(check string)
     "transfer is a fixed point" transfer (optimize_with transfer)
 
+(* The schedule reads the rules a run prints, not how many there are: four rules
+   factor the same alone as among 140 rules nothing shares a declaration with,
+   once those are taken back out. The candidates a commit brings about wait for
+   the queue to drain at every size. *)
+let test_schedule_ignores_run_size () =
+  let css =
+    ".extra-ref-cite{margin:0}.extra-ref-cite{font-size:90%}.bookmarks{font-size:90%;margin:0}#dlpage \
+     .list-subjects{font-size:90%}"
+  in
+  let padding =
+    String.concat "" (List.init 140 (fun i -> Fmt.str ".zq%d{order:%d}" i i))
+  in
+  let alone = optimize_with css in
+  let among = optimize_with (css ^ padding) in
+  Alcotest.(check string)
+    "the four rules among the padding" (alone ^ padding) among
+
 let suite =
   ( "factor",
     [
@@ -670,6 +687,8 @@ let suite =
         test_transfer_factors_at_any_distance;
       Alcotest.test_case "transfer keeps a near factoring" `Quick
         test_transfer_keeps_near_factoring;
+      Alcotest.test_case "the schedule ignores the run's size" `Quick
+        test_schedule_ignores_run_size;
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick
         test_run_reaches_fixpoint_with_finalizer;
       Alcotest.test_case "factoring output is finalized" `Quick
