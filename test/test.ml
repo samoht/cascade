@@ -37,6 +37,7 @@ let () =
       Test_rule_candidate.suite;
       Test_subsets.suite;
       Test_rule_scheduler.suite;
+      Test_reach.suite;
       Test_rule_order.suite;
       Test_rule_order_layer.suite;
       Test_common.suite;
