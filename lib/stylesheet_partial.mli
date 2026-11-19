@@ -7,8 +7,15 @@ open Stylesheet_intf
 type reading
 (** The state of a typed read that takes the rules one at a time. *)
 
-val reading : ?source:Error.Source.t -> ?meta:Loc.meta_level -> unit -> reading
-(** [reading ?source ?meta ()] is a read that has seen no rule yet. *)
+val reading :
+  ?source:Error.Source.t ->
+  ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
+  unit ->
+  reading
+(** [reading ?source ?meta ?enforce_spec ()] is a read that has seen no rule
+    yet, its cursors answering {!Cursor.enforce_spec} with [enforce_spec]
+    (default [false]). *)
 
 val read_next : reading -> Component.rule -> statement option
 (** [read_next t rule] validates [rule], the next rule of the sheet, to a
