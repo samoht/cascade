@@ -52,8 +52,8 @@ val afresh : t -> bool
     there is its rank and the run's size picks the budget, so an indexed search
     can take other subsets; and it orders two rules only through live rules that
     conflict, so a default group can keep an entry [t] drops. The candidates
-    either brings about are asked {!Rule_graph.refused_afresh}. It reads the
-    graph and leaves the offers of [t] as they are. *)
+    either brings about are asked {!Rule_graph.refuses}. It reads the graph and
+    leaves the offers of [t] as they are. *)
 
 val is_live : t -> Rule_graph.node_id -> bool
 (** [is_live t id] is [true] if the rule [id] is live in the graph [t] last

@@ -26,17 +26,9 @@ type rewrite_error =
   | Invalid_node of node_id
   | Duplicate_node of node_id
   | Stale_node of node_id
-  | Ambiguous_external_order of {
-      produced : node_id;
-      external_ : node_id;
-      afresh : node_id list option;
-    }
+  | Ambiguous_external_order of { produced : node_id; external_ : node_id }
   | New_external_conflict of { produced : node_id; external_ : node_id }
-  | Ambiguous_produced_order of {
-      left : node_id;
-      right : node_id;
-      afresh : node_id list option;
-    }
+  | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
 
@@ -1248,23 +1240,6 @@ let source_ref_orientation ~path left right =
     | true, true -> Ambiguous
     | false, false -> New_conflict
 
-let is_ambiguous = function
-  | Ambiguous -> true
-  | Before | After | New_conflict -> false
-
-(* An orientation read with [fresh_path], and the rules the paths it took pass
-   through, when it is ambiguous. *)
-let ambiguous_afresh t orientation =
-  let through = ref [] in
-  let path a b =
-    match fresh_path t a b with
-    | Option.None -> false
-    | Option.Some rules ->
-        through := List.rev_append rules !through;
-        true
-  in
-  if is_ambiguous (orientation ~path) then Option.Some !through else Option.None
-
 let merge_orientation current next =
   match (current, next) with
   | New_conflict, other | other, New_conflict -> other
@@ -1337,13 +1312,13 @@ let add_entering entering ~total k p reason =
   let at = p - total in
   entering.(at) <- (k, reason) :: entering.(at)
 
-let add_inherited_edge ~path ~afresh t graph consume entering p k reason =
-  let orientation ~path =
+let add_inherited_edge ~path t graph consume entering p k reason =
+  let orientation =
     match reason with
     | Cascade_conflict -> produced_external_orientation ~path graph consume p k
     | Shared_branch_pin -> inherited_orientation ~path consume k
   in
-  match orientation ~path with
+  match orientation with
   | Before ->
       add_edge graph.succ p k reason;
       Ok ()
@@ -1351,8 +1326,7 @@ let add_inherited_edge ~path ~afresh t graph consume entering p k reason =
       add_entering entering ~total:t.count k p reason;
       Ok ()
   | Ambiguous ->
-      let afresh = afresh orientation in
-      Error (Ambiguous_external_order { produced = p; external_ = k; afresh })
+      Error (Ambiguous_external_order { produced = p; external_ = k })
   | New_conflict ->
       Error (New_external_conflict { produced = p; external_ = k })
 
@@ -1420,7 +1394,7 @@ let external_candidates t graph ~consumed p =
      reads, does not follow the index *)
   List.sort Int.compare !acc
 
-let add_external_edges ~path ~afresh t ~consume ~consumed graph entering =
+let add_external_edges ~path t ~consume ~consumed graph entering =
   let total = t.count in
   let lo = consumed.(0) in
   let hi = consumed.(Array.length consumed - 1) in
@@ -1435,8 +1409,7 @@ let add_external_edges ~path ~afresh t ~consume ~consumed graph entering =
             | Option.None -> loop_candidates rest
             | Option.Some reason -> (
                 match
-                  add_inherited_edge ~path ~afresh t graph consume entering p k
-                    reason
+                  add_inherited_edge ~path t graph consume entering p k reason
                 with
                 | Ok () -> loop_candidates rest
                 | Error _ as e -> e))
@@ -1450,23 +1423,21 @@ let add_external_edges ~path ~afresh t ~consume ~consumed graph entering =
   in
   loop_produced total
 
-let add_produced_edge ~path ~afresh graph consume left right reason =
-  let orientation ~path =
+let add_produced_edge ~path graph consume left right reason =
+  let orientation =
     match reason with
     | Cascade_conflict ->
         produced_pair_orientation ~path graph consume left right
     | Shared_branch_pin -> Before
   in
-  match orientation ~path with
+  match orientation with
   | Before ->
       add_edge graph.succ left right reason;
       Ok ()
   | After ->
       add_edge graph.succ right left reason;
       Ok ()
-  | Ambiguous ->
-      let afresh = afresh orientation in
-      Error (Ambiguous_produced_order { left; right; afresh })
+  | Ambiguous -> Error (Ambiguous_produced_order { left; right })
   | New_conflict -> Error (New_produced_conflict { left; right })
 
 (* Prior produced nodes that share a declaration key or branch with [right] at a
@@ -1492,7 +1463,7 @@ let collect_produced_candidates by_decl_key by_spec by_branch graph right keys
     (fun acc branch -> collect_string_bucket by_branch branch stamp seen acc)
     candidates graph.branches.(right)
 
-let add_produced_edges ~path ~afresh t ~consume graph =
+let add_produced_edges ~path t ~consume graph =
   let by_decl_key = Slot_table.create 16 in
   let by_branch = String_table.create 16 in
   let by_spec = Spec_table.create 16 in
@@ -1518,8 +1489,7 @@ let add_produced_edges ~path ~afresh t ~consume graph =
             | Option.None -> add_edges rest
             | Option.Some reason -> (
                 match
-                  add_produced_edge ~path ~afresh graph consume left right
-                    reason
+                  add_produced_edge ~path graph consume left right reason
                 with
                 | Ok () -> add_edges rest
                 | Error _ as e -> e))
@@ -1743,7 +1713,16 @@ let index_live t =
     done
   end
 
-let rewrite t ~consume ~produce : (t, rewrite_error) result =
+(* Two rules are ordered for a rewrite when they conflict, the first printed
+   first, which is what a graph built afresh from the live rules in the order
+   they print reads off them. The sources of a produced rule are live, and so is
+   every rule it is ordered against, so a rule a rewrite consumed decides no
+   order: what orders two rules only through it leaves them free. *)
+let live_order t a b = nodes_conflict t a b && compare_position t a b < 0
+
+(* The graph [~consume ~produce] would make, with every edge at its produced
+   nodes oriented, or why one cannot be. *)
+let orient t ~consume ~produce =
   match validate_consume t consume with
   | Error _ as e -> e
   | Ok consumed -> (
@@ -1753,48 +1732,27 @@ let rewrite t ~consume ~produce : (t, rewrite_error) result =
       | _ -> (
           let graph = produced_graph t (Array.of_list produce) in
           let entering = Array.make (graph.count - t.count) [] in
-          let path = path_exists t and afresh = ambiguous_afresh t in
-          let edges =
-            match
-              add_external_edges ~path ~afresh t ~consume ~consumed graph
-                entering
-            with
-            | Error _ as e -> e
-            | Ok () -> add_produced_edges ~path ~afresh t ~consume graph
-          in
-          match edges with
+          let path = live_order t in
+          match
+            add_external_edges ~path t ~consume ~consumed graph entering
+          with
           | Error _ as e -> e
           | Ok () -> (
-              match produced_order t graph entering with
-              | Option.None -> Error Cycle
-              | Option.Some finished ->
-                  commit t graph ~consumed entering finished;
-                  Ok graph)))
+              match add_produced_edges ~path t ~consume graph with
+              | Error _ as e -> e
+              | Ok () -> Ok (consumed, graph, entering))))
 
-(* The edges are oriented as a graph built afresh from the live rules, in the
-   order they print, orients them: by [fresh_path], which answers for such a
-   graph exactly. A cycle is not looked for, so a rewrite whose edges all orient
-   counts as accepted. *)
-let refused_afresh t ~consume ~produce =
-  match validate_consume t consume with
-  | Error _ -> true
-  | Ok consumed -> (
-      index_live t;
-      match produce with
-      | [] -> true
-      | _ -> (
-          let graph = produced_graph t (Array.of_list produce) in
-          let entering = Array.make (graph.count - t.count) [] in
-          let path a b = Option.is_some (fresh_path t a b)
-          and afresh _ = Option.None in
-          match
-            add_external_edges ~path ~afresh t ~consume ~consumed graph entering
-          with
-          | Error _ -> true
-          | Ok () -> (
-              match add_produced_edges ~path ~afresh t ~consume graph with
-              | Error _ -> true
-              | Ok () -> false)))
+let rewrite t ~consume ~produce : (t, rewrite_error) result =
+  match orient t ~consume ~produce with
+  | Error _ as e -> e
+  | Ok (consumed, graph, entering) -> (
+      match produced_order t graph entering with
+      | Option.None -> Error Cycle
+      | Option.Some finished ->
+          commit t graph ~consumed entering finished;
+          Ok graph)
+
+let refuses t ~consume ~produce = Result.is_error (orient t ~consume ~produce)
 
 let try_rewrite t ~consume ~produce : t option =
   match rewrite t ~consume ~produce with
