@@ -608,7 +608,7 @@ type factoring_bucket = {
   mutable fmembers : (Rule_graph.node_id * int) list;
       (** with the key's position, the last printed first *)
   mutable lead : lead;
-  mutable subsets : Rule_graph.node_id list list;
+  mutable subsets : Subsets.bucket;
   mutable taken : subset list;
   mutable taken_count : int;
   mutable want : int;
@@ -689,7 +689,7 @@ let add core family id =
                 buid = family.next_bucket;
                 fmembers = [];
                 lead = no_lead;
-                subsets = [];
+                subsets = Subsets.bucket family.budget [];
                 taken = [];
                 taken_count = 0;
                 want = 0;
@@ -720,13 +720,12 @@ let drop_bucket family bucket =
 
 let refresh_bucket family bucket =
   bucket.subsets <-
-    (match bucket.fmembers with
-    | [] | [ _ ] -> []
-    | members -> Subsets.of_bucket family.budget (List.rev_map fst members));
+    Subsets.bucket family.budget (List.rev_map fst bucket.fmembers);
   bucket.lead <- Option.value (lead_of bucket.fmembers) ~default:no_lead;
   if bucket.fmembers = [] then drop_bucket family bucket;
   if indexed family then
-    if bucket.subsets = [] then Int_table.remove family.offering bucket.buid
+    if Subsets.count bucket.subsets = 0 then
+      Int_table.remove family.offering bucket.buid
     else Int_table.replace family.offering bucket.buid bucket
 
 let subset_of core family ids =
@@ -907,14 +906,12 @@ let release core family subset =
       Ids_table.remove family.known subset.ids
   end
 
-let rec take n = function
-  | [] -> []
-  | x :: rest -> if n <= 0 then [] else x :: take (n - 1) rest
-
 (* Point [bucket] at its first [n] subsets. A subset some bucket takes reaches
    its group; one no bucket takes reaches none. *)
 let retake core family ~activated ~released bucket n =
-  let subsets = List.map (subset_of core family) (take n bucket.subsets) in
+  let subsets =
+    List.map (subset_of core family) (Subsets.take bucket.subsets n)
+  in
   List.iter
     (fun subset ->
       subset.taken_by <- subset.taken_by + 1;
@@ -930,7 +927,9 @@ let retake core family ~activated ~released bucket n =
 let wanted core family dirty =
   match Subsets.shared family.budget with
   | Option.None ->
-      List.iter (fun bucket -> bucket.want <- List.length bucket.subsets) dirty;
+      List.iter
+        (fun bucket -> bucket.want <- Subsets.count bucket.subsets)
+        dirty;
       dirty
   | Option.Some max_candidates ->
       let previous = family.takers in
@@ -942,7 +941,7 @@ let wanted core family dirty =
           match seq () with
           | Seq.Nil -> takers
           | Seq.Cons (bucket, rest) ->
-              let n = Int.min remaining (List.length bucket.subsets) in
+              let n = Int.min remaining (Subsets.count bucket.subsets) in
               bucket.want <- n;
               spend (remaining - n) (bucket :: takers) rest
       in

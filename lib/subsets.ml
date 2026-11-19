@@ -68,32 +68,61 @@ let shared = function
   | Exhaustive -> Option.None
   | Indexed { max_candidates; _ } -> Option.Some max_candidates
 
-(* The windows of [rows] (in printed order) a bucket offers, each of at most
-   [occurrence_window] neighbours, by first member and then by length, or none
-   when there are more than [max_candidates]. *)
-let indexed_windows budget rows =
-  let len = Array.length rows in
+(* [f] over the first [limit] windows of a bucket of [len] members, each of at
+   most [occurrence_window] neighbours, by first member and then by length. *)
+let fold_windows budget ~limit len f acc =
   let window_end first = min (len - 1) (first + budget.occurrence_window - 1) in
-  let rec count first acc =
-    if first >= len then acc
-    else count (first + 1) (acc + window_end first - first)
+  let rec from first last n acc =
+    if n >= limit || first >= len - 1 then acc
+    else if last > window_end first then from (first + 1) (first + 2) n acc
+    else from first (last + 1) (n + 1) (f acc first last)
   in
-  if count 0 0 > budget.max_candidates then []
-  else begin
-    let subsets = ref [] in
-    for first = len - 2 downto 0 do
-      for last = window_end first downto first + 1 do
-        let rec loop index subset =
-          if index < first then subset
-          else loop (index - 1) (rows.(index) :: subset)
-        in
-        subsets := loop last [] :: !subsets
-      done
-    done;
-    !subsets
-  end
+  from 0 1 0 acc
 
-let of_bucket budget ids =
+(* An indexed bucket keeps its members and lists its windows when it is taken:
+   it is refreshed at every change to its members, and listing them then would
+   build and keep up to [max_candidates] lists, taken or not. *)
+type bucket =
+  | Listed of Rule_graph.node_id list list
+  | Windows of {
+      budget : indexed_budget;
+      rows : Rule_graph.node_id array;
+      count : int;
+    }
+
+let bucket budget ids =
   match budget with
-  | Exhaustive -> bounded_subsets ~limit:12 ~large_bucket_candidates:32 ids
-  | Indexed indexed -> indexed_windows indexed (Array.of_list ids)
+  | Exhaustive ->
+      Listed (bounded_subsets ~limit:12 ~large_bucket_candidates:32 ids)
+  | Indexed indexed ->
+      let rows = Array.of_list ids in
+      let windows =
+        fold_windows indexed
+          ~limit:(indexed.max_candidates + 1)
+          (Array.length rows)
+          (fun n _ _ -> n + 1)
+          0
+      in
+      let count = if windows > indexed.max_candidates then 0 else windows in
+      Windows { budget = indexed; rows; count }
+
+let count = function
+  | Listed subsets -> List.length subsets
+  | Windows { count; _ } -> count
+
+let rec take_list n = function
+  | [] -> []
+  | x :: rest -> if n <= 0 then [] else x :: take_list (n - 1) rest
+
+let take bucket n =
+  match bucket with
+  | Listed subsets -> take_list n subsets
+  | Windows { budget; rows; count } ->
+      let rec window first index subset =
+        if index < first then subset
+        else window first (index - 1) (rows.(index) :: subset)
+      in
+      fold_windows budget ~limit:(Int.min n count) (Array.length rows)
+        (fun acc first last -> window first last [] :: acc)
+        []
+      |> List.rev
