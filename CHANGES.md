@@ -6,7 +6,14 @@ and makes cascade cheaper to run.
 - **Rendering fixes.** `--minify` turned `p:not(:not(.a .b))` into another
   selector and `env(--x 2)` into another variable. It dropped the name from
   `animation:"none" 1s` and could change the sign of a very large number. It
-  could also move a rule past one that styles the same element.
+  could also move a rule past one that styles the same element, lose a border
+  side when it factored out what two rules share, and drop rules over the
+  prefixed fullscreen pseudo-classes. It turned a prefixed linear gradient
+  upside down, and listed a rule over a vendor pseudo-class with others,
+  which Chromium then dropped together. It printed
+  `:-webkit-input-placeholder` with two colons, a rule every browser reads
+  where the source's is dropped, and split an author's list holding a vendor
+  pseudo-element, which styled in one browser what the source did not.
   `--minify --scope=stylesheet` could drop a `background` image or a
   `font-weight`. If you ship output minified by 1.2.1, upgrade and minify
   again.
@@ -29,13 +36,14 @@ and makes cascade cheaper to run.
   and on Tailwind's output, where 53 of those sheets and Tailwind's own
   stylesheet shrank again.
 - **Smaller output that follows one stated rule.** Over the 504 SatCSS sheets
-  and Tailwind's output, `--minify` output is 1.3% smaller raw than with
-  1.2.1, and the same within 0.1% under gzip and brotli. By default, rules
-  with identical bodies merge only within 128 printed rules of each other, and
-  within that bound the output is as small as cascade can make it. A sheet can
-  still come out a little larger than with 1.2.1 in one metric: 11 grow by
-  more than 1% under gzip (at most 2.2%) and 24 under brotli (at most 7%, on
-  one cnn sheet), while 148 shrink by more than 1% raw.
+  and Tailwind's output, `--minify` output is 1.1% smaller raw than with
+  1.2.1, 0.15% smaller under gzip and 0.03% smaller under brotli. By default,
+  rules with identical bodies merge only within 128 printed rules of each
+  other, and within that bound the output is as small as cascade can make it.
+  A sheet can still come out a little larger than with 1.2.1 in one metric:
+  20 grow by more than 1% under gzip (at most 2.8%, on one tmall sheet) and 23
+  under brotli (at most 6.8%, on one cnn sheet), while 137 shrink by more than
+  1% raw.
 
 The price is under [Breaking](#breaking). Scripts that read cascade's
 diagnostics need a new pattern. In the library, parsers return a `result`
