@@ -418,6 +418,17 @@ to call instead, and moving off most of them is a rename or a deleted call.
   occurrences of its selector when a rule between them touches it only where
   the later occurrence writes again, as a `border-bottom` against a `:hover`
   rule's `border-color`. Such a rule no longer holds it back (#1416).
+- `cascade diff --diff=canonical` exited 2 on a sheet against its own
+  `--minify` output when the sheet held a rule over `:-o-prefocus`,
+  `:-moz-submit-invalid`, `:selected`, `:-moz-any-link`, `:-ms-fullscreen`,
+  `:-ms-full-screen`, `:-o-full-screen` or `:full-screen`, as seven SatCSS
+  sheets do. No target reads any of them (MDN's browser-compat-data,
+  Firefox's selector parser, Chrome and WebKit), so every target drops the
+  rule, and the warning now says so; the comparison, which judges for the
+  targets, does not count the loss and exits 0. Under `--enforce-spec` the
+  reader keeps such a rule, `cascade fmt --minify --enforce-spec` keeps it
+  as written and out of every list, and the comparison reports a sheet that
+  lost it (#1429).
 
 ### Speed
 

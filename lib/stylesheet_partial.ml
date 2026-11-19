@@ -9,9 +9,10 @@ open Stylesheet_read
    sees the opening [\@name]. [?source] flows through so errors raised by
    validators downstream pick up source-context snippets, all of them sharing
    its one index. *)
-let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
+let cursor_of_rule ?source ?meta ?enforce_spec : Component.rule -> Cursor.t =
+  function
   | Qualified { node = { prelude; block }; _ } ->
-      Cursor.of_components ?source ?meta ~recover:true
+      Cursor.of_components ?source ?meta ?enforce_spec ~recover:true
         (prelude @ [ Component.Block block ])
   | At { node = { name; prelude; block }; loc } ->
       let at_kw = Token.v ~kind:(Token.At_keyword name) ~loc in
@@ -27,16 +28,16 @@ let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
                regardless of whether [;] or EOF ended the rule. *)
             [ Component.Preserved (Token.v ~kind:Token.Semicolon ~loc) ]
       in
-      Cursor.of_components ?source ?meta ~recover:true
+      Cursor.of_components ?source ?meta ?enforce_spec ~recover:true
         ((at_cv :: prelude) @ tail_cv)
 
 (* Validate one Parser-recovered rule to a typed statement, or convert the
    validator's [Parse_error] into a rule-level error and drop the rule. Per-
    declaration warnings accumulated on the cursor are drained separately by the
    caller. *)
-let read_statement_of_rule ?source ?meta (rule : Component.rule) :
+let read_statement_of_rule ?source ?meta ?enforce_spec (rule : Component.rule) :
     Cursor.t * (statement, Error.t) result =
-  let r = cursor_of_rule ?source ?meta rule in
+  let r = cursor_of_rule ?source ?meta ?enforce_spec rule in
   let result =
     match read_statement r with
     | stmt -> Ok stmt
@@ -131,6 +132,7 @@ let validate_partial_statement_warnings r warnings validate_prelude rule stmt =
 type reading = {
   source : Error.Source.t option;
   meta : Loc.meta_level option;
+  enforce_spec : bool;
   warnings : Error.t list ref;
   validate_prelude : Cursor.t -> Loc.t -> statement -> Error.t option;
   (* CSS Conditional Rules 5 section 4: [@else] is a continuation rule and must
@@ -139,10 +141,11 @@ type reading = {
   previous : statement option ref;
 }
 
-let reading ?source ?meta () =
+let reading ?source ?meta ?(enforce_spec = false) () =
   {
     source;
     meta;
+    enforce_spec;
     warnings = ref [];
     validate_prelude = validate_partial_prelude ();
     previous = ref Option.None;
@@ -181,7 +184,8 @@ let finish_read t cursor result rule : statement option =
 
 let read_next t rule =
   let cursor, result =
-    read_statement_of_rule ?source:t.source ?meta:t.meta rule
+    read_statement_of_rule ?source:t.source ?meta:t.meta
+      ~enforce_spec:t.enforce_spec rule
   in
   finish_read t cursor result rule
 
@@ -198,6 +202,7 @@ let read_streamed t (s : Parser.streamed) =
   in
   let cursor =
     Cursor.of_streamed ?source:t.source ?meta:t.meta
+      ~enforce_spec:t.enforce_spec
       ((at_kw :: s.prelude) @ [ Component.Block s.body.placeholder ])
       s.body
   in

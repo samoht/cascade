@@ -14,28 +14,37 @@ val of_components :
   ?source:Error.Source.t ->
   ?recover:bool ->
   ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
   ?eof_loc:Loc.t ->
   Component.t list ->
   t
-(** [of_components ?source ?recover ?meta ?eof_loc cvs] is a fresh cursor over
-    [cvs]. Pass [?source] so errors raised while consuming the cursor get a
-    source-context snippet attached (matching {!of_string}'s behaviour); cursors
-    over one text share one [source], and with it its index. Pass
-    [~recover:true] to enable per-declaration recovery: validators that honour
-    {!recover} will catch a {!exception-Parse_error} on one declaration, push it
-    to {!push_warning}, and skip to the next [;] instead of propagating. [?meta]
-    controls snippet construction and defaults to {!Loc.default_meta_level}.
-    [?eof_loc] anchors end-of-input errors at a specific location. *)
+(** [of_components ?source ?recover ?meta ?enforce_spec ?eof_loc cvs] is a fresh
+    cursor over [cvs]. Pass [?source] so errors raised while consuming the
+    cursor get a source-context snippet attached (matching {!of_string}'s
+    behaviour); cursors over one text share one [source], and with it its index.
+    Pass [~recover:true] to enable per-declaration recovery: validators that
+    honour {!recover} will catch a {!exception-Parse_error} on one declaration,
+    push it to {!push_warning}, and skip to the next [;] instead of propagating.
+    [?meta] controls snippet construction and defaults to
+    {!Loc.default_meta_level}. [?eof_loc] anchors end-of-input errors at a
+    specific location. [enforce_spec] (default [false]) is what
+    {!val-enforce_spec} answers. *)
 
 val of_streamed :
   ?source:Error.Source.t ->
   ?meta:Loc.meta_level ->
+  ?enforce_spec:bool ->
   Component.t list ->
   Parser.body ->
   t
-(** [of_streamed ?source ?meta cvs body] is a recovering cursor over [cvs],
-    among which [body]'s placeholder stands for a block {!braces} reads through
-    [body]'s [pull], a chunk at a time. *)
+(** [of_streamed ?source ?meta ?enforce_spec cvs body] is a recovering cursor
+    over [cvs], among which [body]'s placeholder stands for a block {!braces}
+    reads through [body]'s [pull], a chunk at a time. *)
+
+val enforce_spec : t -> bool
+(** [enforce_spec t] is whether [t] reads for every engine rather than for the
+    browsers the minifier targets, as the {!Reader.t} it was built from or its
+    [~enforce_spec] says. A cursor {!sub} builds answers as its parent does. *)
 
 val forget : t -> unit
 (** [forget t] promises that [t] will not be restored to a snapshot taken before

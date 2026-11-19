@@ -47,6 +47,10 @@ type kind =
       (** Expected a specific lexical thing, e.g. ["';'"] or ["')'"]. *)
   | Bad_selector of string
       (** Selector parser rejected the prelude; payload is a short reason. *)
+  | Untargeted_selector of string
+      (** The prelude holds, outside every forgiving list, a pseudo-class no
+          browser the minifier targets reads, so each of them drops the rule
+          (Selectors 4 sec. 3.9); payload is the pseudo-class, colon and all. *)
   | Bad_value of { property : string; reason : string }
       (** Property value validator rejected the right-hand side. *)
   | Bad_condition of { at_rule : string; reason : string }

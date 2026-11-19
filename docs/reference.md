@@ -13,7 +13,7 @@ the README first; come here to check a detail.
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline makes one pass at every size, and each step finishes in it what it starts, so minifying the output again returns it. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes, but merges rules with one body only where they print within 128 rules of each other, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges them at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
-| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
+| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also has the parser keep a rule over a pseudo-class no target reads, and holds it to the ident code points CSS Syntax 3 lists; those parts act without `--minify` too. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. See [Scope](#scope). Has no effect without `--minify`. |
 | `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. Has no effect without `--minify`. |
@@ -238,11 +238,23 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
 - A nested selector loses its `&` prefix, `& div` to `div`.
 - An `oklab` or `oklch` axis takes the percentage spelling where it is
   shorter, `oklch(.7 .304 20)` to `oklch(.7 76% 20)`.
+- A rule whose selector holds, outside `:is()` and `:where()`, a pseudo-class
+  no target reads is dropped by the reader, with or without `--minify`, and a
+  warning names it, since every target drops the whole rule (Selectors 4
+  section 3.9). The list comes from MDN's browser-compat-data, Firefox's
+  selector parser and Chrome and WebKit: `:-o-prefocus`,
+  `:-moz-submit-invalid`, `:selected`, `:-moz-any-link`, `:-ms-fullscreen`,
+  `:-ms-full-screen`, `:-o-full-screen`, `:full-screen`, and the
+  pseudo-element names written with one colon, such as
+  `:-webkit-input-placeholder` and `:selection`, that only the CSS 2.1 four
+  (`:before`, `:after`, `:first-line`, `:first-letter`) may take.
+  `:-moz-placeholder` is not one: Firefox still reads it.
 
-`--enforce-spec` removes all of these. It also keeps the quotes around a
+`--enforce-spec` removes all of these, and the reader keeps such a rule as
+written, apart from every other selector. It also keeps the quotes around a
 multi-word font family, and it holds the parser to the ident code points CSS
-Syntax 3 lists rather than accepting anything above U+007F; that last part
-applies even without `--minify`.
+Syntax 3 lists rather than accepting anything above U+007F; the two reader
+parts apply even without `--minify`.
 
 An `@supports` condition is never assumed true or false, because support
 depends on the rendering browser, down to its experimental-feature settings.
@@ -259,7 +271,7 @@ disjunction, for example `(-webkit-backdrop-filter: ...) or
 | `--diff=MODE` | What counts as a difference: `auto` (default), `tree`, `string` or `canonical`. |
 | `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit; `none` prints every one; an integer prints exactly that many. |
 | `--lossless` | Disable colour and numeric approximation in the `canonical` comparison. |
-| `--enforce-spec` | Assume no browser in the `canonical` comparison: every `@supports` guard, vendor prefix and colour fallback is kept, so two sheets that differ on one are reported. |
+| `--enforce-spec` | Assume no browser in the `canonical` comparison: every `@supports` guard, vendor prefix, colour fallback and rule over a pseudo-class no target reads is kept, so two sheets that differ on one are reported. |
 | `--prune-unused-custom-props` | Drop custom properties nothing references, on both sides, before a `canonical` comparison. The comparison is then blind to differences in unused custom properties. |
 | `--browser --html FILE` | Render both files over `FILE` in headless Chromium and compare the screenshots instead of the CSS. |
 | `--json` | Write the comparison as one JSON document. The exit status is unchanged. |
@@ -304,9 +316,10 @@ cascade's six-figure `1.55556`; under `--lossless` it equals no finite decimal.
 
 For browsers, the comparison assumes the targets `--minify` uses: a
 `@supports` guard every target satisfies is unwrapped, a prefix a target
-needs is added on both sides and one no target needs is dropped from both, and
-a colour fallback every target parses past is dead. `--enforce-spec` turns
-these off. An `@supports` guard that no browser can answer yes to, such as one
+needs is added on both sides and one no target needs is dropped from both, a
+colour fallback every target parses past is dead, and a rule whose selector no
+target reads ([Target browsers](#target-browsers)) is dropped from both.
+`--enforce-spec` turns these off. An `@supports` guard that no browser can answer yes to, such as one
 over a `<general-enclosed>` term that CSS Conditional 3 section 6.1 makes
 false, selects nothing on either side, and its block is dropped from both.
 
@@ -322,6 +335,13 @@ it finds no difference but could not read a rule in one of the files, it
 compares the text each side dropped. If that text matches byte for byte, it
 cannot hide a difference and the exit is 0. If it differs, the exit is 2,
 because one side dropped a rule the other did not.
+
+A rule dropped because its selector holds a pseudo-class no target reads is
+not counted against the verdict in `canonical` mode: every target drops it too,
+and the comparison judges for those targets. Under `--enforce-spec` the reader
+keeps that rule on both sides, so a sheet that lost it differs and the exit is
+1. A pseudo-class cascade does not know at all is not on that list, and a rule
+lost to it still withholds the verdict.
 
 A declaration cascade cannot read is handled differently. Its reader follows
 the browser's accept set (`test/spec/browser/accept_set`), so a declaration it

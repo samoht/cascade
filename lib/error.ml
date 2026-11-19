@@ -39,6 +39,7 @@ type kind =
   | Unexpected_token of Token.kind
   | Missing_token of string
   | Bad_selector of string
+  | Untargeted_selector of string
   | Bad_value of { property : string; reason : string }
   | Bad_condition of { at_rule : string; reason : string }
   | Unknown_at_rule of string
@@ -102,6 +103,9 @@ let pp_kind : kind Pp.t =
   | Bad_selector reason ->
       Pp.string ctx "bad selector: ";
       Pp.string ctx reason
+  | Untargeted_selector pseudo_class ->
+      Pp.string ctx "no target browser reads ";
+      Pp.string ctx pseudo_class
   | Bad_value { property = ""; reason } ->
       Pp.string ctx "bad value: ";
       Pp.string ctx reason
@@ -136,8 +140,9 @@ let pp_message : t Pp.t =
   | Unexpected_token _ | Missing_token _ | Too_deep _ ->
       Pp.string ctx " in ";
       Sort.pp ctx t.sort
-  | Sort_mismatch _ | Bad_selector _ | Bad_value _ | Bad_condition _
-  | Unknown_at_rule _ | Invalid_statement _ | Unterminated _ ->
+  | Sort_mismatch _ | Bad_selector _ | Untargeted_selector _ | Bad_value _
+  | Bad_condition _ | Unknown_at_rule _ | Invalid_statement _ | Unterminated _
+    ->
       ()
 
 (* [source:line:column], the form an editor jumps to. An error without a source
