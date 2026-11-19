@@ -467,6 +467,20 @@ let coalesce_reads_writes_a_fold_moved () =
     (canonical
        ".o{width:76px;display:none}.g{display:none;width:24px}.p{display:block}")
 
+(* Two adjacent rules over one selector list hold, for every element, the
+   declarations of the one rule that list over both bodies, in the same order.
+   Read branch by branch, [speak], which the footprint model cannot place and so
+   reads as touching [top], chains the [.b] occurrences through [.a]'s, so the
+   list has to be joined before it is expanded. *)
+let adjacent_lists_join_before_expanding () =
+  let want = ".a{speak:none;top:7px}.b{speak:none;top:7px}" in
+  Alcotest.(check string)
+    "two rules over one list" want
+    (canonical ".a,.b{speak:none}.a,.b{top:7px}");
+  Alcotest.(check string)
+    "one rule over the list" want
+    (canonical ".a,.b{speak:none;top:7px}")
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -694,6 +708,8 @@ let suite =
         coalesce_through_two_held_occurrences;
       Alcotest.test_case "coalesce reads writes a fold moved" `Quick
         coalesce_reads_writes_a_fold_moved;
+      Alcotest.test_case "adjacent lists join before expanding" `Quick
+        adjacent_lists_join_before_expanding;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
