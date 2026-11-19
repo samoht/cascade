@@ -223,6 +223,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   sits, but a selector moved away from its neighbours stops compressing
   against them. Nothing judges the result afterwards. `--objective=raw` merges
   at any distance (#1399).
+- `--minify` refused a merge for an order that only a rule merged away earlier
+  implied, so whether two rules merged depended on what had merged before
+  them. A merge is now ordered and checked for cycles against the rules still
+  printed (#1422).
 - `--minify --scope=stylesheet` dropped declarations a page needs. A
   declaration written before longhands of its family was reset by the shorthand
   built from them: `background:#fff url(a.png) no-repeat center` lost its image

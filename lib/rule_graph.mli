@@ -43,7 +43,10 @@ type edge_reason = Cascade_conflict | Shared_branch_pin
 (** Why a graph rewrite was rejected. A produced rule is ordered against a rule
     it conflicts with as the sources it draws on that conflict with that rule
     are, by where they print: an ambiguous order has them on both sides of it,
-    and a new conflict has none. Neither reads a rule a rewrite consumed. *)
+    and a new conflict has none. Neither reads a rule a rewrite consumed. A
+    [Cycle] runs through live rules; a [Relay_cycle] runs only through rules
+    earlier rewrites consumed, so a graph built afresh from the rules the graph
+    prints ({!rebuild}) has none. *)
 type rewrite_error =
   | Empty_consume
   | Empty_produce
@@ -55,6 +58,7 @@ type rewrite_error =
   | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
+  | Relay_cycle
 
 val of_rules :
   ?parent:Selector.t ->
@@ -344,11 +348,18 @@ val rewrite :
 
 val refuses : t -> consume:node_id list -> produce:Stylesheet.rule list -> bool
 (** [refuses t ~consume ~produce] is [true] when {!rewrite} [~consume ~produce]
-    refuses for another reason than a cycle: a node is not live, or a produced
-    rule conflicts with a rule its sources print on both sides of, or with none
-    of them. That reads the live rules alone and where they print, so a graph
-    built afresh from the rules [t] prints, in that order, refuses it too. A
-    rewrite it does not refuse may still close a cycle. *)
+    refuses for another reason than a {!constructor-Relay_cycle}: a node is not
+    live, a produced rule conflicts with a rule its sources print on both sides
+    of, or with none of them, or the rewrite closes a cycle through live rules.
+    That reads the live rules alone and where they print, so it is [true]
+    exactly when a graph built afresh from the rules [t] prints, in that order,
+    refuses the rewrite. *)
+
+val rebuild : t -> t
+(** [rebuild t] is the graph {!of_rules} builds from the live rules of [t] in
+    the order [t] prints them, with the context [t] was built in and an
+    [exclusive] that still speaks for the rules it spoke for. It holds no rule a
+    rewrite consumed, and its {!generation} follows [t]'s. *)
 
 val try_rewrite :
   t -> consume:node_id list -> produce:Stylesheet.rule list -> t option
