@@ -109,10 +109,10 @@ let offer graph queue offer =
   let key = Rule_candidate.key offer in
   Queue.add key (priority graph key (Rule_candidate.candidate offer)) queue
 
-(* Below 128 nodes the candidates a commit brings about are queued as soon as it
-   lands; above, they wait for the queue to drain, when every candidate of the
-   graph is queued again. A candidate stays queued until it is tried:
-   [Rule_graph.rewrite] refuses one whose rules a later commit consumed.
+(* The candidates a commit brings about wait for the queue to drain, when every
+   candidate of the graph is queued again, whatever the size of the run. A
+   candidate stays queued until it is tried: [Rule_graph.rewrite] refuses one
+   whose rules a later commit consumed.
 
    A drain with no commit since the last one leaves every candidate of the graph
    tried on it and refused: the run is settled. A refusal for an order reads the
@@ -156,8 +156,6 @@ let requeue graph { pool; refused } =
 
 let run ~ctx ~finalize graph =
   let max_iterations = max_iterations graph in
-  let nodes = Rule_graph.node_count graph in
-  let refresh_after_commit = nodes <= 128 in
   let search graph =
     let pool = Rule_candidate.start ~ctx ~finalize graph in
     ( { pool; refused = Hashtbl.create 64 },
@@ -192,12 +190,6 @@ let run ~ctx ~finalize graph =
           | Ok graph' ->
               Stats.add_saving (Ctx.stats ctx) candidate.saving;
               Rule_candidate.rewrite pool graph' ~consume:candidate.consume;
-              let queue =
-                if refresh_after_commit then
-                  List.fold_left (offer graph') queue
-                    (Rule_candidate.refresh pool)
-                else queue
-              in
               loop (iteration + 1) ~committed:true graph' s queue)
   in
   let s, queue = search graph in
