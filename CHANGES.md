@@ -468,6 +468,13 @@ to call instead, and moving off most of them is a rename or a deleted call.
   and WebKit parse neither, Firefox lists neither, and MDN records
   `font-smooth` only under its prefixed names. Both are dropped from both
   sides, as a `-ms-` declaration is, unless `--enforce-spec` is given (#1438).
+- `text-rendering` was read as an unknown property, which may write any
+  other, so `cascade diff --diff=canonical` held apart two rules it shared a
+  selector with, and networkx-theme and a netflix sheet differed from their
+  own `--minify` output. It is typed now, as SVG 2 defines it, so it touches
+  only itself, `--minify` drops one a later `text-rendering` overrides, and
+  a value outside `auto | optimizeSpeed | optimizeLegibility |
+  geometricPrecision` is dropped with a warning, as browsers drop it (#1440).
 
 ### Speed
 
