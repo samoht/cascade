@@ -254,6 +254,39 @@ let coalesced_declarations ~ctx decls =
   canonical_declarations
     (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false decls)
 
+(* Two adjacent rules over one selector list give every element the declarations
+   of one rule over both bodies, in the same order, whichever branches it
+   matches. {!expand_lists} would write each branch's two halves as occurrences
+   the projection must fold back, and a declaration the footprint model cannot
+   place reads as touching the other branch's second half, which holds them
+   apart. So the two join while the list still says they are one. *)
+let join_adjacent_lists ~ctx changed (stmts : statement list) : statement list =
+  let list_rule = function
+    | Rule
+        ({ selector = Selector.List _; nested = []; merge_key = None; _ } as r)
+      ->
+        Some r
+    | _ -> None
+  in
+  let same (a : rule) (b : rule) =
+    String.equal
+      (Pp.to_string ~minify:true Selector.pp a.selector)
+      (Pp.to_string ~minify:true Selector.pp b.selector)
+  in
+  let rec go acc = function
+    | a :: b :: rest -> (
+        match (list_rule a, list_rule b) with
+        | Some ra, Some rb when same ra rb ->
+            let declarations =
+              coalesced_declarations ~ctx (ra.declarations @ rb.declarations)
+            in
+            changed := true;
+            go acc (Rule { ra with declarations } :: rest)
+        | _ -> go (a :: acc) (b :: rest))
+    | rest -> List.rev_append acc rest
+  in
+  go [] stmts
+
 (* Whether two of [decls] share a footprint family, the least a composer
    needs. *)
 let composable decls =
@@ -1098,7 +1131,8 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~ctx ~parent changed) stmts in
   let expanded =
-    List.concat_map expand_lists stmts
+    join_adjacent_lists ~ctx changed stmts
+    |> List.concat_map expand_lists
     |> drop_shadowed_declarations
     |> drop_guarded_repeats changed
     |> List.concat_map expand_blocks
