@@ -259,6 +259,25 @@ let equal_canonical_targets () =
     "a prefix a target needs survives a merge" true
     (equal ".a{hyphens:auto}.a{color:red}"
        ".a{color:red;-webkit-hyphens:auto;hyphens:auto}");
+  (* No target reads a [-ms-] or [-o-] property: Chrome 151 and WebKit 26.5 list
+     none and support none, and Firefox's property tables carry only [moz] and
+     [webkit] prefixes. So such a declaration is no difference, and one cascade
+     cannot type no longer holds a rule apart where every target ignores it.
+     yahoo-uk-3 in SatCSS. *)
+  Alcotest.(check bool)
+    "a declaration no target reads is no difference" true
+    (equal ".a{color:red;-ms-transition:all 1s}" ".a{color:red}");
+  Alcotest.(check bool)
+    "nor does it hold a rule apart" true
+    (equal
+       ".a,.c{-moz-transition:all 1s;-ms-transition:all \
+        1s}.a{z-index:4}.r{width:1px}.a{width:2px}"
+       ".a,.c{-moz-transition:all 1s;-ms-transition:all \
+        1s}.r{width:1px}.a{width:2px;z-index:4}");
+  Alcotest.(check bool)
+    "every engine reads it under enforce-spec" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
+       ".a{color:red;-ms-transition:all 1s}" ".a{color:red}");
   Alcotest.(check bool)
     "a mask composite's prefixed vocabulary too" true
     (equal ".a{-webkit-mask-composite:source-in;mask-composite:intersect}"
