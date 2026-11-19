@@ -331,7 +331,8 @@ let rec specificity = function
   | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
   | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ | Moz_placeholder
   | Webkit_input_placeholder | Ms_input_placeholder | Moz_ui_invalid
-  | Moz_ui_valid | Scrollbar_state _
+  | Moz_ui_valid | Webkit_full_screen | Webkit_full_screen_ancestor
+  | Moz_full_screen | Scrollbar_state _
   | Webkit_scrollbar Scrollbar
   | Webkit_search_cancel_button | Webkit_search_decoration
   | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value

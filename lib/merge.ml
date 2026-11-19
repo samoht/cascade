@@ -23,7 +23,8 @@ let rec vendor : Selector.t -> bool = function
    target, Firefox since 86, and is left out. *)
 let rec engine_specific : Selector.t -> bool = function
   | Moz_focusring | Moz_any_call _ | Webkit_any | Webkit_any_call _
-  | Moz_ui_invalid | Moz_ui_valid | Scrollbar_state _ ->
+  | Moz_ui_invalid | Moz_ui_valid | Webkit_full_screen
+  | Webkit_full_screen_ancestor | Moz_full_screen | Scrollbar_state _ ->
       true
   | Compound sels -> List.exists engine_specific sels
   | Combined (left, _, right) -> engine_specific left || engine_specific right
