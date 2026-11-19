@@ -424,6 +424,31 @@ let selector_list_expands_when_a_branch_is_shared () =
     "shared branch expands and coalesces" ".a{margin:0}.b{color:red;margin:0}"
     (canonical ".a,.b{margin:0}.b{color:red}")
 
+(* Two occurrences of [.a] fold when no chain of conflicts leads from the first
+   to the second, even where each one alone is held by a neighbour: [.b] must
+   follow the first (width) and [.c] precede the second (height), and neither
+   orders the other, so [.c], then [.a] holding both, then [.b] keeps every
+   constrained pair. The sheet written that way projects to the same form. *)
+let coalesce_through_two_held_occurrences () =
+  let want = ".c{height:3px}.a{height:4px;width:1px}.b{width:2px}" in
+  Alcotest.(check string)
+    "both occurrences held" want
+    (canonical ".a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}");
+  Alcotest.(check string)
+    "already folded" want
+    (canonical ".c{height:3px}.a{height:4px;width:1px}.b{width:2px}");
+  (* [.b] now writes both, so the first [.a] precedes it and it precedes the
+     second: the chain orders the two occurrences and they stay apart. *)
+  Alcotest.(check string)
+    "a chain between them keeps them apart"
+    ".a{width:1px}.b{height:5px;width:2px}.a{height:4px}"
+    (canonical ".a{width:1px}.b{width:2px;height:5px}.a{height:4px}");
+  Alcotest.(check string)
+    "and a chain through two rules"
+    ".a{width:1px}.b{color:blue;width:2px}.d{color:red;height:6px}.a{height:4px}"
+    (canonical
+       ".a{width:1px}.b{width:2px;color:blue}.d{color:red;height:6px}.a{height:4px}")
+
 let coalesce_blocked_by_intervening_conflict () =
   (* [.b] can match the same element as [.a] at equal specificity and writes the
      same property, so folding the two [.a] occurrences together past it is not
@@ -647,6 +672,8 @@ let suite =
         selector_list_expands_without_coalesce;
       Alcotest.test_case "selector list expands when a branch is shared" `Quick
         selector_list_expands_when_a_branch_is_shared;
+      Alcotest.test_case "coalesce through two held occurrences" `Quick
+        coalesce_through_two_held_occurrences;
       Alcotest.test_case "coalesce blocked by intervening conflict" `Quick
         coalesce_blocked_by_intervening_conflict;
       Alcotest.test_case "coalesce drops exact duplicates" `Quick
