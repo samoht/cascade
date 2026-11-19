@@ -26,7 +26,22 @@ change that breaks one is a defect even when every test passes.
   (`Css.declaration_value_for_equivalence`), which may equate values the
   optimizer must not fold on emission, provided their type is proven.
   A phantom canonical difference on equal content is a projection gap in
-  `rule_order.ml`, not a renderer bug.
+  `rule_order.ml` or `rule_trace.ml`, not a renderer bug.
+- **The canonical projection is confluent.** It reads a run of style rules as
+  the trace of its declarations: an entry per declaration under its selector
+  and conditions, two entries ordered only where swapping them side by side
+  could change a computed value, and the form printed is a function of that
+  partial order and the entries' text. Where the run's rules begin and end,
+  which occurrences of a selector were folded and in which order, never reach
+  it. A fact that frees a pair by reading a third entry (a slot a later write
+  of the group rewrites, a later twin of one in the other's group) never rests
+  on an entry the projection drops: an entry is dropped only when it is
+  redundant in the run's own order and no such fact about another entry of its
+  group is read off it, so the order of what is left is that order less the
+  entry. Two passes around the trace still read one rule at a time, and are
+  open gaps: the legacy-alias fold before it (`-webkit-transform` beside an
+  identical `transform`) and shorthand composition after it, which can each
+  move a declaration past an untyped one the trace orders it against.
 - **Rule rewrites that move source order reason about overlap.** Factoring a
   default value into a shared block keeps a rule's own declaration when an
   earlier overlapping rule writes a different value. Nesting synthesis is

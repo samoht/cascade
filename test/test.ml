@@ -40,6 +40,7 @@ let () =
       Test_reach.suite;
       Test_rule_order.suite;
       Test_rule_order_layer.suite;
+      Test_rule_trace.suite;
       Test_common.suite;
       Test_ctx.suite;
       Test_stats.suite;

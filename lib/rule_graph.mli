@@ -213,6 +213,18 @@ type branches
 val branches : Selector.t -> branches
 (** [branches s] is the branches of [s]. *)
 
+val branches_under : ?parent:Selector.t -> Selector.t -> branches
+(** [branches_under ?parent s] is {!val-branches} of [s] as the cascade weighs
+    it: under a nesting [parent], each branch of [s] expanded against each
+    branch of [parent], as {!val-rules_conflict} reads a rule. *)
+
+val branches_conflict : branches -> branches -> bool
+(** [branches_conflict (branches a) (branches b)] is the selector half of
+    {!val-rules_conflict} between a rule selecting [a] and one selecting [b]. *)
+
+val branch_specificities : branches -> Selector.specificity list
+(** [branch_specificities b] is the specificity of each branch of [b]. *)
+
 val node_selector_conflict : t -> branches -> node_id -> bool
 (** [node_selector_conflict t (branches a) i] is the selector half of
     {!val-rules_conflict} between a rule selecting [a] and node [i]: some branch
@@ -252,70 +264,6 @@ val canonical_order_by : t -> (node_id -> int) -> node_id array
     passes source position for a minimal-disruption order; the canonical
     comparison passes a content-derived rank so two source orderings of
     cascade-independent rules converge to one form. *)
-
-type run
-(** The order of one run of rules a canonical projection settles, kept while
-    some of its rules fold together. Unlike {!t}, a consumed node leaves no
-    relay behind: once it is gone, two rules only it ordered are free. *)
-
-val run :
-  ?parent:Selector.t ->
-  ?exclusive:(node_id -> node_id -> bool) ->
-  folds:(node_id -> bool) ->
-  Stylesheet.rule list ->
-  run
-(** [run ?parent ?exclusive ~folds rules] is the run of [rules], node [i] the
-    [i]th rule standing at position [i]. Until a fold, {!run_order} orders it as
-    {!canonical_order_by} orders
-    [of_rules ?parent ~pin_shared_branches:false ?exclusive rules]. [folds i]
-    says whether node [i] may later be consumed by {!fold}; the fewer that may,
-    the fewer edges the run holds. [exclusive i j] asserts that nodes [i] and
-    [j] never apply to one element together, so no cascade conflict is recorded
-    between them, and it speaks for the nodes {!fold} produces too. *)
-
-val run_order : run -> (node_id -> int) -> node_id array
-(** [run_order r rank] is the live nodes of [r] in a linear extension of their
-    conflicts, choosing among the nodes free to come next the one with the
-    smallest [rank]. That order becomes where the nodes stand. [rank] must be
-    injective on the live nodes. *)
-
-val run_conflict : run -> node_id -> node_id -> bool
-(** [run_conflict r i j] is {!rules_conflict} between the rules of nodes [i] and
-    [j], whatever [exclusive] says. *)
-
-val fold : run -> node_id list -> Stylesheet.rule -> at:node_id -> node_id
-(** [fold r consumed rule ~at] replaces the live nodes [consumed], each one
-    [run]'s [folds] allowed or one an earlier fold produced, by a new node for
-    [rule] standing where [at] stood, and is that node. [at] is one of
-    [consumed]. *)
-
-val run_reaches : run -> node_id list -> node_id -> bool
-(** [run_reaches r starts j] is whether [j] is one of [starts] or a chain of
-    conflicts leads to it from one, every node on the chain standing no later
-    than [j] in the order {!run_order} last gave. *)
-
-val run_orders : run -> node_id -> node_id -> bool
-(** [run_orders r i j] is whether [r] requires [i] before [j] through a chain of
-    conflicts passing some other live node, [i] standing before [j] in the order
-    {!run_order} last gave. A direct conflict between the two alone does not
-    count. *)
-
-val join :
-  ?follow:node_id list ->
-  ?from:node_id list ->
-  run ->
-  node_id list ->
-  Stylesheet.rule ->
-  at:node_id ->
-  node_id
-(** [join ?follow ?from r consumed rule ~at] is {!fold} for nodes no chain of
-    conflicts through another node orders ({!run_orders}), wherever they stand:
-    a node one of [from] (default [consumed]) or of [follow] reaches follows the
-    new node, and so does every node of [follow]; every other node it conflicts
-    with precedes it. A caller lists in [follow] what [rule] has to precede that
-    [consumed] did not, and leaves out of [from] a consumed node whose writes
-    [rule] carries under constraints of its own. Where the new node stands is
-    unknown until the next {!run_order}. *)
 
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension

@@ -66,6 +66,7 @@ the public API has to update:
   Rule_order_layer
   Rule_rewrite
   Rule_scheduler
+  Rule_trace
   Selector
   Selector_summary
   Shorthand

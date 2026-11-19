@@ -24,6 +24,7 @@ let broad_overlap_key = Shorthand_coverage.broad_overlap_key
 let overlap_keys_broad = Shorthand_coverage.overlap_keys_broad
 let overlap_keys_intersect = Shorthand_coverage.overlap_keys_intersect
 let declaration_overlap_keys = Shorthand_coverage.declaration_overlap_keys
+let declaration_slot_keys = Shorthand_coverage.declaration_slot_keys
 let footprint_family = Shorthand_coverage.footprint_family
 
 let declarations_overlap_with_keys =

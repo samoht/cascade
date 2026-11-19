@@ -1299,6 +1299,23 @@ let rec declaration_overlap_keys decl =
           else [ broad_overlap_key ])
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
+(* The slots a typed property writes wherever it is read. [all], a custom
+   property and a name the model cannot place name no such slot, and a
+   vendor-prefixed spelling writes its slots only in an engine that has the
+   prefix. *)
+let written_slots : type a. a Properties.property -> overlap_key list = function
+  | All -> []
+  | Custom_property _ -> []
+  | Unknown_property _ -> []
+  | property -> property_slots property
+
+let declaration_slot_keys decl =
+  match decl with
+  | Theme_guarded _ -> []
+  | Declaration { property; _ } ->
+      if String.starts_with ~prefix:"-" (Declaration.property_name decl) then []
+      else sorted_keys (written_slots property)
+
 (* Each family head's footprint in the order [footprint_family_heads] lists
    them, sorted as [declaration_overlap_keys] sorts a declaration's. *)
 let family_footprints =
