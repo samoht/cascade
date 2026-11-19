@@ -3,6 +3,12 @@
 val vendor : Selector.t -> bool
 (** Whether a selector contains a vendor-specific pseudo-element. *)
 
+val engine_specific : Selector.t -> bool
+(** [engine_specific sel] is whether [sel] holds a vendor-specific
+    pseudo-element, or a prefixed pseudo-class some target browser does not
+    read, either of which makes a selector list holding [sel] invalid there as a
+    whole. A grouping pass never lists such a selector with another. *)
+
 val key : Selector.t -> Selector.t list
 (** Canonical key for same-target selector comparison. *)
 
