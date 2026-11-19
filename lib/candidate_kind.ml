@@ -38,7 +38,7 @@ let rewrite_view g graph ~consume =
 let same_id a b = Rule_graph.Node_id.compare a b = 0
 let same_decl = Declaration.same_minified
 let merge_selector_list = Merge.selector_list
-let contains_vendor_pseudo_element = Merge.engine_specific
+let listable = Merge.listable
 let decls_size = Size.decls
 let mix_int = Common.mix_int
 let hash_ints xs = List.fold_left mix_int 0x345678 xs
@@ -51,8 +51,7 @@ module Int_table = Common.Table.Make (struct
 end)
 
 let rule_eligible (r : rule) =
-  r.nested = [] && r.merge_key = Option.None
-  && (not (contains_vendor_pseudo_element r.selector))
+  r.nested = [] && r.merge_key = Option.None && listable r.selector
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
 (* Any identical-body rules can group into a selector list: a list of disjoint

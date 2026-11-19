@@ -187,8 +187,15 @@ let vendor_pseudo_list_is_kept () =
   let kept css = Alcotest.(check string) css css (canon css) in
   kept "b::-moz-selection,input::file-selector-button{background:red}";
   kept "b,input::-webkit-search-decoration{color:red}";
-  kept
-    ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration,.i::-webkit-search-results-button{display:none}.reset{display:none}";
+  (* Every target parses a [::-webkit-] pseudo-element, so [.reset] may join the
+     list; what must hold is that the three branches stay together. *)
+  let three =
+    ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration,.i::-webkit-search-results-button"
+  in
+  let out =
+    canon (String.concat "" [ three; "{display:none}.reset{display:none}" ])
+  in
+  Alcotest.(check bool) out true (Astring.String.is_infix ~affix:three out);
   kept
     ".i::-webkit-search-cancel-button,.i::-webkit-search-decoration{display:none}"
 
