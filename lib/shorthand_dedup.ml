@@ -703,26 +703,6 @@ let drop_redundant_decoration_color_aliases declarations =
            declarations))
     declarations
 
-(* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
-   [-o-]) return the unprefixed remainder; otherwise [None]. *)
-let strip_vendor_prefix name =
-  let n = String.length name in
-  let try_prefix p =
-    let pn = String.length p in
-    if n > pn && String.sub name 0 pn = p then
-      Some (String.sub name pn (n - pn))
-    else None
-  in
-  match try_prefix "-webkit-" with
-  | Some _ as r -> r
-  | None -> (
-      match try_prefix "-moz-" with
-      | Some _ as r -> r
-      | None -> (
-          match try_prefix "-ms-" with
-          | Some _ as r -> r
-          | None -> try_prefix "-o-"))
-
 (* Whether [decl]'s property is one no browser a judge can name reads. Chrome
    151 and WebKit 26.5 list no [-ms-] or [-o-] property and support none, and
    Firefox's property tables carry only the [moz] and [webkit] prefixes: those
@@ -822,20 +802,26 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
   if Ctx.enforce_spec ctx then kept (* spec-literal: keep every vendor prefix *)
   else
     (* A comparison that judges for targets one of which reads only the prefixed
-       spelling keeps the twin there, as the minifier's synthesis writes it for
-       those targets. *)
-    let target_needs other =
+       spelling keeps that spelling there, as the minifier's synthesis writes it
+       for those targets; another prefix of the same property is dead all the
+       same. *)
+    let target_needs decl other =
       match Ctx.judge ctx with
       | Option.None -> false
-      | Option.Some targets ->
-          Option.is_some (Webkit_fallback.of_declaration targets other)
+      | Option.Some targets -> (
+          match Webkit_fallback.of_declaration targets other with
+          | Option.Some needed ->
+              String.equal
+                (Declaration.property_name needed)
+                (String.lowercase_ascii (Declaration.property_name decl))
+          | Option.None -> false)
     in
     let has_dead_prefix (_, decl) =
       List.exists
         (fun (_, other) ->
           (vendor_alias_twin decl other || text_vendor_alias_twin decl other)
           && unprefixed_is_widely_available other
-          && not (target_needs other))
+          && not (target_needs decl other))
         kept
     in
     filter_preserve (fun item -> not (has_dead_prefix item)) kept

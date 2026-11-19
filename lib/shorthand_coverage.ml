@@ -1248,7 +1248,21 @@ let is_known_footprint_key k =
    [background-position-x] writes part of [background], [grid-row-gap] is
    [row-gap] - so it has to be treated as touching whatever it is compared
    against. *)
-let unknown_name_is_placeable name = is_known_footprint_key (key name)
+(* The typed property an untyped prefixed name spells. An engine that reads
+   [-moz-transform-origin] reads it as [transform-origin] (Firefox's
+   longhands.toml gives that property the [moz] and [webkit] prefixes, and
+   Chromium and WebKit alias their [-webkit-] names), and one that does not
+   reads nothing, so such a name writes that property's slots at most. *)
+let prefixed_spelling name =
+  match Shorthand_common.strip_vendor_prefix name with
+  | None -> None
+  | Some unprefixed -> (
+      match Shorthand_common.property_of_name unprefixed with
+      | Some (Properties.Prop (Unknown_property _)) | None -> None
+      | Some _ as spelled -> spelled)
+
+let unknown_name_is_placeable name =
+  is_known_footprint_key (key name) || Option.is_some (prefixed_spelling name)
 
 (* Whether one name is the other with a further hyphenated component, the shape
    a longhand takes under its shorthand. Two placeable names of that shape write
@@ -1277,9 +1291,14 @@ let sorted_keys keys =
 let rec declaration_overlap_keys decl =
   match decl with
   | Theme_guarded { decl; _ } -> declaration_overlap_keys decl
-  | Declaration { property = Unknown_property name; _ }
-    when not (unknown_name_is_placeable name) ->
-      [ broad_overlap_key ]
+  | Declaration { property = Unknown_property name; _ } -> (
+      match prefixed_spelling name with
+      | Some (Properties.Prop property) ->
+          sorted_keys (property_footprint property)
+      | None ->
+          if is_known_footprint_key (key name) then
+            sorted_keys (property_footprint (Unknown_property name))
+          else [ broad_overlap_key ])
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
 (* Each family head's footprint in the order [footprint_family_heads] lists
@@ -1326,7 +1345,8 @@ let declarations_overlap_with_keys a a_keys b b_keys =
   | ( Declaration { property = Unknown_property a; _ },
       Declaration { property = Unknown_property b; _ } ) ->
       String.equal a b || name_extends a b || name_extends b a
-      || not (unknown_name_is_placeable a && unknown_name_is_placeable b)
+      || (not (unknown_name_is_placeable a && unknown_name_is_placeable b))
+      || overlap_keys_intersect a_keys b_keys
   | Declaration { property = Unknown_property name; _ }, Declaration _ ->
       (not (unknown_name_is_placeable name))
       || overlap_keys_intersect a_keys b_keys
