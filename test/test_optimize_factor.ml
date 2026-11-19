@@ -947,6 +947,20 @@ let test_untyped_vendor_alias_of_typed_twin () =
     "enforce-spec" "a{-webkit-flex-grow:1;flex-grow:1}"
     (optimized_string ~enforce_spec:true "a{-webkit-flex-grow:1;flex-grow:1}")
 
+(* [-webkit-touch-callout: default | none] (Apple's Safari CSS Reference; MDN:
+   iOS Safari 2). Its keywords read ASCII case-insensitively, an earlier one a
+   later one overrides is dead, and any other value is dropped. *)
+let test_touch_callout_typed () =
+  Alcotest.(check string)
+    "keyword case" "a{-webkit-touch-callout:none}"
+    (minify_str "a{-webkit-touch-callout:NONE}");
+  Alcotest.(check string)
+    "an overridden declaration is dead" "a{-webkit-touch-callout:default}"
+    (minify_str "a{-webkit-touch-callout:none;-webkit-touch-callout:default}");
+  Alcotest.(check string)
+    "a value outside the grammar" "a{color:red}"
+    (minify_str "a{color:red;-webkit-touch-callout:auto}")
+
 (* The prefixed spellings of [:fullscreen] are read by the targets: Chromium and
    WebKit keep a [:-webkit-full-screen] rule, and MDN's compatibility data lists
    [:-moz-full-screen] in Firefox since 9 with no removal. A rule over one is
@@ -1121,6 +1135,7 @@ let suite =
         test_merge_pseudo_element_every_target_reads );
       ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
       ("text-rendering is typed", `Quick, test_text_rendering_typed);
+      ("touch-callout is typed", `Quick, test_touch_callout_typed);
       ( "untyped vendor alias of a typed twin",
         `Quick,
         test_untyped_vendor_alias_of_typed_twin );
