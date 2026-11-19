@@ -378,59 +378,79 @@ let block_statement prelude body =
    the other. Style, media and supports shapes retain their text keys, while a
    container condition uses the structural equality that decides whether two
    queries select the same containers. Its normalised spelling is only a hash:
-   collisions still reach [equal] instead of becoming merges. *)
+   collisions still reach [equal] instead of becoming merges. A key carries its
+   hash, worked out once: the rounds of {!settle} look every element's key up
+   several times each. *)
 module Shape_key = struct
-  type t = Text of string | Container of string option * Container.t option
+  type shape =
+    | Text of string
+    | Container of string option * Container.t option
+
+  type t = { shape : shape; hash : int }
+
+  let v shape =
+    let hash =
+      match shape with
+      | Text text -> Hashtbl.hash (0, text)
+      | Container (name, cond) ->
+          let cond =
+            Option.map
+              (fun c ->
+                Container.to_string ~minify:true (Container.normalize c))
+              cond
+          in
+          Hashtbl.hash (1, name, cond)
+    in
+    { shape; hash }
 
   let equal a b =
-    match (a, b) with
+    Int.equal a.hash b.hash
+    &&
+    match (a.shape, b.shape) with
     | Text a, Text b -> String.equal a b
     | Container (an, ac), Container (bn, bc) ->
         Option.equal String.equal an bn && Option.equal Container.equal ac bc
     | (Text _ | Container _), _ -> false
 
-  let hash = function
-    | Text text -> Hashtbl.hash (0, text)
-    | Container (name, cond) ->
-        let cond =
-          Option.map
-            (fun c -> Container.to_string ~minify:true (Container.normalize c))
-            cond
-        in
-        Hashtbl.hash (1, name, cond)
+  let hash t = t.hash
 end
 
 module Shape_table = Hashtbl.Make (Shape_key)
 
-let shape_key = function
-  | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
-  | Block (Media_query m, _) ->
-      Shape_key.Text (String.concat "" [ "@media "; Media.to_string m ])
-  | Block (Feature_query c, _) ->
-      Shape_key.Text (String.concat "" [ "@supports "; Supports.to_string c ])
-  | Block (Container_query (name, cond), _) -> Shape_key.Container (name, cond)
+let shape_key shape =
+  Shape_key.v
+    (match shape with
+    | Style r -> Text (Pp.to_string ~minify:true Selector.pp r.selector)
+    | Block (Media_query m, _) ->
+        Text (String.concat "" [ "@media "; Media.to_string m ])
+    | Block (Feature_query c, _) ->
+        Text (String.concat "" [ "@supports "; Supports.to_string c ])
+    | Block (Container_query (name, cond), _) -> Container (name, cond))
 
 let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
 
 (* A run element and what the rounds of {!settle} read off it, worked out once:
-   the graph node standing for it, its shape key, the conditions every rule of
-   it sits under, and its serialized text, which ranks it among the elements it
-   is free to pass. *)
+   the graph node standing for it, what {!Rule_graph.facts_conflict} reads off
+   that node, its shape key, the conditions every rule of it sits under, and its
+   serialized text, which ranks it among the elements it is free to pass. *)
 type element = {
   stmt : statement;
   rules : rule list;
   node : rule;
+  facts : Rule_graph.facts Lazy.t;
   plain : bool;
   key : Shape_key.t option;
   conditions : condition list;
   text : string Lazy.t;
 }
 
-let element stmt rules =
+let element ?parent stmt rules =
+  let node = element_node stmt rules in
   {
     stmt;
     rules;
-    node = element_node stmt rules;
+    node;
+    facts = lazy (Rule_graph.facts ?parent node);
     plain = (match stmt with Rule _ -> true | _ -> false);
     key = element_key stmt;
     conditions = element_conditions stmt;
@@ -672,7 +692,7 @@ let folded scan =
     | [ q ] when q = p -> ids.(p)
     | members ->
         let stmt, rules = scan.current.(p) in
-        let e = element stmt rules in
+        let e = element ?parent:st.parent stmt rules in
         (* the graph asks [exclusive] about the node it adds *)
         add_element st.store e;
         Rule_graph.Node_id.to_int
@@ -798,7 +818,7 @@ let join_held st changed ids =
   | Option.None -> Option.None
   | Option.Some (i, a, p, b) ->
       let merged = merged_rule ~ctx:st.ctx a b in
-      let e = element (Rule merged) [ merged ] in
+      let e = element ?parent:st.parent (Rule merged) [ merged ] in
       add_element st.store e;
       let id =
         Rule_graph.Node_id.to_int
@@ -831,7 +851,10 @@ let join_held st changed ids =
    conflicts with [b] writes again is not one: [b] then decides those slots on
    whichever side of the rule [d] stands. *)
 let followers st ids i p (a : rule) (b : rule) d =
-  let alone = { a with declarations = [ d ] } in
+  let alone =
+    Rule_graph.facts ?parent:st.parent { a with declarations = [ d ] }
+  in
+  let conflicts e = Rule_graph.facts_conflict alone (Lazy.force e.facts) in
   let rewritten x =
     List.exists
       (fun e ->
@@ -839,8 +862,8 @@ let followers st ids i p (a : rule) (b : rule) d =
         && Shorthand.declaration_covers e x)
       b.declarations
   in
-  let held_by (node_rule : rule) =
-    Rule_graph.rules_conflict ?parent:st.parent alone node_rule
+  let held_by e =
+    conflicts e
     && not
          (List.for_all
             (fun x ->
@@ -850,18 +873,14 @@ let followers st ids i p (a : rule) (b : rule) d =
                     x
                     (Shorthand.declaration_overlap_keys x)))
               || rewritten x)
-            node_rule.declarations)
+            e.node.declarations)
   in
   let n = Array.length ids in
   let rec collect q acc =
     if q >= n then acc
     else
-      let node_rule = st.store.elements.(ids.(q)).node in
-      let follows =
-        if q < p then held_by node_rule
-        else
-          q > p && Rule_graph.rules_conflict ?parent:st.parent alone node_rule
-      in
+      let e = st.store.elements.(ids.(q)) in
+      let follows = if q < p then held_by e else q > p && conflicts e in
       collect (q + 1) (if follows then node ids.(q) :: acc else acc)
   in
   collect (i + 1) []
@@ -912,7 +931,7 @@ let sink_held st changed ids =
           (List.concat_map (followers st ids i p a b) moved)
       in
       let replace q rule fold =
-        let e = element (Rule rule) [ rule ] in
+        let e = element ?parent:st.parent (Rule rule) [ rule ] in
         add_element st.store e;
         Rule_graph.Node_id.to_int (fold e.node ~at:(node ids.(q)))
       in
@@ -1007,7 +1026,8 @@ let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
   | [ (stmt, _) ] -> [ stmt ]
   | run ->
       let elements =
-        Array.of_list (List.map (fun (stmt, rules) -> element stmt rules) run)
+        Array.of_list
+          (List.map (fun (stmt, rules) -> element ?parent stmt rules) run)
       in
       let st = settling ~canon_body ~ctx ?parent elements in
       let rec rounds ids =
