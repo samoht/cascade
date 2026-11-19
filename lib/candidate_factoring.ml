@@ -295,12 +295,14 @@ let default_decl_removed_after_reassertion entries ~prior member =
 let default_member_group_decls ~exact_common entries member =
   exact_common @ removed_default_declarations entries member
 
+(* A prior member's leftover is read once, whichever later members ask. *)
 let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
-  let prior_leftover member =
+  let leftover_facts member =
     member.rule.declarations
     |> Lift.remove_common exact_common
     |> Property_key.remove keys
-    |> fun kept -> kept @ override_declarations entries member
+    |> (fun kept -> kept @ override_declarations entries member)
+    |> decl_facts
   in
   let rec loop prior = function
     | [] -> false
@@ -308,17 +310,20 @@ let unsafe_default_prior_lift g ~keys ~entries ~exact_common members =
         let group_decls =
           default_member_group_decls ~exact_common entries member
         in
-        let group_facts = decl_facts group_decls in
         let unsafe_prior =
           group_decls <> []
-          && List.exists
-               (fun prior_member ->
-                 Rule_graph.conflict (graph g) prior_member.id member.id
-                 && Lift.declarations_conflict_with_group_facts group_facts
-                      (prior_leftover prior_member))
-               prior
+          &&
+          let group_facts = decl_facts group_decls in
+          List.exists
+            (fun (prior_id, leftover) ->
+              Rule_graph.conflict (graph g) prior_id member.id
+              && List.exists
+                   (fun fact -> List.exists (Commute.conflict fact) group_facts)
+                   (Lazy.force leftover))
+            prior
         in
-        unsafe_prior || loop (member :: prior) rest
+        unsafe_prior
+        || loop ((member.id, lazy (leftover_facts member)) :: prior) rest
   in
   loop [] members
 
