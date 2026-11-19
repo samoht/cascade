@@ -76,3 +76,29 @@ reads.
   $ printf ':is(a:-o-prefocus,c){color:red}b{color:red}\n' > forgiving.css
   $ cascade fmt --minify forgiving.css
   b,c{color:red}
+
+An unprefixed pseudo-class MDN's compatibility data does not record is
+one no target ships: every pseudo-class an engine reads without a
+prefix is a standard one, which the data records. yahoo-uk-2's
+`#Stencil .Td-u:h:hover` is such a rule: Chrome 151 and WebKit 26.5
+drop it, and Firefox's selector parser lists no `:h`.
+
+  $ printf '#s .t:h:hover{color:red}b{color:red}\n' > h.css
+  $ cascade fmt --minify -q h.css
+  b{color:red}
+  $ cascade diff --diff=canonical h.css other.css > /dev/null 2>&1; echo $?
+  0
+
+A keyframe selector outside CSS Animations 1's `from | to |
+<percentage>`, such as YUI's `0` for `0%`, drops its keyframe rule in
+every engine: Chrome 151 and WebKit 26.5 keep no keyframe for `0` or
+`0,50%,80%,100%`, and Firefox's KeyframePercentage takes `from`, `to`
+and a percentage alone. So its loss is no difference either, under
+`--enforce-spec` too.
+
+  $ printf '@keyframes a{0{opacity:0}to{opacity:1}}\n' > kf.css
+  $ printf '@keyframes a{to{opacity:1}}\n' > kf2.css
+  $ cascade diff --diff=canonical kf.css kf2.css > /dev/null 2>&1; echo $?
+  0
+  $ cascade diff --diff=canonical --enforce-spec kf.css kf2.css > /dev/null 2>&1; echo $?
+  0
