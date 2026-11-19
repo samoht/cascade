@@ -223,8 +223,17 @@ let superseding_content new_decl existing =
       plain_content value && (important || not old_important)
   | _ -> false
 
+(* A normal [content] after an important plain one stands in for nothing: the
+   important one wins whatever the order, and every target reads it. *)
+let under_important_content kept decl =
+  (not (is_important decl))
+  && List.exists
+       (fun (_, old) -> is_important old && superseding_content old decl)
+       kept
+
 let deduplicate_step ?targets kept (idx, decl) =
-  if is_intentionally_duplicated decl then
+  if under_important_content kept decl then kept
+  else if is_intentionally_duplicated decl then
     let kept =
       filter_preserve
         (fun (_, old) ->
