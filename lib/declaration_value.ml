@@ -994,6 +994,8 @@ let read_text_flow_value : type a. a property -> Cursor.t -> declaration option
   | Line_break -> Some (v Line_break (read_line_break t))
   | Hyphens -> Some (v Hyphens (read_hyphens t))
   | Text_rendering -> Some (v Text_rendering (read_text_rendering t))
+  | Webkit_touch_callout ->
+      Some (v Webkit_touch_callout (read_webkit_touch_callout t))
   | Word_spacing -> Some (v Word_spacing (read_word_spacing t))
   | _ -> None
 

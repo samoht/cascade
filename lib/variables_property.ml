@@ -555,6 +555,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Hyphens, value -> vars_of_hyphens value
   | Webkit_hyphens, value -> vars_of_hyphens value
   | Text_rendering, value -> vars_of_text_rendering value
+  | Webkit_touch_callout, value -> vars_of_webkit_touch_callout value
   | Isolation, value -> vars_of_isolation value
   | Touch_action, value -> vars_of_touch_action value
   | Transform_box, value -> vars_of_transform_box value

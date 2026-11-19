@@ -837,6 +837,17 @@ type text_rendering =
   | Revert_layer
   | Var of text_rendering var
 
+(** [-webkit-touch-callout] values (Apple's Safari CSS Reference). *)
+type webkit_touch_callout =
+  | Default
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of webkit_touch_callout var
+
 (** CSS hyphens values *)
 type hyphens =
   | None

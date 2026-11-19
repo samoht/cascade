@@ -335,6 +335,9 @@ let vars_of_hyphens (value : Properties.hyphens) =
 let vars_of_text_rendering (value : Properties.text_rendering) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_webkit_touch_callout (value : Properties.webkit_touch_callout) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_initial_letter_align (value : Properties.initial_letter_align) =
   match value with Var v -> [ V v ] | _ -> []
 

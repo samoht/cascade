@@ -475,6 +475,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   only itself, `--minify` drops one a later `text-rendering` overrides, and
   a value outside `auto | optimizeSpeed | optimizeLegibility |
   geometricPrecision` is dropped with a warning, as browsers drop it (#1440).
+- `-webkit-touch-callout`, iOS Safari's own longhand, was read as an unknown
+  property and so kept rules apart that write nothing in common: w3schools'
+  cleancss sheet differed from its `--minify` output in `cascade diff
+  --diff=canonical`. It is typed as `default | none` and touches only itself,
+  and a `-khtml-` property, which no target reads, is dropped from both sides
+  of the comparison as a `-ms-` one is (#1442).
 - `cascade diff --diff=canonical` ordered two rules that write one slot
   through two spellings of a property with one value, as
   `-moz-transform:rotate(180deg)` and `-webkit-transform:rotate(180deg)` do,

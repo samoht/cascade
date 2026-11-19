@@ -2095,6 +2095,10 @@ val hyphens : hyphens -> declaration
 val text_rendering : text_rendering -> declaration
 (** [text_rendering v] is the SVG 2 [text-rendering] property. *)
 
+val webkit_touch_callout : webkit_touch_callout -> declaration
+(** [webkit_touch_callout v] is the iOS Safari-only [-webkit-touch-callout]
+    property. *)
+
 val webkit_hyphens : hyphens -> declaration
 (** [webkit_hyphens v] is the WebKit-only [-webkit-hyphens] property. *)
 
