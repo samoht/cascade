@@ -1276,6 +1276,12 @@ val pp_overflow_wrap : overflow_wrap Pp.t
 val read_overflow_wrap : Cursor.t -> overflow_wrap
 (** [read_overflow_wrap t] is the [overflow_wrap] parsed from [t]. *)
 
+val pp_text_rendering : text_rendering Pp.t
+(** [pp_text_rendering] is the pretty-printer for [text_rendering]. *)
+
+val read_text_rendering : Cursor.t -> text_rendering
+(** [read_text_rendering t] is the [text_rendering] parsed from [t]. *)
+
 val pp_hyphens : hyphens Pp.t
 (** [pp_hyphens] is the pretty-printer for [hyphens]. *)
 

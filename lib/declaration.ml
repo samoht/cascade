@@ -651,6 +651,7 @@ let word_break value = v Word_break value
 let overflow_wrap value = v Overflow_wrap value
 let line_break value = v Line_break value
 let hyphens value = v Hyphens value
+let text_rendering value = v Text_rendering value
 let webkit_hyphens value = v Webkit_hyphens value
 let font_stretch value = v Font_stretch value
 let font_optical_sizing value = v Font_optical_sizing value

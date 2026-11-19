@@ -2027,6 +2027,11 @@ val hyphens : hyphens -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens} hyphens}
     property. *)
 
+val text_rendering : text_rendering -> declaration
+(** [text_rendering rendering] is the
+    {{:https://svgwg.org/svg2-draft/painting.html#TextRenderingProperty}
+     text-rendering} property. *)
+
 val font_stretch : font_stretch -> declaration
 (** [font_stretch stretch] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-stretch}

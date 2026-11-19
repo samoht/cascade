@@ -425,6 +425,19 @@ let rec pp_overflow_wrap : overflow_wrap Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let rec pp_text_rendering : text_rendering Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_text_rendering ctx v
+  | Auto -> Pp.string ctx "auto"
+  | Optimize_speed -> Pp.string ctx "optimizeSpeed"
+  | Optimize_legibility -> Pp.string ctx "optimizeLegibility"
+  | Geometric_precision -> Pp.string ctx "geometricPrecision"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
 let rec pp_hyphens : hyphens Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_hyphens ctx v
@@ -743,6 +756,22 @@ let rec read_overflow_wrap t : overflow_wrap =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_overflow_wrap t))
+    t
+
+let rec read_text_rendering t : text_rendering =
+  Cursor.enum_or_var "text-rendering"
+    [
+      ("auto", (Auto : text_rendering));
+      ("optimizespeed", Optimize_speed);
+      ("optimizelegibility", Optimize_legibility);
+      ("geometricprecision", Geometric_precision);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_text_rendering t))
     t
 
 let rec read_hyphens t : hyphens =

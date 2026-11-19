@@ -422,6 +422,7 @@ let pp_property : type a. a property Pp.t =
   | Line_break -> Pp.string ctx "line-break"
   | Hyphens -> Pp.string ctx "hyphens"
   | Webkit_hyphens -> Pp.string ctx "-webkit-hyphens"
+  | Text_rendering -> Pp.string ctx "text-rendering"
   | Font_stretch -> Pp.string ctx "font-stretch"
   | Font_optical_sizing -> Pp.string ctx "font-optical-sizing"
   | Font_kerning -> Pp.string ctx "font-kerning"
@@ -602,8 +603,7 @@ let property_class : type a. a property -> a property_class = function
   | Unknown_property name -> (
       match String.lowercase_ascii name with
       | "empty-cells" | "font-variant" | "font-variant-alternates" | "orphans"
-      | "text-align-last" | "text-justify" | "text-rendering" | "widows"
-      | "word-wrap" ->
+      | "text-align-last" | "text-justify" | "widows" | "word-wrap" ->
           Inherited
       | _ -> Non_inherited)
   | Width -> Checks_length_percentage
@@ -713,6 +713,7 @@ let property_class : type a. a property -> a property_class = function
   | Line_break -> Inherited
   | Hyphens -> Inherited
   | Webkit_hyphens -> Inherited
+  | Text_rendering -> Inherited
   | Font_stretch -> Inherited
   | Font_optical_sizing -> Inherited
   | Font_kerning -> Inherited

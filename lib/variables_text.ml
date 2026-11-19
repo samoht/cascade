@@ -332,6 +332,9 @@ let vars_of_dominant_baseline (value : Properties.dominant_baseline) =
 let vars_of_hyphens (value : Properties.hyphens) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_text_rendering (value : Properties.text_rendering) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_initial_letter_align (value : Properties.initial_letter_align) =
   match value with Var v -> [ V v ] | _ -> []
 

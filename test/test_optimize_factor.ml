@@ -909,6 +909,24 @@ let test_no_merge_pseudo_some_target_lacks () =
     "a pseudo-element every target reads lists" ".a::placeholder,.b{color:red}"
     (minify_str ".a::placeholder{color:red}.b{color:red}")
 
+(* SVG 2, "The 'text-rendering' property": [auto | optimizeSpeed |
+   optimizeLegibility | geometricPrecision], keywords read ASCII
+   case-insensitively (CSS Values 4 sec. 4.1). Every target reads each of them,
+   so an earlier declaration a later one overrides is dead, and a value outside
+   the grammar is one every target drops. *)
+let test_text_rendering_typed () =
+  Alcotest.(check string)
+    "keyword case" "a{text-rendering:optimizeLegibility}"
+    (minify_str "a{text-rendering:OPTIMIZELEGIBILITY}");
+  Alcotest.(check string)
+    "an overridden declaration is dead"
+    "a{color:red;text-rendering:optimizeSpeed}"
+    (minify_str
+       "a{text-rendering:optimizeLegibility;color:red;text-rendering:optimizeSpeed}");
+  Alcotest.(check string)
+    "a value outside the grammar" "a{color:red}"
+    (minify_str "a{color:red;text-rendering:crisp}")
+
 (* A prefixed copy of a widely available property, with its value and
    importance, is dead beside the unprefixed declaration whatever the reader
    types: cascade drops [-webkit-animation-delay] beside [animation-delay], and
@@ -1102,6 +1120,7 @@ let suite =
         `Quick,
         test_merge_pseudo_element_every_target_reads );
       ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
+      ("text-rendering is typed", `Quick, test_text_rendering_typed);
       ( "untyped vendor alias of a typed twin",
         `Quick,
         test_untyped_vendor_alias_of_typed_twin );
