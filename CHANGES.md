@@ -33,8 +33,8 @@ and makes cascade cheaper to run.
   rule merged into a nested parent is nested in the first pass rather than on
   a second run. Numbers print the same on Windows as elsewhere. Minifying
   `--minify` output again returns it byte for byte, on all 504 SatCSS sheets
-  and on Tailwind's output, where 53 of those sheets and Tailwind's own
-  stylesheet shrank again.
+  and on Tailwind's output, where with 1.2.1 69 of those sheets and both
+  Tailwind stylesheets shrank again.
 - **Smaller output that follows one stated rule.** Over the 504 SatCSS sheets
   and Tailwind's output, `--minify` output is 1.1% smaller raw than with
   1.2.1, 0.15% smaller under gzip and 0.03% smaller under brotli. By default,
@@ -204,8 +204,8 @@ to call instead, and moving off most of them is a rename or a deleted call.
 
 ### Output
 
-- Minifying `--minify` output again could shrink it further: 53 of the 504
-  SatCSS sheets did, by up to 296 bytes, and so did Tailwind's stylesheet. One
+- Minifying `--minify` output again could shrink it further: 69 of the 504
+  SatCSS sheets did, by up to 434 bytes, and so did both Tailwind sheets. One
   run left work behind. Above 128 rules the merge search judged distances and
   orders on its own working state, where rules already merged away still stood
   between the others and still ordered them, so a search of the output reached
