@@ -365,6 +365,10 @@ to call instead, and moving off most of them is a rename or a deleted call.
   a declaration in either of two occurrences of its selector that other rules
   hold apart, though nothing between the two meets it. The declaration
   compares as written in the later occurrence (#1413).
+- `cascade diff --diff=canonical` ordered two rules that write the same
+  declarations in the same order wherever they touch, such as a `border` then
+  a `border-bottom-color` in both, so the pair written the other way round
+  compared different. They compare identical (#1414).
 
 ### Speed
 
