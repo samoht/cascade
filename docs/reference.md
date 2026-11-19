@@ -121,9 +121,9 @@ same element and whose equal-importance declarations overlap once shorthands
 are expanded. Independent rules stay unordered.
 
 Candidate rewrites are scheduled through a priority queue, largest saving
-first. Applying one updates the graph and re-enumerates only the affected
-neighbourhood; a full enumeration is kept as the fallback when the queue
-drains. The output is a topological order of the final graph, with the first
+first. Applying one updates the graph; when the queue drains, the candidates
+of the neighbourhood the commits touched are worked out again, and every
+candidate whose refusal no longer stands is queued again, at every size. The output is a topological order of the final graph, with the first
 source appearance as the tie-break, so rules keep their source order wherever
 the cascade does not force another.
 
