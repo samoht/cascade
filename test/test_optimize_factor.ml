@@ -852,6 +852,22 @@ let test_no_merge_vendor_pseudo_class () =
     "a prefix every target reads lists" ".b,input:-webkit-autofill{color:red}"
     (minify_str "input:-webkit-autofill{color:red}.b{color:red}")
 
+(* The prefixed spellings of [:fullscreen] are read by the targets: Chromium and
+   WebKit keep a [:-webkit-full-screen] rule, and MDN's compatibility data lists
+   [:-moz-full-screen] in Firefox since 9 with no removal. A rule over one is
+   not dropped, and the two spellings, each unread by some target, stay in rules
+   of their own. *)
+let test_fullscreen_vendor_pseudo_classes () =
+  List.iter
+    (fun (name, css) -> Alcotest.(check string) name css (minify_str css))
+    [
+      ("webkit", ".a:-webkit-full-screen{width:100%}");
+      ("moz", ":-moz-full-screen{width:100%!important}");
+      ("webkit ancestor", ".a:-webkit-full-screen-ancestor{width:100%}");
+      ( "the two spellings stay apart",
+        ".a:-webkit-full-screen{width:100%}.a:-moz-full-screen{width:100%}" );
+    ]
+
 let test_no_merge_with_nested () =
   let input =
     [
@@ -979,5 +995,8 @@ let suite =
       ("pp minify is idempotent", `Quick, test_pp_minify_is_idempotent);
       ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
       ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
+      ( "fullscreen vendor pseudo-classes",
+        `Quick,
+        test_fullscreen_vendor_pseudo_classes );
       ("no merge with nested", `Quick, test_no_merge_with_nested);
     ] )
