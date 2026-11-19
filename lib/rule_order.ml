@@ -825,28 +825,55 @@ let join_held st changed ids =
    only joins nodes, and is not asked again. Two sheets that wrote one
    declaration in different occurrences of its selector, where the cascade lets
    it stand in either, so meet. *)
-(* The rules standing strictly between positions [i] and [p] that [d], written
-   in [a], conflicts with. *)
-let followers st ids i p (a : rule) d =
+(* The rules standing after position [i], other than the later occurrence [b]
+   at [p], that [d], written in [a], conflicts with and so has to precede
+   wherever it stands. A rule between the two whose every declaration [d]
+   conflicts with [b] writes again is not one: [b] then decides those slots on
+   whichever side of the rule [d] stands. *)
+let followers st ids i p (a : rule) (b : rule) d =
   let alone = { a with declarations = [ d ] } in
+  let rewritten x =
+    List.exists
+      (fun e ->
+        Bool.equal (Declaration.is_important e) (Declaration.is_important x)
+        && Shorthand.declaration_covers e x)
+      b.declarations
+  in
+  let held_by (node_rule : rule) =
+    Rule_graph.rules_conflict ?parent:st.parent alone node_rule
+    && not
+         (List.for_all
+            (fun x ->
+              (not
+                 (Shorthand.declarations_conflict_with_keys d
+                    (Shorthand.declaration_overlap_keys d)
+                    x
+                    (Shorthand.declaration_overlap_keys x)))
+              || rewritten x)
+            node_rule.declarations)
+  in
+  let n = Array.length ids in
   let rec collect q acc =
-    if q >= p then acc
+    if q >= n then acc
     else
       let node_rule = st.store.elements.(ids.(q)).node in
-      collect (q + 1)
-        (if Rule_graph.rules_conflict ?parent:st.parent alone node_rule then
-           node ids.(q) :: acc
-         else acc)
+      let follows =
+        if q < p then held_by node_rule
+        else
+          q > p && Rule_graph.rules_conflict ?parent:st.parent alone node_rule
+      in
+      collect (q + 1) (if follows then node ids.(q) :: acc else acc)
   in
   collect (i + 1) []
 
 (* [a]'s declarations no chain of conflicts orders before position [p], and the
    rest. *)
-let movable st ids i p (a : rule) =
+let movable st ids i p (a : rule) b =
   List.partition
     (fun d ->
       not
-        (Rule_graph.run_reaches st.graph (followers st ids i p a d)
+        (Rule_graph.run_reaches st.graph
+           (followers st ids i p a b d)
            (node ids.(p))))
     a.declarations
 
@@ -867,8 +894,8 @@ let pair_to_sink st ids =
           match Shape_table.find_opt last key with
           | Option.Some (i, a)
             when not (Move_table.mem st.sunk (ids.(i), ids.(q))) -> (
-              match movable st ids i q a with
-              | [], _ | _, [] ->
+              match movable st ids i q a b with
+              | [], _ ->
                   Move_table.replace st.sunk (ids.(i), ids.(q)) ();
                   next ()
               | moved, kept -> Option.Some (i, a, q, b, moved, kept))
@@ -879,26 +906,39 @@ let pair_to_sink st ids =
 let sink_held st changed ids =
   match pair_to_sink st ids with
   | Option.None -> Option.None
-  | Option.Some (i, a, p, b, moved, kept) ->
+  | Option.Some (i, a, p, b, moved, kept) -> (
       let follow =
         List.sort_uniq Rule_graph.Node_id.compare
-          (List.concat_map (followers st ids i p a) moved)
+          (List.concat_map (followers st ids i p a b) moved)
       in
       let replace q rule fold =
         let e = element (Rule rule) [ rule ] in
         add_element st.store e;
         Rule_graph.Node_id.to_int (fold e.node ~at:(node ids.(q)))
       in
+      let into = merged_rule ~ctx:st.ctx { a with declarations = moved } b in
       let sunk = Array.copy ids in
-      sunk.(i) <-
-        replace i { a with declarations = kept } (fun rule ~at ->
-            Rule_graph.fold st.graph [ at ] rule ~at);
-      sunk.(p) <-
-        replace p
-          (merged_rule ~ctx:st.ctx { a with declarations = moved } b)
-          (fun rule ~at -> Rule_graph.join ~follow st.graph [ at ] rule ~at);
       changed := true;
-      Option.Some sunk
+      match kept with
+      | [] ->
+          sunk.(p) <-
+            replace p into (fun rule ~at ->
+                Rule_graph.join ~follow ~from:[ at ] st.graph
+                  [ node ids.(i); at ]
+                  rule ~at);
+          Option.Some
+            (Array.of_list
+               (List.filteri
+                  (fun q _ -> not (Int.equal q i))
+                  (Array.to_list sunk)))
+      | _ :: _ ->
+          sunk.(i) <-
+            replace i { a with declarations = kept } (fun rule ~at ->
+                Rule_graph.fold st.graph [ at ] rule ~at);
+          sunk.(p) <-
+            replace p into (fun rule ~at ->
+                Rule_graph.join ~follow st.graph [ at ] rule ~at);
+          Option.Some sunk)
 
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept

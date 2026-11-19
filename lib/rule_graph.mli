@@ -301,17 +301,20 @@ val run_orders : run -> node_id -> node_id -> bool
 
 val join :
   ?follow:node_id list ->
+  ?from:node_id list ->
   run ->
   node_id list ->
   Stylesheet.rule ->
   at:node_id ->
   node_id
-(** [join ?follow r consumed rule ~at] is {!fold} for nodes no chain of
+(** [join ?follow ?from r consumed rule ~at] is {!fold} for nodes no chain of
     conflicts through another node orders ({!run_orders}), wherever they stand:
-    a node one of [consumed] or [follow] reaches follows the new node, and so
-    does every node of [follow], which a caller lists when [rule] writes more
-    than [consumed] did; every other node it conflicts with precedes it. Where
-    the new node stands is unknown until the next {!run_order}. *)
+    a node one of [from] (default [consumed]) or of [follow] reaches follows the
+    new node, and so does every node of [follow]; every other node it conflicts
+    with precedes it. A caller lists in [follow] what [rule] has to precede that
+    [consumed] did not, and leaves out of [from] a consumed node whose writes
+    [rule] carries under constraints of its own. Where the new node stands is
+    unknown until the next {!run_order}. *)
 
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension
