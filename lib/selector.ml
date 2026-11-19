@@ -329,11 +329,21 @@ let rec specificity = function
   | Picture_in_picture | Left | Right | First | Defined | Playing | Paused
   | Seeking | Buffering | Stalled | Muted | Volume_locked | Future | Past
   | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
-  | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ | Moz_placeholder
-  | Webkit_input_placeholder | Ms_input_placeholder | Moz_ui_invalid
+  | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ | Moz_ui_invalid
   | Moz_ui_valid | Webkit_full_screen | Webkit_full_screen_ancestor
-  | Moz_full_screen | Scrollbar_state _
-  | Webkit_scrollbar Scrollbar
+  | Moz_full_screen | Scrollbar_state _ | Nth_col _ | Nth_last_col _ | Dir _
+  | Lang _ | State _ | Active_view_transition | Active_view_transition_type _
+  | Heading | Local_scope | Global_scope ->
+      { ids = 0; classes = 1; elements = 0 }
+  | Element _ -> { ids = 0; classes = 0; elements = 1 }
+  | Universal _ | Nesting -> zero_specificity
+  (* Sec. 17 counts a pseudo-element in C, prefixed or not. *)
+  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
+  | Selection | Target_text | Spelling_error | Grammar_error
+  | File_selector_button | Part _ | View_transition | View_transition_group _
+  | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
+  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _ | Moz_placeholder
+  | Webkit_input_placeholder | Ms_input_placeholder | Webkit_scrollbar _
   | Webkit_search_cancel_button | Webkit_search_decoration
   | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
   | Webkit_datetime_edit | Webkit_datetime_edit_year_field
@@ -342,20 +352,7 @@ let rec specificity = function
   | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
   | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
   | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
-  | Webkit_details_marker | Details_content | Nth_col _ | Nth_last_col _ | Dir _
-  | Lang _ | State _ | Active_view_transition | Active_view_transition_type _
-  | Heading | Local_scope | Global_scope ->
-      { ids = 0; classes = 1; elements = 0 }
-  | Element _ -> { ids = 0; classes = 0; elements = 1 }
-  | Universal _ | Nesting -> zero_specificity
-  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
-  | Selection | Target_text | Spelling_error | Grammar_error
-  | File_selector_button | Part _ | View_transition | View_transition_group _
-  | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
-  | Unknown_pseudo_element _ | Unknown_pseudo_element_call _
-  (* Sec. 17 counts a pseudo-element in C. [::-webkit-scrollbar] weighs a class
-     above, as every [pseudo_vendor_idents] name does; its parts do not. *)
-  | Webkit_scrollbar (Button | Track | Track_piece | Thumb | Corner | Resizer)
+  | Webkit_details_marker | Details_content
   | Cue None
   | Cue_region None ->
       { ids = 0; classes = 0; elements = 1 }
