@@ -65,6 +65,12 @@ val pp_radial_gradient_named :
 val normalize_gradient_direction : gradient_direction -> gradient_direction
 (** [normalize_gradient_direction v] is [v] in its canonical spelling. *)
 
+val normalize_legacy_gradient_direction :
+  gradient_direction -> gradient_direction
+(** [normalize_legacy_gradient_direction v] is the direction [v] of a prefixed
+    linear gradient in its canonical spelling, read in the legacy syntax, where
+    a side keyword names where the gradient starts and [top] is the default. *)
+
 val normalize_gradient_stop : ?lossless:bool -> gradient_stop -> gradient_stop
 (** [normalize_gradient_stop ?lossless s] is [s] with its colour and positions
     in canonical spelling; [lossless] keeps colour channels unrounded. *)
