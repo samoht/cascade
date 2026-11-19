@@ -288,18 +288,30 @@ val fold : run -> node_id list -> Stylesheet.rule -> at:node_id -> node_id
     [rule] standing where [at] stood, and is that node. [at] is one of
     [consumed]. *)
 
+val run_reaches : run -> node_id list -> node_id -> bool
+(** [run_reaches r starts j] is whether [j] is one of [starts] or a chain of
+    conflicts leads to it from one, every node on the chain standing no later
+    than [j] in the order {!run_order} last gave. *)
+
 val run_orders : run -> node_id -> node_id -> bool
 (** [run_orders r i j] is whether [r] requires [i] before [j] through a chain of
     conflicts passing some other live node, [i] standing before [j] in the order
     {!run_order} last gave. A direct conflict between the two alone does not
     count. *)
 
-val join : run -> node_id list -> Stylesheet.rule -> at:node_id -> node_id
-(** [join r consumed rule ~at] is {!fold} for nodes no chain of conflicts
-    through another node orders ({!run_orders}), wherever they stand: a node one
-    of [consumed] reaches follows the new node and every other node it conflicts
-    with precedes it. Where the new node stands is unknown until the next
-    {!run_order}. *)
+val join :
+  ?follow:node_id list ->
+  run ->
+  node_id list ->
+  Stylesheet.rule ->
+  at:node_id ->
+  node_id
+(** [join ?follow r consumed rule ~at] is {!fold} for nodes no chain of
+    conflicts through another node orders ({!run_orders}), wherever they stand:
+    a node one of [consumed] or [follow] reaches follows the new node, and so
+    does every node of [follow], which a caller lists when [rule] writes more
+    than [consumed] did; every other node it conflicts with precedes it. Where
+    the new node stands is unknown until the next {!run_order}. *)
 
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension

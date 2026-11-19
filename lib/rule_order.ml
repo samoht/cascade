@@ -472,6 +472,8 @@ type settling = {
   observers : int Move_table.t;
   held : unit Move_table.t;
       (** pairs of nodes a chain of conflicts orders, for {!join_held} *)
+  sunk : unit Move_table.t;
+      (** held pairs no declaration of the first can leave, for {!sink_held} *)
 }
 
 (* Mutable state of one coalescing scan over the run's current order: the node
@@ -754,6 +756,13 @@ let sort st changed ids =
       order
     end
 
+(* The style rule standing at position [p] and its shape key. *)
+let style_at st ids p =
+  let e = st.store.elements.(ids.(p)) in
+  match (element_shape e.stmt, e.key) with
+  | Option.Some (Style r), Option.Some key -> Option.Some (r, key)
+  | _ -> Option.None
+
 (* Fold two occurrences of one selector that {!coalesce} keeps apart because
    each is held by a rule between them that conflicts with it, when no chain of
    conflicts through another rule orders the first before the second: the rules
@@ -764,12 +773,7 @@ let sort st changed ids =
 let join_held st changed ids =
   let n = Array.length ids in
   let last = Shape_table.create 16 in
-  let style p =
-    let e = st.store.elements.(ids.(p)) in
-    match (element_shape e.stmt, e.key) with
-    | Option.Some (Style r), Option.Some key -> Option.Some (r, key)
-    | _ -> Option.None
-  in
+  let style = style_at st ids in
   let held i p =
     let pair = (ids.(i), ids.(p)) in
     Move_table.mem st.held pair
@@ -811,6 +815,90 @@ let join_held st changed ids =
            (List.filteri
               (fun q _ -> not (Int.equal q i))
               (Array.to_list joined)))
+
+(* Move into the later of two held occurrences of one selector every declaration
+   of the earlier that no chain of conflicts orders before the later: the rules
+   between the two that conflict with the declaration, and every rule they
+   reach, stand no earlier than the later occurrence. The declaration then comes
+   first in it, as it came before it. Each declaration only moves later, so this
+   ends; a pair none of whose declarations moves stays that way, since a fold
+   only joins nodes, and is not asked again. Two sheets that wrote one
+   declaration in different occurrences of its selector, where the cascade lets
+   it stand in either, so meet. *)
+(* The rules standing strictly between positions [i] and [p] that [d], written
+   in [a], conflicts with. *)
+let followers st ids i p (a : rule) d =
+  let alone = { a with declarations = [ d ] } in
+  let rec collect q acc =
+    if q >= p then acc
+    else
+      let node_rule = st.store.elements.(ids.(q)).node in
+      collect (q + 1)
+        (if Rule_graph.rules_conflict ?parent:st.parent alone node_rule then
+           node ids.(q) :: acc
+         else acc)
+  in
+  collect (i + 1) []
+
+(* [a]'s declarations no chain of conflicts orders before position [p], and the
+   rest. *)
+let movable st ids i p (a : rule) =
+  List.partition
+    (fun d ->
+      not
+        (Rule_graph.run_reaches st.graph (followers st ids i p a d)
+           (node ids.(p))))
+    a.declarations
+
+(* The first held pair with a declaration to move, and what moves. *)
+let pair_to_sink st ids =
+  let n = Array.length ids in
+  let last = Shape_table.create 16 in
+  let rec find q =
+    if q >= n then Option.None
+    else
+      match style_at st ids q with
+      | Option.None -> find (q + 1)
+      | Option.Some (b, key) -> (
+          let next () =
+            Shape_table.replace last key (q, b);
+            find (q + 1)
+          in
+          match Shape_table.find_opt last key with
+          | Option.Some (i, a)
+            when not (Move_table.mem st.sunk (ids.(i), ids.(q))) -> (
+              match movable st ids i q a with
+              | [], _ | _, [] ->
+                  Move_table.replace st.sunk (ids.(i), ids.(q)) ();
+                  next ()
+              | moved, kept -> Option.Some (i, a, q, b, moved, kept))
+          | _ -> next ())
+  in
+  find 0
+
+let sink_held st changed ids =
+  match pair_to_sink st ids with
+  | Option.None -> Option.None
+  | Option.Some (i, a, p, b, moved, kept) ->
+      let follow =
+        List.sort_uniq Rule_graph.Node_id.compare
+          (List.concat_map (followers st ids i p a) moved)
+      in
+      let replace q rule fold =
+        let e = element (Rule rule) [ rule ] in
+        add_element st.store e;
+        Rule_graph.Node_id.to_int (fold e.node ~at:(node ids.(q)))
+      in
+      let sunk = Array.copy ids in
+      sunk.(i) <-
+        replace i { a with declarations = kept } (fun rule ~at ->
+            Rule_graph.fold st.graph [ at ] rule ~at);
+      sunk.(p) <-
+        replace p
+          (merged_rule ~ctx:st.ctx { a with declarations = moved } b)
+          (fun rule ~at -> Rule_graph.join ~follow st.graph [ at ] rule ~at);
+      changed := true;
+      Option.Some sunk
 
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept
@@ -869,6 +957,7 @@ let settling ~canon_body ~ctx ?parent elements =
     graph;
     observers = Move_table.create 16;
     held = Move_table.create 16;
+    sunk = Move_table.create 16;
   }
 
 let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
@@ -888,8 +977,11 @@ let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
         if coalesced != ids then rounds coalesced
         else
           match join_held st changed ids with
-          | Option.None -> ids
           | Option.Some joined -> rounds (sort st changed joined)
+          | Option.None -> (
+              match sink_held st changed ids with
+              | Option.None -> ids
+              | Option.Some sunk -> rounds (sort st changed sunk))
       in
       rounds (Array.init (Array.length elements) Fun.id)
       |> Array.map (fun id -> st.store.elements.(id).stmt)
