@@ -84,9 +84,9 @@ let splits_a_fallback_pair g ~consume ~produce =
         (Webkit_fallback.pairs (node_rule g id).declarations))
     consume
 
-let rewrite_candidate ~kind ~finalize g ~consume ~produce =
+let rewrite_candidate ~objective ~kind ~finalize g ~consume ~produce =
   if splits_a_fallback_pair g ~consume ~produce then Option.None
-  else Rule_rewrite.v ~kind ~finalize g.graph ~consume ~produce
+  else Rule_rewrite.v ~objective ~kind ~finalize g.graph ~consume ~produce
 
 let selector_size g id = Rule_graph.node_selector_size g.graph id
 

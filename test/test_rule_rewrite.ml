@@ -16,7 +16,7 @@ let positive_candidate_uses_final_size () =
     Rule_graph.of_rules (rules ".a{color:red;margin:0}.b{color:red;margin:0}")
   in
   match
-    Rule_rewrite.v ~kind:Identical_body ~finalize:Fun.id graph
+    Rule_rewrite.v ~objective:`Raw ~kind:Identical_body ~finalize:Fun.id graph
       ~consume:(nids [ 0; 1 ])
       ~produce:(rules ".a,.b{color:red;margin:0}")
   with
@@ -31,7 +31,7 @@ let positive_candidate_uses_final_size () =
 let rejects_non_saving_rewrite () =
   let graph = Rule_graph.of_rules (rules ".a{color:red}.b{color:blue}") in
   match
-    Rule_rewrite.v ~kind:Same_selector ~finalize:Fun.id graph
+    Rule_rewrite.v ~objective:`Raw ~kind:Same_selector ~finalize:Fun.id graph
       ~consume:(nids [ 0; 1 ])
       ~produce:(rules ".a{color:red}.b{color:blue}")
   with
@@ -44,7 +44,7 @@ let rejects_empty_finalized_output () =
     { rule with Stylesheet.declarations = [] }
   in
   match
-    Rule_rewrite.v ~kind:Identical_body ~finalize graph
+    Rule_rewrite.v ~objective:`Raw ~kind:Identical_body ~finalize graph
       ~consume:(nids [ 0; 1 ])
       ~produce:(rules ".a,.b{color:red}")
   with

@@ -11,7 +11,8 @@ let media_min_width px : Css.Media.t =
 
 (* Compose optimize + minified to_string the way [to_string ~minify:true] used
    to behave implicitly. *)
-let minify ?targets s = s |> Css.optimize ?targets |> Css.to_string ~minify:true
+let minify ?objective ?targets s =
+  s |> Css.optimize ?objective ?targets |> Css.to_string ~minify:true
 
 let nesting_targets =
   {
@@ -38,7 +39,8 @@ let optimized_string ?scope ?objective ?targets ?(enforce_spec = false) css =
   |> Css.Stylesheet.to_string ~minify:true ~enforce_spec
   |> String.trim
 
-let minify_str ?targets css =
+let minify_str ?objective ?targets css =
   match Css.of_string ~strict:false css with
-  | Ok { Css.stylesheet; _ } -> minify ?targets stylesheet |> String.trim
+  | Ok { Css.stylesheet; _ } ->
+      minify ?objective ?targets stylesheet |> String.trim
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)

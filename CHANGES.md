@@ -958,6 +958,12 @@ differently. They are the reason to minify again.
   `calc(var(--l)*0)` becomes `0px` for a `<length>` registration where the
   calculation needs a length, as it already did for `<number>` and `<integer>`
   (#1574).
+- is scored by compressed size.** The default transfer objective weighed
+  identical-body merges by an estimate of their compressed size but factoring
+  by raw bytes; every merge is now scored by the estimate, so a factoring gzip
+  would undo is no longer taken. The SatCSS sheets come out 0.12% smaller
+  under gzip and 0.14% under brotli, 0.26% larger raw; `--objective=raw`
+  output is unchanged (#1581).
 
 ### Formatted output
 

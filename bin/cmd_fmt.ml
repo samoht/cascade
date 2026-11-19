@@ -179,13 +179,14 @@ let lossless_arg =
 let objective_arg =
   let doc =
     "Size metric $(b,--minify) optimises for. $(b,transfer) (the default) \
-     minimises output bytes, but merges rules with one body only where they \
-     print within 128 rules of each other, because a compressor encodes a \
-     repeated declaration in two or three bytes wherever it sits, but a \
-     selector moved away from its neighbours stops compressing against them; \
-     $(b,raw) merges them at any distance. $(b,raw) also drives the factoring \
-     fixpoint to convergence, the right objective when the output ships \
-     uncompressed (inline style attributes, email HTML), at the cost of \
+     weighs each rewrite by an estimate of the compressed bytes it saves, \
+     since a compressor encodes a selector or a declaration printed shortly \
+     before in a few bytes, and merges rules with one body only where they \
+     print within 128 rules of each other, because a selector moved away from \
+     its neighbours stops compressing against them. $(b,raw) weighs rewrites \
+     by their raw bytes and merges at any distance; it also drives the \
+     factoring fixpoint to convergence, the right objective when the output \
+     ships uncompressed (inline style attributes, email HTML), at the cost of \
      markedly more wall clock. Has no effect without $(b,--minify)."
   in
   Arg.(

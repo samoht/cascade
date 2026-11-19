@@ -38,7 +38,7 @@ let rule_for_selector_branches rule selectors : rule option =
           merge_key = Option.None;
         }
 
-let selector_inline_candidate ~finalize g ~receiver_id ~group_id
+let selector_inline_candidate ~objective ~finalize g ~receiver_id ~group_id
     ~remaining_selectors =
   let receiver = node_rule g receiver_id in
   let group = node_rule g group_id in
@@ -56,7 +56,7 @@ let selector_inline_candidate ~finalize g ~receiver_id ~group_id
     | Option.None -> [ receiver ]
     | Option.Some group -> [ receiver; group ]
   in
-  rewrite_candidate ~kind:Selector_branch_inline ~finalize g
+  rewrite_candidate ~objective ~kind:Selector_branch_inline ~finalize g
     ~consume:[ receiver_id; group_id ] ~produce
 
 type inline_group = {
@@ -102,9 +102,10 @@ let inline_branches g (rule : rule) =
 let pair_up core group remaining receiver =
   if Rule_graph.precedes (graph (view core)) receiver group.group then
     match
-      selector_inline_candidate ~finalize:(finalize core) (view core)
-        ~receiver_id:receiver ~group_id:group.group
-        ~remaining_selectors:remaining
+      selector_inline_candidate
+        ~objective:(Ctx.objective (ctx core))
+        ~finalize:(finalize core) (view core) ~receiver_id:receiver
+        ~group_id:group.group ~remaining_selectors:remaining
     with
     | Option.None -> ()
     | Option.Some candidate ->

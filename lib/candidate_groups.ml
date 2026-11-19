@@ -74,7 +74,7 @@ let has_selector_list g ids = List.exists (selector_is_list g) ids
 let non_list_selector_ids g ids =
   List.filter (fun id -> not (selector_is_list g id)) ids
 
-let identical_body_candidate ~finalize g ids =
+let identical_body_candidate ~objective ~finalize g ids =
   match ids with
   | [] | [ _ ] -> Option.None
   | ids -> (
@@ -82,8 +82,8 @@ let identical_body_candidate ~finalize g ids =
       match grouped_rule rules with
       | Option.None -> Option.None
       | Option.Some grouped ->
-          rewrite_candidate ~kind:Identical_body ~finalize g ~consume:ids
-            ~produce:[ grouped ])
+          rewrite_candidate ~objective ~kind:Identical_body ~finalize g
+            ~consume:ids ~produce:[ grouped ])
 
 let add_candidate candidates = function
   | Option.None -> ()
@@ -94,17 +94,21 @@ let better_than candidate = function
   | Option.Some baseline -> candidate.saving > baseline.saving
 
 let add_identical_body_group ~ctx ~finalize g ~candidates ids =
+  let objective = Ctx.objective ctx in
   if Ctx.extend_lists ctx && has_selector_list g ids then begin
     let strict =
-      identical_body_candidate ~finalize g (non_list_selector_ids g ids)
+      identical_body_candidate ~objective ~finalize g
+        (non_list_selector_ids g ids)
     in
     add_candidate candidates strict;
-    match identical_body_candidate ~finalize g ids with
+    match identical_body_candidate ~objective ~finalize g ids with
     | Option.Some extended when better_than extended strict ->
         add_candidate candidates (Option.Some extended)
     | _ -> ()
   end
-  else add_candidate candidates (identical_body_candidate ~finalize g ids)
+  else
+    add_candidate candidates
+      (identical_body_candidate ~objective ~finalize g ids)
 
 (* A hash bucket split into runs of one exact selector key, as
    {!same_body_groups} splits one by body, so two selectors whose hashes collide
@@ -122,9 +126,12 @@ let same_selector_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let add_same_selector_group ~stats ~finalize g ~candidates ids =
+let add_same_selector_group ~ctx ~finalize g ~candidates ids =
   let source_order = ordered_ids g ids |> rules_with_ids g in
-  let safe = Commute.nested_merge_is_safe ~stats (List.map snd source_order) in
+  let safe =
+    Commute.nested_merge_is_safe ~stats:(Ctx.stats ctx)
+      (List.map snd source_order)
+  in
   let rules_with_ids = Commute.merge_order source_order in
   let ordered = List.map fst rules_with_ids in
   let rules = List.map snd rules_with_ids in
@@ -141,8 +148,8 @@ let add_same_selector_group ~stats ~finalize g ~candidates ids =
         }
       in
       match
-        rewrite_candidate ~kind:Same_selector ~finalize g ~consume:ordered
-          ~produce:[ merged ]
+        rewrite_candidate ~objective:(Ctx.objective ctx) ~kind:Same_selector
+          ~finalize g ~consume:ordered ~produce:[ merged ]
       with
       | Option.None -> ()
       | Option.Some c -> candidates := c :: !candidates)
@@ -281,9 +288,7 @@ let group_candidates core grouping runs =
         runs
   | Selectors ->
       List.iter
-        (add_same_selector_group
-           ~stats:(Ctx.stats (ctx core))
-           ~finalize g ~candidates)
+        (add_same_selector_group ~ctx:(ctx core) ~finalize g ~candidates)
         runs);
   List.rev !candidates
 

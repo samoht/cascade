@@ -115,13 +115,14 @@ val closed_world : t -> bool
 
 val objective : t -> objective
 (** Size metric optimizations are judged by. Under [`Transfer] (the default)
-    factoring minimises output bytes, but merges rules with one body only where
-    they print within 128 rules of each other, since a compressor encodes a
-    repeated declaration in a few bytes wherever it sits but a selector moved
-    away from its neighbours stops compressing against them; [`Raw] merges them
-    at any distance, the right objective when the output ships uncompressed
-    (inline [style], email) or for structural comparisons against raw-size
-    oracles. *)
+    every rewrite is scored by an estimate of the compressed bytes it saves: a
+    selector branch or a declaration printed before costs a match of a few
+    bytes, a new one costs its text. Rules with one body merge only where they
+    print within 128 rules of each other, since a selector moved away from its
+    neighbours stops compressing against them, which the estimate does not see.
+    [`Raw] scores raw bytes and merges them at any distance, the right objective
+    when the output ships uncompressed (inline [style], email) or for structural
+    comparisons against raw-size oracles. *)
 
 val enforce_spec : t -> bool
 (** Whether the evergreen-browser target is dropped. Off by default: a vendor-

@@ -566,7 +566,7 @@ let regrouping_can_be_disabled () =
   in
   let sheet = Css.stylesheet src in
   let out ?regroup () =
-    Css.to_string ~minify:true (Css.optimize ?regroup sheet)
+    Css.to_string ~minify:true (Css.optimize ?regroup ~objective:`Raw sheet)
   in
   Alcotest.(check bool)
     "regrouping on lifts the shared declaration" true
@@ -722,7 +722,8 @@ let test_border_keeps_longhands_beside_a_border_image () =
   let minify_str ?(scope = `Stylesheet) css =
     match Css.of_string ~strict:false css with
     | Ok p ->
-        Css.to_string ~minify:true (Css.optimize ~scope p.stylesheet)
+        Css.to_string ~minify:true
+          (Css.optimize ~scope ~objective:`Raw p.stylesheet)
         |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in

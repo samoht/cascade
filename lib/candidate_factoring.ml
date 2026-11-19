@@ -217,7 +217,7 @@ let extend g chain ~refuses ~crosses link =
 (* The candidate of [grouped] lifted out of the members of [chain], as
    {!rewrite_candidate} scores it: the group rule is finalized first, then each
    leftover once, whichever window holds it. *)
-let score ~kind ~finalize g chain grouped =
+let score ~objective ~kind ~finalize g chain grouped =
   let consume = List.rev_map (fun member -> member.id) chain.members in
   let leftovers () =
     List.fold_left
@@ -236,16 +236,18 @@ let score ~kind ~finalize g chain grouped =
     let size, leftovers = Lazy.force chain.produced in
     let produce = List.rev leftovers in
     match grouped.declarations with
-    | [] -> Rule_rewrite.of_finalized ~kind (graph g) ~consume ~produce ~size
+    | [] ->
+        Rule_rewrite.of_finalized ~objective ~kind (graph g) ~consume ~produce
+          ~size
     | _ ->
-        Rule_rewrite.of_finalized ~kind (graph g) ~consume
+        Rule_rewrite.of_finalized ~objective ~kind (graph g) ~consume
           ~produce:(grouped :: produce)
           ~size:(Size.rule (Rule_graph.size_print (graph g)) grouped + size)
 
 (* The group rule of [members] lifting [decls], with the candidate it makes once
    asked for, unless the members' selectors cannot share a list or a check
    refuses the lift. *)
-let grouped_candidate ~kind ~finalize g chain decls =
+let grouped_candidate ~objective ~kind ~finalize g chain decls =
   match chain.members with
   | [] | [ _ ] -> Option.None
   | members -> (
@@ -255,7 +257,9 @@ let grouped_candidate ~kind ~finalize g chain decls =
           let grouped = { grouped with declarations = decls } in
           if Lazy.force chain.alone || Lazy.force chain.across then Option.None
           else
-            Option.Some (grouped, lazy (score ~kind ~finalize g chain grouped)))
+            Option.Some
+              (grouped, lazy (score ~objective ~kind ~finalize g chain grouped))
+      )
 
 (* What an exact-shared group lifts: the declarations every rule of the window
    holds. *)
@@ -610,7 +614,7 @@ let new_member prior members = extension (fun member -> member.id) prior members
    candidate is asked for. *)
 type exact_group = No_exact_group | Exact_group of group
 
-let exact_group ~shared ~finalize ~recent g ids =
+let exact_group ~objective ~shared ~finalize ~recent g ids =
   let fold common =
     List.fold_left (exact_step g ~finalize) (exact_start common)
       (List.map (member_of g) ids)
@@ -650,8 +654,8 @@ let exact_group ~shared ~finalize ~recent g ids =
            ~members:(List.rev_map (fun member -> member.id) members)
            ~decls:common ~props:[]
            (fun () ->
-             grouped_candidate ~kind:Exact_shared_declarations ~finalize g chain
-               common))
+             grouped_candidate ~objective ~kind:Exact_shared_declarations
+               ~finalize g chain common))
 
 (* What [members] make of a default group, read afresh. *)
 let fresh_known g ~first ~rest members =
@@ -728,7 +732,7 @@ let default_members g ~recent ids =
 (* The pruned members, the keys and the group body decide the candidate: the
    body is the members' common declarations followed by the provider's value for
    each key. *)
-let default_group ~shared ~finalize ~recent g known entries =
+let default_group ~objective ~shared ~finalize ~recent g known entries =
   let params = default_params ~common:(Lazy.force known.common) entries in
   let extended =
     match recent.chain with
@@ -749,7 +753,7 @@ let default_group ~shared ~finalize ~recent g known entries =
     ~members:(List.rev_map (fun member -> member.id) chain.members)
     ~decls:params.group_decls ~props:params.keys
     (fun () ->
-      grouped_candidate ~kind:Default_factoring ~finalize g chain
+      grouped_candidate ~objective ~kind:Default_factoring ~finalize g chain
         params.group_decls)
 
 (* The group [known] makes on [g] - the one met before for the entries that
@@ -758,7 +762,7 @@ let default_group ~shared ~finalize ~recent g known entries =
    {!Rule_graph.try_rewrite} preserves the partial order, so an entry dropped
    for an override that precedes the provider stays dropped, and these are the
    only questions a later graph can answer differently. *)
-let surviving_group ~shared ~finalize ~recent g known =
+let surviving_group ~objective ~shared ~finalize ~recent g known =
   match known with
   | No_default_group -> Option.None
   | Default_members known when not known.can_keep_two -> Option.None
@@ -782,7 +786,7 @@ let surviving_group ~shared ~finalize ~recent g known =
         | Option.Some (_, group) -> group
         | Option.None ->
             let group =
-              default_group ~shared ~finalize ~recent g known
+              default_group ~objective ~shared ~finalize ~recent g known
                 (List.map fst survivors)
             in
             known.groups <- (survivors, group) :: known.groups;
@@ -1010,10 +1014,13 @@ let subset_of core family ids =
       let g = view core in
       let finalize = finalize core and shared = family.shared in
       let recent = family.recent in
+      let objective = Ctx.objective (ctx core) in
       let answer =
         match family.factoring with
         | Exact ->
-            lazy (Exact_answer (exact_group ~shared ~finalize ~recent g ids))
+            lazy
+              (Exact_answer
+                 (exact_group ~objective ~shared ~finalize ~recent g ids))
         | Default -> lazy (Default_answer (default_members g ~recent ids))
       in
       let subset =
@@ -1220,7 +1227,9 @@ let resolve core family subset =
     | Exact_answer (Exact_group group) -> Option.Some group
     | Default_answer known -> (
         match
-          surviving_group ~shared:family.shared ~finalize:(finalize core)
+          surviving_group
+            ~objective:(Ctx.objective (ctx core))
+            ~shared:family.shared ~finalize:(finalize core)
             ~recent:family.recent (view core) known
         with
         | Option.None -> Option.None

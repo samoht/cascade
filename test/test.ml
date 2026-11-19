@@ -50,6 +50,7 @@ let () =
       Test_merge.suite;
       Test_nest.suite;
       Test_size.suite;
+      Test_transfer_size.suite;
       Test_rule.suite;
       Test_rule_index.suite;
       Test_conflict_index.suite;

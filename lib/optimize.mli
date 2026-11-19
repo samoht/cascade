@@ -24,8 +24,9 @@ type scope = [ `Fragment | `Stylesheet ]
     guaranteed not to disturb any prior write. *)
 
 type objective = [ `Raw | `Transfer ]
-(** The size objective for global factoring. [`Transfer] merges rules only
-    within 128 rules of where each selector was written; [`Raw] merges at any
+(** The size objective for global factoring. [`Transfer] scores a rewrite by an
+    estimate of the compressed bytes it saves and merges rules with one body
+    only within 128 printed rules; [`Raw] scores raw bytes and merges at any
     distance. *)
 
 type browser_version = int * int
@@ -328,10 +329,12 @@ val stylesheet :
     the CSS you control). The default is safe for any page.
 
     [objective] (default [`Transfer]) chooses the size metric for global
-    factoring. [`Transfer] minimises output bytes over merges that keep every
-    selector within 128 rules of where it was written, since a selector moved
-    away from its neighbours stops compressing against them; [`Raw] merges at
-    any distance and suits output that ships uncompressed.
+    factoring. [`Transfer] scores every rewrite by an estimate of the compressed
+    bytes it saves, in which text printed before costs a match of a few bytes,
+    and merges rules with one body only where they print within 128 rules of
+    each other, since a selector moved away from its neighbours stops
+    compressing against them; [`Raw] scores raw bytes, merges at any distance
+    and suits output that ships uncompressed.
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. This is opt-in

@@ -116,6 +116,7 @@ let assert_pp_and_optimize input ~minified ~optimized =
     optimized (minify_str input)
 
 let test_factor_shared_declarations () =
+  let minify_str = minify_str ~objective:`Raw in
   (* Two sibling rules sharing a declaration subset factor that subset into a
      combined selector, leaving each rule its unique declarations. Safe here -
      adjacent, distinct selectors, no conflicting property - and shorter, in a
@@ -131,6 +132,7 @@ let test_factor_shared_declarations () =
   Alcotest.(check string) "factoring reached in one pass" once (minify_str once)
 
 let test_factor_interval_schedule () =
+  let minify_str = minify_str ~objective:`Raw in
   (* The whole run shares display:block, but the optimal rewrite is two
      non-overlapping local intervals: .a/.b/.c additionally share color:red,
      while .d/.e/.f additionally share background-color:blue. This pins the
@@ -153,7 +155,8 @@ let test_factor_interval_schedule () =
    the run takes the factored form. *)
 let factoring_weighs_the_flagged_print () =
   let minify ~lossless ~enforce_spec css =
-    Css.minify ~lossless ~enforce_spec (Css.stylesheet css)
+    Css.optimize ~lossless ~enforce_spec ~objective:`Raw (Css.stylesheet css)
+    |> Css.to_string ~minify:true ~lossless ~enforce_spec
   in
   Alcotest.(check string)
     "enforce-spec weighs the quoted family"
@@ -171,6 +174,7 @@ let factoring_weighs_the_flagged_print () =
         .304 20);height:1px}")
 
 let test_factor_interval_keeps_overrides () =
+  let minify_str = minify_str ~objective:`Raw in
   (* A same-property different-value member can still join the common-property
      group, but its value must be emitted after the shared rule. This catches
      the score/build path for interval leftovers, including the offset-aware
@@ -182,6 +186,7 @@ let test_factor_interval_keeps_overrides () =
        ".a{display:block;color:red}.b{display:block;color:blue}.a{display:block;color:red}.c{display:block;color:red}")
 
 let test_factor_override_keeps_its_longhand () =
+  let minify_str = minify_str ~objective:`Raw in
   (* A member that overrides the group's default [border] keeps its own [border]
      in the leftover, and a longhand it wrote after that shorthand has to stay
      after it: [border] resets [border-top-color], so the longhand written first
@@ -203,6 +208,7 @@ let test_factor_override_keeps_its_longhand () =
         #ccc;border-top:3px solid red}")
 
 let test_factor_selector_branch_keeps_later_override () =
+  let minify_str = minify_str ~objective:`Raw in
   (* Extracting the shared overflow/position declarations must not let the
      earlier selector-list branch overwrite the later .scroll-item a z-index.
      Only that branch is overridden; .scroll-pic-frame keeps z-index:100. *)
@@ -300,6 +306,7 @@ let test_large_stylesheet_hoist_rejoins_blocks () =
    the declarations [.a] and [.b] share were only factored when the output was
    optimized again. *)
 let test_large_stylesheet_block_merge_rejoins_runs () =
+  let minify_str = minify_str ~objective:`Raw in
   let padding =
     List.init 129 (fun i -> Fmt.str ".media-padding-%d{order:%d}" i i)
     |> String.concat ""
@@ -325,6 +332,7 @@ let test_large_stylesheet_block_merge_rejoins_runs () =
    as on the output: a search limited to 128 source positions paired them only
    when the output was minified again. *)
 let test_large_stylesheet_factoring_reaches_span () =
+  let minify_str = minify_str ~objective:`Raw in
   let pairs =
     List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
   in
@@ -371,7 +379,7 @@ let test_nesting_then_factoring_converges () =
      #ebebeb;display:none;min-width:960px;opacity:0;position:fixed;top:-359px;width:100%;z-index:500}#p \
      form{_width:850px}#k{cursor:default;display:none;margin-top:1px}"
   in
-  let minify_str = minify_str ~targets:nesting_targets in
+  let minify_str = minify_str ~objective:`Raw ~targets:nesting_targets in
   let once = minify_str input in
   Alcotest.(check bool)
     "the rules nesting leaves neighbours share their declaration" true

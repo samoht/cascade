@@ -188,7 +188,8 @@ let run ~ctx ~finalize graph =
               Hashtbl.replace refused key (refusal e);
               loop iteration ~committed graph s queue
           | Ok graph' ->
-              Stats.add_saving (Ctx.stats ctx) candidate.saving;
+              Stats.add_saving (Ctx.stats ctx)
+                (Rule_rewrite.bytes (Ctx.objective ctx) candidate.saving);
               Rule_candidate.rewrite pool graph' ~consume:candidate.consume;
               loop (iteration + 1) ~committed:true graph' s queue)
   in

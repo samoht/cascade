@@ -124,7 +124,7 @@ let fixpoints_run stats = (Stats.snapshot stats).counters.factor_fixpoints_run
 
 let test_cache_reuses_identical_rule_run () =
   let stats = Stats.v () in
-  let ctx = Ctx.v ~stats `Fragment in
+  let ctx = Ctx.v ~stats ~objective:`Raw `Fragment in
   let cache = Factor.cache () in
   let input =
     rules

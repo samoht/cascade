@@ -23,11 +23,17 @@ the CSS text only, never over runtime layout: it may not assume a writing mode
 or a direction, and it knows nothing about the DOM. Shorthand synthesis from partial
 coverage needs `` `Stylesheet ``.
 
-The default objective is transfer size: factoring minimises output bytes, but
-merges rules with one body only where they print within 128 rules of each
-other, since a selector moved far from its neighbours stops compressing against
-them. No estimate of the compressed size judges a result afterwards. `` `Raw ``
-merges them at any distance.
+The default objective is transfer size: every candidate kind scores its saving
+with `Transfer_size`, an LZ77-style estimate of the compressed bytes, so the
+one queue compares kinds in one unit. A selector branch or a declaration
+printed before among the candidate's rules costs a match, a new one its bytes;
+the constants are fitted against gzip on the corpus, not chosen. The estimate
+is a pure function of the candidate's rules and their printed order, so a
+second pass scores the output the same way. It sees tokens, not where a
+selector prints, so rules with one body still merge only where they print
+within 128 rules of each other: a selector moved far from its neighbours stops
+compressing against them. `` `Raw `` scores raw bytes and merges them at any
+distance.
 
 Fold only when the result is exactly value-preserving. An approximate `calc`
 fold that is right for the sampled inputs is still wrong.
