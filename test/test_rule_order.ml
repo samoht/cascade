@@ -490,6 +490,27 @@ let fold_order_does_not_decide_the_form () =
     "a padding moved past the one it follows stays apart" true
     (canonical split <> canonical reordered)
 
+(* A guarded write that repeats an earlier unguarded one changes nothing only
+   where it could stand right after it, and that is not so here: the repeat is
+   what overrides the guarded [margin:0] before it, and without it the
+   [margin:0] writes the top margin again. Under [screen], [class="a b"] takes
+   [margin-top:1px] from the first sheet of each pair and 0 from the second, as
+   Chromium paints them. *)
+let a_repeat_keeps_what_it_overrides () =
+  Alcotest.(check bool)
+    "a guarded shorthand between the write and its repeat" true
+    (canonical
+       ".a{margin-top:1px}@media screen{.a{margin:0}}@media \
+        screen{.a{margin-top:1px}}"
+    <> canonical ".a{margin-top:1px}@media screen{.a{margin:0}}");
+  Alcotest.(check bool)
+    "a guarded shorthand the dropped repeat overrode" true
+    (canonical
+       "@media screen{.a{margin:0}}.b{margin-top:5px}.a{margin-top:1px}@media \
+        screen{.a{margin-top:1px}}"
+    <> canonical
+         ".b{margin-top:5px}.a{margin-top:1px}@media screen{.a{margin:0}}")
+
 (* Two adjacent rules over one selector list hold, for every element, the
    declarations of the one rule that list over both bodies, in the same order.
    Read branch by branch, [speak], which the footprint model cannot place and so
@@ -934,6 +955,8 @@ let suite =
         coalesce_reads_writes_a_fold_moved;
       Alcotest.test_case "fold order does not decide the form" `Quick
         fold_order_does_not_decide_the_form;
+      Alcotest.test_case "a repeat keeps what it overrides" `Quick
+        a_repeat_keeps_what_it_overrides;
       Alcotest.test_case "adjacent lists join before expanding" `Quick
         adjacent_lists_join_before_expanding;
       Alcotest.test_case "identical bodies never conflict" `Quick
