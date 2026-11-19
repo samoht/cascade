@@ -121,7 +121,7 @@ let offer graph queue offer =
    not tried again until a commit consumes one. A candidate refused for a cycle
    is tried again: the cycle can run through an outside rule a later commit
    consumes. One stopped by [max_iterations] is not settled. *)
-type outcome = { graph : Rule_graph.t; settled : bool; afresh : bool }
+type outcome = { graph : Rule_graph.t; settled : bool }
 
 (* How long a refusal stands: not past this graph, or while every rule it names
    is live, [[]] for good. Besides the candidate's own rules, which consuming
@@ -142,15 +142,6 @@ let still_refused pool refused o =
   | Option.None | Option.Some Retry -> false
   | Option.Some (Stands rules) ->
       List.for_all (Rule_candidate.is_live pool) rules
-
-(* Whether a graph built afresh from the rules [graph] prints would refuse every
-   candidate [graph] refused, and offer no other it accepts. With no rewrite,
-   [graph] is that graph. Every refusal reads the live rules and where they
-   print, as that graph reads them, and at a settled drain each stands: an order
-   while the rules it read are live, and a cycle tried on [graph] itself. What
-   is left to ask is whether that graph offers a candidate [graph] did not. *)
-let afresh graph pool =
-  Rule_graph.generation graph = 0 || Rule_candidate.afresh pool
 
 (* The candidates of one graph lineage and the refusals made on it. *)
 type search = { pool : Rule_candidate.t; refused : (int, refusal) Hashtbl.t }
@@ -173,13 +164,11 @@ let run ~ctx ~finalize graph =
       List.fold_left (offer graph) Queue.empty (Rule_candidate.refresh pool) )
   in
   let rec loop iteration ~committed graph ({ pool; refused } as s) queue =
-    if iteration >= max_iterations then
-      { graph; settled = false; afresh = false }
+    if iteration >= max_iterations then { graph; settled = false }
     else
       match Queue.pop queue with
       | None ->
-          if not committed then
-            { graph; settled = true; afresh = afresh graph pool }
+          if not committed then { graph; settled = true }
           else begin
             ignore (Rule_candidate.refresh pool);
             loop iteration ~committed:false graph s (requeue graph s)

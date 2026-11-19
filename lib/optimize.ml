@@ -1225,12 +1225,12 @@ let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
   edit_statements (sanitize_statement ~ctx ~lossless) b
 
 (* One pass, and optimizing its output again returns it. Each rule run is
-   factored until a graph built afresh from its output would change nothing
-   ({!Factor.run}); every other step finishes what it starts in the same pass: a
-   merge optimizes the blocks and runs it joins, a hoist joins the blocks it
-   leaves adjacent, a dead nested rule takes the blocks it empties, and the
-   prefixes are the ones the next pass would settle on. A pass that changes
-   nothing hands back its input. *)
+   factored once, its candidates and their acceptance reading the rules it
+   prints ({!Factor.run}); every other step finishes what it starts in the same
+   pass: a merge optimizes the blocks and runs it joins, a hoist joins the
+   blocks it leaves adjacent, a dead nested rule takes the blocks it empties,
+   and the prefixes are the ones the next pass would settle on. A pass that
+   changes nothing hands back its input. *)
 let run_pipeline ~ctx ~targets ~enforce_spec stylesheet =
   let factor_cache = Factor.cache () in
   (* The prefixes come last: the vendor-alias drop reads {!Baseline} where the

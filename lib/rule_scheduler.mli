@@ -10,10 +10,6 @@ type outcome = {
   settled : bool;
       (** every candidate {!Rule_candidate} offers on {!field-graph}, under the
           bounds the run started with, was tried there and refused *)
-  afresh : bool;
-      (** a graph built afresh from the rules {!field-graph} prints, in that
-          order, offers no candidate the run did not try and refuses every one
-          it refused, so a run over those rules changes nothing *)
 }
 
 val run :

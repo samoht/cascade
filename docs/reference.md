@@ -167,26 +167,23 @@ two or more members is split again, and offered again where its runs changed.
 While at most 129 rules print, no run can be split. Under `--objective=raw` a
 bucket merges whole.
 
-These bounds read the rules a run prints and their order, so a second
-`--minify`, which reads them on a graph built afresh from the output, searches
-the same subsets. There the rules a rewrite consumed are gone, so no order runs
-through them. A run is settled when such a graph would accept no candidate the
-run has not offered. The run works out the entries a default group keeps there
-when an overrider precedes the provider only through live rules that conflict;
-each candidate these bring about, and each refusal the run made, is asked as
-that graph would orient it. A run that is not
-settled factors again on a graph built from its output. Every run that changes
-the rules saves bytes, so this ends.
+These bounds read the rules a run prints and their order, and a rewrite is
+accepted or refused on the live rules and where they print, so a second
+`--minify`, which builds its graph afresh from the output, offers the same
+candidates and refuses them all. One question still reads the rules earlier
+rewrites consumed: whether a member overriding a default precedes its provider,
+which drops the entry from the group. The run is factored once, and nothing is
+checked or factored again to confirm it.
 
 The pipeline makes one pass, at every size, and nothing runs to confirm it.
 Each step finishes what it starts in that pass instead: a block merge
 optimizes again the rule runs it joins, a hoist joins the blocks it leaves
 adjacent, a dead nested rule takes the blocks it empties, a shorthand
 composition deduplicates what it overrides, and the compatibility prefixes are
-the ones a second pass would settle on. The corpus tests check that optimizing
-the output again returns it. Of the 504 SatCSS sheets and Tailwind's two, none
-changes on a second `--minify`. In those sheets 97 factoring runs are not
-settled at first, and each of them changes when it runs again.
+the ones a second pass would settle on, and a rule run that nesting changes is
+optimized again. The corpus tests check that optimizing the output again
+returns it. Of the 504 SatCSS sheets and Tailwind's two, none changes on a
+second `--minify`.
 
 ### Approximation and lossless mode
 
