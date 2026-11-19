@@ -868,6 +868,28 @@ let test_fullscreen_vendor_pseudo_classes () =
         ".a:-webkit-full-screen{width:100%}.a:-moz-full-screen{width:100%}" );
     ]
 
+(* A [content] sequence in one rule is kept for the fallback it may carry, a
+   later value some browser cannot read. A string, a quote keyword, a counter or
+   [none] is read by every target, so a later one of those leaves nothing
+   earlier to fall back to, and the earlier declaration is dead (CSS Cascade 5
+   sec. 6.1: one importance, the later wins). *)
+let test_content_superseded_by_a_plain_value () =
+  List.iter
+    (fun (name, want, css) ->
+      Alcotest.(check string) name want (minify_str css))
+    [
+      ("a later string", ".a{content:\"b\"}", ".a{content:\"a\";content:\"b\"}");
+      ( "an empty string",
+        ".a:before{content:\"\"}",
+        ".a:before{content:\"x\";content:\"\"}" );
+      ( "a later important value",
+        ".a{content:\"b\"!important}",
+        ".a{content:\"a\";content:\"b\"!important}" );
+      ( "a counter",
+        ".a{content:counter(n)}",
+        ".a{content:\"a\";content:counter(n)}" );
+    ]
+
 let test_no_merge_with_nested () =
   let input =
     [
@@ -998,5 +1020,8 @@ let suite =
       ( "fullscreen vendor pseudo-classes",
         `Quick,
         test_fullscreen_vendor_pseudo_classes );
+      ( "content superseded by a plain value",
+        `Quick,
+        test_content_superseded_by_a_plain_value );
       ("no merge with nested", `Quick, test_no_merge_with_nested);
     ] )
