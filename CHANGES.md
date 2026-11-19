@@ -310,6 +310,11 @@ to call instead, and moving off most of them is a rename or a deleted call.
   fallback. After a string, a quote keyword, a counter, `none` or a CSS-wide
   keyword, which every browser reads, nothing is left to fall back to, and the
   earlier declaration is dropped (#1417).
+- `--minify` read `-webkit-linear-gradient(top,...)` as the unprefixed `to
+  top`, so a gradient that runs down came out running up, and it took an
+  omitted direction for `bottom`. A prefixed gradient's side keyword names the
+  side it starts from (CSS Image Values 3, Working Draft of 17 February 2011,
+  sec. 5.1.1), and is read that way (#1418).
 
 ### Comparing stylesheets
 
