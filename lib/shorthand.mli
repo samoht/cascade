@@ -112,6 +112,10 @@ val drop_redundant_decoration_color_aliases :
     its unprefixed twin is present. Differing values or importance, and a
     prefixed-only declaration, are kept. *)
 
+val read_by_no_target : Declaration.declaration -> bool
+(** [read_by_no_target decl] is whether [decl]'s property carries the [-ms-] or
+    [-o-] prefix, which no browser a {!Support.targets} names reads. *)
+
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
 
