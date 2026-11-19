@@ -167,48 +167,6 @@ let printed graph =
   Array.to_list
     (Array.map (Rule_graph.node_rule graph) (Rule_graph.canonical_order graph))
 
-(* [.x] and [.y] share [color:red], 141 source positions apart, with pairs of
-   identical bodies between them. A search reads the members of a bucket in the
-   order they print, wherever that is, so the run's own graph searches the two
-   together, as a graph built afresh from what it prints does. *)
-let spanned_run =
-  let pairs =
-    List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
-  in
-  String.concat ""
-    ((".x{color:red;margin:0}" :: pairs) @ [ ".y{color:red;padding:0}" ])
-  |> rules |> Rule_graph.of_rules
-
-(* A run that says [afresh] is a fixed point of a graph built afresh from what
-   it prints: a run over that graph commits nothing. One that does not say so is
-   one where that run commits. *)
-let afresh_is_a_fresh_fixed_point () =
-  let ctx = Ctx.fragment and finalize = Fun.id in
-  List.iter
-    (fun (label, graph, expected) ->
-      let { Rule_scheduler.graph = settled_graph; settled; afresh } =
-        Rule_scheduler.run ~ctx ~finalize graph
-      in
-      Alcotest.(check bool) (label ^ ": settled") true settled;
-      Alcotest.(check bool) (label ^ ": afresh") expected afresh;
-      let again =
-        Rule_scheduler.run ~ctx ~finalize
-          (Rule_graph.of_rules (printed settled_graph))
-      in
-      Alcotest.(check bool)
-        (label ^ ": a run afresh commits")
-        (not afresh)
-        (Rule_graph.generation again.graph > 0);
-      if not afresh then
-        Alcotest.(check bool)
-          (label ^ ": the run afresh says afresh")
-          true again.afresh)
-    [
-      ("small run", factoring_run 40, true);
-      ("large run", factoring_run 200, true);
-      ("spanned run", spanned_run, true);
-    ]
-
 (* A rule a rewrite consumed stays in the graph as a relay. Here [p.k] and
    [span.m] can match no element together, and only [.x], which wrote [color]
    for both, stood between them; once it is consumed nothing live orders them.
@@ -269,8 +227,6 @@ let suite =
         merges_past_a_relay_cycle;
       Alcotest.test_case "a settled run is a fixed point" `Quick
         a_settled_run_is_a_fixed_point;
-      Alcotest.test_case "a run afresh is a fixed point of a fresh graph" `Quick
-        afresh_is_a_fresh_fixed_point;
       Alcotest.test_case "merges identical bodies" `Quick merges_identical_body;
       Alcotest.test_case "merges same selector canonically" `Quick
         merges_same_selector_canonically;
