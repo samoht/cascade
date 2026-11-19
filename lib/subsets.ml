@@ -57,69 +57,32 @@ let bounded_subsets ~large_bucket_candidates ~limit ids =
   in
   widths max_width acc (List.length acc) |> List.rev
 
-type indexed_budget = {
-  occurrence_window : int;
-  max_span : int;
-  max_candidates : int;
-}
-
-type t =
-  | Exhaustive of { limit : int; large_bucket_candidates : int }
-  | Indexed of indexed_budget
+type indexed_budget = { occurrence_window : int; max_candidates : int }
+type t = Exhaustive | Indexed of indexed_budget
 
 let max_span = 128
-
-let normal_indexed_budget =
-  { occurrence_window = 24; max_span; max_candidates = 256 }
-
-let exact ~aggressive nodes =
-  if aggressive || nodes <= 128 then
-    Exhaustive
-      { limit = (if aggressive then 12 else 8); large_bucket_candidates = 32 }
-  else Indexed normal_indexed_budget
-
-let default ~aggressive nodes =
-  if aggressive || nodes <= 128 then
-    Exhaustive
-      {
-        limit = (if aggressive then 12 else 8);
-        large_bucket_candidates = (if aggressive then 32 else 1);
-      }
-  else Indexed normal_indexed_budget
+let indexed_budget = { occurrence_window = 24; max_candidates = 256 }
+let v ~aggressive = if aggressive then Exhaustive else Indexed indexed_budget
 
 let shared = function
-  | Exhaustive _ -> Option.None
+  | Exhaustive -> Option.None
   | Indexed { max_candidates; _ } -> Option.Some max_candidates
 
-(* The last row a window starting at [first] may reach: at most
-   [occurrence_window] neighbours, spanning at most [max_span] source positions
-   of the slots where they print. *)
-let window_end ~slot budget rows first =
-  let last_limit =
-    min (Array.length rows - 1) (first + budget.occurrence_window - 1)
-  in
-  let rec reach last =
-    if
-      last < last_limit
-      && slot rows.(last + 1) - slot rows.(first) <= budget.max_span
-    then reach (last + 1)
-    else last
-  in
-  reach first
-
-(* The windows of [rows] (in printed order) a bucket offers, by first member and
-   then by length, or none when there are more than [max_candidates]. *)
-let indexed_windows ~slot budget rows =
+(* The windows of [rows] (in printed order) a bucket offers, each of at most
+   [occurrence_window] neighbours, by first member and then by length, or none
+   when there are more than [max_candidates]. *)
+let indexed_windows budget rows =
   let len = Array.length rows in
-  let ends = Array.init len (window_end ~slot budget rows) in
-  let count =
-    Array.fold_left ( + ) 0 (Array.mapi (fun first last -> last - first) ends)
+  let window_end first = min (len - 1) (first + budget.occurrence_window - 1) in
+  let rec count first acc =
+    if first >= len then acc
+    else count (first + 1) (acc + window_end first - first)
   in
-  if count > budget.max_candidates then []
+  if count 0 0 > budget.max_candidates then []
   else begin
     let subsets = ref [] in
     for first = len - 2 downto 0 do
-      for last = ends.(first) downto first + 1 do
+      for last = window_end first downto first + 1 do
         let rec loop index subset =
           if index < first then subset
           else loop (index - 1) (rows.(index) :: subset)
@@ -130,11 +93,10 @@ let indexed_windows ~slot budget rows =
     !subsets
   end
 
-let of_bucket budget ~slot ids =
+let of_bucket budget ids =
   match budget with
-  | Exhaustive { limit; large_bucket_candidates } ->
-      bounded_subsets ~limit ~large_bucket_candidates ids
-  | Indexed indexed -> indexed_windows ~slot indexed (Array.of_list ids)
+  | Exhaustive -> bounded_subsets ~limit:12 ~large_bucket_candidates:32 ids
+  | Indexed indexed -> indexed_windows indexed (Array.of_list ids)
 
 let take budget buckets =
   match shared budget with

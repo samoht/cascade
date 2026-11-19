@@ -388,7 +388,6 @@ module Refresh = struct
 
   let check label ctx rules =
     let g = Rule_graph.of_rules rules in
-    let nodes = Rule_graph.node_count g in
     let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
     ignore (Rule_candidate.refresh state);
     let rec loop step g candidates =
@@ -400,7 +399,7 @@ module Refresh = struct
           incr commits;
           let carried = Rule_candidate.candidates state in
           let expected =
-            observed (Rule_candidate.enumerate ~nodes ~ctx ~finalize:Fun.id g')
+            observed (Rule_candidate.enumerate ~ctx ~finalize:Fun.id g')
           in
           let got = observed carried in
           if not (List.equal String.equal expected got) then begin

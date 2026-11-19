@@ -581,46 +581,43 @@ type subset = {
   mutable unordered : (Rule_graph.node_id * Rule_graph.node_id) list;
 }
 
-(* Where a bucket stands in the order an indexed budget is spent in: the slot of
-   its first printed member, its size, then where its key first appears, by node
-   and declaration position. *)
-type rank = { least : int; size : int; first : int; position : int }
+(* Where a bucket stands in the order a shared budget is spent in: its first
+   printed member, with the position of the key's declaration there, and its
+   size. *)
+type lead = { first : Rule_graph.node_id; position : int; size : int }
 
-let compare_rank a b =
-  match Int.compare a.least b.least with
+(* By where the first member prints, which [compare] orders, then by size, then
+   by where the key's declaration stands in that member. Two buckets of one kind
+   that lead with one member file it under two keys, at two positions. *)
+let compare_lead compare a b =
+  match compare a.first b.first with
   | 0 -> (
       match Int.compare a.size b.size with
-      | 0 -> (
-          match Int.compare a.first b.first with
-          | 0 -> Int.compare a.position b.position
-          | order -> order)
+      | 0 -> Int.compare a.position b.position
       | order -> order)
   | order -> order
 
 type factoring_bucket = {
   fkey : factoring_key;
+  buid : int;
   mutable fmembers : (Rule_graph.node_id * int) list;
       (** with the key's position, the last printed first *)
+  mutable lead : lead;
   mutable subsets : Rule_graph.node_id list list;
   mutable taken : subset list;
   mutable taken_count : int;
   mutable want : int;
-  mutable rank : rank;
   mutable fstamp : int;
   mutable asked : int;
 }
-
-module Ranked = Set.Make (struct
-  type t = factoring_bucket
-
-  let compare a b = compare_rank a.rank b.rank
-end)
 
 type t = {
   factoring : factoring;
   budget : Subsets.t;
   fbuckets : factoring_bucket list Int_table.t;
-  mutable ranked : Ranked.t;
+  offering : factoring_bucket Int_table.t;
+      (** the buckets with a subset, by [buid] *)
+  mutable next_bucket : int;
   mutable takers : factoring_bucket list;
   mutable fdirty : factoring_bucket list;
   known : subset Ids_table.t;
@@ -638,16 +635,14 @@ let rec insert_member g member = function
       if compare_member g member other > 0 then member :: members
       else other :: insert_member g member rest
 
-let bucket_rank g members =
-  let least, first, position =
-    List.fold_left
-      (fun (least, first, position) (id, at) ->
-        let index = Rule_graph.Node_id.to_int id in
-        let least = Int.min least (Rule_graph.node_slot (graph g) id) in
-        if index < first then (least, index, at) else (least, first, position))
-      (max_int, max_int, 0) members
+(* [members] are the last printed first. *)
+let lead_of members =
+  let rec last size = function
+    | [] -> Option.None
+    | [ (first, position) ] -> Option.Some { first; position; size }
+    | _ :: rest -> last size rest
   in
-  { least; size = List.length members; first; position }
+  last (List.length members) members
 
 let touch_bucket core family bucket =
   if bucket.fstamp <> epoch core then begin
@@ -673,7 +668,8 @@ let remove core family id =
           touch_bucket core family bucket)
     (factoring_keys family.factoring (node_rule (view core) id))
 
-let empty_rank = { least = 0; size = 0; first = 0; position = 0 }
+let no_lead =
+  { first = Rule_graph.Node_id.of_int_exn 0; position = 0; size = 0 }
 
 let add core family id =
   List.iter
@@ -685,16 +681,18 @@ let add core family id =
             let bucket =
               {
                 fkey = key;
+                buid = family.next_bucket;
                 fmembers = [];
+                lead = no_lead;
                 subsets = [];
                 taken = [];
                 taken_count = 0;
                 want = 0;
-                rank = empty_rank;
                 fstamp = -1;
                 asked = -1;
               }
             in
+            family.next_bucket <- family.next_bucket + 1;
             Int_table.push family.fbuckets (factoring_key_hash key) bucket;
             bucket
       in
@@ -715,20 +713,16 @@ let drop_bucket family bucket =
   | [] -> Int_table.remove family.fbuckets hash
   | buckets -> Int_table.replace family.fbuckets hash buckets
 
-let refresh_bucket core family bucket =
-  if indexed family && bucket.subsets <> [] then
-    family.ranked <- Ranked.remove bucket family.ranked;
+let refresh_bucket family bucket =
   bucket.subsets <-
     (match bucket.fmembers with
     | [] | [ _ ] -> []
-    | members ->
-        Subsets.of_bucket family.budget
-          ~slot:(Rule_graph.node_slot (graph (view core)))
-          (List.rev_map fst members));
-  bucket.rank <- bucket_rank (view core) bucket.fmembers;
+    | members -> Subsets.of_bucket family.budget (List.rev_map fst members));
+  bucket.lead <- Option.value (lead_of bucket.fmembers) ~default:no_lead;
   if bucket.fmembers = [] then drop_bucket family bucket;
-  if indexed family && bucket.subsets <> [] then
-    family.ranked <- Ranked.add bucket family.ranked
+  if indexed family then
+    if bucket.subsets = [] then Int_table.remove family.offering bucket.buid
+    else Int_table.replace family.offering bucket.buid bucket
 
 let subset_of core family ids =
   match Ids_table.find_opt family.known ids with
@@ -925,10 +919,10 @@ let retake core family ~activated ~released bucket n =
   bucket.taken <- subsets;
   bucket.taken_count <- n
 
-(* An indexed budget is spent on the buckets in rank order, so every bucket that
-   took subsets before, or might take some now, is asked again; an exhaustive
-   one leaves every bucket all of its subsets. *)
-let wanted family dirty =
+(* An indexed budget is spent on the buckets in the order their first members
+   print, so every bucket that took subsets before, or might take some now, is
+   asked again; an exhaustive one leaves every bucket all of its subsets. *)
+let wanted core family dirty =
   match Subsets.shared family.budget with
   | Option.None ->
       List.iter (fun bucket -> bucket.want <- List.length bucket.subsets) dirty;
@@ -947,14 +941,19 @@ let wanted family dirty =
               bucket.want <- n;
               spend (remaining - n) (bucket :: takers) rest
       in
-      let takers = spend max_candidates [] (Ranked.to_seq family.ranked) in
+      let compare = Rule_graph.compare_position (graph (view core)) in
+      let ordered =
+        Int_table.fold (fun _ bucket acc -> bucket :: acc) family.offering []
+        |> List.sort (fun a b -> compare_lead compare a.lead b.lead)
+      in
+      let takers = spend max_candidates [] (List.to_seq ordered) in
       family.takers <- takers;
       List.rev_append takers (List.rev_append previous dirty)
 
 let settle core family { consumed; produced; moved } =
   let dirty = List.rev family.fdirty in
   family.fdirty <- [];
-  List.iter (refresh_bucket core family) dirty;
+  List.iter (refresh_bucket family) dirty;
   let activated = ref [] and released = ref [] in
   List.iter
     (fun bucket ->
@@ -963,7 +962,7 @@ let settle core family { consumed; produced; moved } =
         if bucket.fstamp = epoch core || bucket.want <> bucket.taken_count then
           retake core family ~activated ~released bucket bucket.want
       end)
-    (wanted family dirty);
+    (wanted core family dirty);
   List.iter (reresolve core family) (List.rev !activated);
   List.iter (release core family) !released;
   if consumed <> [] then begin
@@ -990,7 +989,8 @@ let v size factoring budget =
     factoring;
     budget;
     fbuckets = Int_table.create size;
-    ranked = Ranked.empty;
+    offering = Int_table.create size;
+    next_bucket = 0;
     takers = [];
     fdirty = [];
     known = Ids_table.create size;
@@ -1002,8 +1002,8 @@ let v size factoring budget =
 
 (* The nodes a rewrite moved keep their rules and keys. A bucket holds its
    members in printed order, so a bucket holding one is sorted again, and asked
-   again when its order changed or, for an indexed budget, which reads where its
-   members print, whatever changed. *)
+   again when its order changed. Where its first member prints among the other
+   buckets' is read at every settle. *)
 let reorder core family moved =
   let buckets = ref [] in
   List.iter
@@ -1028,7 +1028,7 @@ let reorder core family moved =
           (List.equal (fun (a, _) (b, _) -> same_id a b) sorted bucket.fmembers)
       in
       bucket.fmembers <- sorted;
-      if reordered || indexed family then touch_bucket core family bucket)
+      if reordered then touch_bucket core family bucket)
     !buckets
 
 let offers family acc =
@@ -1040,43 +1040,29 @@ let offers family acc =
     family.live_groups acc
 
 (* The subsets a graph built afresh from the rules [core]'s graph prints, in
-   that order, takes in [family]: there each rule's slot and node are its rank,
-   and the budget is chosen for that many rules. *)
-let fresh_subsets core family ~ranks =
+   that order, takes in [family]: there each rule's node is its rank. *)
+let fresh_subsets family ~ranks =
   let rank id = ranks.(Rule_graph.Node_id.to_int id) in
-  let aggressive = Ctx.aggressive (ctx core) in
-  let budget =
-    match family.factoring with
-    | Exact -> Subsets.exact ~aggressive (live (view core))
-    | Default -> Subsets.default ~aggressive (live (view core))
-  in
+  let compare a b = Int.compare (rank a) (rank b) in
   let buckets =
     Int_table.fold
       (fun _ buckets acc ->
         List.fold_left
           (fun acc bucket ->
-            match List.rev bucket.fmembers with
+            match bucket.fmembers with
             | [] | [ _ ] -> acc
-            | (first, position) :: _ as members -> (
+            | members -> (
                 match
-                  Subsets.of_bucket budget ~slot:rank (List.map fst members)
+                  Subsets.of_bucket family.budget (List.rev_map fst members)
                 with
                 | [] -> acc
-                | subsets ->
-                    let at = rank first in
-                    ( {
-                        least = at;
-                        size = List.length members;
-                        first = at;
-                        position;
-                      },
-                      subsets )
-                    :: acc))
+                | subsets -> (bucket.lead, subsets) :: acc))
           acc buckets)
       family.fbuckets []
   in
-  Subsets.take budget
-    (List.map snd (List.sort (fun (a, _) (b, _) -> compare_rank a b) buckets))
+  Subsets.take family.budget
+    (List.map snd
+       (List.sort (fun (a, _) (b, _) -> compare_lead compare a b) buckets))
 
 (* The group [subset] reaches on a graph built afresh from the printed rules: an
    exact-shared group reads only the rules, and a default one keeps each entry
@@ -1142,6 +1128,6 @@ let unsearched core family ~ranks =
             match fresh_group core family (subset_of core family ids) with
             | Option.None -> false
             | Option.Some group -> accepted_afresh core group)
-          (fresh_subsets core family ~ranks:(Lazy.force ranks))
+          (fresh_subsets family ~ranks:(Lazy.force ranks))
 
 let searched core family ~ranks = not (unsearched core family ~ranks)

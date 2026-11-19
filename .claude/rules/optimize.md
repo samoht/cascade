@@ -23,11 +23,11 @@ the CSS text only, never over runtime layout: it may not assume a writing mode
 or a direction, and it knows nothing about the DOM. Shorthand synthesis from partial
 coverage needs `` `Stylesheet ``.
 
-The default objective is transfer size: factoring minimises output bytes over
-merges that keep every selector within 128 rules of where it was written, since
-a selector moved far from its neighbours stops compressing against them. No
-estimate of the compressed size judges a result afterwards. `` `Raw `` merges
-at any distance.
+The default objective is transfer size: factoring minimises output bytes, but
+merges rules with one body only where they print within 128 rules of each
+other, since a selector moved far from its neighbours stops compressing against
+them. No estimate of the compressed size judges a result afterwards. `` `Raw ``
+merges them at any distance.
 
 Fold only when the result is exactly value-preserving. An approximate `calc`
 fold that is right for the sampled inputs is still wrong.
