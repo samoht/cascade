@@ -1911,10 +1911,11 @@ let fold_oriented r consumed rule ~at ~before =
 let fold r consumed rule ~at =
   fold_oriented r consumed rule ~at ~before:(fun i -> r.pos.(i) < r.pos.(at))
 
-(* A node the joined ones or [follow] reach follows the join, and so do the
-   nodes of [follow]; every other node it conflicts with conflicts with one of
-   them, so precedes it. *)
-let join ?(follow = []) r consumed rule ~at =
-  let after = run_reached r (consumed @ follow) in
+(* A node [from] (the joined ones by default) or [follow] reach follows the
+   join, and so do the nodes of [follow]; every other node it conflicts with
+   conflicts with one of them, so precedes it. *)
+let join ?(follow = []) ?from r consumed rule ~at =
+  let from = Option.value ~default:consumed from in
+  let after = run_reached r (from @ follow) in
   List.iter (fun i -> after.(i) <- true) follow;
   fold_oriented r consumed rule ~at ~before:(fun i -> not after.(i))
