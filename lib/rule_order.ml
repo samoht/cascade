@@ -433,6 +433,8 @@ type settling = {
   store : store;
   graph : Rule_graph.run;
   observers : int Move_table.t;
+  held : unit Move_table.t;
+      (** pairs of nodes a chain of conflicts orders, for {!join_held} *)
 }
 
 (* Mutable state of one coalescing scan over the run's current order: the node
@@ -564,6 +566,12 @@ let supports_merge_down_clear scan ~from ~into =
    merge concatenates the bodies in source order and re-canonicalises the
    result: the two halves were each canonical alone, but their concatenation
    need not be. *)
+let merged_rule ~ctx (a : rule) (b : rule) =
+  {
+    a with
+    declarations = coalesced_declarations ~ctx (a.declarations @ b.declarations);
+  }
+
 let merged_element scan ~from ~into =
   let earlier, later = if from < into then (from, into) else (into, from) in
   match
@@ -571,14 +579,7 @@ let merged_element scan ~from ~into =
       element_shape (fst scan.current.(later)) )
   with
   | Some (Style a), Some (Style b) ->
-      let merged =
-        {
-          a with
-          declarations =
-            coalesced_declarations ~ctx:scan.st.ctx
-              (a.declarations @ b.declarations);
-        }
-      in
+      let merged = merged_rule ~ctx:scan.st.ctx a b in
       Some (Rule merged, [ merged ])
   | Some (Block (prelude, ba)), Some (Block (_, bb)) ->
       let stmt = block_statement prelude (scan.st.canon_body (ba @ bb)) in
@@ -713,6 +714,64 @@ let sort st changed ids =
       order
     end
 
+(* Fold two occurrences of one selector that {!coalesce} keeps apart because
+   each is held by a rule between them that conflicts with it, when no chain of
+   conflicts through another rule orders the first before the second: the rules
+   the first must precede then follow the fold and the rest precede it, an order
+   that keeps every constrained pair. A chain found once stays, since a fold
+   only joins nodes, so a pair it orders is not asked again. The first pair that
+   folds is folded, on a run standing as {!sort} left it. *)
+let join_held st changed ids =
+  let n = Array.length ids in
+  let last = Shape_table.create 16 in
+  let style p =
+    let e = st.store.elements.(ids.(p)) in
+    match (element_shape e.stmt, e.key) with
+    | Option.Some (Style r), Option.Some key -> Option.Some (r, key)
+    | _ -> Option.None
+  in
+  let held i p =
+    let pair = (ids.(i), ids.(p)) in
+    Move_table.mem st.held pair
+    || Rule_graph.run_orders st.graph (node ids.(i)) (node ids.(p))
+       &&
+       (Move_table.replace st.held pair ();
+        true)
+  in
+  let rec find p =
+    if p >= n then Option.None
+    else
+      match style p with
+      | Option.None -> find (p + 1)
+      | Option.Some (b, key) -> (
+          match Shape_table.find_opt last key with
+          | Option.Some (i, a) when not (held i p) -> Option.Some (i, a, p, b)
+          | _ ->
+              Shape_table.replace last key (p, b);
+              find (p + 1))
+  in
+  match find 0 with
+  | Option.None -> Option.None
+  | Option.Some (i, a, p, b) ->
+      let merged = merged_rule ~ctx:st.ctx a b in
+      let e = element (Rule merged) [ merged ] in
+      add_element st.store e;
+      let id =
+        Rule_graph.Node_id.to_int
+          (Rule_graph.join st.graph
+             [ node ids.(i); node ids.(p) ]
+             e.node
+             ~at:(node ids.(p)))
+      in
+      changed := true;
+      let joined = Array.copy ids in
+      joined.(p) <- id;
+      Option.Some
+        (Array.of_list
+           (List.filteri
+              (fun q _ -> not (Int.equal q i))
+              (Array.to_list joined)))
+
 (* Sort and coalesce to a fixed point: sorting can empty the interval between
    two same-selector occurrences that a conflicting element previously kept
    apart, enabling a merge the source order hid, so equivalent sheets converge
@@ -762,7 +821,15 @@ let settling ~canon_body ~ctx ?parent elements =
     Rule_graph.run ?parent ~exclusive ~folds:(folds elements)
       (Array.to_list (Array.map (fun e -> e.node) elements))
   in
-  { canon_body; ctx; parent; store; graph; observers = Move_table.create 16 }
+  {
+    canon_body;
+    ctx;
+    parent;
+    store;
+    graph;
+    observers = Move_table.create 16;
+    held = Move_table.create 16;
+  }
 
 let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
     : statement list =
@@ -778,7 +845,11 @@ let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
         let ids = coalesce ~blocks:false st changed ids in
         let ids = sort st changed ids in
         let coalesced = coalesce ~blocks:true st changed ids in
-        if coalesced == ids then ids else rounds coalesced
+        if coalesced != ids then rounds coalesced
+        else
+          match join_held st changed ids with
+          | Option.None -> ids
+          | Option.Some joined -> rounds (sort st changed joined)
       in
       rounds (Array.init (Array.length elements) Fun.id)
       |> Array.map (fun id -> st.store.elements.(id).stmt)

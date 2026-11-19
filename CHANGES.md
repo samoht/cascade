@@ -326,6 +326,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   stylesheet, the report says "no structural change; the text differs" above the
   text diff, instead of "none classified structurally". It still exits 1,
   because the default mode counts any difference in the text (#1400).
+- `cascade diff --diff=canonical` reported a difference when one sheet wrote a
+  selector's declarations in two rules and the other in one, though no rule
+  between them orders the two:
+  `.a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}` against
+  `.c{height:3px}.a{height:4px;width:1px}.b{width:2px}`. They compare
+  identical (#1405).
 
 ### Speed
 
