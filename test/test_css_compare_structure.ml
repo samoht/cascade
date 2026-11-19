@@ -278,6 +278,26 @@ let equal_canonical_targets () =
     "every engine reads it under enforce-spec" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
        ".a{color:red;-ms-transition:all 1s}" ".a{color:red}");
+  (* Nor do [font-smooth] and [font-smoothing]: Chrome 151 and WebKit 26.5 parse
+     neither, Firefox's property table lists neither, and MDN records
+     [font-smooth] only under the prefixed names [-webkit-font-smoothing] and
+     [-moz-osx-font-smoothing]. yahoo-uk-2 in SatCSS. *)
+  Alcotest.(check bool)
+    "font-smooth is read by no target" true
+    (equal ".a{color:red;font-smooth:always;font-smoothing:antialiased}"
+       ".a{color:red}");
+  Alcotest.(check bool)
+    "nor does it hold a rule apart" true
+    (equal
+       ".e,.v{font-smooth:always;font-smoothing:antialiased}.e,.v,.t \
+        .v{color:#fff}.s{z-index:-1}.c b,.c i{vertical-align:middle}.c \
+        b{color:#fff}"
+       ".e,.v{font-smooth:always;font-smoothing:antialiased}.s{z-index:-1}.c \
+        b,.c i{vertical-align:middle}.e,.v,.c b,.t .v{color:#fff}");
+  Alcotest.(check bool)
+    "font-smooth under enforce-spec" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
+       ".a{color:red;font-smooth:always}" ".a{color:red}");
   Alcotest.(check bool)
     "a mask composite's prefixed vocabulary too" true
     (equal ".a{-webkit-mask-composite:source-in;mask-composite:intersect}"
