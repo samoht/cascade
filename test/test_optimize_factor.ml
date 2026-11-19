@@ -332,6 +332,25 @@ let test_large_stylesheet_factoring_past_consumed_rules () =
   Alcotest.(check string)
     "factoring past consumed rules converges in one pass" once (minify_str once)
 
+(* Nesting takes [#p form] into [#p] once the run is factored, and [#p], which
+   nests a rule, is then no member of the bucket [display:none] files: the rule
+   that bucket printed between [#s,#t] and [#k] is gone, so the two are
+   neighbours and share it. Minifying the output again factored it out of
+   them. *)
+let test_nesting_then_factoring_converges () =
+  let input =
+    "#s,#t{display:none}#p{_position:absolute;background:#fafafa;border-bottom:1px \
+     solid \
+     #ebebeb;display:none;min-width:960px;opacity:0;position:fixed;top:-359px;width:100%;z-index:500}#p \
+     form{_width:850px}#k{cursor:default;display:none;margin-top:1px}"
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the rules nesting leaves neighbours share their declaration" true
+    (Astring.String.is_prefix ~affix:"#k,#s,#t{display:none}" once);
+  Alcotest.(check string)
+    "nesting then factoring converges in one pass" once (minify_str once)
+
 (* The rule nested in [@media] under a pseudo-element matches nothing and goes
    once the rule's body is optimized, which leaves the [@media] empty after the
    body's own pass dropped its empty blocks. Below 129 rules the pipeline's next
@@ -968,6 +987,9 @@ let suite =
       ( "large stylesheet drops block left empty",
         `Quick,
         test_large_stylesheet_drops_block_left_empty );
+      ( "nesting then factoring converges",
+        `Quick,
+        test_nesting_then_factoring_converges );
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
