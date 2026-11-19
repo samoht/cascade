@@ -48,9 +48,12 @@ type kind =
   | Bad_selector of string
       (** Selector parser rejected the prelude; payload is a short reason. *)
   | Untargeted_selector of string
-      (** The prelude holds, outside every forgiving list, a pseudo-class no
-          browser the minifier targets reads, so each of them drops the rule
-          (Selectors 4 sec. 3.9); payload is the pseudo-class, colon and all. *)
+      (** The prelude is a selector no browser the minifier targets reads, so
+          each of them drops the rule: one holding, outside every forgiving
+          list, a pseudo-class none of them reads (Selectors 4 sec. 3.9), or a
+          keyframe selector outside CSS Animations 1's grammar. Payload names
+          it: the pseudo-class, colon and all, or [keyframe selector] and the
+          prelude. *)
   | Bad_value of { property : string; reason : string }
       (** Property value validator rejected the right-hand side. *)
   | Bad_condition of { at_rule : string; reason : string }
