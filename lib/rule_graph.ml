@@ -77,11 +77,11 @@ type t = {
       (** whether equal selector branches add conservative structural edges;
           optimizer rewrites need them, while a canonical projection over
           already-expanded rules does not *)
-  same_body_ties : bool;
-      (** whether two rules with one declaration list record no conflict: an
-          element both match takes that list twice whichever comes first, which
-          a canonical projection reads as no order; optimizer rewrites keep the
-          edge *)
+  agreeing_ties : bool;
+      (** whether two rules whose declarations touching the other's are the same
+          sequence record no conflict: an element both match takes that sequence
+          twice whichever comes first, which a canonical projection reads as no
+          order; optimizer rewrites keep the edge *)
   exclusive : (int -> int -> bool) option;
       (** a caller's assertion over the nodes {!of_rules} built, by index: the
           two rules never apply to one element together, so they never
@@ -264,6 +264,27 @@ let asserted_exclusive t i j =
   | Option.Some exclusive ->
       i < t.exclusive_count && j < t.exclusive_count && exclusive i j
 
+(* The declarations of [a] that touch one of [b]'s. *)
+let touching (a : decl_overlap list) (b : decl_overlap list) =
+  List.filter
+    (fun (x : decl_overlap) ->
+      List.exists
+        (fun (y : decl_overlap) ->
+          Shorthand.declarations_overlap_with_keys x.decl x.footprint y.decl
+            y.footprint)
+        b)
+    a
+
+(* Two rules whose declarations touching the other's are the same sequence: on
+   an element both match, every slot both write takes that sequence twice,
+   whichever comes first, and each one's other writes meet nothing of the
+   other's. *)
+let writes_agree a b =
+  List.equal
+    (fun (x : decl_overlap) (y : decl_overlap) ->
+      Declaration.same_minified x.decl y.decl)
+    (touching a b) (touching b a)
+
 let nodes_conflict_reason t i j =
   if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
     Option.Some Shared_branch_pin
@@ -274,9 +295,8 @@ let nodes_conflict_reason t i j =
       t.specificities.(i) t.overlap_keys.(j) t.decl_overlaps.(j) t.selectors.(j)
       t.selector_summaries.(j) t.specificities.(j)
     && not
-         (t.same_body_ties
-         && List.equal Declaration.same_minified t.rules.(i).declarations
-              t.rules.(j).declarations)
+         (t.agreeing_ties
+         && writes_agree t.decl_overlaps.(i) t.decl_overlaps.(j))
   then Option.Some Cascade_conflict
   else Option.None
 
@@ -556,7 +576,7 @@ let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
       generation = 0;
       closed_world;
       pin_shared_branches;
-      same_body_ties = false;
+      agreeing_ties = false;
       exclusive;
       exclusive_count = n;
       parent;
@@ -1709,7 +1729,7 @@ let run ?parent ?exclusive ~folds rules =
       generation = 0;
       closed_world = false;
       pin_shared_branches = false;
-      same_body_ties = true;
+      agreeing_ties = true;
       exclusive;
       exclusive_count = max_int;
       parent;
