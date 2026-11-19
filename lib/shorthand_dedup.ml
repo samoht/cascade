@@ -206,11 +206,31 @@ let is_all_declaration = function
       | _ -> false)
   | _ -> false
 
+(* A [content] value every target reads: nothing written before it is left to
+   fall back to. An image, [attr()], a [var()] or a list holding one of those
+   may be what some browser rejects, and keeps the declarations before it. *)
+let rec plain_content : Properties.content -> bool = function
+  | String _ | Quoted _ | None | Normal | Open_quote | Close_quote | Counter _
+  | Counters _ | Inherit | Initial | Unset | Revert | Revert_layer ->
+      true
+  | Content_list items -> List.for_all plain_content items
+  | Image _ | Attr _ | String_ref _ | Var _ -> false
+
+let superseding_content new_decl existing =
+  match (new_decl, existing) with
+  | ( Declaration { property = Content; value; important; _ },
+      Declaration { property = Content; important = old_important; _ } ) ->
+      plain_content value && (important || not old_important)
+  | _ -> false
+
 let deduplicate_step ?targets kept (idx, decl) =
   if is_intentionally_duplicated decl then
     let kept =
       filter_preserve
-        (fun (_, old) -> not (same_property_value_declaration decl old))
+        (fun (_, old) ->
+          not
+            (same_property_value_declaration decl old
+            || superseding_content decl old))
         kept
     in
     (idx, decl) :: kept

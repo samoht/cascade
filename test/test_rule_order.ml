@@ -581,20 +581,22 @@ let agreeing_writes_never_conflict () =
     "the wider rule written first" want
     (canonical (css [ ".f{"; shared; ";outline:0}.h{"; shared; "}" ]))
 
-(* The declaration dedup keeps a [content] or [outline] sequence written in one
-   rule verbatim, as a fallback pattern, so a later rule with the identical
-   selector does not shadow an earlier write of one either: the sheet that wrote
-   the two in one rule then projects as the one that wrote them in two. *)
+(* The declaration dedup keeps a [content] sequence written in one rule verbatim
+   where the later value may be one some browser rejects, as a fallback pattern,
+   so a later rule with the identical selector does not shadow such an earlier
+   write either: the sheet that wrote the two in one rule then projects as the
+   one that wrote them in two. A later plain string supersedes the earlier one
+   in both (CSS Cascade 5 sec. 6.1). *)
 let shadowing_keeps_what_dedup_keeps () =
   List.iter
     (fun (name, want, two, one) ->
       Alcotest.(check string) (name ^ ", two rules") want (canonical two);
       Alcotest.(check string) (name ^ ", one rule") want (canonical one))
     [
-      ( "content",
-        ".a{content:\"x\";content:\"y\"}.b{top:0}",
-        ".a{content:'x'}.b{top:0}.a{content:'y'}",
-        ".a{content:'x';content:'y'}.b{top:0}" );
+      ( "an attr() fallback",
+        ".a{content:\"x\";content:attr(data-x)}.b{top:0}",
+        ".a{content:'x'}.b{top:0}.a{content:attr(data-x)}",
+        ".a{content:'x';content:attr(data-x)}.b{top:0}" );
     ]
 
 (* A rule between two occurrences that meets a declaration only on slots the
