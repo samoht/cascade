@@ -3,15 +3,23 @@ open Stylesheet_pp
 
 (** {1 Reading/Parsing} *)
 
+(* CSS Animations 1 sec. 3 takes [from], [to] and a percentage as a keyframe
+   selector, and every engine drops a keyframe rule over anything else: Chrome
+   151 and WebKit 26.5 keep no keyframe for YUI's [0], and Firefox's
+   [KeyframePercentage] takes those three alone. So the rule goes as one no
+   target reads ({!Error.Untargeted_selector}). *)
 let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
+  let loc = Cursor.position r in
   let selector_str = Cursor.drain_until_block_as_string ~trim:true r in
   let selector =
     match Keyframe.selector_of_string selector_str with
     | Ok selector -> selector
     | Error _ ->
-        Cursor.err_invalid r
-          (String.concat "" [ "keyframe selector: "; selector_str ])
+        Error.fail
+          (Cursor.error ~sort:Sort.Selector r ~loc
+             (Error.Untargeted_selector
+                (String.concat "" [ "keyframe selector "; selector_str ])))
   in
   let declarations = Cursor.braces Declaration.read_keyframe_declarations r in
   { selector; declarations }

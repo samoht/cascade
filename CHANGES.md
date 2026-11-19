@@ -460,6 +460,12 @@ to call instead, and moving off most of them is a rename or a deleted call.
   `#Stencil .Td-u:h:hover`. A pseudo-class with no vendor prefix that MDN's
   compatibility data does not record, as `:h`, is one no target ships, so
   its rule is dropped with the same warning and is no difference (#1446).
+- `cascade diff --diff=canonical` exited 2 on guardian's YUI sheet against
+  its `--minify` output, which drops the keyframe rules YUI writes over `0`
+  for `0%`. CSS Animations 1 takes `from`, `to` and a percentage as a
+  keyframe selector, and every engine drops a keyframe rule over anything
+  else, so the warning says no target reads it and the loss is no
+  difference (#1446).
 - `cascade diff --diff=canonical` called `.a{hyphens:auto}.a{color:red}`
   different from its `--minify` output, dropping on one side only the
   `-webkit-hyphens` that Safari 16.4 needs, and let a `-ms-` or `-o-`
