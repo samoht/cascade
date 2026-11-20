@@ -536,6 +536,22 @@ let check_view_transition_name =
 
 (* Length-percentage tests for width/height using the value reader/printer *)
 
+(* CSS Scroll Animations 1 (ED) sec. 6.2, [animation-range]: an omitted end is
+   the start's range name at [100%] when the start names one, and [normal]
+   otherwise. So [entry 10% normal] ends at [normal], and dropping the [normal]
+   ends it at [entry 100%]: Chromium 153 computes [animation-range-end] as
+   [normal] for the first and [entry] for the second. Where the start names no
+   range, or the end restates the default, the end goes. *)
+let animation_range_end () =
+  decl_optimizes ~prop:"animation-range" ~into:"entry 10%normal"
+    "entry 10% normal";
+  decl_optimizes ~prop:"animation-range" ~into:"cover normal" "cover normal";
+  decl_optimizes ~prop:"animation-range" ~into:"50%" "50% normal";
+  decl_optimizes ~prop:"animation-range" ~into:"normal" "normal normal";
+  decl_optimizes ~prop:"animation-range" ~into:"exit 20%" "exit 20% exit";
+  decl_optimizes ~prop:"animation-range" ~into:"exit 20%" "exit 20% exit 100%";
+  decl_optimizes ~prop:"animation-range" ~into:"cover 0%" "cover 0% cover 100%"
+
 (* ignore-test: grouped generated-surface vectors. Each row is still a real
    positive/negative spec assertion; the grouping keeps this file navigable. *)
 let spec_generated_animation_font_edges () =
@@ -1108,6 +1124,7 @@ let suite =
     [
       test_case "spec generated animation/font edges" `Quick
         spec_generated_animation_font_edges;
+      test_case "animation-range end" `Quick animation_range_end;
       test_case "spec generated box/layout edges" `Quick
         spec_generated_box_layout_edges;
       test_case "spec generated position/interaction edges" `Quick
