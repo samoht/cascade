@@ -1024,6 +1024,19 @@ let test_clip_path () =
   (* 4 values *)
   check_clip_path "circle(50px)";
   check_clip_path "ellipse(25px 50px)";
+  (* CSS Shapes 1 sec. 3.1: an omitted ellipse() size is [closest-side] on both
+     axes, and Chromium rejects a single radius, so the two radii drop only
+     together. *)
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse()"
+    "ellipse(closest-side closest-side)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(10px closest-side)"
+    "ellipse(10px closest-side)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(closest-side 10px)"
+    "ellipse(closest-side 10px)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(closest-side farthest-side)"
+    "ellipse(closest-side farthest-side)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(var(--v) closest-side)"
+    "ellipse(var(--v) closest-side)";
   check_clip_path "polygon(0px 0px,100px 0px,50px 100px)";
   decl_optimizes ~prop:"clip-path" ~held:"polygon(0px 0px,100px 0px,50px 100px)"
     ~into:"polygon(0 0,100px 0,50px 100px)"
