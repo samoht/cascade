@@ -1021,8 +1021,11 @@ let test_content_superseded_by_a_plain_value () =
         ".a{content:\"a\"!important}",
         ".a{content:\"a\"!important;content:\"b\"}" );
       (* A browser that predates the alternative text of CSS Generated Content 3
-         sec. 1.1 drops the value holding one, so it keeps the declaration
-         before it. *)
+         sec. 1.1 drops the value holding one, and Chrome 153 refuses symbols()
+         as a counter style, so each keeps the declaration before it. *)
+      ( "a counter in a symbols() style",
+        ".a{content:\"a\";content:counter(n,symbols(cyclic\"*\"))}",
+        ".a{content:\"a\";content:counter(n,symbols(cyclic\"*\"))}" );
       ( "an alternative text",
         ".a{content:\"a\";content:\"b\"/\"c\"}",
         ".a{content:\"a\";content:\"b\"/\"c\"}" );
