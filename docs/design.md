@@ -57,7 +57,10 @@ make:
 - under `--lossless`, `color(srgb ...)` on whole bytes against its `rgb()`,
   hex or named spelling;
 - a run of `@property` rules sorted by name, keeping the last registration of
-  each (CSS Properties and Values API 1 sec. 3), and a top-level `@layer a,b;`
+  each (CSS Properties and Values API 1 sec. 3), which is the last valid one
+  since the reader keeps no other as an `@property` (under `--enforce-spec`
+  one a shipping engine drops stays as an unknown at-rule, which splits the
+  run), and a top-level `@layer a,b;`
   name the following blocks already declare in that order (CSS Cascade 5 sec.
   6.4.3);
 - a legacy name alias (CSS Cascade 5 sec. 3.1, WHATWG Compatibility sec.
@@ -143,3 +146,12 @@ barrier and factors the runs on either side apart.
 
 Speed on real stylesheets is a requirement, and a slow path on realistic input
 is a defect. `bench/corpus_sweep.sh` measures the SatCSS corpus.
+
+## Registrations
+
+`Optimize.known_registrations` is the one answer to what a custom property's
+registration is. It knows none in a fragment. Under `--scope=stylesheet` it
+takes the last `@property` for a name at the top level or in an `@layer`; one
+inside another block, or kept as an unknown at-rule, leaves the name unknown.
+The calc-simplifier context, the typed promotion of custom-property values and
+the fold of a registered `var()` into a shorthand all read it.
