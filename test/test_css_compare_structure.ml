@@ -359,6 +359,22 @@ let equal_canonical_targets () =
   Alcotest.(check bool)
     "a guard failing past every floor is no difference" true
     (equal "@supports not (display:grid){a{color:red}}" "b{}");
+  (* A fallback is dead only when every browser at or above the floors reads the
+     declaration after it. Chrome 111 reads neither light-dark() (Chrome 123)
+     nor anchor-size() (Chrome 125), so it paints the red and the 1px. *)
+  Alcotest.(check bool)
+    "a fallback a floor needs separates" false
+    (equal "a{color:red;color:light-dark(red,blue)}"
+       "a{color:light-dark(red,blue)}");
+  Alcotest.(check bool)
+    "so does one before a value outside colours" false
+    (equal "a{width:1px;width:anchor-size(width)}" "a{width:anchor-size(width)}");
+  Alcotest.(check bool)
+    "and one in an earlier rule of the selector" false
+    (equal "a{width:1px}a{width:stretch}" "a{width:stretch}");
+  Alcotest.(check bool)
+    "one every floor parses past is dead" true
+    (equal "a{display:block;display:grid}" "a{display:grid}");
   Alcotest.(check bool)
     "a different fallback under an unknown guard still differs" false
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
