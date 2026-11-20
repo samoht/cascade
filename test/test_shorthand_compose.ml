@@ -274,6 +274,17 @@ let test_timeline_range_composes () =
     ".x{animation-range-start:normal;animation-range-end:normal}";
   sheet_optimizes_to ~into:".x{animation-range:entry 10%exit 90%}"
     ".x{animation-range-start:entry 10%;animation-range-end:exit 90%}";
+  (* The shorthand pairs the i-th start with the i-th end (CSS Animations 2 sec.
+     6.3), so two lists compose range by range, and lists of different lengths,
+     which repeat against [animation-name], have no spelling in it. *)
+  sheet_optimizes_to ~into:".x{animation-range:cover exit,entry contain}"
+    ".x{animation-range-start:cover,entry;animation-range-end:exit,contain}";
+  sheet_optimizes_to
+    ~into:".x{animation-range-start:exit 100%;animation-range-end:cover,entry}"
+    ".x{animation-range-start:exit 100%;animation-range-end:cover,entry}";
+  sheet_optimizes_to
+    ~into:".x{animation-range-start:cover,entry;animation-range-end:exit}"
+    ".x{animation-range-start:cover,entry;animation-range-end:exit}";
   (* [block] is the axis's initial, so the composed value names it by leaving
      the component out. *)
   sheet_optimizes_to ~into:".x{scroll-timeline:--t}"
