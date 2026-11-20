@@ -321,14 +321,6 @@ let rec value_uses_color p = function
 
 let value_uses_color_4 decl = value_uses_color Values.color_is_color_4 decl
 
-(* Whether a browser in [targets] drops [decl] at parse time for a colour it
-   does not read: the earlier declaration is a fallback for that browser and
-   dead everywhere else. *)
-let value_uses_color_unimplemented_by targets decl =
-  value_uses_color
-    (Values.color_uses_feature_where (Support.unimplemented_by targets))
-    decl
-
 let length_list_has_runtime_subst lengths =
   List.exists Values.length_has_runtime_subst lengths
 
@@ -435,6 +427,104 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
   | Declaration { property; value; _ } ->
       Pp.to_string ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
+
+(* BCD files a keyword a property takes as [css.properties.<property>.<word>]
+   and a function as the same key, or as [<word>_function] where a keyword
+   shares its name. A function no key of the property names is filed under the
+   value type that takes it, [css.types.<function>] or
+   [css.types.<type>.<function>]; a deeper key is a detail of some production
+   rather than the production. So a word is unread by a floor when the key of
+   its property says so, or, for a function only the value types name, when
+   every value type that names it says so: a name two types share, such as the
+   [rect()] of [<shape>] and of [<basic-shape>], is known missing only when both
+   are. *)
+let type_keys name =
+  List.filter
+    (fun key ->
+      String.starts_with ~prefix:"css.types." key
+      && List.length (String.split_on_char '.' key) <= 4)
+    (Support.keys_named name)
+
+let word_unread ~implemented property (kind : Token.kind) =
+  let of_property word =
+    String.concat "" [ "css.properties."; property; "."; word ]
+  in
+  match kind with
+  | Ident word -> (
+      match implemented (of_property (String.lowercase_ascii word)) with
+      | Some false -> true
+      | Some true | None -> false)
+  | Function name -> (
+      let name = String.lowercase_ascii name in
+      match
+        List.find_map implemented
+          [
+            of_property (String.concat "" [ name; "_function" ]);
+            of_property name;
+          ]
+      with
+      | Some answer -> not answer
+      | None -> (
+          match List.filter_map implemented (type_keys name) with
+          | [] -> false
+          | answers -> List.for_all not answers))
+  | _ -> false
+
+let value_tokens decl =
+  let lexer = Lexer.of_string (string_of_value ~minify:true decl) in
+  let rec go acc =
+    match (Lexer.next lexer).kind with Eof -> acc | kind -> go (kind :: acc)
+  in
+  go []
+
+let is_var : Token.kind -> bool = function
+  | Function name -> String.equal (String.lowercase_ascii name) "var"
+  | _ -> false
+
+(* CSS 2.1 sec. 4.2 has a browser ignore a declaration whose value it does not
+   parse. Which productions a declaration uses is read off its property, its
+   colours and the words of its value, and an engine at [version] drops it when
+   the dataset says that engine lacks one of them. A custom property takes any
+   value, and CSS Custom Properties 1 sec. 3 has a declaration holding [var()]
+   assumed valid at parse time, so neither is dropped for its value. *)
+let dropped_by ~tokens engine version decl =
+  let answer = Support.engine_parses engine version in
+  let lacks key =
+    match answer key with Some false -> true | Some true | None -> false
+  in
+  let property = String.lowercase_ascii (property_name decl) in
+  lacks (String.concat "" [ "css.properties."; property ])
+  || (not (List.exists is_var (Lazy.force tokens)))
+     && (value_uses_color (Values.color_uses_feature_where lacks) decl
+        || List.exists
+             (word_unread ~implemented:answer property)
+             (Lazy.force tokens))
+
+let rec dropping_floors floors decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> dropping_floors floors decl
+  | Declaration { property = Custom_property _; _ } -> []
+  | Declaration _ ->
+      let tokens = lazy (value_tokens decl) in
+      List.filter_map
+        (fun (engine, version) ->
+          if dropped_by ~tokens engine version decl then Some engine else None)
+        (Support.floors floors)
+
+(* A floor stands for its release and every later one, and a shipped production
+   stays, so a declaration every floor parses is read by every browser at or
+   above them. [earlier] is what a browser paints in place of [later] only where
+   it reads [earlier] and drops [later]: a browser dropping both, as Safari does
+   [user-select:auto] and [user-select:none], paints neither. *)
+let fallback_for ~floors ~later earlier =
+  match dropping_floors floors later with
+  | [] -> false
+  | dropping ->
+      let dropped_earlier = dropping_floors floors earlier in
+      List.exists
+        (fun engine ->
+          not (List.exists (Support.equal_engine engine) dropped_earlier))
+        dropping
 
 (* Rewrite the value of a custom declaration through [f], which sees its
    minified serialisation. Everything else the declaration carries - its

@@ -274,14 +274,18 @@ let rec expand_blocks (stmt : statement) : statement list =
    leaves an earlier important one standing. A property whose duplicates the
    declaration dedup keeps verbatim ([content], [outline]) is shadowed only
    where that dedup would drop the earlier write in one rule, so a sheet that
-   wrote the two in one rule converges with one that wrote them in two. *)
+   wrote the two in one rule converges with one that wrote them in two. A later
+   write a browser at or above the floors drops at parse time leaves the earlier
+   one as what that browser paints ({!Declaration.fallback_for}). *)
 (* Whether the later write [l] of [d]'s property shadows [d]. *)
 let shadows ~ctx d l =
   if Shorthand.is_intentionally_duplicated d then
     not
       (List.memq d
          (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false [ d; l ]))
-  else Declaration.is_important l || not (Declaration.is_important d)
+  else
+    (Declaration.is_important l || not (Declaration.is_important d))
+    && not (Declaration.fallback_for ~floors:(Ctx.floors ctx) ~later:l d)
 
 (* One backward pass: [later] holds, per selector, the declarations of each
    property the statements already walked write, in source order, and those are

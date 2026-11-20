@@ -150,28 +150,34 @@ let legacy_vendor_fallback new_decl existing =
   && (not (same_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
-(* The earlier declaration is a real cascade fallback when the later one uses
-   CSS Color 4 / 5 syntax that older browsers drop. With a target contract the
-   browsers are named, and the fallback is one only where a target does not
-   parse the later colour; every target parsing it makes the earlier declaration
-   dead at cascade time. *)
-let legacy_color_fallback ?targets new_decl existing =
-  Declaration.same_property new_decl existing
+(* An earlier declaration the later one covers is a fallback for a browser that
+   drops the later one at parse time and reads it. The floors stand for their
+   releases and every later one, so the earlier declaration is dead only when
+   every browser at or above them that reads it also reads the later one
+   ({!Declaration.fallback_for}). The minifier and a run that judges for
+   browsers ask this one question of the same floors ({!Ctx.floors}), so
+   whatever the minifier deletes the judge also counts dead. *)
+let floor_fallback ~floors new_decl existing =
+  (not (same_value new_decl existing))
+  && Declaration.fallback_for ~floors ~later:new_decl existing
+
+(* A run that does not judge also keeps the fallback before a CSS Color 4 / 5
+   colour every floor reads, for a browser older than them. *)
+let legacy_color_fallback ~judged new_decl existing =
+  (not judged)
+  && Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
-  && (match targets with
-    | Some targets ->
-        Declaration.value_uses_color_unimplemented_by targets new_decl
-    | None -> Declaration.value_uses_color_4 new_decl)
+  && Declaration.value_uses_color_4 new_decl
   && not (Declaration.value_uses_color_4 existing)
 
 (* Same shape: the later value uses a runtime substitution ([var()] / [env()] /
    [attr()]) and the earlier doesn't, so the earlier is a static fallback for
    browsers that can't resolve the substitution at parse time. Every target
    resolves one, and a declaration holding a substitution is never dropped at
-   parse time, so under a target contract the later one always wins the cascade
-   and the earlier is dead. *)
-let legacy_runtime_subst_fallback ?targets new_decl existing =
-  Option.is_none targets
+   parse time, so a run that judges for targets finds the later one always wins
+   the cascade and the earlier dead. *)
+let legacy_runtime_subst_fallback ~judged new_decl existing =
+  (not judged)
   && Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
   && Declaration.value_uses_runtime_subst new_decl
@@ -182,13 +188,14 @@ let same_property_value_declaration new_decl existing =
   && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
-let covered_by_new_declaration ?targets new_decl existing =
+let covered_by_new_declaration ~floors ~judged new_decl existing =
   (not (is_intentionally_duplicated existing))
   && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
   && (not (legacy_vendor_fallback new_decl existing))
-  && (not (legacy_color_fallback ?targets new_decl existing))
-  && not (legacy_runtime_subst_fallback ?targets new_decl existing)
+  && (not (floor_fallback ~floors new_decl existing))
+  && (not (legacy_color_fallback ~judged new_decl existing))
+  && not (legacy_runtime_subst_fallback ~judged new_decl existing)
 
 let filter_preserve = List.filter_preserve
 
@@ -231,7 +238,7 @@ let under_important_content kept decl =
        (fun (_, old) -> is_important old && superseding_content old decl)
        kept
 
-let deduplicate_step ?targets kept (idx, decl) =
+let deduplicate_step ~floors ~judged kept (idx, decl) =
   if under_important_content kept decl then kept
   else if is_intentionally_duplicated decl then
     let kept =
@@ -248,7 +255,8 @@ let deduplicate_step ?targets kept (idx, decl) =
   else
     let kept =
       filter_preserve
-        (fun (_, old) -> not (covered_by_new_declaration ?targets decl old))
+        (fun (_, old) ->
+          not (covered_by_new_declaration ~floors ~judged decl old))
         kept
     in
     if is_all_declaration decl then add_all_declaration_rev idx decl kept

@@ -864,13 +864,13 @@ let compatibility_declaration_sites =
    [after] whose declarations the synthesis changed has its shadowing read once
    more: linear, and it moves no rule. [before] is the block the synthesis read,
    statement for statement. *)
-let drop_shadowed_in_prefixed_runs ~before after =
+let drop_shadowed_in_prefixed_runs ~floors ~before after =
   let flush acc run touched =
     let stmts = List.rev run in
     let rules =
       List.filter_map (function Rule r -> Some r | _ -> None) stmts
     in
-    let kept = if touched then Rule.drop_shadowed rules else rules in
+    let kept = if touched then Rule.drop_shadowed ~floors rules else rules in
     if kept == rules then List.rev_append stmts acc
     else List.rev_append (List.map (fun r -> Rule r) kept) acc
   in
@@ -926,7 +926,7 @@ let add_compatibility_prefixes ~targets stylesheet =
         stmts
     in
     if stmts' == stmts then stmts
-    else drop_shadowed_in_prefixed_runs ~before:stmts stmts'
+    else drop_shadowed_in_prefixed_runs ~floors:targets ~before:stmts stmts'
   in
   block stylesheet
 
@@ -1304,7 +1304,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
-      ?judge ~registered ?stats scope
+      ~targets ?judge ~registered ?stats scope
   in
   let result =
     run_pipeline

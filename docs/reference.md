@@ -233,6 +233,11 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
   `backdrop-filter`, `hyphens` and `mask` where Safari 16.4 or Chrome 111 still
   need them. The prefixed `mask-mode` and `mask-composite` are not generated,
   because their legacy grammars differ.
+- Each target stands for its version and every later one. An earlier
+  declaration of a property is dropped only when every browser at or above
+  the targets that reads it reads the later one, so `a{width:1px;width:stretch}` keeps
+  `width:1px` for Chrome 111 to 137, Firefox and Safari, which drop
+  `stretch`. This holds under `--enforce-spec` too.
 - A `min-`/`max-` media or container feature becomes the range syntax,
   `(min-width: 700px)` to `(width >= 700px)`.
 - A nested selector loses its `&` prefix, `& div` to `div`.
@@ -320,7 +325,7 @@ cascade's six-figure `1.55556`; under `--lossless` it equals no finite decimal.
 For browsers, the comparison assumes the targets `--minify` uses: a
 `@supports` guard every target satisfies is unwrapped, a prefix a target
 needs is added on both sides and one no target needs is dropped from both, a
-colour fallback every target parses past is dead, a `-ms-` or `-o-`
+colour fallback every target reads past is dead, a `-ms-` or `-o-`
 declaration, which no target reads, is dropped from both, and so is a rule
 whose selector no target reads ([Target browsers](#target-browsers)).
 Each target stands for its version and every later one, so a `@supports`

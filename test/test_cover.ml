@@ -15,13 +15,14 @@ let single_selector css =
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
 let sel css = Fmt.kstr single_selector "%s{x:1}" css
+let covered = Cover.covered ~floors:Support.evergreen
 
 let test_empty_table_covers_nothing () =
   let t = Cover.v () in
   let s = sel ".a" in
   Alcotest.(check bool)
     "empty table reports no coverage" false
-    (Cover.covered (Cover.written t s) (decl "color:red"))
+    (covered (Cover.written t s) (decl "color:red"))
 
 let test_add_then_covered () =
   let t = Cover.v () in
@@ -29,10 +30,10 @@ let test_add_then_covered () =
   Cover.record t s (Cover.written t s) [ decl "color:red" ];
   Alcotest.(check bool)
     "same property reported covered" true
-    (Cover.covered (Cover.written t s) (decl "color:blue"));
+    (covered (Cover.written t s) (decl "color:blue"));
   Alcotest.(check bool)
     "different property not covered" false
-    (Cover.covered (Cover.written t s) (decl "width:1px"))
+    (covered (Cover.written t s) (decl "width:1px"))
 
 let test_per_selector_isolation () =
   let t = Cover.v () in
@@ -41,7 +42,7 @@ let test_per_selector_isolation () =
   Cover.record t a (Cover.written t a) [ decl "color:red" ];
   Alcotest.(check bool)
     "coverage is selector-scoped" false
-    (Cover.covered (Cover.written t b) (decl "color:blue"))
+    (covered (Cover.written t b) (decl "color:blue"))
 
 let test_importance_partitioning () =
   let t = Cover.v () in
@@ -49,11 +50,11 @@ let test_importance_partitioning () =
   Cover.record t s (Cover.written t s) [ decl "color:red" ];
   Alcotest.(check bool)
     "normal does not cover important" false
-    (Cover.covered (Cover.written t s) (decl "color:blue!important"));
+    (covered (Cover.written t s) (decl "color:blue!important"));
   Cover.record t s (Cover.written t s) [ decl "color:red!important" ];
   Alcotest.(check bool)
     "important covers important" true
-    (Cover.covered (Cover.written t s) (decl "color:blue!important"))
+    (covered (Cover.written t s) (decl "color:blue!important"))
 
 (* A rule asks about one selector and every declaration it carries, so the
    coverage those declarations are tested against is read once and answers for
@@ -66,10 +67,10 @@ let test_read_answers_for_the_whole_rule () =
   Cover.record t s before [ decl "color:red" ];
   Alcotest.(check bool)
     "the read answers as of the rule, not as of the table" false
-    (Cover.covered before (decl "color:blue"));
+    (covered before (decl "color:blue"));
   Alcotest.(check bool)
     "and the next read sees the store" true
-    (Cover.covered (Cover.written t s) (decl "color:blue"))
+    (covered (Cover.written t s) (decl "color:blue"))
 
 (* [record] extends the read it was given, so a rule's declarations reach the
    table in one store exactly as they would one store at a time. *)
@@ -85,11 +86,11 @@ let test_one_store_agrees_with_one_per_declaration () =
       Alcotest.(check bool)
         (Fmt.str "one store on %s" probe)
         expected
-        (Cover.covered (Cover.written together s) d);
+        (covered (Cover.written together s) d);
       Alcotest.(check bool)
         (Fmt.str "one store per declaration on %s" probe)
         expected
-        (Cover.covered (Cover.written apart s) d))
+        (covered (Cover.written apart s) d))
     [
       ("color:blue", true);
       ("width:2px", true);
@@ -98,6 +99,22 @@ let test_one_store_agrees_with_one_per_declaration () =
       ("left:0", false);
       ("color:blue!important", false);
     ]
+
+(* A later write a floor drops at parse time is what leaves the earlier one
+   standing there: web-features records light-dark() from Chrome 123, past the
+   Chrome 111 floor, and color-mix() from Chrome 111. *)
+let test_a_later_write_a_floor_drops_covers_nothing () =
+  let t = Cover.v () in
+  let s = sel ".a" in
+  Cover.record t s (Cover.written t s) [ decl "color:light-dark(red,blue)" ];
+  Alcotest.(check bool)
+    "a write Chrome 111 drops" false
+    (covered (Cover.written t s) (decl "color:red"));
+  Cover.record t s (Cover.written t s)
+    [ decl "color:color-mix(in lab,red,blue)" ];
+  Alcotest.(check bool)
+    "a write every floor reads after it" true
+    (covered (Cover.written t s) (decl "color:red"))
 
 let suite =
   ( "cover",
@@ -112,4 +129,6 @@ let suite =
         test_read_answers_for_the_whole_rule;
       Alcotest.test_case "one store agrees with one per declaration" `Quick
         test_one_store_agrees_with_one_per_declaration;
+      Alcotest.test_case "a later write a floor drops covers nothing" `Quick
+        test_a_later_write_a_floor_drops_covers_nothing;
     ] )

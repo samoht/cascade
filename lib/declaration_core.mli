@@ -74,11 +74,6 @@ val value_uses_color_4 : declaration -> bool
 (** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
     CSS Color 4 / 5 construct. [var()] returns [false]. *)
 
-val value_uses_color_unimplemented_by : Support.targets -> declaration -> bool
-(** [value_uses_color_unimplemented_by targets decl] is [true] when a browser in
-    [targets] does not parse a colour construct [decl]'s typed value uses, and
-    so drops the declaration and paints the one before it. *)
-
 val value_uses_runtime_subst : declaration -> bool
 (** [value_uses_runtime_subst decl] is [true] when [decl]'s typed length value
     contains a [var()] / [env()] / [attr()] / anchor query, possibly through
@@ -136,6 +131,17 @@ val value_of : declaration -> 'a Properties.property -> 'a option
 
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
+
+val fallback_for :
+  floors:Support.targets -> later:declaration -> declaration -> bool
+(** [fallback_for ~floors ~later earlier] is [true] when a browser at or above
+    one of the floors [floors] names reads [earlier] and drops [later] at parse
+    time, so paints [earlier] where [later] covers it. An engine drops [later]
+    when the web-features dataset says it lacks a production [later] uses: its
+    property, a colour construct, or a keyword or function of its value. A
+    production the dataset has no key for counts as read, and a custom property,
+    or a declaration holding [var()], is never dropped for its value. [false]
+    means [earlier] is dead wherever [later] covers it. *)
 
 val map_custom_value : (string -> string) -> declaration -> declaration
 (** [map_custom_value f d] is [d] with its custom-property value replaced by
