@@ -146,14 +146,12 @@ val first_release :
 
 val fallback_for :
   floors:Support.targets -> later:declaration -> declaration -> bool
-(** [fallback_for ~floors ~later earlier] is [true] when a browser at or above
-    one of the floors [floors] names reads [earlier] and drops [later] at parse
-    time, so paints [earlier] where [later] covers it. An engine drops [later]
-    when the web-features dataset says it lacks a production [later] uses: its
-    property, a colour construct, or a keyword or function of its value. A
-    production the dataset has no key for counts as read, and a custom property,
-    or a declaration holding [var()], is never dropped for its value. [false]
-    means [earlier] is dead wherever [later] covers it. *)
+(** [fallback_for ~floors ~later earlier] is [true] when some release of an
+    engine [floors] names, from its floor to the newest the web-features dataset
+    records, parses [earlier] and drops [later] at parse time, so paints
+    [earlier] where [later] covers it. Which release parses a declaration is
+    {!first_release}. [false] means every such release that parses [earlier]
+    parses [later], so [earlier] is dead wherever [later] covers it. *)
 
 val map_custom_value : (string -> string) -> declaration -> declaration
 (** [map_custom_value f d] is [d] with its custom-property value replaced by
