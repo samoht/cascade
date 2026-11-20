@@ -1078,9 +1078,83 @@ let test_no_merge_with_nested () =
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 
+(* A rule writes everything its body holds, at any depth: a nested style rule
+   under its composed selector (CSS Nesting 1 sec. 3), a nested conditional
+   group under its condition, and a declaration written after a nested statement
+   in its own position (sec. 3.4). A merge or a move that carries the rule past
+   another one sharing a specificity and a slot with any of those writes changes
+   which one wins (CSS Cascade 5 sec. 6.1, order of appearance). Each case is a
+   sheet whose two named writes compete on one element in Chromium, where the
+   second wins. It still wins only while it prints after the first, which the
+   flattened output shows as text order. *)
+let nested_writes_keep_their_order () =
+  let flat css =
+    match Css.of_string ~strict:false css with
+    | Ok { Css.stylesheet; _ } ->
+        Css.to_string ~minify:true (Css.flatten_nesting stylesheet)
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  let wrong (name, css, first, second) =
+    let out = flat (minify_str css) in
+    let at sub = Astring.String.find_sub ~sub out in
+    match (at first, at second) with
+    | Option.Some i, Option.Some j when i < j -> Option.None
+    | _ -> Fmt.kstr Option.some "%s: %S before %S in %s" name first second out
+  in
+  match
+    List.filter_map wrong
+      [
+        (* [.a.d] takes blue from the nested [@media] *)
+        ( "a nested conditional",
+          ".a{top:1px}.d{color:red}.a{@media (min-width:1px){color:blue}}",
+          "color:red",
+          "color:#00f" );
+        (* [.b~:not(.a)] ties with [.a .c] at (0,2,0) *)
+        ( "a nested rule crossed by a later rule",
+          ".a .c{top:2px}:not(.a){font-weight:bold;.b~&{align-items:start}}.a \
+           .c{place-items:center}",
+          "align-items:start",
+          "place-items:center" );
+        (* [all:initial] follows the nested rule, and resets [background] *)
+        ( "a declaration after a nested rule",
+          "[class~=a]{float:left}.a,.b{background:red}[class~=a]{&>span{margin-block-start:7px}all:initial}",
+          "background:red",
+          "all:initial" );
+        (* [:is(p,span):is(.a,.d)] ties with [span.a] at (0,1,1) *)
+        ( "a nested rule merged ahead",
+          "p,span{color:initial}span.a{all:unset}p,span{&:is(.a,.d){float:left}}",
+          "all:unset",
+          "float:left" );
+        ( "a nested sibling rule crossed by a shorthand",
+          ".b+.c{margin-left:2px}:not(.a){margin-left:2px;.b~&{margin-block-start:7px}}.b+.c{margin:1px}",
+          "margin-block-start:7px",
+          "margin:1px" );
+        ( "a nested descendant rule writing all",
+          ".a :is(.c,.d){animation:x \
+           1s}:not(.a){z-index:auto;.b{all:initial}}.a \
+           :is(.c,.d){text-wrap:balance}",
+          "all:initial",
+          "text-wrap:balance" );
+        ( "a nested ancestor rule",
+          ".d,.a .c{flex-basis:10px}*{color:revert-layer;.a \
+           &{white-space-collapse:preserve}}.d,.a .c{white-space:nowrap}",
+          "white-space-collapse:preserve",
+          "white-space:nowrap" );
+        ( "a nested conditional resetting a longhand",
+          ".a,#i2{line-height:2;color:currentcolor}.a:where(.b){@supports \
+           (display:grid){font:12px \
+           serif}}.a.c.d{color:currentcolor;margin-inline:5px}.c:first-child{margin-inline:5px}",
+          "line-height:2",
+          "font:12px serif" );
+      ]
+  with
+  | [] -> ()
+  | failures -> Alcotest.failf "%a" Fmt.(list ~sep:cut string) failures
+
 let suite =
   ( "optimize_factor",
     [
+      ("nested writes keep their order", `Quick, nested_writes_keep_their_order);
       ( "root custom sort keeps other positions",
         `Quick,
         root_custom_sort_keeps_other_positions );
