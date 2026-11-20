@@ -267,11 +267,12 @@ let test_inline_warns_for_an_at_rule_reference () =
     !warned
 
 let test_inline_keep_vars_calc_identity () =
-  (* A kept theme var stays a live reference, but the value-independent calc
-     identities still simplify: [p-1] expands to [calc(var(--spacing) * 1)],
-     which must collapse to [var(--spacing)] (Tailwind's form), and [* 0] to a
-     bare zero. Only value resolution ([* n], n >= 2) keeps the
-     multiplication. *)
+  (* A kept theme var stays a live reference, but [* 1] still simplifies: [p-1]
+     expands to [calc(var(--spacing) * 1)], which must collapse to
+     [var(--spacing)] (Tailwind's form). A kept var can take any tokens at
+     runtime, so [* 0] keeps it (CSS Values 4 sec. 10.10.1): under
+     [--spacing:1px + 2px], Chromium 153 pads [calc(var(--spacing) * 0)] by 1px.
+     Value resolution ([* n], n >= 2) keeps the multiplication too. *)
   let inline css = parse css |> Css.inline_vars ~keep_vars:[ "spacing" ] in
   Alcotest.(check string)
     "kept var times one folds to the operand"
@@ -279,7 +280,8 @@ let test_inline_keep_vars_calc_identity () =
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 1)}"));
   Alcotest.(check string)
-    "kept var times zero folds to zero" ":root{--spacing:.25rem}.p{padding:0}"
+    "kept var times zero keeps the var() reference"
+    ":root{--spacing:.25rem}.p{padding:calc(var(--spacing)*0)}"
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 0)}"));
   Alcotest.(check string)
@@ -289,16 +291,16 @@ let test_inline_keep_vars_calc_identity () =
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 4)}"))
 
 let test_inline_zero_value_collapse () =
-  (* [divide-x-0] multiplies a literal [0px] by a kept reverse var; [0 * x] is
-     zero for every [x], so the [calc()] and the [var()] both drop out. The
-     printer keeps the zero's unit ([0px]); stripping it to [0] is the
-     optimizer's zero-length minification, not the printer's job. *)
+  (* [divide-x-0] multiplies a literal [0px] by a kept reverse var. A kept var
+     can take any tokens at runtime, so [0px * x] is not zero for every [x]:
+     under [--tw-divide-x-reverse:1 + 1px], Chromium 153 computes it to 1px. The
+     [calc()] and the [var()] stay. *)
   let inline css =
     parse css |> Css.inline_vars ~keep_vars:[ "tw-divide-x-reverse" ]
   in
   Alcotest.(check string)
-    "literal zero times a kept var collapses, dropping the calc and var"
-    ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:0px}"
+    "literal zero times a kept var keeps the var() reference"
+    ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:calc(0px*var(--tw-divide-x-reverse))}"
     (minified
        (inline
           ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:calc(0px \
