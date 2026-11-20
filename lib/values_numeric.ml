@@ -388,6 +388,10 @@ let time_combine op (a : duration) (b : duration) : duration option =
   match (a, b) with
   | S x, S y -> Option.map (fun r -> S r) (f x y)
   | Ms x, Ms y -> Option.map (fun r -> Ms r) (f x y)
+  (* CSS Values 4 sec. 10.7 sums two units of one type in one of them, here
+     [ms], where whole times stay whole and the fold reads back exactly. *)
+  | S x, Ms y -> Option.map (fun r -> Ms r) (f (x *. 1000.) y)
+  | Ms x, S y -> Option.map (fun r -> Ms r) (f x (y *. 1000.))
   | _ -> Option.none
 
 let time_is_zero : duration -> bool = function
@@ -517,6 +521,18 @@ let angle_combine op (a : angle) (b : angle) : angle option =
   | Rad x, Rad y -> Option.map (fun r -> Rad r) (f x y)
   | Turn x, Turn y -> Option.map (fun r -> Turn r) (f x y)
   | Grad x, Grad y -> Option.map (fun r -> Grad r) (f x y)
+  (* CSS Values 4 sec. 10.7 sums two units of one type in its canonical one.
+     [rad] has no exact ratio to [deg], so a sum holding one stays. *)
+  | (Deg _ | Turn _ | Grad _), (Deg _ | Turn _ | Grad _) -> (
+      let deg : angle -> float = function
+        | Deg v -> v
+        | Turn v -> v *. 360.
+        | Grad v -> v *. 9. /. 10.
+        | _ -> Float.nan
+      in
+      match f (deg a) (deg b) with
+      | Option.Some r when not (Float.is_nan r) -> Option.some (Deg r)
+      | _ -> Option.none)
   | _ -> Option.none
 
 let angle_round : angle -> angle = function
@@ -674,7 +690,7 @@ let rec pp_number_percentage : number_percentage Pp.t =
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_number_percentage ctx v
-  | Calc c -> pp_calc pp_number_percentage ctx c
+  | Calc c -> pp_calc_with ~bare_call:true pp_number_percentage ctx c
 
 (* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
    12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and
@@ -807,7 +823,7 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
      and which properties those are is not knowable here, so the wrapper stays
      on a leaf that reads back differently without it. *)
   | Calc c ->
-      pp_calc_with ~unwrap_num:false
+      pp_calc_with ~unwrap_num:false ~bare_call:true
         ~unwrap:(fun d -> not (negative_duration d))
         ~pp_unwrapped:(pp_duration_with ~shorten_ms)
         (pp_duration_with ~shorten_ms:false)

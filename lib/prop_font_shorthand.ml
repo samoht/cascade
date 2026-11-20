@@ -213,7 +213,7 @@ let rec pp_font_stretch : font_stretch Pp.t =
   (* Sec. 2.3 refuses a negative width written on its own, so the wrapper comes
      off only around a leaf that is a width by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true
         ~unwrap:(fun (v : font_stretch) ->
           match v with Pct f -> f >= 0. | _ -> true)
         pp_font_stretch ctx c
@@ -247,7 +247,7 @@ let rec pp_font_size_adjust : font_size_adjust Pp.t =
   (* CSS Fonts 5 sec. 2.5 refuses a negative aspect value written on its own, so
      the wrapper comes off only around a leaf that is one by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true
         ~unwrap_num:(match c with Num n -> n >= 0. | _ -> true)
         pp_font_size_adjust ctx c
   | From_font -> Pp.string ctx "from-font"
@@ -866,8 +866,23 @@ let rec calc_has_computed_input : line_height calc -> bool = function
    browser to evaluate, while [eval_calc] still performs exact folds. Math
    constants and functions retain the existing computed-value path, which owns
    their precision provenance separately. *)
+(* A call answering a length or a percentage CSS Values 4 sec. 10.7 resolves
+   folds to the leaf that spells it, as a number call already does. *)
+let line_height_of_math_fn fn : line_height option =
+  match Values_calc.math_fn_result fn with
+  | Some (United (v, unit)) when v >= 0. -> (
+      match unit with
+      | "px" -> Some (Px v)
+      | "em" -> Some (Em v)
+      | "rem" -> Some (Rem v)
+      | "%" -> Some (Pct v)
+      | _ -> Option.None)
+  | _ -> Option.None
+
 let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
   match lh with
+  | Calc (Math_fn fn) when Option.is_some (line_height_of_math_fn fn) ->
+      Option.get (line_height_of_math_fn fn)
   | Calc c -> (
       match
         if lossless || calc_has_computed_input c then Option.None
@@ -961,6 +976,11 @@ let rec normalize_font_stretch (value : font_stretch) : font_stretch =
   | Calc c -> (
       match eval_calc c with
       | Val (Pct p as leaf) when p >= 0. -> normalize_font_stretch leaf
+      (* A call answering a percentage folds to the leaf that spells it. *)
+      | Math_fn fn -> (
+          match Values_calc.math_fn_result fn with
+          | Some (United (p, "%")) when p >= 0. -> Pct p
+          | _ -> if Math_fn fn == c then value else Calc (Math_fn fn))
       | folded -> if folded == c then value else Calc folded)
   | value -> (
       match font_stretch_pct value with Some pct -> Pct pct | None -> value)

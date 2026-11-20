@@ -138,10 +138,13 @@ val pp_calc_with :
   ?unwrap_num:bool ->
   ?unwrap:('a -> bool) ->
   ?pp_unwrapped:'a Pp.t ->
+  ?bare_call:bool ->
   'a Pp.t ->
   'a calc Pp.t
-(** [pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped pp] is {!pp_calc} on its own
-    arguments. *)
+(** [pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped ?bare_call pp] is {!pp_calc}
+    on its own arguments. [bare_call] writes a call answering its arguments'
+    type ([min()], [abs()], ...) that did not fold without the [calc()] around
+    it, for a slot whose reader reads that back to the same node. *)
 
 val pp_calc :
   ?unwrap_num:bool ->
@@ -237,3 +240,7 @@ module Calc : sig
   val parens : 'a calc -> 'a calc
   (** [parens inner] wraps [inner] in parentheses only. *)
 end
+
+val same_quantity : float -> float -> bool
+(** [same_quantity a b] is [true] when [a] and [b] differ by no more than the
+    rounding a fixed-ratio unit conversion leaves, so they are one value. *)
