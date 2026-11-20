@@ -1038,11 +1038,11 @@ let all_live core ids = List.for_all (is_live (view core)) ids
    its declarations' order. *)
 let crossed core (group : group) branches (grouped : rule) id =
   (not (id_mem id group.members))
-  && Rule_graph.node_selector_conflict
+  && Rule_graph.node_writes_cross
        (graph (view core))
-       (Lazy.force branches) id
-  && Lift.declarations_cross_order grouped.declarations
-       (node_rule (view core) id).declarations
+       (Lazy.force branches)
+       (Lift.declarations_cross_order grouped.declarations)
+       id
 
 (* Whether [group] would cross the live rule [id], wherever it prints. *)
 let crosses core (group : group) branches (grouped : rule) id =
@@ -1099,8 +1099,9 @@ let scan core shared (group : group) =
       let cross branches id =
         if Rule_graph.node_selector_conflict (graph g) (Lazy.force branches) id
         then
-          Lift.declarations_cross_order grouped.declarations
-            (node_rule g id).declarations
+          Rule_graph.node_writes_cross (graph g) (Lazy.force branches)
+            (Lift.declarations_cross_order grouped.declarations)
+            id
           && begin
             witness := Option.Some id;
             true

@@ -82,7 +82,20 @@ val of_rules :
     already been expanded may disable them. [exclusive i j], when given, asserts
     that rules [i] and [j] never apply to one element together, as two rules
     under a condition and its negation do, so no cascade conflict is recorded
-    between them; it does not reach the nodes a rewrite produces. *)
+    between them; it does not reach the nodes a rewrite produces.
+
+    A rule writes everything its body holds: each rule nested in it, at any
+    depth, under its composed selector, and a conditional group's rules as
+    though the condition held ({!Nest.leaves}). Two rules conflict when some
+    selector of one ties with some selector of the other and what the two write
+    under those selectors meets, so a rewrite moving a rule past another reads
+    every one of its writes. Raises [Invalid_argument] when a rule is not
+    {!weighable}. *)
+
+val weighable : ?parent:Selector.t -> Stylesheet.rule -> bool
+(** [weighable ?parent r] is whether every declaration [r] writes, at any depth,
+    has a selector the cascade weighs it by, which {!of_rules} needs of each
+    rule. A rule under an [@scope] nested in [r] has none. *)
 
 val size_print : t -> Size.print
 (** [size_print t] is the print [t]'s sizes are measured under. *)
@@ -190,7 +203,9 @@ type facts
 
 val facts : ?parent:Selector.t -> Stylesheet.rule -> facts
 (** [facts ?parent r] is what {!val-rules_conflict} reads off [r], read once for
-    a caller that asks about [r] against many rules. *)
+    a caller that asks about [r] against many rules: what [r] writes under each
+    selector, at any depth. Raises [Invalid_argument] when [r] is not
+    {!weighable}. *)
 
 val facts_conflict : facts -> facts -> bool
 (** [facts_conflict (facts ?parent a) (facts ?parent b)] is
@@ -242,6 +257,14 @@ val node_selectors_conflict : t -> node_id -> node_id -> bool
 (** [node_selectors_conflict t i j] is
     [node_selector_conflict t (branches (node_rule t i).selector) j], read off
     what [t] holds for both nodes. *)
+
+val node_writes_cross :
+  t -> branches -> (Declaration.declaration list -> bool) -> node_id -> bool
+(** [node_writes_cross t (branches a) crosses i] is whether node [i] writes,
+    under a selector that {!node_selector_conflict} ties with [a], declarations
+    [crosses] holds of: its own run for a rule with no nested content, and each
+    rule its body holds at any depth, under its composed selector, for one with
+    some. *)
 
 val precedes : t -> node_id -> node_id -> bool
 (** [precedes t i j] is [true] when the graph requires node [i] to be emitted

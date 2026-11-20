@@ -119,6 +119,17 @@ when an earlier overlapping rule writes a different value. Nesting synthesis
 is adjacent-only, within one cascade context, with an exact selector extension
 under a non-list parent, and only when it shortens the output.
 
+The rule graph (`lib/rule_graph.ml`) that factoring and merging reorder over
+reads a rule with nested content as parts: its own declarations under its
+selector, and each rule its body holds at any depth under the composed
+selector `Nest.leaves` gives it, a conditional group's rules as though the
+condition held. Two nodes conflict when one part of each does. The indexes
+file a node under the union of its parts, and such a node stays out of the
+compact runs, which assume one declaration per node. The factoring scan and
+`Rule_graph.facts` read the same parts. A rule whose body holds an `@scope`
+has no selector to weigh its scoped rules by, so factoring takes it as a
+barrier and factors the runs on either side apart.
+
 ## Speed
 
 Speed on real stylesheets is a requirement, and a slow path on realistic input

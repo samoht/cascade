@@ -283,6 +283,18 @@ differently. They are the reason to minify again.
   also swap when they differ only in the case of a type selector (`DIV`,
   `div`), of an ID (quirks mode) or of an attribute value read through an `i`
   or `s` flag. Both orders are now kept (#1295).
+- **A rule with nested content moved past one that styles the same
+  element.** `--minify` read a rule as the declarations before its first
+  nested statement, so what a nested rule, a nested `@media` or a later
+  declaration wrote did not stop a move. `.a{top:1px}.d{color:red}
+  .a{@media (min-width:1px){color:blue}}` became `.a{top:1px;@media
+  (width>=1px){color:#00f}}.d{color:red}`, and an element with both classes
+  turned red. A rule now counts everything its body writes, under each
+  nested rule's composed selector, and a merge or move that would cross a
+  rule competing with any of it stays in source order. Of 9,000 random
+  sheets with nesting, the number Chromium renders differently after
+  `--minify` falls from 28 to 17. The rest come from writing or removing
+  nesting, which this fix does not touch (#1479).
 - **A border side was lost.** When `--minify` moved declarations two rules
   share into one rule, it could drop a longhand a rule wrote after its own
   shorthand: `.b{background:#fff;border:1px solid #ddd}` beside

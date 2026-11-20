@@ -60,6 +60,20 @@ type lineage = {
           order it prints them: a topological order of its edges. *)
 }
 
+(* What a rule writes under one selector: that selector's branches as the order
+   relation reads them, and the declarations written under it. A rule with
+   nested content writes under several, each nested rule under its composed
+   selector (CSS Nesting 1 sec. 3); the node's selector and declaration arrays
+   hold their union, which is what the indexes find candidates by, and its parts
+   what a conflict test reads. *)
+type part = {
+  branches : Selector.t list;
+  summaries : Selector_summary.t list;
+  weights : Selector.specificity list;
+  writes : decl_overlap list;
+  slots : Shorthand.overlap_key list;
+}
+
 type t = {
   generation : int;
   closed_world : bool;
@@ -119,7 +133,12 @@ type t = {
           compares specificity on every candidate pair *)
   mutable branches : string list array;
   mutable decl_overlaps : decl_overlap list array;
+      (** every declaration each node writes, at any depth *)
   mutable overlap_keys : Shorthand.overlap_key list array;
+  mutable parts : part list array;
+      (** what each node with nested content writes under each selector, its own
+          run first; [[]] for a node whose body is its declarations, which the
+          arrays above describe alone *)
   mutable succ : (node_id * edge_reason) list array;
       (** directed partial-order edges: [i] precedes every node reachable from
           [succ.(i)]. Simple dense runs store a transitive chain rather than one
@@ -315,19 +334,51 @@ let writes_agree a b =
   in
   walk a b || writes_one_value a b
 
+let part_conflict ~closed_world (a : part) (b : part) =
+  cascade_conflict ~closed_world a.slots a.writes a.branches a.summaries
+    a.weights b.slots b.writes b.branches b.summaries b.weights
+
+let node_part t i =
+  {
+    branches = t.selectors.(i);
+    summaries = t.selector_summaries.(i);
+    weights = t.specificities.(i);
+    writes = t.decl_overlaps.(i);
+    slots = t.overlap_keys.(i);
+  }
+
+let node_parts t i = match t.parts.(i) with [] -> [ node_part t i ] | ps -> ps
+let has_no_parts t i = match t.parts.(i) with [] -> true | _ :: _ -> false
+
+(* Two nodes conflict when some selector of one and some selector of the other
+   tie on an element and what each writes under it meets. A node with nested
+   content is read part by part: the union of its selectors against the union of
+   its declarations would pair a selector with declarations written under
+   another one. *)
+let nodes_cascade_conflict t i j =
+  match (t.parts.(i), t.parts.(j)) with
+  | [], [] ->
+      cascade_conflict ~closed_world:t.closed_world t.overlap_keys.(i)
+        t.decl_overlaps.(i) t.selectors.(i) t.selector_summaries.(i)
+        t.specificities.(i) t.overlap_keys.(j) t.decl_overlaps.(j)
+        t.selectors.(j) t.selector_summaries.(j) t.specificities.(j)
+      && not
+           (t.agreeing_ties
+           && writes_agree t.decl_overlaps.(i) t.decl_overlaps.(j))
+  | _ ->
+      Shorthand.overlap_keys_intersect t.overlap_keys.(i) t.overlap_keys.(j)
+      &&
+      let parts_j = node_parts t j in
+      List.exists
+        (fun a ->
+          List.exists (part_conflict ~closed_world:t.closed_world a) parts_j)
+        (node_parts t i)
+
 let nodes_conflict_reason t i j =
   if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
     Option.Some Shared_branch_pin
   else if asserted_exclusive t i j then Option.None
-  else if
-    cascade_conflict ~closed_world:t.closed_world t.overlap_keys.(i)
-      t.decl_overlaps.(i) t.selectors.(i) t.selector_summaries.(i)
-      t.specificities.(i) t.overlap_keys.(j) t.decl_overlaps.(j) t.selectors.(j)
-      t.selector_summaries.(j) t.specificities.(j)
-    && not
-         (t.agreeing_ties
-         && writes_agree t.decl_overlaps.(i) t.decl_overlaps.(j))
-  then Option.Some Cascade_conflict
+  else if nodes_cascade_conflict t i j then Option.Some Cascade_conflict
   else Option.None
 
 let nodes_conflict t i j = nodes_conflict_reason t i j <> Option.None
@@ -407,6 +458,22 @@ let node_selector_conflict t (branches_a, summaries_a, specificities_a) i =
 let node_selectors_conflict t i j =
   node_selector_conflict t (node_branch_facts t i) j
 
+let part_declarations (part : part) =
+  List.map (fun (d : decl_overlap) -> d.decl) part.writes
+
+let node_writes_cross t branches crosses i =
+  match t.parts.(i) with
+  | [] ->
+      node_selector_conflict t branches i && crosses t.rules.(i).declarations
+  | parts ->
+      let selectors_a, summaries_a, specificities_a = branches in
+      List.exists
+        (fun (part : part) ->
+          selectors_order_conflict ~closed_world:false selectors_a summaries_a
+            specificities_a part.branches part.summaries part.weights
+          && crosses (part_declarations part))
+        parts
+
 let branches_conflict (branches_a, summaries_a, specificities_a)
     (branches_b, summaries_b, specificities_b) =
   match (summaries_a, specificities_a, summaries_b, specificities_b) with
@@ -433,10 +500,12 @@ type facts = {
   branch_weights : Selector.specificity list;
   branch_summaries : Selector_summary.t list Lazy.t;
   footprints : (Shorthand.overlap_key list * decl_overlap list) Lazy.t;
+  nested : facts list;
+      (** each rule the body holds at any depth, under its composed selector *)
 }
 
-let facts ?parent rule =
-  let selector_branches = Edge.selectors (effective_selector parent rule) in
+let selector_facts selector (declarations : Declaration.declaration list) =
+  let selector_branches = Edge.selectors selector in
   {
     selector_branches;
     branch_weights = List.map Selector.specificity selector_branches;
@@ -444,9 +513,40 @@ let facts ?parent rule =
       lazy (List.map Selector_summary.of_selector selector_branches);
     footprints =
       lazy
-        (let decls = rule_decl_overlaps rule in
+        (let decls = List.map declaration_overlap declarations in
          (rule_overlap_keys decls, decls));
+    nested = [];
   }
+
+(* The rules a body holds, at any depth, under the selectors the cascade weighs
+   them by. *)
+let nested_leaves selector nested =
+  match Nest.leaves ~parent:selector nested with
+  | Option.Some leaves -> leaves
+  | Option.None ->
+      invalid_arg "Rule_graph: a nested rule with no selector to weigh it by"
+
+let weighable ?parent (rule : rule) =
+  match rule.nested with
+  | [] -> true
+  | nested ->
+      Option.is_some
+        (Nest.leaves ~parent:(effective_selector parent rule) nested)
+
+let facts ?parent (rule : rule) =
+  let selector = effective_selector parent rule in
+  let own = selector_facts selector rule.declarations in
+  match rule.nested with
+  | [] -> own
+  | nested ->
+      {
+        own with
+        nested =
+          List.map
+            (fun (leaf : rule) ->
+              selector_facts leaf.selector leaf.declarations)
+            (nested_leaves selector nested);
+      }
 
 let rec weights_tie a = function
   | [] -> false
@@ -455,7 +555,7 @@ let rec weights_tie a = function
 
 (* [cascade_conflict]'s two halves, the selector one asked first, and within it
    the weights, which settle most pairs before a summary is read. *)
-let facts_conflict a b =
+let selector_facts_conflict a b =
   weights_tie a.branch_weights b.branch_weights
   && selectors_order_conflict ~closed_world:false a.selector_branches
        (Lazy.force a.branch_summaries)
@@ -467,6 +567,33 @@ let facts_conflict a b =
   let keys_b, decls_b = Lazy.force b.footprints in
   declarations_order_conflict keys_a decls_a keys_b decls_b
 
+(* A rule with nested content is read selector by selector, as {!part_conflict}
+   reads a node. *)
+let facts_conflict a b =
+  match (a.nested, b.nested) with
+  | [], [] -> selector_facts_conflict a b
+  | _ ->
+      List.exists
+        (fun x -> List.exists (selector_facts_conflict x) (b :: b.nested))
+        (a :: a.nested)
+
+(* The specificities and overlap keys of everything [rule] writes, which an
+   index files it under. *)
+let facts_specs rule =
+  List.fold_left
+    (fun acc f -> distinct_spec_keys acc f.branch_weights)
+    (distinct_spec_keys [] rule.branch_weights)
+    rule.nested
+
+let facts_keys rule =
+  match rule.nested with
+  | [] -> fst (Lazy.force rule.footprints)
+  | nested ->
+      rule_overlap_keys
+        (List.concat_map
+           (fun f -> snd (Lazy.force f.footprints))
+           (rule :: nested))
+
 let rules_conflict ?parent a b =
   facts_conflict (facts ?parent a) (facts ?parent b)
 
@@ -475,15 +602,10 @@ type facts_index = facts positioned
 let facts_index = positioned
 
 let index_facts index ~at rule =
-  add_at index ~at
-    ~specs:(distinct_spec_keys [] rule.branch_weights)
-    ~keys:(fst (Lazy.force rule.footprints))
-    rule
+  add_at index ~at ~specs:(facts_specs rule) ~keys:(facts_keys rule) rule
 
 let conflicts_after index ~after rule =
-  exists_after index ~after
-    ~specs:(distinct_spec_keys [] rule.branch_weights)
-    ~keys:(fst (Lazy.force rule.footprints))
+  exists_after index ~after ~specs:(facts_specs rule) ~keys:(facts_keys rule)
     (facts_conflict rule)
 
 let collect_string_bucket bucket key stamp seen acc =
@@ -553,7 +675,10 @@ let source_order_edges ?(relays = fun _ -> true) t =
   let index = Conflict_index.v n in
   let by_branch = String_table.create 256 in
   for j = 0 to n - 1 do
-    let relay = relays j in
+    (* The compact runs a relay joins assume two of their nodes conflict exactly
+       when their one declaration differs, which a node read part by part does
+       not keep. *)
+    let relay = relays j && has_no_parts t j in
     let candidates = index_candidates t index ~relay j in
     let candidates =
       if t.pin_shared_branches then
@@ -608,17 +733,65 @@ let index_node t (node : node_id) =
     t.decl_overlaps.(i);
   List.iter (fun branch -> index_add t.branch_index branch node) t.branches.(i)
 
+let part selector (declarations : Declaration.declaration list) =
+  let branches, summaries, weights = branch_facts selector in
+  let writes = List.map declaration_overlap declarations in
+  { branches; summaries; weights; writes; slots = rule_overlap_keys writes }
+
+(* What the order relation reads off one rule: the branches of its selector,
+   which its selector branch keys are read off, then the union of what it writes
+   under every selector and the parts that union is made of, [[]] for a rule
+   with no nested content. *)
+type rule_facts = {
+  own : branches;
+  all : branches;
+  decls : decl_overlap list;
+  keys : Shorthand.overlap_key list;
+  rule_parts : part list;
+}
+
+let rule_facts parent (rule : rule) =
+  let selector = effective_selector parent rule in
+  match rule.nested with
+  | [] ->
+      let own = branch_facts selector in
+      let decls = rule_decl_overlaps rule in
+      { own; all = own; decls; keys = rule_overlap_keys decls; rule_parts = [] }
+  | nested ->
+      let own = part selector rule.declarations in
+      let leaves =
+        List.map
+          (fun (leaf : rule) -> part leaf.selector leaf.declarations)
+          (nested_leaves selector nested)
+      in
+      let parts = own :: leaves in
+      let decls = List.concat_map (fun (p : part) -> p.writes) parts in
+      {
+        own = (own.branches, own.summaries, own.weights);
+        all =
+          ( List.concat_map (fun (p : part) -> p.branches) parts,
+            List.concat_map (fun (p : part) -> p.summaries) parts,
+            List.concat_map (fun (p : part) -> p.weights) parts );
+        decls;
+        keys = rule_overlap_keys decls;
+        rule_parts = parts;
+      }
+
+let own_branch_keys (facts : rule_facts) =
+  let branches, _, _ = facts.own in
+  selector_branch_keys branches
+
 (* What the order relation reads off each of [rules]. *)
-let rule_facts parent rules =
-  let facts =
-    Array.map (fun rule -> branch_facts (effective_selector parent rule)) rules
-  in
-  let decl_overlaps = Array.map rule_decl_overlaps rules in
-  ( Array.map (fun (branches, _, _) -> branches) facts,
-    Array.map (fun (_, summaries, _) -> summaries) facts,
-    Array.map (fun (_, _, specs) -> specs) facts,
-    decl_overlaps,
-    Array.map rule_overlap_keys decl_overlaps )
+let rules_facts parent rules =
+  let facts = Array.map (rule_facts parent) rules in
+  let pick f = Array.map f facts in
+  ( pick (fun { all = branches, _, _; _ } -> branches),
+    pick (fun { all = _, summaries, _; _ } -> summaries),
+    pick (fun { all = _, _, specificities; _ } -> specificities),
+    pick (fun f -> f.decls),
+    pick (fun f -> f.keys),
+    pick own_branch_keys,
+    pick (fun f -> f.rule_parts) )
 
 (* The nodes of [rules] in source order with their edges, their [sizes], and an
    empty external index sized for [index_capacity] entries, which the first
@@ -627,11 +800,15 @@ let ordered_nodes ~size_print ~selector_sizes ~sizes ~index_capacity ?parent
     ?(closed_world = false) ?(pin_shared_branches = true) ?exclusive
     (rules : rule array) : t =
   let n = Array.length rules in
-  let selectors, selector_summaries, specificities, decl_overlaps, overlap_keys
-      =
-    rule_facts parent rules
+  let ( selectors,
+        selector_summaries,
+        specificities,
+        decl_overlaps,
+        overlap_keys,
+        branches,
+        parts ) =
+    rules_facts parent rules
   in
-  let branches = Array.map selector_branch_keys selectors in
   let t =
     {
       generation = 0;
@@ -656,6 +833,7 @@ let ordered_nodes ~size_print ~selector_sizes ~sizes ~index_capacity ?parent
       branches;
       decl_overlaps;
       overlap_keys;
+      parts;
       succ = [||];
       key_index = Slot_table.create index_capacity;
       branch_index = String_table.create index_capacity;
@@ -1067,6 +1245,7 @@ let reserve t added =
   t.branches <- grow t.branches;
   t.decl_overlaps <- grow t.decl_overlaps;
   t.overlap_keys <- grow t.overlap_keys;
+  t.parts <- grow t.parts;
   t.succ <- grow t.succ
 
 let place arr ~at items = Array.blit items 0 arr at (Array.length items)
@@ -1094,18 +1273,17 @@ let produced_graph t produced =
   }
 
 let place_produced t graph ~consume p =
-  let selectors, summaries, specificities =
-    branch_facts (effective_selector t.parent graph.rules.(p))
-  in
-  let branches = selector_branch_keys selectors in
-  let decl_overlaps = rule_decl_overlaps graph.rules.(p) in
+  let facts = rule_facts t.parent graph.rules.(p) in
+  let selectors, summaries, specificities = facts.all in
+  let branches = own_branch_keys facts in
   graph.origin.(p) <- produced_branch_origin t consume branches;
   graph.selectors.(p) <- selectors;
   graph.selector_summaries.(p) <- summaries;
   graph.specificities.(p) <- specificities;
   graph.branches.(p) <- branches;
-  graph.decl_overlaps.(p) <- decl_overlaps;
-  graph.overlap_keys.(p) <- rule_overlap_keys decl_overlaps
+  graph.decl_overlaps.(p) <- facts.decls;
+  graph.overlap_keys.(p) <- facts.keys;
+  graph.parts.(p) <- facts.rule_parts
 
 let add_edge succ i j reason = succ.(i) <- (j, reason) :: succ.(i)
 
