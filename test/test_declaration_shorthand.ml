@@ -974,6 +974,66 @@ let logical_border_shorthands () =
       "border-block-end: 1px solid red 2px";
     ]
 
+(* CSS Variables 1 sec. 3 checks a declaration holding a substitution against
+   its property's grammar only after substitution, and the call may supply any
+   number of components, commas included. A declaration whose substitution
+   stands beside other components is therefore written back as its tokens: no
+   slot is filled in, dropped, merged or moved around it. Chromium 153, with the
+   custom property shown, computes the source and the old output differently:
+   [flex:var(--g) 0px] against [var(--g) 1 0] ([--g:1 0], basis [0px] against
+   [auto]), [gap:var(--a) var(--a)] against [var(--a)] ([--a:1px 2px]),
+   [list-style:var(--a) none] against [none var(--a) none] ([--a:square]),
+   [grid-area:var(--a) / auto / auto] against [var(--a)] ([--a:a / b]),
+   [border:var(--a) none] against [var(--a)] ([--a:1px solid]),
+   [transition:var(--a) 0s] against [var(--a)] ([--a:opacity 1s 2s]),
+   [transform:translate(var(--a),0px)] against [translate(var(--a))]
+   ([--a:1px,2px]) and [background:red var(--x)] against [var(--x)red]
+   ([--x:url(a.png), url(b.png)]). *)
+let substitution_takes_no_slot () =
+  let concat = String.concat "" in
+  List.iter
+    (fun (property, value, held) ->
+      check_declaration
+        ~expected:(concat [ property; ":"; held ])
+        ~optimized:(concat [ property; ":"; held ])
+        (concat [ property; ": "; value ]))
+    [
+      ("flex", "var(--g) 0px", "var(--g) 0px");
+      ("flex", "var(--g) 1", "var(--g) 1");
+      ("flex", "1 1 var(--b)", "1 1 var(--b)");
+      ("-webkit-flex", "var(--g) 0px", "var(--g) 0px");
+      ("gap", "var(--a) var(--a)", "var(--a) var(--a)");
+      ("overflow", "var(--a) var(--a)", "var(--a) var(--a)");
+      ("list-style", "var(--a) none", "var(--a) none");
+      ("grid-area", "var(--a) / auto / auto", "var(--a)/auto/auto");
+      ("border", "var(--a) none", "var(--a) none");
+      ("outline", "var(--a) none", "var(--a) none");
+      ("transition", "var(--a) 0s", "var(--a) 0s");
+      ("border-image", "var(--a) 100%", "var(--a)100%");
+      ("transform", "translate(var(--a),0px)", "translate(var(--a),0px)");
+      ("background", "red var(--x)", "red var(--x)");
+      ( "color",
+        "color-mix(in oklab, var(--p) red, blue)",
+        "color-mix(in oklab,var(--p) red,blue)" );
+      ("color", "rgb(var(--r),0,0)", "rgb(var(--r),0,0)");
+    ];
+  (* Controls: a substitution that is the whole value, and one that is an
+     operand of a math function, give one value whatever they substitute, so the
+     declaration is typed and folds around them. *)
+  check_declaration ~expected:"flex:var(--g)" ~optimized:"flex:var(--g)"
+    "flex: var(--g)";
+  check_declaration ~expected:"flex:var(--g,1 0%)"
+    ~optimized:"flex:var(--g,1 0%)" "flex: var(--g, 1 1 0%)";
+  check_declaration ~expected:"margin:calc(var(--a)*2)0px"
+    ~optimized:"margin:calc(var(--a)*2)0" "margin: calc(var(--a) * 2) 0px";
+  (* A component beside a substitution may be respelled where it stands. *)
+  check_declaration ~expected:"margin:env(safe-area-inset-top)0px 0px"
+    ~optimized:"margin:env(safe-area-inset-top)0 0"
+    "margin: env(safe-area-inset-top) 0px 0px";
+  (* A fallback is the whole value in turn. *)
+  check_declaration ~expected:"flex:var(--x,var(--g) 0px)"
+    ~optimized:"flex:var(--x,var(--g) 0px)" "flex: var(--x, var(--g) 0px)"
+
 let suite =
   ( "declaration_shorthand",
     [
@@ -1005,4 +1065,6 @@ let suite =
       test_case "all-initial shorthand prints none" `Quick
         all_initial_shorthand_prints_none;
       test_case "logical border shorthands" `Quick logical_border_shorthands;
+      test_case "spec variables 3 substitution takes no slot" `Quick
+        substitution_takes_no_slot;
     ] )
