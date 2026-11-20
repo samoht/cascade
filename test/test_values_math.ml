@@ -652,9 +652,9 @@ let spec_math_type_at_the_number_percentage_readers () =
   decl_optimizes ~prop:"scale" ~into:"2" "calc(2)";
   decl_optimizes ~prop:"scale" ~into:"1%" "abs(-1%)";
   decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
-  decl_optimizes ~prop:"font-stretch" ~into:"calc(abs(-1%))" "abs(-1%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"1%" "abs(-1%)";
   decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
-  decl_optimizes ~prop:"text-size-adjust" ~into:"calc(abs(-1%))" "abs(-1%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"1%" "abs(-1%)";
   neg_cursor P.read_font_stretch "calc(2)";
   neg_cursor P.read_text_size_adjust "calc(2)"
 
