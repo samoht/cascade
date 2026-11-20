@@ -18,17 +18,18 @@ let normalize_animation_range_item :
         (Named (n, option_map_preserve Values.normalize_length_percentage lp))
   | other -> other
 
-(* An end of [normal], and a range name from [0%] to its own [100%], read back
-   as the start alone. *)
+(* CSS Scroll Animations 1 (ED) sec. 6.2: an omitted end is the start's range
+   name at [100%] when the start names one, and [normal] otherwise. An end that
+   says the same thing goes. *)
 let omitted_end (start : animation_range_item) (end_ : animation_range_item) =
   match (start, end_) with
-  | _, Normal -> true
-  | Named (start_name, Some start_offset), Named (end_name, Some end_offset) ->
+  | (Normal | Offset _), Normal -> true
+  | Named (start_name, _), Named (end_name, offset) ->
       equal_animation_range_name start_name end_name
-      && Values.equal_length_percentage start_offset
-           (Pct 0. : length_percentage)
-      && Values.equal_length_percentage end_offset
-           (Pct 100. : length_percentage)
+      && Option.fold ~none:true
+           ~some:(fun lp ->
+             Values.equal_length_percentage lp (Pct 100. : length_percentage))
+           offset
   | _ -> false
 
 let rec normalize_animation_range : animation_range -> animation_range =
