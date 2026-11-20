@@ -859,6 +859,14 @@ let floor_fallbacks_survive () =
   (* The legacy alias maps [always] to [page] (sec. 3.4). *)
   check_modes "page-break-before:always" "a{page-break-before:always}"
     "a{break-before:page}";
+  (* The browsers judged for run from each floor to the newest recorded release.
+     Chrome 111 parses neither [anchor-size()] (Chrome 125) nor [stretch]
+     (Chrome 138), but Chrome 125 to 137 parses the first alone, and so does
+     Firefox from 147, which records no [stretch]: each paints the earlier
+     width. *)
+  check_modes "a fallback a later release reads"
+    "a{width:anchor-size(width);width:stretch}"
+    "a{width:anchor-size(width);width:stretch}";
   Alcotest.(check bool)
     "a fallback in an earlier rule of the selector" true
     (Astring.String.is_infix ~affix:"width:1px"
