@@ -129,7 +129,11 @@ which choose some spellings (an oklch chroma's `76%` or `.304`, a family
 name's quotes). `Declaration.size` caches the default print's length; a
 `Size.print`, which `Rule_graph.of_rules` and `Preflight.summarize` take,
 carries the run's flags, and `Size.decl` measures the flagged print when one
-is set. `optimize_factor` "factoring weighs the flagged print" checks it.
+is set. `optimize_factor` "factoring weighs the flagged print" checks it. A
+rule weighs everything it prints, its nested statements included:
+`Size.block` measures a rule with nested content by printing it. The `size`
+case "rule size counts nested content" and the `rule_graph` case "node size
+counts nested content" check it.
 
 ## Typed property decisions
 

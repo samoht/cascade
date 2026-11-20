@@ -25,8 +25,14 @@ val body : print -> Declaration.declaration list -> int
 (** [body p ds] is the minified size of a rule body under [p]: the declarations,
     their separators and the braces. *)
 
+val block : print -> Stylesheet.rule -> int
+(** [block p r] is the minified size under [p] of what [r] prints after its
+    selector: the braces and everything between them, its declarations and its
+    nested statements. *)
+
 val rule : print -> Stylesheet.rule -> int
-(** [rule p r] is the minified size of [r] under [p]. *)
+(** [rule p r] is the minified size of [r] under [p], nested statements
+    included. *)
 
 val rules : print -> Stylesheet.rule list -> int
 (** [rules p rs] is the minified size of [rs] under [p]. *)
