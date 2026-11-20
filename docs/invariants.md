@@ -171,6 +171,9 @@ implementation keeps them.
   only when no other rule of the sheet, in any block, and no user-agent rule
   or presentational hint of the HTML rendering section (sec. 15) sets one of
   them. Without the flag it is not built.
+  So `border-width`, `border-style` and `border-color`, or the four side
+  shorthands, become `border` only under `--scope=stylesheet`, since `border`
+  also resets `border-image` (CSS Backgrounds 3 sec. 4.4).
 - **`!important` moves a declaration to another stratum.** Deduplication and
   shorthand composition never combine a normal and an important declaration.
 - **Logical and physical pairs keep their order.** A flow-relative property
@@ -221,9 +224,11 @@ implementation keeps them.
 - **At-rules keep their identity.** Of two `@keyframes` of one name in one
   layer the last wins, so dropping the earlier is safe and merging them is
   not. Every `@font-face` adds a face, so none is dropped for another.
-  `@import` rules keep their order and position. A layer declared inside a
-  conditional group rule contributes its order only when the condition holds
-  (CSS Cascade 5 sec. 6.4.3).
+  `@import` rules keep their order and position. A `@keyframes` or
+  `@font-face` rule takes no part in the order of style rules, so it may move
+  past any of them, but not past another definition of its name or family. A
+  layer declared inside a conditional group rule contributes its order only
+  when the condition holds (CSS Cascade 5 sec. 6.4.3).
 
 ## Target layer
 
@@ -295,7 +300,7 @@ Each row names the tests that check a statement. A browser harness under
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
-| Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run" |
+| Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run"; `optimize_declarations` "border keeps longhands beside a border-image", "border reset reads every block"; `test/test_css_compare_structure.ml` "canonical border sides" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
 | Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
 | Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `shorthand_compose` "position-try composes past nothing it meets", "columns composes past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
@@ -305,7 +310,7 @@ Each row names the tests that check a statement. A browser harness under
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |
 | Nesting | `test_nesting_follows_the_floors`, `test_nested_declarations_are_flattened` in `test/test_nest.ml`; `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis" |
 | Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml`; `test_scope_keeps_the_implied_root`, `test_nested_scope_roots_under_the_parent` in `test/test_flatten.ml`; `test_merge_lone_in_scope`, `test_nesting_selector_is_not_reparented` in `test/test_nest.ml` |
-| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
+| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point"; `test/test_css_compare_structure.ml` "canonical name-defining rules move" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Nothing untyped dropped | `test/spec/browser/accept_set` (every CSS length unit, `if()` and dashed functions among its values); `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots"; `declaration_spec` "contain-intrinsic-size keeps a trailing auto"; `test/test_declaration_spec.ml` "a substitution function defers the property" |
 | Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print" |

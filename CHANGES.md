@@ -359,6 +359,25 @@ differently. They are the reason to minify again.
   `mod(1px,0px)` to `1px`, where CSS Values 4 sec. 10.9 makes both NaN and
   Chromium computes `0px`. A zero operand now keeps its unit, and a zero step
   or divisor keeps the call (#1508).
+- **`border` reset a `border-image` set elsewhere, and three respellings
+  read as differences.** `--minify` contracted `border-width`,
+  `border-style` and `border-color` into `border`, which also resets
+  `border-image` (CSS Backgrounds 3 sec. 4.4). Where another sheet of the
+  page, or a rule of the same sheet inside `@media`, set a `border-image` on
+  the element, Chromium drew none. The three now stay longhands. Under
+  `--scope=stylesheet` they contract when no rule of the sheet, in any
+  block, holds a `border-image` value, and so do the four sides
+  `border-top`, `-right`, `-bottom` and `-left` holding one value. `cascade
+  diff --diff=canonical` called the two spellings identical, and now calls
+  them different. It also exited 1 on `.a.b{color:red}` against
+  `.b.a{color:red}`, on an `@keyframes` or `@font-face` rule moved among
+  style rules, and on `@media screen{@media (min-width:1px){...}}` against
+  `@media screen and (min-width:1px){...}`, though Chromium renders both
+  sides alike. Each now compares equal: a compound's simple selectors print
+  in one order, a name-defining rule moves freely among style rules while
+  two of one name keep their order, and nested `@media` blocks read as the
+  conjunction of their queries. `@media print{@media screen{...}}` and a
+  negated query still compare different (#1537).
 - **Declarations in newer CSS were deleted.** `--minify` dropped, with a
   warning, a length in a root font unit (`rex`, `rcap`, `rch`) or a logical
   viewport unit (`svi`, `lvb`, `dvi` and the rest), a container unit in

@@ -316,7 +316,16 @@ alter a used value:
   split into rules, and which of its rules were merged, does not matter;
 - where a layer block stands among unlayered rules, and whether layer order is
   declared up front or implied by block order, does not matter, since the
-  cascade sorts by layer first.
+  cascade sorts by layer first;
+- the order of a compound selector's simple selectors does not matter
+  (Selectors 4 sec. 3.1), so `.a.b` equals `.b.a`, while a type selector
+  stays first and a pseudo-element last;
+- where a `@keyframes` or `@font-face` rule stands among style rules does not
+  matter, while two of one name or font family keep their order;
+- nested `@media` blocks equal the one block of their conjunction:
+  `@media screen{@media (min-width:1px){...}}` equals
+  `@media screen and (min-width:1px){...}`, while
+  `@media print{@media screen{...}}` matches no medium.
 
 Order that the cascade depends on stays significant: two writes of the same
 property, a shorthand and its longhand, a vendor-prefixed fallback that
@@ -337,7 +346,11 @@ not under `background-clip`, so `-webkit-background-clip:text` and
 names parse in every target, compares as one property.
 `-webkit-text-decoration-color` is not on the list, but every engine that
 ships it treats it as an alias, and so does cascade. Equivalent shorthand
-decompositions are not modelled.
+decompositions are not modelled. A shorthand and the parts it is composed of
+stay different where it resets a slot they leave out: `border` resets
+`border-image`, which a sheet before or after the input may set, so it
+differs from `border-width`, `border-style` and `border-color` and from its
+four sides.
 
 Numbers follow the same precision as minification. An exact quotient such as
 `calc(28/14)` equals `2` in either mode. By default `calc(28/18)` equals

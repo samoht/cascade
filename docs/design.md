@@ -110,8 +110,22 @@ make:
 - a legacy name alias (CSS Cascade 5 sec. 3.1, WHATWG Compatibility sec.
   3.4.1) read as its property where every release from the floors that parses
   one spelling of its value parses the other (`Declaration.fallback_for`, both
-  ways), nested `@media` conditions sorted and deduplicated, and a keyframe's
-  declarations sorted as a rule's are.
+  ways), and a keyframe's declarations sorted as a rule's are;
+- nested `@media` blocks read as the conjunction of their queries (CSS
+  Conditional 3 sec. 2): each query splits into the conjuncts it is the `and`
+  of, a media type alone and `all` and `only` dropping out (Media Queries 4
+  sec. 2.2 and 2.3), and the sorted, deduplicated conjuncts nest one block
+  each, while a negated query, a list and an `or` stay whole;
+- `@keyframes` and `@font-face` rules gathered after the other statements of
+  the stretch of their block that no statement holding one splits, by name,
+  keeping the order of one keyframes name or font family.
+
+The projection also reads every rule selector through
+`Selector.sort_compounds`, which puts the simple selectors of a compound
+between its type selector and its first pseudo-element in one order
+(Selectors 4 sec. 3.1), so `.a.b` and `.b.a` compare as one selector.
+Emission keeps the author's order, which nesting synthesis reads as a
+prefix.
 
 Beyond the optimizer's own deduplication, the projection deletes an
 `@supports` guard false in every release of B, as one over a
@@ -255,4 +269,7 @@ slot at other than its initial value, less the composing rule's own, and from
 the slots the user-agent sheet holds: `font-weight`, `font-style`,
 `font-size`, `font-family`, `background-color` and `background-image`.
 `Shorthand_common.guard_reset` applies it to every composer that builds a
-shorthand from part of its family.
+shorthand from part of its family. The default scope builds none: the border
+composers, which leave out the `border-image` that `border` resets, compose
+there only where the rule writes every `border-image` slot again after the
+run (`Shorthand_held.bi_rewritten_after`).
