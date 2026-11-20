@@ -1000,6 +1000,26 @@ let spec_math_fixed_ratio_units () =
       ("border-image-slice", "min(10%,var(--x))", "min(10%,var(--x))");
     ]
 
+(* A zero inside a math function keeps its unit: CSS Values 4 sec. 10.9 types a
+   unitless [0] there as a <number>, so [max(0,var(--v))] at a <line-width>
+   mixes a number with a length and is invalid at computed-value time. And sec.
+   10.9 gives [round(A, 0)], [mod(A, 0)] and [rem(A, 0)] the value NaN, which
+   Chrome 153 computes to [0px] at a line width, not to [A]. *)
+let spec_math_zero_operands () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("outline-width", "max(0px,var(--v))", "max(0px,var(--v))");
+      ("border-width", "min(0px,var(--v))", "min(0px,var(--v))");
+      ("border-top-width", "max(var(--v),0px)", "max(var(--v),0px)");
+      ("column-rule-width", "clamp(0px,var(--v),2px)", "clamp(0px,var(--v),2px)");
+      ("-webkit-text-stroke-width", "max(0px,var(--v))", "max(0px,var(--v))");
+      ("outline-width", "round(1px,0px)", "round(1px,0px)");
+      ("border-top-width", "mod(1px,0px)", "mod(1px,0px)");
+      ("width", "rem(1px,0px)", "rem(1px,0px)");
+      ("opacity", "round(1,0)", "calc(NaN)");
+    ]
+
 let suite =
   ( "values_math",
     [
@@ -1030,6 +1050,7 @@ let suite =
       test_case "spec math function every type" `Quick
         spec_math_function_every_type;
       test_case "spec math fixed-ratio units" `Quick spec_math_fixed_ratio_units;
+      test_case "spec math zero operands" `Quick spec_math_zero_operands;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
