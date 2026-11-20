@@ -594,6 +594,14 @@ let other_cases =
       };
     Case
       {
+        name = "registered custom-ident value";
+        make = Fun.id;
+        pp = Variables.pp_value Variables.Custom_ident;
+        read = (fun t -> Variables.read_value t Variables.Custom_ident);
+        strings = (fun s -> [ s ]);
+      };
+    Case
+      {
         name = "string_of_kind_value content";
         make = (fun s : Properties.content -> String s);
         pp =
