@@ -248,6 +248,17 @@ where it is called. Each entry says what to write there.
 Each entry here is a sheet that 1.2.1 minified into one a browser renders
 differently. They are the reason to minify again.
 
+- **`&` under a pseudo-element styled the pseudo-element.** CSS Nesting 1
+  sec. 4 says `&` cannot represent a pseudo-element, so
+  `p::before{&{color:blue}}` styles nothing, and Chromium leaves the
+  `::before` alone. `--minify` printed it as `p:before{color:#00f}`,
+  `--flatten-nesting` turned `.x &` under `p::before` into `.x p:before` and
+  `&:hover` under `::part(p)` into `::part(p):hover`, and `cascade diff
+  --diff=canonical` called `p::before{color:red;&{color:blue}}` equal to
+  `p::before{color:blue}`. Such a rule now matches nothing and goes, a list
+  parent's pseudo-element branch gives `&` nothing, and no rule is nested
+  under a pseudo-element (#1503).
+
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
   omitted direction for `bottom`, so it printed
