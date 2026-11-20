@@ -252,6 +252,56 @@ let anchor_query_forms () =
   neg_cursor read_declaration "width: anchor-size(--a --b)";
   neg_cursor read_declaration "width: anchor-size(, 10px)"
 
+(* CSS Values 5 sec. 8.3 makes [if()] an arbitrary substitution function, and
+   CSS Mixins 1 sec. 2 makes a [<dashed-function>] one: a declaration holding
+   either is valid at parse time whatever the property, as one holding a [var()]
+   is, so long as the call matches its own grammar. Chrome 153 keeps each value
+   read here and drops each one refused. Chrome refuses an empty argument after
+   the first in a [<dashed-function>], which sec. 3 of CSS Mixins 1 allows;
+   cascade refuses it with the browser. *)
+let a_substitution_function_defers_the_property () =
+  check_declaration ~expected:"width:if(media(print):1px;else:2px)"
+    "width: if(media(print): 1px; else: 2px)";
+  check_declaration ~expected:"color:if(style(--x:1):red;else:blue)"
+    "color: if(style(--x: 1): red; else: blue)";
+  check_declaration ~expected:"width:if(media(print):1px;)"
+    "width: if(media(print):1px;)";
+  check_declaration ~expected:"width:if(else:)" "width: if(else:)";
+  check_declaration ~expected:"width:if(not media(print):1px)"
+    "width: if(not media(print):1px)";
+  check_declaration ~expected:"width:if(media(print) and (x):1px)"
+    "width: if(media(print) and (x):1px)";
+  check_declaration ~expected:"width:if(foo(x):1px)" "width: if(foo(x):1px)";
+  check_declaration ~expected:"margin:1px if(else:2px)"
+    "margin: 1px if(else:2px)";
+  check_declaration ~expected:"width:calc(if(else:1px) + 1px)"
+    "width: calc(if(else:1px) + 1px)";
+  check_declaration ~expected:"width:--f()" "width: --f()";
+  check_declaration ~expected:"width:--f(1px,2px)" "width: --f(1px, 2px)";
+  check_declaration ~expected:"display:--f({a,b})" "display: --f({a,b})";
+  check_declaration ~expected:"width:calc(--f()*2)" "width: calc(--f() * 2)";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "width: if()";
+      "width: if(foo)";
+      "width: if(media(print))";
+      "width: if(x:1px)";
+      "width: if(1px:1px)";
+      "width: if([a]:1px)";
+      "width: if(media(print):1px;;)";
+      "width: if(else and media(print):1px)";
+      "width: if(not not media(print):1px)";
+      "width: if(media(print) media(screen):1px)";
+      "width: if(media(print) and media(screen) or media(x):1px)";
+      "width: if(media(print):1px !important)";
+      "width: --f(1px;2px)";
+      "width: --f(!)";
+      "width: --f(1px,)";
+      "width: --f(1px,,2px)";
+      "width: -f()";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1637,6 +1687,8 @@ let suite =
         color_takes_only_a_colour_function;
       test_case "a grid shorthand names both axes" `Quick
         grid_shorthand_names_both_axes;
+      test_case "a substitution function defers the property" `Quick
+        a_substitution_function_defers_the_property;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
       test_case "try tactics stand together" `Quick try_tactics_stand_together;
