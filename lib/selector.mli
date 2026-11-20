@@ -155,6 +155,18 @@ val canonicalize : ?enforce_spec:bool -> t -> t
       applies at its top level and to the members of its top-level list.
       Idempotent. *)
 
+val sort_compounds : t -> t
+(** [sort_compounds selector] puts the simple selectors of each compound of
+    [selector] in one order. Selectors 4 sec. 3.1 makes a compound match what
+    all its simple selectors match, whatever their order, at the sum of their
+    specificities, so the result selects what [selector] selects at the same
+    weight. A type or universal selector stays first (sec. 3.5), a nesting
+    selector stays where it is, and a pseudo-element ends the compound with the
+    pseudo-classes after it (sec. 16); the runs between them sort, ids then
+    classes by name, then the rest by their printed form. Emission keeps the
+    author's order, which nesting synthesis reads as a prefix, so this is the
+    canonical comparison's spelling. *)
+
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)
 
