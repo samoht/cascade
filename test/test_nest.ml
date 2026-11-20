@@ -190,6 +190,37 @@ let test_nested_declarations_are_flattened () =
     "nested rules alone stay" ".a{color:red;&:hover{color:#00f}}"
     (minify nesting_targets ".a{color:red;&:hover{color:blue}}")
 
+(* Outside a style rule [&] is [:scope] (CSS Nesting 1 sec. 4), and nested it is
+   the parent, so a flat rule whose selector holds [&] cannot be re-parented:
+   [.a &] matches an [.a]'s descendant scoping root, and nested under [.a] it
+   would be [.a .a]. The same holds one level down, where [&] is the enclosing
+   rule. Chromium 153 styles 279 elements of a test tree under
+   [.c{.a{color:red}.a &{color:blue}}] and 171 under [.c
+   .a{color:red;&{color:blue}}]. *)
+let test_nesting_selector_is_not_reparented () =
+  let same targets css =
+    Alcotest.(check string) css css (minify_for targets css)
+  in
+  List.iter
+    (same Css.Optimize.evergreen_targets)
+    [
+      ".a{overflow-x:scroll}.a &{width:20px}";
+      "div{opacity:.5}div>&{flex-basis:10px}";
+    ];
+  List.iter (same nesting_targets)
+    [
+      ".a{overflow-x:scroll}.a &{width:20px}";
+      "div{opacity:.5}div>&{flex-basis:10px}";
+      ".c{.a{color:red}.a &{color:#00f}}";
+      ":has(.d){.b{column-gap:3px}.b~&{overflow:hidden}}";
+      ".c~.c{.b{--x:2px}.b~&{top:2px}}";
+    ];
+  Alcotest.(check string)
+    "flattened for the default floors"
+    ":has(.d) .b{column-gap:3px}.b~:has(.d){overflow:hidden}"
+    (minify_for Css.Optimize.evergreen_targets
+       ":has(.d){.b{column-gap:3px}.b~&{overflow:hidden}}")
+
 let test_merge_lone_wrapper () =
   let merged = Nest.merge_lone (rule ".card{.title{color:red}}") in
   Alcotest.(check string)
@@ -332,6 +363,8 @@ let suite =
         test_nesting_follows_the_floors;
       Alcotest.test_case "nested declarations are flattened" `Quick
         test_nested_declarations_are_flattened;
+      Alcotest.test_case "nesting selector is not re-parented" `Quick
+        test_nesting_selector_is_not_reparented;
       Alcotest.test_case "merge_lone pseudo-element parent" `Quick
         test_merge_lone_pseudo_element_parent;
       Alcotest.test_case "drop_dead_nested keeps live branches" `Quick
