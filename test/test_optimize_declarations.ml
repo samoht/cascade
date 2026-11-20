@@ -809,6 +809,13 @@ let floor_fallbacks_survive () =
   check_modes "a variadic color-mix()"
     "a{color:red;color:color-mix(in srgb,red,blue,green)}"
     "a{color:red;color:color-mix(in srgb,red,#00f,green)}";
+  (* web-features records reversed() in Firefox 96 alone, so Chrome and Safari
+     drop the later declaration and reset [x] to 0. *)
+  check_modes "a reversed counter"
+    "a{counter-reset:x;counter-reset:reversed(x)}"
+    "a{counter-reset:x;counter-reset:reversed(x)}";
+  check_modes "a reversed counter alone" "a{counter-reset:reversed(x) 3}"
+    "a{counter-reset:reversed(x) 3}";
   Alcotest.(check bool)
     "a fallback in an earlier rule of the selector" true
     (Astring.String.is_infix ~affix:"width:1px"

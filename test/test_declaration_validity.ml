@@ -519,6 +519,10 @@ let spec_property_grammar_table_expansion () =
       ("list-style", "square inside");
       ("content", "open-quote attr(title) close-quote");
       ("counter-reset", "section 1");
+      (* CSS Lists 3 sec. 4.1: [<reversed-counter-name> <integer>?], with
+         [reversed( <counter-name> )]. *)
+      ("counter-reset", "reversed(section)");
+      ("counter-reset", "reversed(section) 5 page");
       ("counter-increment", "section");
       ("resize", "both");
       ("cursor", "url(cursor.cur), pointer");
@@ -647,6 +651,9 @@ let spec_property_grammar_table_expansion () =
       ("place-content", "left");
       ("content", "open-quote none");
       ("counter-reset", "none section");
+      (* Sec. 4.2 gives [counter-increment] no reversed counter. *)
+      ("counter-increment", "reversed(section)");
+      ("counter-reset", "reversed(none)");
       ("resize", "block inline both");
       ("cursor", "url(cursor.cur)");
       ("user-select", "all none");
