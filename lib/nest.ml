@@ -76,7 +76,30 @@ let nesting_leads_every_compound sel =
   in
   walk ~leading:true sel
 
-let substitute ?(leftmost = true) ~parent sel =
+(* CSS Nesting 1 sec. 4: [&] cannot represent a pseudo-element, as [:is()]
+   cannot (Selectors 4 sec. 4.2), so a parent branch carrying one gives [&]
+   nothing to match. Chromium 153 leaves [p::before{&{...}}] unstyled and does
+   not weigh such a branch of a list parent. [None] is a parent every branch of
+   which carries one. *)
+let element_branches parent =
+  match parent with
+  | Selector.List branches -> (
+      match
+        List.filter (fun b -> not (Selector.has_pseudo_element b)) branches
+      with
+      | [] -> Option.None
+      | [ branch ] -> Option.Some branch
+      | kept when List.length kept = List.length branches -> Option.Some parent
+      | kept -> Option.Some (Selector.List kept))
+  | sel when Selector.has_pseudo_element sel -> Option.None
+  | sel -> Option.Some sel
+
+(* What stands for [&] when it names nothing: [:is()] of the parent, which is
+   what the specification desugars [&] to and matches nothing, and which
+   {!keep_readable_branches} drops. *)
+let names_nothing parent = Selector.Is [ parent ]
+
+let substitute_elements ~leftmost ~parent sel =
   let verbatim =
     ((not (complex parent)) || splices_bare ~leftmost ~parent sel)
     && ((not (leads_compound parent)) || nesting_leads_every_compound sel)
@@ -89,9 +112,22 @@ let substitute ?(leftmost = true) ~parent sel =
     (function Selector.Nesting -> parent | node -> Selector.reshape node)
     sel
 
+let substitute ?(leftmost = true) ~parent sel =
+  match element_branches parent with
+  | Option.Some parent -> substitute_elements ~leftmost ~parent sel
+  | Option.None ->
+      let parent = names_nothing parent in
+      Selector.map
+        (function Selector.Nesting -> parent | node -> Selector.reshape node)
+        sel
+
 (* A parent the nested selector never names still lands inside it, to the left
    of a combinator, so it needs the same wrapper. *)
-let grouped parent = if is_list parent then Selector.Is [ parent ] else parent
+let grouped parent =
+  match element_branches parent with
+  | Option.None -> names_nothing parent
+  | Option.Some parent when is_list parent -> Selector.Is [ parent ]
+  | Option.Some parent -> parent
 
 (* CSS Nesting 1 sec. 3: a nested selector list is relative to the parent branch
    by branch, so [.p { a, b { ... } }] is [.p a, .p b]. Combining the parent
@@ -113,10 +149,26 @@ let rec combine parent child =
    neither half meets the reader's check. Such a rule matches nothing in any
    engine, so drop the branches that overstep and keep the ones a reader
    accepts. *)
+let branches = function Selector.List bs -> bs | sel -> [ sel ]
+
+(* An [:is()] or [:where()] standing in a compound of [sel], outside any other
+   functional pseudo-class, every argument of which carries a pseudo-element: it
+   matches nothing, so neither does [sel]. Under [:not()] it would match
+   everything, so only the compounds of [sel] itself are read. *)
+let rec matches_nothing (sel : Selector.t) =
+  match sel with
+  | Selector.Is (_ :: _ as args) | Selector.Where (_ :: _ as args) ->
+      List.for_all Selector.has_pseudo_element (List.concat_map branches args)
+  | Selector.Compound parts -> List.exists matches_nothing parts
+  | Selector.Combined (l, _, r) -> matches_nothing l || matches_nothing r
+  | Selector.Relative (_, r) -> matches_nothing r
+  | _ -> false
+
 let keep_readable_branches (selector : Selector.t) =
   let keeps sel =
     (not (Selector.has_combinator_after_pseudo_element sel))
-    && not (Selector.has_refused_simple_in_compound sel)
+    && (not (Selector.has_refused_simple_in_compound sel))
+    && not (matches_nothing sel)
   in
   match selector with
   | Selector.List branches -> (
@@ -259,7 +311,7 @@ let hoist_declaration_runs (rule : rule) =
   | hoisted, nested ->
       { rule with declarations = rule.declarations @ hoisted; nested }
 
-let rec strip_prefix (parent : Selector.t) (child : Selector.t) =
+let rec strip_element_prefix (parent : Selector.t) (child : Selector.t) =
   match (parent, child) with
   | _, Selector.Combined (cp, comb, crest) when Selector.equal cp parent ->
       Some
@@ -267,7 +319,7 @@ let rec strip_prefix (parent : Selector.t) (child : Selector.t) =
          else Selector.Relative (comb, crest))
   | Selector.Combined (pp, pcomb, prest), Selector.Combined (cp, ccomb, crest)
     when Selector.equal_combinator pcomb ccomb && Selector.equal pp cp ->
-      strip_prefix prest crest
+      strip_element_prefix prest crest
   | _, Selector.Compound cps -> (
       let pps =
         match parent with Selector.Compound l -> l | single -> [ single ]
@@ -283,6 +335,13 @@ let rec strip_prefix (parent : Selector.t) (child : Selector.t) =
           Some (Selector.Compound (Selector.Nesting :: suffix))
       | _ -> None)
   | _ -> None
+
+(* CSS Nesting 1 sec. 4: [&] cannot represent a pseudo-element, so no rule nests
+   under a parent carrying one: [&:hover] under [.a::part(p)] matches
+   nothing. *)
+let strip_prefix (parent : Selector.t) (child : Selector.t) =
+  if Selector.has_pseudo_element parent then Option.None
+  else strip_element_prefix parent child
 
 let extends a b = strip_prefix a b <> None
 
