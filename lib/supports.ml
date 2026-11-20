@@ -297,15 +297,18 @@ let rec pp_aux ~verbatim ~in_and ctx = function
   | And (a, b) -> pp_and ~verbatim ctx a b
   | Or (a, b) -> pp_or ~verbatim ctx a b
 
+(* CSS Conditional 3 sec. 2: [not] takes a [<supports-in-parens>], which an
+   [and], an [or] and another [not] are not, so each takes parentheses. *)
 and pp_not ~verbatim ~in_and ctx cond =
   if in_and then Pp.char ctx '(';
   Pp.string ctx "not ";
   (match cond with
-  | And _ | Or _ ->
+  | And _ | Or _ | Not _ ->
       Pp.char ctx '(';
-      pp_aux ~verbatim ~in_and ctx cond;
+      pp_aux ~verbatim ~in_and:false ctx cond;
       Pp.char ctx ')'
-  | _ -> pp_aux ~verbatim ~in_and ctx cond);
+  | Property _ | Function _ | General_enclosed _ ->
+      pp_aux ~verbatim ~in_and ctx cond);
   if in_and then Pp.char ctx ')'
 
 and pp_and_branch ~verbatim ctx = function
@@ -329,7 +332,7 @@ and pp_or_branch ~verbatim ~is_left ctx = function
       Pp.char ctx '(';
       pp_or_and_left ~verbatim ~is_left ctx a;
       Pp.string ctx " and ";
-      pp_aux ~verbatim ~in_and:true ctx b;
+      pp_and_branch ~verbatim ctx b;
       Pp.char ctx ')'
   | Not _ as branch -> pp_aux ~verbatim ~in_and:true ctx branch
   | branch -> pp_aux ~verbatim ~in_and:false ctx branch
@@ -339,7 +342,7 @@ and pp_or_and_left ~verbatim ~is_left ctx = function
       Pp.char ctx '(';
       pp_aux ~verbatim ~in_and:true ctx branch;
       Pp.char ctx ')'
-  | branch -> pp_aux ~verbatim ~in_and:true ctx branch
+  | branch -> pp_and_branch ~verbatim ctx branch
 
 and pp_or ~verbatim ctx a b =
   pp_or_branch ~verbatim ~is_left:true ctx a;
