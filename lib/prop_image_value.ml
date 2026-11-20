@@ -14,12 +14,14 @@ let pp_quoted_url quote ctx url =
   Pp.char ctx ')'
 
 let pp_image_set_option ctx { source; resolution; mime_type } =
-  (match source with Url u -> Pp.url ctx u | String s -> Pp.quoted ctx s);
+  (match source with
+  | Url u -> Pp.url ctx u
+  | String s -> Pp.quoted_string ctx s);
   Option.iter
     (fun mime ->
       Pp.space ctx ();
       Pp.string ctx "type(";
-      Pp.quoted ctx mime;
+      Pp.quoted_string ctx mime;
       Pp.char ctx ')')
     mime_type;
   Option.iter

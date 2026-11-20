@@ -139,6 +139,14 @@ module String = struct
       else go (i + 1) (room - 1)
     in
     go i 3
+
+  (* CSS Syntax 3 (ED) sec. 4.3.6: an unquoted url body ends or turns into a
+     <bad-url-token> at whitespace, a quote, a [(], a non-printable code point
+     or a backslash (an escape), and its [)] closes it. *)
+  let url_needs_quotes =
+    exists (function
+      | ' ' | '"' | '\'' | '(' | ')' | '\\' | '\000' .. '\031' | '\127' -> true
+      | _ -> false)
 end
 
 let int_of_float_opt f =

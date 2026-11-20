@@ -1600,9 +1600,13 @@ let read_grid_template_areas_row t rows rendered =
   match Cursor.string_opt t with
   | None -> `Stop
   | Some s ->
+      (* CSS Grid 1 sec. 7.3 reads a row as name and null-cell tokens between
+         whitespace, which [validate_grid_area_rows] checks, so a row holds no
+         character a string has to escape once each whitespace is a space. *)
+      let row = String.map (fun c -> if is_grid_area_ws c then ' ' else c) s in
       `Continue
         ( grid_area_row_cells s :: rows,
-          String.concat "" [ "\""; s; "\"" ] :: rendered )
+          String.concat "" [ "\""; row; "\"" ] :: rendered )
 
 let read_grid_template_areas_rows t =
   let rec loop rows rendered =

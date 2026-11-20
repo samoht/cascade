@@ -16,10 +16,7 @@ let rec pp_content : content Pp.t =
       else
         match repr with
         | Some repr -> Pp.string ctx repr
-        | None ->
-            Pp.char ctx quote;
-            Pp.string ctx value;
-            Pp.char ctx quote)
+        | None -> Pp.quoted_string ~quote ctx value)
   | Image image -> pp_background_image ctx image
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
@@ -81,12 +78,8 @@ let rec pp_quotes : quotes Pp.t =
   | Pairs pairs ->
       List.iter
         (fun (open_q, close_q) ->
-          Pp.char ctx '"';
-          Pp.string ctx open_q;
-          Pp.char ctx '"';
-          Pp.char ctx '"';
-          Pp.string ctx close_q;
-          Pp.char ctx '"')
+          Pp.quoted_string ctx open_q;
+          Pp.quoted_string ctx close_q)
         pairs
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"

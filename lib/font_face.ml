@@ -1,7 +1,5 @@
 (** Font-face descriptor types for type-safe [\@font-face] construction. *)
 
-open Syntax
-
 (** {1 Metric Override Types} *)
 
 (** Metric override value - either "normal", a percentage, or an unresolved
@@ -85,10 +83,7 @@ let pp_src_modifiers ctx ~format ~tech =
         Pp.minified ctx
         && List.mem (String.lowercase_ascii f) known_format_keywords
       then Pp.string ctx (String.lowercase_ascii f)
-      else (
-        Pp.char ctx '"';
-        Pp.string ctx f;
-        Pp.char ctx '"');
+      else Pp.quoted_string ctx f;
       Pp.char ctx ')'
   | None -> ());
   match tech with
@@ -98,16 +93,6 @@ let pp_src_modifiers ctx ~format ~tech =
       Pp.string ctx t;
       Pp.char ctx ')'
   | None -> ()
-
-(* Emit a [url()] argument: quote when the body contains characters that the
-   bare form can't hold, drop quotes otherwise. CSS Values 4 3.4 makes the two
-   notations equivalent and the bare form is shorter under minify. *)
-let pp_url_arg ctx s =
-  if url_needs_quotes s then (
-    Pp.char ctx '"';
-    Pp.string ctx s;
-    Pp.char ctx '"')
-  else Pp.string ctx s
 
 (* CSS Values 4 sec. 3.3: the CSS-wide keywords are not valid [<custom-ident>]s,
    and neither is the reserved [default]. Both exclusions hold in every ASCII
@@ -132,18 +117,14 @@ let rec pp_src ctx entries = Pp.list ~sep:Pp.comma pp_src_entry ctx entries
 and pp_src_entry ctx = function
   | Var var -> Values.pp_var pp_src ctx var
   | Url { url; format; tech } ->
-      Pp.string ctx "url(";
-      pp_url_arg ctx url;
-      Pp.char ctx ')';
+      Pp.url ctx url;
       pp_src_modifiers ctx ~format ~tech
   | Quoted_url { url; quote; format; tech } ->
-      Pp.string ctx "url(";
-      if Pp.minified ctx && not (url_needs_quotes url) then Pp.string ctx url
+      if Pp.minified ctx then Pp.url ctx url
       else (
-        Pp.char ctx quote;
-        Pp.string ctx url;
-        Pp.char ctx quote);
-      Pp.char ctx ')';
+        Pp.string ctx "url(";
+        Pp.quoted_string ~quote ctx url;
+        Pp.char ctx ')');
       pp_src_modifiers ctx ~format ~tech
   | Local name ->
       Pp.string ctx "local(";

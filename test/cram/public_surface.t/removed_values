@@ -11,3 +11,5 @@ Css.Perspective_origin.of_string
 Css.Animation.of_string
 Css.inset_ring_shadow
 Properties.inset_ring_shadow
+Pp.quoted
+Css.decode_import_url

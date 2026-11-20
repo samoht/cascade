@@ -44,11 +44,6 @@ let is_ident s =
     true
   else Common.String.utf8_fold ident_code_point true s
 
-let url_needs_quotes =
-  String.exists (function
-    | ' ' | ')' | '"' | '\'' | '(' | '\\' -> true
-    | _ -> false)
-
 let split_top_level_colon cvs =
   let rec loop before = function
     | [] -> None

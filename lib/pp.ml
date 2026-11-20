@@ -117,11 +117,6 @@ let nop _ _ = ()
 let string ctx s = emit_string ctx.out s
 let char ctx c = emit_char ctx.out c
 
-let quoted ctx s =
-  char ctx '"';
-  string ctx s;
-  char ctx '"'
-
 (* The last byte emitted so far, for token-boundary spacing decisions. *)
 let last_char ctx =
   let len = out_length ctx.out in
@@ -758,16 +753,11 @@ let call_list name pp_item = call name (list ~sep:comma pp_item)
 let call_2 name pp_a pp_b = call name (pair ~sep:comma pp_a pp_b)
 let call_3 name pp_a pp_b pp_c = call name (triple ~sep:comma pp_a pp_b pp_c)
 
+(* CSSOM 1 sec. 2.1 serializes a URL as [url(] and the serialized string; the
+   bare body is the shorter spelling of the same url wherever it can hold it. *)
 let url ctx s =
   string ctx "url(";
-  (* Only quote if the URL contains special characters *)
-  let needs_quotes =
-    String.exists
-      (fun c ->
-        c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
-      s
-  in
-  if needs_quotes then quoted_string ctx s else string ctx s;
+  if Common.String.url_needs_quotes s then quoted_string ctx s else string ctx s;
   string ctx ")"
 
 let rename_custom_property ctx name = ctx.rename_custom_property name

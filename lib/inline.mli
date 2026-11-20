@@ -40,12 +40,6 @@ val flattening_layers_is_safe : Stylesheet.t -> bool
     anonymous layer, another origin's stack, a [@scope] block, a nested rule, or
     a declaration broad enough to write any slot. *)
 
-val decode_import_url : string -> string
-(** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
-    quotes from an [@import] URL string as held in
-    {!Stylesheet.import_rule.url}. The parser preserves the verbatim source form
-    there for round-tripping; this helper recovers the bare URL. *)
-
 val imports :
   ?query:Context.query ->
   ?layer_order:string list ->

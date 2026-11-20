@@ -4,15 +4,6 @@ open Inline_scope
 
 (** {1 [@import] inlining helpers} *)
 
-let decode_import_url s =
-  let trimmed = String.trim s in
-  if trimmed = "" then trimmed
-  else
-    try
-      let r = Cursor.of_string trimmed in
-      Cursor.one_of [ Cursor.url; Cursor.string ] r
-    with Cursor.Parse_error _ -> trimmed
-
 let wrap_import_body (ir : import_rule) body =
   let body =
     match ir.media with
@@ -97,8 +88,7 @@ let imports ?query ?(layer_order = []) (loader : Context.loader) stylesheet =
     | Import import_rule -> replace_import ~base ~stack import_rule
     | stmt -> replace_non_import ~base ~stack stmt
   and replace_import ~base ~stack import_rule =
-    let url = decode_import_url import_rule.url in
-    match resolve ~base url with
+    match resolve ~base import_rule.url with
     | None -> [ Import import_rule ]
     | Some resolved -> replace_resolved_import ~stack import_rule resolved
   and replace_resolved_import ~stack import_rule resolved =
