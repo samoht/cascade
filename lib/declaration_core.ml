@@ -232,9 +232,13 @@ let logical_color_uses p : Properties.logical_border_color -> bool = function
   | _ -> false
 
 let rec gradient_stop_uses_color p : Properties.gradient_stop -> bool = function
-  | Color_percentage (c, _, _) | Color_length (c, _, _) -> p c
+  | Color_percentage (c, _, _) | Color_length (c, _, _) | Color_angle (c, _, _)
+    ->
+      p c
   | List stops -> List.exists (gradient_stop_uses_color p) stops
-  | _ -> false
+  | Length _ | Angle_hint _ | Channel _ | Percentage _ | Position _
+  | Direction _ | Var _ ->
+      false
 
 let rec background_image_uses_color p : Properties.background_image -> bool =
   function
