@@ -84,7 +84,11 @@ reading a third entry (a slot a later write of the group rewrites, a later
 twin of one in the other's group) never rests on an entry the projection
 drops: an entry is dropped only when it is redundant in the run's own order
 and no such fact about another entry of its group is read off it. The
-projection compares declarations by node, in normal form.
+projection compares declarations by node, in normal form. Shorthand
+composition runs on the rules the trace prints and keeps their order: the
+box merge (`Shorthand_box.absorb_box_longhands`) folds a longhand into an
+earlier shorthand only past declarations that write none of its slots, so a
+printed form projects to itself.
 
 ## Target decisions
 

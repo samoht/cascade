@@ -434,6 +434,15 @@ differently. They are the reason to minify again.
   var(--c)`, where `var(--c)` can be the spread: with `--c:3px` the source
   draws no shadow and the output a spread one. The zero stays before a
   `var()` colour, as the blur's does (#1472).
+- **A margin longhand jumped a logical one.** `--minify` folded
+  `margin:0;margin-block-start:5px;margin-top:1px` into
+  `margin:1px 0 0;margin-block-start:5px`, which moves `margin-top` before the
+  logical write of the same side, so Chromium sets the top margin to 5px
+  instead of 1px. The same happened to `padding` and to
+  `-webkit-margin-before` and `-webkit-padding-before`. A longhand now folds
+  into the shorthand before it only past declarations that write none of its
+  sides, and `cascade diff --diff=canonical` no longer prints such a rule in
+  an order it would read differently the next time (#1478).
 
 #### Stable output
 
