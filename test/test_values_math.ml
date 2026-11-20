@@ -925,6 +925,56 @@ let spec_math_range_every_family () =
       ("gap", "min(-1px,2px)", "calc(-1px)");
     ]
 
+(* CSS Values 4 sec. 10.1 puts every math function wherever a value of its
+   resolved type stands, and sec. 10.2 answers a comparison with the type its
+   arguments share: a time, an angle or a percentage as readily as a length or a
+   number. Chrome 153 keeps every row here; cascade dropped each one. A fold
+   that would leave the property's range keeps its wrapper (sec. 10.12). *)
+let spec_math_function_every_type () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      (* <time>, through the duration and delay readers and the shorthands. *)
+      ("transition-duration", "min(1s,2s)", "1s");
+      ("transition-duration", "max(1s,2s)", "2s");
+      ("transition-duration", "clamp(1s,2s,3s)", "2s");
+      ("transition-duration", "abs(-1s)", "1s");
+      ("transition-duration", "min(-1s,2s)", "calc(-1s)");
+      ("transition-delay", "min(-1s,2s)", "-1s");
+      ("animation-duration", "max(1s,2s)", "2s");
+      ("animation-delay", "abs(-1s)", "1s");
+      ("interest-delay-start", "min(1s,2s)", "1s");
+      ("interest-delay-end", "max(1s,2s)", "2s");
+      ("transition", "opacity min(1s,2s)", "opacity 1s");
+      ("animation", "x min(1s,2s)", "x 1s");
+      (* <angle>. *)
+      ("rotate", "min(10deg,20deg)", "10deg");
+      ("rotate", "clamp(1deg,2deg,3deg)", "2deg");
+      ("rotate", "abs(-10deg)", "10deg");
+      ("offset-rotate", "max(10deg,20deg)", "20deg");
+      (* <number> | <percentage>, folded to the shorter of the two spellings a
+         literal of the same value takes. *)
+      ("opacity", "min(10%,20%)", ".1");
+      ("opacity", "max(10%,20%)", ".2");
+      ("fill-opacity", "clamp(10%,20%,30%)", ".2");
+      ("stroke-opacity", "min(10%,20%)", ".1");
+      ("flood-opacity", "min(10%,20%)", ".1");
+      ("stop-opacity", "min(10%,20%)", ".1");
+      ("shape-image-threshold", "min(10%,20%)", ".1");
+      ("zoom", "min(10%,20%)", ".1");
+      ("zoom", "min(-10%,20%)", "calc(-.1)");
+      ("scale", "min(10%,20%)", ".1");
+      ("border-image-slice", "min(10%,20%)", "10%");
+      (* A percentage comparison inside a sum turns into its number with the
+         percentage beside it. *)
+      ("opacity", "calc(min(50%,10%) + 1%)", ".11");
+    ];
+  (* Sec. 10.2: the arguments of a comparison share a type, and at a slot that
+     does not resolve a percentage against a length the two differ. Chrome 153
+     refuses both. *)
+  neg_cursor Css.Properties.read_opacity "calc(min(50%, 1px) + max(1px, 2px))";
+  neg_cursor read_duration "min(1s, 2px)"
+
 let suite =
   ( "values_math",
     [
@@ -952,6 +1002,8 @@ let suite =
       test_case "spec math operand range" `Quick spec_math_operand_range;
       test_case "spec math range every family" `Quick
         spec_math_range_every_family;
+      test_case "spec math function every type" `Quick
+        spec_math_function_every_type;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
