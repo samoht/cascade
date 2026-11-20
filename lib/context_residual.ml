@@ -375,11 +375,13 @@ module Calc_residual = struct
 
   (* Value-independent multiplicative identities ([x * 0], [x * 1], ...) live in
      [Values.calc_identity], shared with the AST evaluators so the paths never
-     drift. They hold for any operand, so they apply to an unresolved [var()]
-     too; [ops.is_zero] collapses a literal zero ([0px], not just [0]). Additive
-     terms fold only through the preceding same-type value combination. *)
+     drift. [x * 1] applies to an unresolved [var()] too; a zero product does
+     not, since a runtime [var()] can substitute any tokens. [ops.is_zero]
+     collapses a literal zero ([0px], not just [0]). Additive terms fold only
+     through the preceding same-type value combination. *)
   let fold_identity_expr ops left op right =
-    Values.calc_identity ~zero:ops.zero ~is_zero:ops.is_zero left op right
+    Values.calc_identity ~ctx:Values.default_calc_ctx ~zero:ops.zero
+      ~is_zero:ops.is_zero left op right
 
   let fold_calc_expr ops left op right =
     match fold_num_expr left op right with

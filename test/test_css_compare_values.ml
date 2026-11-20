@@ -1048,6 +1048,25 @@ let semantically_equivalent_escaping_property () =
 (* CSS Values 4 sec. 10.9: beside a [var()] whose type is unknown, a percentage
    operand is not the number it denotes. With [--x:30%], Chromium 153 computes
    [calc(100% - var(--x))] to [.7] and [calc(1 - var(--x))] to [1]. *)
+(* CSS Values 4 sec. 10.10.1: [x * 0] is zero only over an operand of known
+   type. Chromium 153, [--u] undefined: [calc(var(--u) * 0px)] leaves [width]
+   invalid at computed-value time (auto) where [0] is 0px. *)
+let canonical_zero_product_over_var () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "a zero product over a var() is not zero" false
+    (equal ".a{width:calc(var(--u) * 0px)}" ".a{width:0}");
+  Alcotest.(check bool)
+    "nor over a token-level substitution" false
+    (equal ".a{--x:1px + 2px;width:calc(0 * var(--x))}"
+       ".a{--x:1px + 2px;width:0}");
+  Alcotest.(check bool)
+    "nor in a custom property" false
+    (equal ".a{--y:calc(var(--x) * 0)}" ".a{--y:0}");
+  Alcotest.(check bool)
+    "a constant zero product is zero" true
+    (equal ".a{width:calc(2px * 0)}" ".a{width:0}")
+
 let canonical_percentage_beside_var () =
   let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
   Alcotest.(check bool)
@@ -1073,6 +1092,8 @@ let suite =
         semantically_equivalent_color_mix_values;
       Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
         semantically_equivalent_color_mix_css;
+      Alcotest.test_case "canonical zero product over a var()" `Quick
+        canonical_zero_product_over_var;
       Alcotest.test_case "canonical percentage beside a var()" `Quick
         canonical_percentage_beside_var;
       Alcotest.test_case "canonical custom property tokens" `Quick

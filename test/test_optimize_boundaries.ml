@@ -583,6 +583,46 @@ let calc_flatten_registered_single_valued () =
      2)}"
     "@property --x{syntax:\"*\";inherits:false}.a{width:calc(calc(var(--x))*2)}"
 
+(* CSS Values 4 sec. 10.10.1 folds [x * 0] to a zero only over an operand of
+   known type. An unregistered [var()] has none: it substitutes tokens, so
+   [calc(0 * var(--x))] under [--x:1px + 2px] is [0 * 1px + 2px], and an
+   undefined one makes the declaration invalid at computed-value time. A
+   [<number>] registration substitutes one number, always valid (CSS Properties
+   and Values API 1 sec. 2.4), so the product is a zero of the other operand's
+   type. A [<length>] registration is one value too, but of a type the zero has
+   to match. *)
+let calc_zero_product_registered_number () =
+  let check label css expected =
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
+    let optimized = Css.Optimize.stylesheet input in
+    Alcotest.(check string)
+      label expected
+      (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
+  in
+  check "a <number> registration folds the zero product"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:calc(var(--n) \
+     * 0px)}"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:0}";
+  check "and keeps a number zero a number"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:calc(10px \
+     * (var(--n) * 0 + 1))}"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:10px}";
+  check "an unregistered var keeps it" ".a{width:calc(var(--n) * 0px)}"
+    ".a{width:calc(var(--n)*0px)}";
+  check "a universal registration keeps it"
+    "@property --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n) * 0px)}"
+    "@property --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n)*0px)}";
+  check "a <length> registration keeps it"
+    "@property \
+     --n{syntax:\"<length>\";inherits:false;initial-value:0px}.a{rotate:calc(var(--n) \
+     * 0)}"
+    "@property \
+     --n{syntax:\"<length>\";inherits:false;initial-value:0}.a{rotate:calc(var(--n)*0)}"
+
 let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
      is true when @scope appears as a nested group rule inside a style rule. *)
@@ -787,6 +827,9 @@ let suite =
       ( "calc flatten gated on single-valued @property registration",
         `Quick,
         calc_flatten_registered_single_valued );
+      ( "calc zero product over a registered number",
+        `Quick,
+        calc_zero_product_registered_number );
       ( "preserve independent custom-property rule position",
         `Quick,
         preserve_independent_custom_prop_position );
