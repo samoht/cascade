@@ -17,7 +17,6 @@ type ctx = {
   out : out;
   inline : bool;
   in_function : bool;
-  in_calc : bool;
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -77,7 +76,6 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
     out;
     inline;
     in_function = false;
-    in_calc = false;
     in_style_rule = false;
     lossless;
     enforce_spec;

@@ -178,7 +178,7 @@ where it is called. Each entry says what to write there.
   `Opacity_percentage` and a `Percentage` case, holding the percentage as
   written (`50.` for `50%`). An exhaustive match over either type needs the
   new case; `Css.optimize` turns it into the number wherever no `var()` shares
-  the calculation.
+  the calculation (#1456).
 - **`Stats` reports only what the optimizer did.** A factoring run records one
   row, so `Stats.iteration_stat`'s `local_iteration` and `active_passes` were
   always 1, and its `iteration` and `Stats.counters`'s `iterations` repeated
@@ -280,7 +280,7 @@ differently. They are the reason to minify again.
   SVG opacities and `shape-image-threshold`, and `cascade diff
   --diff=canonical` called the two spellings identical. CSS Values 4 sec. 10.9
   types a calculation by its operands, so a percentage now becomes its number
-  only where no `var()` shares the calculation.
+  only where no `var()` shares the calculation (#1456).
 
 #### Stable output
 
