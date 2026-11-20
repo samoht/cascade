@@ -35,14 +35,17 @@ Cascade picks the shortest spelling that renders the same at every choice
 point. Where the CSS specifications and the browsers' error recovery allow
 several valid serialisations, it chooses the shortest.
 
-Rendering is what a browser paints. The CSSOM is not part of it: a rewrite may
-change both the declaration text a script reads back through
-`getPropertyValue` and the computed value it reads through `getComputedStyle`,
-provided every rendered result is identical. `background:none` becomes
-`background:0 0`, one byte shorter and painting the same in every case, while
-`getComputedStyle` reports `background-position` as `0% 0%` for the input and
-`0px 0px` for the output. A page that reads its own computed styles back sees
-the minified spelling.
+What `--minify` preserves is observational equality over the target browsers,
+defined in [invariants.md](invariants.md#definitions): in every document and
+surrounding context, every element gets the same used values and the same
+transitions and animations. The CSSOM text is not part of it: a rewrite may
+change the declaration text a script reads back through `getPropertyValue` and
+the computed value it reads through `getComputedStyle`. `background:none`
+becomes `background:0 0`, one byte shorter and painting the same in every
+case, while `getComputedStyle` reports `background-position` as `0% 0%` for
+the input and `0px 0px` for the output. A custom property is the exception:
+`var()` substitutes its tokens, so its value is kept as written, apart from
+whitespace.
 
 ### What runs
 
@@ -233,11 +236,11 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
   `backdrop-filter`, `hyphens` and `mask` where Safari 16.4 or Chrome 111 still
   need them. The prefixed `mask-mode` and `mask-composite` are not generated,
   because their legacy grammars differ.
-- Each target stands for its version and every later one. An earlier
-  declaration of a property is dropped only when every browser at or above
-  the targets that reads it reads the later one, so `a{width:1px;width:stretch}` keeps
-  `width:1px` for Chrome 111 to 137, Firefox and Safari, which drop
-  `stretch`. This holds under `--enforce-spec` too.
+- Each target stands for its version and every later one, up to the newest
+  release in the compatibility data cascade ships. An earlier declaration of
+  a property is dropped only when every such browser that reads it reads the
+  later one, so `a{width:1px;width:stretch}` keeps `width:1px` for Chrome 111
+  to 137, Firefox and Safari, which drop `stretch`. This holds under `--enforce-spec` too.
 - A `min-`/`max-` media or container feature becomes the range syntax,
   `(min-width: 700px)` to `(width >= 700px)`.
 - A nested selector loses its `&` prefix, `& div` to `div`.
@@ -276,7 +279,7 @@ disjunction, for example `(-webkit-backdrop-filter: ...) or
 | `--diff=MODE` | What counts as a difference: `auto` (default), `tree`, `string` or `canonical`. |
 | `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit; `none` prints every one; an integer prints exactly that many. |
 | `--lossless` | Disable colour and numeric approximation in the `canonical` comparison. |
-| `--enforce-spec` | Assume no browser in the `canonical` comparison: every `@supports` guard, vendor prefix, colour fallback and rule over a pseudo-class no target reads is kept, so two sheets that differ on one are reported. |
+| `--enforce-spec` | Judge the `canonical` comparison for every conforming implementation rather than the targets: every `@supports` guard, vendor prefix, colour fallback and rule over a pseudo-class no target reads is kept, so two sheets that differ on one are reported. |
 | `--prune-unused-custom-props` | Drop custom properties nothing references, on both sides, before a `canonical` comparison. The comparison is then blind to differences in unused custom properties. |
 | `--browser --html FILE` | Render both files over `FILE` in headless Chromium and compare the screenshots instead of the CSS. |
 | `--json` | Write the comparison as one JSON document. The exit status is unchanged. |
@@ -287,8 +290,9 @@ disjunction, for example `(-webkit-backdrop-filter: ...) or
 
 `--diff=canonical` parses and minifies each input independently with the same
 settings, then compares the two results byte for byte. `--lossless` applies to
-both sides; the comparison itself adds no tolerance. Before comparing, it
-treats as equal the changes that cannot alter a computed value:
+both sides, and the comparison applies the minifier's approximation bounds and
+none looser. Before comparing, it treats as equal the changes that cannot
+alter a used value:
 
 - declarations or rules that set different properties may swap freely;
 - a rule inside a `@media`, `@supports` or `@container` block holding only
@@ -328,16 +332,17 @@ needs is added on both sides and one no target needs is dropped from both, a
 colour fallback every target reads past is dead, a `-ms-` or `-o-`
 declaration, which no target reads, is dropped from both, and so is a rule
 whose selector no target reads ([Target browsers](#target-browsers)).
-Each target stands for its version and every later one, so a `@supports`
-guard no target satisfies stays: `@supports (field-sizing:content)` fails in
+Each target stands for its version and every later one in the data, so a
+`@supports` guard no target satisfies stays: `@supports (field-sizing:content)` fails in
 Chrome 111 and holds from Chrome 123.
 `--enforce-spec` turns these off. An `@supports` guard that no browser can answer yes to, such as one
 over a `<general-enclosed>` term that CSS Conditional 3 section 6.1 makes
 false, selects nothing on either side, and its block is dropped from both.
 
-`canonical` reports a difference only when some element could compute a
-different value. Two files that render the same compare equal even when one
-contains something the other lacks, an empty rule for example. Use `tree` or
+`canonical` exits 0 only when every target browser renders the two files
+alike, in the sense of [invariants.md](invariants.md#master-guarantees). It
+may report a difference that paints nothing. Content that changes nothing an
+element renders, an empty rule for example, is no difference; use `tree` or
 `string` to catch that.
 
 ### Unreadable input and exit codes
