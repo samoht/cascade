@@ -354,6 +354,12 @@ differently. They are the reason to minify again.
   `page-break-before:always` still maps to `page`, and an earlier
   `break-before:auto` stays as the fallback for browsers that drop `always`
   (#1467).
+- **Two selectors a later browser reads apart shared a list.** `--minify`
+  listed `.a:popover-open` and `.b:user-valid`, which Chrome 111 and Safari
+  16.4 both drop, though Chrome 114 to 118 reads the first alone and Safari
+  16.5 and 16.6 the second alone, and each dropped the rule. The targets are
+  floors, so two selectors now list only when every release at or past them
+  reads both or neither (#1468).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

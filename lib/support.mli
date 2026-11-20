@@ -45,6 +45,12 @@ val engine_implements : engine -> version -> string -> bool option
     about one engine is what a harness comparing cascade against a single
     browser needs; {!implemented} answers for a whole target set. *)
 
+val engine_shipped : engine -> string -> version option option
+(** [engine_shipped engine key] is [Some (Some v)] when [engine] shipped [key]
+    in [v], [Some None] when the dataset records [engine] without it, and [None]
+    when the dataset does not model [key]. It reads the same sources as
+    {!engine_implements}. *)
+
 type measurement = {
   key : string;  (** the BCD-style key the fact would carry *)
   support : Baseline.support;  (** what each engine was measured to do *)
