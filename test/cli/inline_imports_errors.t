@@ -85,7 +85,7 @@ parse-time literal, not a computed reference.
   > .e { color: red }
   > EOF
   $ cascade --minify --inline-imports theme-vars.css 2>/dev/null
-  :root{--import-url:url(base.css)}.e{color:red}
+  :root{--import-url:url("base.css")}.e{color:red}
 
 --inline-imports from stdin is rejected because relative paths cannot be
 resolved without a base directory.

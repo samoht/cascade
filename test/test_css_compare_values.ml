@@ -1,12 +1,13 @@
 open Cascade
 open Css_compare_helpers
 
-(* A custom property's stream substitutes the number a token holds, not the
-   digits it was written with, so [-0.5] and [-.5] are one value wherever the
-   stream lands. *)
+(* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value a
+   [var()] substitutes, kept as written apart from whitespace, so [-0.5] and
+   [-.5] are two values: the comparator keeps apart what emission keeps
+   apart. *)
 let equal_canonical_custom_signed_leading_zero () =
   Alcotest.(check bool)
-    "a signed number's leading zero is not a difference" true
+    "a signed number's leading zero is a difference in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a{--t:calc(var(--s)*-.5);translate:var(--t)}"
        ".a{--t:calc(var(--s)*-0.5);translate:var(--t)}")
@@ -224,8 +225,10 @@ let equal_canonical_light_dark_mix () =
     (equal pair
        ".a{background-color:color-mix(in oklab,light-dark(red,#00f) \
         50%,light-dark(#0000,#fff0))}");
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace. *)
   Alcotest.(check bool)
-    "in a custom stream too" true
+    "but not in a custom stream, whose tokens stay as written" false
     (equal
        ".a{--c:light-dark(oklab(.62795536 .22486306 \
         .1258463/.5),oklab(.45201372 -.03245698 -.31152815/.5))}"
@@ -312,18 +315,18 @@ let canonical_numeric_division_follows_precision_mode () =
     "lossless keeps the quotient" false
     (equal ~lossless:true ".a{width:33.3333%}" ".a{width:calc(1/3 * 100%)}")
 
-(* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, and
-   [hue-rotate] names a filter function and nothing else, so the two spellings
-   are one value wherever the stream is substituted. *)
+(* Filter Effects 1 sec. 6.1 makes an omitted [hue-rotate()] argument 0, but CSS
+   Custom Properties 1 sec. 4.1: a custom property's tokens are the value a
+   [var()] substitutes, kept as written apart from whitespace, so the spellings
+   stay two values there. *)
 let canonical_custom_hue_rotate_zero () =
   Alcotest.(check bool)
-    "hue-rotate() and hue-rotate(0deg) agree in a custom property" true
+    "hue-rotate() and hue-rotate(0deg) stay apart in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a{--f:hue-rotate();filter:var(--f)}"
        ".a{--f:hue-rotate(0deg);filter:var(--f)}");
-  (* Any zero angle, since the unit does not survive normalisation. *)
   Alcotest.(check bool)
-    "a zero turn agrees too" true
+    "a zero turn too" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ".a{--f:hue-rotate()}"
        ".a{--f:hue-rotate(0turn)}");
   (* A non-zero angle is a different filter. *)
@@ -373,22 +376,21 @@ let registered_custom_property_tokens () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_color_mix_tokens () =
-  (* color-mix() is unconditionally a colour wherever it is substituted, so two
-     spellings of the same colour-mix are equal under canonical comparison even
-     inside an unregistered custom property. transparent and #0000 are the same
-     colour, so these two forms compare equal. *)
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace, so two
+     spellings of one colour-mix stay two values there. *)
   let expected = ".a { --tw-gradient: " ^ color_mix_transparent ^ " }" in
   let actual = ".a { --tw-gradient: " ^ color_mix_transparent_hex ^ " }" in
   Alcotest.(check bool)
-    "custom color-mix spellings of one colour compare equal" true
+    "custom color-mix spellings of one colour stay apart" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_color_function_alpha () =
-  (* oklab() is unconditionally a colour, so an alpha written as 25% or .25 is
-     the same value; canonical comparison equates them inside a custom-property
-     body. *)
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace, so an alpha
+     written as 25% or .25 is two values there. *)
   Alcotest.(check bool)
-    "oklab alpha 25% and .25 compare equal in a custom property" true
+    "oklab alpha 25% and .25 stay apart in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a { --s: oklab(50% 0 0 / 25%) }" ".a { --s: oklab(50% 0 0 / .25) }");
   (* A bare colour keyword could be a custom-ident in a non-colour substitution
@@ -399,10 +401,11 @@ let canonical_custom_color_function_alpha () =
        ".a { --c: #0000 }")
 
 let canonical_custom_shadow_color () =
-  (* A complete shadow grammar fixes its final keyword's type to <color>, even
-     when the shadow is carried through an unregistered custom property. *)
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace, even where a
+     shadow grammar would type the keyword. *)
   Alcotest.(check bool)
-    "named and hex shadow colours compare equal in a custom property" true
+    "named and hex shadow colours stay apart in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ":root { --drop-shadow-glow: 0 0 8px red }"
        ":root { --drop-shadow-glow: 0 0 8px #f00 }");
@@ -438,8 +441,10 @@ let canonical_relative_color_origin () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a { color: rgb(from red r g b / var(--x)) }"
        ".a { color: rgb(from #f00 r g b / var(--x)) }");
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace. *)
   Alcotest.(check bool)
-    "relative-colour origins compare equal inside a custom property" true
+    "relative-colour origins stay apart inside a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a { --s: 0 0 8px oklab(from red l a b / var(--x)) }"
        ".a { --s: 0 0 8px oklab(from #f00 l a b / var(--x)) }")
@@ -461,6 +466,8 @@ let canonical_fully_transparent_missing_oklab () =
      property"
     false
     (equivalent "background-color");
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace. *)
   Alcotest.(check bool)
     "nor in a custom property" false
     (equivalent "--tw-gradient-via");
@@ -643,8 +650,11 @@ let semantic_custom_var_fallback () =
   let actual =
     ".a { --tw-ring-shadow: 0 0 0 1px var(--tw-ring-color, #0000) }"
   in
+  (* CSS Custom Properties 1 sec. 4.1: a custom property's tokens are the value
+     a [var()] substitutes, kept as written apart from whitespace, its var()
+     fallbacks included. *)
   Alcotest.(check bool)
-    "shadow colour var fallbacks compare after typed canonicalization" true
+    "shadow colour var fallbacks stay apart in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let semantic_custom_nested_functions () =
@@ -1023,10 +1033,12 @@ let semantically_equivalent_escaping_property () =
         (String.concat "" [ property; ": red and blue stay different" ])
         false
         (Cascade_diff.Css_compare.equivalent_value ~property "red" "blue");
+      (* A custom property's tokens are kept as written apart from whitespace,
+         so two spellings of a colour are two values. *)
       Alcotest.(check bool)
         (String.concat ""
-           [ property; ": the same colour spelled twice agrees" ])
-        true
+           [ property; ": the same colour spelled twice stays apart" ])
+        false
         (Cascade_diff.Css_compare.equivalent_value ~property "#ffffff" "#fff"))
     [ "--x"; "--x;y"; "--x}y"; "--x y" ]
 

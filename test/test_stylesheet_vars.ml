@@ -275,31 +275,33 @@ let customprops13_declaration () =
     "--x: ; is the empty value" ".x{--x:}"
     (normalize ".x { --x: ; }")
 
-let customprops13_color_keyword_case_fold () =
+(* CSS Custom Properties 1 sec. 4.1 serialises a custom property's value as
+   written, and a var() substitutes those tokens: animation-name:var(--c)
+   computes RED under --c:RED, so an ident keeps its case. *)
+let customprops13_ident_case_kept () =
   let normalize css =
     match Css.of_string ~strict:false css with
     | Ok parsed -> minify parsed.stylesheet
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
-    "--c: RED folds to the canonical lower-case colour keyword" ".x{--c:red}"
+    "--c: RED keeps its case" ".x{--c:RED}"
     (normalize ".x { --c: RED }");
   Alcotest.(check string)
-    "--c: ToMaTo folds to the canonical named colour" ".x{--c:tomato}"
+    "--c: ToMaTo keeps its case" ".x{--c:ToMaTo}"
     (normalize ".x { --c: ToMaTo }");
   Alcotest.(check string)
-    "named colour folds inside a larger token stream"
-    ".x{--c:1px solid rebeccapurple}"
+    "a named colour keeps its case inside a larger token stream"
+    ".x{--c:1px solid rebeccaPurple}"
     (normalize ".x { --c: 1px solid rebeccaPurple }");
   Alcotest.(check string)
-    "--c: AUTO folds like the other colour-position keywords" ".x{--c:auto}"
+    "--c: AUTO keeps its case" ".x{--c:AUTO}"
     (normalize ".x { --c: AUTO }");
   Alcotest.(check string)
     "unrecognised idents keep their source case" ".x{--c:MyToken}"
     (normalize ".x { --c: MyToken }");
   Alcotest.(check string)
-    "system colour keywords keep their canonical mixed case"
-    ".x{--c:ButtonText}"
+    "system colour keywords keep their case" ".x{--c:ButtonText}"
     (normalize ".x { --c: ButtonText }")
 
 let normalize_minified css =
@@ -374,8 +376,8 @@ let customprops13_registered_numeric_calc () =
 
 let customprops13_registered_oklch_chroma () =
   Alcotest.(check string)
-    "unregistered OKLCH custom property folds the colour function"
-    ".x{--color-zinc-500:oklch(.552 4%285.938)}"
+    "unregistered OKLCH custom property keeps token stream"
+    ".x{--color-zinc-500:oklch(55.2%.016 285.938)}"
     (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }");
   Alcotest.(check string)
     "registered OKLCH custom property uses typed color minification"
@@ -426,18 +428,16 @@ let customprops13_registered_negative_dimension_calc () =
         initial-value: 0px } .x { --tw-tracking: calc(.05em * -1) }")
 
 let customprops13_registered_angle_time_calc () =
-  (* <angle>/<time> custom properties fold their calc() whether or not they are
-     registered: the unit unambiguously fixes the type, so a complete math
-     function reduces to its dimension in every var() site (like a complete
-     colour). The registered path uses the typed kind; the unregistered path
-     folds the opaque substream. *)
+  (* A registered <angle> or <time> custom property computes to its dimension,
+     so its calc() reduces. An unregistered one substitutes its tokens as
+     written (CSS Custom Properties 1 sec. 4.1), so its calc() stays. *)
   Alcotest.(check string)
-    "unregistered angle calc custom property folds to an angle"
-    ".x{--tw-rotate:0deg}"
+    "unregistered angle calc custom property keeps token stream"
+    ".x{--tw-rotate:calc(1deg*0)}"
     (normalize_minified ".x { --tw-rotate: calc(1deg * 0) }");
   Alcotest.(check string)
-    "unregistered time calc custom property folds to a duration"
-    ".x{--tw-delay:2s}"
+    "unregistered time calc custom property keeps token stream"
+    ".x{--tw-delay:calc(1s*2)}"
     (normalize_minified ".x { --tw-delay: calc(1s * 2) }");
   Alcotest.(check string)
     "registered angle custom property reduces to an angle"
@@ -461,18 +461,18 @@ let customprops13_registered_angle_time_calc () =
     (normalize_minified ".x { --a: calc(50% * 2) }")
 
 let customprops13_trigonometric_calc () =
-  (* CSS Values 4 sec. 10.4 puts the trigonometric family among the math
-     functions, so a complete one reduces in a custom-property stream the way
-     the exponential family already does. The inverse functions resolve to an
-     <angle>, which is unambiguous in every var() site. *)
+  (* An unregistered custom property substitutes its tokens as written (CSS
+     Custom Properties 1 sec. 4.1), so a trigonometric function stays. *)
   Alcotest.(check string)
-    "unregistered arc tangent custom property folds to an angle" ".x{--v:45deg}"
+    "unregistered arc tangent custom property keeps token stream"
+    ".x{--v:atan2(1,1)}"
     (normalize_minified ".x { --v: atan2(1, 1) }");
   Alcotest.(check string)
-    "unregistered arc cosine custom property folds to an angle" ".x{--v:90deg}"
+    "unregistered arc cosine custom property keeps token stream"
+    ".x{--v:acos(0)}"
     (normalize_minified ".x { --v: acos(0) }");
   Alcotest.(check string)
-    "unregistered arc sine custom property folds to an angle" ".x{--v:90deg}"
+    "unregistered arc sine custom property keeps token stream" ".x{--v:asin(1)}"
     (normalize_minified ".x { --v: asin(1) }")
 
 let customprops13_shortest_unresolved_calc_spacing () =
@@ -489,37 +489,35 @@ let customprops13_box_shadow_zero_spread () =
        ".shadow-sm { --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, \
         #0000001a) }")
 
-let customprops13_hex_color_folds () =
+(* An unregistered custom property substitutes its tokens as written (CSS Custom
+   Properties 1 sec. 4.1), so a colour keeps its spelling. *)
+let customprops13_hex_color_kept () =
   Alcotest.(check string)
-    "unregistered hex custom property folds to the shortest hex" ".x{--c:#fff}"
+    "a six-digit hex is unchanged" ".x{--c:#ffffff}"
     (normalize_minified ".x { --c: #ffffff }");
-  (* An opaque alpha hex with no shorter form stays verbatim. *)
   Alcotest.(check string)
-    "8-digit hex without a shorter form is unchanged" ".x{--c:#abcdef12}"
+    "an eight-digit hex is unchanged" ".x{--c:#abcdef12}"
     (normalize_minified ".x { --c: #abcdef12 }");
-  (* A bare colour keyword is also a valid <custom-ident> in a non-colour
-     substitution site, so the fold must never produce a name: red folds to the
-     hex form, not to [red], even though [red] is one byte shorter. *)
   Alcotest.(check string)
-    "hex folds to hex, never to a named colour" ".x{--c:#f00}"
+    "a hex is not shortened" ".x{--c:#ff0000}"
     (normalize_minified ".x { --c: #ff0000 }");
   Alcotest.(check string)
-    "an rgb() function also folds to hex, not a name" ".x{--c:#f00}"
+    "an rgb() function stays a function" ".x{--c:rgb(255 0 0)}"
     (normalize_minified ".x { --c: rgb(255 0 0) }");
-  (* A hex inside an <image> function (itself a clearly typed substream) folds
-     through the recursion. *)
   Alcotest.(check string)
-    "hex nested in a gradient folds" ".x{--g:linear-gradient(#f00,#00f)}"
+    "a hex nested in a gradient is unchanged"
+    ".x{--g:linear-gradient(#ff0000,#0000ff)}"
     (normalize_minified ".x { --g: linear-gradient(#ff0000, #0000ff) }")
 
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
-    "unregistered OKLab custom property folds the colour function"
+    "unregistered OKLab custom property keeps token stream"
     ".prose{--tw-prose-kbd-shadows:oklab(21%-.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
   Alcotest.(check string)
-    "unregistered OKLab custom property folds regardless of source sign spacing"
+    "unregistered OKLab custom property drops the space between two signed \
+     numbers"
     ".prose{--tw-prose-kbd-shadows:oklab(21%-.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }");
@@ -1323,9 +1321,9 @@ let suite =
       ( "spec scroll-snap 6.2 trailing semicolon",
         `Quick,
         scroll_snap_align_trailing_semicolon );
-      ( "spec custom-properties 1 3 colour keyword case fold",
+      ( "spec custom-properties 1 3 ident case kept",
         `Quick,
-        customprops13_color_keyword_case_fold );
+        customprops13_ident_case_kept );
       ( "spec custom-properties 1 3 unregistered font stack",
         `Quick,
         customprops13_unregistered_font_stack );
@@ -1356,9 +1354,9 @@ let suite =
       ( "spec custom-properties 1 3 unregistered box-shadow token stream",
         `Quick,
         customprops13_box_shadow_zero_spread );
-      ( "spec custom-properties 1 3 hex colour folds",
+      ( "spec custom-properties 1 3 hex colour kept",
         `Quick,
-        customprops13_hex_color_folds );
+        customprops13_hex_color_kept );
       ( "spec custom-properties 1 3 registered oklab sign boundaries",
         `Quick,
         customprops13_shortest_oklab_sign_boundaries );

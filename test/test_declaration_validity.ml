@@ -50,20 +50,21 @@ let custom_properties () =
   neg_cursor read_declaration "color: color(from red srgb calc(r + 10%) g b)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
-(* A numeric token's source spelling is not part of its value. Opaque custom-
-   and unknown-property streams therefore use the same shortest numeric spelling
-   as typed values, while retaining separators when dropping a sign would
-   otherwise merge two tokens. *)
+(* A custom property's tokens are the value a [var()] substitutes, and CSS
+   Custom Properties 1 sec. 4.1 serialises them as written, so a number keeps
+   its spelling there ([--t:1.0] is no [<integer>] where [--t:1] is one) and
+   only the whitespace goes. An unknown property's stream is substituted
+   nowhere, so it takes the shortest numeric spelling a typed value takes. *)
 let opaque_numeric_tokens () =
-  check_declaration ~expected:"--t:1px" "--t: 1.0px";
-  check_declaration ~expected:"--t:.5px" "--t: 0.5px";
-  check_declaration ~expected:"--t:.5" "--t: .50";
-  check_declaration ~expected:"--t:1px" "--t: 01px";
-  check_declaration ~expected:"--t:1" "--t: +1";
+  check_declaration ~expected:"--t:1.0px" "--t: 1.0px";
+  check_declaration ~expected:"--t:0.5px" "--t: 0.5px";
+  check_declaration ~expected:"--t:.50" "--t: .50";
+  check_declaration ~expected:"--t:01px" "--t: 01px";
+  check_declaration ~expected:"--t:+1" "--t: +1";
   check_declaration ~expected:"-x-y:.5%" "-x-y: 0.50%";
-  check_declaration ~expected:"--t:x 1" "--t: x +1";
-  check_declaration ~expected:"--t:1 2px" "--t: 1 +2px";
-  check_declaration ~expected:"--t:- 1" "--t: - +1"
+  check_declaration ~expected:"--t:x +1" "--t: x +1";
+  check_declaration ~expected:"--t:1 +2px" "--t: 1 +2px";
+  check_declaration ~expected:"--t:- +1" "--t: - +1"
 
 (* CSS Values 4 (ED) sec. 10.8 "Syntax": inside a math function whitespace is
    required on both sides of the [+] and [-] operators, while [*] and [/] may be
