@@ -97,57 +97,6 @@ let merge_consecutive_media ?(optimize_merged_block = Fun.id) stmts =
     ~build:(fun cond block -> Media (cond, block))
     ~optimize_merged_block stmts
 
-(* The style rules reachable from a statement, in source order, descending into
-   nested blocks, each under the selector the cascade weighs it by. [parent] is
-   that selector for the style rule enclosing [stmt]: a nested rule's selector
-   is expanded against it (CSS Nesting 1 sec. 3), and a nested declarations run
-   (sec. 3.4) sets properties on that rule, so it reads as one more rule with
-   that selector; missed, it is a conflict the hoisting analysis below never
-   sees. Descent goes through [statement_children], so a statement that grows a
-   block is reached without listing it here.
-
-   [None] is a refusal: some declaration under [stmt] belongs to a rule whose
-   weight this cannot read, and an analysis that must see every declaration
-   reads that silence as a conflict rather than as safety. A declarations run
-   with no enclosing rule names no rule at all. A selector still holding [&]
-   once expanded has no enclosing rule to weigh it by: an [@scope] body stands
-   for its scoping root with [&] (CSS Cascade 6 sec. 2.5.2), which is not a
-   selector in hand. *)
-let rec leaf_rules ?parent acc stmt =
-  match acc with
-  | Option.None -> Option.None
-  | Option.Some leaves -> (
-      let leaf (r : rule) rest =
-        if Nest.contains r.selector then Option.None else Option.Some (r :: rest)
-      in
-      match stmt with
-      | Rule r ->
-          let selector =
-            match parent with
-            | Option.None -> r.selector
-            | Option.Some p -> Nest.combine p r.selector
-          in
-          List.fold_left
-            (leaf_rules ~parent:selector)
-            (leaf { r with selector } leaves)
-            r.nested
-      | Declarations declarations -> (
-          match parent with
-          | Option.Some selector ->
-              leaf
-                { selector; declarations; nested = []; merge_key = None }
-                leaves
-          | Option.None -> Option.None)
-      | Scope (_, _, body) ->
-          List.fold_left (leaf_rules ~parent:Selector.Nesting) acc body
-      | stmt ->
-          List.fold_left (leaf_rules ?parent) acc (statement_children stmt))
-
-(* The leaves of [stmts] in source order, or [None] when one of them refuses. *)
-let leaves ?parent stmts =
-  List.fold_left (leaf_rules ?parent) (Option.Some []) stmts
-  |> Option.map List.rev
-
 (* Only cross statements whose cascade is pure source order: plain rules and
    conditional groups. Layers, origins, scopes, imports, etc. establish
    ordering/context that hoisting past would change. *)
@@ -220,7 +169,7 @@ let body p = List.concat (List.rev p.chunks)
 let facts pass stmts =
   Option.map
     (List.map (fun r -> Rule_graph.facts r))
-    (leaves ?parent:pass.parent stmts)
+    (Nest.leaves ?parent:pass.parent stmts)
 
 let read_kept pass =
   for at = pass.unread to Dynarray.length pass.kept - 1 do
