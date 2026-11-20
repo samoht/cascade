@@ -173,12 +173,6 @@ let custom_font_quoting_converges_under_every_wrapper () =
   converges_everywhere "a quoted family name" {|.a{--f:"Fira Code",monospace}|}
     ".a{--f:Fira Code,monospace}"
 
-let color_spelling_converges_under_every_wrapper () =
-  (* CSS Color 4 sec. 10.2 scales each [color(srgb ...)] channel by 255, so
-     [color(srgb 1 0 0)] is the sRGB red the keyword names. *)
-  converges_everywhere "a whole-byte color(srgb)" ".a{color:color(srgb 1 0 0)}"
-    ".a{color:red}"
-
 let media_level_spelling_converges_under_every_wrapper () =
   converges_everywhere "the Level 3 negation"
     "@media not all and (width>100px){.a{color:red}}"
@@ -963,8 +957,6 @@ let suite =
       Alcotest.test_case
         "custom-property font-name quoting converges under every wrapper" `Quick
         custom_font_quoting_converges_under_every_wrapper;
-      Alcotest.test_case "color spelling converges under every wrapper" `Quick
-        color_spelling_converges_under_every_wrapper;
       Alcotest.test_case "media level spelling converges under every wrapper"
         `Quick media_level_spelling_converges_under_every_wrapper;
       Alcotest.test_case "at-rule block takes the projection folds" `Quick

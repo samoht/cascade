@@ -376,10 +376,11 @@ let fidelity_string_escape_preserved () =
 
 (* {2 Color function spaces (CSS Color L4)} *)
 
-(* CSS Color Module Level 4, sections 10-13 (Color spaces): static in-gamut
-   colors may fold to the shortest sRGB spelling under minify. Forms Cascade
-   cannot reduce without losing information, such as out-of-gamut colors or
-   missing components, stay in functional notation. *)
+(* CSS Color Module Level 4, sections 10-13 (Color spaces): a static colour
+   rounds in its own notation under minify, since sec. 13.3 interpolates a
+   [lab()] in Oklab where the sRGB hex it paints like interpolates in sRGB.
+   Forms Cascade cannot reduce without losing information, such as out-of-gamut
+   colors or missing components, stay as written. *)
 let color4_10_color_space_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -387,7 +388,7 @@ let color4_10_color_space_preserved () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
-    "static lab folds to shortest sRGB form" ".x{color:red}"
+    "static lab rounds in its own space" ".x{color:lab(54.3 80.8 69.9)}"
     (normalize ".x { color: lab(54.29 80.81 69.89) }");
   Alcotest.(check bool)
     "out-of-gamut oklch preserved" true

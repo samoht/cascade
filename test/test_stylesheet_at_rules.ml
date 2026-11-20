@@ -487,7 +487,8 @@ let test_spec_snapshot_tracking_vectors () =
   assert_minify_and_optimize oklch_support
     ~minified:
       "@supports(color:oklch(50%0.1 20)){.accent{color:oklch(50%.1 20)}}"
-    ~optimized:"@supports(color:oklch(50%0.1 20)){.accent{color:#944a4b}}";
+    ~optimized:
+      "@supports(color:oklch(50%0.1 20)){.accent{color:oklch(.5 .1 20)}}";
   let nested_media =
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }"

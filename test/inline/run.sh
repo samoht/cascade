@@ -106,8 +106,10 @@ esac
 # lines each spell one value two ways and must be dropped; the third is a real
 # change and must survive. The prefixed line is there on purpose: cascade folds
 # a colour only for a property it types, and the prefixed colours are the ones
-# a real page carries by the thousand.
-canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\t-webkit-text-fill-color\tlab(1.90334 0.278696 -5.48866)\trgb(3, 7, 18)\n0\tX\tcolor\tred\tblue\n' |
+# a real page carries by the thousand. The two colours are one lab() rounded,
+# not a lab() and the hex it paints like: CSS Color 4 sec. 13.3 interpolates
+# those two in different spaces.
+canon_probe=$(printf '0\tX\tbackground-position\t0%% 0%%\t0px 0px\n0\tX\t-webkit-text-fill-color\tlab(1.90334 0.278696 -5.48866)\tlab(1.9 .3 -5.5)\n0\tX\tcolor\tred\tblue\n' |
   "$CANON_FILTER" 2>/dev/null)
 if [ "$canon_probe" != "$(printf '0\tX\tcolor\tred\tblue')" ]; then
   echo "ERROR: canonical filter missing or not filtering: $CANON_FILTER" >&2

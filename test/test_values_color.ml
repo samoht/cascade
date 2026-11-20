@@ -77,24 +77,24 @@ let test_color () =
      number form per cssnano. *)
   check_color ~expected:"hsl(180deg 50%25%/30%)" ~optimized:"#2060604d"
     "hsl(180deg 50% 25% / 30%)";
-  check_color ~optimized:"red" "color(srgb 1 0 0)";
+  check_color "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
   check_color ~expected:"color(oklab 50% .1-.05)"
     ~optimized:"color(oklab .5 .1-.05)" "color(oklab 50% 0.1 -0.05)";
   check_color ~expected:"color(lch 50% 40 120)"
     ~optimized:"color(lch .5 40 120)" "color(lch 50% 40 120)";
-  check_color ~expected:"color(xyz .3 .4 .5)" ~optimized:"#5cb8b5"
-    "color(xyz 0.3 0.4 0.5)";
+  check_color ~expected:"color(xyz .3 .4 .5)" "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
-  check_color ~expected:"oklch(50%.2 30)" ~optimized:"#ba0d01"
+  check_color ~expected:"oklch(50%.2 30)" ~optimized:"oklch(.5 .2 30)"
     "oklch(50% 0.2 30)";
   (* Per CSS Color 4 section 5.1 the printer canonicalizes a percentage rgb()
      form to the equivalent named/hex spelling. *)
   check_color ~expected:"rgb(100%0%0%)" ~optimized:"red" "rgb(100% 0% 0%)";
-  check_color ~expected:"oklab(50%.1-.05)" ~optimized:"#88497e"
+  check_color ~expected:"oklab(50%.1-.05)" ~optimized:"oklab(.5 .1-.05)"
     "oklab(50% 0.1 -0.05)";
-  check_color ~expected:"lch(50%40 120)" ~optimized:"#638038" "lch(50% 40 120)";
+  check_color ~expected:"lch(50%40 120)" ~optimized:"lch(50 40 120)"
+    "lch(50% 40 120)";
   check_color ~expected:"rgb(255 0 0/50%)" ~optimized:"#ff000080"
     "rgb(255 0 0 / 50%)";
 
@@ -241,14 +241,14 @@ let alpha_folds_in_optimize () =
   decl_optimizes ~prop:"color" ~held:"oklch(.55432 .12276 180.4567/.74567)"
     ~into:"oklch(.554 .123 180.457/.746)"
     "oklch(0.55432 0.12276 180.4567 / 0.74567)";
-  decl_optimizes ~prop:"color" ~held:"lab(50%none 30/1)" ~into:"lab(50%none 30)"
+  decl_optimizes ~prop:"color" ~held:"lab(50%none 30/1)" ~into:"lab(50 none 30)"
     "lab(50% none 30 / 1)";
   decl_optimizes ~prop:"color" ~held:"lab(50%none 30/40%)"
-    ~into:"lab(50%none 30/.4)" "lab(50% none 30 / 40%)";
+    ~into:"lab(50 none 30/.4)" "lab(50% none 30 / 40%)";
   decl_optimizes ~prop:"color" ~held:"oklch(50%none 30/1)"
-    ~into:"oklch(50%none 30)" "oklch(50% none 30 / 1)";
+    ~into:"oklch(.5 none 30)" "oklch(50% none 30 / 1)";
   decl_optimizes ~prop:"color" ~held:"oklab(50%none .1/.12345)"
-    ~into:"oklab(50%none .1/.123)" "oklab(50% none 0.1 / 0.12345)";
+    ~into:"oklab(.5 none .1/.123)" "oklab(50% none 0.1 / 0.12345)";
   check_value_cursor "color" read_color pp_color ~minify:false
     ~expected:"lab(50% 20 30 / 40%)" "lab(50% 20 30 / 40%)"
 
@@ -752,19 +752,20 @@ let spec_values_color_current () =
   neg_cursor read_color "light-dark(black)"
 
 let spec_color5_function_edges () =
-  check_color ~expected:"lab(50%10 20)" ~optimized:"#907055" "lab(50% 10 20)";
-  check_color ~expected:"lch(50%20 30)" ~optimized:"#976c67" "lch(50% 20 30)";
+  check_color ~expected:"lab(50%10 20)" ~optimized:"lab(50 10 20)"
+    "lab(50% 10 20)";
+  check_color ~expected:"lch(50%20 30)" ~optimized:"lch(50 20 30)"
+    "lch(50% 20 30)";
   check_color ~expected:"oklab(50%.1 .2)" ~optimized:"oklab(.5 .1 .2)"
     "oklab(50% 0.1 0.2)";
-  check_color ~expected:"oklch(50%.1 20/.5)" ~optimized:"#944a4b80"
+  check_color ~expected:"oklch(50%.1 20/.5)" ~optimized:"oklch(.5 .1 20/.5)"
     "oklch(50% 0.1 20 / 0.5)";
   (* CSS Color 4 sec. 9.2/9.3: an oklab/oklch lightness number out of [0,1]
      clamps (like lab/lch on 0-100), instead of dropping the declaration. *)
   check_color ~expected:"oklch(1 .1 30)" "oklch(1.5 0.1 30)";
   check_color ~expected:"oklch(0 .1 30)" "oklch(-0.5 0.1 30)";
   check_color ~expected:"oklab(0 .1 .1)" "oklab(-1 0.1 0.1)";
-  check_color ~expected:"color(srgb 1 0 0/.5)" ~optimized:"#ff000080"
-    "color(srgb 1 0 0 / 0.5)";
+  check_color ~expected:"color(srgb 1 0 0/.5)" "color(srgb 1 0 0 / 0.5)";
   check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
   check_color ~expected:"color-mix(in lch longer hue,red 30%,blue)"
     ~optimized:"color-mix(in lch longer hue,red 30%,#00f)"
@@ -774,20 +775,19 @@ let spec_color5_function_edges () =
     "color-mix(in hsl shorter hue, red, blue 40%)";
   (* CSS Color 4 sec. 9.2/9.3: lab/lch lightness uses a 0-100 number scale (a
      bare number L and the same number as a percentage are equal), so mixing two
-     L=70 colours keeps L=70, not 70*100. Both results are in the sRGB gamut and
-     fold to hex. *)
+     L=70 colours keeps L=70, not 70*100. *)
   check_color ~expected:"color-mix(in lch,lch(70 50 30),lch(70 50 60))"
-    ~optimized:"#f2906d" "color-mix(in lch, lch(70 50 30), lch(70 50 60))";
+    ~optimized:"lch(70 50 45)" "color-mix(in lch, lch(70 50 30), lch(70 50 60))";
   check_color ~expected:"color-mix(in lab,lab(50 10 10),lab(70-10 5))"
-    ~optimized:"#959083" "color-mix(in lab, lab(50 10 10), lab(70 -10 5))";
+    ~optimized:"lab(60 0 6%)" "color-mix(in lab, lab(50 10 10), lab(70 -10 5))";
   (* CSS Color 5 sec. 3: the default hue interpolation is shorter; mixing hues
      350 and 10 takes the 20-degree arc through 0, not the linear average
      180. *)
   check_color ~expected:"color-mix(in oklch,oklch(.7 .15 350),oklch(.7 .15 10))"
-    ~optimized:"#e7729b"
+    ~optimized:"oklch(.7 .15 0)"
     "color-mix(in oklch, oklch(0.7 0.15 350), oklch(0.7 0.15 10))";
   check_color ~expected:"color-mix(in lch,lch(70 50 350),lch(70 50 10))"
-    ~optimized:"#fc84ae" "color-mix(in lch, lch(70 50 350), lch(70 50 10))";
+    ~optimized:"lch(70 50 0)" "color-mix(in lch, lch(70 50 350), lch(70 50 10))";
   (* CSS Color 5 (ED) sec. 3 takes any number of [<color> && <percentage>?]
      items, and sec. 3.3 mixes them in order, each into the result so far. A mix
      of three keeps all three; folding the first two alone loses the third. *)
@@ -809,50 +809,63 @@ let spec_color5_function_edges () =
      scaling applies only to the result alpha. *)
   (* Opaque 50/50: straight average. *)
   check_color ~expected:"color-mix(in srgb,#fff 25%,#000 75%)"
-    ~optimized:"#404040" "color-mix(in srgb, #fff 25%, #000 75%)";
+    ~optimized:"color(srgb .25 .25 .25)"
+    "color-mix(in srgb, #fff 25%, #000 75%)";
   (* A transparent component must not bleed its zero channels: un-premultiply
      restores the opaque operand's colour, only the alpha halves. *)
   check_color ~expected:"color-mix(in srgb,#944a4b 50%,#0000)"
-    ~optimized:"#944a4b80" "color-mix(in srgb, #944a4b 50%, #0000)";
-  check_color ~expected:"color-mix(in srgb,#0000,red)" ~optimized:"#ff000080"
-    "color-mix(in srgb, #0000, red)";
+    ~optimized:"color(srgb .58 .29 .294/.5)"
+    "color-mix(in srgb, #944a4b 50%, #0000)";
+  check_color ~expected:"color-mix(in srgb,#0000,red)"
+    ~optimized:"color(srgb 1 0 0/.5)" "color-mix(in srgb, #0000, red)";
   check_color ~expected:"color-mix(in srgb,transparent,red)"
-    ~optimized:"#ff000080" "color-mix(in srgb, transparent, red)";
+    ~optimized:"color(srgb 1 0 0/.5)" "color-mix(in srgb, transparent, red)";
   (* Sec. 13.3 premultiplication applies in every interpolation space, not just
      sRGB. Mixing #0088cc 50% with transparent must restore #0088cc at half
      alpha in oklab/oklch/lab/lch too, never bleed transparent's zero
      coordinates in and darken the result. *)
   check_color ~expected:"color-mix(in oklab,#08c 50%,transparent)"
-    ~optimized:"#0088cc80" "color-mix(in oklab, #0088cc 50%, transparent)";
+    ~optimized:"oklab(.5998-.0673-.1241/.5)"
+    "color-mix(in oklab, #0088cc 50%, transparent)";
   check_color ~expected:"color-mix(in oklch,#08c 50%,transparent)"
-    ~optimized:"#0088cc80" "color-mix(in oklch, #0088cc 50%, transparent)";
+    ~optimized:"oklch(.5998 .1412 241.555/.5)"
+    "color-mix(in oklch, #0088cc 50%, transparent)";
   check_color ~expected:"color-mix(in lab,#08c 50%,transparent)"
-    ~optimized:"#0088cc80" "color-mix(in lab, #0088cc 50%, transparent)";
+    ~optimized:"lab(53.3-12.2-44.6/.5)"
+    "color-mix(in lab, #0088cc 50%, transparent)";
+  (* The hue is the D50 white point's of CSS Color 4 sec. 9 in the TR, (0.96422,
+     1, 0.82521); the Editor's Draft's xy-derived white puts it at 254.621. *)
   check_color ~expected:"color-mix(in lch,#08c 50%,transparent)"
-    ~optimized:"#0088cc80" "color-mix(in lch, #0088cc 50%, transparent)";
+    ~optimized:"lch(53.3 46.2 254.628/.5)"
+    "color-mix(in lch, #0088cc 50%, transparent)";
   (* No explicit percentage: the 50/50 default restores the colour the same
      way. *)
   check_color ~expected:"color-mix(in oklab,#08c,transparent)"
-    ~optimized:"#0088cc80" "color-mix(in oklab, #0088cc, transparent)";
+    ~optimized:"oklab(.5998-.0673-.1241/.5)"
+    "color-mix(in oklab, #0088cc, transparent)";
   (* A zero-chroma operand (transparent) has a powerless hue in the polar spaces
      (sec. 4.4.1): it carries the opaque operand's hue over instead of
-     interpolating toward an undefined angle, so red at half alpha stays red. *)
+     interpolating toward an undefined angle, so red at half alpha stays red.
+     Red's chroma sits on the sRGB gamut edge, and [.258] would leave it, where
+     CSS Color 4 sec. 14.2 gamut maps rather than clips, so the fourth decimal
+     stays. *)
   check_color ~expected:"color-mix(in oklch,red 50%,transparent)"
-    ~optimized:"#ff000080" "color-mix(in oklch, red 50%, transparent)";
+    ~optimized:"oklch(.628 .2577 29.2339/.5)"
+    "color-mix(in oklch, red 50%, transparent)";
   (* Typed lab-family operands with partial alpha route through the
      premultiplied path too: mixing a colour 50% with a fully transparent one
      restores it at half alpha. *)
   check_color ~expected:"color-mix(in oklab,oklab(60%.1-.1),oklab(30%0 0/0))"
-    ~optimized:"#9f63ba80"
+    ~optimized:"oklab(.6 .1-.1/.5)"
     "color-mix(in oklab, oklab(60% 0.1 -0.1), oklab(30% 0 0 / 0))";
   (* Percentages summing to <100% scale only the result alpha (here 60%), not
      the colour channels. *)
   check_color ~expected:"color-mix(in srgb,red 30%,blue 30%)"
-    ~optimized:"#80008099" "color-mix(in srgb, red 30%, blue 30%)";
+    ~optimized:"color(srgb .5 0 .5/.6)" "color-mix(in srgb, red 30%, blue 30%)";
   (* A modern-space argument resolves and the mix folds in a single pass
      (idempotent minify), not only once both operands are already hex. *)
   check_color ~expected:"color-mix(in srgb,oklch(50%.1 30) 50%,transparent)"
-    ~optimized:"#944b4080"
+    ~optimized:"color(srgb .579 .294 .251/.5)"
     "color-mix(in srgb, oklch(50% 0.1 30) 50%, transparent)";
   check_color ~expected:"color-mix(in oklab,var(--a),var(--b))"
     ~optimized:"color-mix(in oklab,var(--a),var(--b))"
@@ -870,17 +883,17 @@ let spec_color5_srgb_float_mix () =
   (* CSS Color 5 sec. 3: convert modern operands to floating-point sRGB,
      interpolate there, and quantise only the result. *)
   check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 20%)"
-    ~optimized:"#353942"
+    ~optimized:"color(srgb .209 .222 .258)"
     "color-mix(in srgb, oklch(13% .028 261.692), white 20%)";
   (* A nearby result that does not cross a byte-rounding boundary. *)
   check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 90%)"
-    ~optimized:"#e6e6e7"
+    ~optimized:"color(srgb .901 .903 .907)"
     "color-mix(in srgb, oklch(13% .028 261.692), white 90%)";
   (* Premultiplication restores the transparent operand's partner channels; the
      40% percentage sum scales the resulting alpha to 10%. *)
   check_color
     ~expected:"color-mix(in srgb,oklch(13%7%261.692/.5) 20%,transparent 20%)"
-    ~optimized:"#0307121a"
+    ~optimized:"color(srgb .012 .028 .072/.1)"
     "color-mix(in srgb, oklch(13% .028 261.692 / .5) 20%, transparent 20%)"
 
 (* CSS Color 5 sec. 3: the result of [color-mix()] is a colour in the named
@@ -916,29 +929,34 @@ let spec_color5_mix_out_of_srgb_gamut () =
 (* CSS Color 5 sec. 3 <rectangular-color-space>: [srgb], [srgb-linear],
    [display-p3], [a98-rgb], [prophoto-rgb], [rec2020], [lab], [oklab], [xyz],
    [xyz-d50] and [xyz-d65] are all interpolation spaces. Mixing red and blue in
-   each folds to the colour the CSS Color 4 sec. 19 conversions give, collapsed
-   to hex when sRGB can hold it. XYZ is a linear-light transform of linear sRGB,
-   so [in xyz], [in xyz-d50], [in xyz-d65] and [in srgb-linear] all agree. *)
+   each folds to the colour the CSS Color 4 sec. 19 conversions give, a
+   [color()] in that space (a mix is never a legacy colour, sec. 13.3), unless
+   the mix prints shorter. *)
 let spec_color5_mix_rectangular_spaces () =
   check_color ~expected:"color-mix(in srgb-linear,red,blue)"
-    ~optimized:"#bc00bc" "color-mix(in srgb-linear, red, blue)";
-  (* Red and blue in an XYZ space land a hair outside the sRGB gamut, where CSS
-     Color 4 sec. 14.2 has the engine gamut map the result, so it stays a
-     [color()] and is not folded to a clip. *)
+    ~optimized:"color(srgb-linear .5 0 .5)"
+    "color-mix(in srgb-linear, red, blue)";
+  (* Red and blue in an XYZ space need six decimals to stay within the budget,
+     which print longer than the mix. *)
   check_color ~expected:"color-mix(in xyz,red,blue)"
-    ~optimized:"color(xyz .296436 .142416 .484931)"
-    "color-mix(in xyz, red, blue)";
+    ~optimized:"color-mix(in xyz,red,#00f)" "color-mix(in xyz, red, blue)";
   check_color ~expected:"color-mix(in xyz-d65,red,blue)"
-    ~optimized:"color(xyz .296436 .142416 .484931)"
-    "color-mix(in xyz-d65, red, blue)";
+    ~optimized:"color-mix(in xyz,red,#00f)" "color-mix(in xyz-d65, red, blue)";
   check_color ~expected:"color-mix(in xyz-d50,red,blue)"
     ~optimized:"color(xyz-d50 .29 .142 .364)" "color-mix(in xyz-d50, red, blue)";
-  check_color ~expected:"color-mix(in display-p3,red,blue)" ~optimized:"#800a91"
+  (* Three decimals put the green channel at byte 9.74, within the wide-gamut
+     conversion error of the 9.5 boundary, so no engine is proven to paint the
+     byte the mix paints, and the exact coefficients print longer than the
+     mix. *)
+  check_color ~expected:"color-mix(in display-p3,red,blue)"
+    ~optimized:"color-mix(in display-p3,red,#00f)"
     "color-mix(in display-p3, red, blue)";
-  check_color ~expected:"color-mix(in a98-rgb,red,blue)" ~optimized:"#810081"
+  check_color ~expected:"color-mix(in a98-rgb,red,blue)"
+    ~optimized:"color-mix(in a98-rgb,red,#00f)"
     "color-mix(in a98-rgb, red, blue)";
   check_color ~expected:"color-mix(in prophoto-rgb,red,blue)"
-    ~optimized:"#ba039d" "color-mix(in prophoto-rgb, red, blue)";
+    ~optimized:"color-mix(in prophoto-rgb,red,#00f)"
+    "color-mix(in prophoto-rgb, red, blue)";
   (* Red and blue in rec2020 also leave the sRGB gamut, so the mix keeps its
      space rather than folding to a clip. *)
   check_color ~expected:"color-mix(in rec2020,red,blue)"
@@ -1003,6 +1021,49 @@ let spec_color_invalid_mutation_matrix () =
       "rgb(from red r g b /)";
     ]
 
+(* CSS Color 4 sec. 13.3 interpolates two legacy sRGB colours (hex, named,
+   [rgb()], [hsl()], [hwb()]) in sRGB and any other pair in Oklab, and sec. 13.4
+   gives a [none] component the other colour's. Chromium 153 paints the middle
+   of [linear-gradient(to right,color(srgb 1 0 0),color(srgb 0 0 1))] as
+   (139,83,162) and of [linear-gradient(to right,red,#00f)] as (127,0,128), and
+   a transition from [rgb(none 0 0)] to [red] passes through a colour no
+   transition from [#000] reaches. Any colour value can be interpolated, so a
+   fold keeps the class and the [none]. *)
+let fold_keeps_interpolation_class () =
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"color(srgb 1 0 0)" "color(srgb 1 0 0)";
+  optimizes ~into:"color(srgb 1 0 0/.5)" "color(srgb 1 0 0 / 0.5)";
+  optimizes ~into:"oklch(.5 .2 30)" "oklch(50% 0.2 30)";
+  optimizes ~into:"oklab(.5 .1-.05)" "oklab(50% 0.1 -0.05)";
+  optimizes ~into:"lch(50 40 120)" "lch(50% 40 120)";
+  optimizes ~into:"lab(50 40 30)" "lab(50% 40 30)";
+  (* An all-[none] OKLab at zero alpha is not [transparent]: its axes take the
+     other colour's in a transition. *)
+  optimizes ~into:"oklab(0 none none/0)" "oklab(0% none none / 0)";
+  optimizes ~into:"rgb(none 0 0)" "rgb(none 0 0)";
+  (* Chromium 153 transitions [hsl(none 100% 50%)] to [hsl(120 100% 50%)]
+     through [oklab(.747 -.004 .153)] and [red] through [rgb(128,128,0)];
+     [hsl(120 none 50%)] and [hwb(none 10% 10%)] part from [gray] and [#e61a1a]
+     the same way. *)
+  optimizes ~into:"hsl(none 100%50%)" "hsl(none 100% 50%)";
+  optimizes ~into:"hsl(120 none 50%)" "hsl(120 none 50%)";
+  optimizes ~into:"hwb(none 10%10%)" "hwb(none 10% 10%)";
+  (* A legacy colour still takes its shortest legacy spelling. *)
+  optimizes ~into:"red" "rgb(255 0 0)";
+  optimizes ~into:"#206060" "hsl(180deg 50% 25%)";
+  (* CSS Color 5 sec. 3: a mix is a colour in its interpolation space, and an
+     sRGB one is a [color(srgb ...)]; Chromium 153 computes [color-mix(in
+     srgb,red,blue)] as [color(srgb 0.5 0 0.5)]. *)
+  optimizes ~into:"color(srgb .5 0 .5)" "color-mix(in srgb, red, blue)";
+  (* CSS Color 5 sec. 4.1: [color(from <origin> srgb r g b)] is a [color(srgb
+     ...)] too. *)
+  optimizes ~into:"color(srgb 1 0 0)" "color(from red srgb r g b)";
+  (* In a gradient the stops keep their class, so the gradient keeps its
+     interpolation space. *)
+  decl_optimizes ~prop:"background-image"
+    ~into:"linear-gradient(color(srgb 1 0 0),color(srgb 0 0 1))"
+    "linear-gradient(color(srgb 1 0 0), color(srgb 0 0 1))"
+
 let suite =
   ( "values_color",
     [
@@ -1038,4 +1099,6 @@ let suite =
         spec_color5_mix_rectangular_spaces;
       test_case "spec color invalid mutation matrix" `Quick
         spec_color_invalid_mutation_matrix;
+      test_case "fold keeps interpolation class" `Quick
+        fold_keeps_interpolation_class;
     ] )

@@ -489,14 +489,17 @@ let color_hwb () =
   roundtrip ".x { color: hwb(90 10% 20%) }" ".x{color:#73cc1a}";
   roundtrip ".x { color: hwb(90 10% 20% / 0.25) }" ".x{color:#73cc1a40}"
 
-(* SS 5.2.6 - oklch() and oklab() modern color functions *)
+(* SS 5.2.6 - oklch() and oklab() modern color functions. Sec. 13.3 interpolates
+   them in Oklab, so they keep their notation. *)
 let color_oklch_oklab () =
-  roundtrip ".x { color: oklch(50% 0.2 30) }" ".x{color:#ba0d01}";
-  roundtrip ".x { color: oklab(50% 0.1 -0.05) }" ".x{color:#88497e}"
+  roundtrip ".x { color: oklch(50% 0.2 30) }" ".x{color:oklch(.5 .2 30)}";
+  roundtrip ".x { color: oklab(50% 0.1 -0.05) }" ".x{color:oklab(.5 .1-.05)}"
 
-(* SS 5.2.7 - color-mix() function *)
+(* SS 5.2.7 - color-mix() function. CSS Color 5 sec. 3: the mix is a colour in
+   its interpolation space, here a [color(srgb ...)]. *)
 let color_mix () =
-  roundtrip ".x { color: color-mix(in srgb, red, blue) }" ".x{color:purple}"
+  roundtrip ".x { color: color-mix(in srgb, red, blue) }"
+    ".x{color:color(srgb .5 0 .5)}"
 
 (* SS 5.3 - transparent and currentcolor keywords *)
 let color_keywords () =

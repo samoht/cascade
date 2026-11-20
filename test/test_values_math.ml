@@ -199,8 +199,8 @@ let spec_values_l45_math_color () =
   check_number ~expected:"calc(1 + sibling-index())" "calc(1 + sibling-index())";
   check_number ~expected:"calc(sibling-count() - 1)" "calc(sibling-count() - 1)";
   check_percentage ~expected:"calc(50% + 10%)" "calc(50% + 10%)";
-  check_color ~expected:"color-mix(in oklab,red 40%,blue)" ~optimized:"#7551b6"
-    "color-mix(in oklab, red 40%, blue)";
+  check_color ~expected:"color-mix(in oklab,red 40%,blue)"
+    ~optimized:"oklab(.522 .07-.137)" "color-mix(in oklab, red 40%, blue)";
   check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
     ~optimized:"color-mix(in srgb longer hue,red,#00f)"
     "color-mix(in srgb longer hue, red, blue)";
@@ -234,7 +234,9 @@ let spec_values_l45_math_color () =
   decl_optimizes ~prop:"color" ~held:"color-mix(in oklab,var(--p) red,blue)"
     ~into:"color-mix(in oklab,var(--p) red,blue)"
     "color-mix(in oklab, var(--p) red, blue)";
-  check_color ~expected:"hsl(0 50%50%)" ~optimized:"#bf4040" "hsl(none 50% 50%)";
+  (* CSS Color 4 sec. 13.4: a missing hue takes the other colour's in an
+     interpolation, so it is not the zero it renders as at rest. *)
+  check_color ~expected:"hsl(none 50%50%)" "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/50%)"
     ~optimized:"rgb(from var(--c) r g b/.5)" "rgb(from var(--c) r g b / 50%)";
   check_color ~expected:"color(display-p3 none .5 1)"

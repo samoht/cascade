@@ -144,10 +144,11 @@ let test_vendor_prefix_baseline_gate () =
     (opt ".a{-moz-box-sizing:border-box!important;box-sizing:border-box}")
 
 (* A colour-valued property folds its colour whatever its name: CIE Lab
-   L=1.90334 a=0.278696 b=-5.48866 is sRGB 3,7,18, so both spellings print the
-   same hex. A property left out of the fold reports the two as different
-   values, which is what the browser-differential harness then counts as a
-   render change. *)
+   L=1.90334 a=0.278696 b=-5.48866 rounds to [lab(1.9 .3 -5.5)], which Chromium
+   153 paints as the same sRGB 3,7,18, and stays a [lab()], which CSS Color 4
+   sec. 13.3 interpolates in Oklab where [#030712] interpolates in sRGB. A
+   property left out of the fold reports the two spellings as different
+   values. *)
 let test_color_property_folds () =
   let opt css =
     match Css.of_string css with
@@ -159,8 +160,8 @@ let test_color_property_folds () =
     (fun property ->
       let rule value = String.concat "" [ ".a{"; property; ":"; value; "}" ] in
       Alcotest.(check string)
-        (String.concat "" [ property; " folds lab() to hex" ])
-        (rule "#030712")
+        (String.concat "" [ property; " rounds lab() in its own space" ])
+        (rule "lab(1.9 .3-5.5)")
         (opt (rule "lab(1.90334 0.278696 -5.48866)"));
       Alcotest.(check string)
         (String.concat "" [ property; " folds rgb() to hex" ])

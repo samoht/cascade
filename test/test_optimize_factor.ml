@@ -762,7 +762,7 @@ let normalize_pairs =
     ("a{color:rgb(255 255 255)}", "a{color:#fff}");
     ("a{color:rgb(255 0 0)}", "a{color:red}");
     ("a{color:hsl(0 100% 50%)}", "a{color:red}");
-    ("a{color:color-mix(in srgb,red,red)}", "a{color:red}");
+    ("a{color:color-mix(in srgb,red,red)}", "a{color:color(srgb 1 0 0)}");
   ]
 
 (* Same normalization story for gradients, basic shapes, and clip-path: each

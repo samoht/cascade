@@ -87,29 +87,36 @@ let list_properties () =
     "place-items: start baseline";
 
   (* CSS Color 5 sec. 5.1: [color(from <origin> srgb r g b)] is the origin's own
-     sRGB channels, so it folds to the origin whether that was written as a hex
-     or as a [color()] the same conversion reaches. *)
-  check_declaration ~expected:"color:rgb(179 128 77)"
+     sRGB channels, a [color(srgb ...)]: Chromium 153 computes it from [#b3804d]
+     as [color(srgb 0.701961 0.501961 0.301961)] and from [color(srgb .7 .5 .3)]
+     as [color(srgb 0.7 0.5 0.3)]. CSS Color 4 sec. 13.3 interpolates it in
+     Oklab, so it is not the origin's legacy spelling. *)
+  check_declaration ~expected:"color:color(srgb .701961 .501961 .301961)"
     "color: color(from #b3804d srgb r g b)";
-  check_declaration ~expected:"color:rgb(179 128 77)"
+  check_declaration ~expected:"color:color(srgb .7 .5 .3)"
     "color: color(from color(srgb .7 .5 .3) srgb r g b)";
-  check_declaration ~expected:"color:rgb(179 128 77/.4)"
+  check_declaration ~expected:"color:color(srgb .7 .5 .3/.4)"
     "color: color(from color(srgb .7 .5 .3/40%) srgb r g b)";
-  check_declaration ~expected:"color:rgb(179 128 77)"
+  check_declaration ~expected:"color:color(srgb .7 .5 .3)"
     "color: color(from color(from color(srgb .7 .5 .3) srgb r g b) srgb r g b)";
 
   (* CSS Color 5 sec. 4.1: the lab family's own keywords in order are the origin
      in that space, with the alpha the call names or the origin's when the slot
      is omitted. The conversion is the browser's, so it is a value fold the
-     optimizer makes and the printer keeps the spelling. *)
+     optimizer makes and the printer keeps the spelling. The result is a colour
+     in that space (Chromium 153 computes [oklab(from #0000001a l a b / .2)] as
+     [oklab(0 0 0 / 0.2)]), which CSS Color 4 sec. 13.3 interpolates in Oklab,
+     so it is not the origin's hex. *)
   check_declaration ~expected:"color:oklab(from #0000001a l a b/.2)"
-    ~optimized:"color:#0003" "color: oklab(from #0000001a l a b / .2)";
+    ~optimized:"color:oklab(0 0 0/.2)" "color: oklab(from #0000001a l a b / .2)";
   check_declaration ~expected:"color:oklab(from rgb(0 0 0/.1) l a b/20%)"
-    ~optimized:"color:#0003" "color: oklab(from rgb(0 0 0 / .1) l a b / 20%)";
+    ~optimized:"color:oklab(0 0 0/.2)"
+    "color: oklab(from rgb(0 0 0 / .1) l a b / 20%)";
   check_declaration ~expected:"color:oklch(from #123456 l c h)"
-    ~optimized:"color:#123456" "color: oklch(from #123456 l c h)";
+    ~optimized:"color:oklch(.319 .072 251.168)"
+    "color: oklch(from #123456 l c h)";
   check_declaration ~expected:"color:lab(from #0000001a l a b)"
-    ~optimized:"color:#0000001a" "color: lab(from #0000001a l a b)";
+    ~optimized:"color:lab(0 0 0/.102)" "color: lab(from #0000001a l a b)";
   check_declaration ~expected:"color:oklab(from #0000001a calc(l + .5) a b)"
     ~optimized:"color:oklab(from #0000001a calc(l + .5) a b)"
     "color: oklab(from #0000001a calc(l + .5) a b)";
