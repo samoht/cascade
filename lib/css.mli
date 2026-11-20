@@ -169,6 +169,7 @@ include module type of struct
    and type font_palette_descriptor := Stylesheet.font_palette_descriptor
    and type font_feature_values_block := Stylesheet.font_feature_values_block
    and type counter_style_system := Stylesheet.counter_style_system
+   and type counter_symbol := Stylesheet.counter_symbol
    and type counter_style_descriptor := Stylesheet.counter_style_descriptor
    and type view_transition_descriptor := Stylesheet.view_transition_descriptor
    and type font_variant_descriptor := Stylesheet.font_variant_descriptor

@@ -563,19 +563,17 @@ let read_counter_style_system_descriptor r =
       System system)
     r
 
-(* CSS Counter Styles 3 (ED) sec. 3.2: <symbol> = <string> | <image> |
-   <custom-ident>. The image arm is read for its grammar and kept as the text it
-   was written with, as the string and ident arms are. *)
-let read_counter_symbol r =
+(* CSS Counter Styles 3 (ED) sec. 3.1.7: <symbol> = <string> | <image> |
+   <custom-ident>, each kept as the kind it is. *)
+let read_counter_symbol r : counter_symbol =
   match Cursor.string_opt r with
-  | Some symbol -> symbol
+  | Some symbol -> String symbol
   | None -> (
       match Cursor.peek r with
       | Some (Component.Func _)
       | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-          Pp.to_string ~minify:true Properties.pp_background_image
-            (Properties.read_background_image r)
-      | Some _ | None -> Cursor.custom_ident "counter style symbol" r)
+          Image (Properties.read_background_image r)
+      | Some _ | None -> Ident (Cursor.custom_ident "counter style symbol" r))
 
 let read_counter_symbols_descriptor r =
   read_descriptor_value Declaration.read_property_value

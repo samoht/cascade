@@ -213,6 +213,13 @@ where it is called. Each entry says what to write there.
   spelling the `url` field held, which the field no longer holds, and applied to
   a decoded url it read `"url(a.css)"` as `a.css`. Replace
   `Css.decode_import_url ir.url` with `ir.url` (#1460).
+- **A `@counter-style` symbol says which kind it is.** `Symbols` held a
+  `string list` and `Prefix` and `Suffix` a `string`, so an image symbol was
+  kept as the text it was written with and printed back as a string. They now
+  hold `Stylesheet.counter_symbol` values: `String`, `Image` (a
+  `Properties.background_image`) or `Ident`. Code that matches or builds these
+  descriptors wraps each string in `String`, or in `Ident` for a name written
+  without quotes (#1461).
 - **`Pp.quoted` is gone.** It wrote a string between double quotes without
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
@@ -298,6 +305,13 @@ differently. They are the reason to minify again.
   so `initial-value:a\ b` became `a b`, and Chromium dropped the `@property`
   rule. Every string, url and registered ident is now written escaped, so it
   reads back as the one written (#1460).
+- **A `@counter-style` image symbol became text.**
+  `@counter-style c{system:cyclic;symbols:url(a.png)}` minified to
+  `symbols:"url(a.png)"`. Chromium supports no image symbol and drops the
+  source's descriptor, so its list falls back to decimal, but it keeps the
+  output's string and draws the text `url(a.png)` as the marker. A symbol is a
+  string, an image or an ident (CSS Counter Styles 3 sec. 3.1.7), and each now
+  prints as the kind it was written as (#1461).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers
