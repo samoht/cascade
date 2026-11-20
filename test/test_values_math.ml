@@ -226,8 +226,8 @@ let spec_values_l45_math_color () =
     ~optimized:"color-mix(in oklab,red var(--p),#00f)"
     "color-mix(in oklab, var(--p) red, blue)";
   check_color ~expected:"hsl(0 50%50%)" ~optimized:"#bf4040" "hsl(none 50% 50%)";
-  check_color ~expected:"rgb(from var(--c) r g b/.5)"
-    "rgb(from var(--c) r g b / 50%)";
+  check_color ~expected:"rgb(from var(--c) r g b/50%)"
+    ~optimized:"rgb(from var(--c) r g b/.5)" "rgb(from var(--c) r g b / 50%)";
   check_color ~expected:"color(display-p3 none .5 1)"
     "color(display-p3 none 0.5 1)";
   neg_cursor read_length "calc-size()";

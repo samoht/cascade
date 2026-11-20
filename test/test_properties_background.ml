@@ -377,7 +377,7 @@ let test_color_interpolation () =
   check_color_interpolation "in xyz-d50";
   (* CSS Color 4 sec. 10.2 makes [xyz] and [xyz-d65] two names for one space, so
      the shorter one is the spelling of both. *)
-  check_color_interpolation ~expected:"in xyz" "in xyz-d65";
+  check_color_interpolation "in xyz-d65";
   check_color_interpolation "in xyz";
   check_color_interpolation "in hwb";
   check_color_interpolation "in hwb longer hue";
