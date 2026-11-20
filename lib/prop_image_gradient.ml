@@ -453,12 +453,21 @@ let rec normalize_gradient_direction : gradient_direction -> gradient_direction
     other ->
       other
 
+(* A [var()] or [attr()] standing for a stop's colour is substituted before the
+   stop list is parsed (CSS Values 5 sec. 7), so it may hold a position or
+   several stops ([--a:red 20%]). A stop whose colour is one is not known to be
+   a single stop, and no rewrite that moves or drops positions applies to it. *)
+let single_stop_color : color -> bool = function
+  | Var _ | Attribute _ -> false
+  | _ -> true
+
 (* CSS Images 4 sec. 3.5.3: an omitted position on the first stop is [0%] and on
    the last [100%], so a stop holding exactly that one position drops it and the
    resolved stop list stays the same. *)
 let drop_default_stop_positions stops =
   let at expected = function
-    | Color_percentage (_, Some (Pct p), None) -> Float.equal p expected
+    | Color_percentage (c, Some (Pct p), None) ->
+        single_stop_color c && Float.equal p expected
     | _ -> false
   in
   let strip = function
@@ -593,13 +602,13 @@ let rec fold_double_position_stops stops =
   | Color_percentage (c1, Option.Some p1, Option.None)
     :: Color_percentage (c2, Option.Some p2, Option.None)
     :: rest
-    when Values.equal_color c1 c2 ->
+    when single_stop_color c1 && Values.equal_color c1 c2 ->
       Color_percentage (c1, Option.Some p1, Option.Some p2)
       :: fold_double_position_stops rest
   | Color_length (c1, Option.Some l1, Option.None)
     :: Color_length (c2, Option.Some l2, Option.None)
     :: rest
-    when Values.equal_color c1 c2 ->
+    when single_stop_color c1 && Values.equal_color c1 c2 ->
       Color_length (c1, Option.Some l1, Option.Some l2)
       :: fold_double_position_stops rest
   | stop :: rest ->
@@ -611,17 +620,18 @@ let rec fold_double_position_stops stops =
    A)]: turning the gradient line 180 degrees reaches the default [to bottom],
    and reversing the stops undoes the turn. Only sound when no stop carries a
    position and no interpolation hint is present, since those would each have to
-   be mirrored to [100% - p], which is longer rather than shorter for lengths.
-   The legacy prefixed gradients measure their angle from a different zero, so
-   they are deliberately not folded here. *)
+   be mirrored to [100% - p], which is longer rather than shorter for lengths,
+   and only when each stop is one stop ([single_stop_color]). The legacy
+   prefixed gradients measure their angle from a different zero, so they are
+   deliberately not folded here. *)
 let reversible_unpositioned_stops (stops : gradient_stop list) =
   List.length stops > 1
   && List.for_all
        (fun stop ->
          match stop with
-         | Color_percentage (_, Option.None, Option.None)
-         | Color_length (_, Option.None, Option.None) ->
-             true
+         | Color_percentage (c, Option.None, Option.None)
+         | Color_length (c, Option.None, Option.None) ->
+             single_stop_color c
          | _ -> false)
        stops
 
@@ -1017,6 +1027,9 @@ let read_webkit_linear_gradient_body t =
 
 let read_radial_gradient_body_stops t =
   Cursor.ws t;
+  (* CSS Values 4 sec. 2.6: the comma after the prelude is omitted only with the
+     prelude, so a prelude the reader stops inside is an error rather than a
+     prelude followed by stops. *)
   let config =
     match
       Cursor.option
@@ -1026,12 +1039,14 @@ let read_radial_gradient_body_stops t =
             cfg.shape = None && cfg.size = None && cfg.position = None
             && cfg.interpolation = None
           then Cursor.err_invalid t "no radial config";
-          Cursor.ws t;
-          ignore (Cursor.comma_opt t);
           cfg)
         t
     with
-    | Some cfg -> cfg
+    | Some cfg ->
+        Cursor.ws t;
+        if not (Cursor.comma_opt t) then
+          Cursor.err_expected t "',' after radial-gradient prelude";
+        cfg
     | None ->
         { shape = None; size = None; position = None; interpolation = None }
   in

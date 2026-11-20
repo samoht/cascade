@@ -488,6 +488,18 @@ differently. They are the reason to minify again.
   sheet. The sheet's other rules and the browser's own still apply, so a
   shorthand is now built from part of its longhands only when none of them
   sets the others (#1482).
+- **Gradients over a `var()` changed.**
+  `linear-gradient(to top,var(--a),var(--b))` was minified to
+  `linear-gradient(var(--b),var(--a))`, which with `--a:red 20%` puts the red
+  at the other end, since a variable can hold a position or several stops.
+  `linear-gradient(red,var(--a) 100%)` lost its `100%`, which with
+  `--a:red 10% 20%` turned a gradient Chromium drops into one it paints. And
+  `radial-gradient(circle var(--r),red,blue)` became
+  `radial-gradient(circle,var(--r),red,#00f)`, a gradient over three stops
+  where the source sizes the circle. A stop whose colour is a `var()` is no
+  longer reversed or stripped of a position. A radial prelude the reader
+  cannot finish now keeps the whole value as written, since the comma after a
+  prelude is omitted only with the prelude (CSS Values 4 sec. 2.6) (#1490).
 
 #### Stable output
 

@@ -97,6 +97,11 @@ implementation keeps them.
   math function takes its type from its operands (CSS Values 4 sec. 10.9),
   and a `var()` supplies its type only at substitution, so a math function
   holding a `var()`, and a `var()` fallback, keep every operand's type.
+- **A `var()` component can stand for several.** A `var()` or `attr()` is
+  substituted before the value is parsed (CSS Variables 1 sec. 3), so one
+  written as a gradient stop's colour can supply its position or several
+  stops. No rewrite reverses a stop list holding one, drops that stop's
+  position or folds it with a neighbour.
 - **A property's range binds only a literal.** CSS Values 4 sec. 10.12 clamps
   a math function past the range at computed-value time, so a math function
   of either sign is kept, and a fold keeps the wrapper around a result the
@@ -220,6 +225,7 @@ Each row names the tests that check a statement. A browser harness under
 | Normalisation | `test/fixpoint` "normal form" |
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
+| `var()` components | `declaration` "complex values"; `properties_background` "background-image" |
 | Range | `values_math` "spec math range every family" |
 | Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
