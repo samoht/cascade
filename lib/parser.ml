@@ -905,13 +905,6 @@ let to_string_minified cvs = to_string_minified_with ~minify_numbers:false cvs
 let to_string_minified_numbers cvs =
   to_string_minified_with ~minify_numbers:true cvs
 
-let url_string_can_unquote s =
-  not
-    (String.exists
-       (fun c ->
-         c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
-       s)
-
 (* If [args] is a single [<string-token>] argument we can fold it into the
    bare-URL form [url(X)] when X has no special characters - per CSS Values L4
    sec. 4.5 the two notations are equivalent and the bare form is shorter. *)
@@ -919,7 +912,7 @@ let url_args_as_bare_string args =
   let stripped = List.filter (Fun.negate is_whitespace) args in
   match stripped with
   | [ Component.Preserved { kind = Token.String { value; _ }; _ } ]
-    when url_string_can_unquote value ->
+    when not (Common.String.url_needs_quotes value) ->
       Some value
   | _ -> None
 

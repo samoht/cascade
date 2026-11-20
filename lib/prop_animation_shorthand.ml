@@ -80,8 +80,12 @@ let rec pp_animation_name : animation_name Pp.t =
          a [<string>], and only the ident arm excludes [none], [default] and the
          CSS-wide keywords. Unquoting one of those names writes a different
          declaration, and in a list it writes no declaration at all. *)
-      if Pp.minified ctx && not (keyframes_name_needs_quotes name) then
-        Pp.string ctx name
+      let ident = Parser.escape_ident name in
+      if
+        Pp.minified ctx
+        && (not (keyframes_name_needs_quotes name))
+        && String.length ident <= String.length name + 2
+      then Pp.string ctx ident
       else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"

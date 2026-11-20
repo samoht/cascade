@@ -85,7 +85,7 @@ let preload ~verbosity ~base_url ~import_root stylesheet =
     match Css.as_import stmt with
     | None -> ()
     | Some import_rule ->
-        let url = Css.decode_import_url import_rule.url in
+        let url = import_rule.url in
         if not (is_remote url) then handle_import loader url
   and handle_import loader url =
     match resolve_import verbosity loader url with

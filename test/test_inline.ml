@@ -334,14 +334,6 @@ let test_inline_oklch_number_lightness () =
   check_inline_case "oklch number lightness keeps its number form"
     ".b{color:oklch(.7 .15 145.5)}" ".b{color:oklch(.7 .15 145.5)}"
 
-let test_decode_import_url () =
-  Alcotest.(check string)
-    "url form" "theme.css"
-    (Css.decode_import_url "url(\"theme.css\")");
-  Alcotest.(check string)
-    "string form" "theme.css"
-    (Css.decode_import_url "\"theme.css\"")
-
 let test_inline_import_loader () =
   let loader =
     Css.Context.loader ~base_url:"entry.css"
@@ -1071,7 +1063,6 @@ let suite =
         `Quick test_inline_zero_value_collapse;
       Alcotest.test_case "inline vars keep an oklch number lightness" `Quick
         test_inline_oklch_number_lightness;
-      Alcotest.test_case "decode import url forms" `Quick test_decode_import_url;
       Alcotest.test_case "inline imports resolves loader stylesheet" `Quick
         test_inline_import_loader;
       Alcotest.test_case "inline imports preserves unresolved import" `Quick

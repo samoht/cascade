@@ -163,10 +163,10 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
 
 let pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
-  (* Syntax descriptors should be printed with quotes per CSS spec *)
-  Pp.char ctx '"';
-  pp_syntax_inner ctx syn;
-  Pp.char ctx '"'
+  (* CSS Properties and Values API 1 sec. 3.1: the [syntax] descriptor is a
+     [<string>], so its text is written the way every string is. *)
+  Pp.quoted_string ctx
+    (Pp.to_string ~minify:(Pp.minified ctx) pp_syntax_inner syn)
 
 (** Pretty-print a value according to its syntax type *)
 let pp_registered_angle ctx = function
@@ -186,7 +186,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Time -> Values.pp_duration ctx value
   | Resolution -> Pp.string ctx value
   | Custom_ident -> Pp.string ctx value
-  | String -> Pp.quoted ctx value
+  | String -> Pp.quoted_string ctx value
   | Url -> Pp.url ctx value
   | Image ->
       let value =
@@ -335,7 +335,7 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
          components and serialise them back to source text so the surrounding
          [expect_eof] sees an empty cursor. *)
       Cursor.consume_remaining_as_string ~trim:true reader
-  | String -> Cursor.string ~trim:true reader
+  | String -> Cursor.string reader
   | Custom_ident -> Cursor.ident ~keep_case:true reader
   | Url -> Cursor.url reader
   | Image -> Properties.read_background_image reader

@@ -371,10 +371,7 @@ let rec pp_clip_path : clip_path Pp.t =
       in
       Pp.string ctx rendered
   | Clip_path_none -> Pp.string ctx "none"
-  | Clip_path_url url ->
-      Pp.string ctx "url(";
-      Pp.string ctx url;
-      Pp.char ctx ')'
+  | Clip_path_url url -> Pp.url ctx url
   | Clip_path_inset { top; right; bottom; left; rounded } ->
       Pp.string ctx "inset(";
       pp_length_percentage ctx top;

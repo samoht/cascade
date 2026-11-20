@@ -114,6 +114,29 @@ let test_hash_string_allocates_nothing () =
     (Fmt.str "alloc %.0f -> %.0f (%.2f words per call)" a1 a2 per_call)
     true (per_call < 0.5)
 
+(* CSS Syntax 3 (ED) sec. 4.3.6: whitespace, a quote, a parenthesis, a backslash
+   or a non-printable code point ends a bare url body. *)
+let test_url_needs_quotes () =
+  let check name expected s =
+    Alcotest.(check bool) name expected (Common.String.url_needs_quotes s)
+  in
+  check "plain" false "foo.css";
+  check "non-ASCII" false "caf\u{e9}.css";
+  List.iter
+    (fun s -> check (Fmt.str "%S" s) true s)
+    [
+      "a b";
+      "a\tb";
+      "a\nb";
+      "a\"b";
+      "a'b";
+      "a(b";
+      "a)b";
+      "a\\b";
+      "a\001b";
+      "a\127b";
+    ]
+
 let suite =
   ( "common",
     [
@@ -129,4 +152,5 @@ let suite =
         test_filter_map_preserve_keeps_noop_identity;
       Alcotest.test_case "hash_string allocates nothing" `Quick
         test_hash_string_allocates_nothing;
+      Alcotest.test_case "url_needs_quotes" `Quick test_url_needs_quotes;
     ] )

@@ -231,60 +231,6 @@ let pp_unknown_at_rule_statement ctx name prelude (block : string option) =
       if body_escapes_its_closer body then Pp.char ctx '\n';
       Pp.char ctx '}'
 
-let import_url_starts_with_url url len =
-  len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
-
-let import_url_unwrap_quoted url len =
-  if len >= 2 && (url.[0] = '"' || url.[0] = '\'') && url.[len - 1] = url.[0]
-  then Some (String.sub url 1 (len - 2))
-  else None
-
-let import_url_strip_inner_quotes inner : string option =
-  let inner_len = String.length inner in
-  if inner_len = 0 then None
-  else if
-    inner_len >= 2
-    && (inner.[0] = '"' || inner.[0] = '\'')
-    && inner.[inner_len - 1] = inner.[0]
-  then Some (String.sub inner 1 (inner_len - 2))
-  else Some inner
-
-let import_url_inner_string url len : string option =
-  (* Lift the inner string out of [url(...)] - either the quoted form
-     [url("foo")] / [url('foo')] or the bare form [url(foo)]. Returns the
-     unquoted body so the [@import] / [@namespace] minify path can re-emit it as
-     a bare double-quoted string. *)
-  if not (import_url_starts_with_url url len) then None
-  else if len < 5 || url.[len - 1] <> ')' then None
-  else
-    let inner = String.sub url 4 (len - 5) |> String.trim in
-    import_url_strip_inner_quotes inner
-
-let pp_import_url_minified ctx url len =
-  (* Canonicalise to the shortest spec-equivalent form: a double-quoted string
-     (CSS Syntax 3 (ED) sec. 4.3.5 prefers double quotes). The [url()] wrapping
-     is five characters of overhead that the bare-string form omits per CSS
-     Conditional Rules 3, and a single-quoted source string re-emits with double
-     quotes. *)
-  match import_url_inner_string url len with
-  | Some s -> Pp.quoted_string ctx s
-  | None -> (
-      match import_url_unwrap_quoted url len with
-      | Some s -> Pp.quoted_string ctx s
-      | None ->
-          if len > 0 && import_url_starts_with_url url len then
-            Pp.string ctx url
-          else Pp.quoted_string ctx url)
-
-let pp_import_url ctx url =
-  let len = String.length url in
-  if Pp.minified ctx then pp_import_url_minified ctx url len
-  else if
-    len > 0
-    && (url.[0] = '"' || url.[0] = '\'' || import_url_starts_with_url url len)
-  then Pp.string ctx url
-  else Pp.quoted_string ctx url
-
 (* CSS Cascade 5 sec. 6.4.1: a [<layer-name>] is [<ident> ['.' <ident>]*], so
    each ident takes the escapes CSS Syntax 3 (ED) sec. 4.3.7 needs (see
    [Properties.pp_property]) and the [.] separators stay bare. A [.] an ident
@@ -327,7 +273,9 @@ let import_supports_media_needs_space supports media =
 
 let pp_import_components ctx { url; layer; supports; media } =
   Pp.sp ctx ();
-  pp_import_url ctx url;
+  (* CSS Cascade 5 sec. 2 takes the url as a [url()] or a [<string>]; the string
+     is the shorter spelling of the two. *)
+  Pp.quoted_string ctx url;
   Option.iter (pp_import_layer ctx) layer;
   Option.iter (pp_import_supports ctx) supports;
   Option.iter
@@ -397,15 +345,10 @@ let pp_declarations_statement ctx raw_decls =
 
 let pp_namespace_uri ctx = function
   | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
-  | Url (value, Bare) ->
+  | Url (value, Bare) -> Pp.url ctx value
+  | Url (value, Quoted quote) ->
       Pp.string ctx "url(";
-      Pp.string ctx value;
-      Pp.char ctx ')'
-  | Url (value, Quoted q) ->
-      Pp.string ctx "url(";
-      Pp.char ctx q;
-      Pp.string ctx value;
-      Pp.char ctx q;
+      Pp.quoted_string ~quote ctx value;
       Pp.char ctx ')'
   | Quoted value -> Pp.quoted_string ctx value
 
