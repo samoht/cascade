@@ -394,10 +394,14 @@ module Calc_residual = struct
             | Some folded -> folded
             | None -> Values.Expr (left, op, right)))
 
+  (* A [var()] left here is unresolved, and it substitutes tokens (CSS Variables
+     1 sec. 3): the [calc()] or the parentheses around it are what make [1px +
+     2px] one term, so they stay. The optimizer drops them where a registration
+     makes the var single-valued. *)
   let fold_calc_wrapper wrap reduced =
     let open Values in
     match reduced with
-    | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
+    | (Val _ | Num _ | Math_const _) as leaf -> leaf
     | reduced -> wrap reduced
 
   let rec fold_calc : type a. a ops -> a Values.calc -> a Values.calc =
@@ -443,7 +447,6 @@ module Calc_residual = struct
         match ops.of_unitless_number n with
         | Some value -> value
         | None -> ops.of_calc (Values.Num n))
-    | Values.Var var -> ops.of_var var
     | calc -> ops.of_calc calc
 
   let simplify_calc_value ops simplify simplify_calc ~authored ~visited calc =

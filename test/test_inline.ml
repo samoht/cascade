@@ -293,6 +293,23 @@ let test_inline_keep_vars_calc_identity () =
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 4)}"))
 
+(* A kept var substitutes tokens at runtime (CSS Variables 1 sec. 3), and the
+   [calc()] around it is what makes them arithmetic: under [--s:1px + 2px],
+   Chromium 153 computes [width:calc(var(--s))] to 3px and [width:var(--s)] to
+   auto, and under [--s:1px 2px] [padding:calc(var(--s))] is invalid where
+   [padding:var(--s)] is two lengths. A nested [calc()] keeps its grouping for
+   the same reason: [calc(calc(var(--s)) * 2)] is 6px, [calc(var(--s) * 2)] 5px.
+   The optimizer keeps both for an unregistered var. *)
+let test_inline_keep_vars_calc_wrapper () =
+  let inline css = parse css |> Css.inline_vars ~keep_vars:[ "s" ] in
+  let same label css =
+    Alcotest.(check string) label css (minified (inline css))
+  in
+  same "a calc() around a kept var stays"
+    ":root{--s:.25rem}.p{width:calc(var(--s))}";
+  same "a nested calc() around a kept var stays"
+    ":root{--s:.25rem}.p{width:calc(calc(var(--s))*2)}"
+
 let test_inline_zero_value_collapse () =
   (* [divide-x-0] multiplies a literal [0px] by a kept reverse var. A kept var
      can take any tokens at runtime, so [0px * x] is not zero for every [x]:
@@ -1048,6 +1065,8 @@ let suite =
         test_inline_warns_for_an_at_rule_reference;
       Alcotest.test_case "inline vars apply calc identities to kept vars" `Quick
         test_inline_keep_vars_calc_identity;
+      Alcotest.test_case "inline vars keep a calc() around a kept var" `Quick
+        test_inline_keep_vars_calc_wrapper;
       Alcotest.test_case "inline vars collapse a literal zero times a kept var"
         `Quick test_inline_zero_value_collapse;
       Alcotest.test_case "inline vars keep an oklch number lightness" `Quick

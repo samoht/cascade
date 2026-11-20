@@ -495,6 +495,15 @@ The new form of a diagnostic is under [Breaking](#command-line).
   with one value was kept, then folded on a second run. It is folded the first
   time. One whose definitions disagree is named: `--x takes different values in
   different scopes` (#1343).
+- **A `calc()` around a kept variable was dropped.** With `--keep-vars`,
+  `padding:calc(var(--s) * 1)` and `width:calc(var(--s))` came out as a bare
+  `var(--s)`, and `calc(calc(var(--s)) * 2)` as `calc(var(--s)*2)`. A variable
+  substitutes tokens, and `calc()` is what reads them as one sum: under
+  `--s:1px + 2px`, Chromium computes `width:calc(var(--s))` to 3px and
+  `width:var(--s)` to `auto`, and under `--s:1px 2px` the padding goes the
+  other way. `Css.Context` runtime variables did the same. The `calc()` now
+  stays, as it does under `--minify`, which drops a nested one only where an
+  `@property` registration makes the variable one value (#1458).
 
 ### Windows
 
