@@ -539,6 +539,13 @@ differently. They are the reason to minify again.
   falls back to `flip-inline` instead of `top`. `columns` did the same past
   `-webkit-columns`. Two longhands now compose only past declarations that do
   not write the later one (#1495).
+- **`animation-range` lists were merged side by side.**
+  `animation-range-start:exit 100%;animation-range-end:cover,entry` was
+  minified to `animation-range:exit 100%cover,entry`, which gives the second
+  animation another start, and `cover,entry` beside `exit,contain` became
+  three ranges. The shorthand pairs each start with its end (CSS Animations 2
+  sec. 6.3), so lists of one length now compose range by range and lists of
+  different lengths stay longhands (#1496).
 
 #### Stable output
 
