@@ -1012,16 +1012,13 @@ let non_minified_preserves_conditional_forms () =
     [ "@supports at-rule(@container)"; "container-type: inline-size" ]
 
 let non_minified_preserves_cascade_forms () =
+  (* CSS Cascade 5 sec. 2 reads the [@import] url as a [url()] or a [<string>],
+     the same url either way, and docs/invariants.md keeps no source spelling:
+     every form prints as the string. *)
   preserves_non_minified
-    "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;"
-    [ "@import url(\"theme.css\")"; "supports(display: grid)" ];
-  rejects_non_minified_fragments
     "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;"
     [ "@import \"theme.css\" layer(theme) supports(display: grid) screen" ];
   preserves_non_minified
-    "@import url(theme.css) layer(theme) supports(display: grid) screen;"
-    [ "@import url(theme.css)"; "supports(display: grid)" ];
-  rejects_non_minified_fragments
     "@import url(theme.css) layer(theme) supports(display: grid) screen;"
     [ "@import \"theme.css\" layer(theme) supports(display: grid) screen" ];
   preserves_non_minified
