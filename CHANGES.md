@@ -1,685 +1,526 @@
 ## 1.3.0 (unreleased)
 
-This release fixes minified output that rendered differently from its input,
-and makes cascade cheaper to run.
+1.2.1 could minify a sheet into one that renders differently from its source,
+and `cascade diff --diff=canonical` could not be relied on to tell a change in
+rendering from a change in spelling. This release fixes both, and makes cascade
+two to three times cheaper to run.
 
-- **Rendering fixes.** `--minify` turned `p:not(:not(.a .b))` into another
-  selector and `env(--x 2)` into another variable. It dropped the name from
-  `animation:"none" 1s` and could change the sign of a very large number. It
-  could also move a rule past one that styles the same element, lose a border
-  side when it factored out what two rules share, and drop rules over the
-  prefixed fullscreen pseudo-classes. It turned a prefixed linear gradient
-  upside down, and listed a rule over a vendor pseudo-class with others,
-  which Chromium then dropped together. It printed
-  `:-webkit-input-placeholder` with two colons, a rule every browser reads
-  where the source's is dropped, and split an author's list holding a vendor
-  pseudo-element, which styled in one browser what the source did not.
-  `--minify --scope=stylesheet` could drop a `background` image or a
-  `font-weight`. If you ship output minified by 1.2.1, upgrade and minify
-  again.
-- **A diff you can gate on.** `cascade diff --diff=canonical` called two sheets
-  identical when one lost a rule inside `@media` to a parse error. It now
-  exits 2, as it does for a rule lost inside `@supports`.
-- **Speed.** `--minify` is more than twice as fast as 1.2.1, over the 504
-  sheets of the SatCSS corpus and on Tailwind's output. `cascade diff
-  --diff=canonical` of Tailwind's stylesheet against tw's is about five times
-  cheaper and uses less than half the memory. Parsing is faster too, most of
-  all on Tailwind's output.
-- **Readable warnings.** A warning reads `file:line:column: warning: message`
-  over the source line and a caret. Repeats are counted under the first, so
-  netflix.com's sheet prints about 40 lines where it printed nearly 500, and
-  `-q` and `-v` work.
-- **Stable output.** Minified output no longer depends on hash order, and a
-  rule merged into a nested parent is nested in the first pass rather than on
-  a second run. Numbers print the same on Windows as elsewhere. Minifying
-  `--minify` output again returns it byte for byte, on all 504 SatCSS sheets
-  and on Tailwind's output, where with 1.2.1 69 of those sheets and both
-  Tailwind stylesheets shrank again.
-- **Smaller output that follows one stated rule.** Over the 504 SatCSS sheets
-  and Tailwind's output, `--minify` output is 1.7% smaller raw than with
-  1.2.1, 0.46% smaller under gzip and 0.30% smaller under brotli. By default,
-  rules with identical bodies merge only within 128 printed rules of each
-  other, and within that bound the output is as small as cascade can make it.
-  A sheet can still come out a little larger than with 1.2.1 in one metric:
-  21 grow by more than 1% under gzip (at most 2.8%, on one tmall sheet) and 27
-  under brotli (at most 6.8%, on one cnn sheet), while 182 shrink by more than
-  1% raw.
+- **Minified output that renders as its source does.** `--minify` read
+  `-webkit-linear-gradient(top,...)` as the unprefixed syntax reads it, so the
+  gradient changed direction. It listed a rule over a vendor selector with
+  other rules, and a browser that does not read that selector then dropped them
+  all. It could drop a border side, move a rule past one that styles the same
+  element, and print `p:not(:not(.a .b))` as another selector. Run on 1.2.1's
+  `--minify` output, 1.3's canonical diff finds a difference from the source
+  in 190 of the 504 sheets of the SatCSS corpus, most of them over a prefixed
+  gradient. If you ship CSS minified by 1.2.1, upgrade and minify again.
+- **A canonical diff you can gate a build on.** `cascade diff --diff=canonical
+  style.css style.min.css` exits 0 for each of the 504 SatCSS sheets and for
+  Tailwind's output against its own `--minify` output. With 1.2.1, 139 of the
+  504 failed that check: 94 reported a difference and 45 exited 2. 1.2.1 also
+  called two sheets identical when one had lost a rule inside `@media` to a
+  parse error.
+- **Speed.** `--minify` takes less than half the CPU of 1.2.1 over the SatCSS
+  corpus, and about a third on Tailwind's output. `cascade diff
+  --diff=canonical` of Tailwind's stylesheet against tw's takes less than a
+  third of the CPU.
+- **Stable output.** Minifying `--minify` output again returns it byte for
+  byte, on all 504 SatCSS sheets and on Tailwind's output. With 1.2.1, 69 of
+  those sheets and both Tailwind stylesheets shrank again. Output no longer
+  depends on hash order, and numbers print the same on Windows as elsewhere.
+- **Warnings you can read.** A warning reads `file:line:column: warning:
+  message` over the source line and a caret. Repeats are counted under the
+  first, so netflix.com's sheet prints about 40 lines where it printed nearly
+  500, and `-q` silences them.
+- **Smaller output.** Over the SatCSS corpus and Tailwind's output, `--minify`
+  output is about 1.7% smaller raw than with 1.2.1, and about the same size
+  compressed: half a percent smaller under gzip, a little less under brotli.
+  One sheet can still come out a little larger compressed; [Which rules
+  merge](#which-rules-merge) says why.
 
-The price is under [Breaking](#breaking). Scripts that read cascade's
-diagnostics need a new pattern. In the library, parsers return a `result`
-instead of raising, and two spellings of one selector are now one value.
+The price is under [Breaking](#breaking). On the command line, a script that
+reads cascade's diagnostics needs a new pattern. In the library, parsers return
+a `result` instead of raising, and two spellings of one selector are one value.
 `Css.to_string ~minify:true` prints the sheet it is given, and `Css.minify`
-does what it used to. Functions removed to tidy the API are listed with what
-to call instead, and moving off most of them is a rename or a deleted call.
+does what it used to. Each removed function is listed with what to call
+instead, and most migrations are a rename or a deleted call.
 
 ### Breaking
 
 #### Command line
 
-- Warnings and errors were hard to locate: they gave byte ranges, a trace of
-  the reader's own functions (`read_declaration/float:`) and an
-  `(in component)` tag, and cascade's own messages took another form
-  (`Error: ...`). Every diagnostic now reads `file:line:column: warning:
-  message` or `file: error: message`, as a compiler's does, and a parse
-  diagnostic is followed by the source line with a caret under the span. A bad
-  `@font-face` descriptor value is located in the sheet, where it pointed at
-  line 1 of a copy of the value. This affects scripts that match cascade's
-  standard error. Match the new form, or read `cascade diff --json`
-  (#1299, #1330, #1331, #1337).
-- `cascade diff --json` made a consumer parse the location out of each
-  message. Each warning and error now has `file`, `line` and `column` members
-  and its `message` is the reason alone. Read the location from the members
-  (#1331).
-- The text fallback of `cascade diff` counted lines and columns from 0 while
-  warnings count from 1, so a difference at the start of the second line read
-  `line 1, col 0`. The report and the `--json` document now count from 1, and
-  the report's `@@` header names that line instead of a byte offset. A consumer
-  that added 1 stops doing so (#1334).
-- A warning from `cascade diff` did not say which of the two files it was
-  about. Each now names its input. A sheet parsed from a string without a
-  name prints as `<CSS input>` (#1299).
-- `cascade fmt missing.css` exited 1, the status of a file that failed to
-  parse, so a build could not tell the two apart. It now exits 124, as the
-  other commands do. A script that tests for status 1 on a missing file tests
-  for 124 (#1338).
+- **Warnings and errors have a new form.** They were hard to locate: a warning
+  gave a byte range, a trace of the reader's own functions
+  (`read_declaration/float:`) and an `(in component)` tag, and cascade's own
+  messages took another form (`Error: ...`). Every diagnostic now reads
+  `file:line:column: warning: message` or `file: error: message`, as a
+  compiler's does, and a parse diagnostic is followed by the source line with a
+  caret under the span. A warning from `cascade diff` names the input it is
+  about, and a sheet parsed from a string without a name prints as `<CSS
+  input>`. This affects scripts that match cascade's standard error. Match the
+  new form, or read `cascade diff --json` (#1299, #1330, #1331, #1337).
+- **`cascade diff` gives positions as members, counted from 1.** `--json` made
+  a consumer parse the location out of each message. The text report counted
+  lines and columns from 0 while warnings counted from 1, so a difference at
+  the start of the second line read `line 1, col 0`. Each warning and error of
+  the `--json` document now has `file`, `line` and `column` members, and its
+  `message` is the reason alone. The report and the document count from 1, and
+  the report's `@@` header names the line instead of a byte offset. This
+  affects consumers of `--json` and of the text report. Read the location from
+  the members, and stop adding 1 (#1331, #1334).
+- **A missing input file exits 124.** `cascade fmt missing.css` exited 1, the
+  status of a file that failed to parse, so a build could not tell the two
+  apart. It now exits 124, as the other commands do. A script that tests for
+  status 1 on a missing file tests for 124 (#1338).
 
 #### OCaml library
+
+cascade keeps no deprecated aliases, so a removed function fails to compile
+where it is called. Each entry says what to write there.
 
 - **Parsers return a `result`.** Parsers reported failure in three ways,
   `Error.Parse_error`, `Failure` and `Invalid_argument`, so no single handler
   caught a malformed input. `Selector.of_string`, `Container.of_string`,
   `Supports.of_string`, `Declaration.of_string`, `Declaration.with_value`,
   `Media.of_string_strict`, `Media.value_of_string`,
-  `Keyframe.selector_of_string` and `Font_face.*_of_string` now return
-  `(_, Error.t) result`, and `Aria.of_string` an option. Every caller is
-  affected. Match on the result. For text written in the program, use
-  `Selector.v` or `Container.v`, which raise `Invalid_argument` (#1299, #1367).
+  `Keyframe.selector_of_string` and `Font_face.*_of_string` now return `(_,
+  Error.t) result`, and `Aria.of_string` an option. Every caller is affected.
+  Match on the result, and print an error with `Error.to_string`. For CSS
+  written in the program, use `Selector.v`, `Container.v` or `Css.stylesheet`,
+  which raise `Invalid_argument` (#1299, #1367).
+- **`Css.of_string_exn` is gone.** It raised `Error.Parse_error`, where every
+  other function for CSS written in the program raises `Invalid_argument`. Use
+  `Css.stylesheet`, which takes the same arguments. A handler for
+  `Error.Parse_error` around the call moves to `Css.of_string` and its `Error`
+  case (#1299, #1367, #1391).
+- **Misuse raises `Invalid_argument`.** `Declaration.custom_property`,
+  `Supports.property`, `Supports.func` and `Supports.property_name` raised
+  `Failure` on a bad argument. A `try ... with Failure _` around them still
+  compiles and stops catching, so search for it and catch `Invalid_argument`
+  instead (#1299).
 - **`Css.to_string ~minify:true` prints the sheet it is given.** The minified
   printer also rewrote the sheet, so the printed text did not read back as the
   value printed. It folded `:nth-child(1)` and `:is(:link,:visited)`, dropped
-  an `@charset` and an `@font-face` without `font-family` or `src`, and moved
-  a registered `<color>` variable in a `box-shadow`. It also rounded a colour's
-  alpha to three decimals, dropped an opaque `/1` from `lab()` and `oklab()`,
-  dropped `0%` and `100%` from a gradient's end stops and folded the spaces and
-  dots in a `grid-template-areas` row. This affects
-  code that prints with `~minify:true` without optimising first: it compiles,
-  and its output gets longer. Call `Css.minify`, which optimises and prints in
-  one call as `cascade --minify` does, or one step of `Css.optimize`:
-  `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules` or
-  `Stylesheet.normalize_shadow_color_vars` (#1350, #1351, #1354, #1367,
-  #1370).
-- **A selector is one value whatever its spelling.** `:before` and `::before`,
+  an `@charset` and an `@font-face` without `font-family` or `src`, and moved a
+  registered `<color>` variable in a `box-shadow`. It also rounded a colour's
+  alpha, dropped `0%` and `100%` from a gradient's end stops and folded the
+  rows of `grid-template-areas`. This affects code that prints with
+  `~minify:true` without optimising first: it compiles, and its output gets
+  longer. Call `Css.minify`. It optimises and prints in one call, as `cascade
+  --minify` does. To take one step alone, call `Selector.canonicalize`,
+  `Stylesheet.drop_inert_at_rules` or `Stylesheet.normalize_shadow_color_vars`
+  (#1350, #1351, #1354, #1367, #1370).
+- **`Selector`: one value whatever the spelling.** `:before` and `::before`,
   `[x=a]` and `[x="a"]`, `odd` and `2n+1` were different values, so equality,
   hashing and deduplication missed them, and parsing a printed selector could
   give back another value. This affects code that builds or matches these
   constructors. `Before`, `After`, `First_letter` and `First_line` take no
   argument and `colon_form` is gone. `Exact_quoted (v, _)` and the other
-  `*_quoted` attribute matches are `Exact v` and so on, with `v` decoded.
-  `Odd` is `An_plus_b (2, 1)` and `Even` is `An_plus_b (2, 0)`. The printer
-  picks the spelling (#1357).
-- **Misuse raises `Invalid_argument`.** `Declaration.custom_property`,
-  `Supports.property`, `Supports.func` and `Supports.property_name` raised
-  `Failure` on a bad argument. A `try ... with Failure _` around them still
-  compiles and stops catching, so search for it: catch `Invalid_argument`
-  instead (#1299).
-- **`Component.t` has a `Flat` case.** Deeply nested input overflowed the
-  stack (see [Parsing](#parsing)). The contents of a block or function nested
-  past `Parser.max_nesting_depth` (128) are now kept as the tokens read rather
-  than as a tree. An exhaustive match over `Component.t` needs a `Flat` case.
-  Code that only looks for a `Block` or a `Func` can ignore it (#1296).
-- **`Error.t`'s `source` is an `Error.Source.t`.** Each error located itself by
-  counting lines from the start of its source, so printing the warnings of a
-  sheet cost its size per warning. The errors of one parse now share one index.
-  This affects code that builds an `Error.t` record or calls `Error.in_source`,
+  `*_quoted` attribute matches are `Exact v` and so on, with `v` decoded. `Odd`
+  is `An_plus_b (2, 1)` and `Even` is `An_plus_b (2, 0)`. The printer picks the
+  spelling. `Selector.t` also has `Webkit_full_screen`,
+  `Webkit_full_screen_ancestor` and `Moz_full_screen` cases, which an
+  exhaustive match needs (#1357, #1408).
+- **`Error` has a shared source and three new kinds.** Each error located
+  itself by counting lines from the start of its source, so printing the
+  warnings of a sheet cost its size per warning. The errors of one parse now
+  share one index, and the `source` field of `Error.t` is an `Error.Source.t`.
+  This affects code that reads or builds that field, or passes `?source` to
   `Cursor.of_components` or `Stylesheet.read_stylesheet_of_rules`. Wrap the
-  text with `Error.Source.v` and read it back with `Error.Source.text`.
-  `Error.position` gives the line and column (#1299, #1310).
-- **`Error.kind` has an `Invalid_statement` case.** An `@import` after a style
-  rule was reported as a `Bad_value` for a property called `stylesheet`. It is
-  now a statement the rules around it refuse. An exhaustive match over
-  `Error.kind` needs the case (#1331).
-- **A custom property's tokens carry no source position.** Two declarations of
-  one custom property with one value compared and hashed differently depending
-  on where they were read, so a table keyed on declarations kept both. The
-  positions were offsets into the value's own text and located nothing in the
-  sheet. `Component.source_loc` now gives `Loc.dummy` for these tokens, and
-  `Component.without_locs` drops the positions from a token list you build
-  (#1353).
-- **`Stats` reports only what the optimizer did.** A factoring run records one
-  row, so `Stats.iteration_stat`'s `local_iteration` and `active_passes` were
-  always 1, and its `iteration` and `Stats.counters`'s `iterations` repeated
-  the run number. Read as counts of passes, they described work the optimizer
-  never did. They are gone, and `changed_passes` is `changed : bool`. `elapsed`
-  is 0 unless the recorder was made with `~profile:true`, as the byte columns
-  already were, so a run without `--profile` no longer pays for the timer. This
-  affects code that reads `Stats` records. Read the run number from `fixpoint`
-  and test `changed` where you tested `changed_passes > 0`. `--profile` prints
-  one row per run, with `run`, `rules-in`, `rules-out`, `bytes-in`, `saved`,
-  `changed` and `time` (#1372).
-- **`Stats` no longer counts transfer reverts.** `Stats.revert_fixpoint` and
-  `Stats.counters`'s `factor_transfer_reverts` counted factoring runs thrown
-  away because an estimate of the gzip size grew. The optimizer no longer
-  judges a run on that estimate, so the count would always be 0. Delete the
-  call and the field read; `--profile` no longer prints a `factor transfer
-  gate` line (#1399).
+  text with `Error.Source.v` and read it back with `Error.Source.text`;
+  `Error.position` gives the line and column. `Error.kind` has three new cases
+  that an exhaustive match needs. `Invalid_statement` is a statement the rules
+  around it refuse, such as an `@import` after a style rule, which was a
+  `Bad_value` for a property called `stylesheet`. `Untargeted_selector` is a
+  selector no target browser reads, and `Too_deep` is input nested past the
+  reader's bound. The eight `Error.fail_*` functions each spelled `Error.fail`
+  on one constructor. Call `Error.fail` on the constructor's value, as in
+  `Error.fail (Error.bad_value loc ~property ~reason)` (#1296, #1299, #1310,
+  #1331, #1371, #1391, #1429).
 - **`Reader` has no error type of its own.** `Reader.Parse_error`, its
   `Reader.parse_error` record, `Reader.pp_parse_error`, `Reader.with_filename`,
-  the `err` functions (`err`, `err_eof`, `err_expected`, `err_expected_but_eof`,
-  `err_invalid`) and the context stack (`push_context`, `pop_context`,
-  `with_context`, `callstack`) are gone. They kept a second error type beside
-  `Error.t` that no parser raised and no `of_string` returned, and nothing in
-  cascade pushed onto the stack. `Reader.skip` past the end, the one function
-  that raised `Reader.Parse_error`, raises `Invalid_argument`, since reading
-  past the end is a bug in the caller rather than bad input. This affects code
-  that writes its own readers on `Reader`. Build an `Error.t` and raise it with
-  `Error.fail`: `Error.unterminated` for `err_eof`, `Error.missing_token` for
-  `err_expected` and `err_expected_but_eof`, `Error.bad_value` for `err` and
-  `err_invalid`. Catch `Error.Parse_error`, print with `Error.to_string`, name
-  the source with `Error.with_filename` and label a sub-reader with
-  `Error.with_context`. Test `Reader.is_done` before `skip` (#1299).
-- **`Css.of_string_exn` is gone.** It raised `Error.Parse_error`, where every
-  other function for CSS written in the program, such as `Selector.v`, raises
-  `Invalid_argument`. Use `Css.stylesheet`, which raises `Invalid_argument`. A
-  handler for `Error.Parse_error` around the call moves to `Css.of_string` and
-  its `Error` case (#1299, #1367, #1391).
-- **The `Error.fail_*` functions are gone.** `Error.fail_sort_mismatch`,
-  `fail_unexpected_token`, `fail_missing_token`, `fail_bad_selector`,
-  `fail_bad_value`, `fail_bad_condition`, `fail_unknown_at_rule` and
-  `fail_unterminated` each spelled `Error.fail` on one constructor. Call
-  `Error.fail` on the constructor's value, as in
-  `Error.fail (Error.bad_value loc ~property ~reason)` (#1371, #1391).
+  the `err` functions (`err`, `err_eof`, `err_expected`,
+  `err_expected_but_eof`, `err_invalid`) and the context stack (`push_context`,
+  `pop_context`, `with_context`, `callstack`) are gone. They kept a second
+  error type beside `Error.t` that no parser raised and no `of_string`
+  returned. This affects code that writes its own readers on `Reader`. Build an
+  `Error.t` and raise it with `Error.fail`: `Error.unterminated` for `err_eof`,
+  `Error.missing_token` for `err_expected` and `err_expected_but_eof`,
+  `Error.bad_value` for `err` and `err_invalid`. Catch `Error.Parse_error`,
+  print with `Error.to_string`, name the source with `Error.with_filename` and
+  label a sub-reader with `Error.with_context`. `Reader.skip` at the end of
+  input raises `Invalid_argument`, since reading past the end is a bug in the
+  caller. Test `Reader.is_done` first (#1299).
 - **`Cursor.try_enum` and `Cursor.err_eof` are gone.** Each repeated another
   function. Use `Cursor.option (Cursor.enum label table)`, which also skips
   leading whitespace, and `Error.fail (Error.unterminated loc sort)` (#1371,
   #1391).
-- **`Optimize.edges_of_rule` is gone,** with its `edge` and `packed_property`
-  types. Nothing in cascade read them. Build the pairs from
+- **`Component.t` has a `Flat` case.** Deeply nested input overflowed the stack
+  (see [Parsing](#parsing)). The contents of a block or function nested past
+  `Parser.max_nesting_depth` (128) are now kept as the tokens read, not as a
+  tree. An exhaustive match over `Component.t` needs a `Flat` case. Code that
+  only looks for a `Block` or a `Func` can ignore it (#1296).
+- **A custom property's tokens carry no source position.** Two declarations of
+  one custom property with one value compared and hashed differently depending
+  on where they were read, so a table keyed on declarations kept both. The
+  positions were offsets into the value's own text and located nothing in the
+  sheet. `Component.source_loc` now gives `Loc.dummy` for these tokens.
+  `Component.as_values` drops the positions from a token list you build (#1353,
+  #1386).
+- **`Properties.property` has `Text_rendering` and `Webkit_touch_callout`
+  cases.** Both properties were read as unknown, which kept rules apart for no
+  reason (see [Comparing stylesheets](#comparing-stylesheets)). An exhaustive
+  match over `property` needs the two cases, and code that found either among
+  the unknown properties finds it typed (#1440, #1442).
+- **`Stats` reports only what the optimizer did.** A factoring run records one
+  row, so `Stats.iteration_stat`'s `local_iteration` and `active_passes` were
+  always 1, and its `iteration` and `Stats.counters`'s `iterations` repeated
+  the run number. `Stats.revert_fixpoint` and `factor_transfer_reverts` counted
+  runs thrown away by a gate that no longer exists. All are gone,
+  `changed_passes` is `changed : bool`, and `Stats.record_iteration` takes the
+  remaining fields. `elapsed` is 0 unless the recorder was made with
+  `~profile:true`, as the byte columns already were. This affects code that
+  reads `Stats` records. Read the run number from `fixpoint`, test `changed`
+  where you tested `changed_passes > 0`, and delete the reads of the removed
+  fields (#1372, #1399).
+- **Three `Optimize` functions are gone.**
+  `Optimize.duplicate_buggy_properties` and
+  `Optimize.apply_property_duplication` were documented as duplicating
+  properties for buggy browsers, and returned their input unchanged. Delete the
+  call; `Optimize.add_compatibility_prefixes` writes the WebKit fallbacks they
+  were documented to add. `Optimize.edges_of_rule`, with its `edge` and
+  `packed_property` types, was read by nothing in cascade. Build the pairs from
   `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
-  `Declaration.prop_key` (#1371, #1391).
-- **`Optimize.duplicate_buggy_properties` and
-  `Optimize.apply_property_duplication` are gone.** They were documented as
-  duplicating properties for buggy browsers, and returned their input
-  unchanged. Delete the call. `Optimize.add_compatibility_prefixes` writes the
-  WebKit fallbacks they were documented to add (#1345, #1367, #1391).
+  `Declaration.property_key` (#1345, #1367, #1371, #1391).
 
-### Output
+### Minified output
 
-- Minifying `--minify` output again could shrink it further: 69 of the 504
-  SatCSS sheets did, by up to 434 bytes, and so did both Tailwind sheets. One
-  run left work behind. Above 128 rules the merge search judged distances and
-  orders on its own working state, where rules already merged away still stood
-  between the others and still ordered them, so a search of the output reached
-  merges it had not. Joining two `@media` blocks put two runs of rules side by
-  side after each had been optimised alone, and moving a declaration back into
-  its rule left two nested blocks adjacent and unmerged. Dropping a nested rule
-  that matches nothing left its `@media` empty, a composed `transition` left the
-  one it overrode, and a `-webkit-mask-composite` twin was written that the next
-  run dropped. Each run's merge search now ends only when a search of its output
-  would find nothing more, and each of the others is finished in the same pass.
-  The optimiser makes one pass at every size, where it made up to five below 129
-  rules. The output of 69 SatCSS sheets is 2115 bytes smaller raw in all, and
-  none is larger raw; 40 are 213 bytes larger in all under gzip, as minifying
-  their earlier output again made them. `--minify` takes about 9% more CPU over
-  the corpus, about 4% on Tailwind's stylesheet and 2% on tw's, most of it on
-  the sheets whose output shrinks (#1401, #1402, #1403).
-- `--minify` merged rules at any distance, then threw a whole factoring run
-  away when an estimate of the gzip size grew, so near merges were lost with
-  far ones and a second run could decide the other way. The default
-  `--objective=transfer` now minimises output bytes, and merges rules with
-  identical bodies only within 128 printed rules of each other, because a
-  compressor encodes a repeated declaration in two or three bytes wherever it
-  sits, but a selector moved away from its neighbours stops compressing
-  against them. Nothing judges the result afterwards. `--objective=raw` merges
-  at any distance (#1399, #1423).
-- `--minify` refused a merge for an order that only a rule merged away earlier
-  implied, so whether two rules merged depended on what had merged before
-  them. A merge is now ordered and checked for cycles against the rules still
-  printed (#1422).
-- Under the default `--objective=transfer`, a declaration shared by rules more
-  than 128 source positions apart was never factored out, and a short sheet
-  was searched differently from a long one. The search now reads the rules in
-  the order they print, the same at every size, and only rules with identical
-  bodies are bounded, to 128 printed rules apart. Output is 0.15% larger raw,
-  and 0.02% and 0.05% smaller under gzip and brotli (#1423).
-- Below 129 rules the merge search tried the merges each merge made possible
-  as soon as it landed, and above that only once it ran out of others, so the
-  same rules could merge one way alone and another among more rules. It now
-  waits at every size (#1425).
-- `--minify --scope=stylesheet` dropped declarations a page needs. A
-  declaration written before longhands of its family was reset by the shorthand
-  built from them: `background:#fff url(a.png) no-repeat center` lost its image
-  and colour to `background-position` and `background-size`, and
-  `font-weight:700` to `font-size` and `font-family`. It is now kept. Default
-  output is unchanged (#1348).
-- `--minify` printed `p:not(:not(.a .b))` as `p.a .b`, another selector. A
-  double negation holding a type or a combinator now prints as `:is(X)`
-  (#1350).
-- `--minify` turned `animation:"none" 1s`, which runs the `@keyframes` named
-  `"none"`, into `animation:1s`, and `animation:"none"` into the keyword
-  `none`, which runs no animation. The string is kept (#1368).
-- `--minify` printed `env(--branding-padding 2)` as `env(--branding-padding2)`,
-  another variable. The space before the indices is kept (#1369).
-- `--minify` could move a rule past another that styles the same element. A
-  later `@media` or `@container` block merged into an earlier one across a
-  list like `.a:after,.a:before` that styles the same pseudo-element. Two
-  rules could also swap when they differ only in the case of a type selector
-  (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read through
-  an `i` or `s` flag. Both orders are now kept, and a block merges across a
-  more specific rule where that is safe (#1295).
-- `--minify` dropped an `@import` after a `/*! */` comment or an unrecognised
-  at-rule, though browsers apply it. It is now kept. An `@import` after an
-  `@namespace`, and an `@namespace` after a rule, go, as browsers ignore them
-  (#1294).
-- `--minify` unquoted attribute values into selectors browsers drop
-  (`[x="-2"]`, `[x="-"]`) or into another value (`[x="a\\b"]`). It now prints
-  the shorter of an escaped ident and a string that reads back as written, so
-  `[x="a b"]` prints as `[x=a\ b]` (#1292, #1357).
-- Very large numbers changed sign: `width:4611686018427387904px` came out
-  negative under `--minify`, and `z-index:calc(1e30)` as `-1`. They keep their
-  sign (#1280).
-- Very small numbers became zero: `(min-resolution: 4e-33dpi)` and
-  `entry 4e-33%` came out as `0dpi` and `0%`, and a negative one as `-0`. A
-  number too small for eight decimals keeps its value (#1292).
-- `@media (aspect-ratio:1.5/1)` was rounded down to `1/1`. It prints as written
-  (#1280).
-- A number with more than 15 significant digits lost its last decimals:
-  `123456789.12345679` came out as `123456789.1234568` (#1300).
-- `lab()` and `oklab()` printed a percentage alpha as a number:
-  `lab(50% 20 30 / 40%)` came out as `lab(50% 20 30 / .4)` even without
-  `--minify`. It prints as written, as in the other colour functions (#1370).
-- A `local()` font name with an escape or a quote did not read back as the
-  same name. It is held decoded, so `local(\2197)` and a quote inside
-  `local("...")` print back as that name (#1351).
-- Minified output shifted for unrelated reasons. Merges that save the same
-  were ordered by hash, so a change inside cascade could move the output of a
-  sheet nobody touched. A tie now breaks by the shortest result, then by source
-  order. Some sheets come out slightly smaller (#1355).
-- Minifying `--minify` output shrank it again, so a pipeline that minifies
-  twice gave other bytes than one that minifies once. Nesting a merged rule
-  under a neighbour now happens in the first pass. A `0deg` gradient with end
-  stops at `0%` and `100%` is reversed in the first pass too:
-  `linear-gradient(0deg,red 0%,blue 100%)` came out as
-  `linear-gradient(0deg,red,#00f)`, which a second pass shortened to
-  `linear-gradient(#00f,red)`. An opaque `/1` goes from an `oklch()` or `lch()`
-  with a `none` component, as from every other colour. For library users,
-  `Selector.compound`, `combine` and `reshape` build a selector in the shape
-  the parser reads (#1342, #1370).
-- In a sheet of more than 128 rules, a `-webkit-` twin cascade adds, such as
-  `-webkit-user-select`, could cover an earlier rule that only a second
-  `--minify` dropped. That rule now goes in the first pass (#1395).
-- Output read the same number in two spellings. Large numbers in media
-  features and keyframe offsets print as `1e30` like everywhere else, instead
-  of `1e+30` (#1292).
-- Pretty output kept whichever spelling the input used. It now spells a
-  selector one way: `::before`, a quoted attribute value and `odd`/`even`
+#### Rendering fixes
+
+Each entry here is a sheet that 1.2.1 minified into one a browser renders
+differently. They are the reason to minify again.
+
+- **Prefixed gradients changed direction.** `--minify` read
+  `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
+  omitted direction for `bottom`, so it printed
+  `-webkit-linear-gradient(0deg,...)` for both. A prefixed gradient's side
+  keyword names the side it starts from (CSS Image Values 3, Working Draft of
+  17 February 2011, sec. 5.1.1), and is now read that way. This is the
+  difference 1.3 finds most often in 1.2.1's output of the SatCSS corpus
+  (#1418).
+- **Vendor selectors took other rules down with them.** A browser that cannot
+  read one selector of a list drops the rule for the whole list (Selectors 4
+  sec. 3.9). `--minify` merged `.a:-moz-focusring{color:red}` and
+  `.b{color:red}` into one list, so Chromium lost `.b`'s colour, and merged
+  `a::-moz-placeholder` with `a::-webkit-input-placeholder`, so Chromium
+  dropped both. It also did the reverse, and split an author's list such as
+  `input::file-selector-button,b::-moz-selection{background:red}`, so Chromium
+  painted a button the source left alone. Which targets drop a selector is now
+  read from MDN's compatibility data, Firefox's selector parser and browser
+  probes. Two selectors share a list only when the same targets drop each, and
+  an author's list stays as written (#1407, #1428, #1437).
+- **Rules over vendor pseudo-classes were dropped or revived.** `--minify`
+  dropped rules over `:-webkit-full-screen`, `:-moz-full-screen`,
+  `:-webkit-any-link` or `:-moz-only-whitespace` as unknown, though a target
+  browser reads each. Such a rule now stays as written. In the other direction
+  it printed `input:-webkit-input-placeholder`, a rule every browser drops, as
+  `input::-webkit-input-placeholder`, which they read, so the placeholder took
+  a colour the source never gave it. Only `:before`, `:after`, `:first-line`
+  and `:first-letter` are pseudo-elements after one colon (Selectors 4 sec.
+  3.6.1). A rule is now dropped only when no target reads its selector, with a
+  warning that says so (#1408, #1427, #1449).
+- **A rule could move past another that styles the same element.** A later
+  `@media` or `@container` block merged into an earlier one across a list like
+  `.a:after,.a:before` that styles the same pseudo-element. Two rules could
+  also swap when they differ only in the case of a type selector (`DIV`,
+  `div`), of an ID (quirks mode) or of an attribute value read through an `i`
+  or `s` flag. Both orders are now kept (#1295).
+- **A border side was lost.** When `--minify` moved declarations two rules
+  share into one rule, it could drop a longhand a rule wrote after its own
+  shorthand: `.b{background:#fff;border:1px solid #ddd}` beside
+  `.a{background:#fff;border:1px solid #ccc;border-top:3px solid red}` became
+  `.a,.b{background:#fff;border:1px solid#ddd}.a{border:1px solid#ccc}`, and
+  `.a` lost its red top border. 1.2.1's output of ebay, google-1 and sina in
+  the SatCSS corpus loses a border side this way. What a rule keeps now stays
+  in the order it wrote it (#1404).
+- **Selectors came out as other selectors.** `p:not(:not(.a .b))` was printed
+  as `p.a .b`; a double negation holding a type or a combinator now prints as
+  `:is(X)`. Attribute values were unquoted into selectors browsers drop
+  (`[x="-2"]`, `[x="-"]`) or into another value (`[x="a\\b"]`). The printer now
+  takes the shorter of an escaped ident and a string that reads back as
+  written, so `[x="a b"]` prints as `[x=a\ b]` (#1292, #1350, #1357).
+- **Values changed.** `animation:"none" 1s`, which runs the `@keyframes` named
+  `"none"`, became `animation:1s`. `env(--branding-padding 2)` became
+  `env(--branding-padding2)`, another variable. `width:4611686018427387904px`
+  came out negative and `z-index:calc(1e30)` as `-1`. `@media
+  (aspect-ratio:1.5/1)` was rounded to `1`, and `123456789.12345679` to
+  `123456789.1234568`. A quote inside `local("...")` ended the string early.
+  Each now prints a value that reads back as the one written (#1280, #1300,
+  #1351, #1368, #1369).
+- **An `@import` after a `/*! */` comment was dropped.** So was one after an
+  unrecognised at-rule, though browsers apply both. They are kept. An `@import`
+  after an `@namespace`, and an `@namespace` after a rule, go, as browsers
+  ignore them (#1294).
+- **`--scope=stylesheet` dropped declarations a page needs.** A declaration
+  written before longhands of its family was reset by the shorthand built from
+  them: `background:#fff url(a.png) no-repeat center` lost its image and colour
+  to a later `background-position` and `background-size`. It is now kept.
+  Default output is unchanged (#1348).
+
+#### Stable output
+
+- **Minifying twice gave other bytes than minifying once.** With 1.2.1, 69 of
+  the 504 SatCSS sheets and both Tailwind sheets shrank when their `--minify`
+  output was minified again, by up to 434 bytes. One run left work for the
+  next. A merged rule was nested under its neighbour only on the second run,
+  and `linear-gradient(0deg,red 0%,blue 100%)` took two runs to reach
+  `linear-gradient(#00f,red)`. A sheet of more than 128 rules got one pass
+  where a smaller one got up to five. The optimiser now finishes in one pass at
+  every size, and a second `--minify` changes none of the 504 sheets nor
+  Tailwind's output. A pipeline that minifies at two stages gets the bytes of
+  one that minifies once (#1342, #1370, #1395, #1401, #1402, #1403, #1424).
+- **Output shifted for unrelated reasons.** Merges that save the same number of
+  bytes were ordered by hash, so a change inside cascade could move the output
+  of a sheet nobody touched. A tie now breaks by the shortest result, then by
+  source order (#1355).
+
+#### Which rules merge
+
+- **The default objective bounds merges by distance.** With 1.2.1, `--minify`
+  merged rules at any distance, then threw a whole factoring run away when an
+  estimate of the gzip size grew. Near merges were lost with far ones, a better
+  search could make the output larger, and a short sheet was searched
+  differently from a long one. The default `--objective=transfer` now minimises
+  output bytes, and merges rules with identical bodies only within 128 printed
+  rules of each other. A compressor encodes a repeated declaration in two or
+  three bytes wherever it sits, but a selector moved away from its neighbours
+  stops compressing against them. Nothing judges the result afterwards, and the
+  search is the same at every size. `--objective=raw` merges at any distance,
+  for output that ships uncompressed. Against 1.2.1 the output is smaller in
+  total, but not on every sheet. 182 sheets shrink by more than 1% raw. About
+  twenty grow by more than 1% under gzip, at most by about 3%, and 27 under
+  brotli, one cnn sheet by about 7% (#1399, #1422, #1423, #1425).
+
+#### Smaller output
+
+- **Prefixed copies of widely available properties go.** `--minify` dropped
+  `-webkit-animation-delay:1s` beside `animation-delay:1s`, but kept
+  `-webkit-flex-grow:1` beside `flex-grow:1`, because it compared the two only
+  when it had a type for both spellings. An untyped copy is now read under the
+  unprefixed property's grammar and dropped when the values agree, which
+  shrinks the SatCSS output by about 0.7% raw and 0.3% under gzip.
+  `--enforce-spec` keeps every copy (#1439).
+- **An overridden `content` goes.** `--minify` kept both declarations of
+  `.a{content:"a";content:"b"}`, since a later `content` can be a value some
+  browser rejects and the earlier its fallback. After a string, a quote
+  keyword, a counter, `none` or a CSS-wide keyword, which every browser reads,
+  nothing is left to fall back to, and the earlier declaration is dropped. So
+  is a normal `content` beside an important one, in either order (#1417,
+  #1419).
+- **An overridden `text-rendering` goes,** now that the property is typed
+  (#1440).
+
+### Formatted output
+
+- `cascade fmt` kept whichever spelling the input used, so one selector printed
+  two ways. It now prints `::before` for `:before` and `odd` for `2n+1`
   (#1357).
-- `--minify` could lose a border side. Factoring out what two rules share
-  wrote a rule's own `border` after the longhands it had written later, so
-  `.a{color:red;border:1px solid #ccc;border-top-color:red}` beside
-  `.b{color:red;border:1px solid #ddd}` lost its red top border. What a rule
-  keeps now stays in the order it wrote it (#1404).
-- `--minify` listed a rule over a vendor pseudo-class with others, as in
-  `.a:-moz-focusring,.b{color:red}`, and a browser that does not read the
-  pseudo-class drops the whole list, so Chromium lost `.b`'s colour. A
-  pseudo-class some default target does not read stays out of a list, as a
-  vendor pseudo-element did (#1407).
-- `--minify` dropped rules over `:-webkit-full-screen`,
-  `:-webkit-full-screen-ancestor` and `:-moz-full-screen` as unknown
-  pseudo-classes, though Chromium, WebKit and Firefox read them. They are kept
-  as written (#1408).
-- `--minify` kept both declarations of `.a{content:"a";content:"b"}`, since a
-  later `content` can be a value some browser rejects and the earlier its
-  fallback. After a string, a quote keyword, a counter, `none` or a CSS-wide
-  keyword, which every browser reads, nothing is left to fall back to, and the
-  earlier declaration is dropped (#1417).
-- `--minify` read `-webkit-linear-gradient(top,...)` as the unprefixed `to
-  top`, so a gradient that runs down came out running up, and it took an
-  omitted direction for `bottom`. A prefixed gradient's side keyword names the
-  side it starts from (CSS Image Values 3, Working Draft of 17 February 2011,
-  sec. 5.1.1), and is read that way (#1418).
-- `--minify` dropped a normal `content` written before an important one whose
-  value every browser reads, but kept it when written after, as in
-  `.a{content:"a"!important;content:"b"}`. The important one wins either way,
-  and the normal one goes in both orders (#1419).
-- `--minify` printed `input:-webkit-input-placeholder`, a rule Chrome,
-  WebKit and Firefox all drop, as `input::-webkit-input-placeholder`, which
-  they read, so the placeholder took the rule's colour where the source left
-  it grey. Only `:before`, `:after`, `:first-line` and `:first-letter` read as
-  pseudo-elements after one colon (Selectors 4 sec. 3.6.1); any other
-  pseudo-element name there is an unknown pseudo-class, and its rule is
-  dropped with a warning, as every target drops it (#1427).
-- `--minify` split an author's selector list holding a vendor pseudo-element
-  into one rule per vendor branch and one for the rest, so a browser without
-  the pseudo-element styled the rest, which it dropped with the source's list:
-  Chromium painted the file button of
-  `input::file-selector-button,b::-moz-selection{background:red}` red. The
-  list stays as the author wrote it (#1428).
-- `--minify` still listed most selectors some default target does not parse
-  with others: `a::-moz-placeholder` with `a::-webkit-input-placeholder`,
-  `::-ms-input-placeholder`, an unknown `::-moz-selection`, `:user-valid`,
-  `:dir()`, a `:lang()` list and the `s` attribute flag. That target dropped
-  the whole list, so arxiv.org's search box lost its placeholder colour in
-  Chromium. Which targets drop a selector is now read for every kind of
-  selector from MDN's compatibility data, Firefox's selector parser and
-  browser probes, and two selectors share a list only when the same targets
-  drop each (Selectors 4 sec. 3.9). Two `::-moz-placeholder` rules still
-  merge, and so do a `::-webkit-` pseudo-element and `::file-selector-button`,
-  which every target parses (#1437).
-- `--minify` dropped a rule over a prefixed pseudo-class it did not know,
-  such as `a:-moz-only-whitespace` or `a:not(:-moz-first-node)`, which
-  Firefox reads, or `:-webkit-any-link`, which Chrome and Safari read, and
-  dropped one from an `:is()` list. Such a rule now stays as written, out of
-  every list. A pseudo-class is dropped only when no target reads it: one
-  MDN's compatibility data, Firefox's selector parser and probes of Chrome
-  and WebKit show none reads, a pseudo-element name after one colon, and an
-  unprefixed name the data does not record (#1449).
-- `--minify` dropped a prefixed copy of a widely available property, such as
-  `-webkit-animation-delay:1s` beside `animation-delay:1s`, only when the
-  reader typed both spellings or neither, so it kept `-webkit-flex-grow:1`
-  beside `flex-grow:1`. An untyped copy is now read under the unprefixed
-  property's grammar and dropped when the values agree, which shrinks the
-  SatCSS output by 0.65% raw and 0.33% under gzip. `--enforce-spec` keeps every
-  copy (#1439).
+- `lab()` and `oklab()` printed a percentage alpha as a number: `lab(50% 20 30
+  / 40%)` came out as `lab(50% 20 30 / .4)`. It prints as written, as in the
+  other colour functions (#1370).
 
 ### Comparing stylesheets
 
-- `cascade diff --diff=canonical` reported two sheets identical when one lost a
-  rule or a declaration inside an `@media` block to a parse error:
-  `@media screen{a!{color:red}b{color:red}}` and `@media screen{b{color:red}}`
-  exited 0. That loss now counts as unread, as one inside `@supports` does,
-  and the command exits 2 (#1312).
-- `cascade diff` dropped a changed rule when the other file held two identical
-  copies of its counterpart, because pairing one copy claimed both. The change
-  is reported (#1297).
-- `cascade diff --diff=canonical` reported a difference between two equivalent
-  sheets when one wrote `top`, `right`, `bottom` and `left` in one rule and the
-  other split them across two rules, or put an unrelated declaration between
-  them: the comparison folded the longhands into `inset` on one side only. It
-  now composes a rule's longhands wherever they stand, so the two compare
-  identical, and so do `border-width`, `border-style` and `border-color` against
-  `border`. Re-minifying cascade's own output of `facebook1` and `tumblr-3` in
-  the SatCSS corpus reported this difference. Two rules whose declarations agree
-  on every longhand they share, such as `border:1px solid red` and
-  `border-width:1px`, no longer count as ordered, so the comparison does not
-  report one of them as moved (#1394).
-- `cascade diff` without `--diff` reported a colour written two ways, such as
-  `color:#ffffff` against `color:#fff`, as a modified rule annotated
-  "(declarations differ in subtle ways)". Over `outlook-3` and its cssnano
-  output in the SatCSS corpus it listed 12 such rules. It now compares
-  declarations the way `--diff=tree` does. When the two files parse to the same
-  stylesheet, the report says "no structural change; the text differs" above the
-  text diff, instead of "none classified structurally". It still exits 1,
-  because the default mode counts any difference in the text (#1400).
-- `cascade diff --diff=canonical` reported a difference when one sheet wrote a
-  selector's declarations in two rules and the other in one, though no rule
-  between them orders the two:
-  `.a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}` against
-  `.c{height:3px}.a{height:4px;width:1px}.b{width:2px}`. They compare
-  identical (#1405).
-- `cascade diff --diff=canonical` called
+#### `cascade diff --diff=canonical`
+
+- **Two sheets were called identical when they are not.** One sheet could lose
+  a rule or a declaration inside an `@media` block to a parse error and still
+  compare identical: `@media screen{a!{color:red}b{color:red}}` against `@media
+  screen{b{color:red}}` exited 0. That loss now counts as unread, as one inside
+  `@supports` does, and the command exits 2. The comparison also called
   `.o{width:76px}.g,.o{display:none}.p{display:block}.g{width:24px}` identical
   to a sheet that gives an element of both classes a width of 76px instead of
-  24px. The two now compare different (#1406).
-- `cascade diff --diff=canonical` called `.a,.b{speak:none}.a,.b{top:7px}`
-  different from `.a,.b{speak:none;top:7px}`. Two adjacent rules over one
-  selector list compare as one rule (#1409).
-- `cascade diff --diff=canonical` ordered two rules with the same declarations
-  when two of those declarations touch, as an unplaced `-moz-` longhand
-  touches every property, so the same pair written as one selector list
-  compared different. An element both match takes the declarations twice
-  either way, and the two compare identical (#1410).
-- `cascade diff --diff=canonical` kept a normal and an important declaration
-  of one rule in their written order when they touch, so the rule written the
-  other way round compared different. Importance sorts before order of
-  appearance (CSS Cascade 5 sec. 6.1), and the two commute (#1411).
-- `cascade diff --diff=canonical` kept an important declaration that a later
-  rule with the same selector writes again at the same importance, so a sheet
-  holding it in a shared rule compared different from one without it. It is
-  dropped, as a normal one already was (#1412).
-- `cascade diff --diff=canonical` called two sheets different when they wrote
-  a declaration in either of two occurrences of its selector that other rules
-  hold apart, though nothing between the two meets it. The declaration
-  compares as written in the later occurrence (#1413).
-- `cascade diff --diff=canonical` ordered two rules that write the same
-  declarations in the same order wherever they touch, such as a `border` then
-  a `border-bottom-color` in both, so the pair written the other way round
-  compared different. They compare identical (#1414).
-- `cascade diff --diff=canonical` dropped an earlier `content` or `outline`
-  that a later rule with the same selector writes again, while it kept both in
-  one rule as a fallback, so the two spellings compared different. Across
-  rules it now drops only what it would drop in one (#1415).
-- `cascade diff --diff=canonical` kept a declaration in the earlier of two
-  occurrences of its selector when a rule between them touches it only where
-  the later occurrence writes again, as a `border-bottom` against a `:hover`
-  rule's `border-color`. Such a rule no longer holds it back (#1416).
-- `cascade diff --diff=canonical` exited 2 on a sheet against its own
-  `--minify` output when the sheet held a rule over `:-o-prefocus`,
-  `:-moz-submit-invalid`, `:selected`, `:-moz-any-link`, `:-ms-fullscreen`,
-  `:-ms-full-screen`, `:-o-full-screen` or `:full-screen`, as seven SatCSS
-  sheets do. No target reads any of them (MDN's browser-compat-data,
-  Firefox's selector parser, Chrome and WebKit), so every target drops the
-  rule, and the warning now says so; the comparison, which judges for the
-  targets, does not count the loss and exits 0. Under `--enforce-spec` the
-  reader keeps such a rule, `cascade fmt --minify --enforce-spec` keeps it
-  as written and out of every list, and the comparison reports a sheet that
-  lost it (#1429).
-- `cascade diff --diff=canonical` exited 2 on yahoo-uk-2's cleancss, cssmin
-  and csso sheets against their `--minify` output, which drops
-  `#Stencil .Td-u:h:hover`. A pseudo-class with no vendor prefix that MDN's
-  compatibility data does not record, as `:h`, is one no target ships, so
-  its rule is dropped with the same warning and is no difference (#1446).
-- `cascade diff --diff=canonical` exited 2 on guardian's YUI sheet against
-  its `--minify` output, which drops the keyframe rules YUI writes over `0`
-  for `0%`. CSS Animations 1 takes `from`, `to` and a percentage as a
-  keyframe selector, and every engine drops a keyframe rule over anything
-  else, so the warning says no target reads it and the loss is no
-  difference (#1446).
-- `cascade diff --diff=canonical` called `.a{hyphens:auto}.a{color:red}`
-  different from its `--minify` output, dropping on one side only the
-  `-webkit-hyphens` that Safari 16.4 needs, and let a `-ms-` or `-o-`
-  declaration, which no target reads, hold two rules apart. The twin a target
-  needs is kept on both sides, and such a declaration is dropped from both
-  unless `--enforce-spec` is given. yahoo-uk-2 and yahoo-uk-3 in SatCSS
-  compare identical to their output (#1430, #1431).
-- `cascade diff --diff=canonical` let `font-smooth` and `font-smoothing`
-  hold a rule apart, so yahoo-uk-2 differed from its `--minify
-  --objective=raw` output. Neither is a property any target reads: Chrome
-  and WebKit parse neither, Firefox lists neither, and MDN records
-  `font-smooth` only under its prefixed names. Both are dropped from both
-  sides, as a `-ms-` declaration is, unless `--enforce-spec` is given (#1438).
-- `text-rendering` was read as an unknown property, which may write any
-  other, so `cascade diff --diff=canonical` held apart two rules it shared a
-  selector with, and networkx-theme and a netflix sheet differed from their
-  own `--minify` output. It is typed now, as SVG 2 defines it, so it touches
-  only itself, `--minify` drops one a later `text-rendering` overrides, and
-  a value outside `auto | optimizeSpeed | optimizeLegibility |
-  geometricPrecision` is dropped with a warning, as browsers drop it (#1440).
-- `-webkit-touch-callout`, iOS Safari's own longhand, was read as an unknown
-  property and so kept rules apart that write nothing in common: w3schools'
-  cleancss sheet differed from its `--minify` output in `cascade diff
-  --diff=canonical`. It is typed as `default | none` and touches only itself,
-  and a `-khtml-` property, which no target reads, is dropped from both sides
-  of the comparison as a `-ms-` one is (#1442).
-- `cascade diff --diff=canonical` ordered two rules that write one slot
-  through two spellings of a property with one value, as
-  `-moz-transform:rotate(180deg)` and `-webkit-transform:rotate(180deg)` do,
-  so a sheet and its `--minify` output that put the two rules the other way
-  round compared different. Every engine ends at that value whichever rule
-  comes first, and the order is no difference (#1441).
-- A prefixed spelling cascade does not type, such as `-moz-transform-origin`,
-  was taken to write every property, so it held apart rules that write
-  nothing in common, in `--minify` and in `cascade diff --diff=canonical`,
-  where taobao-1 differed from its `--minify --objective=raw` output. An
-  engine that reads such a name reads it as the property it spells, so it
-  now writes that property's slots alone. The comparison also drops a
-  prefixed copy no target needs beside one that one does, such as
-  `-moz-hyphens` beside `-webkit-hyphens` and `hyphens` (#1443).
-- `cascade diff --diff=canonical` could call two stylesheets identical that
-  give an element different values. It dropped a rule inside `@media` (or
-  another condition) that repeats an earlier unconditional write of its
-  selector, as dead, when nothing had written the property since. It read the
-  property by name, and skipped what the conditional block itself wrote
-  before the repeat. So
-  `.a{margin-top:1px}@media screen{.a{margin:0}}@media screen{.a{margin-top:1px}}`
-  compared identical to the same sheet without its last block, where on
-  screen `.a` gets a top margin of 1px against 0. The same happened with
-  `all` in between, or another selector's write earlier in the same block.
-  A write now counts by the cascade slots it sets, so a shorthand writes its
-  longhands and `all` writes every slot. `--minify` output does not change
-  (#1451).
-- `cascade diff --diff=canonical` called tmall-1 and its four minifier
-  variants in the SatCSS corpus different from their `--minify
-  --objective=raw` output, reporting three rules moved, though Chromium paints
-  them alike. The comparison joined two occurrences of one selector at a time,
-  and which pair it joined first decided whether another still could. It now
-  reads a run of rules one declaration at a time, each under its selector and
-  conditions, orders two only where swapping them could change a value, and
-  prints that order the same whatever rules held the declarations. All 504
-  SatCSS sheets and Tailwind's output now compare identical to their
-  `--minify` output under both objectives. Comparing the 504 sheets and
-  Tailwind's output against their `--minify` output takes 16% less CPU (19%
-  under `--objective=raw`), though Tailwind's output and instagram's take
-  longer. On 1000 rules that each fold with a later occurrence of their
-  selector it takes a third of the CPU (#1450).
+  24px, and called `.a{color:red}@media screen{.b{color:blue}.a{color:red}}`
+  identical to the same sheet without its last `.a`, which on screen paints
+  an element of both classes blue instead of red. A rule inside a condition
+  that repeats an earlier write of its selector is now dropped only when
+  nothing, `all` included, wrote the same property in between, inside the
+  block or out. Each pair now compares different (#1312, #1406, #1451).
+- **A sheet differed from its own minified output.** This is the check the
+  comparison exists for, and with 1.2.1 it failed on 139 of the 504 SatCSS
+  sheets and on Tailwind's output. The comparison now treats as equal each
+  rewrite below, none of which can change a computed value. All 504 sheets and
+  Tailwind's output compare identical to their `--minify` output under both
+  objectives (#1394, #1405, #1409, #1410, #1411, #1412, #1413, #1414, #1415,
+  #1416, #1430, #1431, #1438, #1440, #1441, #1442, #1443, #1450).
+  - The split of a selector's declarations across rules.
+    `.a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}` equals
+    `.c{height:3px}.a{height:4px;width:1px}.b{width:2px}`, and
+    `.a,.b{speak:none}.a,.b{top:7px}` equals `.a,.b{speak:none;top:7px}`. The
+    comparison used to join two occurrences of a selector at a time, and which
+    pair it joined first decided the result. It now reads a run of rules one
+    declaration at a time and orders two only where swapping them could change
+    a value.
+  - Longhands against their shorthand. `top`, `right`, `bottom` and `left`
+    compare equal to `inset` also when another declaration sits between them,
+    and so do `border-width`, `border-style` and `border-color` against
+    `border`.
+  - An order no element can observe. Two rules that write the same declarations
+    compare equal in either order. So do a normal and an important declaration
+    of one rule (CSS Cascade 5 sec. 6.1), and two rules that write one value
+    through two spellings, as `-moz-transform:rotate(180deg)` and
+    `-webkit-transform:rotate(180deg)` do.
+  - A declaration no target reads. A `-ms-`, `-o-` or `-khtml-` declaration,
+    `font-smooth` and `font-smoothing` are dropped from both sides, and a
+    prefixed copy a target needs, such as the `-webkit-hyphens` of Safari 16.4,
+    is kept on both. `--enforce-spec` turns this off.
+  - A property cascade did not type. `text-rendering`, `-webkit-touch-callout`
+    and an untyped prefixed spelling such as `-moz-transform-origin` were taken
+    to write every property, so they held apart rules that write nothing in
+    common. Each now writes its own property alone.
+- **A rule no browser reads withheld the verdict.** The comparison exited 2 on
+  a sheet against its `--minify` output when the sheet held a rule over
+  `:-o-prefocus`, `:-moz-submit-invalid`, `:selected`, a misspelt pseudo-class
+  such as `:h`, or a keyframe selector such as `0` for `0%`. No target reads
+  any of them, so every target drops the rule. The warning now says so. The
+  comparison judges for the targets, so it does not count the loss and no
+  longer exits 2 for it. Under `--enforce-spec` the reader keeps such a rule
+  and the comparison reports a sheet that lost it (#1429, #1446).
 
-### Speed
+#### `cascade diff` without `--diff`
 
-- `--minify` takes less than half the CPU of 1.2.1 over the SatCSS corpus,
-  and about a third of the instructions on Tailwind's stylesheet and on tw's.
-  Each step left the output byte for byte as it was (#1306, #1307, #1313,
-  #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356, #1361, #1362, #1363,
-  #1364, #1365, #1374, #1375, #1376, #1377, #1378, #1379, #1380, #1384,
-  #1385, #1420, #1421, #1434, #1435, #1436).
-- `cascade diff --diff=canonical` of Tailwind's stylesheet against tw's takes
-  about a fifth of the instructions of 1.2.1 and less than half the memory.
-  The faster ordering keeps a rule after an earlier one that writes another
-  value to an element both match, as 1.2.1 did, also when a rule writing its
-  own value stands between them (#1304, #1305, #1308, #1309, #1326, #1327,
-  #1328).
-- `cascade diff` slowed down with the square of the number of rules that moved
-  or changed selector. netflix.com's stylesheet against its own `--minify`
-  output takes 0.2 s of CPU instead of 1.2 s (#1297).
-- Parsing is faster. A sheet of `var()` fallbacks that do not match their
-  property's grammar cost its size squared, and a custom property's value was
-  lexed twice. Each top-level rule, and each rule of a
-  top-level `@layer`, `@media`, `@supports` or `@container` block, is now read
-  before the next is parsed, which helps Tailwind's output most since it sits
-  in one `@layer`. The lexer allocates only the token (#1311, #1314, #1315,
-  #1381, #1382, #1383, #1387).
-- Printing the warnings of a large sheet cost its size per warning. A 2 MB
-  sheet now prints about twenty times faster (#1310).
-- To see where a run goes, `cascade fmt --minify --profile` opens with the
-  time spent reading, optimising and printing and names its columns in words.
-  It counts `nested-merge probes`, also read as
-  `Stats.counters.nested_merge_probes`, and prints one row per factoring run
-  (#1301, #1336, #1372).
-- `--minify` searched each factored run's output again to confirm nothing was
-  left to merge. The search now reads only the rules it prints and their
-  order, so that second search would find nothing and is gone, saving 1.1% of
-  instructions over the SatCSS corpus. A run that nesting changes is optimised
-  again in the same pass (#1424).
-- `cascade diff --diff=canonical` folded one pair of occurrences of a
-  selector per round and re-sorted the whole sheet before the next, which
-  made the 504 SatCSS sheets against their `--minify` output take 132 s of
-  CPU instead of 106 s. A round now folds every pair that stands clear of the
-  ones it already folded, and reads each rule's key and conflict facts once:
-  86 s, with every report unchanged (#1426).
-- `cascade diff --diff=canonical` walked every rule a moved declaration's
-  rule reached, once per move, so 1000 pairs of `.aK{color;margin-top}
-  .bK{margin:0} .aK{margin-left}` took 152 billion instructions. The walk now
-  stops once it has placed the rules the move conflicts with, and skips those
-  no rule after it can reach: 89 billion, with every verdict and report over
-  the SatCSS corpus unchanged (#1447).
+- **A colour written two ways was reported as a modified rule.**
+  `color:#ffffff` against `color:#fff` showed as a rule annotated
+  "(declarations differ in subtle ways)". The default mode now compares
+  declarations the way `--diff=tree` does. When the two files parse to the same
+  stylesheet, the report says "no structural change; the text differs" above
+  the text diff. It still exits 1, because the default mode counts any
+  difference in the text (#1400).
+- **A changed rule could go unreported.** When the other file held two
+  identical copies of its counterpart, pairing one copy claimed both and the
+  change was dropped. It is reported (#1297).
 
-### Warnings and errors
+### Warnings, errors and help
 
-- A noisy sheet buried its warnings in near-identical lines. A warning already
-  printed for the same file is counted under the first, and a last line gives
-  the total and points to `-v`. netflix.com's sheet prints about 40 lines of
-  warnings where it printed nearly 500 (#1332, #1341).
-- `-q` was documented and silenced nothing. `-q` now prints no warning and `-v`
-  every one, in `fmt`, `apply`, `prune` and the `diff` report (#1332).
-- A selector the reader refuses was reported as a `bad value: ...` naming no
-  property. It is a `bad selector: ...` (#1340).
-- A declaration with no value, such as `.b { color: }`, was reported one
-  column past the `}` that ends it. It is reported at the `}` (#1339).
-- A mistyped command was taken for a file: `cascade fmtt a.css` complained
+The new form of a diagnostic is under [Breaking](#command-line).
+
+- **A noisy sheet buried its warnings.** A warning already printed for the same
+  file is now counted under the first, and a last line gives the total and
+  points to `-v`. netflix.com's sheet prints about 40 lines of warnings where
+  it printed nearly 500. `-q` was documented and silenced nothing; it now
+  prints no warning, and `-v` prints every one, in `fmt`, `apply`, `prune` and
+  the `diff` report (#1332, #1341).
+- **Some messages pointed at the wrong thing.** A selector the reader refuses
+  was a `bad value: ...` naming no property, and is a `bad selector: ...`. A
+  declaration with no value, such as `.b { color: }`, was reported one column
+  past the `}` that ends it, and is reported at the `}`. A bad `@font-face`
+  descriptor value pointed at line 1 of a copy of the value, and is located in
+  the sheet (#1330, #1339, #1340).
+- **A mistyped command was taken for a file.** `cascade fmtt a.css` complained
   about `a.css`. It now says `fmtt` is an unknown command and suggests `fmt`.
-  A word that names no file and holds no `.` or `/` is not taken for a
-  stylesheet (#1333).
-- `--flatten-nesting` without `--minify` did nothing and said nothing. It is
-  now noted. `--keep-vars='*'` no longer prints a stray `[1]` (#1333).
-- The help pages group the options by what they act on, give every command
-  examples and describe the `diff` report and its `--json` members (#1333,
-  #1335).
+  `--flatten-nesting` without `--minify` did nothing and said nothing, and is
+  now noted (#1333).
+- **The help pages are written for a first reading.** They group the options by
+  what they act on, give every command examples and describe the `diff` report
+  and its `--json` members (#1333, #1335).
 
 ### Parsing
 
-- A custom property's value could change on the way through. It was printed
+- **A custom property's value could change on the way through.** It was printed
   and lexed again, so `--x:\!important` became a lone backslash marked
   important, and `--x:a/**/b` became `--x:a b`, another token sequence. The
   value is now the tokens the parser read. `'a'` and `"a"` stay one value
   (#1386).
-- Input nesting blocks or functions more than 128 deep crashed cascade with a
-  stack overflow. A value nested deeper is now kept and printed back as
-  written. A rule nested deeper loses its contents with a warning (#1296).
-- A selector nesting `:is()` more than 100 deep read as an `:is()` that
-  matches nothing. Its rule is dropped with a warning (#1296).
-- A rule whose attribute selector has a number as its value, such as
-  `[data-x=2]`, `[data-x=2px]` or `[data-x=50%]`, was kept as `[data-x="2"]`
-  and so matched elements no browser matches. It is dropped with a warning, as
-  browsers drop it (#1292).
-- Declarations a browser ignores in an `@keyframes` frame went unreported. An
-  invalid one was dropped silently, and an `!important` one or an
-  `animation-*` property other than `animation-timing-function` stayed in the
-  output. Each now warns and goes (#1294).
-- An `@charset` warns and goes unless the sheet opens with exactly
-  `@charset "UTF-8";`, so not after whitespace, a comment or an `@layer`
-  statement. An `@import` after an unrecognised at-rule no longer warns, since
-  browsers apply it (#1294).
+- **Deep nesting crashed cascade.** Input nesting blocks or functions more than
+  128 deep overflowed the stack. A value nested deeper is now kept and printed
+  back as written, and a rule nested deeper loses its contents with a warning.
+  A selector nesting `:is()` more than 100 deep read as an `:is()` that matches
+  nothing; its rule is dropped with a warning (#1296).
+- **Rules and declarations a browser drops were kept.** `[data-x=2]`, an
+  attribute selector with a number as its value, was kept as `[data-x="2"]` and
+  so matched elements no browser matches. In an `@keyframes` frame, an
+  `!important` declaration or an `animation-*` property other than
+  `animation-timing-function` stayed in the output. A `text-rendering` value
+  outside `auto | optimizeSpeed | optimizeLegibility | geometricPrecision` was
+  printed back. Each now goes with a warning, as browsers drop it (#1292,
+  #1294, #1440).
+- **`@charset` is read as browsers read it.** It warns and goes unless the
+  sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
+  comment or an `@layer` statement (#1294).
 
-### Options
+### `--inline-vars`
 
-- `--inline-vars` could put a value in the wrong rule. It read `.x&` under `a`
-  as the class `.xa` and folded a value defined there into a rule styling
+- **A value could land in the wrong rule.** `--inline-vars` read `.x&` under
+  `a` as the class `.xa` and folded a value defined there into a rule styling
   `a.x`. It now composes a nested rule's selector as CSS Nesting does, and a
   definition on a selector list reaches a consumer under one of its branches
   (#1352).
-- `--inline-vars` kept a variable that several rules define with one value,
-  then folded it on a second run. It folds it the first time, so inlining its
-  own output changes nothing. One whose definitions disagree is named:
-  `--x takes different values in different scopes` (#1343).
+- **Inlining its own output folded more.** A variable that several rules define
+  with one value was kept, then folded on a second run. It is folded the first
+  time. One whose definitions disagree is named: `--x takes different values in
+  different scopes` (#1343).
 
 ### Windows
 
-- Numbers printed differently on Windows: `3.40282e38px` came out as
-  `3.40282e038px`, and `100000000000.5` as `100000000001`. They print as
-  elsewhere, so a build gives the same bytes on every platform (#1286, #1292,
+- **A build gave other bytes on Windows.** Numbers printed differently:
+  `3.40282e38px` came out as `3.40282e038px`, and `100000000000.5` as
+  `100000000001`. `cascade` also wrote CRLF line endings in its output and help
+  pages. Numbers print as elsewhere and lines end in LF (#1286, #1291, #1292,
   #1300).
-- `cascade` wrote CRLF line endings in its output and help pages. It writes
-  LF, as elsewhere. `cascade diff --browser` starts node without a POSIX shell
-  and finds it on `PATH` under `PATHEXT` (#1291).
-- `--inline-imports` left Windows drive paths (`C:/a.css`, `C:\a.css`,
-  `C:a.css`) and `file:` URLs alone as remote URLs, and looked a UNC path up
-  under the importing file's directory. It inlines them and checks them
-  against `--import-root` (#1291).
+- **Local paths were taken for remote URLs.** `--inline-imports` left Windows
+  drive paths (`C:/a.css`, `C:\a.css`, `C:a.css`) and `file:` URLs alone, and
+  looked a UNC path up under the importing file's directory. It inlines them
+  and checks them against `--import-root`. `cascade diff --browser` starts node
+  without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).
+
+### Speed
+
+- **`--minify` takes less than half the CPU of 1.2.1** over the SatCSS corpus,
+  and about a third on Tailwind's stylesheet and on tw's. Each step left the
+  output byte for byte as it was (#1306, #1307, #1313, #1322, #1323, #1324,
+  #1325, #1329, #1344, #1347, #1356, #1361, #1362, #1363, #1364, #1365, #1374,
+  #1375, #1376, #1377, #1378, #1379, #1380, #1384, #1385, #1420, #1421, #1434,
+  #1435, #1436).
+- **`cascade diff --diff=canonical` takes less than a third of the CPU** on
+  Tailwind's stylesheet against tw's, and less than half the memory (#1304,
+  #1305, #1308, #1309, #1326, #1327, #1328, #1426, #1447, #1450).
+- **`cascade diff` no longer slows with the square of the rules that moved.**
+  netflix.com's stylesheet against its own `--minify` output takes 0.2 s of CPU
+  instead of 1.2 s (#1297).
+- **Parsing is faster,** most of all on Tailwind's output. A sheet of `var()`
+  fallbacks that do not match their property's grammar cost its size squared,
+  and a custom property's value was lexed twice. Each top-level rule is now
+  read before the next is parsed, and so is each rule of a top-level `@layer`,
+  `@media`, `@supports` or `@container` block. Tailwind's output gains most,
+  since it sits in one `@layer` (#1311, #1314, #1315, #1381, #1382, #1383,
+  #1387).
+- **Printing warnings no longer costs the sheet's size per warning.** A 2 MB
+  sheet prints its warnings about twenty times faster (#1310).
+- **`--profile` says where a run goes.** `cascade fmt --minify --profile` opens
+  with the time spent reading, optimising and printing, names its columns in
+  words and prints one row per factoring run. It counts `nested-merge probes`,
+  also read as `Stats.counters.nested_merge_probes` (#1301, #1336, #1372).
 
 ### Library
 
-- `Source_index` offsets and slices drifted by a byte per CRLF, so a tool
-  locating `@import` in a CRLF file cut statements in the wrong place, and a
-  NUL could make `Source_index.v` raise. They index the string you passed, also
-  when it starts with a BOM. `Reader.origin` and `Reader.original_offset` map a
-  position in the preprocessed input back to a byte offset in that string
+- **`Css.minify`** optimises and prints in one call, as `cascade --minify`
+  does. `Selector.v`, `Container.v` and `Css.stylesheet` read CSS written in
+  the program (#1299, #1367).
+- **`Source_index` offsets drifted by a byte per CRLF,** so a tool locating
+  `@import` in a CRLF file cut statements in the wrong place, and a NUL could
+  make `Source_index.v` raise. Offsets and slices index the string you passed,
+  also when it starts with a BOM. `Reader.origin` and `Reader.original_offset`
+  map a position in the preprocessed input back to a byte offset in that string
   (#1285).
-- `Css.Context.resolve_url` resolves `1:/x` against the base as a relative
+- **`Selector.specificity` counted a prefixed pseudo-element as a class.**
+  `input::-webkit-input-placeholder` weighed (0,1,1) where Selectors 4 sec. 17
+  and the browsers give (0,0,2). `::-webkit-scrollbar` and `::details-content`
+  were counted the same way. Each now counts with the type selectors (#1444).
+- **A selector built in the program is the one the parser reads.**
+  `Selector.compound`, `combine` and `reshape` build a selector in the parser's
+  shape, so it equals the selector read back from its printed text (#1342).
+- **`Css.Context.resolve_url`** resolves `1:/x` against the base as a relative
   path, as WHATWG URL does, since a digit cannot open a scheme (#1291).
-- A prefixed pseudo-element, such as `::-webkit-input-placeholder` or
-  `::-webkit-scrollbar`, and `::details-content` counted as a class in
-  `Selector.specificity`, so `input::-webkit-input-placeholder` weighed
-  (0,1,1) where Selectors 4 sec. 17 and the browsers give (0,0,2). It
-  counts with the type selectors. No SatCSS sheet's `--minify` output
-  changes (#1444).
 
 ## 1.2.1
 
