@@ -1363,8 +1363,10 @@ val content_counters : ?style:list_style_type -> string -> string -> content
 val content_list : content list -> content
 (** [content_list items] is a space-separated content value. *)
 
-val counter_item : ?value:int -> string -> counter_item
-(** [counter_item ?value name] is one named counter item. *)
+val counter_item : ?reversed:bool -> ?value:int -> string -> counter_item
+(** [counter_item ?reversed ?value name] is one named counter item, written
+    [reversed(name)] when [reversed] is [true] (default [false]), which only
+    [counter-reset] takes. *)
 
 val counter_set : counter_item list -> counter_set
 (** [counter_set items] is a counter-reset/increment/set list. *)

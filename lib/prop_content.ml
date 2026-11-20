@@ -66,8 +66,8 @@ let rec normalize_content (c : content) : content =
       if List.equal ( == ) items items' then c else Content_list items'
   | _ -> c
 
-let pp_counter_item ctx { name; value } =
-  pp_ident ctx name;
+let pp_counter_item ctx { name; reversed; value } =
+  if reversed then Pp.call "reversed" pp_ident ctx name else pp_ident ctx name;
   match value with
   | None -> ()
   | Some n ->
@@ -210,13 +210,30 @@ and read_content t : content =
 let read_counter_name t =
   Cursor.custom_ident ~reserved:[ "none" ] "counter name" t
 
-let read_counter_item t =
-  let name = read_counter_name t in
+(* CSS Lists 3 sec. 4.1: [counter-reset] takes a [reversed( <counter-name> )]
+   item, and sec. 4.2 gives [counter-increment] none. *)
+let read_counter_item ~reversed t =
+  let reversed_name =
+    if reversed then
+      Cursor.function_call "reversed"
+        (fun t ->
+          Cursor.ws t;
+          let name = read_counter_name t in
+          Cursor.ws t;
+          name)
+        t
+    else Option.None
+  in
+  let name, reversed =
+    match reversed_name with
+    | Option.Some name -> (name, true)
+    | Option.None -> (read_counter_name t, false)
+  in
   Cursor.ws t;
   let value = Cursor.integer_opt t in
-  { name; value }
+  { name; reversed; value }
 
-let rec read_counter_set t : counter_set =
+let rec read_counter_set ~reversed t : counter_set =
   Cursor.enum_or_var "counter"
     [
       ("none", (None : counter_set));
@@ -226,9 +243,11 @@ let rec read_counter_set t : counter_set =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (Values.read_var read_counter_set t))
+    ~var:(fun t -> Var (Values.read_var (read_counter_set ~reversed) t))
     ~default:(fun t ->
-      let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_counter_item t in
+      let items =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 (read_counter_item ~reversed) t
+      in
       Counters items)
     t
 
