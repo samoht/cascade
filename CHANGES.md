@@ -342,6 +342,11 @@ differently. They are the reason to minify again.
   of colours, and Firefox 150 reads them. `--minify` read the first two of
   `color-mix(in srgb,red,blue,green)` and folded them to `purple`. A mix of
   three or more colours now keeps every item as written (#1465).
+- **A reversed counter was deleted.** `--minify` refused
+  `counter-reset:reversed(x)`, which CSS Lists 3 grants and Firefox reads, so
+  it dropped the declaration, and after `counter-reset:x` it kept only the
+  earlier write. It now reads `reversed()` in `counter-reset`, and keeps the
+  earlier write as the fallback for Chrome and Safari, which drop it (#1466).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

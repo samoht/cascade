@@ -22,12 +22,15 @@ val pp_quotes : quotes Pp.t
 val read_content : Cursor.t -> content
 (** [read_content t] is the [content] parsed from [t]. *)
 
-val read_counter_item : Cursor.t -> counter_item
-(** [read_counter_item t] parses one [counter-reset]/[counter-increment] item.
-*)
+val read_counter_item : reversed:bool -> Cursor.t -> counter_item
+(** [read_counter_item ~reversed t] parses one
+    [counter-reset]/[counter-increment] item. [reversed] admits a
+    [reversed( <counter-name> )] item, which CSS Lists 3 sec. 4.1 grants
+    [counter-reset] alone. *)
 
-val read_counter_set : Cursor.t -> counter_set
-(** [read_counter_set t] is the [counter_set] parsed from [t]. *)
+val read_counter_set : reversed:bool -> Cursor.t -> counter_set
+(** [read_counter_set ~reversed t] is the [counter_set] parsed from [t];
+    [reversed] is as for {!read_counter_item}. *)
 
 val read_quotes : Cursor.t -> quotes
 (** [read_quotes t] is the [quotes] parsed from [t]. *)

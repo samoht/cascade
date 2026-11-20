@@ -252,9 +252,11 @@ val pp_counter_item : counter_item Pp.t
 (** [pp_counter_item] pretty-prints one [counter-reset]/[counter-increment]
     item. *)
 
-val read_counter_item : Cursor.t -> counter_item
-(** [read_counter_item t] parses one [counter-reset]/[counter-increment] item.
-*)
+val read_counter_item : reversed:bool -> Cursor.t -> counter_item
+(** [read_counter_item ~reversed t] parses one
+    [counter-reset]/[counter-increment] item. [reversed] admits a
+    [reversed( <counter-name> )] item, which CSS Lists 3 sec. 4.1 grants
+    [counter-reset] alone. *)
 
 val pp_font_synthesis_feature : font_synthesis_feature Pp.t
 (** [pp_font_synthesis_feature] pretty-prints one [font-synthesis] feature. *)
@@ -2087,8 +2089,9 @@ val read_content : Cursor.t -> content
 val pp_counter_set : counter_set Pp.t
 (** [pp_counter_set] is the pretty-printer for [counter_set]. *)
 
-val read_counter_set : Cursor.t -> counter_set
-(** [read_counter_set t] is the [counter_set] parsed from [t]. *)
+val read_counter_set : reversed:bool -> Cursor.t -> counter_set
+(** [read_counter_set ~reversed t] is the [counter_set] parsed from [t];
+    [reversed] is as for {!read_counter_item}. *)
 
 val pp_content_visibility : content_visibility Pp.t
 (** [pp_content_visibility] is the pretty-printer for [content_visibility]. *)
