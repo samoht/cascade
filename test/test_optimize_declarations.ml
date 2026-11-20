@@ -718,10 +718,11 @@ let unknown_at_rule_body_is_compacted () =
    hazard bit for this: sharing one makes a rule holding the slice answer for a
    neighbour holding the source. *)
 let test_border_keeps_longhands_beside_a_border_image () =
-  let minify_str css =
+  let minify_str ?(scope = `Stylesheet) css =
     match Css.of_string ~strict:false css with
     | Ok p ->
-        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+        Css.to_string ~minify:true (Css.optimize ~scope p.stylesheet)
+        |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
   (* A NEIGHBOUR holding one is the hazard, and each longhand needs its OWN bit
@@ -732,11 +733,17 @@ let test_border_keeps_longhands_beside_a_border_image () =
     "c,f{border-width:1px;border-style:solid;border-color:red}a,f{border-image-slice:2}b,c{border-image-source:url(x.png)}"
     (minify_str
        "a{border-image-slice:2}c{border-image-source:url(x.png);border-width:1px;border-style:solid;border-color:red}b{border-image-source:url(x.png)}f{border-image-slice:2;border-width:1px;border-style:solid;border-color:red}");
-  (* With no border-image longhand anywhere there is nothing to reset, so the
-     contraction is the shorter spelling of the same cascade. *)
+  (* With no border-image longhand anywhere in the whole sheet there is nothing
+     to reset, so the contraction is the shorter spelling of the same cascade.
+     In the default scope another sheet may hold one, so the longhands stay. *)
   Alcotest.(check string)
     "and contracts with none of them present" "a{border:1px solid red}"
-    (minify_str "a{border-width:1px;border-style:solid;border-color:red}")
+    (minify_str "a{border-width:1px;border-style:solid;border-color:red}");
+  Alcotest.(check string)
+    "but not where another sheet may hold one"
+    "a{border-width:1px;border-style:solid;border-color:red}"
+    (minify_str ~scope:`Fragment
+       "a{border-width:1px;border-style:solid;border-color:red}")
 
 let test_shorthand_drops_the_longhand_it_resets () =
   let minify_str css =
