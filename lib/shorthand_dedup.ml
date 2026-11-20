@@ -613,73 +613,6 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
 
-(* WHATWG Compatibility Standard sec. 3.4.1: these [-webkit-] properties "must
-   be supported as legacy name aliases of the corresponding unprefixed
-   property", and CSS Cascade 5 sec. 2.3 makes a legacy name alias the SAME
-   property under a second name rather than a property of its own. A prefix the
-   list does not name is a private extension in the vendor's namespace, so it is
-   its own property and never an alias -- [-moz-] spellings and
-   [-webkit-user-select] among them. *)
-let legacy_name_alias_of = function
-  | "-webkit-align-content" -> Some "align-content"
-  | "-webkit-align-items" -> Some "align-items"
-  | "-webkit-align-self" -> Some "align-self"
-  | "-webkit-animation" -> Some "animation"
-  | "-webkit-animation-delay" -> Some "animation-delay"
-  | "-webkit-animation-direction" -> Some "animation-direction"
-  | "-webkit-animation-duration" -> Some "animation-duration"
-  | "-webkit-animation-fill-mode" -> Some "animation-fill-mode"
-  | "-webkit-animation-iteration-count" -> Some "animation-iteration-count"
-  | "-webkit-animation-name" -> Some "animation-name"
-  | "-webkit-animation-play-state" -> Some "animation-play-state"
-  | "-webkit-animation-timing-function" -> Some "animation-timing-function"
-  | "-webkit-backface-visibility" -> Some "backface-visibility"
-  | "-webkit-background-clip" -> Some "background-clip"
-  | "-webkit-background-origin" -> Some "background-origin"
-  | "-webkit-background-size" -> Some "background-size"
-  | "-webkit-border-bottom-left-radius" -> Some "border-bottom-left-radius"
-  | "-webkit-border-bottom-right-radius" -> Some "border-bottom-right-radius"
-  | "-webkit-border-radius" -> Some "border-radius"
-  | "-webkit-border-top-left-radius" -> Some "border-top-left-radius"
-  | "-webkit-border-top-right-radius" -> Some "border-top-right-radius"
-  | "-webkit-box-shadow" -> Some "box-shadow"
-  | "-webkit-box-sizing" -> Some "box-sizing"
-  | "-webkit-filter" -> Some "filter"
-  | "-webkit-flex" -> Some "flex"
-  | "-webkit-flex-basis" -> Some "flex-basis"
-  | "-webkit-flex-direction" -> Some "flex-direction"
-  | "-webkit-flex-flow" -> Some "flex-flow"
-  | "-webkit-flex-grow" -> Some "flex-grow"
-  | "-webkit-flex-shrink" -> Some "flex-shrink"
-  | "-webkit-flex-wrap" -> Some "flex-wrap"
-  | "-webkit-justify-content" -> Some "justify-content"
-  | "-webkit-mask" -> Some "mask"
-  | "-webkit-mask-box-image" -> Some "mask-border"
-  | "-webkit-mask-box-image-outset" -> Some "mask-border-outset"
-  | "-webkit-mask-box-image-repeat" -> Some "mask-border-repeat"
-  | "-webkit-mask-box-image-slice" -> Some "mask-border-slice"
-  | "-webkit-mask-box-image-source" -> Some "mask-border-source"
-  | "-webkit-mask-box-image-width" -> Some "mask-border-width"
-  | "-webkit-mask-clip" -> Some "mask-clip"
-  | "-webkit-mask-composite" -> Some "mask-composite"
-  | "-webkit-mask-image" -> Some "mask-image"
-  | "-webkit-mask-origin" -> Some "mask-origin"
-  | "-webkit-mask-position" -> Some "mask-position"
-  | "-webkit-mask-repeat" -> Some "mask-repeat"
-  | "-webkit-mask-size" -> Some "mask-size"
-  | "-webkit-order" -> Some "order"
-  | "-webkit-perspective" -> Some "perspective"
-  | "-webkit-perspective-origin" -> Some "perspective-origin"
-  | "-webkit-transform" -> Some "transform"
-  | "-webkit-transform-origin" -> Some "transform-origin"
-  | "-webkit-transform-style" -> Some "transform-style"
-  | "-webkit-transition" -> Some "transition"
-  | "-webkit-transition-delay" -> Some "transition-delay"
-  | "-webkit-transition-duration" -> Some "transition-duration"
-  | "-webkit-transition-property" -> Some "transition-property"
-  | "-webkit-transition-timing-function" -> Some "transition-timing-function"
-  | _ -> None
-
 (* A legacy name alias is its property under a second name, so it reads as that
    property: its value under the property's grammar, its importance kept. Every
    pass after this one then sees two writes of one property where the sheet
@@ -687,21 +620,22 @@ let legacy_name_alias_of = function
    the rules that hold them. A value the property's grammar refuses keeps the
    alias as written. *)
 let as_aliased_property decl =
-  match
-    legacy_name_alias_of
-      (String.lowercase_ascii (Declaration.property_name decl))
-  with
-  | None -> decl
-  | Some unprefixed -> (
-      match
-        Declaration.parse_declaration unprefixed
-          (Declaration.string_of_value ~minify:true decl)
-      with
-      | Some d when Declaration.is_important decl -> Declaration.important d
-      | Some d -> d
-      | None -> decl)
+  match decl with
+  | Declaration.Theme_guarded _ -> decl
+  | Declaration.Declaration { property; _ } -> (
+      match Properties.legacy_alias property with
+      | None -> decl
+      | Some (Prop unprefixed) -> (
+          match
+            Declaration.parse_declaration
+              (Pp.to_string ~minify:false Properties.pp_property unprefixed)
+              (Declaration.string_of_value ~minify:true decl)
+          with
+          | Some d when Declaration.is_important decl -> Declaration.important d
+          | Some d -> d
+          | None -> decl))
 
-(* [-webkit-text-decoration-color] is not on the sec. 3.4.1 list above, so
+(* [-webkit-text-decoration-color] is not on the sec. 3.4.1 list, so
    {!as_aliased_property} leaves it as written, but every engine that ships the
    prefix aliases it and Cascade normalizes it whatever the target. Beside an
    identical unprefixed twin it says nothing the twin does not. A differing

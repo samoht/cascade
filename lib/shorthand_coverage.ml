@@ -1313,7 +1313,7 @@ let declaration_slot_keys decl =
   match decl with
   | Theme_guarded _ -> []
   | Declaration { property; _ } ->
-      if String.starts_with ~prefix:"-" (Declaration.property_name decl) then []
+      if Properties.is_vendor_prefixed property then []
       else sorted_keys (written_slots property)
 
 (* Each family head's footprint in the order [footprint_family_heads] lists
