@@ -694,6 +694,7 @@ let pending =
     "font-size";
     "margin";
     "margin-block";
+    "max-height";
     "vertical-align";
     "width";
   ]

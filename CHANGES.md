@@ -790,6 +790,12 @@ differently. They are the reason to minify again.
   spells its twin's value another way, such as `-ms-flex:0 0 auto` beside
   `flex:none`, now goes as one spelled alike does, which takes about 28 kB off
   the SatCSS output (#1469, #1527, #1528).
+- **A number past eight decimals merged only on a second run.**
+  `a{width:33.33333333333333%}b{width:33.33333333%}` minified to two rules
+  printed alike, and minifying that again merged them. The printer writes a
+  number to eight decimals while the reader kept every digit. A number read
+  past eight decimals is now the eight-decimal value, so one run merges them;
+  the SatCSS sheets held 252 such declarations.
 - **Output shifted for unrelated reasons.** Merges that save the same number of
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by

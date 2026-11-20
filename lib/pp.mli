@@ -250,9 +250,9 @@ val string_of_float :
 
 val printed : float -> float
 (** [printed f] is the float the text {!float} writes for [f] reads back as: [f]
-    at the printer's eight decimal places. A value the optimizer computes takes
-    it, so that the node it builds is the node its print reads back as. A NaN or
-    an infinity is itself. *)
+    at the printer's eight decimal places. A number the lexer reads past them
+    and a value the optimizer computes take it, so that the node built is the
+    node its print reads back as. A NaN or an infinity is itself. *)
 
 val nan_value : ctx -> string -> unit
 (** [nan_value ctx suffix] writes the CSS spelling of a NaN-valued number:

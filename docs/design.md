@@ -16,6 +16,13 @@ factoring buckets on. `Css.of_string ~preserve_source:true` keeps the
 byte-exact input in a separate `source` snapshot, which optimising and the
 other transforms leave untouched.
 
+A number's value stops where its print does. The printer writes a number to
+eight decimals, so the lexer reads a representation running past them, or
+carrying an exponent, as the value that print reads back as (`Pp.printed`):
+`33.33333333333333%` is the node `33.33333333%` is. The representation keeps
+every authored digit, and the minifier of an opaque stream guards on it, so a
+stream printed as written loses none.
+
 ## Math functions over several units
 
 A comparison over units with a fixed ratio (`Values_calc.compared_results`)

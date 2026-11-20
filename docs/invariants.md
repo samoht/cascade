@@ -284,7 +284,7 @@ Each row names the tests that check a statement. A browser harness under
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
 | Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back" |
 | Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |
-| Normalisation | `test/fixpoint` "normal form" |
+| Normalisation | `test/fixpoint` "normal form" and its `spellings` corpus; `test/test_declaration_identity.ml` "number spellings have one node" |
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
 | `var()` components | `declaration` "complex values"; `properties_background` "background-image" |

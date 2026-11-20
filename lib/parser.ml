@@ -400,11 +400,14 @@ let is_signed_number_repr repr =
 let minified_number_repr ?(preserve_sign = false)
     ({ value; repr; _ } : Token.number) =
   let compact = Pp.string_of_float ~drop_leading_zero:true value in
+  (* The token's value stops at the printer's eight decimals; the stream keeps
+     the authored number, so the guard reads the representation. *)
+  let exact = Option.value (float_of_string_opt repr) ~default:value in
   let shorter candidate =
     String.length candidate < String.length repr
     &&
     match float_of_string_opt candidate with
-    | Some parsed -> Float.equal value parsed
+    | Some parsed -> Float.equal exact parsed
     | None -> false
   in
   (* A sign the stream needs is the stream's to keep; the digits after it are
