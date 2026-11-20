@@ -441,6 +441,16 @@ let rec read_angle_with ~unitless_zero t : angle =
       (fun a b -> (Mod (a, b) : angle))
       (read_angle_with ~unitless_zero)
       t
+  else if
+    List.exists
+      (fun name -> Cursor.looking_at_func name t)
+      typed_math_function_names
+  then (
+    (* CSS Values 4 sec. 10.1: a comparison, [abs()] or [hypot()] over angles
+       stands where an angle does. *)
+    let c = read_calc ~result_type:`Value (read_angle_with ~unitless_zero) t in
+    check_math_family t Angle c;
+    Calc c)
   else
     match angle_trig_function t with
     | Some (kind, name) -> read_angle_trig kind name t
@@ -484,6 +494,15 @@ let read_time_number t : duration =
   | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
   | _ -> Cursor.err_invalid t (String.concat "" [ "time unit: "; unit ])
 
+(* CSS Values 4 sec. 10.1: a math function answering its arguments' type
+   ([min()], [abs()], ...) stands at a slot of that type, read as a calculation
+   whose arguments have to be of the slot's [family]. *)
+let typed_math_calls family read_operand make =
+  typed_math_function_calls (fun t ->
+      let c = read_calc ~result_type:`Value read_operand t in
+      check_math_family t family c;
+      make c)
+
 let read_duration_round read_duration_self t =
   read_round_call
     (fun s v step -> (Round (s, v, step) : duration))
@@ -504,24 +523,29 @@ let rec read_duration_with ?(css_wide = true) ?(allow_negative = false)
     "duration"
     (if css_wide then duration_css_wide else [])
     ~calls:
-      [
-        ( "var",
-          fun t ->
-            Var
-              (read_var
-                 (read_duration_with ~css_wide ~allow_negative ~canonicalize_ms)
-                 t) );
-        ("calc", fun t -> Calc (read_calc ~result_type:`Value read_operand t));
-        ("round", read_duration_round read_operand);
-        ( "rem",
-          read_binary_call "rem"
-            (fun a b -> (Rem (a, b) : duration))
-            read_operand );
-        ( "mod",
-          read_binary_call "mod"
-            (fun a b -> (Mod (a, b) : duration))
-            read_operand );
-      ]
+      ([
+         ( "var",
+           fun t : duration ->
+             Var
+               (read_var
+                  (read_duration_with ~css_wide ~allow_negative ~canonicalize_ms)
+                  t) );
+         ( "calc",
+           fun t : duration ->
+             Calc (read_calc ~result_type:`Value read_operand t) );
+         ("round", read_duration_round read_operand);
+         ( "rem",
+           read_binary_call "rem"
+             (fun a b -> (Rem (a, b) : duration))
+             read_operand );
+         ( "mod",
+           read_binary_call "mod"
+             (fun a b -> (Mod (a, b) : duration))
+             read_operand );
+       ]
+      (* CSS Values 4 sec. 10.1 puts every math function wherever its resolved
+         type stands; the stepped ones above keep their typed node. *)
+      @ typed_math_calls Time read_operand (fun c : duration -> Calc c))
     t
 
 (** Read a duration value *)
@@ -536,18 +560,20 @@ let rec read_time_with ?(css_wide = true) t : duration =
   Cursor.enum_or_calls ~default:read_time_number "time"
     (if css_wide then duration_css_wide else [])
     ~calls:
-      [
-        ("var", fun t -> Var (read_var read_time t));
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Value read_time_in_calc t) );
-        ("round", read_duration_round read_time);
-        ( "rem",
-          read_binary_call "rem" (fun a b -> (Rem (a, b) : duration)) read_time
-        );
-        ( "mod",
-          read_binary_call "mod" (fun a b -> (Mod (a, b) : duration)) read_time
-        );
-      ]
+      ([
+         ("var", fun t : duration -> Var (read_var read_time t));
+         ( "calc",
+           fun t : duration ->
+             Calc (read_calc ~result_type:`Value read_time_in_calc t) );
+         ("round", read_duration_round read_time);
+         ( "rem",
+           read_binary_call "rem" (fun a b -> (Rem (a, b) : duration)) read_time
+         );
+         ( "mod",
+           read_binary_call "mod" (fun a b -> (Mod (a, b) : duration)) read_time
+         );
+       ]
+      @ typed_math_calls Time read_time_in_calc (fun c : duration -> Calc c))
     t
 
 and read_time t : duration = read_time_with t

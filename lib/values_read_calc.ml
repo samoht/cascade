@@ -5,6 +5,29 @@ open Values_var
 open Values_calc
 open Values_length
 
+(* The CSS Values 4 sec. 10.9 type a unit spells: a comparison's arguments have
+   to share one, and a slot takes only its own. *)
+type unit_family =
+  | Number
+  | Length
+  | Percent
+  | Time
+  | Angle
+  | Frequency
+  | Resolution
+  | Flex
+
+let unit_family unit =
+  match String.lowercase_ascii unit with
+  | "" -> Number
+  | "%" -> Percent
+  | "s" | "ms" -> Time
+  | "deg" | "rad" | "grad" | "turn" -> Angle
+  | "hz" | "khz" -> Frequency
+  | "dpi" | "dpcm" | "dppx" | "x" -> Resolution
+  | "fr" -> Flex
+  | _ -> Length
+
 (* CSS Values 4 sec. 5.3: a signed zero is the same value as unsigned zero.
    Collapse any zero to the canonical [0]: normalise [-0.] to [0.] (so the AST
    never carries a negative-zero float, which breaks structural equality) and
@@ -277,6 +300,35 @@ let checked_stepped_call : type a. Cursor.t -> math_fn -> a calc =
       if math_fn_contains_var fn then Math_fn fn
       else Cursor.err_invalid t "inconsistent stepped-value arguments"
 
+(* CSS Values 4 sec. 10.2: a comparison answers the type its arguments share.
+   Over numbers it folds to the number, as it always did; over a time, an angle
+   or a percentage it stays a call the slot's own evaluator folds, since only
+   the slot knows which leaf spells that unit. *)
+and comparison_of_args : type a. Cursor.t -> math_fn -> math_arg list -> a calc
+    =
+ fun t fn args ->
+  (* Sec. 10.2: the arguments must have a consistent type. A percentage beside a
+     length is one only where the slot resolves it against a length, and a slot
+     of that kind reads its comparisons itself, so here the two differ. *)
+  let family a =
+    match math_arg_result a with
+    | Some (United (_, unit)) -> Some (unit_family unit)
+    | Some (Scalar _) -> Some Number
+    | None -> None
+  in
+  (match List.filter_map family args with
+  | first :: rest when List.exists (fun f -> f <> first) rest ->
+      Cursor.err_invalid t "comparison arguments of different types"
+  | _ -> ());
+  match math_fn_result fn with
+  | Some (Scalar v)
+    when List.for_all
+           (fun a ->
+             match math_arg_result a with Some (Scalar _) -> true | _ -> false)
+           args ->
+      Num v
+  | _ -> Math_fn fn
+
 let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
@@ -361,9 +413,9 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | "round" -> read_stepped_round t
       | "mod" -> read_stepped_binary "mod" (fun a b -> Mod_n (a, b)) t
       | "rem" -> read_stepped_binary "rem" (fun a b -> Rem_n (a, b)) t
-      | "min" -> read_numeric_list_call "min" Float.min Float.infinity t
-      | "max" -> read_numeric_list_call "max" Float.max Float.neg_infinity t
-      | "clamp" -> read_numeric_clamp t
+      | "min" -> read_comparison "min" (fun args -> Min_n args) t
+      | "max" -> read_comparison "max" (fun args -> Max_n args) t
+      | "clamp" -> read_comparison_clamp t
       (* CSS Values 4 (ED) sec. 9.1 numeric math functions: parsed into the
          typed [Math_fn] AST so pretty pp re-emits [name(args)]; the optimizer
          (or minify pp) folds via [eval_math_fn]. *)
@@ -556,42 +608,37 @@ and read_stepped_binary : type a.
  fun name mk t ->
   checked_stepped_call t (read_binary_call name mk read_math_arg_ws t)
 
-and read_numeric_list_call : type a.
-    string -> (float -> float -> float) -> float -> Cursor.t -> a calc =
- fun name fn initial t ->
-  Num
-    (Cursor.call name t (fun inner ->
-         let nums =
-           Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr inner
-         in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         List.fold_left fn initial nums))
+and read_comparison : type a.
+    string -> (math_arg list -> math_fn) -> Cursor.t -> a calc =
+ fun name mk t ->
+  let args =
+    Cursor.call name t (fun inner ->
+        Cursor.ws inner;
+        let args =
+          Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg_ws inner
+        in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        args)
+  in
+  comparison_of_args t (mk args) args
 
-and read_numeric_clamp : type a. Cursor.t -> a calc =
+and read_comparison_clamp : type a. Cursor.t -> a calc =
  fun t ->
-  Num
-    (Cursor.call "clamp" t (fun inner ->
-         let min_value = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let value = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.comma inner;
-         let max_value = read_num_expr inner in
-         Cursor.ws inner;
-         Cursor.expect_eof inner;
-         Float.max min_value (Float.min value max_value)))
-
-(* Read a number-typed calc expression and fold it to a float. Used as the
-   argument reader for [round] / [mod] / [rem] / [min] / [max] / [clamp] which
-   still flatten numeric args to [Num] under the existing typed-fold path. *)
-and read_num_expr t : float =
-  let no_val t = Cursor.err t "expected number" in
-  let calc = read_calc_expr no_val t in
-  match eval_numeric_calc calc with
-  | Some n -> n
-  | None -> Cursor.err_invalid t "non-numeric calc expression"
+  let args =
+    Cursor.call "clamp" t (fun inner ->
+        Cursor.ws inner;
+        let args =
+          Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg_ws
+            inner
+        in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        args)
+  in
+  match args with
+  | [ lo; v; hi ] -> comparison_of_args t (Clamp_n (lo, v, hi)) args
+  | _ -> Cursor.err_invalid t "clamp() takes three arguments"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -632,6 +679,34 @@ and read_nested_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       (Cursor.call "-webkit-calc" t (fun inner -> read_calc_expr read_a inner))
   else Cursor.err t "expected nested calc"
 
+(* The value type a math function answering its arguments' type carries, from
+   the first argument whose unit is known: a call that does not fold, such as
+   [min(1s, 1000ms)], still has one. *)
+let math_fn_family fn : unit_family option =
+  let args =
+    match fn with
+    | Min_n args | Max_n args | Hypot args -> args
+    | Clamp_n (a, b, c) -> [ a; b; c ]
+    | Abs_n a -> [ a ]
+    | Round_n (_, a, b) | Mod_n (a, b) | Rem_n (a, b) -> [ a; b ]
+    | _ -> []
+  in
+  List.find_map
+    (fun a ->
+      match math_arg_result a with
+      | Some (United (_, unit)) -> Some (unit_family unit)
+      | Some (Scalar _) | None -> None)
+    args
+
+let check_math_family t family (calc : _ calc) =
+  match calc with
+  | Math_fn fn -> (
+      match math_fn_family fn with
+      | Some f when f <> family ->
+          Cursor.err_invalid t "incompatible calc types"
+      | _ -> ())
+  | _ -> ()
+
 type inferred_calc_type =
   | Dimension of int
     (* Exponent 0 is a number, 1 is the contextual numeric value, and
@@ -649,10 +724,20 @@ type inferred_calc_type =
    a bare degree count, so the coefficient names no type to check and they stay
    deferred. Every other function here is [<number>] out, so sec. 10.9 types the
    sum it sits in. *)
+(* Read a number-typed calc expression and fold it to a float. Used as the
+   argument reader for [round] / [mod] / [rem] / [min] / [max] / [clamp] which
+   still flatten numeric args to [Num] under the existing typed-fold path. *)
+let read_num_expr t : float =
+  let no_val t = Cursor.err t "expected number" in
+  let calc = read_calc_expr no_val t in
+  match eval_numeric_calc calc with
+  | Some n -> n
+  | None -> Cursor.err_invalid t "non-numeric calc expression"
+
 let math_fn_scalar_type = function
   | Asin _ | Acos _ | Atan _ | Atan2 _ -> Deferred
   | Sin _ | Cos _ | Tan _ | Sqrt _ | Exp _ | Log _ | Pow _ | Hypot _ | Sign_n _
-  | Abs_n _ | Round_n _ | Mod_n _ | Rem_n _ ->
+  | Abs_n _ | Round_n _ | Mod_n _ | Rem_n _ | Min_n _ | Max_n _ | Clamp_n _ ->
       Dimension 0
 
 (* Inside an operand tree a call that answers its arguments' type is the
@@ -674,8 +759,20 @@ and infer_calc_type : type a. a calc -> inferred_calc_type = function
       match math_fn_result fn with
       | Some (United (_, unit)) -> Result_unit unit
       | Some (Scalar _) -> math_fn_scalar_type fn
-      (* A call that does not fold keeps no type to check against. *)
-      | None -> Deferred)
+      (* A call that does not fold still answers the type its arguments share,
+         when one of them names it; one holding only [var()]s keeps no type to
+         check against. *)
+      | None -> (
+          match math_fn_family fn with
+          | Some Number -> Dimension 0
+          | Some Percent -> Result_unit "%"
+          | Some Length -> Result_unit "px"
+          | Some Time -> Result_unit "s"
+          | Some Angle -> Result_unit "deg"
+          | Some Frequency -> Result_unit "hz"
+          | Some Resolution -> Result_unit "dppx"
+          | Some Flex -> Result_unit "fr"
+          | None -> Deferred))
   | Nested inner | Parens inner -> infer_calc_type inner
   | Expr (left, (Add | Sub), right) -> (
       match (infer_calc_operand left, infer_calc_operand right) with

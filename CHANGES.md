@@ -232,6 +232,10 @@ where it is called. Each entry says what to write there.
   for. A match over `Properties.content` needs a `With_alt { content; alt }`
   arm; `alt` is the list of strings, `counter()`, `counters()` and `attr()`
   items after the slash (#1474).
+- **`Values.math_fn` has `Min_n`, `Max_n` and `Clamp_n`.** A `min()`, `max()`
+  or `clamp()` over a time, an angle or a percentage had no node, which is why
+  the slots of those types refused it. A match over `math_fn` needs the three
+  arms; each holds the `math_arg`s as written (#1475).
 - **`Pp.quoted` is gone.** It wrote a string between double quotes without
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
@@ -380,6 +384,14 @@ differently. They are the reason to minify again.
   `attr()`, `counter()` and `counters()` in it, is now read and printed, and a
   value holding one keeps the `content` written before it for browsers that
   predate it (#1474).
+- **Math functions over times, angles and percentages were dropped.**
+  `transition-duration:min(1s,2s)`, `transition-delay:abs(-1s)`,
+  `rotate:min(10deg,20deg)`, `opacity:min(10%,20%)`, `zoom:max(10%,20%)`,
+  `border-image-slice:clamp(10%,20%,30%)` and the same calls in the
+  transition and animation shorthands, `offset-rotate`, the SVG opacities,
+  `shape-image-threshold` and `scale` were refused, so the declaration was
+  lost. Every math function now reads wherever its type stands (CSS Values 4
+  sec. 10.1) and folds to the literal of its value (#1475).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers
