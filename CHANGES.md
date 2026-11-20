@@ -432,6 +432,13 @@ differently. They are the reason to minify again.
   that repeats an earlier write of its selector is now dropped only when
   nothing, `all` included, wrote the same property in between, inside the
   block or out. Each pair now compares different (#1312, #1406, #1451).
+- **A guard a newer browser reads was no difference.**
+  `@supports (field-sizing:content){a{color:red}}` compared identical to an
+  empty sheet, and so did a guard on `anchor-name`, since no target version
+  reads either. Chrome ships them from 123 and 125, and Chromium 153 colours
+  the link. A target now stands for its version and every later one, so a
+  guard is dropped only when every browser at or past the targets fails it,
+  and the pair compares different (#1463).
 - **A sheet differed from its own minified output.** This is the check the
   comparison exists for, and with 1.2.1 it failed on 139 of the 504 SatCSS
   sheets and on Tailwind's output. The comparison now treats as equal each

@@ -323,6 +323,9 @@ needs is added on both sides and one no target needs is dropped from both, a
 colour fallback every target parses past is dead, a `-ms-` or `-o-`
 declaration, which no target reads, is dropped from both, and so is a rule
 whose selector no target reads ([Target browsers](#target-browsers)).
+Each target stands for its version and every later one, so a `@supports`
+guard no target satisfies stays: `@supports (field-sizing:content)` fails in
+Chrome 111 and holds from Chrome 123.
 `--enforce-spec` turns these off. An `@supports` guard that no browser can answer yes to, such as one
 over a `<general-enclosed>` term that CSS Conditional 3 section 6.1 makes
 false, selects nothing on either side, and its block is dropped from both.
