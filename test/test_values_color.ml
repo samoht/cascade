@@ -797,6 +797,13 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in srgb,red 20%,blue,green 30%)"
     ~optimized:"color-mix(in srgb,red 20%,#00f,green 30%)"
     "color-mix(in srgb, red 20%, blue, green 30%)";
+  (* The list is [#], so one item is a mix too. Sec. 3.3 takes its colour,
+     converted to the interpolation space, with its alpha scaled by what the
+     percentage leaves over. Firefox reads it from 150. *)
+  check_color ~expected:"color-mix(in srgb,blue)"
+    ~optimized:"color-mix(in srgb,#00f)" "color-mix(in srgb, blue)";
+  check_color ~expected:"color-mix(in srgb,blue 40%)"
+    ~optimized:"color-mix(in srgb,#00f 40%)" "color-mix(in srgb, blue 40%)";
   (* CSS Color 4 sec. 13.3: [color-mix(in srgb, ...)] interpolates premultiplied
      channels then un-premultiplies by the interpolated alpha; the <100%-sum
      scaling applies only to the result alpha. *)
