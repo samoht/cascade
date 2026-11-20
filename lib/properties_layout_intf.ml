@@ -213,6 +213,9 @@ type z_index =
 (** CSS opacity values. *)
 type opacity =
   | Opacity_number of float
+  | Opacity_percentage of float
+      (** [<percentage>], kept apart from the number it denotes until a typed
+          leaf picks the spelling (CSS Values 4 sec. 10.9). *)
   | Calc of opacity calc
   | Inherit
   | Initial
@@ -227,6 +230,7 @@ type opacity =
     is inside the shape. *)
 type shape_image_threshold =
   | Number of float
+  | Percentage of float
   | Calc of shape_image_threshold calc
   | Inherit
   | Initial
