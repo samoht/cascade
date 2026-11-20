@@ -383,6 +383,30 @@ let equal_canonical_targets () =
   Alcotest.(check bool)
     "so does one on anchor-name" false
     (equal "@supports (anchor-name:--a){a{color:red}}" "b{}");
+  (* A guard is decided by what its declaration's value uses, not by its
+     property alone. web-features records [width:stretch] from Chrome 138 and in
+     no Firefox or Safari, and [break-before:always] in Firefox alone; Chromium
+     153 drops the second, so the guarded rule never applies there. *)
+  Alcotest.(check bool)
+    "a guard on a value a floor lacks is not unwrapped" false
+    (equal "@supports (width:stretch){a{color:red}}" "a{color:red}");
+  Alcotest.(check bool)
+    "nor on one Chromium drops" false
+    (equal "@supports (break-before:always){a{color:red}}" "a{color:red}");
+  Alcotest.(check bool)
+    "and its negation is not dropped" false
+    (equal "@supports not (width:stretch){a{color:red}}" "b{}");
+  (* [not] reverses a leaf: every floor fails [field-sizing:content], so the
+     negation holds there, and fails from Chrome 123. *)
+  Alcotest.(check bool)
+    "a negation a later release fails is not unwrapped" false
+    (equal "@supports not (field-sizing:content){a{color:red}}" "a{color:red}");
+  (* The browsers judged for are dated: each floor up to the newest release the
+     data records. It records [width:fit-content(10px)] in no engine, so the
+     guard fails in every one of them and selects none. *)
+  Alcotest.(check bool)
+    "a guard no release of the data satisfies selects none" true
+    (equal "@supports (width:fit-content(10px)){a{color:red}}" "b{}");
   (* Every floor reads [display:grid], and a browser that ships a production
      keeps it, so the negation fails in every browser at or past the floors. *)
   Alcotest.(check bool)
