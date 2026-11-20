@@ -430,6 +430,11 @@ The new form of a diagnostic is under [Breaking](#command-line).
 - **The help pages are written for a first reading.** They group the options by
   what they act on, give every command examples and describe the `diff` report
   and its `--json` members (#1333, #1335).
+- **`diff --browser` promised more than it checks.** Its help said it reports
+  every computed-style value the two files disagree on. It compares renders
+  pixel for pixel and lists computed values only under pixels that differ, so
+  a value no pixel shows, such as the duration of an animation that never
+  runs, goes unreported. The help now says so (#1455).
 
 ### Parsing
 
