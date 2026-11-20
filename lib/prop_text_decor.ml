@@ -691,12 +691,18 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
              h_offset = Values.normalize_length s.h_offset;
              v_offset = Values.normalize_length s.v_offset;
              (* The blur has a floor, so unwrapping a math function there could
-                turn a value browsers take into one they drop. *)
+                turn a value browsers take into one they drop. A zero blur
+                before a [var()] colour stays, as in [box-shadow]: without it
+                the reader takes the [var()] for the blur. *)
              blur =
-               drop_default ~is_default:is_zero_length
-                 (option_map_preserve
+               (let blur =
+                  option_map_preserve
                     (Values.normalize_length ~non_negative:true)
-                    s.blur);
+                    s.blur
+                in
+                match s.color with
+                | Some (Var _) -> blur
+                | _ -> drop_default ~is_default:is_zero_length blur);
              color = option_map_preserve (normalize_color ~lossless) s.color;
            })
   | other -> other
