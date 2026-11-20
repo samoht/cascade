@@ -760,6 +760,10 @@ The new form of a diagnostic is under [Breaking](#command-line).
   shape, so it equals the selector read back from its printed text (#1342).
 - **`Css.Context.resolve_url`** resolves `1:/x` against the base as a relative
   path, as WHATWG URL does, since a digit cannot open a scheme (#1291).
+- **`Properties.is_vendor_prefixed` and `Properties.legacy_alias`** say
+  whether a property is a vendor's own extension and which property a
+  WHATWG Compatibility legacy alias such as `-webkit-transform` names. The
+  optimizer now asks them instead of reading the property's name (#1480).
 
 ## 1.2.1
 

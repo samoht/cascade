@@ -322,10 +322,12 @@ let rec keys_within a b =
    may read without reading the write after it. *)
 let narrowable d =
   (not (Shorthand.is_intentionally_duplicated d))
-  && (not (String.starts_with ~prefix:"-" (Declaration.property_name d)))
   &&
   match d with
   | Declaration.Theme_guarded _ -> false
+  | Declaration.Declaration { property; _ }
+    when Properties.is_vendor_prefixed property ->
+      false
   | Declaration.Declaration { property = Custom_property _; _ } -> false
   | Declaration.Declaration { property = Unknown_property _; _ } ->
       Shorthand.declaration_is_broad d

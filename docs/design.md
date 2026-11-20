@@ -112,6 +112,15 @@ name's quotes). `Declaration.size` caches the default print's length; a
 carries the run's flags, and `Size.decl` measures the flagged print when one
 is set. `optimize_factor` "factoring weighs the flagged print" checks it.
 
+## Typed property decisions
+
+The optimizer decides on the property, never on its name.
+`Properties.is_vendor_prefixed` and `Properties.legacy_alias` match the
+property GADT with no wildcard, so a new constructor fails the build until it
+is classified; a property cascade does not type answers by the name the reader
+kept for it. `properties` "vendor prefix and aliases are property facts" checks
+both against the WHATWG Compatibility Standard sec. 3.4.1 list.
+
 ## Rewrites that move rules
 
 Factoring a default value into a shared block keeps a rule's own declaration

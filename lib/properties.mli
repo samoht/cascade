@@ -2867,6 +2867,17 @@ val shadow :
 val pp_any_property : any_property Pp.t
 (** [pp_any_property] pretty-prints any CSS property. *)
 
+val is_vendor_prefixed : 'a property -> bool
+(** [is_vendor_prefixed property] is [true] iff [property] is a vendor's own
+    extension, a name starting with a single [-] (CSS 2.1 sec. 4.1.2.1). The
+    classification is exhaustive over the property GADT; an unknown property
+    answers by its name. *)
+
+val legacy_alias : 'a property -> any_property option
+(** [legacy_alias property] is the property [property] is a legacy name alias of
+    under WHATWG Compatibility Standard sec. 3.4.1, such as [transform] for
+    [-webkit-transform], and [None] for every other property. *)
+
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
 
