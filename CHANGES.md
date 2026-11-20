@@ -360,6 +360,14 @@ differently. They are the reason to minify again.
   16.5 and 16.6 the second alone, and each dropped the rule. The targets are
   floors, so two selectors now list only when every release at or past them
   reads both or neither (#1468).
+- **Math functions outside a property's range were dropped or broken.**
+  `font-size:calc(-1px)`, `transition-duration:calc(-1s)`,
+  `flex-basis:calc(-1%)` and `font-stretch:min(-1%,2%)` were dropped, and
+  `scroll-padding-inline:calc(2px - 3px)`, `gap:calc(-1px)`,
+  `width:calc(1% - 2%)`, `border-width:min(-1px,2px)` and
+  `zoom:min(-1,2)` became a negative literal every browser drops. A math
+  function past the range is valid and clamped (CSS Values 4 sec. 10.12), so
+  each is now kept, folded where it can be, inside `calc()` (#1473).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

@@ -447,6 +447,8 @@ let rec read_justify_self t : justify_self =
          ])
     t
 
+(* CSS Box Alignment 3 sec. 8.1 gives each gap a [0,inf] range, which a folded
+   call keeps as its wrapper (CSS Values 4 sec. 10.12). *)
 let normalize_gap : gap -> gap =
  fun value ->
   match value with
@@ -454,8 +456,14 @@ let normalize_gap : gap -> gap =
       preserve_if_equal value
         (Lengths
            {
-             row_gap = option_map_preserve Values.normalize_length row_gap;
-             column_gap = option_map_preserve Values.normalize_length column_gap;
+             row_gap =
+               option_map_preserve
+                 (Values.normalize_length ~non_negative:true)
+                 row_gap;
+             column_gap =
+               option_map_preserve
+                 (Values.normalize_length ~non_negative:true)
+                 column_gap;
            })
   | other -> other
 

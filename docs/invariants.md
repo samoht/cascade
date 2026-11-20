@@ -45,7 +45,12 @@ change that breaks one is a defect even when every test passes.
   lone number in `flex` as the grow factor, so normalize leaves `flex:0px` and
   never builds a lone `Zero` basis. That node has no spelling of its own, and
   pp prints it as `0px` (`properties_layout` "flex", `optimize_declarations`
-  "target minify and enforce-spec split").
+  "target minify and enforce-spec split"). A property's range binds only a
+  literal: CSS Values 4 sec. 10.12 clamps a math function past it at
+  computed-value time, so a reader takes every operand and result of either
+  sign, a comparison folded at read time stays a calculation, and a fold keeps
+  the wrapper around a result the bare literal could not spell (`values_math`
+  "spec math range every family").
 - **A custom property is single-valued only by `@property` registration**,
   never by inference from a definition's value. A `calc()` identity that drops
   an operand (`x * 0`, `0 * x`) folds only over an operand with no `var()`, or

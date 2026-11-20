@@ -1186,8 +1186,11 @@ let rec read_zoom (t : Cursor.t) : zoom =
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
   in
+  (* The folded math function keeps its wrapper below the range, where the bare
+     literal would be dropped. *)
   let read_numeric_math t : zoom =
-    Num (Values.read_number_percentage_expression t)
+    let n = Values.read_number_percentage_expression t in
+    if n < 0. then Calc (Val (Num n)) else Num n
   in
   Cursor.enum_or_calls "zoom"
     [
