@@ -843,10 +843,12 @@ let runtime_var_not_folded_contract () =
        (Css.Declaration.to_string
           (Css.eval_declaration Css.Context.empty folding)));
   (* [* 1] never reads the variable's value, so it still simplifies a runtime
-     var. A runtime var can take any tokens, so [* 0] keeps it (CSS Values 4
-     sec. 10.10.1): with [--spacing] undefined, Chromium 153 leaves
-     [calc(var(--spacing) * 0)] invalid at computed-value time and [width] auto.
-     Value resolution ([* n], n >= 2) is skipped. *)
+     var, down to the [calc()] around it: the var substitutes tokens, and under
+     [--spacing:1px + 2px] Chromium 153 computes [width:calc(var(--spacing))] to
+     3px and [width:var(--spacing)] to auto. A runtime var can take any tokens,
+     so [* 0] keeps it (CSS Values 4 sec. 10.10.1): with [--spacing] undefined,
+     Chromium 153 leaves [calc(var(--spacing) * 0)] invalid at computed-value
+     time and [width] auto. Value resolution ([* n], n >= 2) is skipped. *)
   let eval c =
     Css.Declaration.to_string ~minify:true
       (Css.eval_declaration Css.Context.empty (Css.width (Calc c)))
@@ -855,17 +857,18 @@ let runtime_var_not_folded_contract () =
     "runtime var * 0 keeps the var() reference" "width:calc(var(--spacing)*0)"
     (eval (Expr (Var spacing, Mul, Num 0.)));
   Alcotest.(check string)
-    "runtime var * 1 folds to the operand" "width:var(--spacing)"
+    "runtime var * 1 drops the factor" "width:calc(var(--spacing))"
     (eval (Expr (Var spacing, Mul, Num 1.)));
   Alcotest.(check string)
     "runtime var * 4 keeps the var() reference" "width:calc(var(--spacing)*4)"
     (eval (Expr (Var spacing, Mul, Num 4.)));
   (* The spacing utilities multiply the theme var, so the [* 1] case must reach
      the operand through a property shorthand too: [p-N] for N=1 is [padding:
-     var(--spacing)], not [calc(var(--spacing) * 1)]. *)
+     calc(var(--spacing))]. Under [--spacing:1px 2px], Chromium 153 drops it
+     (0px) and reads [padding:var(--spacing)] as two lengths (2px). *)
   Alcotest.(check string)
-    "runtime var * 1 in the padding shorthand folds to the operand"
-    "padding:var(--spacing)"
+    "runtime var * 1 in the padding shorthand drops the factor"
+    "padding:calc(var(--spacing))"
     (Css.Declaration.to_string ~minify:true
        (Css.eval_declaration Css.Context.empty
           (Css.padding [ Calc (Expr (Var spacing, Mul, Num 1.)) ])))
@@ -908,11 +911,33 @@ let unreadable_binding_is_not_an_absent_one () =
   check_eval_stylesheet "--x: var(--x)" ~ctx:(ctx "var(--x)")
     ~expected:".a{width:8px}" ".a{width:var(--x,8px)}"
 
+(* A runtime var substitutes tokens (CSS Variables 1 sec. 3), and the [calc()]
+   around it is what makes them arithmetic: under [--spacing:1px + 2px],
+   Chromium 153 computes [width:calc(var(--spacing))] to 3px and
+   [width:var(--spacing)] to auto. The evaluator keeps the [calc()], as the
+   optimizer does for an unregistered var. *)
+let runtime_var_keeps_its_calc () =
+  let open Css.Values in
+  let _decl, spacing = Css.var ~runtime:true "spacing" Length (Px 4.) in
+  let eval c =
+    Css.Declaration.to_string ~minify:true
+      (Css.eval_declaration Css.Context.empty (Css.width (Calc c)))
+  in
+  Alcotest.(check string)
+    "a calc() around a runtime var stays" "width:calc(var(--spacing))"
+    (eval (Var spacing));
+  Alcotest.(check string)
+    "a nested calc() around a runtime var stays"
+    "width:calc(calc(var(--spacing))*2)"
+    (eval (Expr (Nested (Var spacing), Mul, Num 2.)))
+
 let suite =
   ( "context_eval",
     [
       Alcotest.test_case "runtime var not folded" `Quick
         runtime_var_not_folded_contract;
+      Alcotest.test_case "runtime var keeps its calc()" `Quick
+        runtime_var_keeps_its_calc;
       Alcotest.test_case "computed value resolution contract" `Quick
         test_computed_value_resolution_contract;
       Alcotest.test_case "computed value edge contract" `Quick

@@ -28,7 +28,10 @@ change that breaks one is a defect even when every test passes.
   (`v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`,
   `calc_zero_product_registered_number` in
   `test/test_optimize_boundaries.ml`). `x * 1` and `x / 1` keep `x` whatever it
-  substitutes.
+  substitutes, but not the `calc()` or parentheses around it. `Css.Context` and
+  `--inline-vars` keep those around an unresolved `var()`
+  (`runtime_var_keeps_its_calc` in `test/test_context_eval.ml`), and the
+  optimizer drops a nested one only around a single-valued registration.
 - **Source-token fidelity is not a contract.** The AST carries no raw-text
   sidecars for byte-identical round trips.
 - **The canonical diff inherits the optimizer.** It compares optimize+minify
