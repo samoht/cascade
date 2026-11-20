@@ -915,9 +915,7 @@ let pp_calc_with : type a.
   | Val v when Pp.minified ctx && unwrap v ->
       Option.value pp_unwrapped ~default:pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
-  | _ ->
-      let ctx = { ctx with in_calc = true } in
-      Pp.call "calc" (pp_calc_contents pp_value) ctx calc
+  | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =
   pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc
