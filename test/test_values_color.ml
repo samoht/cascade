@@ -782,6 +782,15 @@ let spec_color5_function_edges () =
     "color-mix(in oklch, oklch(0.7 0.15 350), oklch(0.7 0.15 10))";
   check_color ~expected:"color-mix(in lch,lch(70 50 350),lch(70 50 10))"
     ~optimized:"#fc84ae" "color-mix(in lch, lch(70 50 350), lch(70 50 10))";
+  (* CSS Color 5 (ED) sec. 3 takes any number of [<color> && <percentage>?]
+     items, and sec. 3.3 mixes them in order, each into the result so far. A mix
+     of three keeps all three; folding the first two alone loses the third. *)
+  check_color ~expected:"color-mix(in srgb,red,blue,green)"
+    ~optimized:"color-mix(in srgb,red,#00f,green)"
+    "color-mix(in srgb, red, blue, green)";
+  check_color ~expected:"color-mix(in srgb,red 20%,blue,green 30%)"
+    ~optimized:"color-mix(in srgb,red 20%,#00f,green 30%)"
+    "color-mix(in srgb, red 20%, blue, green 30%)";
   (* CSS Color 4 sec. 13.3: [color-mix(in srgb, ...)] interpolates premultiplied
      channels then un-premultiplies by the interpolated alpha; the <100%-sum
      scaling applies only to the result alpha. *)
