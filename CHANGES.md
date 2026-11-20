@@ -278,6 +278,11 @@ differently. They are the reason to minify again.
   nested. Library callers whose targets parse nesting keep it, apart from a
   rule holding a declaration after a nested rule or in a nested `@media`
   (CSS Nesting 1 sec. 5), which is flattened under any targets (#1505).
+- **Nesting gave `&` another parent.** Where nesting was synthesised,
+  `.c{.a{color:red}.a &{color:blue}}` became `.c .a{color:red;&{color:#00f}}`
+  and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
+  rather than the old one. A rule whose selector holds `&` past its parent's
+  prefix now stays where it is (#1506).
 
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an

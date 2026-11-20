@@ -323,9 +323,14 @@ let hoist_declaration_runs (rule : rule) =
   | hoisted, nested ->
       { rule with declarations = rule.declarations @ hoisted; nested }
 
+(* What is left of [child] once [parent] is stripped becomes a nested rule's
+   selector, where [&] names [parent]. An [&] in that rest named [:scope] or the
+   enclosing rule before (CSS Nesting 1 sec. 4), so such a child stays: [.a &]
+   under [.a] would be [.a .a]. *)
 let rec strip_element_prefix (parent : Selector.t) (child : Selector.t) =
   match (parent, child) with
-  | _, Selector.Combined (cp, comb, crest) when Selector.equal cp parent ->
+  | _, Selector.Combined (cp, comb, crest)
+    when Selector.equal cp parent && not (contains crest) ->
       Some
         (if comb = Selector.Descendant then crest
          else Selector.Relative (comb, crest))
@@ -343,7 +348,8 @@ let rec strip_element_prefix (parent : Selector.t) (child : Selector.t) =
         | _ -> None
       in
       match drop pps cps with
-      | Some (_ :: _ as suffix) ->
+      | Some (_ :: _ as suffix) when not (contains (Selector.Compound suffix))
+        ->
           Some (Selector.Compound (Selector.Nesting :: suffix))
       | _ -> None)
   | _ -> None
