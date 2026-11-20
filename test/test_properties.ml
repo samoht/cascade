@@ -288,8 +288,8 @@ let canonical_math_block_context () =
 
 (* WHATWG Compatibility Standard sec. 3.4.1 lists the [-webkit-] properties that
    are legacy name aliases of an unprefixed property. The table below is that
-   list; a name off it, such as [-webkit-user-select] or any [-moz-] spelling,
-   is a property of its own. *)
+   list, less the [-webkit-mask-box-image] set; a name off it, such as
+   [-webkit-user-select] or any [-moz-] spelling, is a property of its own. *)
 let whatwg_legacy_aliases =
   [
     ("-webkit-align-content", "align-content");
@@ -325,12 +325,6 @@ let whatwg_legacy_aliases =
     ("-webkit-flex-wrap", "flex-wrap");
     ("-webkit-justify-content", "justify-content");
     ("-webkit-mask", "mask");
-    ("-webkit-mask-box-image", "mask-border");
-    ("-webkit-mask-box-image-outset", "mask-border-outset");
-    ("-webkit-mask-box-image-repeat", "mask-border-repeat");
-    ("-webkit-mask-box-image-slice", "mask-border-slice");
-    ("-webkit-mask-box-image-source", "mask-border-source");
-    ("-webkit-mask-box-image-width", "mask-border-width");
     ("-webkit-mask-clip", "mask-clip");
     ("-webkit-mask-composite", "mask-composite");
     ("-webkit-mask-image", "mask-image");
@@ -378,6 +372,19 @@ let vendor_prefix_and_aliases_are_property_facts () =
         (Option.map name_of (legacy_alias p)))
     [
       "-webkit-user-select";
+      (* Sec. 3.4.1 also lists the [-webkit-mask-box-image] set as aliases of
+         [mask-border], but no Chromium or Firefox release reads [mask-border]
+         (web-features: Safari 17.2 alone), so across the targets each is a
+         property of its own. Chromium 153: [CSS.supports] is true for
+         [-webkit-mask-box-image-width] and false for [mask-border-width], and
+         [mask-border-width:3px] leaves [-webkit-mask-box-image-width] at [auto]
+         where the prefixed spelling computes [3px]. *)
+      "-webkit-mask-box-image";
+      "-webkit-mask-box-image-outset";
+      "-webkit-mask-box-image-repeat";
+      "-webkit-mask-box-image-slice";
+      "-webkit-mask-box-image-source";
+      "-webkit-mask-box-image-width";
       "-moz-transform";
       "-moz-box-sizing";
       "-webkit-text-decoration-color";
