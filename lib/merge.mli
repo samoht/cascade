@@ -33,9 +33,12 @@ val equal_compatibility : compatibility -> compatibility -> bool
 
 val compatible : Selector.t -> Selector.t -> bool
 (** [compatible sel1 sel2] is whether [sel1] and [sel2] can share one selector
-    list: whether both are {!listable} and the same evergreen targets drop each,
-    so that every target reads the list as it reads them apart. The relation is
-    an equivalence on listable selectors. *)
+    list: whether both are {!listable} and the same browsers at or above the
+    evergreen floors drop each, so that every one of them reads the list as it
+    reads them apart. A selector some floor drops may be read from a later
+    release, so two such selectors list only when the data has every engine ship
+    them in the same release. The relation is an equivalence on listable
+    selectors. *)
 
 val all_compatible : Selector.t list -> bool
 (** [all_compatible sels] is whether every pair in [sels] is {!compatible}, read

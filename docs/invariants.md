@@ -92,6 +92,14 @@ change that breaks one is a defect even when every test passes.
   keeps more: without a judge it also keeps the fallback before a CSS Color 4
   colour or a runtime substitution. `floor_fallbacks_survive` in
   `test/test_optimize_declarations.ml` and `equal_canonical_targets` hold it.
+- **Two selectors share a list only when every browser at or above the floors
+  drops both or neither.** A browser drops a whole list over a selector it
+  does not parse (Selectors 4 sec. 3.9). A selector a floor reads is read
+  from then on; one a floor drops may be read from a later release, so
+  `Merge.compatible` lists two such selectors only when every engine ships
+  them in the same release, and one whose production no release ships lists
+  only with selectors waiting on the same productions.
+  `test_compatible_past_the_floors` in `test/test_merge.ml` holds it.
 - **Rule rewrites that move source order reason about overlap.** Factoring a
   default value into a shared block keeps a rule's own declaration when an
   earlier overlapping rule writes a different value. Nesting synthesis is

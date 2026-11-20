@@ -1,11 +1,12 @@
-(* Which evergreen targets drop a selector. Selectors 4 sec. 3.9 drops a whole
-   list in a browser that does not parse one of its selectors, so a list is read
-   as its selectors are only when every target drops all of them or none of
-   them: two selectors share a list only when the same targets drop each.
+(* Which browsers at or above the evergreen floors drop a selector. Selectors 4
+   sec. 3.9 drops a whole list in a browser that does not parse one of its
+   selectors, so a list is read as its selectors are only when every such
+   browser drops all of them or none of them: two selectors share a list only
+   when the same releases drop each.
 
    [reach] has a case for every node, so a new one is decided here. A standard
    pseudo-class or pseudo-element names its BCD key, and the web-features data
-   ({!Support.engine_implements}) answers for each target; it records a partial
+   ({!Support.engine_shipped}) answers for each target; it records a partial
    implementation as none, which can only keep two selectors apart. A node the
    data does not carry, and a pseudo-class cascade does not know, has no answer
    and lists with nothing. A prefixed name has no key of its own and is decided
@@ -21,33 +22,81 @@
    every target drops a [-ms-] name, a bare [:-webkit-any], a page pseudo-class
    or a CSS Modules scope marker in a style rule, and the column and
    shadow-piercing combinators. *)
+(* A target is a floor, the engine at its version and every later release, so
+   what drops a selector is read for all of them. [Forever] is an engine that
+   never parses the selector. [From { since; unshipped }] is one that parses it
+   from the release [since] names on, [None] being the floor itself, once every
+   key in [unshipped], which the data records it has not shipped, ships too: a
+   shipped production stays, and an unshipped one may ship in any release. Two
+   selectors list only when every engine reads them under the same terms, so
+   [:user-valid] and [:user-invalid], shipped in the same releases, list, and
+   [:popover-open] and [:user-valid], dropped alike by Chrome 111 but read from
+   Chrome 114 and 119, do not. *)
+type status =
+  | Forever
+  | From of { since : Support.version option; unshipped : string list }
+
 type dropped = {
-  chrome : bool;
-  firefox : bool;
-  safari : bool;
-  ios_safari : bool;
+  chrome : status;
+  firefox : status;
+  safari : status;
+  ios_safari : status;
 }
 
-let none =
-  { chrome = false; firefox = false; safari = false; ios_safari = false }
+let read = From { since = None; unshipped = [] }
+let none = { chrome = read; firefox = read; safari = read; ios_safari = read }
 
-let all = { chrome = true; firefox = true; safari = true; ios_safari = true }
-let gecko_only = { all with firefox = false }
-let blink_and_webkit = { none with firefox = true }
+let all =
+  {
+    chrome = Forever;
+    firefox = Forever;
+    safari = Forever;
+    ios_safari = Forever;
+  }
+
+let gecko_only = { all with firefox = read }
+let blink_and_webkit = { none with firefox = Forever }
+
+let later a b =
+  match (a, b) with
+  | None, v | v, None -> v
+  | Some (ma, na), Some (mb, nb) ->
+      let c = Int.compare ma mb in
+      if c > 0 || (c = 0 && Int.compare na nb >= 0) then a else b
+
+let union_status a b =
+  match (a, b) with
+  | Forever, _ | _, Forever -> Forever
+  | From a, From b ->
+      From
+        {
+          since = later a.since b.since;
+          unshipped = List.sort_uniq String.compare (a.unshipped @ b.unshipped);
+        }
 
 let union a b =
   {
-    chrome = a.chrome || b.chrome;
-    firefox = a.firefox || b.firefox;
-    safari = a.safari || b.safari;
-    ios_safari = a.ios_safari || b.ios_safari;
+    chrome = union_status a.chrome b.chrome;
+    firefox = union_status a.firefox b.firefox;
+    safari = union_status a.safari b.safari;
+    ios_safari = union_status a.ios_safari b.ios_safari;
   }
 
+let equal_version (ma, na) (mb, nb) = Int.equal ma mb && Int.equal na nb
+
+let equal_status a b =
+  match (a, b) with
+  | Forever, Forever -> true
+  | From a, From b ->
+      Option.equal equal_version a.since b.since
+      && List.equal String.equal a.unshipped b.unshipped
+  | (Forever | From _), _ -> false
+
 let equal_dropped a b =
-  Bool.equal a.chrome b.chrome
-  && Bool.equal a.firefox b.firefox
-  && Bool.equal a.safari b.safari
-  && Bool.equal a.ios_safari b.ios_safari
+  equal_status a.chrome b.chrome
+  && equal_status a.firefox b.firefox
+  && equal_status a.safari b.safari
+  && equal_status a.ios_safari b.ios_safari
 
 type reach = Dropped of dropped | Key of string | Unknown
 
@@ -195,7 +244,8 @@ let reach : Selector.t -> reach = function
   | Webkit_any_call _ | Webkit_full_screen | Scrollbar_state _ ->
       Dropped blink_and_webkit
   | Webkit_full_screen_ancestor ->
-      Dropped { none with firefox = true; safari = true; ios_safari = true }
+      Dropped
+        { none with firefox = Forever; safari = Forever; ios_safari = Forever }
   | Combined (_, (Column | Shadow_piercing | Shadow_deep), _)
   | Ms_input_placeholder | Webkit_any | Left | Right | First | Local_scope
   | Local_call _ | Global_scope | Global_call _ ->
@@ -213,10 +263,16 @@ let engines =
   ]
 
 let drops key (engine, version) =
-  match Support.engine_implements engine version key with
-  | Some true -> Some false
-  | Some false -> Some true
+  match Support.engine_shipped engine key with
   | None -> None
+  | Some None -> Some (From { since = None; unshipped = [ key ] })
+  | Some (Some shipped) ->
+      if
+        Option.equal equal_version
+          (later (Some shipped) (Some version))
+          (Some version)
+      then Some read
+      else Some (From { since = Some shipped; unshipped = [] })
 
 let read_dropped_by_key key =
   match List.map (drops key) engines with
