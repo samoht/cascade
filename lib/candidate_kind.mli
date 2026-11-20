@@ -177,6 +177,6 @@ val rewrite_candidate :
 val selector_size : view -> Rule_graph.node_id -> int
 (** [selector_size g id] is the printed size of the selector of [id]. *)
 
-val decls_inline_cost : Declaration.declaration list -> int
-(** [decls_inline_cost decls] is what printing [decls] in one more rule costs.
-*)
+val decls_inline_cost : view -> Declaration.declaration list -> int
+(** [decls_inline_cost g decls] is what printing [decls] in one more rule costs,
+    under the print [g]'s graph is measured with. *)

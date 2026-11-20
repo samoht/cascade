@@ -59,7 +59,7 @@ let test_skipped_segment_builds_no_graph () =
   in
   let ctx = Ctx.v `Stylesheet in
   let finalize = Rule.finalize ~ctx in
-  let summary = measure (fun () -> Preflight.summarize input) in
+  let summary = measure (fun () -> Preflight.summarize Size.default input) in
   let run = measure (fun () -> Factor.run ~ctx ~finalize input) in
   if run > 2. *. summary then
     Alcotest.failf "skipping allocated %.0f words, the summary alone %.0f" run

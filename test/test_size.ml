@@ -26,15 +26,18 @@ let test_decl_and_rule_sizes_match_minified_output () =
   in
   Alcotest.(check int)
     "declaration bytes" decl_bytes
-    (Size.decls r.declarations);
-  Alcotest.(check int) "rule bytes" (String.length (min_rule r)) (Size.rule r)
+    (Size.decls Size.default r.declarations);
+  Alcotest.(check int)
+    "rule bytes"
+    (String.length (min_rule r))
+    (Size.rule Size.default r)
 
 let test_rules_size_is_sum () =
   let rs = rules ".a{color:red}.b{width:1px}" in
   Alcotest.(check int)
     "rules byte sum"
-    (List.fold_left (fun acc r -> acc + Size.rule r) 0 rs)
-    (Size.rules rs)
+    (List.fold_left (fun acc r -> acc + Size.rule Size.default r) 0 rs)
+    (Size.rules Size.default rs)
 
 (* Every declaration the optimizer scores is one it already built, so measuring
    one should not print it again. The declarations below take each branch of the
@@ -67,7 +70,7 @@ let test_measuring_declarations_allocates_nothing () =
   Alcotest.(check (float 0.))
     "words allocated beyond the measurement's own"
     (measure (fun () -> 0))
-    (measure (fun () -> Size.decls decls))
+    (measure (fun () -> Size.decls Size.default decls))
 
 let suite =
   ( "size",

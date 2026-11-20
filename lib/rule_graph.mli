@@ -61,6 +61,7 @@ type rewrite_error =
   | Relay_cycle
 
 val of_rules :
+  ?size_print:Size.print ->
   ?parent:Selector.t ->
   ?closed_world:bool ->
   ?pin_shared_branches:bool ->
@@ -68,9 +69,11 @@ val of_rules :
   Stylesheet.rule list ->
   t
 (** [of_rules ?parent rules] builds the graph over [rules] (node [i] is the
-    [i]th rule). [parent], when set, is the enclosing nesting selector: each
-    rule's relative selector is expanded against it so overlap is computed on
-    the effective (parent-qualified) selector rather than the raw nested form.
+    [i]th rule). [size_print] (default {!Size.default}) is the print the run
+    makes, which every node's size and every rewrite's saving are measured
+    under. [parent], when set, is the enclosing nesting selector: each rule's
+    relative selector is expanded against it so overlap is computed on the
+    effective (parent-qualified) selector rather than the raw nested form.
     [closed_world] (default [false]) makes distinct selectors assumed not to
     match a common element, so they never cascade-conflict on selector grounds.
     [pin_shared_branches] (default [true]) adds conservative structural edges
@@ -80,6 +83,9 @@ val of_rules :
     that rules [i] and [j] never apply to one element together, as two rules
     under a condition and its negation do, so no cascade conflict is recorded
     between them; it does not reach the nodes a rewrite produces. *)
+
+val size_print : t -> Size.print
+(** [size_print t] is the print [t]'s sizes are measured under. *)
 
 val node_count : t -> int
 (** Number of nodes. *)

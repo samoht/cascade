@@ -6,8 +6,9 @@ type t
 val small_declaration_threshold : int
 (** Declaration count below which factoring always runs. *)
 
-val summarize : Stylesheet.rule list -> t
-(** [summarize rules] computes the cheap opportunity summary for [rules]. *)
+val summarize : Size.print -> Stylesheet.rule list -> t
+(** [summarize print rules] computes the cheap opportunity summary for [rules],
+    measured under [print]. *)
 
 val declaration_count : t -> int
 (** [declaration_count t] is the total number of declarations seen. *)

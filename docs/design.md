@@ -98,6 +98,16 @@ projection (`Rule_order`), so whatever the minifier deletes the judge also
 counts dead. `Merge.compatible` lists two selectors only when every engine
 ships them in the same release.
 
+## Cost models
+
+Factoring, its preflight and the rule graph weigh a declaration by the length
+of its minified print under the run's own `--lossless` and `--enforce-spec`,
+which choose some spellings (an oklch chroma's `76%` or `.304`, a family
+name's quotes). `Declaration.size` caches the default print's length; a
+`Size.print`, which `Rule_graph.of_rules` and `Preflight.summarize` take,
+carries the run's flags, and `Size.decl` measures the flagged print when one
+is set. `optimize_factor` "factoring weighs the flagged print" checks it.
+
 ## Rewrites that move rules
 
 Factoring a default value into a shared block keeps a rule's own declaration

@@ -205,5 +205,5 @@ Each row names the tests that check a statement. A browser harness under
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Nothing untyped dropped | `test/spec/browser/accept_set`; `test/render/parse_recovery` |
-| Modes | `optimize_declarations` "target minify and enforce-spec split" |
+| Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print" |
 | Assumptions | Convention only: no test exercises a page that breaks a hypothesis |
