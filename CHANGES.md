@@ -220,6 +220,13 @@ where it is called. Each entry says what to write there.
   `Properties.background_image`) or `Ident`. Code that matches or builds these
   descriptors wraps each string in `String`, or in `Ident` for a name written
   without quotes (#1461).
+- **`counter()` and `counters()` content items carry a counter style.**
+  `Counter of string` and `Counters of string * string` had no room for the
+  style CSS Lists 3 sec. 4.6 lets them name. They are now `Counter { name;
+  style }` and `Counters { name; separator; style }`, the style a
+  `list_style_type option`. A pattern or a constructor names the fields, with
+  `style = None` for the default; `Css.content_counter` and
+  `Css.content_counters` take an optional `?style` (#1462).
 - **`Pp.quoted` is gone.** It wrote a string between double quotes without
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
@@ -312,6 +319,13 @@ differently. They are the reason to minify again.
   output's string and draws the text `url(a.png)` as the marker. A symbol is a
   string, an image or an ident (CSS Counter Styles 3 sec. 3.1.7), and each now
   prints as the kind it was written as (#1461).
+- **`counter()` and `counters()` with a counter style were dropped.**
+  `content:counter(n,upper-roman)`, `counter(n,c)`, `counter(n,disc)`,
+  `counter(n,none)` and `counters(n,".",lower-alpha)` were refused as a bad
+  value, so the generated content was lost, where Chromium draws each one. CSS
+  Lists 3 sec. 4.6 gives both functions an optional `<counter-style>`, a
+  counter-style name or `symbols()`; it is now read and printed, and the
+  default `decimal` is left out (#1462).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

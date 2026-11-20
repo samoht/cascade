@@ -1352,12 +1352,13 @@ val content_string : string -> content
 val content_attr : string -> content
 (** [content_attr name] is an [attr(name)] content item. *)
 
-val content_counter : string -> content
-(** [content_counter name] is a [counter(name)] content item. *)
+val content_counter : ?style:list_style_type -> string -> content
+(** [content_counter ?style name] is a [counter(name, style)] content item, the
+    style left out when [style] is [None]. *)
 
-val content_counters : string -> string -> content
-(** [content_counters name separator] is a [counters(name, separator)] content
-    item. *)
+val content_counters : ?style:list_style_type -> string -> string -> content
+(** [content_counters ?style name separator] is a
+    [counters(name, separator, style)] content item. *)
 
 val content_list : content list -> content
 (** [content_list items] is a space-separated content value. *)

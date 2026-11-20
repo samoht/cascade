@@ -142,7 +142,7 @@ let spec_property_grammar_edges () =
   check_clip_path "xywh(0 0 100% 100% round 10px)";
   check_clip_path "rect(0px 0px 10px 10px)";
   check_content "counter(page)";
-  check_content "counters(section, \".\")";
+  check_content ~expected:"counters(section,\".\")" "counters(section, \".\")";
   neg_cursor read_font_feature_settings "\"kern\" -1";
   neg_cursor read_font_variation_settings "\"wg\" 400";
   neg_cursor read_timing_function "linear()";
@@ -160,7 +160,32 @@ let spec_property_grammar_edges () =
      invalidating the declaration. *)
   neg_cursor read_clip_path "xywh(0 0 1px 1px foo)";
   neg_cursor read_clip_path "rect(0px 0px 10px 10px foo)";
-  neg_cursor read_content "counter()"
+  neg_cursor read_content "counter()";
+  (* CSS Lists 3 sec. 4.6: [counter( <counter-name>, <counter-style>? )] and
+     [counters( <counter-name>, <string>, <counter-style>? )], with
+     [<counter-style> = <counter-style-name> | <symbols()>]. Chrome 153 keeps
+     every name form, [none] among them, and serialises [decimal], the default,
+     as nothing. *)
+  check_content "counter(n,c)";
+  check_content "counter(n,disc)";
+  check_content "counter(n,none)";
+  check_content "counter(n,Foo)";
+  check_content ~expected:"counter(n,decimal)" "counter(n, DECIMAL)";
+  check_content ~expected:"counter(n,symbols(cyclic\"*\"))"
+    "counter(n,symbols(cyclic \"*\"))";
+  check_content "counters(n,\".\",c)";
+  check_content "counters(n,\".\",symbols(\"*\"))";
+  check_content "\"a\" counter(n,c)";
+  decl_optimizes ~prop:"content" ~into:"counter(n,c)" "counter(n,c)";
+  decl_optimizes ~prop:"content" ~into:"counter(n)" "counter(n,decimal)";
+  decl_optimizes ~prop:"content" ~into:"counters(n,\".\")"
+    "counters(n,\".\",decimal)";
+  neg_cursor read_content "counter(n,\"x\")";
+  neg_cursor read_content "counter(n,inherit)";
+  neg_cursor read_content "counter(n,default)";
+  neg_cursor read_content "counter(n,)";
+  neg_cursor read_content "counter(n,c,d)";
+  neg_cursor read_content "counters(n,\".\",\"x\")"
 
 let spec_ui_property_edges () =
   check_text_wrap "pretty";

@@ -22,8 +22,17 @@ type content =
   | Open_quote
   | Close_quote
   | Attr of content attr_call
-  | Counter of string
-  | Counters of string * string
+  | Counter of {
+      name : string;
+      style : Properties_border_intf.list_style_type option;
+          (** CSS Lists 3 sec. 4.6 [<counter-style>]: a counter-style name,
+              [none] or [symbols()]; [None] is the default [decimal]. *)
+    }
+  | Counters of {
+      name : string;
+      separator : string;
+      style : Properties_border_intf.list_style_type option;
+    }
   | String_ref of string
   | Content_list of content list
   | Inherit

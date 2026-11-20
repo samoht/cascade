@@ -36,6 +36,10 @@ val read_list_style_symbol : Cursor.t -> list_style_symbol
 val read_list_style_type : Cursor.t -> list_style_type
 (** [read_list_style_type t] is the [list_style_type] parsed from [t]. *)
 
+val read_counter_style : Cursor.t -> list_style_type
+(** [read_counter_style t] reads the [<counter-style>] of [counter()] and
+    [counters()]: a counter-style name, [none] or [symbols()]. *)
+
 val read_list_style_position : Cursor.t -> list_style_position
 (** [read_list_style_position t] is the [list_style_position] parsed from [t].
 *)
