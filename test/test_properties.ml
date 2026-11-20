@@ -185,7 +185,29 @@ let spec_property_grammar_edges () =
   neg_cursor read_content "counter(n,default)";
   neg_cursor read_content "counter(n,)";
   neg_cursor read_content "counter(n,c,d)";
-  neg_cursor read_content "counters(n,\".\",\"x\")"
+  neg_cursor read_content "counters(n,\".\",\"x\")";
+  (* CSS Generated Content 3 sec. 1.1 follows the content with an optional [/ [
+     <string> | <counter> | attr() ]+] alternative text. Chrome 153 keeps each
+     of these, and refuses an empty alternative, an image or a keyword in it,
+     and one after [none] or [normal]. *)
+  check_content "\"a\"/\"b\"";
+  check_content ~expected:"\"a\"/\"b\"" "\"a\" / \"b\"";
+  check_content "url(a.png)/\"b\"";
+  check_content "counter(n)/\"b\"";
+  check_content "\"a\"/attr(x)";
+  check_content "\"a\"/counter(n,upper-roman)";
+  check_content "\"a\"/counters(n,\".\")";
+  check_content "\"a\"/\"b\" attr(x) counter(n)";
+  check_content "open-quote/\"x\"";
+  check_content "\"a\" counter(n)/\"\"";
+  check_content ~minify:false "\"a\" / \"b\" \"c\"";
+  decl_optimizes ~prop:"content" ~into:"\"a\"/\"b\"" "'a' / 'b'";
+  neg_cursor read_content "\"a\" /";
+  neg_cursor ~allow_partial:true read_content "\"a\" / url(b.png)";
+  neg_cursor ~allow_partial:true read_content "none / \"b\"";
+  neg_cursor ~allow_partial:true read_content "normal / \"b\"";
+  neg_cursor ~allow_partial:true read_content "\"a\" / open-quote";
+  neg_cursor ~allow_partial:true read_content "\"a\" / \"b\" / \"c\""
 
 let spec_ui_property_edges () =
   check_text_wrap "pretty";

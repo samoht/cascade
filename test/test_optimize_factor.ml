@@ -1020,6 +1020,12 @@ let test_content_superseded_by_a_plain_value () =
       ( "a normal value after an important one",
         ".a{content:\"a\"!important}",
         ".a{content:\"a\"!important;content:\"b\"}" );
+      (* A browser that predates the alternative text of CSS Generated Content 3
+         sec. 1.1 drops the value holding one, so it keeps the declaration
+         before it. *)
+      ( "an alternative text",
+        ".a{content:\"a\";content:\"b\"/\"c\"}",
+        ".a{content:\"a\";content:\"b\"/\"c\"}" );
     ]
 
 let test_no_merge_with_nested () =
