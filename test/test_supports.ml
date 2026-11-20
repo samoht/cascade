@@ -37,6 +37,9 @@ let test_string_output () =
           ( property "contain-intrinsic-size" "1px",
             Not (property "display" "grid") ),
         "(contain-intrinsic-size: 1px) and (not (display: grid))" );
+      (* Sec. 2: [not] takes a [<supports-in-parens>], and a [not] condition is
+         not one, so a double negation keeps the inner parentheses. *)
+      (Not (Not (property "display" "grid")), "not (not (display: grid))");
     ]
   in
   List.iter
