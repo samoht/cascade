@@ -1513,6 +1513,108 @@ let canonical_typed_longhand_order () =
     "the same order is still equal" true
     (equal ~mode:`Canonical ".a{row-gap:9px;gap:1px}" ".a{row-gap:9px;gap:1px}")
 
+(* Selectors 4 sec. 3.1: a compound matches an element that every simple
+   selector in it matches, so their order is not part of what it matches, bar
+   the type or universal selector, which comes first, and a pseudo-element,
+   which ends the compound with what follows it. A combinator is not a
+   compound's order. *)
+let equal_canonical_compound_order () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "simple selectors commute" true
+    (equal ".a.b{color:red}" ".b.a{color:red}");
+  Alcotest.(check bool)
+    "after a type selector, before a pseudo-element" true
+    (equal "div.a[x]:hover::before{color:red}"
+       "div:hover[x].a::before{color:red}");
+  Alcotest.(check bool)
+    "a compound is not a descendant chain" false
+    (equal "div.a{color:red}" ".a div{color:red}");
+  Alcotest.(check bool)
+    "a pseudo-class after a pseudo-element stays there" false
+    (equal ".a::before:hover{color:red}" ".a:hover::before{color:red}")
+
+(* CSS Animations 1 sec. 3 and CSS Fonts 4 sec. 4.1: [@keyframes] and
+   [@font-face] define a name, which no style rule's order reads, so where one
+   stands among style rules is not a difference. Two definitions of one name
+   still order: the last [@keyframes] of a name wins, and so does the last
+   [@font-face] of a family. *)
+let equal_canonical_name_defining_rules_move () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let kf = "@keyframes x{from{opacity:0}to{opacity:1}}" in
+  let ff = "@font-face{font-family:f;src:url(a.woff)}" in
+  Alcotest.(check bool)
+    "@keyframes among style rules" true
+    (equal (kf ^ "a{color:red}") ("a{color:red}" ^ kf));
+  Alcotest.(check bool)
+    "@font-face among style rules" true
+    (equal (ff ^ "a{color:red}") ("a{color:red}" ^ ff));
+  Alcotest.(check bool)
+    "two @keyframes of one name keep their order" false
+    (equal "@keyframes x{to{opacity:0}}a{color:red}@keyframes x{to{opacity:1}}"
+       "@keyframes x{to{opacity:1}}a{color:red}@keyframes x{to{opacity:0}}");
+  Alcotest.(check bool)
+    "a conditional @keyframes of the name keeps its order" false
+    (equal
+       "@keyframes x{to{opacity:0}}@media print{@keyframes x{to{opacity:1}}}"
+       "@media print{@keyframes x{to{opacity:1}}}@keyframes x{to{opacity:0}}");
+  Alcotest.(check bool)
+    "two @font-face of one family keep their order" false
+    (equal
+       "@font-face{font-family:f;src:url(a.woff)}a{color:red}@font-face{font-family:f;src:url(b.woff)}"
+       "@font-face{font-family:f;src:url(b.woff)}a{color:red}@font-face{font-family:f;src:url(a.woff)}")
+
+(* CSS Conditional 3 sec. 2: a rule inside nested conditional group rules
+   applies when every condition holds, so nesting [@media screen] around [@media
+   (min-width:1px)] is [@media screen and (min-width:1px)]. A negation covers
+   the whole query it heads, and two media types conjoin to a query no medium
+   matches, which is not either one alone. *)
+let equal_canonical_nested_media_conjoin () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "nested blocks are their conjunction" true
+    (equal "@media screen{@media (min-width:1px){a{color:red}}}"
+       "@media screen and (min-width:1px){a{color:red}}");
+  Alcotest.(check bool)
+    "a condition chain is its conjunction" true
+    (equal "@media (hover){@media (min-width:1px){a{color:red}}}"
+       "@media (hover) and (min-width:1px){a{color:red}}");
+  Alcotest.(check bool)
+    "print inside screen is not screen" false
+    (equal "@media print{@media screen{a{color:red}}}"
+       "@media screen{a{color:red}}");
+  Alcotest.(check bool)
+    "print inside screen is not print" false
+    (equal "@media print{@media screen{a{color:red}}}"
+       "@media print{a{color:red}}");
+  Alcotest.(check bool)
+    "not covers its whole query" false
+    (equal "@media not print{@media (min-width:1px){a{color:red}}}"
+       "@media not print and (min-width:1px){a{color:red}}")
+
+(* CSS Backgrounds 3 sec. 4.4: [border] sets the four sides and resets
+   [border-image] to its initial value, so it is the four side shorthands only
+   where nothing else holds a [border-image] value. The comparison reads each
+   sheet among any others, which may hold one, so the two stay apart. *)
+let equal_canonical_border_sides () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let sides =
+    "border-top:1px solid red;border-right:1px solid red;border-bottom:1px \
+     solid red;border-left:1px solid red"
+  in
+  let image = ".x{border-image:linear-gradient(red,blue) 30}" in
+  Alcotest.(check bool)
+    "four equal sides are not border" false
+    (equal ("a{" ^ sides ^ "}") "a{border:1px solid red}");
+  Alcotest.(check bool)
+    "not where another rule holds a border-image" false
+    (equal (image ^ ".y{" ^ sides ^ "}") (image ^ ".y{border:1px solid red}"));
+  Alcotest.(check bool)
+    "the three whole-border longhands neither" false
+    (equal
+       (image ^ ".y{border-width:1px;border-style:solid;border-color:red}")
+       (image ^ ".y{border:1px solid red}"))
+
 let suite =
   ( "css_compare_structure",
     [
@@ -1601,6 +1703,14 @@ let suite =
         canonical_movable_at_rule_ignores_nesting;
       Alcotest.test_case "canonical folds an adjacent same-selector pair" `Quick
         canonical_folds_an_adjacent_same_selector_pair;
+      Alcotest.test_case "canonical compound order" `Quick
+        equal_canonical_compound_order;
+      Alcotest.test_case "canonical name-defining rules move" `Quick
+        equal_canonical_name_defining_rules_move;
+      Alcotest.test_case "canonical nested media conjoin" `Quick
+        equal_canonical_nested_media_conjoin;
+      Alcotest.test_case "canonical border sides" `Quick
+        equal_canonical_border_sides;
       Alcotest.test_case "canonical composes gathered longhands" `Quick
         canonical_composes_gathered_longhands;
       Alcotest.test_case "canonical order reads shared longhands" `Quick
