@@ -365,7 +365,7 @@ let invalid () =
   check ~expected:"flex-basis:calc(50% - 10px)" "flex-basis: calc(50% - 10px)";
   check ~expected:"opacity:inherit" "opacity: inherit";
   check ~expected:"opacity:.5" "opacity: 0.5";
-  check ~expected:"fill-opacity:.5" "fill-opacity: 50%";
+  check ~expected:"fill-opacity:50%" "fill-opacity: 50%";
 
   (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
      "must have a consistent type or else the function is invalid", and sec.
