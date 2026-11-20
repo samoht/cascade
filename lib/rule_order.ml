@@ -1113,22 +1113,33 @@ let rec expand_blocks (stmt : statement) : statement list =
           List.map (fun piece -> with_conditional_body stmt [ piece ]) pieces)
   | _ -> [ stmt ]
 
-let keys_written stmt =
+let declarations_written stmt =
   Stylesheet.fold_statements
     (fun acc stmt ->
-      match stmt with
-      | Rule r -> List.map Declaration.property_key r.declarations @ acc
-      | _ -> acc)
+      match stmt with Rule r -> r.declarations @ acc | _ -> acc)
     [] [ stmt ]
 
+module Overlap_table = Hashtbl.Make (struct
+  type t = Shorthand.overlap_key
+
+  let equal = Shorthand.overlap_key_equal
+  let hash = Shorthand.overlap_key_hash
+end)
+
 (* Per selector, the declarations of the last unguarded rule and where it
-   stands; per property key, where the last rule to write it stands. A key
-   written since that rule is one whose write stands after it. Writing every key
-   into a set per selector instead cost each statement a pass over every
-   selector seen, which is the square of the sheet. *)
+   stands; per cascade slot, where the last rule to write it stands. A write is
+   read by its slots, not its property name, so a shorthand counts as a write of
+   each longhand it sets. A broad write ([all], or a name the footprint model
+   cannot place) may touch every slot; [last_broad] is where the last one stands
+   and [last_any] where the last write of any kind does, which is what a broad
+   repeat has to stand after. Writing every key into a set per selector instead
+   cost each statement a pass over every selector seen, which is the square of
+   the sheet. *)
 type repeats = {
   seen : (string, Declaration.declaration list * int) Hashtbl.t;
-  last_write : (Declaration.prop_key, int) Hashtbl.t;
+  last_write : int Overlap_table.t;
+  mutable last_broad : int;
+  mutable last_any : int;
   dropped : bool ref;
 }
 
@@ -1136,17 +1147,32 @@ let selector_text sel = Pp.to_string ~minify:true Selector.pp sel
 
 let note_writes t position stmt =
   List.iter
-    (fun k -> Hashtbl.replace t.last_write k position)
-    (keys_written stmt)
+    (fun d ->
+      let keys = Shorthand.declaration_overlap_keys d in
+      List.iter (fun k -> Overlap_table.replace t.last_write k position) keys;
+      if Shorthand.overlap_keys_broad keys then t.last_broad <- position;
+      t.last_any <- position)
+    (declarations_written stmt)
+
+(* Whether a statement after [position] writes a slot [d] writes. *)
+let written_since t position d =
+  let keys = Shorthand.declaration_overlap_keys d in
+  if Shorthand.overlap_keys_broad keys then t.last_any > position
+  else
+    t.last_broad > position
+    || List.exists
+         (fun k ->
+           match Overlap_table.find_opt t.last_write k with
+           | Some written -> written > position
+           | None -> false)
+         keys
 
 let repeated t sel d =
   (not (Declaration.is_important d))
   &&
   match Hashtbl.find_opt t.seen sel with
   | Some (decls, position) ->
-      (match Hashtbl.find_opt t.last_write (Declaration.property_key d) with
-        | Some written -> written <= position
-        | None -> true)
+      (not (written_since t position d))
       && List.exists
            (fun d0 ->
              (not (Declaration.is_important d0))
@@ -1154,21 +1180,52 @@ let repeated t sel d =
            decls
   | None -> false
 
-let prune_guarded_rule t : statement -> statement option = function
+(* The slots the declarations before the current one in a guarded group write. A
+   repeat that follows one of them inside the group overrides it there, so it is
+   not dead even when nothing outside the group wrote the slot. *)
+type group_writes = {
+  keys : unit Overlap_table.t;
+  mutable broad : bool;
+  mutable any : bool;
+}
+
+let written_earlier g d =
+  let keys = Shorthand.declaration_overlap_keys d in
+  if Shorthand.overlap_keys_broad keys then g.any
+  else g.broad || List.exists (Overlap_table.mem g.keys) keys
+
+let note_group_write g d =
+  let keys = Shorthand.declaration_overlap_keys d in
+  List.iter (fun k -> Overlap_table.replace g.keys k ()) keys;
+  if Shorthand.overlap_keys_broad keys then g.broad <- true;
+  g.any <- true
+
+let prune_guarded_rule t g : statement -> statement option = function
   | Rule r when r.nested = [] ->
       let sel = selector_text r.selector in
-      let kept = List.filter (fun d -> not (repeated t sel d)) r.declarations in
+      let kept =
+        List.rev
+          (List.fold_left
+             (fun kept d ->
+               let dead = repeated t sel d && not (written_earlier g d) in
+               note_group_write g d;
+               if dead then kept else d :: kept)
+             [] r.declarations)
+      in
       if List.compare_lengths kept r.declarations = 0 then Option.Some (Rule r)
       else (
         t.dropped := true;
         if kept = [] then Option.None
         else Option.Some (Rule { r with declarations = kept }))
-  | stmt -> Option.Some stmt
+  | stmt ->
+      List.iter (note_group_write g) (declarations_written stmt);
+      Option.Some stmt
 
 (* A group emptied by the pruning goes with it; one that was empty already stays
    as it was. *)
 let prune_guard t stmt body : statement option =
-  let body' = List.filter_map (prune_guarded_rule t) body in
+  let g = { keys = Overlap_table.create 16; broad = false; any = false } in
+  let body' = List.filter_map (prune_guarded_rule t g) body in
   if body' = [] && body <> [] then Option.None
   else Option.Some (with_conditional_body stmt body')
 
@@ -1176,7 +1233,9 @@ let drop_guarded_repeats outer_changed stmts =
   let t =
     {
       seen = Hashtbl.create 16;
-      last_write = Hashtbl.create 64;
+      last_write = Overlap_table.create 64;
+      last_broad = -1;
+      last_any = -1;
       dropped = ref false;
     }
   in

@@ -514,6 +514,18 @@ to call instead, and moving off most of them is a rename or a deleted call.
   now writes that property's slots alone. The comparison also drops a
   prefixed copy no target needs beside one that one does, such as
   `-moz-hyphens` beside `-webkit-hyphens` and `hyphens` (#1443).
+- `cascade diff --diff=canonical` could call two stylesheets identical that
+  give an element different values. It dropped a rule inside `@media` (or
+  another condition) that repeats an earlier unconditional write of its
+  selector, as dead, when nothing had written the property since. It read the
+  property by name, and skipped what the conditional block itself wrote
+  before the repeat. So
+  `.a{margin-top:1px}@media screen{.a{margin:0}}@media screen{.a{margin-top:1px}}`
+  compared identical to the same sheet without its last block, where on
+  screen `.a` gets a top margin of 1px against 0. The same happened with
+  `all` in between, or another selector's write earlier in the same block.
+  A write now counts by the cascade slots it sets, so a shorthand writes its
+  longhands and `all` writes every slot. `--minify` output does not change.
 
 ### Speed
 
