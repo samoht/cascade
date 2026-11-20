@@ -975,6 +975,31 @@ let spec_math_function_every_type () =
   neg_cursor Css.Properties.read_opacity "calc(min(50%, 1px) + max(1px, 2px))";
   neg_cursor read_duration "min(1s, 2px)"
 
+(* CSS Values 4 sec. 10.7 (simplification) converts the units of one type with a
+   fixed ratio between them before it compares or sums, so a call over [s] and
+   [ms], or [deg] and [turn], or [in] and [px], folds like one over a single
+   unit. A call that still cannot fold is one math function and prints bare, the
+   way the length printers write it: sec. 10.1 reads [min(...)] where it reads
+   [calc(min(...))]. Chrome 153 computes each row alike. *)
+let spec_math_fixed_ratio_units () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("transition-duration", "min(1s,1000ms)", "1s");
+      ("transition-duration", "max(1s,500ms)", "1s");
+      ("transition-delay", "clamp(1s,500ms,2s)", "1s");
+      ("transition-duration", "calc(1s + 500ms)", "1.5s");
+      ("rotate", "min(1turn,10deg)", "10deg");
+      ("rotate", "calc(1turn + 10deg)", "370deg");
+      ("width", "min(1in,100px)", "1in");
+      ("width", "max(1cm,10mm)", "1cm");
+      ("transition-duration", "min(1s,var(--x))", "min(1s,var(--x))");
+      ("transition-duration", "abs(var(--x))", "abs(var(--x))");
+      ("animation-delay", "max(1s,var(--x))", "max(1s,var(--x))");
+      ("rotate", "min(10deg,var(--a))", "min(10deg,var(--a))");
+      ("border-image-slice", "min(10%,var(--x))", "min(10%,var(--x))");
+    ]
+
 let suite =
   ( "values_math",
     [
@@ -1004,6 +1029,7 @@ let suite =
         spec_math_range_every_family;
       test_case "spec math function every type" `Quick
         spec_math_function_every_type;
+      test_case "spec math fixed-ratio units" `Quick spec_math_fixed_ratio_units;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
