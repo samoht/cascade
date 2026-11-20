@@ -838,6 +838,96 @@ let test_calc_operator_whitespace () =
   check_math_arg "1 - 2";
   check_math_arg "4 + 1"
 
+(* CSS Values 4 (ED) sec. 10.12: a math function whose value falls outside the
+   property's range is valid at parse time and clamped at computed-value time,
+   so a negative operand or result reads, and a fold keeps the wrapper around a
+   result the bare literal could not spell. Chrome 153 keeps every row here and
+   computes each one clamped; it drops every bare negative literal they would
+   otherwise fold to. *)
+let spec_math_range_every_family () =
+  let keeps prop ?(held = fun v -> v) cases =
+    List.iter
+      (fun (input, into) -> decl_optimizes ~prop ~held:(held input) ~into input)
+      cases
+  in
+  (* Non-negative lengths and percentages, read through a typed calc. *)
+  keeps "font-size"
+    [
+      ("calc(-1px)", "calc(-1px)");
+      ("calc(2*-1px)", "calc(-2px)");
+      ("calc(-1px + 1em)", "calc(1em - 1px)");
+      ("calc(-1%)", "calc(-1%)");
+      ("calc(1px - 2px)", "calc(-1px)");
+      ("calc(1% - 2%)", "calc(-1%)");
+    ];
+  keeps "flex-basis"
+    [
+      ("calc(-1px)", "calc(-1px)");
+      ("calc(-1%)", "calc(-1%)");
+      ("calc(1px - 2px)", "calc(-1px)");
+    ];
+  keeps "flex" [ ("calc(-1px)", "calc(-1px)"); ("calc(1% - 2%)", "calc(-1%)") ];
+  keeps "font-stretch" [ ("calc(-1%)", "calc(-1%)") ];
+  keeps "text-size-adjust" [ ("calc(-1%)", "calc(-1%)") ];
+  (* Non-negative times, through the longhands and the shorthand slot. *)
+  List.iter
+    (fun prop ->
+      keeps prop [ ("calc(-1s)", "calc(-1s)"); ("calc(1s - 2s)", "calc(-1s)") ])
+    [ "transition-duration"; "animation-duration"; "animation" ];
+  (* The transition reader names the [all] a lone time leaves out. *)
+  decl_optimizes ~prop:"transition" ~held:"all calc(-1s)" ~into:"all calc(-1s)"
+    "calc(-1s)";
+  decl_optimizes ~prop:"transition" ~held:"all calc(1s - 2s)"
+    ~into:"all calc(-1s)" "calc(1s - 2s)";
+  (* Non-negative lengths and percentages the fold reached as a bare literal. *)
+  List.iter
+    (fun prop ->
+      keeps prop
+        [
+          ("calc(-1px)", "calc(-1px)");
+          ("calc(1px - 2px)", "calc(-1px)");
+          ("calc(1% - 2%)", "calc(-1%)");
+        ])
+    [ "gap"; "scroll-padding"; "scroll-padding-inline"; "scroll-padding-block" ];
+  keeps "border-spacing" [ ("calc(1px - 2px)", "calc(-1px)") ];
+  List.iter
+    (fun prop -> keeps prop [ ("calc(1% - 2%)", "calc(-1%)") ])
+    [
+      "width";
+      "height";
+      "min-width";
+      "max-height";
+      "inline-size";
+      "min-block-size";
+      "max-inline-size";
+      "border-radius";
+      "shape-margin";
+      "stroke-width";
+      "stroke-dasharray";
+    ];
+  (* An <integer> slot rounds a fractional call at computed-value time, and the
+     bare fraction is refused; hyphenate-limit-chars counts from one. *)
+  keeps "hyphenate-limit-chars"
+    [ ("calc(1.5)", "calc(1.5)"); ("calc(0)", "calc(0)") ];
+  (* A comparison is a math function too, folded or not: it keeps a wrapper
+     below the range wherever the reader or the fold reached a literal. *)
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("border-width", "min(-1px,2px)", "calc(-1px)");
+      ("border-top-width", "max(-2px,-1px)", "calc(-1px)");
+      ("outline-width", "clamp(-3px,-2px,-1px)", "calc(-2px)");
+      ("column-rule-width", "min(-1px,2px)", "calc(-1px)");
+      ("zoom", "min(-1,2)", "calc(-1)");
+      ("animation-iteration-count", "min(-1,2)", "calc(-1)");
+      ("tab-size", "min(-1,2)", "calc(-1)");
+      ("hyphenate-limit-chars", "min(-1,2)", "calc(-1)");
+      ("font-stretch", "min(-1%,2%)", "calc(-1%)");
+      ("text-size-adjust", "min(-1%,2%)", "calc(-1%)");
+      ("font-size", "min(-1px,2px)", "calc(-1px)");
+      ("gap", "min(-1px,2px)", "calc(-1px)");
+    ]
+
 let suite =
   ( "values_math",
     [
@@ -863,6 +953,8 @@ let suite =
         spec_values_l45_math_color;
       test_case "spec math function edges" `Quick spec_math_function_edges;
       test_case "spec math operand range" `Quick spec_math_operand_range;
+      test_case "spec math range every family" `Quick
+        spec_math_range_every_family;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
