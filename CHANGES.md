@@ -532,6 +532,13 @@ differently. They are the reason to minify again.
   compose in the order written (CSS Anchor Positioning 1 sec. 6.1). A name
   between two tactics, which Chromium rejects, was moved out to make the entry
   valid. The tactics now keep their order and a split entry is refused (#1494).
+- **Two longhands composed past a shorthand that resets one.**
+  `position-try-order:most-height;position-try:flip-inline;position-try-fallbacks:top`
+  was minified to `position-try:most-height top;position-try:flip-inline`,
+  which moves the fallbacks before the shorthand that resets them, so the box
+  falls back to `flip-inline` instead of `top`. `columns` did the same past
+  `-webkit-columns`. Two longhands now compose only past declarations that do
+  not write the later one (#1495).
 
 #### Stable output
 
