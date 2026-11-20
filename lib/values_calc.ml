@@ -183,6 +183,9 @@ and pp_math_fn ctx fn =
       Pp.char ctx ')'
   | Mod_n (a, b) -> call "mod" [ a; b ]
   | Rem_n (a, b) -> call "rem" [ a; b ]
+  | Min_n args -> call "min" args
+  | Max_n args -> call "max" args
+  | Clamp_n (lo, v, hi) -> call "clamp" [ lo; v; hi ]
 
 and pp_angle_arg ctx arg =
   match arg with
@@ -243,6 +246,14 @@ and eval_math_fn fn =
     | Some av, Some bv -> Some (f av bv)
     | _ -> None
   in
+  let fold_args f initial args =
+    List.fold_left
+      (fun acc a ->
+        match (acc, eval_math_arg a) with
+        | Some acc, Some v -> Some (f acc v)
+        | _ -> None)
+      (Some initial) args
+  in
   match fn with
   | Sin a -> Option.map Float.sin (eval_angle_arg a)
   | Cos a -> Option.map Float.cos (eval_angle_arg a)
@@ -279,6 +290,12 @@ and eval_math_fn fn =
       binary (round_to_step strategy) value step
   | Mod_n (a, b) -> binary mod_value a b
   | Rem_n (a, b) -> binary Float.rem a b
+  | Min_n args -> fold_args Float.min Float.infinity args
+  | Max_n args -> fold_args Float.max Float.neg_infinity args
+  | Clamp_n (lo, v, hi) -> (
+      match (eval_math_arg lo, eval_math_arg v, eval_math_arg hi) with
+      | Some lo, Some v, Some hi -> Some (Float.max lo (Float.min v hi))
+      | _ -> None)
 
 (* What a static math function reduces to: a plain coefficient, or one that
    carries a unit. CSS Values 4 sec. 10.7 gives [abs()] and [hypot()] the type
@@ -346,6 +363,30 @@ let absolute_units =
 let is_absolute_unit unit =
   List.mem (String.lowercase_ascii unit) absolute_units
 
+(* Sec. 10.2 answers a comparison with the one type its arguments share, so
+   every unit has to match and the result keeps it. *)
+let compared_results f results =
+  match results with
+  | Some first :: rest
+    when List.for_all
+           (function
+             | Some r ->
+                 Option.equal String.equal (math_result_unit r)
+                   (math_result_unit first)
+             | None -> false)
+           rest ->
+      let value =
+        List.fold_left
+          (fun acc r ->
+            match r with Some r -> f acc (math_result_value r) | None -> acc)
+          (math_result_value first) rest
+      in
+      Option.some
+        (match math_result_unit first with
+        | Some unit -> United (value, unit)
+        | None -> Scalar value)
+  | _ -> Option.none
+
 let rec math_arg_result (arg : math_arg) : math_result option =
   match arg with
   | Lit f -> Option.some (Scalar f)
@@ -390,6 +431,14 @@ and math_fn_result (fn : math_fn) : math_result option =
       stepped_result (round_to_step strategy) value step
   | Mod_n (a, b) -> stepped_result mod_value a b
   | Rem_n (a, b) -> stepped_result Float.rem a b
+  | Min_n args -> compared_result Float.min args
+  | Max_n args -> compared_result Float.max args
+  (* Sec. 10.2: clamp(MIN, VAL, MAX) is max(MIN, min(VAL, MAX)). *)
+  | Clamp_n (lo, v, hi) -> (
+      match compared_result Float.min [ v; hi ] with
+      | Some inner ->
+          compared_results Float.max [ math_arg_result lo; Some inner ]
+      | None -> Option.none)
   (* Sec. 10.6: the answer turns on whether the argument is zero, and a relative
      unit has a reference that can be -- a zero font-size, a zero viewport, a
      zero container, a percentage of zero -- so the coefficient's sign is not
@@ -411,6 +460,8 @@ and math_fn_result (fn : math_fn) : math_result option =
      inverse trig functions, whose [<angle>] result only the angle evaluator can
      place. *)
   | _ -> Option.map (fun v -> Scalar v) (eval_math_fn fn)
+
+and compared_result f args = compared_results f (List.map math_arg_result args)
 
 (* Sec. 10.9 gives the stepped-value functions arguments of one type and answers
    with that type, so two units have to match and the result keeps theirs. *)
@@ -472,7 +523,11 @@ and math_fn_contains_var = function
   | Rem_n (a, b) ->
       math_arg_contains_var a || math_arg_contains_var b
   | Log (a, None) -> math_arg_contains_var a
-  | Hypot args -> List.exists math_arg_contains_var args
+  | Hypot args | Min_n args | Max_n args ->
+      List.exists math_arg_contains_var args
+  | Clamp_n (a, b, c) ->
+      math_arg_contains_var a || math_arg_contains_var b
+      || math_arg_contains_var c
 
 let rec calc_contains_var : type a. a calc -> bool = function
   | Var _ -> true

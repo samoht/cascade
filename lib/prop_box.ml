@@ -1281,16 +1281,28 @@ let rec calc_has_var has_var (c : _ Values.calc) =
    sum differently, so a tree holding a [var()] keeps every leaf. *)
 let numbers_for_percentages ~number ~has_var (c : 'a Values.calc) :
     'a Values.calc =
-  let rec go (c : 'a Values.calc) : 'a Values.calc =
+  (* A percentage comparison is a percentage leaf too (CSS Values 4 sec. 10.2):
+     it turns into its number with the rest, and one that does not fold leaves
+     the whole calculation as written, since a sum of a percentage and a number
+     is no value. *)
+  let rec go (c : 'a Values.calc) : 'a Values.calc option =
     match c with
     | Values.Val v -> (
-        match number v with Some f -> Values.Num f | None -> c)
-    | Values.Nested inner -> Values.Nested (go inner)
-    | Values.Parens inner -> Values.Parens (go inner)
-    | Values.Expr (l, op, r) -> Values.Expr (go l, op, go r)
-    | _ -> c
+        match number v with Some f -> Some (Values.Num f) | None -> Some c)
+    | Values.Math_fn fn -> (
+        match Values_calc.math_fn_result fn with
+        | Some (United (v, "%")) -> Some (Values.Num (v /. 100.))
+        | Some (United _) -> None
+        | Some (Scalar _) | None -> Some c)
+    | Values.Nested inner -> Option.map (fun i -> Values.Nested i) (go inner)
+    | Values.Parens inner -> Option.map (fun i -> Values.Parens i) (go inner)
+    | Values.Expr (l, op, r) -> (
+        match (go l, go r) with
+        | Some l, Some r -> Some (Values.Expr (l, op, r))
+        | _ -> None)
+    | _ -> Some c
   in
-  if calc_has_var has_var c then c else go c
+  if calc_has_var has_var c then c else Option.value (go c) ~default:c
 
 let rec threshold_has_var : shape_image_threshold -> bool = function
   | Var _ -> true

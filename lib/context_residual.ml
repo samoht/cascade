@@ -332,7 +332,11 @@ module Calc_residual = struct
     | Values.Rem_n (a, b) ->
         math_arg_contains_var a || math_arg_contains_var b
     | Values.Log (a, None) -> math_arg_contains_var a
-    | Values.Hypot args -> List.exists math_arg_contains_var args
+    | Values.Hypot args | Values.Min_n args | Values.Max_n args ->
+        List.exists math_arg_contains_var args
+    | Values.Clamp_n (a, b, c) ->
+        math_arg_contains_var a || math_arg_contains_var b
+        || math_arg_contains_var c
 
   let rec contains_var : type a. a Values.calc -> bool = function
     | Values.Var _ -> true
