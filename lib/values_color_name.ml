@@ -310,19 +310,6 @@ let read_color_keyword_of_string keyword : color option =
       (* CSS system colors - case-insensitive matching *)
       | None -> read_system_color_of_string keyword)
 
-(* Inside a custom-property body, colour keywords ([transparent], named colours,
-   ...) are ASCII-case-insensitive idents whose canonical spelling is
-   lower-case. System colours are left alone (canonical spelling is mixed-case);
-   non-colour idents pass through so a class-name token keeps its source
-   case. *)
-let fold_custom_value_ident s =
-  let lower = String.lowercase_ascii s in
-  if
-    Option.is_some (read_color_keyword_of_string lower)
-    && Option.is_none (read_system_color_of_string lower)
-  then lower
-  else Parser.fold_value_ident s
-
 (** Color constructors *)
 let rgb ?alpha r g b =
   match alpha with

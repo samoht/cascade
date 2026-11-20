@@ -40,6 +40,14 @@ tokens and reads the result again, and `Context.eval` does the same through
 takes the fewest decimals from three whose byte is the authored one under
 both readings.
 
+A custom property's tokens keep every spelling. Normalize removes only the
+whitespace CSS reads as nothing (`canonicalize_math_whitespace_components`).
+The minified printer (`Parser.to_string_custom_minified`) writes each other
+token from its representation, so no number, sign, ident case, url quote,
+colour or `calc()` is respelled. It drops whitespace only between two tokens
+that read back as the same two without it. A hash never ends a token by
+itself, since its name runs over every name code point.
+
 ## Math functions over several units
 
 A comparison over units with a fixed ratio (`Values_calc.compared_results`)

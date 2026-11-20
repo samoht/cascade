@@ -102,20 +102,11 @@ val math_whitespace_required : Component.t -> Component.t -> bool
     [calc(1px var(--op) 2px)] is [1px - 2px] and [calc(1px var(--op)2px)] is
     invalid. *)
 
-val fold_value_ident : string -> string
-(** [fold_value_ident s] is the canonical lower-case spelling of [s] when [s]
-    names a CSS-wide keyword, [currentcolor], or [transparent]; any other ident
-    keeps its source case. This is the default ident fold of
-    {!to_string_custom_minified}. *)
-
-val to_string_custom_minified :
-  ?fold_ident:(string -> string) -> ?opaque:bool -> Component.t list -> string
+val to_string_custom_minified : ?opaque:bool -> Component.t list -> string
 (** Variant of {!string_of_components} for CSS Custom Properties Level 1 token
     streams. Optional whitespace is collapsed using the rules of
-    {!to_string_minified} while preserving token boundaries. [fold_ident]
-    (default {!fold_value_ident}) maps each ident token to its serialized
-    spelling; callers that can recognise a wider set of case-insensitive value
-    keywords pass a stronger fold.
+    {!to_string_minified} while preserving token boundaries, and every other
+    token is written as the author wrote it (CSS Custom Properties 1 sec. 4.1).
 
     [opaque] (default [true]) says the stream's consumer is unknown, as a custom
     property's own value is: a whitespace token beside a [*] or [/] is then part

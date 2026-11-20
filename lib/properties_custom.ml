@@ -1,10 +1,9 @@
-(* Custom-property values: typed re-reading, colour and math folding, token
-   canonicalisation and printing. *)
+(* Custom-property values: typed re-reading, whitespace canonicalisation and
+   printing. *)
 
 open Common
 open Values
 open Properties_intf
-open Prop_common
 open Prop_image
 open Prop_background
 open Prop_filter
@@ -45,204 +44,7 @@ let is_color_function name =
       true
   | _ -> false
 
-(* A construct whose type is fixed by its own syntax - a complete colour
-   function ([oklab(...)], [color-mix(...)], ...) or a hex colour ([#abc]) - is
-   unconditionally a colour in every [var()] substitution site, so folding it to
-   its canonical spelling inside an opaque custom-property token stream
-   preserves every rendered result while collapsing two spellings of the same
-   colour. The only observable change is the exact token string a script reads
-   back via [getPropertyValue]; that readback is the optimizer's domain (it
-   already folds insignificant math whitespace here), so the canonical diff
-   inherits this fold rather than shimming it. Bare keywords are left untouched
-   - they may be a [<custom-ident>] in a non-colour context, whereas a hex token
-   never can. *)
-(* [c] is one component whose syntax fixes it as a colour; fold it to the
-   shortest non-keyword spelling, falling back to [fallback ()] when it does not
-   actually parse as a complete colour. *)
-let fold_custom_color ~lossless ~enforce_spec (c : Component.t) ~fallback =
-  let text = Parser.string_of_components [ c ] in
-  let cur = Cursor.of_string text in
-  match
-    try Some (Values.read_color cur) with Cursor.Parse_error _ -> None
-  with
-  | Some col when Cursor.is_done cur -> (
-      let canon =
-        Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color
-             (Values.normalize_color ~lossless ~enforce_spec col))
-      in
-      match read_custom_property_value (Cursor.of_string canon) with
-      | Tokens cs -> cs
-      | Typed _ -> [ c ])
-  | _ -> fallback ()
-
 let is_math_function = Parser.is_math_function
-
-(* A math function's type is fixed by its operands' units, but its result stands
-   for the call only where no slot tells them apart. CSS Values 4 sec. 10.9
-   rounds a call at an [<integer>] and sec. 10.12 clamps one past a range, where
-   the bare result is invalid ([z-index:var(--v)] with [calc(2.5)] is [3], with
-   [2.5] invalid), and [calc(0)] is no [<length>] where [0] is one. So a
-   [<number>] never folds, a [<time>] folds only when it is not negative (the
-   [[0,inf]] slots), and an [<angle>], which no property bounds, always does.
-   [<percentage>] is ambiguous (length vs number percentage) so it stays
-   verbatim, as does a function that still references a [var()]. *)
-let fold_custom_calc (c : Component.t) ~fallback =
-  let text = Parser.string_of_components [ c ] in
-  (* Parse the whole token as one typed value and fold only when it reduces to a
-     single concrete leaf (not a [calc()] that still carries a [var()]). *)
-  let try_typed : type a.
-      (Cursor.t -> a) ->
-      (a -> a) ->
-      a Pp.t ->
-      (a -> bool) ->
-      Component.t list option =
-   fun reader normalize pp reduced ->
-    let cur = Cursor.of_string text in
-    match try Some (reader cur) with Cursor.Parse_error _ -> None with
-    | Some v when Cursor.is_done cur ->
-        let folded = normalize v in
-        if reduced folded then
-          match
-            read_custom_property_value
-              (Cursor.of_string (Pp.to_string ~minify:true pp folded))
-          with
-          | Tokens cs -> Some cs
-          | Typed _ -> None
-        else None
-    | _ -> None
-  in
-  let angle_reduced = function
-    | (Deg _ | Rad _ | Turn _ | Grad _ : angle) -> true
-    | _ -> false
-  in
-  let time_reduced = function
-    | (S v | Ms v : duration) -> not (Float.sign_bit v)
-    | _ -> false
-  in
-  match
-    List.find_map Fun.id
-      [
-        try_typed read_angle_unit_required
-          (fun a -> normalize_angle a)
-          pp_angle angle_reduced;
-        try_typed read_duration
-          (fun d -> normalize_duration d)
-          pp_duration time_reduced;
-      ]
-  with
-  | Some cs -> cs
-  | None -> fallback ()
-
-(* Filter Effects 1 sec. 6.1 gives [hue-rotate()] the argument [[ <angle> |
-   <zero> ]?] and 0 when omitted, so a zero argument is redundant. [hue-rotate]
-   names a filter function and nothing else, so this holds wherever the stream
-   is substituted, which is the same argument that lets a colour function fold
-   here. *)
-let hue_rotate_zero_argument (func : Component.func) =
-  String.lowercase_ascii func.name = "hue-rotate"
-  && func.arguments <> []
-  &&
-  let cur = Cursor.of_string (Parser.string_of_components func.arguments) in
-  match read_angle_unit_required cur with
-  | exception Cursor.Parse_error _ -> false
-  | angle ->
-      Cursor.is_done cur
-      && Values.angle_degrees_opt (normalize_angle angle) = Some 0.
-
-let drop_function_arguments wrapped =
-  Component.Func
-    { wrapped with node = { wrapped.Component.node with arguments = [] } }
-
-let rec normalize_shadow_colors ~lossless ~enforce_spec (shadow : shadow) =
-  let normalize_body (body : shadow_body) : shadow_body =
-    {
-      body with
-      color =
-        option_map_preserve
-          (Values.normalize_color ~lossless ~enforce_spec)
-          body.color;
-    }
-  in
-  match shadow with
-  | Shadow body -> preserve_if_equal shadow (Shadow (normalize_body body))
-  | Inset (Body body) ->
-      preserve_if_equal shadow (Inset (Body (normalize_body body)) : shadow)
-  | Inset (Trailing body) ->
-      preserve_if_equal shadow (Inset (Trailing (normalize_body body)) : shadow)
-  | Inset (Toggle ({ body; _ } as toggle)) ->
-      preserve_if_equal shadow
-        (Inset (Toggle { toggle with body = normalize_body body }) : shadow)
-  | List shadows ->
-      preserve_if_equal shadow
-        (List
-           (map_preserve
-              (normalize_shadow_colors ~lossless ~enforce_spec)
-              shadows))
-  | other -> other
-
-(* A complete shadow token stream is self-typing: its length sequence and
-   optional final <color> are parsed together, so a bare colour keyword cannot
-   be mistaken for a custom-ident at another substitution site. Canonicalise
-   only that typed colour while preserving the authored shadow shape; applying
-   the full shadow optimiser here would also drop explicit default lengths from
-   an otherwise opaque custom-property token stream. *)
-let canonicalize_custom_shadow_components ~lossless ~enforce_spec components =
-  let t = Cursor.of_string (Parser.string_of_components components) in
-  match try Some (read_shadow t) with Cursor.Parse_error _ -> None with
-  | Some shadow when Cursor.is_done t -> (
-      let shadow = normalize_shadow_colors ~lossless ~enforce_spec shadow in
-      let canonical = Pp.to_string ~minify:true pp_shadow shadow in
-      match read_custom_property_value (Cursor.of_string canonical) with
-      | Tokens components -> components
-      | Typed _ -> components)
-  | _ -> components
-
-let rec canonicalize_custom_colors_components ~lossless ~enforce_spec comps =
-  let fold_color c ~fallback =
-    fold_custom_color ~lossless ~enforce_spec c ~fallback
-  in
-  let inner = canonicalize_custom_colors_components ~lossless ~enforce_spec in
-  List.concat_map
-    (fun (c : Component.t) ->
-      match c with
-      | Component.Func wrapped
-        when is_color_function wrapped.Component.node.name ->
-          fold_color c ~fallback:(fun () ->
-              let func = wrapped.Component.node in
-              let args = inner func.arguments in
-              [
-                Component.Func
-                  { wrapped with node = { func with arguments = args } };
-              ])
-      | Component.Preserved { kind = Token.Hash _; _ } ->
-          fold_color c ~fallback:(fun () -> [ c ])
-      | Component.Func wrapped when is_math_function wrapped.Component.node.name
-        ->
-          fold_custom_calc c ~fallback:(fun () ->
-              let func = wrapped.Component.node in
-              let args = inner func.arguments in
-              [
-                Component.Func
-                  { wrapped with node = { func with arguments = args } };
-              ])
-      | Component.Func wrapped
-        when hue_rotate_zero_argument wrapped.Component.node ->
-          [ drop_function_arguments wrapped ]
-      | Component.Func wrapped ->
-          let func = wrapped.Component.node in
-          let args = inner func.arguments in
-          [
-            Component.Func
-              { wrapped with node = { func with arguments = args } };
-          ]
-      | Component.Block wrapped ->
-          let block = wrapped.Component.node in
-          let value = inner block.value in
-          [ Component.Block { wrapped with node = { block with value } } ]
-      (* A run nested past the parser's depth is kept as read. *)
-      | Component.Preserved _ | Component.Flat _ -> [ c ])
-    comps
 
 (* Typed re-readers exposed for the registry pass that consumes [@property]
    declarations. Each reader takes a token stream and tries to parse it as the
@@ -315,9 +117,7 @@ let pp_value : type a. (a kind * a) Pp.t =
          whitespace of the stream a [var()] substitutes, so the runs come back
          as they were read. *)
       let rendered =
-        if Pp.minified ctx then
-          Parser.to_string_custom_minified
-            ~fold_ident:Values.fold_custom_value_ident value
+        if Pp.minified ctx then Parser.to_string_custom_minified value
         else Parser.to_string_verbatim value
       in
       Pp.string ctx rendered
@@ -683,9 +483,5 @@ let normalize_custom_property_value ?(lossless = false) ?(enforce_spec = false)
           value = normalize_gradient_direction value;
         }
   | Tokens components ->
-      Tokens
-        (canonicalize_math_whitespace_components
-           (canonicalize_custom_colors_components ~lossless ~enforce_spec
-              (canonicalize_custom_shadow_components ~lossless ~enforce_spec
-                 components)))
+      Tokens (canonicalize_math_whitespace_components components)
   | Typed _ as other -> other

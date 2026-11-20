@@ -268,10 +268,7 @@ and keep_wrapper ~kept visible ~visited original fallback =
    property. *)
 let declaration_with_components decl components : Declaration.declaration option
     =
-  let value =
-    Parser.to_string_custom_minified ~fold_ident:Values.fold_custom_value_ident
-      components
-  in
+  let value = Parser.to_string_custom_minified components in
   if String.trim value = "" then None
   else
     let has_string =

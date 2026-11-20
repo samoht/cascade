@@ -902,6 +902,11 @@ differently. They are the reason to minify again.
 - type(<COLOR>), red)` is kept as written** instead of respelled
   `type(<color>)`, which Chromium applies though it drops the original
   (#1617).
+- custom property's tokens are written as read**, apart from whitespace (CSS
+  Custom Properties 1 sec. 4.1): `--minify` no longer respells numbers
+  (`1.0`), signs (`1px+2px`), ident case (`Red`), url quotes or colours inside
+  them, nor joins `#fff url(a.png)` into one hash, and `--diff=canonical`
+  keeps such spellings apart (#1618).
 
 #### Stable output
 

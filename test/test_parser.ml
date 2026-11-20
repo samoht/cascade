@@ -1551,8 +1551,7 @@ let token_printers =
   [
     ("string_of_components", Parser.string_of_components);
     ("to_string_minified", Parser.to_string_minified);
-    ( "to_string_custom_minified",
-      Parser.to_string_custom_minified ~fold_ident:Fun.id ~opaque:true );
+    ("to_string_custom_minified", Parser.to_string_custom_minified ~opaque:true);
   ]
 
 (* [hot] and [cold] serialise to the same byte count, so the output buffer, its

@@ -836,11 +836,11 @@ let normalize_property_value : type a.
   | Custom_property _ -> (
       match value with
       | Custom_value ({ value = Tokens components; _ } as r) ->
+          (* CSS Custom Properties 1 sec. 4.1: the tokens are the value a
+             [var()] substitutes, so only the whitespace CSS reads as nothing
+             goes; a colour, a length or a calculation keeps its spelling. *)
           let components' =
-            components
-            |> canonicalize_custom_shadow_components ~lossless ~enforce_spec
-            |> canonicalize_custom_colors_components ~lossless ~enforce_spec
-            |> canonicalize_math_whitespace_components
+            canonicalize_math_whitespace_components components
           in
           if components' == components then value
           else Custom_value { r with value = Tokens components' }
