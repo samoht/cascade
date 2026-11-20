@@ -544,6 +544,14 @@ let read_line_height_clamp t : line_height =
 (* The number path first, so a comparison whose arguments are all numbers keeps
    folding to the coefficient it always did. *)
 let line_height_math_calls number =
+  (* The number path takes a comparison of numbers only: one over lengths or
+     percentages is the typed [Min]/[Max]/[Clamp] the list readers build. *)
+  let number t : line_height =
+    match number t with
+    | (Calc (Math_fn (Min_n _ | Max_n _ | Clamp_n _)) : line_height) ->
+        Cursor.err_invalid t "a comparison of lengths"
+    | value -> value
+  in
   ( "min",
     fun t ->
       Cursor.one_of

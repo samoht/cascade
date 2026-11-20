@@ -90,7 +90,36 @@ let pp_mask_border_mode ctx = function
    [stretch] for the repeat (sec. 5.5) - so writing one out names what leaving
    it out names. Drained of every slot the shorthand declares nothing but
    initials, which is what [none] declares, so the source stays to say it. *)
-let normalize_border_image : border_image -> border_image =
+(* CSS Backgrounds 3 sec. 6.2: a slice is a [0,inf] number or percentage. A
+   math function that folds to one becomes that literal, and one folding below
+   zero keeps its wrapper (CSS Values 4 sec. 10.12). *)
+let normalize_border_image_slice_item (item : border_image_slice_item) :
+    border_image_slice_item =
+  match item with
+  | Calc (Math_fn fn) -> (
+      match Values_calc.math_fn_result fn with
+      | Some (United (v, "%")) when v >= 0. -> Pct v
+      | Some (Scalar v) when v >= 0. -> Number (Num v)
+      | _ -> item)
+  | Number n ->
+      let n' = Values.normalize_number ~non_negative:true n in
+      if n' == n then item else Number n'
+  | _ -> item
+
+let normalize_border_image_slice_offsets (s : border_image_slice_offsets) =
+  let offsets =
+    Common.List.map_preserve normalize_border_image_slice_item s.offsets
+  in
+  if offsets == s.offsets then s else { s with offsets }
+
+let normalize_border_image_slice : border_image_slice -> border_image_slice =
+  function
+  | Slices s as value ->
+      let s' = normalize_border_image_slice_offsets s in
+      if s' == s then value else Slices s'
+  | value -> value
+
+let normalize_border_image_slots : border_image -> border_image =
  fun value ->
   let drop is_initial slot =
     match slot with Some v when is_initial v -> Option.None | slot -> slot
@@ -144,6 +173,16 @@ let normalize_border_image : border_image -> border_image =
   in
   let source = if drained then Some (None : background_image) else source in
   { value with source; slice; width; outset; repeat }
+
+let normalize_border_image (value : border_image) : border_image =
+  let value =
+    match value.slice with
+    | Some s ->
+        let s' = normalize_border_image_slice_offsets s in
+        if s' == s then value else { value with slice = Some s' }
+    | None -> value
+  in
+  normalize_border_image_slots value
 
 let pp_border_image : border_image Pp.t =
  fun ctx { source; slice; width; outset; repeat; mode } ->

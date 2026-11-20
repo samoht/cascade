@@ -824,6 +824,7 @@ let normalize_property_value : type a.
   | Line_height -> normalize_line_height ~lossless value
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
+  | Border_image_slice -> normalize_border_image_slice value
   | Columns -> normalize_columns_value value
   | Content -> normalize_content ~lossless value
   | Column_width -> normalize_column_width value

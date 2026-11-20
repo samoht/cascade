@@ -37,6 +37,11 @@ val pp_border_image_outset : Properties_intf.border_image_outset Pp.t
 val pp_mask_border_mode : Pp.ctx -> Properties_intf.mask_border_mode -> unit
 (** [pp_mask_border_mode] prints a [mask-border-mode] value. *)
 
+val normalize_border_image_slice :
+  Properties_intf.border_image_slice -> Properties_intf.border_image_slice
+(** [normalize_border_image_slice v] folds each slice a math function spells to
+    the literal of its value, where that literal is in range. *)
+
 val normalize_border_image :
   Properties_intf.border_image -> Properties_intf.border_image
 (** [normalize_border_image v] is [v] in canonical form. *)

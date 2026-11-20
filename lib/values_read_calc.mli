@@ -54,6 +54,21 @@ val read_num_expr : Cursor.t -> float
 (** [read_num_expr t] parses a number-typed calc expression and folds it to a
     float. *)
 
+(** The value type a unit spells, CSS Values 4 sec. 10.9. *)
+type unit_family =
+  | Number
+  | Length
+  | Percent
+  | Time
+  | Angle
+  | Frequency
+  | Resolution
+  | Flex
+
+val check_math_family : Cursor.t -> unit_family -> 'a calc -> unit
+(** [check_math_family t family calc] raises when [calc] is a math function
+    answering its arguments' type and those arguments are not of [family]. *)
+
 val validate_calc_type :
   Cursor.t ->
   [< `Number | `Number_or_percentage | `Number_or_value | `Percentage | `Value ] ->

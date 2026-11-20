@@ -597,12 +597,12 @@ let v4107_typed_math_fn_units () =
       ( "calc(30deg + atan2(1, 1)) -> 75deg",
         ".x { transform: rotate(calc(30deg + atan2(1, 1))) }",
         ".x{transform:rotate(75deg)}" );
-      (* [opacity] folds its [calc()] through the untyped numeric reduction,
-         which has no unit to rebuild, so the call stays rather than becoming
-         the [30] that a browser clamps to full opacity. *)
-      ( "calc(abs(-30%)) on an opacity keeps the call",
+      (* [opacity] reads a percentage as the number it is a hundredth of, so a
+         call answering one folds to that number, not to the [30] a browser
+         clamps to full opacity. *)
+      ( "calc(abs(-30%)) on an opacity folds to its number",
         ".x { opacity: calc(abs(-30%)) }",
-        ".x{opacity:calc(abs(-30%))}" );
+        ".x{opacity:.3}" );
     ]
 
 let v4107_numeric_reduction () =
