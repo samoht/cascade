@@ -346,6 +346,15 @@ let rec read_list_style_type t : list_style_type =
          ])
     t
 
+(* CSS Lists 3 sec. 4.6: the [<counter-style>] of [counter()] and [counters()]
+   is a [<counter-style-name>] or [symbols()], so the string and the CSS-wide
+   keywords [list-style-type] also takes are refused here. *)
+let read_counter_style t : list_style_type =
+  match read_list_style_type t with
+  | String _ | Inherit | Initial | Unset | Revert | Revert_layer ->
+      Cursor.err_expected t "counter style"
+  | style -> style
+
 let rec read_list_style_position t : list_style_position =
   Cursor.enum_or_var "list-style-position"
     [
