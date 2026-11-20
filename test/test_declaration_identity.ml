@@ -602,6 +602,35 @@ let colour_channels_beside_var () =
        (ok (Css.Declaration.of_string "color:hsl(0 50% 50%)")))
     (eval "--h:0" "color:hsl(var(--h) 50% 50.0000000001%)")
 
+(* CSS Custom Properties 1 sec. 4.1: a custom property's value is the token
+   stream a [var()] substitutes, so its spelling is its value. Only the
+   whitespace CSS reads as nothing goes. In Chromium 153, [z-index:var(--z)]
+   computes [auto] under [--z:1.0] or [--z:1e3] (no [<integer>] once
+   substituted) and [1] under [--z:1], [2] under [--z:calc(1.5)] and [auto]
+   under [--z:1.5]; [line-height:var(--l)] computes [0px] under [--l:calc(0 -
+   1)] and [normal] under [--l:-1]; [animation-name:var(--n)] computes [Red]
+   under [--n:Red]; and [background:var(--bg)] under [--bg:#fff url(a.png)]
+   paints the image and the colour, which [#fffurl(a.png)], one hash token, does
+   not. *)
+let custom_property_tokens_stay () =
+  let check name want css = Alcotest.(check string) name want (minified css) in
+  check "a number keeps its spelling" ".a{--x:1.0px}.b{--x:1px}"
+    ".a{--x:1.0px}.b{--x:1px}";
+  check "a non-integer stays one" ".a{--z:1.0;z-index:var(--z)}"
+    ".a{--z:1.0;z-index:var(--z)}";
+  check "an exponent stays" ".a{--z:1e3}" ".a{--z:1e3}";
+  check "a sign stays" ".a{--t:1px+2px}" ".a{--t:1px+2px}";
+  check "a calculation stays" ".a{--v:calc(1.5);--w:calc(0 - 1)}"
+    ".a{--v:calc(1.5);--w:calc(0 - 1)}";
+  check "an ident keeps its case" ".a{--n:Red;--c:currentColor}"
+    ".a{--n:Red;--c:currentColor}";
+  check "a quoted url stays quoted" {|.a{--u:url("x.png")}|}
+    {|.a{--u:url("x.png")}|};
+  check "a colour keeps its spelling" ".a{--o:oklch(60%.2 30);--r:rgb(255,0,0)}"
+    ".a{--o:oklch(60% .2 30);--r:rgb(255, 0, 0)}";
+  check "a hash keeps the space before a url" ".a{--bg:#fff url(a.png)}"
+    ".a{--bg:#fff url(a.png)}"
+
 (* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
    its typed values alone: reading the print back has to land on the node that
    printed it, not merely on the same text. *)
@@ -922,6 +951,7 @@ let suite =
         undecidable_colour_channels_stay;
       test_case "colour channels beside a var()" `Quick
         colour_channels_beside_var;
+      test_case "custom property tokens stay" `Quick custom_property_tokens_stay;
       test_case "multi-value grammars" `Quick multi_value_grammars;
       test_case "dimension before a signed number" `Quick
         dimension_before_signed_number;
