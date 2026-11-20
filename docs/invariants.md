@@ -146,6 +146,11 @@ implementation keeps them.
 - **Composition moves no declaration past one it meets.** Folding longhands
   into a shorthand writes them where the shorthand stands, so it happens only
   past declarations of the same stratum that write none of their slots.
+- **Layer longhands compose only into the layers they set.** A layered
+  shorthand repeats a short list to the image list's length, so longhands fold
+  into one only when each holds a single layer, none holds a `var()` (which
+  can stand for another slot or several layers) and none is a CSS-wide
+  keyword.
 
 ## Rule layer
 
@@ -235,6 +240,7 @@ Each row names the tests that check a statement. A browser harness under
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
 | Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
 | Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
+| Layer composition | `shorthand_compose` "layer run is one plain layer"; `declaration_shorthand` "mask boxes" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |

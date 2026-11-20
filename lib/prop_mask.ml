@@ -179,6 +179,34 @@ let drop_mask_initial : 'a. 'a -> 'a option -> 'a option =
  fun initial opt ->
   match opt with Some x when x = initial -> (None : _ option) | _ -> opt
 
+(* CSS Masking 1 sec. 7.9: in a layer one [<geometry-box>] sets both
+   [mask-origin] and [mask-clip], two set them in that order, and [no-clip] sets
+   the clip alone. The reader keeps a lone box in [origin] and [no-clip] in
+   [clip], so a layer names the pair (origin or [border-box], clip or else the
+   origin), and the shortest spelling of that pair is none, one box or both. A
+   box that is not a keyword ([var()], a list) keeps the slots as written. *)
+let normalize_mask_boxes (origin : mask_box option) (clip : mask_box option) =
+  let keyword : mask_box -> bool = function
+    | Border_box | Content_box | Fill_box | Padding_box | Stroke_box | View_box
+    | No_clip ->
+        true
+    | Layers _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+        false
+  in
+  let keyword_opt = function Some b -> keyword b | None -> true in
+  if not (keyword_opt origin && keyword_opt clip) then (origin, clip)
+  else
+    let o = Option.value origin ~default:(Border_box : mask_box) in
+    let c = match clip with Some c -> c | None -> o in
+    let shortest : mask_box option * mask_box option =
+      match (o, c) with
+      | Border_box, Border_box -> (None, None)
+      | Border_box, No_clip -> (None, Some No_clip)
+      | _ when o = c -> (Some o, None)
+      | _ -> (Some o, Some c)
+    in
+    if shortest = (origin, clip) then (origin, clip) else shortest
+
 let mask_layer_slots_shared (a : mask_layer) (b : mask_layer) =
   a.image == b.image && a.position == b.position && a.size == b.size
   && a.repeat == b.repeat && a.origin == b.origin && a.clip == b.clip
@@ -202,8 +230,7 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
     | _ -> position
   in
   let repeat = drop_mask_initial (Repeat : background_repeat) l.repeat in
-  let origin = drop_mask_initial (Border_box : mask_box) l.origin in
-  let clip = drop_mask_initial (Border_box : mask_box) l.clip in
+  let origin, clip = normalize_mask_boxes l.origin l.clip in
   let mode = drop_mask_initial (Match_source : mask_mode) l.mode in
   let composite = drop_mask_initial (Add : mask_composite) l.composite in
   let l' = { image; position; size; repeat; origin; clip; mode; composite } in
@@ -793,12 +820,18 @@ module Mask_shorthand = struct
     fun (mask : mask_layer) ->
       if mask.repeat = None then { mask with repeat = Some repeat } else mask
 
+  (* Sec. 7.9 [<geometry-box> || [<geometry-box> | no-clip]]: the first box is
+     the origin, a second or [no-clip] the clip. *)
   let read_box_item t =
-    let box = read_mask_box t in
+    let box = read_mask_box ~clip:true t in
     fun (mask : mask_layer) ->
-      if mask.origin = None then { mask with origin = Some box }
-      else if mask.clip = None then { mask with clip = Some box }
-      else mask
+      match box with
+      | No_clip ->
+          if mask.clip = None then { mask with clip = Some box } else mask
+      | _ ->
+          if mask.origin = None then { mask with origin = Some box }
+          else if mask.clip = None then { mask with clip = Some box }
+          else mask
 
   let read_mode_item t =
     let mode = read_mask_mode t in
