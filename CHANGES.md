@@ -501,6 +501,14 @@ differently. They are the reason to minify again.
   #1419).
 - **An overridden `text-rendering` goes,** now that the property is typed
   (#1440).
+- **`--enforce-spec` and `--lossless` left merges unmade.** Factoring weighed
+  each declaration at its default spelling, which is shorter than the one
+  either flag prints: `--enforce-spec` keeps a family name's quotes, and both
+  keep an oklch chroma's number where the default writes a percentage. A
+  shared `font-family:"A B"` stayed in each rule where lifting it saved bytes.
+  Factoring now weighs the bytes the run prints, which changes 21 of the 505
+  SatCSS and Tailwind sheets under `--enforce-spec` and none under
+  `--lossless`; default output is unchanged (#1477).
 
 ### Formatted output
 

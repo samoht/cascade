@@ -90,6 +90,8 @@ type t = {
           appended to in place, so their length is a capacity, not a node count.
       *)
   mutable rules : rule array;  (** all nodes ever created, dead ones included *)
+  size_print : Size.print;
+      (** the flags the run prints with, which [sizes] are measured under *)
   mutable sizes : int array;
       (** each node's minified byte size, worked out once *)
   mutable selector_sizes : int array;
@@ -621,7 +623,7 @@ let rule_facts parent rules =
 (* The nodes of [rules] in source order with their edges, their [sizes], and an
    empty external index sized for [index_capacity] entries, which the first
    rewrite fills. *)
-let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
+let ordered_nodes ~size_print ~selector_sizes ~sizes ~index_capacity ?parent
     ?(closed_world = false) ?(pin_shared_branches = true) ?exclusive
     (rules : rule array) : t =
   let n = Array.length rules in
@@ -633,6 +635,7 @@ let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
   let t =
     {
       generation = 0;
+      size_print;
       closed_world;
       pin_shared_branches;
       agreeing_ties = false;
@@ -671,20 +674,22 @@ let ordered_nodes ~selector_sizes ~sizes ~index_capacity ?parent
   in
   { t with succ = fst (source_order_edges t) }
 
-let of_rules ?parent ?closed_world ?pin_shared_branches ?exclusive rules =
+let of_rules ?(size_print = Size.default) ?parent ?closed_world
+    ?pin_shared_branches ?exclusive rules =
   let rules = Array.of_list rules in
   let selector_sizes =
     Array.map (fun (rule : rule) -> Size.selector rule.selector) rules
   in
-  ordered_nodes ~selector_sizes
+  ordered_nodes ~size_print ~selector_sizes
     ~sizes:
       (Array.mapi
          (fun i (rule : rule) ->
-           selector_sizes.(i) + Size.body rule.declarations)
+           selector_sizes.(i) + Size.body size_print rule.declarations)
          rules)
     ~index_capacity:(max 16 (Array.length rules * 2))
     ?parent ?closed_world ?pin_shared_branches ?exclusive rules
 
+let size_print t = t.size_print
 let node_count t = t.count
 let node_rule t i = t.rules.(i)
 let node_size t i = t.sizes.(i)
@@ -1641,7 +1646,8 @@ let commit t graph ~consumed entering finished =
     let rule = graph.rules.(p) in
     let selector_size = Size.selector rule.selector in
     graph.selector_sizes.(p) <- selector_size;
-    graph.sizes.(p) <- selector_size + Size.body rule.declarations
+    graph.sizes.(p) <-
+      selector_size + Size.body graph.size_print rule.declarations
   done;
   Array.iter (fun c -> graph.death.(c) <- graph.generation) consumed;
   Array.iteri
@@ -1746,7 +1752,8 @@ let rebuild t =
       t.exclusive
   in
   let g =
-    ordered_nodes ~selector_sizes:(pick t.selector_sizes) ~sizes:(pick t.sizes)
+    ordered_nodes ~size_print:t.size_print
+      ~selector_sizes:(pick t.selector_sizes) ~sizes:(pick t.sizes)
       ~index_capacity:(max 16 (Array.length order * 2))
       ?parent:t.parent ~closed_world:t.closed_world
       ~pin_shared_branches:t.pin_shared_branches ?exclusive (pick t.rules)

@@ -47,4 +47,5 @@ let of_finalized ~kind graph ~consume ~produce ~size =
 
 let v ~kind ~finalize graph ~consume ~(produce : Stylesheet.rule list) =
   let produce = finalize_produce finalize produce in
-  of_finalized ~kind graph ~consume ~produce ~size:(Size.rules produce)
+  of_finalized ~kind graph ~consume ~produce
+    ~size:(Size.rules (Rule_graph.size_print graph) produce)

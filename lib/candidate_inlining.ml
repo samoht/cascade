@@ -76,13 +76,13 @@ let receiver_branch (rule : rule) =
 
 (* The branch keys [rule] can hand to a receiver, each once, with the selector
    list left behind: a branch longer than the declarations it would carry. *)
-let inline_branches (rule : rule) =
+let inline_branches g (rule : rule) =
   if not (rule_eligible rule && rule.declarations <> []) then []
   else
     match selector_branches rule with
     | [] | [ _ ] -> []
     | selectors ->
-        let inline_cost = decls_inline_cost rule.declarations in
+        let inline_cost = decls_inline_cost g rule.declarations in
         let keyed =
           List.map
             (fun selector -> (selector_branch_key selector, selector))
@@ -166,7 +166,7 @@ let add core inlining id =
           in
           pair_up core group remaining id)
         (table_list inlining.by_branch key));
-  match inline_branches rule with
+  match inline_branches (view core) rule with
   | [] -> ()
   | branches ->
       let group = { group = id; branches; pairs = [] } in

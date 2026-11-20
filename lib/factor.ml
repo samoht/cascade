@@ -6,7 +6,9 @@ let src = Logs.Src.create "cascade.factor" ~doc:"Cascade rule factoring"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
-let rules_pp_size = Size.rules
+(* The run's print: its cost models weigh the bytes it will write. *)
+let size_print ctx =
+  Size.print ~lossless:(Ctx.lossless ctx) ~enforce_spec:(Ctx.enforce_spec ctx)
 
 (* The memo key carries a whole run of rules. The default structural hash reads
    only the first handful of nodes in it, so runs sharing a prefix land in one
@@ -73,13 +75,13 @@ let optimize_graph ~ctx ~finalize ~fixpoint rules graph =
   Stats.reset_saving stats;
   let before_rules = List.length rules in
   let profile = Stats.profile stats in
-  let before_bytes = if profile then rules_pp_size rules else 0 in
+  let before_bytes = if profile then Size.rules (size_print ctx) rules else 0 in
   let timer = if profile then Some (Mtime_clock.counter ()) else None in
   let { Rule_scheduler.graph; _ } = Rule_scheduler.run ~ctx ~finalize graph in
   (* A produced rule left the scheduler finalized, and an input rule arrives
      finalized, so the order is the result. *)
   let rules' = ordered_rules rules graph in
-  let after_bytes = if profile then rules_pp_size rules' else 0 in
+  let after_bytes = if profile then Size.rules (size_print ctx) rules' else 0 in
   let elapsed =
     match timer with
     | Some timer -> Mtime.Span.to_float_ns (Mtime_clock.count timer) /. 1e9
@@ -104,7 +106,10 @@ let optimize_graph ~ctx ~finalize ~fixpoint rules graph =
 (* Factor [rules] on a graph built from them, once: the candidates and their
    acceptance read the rules it prints. *)
 let run_once ~ctx ~finalize ~fixpoint rules =
-  let graph = Rule_graph.of_rules ~closed_world:(Ctx.closed_world ctx) rules in
+  let graph =
+    Rule_graph.of_rules ~size_print:(size_print ctx)
+      ~closed_world:(Ctx.closed_world ctx) rules
+  in
   optimize_graph ~ctx ~finalize ~fixpoint rules graph
 
 let log_skip summary =
@@ -122,7 +127,7 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
   | Some rules -> rules
   | None ->
       let stats = Ctx.stats ctx in
-      let summary = Preflight.summarize rules in
+      let summary = Preflight.summarize (size_print ctx) rules in
       let result =
         if not (should_run_preflight ~ctx summary) then begin
           Stats.skip_fixpoint stats;

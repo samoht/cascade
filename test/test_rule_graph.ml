@@ -233,7 +233,7 @@ let refusal_names_the_first_unordered_node () =
   | Ok g' ->
       Alcotest.(check int)
         "the produced node weighs its printed size"
-        (Size.rule (List.hd produce))
+        (Size.rule Size.default (List.hd produce))
         (Rule_graph.node_size g' (nid 3))
 
 let try_rewrite_preserves_residual_source_slots () =
