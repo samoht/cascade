@@ -158,8 +158,13 @@ let normalize_transition_shorthand (s : transition_shorthand) :
     | Option.Some d when transition_duration_is_zero d -> Option.None
     | d -> d
   in
+  (* Sec. 2.2 gives the duration a [0s,inf] range, which a folded call keeps as
+     its wrapper (CSS Values 4 sec. 10.12); the delay takes either sign. *)
   let duration =
-    drop_zero (option_map_preserve Values.normalize_duration s.duration)
+    drop_zero
+      (option_map_preserve
+         (Values.normalize_duration ~non_negative:true)
+         s.duration)
   in
   let delay =
     drop_zero (option_map_preserve Values.normalize_duration s.delay)

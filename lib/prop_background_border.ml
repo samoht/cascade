@@ -349,68 +349,6 @@ let reduce_border_width_clamp lower value upper =
       | _ -> None)
   | _ -> None
 
-(* [pp] is a pure serialiser (see the module note); every node-changing fold
-   lives here instead, so it runs before [Declaration.hash] and two authored
-   spellings of the same value converge to one node.
-
-   A [min()]/[max()]/[clamp()] argument that survives grouping still gets its
-   own same-unit terms combined; the standalone [calc()] arm goes through
-   [Values.normalize_length], the stronger fold. *)
-let normalize_border_width_calc_arg (c : border_width calc) : border_width calc
-    =
-  match simplified_border_width_length c with
-  | Some (Val length) -> (
-      match border_width_of_length length with Some bw -> Val bw | None -> c)
-  | Some simplified -> (
-      match border_width_of_length_calc simplified with
-      | Some c' -> c'
-      | None -> c)
-  | None -> c
-
-let normalize_border_width_calc (c : border_width calc) : border_width calc =
-  match length_of_border_width_calc c with
-  | None -> Values.eval_calc c
-  | Some lc -> (
-      match Values.normalize_length (Calc lc) with
-      | Calc lc' -> (
-          match border_width_of_length_calc lc' with Some c' -> c' | None -> c)
-      | length -> (
-          match border_width_of_length length with
-          | Some bw -> Val bw
-          | None -> c))
-
-let normalize_border_width_minmax kind (args : border_width calc list) :
-    border_width =
-  let rebuild args = match kind with `Min -> Min args | `Max -> Max args in
-  match reduce_border_width_minmax kind args with
-  | Some [ Val length ] -> (
-      match border_width_of_length length with
-      | Some bw -> bw
-      | None -> rebuild args)
-  | Some lengths -> (
-      match List.map border_width_of_length_calc lengths with
-      | terms when List.for_all Option.is_some terms ->
-          rebuild (List.map Option.get terms)
-      | _ -> rebuild args)
-  | None -> rebuild (List.map normalize_border_width_calc_arg args)
-
-let normalize_border_width_clamp lower value upper : border_width =
-  match reduce_border_width_clamp lower value upper with
-  | Some (`Length length) -> (
-      match border_width_of_length length with
-      | Some bw -> bw
-      | None -> Clamp (lower, value, upper))
-  | Some (`Max cargs) -> (
-      match List.map border_width_of_length_calc cargs with
-      | terms when List.for_all Option.is_some terms ->
-          Max (List.map Option.get terms)
-      | _ -> Clamp (lower, value, upper))
-  | None ->
-      Clamp
-        ( normalize_border_width_calc_arg lower,
-          normalize_border_width_calc_arg value,
-          normalize_border_width_calc_arg upper )
-
 (* CSS Values 4 sec. 10.12 keeps a math function valid where its range is
    exceeded and clamps at used-value time, so [calc(-1px)] is a border width
    Chrome computes as [0] and [-1px] one it drops. Unwrapping the call would
@@ -441,6 +379,73 @@ let negative_border_width : border_width -> bool = function
   | Dimension { value = f; _ } ->
       f < 0.
   | _ -> false
+
+(* [pp] is a pure serialiser (see the module note); every node-changing fold
+   lives here instead, so it runs before [Declaration.hash] and two authored
+   spellings of the same value converge to one node.
+
+   A [min()]/[max()]/[clamp()] argument that survives grouping still gets its
+   own same-unit terms combined; the standalone [calc()] arm goes through
+   [Values.normalize_length], the stronger fold. *)
+let normalize_border_width_calc_arg (c : border_width calc) : border_width calc
+    =
+  match simplified_border_width_length c with
+  | Some (Val length) -> (
+      match border_width_of_length length with Some bw -> Val bw | None -> c)
+  | Some simplified -> (
+      match border_width_of_length_calc simplified with
+      | Some c' -> c'
+      | None -> c)
+  | None -> c
+
+let normalize_border_width_calc (c : border_width calc) : border_width calc =
+  match length_of_border_width_calc c with
+  | None -> Values.eval_calc c
+  | Some lc -> (
+      match Values.normalize_length (Calc lc) with
+      | Calc lc' -> (
+          match border_width_of_length_calc lc' with Some c' -> c' | None -> c)
+      | length -> (
+          match border_width_of_length length with
+          | Some bw -> Val bw
+          | None -> c))
+
+(* A comparison folding below the [0,inf] range keeps a wrapper, for the reason
+   [negative_border_width] gives. *)
+let in_range (bw : border_width) : border_width =
+  if negative_border_width bw then Calc (Val bw) else bw
+
+let normalize_border_width_minmax kind (args : border_width calc list) :
+    border_width =
+  let rebuild args = match kind with `Min -> Min args | `Max -> Max args in
+  match reduce_border_width_minmax kind args with
+  | Some [ Val length ] -> (
+      match border_width_of_length length with
+      | Some bw -> in_range bw
+      | None -> rebuild args)
+  | Some lengths -> (
+      match List.map border_width_of_length_calc lengths with
+      | terms when List.for_all Option.is_some terms ->
+          rebuild (List.map Option.get terms)
+      | _ -> rebuild args)
+  | None -> rebuild (List.map normalize_border_width_calc_arg args)
+
+let normalize_border_width_clamp lower value upper : border_width =
+  match reduce_border_width_clamp lower value upper with
+  | Some (`Length length) -> (
+      match border_width_of_length length with
+      | Some bw -> in_range bw
+      | None -> Clamp (lower, value, upper))
+  | Some (`Max cargs) -> (
+      match List.map border_width_of_length_calc cargs with
+      | terms when List.for_all Option.is_some terms ->
+          Max (List.map Option.get terms)
+      | _ -> Clamp (lower, value, upper))
+  | None ->
+      Clamp
+        ( normalize_border_width_calc_arg lower,
+          normalize_border_width_calc_arg value,
+          normalize_border_width_calc_arg upper )
 
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
@@ -620,7 +625,11 @@ and normalize_border_spacing : border_spacing -> border_spacing =
  fun value ->
   match value with
   | Lengths lengths -> (
-      let normalized = map_preserve Values.normalize_length lengths in
+      (* CSS 2 sec. 17.6.1 refuses a negative spacing, and CSS Values 4 sec.
+         10.12 keeps a call folding below zero as its wrapper. *)
+      let normalized =
+        map_preserve (Values.normalize_length ~non_negative:true) lengths
+      in
       match normalized with
       | [ a; b ] when Values.equal_length a b -> Lengths [ a ]
       | _ when normalized == lengths -> value

@@ -801,9 +801,9 @@ let normalize_property_value : type a.
   | Scroll_margin -> normalize_length_box ~ctx value
   | Scroll_margin_inline -> normalize_length_box ~ctx value
   | Scroll_margin_block -> normalize_length_box ~ctx value
-  | Scroll_padding -> normalize_length_box ~ctx value
-  | Scroll_padding_inline -> normalize_length_box ~ctx value
-  | Scroll_padding_block -> normalize_length_box ~ctx value
+  | Scroll_padding -> normalize_length_box ~non_negative:true ~ctx value
+  | Scroll_padding_inline -> normalize_length_box ~non_negative:true ~ctx value
+  | Scroll_padding_block -> normalize_length_box ~non_negative:true ~ctx value
   | Custom_property _ -> (
       match value with
       | Custom_value ({ value = Tokens components; _ } as r) ->
@@ -855,9 +855,11 @@ let normalize_property_value : type a.
   | Contain_intrinsic_height -> normalize_contain_intrinsic_longhand value
   | Contain_intrinsic_inline_size -> normalize_contain_intrinsic_longhand value
   | Contain_intrinsic_block_size -> normalize_contain_intrinsic_longhand value
-  | Transition_duration -> Values.normalize_duration ~ctx value
+  | Transition_duration ->
+      Values.normalize_duration ~non_negative:true ~ctx value
   | Transition_delay -> Values.normalize_duration ~ctx value
-  | Animation_duration -> Values.normalize_duration ~ctx value
+  | Animation_duration ->
+      Values.normalize_duration ~non_negative:true ~ctx value
   | Animation_delay -> Values.normalize_duration ~ctx value
   | Webkit_transition_duration -> Values.normalize_duration ~ctx value
   | Webkit_transition_delay -> Values.normalize_duration ~ctx value
