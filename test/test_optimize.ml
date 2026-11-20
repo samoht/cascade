@@ -914,6 +914,12 @@ let test_merge_consecutive_starting_style () =
    block, or the same registered value canonicalises one way in a rule and
    another inside one of them. *)
 let test_promote_registered_reaches_at_rule_declarations () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
+  let minify s =
+    s |> Css.optimize ~scope:`Stylesheet |> Css.to_string ~minify:true
+  in
   let registration =
     "@property --c{syntax:\"<color>\";inherits:false;initial-value:red}"
   in
@@ -938,6 +944,12 @@ let test_promote_registered_reaches_at_rule_declarations () =
    computed-value time (ED sec. 2.4) and computes to the registration's initial
    value, which unquoting it would replace with the name itself. *)
 let test_promote_registered_keeps_unmatched_string_quoted () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
+  let minify s =
+    s |> Css.optimize ~scope:`Stylesheet |> Css.to_string ~minify:true
+  in
   let check name registration body expected =
     Alcotest.(check string)
       name (registration ^ expected)

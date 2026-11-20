@@ -336,9 +336,13 @@ let registered_custom_property_tokens () =
     "@property --tw-ring-color { syntax: \"<color>\"; inherits: true; \
      initial-value: transparent } .a { --tw-ring-color: #0000 }"
   in
+  (* The canonical comparison reads a fragment, where a script or a later sheet
+     can register the name again (CSS Properties and Values API 1 sec. 2.1):
+     under [@property --tw-ring-color{syntax:"*";inherits:false}] the two token
+     streams substitute as written, and [transparent] is an ident where [#0000]
+     is not one. *)
   Alcotest.(check bool)
-    "registered color custom properties compare after typed canonicalization"
-    true
+    "registered color custom properties keep their tokens in a fragment" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_color_mix_tokens () =
