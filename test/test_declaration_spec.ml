@@ -17,6 +17,14 @@ let an_empty_value_is_no_declaration () =
   neg_cursor read_declaration "position-try: ";
   neg_cursor read_declaration "color: "
 
+(* CSS Anchor Positioning 1 sec. 6.1 reads a fallback entry as [<dashed-ident>
+   || <try-tactic>], so the tactics stand together on one side of the name, and
+   Chromium 153 rejects a name between two of them. *)
+let try_tactics_stand_together () =
+  neg_cursor read_declaration
+    "position-try-fallbacks: flip-block --a flip-start";
+  neg_cursor read_declaration "position-try-fallbacks: flip-block flip-block"
+
 (* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
    and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
    [@position-try] accepts: the inset, margin, sizing and self-alignment ones,
@@ -1116,16 +1124,20 @@ let spec_remaining_prop_vectors () =
       ("position-area: top span-left", "position-area:top span-left");
       ( "position-try-fallbacks: --below, flip-block",
         "position-try-fallbacks:--below,flip-block" );
-      (* CSS Anchor Positioning 1 sec. 6.1: [<dashed-ident> || <try-tactic>],
-         and <try-tactic> is itself [flip-block || flip-inline || flip-start].
-         || is order-free, so each component appears at most once in any order
-         and reads back name-first. *)
+      (* CSS Anchor Positioning 1 sec. 6.1: [<dashed-ident> || <try-tactic>], so
+         the name stands before or after the tactics and reads back first. The
+         tactics compose in the order written (Chromium 153 places [flip-start
+         flip-block] and [flip-block flip-start] apart), so they keep it. *)
       ( "position-try-fallbacks: flip-block --below",
         "position-try-fallbacks:--below flip-block" );
       ( "position-try-fallbacks: --below flip-block",
         "position-try-fallbacks:--below flip-block" );
       ( "position-try-fallbacks: flip-inline flip-block",
-        "position-try-fallbacks:flip-block flip-inline" );
+        "position-try-fallbacks:flip-inline flip-block" );
+      ( "position-try-fallbacks: flip-start flip-block",
+        "position-try-fallbacks:flip-start flip-block" );
+      ( "position-try-fallbacks: flip-start flip-block --a",
+        "position-try-fallbacks:--a flip-start flip-block" );
       ( "position-try-fallbacks: --a flip-start, flip-inline",
         "position-try-fallbacks:--a flip-start,flip-inline" );
       ("scrollbar-color: auto", "scrollbar-color:auto");
@@ -1394,6 +1406,7 @@ let suite =
         grid_shorthand_names_both_axes;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
+      test_case "try tactics stand together" `Quick try_tactics_stand_together;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
