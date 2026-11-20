@@ -283,6 +283,14 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **A comparison over a position percentage was folded.**
+  `background-position:min(10%,20%) 0` became `10% 0`, and
+  `calc(min(10%,20%) + 1px)` became `calc(10% + 1px)`. A percentage in
+  `background-position`, `mask-position` or `object-position` resolves against
+  the box less the image, negative when the image is the larger, so
+  `min(10%,20%)` there is `20%` of it. A comparison, `abs()` or a stepped
+  function over such a percentage is now kept as written; one whose basis
+  cannot be negative, as in `transform-origin`, still folds (#1509).
 - **A zero lost its unit inside a line-width comparison.** `--minify` turned
   `outline-width:max(0px,var(--v))` into `max(0,var(--v))`, which mixes a
   number with a length and is invalid at computed-value time, across the 27

@@ -106,6 +106,71 @@ let rec infinite_length (c : length calc) : length option =
       match sign k with Some s -> fold s v | None -> None)
   | _ -> None
 
+(* A comparison, [abs()], [sign()], [hypot()] or a stepped function over a
+   percentage: its value depends on the sign of the basis the percentage
+   resolves against, not only on the percentages, unlike a sum or a product. *)
+let rec math_arg_has_pct : math_arg -> bool = function
+  | Dim (_, unit) -> String.equal unit "%"
+  | Op (l, _, r) -> math_arg_has_pct l || math_arg_has_pct r
+  | Parens_arg a -> math_arg_has_pct a
+  | Math_call fn -> math_fn_has_pct fn
+  | Lit _ | Const _ | Var_arg _ -> false
+
+and math_fn_has_pct = function
+  | Min_n args | Max_n args | Hypot args -> List.exists math_arg_has_pct args
+  | Clamp_n (a, b, c) ->
+      math_arg_has_pct a || math_arg_has_pct b || math_arg_has_pct c
+  | Abs_n a | Sign_n a -> math_arg_has_pct a
+  | Round_n (_, a, b) | Mod_n (a, b) | Rem_n (a, b) ->
+      math_arg_has_pct a || math_arg_has_pct b
+  | _ -> false
+
+let rec length_has_pct : length -> bool = function
+  | Pct _ -> true
+  | Dimension { unit; _ } -> String.equal unit "%"
+  | Min xs | Max xs | Hypot xs -> List.exists length_has_pct xs
+  | Clamp (a, b, c) -> length_has_pct a || length_has_pct b || length_has_pct c
+  | Round (_, a, b) | Mod (a, b) | Rem_fn (a, b) ->
+      length_has_pct a || length_has_pct b
+  | Abs a -> length_has_pct a
+  | Calc c -> calc_has (fun l -> length_has_pct l) c
+  | _ -> false
+
+and calc_has : type a. (a -> bool) -> a calc -> bool =
+ fun leaf c ->
+  match c with
+  | Val v -> leaf v
+  | Math_fn fn -> math_fn_has_pct fn
+  | Nested i | Parens i -> calc_has leaf i
+  | Expr (l, _, r) -> calc_has leaf l || calc_has leaf r
+  | _ -> false
+
+let rec length_sign_dependent : length -> bool = function
+  | (Min _ | Max _ | Hypot _ | Clamp _ | Round _ | Mod _ | Rem_fn _ | Abs _) as
+    l ->
+      length_has_pct l
+  | Calc c -> calc_sign_dependent length_sign_dependent c
+  | _ -> false
+
+and calc_sign_dependent : type a. (a -> bool) -> a calc -> bool =
+ fun leaf c ->
+  match c with
+  | Val v -> leaf v
+  | Math_fn fn -> math_fn_has_pct fn
+  | Nested i | Parens i -> calc_sign_dependent leaf i
+  | Expr (l, _, r) -> calc_sign_dependent leaf l || calc_sign_dependent leaf r
+  | _ -> false
+
+let length_percentage_sign_dependent : length_percentage -> bool = function
+  | Length l -> length_sign_dependent l
+  | Calc c ->
+      calc_sign_dependent
+        (function
+          | (Length l : length_percentage) -> length_sign_dependent l
+          | _ -> false)
+        c
+  | _ -> false
+
 let rec normalize_length ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (l : length) : length =
   let nf = normalize_length ~strip:false ~ctx in

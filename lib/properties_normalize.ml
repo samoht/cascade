@@ -575,15 +575,18 @@ let normalize_property_value : type a.
   | Mask -> normalize_mask ~lossless value
   | Clip_path -> normalize_clip_path value
   | Object_view_box -> normalize_object_view_box value
-  | Object_position -> normalize_position_value value
+  | Object_position -> normalize_position_value ~signed_basis:true value
   | Perspective_origin -> normalize_position_value value
-  | Background_position -> map_preserve normalize_position_value value
+  | Background_position ->
+      map_preserve (normalize_position_value ~signed_basis:true) value
   | Background_position_x -> normalize_background_position_axis value
   | Background_position_y -> normalize_background_position_axis value
   | Webkit_mask_position_x -> normalize_background_position_axis value
   | Webkit_mask_position_y -> normalize_background_position_axis value
-  | Mask_position -> map_preserve normalize_position_value value
-  | Webkit_mask_position -> map_preserve normalize_position_value value
+  | Mask_position ->
+      map_preserve (normalize_position_value ~signed_basis:true) value
+  | Webkit_mask_position ->
+      map_preserve (normalize_position_value ~signed_basis:true) value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
   | Animation_timeline -> normalize_animation_timeline value

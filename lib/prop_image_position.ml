@@ -166,12 +166,21 @@ let position_of_xy (x : Values.length) (y : Values.length) : position_value =
   | Pct 50., Pct 100. -> Bottom
   | x, y -> XY (x, y)
 
-let normalize_position_value ?(strip = true) : position_value -> position_value
-    =
+(* [signed_basis] is a position whose percentages resolve against the box less
+   the image (CSS Backgrounds 3 sec. 3.6, CSS Images 3 sec. 5.5), which is
+   negative when the image is the larger: a call whose value turns on that sign
+   is left as written. *)
+let normalize_position_value ?(strip = true) ?(signed_basis = false) :
+    position_value -> position_value =
  fun value ->
-  let length l = position_zero (Values.normalize_length ~strip l) in
+  let length l =
+    if signed_basis && Values_numeric.length_sign_dependent l then l
+    else position_zero (Values.normalize_length ~strip l)
+  in
   let offset lp =
-    position_offset_zero (Values.normalize_length_percentage ~strip lp)
+    if signed_basis && Values_numeric.length_percentage_sign_dependent lp then
+      lp
+    else position_offset_zero (Values.normalize_length_percentage ~strip lp)
   in
   match position_xy value with
   | Some (x, y) ->

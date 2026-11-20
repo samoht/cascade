@@ -220,7 +220,9 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
       (normalize_background_image ~lossless)
       (drop_mask_initial (None : background_image) l.image)
   in
-  let position = option_map_preserve normalize_position_value l.position in
+  let position =
+    option_map_preserve (normalize_position_value ~signed_basis:true) l.position
+  in
   let size = drop_mask_initial (Auto : background_size) l.size in
   (* The size follows the position and a [/], so the position can only go once
      the size has. *)
