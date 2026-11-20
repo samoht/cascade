@@ -490,6 +490,21 @@ let fold_order_does_not_decide_the_form () =
     "a padding moved past the one it follows stays apart" true
     (canonical split <> canonical reordered)
 
+(* Found by fuzz/fuzz_rule_order.ml ("run projection is idempotent"). [speak] is
+   a name the footprint model cannot place, so the projection orders it against
+   [margin] and [margin-top] alike, and the form it prints must keep that order:
+   composing the two into [margin:1px 0 0] would move [margin-top] past it, and
+   projecting the result again would read another order. *)
+let composition_reads_the_order () =
+  List.iter
+    (fun css ->
+      let once = canonical css in
+      Alcotest.(check string) css once (canonical once))
+    [
+      "@media(width>=1px){.c{margin:0;speak:none;margin-top:1px}}.b{top:0;speak:none}";
+      "@media(width>=1px){.c{margin:1px 0 0;speak:none}}.b{top:0;speak:none}";
+    ]
+
 (* A guarded write that repeats an earlier unguarded one changes nothing only
    where it could stand right after it, and that is not so here: the repeat is
    what overrides the guarded [margin:0] before it, and without it the
@@ -973,6 +988,8 @@ let suite =
         fold_order_does_not_decide_the_form;
       Alcotest.test_case "a repeat keeps what it overrides" `Quick
         a_repeat_keeps_what_it_overrides;
+      Alcotest.test_case "composition reads the order" `Quick
+        composition_reads_the_order;
       Alcotest.test_case "adjacent lists join before expanding" `Quick
         adjacent_lists_join_before_expanding;
       Alcotest.test_case "identical bodies never conflict" `Quick
