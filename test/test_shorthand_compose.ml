@@ -837,6 +837,27 @@ let test_layer_run_is_one_plain_layer () =
     ~into:".x{-webkit-mask:url(a.png)no-repeat;mask:url(a.png)no-repeat}"
     (mask "mask-image:url(a.png);mask-repeat:no-repeat")
 
+(* Composing two longhands writes the later one where the earlier stands, so a
+   declaration between them that writes its slot, here the [position-try]
+   shorthand (CSS Anchor Positioning 1 sec. 6.3), would decide it instead. *)
+let test_position_try_composes_past_nothing_it_meets () =
+  sheet_optimizes_to
+    ~into:
+      ".x{position-try-order:most-height;position-try:flip-inline;position-try-fallbacks:top}"
+    ".x{position-try-order:most-height;position-try:flip-inline;position-try-fallbacks:top}";
+  (* Control: a declaration of another property lets them compose. *)
+  sheet_optimizes_to ~into:".x{position-try:most-height top;color:red}"
+    ".x{position-try-order:most-height;color:red;position-try-fallbacks:top}"
+
+(* The same holds for [columns]: Chromium 153 reads [-webkit-columns] as
+   [columns], so it resets [column-count] between the two longhands. *)
+let test_columns_composes_past_nothing_it_meets () =
+  sheet_optimizes_to
+    ~into:".x{column-width:10px;-webkit-columns:auto 3;column-count:2}"
+    ".x{column-width:10px;-webkit-columns:auto 3;column-count:2}";
+  sheet_optimizes_to ~into:".x{columns:10px 2;color:red}"
+    ".x{column-width:10px;color:red;column-count:2}"
+
 (* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
    so contracting a width/style/colour run over a rule that holds one of those
    longhands would drop it. *)
@@ -1210,6 +1231,10 @@ let suite =
         test_mask_full_run_composes;
       Alcotest.test_case "layer run is one plain layer" `Quick
         test_layer_run_is_one_plain_layer;
+      Alcotest.test_case "position-try composes past nothing it meets" `Quick
+        test_position_try_composes_past_nothing_it_meets;
+      Alcotest.test_case "columns composes past nothing it meets" `Quick
+        test_columns_composes_past_nothing_it_meets;
       Alcotest.test_case "border contraction covers border-image" `Quick
         test_border_contraction_covers_border_image;
       Alcotest.test_case "border-image held across rules" `Quick
