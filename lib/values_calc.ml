@@ -100,8 +100,9 @@ let minify_trig_fn (fn : math_fn) : math_fn =
   | Tan a -> arg a (fun a -> Tan a)
   | _ -> fn
 
+(* CSS Values 4 sec. 10.9: a zero step makes [round()] NaN. *)
 let round_to_step strategy value step =
-  if step = 0. then value
+  if step = 0. then Float.nan
   else
     let q = value /. step in
     let q =
@@ -117,8 +118,9 @@ let round_to_step strategy value step =
     in
     q *. step
 
+(* CSS Values 4 sec. 10.9: a zero divisor makes [mod()] NaN. *)
 let mod_value a b =
-  if b = 0. then a
+  if b = 0. then Float.nan
   else
     let q = Float.floor (a /. b) in
     a -. (q *. b)
