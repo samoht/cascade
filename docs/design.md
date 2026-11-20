@@ -154,6 +154,10 @@ shortens the output. Every composition goes through `Nest.substitute`, which
 splices in for `&` only the parent branches without a pseudo-element and
 stands `:is()` of the parent for an `&` left with none, a selector
 `Nest.keep_readable_branches` then drops.
+In an `@scope` block `Flatten` composes under the parent with the implied
+root spelled out (`& <parent>`, which sec. 3.5.1 weighs at zero) and prints
+the bare composition when the nested selector starts with its parent
+(`Nest.parent_first`); `Nest.merge_lone` merges there only in that case.
 
 The rule graph (`lib/rule_graph.ml`) that factoring and merging reorder over
 reads a rule with nested content as parts: its own declarations under its

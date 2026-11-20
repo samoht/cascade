@@ -636,7 +636,7 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     let selector = Selector.canonicalize ~enforce_spec rule.selector in
     if selector == rule.selector then rule else { rule with selector }
   in
-  Nest.merge_lone rule
+  Nest.merge_lone ~in_scope:(owner == scope_owner) rule
 
 and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (rules : rule list) : rule list =
