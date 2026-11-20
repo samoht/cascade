@@ -261,17 +261,17 @@ let background_initial_slots () =
     ~optimized:"background:url(a.png)red" "background: url(a.png) red"
 
 (* CSS Backgrounds 3 (ED) sec. 2.1 orders a layer's slots, not the author's
-   words, so pp writes the image before the colour whichever way round they were
-   read. [background: red var(--x)] therefore prints [var(--x)red], and that
-   emission is only readable as the layer it came from if a leading [var()] with
-   more behind it fills the image slot rather than standing for the whole
-   value. *)
+   words, but a [var()] beside them may substitute a comma (CSS Variables 1 sec.
+   3), and only the final layer takes a colour: with [--x: url(a.png),
+   url(b.png)], [background: red var(--x)] is invalid and [var(--x) red] paints
+   red, as Chromium 153 computes. A value holding one is written back in the
+   order it was read. *)
 let background_leading_var_slot () =
-  check_declaration ~expected:"background:var(--x)red"
+  check_declaration ~expected:"background:red var(--x)"
     "background: red var(--x)";
   check_declaration ~expected:"background:var(--x)red"
     "background: var(--x) red";
-  check_declaration ~expected:"background:var(--x)no-repeat"
+  check_declaration ~expected:"background:no-repeat var(--x)"
     "background: no-repeat var(--x)";
   check_declaration ~expected:"background:var(--x)no-repeat"
     "background: var(--x) no-repeat";

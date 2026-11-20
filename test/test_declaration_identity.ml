@@ -672,11 +672,10 @@ let dimension_before_signed_number () =
     ~expected:"a{rotate:45deg 1-1-1}" "a { rotate: 1 -1 -1 45deg }";
   minify_reads_back "rotate axis with an unsigned first component"
     ~expected:"a{rotate:45deg 1 2-3}" "a { rotate: 1 2 -3 45deg }";
-  (* A [var()] angle ends on [)], which needs no separator after it. Only the
-     printed text is pinned: the reader takes the angle-first spelling of this
-     value as an opaque stream, so the emission does not carry the axis node
-     back either way. *)
-  check_declaration ~expected:"rotate:var(--a)1-1-1" "rotate:1 -1 -1 var(--a)";
+  (* A [var()] may substitute more than the angle (CSS Variables 1 sec. 3), so
+     it stays where it was written, and the axis before it still separates its
+     signed numbers. *)
+  check_declaration ~expected:"rotate:1-1-1 var(--a)" "rotate:1 -1 -1 var(--a)";
   minify_reads_back "scale number pair" ~expected:"a{scale:-1-2}"
     "a { scale: -1 -2 }";
   minify_reads_back "translate lengths" ~expected:"a{translate:1px -2px}"
