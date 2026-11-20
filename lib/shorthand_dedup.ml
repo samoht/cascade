@@ -217,9 +217,12 @@ let is_all_declaration = function
    fall back to. An image, [attr()], a [var()] or a list holding one of those
    may be what some browser rejects, and keeps the declarations before it. *)
 let rec plain_content : Properties.content -> bool = function
-  | String _ | Quoted _ | None | Normal | Open_quote | Close_quote | Counter _
-  | Counters _ | Inherit | Initial | Unset | Revert | Revert_layer ->
+  | String _ | Quoted _ | None | Normal | Open_quote | Close_quote | Inherit
+  | Initial | Unset | Revert | Revert_layer ->
       true
+  (* Chrome 153 refuses a [symbols()] counter style. *)
+  | Counter { style; _ } | Counters { style; _ } -> (
+      match style with Some (Symbols _) -> false | _ -> true)
   | Content_list items -> List.for_all plain_content items
   (* A browser that predates the alternative text of CSS Generated Content 3
      sec. 1.1 drops the value that holds one. *)
