@@ -386,6 +386,12 @@ differently. They are the reason to minify again.
   runtime variables made the same fold. A zero product now drops an operand
   only when it holds no `var()`, or is an `@property` registered as
   `<number>` or `<integer>` (#1457).
+- **A scroll-driven animation ended at the wrong point.**
+  `animation-range:entry 10% normal` was minified to
+  `animation-range:entry 10%`, which ends the animation at `entry 100%`
+  rather than at `normal`: an omitted end takes the start's range name (CSS
+  Scroll Animations 1 sec. 6.2). The end now goes only where it says what
+  leaving it out says (#1470).
 
 #### Stable output
 
