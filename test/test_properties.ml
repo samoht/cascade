@@ -142,7 +142,7 @@ let spec_property_grammar_edges () =
   check_clip_path "xywh(0 0 100% 100% round 10px)";
   check_clip_path "rect(0px 0px 10px 10px)";
   check_content "counter(page)";
-  check_content "counters(section, \".\")";
+  check_content ~expected:"counters(section,\".\")" "counters(section, \".\")";
   neg_cursor read_font_feature_settings "\"kern\" -1";
   neg_cursor read_font_variation_settings "\"wg\" 400";
   neg_cursor read_timing_function "linear()";
