@@ -35,6 +35,9 @@ type content =
     }
   | String_ref of string
   | Content_list of content list
+  | With_alt of { content : content; alt : content list }
+      (** CSS Generated Content 3 sec. 1.1: [content / alt], the alternative
+          text a [<string>], [counter()], [counters()] or [attr()] list. *)
   | Inherit
   | Initial
   | Unset
