@@ -812,6 +812,15 @@ differently. They are the reason to minify again.
   rule whole and leaves `a` uncoloured. A list whose selectors some target
   release reads apart now compares as one rule, and one no target parses,
   such as a list holding a `-ms-` pseudo-element, as no rule (#1487).
+- **A prefixed property was taken for one no browser reads.** The WHATWG
+  Compatibility Standard lists `-webkit-mask-box-image` and its longhands as
+  aliases of `mask-border` and its longhands, and the comparison read every
+  listed alias as its property, so it called
+  `.a{-webkit-mask-box-image-width:1px}` identical to
+  `.a{mask-border-width:1px}`. No Chromium or Firefox release reads
+  `mask-border`, and Chromium leaves the prefixed width at `auto` under the
+  second sheet. The set is now a property of its own, and the pair compares
+  different, as it did in 1.2.1 (#1517).
 - **A guard was decided by its property alone.**
   `@supports (break-before:always){a{color:red}}` compared identical to
   `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves

@@ -2876,7 +2876,9 @@ val is_vendor_prefixed : 'a property -> bool
 val legacy_alias : 'a property -> any_property option
 (** [legacy_alias property] is the property [property] is a legacy name alias of
     under WHATWG Compatibility Standard sec. 3.4.1, such as [transform] for
-    [-webkit-transform], and [None] for every other property. *)
+    [-webkit-transform], and [None] for every other property. The
+    [-webkit-mask-box-image] set is no alias: no Chromium or Firefox release
+    reads [mask-border]. *)
 
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
