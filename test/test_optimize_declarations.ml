@@ -772,6 +772,49 @@ let nested_block_separator () =
     ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
     ".a{top:0;@supports(color:red){color:red}.b{left:0}}"
 
+(* An earlier declaration of a property is a fallback for a browser that drops
+   the later one at parse time, and the default targets are floors: Chrome 111,
+   Firefox 128, Safari 16.4 and every later release. web-features records
+   light-dark() from Chrome 123 and Safari 17.5, contrast-color() from Chrome
+   147, anchor() and anchor-size() from Chrome 125, the stretch keyword from
+   Chrome 138 and in no Firefox or Safari, and image-set() from Safari 17. So a
+   floor drops each later declaration below and paints the earlier one, which
+   stays in both modes. *)
+let floor_fallbacks_survive () =
+  let check_modes name input expected =
+    Alcotest.(check string)
+      (name ^ " default") expected (optimized_string input);
+    Alcotest.(check string)
+      (name ^ " enforce-spec") expected
+      (optimized_string ~enforce_spec:true input)
+  in
+  check_modes "light-dark()" "a{color:red;color:light-dark(red,blue)}"
+    "a{color:red;color:light-dark(red,#00f)}";
+  check_modes "contrast-color()" "a{color:red;color:contrast-color(red)}"
+    "a{color:red;color:contrast-color(red)}";
+  check_modes "a Color 4 fallback before light-dark()"
+    "a{color:#944a4b;color:light-dark(red,blue)}"
+    "a{color:#944a4b;color:light-dark(red,#00f)}";
+  check_modes "anchor-size()" "a{width:1px;width:anchor-size(width)}"
+    "a{width:1px;width:anchor-size(width)}";
+  check_modes "anchor()" "a{top:0;top:anchor(bottom)}"
+    "a{top:0;top:anchor(bottom)}";
+  check_modes "stretch" "a{width:1px;width:stretch}"
+    "a{width:1px;width:stretch}";
+  check_modes "image-set()"
+    "a{background:url(a.png);background:image-set(url(a.png) 1x)}"
+    "a{background:url(a.png);background:image-set(url(a.png)1x)}";
+  Alcotest.(check bool)
+    "a fallback in an earlier rule of the selector" true
+    (Astring.String.is_infix ~affix:"width:1px"
+       (optimized_string "a{width:1px}b{color:red}a{width:stretch}"));
+  (* Every floor reads [display:grid] and [width:fit-content], so the earlier
+     declaration is dead in every browser at or above them. *)
+  check_modes "a value every floor reads" "a{display:block;display:grid}"
+    "a{display:grid}";
+  check_modes "fit-content" "a{width:1px;width:fit-content}"
+    "a{width:fit-content}"
+
 let target_minify_enforce_spec_split () =
   let check_modes name input ~default ~spec =
     Alcotest.(check string) (name ^ " default") default (optimized_string input);
@@ -1049,6 +1092,7 @@ let suite =
       ( "target minify and enforce-spec split",
         `Quick,
         target_minify_enforce_spec_split );
+      ("floor fallbacks survive", `Quick, floor_fallbacks_survive);
       ( "target evergreen compatibility prefixes",
         `Quick,
         target_evergreen_compatibility_prefixes );
