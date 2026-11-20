@@ -16,6 +16,23 @@ factoring buckets on. `Css.of_string ~preserve_source:true` keeps the
 byte-exact input in a separate `source` snapshot, which optimising and the
 other transforms leave untouched.
 
+## Math functions over several units
+
+A comparison over units with a fixed ratio (`Values_calc.compared_results`)
+compares their values in the type's canonical unit and answers the argument
+it picks, as written, so no converted coefficient reaches the print; two
+values a conversion leaves a hair apart (`1cm`, `10mm`) are one
+(`same_quantity`). A sum converts a time through `ms` and an angle through
+`deg`, where whole values stay whole and the folded leaf reads back to the
+same float. `rad` has an irrational ratio, so a sum holding one stays, and
+`hypot()`, `round()`, `mod()` and `rem()` fold over one unit only, since
+their result is a coefficient no literal spells exactly. A call that does not
+fold prints bare only where the printer passes `~bare_call` to
+`pp_calc_with`: a time, a percentage, `font-stretch`, `font-size-adjust`,
+`text-size-adjust` and `border-image-slice` read the bare call back as the
+same calculation node, while a length slot reads a bare `min()` into its own
+typed node, so a length calculation keeps its `calc()`.
+
 ## Interning and physical identity
 
 `Declaration.v` and `Declaration.theme_guarded` intern each declaration in a

@@ -742,6 +742,17 @@ let with_length_value l v : length =
   | Pct _ -> Pct v
   | _ -> Px v
 
+(* CSS Values 4 sec. 5.2: an absolute length in [px]. *)
+let absolute_px : length -> float option = function
+  | Px f -> Some f
+  | In f -> Some (f *. 96.)
+  | Cm f -> Some (f *. 96. /. 2.54)
+  | Mm f -> Some (f *. 96. /. 25.4)
+  | Q f -> Some (f *. 96. /. 101.6)
+  | Pt f -> Some (f *. 4. /. 3.)
+  | Pc f -> Some (f *. 16.)
+  | _ -> None
+
 let rec reduce_length_min_max : length -> length = function
   | Min xs as orig -> (
       let xs = List.map reduce_length_min_max xs in
@@ -768,7 +779,23 @@ and reduce_typed_min_max_simple (xs : length list) reduce : length option =
         let values = List.map fst pairs in
         let reduced = List.fold_left reduce (List.hd values) (List.tl values) in
         Some (with_length_value sample reduced)
-    | _ -> None
+    | _ -> (
+        (* CSS Values 4 sec. 10.7: absolute lengths have a fixed ratio to [px],
+           so a comparison over several of them compares their pixels and
+           answers the argument it picks, as written. *)
+        match List.map absolute_px xs with
+        | Some v0 :: rest as all when List.for_all Option.is_some rest ->
+            let values = List.filter_map Fun.id all in
+            let picked = List.fold_left reduce v0 values in
+            List.find_map
+              (fun (x, v) ->
+                if
+                  same_quantity v picked
+                  || (Float.is_nan v && Float.is_nan picked)
+                then Some x
+                else None)
+              (List.combine xs values)
+        | _ -> None)
 
 let try_reduce_typed_min_max xs reduce =
   let xs = List.map reduce_length_min_max xs in
