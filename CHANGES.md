@@ -207,15 +207,16 @@ where it is called. Each entry says what to write there.
   `url("theme.css")` and `"theme.css"`. Code that reads `url` gets the url
   directly. Code that builds an `import_rule` writes the url, `url =
   "theme.css"`; a record built with `url = "url(theme.css)"` now prints as
-  `@import "url(theme.css)"`, an import of the file named `url(theme.css)`.
+  `@import "url(theme.css)"`, an import of the file named `url(theme.css)`
+  (#1460).
 - **`Css.decode_import_url` is gone.** It recovered the url from the source
   spelling the `url` field held, which the field no longer holds, and applied to
   a decoded url it read `"url(a.css)"` as `a.css`. Replace
-  `Css.decode_import_url ir.url` with `ir.url`.
+  `Css.decode_import_url ir.url` with `ir.url` (#1460).
 - **`Pp.quoted` is gone.** It wrote a string between double quotes without
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
-  and takes an optional `~quote`.
+  and takes an optional `~quote` (#1460).
 
 ### Minified output
 
@@ -293,8 +294,10 @@ differently. They are the reason to minify again.
   for `image-set()` strings and `type()`, `clip-path:url()`, `@font-face`
   `src` urls and `format()`, `@namespace` urls, and a custom property's
   `url()` holding a tab, which came out bare; `@import '"x".css'` printed
-  `@import "x".css` unminified. Every string and url is now written escaped,
-  so it reads back as the one written.
+  `@import "x".css` unminified. A registered `<custom-ident>` lost its escapes,
+  so `initial-value:a\ b` became `a b`, and Chromium dropped the `@property`
+  rule. Every string, url and registered ident is now written escaped, so it
+  reads back as the one written (#1460).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

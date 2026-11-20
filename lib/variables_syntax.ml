@@ -185,7 +185,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Angle -> pp_registered_angle ctx value
   | Time -> Values.pp_duration ctx value
   | Resolution -> Pp.string ctx value
-  | Custom_ident -> Pp.string ctx value
+  | Custom_ident -> Pp.string ctx (Parser.escape_ident value)
   | String -> Pp.quoted_string ctx value
   | Url -> Pp.url ctx value
   | Image ->
