@@ -321,8 +321,6 @@ decompositions are not modelled.
 Numbers follow the same precision as minification. An exact quotient such as
 `calc(28/14)` equals `2` in either mode. By default `calc(28/18)` equals
 cascade's six-figure `1.55556`; under `--lossless` it equals no finite decimal.
-The comparison spends that budget on a quotient the minifier keeps as written
-too, so `calc(1/3*100%)` equals `33.3333%` by default.
 
 For browsers, the comparison assumes the targets `--minify` uses: a
 `@supports` guard every target satisfies is unwrapped, a prefix a target
@@ -357,20 +355,19 @@ keeps that rule on both sides, so a sheet that lost it differs and the exit is
 1. A pseudo-class cascade does not know at all is not on that list, and a rule
 lost to it still withholds the verdict.
 
-A declaration cascade cannot read is handled differently. It is dropped on
-that side, a parse warning is printed, and the verdict is taken over what
-remains, so two sheets that differ only inside such a declaration compare
-identical. The report and the `--json` document count the unreadable
-declarations and rules on each side, and a nonzero count means the verdict
-covers only what cascade read.
+A declaration cascade cannot read is handled differently. The reader accepts
+a declaration exactly when the target browsers do, so one it refuses is one
+every target drops, and the verdict rests on that. It is dropped on that side,
+a parse warning is printed, and the verdict is taken over what remains. The
+report and the `--json` document count the unreadable declarations and rules
+on each side.
 
-The reader is tested against Chromium in both directions.
+Two browser harnesses test the reader against Chromium in both directions.
 `test/spec/browser/accept_set` asks the browser about values generated for
 every property the reader dispatches on, and reports a value the browser keeps
 that the reader drops as well as the reverse. `test/render/parse_recovery`
 checks that, over malformed CSS, the reader keeps the rules and declarations
-the browser's CSSOM keeps. Both cover their own inputs, not every value a
-browser reads, so the reader can still drop a declaration the browser keeps.
+the browser's CSSOM keeps.
 
 ### Browser comparison
 

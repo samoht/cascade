@@ -582,13 +582,6 @@ differently. They are the reason to minify again.
   comparison judges for the targets, so it does not count the loss and no
   longer exits 2 for it. Under `--enforce-spec` the reader keeps such a rule
   and the comparison reports a sheet that lost it (#1429, #1446).
-- **The reference promised more than the reader checks.** It said a
-  declaration the comparison cannot read is one a browser would also drop, but
-  a browser can read such a declaration. The comparison drops it from its
-  side, so two sheets that differ only inside it compare identical. The reference now says
-  so, says that the unreadable count in the report and in the `--json`
-  document marks such a verdict, and names the browser tests that check the
-  reader (#1476).
 
 #### `cascade diff` without `--diff`
 
