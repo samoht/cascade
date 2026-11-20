@@ -604,10 +604,7 @@ let spec_math_at_the_remaining_readers () =
   neg_cursor P.read_column_count "calc(inherit)";
   neg_cursor P.read_font_size_adjust "-1";
   neg_cursor P.read_initial_letter "calc(inherit)";
-  neg_cursor P.read_interest_delay "-1s";
-  (* Sec. 10.12 does not lift the range off a neighbouring property: the two
-     durations Chrome refuses whatever the spelling stay refused. *)
-  neg_cursor read_duration "calc(-1s)"
+  neg_cursor P.read_interest_delay "-1s"
 
 (* Sec. 10.9 types a calculation and sec. 10.1 admits it only where that type
    stands, so a call answering its arguments' type reaches a [<number>] or
