@@ -764,6 +764,9 @@ type isolation =
 type break_value =
   | Auto
   | Avoid
+  | Always
+      (** CSS Fragmentation 3 sec. 3.1: a break in the innermost fragmentation
+          context, which is not {!Page} inside a multicol container. *)
   | All
   | Avoid_page
   | Page
