@@ -190,6 +190,35 @@ let canonical_reports_reset_crossing_declaration () =
       Alcotest.fail "fell back to a byte diff of the canonical forms"
   | _ -> Alcotest.fail "expected a tree diff"
 
+(* A rule's nested writes keep their order against the rules around it (CSS
+   Nesting 1 sec. 3 and 3.4): each pair moves a nested write past a rule that
+   ties with it, and Chromium computes a different value on an element both
+   match. 1.2.1 minified each first sheet into the second. *)
+let canonical_separates_moved_nested_writes () =
+  List.iter
+    (fun (name, a, b) ->
+      Alcotest.(check bool)
+        name false
+        (Cascade_diff.Css_compare.equal ~mode:`Canonical a b))
+    [
+      ( "a nested conditional",
+        ".a{top:1px}.d{color:red}.a{@media (min-width:1px){color:blue}}",
+        ".a{top:1px;@media(width>=1px){color:#00f}}.d{color:red}" );
+      ( "a nested rule",
+        ".a .c{top:2px}:not(.a){font-weight:bold;.b~&{align-items:start}}.a \
+         .c{place-items:center}",
+        ".a \
+         .c{place-items:center;top:2px}:not(.a){font-weight:700;.b~&{align-items:start}}"
+      );
+      ( "a declaration after a nested rule",
+        "[class~=a]{float:left}.a,.b{background:red}[class~=a]{&>span{margin-block-start:7px}all:initial}",
+        "[class~=a]{float:left;>span{margin-block-start:7px}all:initial}.a,.b{background:red}"
+      );
+      ( "a nested rule merged ahead",
+        "p,span{color:initial}span.a{all:unset}p,span{&:is(.a,.d){float:left}}",
+        "p,span{color:initial;&:is(.a,.d){float:left}}span.a{all:unset}" );
+    ]
+
 (* A declaration a conditional group repeats from the rule with the identical
    selector before it, value and all, changes nothing: an engine reading the
    guard sets the same value twice, one that does not reads the first rule
@@ -1413,6 +1442,8 @@ let suite =
         equal_canonical_negated_bound;
       Alcotest.test_case "canonical reports a reset crossing a declaration"
         `Quick canonical_reports_reset_crossing_declaration;
+      Alcotest.test_case "canonical separates moved nested writes" `Quick
+        canonical_separates_moved_nested_writes;
       Alcotest.test_case "canonical guarded repeat" `Quick
         equal_canonical_guarded_repeat;
       Alcotest.test_case "canonical nested media order" `Quick
