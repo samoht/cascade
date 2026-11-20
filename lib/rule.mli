@@ -18,8 +18,11 @@ val finalize :
     the rest of the rule run holds, which shorthand composition needs and the
     rule alone cannot show. *)
 
-val drop_shadowed : Stylesheet.rule list -> Stylesheet.rule list
-(** Drop same-selector shadowed rules and declarations. *)
+val drop_shadowed :
+  floors:Support.targets -> Stylesheet.rule list -> Stylesheet.rule list
+(** [drop_shadowed ~floors rules] drops the declarations, and the rules left
+    with none, that a later rule of the same selector writes over. A later write
+    shadows only where every browser at or above [floors] reads it. *)
 
 val normalize :
   ctx:Ctx.t ->

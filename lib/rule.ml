@@ -253,7 +253,7 @@ let finalize ?held ?(canonicalize_selector = true) ~ctx rule =
     ~dedup:(deduplicate_declarations_with ?held ~ctx)
     ~canonicalize_selector ~ctx rule
 
-let drop_shadowed_rules (rules : rule list) : rule list =
+let drop_shadowed_rules ~floors (rules : rule list) : rule list =
   let later_by_selector = Cover.v () in
   let rules_arr = Array.of_list rules in
   let len = Array.length rules_arr in
@@ -272,7 +272,7 @@ let drop_shadowed_rules (rules : rule list) : rule list =
         let selector = rule.Stylesheet_intf.selector in
         let written = Cover.written later_by_selector selector in
         dropped.(i) <-
-          rule.nested = [] && List.for_all (Cover.covered written) decls;
+          rule.nested = [] && List.for_all (Cover.covered ~floors written) decls;
         Cover.record later_by_selector selector written decls);
     if dropped.(i) then changed := true
   done;
@@ -320,10 +320,11 @@ end)
 let written_for_key later_by_key key =
   Key_table.find_opt later_by_key key |> Option.value ~default:Cover.empty
 
-let shadowed_by_later ~later_by_key ~keys decl =
+let shadowed_by_later ~floors ~later_by_key ~keys decl =
   (not (is_intentionally_duplicated decl))
   && List.for_all
-       (fun key -> Cover.covered (written_for_key later_by_key key) decl)
+       (fun key ->
+         Cover.covered ~floors (written_for_key later_by_key key) decl)
        keys
 
 let record_for_keys later_by_key keys decls =
@@ -333,7 +334,7 @@ let record_for_keys later_by_key keys decls =
       Key_table.replace later_by_key key (Cover.add written decls))
     keys
 
-let drop_shadowed_declarations (rules : rule list) : rule list =
+let drop_shadowed_declarations ~floors (rules : rule list) : rule list =
   let later_by_key = Key_table.create 16 in
   let rules_arr = Array.of_list rules in
   let len = Array.length rules_arr in
@@ -343,7 +344,7 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
     let keys = selector_keys rule in
     let kept =
       list_filter_preserve
-        (fun d -> not (shadowed_by_later ~later_by_key ~keys d))
+        (fun d -> not (shadowed_by_later ~floors ~later_by_key ~keys d))
         rule.declarations
     in
     let rule' = with_declarations rule kept in
@@ -355,8 +356,8 @@ let drop_shadowed_declarations (rules : rule list) : rule list =
   done;
   if !changed then Array.to_list rules_arr else rules
 
-let drop_shadowed rules =
-  rules |> drop_shadowed_declarations |> drop_shadowed_rules
+let drop_shadowed ~floors rules =
+  rules |> drop_shadowed_declarations ~floors |> drop_shadowed_rules ~floors
 
 (* The cheap rule-local pipeline, run on a rule run before the factoring and
    independent of the stylesheet-wide factoring budget. Shadowing is read again
@@ -365,12 +366,12 @@ let drop_shadowed rules =
    declarations keeps that, so [finalize] only composes. *)
 let normalize ~ctx ~held rules =
   list_map_preserve (single ~ctx) rules
-  |> drop_shadowed
+  |> drop_shadowed ~floors:(Ctx.floors ctx)
   |> list_map_preserve
        (finalize_with
           ~dedup:(Shorthand.compose_deduplicated ~held ~ctx)
           ~canonicalize_selector:false ~ctx)
-  |> drop_shadowed
+  |> drop_shadowed ~floors:(Ctx.floors ctx)
 
 (* Adjacent identical-body merging: two neighbouring rules with the same
    declarations apply identically whether split or grouped, so the merge is

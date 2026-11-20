@@ -78,6 +78,8 @@ val canonicalize :
 
     Coalescing two same-selector rules deduplicates the declarations they
     together hold, under the same [enforce_spec] and [judge] the optimizer takes
-    ({!Optimize.stylesheet}): with [judge] set, a colour fallback every judged
-    browser parses past is dead once the rules meet; with [enforce_spec] a
-    prefixed declaration keeps its unprefixed twin. *)
+    ({!Optimize.stylesheet}): an earlier declaration is dead once the rules meet
+    only when every browser at or above the floors that reads it reads the later
+    one ({!Declaration.fallback_for}); without [judge] the one before a CSS
+    Color 4 colour stays too; with [enforce_spec] a prefixed declaration keeps
+    its unprefixed twin. *)

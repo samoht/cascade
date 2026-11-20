@@ -16,9 +16,12 @@ val written : t -> Selector.t -> written
 (** [written t selector] is what [t] holds for [selector], read in one lookup
     and answering for every declaration a rule at that selector carries. *)
 
-val covered : written -> Declaration.t -> bool
-(** [covered written decl] is [true] when [decl]'s property is definitely
-    shadowed by a later declaration at the same or stronger importance. *)
+val covered : floors:Support.targets -> written -> Declaration.t -> bool
+(** [covered ~floors written decl] is [true] when [decl]'s property is
+    definitely shadowed by a later declaration at the same or stronger
+    importance that every browser at or above [floors] reading [decl] reads too
+    ({!Declaration.fallback_for}). A later write a floor drops while it reads
+    [decl] leaves [decl] as the fallback it paints. *)
 
 val add : written -> Declaration.t list -> written
 (** [add written decls] extends [written] with [decls]. *)

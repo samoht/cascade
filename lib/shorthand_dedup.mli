@@ -15,13 +15,18 @@ val is_all_declaration : Declaration.declaration -> bool
 (** [is_all_declaration d] is [true] when [d] is the [all] shorthand. *)
 
 val deduplicate_step :
-  ?targets:Support.targets ->
+  floors:Support.targets ->
+  judged:bool ->
   ('a * Declaration.declaration) list ->
   'a * Declaration.declaration ->
   ('a * Declaration.declaration) list
-(** [deduplicate_step ?targets kept d] adds [d] to the reversed list [kept],
-    dropping the declarations of [kept] that [d] makes dead under [targets], or
-    drops [d] when an important declaration of [kept] already covers it. *)
+(** [deduplicate_step ~floors ~judged kept d] adds [d] to the reversed list
+    [kept], dropping the declarations of [kept] that [d] makes dead, or drops
+    [d] when an important declaration of [kept] already covers it. A declaration
+    [d] covers is dead only when every browser at or above [floors] that reads
+    it also reads [d] ({!Declaration.fallback_for}). A run that does not judge
+    for browsers ([judged] false) also keeps one before a CSS Color 4 colour or
+    a runtime substitution. *)
 
 val read_by_no_target : Declaration.declaration -> bool
 (** [read_by_no_target decl] is whether no browser a {!Support.targets} names

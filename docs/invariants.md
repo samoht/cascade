@@ -80,6 +80,18 @@ change that breaks one is a defect even when every test passes.
   answers the question; `equal_canonical_targets` in
   `test/test_css_compare_structure.ml` holds it (`field-sizing` and
   `anchor-name` guards separate, `not (display:grid)` does not).
+- **A fallback is dead only when every browser at or above the floors that
+  reads it reads the declaration after it.** An earlier declaration that a
+  later one of the same selector covers is what a browser paints when it reads
+  it and drops the later one at parse time. The minifier and the judge decide that through one function,
+  `Declaration.fallback_for`, asked of the same floors (`Ctx.floors`) by
+  in-rule deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
+  shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
+  projection's shadowing (`Rule_order`). So whatever the minifier deletes the
+  judge also counts dead, which the release criterion assumes. The minifier
+  keeps more: without a judge it also keeps the fallback before a CSS Color 4
+  colour or a runtime substitution. `floor_fallbacks_survive` in
+  `test/test_optimize_declarations.ml` and `equal_canonical_targets` hold it.
 - **Rule rewrites that move source order reason about overlap.** Factoring a
   default value into a shared block keeps a rule's own declaration when an
   earlier overlapping rule writes a different value. Nesting synthesis is
