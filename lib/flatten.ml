@@ -149,19 +149,20 @@ and nested_scope (parent : parent) s e block =
   Scope
     ( start,
       Option.map (scope_selector_in_context parent.selector) e,
-      block_in ~in_scope:true block )
+      block_in ~flattens:(fun _ -> true) ~in_scope:true block )
 
-and top_statement ~in_scope (stmt : statement) : statement list =
+and top_statement ~flattens ~in_scope (stmt : statement) : statement list =
   (* A flat rule with declarations is already in final form; a wrapper whose
      block does not change keeps its node. Both let an already-flat sheet stay
      physically shared. *)
   let wrap ?(in_scope = in_scope) stmts rebuild =
-    let stmts' = block_in ~in_scope stmts in
+    let stmts' = block_in ~flattens ~in_scope stmts in
     if stmts' == stmts then [ stmt ] else [ rebuild stmts' ]
   in
   match stmt with
   | Rule { nested = []; declarations = _ :: _; _ } -> [ stmt ]
-  | Rule rule -> flat_rule ~in_scope rule
+  | Rule rule when flattens rule -> flat_rule ~in_scope rule
+  | Rule _ -> [ stmt ]
   | Media (cond, block) -> wrap block (fun b -> Media (cond, b))
   | Moz_document (cond, block) -> wrap block (fun b -> Moz_document (cond, b))
   | Container (name, cond, block) ->
@@ -181,7 +182,25 @@ and top_statement ~in_scope (stmt : statement) : statement list =
     | Unknown_at_rule _ ) as other ->
       [ other ]
 
-and block_in ~in_scope (block : statement list) : statement list =
-  concat_map_preserve (top_statement ~in_scope) block
+and block_in ~flattens ~in_scope (block : statement list) : statement list =
+  concat_map_preserve (top_statement ~flattens ~in_scope) block
 
-let block block = block_in ~in_scope:false block
+let block block = block_in ~flattens:(fun _ -> true) ~in_scope:false block
+
+(* CSS Nesting 1 sec. 3.4 and 5: a declaration written after a nested rule, or
+   directly in a conditional group rule nested in a style rule, is a nested
+   declarations rule. Releases before it moved such a declaration ahead of every
+   nested rule and read one in a group rule as [& {...}], which matches no
+   pseudo-element and weighs a list parent as [:is()]. *)
+let rec holds_nested_declarations (stmts : statement list) =
+  List.exists
+    (function
+      | Declarations _ -> true
+      | Rule r -> holds_nested_declarations r.nested
+      | stmt -> holds_nested_declarations (statement_children stmt))
+    stmts
+
+let rules_with_nested_declarations block =
+  block_in
+    ~flattens:(fun (r : rule) -> holds_nested_declarations r.nested)
+    ~in_scope:false block

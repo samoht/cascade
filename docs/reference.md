@@ -13,10 +13,10 @@ the README first; come here to check a detail.
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline makes one pass at every size, and each step finishes in it what it starts, so minifying the output again returns it. |
 | `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes, but merges rules with one body only where they print within 128 rules of each other, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges them at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
-| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also has the parser keep a rule over a pseudo-class no target reads, and holds it to the ident code points CSS Syntax 3 lists; those parts act without `--minify` too. |
+| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also has the parser keep a rule over a pseudo-class no target reads, and holds it to the ident code points CSS Syntax 3 lists; those parts act without `--minify` too. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. See [Scope](#scope). Has no effect without `--minify`. |
-| `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. Has no effect without `--minify`. |
+| `--flatten-nesting` | Desugar nested rules into flat top-level rules. `--minify` already does for the default targets and under `--enforce-spec`, since Chrome 111 and Safari 16.4 read no nesting; the flag also flattens for library callers whose targets parse it. Has no effect without `--minify`. |
 | `--inline-imports` | Resolve `@import` against files relative to the input. Without `--import-root`, this may read any local path available to the process and is unsafe for untrusted CSS. |
 | `--import-root=DIR` | Restrict `--inline-imports` to the canonical root and its descendants. Lexical `..` and symlink escapes are rejected; relative roots are resolved from the current working directory. |
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation of the variables it inlines. |
@@ -243,7 +243,17 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
   to 137, Firefox and Safari, which drop `stretch`. This holds under `--enforce-spec` too.
 - A `min-`/`max-` media or container feature becomes the range syntax,
   `(min-width: 700px)` to `(width >= 700px)`.
-- A nested selector loses its `&` prefix, `& div` to `div`.
+- Nesting is flattened, `.a{color:red;.b{color:blue}}` to
+  `.a{color:red}.a .b{color:#00f}`, and none is synthesised. Chrome 111 and
+  Safari 16.4 read no nested rule, and Chrome 112 to 119 and Safari 16.5 to
+  17.1 refuse one whose selector starts with an identifier (MDN's
+  browser-compat-data, `css.selectors.nesting`). Under targets from Chrome
+  120, Firefox 117 and Safari 17.2 an author's nesting stays, a nested
+  selector loses its `&` prefix (`& div` to `div`), and adjacent rules may
+  nest. A rule holding a declaration after a nested rule, or one directly in a
+  nested group rule (a nested declarations rule, CSS Nesting 1 sec. 3.4 and
+  5), is flattened under any targets, since releases before nested
+  declarations rules read it in another order.
 - An `oklab` or `oklch` axis takes the percentage spelling where it is
   shorter, `oklch(.7 .304 20)` to `oklch(.7 76% 20)`.
 - A rule whose selector holds, outside `:is()` and `:where()`, a pseudo-class
@@ -421,8 +431,7 @@ how a dead-rule check deletes a live rule, so the two are kept apart.
   judged by their selectors.
 - Statements that name no element (`@keyframes`, `@font-face`, `@property`,
   `@import`, `@layer`, `@charset`) are kept.
-- Nesting is flattened first. Pipe the result through `cascade --minify` to
-  nest it again.
+- Nesting is flattened first.
 
 `--dry-run` prints a ranking instead: rules that matched nothing first, then
 the rest by increasing number of matched elements. Rules kept because their

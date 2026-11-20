@@ -268,6 +268,16 @@ differently. They are the reason to minify again.
   a `.b` inside an `.a`. Flattening now spells the root as `&` where a
   selector no longer starts with its parent, `--minify` keeps such a rule
   nested, and a nested `@scope` roots under its parent (#1504).
+- **Nesting the default targets do not read.** `--minify` turned
+  `.a{color:red}.a .b{color:blue}` into `.a{color:red;.b{color:#00f}}`, kept
+  an author's nesting, and turned `& div` into `div`. Chrome 111 and Safari
+  16.4 read no nested rule, and Chrome 112 to 119 and Safari 16.5 to 17.1
+  refuse one that starts with an identifier, so those releases lost the rule.
+  For the default targets and under `--enforce-spec` nesting is now flattened
+  and none is synthesised, which makes the output larger on sheets that
+  nested. Library callers whose targets parse nesting keep it, apart from a
+  rule holding a declaration after a nested rule or in a nested `@media`
+  (CSS Nesting 1 sec. 5), which is flattened under any targets (#1505).
 
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
