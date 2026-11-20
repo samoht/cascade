@@ -16,8 +16,7 @@ val read_import : Cursor.t -> statement
 (** [read_import r] reads an [@import] statement. *)
 
 val read_import_rule : Cursor.t -> import_rule
-(** [read_import_rule r] reads an [@import] prelude, dropping the authored
-    spelling of its url. *)
+(** [read_import_rule r] reads an [@import] prelude. *)
 
 val read_namespace : Cursor.t -> statement
 (** [read_namespace r] reads an [@namespace] statement. *)

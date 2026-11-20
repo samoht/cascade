@@ -80,6 +80,10 @@ module String : sig
   val utf8_lead_after : string -> int -> int
   (** [utf8_lead_after s i] moves [i] forward out of the UTF-8 sequence it falls
       inside, on the same terms as {!utf8_lead_before}. *)
+
+  val url_needs_quotes : string -> bool
+  (** [url_needs_quotes s] is [true] when [s] cannot stand as the body of an
+      unquoted [url(...)], which then has to hold it as a [<string>]. *)
 end
 
 val int_of_float_opt : float -> int option

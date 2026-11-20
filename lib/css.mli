@@ -4335,12 +4335,6 @@ val add_var_fallbacks : (string -> string option) -> t -> t
     value, and a declared one still wins. Unlike {!resolve_theme}, no reference
     is inlined and no definition is emitted. *)
 
-val decode_import_url : string -> string
-(** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
-    quotes from an [@import] URL string as held in
-    {!Stylesheet.import_rule.url}. The parser preserves the verbatim source form
-    there for round-tripping; this helper recovers the bare URL. *)
-
 val inline_imports :
   ?query:Context.query -> ?layer_order:string list -> Context.loader -> t -> t
 (** [inline_imports ?query ?layer_order loader stylesheet] replaces every

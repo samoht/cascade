@@ -377,11 +377,9 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Value -> Parser.string_of_components value
   | Content -> (
       match value with
-      | String "" -> "\"\""
-      | String s -> String.concat "" [ "\""; s; "\"" ]
+      | String s -> Pp.to_string Pp.quoted_string s
       | Quoted { value; quote; repr = _ } ->
-          let quote = String.make 1 quote in
-          String.concat "" [ quote; value; quote ]
+          Pp.to_string (Pp.quoted_string ~quote) value
       | None -> "none"
       | Normal -> "normal"
       | Open_quote -> "open-quote"

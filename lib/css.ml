@@ -1040,5 +1040,4 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
 let add_var_fallbacks lookup =
   Inline.var_fallbacks (bindable_theme_defaults lookup)
 
-let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

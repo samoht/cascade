@@ -135,9 +135,6 @@ val nop : 'a t
 val string : string t
 (** [string] writes a string value to the buffer. *)
 
-val quoted : string t
-(** [quoted] writes a double-quoted string value to the buffer. *)
-
 val char : char t
 (** [char] writes a single character to the buffer. *)
 
@@ -148,7 +145,9 @@ val last_char : ctx -> char option
 
 val quoted_string : ?quote:char -> string t
 (** [quoted_string ?quote] writes a [quote]-delimited string (default ['"'])
-    with proper escaping of the delimiter quote and backslashes. *)
+    that reads back as the one given: the delimiter and backslashes are
+    backslash-escaped and control characters hex-escaped (CSSOM 1 sec. 2.1).
+    Every printer of a [<string>] goes through it. *)
 
 (** {2 Layout Control}
 
@@ -358,7 +357,9 @@ val call_3 : string -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 (** [call_3 name a b c] formats a 3-arg function call: [name(a, b, c)]. *)
 
 val url : string t
-(** [url] formats a CSS url with quotes: url("s"). *)
+(** [url] writes the url [s] as [url(s)], with [s] in the form {!quoted_string}
+    writes when the bare body cannot hold it (a space, a quote, a parenthesis, a
+    backslash or a control character). *)
 
 val rename_custom_property : ctx -> string -> string
 (** [rename_custom_property ctx name] is [name] under [ctx]'s rename, for the

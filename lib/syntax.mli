@@ -25,10 +25,6 @@ val is_ident : string -> bool
     unchanged. An escape is not an ident code point: [s] is the decoded name,
     not its CSS spelling. *)
 
-val url_needs_quotes : string -> bool
-(** [url_needs_quotes s] returns true when serializing [s] as a bare [url(...)]
-    argument would change tokenization; the caller must wrap [s] in quotes. *)
-
 val split_top_level_colon :
   Component.t list -> (Component.t list * Component.t list) option
 (** [split_top_level_colon cvs] splits a component-value sequence at the first

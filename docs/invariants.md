@@ -11,7 +11,12 @@ change that breaks one is a defect even when every test passes.
   `parse(A) = parse(B)`, not whether the code is gated on minify. Normalize
   reaches the node the parser produces for the printed text, which keeps the
   `Declaration.hash` invariant (same minified text, same hash) that factoring
-  buckets on, and keeps `optimize` a fixed point.
+  buckets on, and keeps `optimize` a fixed point. The AST holds a `<string>`
+  or a url as the string it names, never its source spelling, and every
+  printer writes one through `Pp.quoted_string` or `Pp.url` (CSSOM 1 sec. 2.1,
+  serialize a string and serialize a URL), so it reads back as that string
+  whatever it holds (`pp` "string printers round-trip", fuzz `pp` "string
+  printers read back").
 - **Type-changing rewrites fire only at typed leaves.** The number/percentage
   swap and zero-unit stripping are normalize rewrites at an operand whose whole
   type is known: a bare value, or a math function with no `var()` in it. CSS

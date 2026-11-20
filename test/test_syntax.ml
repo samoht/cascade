@@ -60,12 +60,6 @@ let is_hex () =
   check_false "outside" (Syntax.is_hex 'g');
   check_false "non-letter" (Syntax.is_hex '!')
 
-let url_needs_quotes () =
-  check_false "plain" (Syntax.url_needs_quotes "foo.css");
-  check_true "space" (Syntax.url_needs_quotes "foo bar.css");
-  check_true "quote" (Syntax.url_needs_quotes "foo\"bar");
-  check_true "paren" (Syntax.url_needs_quotes "foo(bar)")
-
 let strip_url_suffix () =
   (* WHATWG URL sec. 4.4 path state, as RFC 3986 sec. 3.3: the path ends at the
      first [?] or [#]. *)
@@ -224,7 +218,6 @@ let suite =
       Alcotest.test_case "is_ident" `Quick is_ident;
       Alcotest.test_case "is_ident_non_ascii" `Quick is_ident_non_ascii;
       Alcotest.test_case "is_hex" `Quick is_hex;
-      Alcotest.test_case "url_needs_quotes" `Quick url_needs_quotes;
       Alcotest.test_case "strip_url_suffix" `Quick strip_url_suffix;
       Alcotest.test_case "url_scheme" `Quick url_scheme;
       Alcotest.test_case "url_file_path" `Quick url_file_path;

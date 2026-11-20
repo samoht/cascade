@@ -16,7 +16,8 @@ type layer_name = string list
 (** {2 Import Rule} *)
 
 type import_rule = {
-  url : string;  (** URL or string to import *)
+  url : string;
+      (** The URL to import, as the string the [url()] or [<string>] holds. *)
   layer : layer_name option;
       (** The layer this import declares: {!constructor-None} for none,
           [Some []] for the anonymous [layer] keyword. *)

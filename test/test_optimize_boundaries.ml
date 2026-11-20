@@ -483,7 +483,7 @@ let cascade2_import_after_bang_comment () =
      test/render/parse_recovery.ml), so the optimizer keeps the import. *)
   let import =
     Css.Stylesheet.Import
-      { url = "url(a.css)"; layer = None; supports = None; media = None }
+      { url = "a.css"; layer = None; supports = None; media = None }
   in
   let rule =
     Css.rule ~selector:(Css.Selector.class_ "a")

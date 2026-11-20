@@ -199,6 +199,24 @@ where it is called. Each entry says what to write there.
   `packed_property` types, was read by nothing in cascade. Build the pairs from
   `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
   `Declaration.property_key` (#1345, #1367, #1371, #1391).
+- **An `@import` rule's `url` holds the url, not its source text.** The field
+  held the source spelling (`url("theme.css")`, `'theme.css'`) when the rule
+  was read from a sheet and the decoded url on other paths, so a printer could
+  not tell `@import '"x".css'` from a spelling and printed it unescaped. It now
+  holds the decoded url on every path: `theme.css` for each of `url(theme.css)`,
+  `url("theme.css")` and `"theme.css"`. Code that reads `url` gets the url
+  directly. Code that builds an `import_rule` writes the url, `url =
+  "theme.css"`; a record built with `url = "url(theme.css)"` now prints as
+  `@import "url(theme.css)"`, an import of the file named `url(theme.css)`
+  (#1460).
+- **`Css.decode_import_url` is gone.** It recovered the url from the source
+  spelling the `url` field held, which the field no longer holds, and applied to
+  a decoded url it read `"url(a.css)"` as `a.css`. Replace
+  `Css.decode_import_url ir.url` with `ir.url` (#1460).
+- **`Pp.quoted` is gone.** It wrote a string between double quotes without
+  escaping it, so a quote or a backslash inside ended the string or started an
+  escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
+  and takes an optional `~quote` (#1460).
 
 ### Minified output
 
@@ -270,6 +288,16 @@ differently. They are the reason to minify again.
   1 over a `0px` basis. A lone unitless number in `flex` is the grow factor
   (CSS Flexbox 1 sec. 7.2), so a zero basis on its own now keeps its unit
   (#1459).
+- **Strings and urls came out unescaped.** `quotes:'"' '"'` and
+  `quotes:'""' ''` both printed `quotes:""""""`, which Chromium drops, and
+  a backslash or a newline in a `quotes` string was written raw. The same held
+  for `image-set()` strings and `type()`, `clip-path:url()`, `@font-face`
+  `src` urls and `format()`, `@namespace` urls, and a custom property's
+  `url()` holding a tab, which came out bare; `@import '"x".css'` printed
+  `@import "x".css` unminified. A registered `<custom-ident>` lost its escapes,
+  so `initial-value:a\ b` became `a b`, and Chromium dropped the `@property`
+  rule. Every string, url and registered ident is now written escaped, so it
+  reads back as the one written (#1460).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers
