@@ -42,7 +42,13 @@ type content =
   | Revert_layer
   | Var of content var
 
-type counter_item = { name : string; value : int option }
+type counter_item = {
+  name : string;
+  reversed : bool;
+      (** Written [reversed(name)]: CSS Lists 3 sec. 4.1 lets [counter-reset]
+          instantiate a reversed counter. *)
+  value : int option;
+}
 
 type counter_set =
   | None

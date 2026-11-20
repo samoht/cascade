@@ -102,10 +102,14 @@ let check_container_name =
   check_value_cursor "container_name" read_container_name pp_container_name
 
 let check_counter_item =
-  check_value_cursor "counter_item" read_counter_item pp_counter_item
+  check_value_cursor "counter_item"
+    (read_counter_item ~reversed:true)
+    pp_counter_item
 
 let check_counter_set =
-  check_value_cursor "counter_set" read_counter_set pp_counter_set
+  check_value_cursor "counter_set"
+    (read_counter_set ~reversed:true)
+    pp_counter_set
 
 let check_dominant_baseline =
   check_value_cursor "dominant_baseline" read_dominant_baseline
@@ -728,8 +732,10 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_contain_intrinsic_longhand "auto";
   neg_cursor read_contain_intrinsic_size "auto";
   neg_cursor read_contain_intrinsic_size_item "auto";
-  neg_cursor read_counter_item "1section";
-  neg_cursor ~allow_partial:true read_counter_set "none section";
+  neg_cursor (read_counter_item ~reversed:true) "1section";
+  neg_cursor ~allow_partial:true
+    (read_counter_set ~reversed:true)
+    "none section";
   neg_cursor read_dominant_baseline "baseline baseline";
   neg_cursor read_flex_factor "-1";
   neg_cursor ~allow_partial:true read_flex_flow "row row";

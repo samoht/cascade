@@ -218,7 +218,10 @@ let content_list items = (Content_list items : content)
 let columns_count count = (Count count : columns_value)
 let columns_width width = (Width width : columns_value)
 let columns_both width count = (Both (width, count) : columns_value)
-let counter_item ?value name : counter_item = { name; value }
+
+let counter_item ?(reversed = false) ?value name : counter_item =
+  { name; reversed; value }
+
 let counter_set items = (Counters items : counter_set)
 let background_size_pair width height = (Size (width, height) : background_size)
 

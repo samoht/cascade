@@ -807,8 +807,9 @@ let read_shadow_content_value : type a.
   | Box_shadow -> Some (v Box_shadow (read_shadow t))
   | Text_shadow -> Some (v Text_shadow (read_text_shadows t))
   | Content -> Some (v Content (read_content t))
-  | Counter_reset -> Some (v Counter_reset (read_counter_set t))
-  | Counter_increment -> Some (v Counter_increment (read_counter_set t))
+  | Counter_reset -> Some (v Counter_reset (read_counter_set ~reversed:true t))
+  | Counter_increment ->
+      Some (v Counter_increment (read_counter_set ~reversed:false t))
   | Z_index -> Some (v Z_index (Properties.read_z_index t))
   | Opacity -> Some (v Opacity (Properties.read_opacity t))
   | Fill_opacity -> Some (v Fill_opacity (Properties.read_opacity t))
