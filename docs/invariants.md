@@ -155,7 +155,8 @@ implementation keeps them.
   every write of the other.
 - **Selectors share a list only when every browser in B parses both or
   neither.** A browser drops a whole list over a selector it does not parse
-  (Selectors 4 sec. 3.9).
+  (Selectors 4 sec. 3.9), so a list some browser in B parses apart is one
+  rule, never the rules of its selectors.
 - **Nesting is emitted only where every browser in B parses it.** Nesting is
   neither synthesised nor relaxed into a form an older member of B misreads.
 - **At-rules keep their identity.** Of two `@keyframes` of one name in one
@@ -229,7 +230,7 @@ Each row names the tests that check a statement. A browser harness under
 | Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
-| Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml` |
+| Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule) |
 | Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |

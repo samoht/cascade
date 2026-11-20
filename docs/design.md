@@ -113,7 +113,9 @@ deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
 shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
 projection (`Rule_order`), so whatever the minifier deletes the judge also
 counts dead. `Merge.compatible` lists two selectors only when every engine
-ships them in the same release.
+ships them in the same release. The projection splits a selector list into
+one rule per branch only when `Merge.listable` says every release reads its
+branches alike (`Rule_order.expand_lists`); any other list stays one rule.
 
 ## Cost models
 
