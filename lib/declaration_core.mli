@@ -41,9 +41,9 @@ val important : declaration -> declaration
 
 val is_substitution_call : string -> Component.t list -> bool
 (** [is_substitution_call name arguments] is whether a function [name] with
-    [arguments] is a [var()], [env()] or [attr()] call that substitutes a token
-    stream (CSS Values 5 (ED) sec. 11): one with no argument substitutes
-    nothing. *)
+    [arguments] is an arbitrary substitution call that substitutes a token
+    stream ({!Component.is_substitution_function}): one with no argument
+    substitutes nothing, bar a [<dashed-function>]. *)
 
 val substitution_takes_a_slot : Component.t list -> bool
 (** [substitution_takes_a_slot cvs] is whether the value [cvs] holds a

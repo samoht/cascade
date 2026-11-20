@@ -758,7 +758,14 @@ let flex_basis_of_length t (length : length) : flex_basis =
      its own text, [1e3px] and [10.0px] among them, and sec. 7.2 takes each of
      them as a [<length-percentage>]. *)
   | Dimension { value; unit; repr } -> Dimension { value; unit; repr }
-  | _ -> Cursor.err_invalid t "unsupported flex-basis value"
+  (* A length in a unit no constructor above names, a container unit of CSS
+     Values 4 sec. 6.1.4 among them, is a [<length-percentage>] all the same and
+     keeps its unit as a dimension. *)
+  | length -> (
+      match calc_length_unit length with
+      | Some (unit, value) ->
+          Dimension { value; unit; repr = Pp.string_of_float value }
+      | None -> Cursor.err_invalid t "unsupported flex-basis value")
 
 (* CSS Values 4 sec. 10.8 gives an operand no keyword: [auto], [content], the
    intrinsic sizes and the CSS-wide keywords are not [<calc-value>]s, so

@@ -1006,7 +1006,9 @@ let negative_length : length -> bool = function
   | Rem f
   | Em f
   | Ex f
+  | Rex f
   | Cap f
+  | Rcap f
   | Ic f
   | Ric f
   | Rlh f
@@ -1019,14 +1021,20 @@ let negative_length : length -> bool = function
   | Vb f
   | Dvh f
   | Dvw f
+  | Dvi f
+  | Dvb f
   | Dvmin f
   | Dvmax f
   | Lvh f
   | Lvw f
+  | Lvi f
+  | Lvb f
   | Lvmin f
   | Lvmax f
   | Svh f
   | Svw f
+  | Svi f
+  | Svb f
   | Svmin f
   | Svmax f
   | Cqw f
@@ -1036,6 +1044,7 @@ let negative_length : length -> bool = function
   | Cqmin f
   | Cqmax f
   | Ch f
+  | Rch f
   | Lh f
   | Dimension { value = f; _ } ->
       f < 0.

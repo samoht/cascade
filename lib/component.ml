@@ -153,6 +153,22 @@ let flat_calls names tokens =
       | _ -> false)
     tokens
 
+(* CSS Values 5 makes [inherit()] an arbitrary substitution function too; Chrome
+   153 refuses a declaration holding one, so cascade leaves it to the property
+   grammar, which refuses it as well. *)
+let is_substitution_function name =
+  match String.lowercase_ascii name with
+  | "var" | "env" | "attr" | "if" -> true
+  | name -> Custom_property_name.is_valid name
+
+let flat_substitutes tokens =
+  List.exists
+    (fun (tok : Token.t) ->
+      match tok.kind with
+      | Token.Function name -> is_substitution_function name
+      | _ -> false)
+    tokens
+
 let flat_var_refs tokens =
   let _, refs =
     List.fold_left
