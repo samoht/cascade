@@ -258,6 +258,16 @@ differently. They are the reason to minify again.
   `p::before{color:blue}`. Such a rule now matches nothing and goes, a list
   parent's pseudo-element branch gives `&` nothing, and no rule is nested
   under a pseudo-element (#1503).
+- **Nesting inside `@scope` lost the scoping root.** A rule in an `@scope`
+  block is relative to the scoping root (CSS Cascade 6 sec. 3.5.3).
+  `--minify` merged `@scope (.c){.a{.x &{...}}}` into `.x .a` and
+  `--flatten-nesting` turned `@scope (.c){:is(.a,.b){.a &{...}}}` into
+  `.a :is(.a,.b)`, so an `.x` or `.a` outside the scope stopped counting.
+  Flattening also turned `.a{@scope (.b){color:red}}` into
+  `@scope(.b){.a{color:red}}`, which styles an `.a` inside a `.b` rather than
+  a `.b` inside an `.a`. Flattening now spells the root as `&` where a
+  selector no longer starts with its parent, `--minify` keeps such a rule
+  nested, and a nested `@scope` roots under its parent (#1504).
 
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
