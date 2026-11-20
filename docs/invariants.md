@@ -133,6 +133,12 @@ implementation keeps them.
 - **Order matters only inside a stratum between rules that are not
   independent.** A rewrite may move a rule past any rule it is independent of,
   and past none other.
+- **A rule writes everything its body holds.** Each rule nested in it, at any
+  depth, writes under its composed selector (CSS Nesting 1 sec. 3), a nested
+  conditional group's rules write under its condition, and a declaration
+  written after a nested statement writes in its own position (sec. 3.4).
+  Two rules are independent only when every write of one is independent of
+  every write of the other.
 - **Selectors share a list only when every browser in B parses both or
   neither.** A browser drops a whole list over a selector it does not parse
   (Selectors 4 sec. 3.9).
@@ -204,6 +210,7 @@ Each row names the tests that check a statement. A browser harness under
 | Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
 | Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
+| Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml` |
 | Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |

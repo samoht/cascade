@@ -156,7 +156,24 @@ let run_segment ?cache ?(settle = Fun.id) ~ctx ~finalize (rules : rule list) =
 
 (* Custom-property rules are not cascade barriers: the DAG keys each custom
    property by name (a [var()] consumer writes its own property, not the one it
-   reads), so disjoint writes reorder freely and the whole list is one
-   segment. *)
-let run ?cache ?settle ~ctx ~finalize (rules : rule list) =
-  run_segment ?cache ?settle ~ctx ~finalize rules
+   reads), so disjoint writes reorder freely. A rule the graph cannot weigh
+   ({!Rule_graph.weighable}) is one: it stays where it is, and the runs either
+   side of it are factored apart. *)
+let rec run ?cache ?settle ~ctx ~finalize (rules : rule list) =
+  let rec split before = function
+    | [] -> Option.None
+    | (r : rule) :: after ->
+        if Rule_graph.weighable r then split (r :: before) after
+        else Option.Some (List.rev before, r, after)
+  in
+  match split [] rules with
+  | Option.None -> run_segment ?cache ?settle ~ctx ~finalize rules
+  | Option.Some (before, barrier, after) ->
+      let before' =
+        match before with
+        | [] -> before
+        | _ -> run_segment ?cache ?settle ~ctx ~finalize before
+      in
+      let after' = run ?cache ?settle ~ctx ~finalize after in
+      if before' == before && after' == after then rules
+      else before' @ (barrier :: after')
