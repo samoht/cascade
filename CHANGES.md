@@ -283,6 +283,13 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **The space beside a `var()` in a math function was dropped.**
+  `--minify` turned `calc(100% var(--op) 10px)` into
+  `calc(100%var(--op) 10px)`, in a typed declaration and in a custom property.
+  The `var()` may substitute a `+` or `-`, which CSS Values 4 sec. 10.8 needs
+  whitespace around, so with `--op: -` the first is `100% - 10px` and the
+  second is invalid. The whitespace beside a `var()`, `env()` or `attr()` in a
+  math function now stays, except next to `*`, `/` or a comma (#1510).
 - **A comparison over a position percentage was folded.**
   `background-position:min(10%,20%) 0` became `10% 0`, and
   `calc(min(10%,20%) + 1px)` became `calc(10% + 1px)`. A percentage in

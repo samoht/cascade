@@ -806,10 +806,30 @@ let is_plus_or_minus_delim = function
 (* Dropping a required separator gives a stream the browser rejects, so a
    minified serialiser keeps it even though neither neighbour is word-like.
    [in_math] enters at a math function's arguments and carries through a
-   grouping paren, itself a math operand; a nested function has its own
-   grammar. *)
+   grouping paren, itself a math operand; a nested function has its own grammar.
+   A [var()], [env()] or [attr()] there may substitute the operator, so the
+   whitespace beside one is a separator too, unless the other side is a [*], [/]
+   or comma, beside which no operator is valid. *)
+let is_substitution = function
+  | Component.Func { node = { name; _ }; _ } -> (
+      match String.lowercase_ascii name with
+      | "var" | "env" | "attr" -> true
+      | _ -> false)
+  | _ -> false
+
+let is_product_or_comma = function
+  | Component.Preserved { kind = Token.Delim ("*" | "/") | Token.Comma; _ } ->
+      true
+  | _ -> false
+
+let math_whitespace_required prev next =
+  is_plus_or_minus_delim prev
+  || is_plus_or_minus_delim next
+  || (is_substitution prev && not (is_product_or_comma next))
+  || (is_substitution next && not (is_product_or_comma prev))
+
 let math_sign_boundary ~in_math prev next =
-  in_math && (is_plus_or_minus_delim prev || is_plus_or_minus_delim next)
+  in_math && math_whitespace_required prev next
 
 let block_in_math ~in_math : Token.bracket -> bool = function
   | Token.Paren -> in_math

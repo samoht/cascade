@@ -420,29 +420,24 @@ let pp_custom_property ctx (Custom_value { value; _ }) =
 (* CSS Values 4 (ED) sec. 10.8 ("Syntax"): inside a math function whitespace is
    *required* around binary [+] and [-] (sign-token disambiguation - stripping
    it changes [100% - var(--a)] to [100%-var(--a)], where [-var] is one
-   ident-like function token) but *optional* around [*], [/], [(], [)], [,].
-   Strip the optional whitespace from math-function arguments so two
-   custom-property token streams that differ only there have the same canonical
-   AST. Typed math is already minified by [pp_calc]; this matters for opaque
-   [Tokens _] custom-property values where cascade preserves the author's
-   whitespace verbatim by design. Nested non-math functions ([var()] etc.) get a
-   recursive component walk but no whitespace stripping; nested math functions
-   get their own. *)
+   ident-like function token), and around a substitution that may supply one,
+   but *optional* around [*], [/], [(], [)], [,]. Strip the optional whitespace
+   from math-function arguments so two custom-property token streams that differ
+   only there have the same canonical AST. Typed math is already minified by
+   [pp_calc]; this matters for opaque [Tokens _] custom-property values where
+   cascade preserves the author's whitespace verbatim by design. Nested non-math
+   functions ([var()] etc.) get a recursive component walk but no whitespace
+   stripping; nested math functions get their own. *)
 let strip_math_whitespace comps =
   let rec aux acc = function
     | [] -> List.rev acc
     | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
-        let prev_pm =
-          match acc with
-          | [] -> false
-          | p :: _ -> Parser.is_plus_or_minus_delim p
+        let required =
+          match (acc, rest) with
+          | p :: _, n :: _ -> Parser.math_whitespace_required p n
+          | _ -> false
         in
-        let next_pm =
-          match rest with
-          | [] -> false
-          | n :: _ -> Parser.is_plus_or_minus_delim n
-        in
-        if prev_pm || next_pm then aux (ws :: acc) rest else aux acc rest
+        if required then aux (ws :: acc) rest else aux acc rest
     | other :: rest -> aux (other :: acc) rest
   in
   aux [] comps
@@ -497,15 +492,15 @@ let strip_after_close_paren ~in_math comps =
   let rec aux acc = function
     | [] -> List.rev acc
     | (Component.Preserved { kind = Token.Whitespace _; _ } as ws) :: rest ->
-        let prev_hard =
-          match acc with [] -> false | p :: _ -> closes_hard p
+        let drop =
+          match (acc, rest) with
+          | p :: _, n :: _ ->
+              closes_hard p
+              && not (in_math && Parser.math_whitespace_required p n)
+          | p :: _, [] -> closes_hard p
+          | [], _ -> false
         in
-        let next_pm =
-          match rest with
-          | [] -> false
-          | n :: _ -> in_math && Parser.is_plus_or_minus_delim n
-        in
-        if prev_hard && not next_pm then aux acc rest else aux (ws :: acc) rest
+        if drop then aux acc rest else aux (ws :: acc) rest
     | other :: rest -> aux (other :: acc) rest
   in
   aux [] comps
