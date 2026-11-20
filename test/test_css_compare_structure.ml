@@ -438,6 +438,32 @@ let equal_canonical_targets () =
   Alcotest.(check bool)
     "a list every browser reads alike is its rules" true
     (equal "a,b{color:red}" "a{color:red}b{color:red}");
+  (* Every target drops a [-ms-] pseudo-element: Chromium 153 keeps no rule of
+     [a::-ms-input-placeholder{color:red}], and neither Firefox's selector
+     parser nor WebKit knows the name. By Selectors 4 sec. 3.9 a list holding
+     one is invalid in every browser of the dated set, so it applies nowhere.
+     baidu-3 in SatCSS writes two such lists apart and csso merges them: each is
+     dead, and so is the merge. A list Firefox parses whole is a rule. *)
+  let ms = "::-ms-input-placeholder"
+  and webkit = "::-webkit-input-placeholder" in
+  Alcotest.(check bool)
+    "a list no target parses is no rule" true
+    (equal ("a" ^ ms ^ ",a" ^ webkit ^ "{color:red}") "b{}");
+  Alcotest.(check bool)
+    "nor is the merge of two" true
+    (equal
+       ("a" ^ ms ^ ",a" ^ webkit ^ "{color:red}b{color:blue}c" ^ ms ^ ",c"
+      ^ webkit ^ "{color:red}")
+       ("b{color:blue}a" ^ ms ^ ",a" ^ webkit ^ ",c" ^ ms ^ ",c" ^ webkit
+      ^ "{color:red}"));
+  Alcotest.(check bool)
+    "a list Firefox parses is a rule" false
+    (equal ("a::-moz-placeholder,a" ^ webkit ^ "{color:red}") "b{}");
+  Alcotest.(check bool)
+    "under --enforce-spec a list no target parses is a rule" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
+       ("a" ^ ms ^ "{color:red}")
+       "b{}");
   Alcotest.(check bool)
     "one every floor parses past is dead" true
     (equal "a{display:block;display:grid}" "a{display:grid}");
