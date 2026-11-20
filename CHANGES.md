@@ -359,6 +359,19 @@ differently. They are the reason to minify again.
   `mod(1px,0px)` to `1px`, where CSS Values 4 sec. 10.9 makes both NaN and
   Chromium computes `0px`. A zero operand now keeps its unit, and a zero step
   or divisor keeps the call (#1508).
+- **Declarations in newer CSS were deleted.** `--minify` dropped, with a
+  warning, a length in a root font unit (`rex`, `rcap`, `rch`) or a logical
+  viewport unit (`svi`, `lvb`, `dvi` and the rest), a container unit in
+  `flex-basis` or `flex`, and any value holding `if()` (CSS Values 5 sec. 8.3)
+  or a custom function call such as `--f()` (CSS Mixins 1). Chromium 153 reads
+  each, so `font-size:1rcap` or `width:if(media(print):1px;else:2px)` lost its
+  effect. Each length is now read with its unit, and a value holding `if()` or
+  `--f()` is kept as written, as one holding `var()` is, when the call matches
+  its own grammar.
+  In the library, `Css.length` gains `Rex`, `Rcap`, `Rch`, `Svi`, `Svb`,
+  `Lvi`, `Lvb`, `Dvi` and `Dvb`, so an exhaustive match over it needs the
+  nine cases (#1536).
+
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
   omitted direction for `bottom`, so it printed
@@ -932,9 +945,7 @@ differently. They are the reason to minify again.
     declaration at a time and orders two only where swapping them could change
     a value.
   - Longhands against their shorthand. `top`, `right`, `bottom` and `left`
-    compare equal to `inset` also when another declaration sits between them,
-    and so do `border-width`, `border-style` and `border-color` against
-    `border`.
+    compare equal to `inset` also when another declaration sits between them.
   - An order no element can observe. Two rules that write the same declarations
     compare equal in either order. So do a normal and an important declaration
     of one rule (CSS Cascade 5 sec. 6.1), and two rules that write one value

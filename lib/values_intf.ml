@@ -186,7 +186,9 @@ type length =
   | Rem of float
   | Em of float
   | Ex of float
+  | Rex of float
   | Cap of float
+  | Rcap of float
   | Ic of float
   | Ric of float
   | Rlh of float
@@ -199,14 +201,20 @@ type length =
   | Vb of float
   | Dvh of float
   | Dvw of float
+  | Dvi of float
+  | Dvb of float
   | Dvmin of float
   | Dvmax of float
   | Lvh of float
   | Lvw of float
+  | Lvi of float
+  | Lvb of float
   | Lvmin of float
   | Lvmax of float
   | Svh of float
   | Svw of float
+  | Svi of float
+  | Svb of float
   | Svmin of float
   | Svmax of float
   | Cqw of float  (** Container query width units *)
@@ -216,6 +224,7 @@ type length =
   | Cqmin of float  (** Smaller container query dimension units *)
   | Cqmax of float  (** Larger container query dimension units *)
   | Ch of float  (** Character units *)
+  | Rch of float  (** Root character units *)
   | Lh of float  (** Line height units *)
   | Dimension of { value : float; unit : string; repr : string }
       (** Dimension with authored numeric spelling preserved for pretty

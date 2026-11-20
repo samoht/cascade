@@ -157,18 +157,18 @@ let rec important = function
   | Declaration { property; value; _ } -> v ~important:true property value
   | Theme_guarded g -> theme_guarded ~var_name:g.var_name (important g.decl)
 
-(* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
-   substitution functions: each carries an unknown token stream into the value,
-   so a declaration holding one is valid at parse time and only decided once
-   substitution has run. A call with an empty argument list matches no
-   substitution grammar and so defers nothing. *)
+(* CSS Values 5 (ED) sec. 11 groups [var()], [env()], [attr()] and [if()] as
+   arbitrary substitution functions, and CSS Mixins 1 sec. 2 adds the
+   [<dashed-function>]: each carries an unknown token stream into the value, so
+   a declaration holding one is valid at parse time and only decided once
+   substitution has run. Bar a [<dashed-function>], a call with an empty
+   argument list matches no substitution grammar and so defers nothing. *)
 let is_substitution_call name arguments =
-  (match String.lowercase_ascii_preserve name with
-    | "var" | "env" | "attr" -> true
-    | _ -> false)
-  && List.exists
-       (fun component -> not (Component.is_whitespace component))
-       arguments
+  Component.is_substitution_function name
+  && (Custom_property_name.is_valid name
+     || List.exists
+          (fun component -> not (Component.is_whitespace component))
+          arguments)
 
 (* The fallback of a substitution call's [arguments], after the first comma. *)
 let rec substitution_fallback = function
@@ -185,8 +185,7 @@ let rec slotted_substitution = function
            arguments
   | Component.Block { node = { value; _ }; _ } ->
       List.exists slotted_substitution value
-  | Component.Flat { node; _ } ->
-      Component.flat_calls [ "var"; "env"; "attr" ] node
+  | Component.Flat { node; _ } -> Component.flat_substitutes node
   | Component.Preserved _ -> false
 
 and math_operand_slot = function

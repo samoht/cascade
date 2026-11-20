@@ -228,10 +228,16 @@ let validate_complete_declaration_value t =
   if not (List.for_all component_is_complete (value_components t)) then
     Cursor.err_invalid t "unterminated component value"
 
+(* CSS Values 5 sec. 3.1.1 lets a [{}] block wrap an argument of an arbitrary
+   substitution function, so the function's own grammar decides about a block in
+   its arguments. *)
 let rec component_has_curly_block = function
   | Component.Block { node = { opening = Token.Curly; _ }; _ } -> true
   | Component.Block { node = { value; _ }; _ } ->
       List.exists component_has_curly_block value
+  | Component.Func { node = { name; _ }; _ }
+    when Component.is_substitution_function name ->
+      false
   | Component.Func { node = { arguments; _ }; _ } ->
       List.exists component_has_curly_block arguments
   | Component.Flat { node; _ } ->
@@ -315,6 +321,113 @@ let invalid_var_arguments arguments =
       | _ -> true)
   | _ -> true
 
+let is_preserved pred = function
+  | Component.Preserved (tok : Token.t) -> pred tok.kind
+  | Component.Block _ | Component.Func _ | Component.Flat _ -> false
+
+let significant components =
+  List.filter
+    (fun component -> not (Component.is_whitespace component))
+    components
+
+(* The pieces of [components] between top-level separators, empty ones kept. *)
+let split_on is_separator components =
+  let close piece pieces = List.rev piece :: pieces in
+  let piece, pieces =
+    List.fold_left
+      (fun (piece, pieces) component ->
+        if is_separator component then ([], close piece pieces)
+        else (component :: piece, pieces))
+      ([], []) components
+  in
+  List.rev (close piece pieces)
+
+(* CSS Syntax 3 sec. 8.2: a [<declaration-value>] holds no top-level [;] or [!]
+   and no unmatched closer, and CSS Values 5 sec. 3.1.1 lets a [{}] block stand
+   in an argument only as the whole of it. *)
+let declaration_value_tokens_ok components =
+  match significant components with
+  | [ Component.Block { node = { opening = Token.Curly; _ }; _ } ] -> true
+  | _ ->
+      not
+        (List.exists
+           (function
+             | Component.Block { node = { opening = Token.Curly; _ }; _ } ->
+                 true
+             | component ->
+                 is_preserved
+                   (function
+                     | Token.Semicolon | Token.Delim "!" | Token.Close _ -> true
+                     | _ -> false)
+                   component)
+           components)
+
+let is_keyword keyword =
+  is_preserved (function
+    | Token.Ident name ->
+        String.equal (String.lowercase_ascii_preserve name) keyword
+    | _ -> false)
+
+(* CSS Values 5 sec. 8.3 reads an [<if-condition>] as [else] or a
+   [<boolean-expr[ <if-test> ]>]: [not] before one group, or groups joined all
+   by [and] or all by [or]. A group is a function or a parenthesised block,
+   which [<if-test>] or [<general-enclosed>] takes whatever it holds. *)
+let valid_if_condition components =
+  let group = function
+    | Component.Func _ -> true
+    | Component.Block { node = { opening = Token.Paren; _ }; _ } -> true
+    | _ -> false
+  in
+  let rec joined connective = function
+    | [] -> true
+    | c :: g :: rest when is_keyword connective c && group g ->
+        joined connective rest
+    | _ -> false
+  in
+  match significant components with
+  | [ c ] when is_keyword "else" c -> true
+  | [ n; g ] when is_keyword "not" n -> group g
+  | [ g ] -> group g
+  | g :: (c :: _ as rest) when group g ->
+      (is_keyword "and" c && joined "and" rest)
+      || (is_keyword "or" c && joined "or" rest)
+  | _ -> false
+
+(* CSS Values 5 sec. 8.3: [if( [ <if-branch> ; ]* <if-branch> ;? )], each branch
+   an [<if-condition> : <declaration-value>?]. *)
+let invalid_if_arguments arguments =
+  let branches =
+    split_on (is_preserved (Token.equal_kind Token.Semicolon)) arguments
+  in
+  let branches =
+    match List.rev branches with
+    | last :: (_ :: _ as rest) when significant last = [] -> List.rev rest
+    | _ -> branches
+  in
+  let valid_branch branch =
+    match split_on (is_preserved (Token.equal_kind Token.Colon)) branch with
+    | condition :: (_ :: _ as value) ->
+        valid_if_condition condition
+        && declaration_value_tokens_ok (List.concat value)
+    | _ -> false
+  in
+  not (List.for_all valid_branch branches)
+
+(* CSS Mixins 1 sec. 3 writes a [<dashed-function>]'s arguments as [[
+   <declaration-value>? ]#? ,?]. Chrome 153 takes an empty first argument and
+   refuses any other one, the trailing one included, so cascade does too. *)
+let invalid_dashed_arguments arguments =
+  match split_on (is_preserved (Token.equal_kind Token.Comma)) arguments with
+  | [ only ] when significant only = [] -> false
+  | first :: rest ->
+      (not (declaration_value_tokens_ok first))
+      || List.exists
+           (fun argument ->
+             significant argument = []
+             || not (declaration_value_tokens_ok argument))
+           rest
+  | [] -> false
+
 (* [component_has_invalid_substitution] over a {!Component.Flat} run, in one
    pass and with no recursion: each block and function the run opens is a frame
    on [frames], and a substitution call's frame tracks how far its arguments
@@ -359,7 +472,8 @@ let flat_has_invalid_substitution tokens =
           let substitution, state =
             match String.lowercase_ascii_preserve name with
             | "var" -> (true, Var_name)
-            | "env" | "attr" -> (true, Substitution_empty)
+            | "env" | "attr" | "if" -> (true, Substitution_empty)
+            | name when Component.is_substitution_function name -> (true, Free)
             | _ -> (false, Free)
           in
           Stack.push (Token.Paren, substitution, ref state) frames
@@ -382,12 +496,10 @@ and component_has_invalid_substitution = function
       let invalid_call =
         match String.lowercase_ascii_preserve name with
         | "var" -> (not terminated) || invalid_var_arguments arguments
-        | "env" | "attr" ->
-            (not terminated)
-            || not
-                 (List.exists
-                    (fun component -> not (Component.is_whitespace component))
-                    arguments)
+        | "env" | "attr" -> (not terminated) || significant arguments = []
+        | "if" -> (not terminated) || invalid_if_arguments arguments
+        | name when Component.is_substitution_function name ->
+            (not terminated) || invalid_dashed_arguments arguments
         | _ -> false
       in
       invalid_call || components_have_invalid_substitution arguments
@@ -418,8 +530,7 @@ and component_has_substitution = function
       components_have_substitution value
   (* A call with no argument defers nothing, but it is also invalid, which
      {!flat_has_invalid_substitution} answers; this only has to see the call. *)
-  | Component.Flat { node; _ } ->
-      Component.flat_calls [ "var"; "env"; "attr" ] node
+  | Component.Flat { node; _ } -> Component.flat_substitutes node
   | Component.Preserved _ -> false
 
 let raw_value_has_invalid_substitution raw_value =
@@ -580,8 +691,7 @@ let components_are_lone_css_wide cvs =
   | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
       Properties.is_css_wide_keyword ident
   | [ Component.Func { node = { name; _ }; _ } ] ->
-      let n = String.lowercase_ascii_preserve name in
-      String.equal n "var" || String.equal n "env" || String.equal n "attr"
+      Component.is_substitution_function name
   | _ -> false
 
 (* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties

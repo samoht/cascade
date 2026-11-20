@@ -467,15 +467,13 @@ let strip_mul_div_whitespace comps =
   in
   aux [] comps
 
-(* CSS Values 4 sec. 2.5: [var()] / [env()] / [attr()] substitute a token stream
-   textually, so the whitespace next to one is significant - dropping it lets
-   the substituted values merge ([var(--a) var(--b)] could become [1px2px]).
-   Every other function and every block closes with a hard token boundary ([)],
-   []], [}]) that no neighbour can merge across. *)
-let is_substitution_func_name name =
-  match String.lowercase_ascii name with
-  | "var" | "env" | "attr" -> true
-  | _ -> false
+(* CSS Values 4 sec. 2.5: [var()] / [env()] / [attr()], and the other arbitrary
+   substitution functions, substitute a token stream textually, so the
+   whitespace next to one is significant - dropping it lets the substituted
+   values merge ([var(--a) var(--b)] could become [1px2px]). Every other
+   function and every block closes with a hard token boundary ([)], []], [}])
+   that no neighbour can merge across. *)
+let is_substitution_func_name = Component.is_substitution_function
 
 (* Whitespace immediately after a function or block that closes with a hard
    token boundary is insignificant: [drop-shadow(a) drop-shadow(b)] and

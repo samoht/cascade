@@ -11,13 +11,14 @@ open Values_calc
 let length_is_zero = function
   | Zero -> true
   | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
-  | Em f | Rem f | Ex f | Cap f | Ic f | Ric f | Rlh f -> f = 0.
-  | Ch f | Lh f -> f = 0.
+  | Em f | Rem f | Ex f | Rex f | Cap f | Rcap f | Ic f | Ric f | Rlh f ->
+      f = 0.
+  | Ch f | Rch f | Lh f -> f = 0.
   | Pct f -> f = 0.
   | Vw f | Vh f | Vmin f | Vmax f | Vi f | Vb f -> f = 0.
-  | Dvh f | Dvw f | Dvmin f | Dvmax f -> f = 0.
-  | Lvh f | Lvw f | Lvmin f | Lvmax f -> f = 0.
-  | Svh f | Svw f | Svmin f | Svmax f -> f = 0.
+  | Dvh f | Dvw f | Dvi f | Dvb f | Dvmin f | Dvmax f -> f = 0.
+  | Lvh f | Lvw f | Lvi f | Lvb f | Lvmin f | Lvmax f -> f = 0.
+  | Svh f | Svw f | Svi f | Svb f | Svmin f | Svmax f -> f = 0.
   | Cqw f | Cqh f | Cqi f | Cqb f | Cqmin f | Cqmax f -> f = 0.
   | Dimension { value; _ } -> value = 0.
   | _ -> false
@@ -34,11 +35,14 @@ let calc_length_unit = function
   | Rem n -> Some ("rem", n)
   | Em n -> Some ("em", n)
   | Ex n -> Some ("ex", n)
+  | Rex n -> Some ("rex", n)
   | Cap n -> Some ("cap", n)
+  | Rcap n -> Some ("rcap", n)
   | Ic n -> Some ("ic", n)
   | Ric n -> Some ("ric", n)
   | Rlh n -> Some ("rlh", n)
   | Ch n -> Some ("ch", n)
+  | Rch n -> Some ("rch", n)
   | Lh n -> Some ("lh", n)
   | Pct n -> Some ("%", n)
   | Vw n -> Some ("vw", n)
@@ -49,14 +53,20 @@ let calc_length_unit = function
   | Vb n -> Some ("vb", n)
   | Dvh n -> Some ("dvh", n)
   | Dvw n -> Some ("dvw", n)
+  | Dvi n -> Some ("dvi", n)
+  | Dvb n -> Some ("dvb", n)
   | Dvmin n -> Some ("dvmin", n)
   | Dvmax n -> Some ("dvmax", n)
   | Lvh n -> Some ("lvh", n)
   | Lvw n -> Some ("lvw", n)
+  | Lvi n -> Some ("lvi", n)
+  | Lvb n -> Some ("lvb", n)
   | Lvmin n -> Some ("lvmin", n)
   | Lvmax n -> Some ("lvmax", n)
   | Svh n -> Some ("svh", n)
   | Svw n -> Some ("svw", n)
+  | Svi n -> Some ("svi", n)
+  | Svb n -> Some ("svb", n)
   | Svmin n -> Some ("svmin", n)
   | Svmax n -> Some ("svmax", n)
   | Cqw n -> Some ("cqw", n)
@@ -253,11 +263,14 @@ type length_unit =
   | Rem
   | Em
   | Ex
+  | Rex
   | Cap
+  | Rcap
   | Ic
   | Ric
   | Rlh
   | Ch
+  | Rch
   | Lh
   | Pct
   | Vw
@@ -268,14 +281,20 @@ type length_unit =
   | Vb
   | Dvh
   | Dvw
+  | Dvi
+  | Dvb
   | Dvmin
   | Dvmax
   | Lvh
   | Lvw
+  | Lvi
+  | Lvb
   | Lvmin
   | Lvmax
   | Svh
   | Svw
+  | Svi
+  | Svb
   | Svmin
   | Svmax
   | Cqw
@@ -298,11 +317,14 @@ let unit_of_string = function
   | "rem" -> Some Rem
   | "em" -> Some Em
   | "ex" -> Some Ex
+  | "rex" -> Some Rex
   | "cap" -> Some Cap
+  | "rcap" -> Some Rcap
   | "ic" -> Some Ic
   | "ric" -> Some Ric
   | "rlh" -> Some Rlh
   | "ch" -> Some Ch
+  | "rch" -> Some Rch
   | "lh" -> Some Lh
   | "%" -> Some Pct
   | "vw" -> Some Vw
@@ -313,14 +335,20 @@ let unit_of_string = function
   | "vb" -> Some Vb
   | "dvh" -> Some Dvh
   | "dvw" -> Some Dvw
+  | "dvi" -> Some Dvi
+  | "dvb" -> Some Dvb
   | "dvmin" -> Some Dvmin
   | "dvmax" -> Some Dvmax
   | "lvh" -> Some Lvh
   | "lvw" -> Some Lvw
+  | "lvi" -> Some Lvi
+  | "lvb" -> Some Lvb
   | "lvmin" -> Some Lvmin
   | "lvmax" -> Some Lvmax
   | "svh" -> Some Svh
   | "svw" -> Some Svw
+  | "svi" -> Some Svi
+  | "svb" -> Some Svb
   | "svmin" -> Some Svmin
   | "svmax" -> Some Svmax
   | "cqw" -> Some Cqw
@@ -346,11 +374,14 @@ let unit_of_length = function
   | Rem n -> Some (Rem, n)
   | Em n -> Some (Em, n)
   | Ex n -> Some (Ex, n)
+  | Rex n -> Some (Rex, n)
   | Cap n -> Some (Cap, n)
+  | Rcap n -> Some (Rcap, n)
   | Ic n -> Some (Ic, n)
   | Ric n -> Some (Ric, n)
   | Rlh n -> Some (Rlh, n)
   | Ch n -> Some (Ch, n)
+  | Rch n -> Some (Rch, n)
   | Lh n -> Some (Lh, n)
   | Pct n -> Some (Pct, n)
   | Vw n -> Some (Vw, n)
@@ -361,14 +392,20 @@ let unit_of_length = function
   | Vb n -> Some (Vb, n)
   | Dvh n -> Some (Dvh, n)
   | Dvw n -> Some (Dvw, n)
+  | Dvi n -> Some (Dvi, n)
+  | Dvb n -> Some (Dvb, n)
   | Dvmin n -> Some (Dvmin, n)
   | Dvmax n -> Some (Dvmax, n)
   | Lvh n -> Some (Lvh, n)
   | Lvw n -> Some (Lvw, n)
+  | Lvi n -> Some (Lvi, n)
+  | Lvb n -> Some (Lvb, n)
   | Lvmin n -> Some (Lvmin, n)
   | Lvmax n -> Some (Lvmax, n)
   | Svh n -> Some (Svh, n)
   | Svw n -> Some (Svw, n)
+  | Svi n -> Some (Svi, n)
+  | Svb n -> Some (Svb, n)
   | Svmin n -> Some (Svmin, n)
   | Svmax n -> Some (Svmax, n)
   | Cqw n -> Some (Cqw, n)
@@ -395,11 +432,14 @@ let length_of_unit unit n =
   | Rem -> Rem n
   | Em -> Em n
   | Ex -> Ex n
+  | Rex -> Rex n
   | Cap -> Cap n
+  | Rcap -> Rcap n
   | Ic -> Ic n
   | Ric -> Ric n
   | Rlh -> Rlh n
   | Ch -> Ch n
+  | Rch -> Rch n
   | Lh -> Lh n
   | Pct -> Pct n
   | Vw -> Vw n
@@ -410,14 +450,20 @@ let length_of_unit unit n =
   | Vb -> Vb n
   | Dvh -> Dvh n
   | Dvw -> Dvw n
+  | Dvi -> Dvi n
+  | Dvb -> Dvb n
   | Dvmin -> Dvmin n
   | Dvmax -> Dvmax n
   | Lvh -> Lvh n
   | Lvw -> Lvw n
+  | Lvi -> Lvi n
+  | Lvb -> Lvb n
   | Lvmin -> Lvmin n
   | Lvmax -> Lvmax n
   | Svh -> Svh n
   | Svw -> Svw n
+  | Svi -> Svi n
+  | Svb -> Svb n
   | Svmin -> Svmin n
   | Svmax -> Svmax n
   | Cqw -> Cqw n
@@ -700,7 +746,9 @@ let length_simple_dimension : length -> (float * length) option = function
   | Em f -> Some (f, Em 0.)
   | Rem f -> Some (f, Rem 0.)
   | Ex f -> Some (f, Ex 0.)
+  | Rex f -> Some (f, Rex 0.)
   | Cap f -> Some (f, Cap 0.)
+  | Rcap f -> Some (f, Rcap 0.)
   | Ic f -> Some (f, Ic 0.)
   | Ric f -> Some (f, Ric 0.)
   | Rlh f -> Some (f, Rlh 0.)
@@ -711,6 +759,7 @@ let length_simple_dimension : length -> (float * length) option = function
   | Vi f -> Some (f, Vi 0.)
   | Vb f -> Some (f, Vb 0.)
   | Ch f -> Some (f, Ch 0.)
+  | Rch f -> Some (f, Rch 0.)
   | Lh f -> Some (f, Lh 0.)
   | Pct f -> Some (f, Pct 0.)
   | _ -> None
@@ -727,7 +776,9 @@ let with_length_value l v : length =
   | Em _ -> Em v
   | Rem _ -> Rem v
   | Ex _ -> Ex v
+  | Rex _ -> Rex v
   | Cap _ -> Cap v
+  | Rcap _ -> Rcap v
   | Ic _ -> Ic v
   | Ric _ -> Ric v
   | Rlh _ -> Rlh v
@@ -738,6 +789,7 @@ let with_length_value l v : length =
   | Vi _ -> Vi v
   | Vb _ -> Vb v
   | Ch _ -> Ch v
+  | Rch _ -> Rch v
   | Lh _ -> Lh v
   | Pct _ -> Pct v
   | _ -> Px v
@@ -857,7 +909,9 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Rem f -> pp_unit_fn f "rem"
   | Em f -> pp_unit_fn f "em"
   | Ex f -> pp_unit_fn f "ex"
+  | Rex f -> pp_unit_fn f "rex"
   | Cap f -> pp_unit_fn f "cap"
+  | Rcap f -> pp_unit_fn f "rcap"
   | Ic f -> pp_unit_fn f "ic"
   | Ric f -> pp_unit_fn f "ric"
   | Rlh f -> pp_unit_fn f "rlh"
@@ -873,14 +927,20 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Vb f -> pp_unit_fn f "vb"
   | Dvh f -> pp_unit_fn f "dvh"
   | Dvw f -> pp_unit_fn f "dvw"
+  | Dvi f -> pp_unit_fn f "dvi"
+  | Dvb f -> pp_unit_fn f "dvb"
   | Dvmin f -> pp_unit_fn f "dvmin"
   | Dvmax f -> pp_unit_fn f "dvmax"
   | Lvh f -> pp_unit_fn f "lvh"
   | Lvw f -> pp_unit_fn f "lvw"
+  | Lvi f -> pp_unit_fn f "lvi"
+  | Lvb f -> pp_unit_fn f "lvb"
   | Lvmin f -> pp_unit_fn f "lvmin"
   | Lvmax f -> pp_unit_fn f "lvmax"
   | Svh f -> pp_unit_fn f "svh"
   | Svw f -> pp_unit_fn f "svw"
+  | Svi f -> pp_unit_fn f "svi"
+  | Svb f -> pp_unit_fn f "svb"
   | Svmin f -> pp_unit_fn f "svmin"
   | Svmax f -> pp_unit_fn f "svmax"
   | Cqw f -> pp_unit_fn f "cqw"
@@ -890,6 +950,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Cqmin f -> pp_unit_fn f "cqmin"
   | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
+  | Rch f -> pp_unit_fn f "rch"
   | Lh f -> pp_unit_fn f "lh"
   | Dimension { value; unit; repr } ->
       (* CSS Values 4 sec. 6.7.2 serialises a dimension's unit in lowercase, and

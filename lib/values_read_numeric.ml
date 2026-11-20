@@ -417,11 +417,7 @@ let read_atan2_scalar t : atan2_category * float =
   (* Relative lengths share the [<length>] type but cannot reduce to a constant
      scalar at parse time; group them so [atan2(1vw, -1vw)] succeeds via
      raw-value ratio while [atan2(1vw, 1px)] is rejected. *)
-  | "em" | "rem" | "ex" | "cap" | "ch" | "ic" | "lh" | "rlh" | "vw" | "vh"
-  | "vmin" | "vmax" | "vi" | "vb" | "dvh" | "dvw" | "dvmin" | "dvmax" | "lvh"
-  | "lvw" | "lvmin" | "lvmax" | "svh" | "svw" | "svmin" | "svmax" | "cqw"
-  | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax" ->
-      (Length, n)
+  | unit when Values_length.is_length_unit unit -> (Length, n)
   (* Angles, times, frequencies in their canonical units. *)
   | "deg" -> (Angle, n)
   | "rad" -> (Angle, n *. 180. /. Float.pi)

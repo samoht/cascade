@@ -21,8 +21,9 @@ val var_refs_in_value_string : string -> string list
     call anywhere in [v]. *)
 
 val substitution_fn_in_value_string : string -> string Option.t
-(** [substitution_fn_in_value_string v] is the name of the first [var()],
-    [attr()] or [env()] call anywhere in [v]. *)
+(** [substitution_fn_in_value_string v] is the name of the first arbitrary
+    substitution function call ({!Component.is_substitution_function}) anywhere
+    in [v]. *)
 
 val element_relative_in_value_string : string -> string Option.t
 (** [element_relative_in_value_string v] is the first element-relative unit in
