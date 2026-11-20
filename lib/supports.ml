@@ -668,8 +668,19 @@ let three_or a b =
   | Some false, Some false -> Some false
   | _ -> None
 
+(* A target is a floor, the engine at [version] and every release after it. The
+   dataset records the version that shipped a production, and a shipped
+   production stays, so a floor that implements a key answers for every later
+   release. A floor that lacks one says nothing about them, since a later
+   release may ship it, and nothing in the dataset says a production never
+   ships. So a feature answers [Some true] or [None], and only a negation of one
+   every floor reads answers [Some false]. *)
 let implemented_by_engine engine version cond =
-  let implements key = Support.engine_implements engine version key in
+  let from_floor key =
+    match Support.engine_implements engine version key with
+    | Some true -> true
+    | Some false | None -> false
+  in
   (* The feature's declaration is opaque, since the browser is the parser it is
      meant for; the typed reading is taken here to see the colours it uses, and
      a value cascade's own grammar refuses answers nothing. *)
@@ -682,25 +693,15 @@ let implemented_by_engine engine version cond =
     | None -> None
     | Some decl when Declaration.is_invalid decl -> None
     | Some decl ->
-        let property =
-          implements (String.concat "" [ "css.properties."; name ])
-        in
-        let unknown key = implements key = None in
-        let colours =
-          if
-            Declaration.value_uses_color
-              (Values.color_uses_feature_where unknown)
-              decl
-          then None
-          else if
-            Declaration.value_uses_color
-              (Values.color_uses_feature_where (fun key ->
-                   implements key = Some false))
-              decl
-          then Some false
-          else Some true
-        in
-        three_and property colours
+        if
+          from_floor (String.concat "" [ "css.properties."; name ])
+          && not
+               (Declaration.value_uses_color
+                  (Values.color_uses_feature_where (fun key ->
+                       not (from_floor key)))
+                  decl)
+        then Some true
+        else None
   in
   let rec go = function
     | Property (Declaration (Property_name { name; _ }, decl)) ->

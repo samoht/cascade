@@ -274,12 +274,16 @@ val stylesheet :
     [targets] defaults to {!evergreen_targets} and owns compatibility-prefix
     generation. It is ignored when [enforce_spec] is [true].
 
-    [judge] names the browsers the sheet is judged for, and is unset by default:
-    a [@supports] guard every one of them satisfies is unwrapped, one none of
-    them satisfies is dropped, and a colour fallback every one of them parses
-    past is dead. Without it every author guard and fallback survives for the
-    engine that renders the sheet to answer (CSS Conditional 5 sec. 2). It is
-    ignored when [enforce_spec] is [true].
+    [judge] names the browsers the sheet is judged for, and is unset by default.
+    Each version is a floor, standing for that release and every later one, and
+    the run may delete only what every browser at or above the floors ignores: a
+    [@supports] guard every one of them satisfies is unwrapped, one every one of
+    them fails is dropped, and a colour fallback every one of them parses past
+    is dead. A floor that implements a production answers for the releases after
+    it, while one that lacks it does not, since a later release may ship it: a
+    guard no floor satisfies stays. Without [judge] every author guard and
+    fallback survives for the engine that renders the sheet to answer (CSS
+    Conditional 5 sec. 2). It is ignored when [enforce_spec] is [true].
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.

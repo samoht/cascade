@@ -63,9 +63,10 @@ let drop_empty_rules = Block.drop_empty_rules
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
 
 (* A guard the enclosing context leaves open is put to the browsers the run
-   judges for, when it judges for any: one every target satisfies asks a
-   question they all answer yes to, and one none of them satisfies selects no
-   target. Otherwise the guard stays for the engine to answer. *)
+   judges for, when it judges for any, each target standing for its release and
+   every later one: one all of them satisfy asks a question they all answer yes
+   to, and one all of them fail selects none of them. Otherwise the guard stays
+   for the engine to answer. *)
 let supports_decision ~ctx ~supports cond =
   match Supports.simplify_under ~context:supports cond with
   | `Cond cond' as open_guard -> (
