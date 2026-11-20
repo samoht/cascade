@@ -823,6 +823,13 @@ The new form of a diagnostic is under [Breaking](#command-line).
   whether a property is a vendor's own extension and which property a
   WHATWG Compatibility legacy alias such as `-webkit-transform` names. The
   optimizer now asks them instead of reading the property's name (#1480).
+- **`Rule_graph` read a rule's raw selector under a nesting parent.** Asked
+  whether two rules of a graph built with `~parent` tie, it weighed `&` at
+  nothing, where CSS Nesting 1 weighs it as the parent: `.x.y` and `& &.x`
+  under `.p` did not tie, although Chromium applies whichever comes last. It
+  now reads each rule by its composed selector, and
+  `Rule_graph.selector_branches` composes a selector to ask with. No caller in
+  cascade builds a graph under a parent, so output is unchanged (#1489).
 
 ## 1.2.1
 

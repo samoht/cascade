@@ -1112,7 +1112,10 @@ let scan core shared (group : group) =
         end
       in
       let walk lo =
-        let branches = lazy (Rule_graph.branches grouped.selector) in
+        let branches =
+          lazy
+            (Rule_graph.selector_branches (graph (view core)) grouped.selector)
+        in
         Rule_graph.exists_live_between (graph g) lo hi (fun id ->
             (not (id_mem id group.members)) && cross branches id)
       in
@@ -1122,7 +1125,9 @@ let scan core shared (group : group) =
           witness := crossing
       | Option.Some (narrower, last) ->
           let branches =
-            Lazy.from_val (Rule_graph.branches (node_rule g last).selector)
+            Lazy.from_val
+              (Rule_graph.selector_branches (graph g)
+                 (node_rule g last).selector)
           in
           ignore
             (List.exists (cross branches) (List.rev narrower.clear)
@@ -1193,7 +1198,10 @@ let recheck_group core shared ~consumed ~produced ~moved ~is_moved
     | Option.Some _, Option.Some witness ->
         if id_mem witness consumed || is_moved witness then rescan ()
     | Option.Some (grouped, _), Option.None -> (
-        let branches = lazy (Rule_graph.branches grouped.selector) in
+        let branches =
+          lazy
+            (Rule_graph.selector_branches (graph (view core)) grouped.selector)
+        in
         match
           List.find_opt (crosses core group branches grouped) (produced @ moved)
         with

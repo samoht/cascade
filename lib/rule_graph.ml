@@ -442,13 +442,10 @@ type branches =
 
 let branches = branch_facts
 
-(* A graph without a nesting parent holds each node's branches as [branch_facts]
-   reads them off its selector. *)
+(* The branches node [i] writes under, composed with the graph's parent: its
+   selector's and, for a rule with nested content, every nested rule's. *)
 let node_branch_facts t i =
-  match t.parent with
-  | Option.None ->
-      (t.selectors.(i), t.selector_summaries.(i), t.specificities.(i))
-  | Option.Some _ -> branch_facts t.rules.(i).selector
+  (t.selectors.(i), t.selector_summaries.(i), t.specificities.(i))
 
 let node_selector_conflict t (branches_a, summaries_a, specificities_a) i =
   let branches_b, summaries_b, specificities_b = node_branch_facts t i in
@@ -488,6 +485,7 @@ let branches_conflict (branches_a, summaries_a, specificities_a)
 let branches_under ?parent selector =
   branch_facts (selector_under parent selector)
 
+let selector_branches t selector = branches_under ?parent:t.parent selector
 let branch_specificities (_, _, specificities) = specificities
 
 (* What the order relation reads off one rule, read once so a caller asking
