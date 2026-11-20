@@ -536,6 +536,12 @@ differently. They are the reason to minify again.
   total, but not on every sheet. 182 sheets shrink by more than 1% raw. About
   twenty grow by more than 1% under gzip, at most by about 3%, and 27 under
   brotli, one cnn sheet by about 7% (#1399, #1422, #1423, #1425).
+- **A merge of rules with nested content was weighed without it.** Factoring
+  counted a rule's selector and the declarations before its first nested
+  statement, so a merge of two `.a` rules carrying nested rules was scored
+  without the separators it adds or drops. It now weighs each rule at all it
+  prints. The output of the SatCSS and Tailwind sheets and of 9,000 random
+  sheets with nesting is unchanged (#1488).
 
 #### Smaller output
 
