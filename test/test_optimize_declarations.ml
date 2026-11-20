@@ -262,6 +262,31 @@ let test_lossless_keeps_unknown_property_order () =
     ".a{margin:0;margin-top:var(--a) var(--b)}"
     (opt ".a{margin:0;margin-top:var(--a) var(--b)}")
 
+(* Folding a [margin] or [padding] longhand into the shorthand before it moves
+   the longhand to the shorthand's place, past every declaration between them.
+   One that writes the same side then decides it instead: Chromium computes
+   [margin-top] 1px for [margin:0;margin-block-start:5px;margin-top:1px] and 5px
+   for [margin:1px 0 0;margin-block-start:5px], and [-webkit-margin-before] and
+   [-webkit-padding-before] alias [margin-block-start] and [padding-block-start]
+   there. A declaration that writes another property still lets the longhand
+   fold. *)
+let test_box_longhand_folds_past_nothing_it_meets () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p -> Css.to_string ~minify:true (Css.optimize p.stylesheet)
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun css -> Alcotest.(check string) css css (opt css))
+    [
+      ".c{margin:0;margin-block-start:5px;margin-top:1px}";
+      ".c{margin:0;-webkit-margin-before:5px;margin-top:1px}";
+      ".c{padding:0;-webkit-padding-before:5px;padding-top:1px}";
+    ];
+  Alcotest.(check string)
+    "a declaration of another property" ".c{margin:1px 0 0;color:red}"
+    (opt ".c{margin:0;color:red;margin-top:1px}")
+
 (* A typed shorthand and the typed longhands it resets write common cascade
    slots, so the canonical order has to keep them in source order. Each case is
    one family whose two declarations render differently when swapped; the
@@ -1096,6 +1121,9 @@ let suite =
       ( "lossless keeps unknown property order",
         `Quick,
         test_lossless_keeps_unknown_property_order );
+      ( "a box longhand folds past nothing it meets",
+        `Quick,
+        test_box_longhand_folds_past_nothing_it_meets );
       ( "shorthand drops the longhand it resets",
         `Quick,
         test_shorthand_drops_the_longhand_it_resets );
