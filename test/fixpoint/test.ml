@@ -132,6 +132,38 @@ let grammar_inputs () =
       vectors "+" row.property row.positives
       @ vectors "-" row.property row.negatives)
 
+(* Two spellings of one value in two rules. The optimizer holds normal forms, so
+   the first pass merges the rules; a normal form that is not the node its print
+   reads back as leaves them apart, and the second pass merges what the first
+   printed alike. *)
+let normal_form_inputs () =
+  List.mapi
+    (fun i css ->
+      { name = String.concat "" [ "spellings "; string_of_int i ]; css })
+    [
+      {|a{background:url("i.png")}b{background:url(i.png)}|};
+      {|a{background:url("a b.png")}b{background:url(a\ b.png)}|};
+      {|a{list-style:url("x.png")}b{list-style:url(x.png)}|};
+      {|a{content:url("x.png")}b{content:url(x.png)}|};
+      {|a{mask:url("m.svg")}b{mask:url(m.svg)}|};
+      {|a{position-area:center center}b{position-area:center}|};
+      {|a{place-items:center center}b{place-items:center}|};
+      {|a{place-content:center center}b{place-content:center}|};
+      {|a{flex:1 1 0%}b{flex:1}|};
+      {|a{flex:2 3 0%}b{flex:2 3}|};
+      {|a{rotate:1 0 0 10deg}b{rotate:x 10deg}|};
+      {|a{grid-row:span 1 a}b{grid-row:span a}|};
+      {|a{list-style-type:symbols(symbolic "*")}b{list-style-type:symbols("*")}|};
+      {|a{clip-path:polygon(nonzero,0 0,1px 0,0 1px)}b{clip-path:polygon(0 0,1px 0,0 1px)}|};
+      {|a{animation-range:normal normal}b{animation-range:normal}|};
+      {|a{animation-timeline:scroll(block nearest)}b{animation-timeline:scroll()}|};
+      {|a{color:color(xyz-d65 .1 .2 .3)}b{color:color(xyz .1 .2 .3)}|};
+      {|a{color:color(display-p3 50% 0 0)}b{color:color(display-p3 .5 0 0)}|};
+      {|a{width:calc(50px - 50px)}b{width:0}|};
+      {|a{transform:scale(calc(.1 + .2))}b{transform:scale(.3)}|};
+      {|a{foo:a , b}b{foo:a,b}|};
+    ]
+
 (* An empty or shrunken corpus and a clean corpus look the same from outside, so
    each one carries the size the repo ships. *)
 type corpus = { corpus_name : string; floor : int; load : unit -> input list }
@@ -146,6 +178,7 @@ let corpora =
     { corpus_name = "lightning"; floor = 2500; load = lightning_inputs };
     { corpus_name = "examples"; floor = 2; load = example_inputs };
     { corpus_name = "property-grammar"; floor = 2000; load = grammar_inputs };
+    { corpus_name = "spellings"; floor = 21; load = normal_form_inputs };
   ]
 
 (* {1 Modes} *)
@@ -669,6 +702,8 @@ let pending =
     "rotate";
     (* the reader keeps the authored number ([1.0000px], [0.5em]) *)
     "font-family";
+    (* an unknown property's tokens print without separators *)
+    "foo";
     "font-size";
     "margin";
     "margin-block";
@@ -769,6 +804,127 @@ let values_case report () =
          node, and %d pending properties now read back"
         report.checked (List.length unread) (List.length settled)
 
+(* {1 Normal form}
+
+   Normalize reaches the node the reader gives its own print
+   (docs/invariants.md, "pp is a serializer"). For every typed declaration a
+   corpus holds and [n] its normal form, in both the lossy and the lossless
+   mode:
+
+   - normalising [n] again gives [n]; - reading [n]'s print back, minified or
+   pretty, and normalising gives [n]; - two normal forms with one minified print
+   are one node, so they share a {!Declaration.hash}, which is what factoring
+   buckets on.
+
+   A normal form that breaks the second or third is a merge one [--minify]
+   misses and a second makes, since the second reads the print and the first
+   held the node. Custom properties are left out, as in the values check, and so
+   is a declaration the reader marks invalid, which the optimizer drops before
+   anything reads its node ({!Declaration.is_invalid}). *)
+
+let normal ~lossless d = Declaration.normalize ~lossless d
+let print ~lossless ~minify d = Pp.to_string ~minify ~lossless Declaration.pp d
+
+let off_normal ?(normalize = normal) ?(print = print) ~lossless d =
+  let n = normalize ~lossless d in
+  let again = normalize ~lossless n in
+  let text = print ~lossless ~minify:true in
+  if not (Declaration.equal_declaration n again) then
+    Some
+      (String.concat ""
+         [
+           Declaration.to_string d;
+           " normalises to ";
+           text n;
+           ", which normalises again to ";
+           text again;
+         ])
+  else
+    List.find_map
+      (fun minify ->
+        let printed = print ~lossless ~minify n in
+        match Declaration.of_string printed with
+        | Error e ->
+            Some (String.concat "" [ printed; ": "; Error.to_string e ])
+        | Ok back ->
+            let back = normalize ~lossless back in
+            if Declaration.equal_declaration n back then None
+            else
+              Some
+                (String.concat ""
+                   [
+                     Declaration.to_string d;
+                     " normalises to a node printing ";
+                     printed;
+                     ", whose reading normalises to ";
+                     text back;
+                   ]))
+      [ true; false ]
+
+type normal_report = {
+  normalised : int;
+  off : string list;
+      (** normal forms that are not the reading of their print *)
+  split : string list;  (** one minified print, two normal forms *)
+}
+
+let normal_sweep ?normalize ?print:(pr = print) decls =
+  let off = ref [] and split = ref [] in
+  let seen = Hashtbl.create 1024 in
+  let normalize_with = Option.value normalize ~default:normal in
+  List.iter
+    (fun lossless ->
+      List.iter
+        (fun d ->
+          (match
+             try off_normal ?normalize ~print:pr ~lossless d
+             with Failure msg | Invalid_argument msg -> Some msg
+           with
+          | Some why -> off := why :: !off
+          | None -> ());
+          let n = normalize_with ~lossless d in
+          let key = (lossless, pr ~lossless ~minify:true n) in
+          match Hashtbl.find_opt seen key with
+          | None -> Hashtbl.add seen key n
+          | Some m ->
+              if not (Declaration.equal_declaration m n) then
+                split :=
+                  String.concat ""
+                    [
+                      snd key;
+                      " is the print of two normal forms, read from ";
+                      Declaration.to_string m;
+                      " and ";
+                      Declaration.to_string d;
+                    ]
+                  :: !split)
+        decls)
+    [ false; true ];
+  {
+    normalised = 2 * List.length decls;
+    off = List.sort_uniq String.compare !off;
+    split = List.sort_uniq String.compare !split;
+  }
+
+let print_normal report =
+  let buf = Buffer.create 1024 in
+  List.iter
+    (fun why ->
+      Buffer.add_string buf "  normal form : ";
+      Buffer.add_string buf (String.escaped why);
+      Buffer.add_char buf '\n')
+    (report.off @ report.split);
+  print_string (Buffer.contents buf)
+
+let normal_case report () =
+  match (report.off, report.split) with
+  | [], [] -> ()
+  | off, split ->
+      Alcotest.failf
+        "of %d normal forms, %d are not the reading of their own print and %d \
+         prints are shared by two normal forms"
+        report.normalised (List.length off) (List.length split)
+
 (* {1 Calibration}
 
    A report of nothing is a clean run or a blind oracle, and the two look alike
@@ -858,9 +1014,32 @@ let unread_value_caught () =
   | Some _ -> ()
   | None -> Alcotest.fail "a value printed as another went unreported"
 
+(* The class the normal-form check exists for: a printer that drops the quotes
+   of a [url()] the normaliser kept, and one that gives two nodes one text. *)
+let off_normal_caught () =
+  let read text =
+    match Declaration.of_string text with
+    | Ok d -> d
+    | Error e -> Alcotest.failf "%s: %s" text (Error.to_string e)
+  in
+  let as_is ~lossless:_ d = d in
+  let unquoted ~lossless:_ ~minify:_ _ = "background-image:url(i.png)" in
+  let quoted = read {|background-image:url("i.png")|} in
+  let report = normal_sweep ~normalize:as_is ~print:unquoted [ quoted ] in
+  if List.is_empty report.off then
+    Alcotest.fail "a print reading back as another normal form went unreported";
+  let red ~lossless:_ ~minify:_ _ = "color:red" in
+  let report =
+    normal_sweep ~normalize:as_is ~print:red
+      [ read "color:red"; read "color:blue" ]
+  in
+  if List.is_empty report.split then
+    Alcotest.fail "two normal forms printing alike went unreported"
+
 let calibration =
   [
     Alcotest.test_case "unread value caught" `Quick unread_value_caught;
+    Alcotest.test_case "off normal form caught" `Quick off_normal_caught;
     Alcotest.test_case "unread selector caught" `Quick nested_compound_caught;
     Alcotest.test_case "fixed point accepted" `Quick honest_emitter_passes;
     Alcotest.test_case "unreadable emission caught" `Quick
@@ -933,6 +1112,12 @@ let () =
   in
   let values = values_sweep loaded in
   print_values values;
+  let normal =
+    List.concat_map (fun (_, inputs) -> corpus_declarations inputs) loaded
+    |> List.filter (fun d -> typed d && not (Declaration.is_invalid d))
+    |> normal_sweep
+  in
+  print_normal normal;
   Alcotest.run "fixpoint"
     (("calibration", calibration)
     :: ("corpora", sizes)
@@ -940,5 +1125,8 @@ let () =
        @ [
            ( "cascade fmt --minify, no optimizer (values)",
              [ Alcotest.test_case "every corpus" `Quick (values_case values) ]
+           );
+           ( "normalize, no optimizer (normal form)",
+             [ Alcotest.test_case "every corpus" `Quick (normal_case normal) ]
            );
          ]))
