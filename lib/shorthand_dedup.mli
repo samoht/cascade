@@ -33,6 +33,10 @@ val drop_redundant_decoration_color_aliases :
 (** [drop_redundant_decoration_color_aliases decls] drops an identical WebKit
     [text-decoration-color] alias when its unprefixed twin is present. *)
 
+val as_aliased_property : Declaration.declaration -> Declaration.declaration
+(** [as_aliased_property d] is [d] under the property it is a legacy name alias
+    of, or [d] itself. See {!Shorthand.as_aliased_property}. *)
+
 val drop_vendor_aliases :
   ctx:Ctx.t ->
   (int * Declaration.declaration) list ->

@@ -628,11 +628,22 @@ let rec drop_unanswerable_supports (stmts : statement list) : statement list =
 (* The normal optimizer drops this typed alias under its maintained-browser
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
-   canonical comparison, at every declaration site. A comparison that judges for
-   targets also drops, from both sides, a declaration of a prefix no target
-   reads ({!Shorthand.read_by_no_target}): every target ignores it, and one the
-   reader cannot type would otherwise touch every other declaration. *)
-let canonical_vendor_aliases ~judged (stmts : statement list) : statement list =
+   canonical comparison, at every declaration site: a legacy name alias reads as
+   the property it names, which the specs make it whatever the targets, so the
+   passes after this see one property written twice. The optimizer hands the
+   projection normalised declarations, so the one read under the property's
+   grammar is normalised too: [0s] in a [transition] read afresh and the same
+   [0s] after {!Declaration.normalize} print alike but are two values to the
+   dedup. A comparison that judges for targets also drops, from both sides, a
+   declaration of a prefix no target reads ({!Shorthand.read_by_no_target}):
+   every target ignores it, and one the reader cannot type would otherwise touch
+   every other declaration. *)
+let canonical_vendor_aliases ~lossless ~judged (stmts : statement list) :
+    statement list =
+  let as_property d =
+    let aliased = Shorthand.as_aliased_property d in
+    if aliased == d then d else Declaration.normalize ~lossless aliased
+  in
   let unread decls =
     if judged then
       Common.List.filter_preserve
@@ -642,7 +653,9 @@ let canonical_vendor_aliases ~judged (stmts : statement list) : statement list =
   in
   Stylesheet.map_declarations
     (fun decls ->
-      unread (Shorthand.drop_redundant_decoration_color_aliases decls))
+      unread
+        (Shorthand.drop_redundant_decoration_color_aliases
+           (Common.List.map_preserve as_property decls)))
     stmts
 
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
@@ -836,7 +849,8 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
            @@ sort_property_runs
                 (canonical_values ~lossless ~missing:true
                    (normalize_custom_values ~lossless
-                      (canonical_vendor_aliases ~judged:(Option.is_some judge)
+                      (canonical_vendor_aliases ~lossless
+                         ~judged:(Option.is_some judge)
                          (drop_unanswerable_supports stmts))))))
   in
   let result =

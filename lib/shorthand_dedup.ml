@@ -667,40 +667,37 @@ let legacy_name_alias_of = function
   | "-webkit-transition-timing-function" -> Some "transition-timing-function"
   | _ -> None
 
-(* One property written twice with one value says what writing it once says, so
-   the alias and its twin compare as the twin alone. This assumes nothing about
-   which browsers are targeted -- the two names ARE one property -- so it holds
-   where the target-dependent prefix drops do not. A differing value or
-   importance is two writes of one property and stays. [unprefixed] is the
-   property [vendor] is an alias of. *)
-let legacy_name_alias_twin ~unprefixed vendor twin =
-  String.equal unprefixed (Declaration.property_name twin)
-  && same_value_text vendor twin
-  && Bool.equal
-       (Declaration.is_important vendor)
-       (Declaration.is_important twin)
+(* A legacy name alias is its property under a second name, so it reads as that
+   property: its value under the property's grammar, its importance kept. Every
+   pass after this one then sees two writes of one property where the sheet
+   wrote the alias and the property, and the later wins whatever the values or
+   the rules that hold them. A value the property's grammar refuses keeps the
+   alias as written. *)
+let as_aliased_property decl =
+  match
+    legacy_name_alias_of
+      (String.lowercase_ascii (Declaration.property_name decl))
+  with
+  | None -> decl
+  | Some unprefixed -> (
+      match
+        Declaration.parse_declaration unprefixed
+          (Declaration.string_of_value ~minify:true decl)
+      with
+      | Some d when Declaration.is_important decl -> Declaration.important d
+      | Some d -> d
+      | None -> decl)
 
-(* Canonical comparison follows the aliasing the specs prove on their own,
-   without enabling every target-dependent optimizer rewrite. Sec. 3.4.1 above
-   settles the [-webkit-] list; [-webkit-text-decoration-color] is not on it but
-   every engine that ships the prefix aliases it, and Cascade normalizes it
-   whatever the target. A differing fallback, mismatched importance, or prefix
-   without a standard twin remains observable and is kept. A declaration's own
-   name says whether it is a legacy alias, so that name is read once per
-   declaration. *)
+(* [-webkit-text-decoration-color] is not on the sec. 3.4.1 list above, so
+   {!as_aliased_property} leaves it as written, but every engine that ships the
+   prefix aliases it and Cascade normalizes it whatever the target. Beside an
+   identical unprefixed twin it says nothing the twin does not. A differing
+   fallback, mismatched importance, or the prefix alone remains observable and
+   is kept. *)
 let drop_redundant_decoration_color_aliases declarations =
   filter_preserve
     (fun declaration ->
-      let legacy_twin =
-        match legacy_name_alias_of (Declaration.property_name declaration) with
-        | None -> fun _ -> false
-        | Some unprefixed -> legacy_name_alias_twin ~unprefixed declaration
-      in
-      not
-        (List.exists
-           (fun twin ->
-             decoration_color_alias_twin declaration twin || legacy_twin twin)
-           declarations))
+      not (List.exists (decoration_color_alias_twin declaration) declarations))
     declarations
 
 (* Whether [decl]'s property is one no browser a judge can name reads. Chrome

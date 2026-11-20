@@ -352,7 +352,7 @@ differently. They are the reason to minify again.
   rewrite below, none of which can change a computed value. All 504 sheets and
   Tailwind's output compare identical to their `--minify` output under both
   objectives (#1394, #1405, #1409, #1410, #1411, #1412, #1413, #1414, #1415,
-  #1416, #1430, #1431, #1438, #1440, #1441, #1442, #1443, #1450).
+  #1416, #1430, #1431, #1438, #1440, #1441, #1442, #1443, #1450, #1454).
   - The split of a selector's declarations across rules.
     `.a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}` equals
     `.c{height:3px}.a{height:4px;width:1px}.b{width:2px}`, and
@@ -370,6 +370,13 @@ differently. They are the reason to minify again.
     of one rule (CSS Cascade 5 sec. 6.1), and two rules that write one value
     through two spellings, as `-moz-transform:rotate(180deg)` and
     `-webkit-transform:rotate(180deg)` do.
+  - A legacy alias against its property. The WHATWG Compatibility Standard
+    makes `-webkit-flex-grow` the same property as `flex-grow`, so in
+    `-webkit-flex-grow:1;flex-grow:2` the later write wins whatever the two
+    values and wherever they stand, and a later `flex` writes over both. The
+    comparison equated an alias only with an identical twin in the same rule,
+    so it called instagram's sheet different from 1.2.1's output of it, which
+    keeps `-webkit-flex-basis`, `-grow` and `-shrink` before `flex:1 150px`.
   - A declaration no target reads. A `-ms-`, `-o-` or `-khtml-` declaration,
     `font-smooth` and `font-smoothing` are dropped from both sides, and a
     prefixed copy a target needs, such as the `-webkit-hyphens` of Safari 16.4,

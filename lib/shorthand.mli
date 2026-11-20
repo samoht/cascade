@@ -122,6 +122,12 @@ val drop_redundant_decoration_color_aliases :
     its unprefixed twin is present. Differing values or importance, and a
     prefixed-only declaration, are kept. *)
 
+val as_aliased_property : Declaration.declaration -> Declaration.declaration
+(** [as_aliased_property d] is [d] written under the property it is a legacy
+    name alias of (WHATWG Compatibility Standard sec. 3.4.1), with its value
+    read under that property's grammar and its importance kept, or [d] itself
+    when its name is no such alias or the property refuses its value. *)
+
 val read_by_no_target : Declaration.declaration -> bool
 (** [read_by_no_target decl] is whether no browser a {!Support.targets} names
     reads [decl]'s property: one with the [-ms-], [-o-] or [-khtml-] prefix,

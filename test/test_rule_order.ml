@@ -528,19 +528,27 @@ let adjacent_lists_join_before_expanding () =
 (* Two rules with one declaration list apply that list twice to an element both
    match, whichever comes first, so they never decide each other. Two different
    declarations in the list may still touch, as an unplaced [-moz-] longhand
-   touches everything, and that alone must not order the two. *)
+   touches everything, and that alone must not order the two. In the first body
+   [-webkit-animation-duration] is [animation-duration] under its legacy name
+   (WHATWG Compatibility Standard sec. 3.4.1), and the [-moz-] copy beside its
+   identical unprefixed twin is one no target needs, so the [-moz-] longhand
+   that touches everything is the second body's. *)
 let identical_bodies_never_conflict () =
-  let body =
-    "{-moz-animation-duration:.1s;-webkit-animation-duration:.1s;animation-fill-mode:both}"
-  in
   let css parts = String.concat "" parts in
-  let want = css [ ".d"; body; ".u"; body; "html .u{animation-name:a}" ] in
-  Alcotest.(check string)
-    "written apart" want
-    (canonical (css [ ".u"; body; "html .u{animation-name:a}.d"; body ]));
-  Alcotest.(check string)
-    "written as one list" want
-    (canonical (css [ ".d,.u"; body; "html .u{animation-name:a}" ]))
+  let check body body' =
+    let want = css [ ".d"; body'; ".u"; body'; "html .u{animation-name:a}" ] in
+    Alcotest.(check string)
+      "written apart" want
+      (canonical (css [ ".u"; body; "html .u{animation-name:a}.d"; body ]));
+    Alcotest.(check string)
+      "written as one list" want
+      (canonical (css [ ".d,.u"; body; "html .u{animation-name:a}" ]))
+  in
+  check
+    "{-moz-animation-duration:.1s;-webkit-animation-duration:.1s;animation-fill-mode:both}"
+    "{animation-duration:.1s;animation-fill-mode:both}";
+  let untwinned = "{-moz-animation-duration:.2s;animation-fill-mode:both}" in
+  check untwinned untwinned
 
 (* CSS Cascade 5 sec. 6.1 sorts by importance before order of appearance, so in
    one rule a normal and an important declaration never decide each other,
