@@ -131,24 +131,26 @@ val equal : t -> t -> bool
 (** [equal a b] tests structural equality. *)
 
 val implemented_by : Support.targets -> t -> bool option
-(** [implemented_by targets cond] reads [targets] as floors, each engine at its
-    version and every later release. It is [Some true] when every browser at or
-    above the floors satisfies [cond], [Some false] when every one of them fails
-    it, and [None] otherwise. A floor that implements a production answers for
-    the releases after it, since a shipped production stays; a floor that lacks
-    one does not, since a later release may ship it, and the web-features
-    dataset never says a production will not ship. So a feature is [Some true]
-    or [None], and [Some false] comes only from negating one every floor reads.
-    The dataset cannot say for a property it has no key for, a vendor-prefixed
-    one among them, a value using a construct it does not name, one cascade's
-    reader refuses, or a function or general-enclosed feature. Each engine is
-    answered on its own and combinators follow CSS Conditional 3 sec. 6's
-    three-valued logic. *)
+(** [implemented_by targets cond] answers for the browsers [targets] dates: each
+    engine from its version in [targets] to the newest release the web-features
+    dataset records. It is [Some true] when [cond] holds in every one of them,
+    [Some false] when it fails in every one, and [None] otherwise. A declaration
+    feature holds from the first release that parses every production the
+    declaration uses ({!Declaration.first_release}): its property, a colour
+    construct, a keyword or function of its value. So a feature the floor parses
+    holds throughout, one no recorded release parses fails throughout, and one a
+    later release first parses is [None], under [not] as well. The dataset
+    cannot say for a property it has no key for, a vendor-prefixed one among
+    them, or a value cascade's reader refuses, nor for a function or
+    general-enclosed feature. Each engine is answered on its own and combinators
+    follow CSS Conditional 3 sec. 6's three-valued logic. *)
 
 val never_holds : t -> bool
 (** [never_holds cond] is [true] when [cond] is false however a user agent
     answers its feature tests, reading a parenthesised [<general-enclosed>] term
-    as the constant false CSS Conditional 3 sec. 6.1 makes it: a guard over
+    as the constant false CSS Conditional 3 sec. 6.1 makes it. Such a guard is
+    false in every conforming implementation, so in every release of the dated
+    browser set and in every engine [--enforce-spec] answers for: a guard over
     [(@media(width>=1px): var(--tw))], whose declaration has no property ident,
     selects no user agent, and neither does one conjoined with it. A function
     form stays a feature test, since cascade's own feature grammar may refuse an

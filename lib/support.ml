@@ -1381,18 +1381,22 @@ let unimplemented_by targets key =
    The measured supplement is left out: it names a grammar arm by a key of its
    own ([font-family.inherit] is Chrome reading [inherit] beside another family
    name), which a word of a value cannot be matched to. *)
-let engine_parses engine version key =
+let compare_version (ma, na) (mb, nb) =
+  match Int.compare ma mb with 0 -> Int.compare na nb | c -> c
+
+let parse_release engine key =
   match Hashtbl.find_opt (Lazy.force table) key with
   | None -> None
   | Some (support : Baseline.support) ->
       Some
         (match engine with
-        | Chrome -> engine_has support.chrome version
-        | Firefox -> engine_has support.firefox version
-        | Safari -> engine_has support.safari version
-        | Ios_safari ->
-            engine_has support.safari_ios version
-            || engine_has support.safari version)
+        | Chrome -> support.chrome
+        | Firefox -> support.firefox
+        | Safari -> support.safari
+        | Ios_safari -> (
+            match (support.safari_ios, support.safari) with
+            | Some a, Some b -> Some (if compare_version a b <= 0 then a else b)
+            | (Some _ as v), None | None, v -> v))
 
 let floors (targets : targets) =
   [

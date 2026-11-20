@@ -668,22 +668,18 @@ let three_or a b =
   | Some false, Some false -> Some false
   | _ -> None
 
-(* A target is a floor, the engine at [version] and every release after it. The
-   dataset records the version that shipped a production, and a shipped
-   production stays, so a floor that implements a key answers for every later
-   release. A floor that lacks one says nothing about them, since a later
-   release may ship it, and nothing in the dataset says a production never
-   ships. So a feature answers [Some true] or [None], and only a negation of one
-   every floor reads answers [Some false]. *)
-let implemented_by_engine engine version cond =
-  let from_floor key =
-    match Support.engine_implements engine version key with
-    | Some true -> true
-    | Some false | None -> false
-  in
+(* The browsers a run judges for are each engine from its floor to the newest
+   release the dataset records, and a shipped production stays. A declaration
+   feature holds in all of them when the floor parses the declaration, fails in
+   all of them when no release the dataset records does, and is undecided when a
+   release past the floor first parses it ({!Declaration.first_release}). [not]
+   reverses a leaf, so a feature that fails at the floor and holds from a later
+   release is undecided under [not] too. *)
+let implemented_by_engine engine floor cond =
   (* The feature's declaration is opaque, since the browser is the parser it is
-     meant for; the typed reading is taken here to see the colours it uses, and
-     a value cascade's own grammar refuses answers nothing. *)
+     meant for; the typed reading is taken here to see the productions it uses,
+     and a value cascade's own grammar refuses, or a property the dataset does
+     not name, answers nothing. *)
   let declaration name decl =
     let typed =
       Declaration.parse_declaration name
@@ -692,16 +688,19 @@ let implemented_by_engine engine version cond =
     match typed with
     | None -> None
     | Some decl when Declaration.is_invalid decl -> None
-    | Some decl ->
-        if
-          from_floor (String.concat "" [ "css.properties."; name ])
-          && not
-               (Declaration.value_uses_color
-                  (Values.color_uses_feature_where (fun key ->
-                       not (from_floor key)))
-                  decl)
-        then Some true
-        else None
+    | Some decl -> (
+        match
+          Support.parse_release engine
+            (String.concat ""
+               [ "css.properties."; String.lowercase_ascii name ])
+        with
+        | None -> None
+        | Some _ -> (
+            match Declaration.first_release ~floor engine decl with
+            | None -> Some false
+            | Some release ->
+                if Support.compare_version release floor = 0 then Some true
+                else None))
   in
   let rec go = function
     | Property (Declaration (Property_name { name; _ }, decl)) ->
