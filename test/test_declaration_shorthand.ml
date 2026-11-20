@@ -641,6 +641,30 @@ let mask_drained_layer () =
     ~optimized:"-webkit-mask:url(a.png),none;mask:url(a.png),none"
     "mask: url(a.png), none"
 
+(* CSS Masking 1 sec. 7.9: in a [mask] layer one [<geometry-box>] sets both
+   [mask-origin] and [mask-clip], two set them in that order, and [no-clip] sets
+   the clip alone. Two boxes print once only when they are one box. *)
+let mask_boxes () =
+  let both css = String.concat "" [ "-webkit-mask:"; css; ";mask:"; css ] in
+  check_declaration ~expected:"mask:url(a.png)border-box content-box"
+    ~optimized:(both "url(a.png)border-box content-box")
+    "mask: url(a.png) border-box content-box";
+  check_declaration ~expected:"mask:url(a.png)padding-box border-box"
+    ~optimized:(both "url(a.png)padding-box border-box")
+    "mask: url(a.png) padding-box border-box";
+  check_declaration ~expected:"mask:url(a.png)content-box content-box"
+    ~optimized:(both "url(a.png)content-box")
+    "mask: url(a.png) content-box content-box";
+  check_declaration ~expected:"mask:url(a.png)border-box border-box"
+    ~optimized:(both "url(a.png)") "mask: url(a.png) border-box border-box";
+  check_declaration ~expected:"mask:url(a.png)content-box"
+    ~optimized:(both "url(a.png)content-box")
+    "mask: url(a.png) content-box";
+  check_declaration ~expected:"mask:url(a.png)no-clip"
+    "mask: url(a.png) no-clip";
+  check_declaration ~expected:"mask:url(a.png)content-box no-clip"
+    "mask: url(a.png) content-box no-clip"
+
 (* CSS Masking 1 (ED) sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1
    puts [none] in the [<mask-reference>] of one layer, so it names the whole
    value only where no layer follows it and no slot of its own layer does. *)
@@ -972,6 +996,7 @@ let suite =
       test_case "negative calc keeps the call" `Quick
         negative_calc_keeps_the_call;
       test_case "mask drained layer" `Quick mask_drained_layer;
+      test_case "mask boxes" `Quick mask_boxes;
       test_case "mask none is a layer reference" `Quick
         mask_none_is_a_layer_reference;
       test_case "background drained layer" `Quick background_drained_layer;

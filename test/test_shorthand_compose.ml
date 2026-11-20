@@ -783,6 +783,60 @@ let test_mask_full_run_composes () =
       ".x{-webkit-mask-image:url(a.png);mask-image:url(a.png);-webkit-mask-size:cover;mask-size:cover}"
     ".x{mask-image:url(a.png);mask-size:cover}"
 
+(* A layer shorthand holds one value per slot per layer. A longhand list is
+   repeated to the number of images (CSS Backgrounds 3 sec. 2.2, CSS Masking 1
+   sec. 7.9), so two images beside one [no-repeat] repeat neither, and a second
+   repeat beside one image is dropped; one shorthand layer spells neither. A
+   [var()] may substitute tokens another slot reads, so it stays in its
+   longhand. *)
+let test_layer_run_is_one_plain_layer () =
+  let keeps_longhands ~shorthand input =
+    match Css.of_string input with
+    | Ok { stylesheet; _ } ->
+        let out =
+          String.trim (Css.to_string ~minify:true (Css.optimize stylesheet))
+        in
+        let n = String.length out and m = String.length shorthand in
+        let rec mentions i =
+          i + m <= n
+          && (String.equal (String.sub out i m) shorthand || mentions (i + 1))
+        in
+        if mentions 0 then Alcotest.failf "%s composed into %s" input out
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  let mask rest =
+    String.concat ""
+      [
+        ".x{";
+        rest;
+        ";mask-position:0 \
+         0;mask-size:auto;mask-origin:border-box;mask-clip:border-box;mask-composite:add;mask-mode:match-source}";
+      ]
+  in
+  keeps_longhands ~shorthand:"mask:"
+    (mask "mask-image:url(a.png),url(b.png);mask-repeat:no-repeat");
+  keeps_longhands ~shorthand:"mask:"
+    (mask "mask-image:url(a.png);mask-repeat:no-repeat,repeat");
+  keeps_longhands ~shorthand:"mask:"
+    (mask "mask-image:url(a.png);mask-repeat:var(--r)");
+  let background rest =
+    String.concat ""
+      [
+        ".x{";
+        rest;
+        ";background-position:0 \
+         0;background-size:auto;background-origin:padding-box;background-clip:border-box;background-attachment:scroll;background-color:red}";
+      ]
+  in
+  keeps_longhands ~shorthand:"background:"
+    (background "background-image:url(a.png);background-repeat:no-repeat,repeat");
+  keeps_longhands ~shorthand:"background:"
+    (background "background-image:url(a.png);background-repeat:var(--r)");
+  (* Control: one plain layer still composes. *)
+  sheet_optimizes_to
+    ~into:".x{-webkit-mask:url(a.png)no-repeat;mask:url(a.png)no-repeat}"
+    (mask "mask-image:url(a.png);mask-repeat:no-repeat")
+
 (* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
    so contracting a width/style/colour run over a rule that holds one of those
    longhands would drop it. *)
@@ -1154,6 +1208,8 @@ let suite =
         test_webkit_mask_position_axes;
       Alcotest.test_case "mask full run composes" `Quick
         test_mask_full_run_composes;
+      Alcotest.test_case "layer run is one plain layer" `Quick
+        test_layer_run_is_one_plain_layer;
       Alcotest.test_case "border contraction covers border-image" `Quick
         test_border_contraction_covers_border_image;
       Alcotest.test_case "border-image held across rules" `Quick
