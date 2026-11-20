@@ -283,7 +283,13 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
-
+- **A zero lost its unit inside a line-width comparison.** `--minify` turned
+  `outline-width:max(0px,var(--v))` into `max(0,var(--v))`, which mixes a
+  number with a length and is invalid at computed-value time, across the 27
+  line-width properties; it folded `round(1px,0px)` to `1px` and
+  `mod(1px,0px)` to `1px`, where CSS Values 4 sec. 10.9 makes both NaN and
+  Chromium computes `0px`. A zero operand now keeps its unit, and a zero step
+  or divisor keeps the call (#1508).
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
   omitted direction for `bottom`, so it printed

@@ -91,7 +91,8 @@ implementation keeps them.
   one normal form, so the first `--minify` merges what a second would.
 - **A zero loses its unit only where the grammar reads it as a length.** A
   bare `0` replaces a zero length only at a whole `<length>` slot with no
-  `<number>` or `<percentage>` alternative. CSS Flexbox 1 sec. 7.1 reads a
+  `<number>` or `<percentage>` alternative, never inside a math function,
+  where CSS Values 4 sec. 10.9 types it as a `<number>`. CSS Flexbox 1 sec. 7.1 reads a
   unitless zero in `flex` as a flex factor, so `flex:0px` keeps its unit.
 - **A number and a percentage swap only at a slot whose type is known.** A
   math function takes its type from its operands (CSS Values 4 sec. 10.9),
@@ -254,6 +255,7 @@ Each row names the tests that check a statement. A browser harness under
 | Range | `values_math` "spec math range every family" |
 | Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
+| Zero operands | `values_math` "spec math zero operands" |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
