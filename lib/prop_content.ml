@@ -41,6 +41,12 @@ let rec pp_content : content Pp.t =
       pp_counter_style_arg ctx style;
       Pp.char ctx ')'
   | Content_list items -> Pp.list ~sep:Pp.space pp_content ctx items
+  | With_alt { content; alt } ->
+      pp_content ctx content;
+      Pp.sp ctx ();
+      Pp.char ctx '/';
+      Pp.sp ctx ();
+      Pp.list ~sep:Pp.space pp_content ctx alt
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -67,6 +73,11 @@ let rec normalize_content ~lossless (c : content) : content =
   | Content_list items ->
       let items' = List.map (normalize_content ~lossless) items in
       if List.equal ( == ) items items' then c else Content_list items'
+  | With_alt { content; alt } ->
+      let content' = normalize_content ~lossless content in
+      let alt' = List.map (normalize_content ~lossless) alt in
+      if content' == content && List.equal ( == ) alt alt' then c
+      else With_alt { content = content'; alt = alt' }
   | _ -> c
 
 let pp_counter_item ctx { name; reversed; value } =
@@ -161,7 +172,7 @@ let rec read_content_attr t =
         if Cursor.comma_opt inner then (
           Cursor.ws inner;
           if Cursor.is_done inner then Empty_fallback
-          else Attr_fallback (read_content inner))
+          else Attr_fallback (read_content_items inner))
         else No_fallback
       in
       Cursor.ws inner;
@@ -195,7 +206,33 @@ and read_content_single t =
          [ read_content_string; (fun t -> (Image (read_bg_image t) : content)) ])
     t
 
+(* CSS Generated Content 3 sec. 1.1: the alternative text is [[ <string> |
+   <counter> | attr() ]+]. *)
+and read_content_alt_item t : content =
+  Cursor.enum_or_calls "content alternative text" []
+    ~calls:
+      [
+        ("var", fun t -> (Var (read_var read_content t) : content));
+        ("attr", read_content_attr);
+        ("counter", read_content_counter);
+        ("counters", read_content_counters);
+      ]
+    ~default:read_content_string t
+
 and read_content t : content =
+  let content = read_content_items t in
+  Cursor.ws t;
+  if Cursor.slash_opt t then (
+    (match content with
+    | None | Normal ->
+        Cursor.err_invalid t "none and normal take no alternative text"
+    | _ -> ());
+    Cursor.ws t;
+    let alt = Cursor.list ~sep:Cursor.ws ~at_least:1 read_content_alt_item t in
+    With_alt { content; alt })
+  else content
+
+and read_content_items t : content =
   let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_content_single t in
   match items with
   | [ item ] -> item

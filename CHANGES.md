@@ -227,6 +227,11 @@ where it is called. Each entry says what to write there.
   `list_style_type option`. A pattern or a constructor names the fields, with
   `style = None` for the default; `Css.content_counter` and
   `Css.content_counters` take an optional `?style` (#1462).
+- **`content` has a `With_alt` case.** CSS Generated Content 3 sec. 1.1 lets
+  `content` end with `/` and an alternative text, which the type had no room
+  for. A match over `Properties.content` needs a `With_alt { content; alt }`
+  arm; `alt` is the list of strings, `counter()`, `counters()` and `attr()`
+  items after the slash (#1474).
 - **`Pp.quoted` is gone.** It wrote a string between double quotes without
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
@@ -368,6 +373,13 @@ differently. They are the reason to minify again.
   `zoom:min(-1,2)` became a negative literal every browser drops. A math
   function past the range is valid and clamped (CSS Values 4 sec. 10.12), so
   each is now kept, folded where it can be, inside `calc()` (#1473).
+- **`content` with an alternative text was dropped.** `content:"a" / "b"`,
+  `content:url(a.png) / "b"` and `content:counter(n) / "b"` were refused as a
+  bad value, so the generated content was lost where Chromium draws it. The
+  alternative text after the slash (CSS Generated Content 3 sec. 1.1), with
+  `attr()`, `counter()` and `counters()` in it, is now read and printed, and a
+  value holding one keeps the `content` written before it for browsers that
+  predate it (#1474).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers
