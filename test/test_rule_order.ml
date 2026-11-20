@@ -727,6 +727,40 @@ let nested_conditionals_participate () =
     "independent rule sorts before the nested block" true
     (String.length (canonical css) > 2 && String.sub (canonical css) 0 2 = ".b")
 
+(* A guarded rule repeating an unguarded write is dead only while nothing writes
+   one of its cascade slots in between. A shorthand writes its longhands' slots
+   and [all] writes every slot, so each of these sheets gives [.a] on screen a
+   value the sheet without its last block does not (CSS Cascade 5 sec. 6.1,
+   order of appearance). *)
+let guarded_repeat_after_a_slot_write_stays () =
+  let differ name with_repeat without =
+    Alcotest.(check bool)
+      name true
+      (not (String.equal (canonical with_repeat) (canonical without)))
+  in
+  differ "a shorthand between keeps a longhand repeat"
+    ".a{margin-top:1px}@media screen{.a{margin:0}}@media \
+     screen{.a{margin-top:1px}}"
+    ".a{margin-top:1px}@media screen{.a{margin:0}}";
+  differ "a longhand between keeps a shorthand repeat"
+    ".a{margin:0}@media screen{.a{margin-top:1px}}@media screen{.a{margin:0}}"
+    ".a{margin:0}@media screen{.a{margin-top:1px}}";
+  differ "all between keeps a repeat"
+    ".a{color:red}@media screen{.a{all:unset}}@media screen{.a{color:red}}"
+    ".a{color:red}@media screen{.a{all:unset}}";
+  differ "an earlier write in the rule keeps a repeat"
+    ".a{color:red}@media screen{.a{color:blue;color:red}}"
+    ".a{color:red}@media screen{.a{color:blue}}";
+  differ "an earlier write in the block keeps a repeat"
+    ".a{color:red}@media screen{.b{color:blue}.a{color:red}}"
+    ".a{color:red}@media screen{.b{color:blue}}";
+  Alcotest.(check string)
+    "a repeat with no slot written in between is still dropped"
+    (canonical ".a{margin-top:1px}@media screen{.a{color:red}}")
+    (canonical
+       ".a{margin-top:1px}@media screen{.a{color:red}}@media \
+        screen{.a{margin-top:1px}}")
+
 let same_condition_blocks_fold_together () =
   (* Two blocks under one condition write one cascade slot, so the projection
      folds them the way it folds two occurrences of a selector. A sheet whose
@@ -931,6 +965,8 @@ let suite =
         block_with_layer_content_is_barrier;
       Alcotest.test_case "nested conditionals participate" `Quick
         nested_conditionals_participate;
+      Alcotest.test_case "guarded repeat after a slot write stays" `Quick
+        guarded_repeat_after_a_slot_write_stays;
       Alcotest.test_case "same-condition blocks fold together" `Quick
         same_condition_blocks_fold_together;
       Alcotest.test_case "container key keeps distinct queries apart" `Quick
