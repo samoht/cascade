@@ -419,9 +419,9 @@ let spec_math_result_type () =
   (* CSS Backgrounds 3 sec. 6.2 spells <border-image-slice> over [<number> |
      <percentage>] with no length among them, so the slot answers the same way
      an <opacity-value> does, longhand and shorthand alike. *)
-  decl_optimizes ~prop:"border-image-slice" ~into:"abs(-1)" "abs(-1)";
+  decl_optimizes ~prop:"border-image-slice" ~into:"1" "abs(-1)";
   decl_optimizes ~prop:"border-image-slice" ~into:"30%" "30%";
-  decl_optimizes ~prop:"border-image-slice" ~into:"calc(abs(-30%))" "abs(-30%)";
+  decl_optimizes ~prop:"border-image-slice" ~into:"30%" "abs(-30%)";
   neg_cursor P.read_border_image_slice "abs(-1px)";
   neg_cursor P.read_border_image_slice "hypot(3px,4px)";
   neg_cursor P.read_border_image_slice "calc(abs(-1px))";
