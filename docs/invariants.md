@@ -68,6 +68,18 @@ change that breaks one is a defect even when every test passes.
   still reads one rule at a time and is an open gap: shorthand composition
   after it, which can move a declaration past an untyped one the trace orders
   it against.
+- **Judge may delete only what every browser at or above the floors
+  ignores.** A target version is a floor: that release and every later one.
+  The canonical comparison judges for the default targets (`?judge`), and a
+  deletion it makes on that ground holds for every browser at or above them,
+  not only for the floor versions. A floor that implements a production
+  answers for the releases after it, so a `@supports` guard every floor
+  satisfies is unwrapped. A floor that lacks one says nothing about them, so
+  a guard no floor satisfies stays unless the data shows the feature never
+  ships. The web-features dataset never shows that. `Supports.implemented_by`
+  answers the question; `equal_canonical_targets` in
+  `test/test_css_compare_structure.ml` holds it (`field-sizing` and
+  `anchor-name` guards separate, `not (display:grid)` does not).
 - **Rule rewrites that move source order reason about overlap.** Factoring a
   default value into a shared block keeps a rule's own declaration when an
   earlier overlapping rule writes a different value. Nesting synthesis is
