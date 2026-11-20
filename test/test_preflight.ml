@@ -10,7 +10,7 @@ let rules css =
   | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
 
 let test_empty_input () =
-  let t = Preflight.summarize [] in
+  let t = Preflight.summarize Size.default [] in
   Alcotest.(check int) "no declarations" 0 (Preflight.declaration_count t);
   Alcotest.(check int) "no source units" 0 (Preflight.source_units t);
   Alcotest.(check int) "no estimated gain" 0 (Preflight.estimated_gain t);
@@ -18,7 +18,7 @@ let test_empty_input () =
 
 let test_small_input_always_useful () =
   let rs = rules ".a{color:red}.b{width:1px}" in
-  let t = Preflight.summarize rs in
+  let t = Preflight.summarize Size.default rs in
   Alcotest.(check bool)
     "two-decl input below threshold is useful" true (Preflight.useful t);
   Alcotest.(check bool)
@@ -26,9 +26,9 @@ let test_small_input_always_useful () =
     (Preflight.declaration_count t >= 0)
 
 let test_declaration_count_scales () =
-  let single = Preflight.summarize (rules ".a{color:red}") in
+  let single = Preflight.summarize Size.default (rules ".a{color:red}") in
   let many =
-    Preflight.summarize
+    Preflight.summarize Size.default
       (rules ".a{color:red;width:1px;height:2px;margin:0;padding:0}")
   in
   Alcotest.(check bool)
@@ -44,7 +44,7 @@ let test_small_segment_builds_no_tables () =
       (String.concat ""
          (List.init 20 (fun i -> Fmt.str ".c%d{color:red;width:%dpx}" i i)))
   in
-  let words = measure (fun () -> Preflight.summarize rs) in
+  let words = measure (fun () -> Preflight.summarize Size.default rs) in
   if words > 100. then
     Alcotest.failf "summarizing 20 rules allocated %.0f words" words
 

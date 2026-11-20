@@ -22,7 +22,7 @@ end)
    repeated long declarations register their real weight, not just a count. A
    declaration counts as shared, and a body as identical, once its hash has been
    seen earlier in the segment. *)
-let gains rules =
+let gains print rules =
   let n = List.length rules in
   let seen = Int_set.create n and bodies = Body_set.create n in
   let identical = ref 0 and shared = ref 0 in
@@ -32,8 +32,7 @@ let gains rules =
       List.iter
         (fun decl ->
           let hash = Declaration.hash decl in
-          if Int_set.mem seen hash then
-            shared := !shared + Declaration.size decl
+          if Int_set.mem seen hash then shared := !shared + Size.decl print decl
           else Int_set.add seen hash ())
         decls;
       match decls with
@@ -41,24 +40,24 @@ let gains rules =
       | _ ->
           let key = List.map Declaration.hash decls in
           if Body_set.mem bodies key then
-            identical := !identical + Size.decls decls
+            identical := !identical + Size.decls print decls
           else Body_set.add bodies key ())
     rules;
   (!identical, !shared)
 
 (* Only a segment past [small_declaration_threshold] is ever scored, so a
    smaller one is counted and its gains are left at zero. *)
-let summarize rules =
+let summarize print rules =
   let declaration_count = ref 0 and source_units = ref 0 in
   List.iter
     (fun (rule : Stylesheet.rule) ->
       let decls = rule.declarations in
       declaration_count := !declaration_count + List.length decls;
-      source_units := !source_units + 8 + Size.decls decls)
+      source_units := !source_units + 8 + Size.decls print decls)
     rules;
   let identical_body_gain, shared_declaration_gain =
     if !declaration_count <= small_declaration_threshold then (0, 0)
-    else gains rules
+    else gains print rules
   in
   {
     source_units = !source_units;

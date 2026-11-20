@@ -146,6 +146,30 @@ let test_factor_interval_schedule () =
   Alcotest.(check string)
     "interval factoring is idempotent" once (minify_str once)
 
+(* Factoring weighs a rewrite by the bytes the run prints, and the flags change
+   some spellings: [--enforce-spec] keeps a multi-word family name's quotes and
+   [--lossless] keeps an oklch chroma's number where the default writes [76%].
+   Each pair below prints 97 and 91 bytes unfactored and 95 and 89 factored, so
+   the run takes the factored form. *)
+let factoring_weighs_the_flagged_print () =
+  let minify ~lossless ~enforce_spec css =
+    Css.minify ~lossless ~enforce_spec (Css.stylesheet css)
+  in
+  Alcotest.(check string)
+    "enforce-spec weighs the quoted family"
+    ".aaaaaaaaaa,.bbbbbbbbbb{font-family:\"Axxxxxxxx \
+     B\"}.aaaaaaaaaa{width:1px}.bbbbbbbbbb{height:1px}"
+    (minify ~lossless:false ~enforce_spec:true
+       ".aaaaaaaaaa{font-family:\"Axxxxxxxx \
+        B\";width:1px}.bbbbbbbbbb{font-family:\"Axxxxxxxx B\";height:1px}");
+  Alcotest.(check string)
+    "lossless weighs the number chroma"
+    ".aaaaaaaaa,.bbbbbbbbb{color:oklch(.7 .304 \
+     20)}.aaaaaaaaa{width:1px}.bbbbbbbbb{height:1px}"
+    (minify ~lossless:true ~enforce_spec:false
+       ".aaaaaaaaa{color:oklch(.7 .304 20);width:1px}.bbbbbbbbb{color:oklch(.7 \
+        .304 20);height:1px}")
+
 let test_factor_interval_keeps_overrides () =
   (* A same-property different-value member can still join the common-property
      group, but its value must be emitted after the shared rule. This catches
@@ -1073,6 +1097,9 @@ let suite =
       ("factor shared declarations", `Quick, test_factor_shared_declarations);
       ("factor weighted intervals", `Quick, test_factor_interval_schedule);
       ("factor interval overrides", `Quick, test_factor_interval_keeps_overrides);
+      ( "factoring weighs the flagged print",
+        `Quick,
+        factoring_weighs_the_flagged_print );
       ( "factor override keeps its longhand",
         `Quick,
         test_factor_override_keeps_its_longhand );

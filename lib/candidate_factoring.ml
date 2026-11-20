@@ -195,7 +195,7 @@ let start params =
    [crosses prior link] the questions about it and each of the members [prior]
    before it; the questions about two earlier members were asked when the later
    of them joined. *)
-let extend chain ~refuses ~crosses link =
+let extend g chain ~refuses ~crosses link =
   let prior = chain.links and alone = chain.alone and across = chain.across in
   let produced = chain.produced in
   {
@@ -209,7 +209,9 @@ let extend chain ~refuses ~crosses link =
         (let size, rules = Lazy.force produced in
          match Lazy.force link.finalized with
          | Option.None -> (size, rules)
-         | Option.Some rule -> (size + Size.rule rule, rule :: rules));
+         | Option.Some rule ->
+             ( size + Size.rule (Rule_graph.size_print (graph g)) rule,
+               rule :: rules ));
   }
 
 (* The candidate of [grouped] lifted out of the members of [chain], as
@@ -238,7 +240,7 @@ let score ~kind ~finalize g chain grouped =
     | _ ->
         Rule_rewrite.of_finalized ~kind (graph g) ~consume
           ~produce:(grouped :: produce)
-          ~size:(Size.rule grouped + size)
+          ~size:(Size.rule (Rule_graph.size_print (graph g)) grouped + size)
 
 (* The group rule of [members] lifting [decls], with the candidate it makes once
    asked for, unless the members' selectors cannot share a list or a check
@@ -300,10 +302,10 @@ let exact_crosses g prior link =
 let exact_step g ~finalize chain member =
   let { common; facts } = chain.params in
   match Lift.remove_common common member.rule.declarations with
-  | _ :: _ when selector_size g member.id + 1 > decls_inline_cost common ->
+  | _ :: _ when selector_size g member.id + 1 > decls_inline_cost g common ->
       chain
   | leftover ->
-      extend chain
+      extend g chain
         ~refuses:(exact_refuses chain.params)
         ~crosses:(exact_crosses g)
         (link ~finalize member leftover
@@ -514,14 +516,14 @@ let default_step g ~finalize chain member =
     | [] -> true
     | _ ->
         selector_size g member.id + 1
-        <= decls_inline_cost
+        <= decls_inline_cost g
              (p.exact_common
              @ (removed_default_declarations p.entries member
                |> Lift.remove_common reasserted))
   in
   if not stays then chain
   else
-    extend chain ~refuses:(default_refuses p) ~crosses:(default_crosses g p)
+    extend g chain ~refuses:(default_refuses p) ~crosses:(default_crosses g p)
       (link ~finalize member leftover
          ~lifts_over:
            (lazy
@@ -553,7 +555,7 @@ let member_may_survive_pruning g provider_decls member =
     (fun decl -> Lift.decl_mem decl provider_decls)
     member.rule.declarations
   || selector_size g member.id + 1
-     <= decls_inline_cost
+     <= decls_inline_cost g
           (List.filter
              (fun decl -> Lift.decl_mem decl member.rule.declarations)
              provider_decls)

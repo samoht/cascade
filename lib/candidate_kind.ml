@@ -39,7 +39,6 @@ let same_id a b = Rule_graph.Node_id.compare a b = 0
 let same_decl = Declaration.same_minified
 let merge_selector_list = Merge.selector_list
 let listable = Merge.listable
-let decls_size = Size.decls
 let mix_int = Common.mix_int
 let hash_ints xs = List.fold_left mix_int 0x345678 xs
 
@@ -90,7 +89,9 @@ let rewrite_candidate ~kind ~finalize g ~consume ~produce =
   else Rule_rewrite.v ~kind ~finalize g.graph ~consume ~produce
 
 let selector_size g id = Rule_graph.node_selector_size g.graph id
-let decls_inline_cost decls = decls_size decls + List.length decls
+
+let decls_inline_cost g decls =
+  Size.decls (Rule_graph.size_print g.graph) decls + List.length decls
 
 let grouped_rule (rules : rule list) : rule option =
   match rules with
