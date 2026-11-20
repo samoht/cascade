@@ -7,16 +7,22 @@ open Values_intf
     carries a unit. *)
 type math_result = Scalar of float | United of float * string
 
-type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
+type calc_ctx = {
+  var_is_single_valued : string -> bool;
+  var_is_number : string -> bool;
+  budget : bool;
+}
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
     [var_is_single_valued n] reports whether [--n] is registered with a
     single-component [@property] syntax, so its [var()] substitutes exactly one
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
-    may be unwrapped. [budget] folds a non-terminating quotient to the
-    six-significant-figure computed-value budget, as a number's fold already
-    does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient keeps the
-    [calc()] the author wrote, which is what {!default_calc_ctx} and the
-    minifier do. The canonical comparison spends the budget, since the two
+    may be unwrapped. [var_is_number n] reports a [<number>] or [<integer>]
+    registration, whose [var()] substitutes one number, so a zero product over
+    it folds (see {!calc_identity}). [budget] folds a non-terminating quotient
+    to the six-significant-figure computed-value budget, as a number's fold
+    already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient
+    keeps the [calc()] the author wrote, which is what {!default_calc_ctx} and
+    the minifier do. The canonical comparison spends the budget, since the two
     spellings render alike. *)
 
 val pp_calc_op : calc_op Pp.t
@@ -89,15 +95,18 @@ val combine_leaf : calc_op -> float -> float -> float option
 (** [combine_leaf op x y] adds or subtracts two same-unit coefficients. *)
 
 val calc_identity :
+  ctx:calc_ctx ->
   zero:'a calc ->
   is_zero:('a -> bool) ->
   'a calc ->
   calc_op ->
   'a calc ->
   'a calc option
-(** [calc_identity ~zero ~is_zero l op r] applies the value-independent CSS
+(** [calc_identity ~ctx ~zero ~is_zero l op r] applies the value-independent CSS
     Values 4 sec. 10.10.1 identities to one [Expr (l, op, r)] node, returning
-    the folded operand when one applies. *)
+    the folded operand when one applies. A zero product drops its other operand
+    only when that operand holds no [var()] or is a [<number>] registration
+    ([ctx.var_is_number]). *)
 
 val default_calc_ctx : calc_ctx
 (** [default_calc_ctx] knows of no single-valued variables, so every

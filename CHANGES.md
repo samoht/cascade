@@ -281,6 +281,15 @@ differently. They are the reason to minify again.
   --diff=canonical` called the two spellings identical. CSS Values 4 sec. 10.9
   types a calculation by its operands, so a percentage now becomes its number
   only where no `var()` shares the calculation (#1456).
+- **A product with zero dropped a `var()`.** `width:calc(var(--u) * 0px)`
+  was minified to `width:0`, though with `--u` undefined the source is invalid
+  at computed-value time and Chromium lays the element out at `auto`. A
+  `var()` substitutes tokens, so `calc(0 * var(--x))` under `--x:1px + 2px`
+  is 2px, not 0, and `--y:calc(var(--x) * 0)` became `--y:0`. `cascade diff
+  --diff=canonical`, `--inline-vars` with a kept variable and `Css.Context`
+  runtime variables made the same fold. A zero product now drops an operand
+  only when it holds no `var()`, or is an `@property` registered as
+  `<number>` or `<integer>` (#1457).
 
 #### Stable output
 
