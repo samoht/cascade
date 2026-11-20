@@ -218,6 +218,16 @@ let list_properties () =
 
   (* Text shadow *)
   check_declaration ~expected:"text-shadow:none" "text-shadow: none";
+  (* CSS Text Decoration 4 sec. 6.2 spells a shadow [<color>? && <length>{2,3}],
+     so a [var()] after two lengths may be the blur. A zero blur before a
+     [var()] colour stays, as in [box-shadow]: with [--c:3px], Chromium 153
+     computes [none] for [0 5px 0 var(--c)], four lengths, and a 3px blur for [0
+     5px var(--c)]. *)
+  check_declaration ~expected:"text-shadow:0px 5px 0px var(--c)"
+    ~optimized:"text-shadow:0 5px 0 var(--c)"
+    "text-shadow: 0px 5px 0px var(--c)";
+  check_declaration ~expected:"text-shadow:0 5px 0 red"
+    ~optimized:"text-shadow:0 5px red" "text-shadow: 0 5px 0 red";
   check_declaration ~expected:"text-shadow:1px 1px 2px black"
     ~optimized:"text-shadow:1px 1px 2px #000" "text-shadow: 1px 1px 2px black";
   check_declaration ~expected:"text-shadow:0 0 10px blue,0 0 20px red"
