@@ -955,6 +955,14 @@ let test_untyped_vendor_alias_of_typed_twin () =
   Alcotest.(check string)
     "another value" "a{-moz-background-size:cover;background-size:contain}"
     (minify_str "a{-moz-background-size:cover;background-size:contain}");
+  (* CSS Flexbox 1 sec. 7.1.1 makes [1 0 0%] the spelled-out [1 0] and [1 1] the
+     spelled-out [1], so each copy names its twin's value. *)
+  Alcotest.(check string)
+    "a spelled-out flex" "a{flex:1 0}"
+    (minify_str "a{-ms-flex:1 0 0%;-webkit-flex:1 0 0%;flex:1 0}");
+  Alcotest.(check string)
+    "a spelled-out flex shrink" "a{flex:1}"
+    (minify_str "a{-webkit-flex:1 1;flex:1 1}");
   Alcotest.(check string)
     "enforce-spec" "a{-webkit-flex-grow:1;flex-grow:1}"
     (optimized_string ~enforce_spec:true "a{-webkit-flex-grow:1;flex-grow:1}")

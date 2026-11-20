@@ -222,6 +222,7 @@ let option_is_phys_same a b =
   | _ -> false
 
 let map_var_preserve f (v : 'a var) : 'a var =
+  let v = Values.normalize_syntax_fallback v in
   let fallback =
     match v.fallback with
     | Fallback value ->

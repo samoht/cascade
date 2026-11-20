@@ -172,18 +172,25 @@ let normalize_transition_shorthand (s : transition_shorthand) :
   let behavior =
     match s.behavior with Option.Some Normal -> Option.None | b -> b
   in
+  let property : transition_property_value =
+    match s.property with
+    | Var v -> Var (Values.normalize_syntax_fallback v)
+    | p -> p
+  in
   if
     option_is_phys_same duration s.duration
     && option_is_phys_same delay s.delay
     && option_is_phys_same timing_function s.timing_function
     && option_is_phys_same behavior s.behavior
+    && property == s.property
   then s
-  else { s with duration; timing_function; delay; behavior }
+  else { property; duration; timing_function; delay; behavior }
 
 let normalize_transition : transition -> transition = function
   | Shorthand s as value ->
       let s' = normalize_transition_shorthand s in
       if s' == s then value else Shorthand s'
+  | Var v -> Var (Values.normalize_syntax_fallback v)
   | value -> value
 
 let rec pp_transition : transition Pp.t =

@@ -139,7 +139,8 @@ let absolute_unit_px_ratio = function
    units (em/rem/vw/...) still require cascade context and stay unfolded. *)
 let length_combine op v1 v2 =
   let combine a b =
-    match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
+    Pp.printed
+      (match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan)
   in
   match (op, calc_length_unit v1, calc_length_unit v2) with
   | (Add | Sub), Some (unit1, a), Some (unit2, b) when String.equal unit1 unit2
@@ -585,7 +586,8 @@ let rec resolve_lp_calc_vars ctx :
 let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
     length_percentage option =
   let combine a b =
-    match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
+    Pp.printed
+      (match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan)
   in
   match (op, v1, v2) with
   | (Add | Sub), Length a, Length b -> (
@@ -655,11 +657,13 @@ let linear_lp_calc calc =
       match terms with
       | [] -> Val (Length Zero)
       | { unit; value = n; _ } :: rest ->
+          (* A coefficient is a sum the fold computed, so it takes the value its
+             print reads back as. *)
           List.fold_left
             (fun acc { unit; value = n; _ } ->
               let op, n = linear_calc_op n in
-              Expr (acc, op, Val (lp_of_unit unit n)))
-            (Val (lp_of_unit unit n))
+              Expr (acc, op, Val (lp_of_unit unit (Pp.printed n))))
+            (Val (lp_of_unit unit (Pp.printed n)))
             rest)
 
 (* One rounding rule, written once: the strategy and its tie-break are sec.

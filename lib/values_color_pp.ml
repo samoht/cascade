@@ -52,7 +52,6 @@ let pp_hue_float ctx f =
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
   | Unitless f -> pp_hue_float ctx f
-  | Angle (Deg f) when Pp.minified ctx -> pp_hue_float ctx f
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
   | Hue_none -> Pp.string ctx "none"
@@ -176,7 +175,6 @@ let pp_component_float ~decimals ctx f =
 let rec pp_component_prec ~decimals : component Pp.t =
  fun ctx -> function
   | Num f -> pp_component_float ~decimals ctx f
-  | Pct f when Pp.minified ctx -> pp_component_float ~decimals ctx (f /. 100.)
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -374,7 +372,7 @@ let pp_color_space : color_space Pp.t =
   | Oklab -> Pp.string ctx "oklab"
   | Xyz -> Pp.string ctx "xyz"
   | Xyz_d50 -> Pp.string ctx "xyz-d50"
-  | Xyz_d65 -> Pp.string ctx (if Pp.minified ctx then "xyz" else "xyz-d65")
+  | Xyz_d65 -> Pp.string ctx "xyz-d65"
   | Lch -> Pp.string ctx "lch"
   | Oklch -> Pp.string ctx "oklch"
   | Hsl -> Pp.string ctx "hsl"
@@ -506,11 +504,10 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 more =
     (in_space, hue, color1, percent1, color2, percent2, more)
 
 and pp_typed_relative_color_call ctx name origin tail =
+  (* The reader puts back a separator this drops
+     ({!relative_color_splits_tokens}), so the two spellings are one node. *)
   let tail =
-    if Pp.minified ctx then
-      tail |> minify_relative_color_alpha |> minify_relative_color_numbers
-      |> minify_relative_color_spaces
-    else tail
+    if Pp.minified ctx then minify_relative_color_spaces tail else tail
   in
   Pp.call name
     (fun ctx (origin, tail) ->

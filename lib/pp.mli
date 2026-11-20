@@ -248,6 +248,12 @@ val string_of_float :
     NaN as [NaN], the spelling [float_of_string] reads back; {!nan_value} is its
     CSS spelling. *)
 
+val printed : float -> float
+(** [printed f] is the float the text {!float} writes for [f] reads back as: [f]
+    at the printer's eight decimal places. A value the optimizer computes takes
+    it, so that the node it builds is the node its print reads back as. A NaN or
+    an infinity is itself. *)
+
 val nan_value : ctx -> string -> unit
 (** [nan_value ctx suffix] writes the CSS spelling of a NaN-valued number:
     [calc(NaN)], or [calc(NaN * 1suffix)] when [suffix] is a unit. CSS Values 4
@@ -359,7 +365,13 @@ val call_3 : string -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 val url : string t
 (** [url] writes the url [s] as [url(s)], with [s] in the form {!quoted_string}
     writes when the bare body cannot hold it (a space, a quote, a parenthesis, a
-    backslash or a control character). *)
+    backslash or a control character). Use it for a value whose reader gives
+    both spellings one node. *)
+
+val url_token : string t
+(** [url_token] writes the url [s] as the url token [url(s)], escaping what the
+    token cannot hold as written (CSS Syntax 3 (ED) sec. 4.3.6). Use it for a
+    value whose node records that the url was not quoted. *)
 
 val rename_custom_property : ctx -> string -> string
 (** [rename_custom_property ctx name] is [name] under [ctx]'s rename, for the

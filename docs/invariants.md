@@ -8,15 +8,30 @@ change that breaks one is a defect even when every test passes.
   `#fff`, `:before`, whitespace). Anything that changes the node (`#f00` to
   `red`, `scale(x,x)` to `scale(x)`, `calc` folding, `0deg` to `0`) is an
   AST rewrite in the optimizer's normalize pass. The litmus is
-  `parse(A) = parse(B)`, not whether the code is gated on minify. Normalize
-  reaches the node the parser produces for the printed text, which keeps the
-  `Declaration.hash` invariant (same minified text, same hash) that factoring
-  buckets on, and keeps `optimize` a fixed point. The AST holds a `<string>`
-  or a url as the string it names, never its source spelling, and every
-  printer writes one through `Pp.quoted_string` or `Pp.url` (CSSOM 1 sec. 2.1,
-  serialize a string and serialize a URL), so it reads back as that string
-  whatever it holds (`pp` "string printers round-trip", fuzz `pp` "string
-  printers read back").
+  `parse(A) = parse(B)`, not whether the code is gated on minify. Dropping a
+  `url()`'s quotes, `center center` to `center`, `flex:1 1 0%` to `flex:1`
+  and a computed float to the eight decimals the printer writes are such
+  rewrites too. The AST holds a `<string>` or a url as the string it names,
+  never its source spelling, bar an image's url, which also records whether it
+  was quoted until normalize settles that. Every printer writes one through
+  `Pp.quoted_string`, `Pp.url` or, for an image url held bare,
+  `Pp.url_token` (CSSOM 1 sec. 2.1, serialize a string and serialize a URL),
+  so it reads back as that string whatever it holds (`pp` "string printers
+  round-trip", fuzz `pp` "string printers read back").
+- **Normalize reaches a normal form.** For a typed declaration `d` with
+  `n = normalize d`, `normalize n = n`, and reading `n`'s print back,
+  minified or pretty, and normalising gives `n` again. Two normal forms with
+  one minified text are then one node with one `Declaration.hash`, which
+  factoring buckets on, so the first `--minify` pass merges what a second
+  would. `test/fixpoint` holds this over every typed declaration its corpora
+  read ("normal form"), and its `spellings` corpus holds the second pass
+  still. The reader itself may keep an authored spelling the printer does not
+  write back (`#ffffff`, `500ms`); the "values" pending list there names
+  those. Open gaps: an authored number past eight decimals, which the printer
+  rounds and normalize keeps (`width:33.33333333333333%` and
+  `width:33.33333333%`), and a custom property's tokens, which the printer
+  respells and CSS Variables 1 sec. 4.1 keeps normalize away from
+  (`--x:1.0px` and `--x:1px`).
 - **Type-changing rewrites fire only at typed leaves.** The number/percentage
   swap and zero-unit stripping are normalize rewrites at an operand whose whole
   type is known: a bare value, or a math function with no `var()` in it. CSS
@@ -64,7 +79,10 @@ change that breaks one is a defect even when every test passes.
   group is read off it, so the order of what is left is that order less the
   entry. A legacy name alias (WHATWG Compatibility Standard sec. 3.4.1) reads
   as its property before the trace, so `-webkit-transform` and `transform` are
-  two writes of one property wherever they stand. One pass around the trace
+  two writes of one property wherever they stand. The projection compares
+  declarations by node and reads them in normal form: the optimizer hands it
+  normal forms, and the declaration it builds for an alias is normalised
+  before it is compared. One pass around the trace
   still reads one rule at a time and is an open gap: shorthand composition
   after it, which can move a declaration past an untyped one the trace orders
   it against.

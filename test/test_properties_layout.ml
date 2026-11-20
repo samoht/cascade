@@ -883,7 +883,9 @@ let test_place_content () =
 let test_place_items () =
   check_place_items "stretch";
   check_place_items "start end";
-  check_place_items ~expected:"center" "center center";
+  check_place_items "center center";
+  decl_optimizes ~prop:"place-items" ~held:"center center" ~into:"center"
+    "center center";
   check_place_items "inherit";
   (* css-align-3 (ED) sec. 4.2: <baseline-position> = [ first | last ]? &&
      baseline, in either half of the sec. 7.3 shorthand. *)
@@ -904,7 +906,9 @@ let test_place_items () =
   check_place_items "stretch center";
   check_place_items "stretch normal";
   check_place_items "stretch safe center";
-  check_place_items ~expected:"stretch" "stretch stretch";
+  check_place_items "stretch stretch";
+  decl_optimizes ~prop:"place-items" ~held:"stretch stretch" ~into:"stretch"
+    "stretch stretch";
   check_place_items "center stretch"
 
 let test_box_decoration_break () =

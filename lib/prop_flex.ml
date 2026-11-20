@@ -222,10 +222,12 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
       | Zero, Px 0. -> value
       | Zero, _ -> Basis (Px 0.)
       | b', _ -> if b' == b then value else Basis b')
-  | Grow_shrink (g, s) ->
+  | Grow_shrink (g, s) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
-      if g' == g && s' == s then value else Grow_shrink (g', s')
+      match s' with
+      | Number 1. -> Grow g'
+      | _ -> if g' == g && s' == s then value else Grow_shrink (g', s'))
   | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
@@ -235,6 +237,11 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
       match (g', s', b') with
       | Number 0., Number 0., (Auto : flex_basis) -> None
       | Number 1., Number 1., Auto -> Auto
+      (* Sec. 7.1.1: an omitted basis is [0%] and an omitted shrink [1], so [g 1
+         0%] is [g] and [g s 0%] is [g s]. A [0] or [0px] basis is a length,
+         another computed value, and stays. *)
+      | _, Number 1., Pct 0. -> Grow g'
+      | _, _, Pct 0. -> Grow_shrink (g', s')
       | _ -> if g' == g && s' == s && b' == b then value else Full (g', s', b'))
   | _ -> value
 
@@ -421,30 +428,22 @@ let rec pp_flex : flex Pp.t =
       pp_flex_factor ctx shrink
   | Full (grow, shrink, basis) ->
       pp_flex_factor ctx grow;
-      (* CSS Flexbox 1 sec. 7.1.1: the one-number [flex: g] form expands to [g 1
-         0%], so only a [0%] basis (with the default [1] shrink) is the
-         droppable shorthand default. A length [0] / [0px] basis is a different
-         computed value and is kept. An omitted flex-shrink is [1]. *)
-      let basis_is_default = match basis with Pct 0.0 -> true | _ -> false in
+      Pp.space ctx ();
+      (* CSS Flexbox 1 sec. 7.1.1: an omitted flex-shrink is [1], so [g b] reads
+         back as [g 1 b]. A basis that serialises as a bare number ([0], [0px]
+         -> [0], or a unitless basis) would reparse as the shrink factor, so the
+         shrink stays to disambiguate. Leaving out a [0%] basis reads back as
+         another node, {!normalize_flex}'s to make. *)
       let shrink_is_default =
         match shrink with Number 1.0 -> true | _ -> false
       in
-      if basis_is_default then (
-        if not shrink_is_default then (
-          Pp.space ctx ();
-          pp_flex_factor ctx shrink))
-      else (
-        Pp.space ctx ();
-        (* A basis that serialises as a bare number ([0], [0px] -> [0], or a
-           unitless basis) would reparse as the shrink factor, so keep the
-           shrink to disambiguate. *)
-        let basis_bare_number =
-          match basis with Num _ | Zero | Px 0.0 -> true | _ -> false
-        in
-        if (not shrink_is_default) || basis_bare_number then (
-          pp_flex_factor ctx shrink;
-          Pp.space ctx ());
-        pp_flex_basis ctx basis)
+      let basis_bare_number =
+        match basis with Num _ | Zero | Px 0.0 -> true | _ -> false
+      in
+      if (not shrink_is_default) || basis_bare_number then (
+        pp_flex_factor ctx shrink;
+        Pp.space ctx ());
+      pp_flex_basis ctx basis
 
 let rec read_order t : order =
   let read_calc_order t =

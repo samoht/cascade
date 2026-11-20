@@ -1106,7 +1106,8 @@ let grid () =
   check_declaration ~expected:"grid:none/auto" "grid: none / auto";
   (* sec. 7.8: [auto-flow] with no [<grid-auto-rows>] leaves the row track list
      empty, which is the same declaration as a [none] rows arm. *)
-  check_declaration ~expected:"grid:none/200px" "grid: auto-flow / 200px";
+  check_declaration ~expected:"grid:auto-flow/200px"
+    ~optimized:"grid:none/200px" "grid: auto-flow / 200px";
 
   (* CSS Cascade 5 (ED) sec. 7.3: explicit defaulting takes the whole
      declaration, so a CSS-wide keyword is a placement value on its own and
