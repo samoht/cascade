@@ -88,10 +88,24 @@ let is_padding_shorthand = function
   | Declaration { property = Padding; _ } -> true
   | _ -> false
 
-(* Walk forward through [rest], absorbing every matching corner longhand until
-   we hit another instance of the same shorthand (which would override the
-   merged result anyway). Returns the updated 4-tuple and [rest] with absorbed
-   declarations removed. *)
+(* Whether a declaration of [passed] at [d]'s importance writes a slot [d]
+   writes. Folding [d] into the shorthand before them moves it past each of
+   them, and such a one would then decide that slot instead: Chromium reads
+   [-webkit-margin-before] as [margin-block-start], which is [margin-top] in a
+   horizontal writing mode. *)
+let meets_passed passed d =
+  let keys = declaration_overlap_keys d in
+  List.exists
+    (fun (_, p) ->
+      Bool.equal (is_important p) (is_important d)
+      && declarations_overlap_with_keys p (declaration_overlap_keys p) d keys)
+    passed
+
+(* Walk forward through [rest], absorbing every matching corner longhand that no
+   declaration walked past meets ({!meets_passed}), until we hit another
+   instance of the same shorthand (which would override the merged result
+   anyway). Returns the updated 4-tuple and [rest] with absorbed declarations
+   removed. *)
 let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
   (* Keep [rest] physically when nothing is absorbed: the caller treats an
      unchanged [rest] as "no merge" via [==], so a rebuilt-but-equal spine would
@@ -103,8 +117,8 @@ let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
         else (sides, rest)
     | (i, d) :: tail -> (
         match absorb sides d with
-        | Some sides' -> loop sides' acc true tail
-        | None -> loop sides ((i, d) :: acc) absorbed tail)
+        | Some sides' when not (meets_passed acc d) -> loop sides' acc true tail
+        | Some _ | None -> loop sides ((i, d) :: acc) absorbed tail)
   in
   loop sides [] false rest
 

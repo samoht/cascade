@@ -124,6 +124,9 @@ implementation keeps them.
 - **Logical and physical pairs keep their order.** A flow-relative property
   and a physical property it can map to are not independent, since the
   writing mode and direction decide which slot they share.
+- **Composition moves no declaration past one it meets.** Folding longhands
+  into a shorthand writes them where the shorthand stands, so it happens only
+  past declarations of the same stratum that write none of their slots.
 
 ## Rule layer
 
@@ -199,6 +202,7 @@ Each row names the tests that check a statement. A browser harness under
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
 | Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
+| Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml` |
 | Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
