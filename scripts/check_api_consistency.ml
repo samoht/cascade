@@ -43,9 +43,11 @@ let ignored_types =
     "font_variant_alternates_item";
     "position_axis_edge";
     "background_position_axis";
+    "angular_position";
     (* Slots of the value that owns them: the [font-variant] record and one of
-       its alternate components, and the axis and edge a [<position>] writes.
-       Each is read through its owner's reader, never on its own. *)
+       its alternate components, the axis and edge a [<position>] writes, and
+       the place of a conic gradient stop. Each is read through its owner's
+       reader, never on its own. *)
     (* Serialization metadata, not standalone CSS syntax. *)
     "custom_value";
     (* Token-stream custom properties are parsed through declarations and

@@ -404,6 +404,15 @@ let simplify_gradient_stop_leaf ~layer_order ?layer ctx length length_percentage
       (Properties.Color_length
          (color color_value, Option.map length first, Option.map length second)
         : Properties.gradient_stop)
+  | Properties.Color_angle (color_value, first, second) ->
+      let position : Properties.angular_position -> Properties.angular_position
+          = function
+        | Percentage p -> Percentage (percentage p)
+        | (Angle _ | Zero) as p -> p
+      in
+      (Properties.Color_angle
+         (color color_value, position first, Option.map position second)
+        : Properties.gradient_stop)
   | Properties.Length value ->
       (Properties.Length (length value) : Properties.gradient_stop)
   | Properties.Channel value ->

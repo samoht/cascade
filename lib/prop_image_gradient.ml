@@ -223,6 +223,12 @@ let rec pp_gradient_position : gradient_position Pp.t =
   | Conic_position config -> pp_conic_gradient_config ctx config
   | Var v -> pp_var pp_gradient_position ctx v
 
+let pp_angular_position : angular_position Pp.t =
+ fun ctx -> function
+  | Angle a -> pp_angle ctx a
+  | Percentage p -> pp_percentage ctx p
+  | Zero -> Pp.char ctx '0'
+
 let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_gradient_stop ctx v
@@ -260,7 +266,17 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
           | Some len2 ->
               Pp.space ctx ();
               pp_length ctx len2))
+  | Color_angle (c, pos1, pos2_opt) -> (
+      pp_color ctx c;
+      Pp.space ctx ();
+      pp_angular_position ctx pos1;
+      match pos2_opt with
+      | None -> ()
+      | Some pos2 ->
+          Pp.space ctx ();
+          pp_angular_position ctx pos2)
   | Length len -> pp_length ctx len
+  | Angle_hint a -> pp_angle ctx a
   | Channel channel -> pp_channel ctx channel
   | Percentage pct -> pp_percentage ctx pct
   | List stops -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
@@ -463,15 +479,28 @@ let single_stop_color : color -> bool = function
 
 (* CSS Images 4 sec. 3.5.3: an omitted position on the first stop is [0%] and on
    the last [100%], so a stop holding exactly that one position drops it and the
-   resolved stop list stays the same. *)
+   resolved stop list stays the same. On a conic gradient's circle [100%] is
+   [360deg] (sec. 3.3.2). *)
 let drop_default_stop_positions stops =
+  let angular_at expected : angular_position -> bool = function
+    | Percentage (Pct p) -> Float.equal p expected
+    | Angle a -> (
+        match Values.angle_degrees_opt a with
+        | Some deg -> Float.equal deg (expected *. 3.6)
+        | None -> false)
+    | Zero -> Float.equal expected 0.
+    | Percentage _ -> false
+  in
   let at expected = function
     | Color_percentage (c, Some (Pct p), None) ->
         single_stop_color c && Float.equal p expected
+    | Color_angle (c, pos, None) ->
+        single_stop_color c && angular_at expected pos
     | _ -> false
   in
   let strip = function
-    | Color_percentage (c, _, _) -> Color_percentage (c, None, None)
+    | Color_percentage (c, _, _) | Color_angle (c, _, _) ->
+        Color_percentage (c, None, None)
     | stop -> stop
   in
   let rec last = function
@@ -484,6 +513,11 @@ let drop_default_stop_positions stops =
   match stops with
   | first :: rest when at 0. first -> strip first :: last rest
   | stops -> last stops
+
+let normalize_angular_position (value : angular_position) =
+  match value with
+  | Angle a -> preserve_if_equal value (Angle (Values.normalize_angle a))
+  | Percentage _ | Zero -> value
 
 let rec normalize_gradient_stop ?(lossless = false) :
     gradient_stop -> gradient_stop =
@@ -505,8 +539,16 @@ let rec normalize_gradient_stop ?(lossless = false) :
            ( normalize_color ~lossless c,
              option_map_preserve (Values.normalize_length ~strip:false) l1,
              option_map_preserve (Values.normalize_length ~strip:false) l2 ))
+  | Color_angle (c, p1, p2) ->
+      preserve_if_equal value
+        (Color_angle
+           ( normalize_color ~lossless c,
+             normalize_angular_position p1,
+             option_map_preserve normalize_angular_position p2 ))
   | Length l ->
       preserve_if_equal value (Length (Values.normalize_length ~strip:false l))
+  | Angle_hint a ->
+      preserve_if_equal value (Angle_hint (Values.normalize_angle a))
   | Direction dir ->
       preserve_if_equal value (Direction (normalize_gradient_direction dir))
   | List stops ->
@@ -719,6 +761,49 @@ module Gradient_stop = struct
   let read_pct t : gradient_stop = Percentage (read_percentage t)
   let read_len t : gradient_stop = Length (read_length t)
   let read_channel t : gradient_stop = Channel (Values.read_channel t)
+
+  (* CSS Images 4 sec. 3.3.2: a conic stop is placed by [[<angle-percentage> |
+     <zero>]{1,2}] and a hint by one. These read only a stop holding an angle,
+     not a [var()] that may hold one, so a stop of percentages and zeros keeps
+     the reading every gradient gives it. *)
+  let read_angular_zero t : angular_position =
+    let n, unit = Cursor.number_with_unit t in
+    if Float.equal n 0. && Option.is_none unit then Zero
+    else Cursor.err_expected t "0"
+
+  let read_angular_position t : angular_position =
+    Cursor.one_of
+      [
+        (fun t : angular_position -> Angle (Values.read_angle_unit_required t));
+        (fun t : angular_position -> Percentage (read_percentage t));
+        read_angular_zero;
+      ]
+      t
+
+  let is_angle : angular_position -> bool = function
+    | Angle (Var _) -> false
+    | Angle _ -> true
+    | Percentage _ | Zero -> false
+
+  let read_color_angle_angle t =
+    let color, p1, p2 =
+      Cursor.triple ~sep:Cursor.ws read_color read_angular_position
+        read_angular_position t
+    in
+    if is_angle p1 || is_angle p2 then Color_angle (color, p1, Some p2)
+    else Cursor.err_expected t "an angle"
+
+  let read_color_angle t =
+    let color, p1 =
+      Cursor.pair ~sep:Cursor.ws read_color read_angular_position t
+    in
+    if is_angle p1 then Color_angle (color, p1, None)
+    else Cursor.err_expected t "an angle"
+
+  let read_angle_hint t : gradient_stop =
+    match Values.read_angle_unit_required t with
+    | Var _ -> Cursor.err_expected t "an angle"
+    | a -> Angle_hint a
 end
 
 let rec read_gradient_stop_single t : gradient_stop =
@@ -758,12 +843,23 @@ let read_gradient_stop t : gradient_stop =
      parsing *)
   read_gradient_stop_single t
 
-let read_gradient_stops t =
-  match
-    Cursor.option
-      (Cursor.list ~at_least:1 ~sep:Cursor.comma read_gradient_stop)
-      t
-  with
+(* A conic stop or hint: one placed by an angle first, then every other. *)
+let read_angular_gradient_stop t : gradient_stop =
+  Cursor.ws t;
+  Cursor.one_of
+    [
+      Gradient_stop.read_color_angle_angle;
+      Gradient_stop.read_color_angle;
+      Gradient_stop.read_angle_hint;
+      read_gradient_stop_single;
+    ]
+    t
+
+let read_gradient_stops ?(angular = false) t =
+  let stop =
+    if angular then read_angular_gradient_stop else read_gradient_stop
+  in
+  match Cursor.option (Cursor.list ~at_least:1 ~sep:Cursor.comma stop) t with
   | Some stops -> stops
   | None -> []
 
@@ -1068,7 +1164,7 @@ let read_conic_gradient_body_stops t =
   if has_config && not (Cursor.peek_comma t || Cursor.is_done t) then
     Cursor.err_expected t "',' or end of conic-gradient prefix";
   if Cursor.peek_comma t then Cursor.skip t;
-  let stops = read_gradient_stops t in
+  let stops = read_gradient_stops ~angular:true t in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in conic-gradient()";
   let config =

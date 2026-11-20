@@ -225,6 +225,13 @@ type gradient_position =
   | Conic_position of conic_gradient_config
   | Var of gradient_position var
 
+(** A position on a conic gradient's circle, [<angle-percentage> | <zero>] (CSS
+    Images 4 sec. 3.3.2). *)
+type angular_position =
+  | Angle of angle
+  | Percentage of percentage
+  | Zero  (** A unitless [0]. *)
+
 (** Gradient stop values *)
 type gradient_stop =
   | Color_percentage of
@@ -233,7 +240,11 @@ type gradient_stop =
   (* Color with optional length-percentage position *)
   | Color_length of color * length option * length option
       (** Color with optional length positions *)
+  | Color_angle of color * angular_position * angular_position option
+      (** A conic stop placed by one or two positions, at least one an angle,
+          e.g. "red 0 90deg". *)
   | Length of length  (** Interpolation hint with length, e.g., "50px" *)
+  | Angle_hint of angle  (** Conic interpolation hint, e.g., "90deg" *)
   | Channel of channel
       (** Residual numeric channel token from custom-property substitution. *)
   | List of gradient_stop list
