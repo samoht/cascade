@@ -220,10 +220,15 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in oklab,var(--a) var(--b),blue)"
     ~optimized:"color-mix(in oklab,var(--a) var(--b),#00f)"
     "color-mix(in oklab, var(--a) var(--b), blue)";
-  (* A [var()] followed by a concrete colour can only be the percentage, so it
-     is read percentage-first and re-emitted colour-first. *)
-  check_color ~expected:"color-mix(in oklab,red var(--p),blue)"
-    ~optimized:"color-mix(in oklab,red var(--p),#00f)"
+  (* Read as a colour, a [var()] followed by a concrete colour is the
+     percentage, so it is re-emitted colour-first. A declaration keeps the
+     tokens as written, since there it may substitute more than the percentage
+     (CSS Variables 1 sec. 3). *)
+  check_value_cursor "color" read_color pp_color
+    ~expected:"color-mix(in oklab,red var(--p),blue)"
+    "color-mix(in oklab, var(--p) red, blue)";
+  decl_optimizes ~prop:"color" ~held:"color-mix(in oklab,var(--p) red,blue)"
+    ~into:"color-mix(in oklab,var(--p) red,blue)"
     "color-mix(in oklab, var(--p) red, blue)";
   check_color ~expected:"hsl(0 50%50%)" ~optimized:"#bf4040" "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/50%)"
