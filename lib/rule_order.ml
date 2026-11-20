@@ -141,15 +141,22 @@ let gathered_declarations decls =
    declaration is the same declaration written inline, so two sheets that factor
    the same content differently ([.absolute,.sr-only {position:absolute}] vs the
    declaration inline in [.sr-only]) only converge once grouping is undone.
-   Every list expands, whether or not a branch occurs elsewhere: the projection
-   must not depend on how the input happened to group its selectors. *)
+   Every list every browser reads alike expands, whether or not a branch occurs
+   elsewhere: the projection must not depend on how the input happened to group
+   its selectors. A browser drops a whole list over a selector it does not parse
+   (Selectors 4 sec. 3.9), so a list whose branches some browser of the dated
+   set reads apart ({!Merge.listable}) is one rule there and stays one:
+   [a,a:has-slotted] is not [a] and [a:has-slotted] in a browser that drops
+   [:has-slotted]. *)
 let expand_lists (stmt : statement) : statement list =
   match stmt with
   | Rule r when r.nested = [] && r.merge_key = None -> (
       match Edge.selectors r.selector with
       | [] | [ _ ] -> [ stmt ]
-      | branches -> List.map (fun selector -> Rule { r with selector }) branches
-      )
+      | branches ->
+          if Merge.listable r.selector then
+            List.map (fun selector -> Rule { r with selector }) branches
+          else [ stmt ])
   | _ -> [ stmt ]
 
 (* Coalescing two occurrences of a selector concatenates their declarations, so
