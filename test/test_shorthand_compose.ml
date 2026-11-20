@@ -878,8 +878,14 @@ let test_border_contraction_covers_border_image () =
     ~into:
       ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}"
     ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}";
-  (* Nothing holds the family, so the run contracts. *)
-  sheet_optimizes_to ~into:".x{color:red;border:4px solid red}"
+  (* Nothing in the sheet holds the family, so under [`Stylesheet] the run
+     contracts. In the default scope another sheet may hold a border-image,
+     which [border] would reset (docs/invariants.md, declaration layer). *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{color:red;border:4px solid red}"
+    ".x{color:red;border-width:4px;border-style:solid;border-color:red}";
+  sheet_optimizes_to
+    ~into:".x{color:red;border-width:4px;border-style:solid;border-color:red}"
     ".x{color:red;border-width:4px;border-style:solid;border-color:red}"
 
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
@@ -1025,16 +1031,17 @@ let test_transition_contraction_covers_other_rules () =
    answering for the two together let the source through. Chrome 146 computes
    the image on both sides of each pair below. *)
 let test_border_image_held_across_rules () =
-  (* The run holds the slice and the repeat itself; the source next door is the
-     one the contraction would reset, so the shorthand goes in front of the
-     whole family and the reset is overridden. *)
+  (* In the default scope another sheet may hold a border-image slot the run
+     does not write again, and [border] would reset it, so the run stays
+     expanded (docs/invariants.md, declaration layer). *)
   sheet_optimizes_to
     ~into:
-      ".x{border:4px \
-       solid#0000;border-image-source:url(b.png);border-image-slice:30;border-image-repeat:round}"
+      ".x{border-width:4px;border-style:solid;border-color:#0000;border-image-source:url(b.png);border-image-slice:30;border-image-repeat:round}"
     ".x{border-image-source:url(b.png)}.x{border-image-slice:30;border-image-repeat:round;border-width:4px;border-style:solid;border-color:transparent}";
-  (* The same run with nothing of its own to hold. *)
-  sheet_optimizes_to
+  (* Under [`Stylesheet] the source next door is the one slot the contraction
+     would reset, so the shorthand goes in front of it and the reset is
+     overridden. *)
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".x{border:4px solid#0000;border-image-source:url(b.png)}"
     ".x{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}";
   (* A neighbour that cannot be reordered into place keeps the run expanded. *)
