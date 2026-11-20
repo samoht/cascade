@@ -467,6 +467,50 @@ let coalesce_reads_writes_a_fold_moved () =
     (canonical
        ".o{width:76px;display:none}.g{display:none;width:24px}.p{display:block}")
 
+(* Reduced from tmall-1 against its [--objective=raw] output. Each conflict is
+   one declaration against one other: [.t]'s colour precedes [.l]'s, its width
+   precedes [.v]'s, and [.l]'s [padding-top] precedes [.t]'s. Neither [.t]
+   occurrence is ordered against the other or against the second [.l], so the
+   sheet that folds [.t] and the one that leaves it split are one sheet, and
+   Chromium paints them alike. Folding one held pair first must not strand the
+   other. Moving [.t]'s [padding-top] before [.l]'s is another sheet. *)
+let fold_order_does_not_decide_the_form () =
+  let split =
+    ".t{color:red;width:20px}.l{padding-top:0}.v{width:30px}.t{padding-top:10px}.l{color:blue}"
+  in
+  let folded =
+    ".l{padding-top:0}.t{color:red;width:20px;padding-top:10px}.v{width:30px}.l{color:blue}"
+  in
+  let reordered =
+    ".t{color:red;width:20px;padding-top:10px}.l{padding-top:0}.v{width:30px}.l{color:blue}"
+  in
+  Alcotest.(check string)
+    "the split and the folded sheet" (canonical folded) (canonical split);
+  Alcotest.(check bool)
+    "a padding moved past the one it follows stays apart" true
+    (canonical split <> canonical reordered)
+
+(* A guarded write that repeats an earlier unguarded one changes nothing only
+   where it could stand right after it, and that is not so here: the repeat is
+   what overrides the guarded [margin:0] before it, and without it the
+   [margin:0] writes the top margin again. Under [screen], [class="a b"] takes
+   [margin-top:1px] from the first sheet of each pair and 0 from the second, as
+   Chromium paints them. *)
+let a_repeat_keeps_what_it_overrides () =
+  Alcotest.(check bool)
+    "a guarded shorthand between the write and its repeat" true
+    (canonical
+       ".a{margin-top:1px}@media screen{.a{margin:0}}@media \
+        screen{.a{margin-top:1px}}"
+    <> canonical ".a{margin-top:1px}@media screen{.a{margin:0}}");
+  Alcotest.(check bool)
+    "a guarded shorthand the dropped repeat overrode" true
+    (canonical
+       "@media screen{.a{margin:0}}.b{margin-top:5px}.a{margin-top:1px}@media \
+        screen{.a{margin-top:1px}}"
+    <> canonical
+         ".b{margin-top:5px}.a{margin-top:1px}@media screen{.a{margin:0}}")
+
 (* Two adjacent rules over one selector list hold, for every element, the
    declarations of the one rule that list over both bodies, in the same order.
    Read branch by branch, [speak], which the footprint model cannot place and so
@@ -795,16 +839,24 @@ let container_key_keeps_structurally_distinct_queries_apart () =
     (List.length projected)
 
 let conflicting_block_fold_is_refused () =
-  (* Folding either way moves a conditional write of [color] on [.a] past an
-     unconditional write of [color] on [.a], which changes the winner when the
-     query matches, so both blocks stay. *)
+  (* Folding the second block up moves a conditional write of [color] on [.a]
+     before an unconditional write of [color] on [.a], which changes the winner
+     when the query matches, so the guarded [blue] stays after [green]. The
+     first block's [red] never wins: whenever it applies, [blue] applies too,
+     under the same selector, and comes later, and CSS Cascade 5 sec. 6.1
+     (Cascade Sorting Order) has the last declaration in order of appearance
+     win. The sheet is the one without it. *)
   let css =
     "@media print{.a{color:red}}.a{color:green}@media print{.a{color:blue}}"
   in
   Alcotest.(check string)
-    "both blocks stay"
-    (render (statements css))
-    (canonical css)
+    "the overridden guarded write is dead"
+    (canonical ".a{color:green}@media print{.a{color:blue}}")
+    (canonical css);
+  Alcotest.(check bool)
+    "the guarded write stays after the unconditional one" true
+    (canonical css
+    <> canonical "@media print{.a{color:red;color:blue}}.a{color:green}")
 
 (* One run of [n] rules on distinct classes that all write [color], so every
    pair meets on a declaration and none on a selector, and no two fold. *)
@@ -909,6 +961,10 @@ let suite =
         coalesce_through_two_held_occurrences;
       Alcotest.test_case "coalesce reads writes a fold moved" `Quick
         coalesce_reads_writes_a_fold_moved;
+      Alcotest.test_case "fold order does not decide the form" `Quick
+        fold_order_does_not_decide_the_form;
+      Alcotest.test_case "a repeat keeps what it overrides" `Quick
+        a_repeat_keeps_what_it_overrides;
       Alcotest.test_case "adjacent lists join before expanding" `Quick
         adjacent_lists_join_before_expanding;
       Alcotest.test_case "identical bodies never conflict" `Quick

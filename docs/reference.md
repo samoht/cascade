@@ -292,6 +292,9 @@ treats as equal the changes that cannot alter a computed value:
 - distinct custom properties may swap within a rule;
 - different factorings of the same content compare equal, such as a
   declaration hoisted into a shared selector list versus written inline;
+- a declaration may stand in any occurrence of its selector that no
+  conflicting write separates it from, so how a selector's declarations are
+  split into rules, and which of its rules were merged, does not matter;
 - where a layer block stands among unlayered rules, and whether layer order is
   declared up front or implied by block order, does not matter, since the
   cascade sorts by layer first.
