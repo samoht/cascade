@@ -262,16 +262,22 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
+type calc_ctx = {
+  var_is_single_valued : string -> bool;
+  var_is_number : string -> bool;
+  budget : bool;
+}
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
     [var_is_single_valued n] reports whether [--n] is registered with a
     single-component [@property] syntax, so its [var()] substitutes exactly one
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
-    may be unwrapped. [budget] folds a non-terminating quotient to the
-    six-significant-figure computed-value budget, as a number's fold already
-    does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient keeps the
-    [calc()] the author wrote, which is what {!default_calc_ctx} and the
-    minifier do. The canonical comparison spends the budget, since the two
+    may be unwrapped. [var_is_number n] reports a [<number>] or [<integer>]
+    registration, whose [var()] substitutes one number, so a zero product over
+    it folds (see {!calc_identity}). [budget] folds a non-terminating quotient
+    to the six-significant-figure computed-value budget, as a number's fold
+    already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient
+    keeps the [calc()] the author wrote, which is what {!default_calc_ctx} and
+    the minifier do. The canonical comparison spends the budget, since the two
     spellings render alike. *)
 
 val length_from_calc_unit : string -> float -> length
@@ -868,18 +874,22 @@ val calc_contains_var : 'a calc -> bool
     or inside a math function; a [Val] leaf counts as none. *)
 
 val calc_identity :
+  ctx:calc_ctx ->
   zero:'a calc ->
   is_zero:('a -> bool) ->
   'a calc ->
   calc_op ->
   'a calc ->
   'a calc option
-(** [calc_identity ~zero ~is_zero l op r] applies the value-independent CSS
+(** [calc_identity ~ctx ~zero ~is_zero l op r] applies the value-independent CSS
     Values 4 sec. 10.10.1 identities to one [Expr (l, op, r)] node, returning
-    the folded operand when one applies. These hold for any operand including a
-    kept [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
-    and [x / 1] keep [x]; [x * 0] / [0 * x] reduce to [zero]. [is_zero]
-    recognises a typed zero leaf ([0px]). Additive zero terms do not fold here:
+    the folded operand when one applies. [x * 1], [1 * x] and [x / 1] keep [x]
+    for any operand, a [var()] included, since the factor binds to one term of
+    whatever it substitutes. [x * 0] and [0 * x] reduce to [zero] only when [x]
+    holds no [var()]: an unregistered [var()] substitutes tokens of any type and
+    count, or none. Over a [<number>] registration ([ctx.var_is_number]) they
+    reduce to the number [0], and a typed zero leaf ([0px], recognised by
+    [is_zero]) times one stays that leaf. Additive zero terms do not fold here:
     the spec only combines sum children with identical units. Numeric [op]
     numeric is the caller's job. *)
 

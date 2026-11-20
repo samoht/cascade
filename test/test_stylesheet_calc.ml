@@ -912,6 +912,36 @@ let v4109_percentage_beside_var () =
     "a bare threshold percentage" ".x{shape-image-threshold:.5}"
     (normalize ".x{shape-image-threshold:50%}")
 
+(* CSS Values 4 sec. 10.10.1 drops an operand of [x * 0] only where the result's
+   type and value do not depend on it, and an unregistered [var()] substitutes
+   tokens of no known type or count (CSS Variables 1 sec. 3). Chromium 153: with
+   [--u] undefined, [calc(var(--u) * 0px)] makes [width] invalid at
+   computed-value time (auto, 784px) where [0] is 0px; under [--x:1px + 2px],
+   [calc(0 * var(--x))] is [0 * 1px + 2px], 2px; and [--y:calc(var(--x) * 0)]
+   with [--x] undefined leaves [--y] invalid, so [width:var(--y,10px)] takes its
+   fallback. *)
+let v41011_zero_product_over_var () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let same css = Alcotest.(check string) css css (normalize css) in
+  same ".x{width:calc(var(--u)*0px)}";
+  same ".x{width:calc(0px*var(--u))}";
+  same ".x{--x:1px + 2px;width:calc(0*var(--x))}";
+  same ".x{width:calc(1px + var(--u)*0)}";
+  same ".x{opacity:calc(var(--u)*0)}";
+  same ".x{--y:calc(var(--x)*0)}";
+  same ".x{rotate:calc(var(--u)*0deg)}";
+  (* An operand with no [var()] has the type its literals give it. *)
+  Alcotest.(check string)
+    "a constant zero product folds" ".x{width:0}"
+    (normalize ".x{width:calc(2px * 0)}");
+  Alcotest.(check string)
+    "x * 1 still folds over a var()" ".x{width:calc(var(--u))}"
+    (normalize ".x{width:calc(var(--u) * 1)}")
+
 let v410_invalid_calc_extra () =
   Alcotest.(check bool)
     "calc(1px ++ 2px) double operator rejected" true
@@ -1105,6 +1135,9 @@ let suite =
       ( "spec values 4 10.9 percentage beside a var() keeps its type",
         `Quick,
         v4109_percentage_beside_var );
+      ( "spec values 4 10.10.1 zero product over a var() is kept",
+        `Quick,
+        v41011_zero_product_over_var );
       ( "spec values 4 10 invalid calc extra rejected (negative)",
         `Quick,
         v410_invalid_calc_extra );

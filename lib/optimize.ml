@@ -1141,10 +1141,18 @@ let rec syntax_is_single_valued : type a. a Variables.syntax -> bool = function
       syntax_is_single_valued a && syntax_is_single_valued b
   | _ -> true
 
+(* CSS Properties and Values API 1 sec. 2.4: a registered property always has a
+   computed value matching its syntax, so a [<number>] or [<integer>]
+   registration substitutes exactly one number. *)
+let syntax_is_number : type a. a Variables.syntax -> bool = function
+  | Variables.Number | Variables.Integer -> true
+  | _ -> false
+
 (* [@property] registrations are document-global, so collect every single-valued
    registration up front to build the calc-simplifier context. *)
 let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
   let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  let numbers : (string, unit) Hashtbl.t = Hashtbl.create 8 in
   (* [@property] names carry the [--] prefix; calc [Var] leaves store the bare
      name (the reader strips it), so key the table on the bare name. *)
   let bare = Custom_property_name.strip_prefix in
@@ -1153,11 +1161,14 @@ let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
       match stmt with
       | Property pr ->
           if syntax_is_single_valued pr.syntax then
-            Hashtbl.replace tbl (bare pr.name) ()
+            Hashtbl.replace tbl (bare pr.name) ();
+          if syntax_is_number pr.syntax then
+            Hashtbl.replace numbers (bare pr.name) ()
       | _ -> ())
     stmts;
   {
     Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name);
+    var_is_number = (fun name -> Hashtbl.mem numbers name);
     budget = false;
   }
 

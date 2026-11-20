@@ -22,7 +22,13 @@ change that breaks one is a defect even when every test passes.
   percentage until then (`v4109_percentage_beside_var` in
   `test/test_stylesheet_calc.ml`).
 - **A custom property is single-valued only by `@property` registration**,
-  never by inference from a definition's value.
+  never by inference from a definition's value. A `calc()` identity that drops
+  an operand (`x * 0`, `0 * x`) folds only over an operand with no `var()`, or
+  over a `<number>` or `<integer>` registration, which substitutes one number
+  (`v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`,
+  `calc_zero_product_registered_number` in
+  `test/test_optimize_boundaries.ml`). `x * 1` and `x / 1` keep `x` whatever it
+  substitutes.
 - **Source-token fidelity is not a contract.** The AST carries no raw-text
   sidecars for byte-identical round trips.
 - **The canonical diff inherits the optimizer.** It compares optimize+minify
