@@ -347,6 +347,13 @@ differently. They are the reason to minify again.
   it dropped the declaration, and after `counter-reset:x` it kept only the
   earlier write. It now reads `reversed()` in `counter-reset`, and keeps the
   earlier write as the fallback for Chrome and Safari, which drop it (#1466).
+- **`break-before:always` became `page`.** `--minify` read `always` as
+  `page`, though in a multicol container `always` breaks the column and `page`
+  the page (CSS Fragmentation 3). Chrome drops `always`, so it broke a page
+  the source never broke. Both values now print as written, the legacy
+  `page-break-before:always` still maps to `page`, and an earlier
+  `break-before:auto` stays as the fallback for browsers that drop `always`
+  (#1467).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers
