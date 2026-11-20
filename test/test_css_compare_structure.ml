@@ -428,6 +428,16 @@ let equal_canonical_targets () =
   Alcotest.(check bool)
     "and one a release past the floors reads alone" false
     (equal "a{width:anchor-size(width);width:stretch}" "a{width:stretch}");
+  (* A browser drops a whole list over a selector it does not parse (Selectors 4
+     sec. 3.9). web-features records [:has-slotted] in Firefox from 136 alone,
+     and Chromium 153 drops [a,a:has-slotted{color:red}] whole, so [a] keeps its
+     colour only in the sheet that wrote two rules. *)
+  Alcotest.(check bool)
+    "a list a browser reads apart is one rule" false
+    (equal "a,a:has-slotted{color:red}" "a{color:red}a:has-slotted{color:red}");
+  Alcotest.(check bool)
+    "a list every browser reads alike is its rules" true
+    (equal "a,b{color:red}" "a{color:red}b{color:red}");
   Alcotest.(check bool)
     "one every floor parses past is dead" true
     (equal "a{display:block;display:grid}" "a{display:grid}");
