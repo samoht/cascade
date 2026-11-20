@@ -975,10 +975,51 @@ let compact_unknown_at_rule_bodies (stylesheet : t) : t =
 let drop_unknown_at_rules (stylesheet : t) : t =
   edit_statements (function Unknown_at_rule _ -> Drop | _ -> Keep) stylesheet
 
+(* What a name's registration is, where every browser applies the same one. *)
+type registration = { syntax : Variables.any_syntax; has_initial : bool }
+
+(* CSS Properties and Values API 1 sec. 2.1: a name's registration is a
+   [CSS.registerProperty()] record if there is one, else the last [@property]
+   for it in document order. Only [`Stylesheet] scope rules out a script and
+   another sheet, so a fragment knows none. A registration inside a conditional
+   group rule applies only where the condition holds, so it leaves its name
+   unknown, as does an [@property] the reader kept as an unknown at-rule:
+   [--enforce-spec] keeps one that lacks a descriptor, which the current sec. 3
+   reads as a registration and the shipping engines drop. [@layer] conditions
+   nothing. *)
+let known_registrations ~scope (stmts : statement list) :
+    string -> registration option =
+  match scope with
+  | `Fragment -> fun _ -> None
+  | `Stylesheet ->
+      let tbl : (string, registration option) Hashtbl.t = Hashtbl.create 8 in
+      let unknown (stmt : statement) =
+        match stmt with
+        | Property pr -> Hashtbl.replace tbl pr.name None
+        | Unknown_at_rule { name; prelude; _ }
+          when String.equal (String.lowercase_ascii name) "property" ->
+            Hashtbl.replace tbl (String.trim prelude) None
+        | _ -> ()
+      in
+      let rec top (stmt : statement) =
+        match stmt with
+        | Property pr ->
+            Hashtbl.replace tbl pr.name
+              (Some
+                 {
+                   syntax = Variables.Syntax pr.syntax;
+                   has_initial = Option.is_some pr.initial_value;
+                 })
+        | Layer (_, block) -> List.iter top block
+        | Unknown_at_rule _ -> unknown stmt
+        | stmt -> iter_statements unknown [ stmt ]
+      in
+      List.iter top stmts;
+      fun name -> Option.join (Hashtbl.find_opt tbl name)
+
 (* CSS Properties and Values API 1 sec. 2: an [@property --name] registers a
-   typed syntax, lifting later [--name: ...] uses out of the opaque-token-stream
-   rule. Apply in source order so a registration only affects later uses; a
-   duplicate name overwrites, matching the browser registry. *)
+   typed syntax, lifting [--name: ...] out of the opaque-token-stream rule, for
+   a name whose registration is known ([known_registrations]). *)
 let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
   match syntax with
   | Variables.Color -> Properties.try_read_custom_color components
@@ -1000,9 +1041,9 @@ let promote_registered_custom_decl ~lossless registry decl =
         important;
         _;
       } -> (
-      match Hashtbl.find_opt registry name with
+      match (registry name : registration option) with
       | None -> decl
-      | Some (Variables.Syntax syntax) -> (
+      | Some { syntax = Variables.Syntax syntax; _ } -> (
           match try_promote_custom_with syntax components with
           | Some typed ->
               Declaration.v ~important (Custom_property name)
@@ -1017,19 +1058,12 @@ let promote_registered_custom_decl ~lossless registry decl =
           | None -> decl))
   | _ -> decl
 
-let promote_registered_custom_properties ~lossless (stmts : statement list) =
-  let registry : (string, Variables.any_syntax) Hashtbl.t = Hashtbl.create 8 in
-  (* An [@property] registration is document-global regardless of source order
-     (CSS Properties and Values API 1 SS 2). Tailwind emits its [@property]
-     rules after the [@layer] that uses them, so collect every registration in a
-     first pass before promoting any declaration. *)
-  iter_statements
-    (fun (stmt : statement) ->
-      match stmt with
-      | Property pr ->
-          Hashtbl.replace registry pr.name (Variables.Syntax pr.syntax)
-      | _ -> ())
-    stmts;
+(* An [@property] registration is document-global regardless of source order
+   (CSS Properties and Values API 1 sec. 2), and Tailwind emits its [@property]
+   rules after the [@layer] that uses them, so the registry is read whole before
+   any declaration is promoted. *)
+let promote_registered_custom_properties ~lossless registry
+    (stmts : statement list) =
   let promote_decls =
     List.map_preserve (promote_registered_custom_decl ~lossless registry)
   in
@@ -1109,27 +1143,16 @@ let prune_position_try_fallbacks ~scope (stylesheet : t) : t =
          of the at-rules that came to mind. *)
       map_declarations prune_decls stylesheet
 
-(* Collect the custom properties registered with an [@property] initial-value.
-   Such a property is never invalid at computed-value time, so folding its
-   [var()] into a shorthand cannot widen a failure across the other
-   longhands. *)
-let registered_foldable (stylesheet : t) : string -> bool =
-  let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  iter_statements
-    (fun (stmt : statement) ->
-      match stmt with
-      | Property pr -> (
-          match pr.initial_value with
-          | Some _ ->
-              (* [@property] names carry the [--] prefix; [var()] references
-                 store the bare name, so normalise to the bare form for
-                 lookup. *)
-              let key = Custom_property_name.strip_prefix pr.name in
-              Hashtbl.replace tbl key ()
-          | None -> ())
-      | _ -> ())
-    stylesheet;
-  fun name -> Hashtbl.mem tbl name
+(* A custom property whose known registration has an initial-value is never
+   invalid at computed-value time, so folding its [var()] into a shorthand
+   cannot widen a failure across the other longhands. [var()] references store
+   the bare name and [@property] the [--] one. *)
+let registered_foldable registry name =
+  match
+    (registry (Custom_property_name.add_prefix name) : registration option)
+  with
+  | Some { has_initial; _ } -> has_initial
+  | None -> false
 
 (* CSS Properties and Values API 1: a custom property registered with a
    single-component [@property] syntax (not a [+]/[#] list, [*], or a transform
@@ -1149,27 +1172,25 @@ let syntax_is_number : type a. a Variables.syntax -> bool = function
   | Variables.Number | Variables.Integer -> true
   | _ -> false
 
-(* [@property] registrations are document-global, so collect every single-valued
-   registration up front to build the calc-simplifier context. *)
-let single_valued_calc_ctx (stmts : statement list) : Values.calc_ctx =
-  let tbl : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  let numbers : (string, unit) Hashtbl.t = Hashtbl.create 8 in
-  (* [@property] names carry the [--] prefix; calc [Var] leaves store the bare
-     name (the reader strips it), so key the table on the bare name. *)
-  let bare = Custom_property_name.strip_prefix in
-  iter_statements
-    (fun (stmt : statement) ->
-      match stmt with
-      | Property pr ->
-          if syntax_is_single_valued pr.syntax then
-            Hashtbl.replace tbl (bare pr.name) ();
-          if syntax_is_number pr.syntax then
-            Hashtbl.replace numbers (bare pr.name) ()
-      | _ -> ())
-    stmts;
+(* The calc-simplifier context of the known registrations. Calc [Var] leaves
+   store the bare name and [@property] the [--] one. *)
+let single_valued_calc_ctx registry : Values.calc_ctx =
+  let syntax name =
+    Option.map
+      (fun r -> r.syntax)
+      (registry (Custom_property_name.add_prefix name))
+  in
   {
-    Values.var_is_single_valued = (fun name -> Hashtbl.mem tbl name);
-    var_is_number = (fun name -> Hashtbl.mem numbers name);
+    Values.var_is_single_valued =
+      (fun name ->
+        match (syntax name : Variables.any_syntax option) with
+        | Some (Variables.Syntax s) -> syntax_is_single_valued s
+        | None -> false);
+    var_is_number =
+      (fun name ->
+        match (syntax name : Variables.any_syntax option) with
+        | Some (Variables.Syntax s) -> syntax_is_number s
+        | None -> false);
     budget = false;
   }
 
@@ -1287,7 +1308,8 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     ?(objective = `Transfer) ?(prune_unused_custom_props = false) ?stats
     (stylesheet : t) : t =
   let scope = Option.value scope ~default:`Fragment in
-  let ctx = single_valued_calc_ctx stylesheet in
+  let registry = known_registrations ~scope stylesheet in
+  let ctx = single_valued_calc_ctx registry in
   let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
   let stylesheet = Stylesheet.drop_inert_at_rules stylesheet in
   (* Under [lossless] the raw body stands as authored: nothing types it, so
@@ -1298,9 +1320,11 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let stylesheet =
     if flatten_nesting then Flatten.block stylesheet else stylesheet
   in
-  let stylesheet = promote_registered_custom_properties ~lossless stylesheet in
+  let stylesheet =
+    promote_registered_custom_properties ~lossless registry stylesheet
+  in
   let stylesheet = Stylesheet.normalize_shadow_color_vars stylesheet in
-  let registered = registered_foldable stylesheet in
+  let registered = registered_foldable registry in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
   let ctx =
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec

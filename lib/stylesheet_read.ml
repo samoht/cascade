@@ -457,6 +457,22 @@ let rec read_statement (r : Cursor.t) : statement =
       | "position-try" -> read_position_try r
       | "viewport" -> read_viewport r
       | "-ms-viewport" -> read_ms_viewport r
+      | "property" when Cursor.enforce_spec r -> (
+          (* The current Properties and Values API 1 sec. 3 makes every
+             [@property] descriptor optional and ignores an invalid one alone,
+             so a rule this reader refuses is still a registration in a
+             conforming engine. Every engine shipping today drops it, so only
+             [--enforce-spec] keeps it, as text, and its name's type stays
+             unknown. *)
+          let snap = Cursor.save r in
+          match read_property_rule r with
+          | stmt -> stmt
+          | exception Error.Parse_error e ->
+              Cursor.restore r snap;
+              ignore (Cursor.next_raw r);
+              let stmt = read_unknown_at_rule name r in
+              Cursor.push_warning r ~recovery:Error.Recovery.Recovered e;
+              stmt)
       | "property" -> read_property_rule r
       | _ ->
           (* CSS Syntax 3 (ED) sec. 5.5.2 consumes an at-rule whatever its name,
