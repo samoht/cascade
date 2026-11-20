@@ -344,6 +344,21 @@ let equal_canonical_targets () =
     "a guard no target satisfies still separates" false
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
        ".a{color:blue}");
+  (* The targets are floors: Chrome 111 and every later Chrome. No floor reads
+     [field-sizing] or [anchor-name], but web-features records Chrome shipping
+     them in 123 and 125, and Chromium 153 applies both blocks, so a browser the
+     targets cover renders the two sheets apart. *)
+  Alcotest.(check bool)
+    "a guard a browser past the floors satisfies separates" false
+    (equal "@supports (field-sizing:content){a{color:red}}" "b{}");
+  Alcotest.(check bool)
+    "so does one on anchor-name" false
+    (equal "@supports (anchor-name:--a){a{color:red}}" "b{}");
+  (* Every floor reads [display:grid], and a browser that ships a production
+     keeps it, so the negation fails in every browser at or past the floors. *)
+  Alcotest.(check bool)
+    "a guard failing past every floor is no difference" true
+    (equal "@supports not (display:grid){a{color:red}}" "b{}");
   Alcotest.(check bool)
     "a different fallback under an unknown guard still differs" false
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
