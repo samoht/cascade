@@ -343,7 +343,7 @@ let test_distant_media_refuses_to_cross_a_scope_body () =
 let test_distant_media_weighs_a_nested_body_by_its_ancestors () =
   let out =
     render
-      (Css.optimize
+      (Css.optimize ~targets:Optimize_helpers.nesting_targets
          (block
             ".outer{color:#000;.card{@media(width>=1px){.a{color:red}}.y.z{color:#00f}@media(width>=1px){&+&{color:green}}}}"))
   in

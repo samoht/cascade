@@ -302,6 +302,19 @@ let normalize_expected ~category ~id expected =
          them canonically. *)
       fixture ~category ~id ~upstream:".nav .item,.footer{color:red}"
         ~cascade:".footer,.nav .item{color:red}" upstream
+  | "nesting", "0006" ->
+      (* A declaration directly in a group rule nested in a style rule is a
+         nested declarations rule (CSS Nesting 1 sec. 5), which Chrome 120 to
+         129, Firefox 117 to 131 and Safari 17.2 to 18.1 read as an [&] rule
+         instead. The compatibility data cascade ships has no key for it, so
+         cascade flattens such a rule under any targets, into the flat rules
+         sec. 5 makes it equal to. *)
+      fixture ~category ~id
+        ~upstream:
+          ".foo{display:grid;@media(width>=768px){grid-auto-flow:column}}"
+        ~cascade:
+          ".foo{display:grid}@media(width>=768px){.foo{grid-auto-flow:column}}"
+        upstream
   | "nesting", "0011" ->
       (* Synthesis of CSS nesting is only a minification win when it preserves
          source-order semantics and is actually shorter. Here the nested form
@@ -611,13 +624,13 @@ let normalize_expected ~category ~id expected =
    cascade, dependency, and dead-code reasoning, but still open over runtime
    layout state such as DOM shape, writing mode, direction, user styles, and
    runtime custom-property mutation. *)
-let cascade_minify input =
+let cascade_minify ?targets input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok parsed -> (
       match
         parsed.stylesheet
-        |> Css.optimize ~scope:`Stylesheet
+        |> Css.optimize ~scope:`Stylesheet ?targets
         |> Css.to_string ~minify:true
       with
       | s -> Ok s
@@ -664,11 +677,27 @@ type outcome =
   | Parse_error of string
   | Mismatch of { expected : string; actual : string }
 
+(* The nesting fixtures keep or introduce nesting, so they are read by a browser
+   that parses it. The default targets, Chrome 111 and Safari 16.4, read none,
+   and cascade flattens every nested rule for them. That category is optimised
+   for floors from which every engine parses all of CSS Nesting (MDN's
+   browser-compat-data: Chrome 130, Firefox 132, Safari 18.2). *)
+let nesting_targets =
+  {
+    Css.Optimize.chrome = (130, 0);
+    firefox = (132, 0);
+    safari = (18, 2);
+    ios_safari = (18, 2);
+  }
+
 let classify pair =
   let expected =
     normalize_expected ~category:pair.category ~id:pair.id pair.expected
   in
-  match cascade_minify pair.source with
+  let targets =
+    if String.equal pair.category "nesting" then Some nesting_targets else None
+  in
+  match cascade_minify ?targets pair.source with
   | Error msg -> Parse_error msg
   | Ok actual ->
       if strip_trailing_ws actual = strip_trailing_ws expected then Pass

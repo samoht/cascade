@@ -616,11 +616,16 @@ let grid_template_areas () =
 
 (* {2 CSS Nesting Level 1} https://www.w3.org/TR/css-nesting-1/ *)
 
+(* Under [--enforce-spec] the readers are every conforming implementation, and
+   one conforming to CSS 2.1 alone drops a nested rule with the declaration it
+   is read into (CSS 2.1 sec. 4.2). Sec. 4 of CSS Nesting 1 makes a nested rule
+   equal to the flat rule with [&] replaced by [:is()] of its parent, so the
+   shortest output every such reader renders alike is the flat one. *)
 let nesting_rules () =
   roundtrip ".card { color: red; & > img { display: block } }"
-    ".card{color:red;&>img{display:block}}";
+    ".card{color:red}.card>img{display:block}";
   roundtrip ".card { @scope (&) to (.boundary) { & .title { color: blue } } }"
-    ".card{@scope(&)to (.boundary){& .title{color:#00f}}}";
+    "@scope(.card)to (.boundary){& .title{color:#00f}}";
   parses_valid ".card { @media (width >= 40em) { & > img { display: block } } }"
 
 (* {2 CSS Custom Properties for Cascading Variables Level 1}
@@ -1130,7 +1135,7 @@ let minified_shortest_spec_edges () =
       ( "@scope (.card) to (.footer, .aside) { .title { color: blue } }",
         "@scope(.card)to (.aside,.footer){.title{color:#00f}}" );
       ( ".card { @scope (&) to (.boundary) { & .title { color: blue } } }",
-        ".card{@scope(&)to (.boundary){& .title{color:#00f}}}" );
+        "@scope(.card)to (.boundary){& .title{color:#00f}}" );
       ("::before { content: '' }", ":before{content:\"\"}");
       ("::after { content: '' }", ":after{content:\"\"}");
       ("::first-line { color: blue }", ":first-line{color:#00f}");

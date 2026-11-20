@@ -768,7 +768,9 @@ let c61_no_nested_boundary_merge () =
      is true when @scope appears as a nested group rule inside a style rule. *)
   let check_case label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized =
+      Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets input
+    in
     let output =
       Css.Stylesheet.to_string ~minify:true optimized |> String.trim
     in
@@ -799,7 +801,9 @@ let c61_nesting_synthesis_source_order () =
   let run_case ((label, css, expected) : string * string * string) :
       string option =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized =
+      Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets input
+    in
     let output =
       Css.Stylesheet.to_string ~minify:true optimized |> String.trim
     in

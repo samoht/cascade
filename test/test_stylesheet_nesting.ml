@@ -90,14 +90,14 @@ let test_nesting_with_declarations () =
 (* ignore-test *)
 let test_nesting_check_stylesheet () =
   (* Also test via check_stylesheet for consistency *)
-  (* optimize folds blue -> #00f and drops the redundant leading "& " (a bare
-     nested selector already means descendant); pp holds both. *)
+  (* optimize folds blue -> #00f and flattens the nesting, which the default
+     targets do not read (CSS Nesting 1 sec. 4); pp holds both. *)
   assert_minify_and_optimize ".parent { color: red; & .child { color: blue; } }"
     ~minified:".parent{color:red;& .child{color:blue}}"
-    ~optimized:".parent{color:red;.child{color:#00f}}";
+    ~optimized:".parent{color:red}.parent .child{color:#00f}";
   assert_minify_and_optimize ".btn { color: red; &:hover { color: blue; } }"
     ~minified:".btn{color:red;&:hover{color:blue}}"
-    ~optimized:".btn{color:red;&:hover{color:#00f}}";
+    ~optimized:".btn{color:red}.btn:hover{color:#00f}";
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
@@ -124,7 +124,7 @@ let nesting_invalid_rule_recovery () =
     ".a { & .c { color: red } .b <::::invalid::::> {} }" ".a .c{color:red}" 1;
   lenient_recover "invalid nested rule between declarations"
     ".a { color: red; .b <::::invalid::::> {} & .c { color: blue } }"
-    ".a{color:red;.c{color:#00f}}" 1
+    ".a{color:red}.a .c{color:#00f}" 1
 
 (* CSS Syntax 3 (ED) sec. 7.2 keeps an unmatched [)], []] or [}] out of a
    [<declaration-value>], so a value carrying one is no declaration at all. The
@@ -438,10 +438,10 @@ let spec_nesting_selector_edges () =
      img) { display: grid } }"
     ~minified:
       ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
-      (* nested rule order is preserved; selector spelling and declaration
-         values are still canonicalized. *)
+      (* nested rule order is preserved through the flattening; selector
+         spelling and declaration values are still canonicalized. *)
     ~optimized:
-      ".card{color:red;&:is(:focus-visible,:hover){color:#00f}&:has(>img){display:grid}}";
+      ".card{color:red}.card:is(:focus-visible,:hover){color:#00f}.card:has(>img){display:grid}";
   check_stylesheet
     ~expected:
       ".card{@supports \
@@ -454,11 +454,11 @@ let spec_nesting_selector_edges () =
     ~minified:
       "@scope(.card)to (.boundary){.title{color:red;&:hover{color:blue}}}"
     ~optimized:
-      "@scope(.card)to (.boundary){.title{color:red;&:hover{color:#00f}}}";
+      "@scope(.card)to (.boundary){.title{color:red}.title:hover{color:#00f}}";
   assert_minify_and_optimize
     ".card { @scope (&) to (.boundary) { & .title { color: blue } } }"
     ~minified:".card{@scope(&)to (.boundary){& .title{color:blue}}}"
-    ~optimized:".card{@scope(&)to (.boundary){& .title{color:#00f}}}";
+    ~optimized:"@scope(.card)to (.boundary){& .title{color:#00f}}";
   check_stylesheet
     ~expected:
       ".card{color:red;@scope(.feature)to (.boundary){&>.title{display:grid}}}"
@@ -476,7 +476,8 @@ let spec_nesting_selector_edges () =
    qualified rule appearing inside another qualified rule's block. The grammar
    does not require flattening on serialization, so a parse and print of a
    nested input must keep the nested shape rather than collapsing it into
-   sibling rules joined by descendant combinators. *)
+   sibling rules joined by descendant combinators, and so must the optimizer
+   wherever every target parses nesting. *)
 let nesting_module_l1_preserves_structure () =
   let input =
     ".card { color: red; & .title { color: blue; } &:hover { color: green; } }"
@@ -487,7 +488,9 @@ let nesting_module_l1_preserves_structure () =
   Alcotest.(check string)
     "parse + print keeps nested rules nested"
     ".card{color:red;& .title{color:blue}&:hover{color:green}}" printed;
-  let optimized = Css.Optimize.stylesheet sheet in
+  let optimized =
+    Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets sheet
+  in
   let opt_printed =
     String.trim (Css.Stylesheet.to_string ~minify:true optimized)
   in
