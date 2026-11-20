@@ -591,6 +591,9 @@ let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
       if abs_f = floor abs_f then format_integer is_neg abs_f
       else format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f
 
+let printed f =
+  if Float.is_finite f then float_of_string (string_of_float f) else f
+
 let round_sig n f =
   if f = 0.0 then 0.0
   else
@@ -759,5 +762,24 @@ let url ctx s =
   string ctx "url(";
   if Common.String.url_needs_quotes s then quoted_string ctx s else string ctx s;
   string ctx ")"
+
+(* CSS Syntax 3 (ED) sec. 4.3.6: inside a url token a space, a quote, a
+   parenthesis and a backslash end or break the token unless escaped, and a
+   non-printable code point is a parse error unless escaped. *)
+let url_token ctx s =
+  string ctx "url(";
+  let len = String.length s in
+  String.iteri
+    (fun i c ->
+      match c with
+      | ' ' | '"' | '\'' | '(' | ')' | '\\' ->
+          char ctx '\\';
+          char ctx c
+      | '\x00' .. '\x1F' | '\x7F' ->
+          let next = if i + 1 < len then Some s.[i + 1] else None in
+          hex_escape_byte ctx ~next c
+      | c -> char ctx c)
+    s;
+  char ctx ')'
 
 let rename_custom_property ctx name = ctx.rename_custom_property name

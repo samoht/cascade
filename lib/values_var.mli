@@ -13,6 +13,10 @@ val var_ref :
 (** [var_ref ?fallback ?default ?layer ?meta ?runtime name] creates a CSS
     variable reference to [--name]. *)
 
+val normalize_syntax_fallback : 'a var -> 'a var
+(** [normalize_syntax_fallback v] is [v] with a [Syntax_fallback] replaced by
+    the token stream its minified print reads back as. *)
+
 val syntax_fallback : string -> 'a fallback
 (** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
     [var()] reference. *)

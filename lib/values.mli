@@ -18,6 +18,10 @@ val var_ref :
     [var()] reference instead of folding it to its [default], so a runtime
     stylesheet or script can still override [--name]. *)
 
+val normalize_syntax_fallback : 'a var -> 'a var
+(** [normalize_syntax_fallback v] is [v] with a [Syntax_fallback] replaced by
+    the token stream its minified print reads back as. *)
+
 val syntax_fallback : string -> 'a fallback
 (** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
     [var()] reference. *)

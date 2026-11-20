@@ -116,11 +116,11 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
           cv |> eval_length_calc ~ctx |> linear_length_calc
           |> eval_length_calc ~ctx
         with
-        | Val v -> v
+        | Val v -> nf v
         | folded -> (
             match infinite_length folded with
             | Some v -> v
-            | None -> Calc folded))
+            | None -> Calc (map_calc canonical_dimension folded)))
     | Clamp (mn, v, mx) -> (
         let mn = nf mn and v = nf v and mx = nf mx in
         if mn = v && v = mx then v
@@ -222,7 +222,15 @@ let rec infinite_length_percentage (c : length_percentage calc) :
       match sign k with Some s -> fold s v | None -> None)
   | _ -> None
 
-let normalize_length_percentage ?(strip = true) ?(non_negative = false)
+(* A length the fold computes is the typed leaf the reader gives its print. *)
+let canonical_lp_leaf (v : length_percentage) : length_percentage =
+  match v with
+  | Length l ->
+      let l' = canonical_dimension l in
+      if l' == l then v else Length l'
+  | _ -> v
+
+let rec normalize_length_percentage ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
@@ -234,14 +242,17 @@ let normalize_length_percentage ?(strip = true) ?(non_negative = false)
          number and time families. *)
       | Val (Length v) when non_negative && negative_length v ->
           Calc (Val (Length v))
-      | Val v -> v
+      | Val v -> normalize_length_percentage ~strip ~non_negative ~ctx v
       | folded -> (
           match infinite_length_percentage folded with
           | Some v -> v
-          | None -> Calc folded))
-  | Length l ->
-      let l' = normalize_length ~strip ~non_negative ~ctx l in
-      if l' == l then lp else Length l'
+          | None -> Calc (map_calc canonical_lp_leaf folded)))
+  | Length l -> (
+      match normalize_length ~strip ~non_negative ~ctx l with
+      (* A [<length>] calculation in a [<length-percentage>] slot reads back as
+         the slot's own calculation over that length. *)
+      | Calc c -> Calc (map_calc (fun l : length_percentage -> Length l) c)
+      | l' -> if l' == l then lp else Length l')
   | _ -> lp
 
 (* The [<number>] counterpart of [negative_length]: a number a property whose

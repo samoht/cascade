@@ -10,6 +10,10 @@ val normalize_animation_range : animation_range -> animation_range
 val normalize_timeline_inset : timeline_inset -> timeline_inset
 (** [normalize_timeline_inset v] is [v] in its canonical spelling. *)
 
+val normalize_animation_timeline : animation_timeline -> animation_timeline
+(** [normalize_animation_timeline v] is [v] with each [scroll()] and [view()]
+    holding its canonical arguments. *)
+
 val pp_animation_timeline : animation_timeline Pp.t
 (** [pp_animation_timeline] prints an [animation_timeline]. *)
 

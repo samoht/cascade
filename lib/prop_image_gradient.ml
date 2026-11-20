@@ -268,34 +268,18 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | Direction dir -> pp_gradient_direction ctx dir
 
 let pp_webkit_gradient_point ctx = function
-  | Webkit_gradient.Left_top ->
-      Pp.string ctx (if Pp.minified ctx then "0 0" else "left top")
-  | Webkit_gradient.Left_bottom ->
-      Pp.string ctx (if Pp.minified ctx then "0 100%" else "left bottom")
-  | Webkit_gradient.Center ->
-      (* A percentage delimits itself, so the pair needs no space between them
-         and the written-out position prints the same way. *)
-      Pp.string ctx (if Pp.minified ctx then "50%50%" else "center center")
+  | Webkit_gradient.Left_top -> Pp.string ctx "left top"
+  | Webkit_gradient.Left_bottom -> Pp.string ctx "left bottom"
+  | Webkit_gradient.Center -> Pp.string ctx "center center"
   | Webkit_gradient.Position position -> pp_position_value ctx position
-
-let pp_webkit_gradient_position ctx (pct : percentage) =
-  match (Pp.minified ctx, pct) with
-  | true, Pct value -> Pp.float ctx (value /. 100.)
-  | _ -> pp_percentage ctx pct
 
 let pp_webkit_gradient_stop ctx = function
   | Webkit_gradient.From color -> Pp.call "from" pp_color ctx color
   | Webkit_gradient.To color -> Pp.call "to" pp_color ctx color
-  | Webkit_gradient.Color_stop (Pct 0., color)
-  | Webkit_gradient.Color_stop (Num 0., color) ->
-      Pp.call "from" pp_color ctx color
-  | Webkit_gradient.Color_stop (Pct 100., color)
-  | Webkit_gradient.Color_stop (Num 1., color) ->
-      Pp.call "to" pp_color ctx color
   | Webkit_gradient.Color_stop (position, color) ->
       Pp.call "color-stop"
         (fun ctx (position, color) ->
-          pp_webkit_gradient_position ctx position;
+          pp_percentage ctx position;
           Pp.comma ctx ();
           pp_color ctx color)
         ctx (position, color)
@@ -521,29 +505,57 @@ let rec normalize_gradient_stop ?(lossless = false) :
         (List (map_preserve (normalize_gradient_stop ~lossless) stops))
   | other -> other
 
+(* The legacy WebKit gradient takes a point as numbers and percentages as well
+   as keywords, and a stop position as a number in [0, 1] as well as a
+   percentage, with [from()] and [to()] the stops at [0] and [1]. The shortest
+   spellings are those. *)
+let normalize_webkit_gradient_point (point : Webkit_gradient.point) :
+    Webkit_gradient.point =
+  match point with
+  | Left_top -> Position (XY (Zero, Zero))
+  | Left_bottom -> Position (XY (Zero, Pct 100.))
+  | Center -> Position (XY (Pct 50., Pct 50.))
+  | Position _ -> point
+
 let normalize_webkit_gradient_stop :
     ?lossless:bool -> Webkit_gradient.stop -> Webkit_gradient.stop =
  fun ?(lossless = false) value ->
   match value with
   | From c -> preserve_if_equal value (From (normalize_color ~lossless c))
   | To c -> preserve_if_equal value (To (normalize_color ~lossless c))
-  | Color_stop (p, c) ->
-      preserve_if_equal value (Color_stop (p, normalize_color ~lossless c))
+  | Color_stop (p, c) -> (
+      let c = normalize_color ~lossless c in
+      let p : percentage =
+        match p with Pct f -> Num (Pp.printed (f /. 100.)) | p -> p
+      in
+      match (p, value) with
+      | Num 0., _ -> From c
+      | Num 1., _ -> To c
+      | p, Color_stop (p0, c0) when p == p0 && c == c0 -> value
+      | p, _ -> Color_stop (p, c))
 
 let normalize_webkit_gradient ?(lossless = false) :
     Webkit_gradient.t -> Webkit_gradient.t =
  fun value ->
+  let point = normalize_webkit_gradient_point in
+  let stops = map_preserve (normalize_webkit_gradient_stop ~lossless) in
   match value with
   | Linear r ->
-      let stops =
-        map_preserve (normalize_webkit_gradient_stop ~lossless) r.stops
-      in
-      if stops == r.stops then value else Linear { r with stops }
+      let start = point r.start
+      and finish = point r.finish
+      and stops = stops r.stops in
+      if start == r.start && finish == r.finish && stops == r.stops then value
+      else Linear { start; finish; stops }
   | Radial r ->
-      let stops =
-        map_preserve (normalize_webkit_gradient_stop ~lossless) r.stops
-      in
-      if stops == r.stops then value else Radial { r with stops }
+      let inner_center = point r.inner_center
+      and outer_center = point r.outer_center
+      and stops = stops r.stops in
+      if
+        inner_center == r.inner_center
+        && outer_center == r.outer_center
+        && stops == r.stops
+      then value
+      else Radial { r with inner_center; outer_center; stops }
 
 let normalize_radial_config (c : radial_gradient_config) =
   (* CSS Images 4 section 3.2: inside a radial-gradient() prelude the default
