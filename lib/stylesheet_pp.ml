@@ -461,7 +461,24 @@ let pp_counter_style_system ctx = function
       Pp.space ctx ();
       Pp.string ctx (Parser.escape_ident name)
 
-let pp_counter_symbol ctx symbol = Pp.quoted_string ctx symbol
+let pp_counter_symbol ctx = function
+  | String s -> Pp.quoted_string ctx s
+  | Image image -> Properties.pp_background_image ctx image
+  | Ident name -> Pp.string ctx (Parser.escape_ident name)
+
+(* A string or an image closes itself, so only an ident followed by an ident or
+   by an image's function name needs the space that keeps the two apart. *)
+let pp_counter_symbols ctx symbols =
+  ignore
+    (List.fold_left
+       (fun previous symbol ->
+         (match (previous, symbol) with
+         | Option.None, _ -> ()
+         | Some (Ident _), (Ident _ | Image _) -> Pp.space ctx ()
+         | Some _, _ -> Pp.space_if_pretty ctx ());
+         pp_counter_symbol ctx symbol;
+         Some symbol)
+       Option.None symbols)
 
 let pp_counter_style_descriptor ctx =
   let pp_descriptor name pp_value value =
@@ -472,12 +489,7 @@ let pp_counter_style_descriptor ctx =
   in
   function
   | System system -> pp_descriptor "system" pp_counter_style_system system
-  | Symbols symbols ->
-      (* Symbols are quoted strings; the [""] delimiter is unambiguous so the
-         inter-symbol space is elidable in minified output. *)
-      pp_descriptor "symbols"
-        (Pp.list ~sep:Pp.space_if_pretty pp_counter_symbol)
-        symbols
+  | Symbols symbols -> pp_descriptor "symbols" pp_counter_symbols symbols
   | Suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
   | Prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
   | Fallback value -> pp_descriptor "fallback" Pp.string value
