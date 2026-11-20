@@ -485,15 +485,25 @@ let extract_scroll_timeline_part :
       Some (End, (Option.None, Some value), important)
   | _ -> None
 
+(* The shorthand pairs the i-th start with the i-th end, so two lists compose
+   range by range, and lists of different lengths, which repeat against
+   [animation-name], have no spelling in it. *)
 let duo_animation_range idx i =
   let build ~important ~start ~end_ =
     let range_start, _ = start and _, range_end = end_ in
-    match range_start with
-    | Option.None -> Option.None
-    | Some range_start ->
-        Some
-          (Declaration.v ~important Animation_range
-             (Range (range_start, range_end) : Properties.animation_range))
+    let value : Properties.animation_range option =
+      match (range_start, range_end) with
+      | Some (Properties.Items starts), Some (Properties.Items ends)
+        when List.compare_lengths starts ends = 0 ->
+          Some
+            (Ranges
+               (List.map2
+                  (fun s e : Properties.animation_range -> Range (s, Some e))
+                  starts ends))
+      | Some (Items _), _ | _, Some (Items _) | Option.None, _ -> Option.None
+      | Some range_start, range_end -> Some (Range (range_start, range_end))
+    in
+    Option.map (Declaration.v ~important Animation_range) value
   in
   try_compose_axis_pair_at idx
     ~foldable:(fun _ -> true)
