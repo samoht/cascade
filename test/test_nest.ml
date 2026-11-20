@@ -95,6 +95,36 @@ let test_merged_selector_nests_on_first_pass () =
     once;
   Alcotest.(check string) "a fixed point" once (minify once)
 
+(* Browsers that parse nesting, nested declarations included (CSS Nesting 1 sec.
+   5): the floors at which a nested form may stay. *)
+let nesting_targets =
+  {
+    Css.Optimize.chrome = (130, 0);
+    firefox = (132, 0);
+    safari = (18, 2);
+    ios_safari = (18, 2);
+  }
+
+let minify_for targets css =
+  match Css.of_string css with
+  | Ok { stylesheet; _ } ->
+      Css.to_string ~minify:true (Css.optimize ~targets stylesheet)
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
+(* CSS Cascade 6 sec. 3.5.3 implies the scoping root in front of a scoped rule's
+   selector. Merging [.a{.x &{...}}] into [.x .a] there moves that root in front
+   of [.x], so an [.x] outside the scope stops counting; Chromium 153 styles
+   different elements under the two. A child that starts with its parent merges
+   as before. *)
+let test_merge_lone_in_scope () =
+  Alcotest.(check string)
+    "a child naming its parent late stays nested"
+    "@scope(.c){.a{.x &{color:red}}}"
+    (minify_for nesting_targets "@scope (.c){.a{.x &{color:red}}}");
+  Alcotest.(check string)
+    "a child starting with its parent merges" "@scope(.c){.a .b{color:red}}"
+    (minify_for nesting_targets "@scope (.c){.a{.b{color:red}}}")
+
 let test_merge_lone_wrapper () =
   let merged = Nest.merge_lone (rule ".card{.title{color:red}}") in
   Alcotest.(check string)
@@ -232,6 +262,7 @@ let suite =
       Alcotest.test_case "merged selector nests on first pass" `Quick
         test_merged_selector_nests_on_first_pass;
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
+      Alcotest.test_case "merge_lone in scope" `Quick test_merge_lone_in_scope;
       Alcotest.test_case "merge_lone pseudo-element parent" `Quick
         test_merge_lone_pseudo_element_parent;
       Alcotest.test_case "drop_dead_nested keeps live branches" `Quick

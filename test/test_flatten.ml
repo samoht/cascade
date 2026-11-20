@@ -253,6 +253,40 @@ let test_nested_group_rules_keep_parent () =
   check ".a{@layer n{@media screen{color:red}}}"
     "@layer n{@media screen{.a{color:red}}}"
 
+(* CSS Cascade 6 sec. 3.5.3: a style rule directly in an [@scope] block whose
+   selector holds neither [&] nor [:scope] is relative, with the scoping root
+   and a descendant combinator implied at its start, and sec. 3.5.1 makes [&]
+   there [:where(:scope)]. So the parent [&] stands for in a rule nested under
+   it is [& <parent>], and a flat selector that does not start with the parent
+   has to say so, or the implied root lands in front of what comes before it.
+   Chromium 153 styles an [.a4] inside [.c4] inside [.a4] under [@scope
+   (.c4){:is(.a4,.b4){.a4 &{...}}}], and the same element under [@scope
+   (.c6){.a6 :is(& :is(.k6)){...}}]. *)
+let test_scope_keeps_the_implied_root () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check "@scope (.c){:is(.a,.b){.a &{grid-row:3}}}"
+    "@scope(.c){.a :is(& :is(.a,.b)){grid-row:3}}";
+  check "@scope (.c){.a{.x &{color:red}}}" "@scope(.c){.x :is(& .a){color:red}}";
+  (* A selector that starts with its parent keeps the root implied. *)
+  check "@scope (.c){.a{.b{color:red}}}" "@scope(.c){.a .b{color:red}}";
+  check "@scope (.c){.a{&:hover{color:red}}}" "@scope(.c){.a:hover{color:red}}";
+  check "@scope (.c){.a{>.b{color:red}}}" "@scope(.c){.a>.b{color:red}}"
+
+(* Chromium 153 reads the prelude of an [@scope] nested in a style rule as a
+   nested selector: [.a{@scope (.b){...}}] roots at a [.b] inside an [.a], not
+   at an element that is both. Its block stays an [@scope] block: declarations
+   in it match the scoping root (CSS Cascade 6 sec. 3.5.6), and Chromium colours
+   that [.b], and its rules are relative to the root, not to [.a]. *)
+let test_nested_scope_roots_under_the_parent () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check ".a{@scope (.b){color:red}}" "@scope(.a .b){color:red}";
+  check ".a{@scope (.b){.x{color:red}}}" "@scope(.a .b){.x{color:red}}";
+  check ".a{@scope (& > .b){.x{color:red}}}" "@scope(.a>.b){.x{color:red}}"
+
 let suite =
   ( "flatten",
     [
@@ -268,6 +302,10 @@ let suite =
         `Quick test_pseudo_element_parent_drops_invalid_compound;
       Alcotest.test_case "nesting selector names no pseudo-element" `Quick
         test_nesting_selector_names_no_pseudo_element;
+      Alcotest.test_case "scope keeps the implied root" `Quick
+        test_scope_keeps_the_implied_root;
+      Alcotest.test_case "nested scope roots under the parent" `Quick
+        test_nested_scope_roots_under_the_parent;
       Alcotest.test_case "nested rule starting with an ident" `Quick
         test_nested_rule_starting_with_ident;
       Alcotest.test_case "bad declaration stays a declaration" `Quick
