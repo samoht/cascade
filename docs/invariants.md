@@ -38,10 +38,12 @@ change that breaks one is a defect even when every test passes.
   on an entry the projection drops: an entry is dropped only when it is
   redundant in the run's own order and no such fact about another entry of its
   group is read off it, so the order of what is left is that order less the
-  entry. Two passes around the trace still read one rule at a time, and are
-  open gaps: the legacy-alias fold before it (`-webkit-transform` beside an
-  identical `transform`) and shorthand composition after it, which can each
-  move a declaration past an untyped one the trace orders it against.
+  entry. A legacy name alias (WHATWG Compatibility Standard sec. 3.4.1) reads
+  as its property before the trace, so `-webkit-transform` and `transform` are
+  two writes of one property wherever they stand. One pass around the trace
+  still reads one rule at a time and is an open gap: shorthand composition
+  after it, which can move a declaration past an untyped one the trace orders
+  it against.
 - **Rule rewrites that move source order reason about overlap.** Factoring a
   default value into a shared block keeps a rule's own declaration when an
   earlier overlapping rule writes a different value. Nesting synthesis is
