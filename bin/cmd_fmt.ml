@@ -155,13 +155,13 @@ let enforce_spec_arg =
      cascade still serializes to the shortest form the CSS text and the specs \
      prove on their own, so it keeps a vendor-prefixed declaration written \
      beside its unprefixed twin, the $(b,min-)/$(b,max-) spelling of a media \
-     or container feature, the $(b,&) prefix on a nested selector, the \
-     author's :not(:dir(ltr)) and input:not(:enabled), the number form of an \
-     oklab/oklch axis, and the quotes around a multi-word font family. It also \
-     has the reader keep a rule whose selector holds a pseudo-class no target \
-     reads, $(b,:-o-prefocus) for one, which it otherwise drops with a \
-     warning, and holds it to the CSS Syntax 3 sec. 4.2 ident code points; \
-     both apply with or without $(b,--minify)."
+     or container feature, the author's :not(:dir(ltr)) and \
+     input:not(:enabled), the number form of an oklab/oklch axis, and the \
+     quotes around a multi-word font family. It also has the reader keep a \
+     rule whose selector holds a pseudo-class no target reads, \
+     $(b,:-o-prefocus) for one, which it otherwise drops with a warning, and \
+     holds it to the CSS Syntax 3 sec. 4.2 ident code points; both apply with \
+     or without $(b,--minify)."
   in
   Arg.(value & flag & info [ "enforce-spec" ] ~docs:minify_options ~doc)
 
@@ -195,10 +195,9 @@ let objective_arg =
 
 let flatten_nesting_arg =
   let doc =
-    "Flatten nested style rules into top-level rules, for browsers that \
-     predate CSS Nesting. Otherwise nesting is kept, since current browsers \
-     read it and the nested form is usually shorter. Has no effect without \
-     $(b,--minify)."
+    "Flatten nested style rules into top-level rules. $(b,--minify) already \
+     does for the default targets and under $(b,--enforce-spec), since Chrome \
+     111 and Safari 16.4 read no nesting. Has no effect without $(b,--minify)."
   in
   Arg.(value & flag & info [ "flatten-nesting" ] ~docs:minify_options ~doc)
 

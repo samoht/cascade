@@ -171,6 +171,11 @@ implementation keeps them.
   applies nowhere.
 - **Nesting is emitted only where every browser in B parses it.** Nesting is
   neither synthesised nor relaxed into a form an older member of B misreads.
+  Chrome 111 and Safari 16.4 read no nested rule, so under the default floors
+  and under `--enforce-spec` an author's nesting is flattened, which sec. 4
+  and 5 of CSS Nesting 1 make exact. A nested declarations rule (sec. 3.4 and
+  5), which releases that parse nesting read in another order until Chrome
+  130, Firefox 132 and Safari 18.2, is flattened under any floors.
 - **A nested selector means what CSS Nesting 1 makes it mean.** `&` matches
   what `:is()` of the parent matches (sec. 4), so a parent branch carrying a
   pseudo-element gives it nothing to match, and a nested declarations rule
@@ -254,7 +259,7 @@ Each row names the tests that check a statement. A browser harness under
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |
-| Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
+| Nesting | `test_nesting_follows_the_floors`, `test_nested_declarations_are_flattened` in `test/test_nest.ml`; `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis" |
 | Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml`; `test_scope_keeps_the_implied_root`, `test_nested_scope_roots_under_the_parent` in `test/test_flatten.ml`; `test_merge_lone_in_scope` in `test/test_nest.ml` |
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |

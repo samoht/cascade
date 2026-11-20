@@ -120,6 +120,14 @@ let objective t = t.objective
 let enforce_spec t = t.enforce_spec
 let judge t = t.judge
 let floors t = match t.judge with Some judge -> judge | None -> t.targets
+
+let parses_nesting t =
+  (not t.enforce_spec)
+  &&
+  match Support.implemented (floors t) "css.selectors.nesting" with
+  | Some true -> true
+  | Some false | None -> false
+
 let stats t = t.stats
 let with_extend_lists extend_lists t = { t with extend_lists }
 let with_recurse_blocks recurse_blocks t = { t with recurse_blocks }
