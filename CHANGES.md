@@ -392,6 +392,11 @@ differently. They are the reason to minify again.
   rather than at `normal`: an omitted end takes the start's range name (CSS
   Scroll Animations 1 sec. 6.2). The end now goes only where it says what
   leaving it out says (#1470).
+- **A zero `text-shadow` blur went before a `var()`.**
+  `text-shadow:0px 5px 0px var(--c)` was minified to `text-shadow:0 5px
+  var(--c)`, where `var(--c)` can be the blur: with `--c:3px` the source draws
+  no shadow and the output a blurred one. The zero stays before a `var()`
+  colour, as it already did in `box-shadow` (#1471).
 
 #### Stable output
 
