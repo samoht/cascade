@@ -875,6 +875,43 @@ let v4107_division_zero () =
     ".x{width:calc(1px/0)}"
     (normalize ".x { width: calc(1px / 0) }")
 
+(* CSS Values 4 sec. 10.9 (Type Checking): a math function's type is the
+   combination of its operands' types, and a [var()] operand has no type until
+   it substitutes. [100%] and [1] are one opacity alone, but beside a [var()]
+   the swap retypes the sum: with [--x:30%], [calc(100% - var(--x))] is [.7] and
+   [calc(1 - var(--x))] is invalid at computed-value time (Chromium 153: opacity
+   [1]). A registered [<percentage>] does not change that. A [var()] fallback
+   keeps its authored spelling as well. *)
+let v4109_percentage_beside_var () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let same css = Alcotest.(check string) css css (normalize css) in
+  same ".x{opacity:calc(100% - var(--x))}";
+  same
+    "@property \
+     --x{syntax:\"<percentage>\";inherits:false;initial-value:0%}.x{opacity:calc(100% \
+     - var(--x))}";
+  same ".x{opacity:calc(var(--x)*50%)}";
+  same ".x{opacity:calc(var(--x,50%) - 10%)}";
+  same ".x{fill-opacity:calc(100% - var(--x))}";
+  same ".x{shape-image-threshold:calc(50% - var(--x))}";
+  same ".x{opacity:var(--o,50%)}";
+  same ".x{shape-image-threshold:var(--o,50%)}";
+  (* Without a [var()] the whole operand's type is known, so the shorter number
+     spelling still wins. *)
+  Alcotest.(check string)
+    "a constant calc() folds" ".x{opacity:.8}"
+    (normalize ".x{opacity:calc(100% - 20%)}");
+  Alcotest.(check string)
+    "a bare percentage" ".x{opacity:.5}"
+    (normalize ".x{opacity:50%}");
+  Alcotest.(check string)
+    "a bare threshold percentage" ".x{shape-image-threshold:.5}"
+    (normalize ".x{shape-image-threshold:50%}")
+
 let v410_invalid_calc_extra () =
   Alcotest.(check bool)
     "calc(1px ++ 2px) double operator rejected" true
@@ -1065,6 +1102,9 @@ let suite =
       ( "spec values 4 10.7 division by zero preserved",
         `Quick,
         v4107_division_zero );
+      ( "spec values 4 10.9 percentage beside a var() keeps its type",
+        `Quick,
+        v4109_percentage_beside_var );
       ( "spec values 4 10 invalid calc extra rejected (negative)",
         `Quick,
         v410_invalid_calc_extra );

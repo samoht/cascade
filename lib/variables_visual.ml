@@ -223,7 +223,7 @@ let vars_of_outline_style (value : Properties.outline_style) : any_var list =
 
 let vars_of_opacity (value : Properties.opacity) : any_var list =
   match value with
-  | Opacity_number _ -> []
+  | Opacity_number _ | Opacity_percentage _ -> []
   | Calc calc -> vars_of_calc calc
   | Var v -> [ V v ]
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
@@ -233,7 +233,9 @@ let vars_of_shape_image_threshold (value : Properties.shape_image_threshold) :
   match value with
   | Var v -> [ V v ]
   | Calc c -> vars_of_calc c
-  | Number _ | Inherit | Initial | Unset | Revert | Revert_layer -> []
+  | Number _ | Percentage _ | Inherit | Initial | Unset | Revert | Revert_layer
+    ->
+      []
 
 let vars_of_scrollbar_color (value : Properties.scrollbar_color) =
   match value with
