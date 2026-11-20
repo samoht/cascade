@@ -726,6 +726,43 @@ let registration_known_only_in_closed_scope () =
          number; "@property --n{syntax:\"<color>\"}.a{width:calc(var(--n)*0px)}";
        ])
 
+(* [--scope=stylesheet] rules out author CSS the optimizer does not see, not the
+   user-agent sheet nor the sheet's own other rules, and author beats UA (CSS
+   Cascade 5 sec. 6.2). A shorthand built from some of its longhands sets the
+   others to their initial values, so it is built only where no rule of the
+   sheet and no rule or presentational hint of the HTML rendering section (sec.
+   15) holds one of them. Chromium 153: [h1{font-size:20px; font-family:serif}]
+   as [h1{font:20px serif}] takes an [h1] from weight 700 to 400 and an [em]
+   from italic to normal; beside [.y{font-weight:bold}] an element of both
+   classes goes from 700 to 400; beside [.y{background-repeat:no-repeat}]
+   [background:red] repeats; and a [transition-delay:1s] inside [@media screen]
+   is lost to [transition:opacity 1s]. *)
+let stylesheet_scope_reset_held () =
+  let opt css =
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
+    Css.Optimize.stylesheet ~scope:`Stylesheet input
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  let same label css = Alcotest.(check string) label css (opt css) in
+  same "the UA sheet holds an h1's weight"
+    "h1{font-size:20px;font-family:serif}";
+  same "the UA sheet holds an em's style" "em{font-size:20px;font-family:serif}";
+  same "another rule holds the weight"
+    ".y{font-weight:700}.x{font-size:20px;font-family:serif}";
+  same "another rule holds the repeat"
+    ".y{background-repeat:no-repeat}.x{background-color:red;background-image:none}";
+  same "a rule in another block holds the delay"
+    "@media \
+     screen{.y{transition-delay:1s}}.x{transition-property:opacity;transition-duration:1s}";
+  (* Where nothing holds the others, the shorthand is still built. *)
+  Alcotest.(check string)
+    "nothing holds the other background longhands" ".x{background:red}"
+    (opt ".x{background-color:red;background-image:none}");
+  Alcotest.(check string)
+    "nothing holds the other transition longhands" ".x{transition:opacity 1s}"
+    (opt ".x{transition-property:opacity;transition-duration:1s}")
+
 let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
      is true when @scope appears as a nested group rule inside a style rule. *)
@@ -930,6 +967,9 @@ let suite =
       ( "calc flatten gated on single-valued @property registration",
         `Quick,
         calc_flatten_registered_single_valued );
+      ( "stylesheet scope resets only what nothing holds",
+        `Quick,
+        stylesheet_scope_reset_held );
       ( "registration known only in closed scope",
         `Quick,
         registration_known_only_in_closed_scope );

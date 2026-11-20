@@ -21,6 +21,39 @@ let compose_fixed3_via_index idx ~try_compose =
         else incr i
   done
 
+(* [--scope=stylesheet] rules out author CSS outside the sheet, not the sheet's
+   other rules nor the user-agent sheet, so a shorthand composed there from part
+   of its family resets only what [Ctx.resets_held] says nothing holds.
+   [`Fragment] composers cover their whole family already. *)
+let resets_held ~ctx idx ~at ~len shorthand =
+  match scope ctx with
+  | `Fragment -> false
+  | `Stylesheet ->
+      (* A declaration of the rule after the run, or an [!important] one against
+         a shorthand that is not, wins its slots over the shorthand on every
+         element the rule matches, so the reset there drops nothing. *)
+      let important = is_important shorthand in
+      let answered =
+        List.filter_map
+          (fun j ->
+            if Rule_index.is_absorbed idx j then None
+            else
+              let d = Rule_index.decl_at idx j in
+              if
+                (j >= at && j < at + len)
+                || j >= at + len
+                || (is_important d && not important)
+              then Some d
+              else None)
+          (List.init (Rule_index.length idx) Fun.id)
+      in
+      Ctx.resets_held ctx ~rule:(Rule_index.to_list idx) answered shorthand
+
+let guard_reset ~ctx try_compose idx i =
+  match try_compose idx i with
+  | Some (shorthand, len) when resets_held ~ctx idx ~at:i ~len shorthand -> None
+  | composed -> composed
+
 (* Same walk for a family whose run length varies: [try_compose] reports the
    shorthand together with the number of positions it consumes. An earlier
    composer may already own a position, so absorbed slots are skipped. *)

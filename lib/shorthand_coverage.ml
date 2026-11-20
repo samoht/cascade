@@ -1309,12 +1309,39 @@ let written_slots : type a. a Properties.property -> overlap_key list = function
   | Unknown_property _ -> []
   | property -> property_slots property
 
+let property_slot_keys : type a. a Properties.property -> overlap_key list =
+ fun property -> sorted_keys (written_slots property)
+
+(* CSS Backgrounds 3 sec. 4.4 and CSS Masking 1 sec. 7.9: [border] resets
+   [border-image] and [mask] resets [mask-border], which their footprints leave
+   to the coverage relation. *)
+let hidden_resets = Properties.[ Prop Border_image; Prop Mask_border ]
+
 let declaration_slot_keys decl =
   match decl with
   | Theme_guarded _ -> []
   | Declaration { property; _ } ->
       if Properties.is_vendor_prefixed property then []
       else sorted_keys (written_slots property)
+
+let reset_slots shorthand run =
+  match unwrap_theme_guard shorthand with
+  | Declaration { property; _ } ->
+      let hidden =
+        List.concat_map
+          (fun (Properties.Prop h) ->
+            if covers_longhand property h then written_slots h else [])
+          hidden_resets
+      in
+      let written =
+        sorted_keys
+          (List.concat_map
+             (fun d -> declaration_slot_keys (unwrap_theme_guard d))
+             run)
+      in
+      sorted_keys (written_slots property @ hidden)
+      |> List.filter (fun k -> not (overlap_key_in k written))
+  | Theme_guarded _ -> []
 
 (* Each family head's footprint in the order [footprint_family_heads] lists
    them, sorted as [declaration_overlap_keys] sorts a declaration's. *)

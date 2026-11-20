@@ -137,7 +137,7 @@ let try_compose_border_at ~bi_hazard idx i =
               declaration_of_border_parts ~important widths styles colors)
             (border_parts_of raw_decls)
 
-let compose_border_via_index ~bi_hazard idx =
+let compose_border_via_index ~bi_hazard ~ctx idx =
   let n = Rule_index.length idx in
   let i = ref 0 in
   while !i + 11 < n do
@@ -145,6 +145,8 @@ let compose_border_via_index ~bi_hazard idx =
     else
       match try_compose_border_at ~bi_hazard idx !i with
       | None -> incr i
+      | Some shorthand when resets_held ~ctx idx ~at:!i ~len:12 shorthand ->
+          incr i
       | Some shorthand ->
           let absorbed =
             [
@@ -481,6 +483,8 @@ let compose_border_whole_via_index ~bi_hazard ~ctx idx =
         incr i
       in
       match try_compose_border_whole_at ~bi_hazard ~ctx idx !i with
+      | Some shorthand when resets_held ~ctx idx ~at:!i ~len:3 shorthand ->
+          step_over ()
       | Some shorthand ->
           let absorbed = [ !i; !i + 1; !i + 2 ] in
           if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + 3
@@ -642,7 +646,7 @@ let try_compose_border_image_at ~allow_partial idx i =
 let compose_border_image_via_index ~ctx idx =
   let allow_partial = scope ctx = `Stylesheet in
   compose_run_via_index idx
-    ~try_compose:(try_compose_border_image_at ~allow_partial)
+    ~try_compose:(guard_reset ~ctx (try_compose_border_image_at ~allow_partial))
 
 let compose_border_image_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in

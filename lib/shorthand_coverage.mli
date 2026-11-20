@@ -64,6 +64,17 @@ val declaration_slot_keys : Declaration.declaration -> overlap_key list
     resolve to. It is empty for [all], a custom property, a property the model
     cannot place and a vendor-prefixed property. *)
 
+val property_slot_keys : 'a Properties.property -> overlap_key list
+(** [property_slot_keys p] is {!val-declaration_slot_keys} of a declaration of
+    [p]. *)
+
+val reset_slots :
+  Declaration.declaration -> Declaration.declaration list -> overlap_key list
+(** [reset_slots shorthand run] is the slots [shorthand] writes, the
+    [border-image] a [border] resets and the [mask-border] a [mask] resets
+    included, that no declaration of [run] writes: the slots a shorthand
+    composed from [run] sets to their initial value. *)
+
 val footprint_family : Declaration.declaration -> int option
 (** [footprint_family d] is the rank of the first shorthand family whose
     footprint holds every slot [d] writes, among the families that together

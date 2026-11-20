@@ -7,11 +7,12 @@ val compose_outline_via_index : Rule_index.t -> unit
     [outline-width]/[-style]/[-color] run of [idx] into [outline]. *)
 
 val compose_border_via_index :
-  bi_hazard:(int -> important:bool -> bool) -> Rule_index.t -> unit
-(** [compose_border_via_index ~bi_hazard idx] absorbs every run of the twelve
-    side longhands of [idx] that agree on all sides into [border].
+  bi_hazard:(int -> important:bool -> bool) -> ctx:Ctx.t -> Rule_index.t -> unit
+(** [compose_border_via_index ~bi_hazard ~ctx idx] absorbs every run of the
+    twelve side longhands of [idx] that agree on all sides into [border].
     [bi_hazard i ~important] is [true] when the [border-image] reset at [i]
-    would drop a held value. *)
+    would drop a held value, and {!Shorthand_common.resets_held} refuses the
+    rest. *)
 
 val compose_line_via_index : Rule_index.t -> unit
 (** [compose_line_via_index idx] absorbs every width/style/colour run of [idx]

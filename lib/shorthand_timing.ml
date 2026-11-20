@@ -286,7 +286,8 @@ let try_compose_transition_at ~allow_partial ~held idx i =
 let compose_transition_via_index ~ctx ~held idx =
   let allow_partial = scope ctx = `Stylesheet in
   compose_run_via_index idx
-    ~try_compose:(try_compose_transition_at ~allow_partial ~held)
+    ~try_compose:
+      (guard_reset ~ctx (try_compose_transition_at ~allow_partial ~held))
 
 (* CSS Animations 1 sec. 3.1: [animation] composes from the per-layer animation
    longhands. Compose when a contiguous run sticks to a single layer (no
@@ -461,4 +462,5 @@ let try_compose_animation_at ~allow_partial ~held idx i =
 let compose_animation_via_index ~ctx ~held idx =
   let allow_partial = scope ctx = `Stylesheet in
   compose_run_via_index idx
-    ~try_compose:(try_compose_animation_at ~allow_partial ~held)
+    ~try_compose:
+      (guard_reset ~ctx (try_compose_animation_at ~allow_partial ~held))

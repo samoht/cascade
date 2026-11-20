@@ -44,6 +44,11 @@ val v :
   ?targets:Support.targets ->
   ?judge:Support.targets ->
   ?registered:(string -> bool) ->
+  ?resets_held:
+    (rule:Declaration.declaration list ->
+    Declaration.declaration list ->
+    Declaration.declaration ->
+    bool) ->
   ?stats:Stats.t ->
   scope ->
   t
@@ -56,6 +61,19 @@ val scope : t -> scope
 
 val registered : t -> string -> bool
 (** Whether a custom property name is registered. *)
+
+val resets_held :
+  t ->
+  rule:Declaration.declaration list ->
+  Declaration.declaration list ->
+  Declaration.declaration ->
+  bool
+(** [resets_held t ~rule answered shorthand] is whether [shorthand], composed in
+    [rule], sets to its initial value a longhand that no declaration of
+    [answered] writes (its run, and the declarations of [rule] that win over it)
+    and that a declaration outside [rule], or the user-agent sheet, may hold at
+    another value. The composer answers for [rule]'s own declarations. It is
+    [true] when the context was built without that knowledge. *)
 
 val lossless : t -> bool
 (** Whether lossless value optimization is enabled. *)
