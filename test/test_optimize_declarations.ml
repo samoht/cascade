@@ -804,6 +804,11 @@ let floor_fallbacks_survive () =
   check_modes "image-set()"
     "a{background:url(a.png);background:image-set(url(a.png) 1x)}"
     "a{background:url(a.png);background:image-set(url(a.png)1x)}";
+  (* web-features records the variadic color-mix() in Firefox 150 alone, so
+     every other floor drops the later declaration and paints red. *)
+  check_modes "a variadic color-mix()"
+    "a{color:red;color:color-mix(in srgb,red,blue,green)}"
+    "a{color:red;color:color-mix(in srgb,red,#00f,green)}";
   Alcotest.(check bool)
     "a fallback in an earlier rule of the selector" true
     (Astring.String.is_infix ~affix:"width:1px"

@@ -517,9 +517,23 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
       | Option.None ->
           canonical_hsl_hue_in_color ~lossless (drop_full_alpha ~lossless c))
-  | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
+  | Mix { in_space; hue; color1; percent1; color2; percent2; more = [] } ->
       normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
         ~percent2
+  | Mix ({ color1; color2; more; _ } as mix) ->
+      (* CSS Color 5 (ED) sec. 3.3 mixes three or more items one into the result
+         of the others, in order, after normalising all their percentages
+         together. The two-item fold reads two, so such a mix keeps its items,
+         and the percentages they were written with. *)
+      let hue = match mix.hue with Shorter -> Default | h -> h in
+      Mix
+        {
+          mix with
+          hue;
+          color1 = normalize_color ~lossless color1;
+          color2 = normalize_color ~lossless color2;
+          more = List.map (fun (c, p) -> (normalize_color ~lossless c, p)) more;
+        }
   | Light_dark (l, d) ->
       Light_dark (normalize_color ~lossless l, normalize_color ~lossless d)
   | Contrast_color inner -> Contrast_color (normalize_color ~lossless inner)
@@ -585,6 +599,7 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
         percent1;
         color2 = normalize_color ~lossless color2;
         percent2;
+        more = [];
       }
   in
   let folded : color option =

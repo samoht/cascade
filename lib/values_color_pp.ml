@@ -466,13 +466,13 @@ let rec pp_color_in_mix : color Pp.t =
   | Current -> Pp.string ctx "currentcolor" (* lowercase in color-mix *)
   | c -> pp_color ctx c
 
-and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
+and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 more =
   (* Pure serialiser: the interpolation method, hue strategy, and percentages
      print exactly as held. Dropping the default [in oklab] header, the default
      [shorter] hue, and the redundant percentages are AST rewrites done by
      [normalize_color]. *)
   Pp.call "color-mix"
-    (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
+    (fun ctx (in_space, hue, color1, percent1, color2, percent2, more) ->
       (match in_space with
       | Some space ->
           Pp.string ctx "in ";
@@ -491,15 +491,19 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
           Pp.space ctx ();
           pp_percentage ctx p
       | None -> ());
-      Pp.comma ctx ();
-      pp_color_in_mix ctx color2;
-      match percent2 with
-      | Some p ->
-          Pp.space ctx ();
-          pp_percentage ctx p
-      | None -> ())
+      let item (color, percent) =
+        Pp.comma ctx ();
+        pp_color_in_mix ctx color;
+        match percent with
+        | Some p ->
+            Pp.space ctx ();
+            pp_percentage ctx p
+        | None -> ()
+      in
+      item (color2, percent2);
+      List.iter item more)
     ctx
-    (in_space, hue, color1, percent1, color2, percent2)
+    (in_space, hue, color1, percent1, color2, percent2, more)
 
 and pp_typed_relative_color_call ctx name origin tail =
   let tail =
@@ -609,7 +613,7 @@ and pp_color_default : color Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
-      pp_color_mix ctx in_space hue color1 percent1 color2 percent2
+  | Mix { in_space; hue; color1; percent1; color2; percent2; more } ->
+      pp_color_mix ctx in_space hue color1 percent1 color2 percent2 more
 
 let pp_specified_color = pp_color_default
