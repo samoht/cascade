@@ -420,6 +420,34 @@ let supports_spelling_stays_two_statements () =
     "the same guard is one statement" true
     (Css.equal_statement calc calc')
 
+(* CSS Counter Styles 3 sec. 3.1.7: <symbol> = <string> | <image> |
+   <custom-ident>. Each prints as the kind it was read as: an image written as a
+   string would be text in the marker, and Chromium 153 keeps
+   [symbols:"url(a.png)"] where it drops [symbols:url(a.png)]. *)
+let counter_symbols_keep_their_kind () =
+  let check name expected css =
+    let minified = Css.to_string ~minify:true (Css.stylesheet css) in
+    Alcotest.(check string) name expected minified;
+    Alcotest.(check string)
+      (name ^ " reads back") expected
+      (Css.to_string ~minify:true (Css.stylesheet minified))
+  in
+  check "an image symbol" "@counter-style c{system:cyclic;symbols:url(a.png)}"
+    "@counter-style c { system: cyclic; symbols: url(a.png) }";
+  check "the three kinds side by side"
+    "@counter-style c{system:cyclic;symbols:a b\"c\"url(d.png)e}"
+    "@counter-style c { system: cyclic; symbols: a b \"c\" url(d.png) e }";
+  check "an ident before an image keeps its space"
+    "@counter-style c{system:cyclic;symbols:a url(d.png)}"
+    "@counter-style c { system: cyclic; symbols: a url(d.png) }";
+  check "a gradient symbol"
+    "@counter-style c{system:cyclic;symbols:linear-gradient(red,blue)}"
+    "@counter-style c { system: cyclic; symbols: linear-gradient(red, blue) }";
+  check "image prefix and ident suffix"
+    "@counter-style c{system:cyclic;symbols:\"a\";prefix:url(p.png);suffix:s}"
+    "@counter-style c { system: cyclic; symbols: \"a\"; prefix: url(p.png); \
+     suffix: s }"
+
 let suite =
   ( "stylesheet_statement",
     [
@@ -614,4 +642,7 @@ let suite =
       ( "an @supports spelling stays two statements",
         `Quick,
         supports_spelling_stays_two_statements );
+      ( "a counter-style symbol keeps its kind",
+        `Quick,
+        counter_symbols_keep_their_kind );
     ] )
