@@ -466,6 +466,16 @@ differently. They are the reason to minify again.
   its name outside any conditional rule. Under `--enforce-spec`, an
   `@property` missing a descriptor is kept rather than dropped, since the
   current specification reads it as a registration (#1481).
+- **`--scope=stylesheet` built shorthands that reset what another rule set.**
+  `h1{font-size:20px;font-family:serif}` became `h1{font:20px serif}`, which
+  resets the browser's bold heading weight (700 to 400 in Chromium), and an
+  `em` lost its italic the same way. Next to `.y{font-weight:bold}` or
+  `.y{background-repeat:no-repeat}`, `.x` lost the weight or the repeat on an
+  element of both classes, and a `transition-delay` inside `@media` was reset
+  by a `transition` built outside it. The scope rules out CSS outside the
+  sheet. The sheet's other rules and the browser's own still apply, so a
+  shorthand is now built from part of its longhands only when none of them
+  sets the others (#1482).
 
 #### Stable output
 

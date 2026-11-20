@@ -4,6 +4,14 @@ type objective = [ `Raw | `Transfer ]
 type t = {
   scope : scope;
   registered : string -> bool;
+  resets_held :
+    rule:Declaration.declaration list ->
+    Declaration.declaration list ->
+    Declaration.declaration ->
+    bool;
+      (** Whether a shorthand composed from a run resets a longhand that
+          something outside its rule may hold at other than its initial value.
+          Unknown is [true]. *)
   lossless : bool;
   aggressive : bool;
   regroup : bool;
@@ -41,6 +49,7 @@ let fragment =
   {
     scope = `Fragment;
     registered = (fun _ -> false);
+    resets_held = (fun ~rule:_ _ _ -> true);
     lossless = false;
     aggressive = false;
     regroup = true;
@@ -78,11 +87,13 @@ let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
 let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
     ?(enforce_spec = false) ?(targets = Support.evergreen) ?judge
-    ?(registered = fun _ -> false) ?stats scope =
+    ?(registered = fun _ -> false) ?(resets_held = fun ~rule:_ _ _ -> true)
+    ?stats scope =
   let stats = match stats with Some stats -> stats | None -> Stats.v () in
   {
     scope;
     registered;
+    resets_held;
     lossless;
     aggressive;
     regroup;
@@ -98,6 +109,7 @@ let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
 
 let scope t = t.scope
 let registered t = t.registered
+let resets_held t = t.resets_held
 let lossless t = t.lossless
 let aggressive t = t.aggressive
 let regroup t = t.regroup

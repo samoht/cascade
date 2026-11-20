@@ -77,7 +77,7 @@ let compose_index_group_b ~ctx ~held kept =
   compose_font_variant_via_index idx;
   compose_grid_via_index idx;
   compose_grid_template_via_index idx;
-  compose_border_via_index
+  compose_border_via_index ~ctx
     ~bi_hazard:(fun i ~important ->
       bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
     idx;

@@ -250,6 +250,10 @@ let an_written_slots d =
   | Declaration { property = All; _ } -> all_an_bits
   | d -> an_overwritten_slots d
 
+let holds_only_initial d =
+  (not (Int.equal (tr_written_slots d lor an_written_slots d) 0))
+  && Int.equal (tr_overwritten_slots d lor an_overwritten_slots d) 0
+
 let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
 let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
 let bi_reset_hazard = reset_hazard ~slots_of:bi_overwritten_slots

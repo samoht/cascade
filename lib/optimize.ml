@@ -1072,6 +1072,92 @@ let promote_registered_custom_properties ~lossless registry
      list of the at-rules that came to mind. *)
   map_declarations promote_decls stmts
 
+(* HTML Living Standard sec. 15 (Rendering) gives these longhands a value other
+   than their initial on some element, through its user-agent sheet or a
+   presentational hint, among those a shorthand the optimizer composes resets:
+   [font-weight] on headings, [b], [strong] and [th]; [font-style] on [i], [em],
+   [cite], [var], [dfn] and [address]; [font-size] on headings, [small], [big],
+   [sub] and [sup]; [font-family] on [pre], [code], [kbd], [samp] and [tt] and
+   through [<font face>]; [background-color] on [mark] and through [bgcolor];
+   [background-image] through a [background] attribute. Author beats user agent
+   (CSS Cascade 5 sec. 6.2), so a shorthand resetting one of them overrides that
+   value. *)
+let user_agent_held_slots =
+  List.concat_map
+    (fun (Properties.Prop p) -> Shorthand_coverage.property_slot_keys p)
+    Properties.
+      [
+        Prop Font_weight;
+        Prop Font_style;
+        Prop Font_size;
+        Prop Font_family;
+        Prop Background_color;
+        Prop Background_image;
+      ]
+
+(* [Ctx.resets_held] under [`Stylesheet] scope: a shorthand composed from a run
+   resets a slot something may hold when the user-agent sheet writes it, or a
+   declaration of the sheet outside the run's rule does, in any rule or block.
+   An [!important] one outranks a shorthand that is not, so it holds a slot only
+   against an important shorthand. Each slot counts the declarations of the
+   sheet that write it, so the rule's own are taken off; the composer judges
+   those by their position. A declaration the footprint model cannot place may
+   write any slot. *)
+module Slot_count = Hashtbl.Make (struct
+  type t = Shorthand_coverage.overlap_key * bool
+
+  let equal (a, i) (b, j) =
+    Shorthand_coverage.overlap_key_equal a b && Bool.equal i j
+
+  let hash (k, i) = Hashtbl.hash (Shorthand_coverage.overlap_key_hash k, i)
+end)
+
+(* Count each slot's declarations by importance. One that holds only initial
+   values drops nothing when reset. *)
+let count_slots table d =
+  if not (Shorthand_held.holds_only_initial d) then
+    let important = Declaration.is_important d in
+    List.iter
+      (fun k ->
+        let key = (k, important) in
+        Slot_count.replace table key
+          (1 + Option.value ~default:0 (Slot_count.find_opt table key)))
+      (Shorthand_coverage.declaration_overlap_keys d)
+
+let resets_held_of (stylesheet : t) =
+  let count = Slot_count.create 256 in
+  let (_ : t) =
+    map_declarations
+      (fun decls ->
+        List.iter (count_slots count) decls;
+        decls)
+      stylesheet
+  in
+  fun ~rule run shorthand ->
+    match Shorthand_coverage.reset_slots shorthand run with
+    | [] -> false
+    | reset ->
+        let own = Slot_count.create 16 in
+        List.iter (count_slots own) rule;
+        let outside_of k important =
+          let key = (k, important) in
+          Option.value ~default:0 (Slot_count.find_opt count key)
+          - Option.value ~default:0 (Slot_count.find_opt own key)
+          > 0
+        in
+        let important = Declaration.is_important shorthand in
+        let outside k =
+          outside_of k false || (important && outside_of k true)
+        in
+        outside Shorthand_coverage.broad_overlap_key
+        || List.exists
+             (fun k ->
+               List.exists
+                 (Shorthand_coverage.overlap_key_equal k)
+                 user_agent_held_slots
+               || outside k)
+             reset
+
 (* Under closed-stylesheet scope every [@position-try --name] rule is known. A
    [position-try-fallbacks] entry whose name has no matching rule cannot match
    at runtime, so prune unknown [Name] arms (keeping [Flip_*] and [Var]). When
@@ -1326,9 +1412,14 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let stylesheet = Stylesheet.normalize_shadow_color_vars stylesheet in
   let registered = registered_foldable registry in
   let stylesheet = prune_position_try_fallbacks ~scope stylesheet in
+  let resets_held =
+    match scope with
+    | `Stylesheet -> resets_held_of stylesheet
+    | `Fragment -> fun ~rule:_ _ _ -> true
+  in
   let ctx =
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
-      ~targets ?judge ~registered ?stats scope
+      ~targets ?judge ~registered ~resets_held ?stats scope
   in
   let result =
     run_pipeline
