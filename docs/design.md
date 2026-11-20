@@ -33,6 +33,20 @@ fold prints bare only where the printer passes `~bare_call` to
 same calculation node, while a length slot reads a bare `min()` into its own
 typed node, so a length calculation keeps its `calc()`.
 
+## Substitutions beside components
+
+A typed reader gives a `var()` beside other components one slot of the
+property's grammar and decides defaults, elisions and order around it. The
+declaration reader keeps such a reading only when its pretty print passes
+`Declaration_core.slots_kept` against the source: every substitution call as
+written, among the same separators and inside the same functions, with no
+component added, dropped or moved. Otherwise it keeps the value as an
+`Unknown_property` token stream under the property's name.
+`Declaration.normalize` applies the same test to each fold of such a value and
+keeps the value when a fold fails it. `Context.eval` substitutes the
+references a context binds into such a stream and reads the result again, so a
+value that types once substituted evaluates as any other.
+
 ## Interning and physical identity
 
 `Declaration.v` and `Declaration.theme_guarded` intern each declaration in a

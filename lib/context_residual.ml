@@ -123,19 +123,6 @@ module Var_residual = struct
         default = Option.map (simplify ~authored:false ~visited) var.default;
       }
     in
-    (* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
-       property "its usual meaning", so the binding is what the cascade makes of
-       the keyword against the element the sheet is read for, and never the
-       keyword's own tokens. This resolver has no element, so such a binding
-       holds no value it can put in place of the reference. *)
-    let css_wide_binding decl =
-      match
-        String.lowercase_ascii
-          (String.trim (Declaration.string_of_value ~minify:true decl))
-      with
-      | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
-      | _ -> false
-    in
     let lookup_parsed name =
       match Hashtbl.find_opt parsed_custom name with
       | Some value -> value
@@ -144,7 +131,8 @@ module Var_residual = struct
             Option.bind
               (lookup_custom_property ?layer ?layer_order cascade name)
               (fun decl ->
-                if css_wide_binding decl then Option.None else read_custom decl)
+                if is_css_wide_binding decl then Option.None
+                else read_custom decl)
           in
           Hashtbl.add parsed_custom name value;
           value

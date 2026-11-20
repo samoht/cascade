@@ -133,6 +133,59 @@ let kind_simplifier : type a.
       ( simplify_stroke_width ~layer_order ?layer ctx length_ctx,
         css_wide_of_stroke_width )
 
+(* The [var()] calls of an untyped value that [ctx] binds, replaced by the
+   tokens they bind, CSS Variables 1 sec. 3; a runtime or unbound reference, or
+   one bound to a CSS-wide keyword, stays. [None] when none is replaced. *)
+let substitute_opaque_vars ctx components =
+  let replaced = ref false in
+  let binding arguments =
+    match List.filter (Fun.negate Component.is_whitespace) arguments with
+    | Component.Preserved { kind = Token.Ident ident; _ } :: _
+      when String.starts_with ~prefix:"--" ident
+           && not
+                (List.mem
+                   (String.sub ident 2 (String.length ident - 2))
+                   ctx.runtime_vars) -> (
+        let name = String.sub ident 2 (String.length ident - 2) in
+        match
+          lookup_custom_property ?layer:ctx.layer ~layer_order:ctx.layer_order
+            ctx name
+        with
+        | Some decl when not (is_css_wide_binding decl) ->
+            (* Whitespace keeps the substituted tokens apart from their
+               neighbours, as substitution does on tokens. *)
+            Some
+              (Cursor.remaining
+                 (Cursor.of_string
+                    (String.concat ""
+                       [ " "; Declaration.string_of_value decl; " " ])))
+        | _ -> None)
+    | _ -> None
+  in
+  let rec substitute components = List.concat_map component components
+  and component (c : Component.t) =
+    match c with
+    | Func ({ node = { name; arguments; _ } as f; _ } as fn) -> (
+        match
+          if String.equal (String.lowercase_ascii name) "var" then
+            binding arguments
+          else None
+        with
+        | Some tokens ->
+            replaced := true;
+            tokens
+        | None ->
+            [
+              Func
+                { fn with node = { f with arguments = substitute arguments } };
+            ])
+    | Block ({ node = { value; _ } as b; _ } as blk) ->
+        [ Block { blk with node = { b with value = substitute value } } ]
+    | Flat _ | Preserved _ -> [ c ]
+  in
+  let components = substitute components in
+  if !replaced then Some (Parser.string_of_components components) else None
+
 let rec eval_typed ?layer_order ?layer ctx decl =
   let ctx = scope ?layer_order ?layer ctx in
   let layer_order = ctx.layer_order in
@@ -141,6 +194,19 @@ let rec eval_typed ?layer_order ?layer ctx decl =
   | Declaration.Theme_guarded { var_name; decl; _ } ->
       Declaration.theme_guarded ~var_name
         (eval_typed ~layer_order ?layer ctx decl)
+  | Declaration.Declaration { property = Unknown_property _; value; _ } -> (
+      (* An untyped value is typed once its references are substituted; one
+         pass, so a binding that refers back cannot loop. *)
+      match substitute_opaque_vars ctx value with
+      | None -> decl
+      | Some text -> (
+          match Declaration.with_value decl text with
+          | Ok
+              (Declaration.Declaration { property = Unknown_property _; _ } as d)
+            ->
+              d
+          | Ok d -> eval_typed ~layer_order ?layer ctx d
+          | Error _ -> decl))
   | Declaration.Declaration { property; value; important; _ } -> (
       match css_wide_of_property_value property value with
       | Some keyword ->
