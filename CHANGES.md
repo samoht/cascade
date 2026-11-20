@@ -409,7 +409,10 @@ differently. They are the reason to minify again.
   while the optimiser held the long one. The optimiser now holds the short one
   before it merges, so one run does. `Css.to_string`, which prints without
   optimising, writes a value as it is held: `url("i.png")`, `flex:1 1 0%` and
-  `hsl(120deg 50% 50%)` stay so, and `Css.minify` shortens them (#1469).
+  `hsl(120deg 50% 50%)` stay so, and `Css.minify` shortens them. A prefixed
+  copy that spells its twin's value another way, such as `-ms-flex:0 0 auto`
+  beside `flex:none`, now goes as one spelled alike does, which takes about
+  28 kB off the SatCSS output (#1469).
 - **Output shifted for unrelated reasons.** Merges that save the same number of
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by
