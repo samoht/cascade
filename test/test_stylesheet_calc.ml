@@ -694,9 +694,14 @@ let v4107_math_product_reduction () =
    is [5.999994px] - so the reduction happens at the fold that produces the
    irrational, never at print time. *)
 let authored_precision_preserved () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> minify parsed.stylesheet
+    | Ok parsed ->
+        Css.optimize ~scope:`Stylesheet parsed.stylesheet
+        |> Css.to_string ~minify:true
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   (* An [@property --n] registration, and the minified form it prints as, so the

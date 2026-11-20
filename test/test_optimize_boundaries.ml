@@ -557,9 +557,12 @@ let preserve_independent_custom_prop_position () =
     (opt "@property --x{syntax:\"*\";inherits:false}.y{--x:1}")
 
 let calc_flatten_registered_single_valued () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let check label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
     Alcotest.(check string)
       label expected
       (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
@@ -592,9 +595,12 @@ let calc_flatten_registered_single_valued () =
    type. A [<length>] registration is one value too, but of a type the zero has
    to match. *)
 let calc_zero_product_registered_number () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let check label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
     Alcotest.(check string)
       label expected
       (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
