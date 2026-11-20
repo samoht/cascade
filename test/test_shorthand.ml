@@ -729,10 +729,13 @@ let test_page_break_alias_shadowing () =
     "[avoid] maps to itself, so the pair is one declaration"
     [ "break-inside:avoid" ]
     (dedup ".a{page-break-inside:avoid;break-inside:avoid}");
+  (* [left], which every target reads: web-features records Firefox and Safari
+     without [break-before:avoid], and an earlier declaration a target reads
+     where it drops the later one is that target's fallback. *)
   Alcotest.(check (list string))
-    "[always] and [avoid] are two values of one property, and the last wins"
-    [ "break-before:avoid" ]
-    (dedup ".a{page-break-before:always;break-before:avoid}");
+    "[always] and [left] are two values of one property, and the last wins"
+    [ "break-before:left" ]
+    (dedup ".a{page-break-before:always;break-before:left}");
   Alcotest.(check (list string))
     "the legacy spelling wins when it comes last" [ "break-after:page" ]
     (dedup ".a{break-after:avoid;page-break-after:always}")
