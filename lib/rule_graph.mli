@@ -239,6 +239,11 @@ val branches_under : ?parent:Selector.t -> Selector.t -> branches
     it: under a nesting [parent], each branch of [s] expanded against each
     branch of [parent], as {!val-rules_conflict} reads a rule. *)
 
+val selector_branches : t -> Selector.t -> branches
+(** [selector_branches t s] is [branches_under ?parent s] for the nesting
+    [parent] [t] was built under: the branches a rule selecting [s] has among
+    the nodes of [t]. *)
+
 val branches_conflict : branches -> branches -> bool
 (** [branches_conflict (branches a) (branches b)] is the selector half of
     {!val-rules_conflict} between a rule selecting [a] and one selecting [b]. *)
@@ -247,24 +252,29 @@ val branch_specificities : branches -> Selector.specificity list
 (** [branch_specificities b] is the specificity of each branch of [b]. *)
 
 val node_selector_conflict : t -> branches -> node_id -> bool
-(** [node_selector_conflict t (branches a) i] is the selector half of
+(** [node_selector_conflict t (selector_branches t a) i] is the selector half of
     {!val-rules_conflict} between a rule selecting [a] and node [i]: some branch
-    of [a] and some branch of the selector of [i] have equal specificity and may
-    match one element. It reads what [t] holds for [i] rather than its selector
-    again. *)
+    of [a] and some branch [i] writes under have equal specificity and may match
+    one element. The branches [i] writes under are those of its selector and,
+    for a rule with nested content, those of every rule its body holds at any
+    depth, each composed with the nesting parent of [t]. It reads what [t] holds
+    for [i] rather than its selector again. *)
 
 val node_selectors_conflict : t -> node_id -> node_id -> bool
-(** [node_selectors_conflict t i j] is
-    [node_selector_conflict t (branches (node_rule t i).selector) j], read off
-    what [t] holds for both nodes. *)
+(** [node_selectors_conflict t i j] is whether some branch [i] writes under and
+    some branch [j] writes under, as {!node_selector_conflict} reads them, have
+    equal specificity and may match one element. For a rule [i] with no nested
+    content it is
+    [node_selector_conflict t (selector_branches t (node_rule t i).selector) j].
+*)
 
 val node_writes_cross :
   t -> branches -> (Declaration.declaration list -> bool) -> node_id -> bool
-(** [node_writes_cross t (branches a) crosses i] is whether node [i] writes,
-    under a selector that {!node_selector_conflict} ties with [a], declarations
-    [crosses] holds of: its own run for a rule with no nested content, and each
-    rule its body holds at any depth, under its composed selector, for one with
-    some. *)
+(** [node_writes_cross t (selector_branches t a) crosses i] is whether node [i]
+    writes, under a selector that {!node_selector_conflict} ties with [a],
+    declarations [crosses] holds of: its own run for a rule with no nested
+    content, and each rule its body holds at any depth, under its composed
+    selector, for one with some. *)
 
 val precedes : t -> node_id -> node_id -> bool
 (** [precedes t i j] is [true] when the graph requires node [i] to be emitted
