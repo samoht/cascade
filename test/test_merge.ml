@@ -222,10 +222,25 @@ let test_key_is_the_selector_set () =
         pool)
     pool
 
+(* The targets are floors, so two selectors share a list only when every browser
+   at or above them drops both or neither. Chrome 111 drops [:popover-open] and
+   [:user-valid] alike, but Chrome 114 reads the first and Chrome 119 the
+   second; [:user-valid] and [:user-invalid] ship together in every engine. *)
+let test_compatible_past_the_floors () =
+  let v = Selector.v in
+  Alcotest.(check bool)
+    "shipped in different releases" false
+    (Merge.compatible (v ".a:popover-open") (v ".b:user-valid"));
+  Alcotest.(check bool)
+    "shipped in the same releases" true
+    (Merge.compatible (v ".a:user-valid") (v ".b:user-invalid"))
+
 let suite =
   ( "merge",
     [
       Alcotest.test_case "listable" `Quick test_listable;
+      Alcotest.test_case "compatible past the floors" `Quick
+        test_compatible_past_the_floors;
       Alcotest.test_case "compatible reads which targets drop" `Quick
         test_compatible_reads_which_targets_drop;
       Alcotest.test_case "all_compatible matches the pair loop" `Quick

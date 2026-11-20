@@ -892,7 +892,19 @@ let test_no_merge_pseudo_some_target_lacks () =
       ("lang() list", ".a:lang(en,fr){color:red}.b{color:red}");
       ("case-sensitive attribute", "[a=b s]{color:red}.b{color:red}");
       ("column combinator", ".a||.b{color:red}.c{color:red}");
+      (* The targets are floors. Chrome 111 and Safari 16.4 read neither
+         [:popover-open] (Chrome 114, Safari 17) nor [:user-valid] (Chrome 119,
+         Safari 16.5), but Chrome 114 to 118 reads the first alone and Safari
+         16.5 and 16.6 the second alone, and each drops the list. *)
+      ( "two pseudo-classes later releases read apart",
+        ".a:popover-open{color:red}.b:user-valid{color:red}" );
     ];
+  (* [:user-valid] and [:user-invalid] ship in the same release of every engine,
+     so every browser at or above the floors reads both or neither. *)
+  Alcotest.(check string)
+    "two pseudo-classes every release reads alike list"
+    ".a:user-valid,.b:user-invalid{color:red}"
+    (minify_str ".a:user-valid{color:red}.b:user-invalid{color:red}");
   (* A grouping pass that factors a shared declaration out builds a list too. *)
   let out =
     minify_str
