@@ -599,11 +599,9 @@ type color =
       hue : hue_interpolation;
       color1 : color;
       percent1 : percentage option;
-      color2 : color;
-      percent2 : percentage option;
-      more : (color * percentage option) list;
-          (** The items after the second, in order: CSS Color 5 (ED) sec. 3
-              takes any number. *)
+      rest : (color * percentage option) list;
+          (** The items after the first, in order: CSS Color 5 (ED) sec. 3 takes
+              one or more. *)
     }
 
 (** CSS duration values. *)
