@@ -495,6 +495,36 @@ let canonical_drops_redundant_decoration_color_alias () =
     (equal ".a{text-decoration-color:red}"
        ".a{-webkit-text-decoration-color:red}")
 
+(* WHATWG Compatibility Standard sec. 3.4.1 makes [-webkit-flex-grow] a legacy
+   name alias of [flex-grow], and CSS Cascade 5 sec. 2.3 makes such an alias the
+   same property under a second name, so the later of the two writes wins
+   whatever their values, and a later [flex] writes over both. Chromium computes
+   [flex-grow] 2 for [-webkit-flex-grow:1;flex-grow:2] and 1 for the reverse. *)
+let canonical_reads_legacy_alias_as_its_property () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a later write of the property ends the alias" true
+    (equal ".a{flex-grow:2}" ".a{-webkit-flex-grow:1;flex-grow:2}");
+  Alcotest.(check bool)
+    "a later alias ends the property" true
+    (equal ".a{flex-grow:1}" ".a{flex-grow:2;-webkit-flex-grow:1}");
+  Alcotest.(check bool)
+    "a later alias is not dropped" false
+    (equal ".a{flex-grow:2}" ".a{flex-grow:2;-webkit-flex-grow:1}");
+  Alcotest.(check bool)
+    "a later shorthand ends the aliased longhands" true
+    (equal ".a{flex:1 150px}"
+       ".a{-webkit-flex-basis:150px;-webkit-flex-grow:1;-webkit-flex-shrink:1;flex:1 \
+        150px}");
+  Alcotest.(check bool)
+    "the alias and the property are one write across rules" true
+    (equal ".a{transform:rotate(1deg)}"
+       ".a{-webkit-transform:none}.a{transform:rotate(1deg)}");
+  Alcotest.(check bool)
+    "an alias orders against the property in another rule" true
+    (equal ".b{transform:none}.a{transform:rotate(1deg)}"
+       ".b{transform:none}.a{-webkit-transform:rotate(1deg)}")
+
 (* Media Queries 4 sec. 4.2 gives [min-X]/[max-X] and the range form one
    meaning, and cascade's own minified output writes the range form, so the fold
    has to hold on the comparison side once the projection stops taking the
@@ -1366,6 +1396,8 @@ let suite =
         canonical_drops_unanswerable_supports;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
+      Alcotest.test_case "canonical reads a legacy alias as its property" `Quick
+        canonical_reads_legacy_alias_as_its_property;
       Alcotest.test_case "canonical folds container function case" `Quick
         canonical_folds_container_function_case;
       Alcotest.test_case "canonical folds media range spellings" `Quick
