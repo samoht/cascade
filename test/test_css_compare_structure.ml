@@ -1053,8 +1053,10 @@ let canonical_supports_hoisting () =
 
    A prefix the list does NOT name is a private extension in the vendor's own
    namespace and a property of its own, so it stays distinct however its value
-   reads. A differing value or importance is two writes of one property and
-   stays distinct as well. *)
+   reads. A differing value is two writes of one property, and the later wins
+   (CSS Cascade 5 sec. 6.1, order of appearance): Chromium computes [matrix(2,
+   0, 0, 2, 0, 0)] for [-webkit-transform:none;transform:scale(2)] as for
+   [transform:scale(2)] alone. *)
 let canonical_legacy_name_alias () =
   let case label expected a b =
     Alcotest.(check bool)
@@ -1070,7 +1072,7 @@ let canonical_legacy_name_alias () =
     "a{-webkit-flex-wrap:wrap;flex-wrap:wrap}" "a{flex-wrap:wrap}";
   case "the listed alias holds for animation-delay" true
     "a{-webkit-animation-delay:1s;animation-delay:1s}" "a{animation-delay:1s}";
-  case "a differing value is two writes of one property" false
+  case "a differing value is two writes of one property" true
     "a{-webkit-transform:none;transform:scale(2)}" "a{transform:scale(2)}";
   case "a listed alias alone is not the unprefixed property dropped" false
     "a{-webkit-transform:none}" "a{}";
