@@ -107,7 +107,7 @@ let rec vars_of_color (value : Values.color) : any_var list =
   | Lch { l; h; alpha; _ } ->
       Option.fold ~none:[] ~some:vars_of_percentage l
       @ vars_of_hue h @ vars_of_alpha alpha
-  | Mix { color1; percent1; color2; percent2; _ } ->
+  | Mix { color1; percent1; color2; percent2; more; _ } ->
       let c1_vars = vars_of_color color1 in
       let c2_vars = vars_of_color color2 in
       let p1_vars =
@@ -116,7 +116,14 @@ let rec vars_of_color (value : Values.color) : any_var list =
       let p2_vars =
         match percent2 with Some p -> vars_of_percentage p | None -> []
       in
-      c1_vars @ c2_vars @ p1_vars @ p2_vars
+      let more_vars =
+        List.concat_map
+          (fun (c, p) ->
+            vars_of_color c
+            @ match p with Some p -> vars_of_percentage p | None -> [])
+          more
+      in
+      c1_vars @ c2_vars @ p1_vars @ p2_vars @ more_vars
   | _ -> []
 
 let rec vars_of_duration (value : Values.duration) : any_var list =

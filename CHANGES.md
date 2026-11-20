@@ -338,6 +338,10 @@ differently. They are the reason to minify again.
   browser at or past the targets that reads it reads the later one, as the
   compatibility data records it, and canonical diff counts it dead on the
   same terms (#1464).
+- **A third colour in `color-mix()` was lost.** CSS Color 5 mixes any number
+  of colours, and Firefox 150 reads them. `--minify` read the first two of
+  `color-mix(in srgb,red,blue,green)` and folded them to `purple`. A mix of
+  three or more colours now keeps every item as written (#1465).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers
