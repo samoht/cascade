@@ -397,6 +397,11 @@ differently. They are the reason to minify again.
   var(--c)`, where `var(--c)` can be the blur: with `--c:3px` the source draws
   no shadow and the output a blurred one. The zero stays before a `var()`
   colour, as it already did in `box-shadow` (#1471).
+- **A zero `box-shadow` spread went before a `var()`.**
+  `box-shadow:0 1px 0 0 var(--c)` was minified to `box-shadow:0 1px 0
+  var(--c)`, where `var(--c)` can be the spread: with `--c:3px` the source
+  draws no shadow and the output a spread one. The zero stays before a
+  `var()` colour, as the blur's does (#1472).
 
 #### Stable output
 
