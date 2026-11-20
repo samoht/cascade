@@ -19,9 +19,12 @@ val position_of_xy : Values.length -> Values.length -> position_value
 (** [position_of_xy x y] is the shortest [<position>] spelling of the static
     point ([x], [y]). *)
 
-val normalize_position_value : ?strip:bool -> position_value -> position_value
-(** [normalize_position_value ?strip p] is [p] in its canonical spelling;
-    [strip] (default [true]) drops the unit on a zero length. *)
+val normalize_position_value :
+  ?strip:bool -> ?signed_basis:bool -> position_value -> position_value
+(** [normalize_position_value ?strip ?signed_basis p] is [p] in its canonical
+    spelling; [strip] (default [true]) drops the unit on a zero length, and
+    [signed_basis] (default [false]) leaves a call over a percentage whose basis
+    can be negative as written. *)
 
 val read_position_value : Cursor.t -> position_value
 (** [read_position_value t] reads a [position_value] from [t]. *)

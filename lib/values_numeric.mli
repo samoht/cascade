@@ -101,3 +101,12 @@ val pp_number : number Pp.t
 val pp_transition_behavior : transition_behavior Pp.t
 (** [pp_transition_behavior] pretty-prints {!Values_intf.transition_behavior}
     values. *)
+
+val length_sign_dependent : length -> bool
+(** [length_sign_dependent l] is [true] when [l] holds a comparison, [abs()],
+    [sign()], [hypot()] or a stepped function over a percentage, whose value
+    turns on the sign of the basis the percentage resolves against. *)
+
+val length_percentage_sign_dependent : length_percentage -> bool
+(** [length_percentage_sign_dependent lp] is {!length_sign_dependent} for a
+    [<length-percentage>]. *)
