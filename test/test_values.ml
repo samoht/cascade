@@ -148,6 +148,10 @@ let test_length () =
   check_length "2cap";
   check_length "2ic";
   check_length "2rlh";
+  (* CSS Values 4 sec. 6.1.1: each font-relative unit has a root twin. *)
+  check_length "2rex";
+  check_length "2rcap";
+  check_length "2rch";
 
   (* Viewport units *)
   check_length "10vmin";
@@ -168,6 +172,13 @@ let test_length () =
   check_length "10svw";
   check_length "10svmin";
   check_length "10svmax";
+  (* CSS Values 4 sec. 6.1.2.1: the logical axes take every viewport size. *)
+  check_length "10svi";
+  check_length "10svb";
+  check_length "10lvi";
+  check_length "10lvb";
+  check_length "10dvi";
+  check_length "10dvb";
 
   (* Zero length keeps its unit in pp; dropping it (0cm -> 0) is optimize. *)
   check_length "0cm";
