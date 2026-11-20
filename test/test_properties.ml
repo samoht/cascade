@@ -347,11 +347,19 @@ let whatwg_legacy_aliases =
 
 let name_of (Prop p) = Css.Pp.to_string ~minify:false pp_property p
 
+let is_typed : type a. a property -> bool = function
+  | Unknown_property _ -> false
+  | _ -> true
+
+(* CLAUDE.md: a longhand that parses as [Unknown_property] is typed first, so
+   every alias on the list reads as a typed property under the unprefixed
+   property's grammar, never as a name the optimizer has to look up. *)
 let vendor_prefix_and_aliases_are_property_facts () =
   List.iter
     (fun (alias, property) ->
       let (Prop a) = of_name alias in
       let (Prop p) = of_name property in
+      check bool (alias ^ " is typed") true (is_typed a);
       check bool (alias ^ " is vendor-prefixed") true (is_vendor_prefixed a);
       check bool (property ^ " is not") false (is_vendor_prefixed p);
       check (option string)
