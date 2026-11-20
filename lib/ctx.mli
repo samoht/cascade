@@ -24,12 +24,14 @@ val of_scope :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?targets:Support.targets ->
   ?judge:Support.targets ->
   ?stats:Stats.t ->
   scope option ->
   t
-(** Build a context from an optional scope. [judge] names the browsers the run
-    judges for (default none); [enforce_spec] drops it. *)
+(** Build a context from an optional scope. [targets] names the floors the
+    minifier serves (default {!Support.evergreen}); [judge] names the browsers
+    the run judges for (default none), and [enforce_spec] drops it. *)
 
 val v :
   ?lossless:bool ->
@@ -39,6 +41,7 @@ val v :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?targets:Support.targets ->
   ?judge:Support.targets ->
   ?registered:(string -> bool) ->
   ?stats:Stats.t ->
@@ -112,6 +115,14 @@ val judge : t -> Support.targets option
     decided and a fallback they all parse past is dead. [None], the default and
     what {!enforce_spec} forces, keeps every guard and fallback for the engine
     that renders the sheet to answer. *)
+
+val floors : t -> Support.targets
+(** The floors a fallback is judged against: {!judge} when the run judges for
+    browsers, the targets the minifier serves otherwise. Each stands for its
+    version and every later release, so an earlier declaration is dead only when
+    every browser at or above them that reads it reads the later one
+    ({!Declaration.fallback_for}). They hold under {!val-enforce_spec} too,
+    since they only ever keep a declaration. *)
 
 val stats : t -> Stats.t
 (** Profiling recorder for the run this context belongs to. *)

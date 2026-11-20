@@ -23,6 +23,9 @@ type t = {
           vendor-prefixed declaration whose unprefixed twin modern browsers
           support. On: keep every prefix (spec-literal, maximal compatibility).
       *)
+  targets : Support.targets;
+      (** The floors the minifier serves: each browser at its version and every
+          later release. A fallback one of them needs stays. *)
   judge : Support.targets option;
       (** The browsers the run judges for, when it judges for any: a guard they
           all satisfy is decided, a fallback they all parse past is dead. [None]
@@ -46,13 +49,14 @@ let fragment =
     closed_world = false;
     objective = `Transfer;
     enforce_spec = false;
+    targets = Support.evergreen;
     judge = None;
     stats = Stats.v ();
   }
 
 let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
-    ?(enforce_spec = false) ?judge ?stats scope =
+    ?(enforce_spec = false) ?(targets = Support.evergreen) ?judge ?stats scope =
   let stats = match stats with Some stats -> stats | None -> Stats.v () in
   let scope = match scope with Some scope -> scope | None -> fragment.scope in
   {
@@ -66,13 +70,15 @@ let of_scope ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     closed_world;
     objective;
     enforce_spec;
+    targets;
     judge = (if enforce_spec then None else judge);
     stats;
   }
 
 let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     ?(extend_lists = false) ?(closed_world = false) ?(objective = `Transfer)
-    ?(enforce_spec = false) ?judge ?(registered = fun _ -> false) ?stats scope =
+    ?(enforce_spec = false) ?(targets = Support.evergreen) ?judge
+    ?(registered = fun _ -> false) ?stats scope =
   let stats = match stats with Some stats -> stats | None -> Stats.v () in
   {
     scope;
@@ -85,6 +91,7 @@ let v ?(lossless = false) ?(aggressive = false) ?(regroup = true)
     closed_world;
     objective;
     enforce_spec;
+    targets;
     judge = (if enforce_spec then None else judge);
     stats;
   }
@@ -100,6 +107,7 @@ let closed_world t = t.closed_world
 let objective t = t.objective
 let enforce_spec t = t.enforce_spec
 let judge t = t.judge
+let floors t = match t.judge with Some judge -> judge | None -> t.targets
 let stats t = t.stats
 let with_extend_lists extend_lists t = { t with extend_lists }
 let with_recurse_blocks recurse_blocks t = { t with recurse_blocks }

@@ -1,7 +1,7 @@
-(* Keyed on the property identity, ordered by its typed tag: the set is probed
-   once per declaration of every rule, so each [mem] and [add] would otherwise
+(* Keyed on the property identity, ordered by its typed tag: the map is probed
+   once per declaration of every rule, so each [find] and [add] would otherwise
    spend O(log n) [caml_compare] calls walking a GADT-derived key. *)
-module Props = Set.Make (struct
+module Props = Map.Make (struct
   type t = Declaration.prop_key
 
   let compare = Declaration.compare_prop_key
@@ -17,10 +17,11 @@ module Selector_tbl = Hashtbl.Make (struct
   let hash = Selector.hash
 end)
 
-(* The normal and the important half of what a selector writes later. A rule
-   asks about one selector and every declaration it carries, so the entry is
-   fetched once and stored once rather than probed per declaration. *)
-type written = Props.t * Props.t
+(* The normal and the important half of what a selector writes later, each the
+   later writes of a property. A rule asks about one selector and every
+   declaration it carries, so the entry is fetched once and stored once rather
+   than probed per declaration. *)
+type written = Declaration.t list Props.t * Declaration.t list Props.t
 type t = written Selector_tbl.t
 
 let v () = Selector_tbl.create 256
@@ -29,19 +30,36 @@ let empty = (Props.empty, Props.empty)
 let written t selector =
   Option.value ~default:empty (Selector_tbl.find_opt t selector)
 
-let covered (normal, important) decl =
+(* A later write shadows [decl] only where every browser at or above the floors
+   that reads [decl] reads it too; otherwise [decl] is the fallback a floor
+   paints. The question is asked only of a property written again, so a run that
+   shadows nothing never reads a value. *)
+let covered ~floors (normal, important) decl =
   let prop = Declaration.property_key decl in
-  if Declaration.is_important decl then Props.mem prop important
-  else Props.mem prop normal || Props.mem prop important
+  let read_later half =
+    match Props.find_opt prop half with
+    | None -> false
+    | Some laters ->
+        List.exists
+          (fun later -> not (Declaration.fallback_for ~floors ~later decl))
+          laters
+  in
+  if Declaration.is_important decl then read_later important
+  else read_later normal || read_later important
 
 let add (normal, important) decls =
+  let push prop decl half =
+    Props.update prop
+      (function None -> Some [ decl ] | Some laters -> Some (decl :: laters))
+      half
+  in
   let rec fold normal important = function
     | [] -> (normal, important)
     | decl :: rest ->
         let prop = Declaration.property_key decl in
         if Declaration.is_important decl then
-          fold normal (Props.add prop important) rest
-        else fold (Props.add prop normal) important rest
+          fold normal (push prop decl important) rest
+        else fold (push prop decl normal) important rest
   in
   fold normal important decls
 

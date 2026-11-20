@@ -66,20 +66,23 @@ val ctx_of_scope :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?targets:targets ->
   ?judge:targets ->
   ?stats:Stats.t ->
   scope option ->
   ctx
 (** [ctx_of_scope ?lossless ?aggressive ?regroup ?extend_lists ?closed_world
-     ?objective ?enforce_spec ?judge ?stats scope] builds the context the
-    composers take; [None] is [`Fragment]. [aggressive] forces the expensive
+     ?objective ?enforce_spec ?targets ?judge ?stats scope] builds the context
+    the composers take; [None] is [`Fragment]. [aggressive] forces the expensive
     global factoring fixpoint to run even when its preflight predicts low or no
     gain. [regroup] permits order-dependent regrouping of adjacent rules.
     [extend_lists] is for direct DAG-scheduler experiments; the main stylesheet
     optimizer enables guarded selector-list extension internally. [closed_world]
     asserts the caller knows the exact HTML and that no element matches two
     clashing selectors, so the optimizer may merge rules it would otherwise keep
-    apart; unsafe for an unknown DOM. [objective] defaults to [`Transfer]. *)
+    apart; unsafe for an unknown DOM. [objective] defaults to [`Transfer].
+    [targets] (default {!evergreen_targets}) are the floors whose fallbacks
+    deduplication keeps. *)
 
 val compose_shorthands :
   ?held:Shorthand.held ->
@@ -272,14 +275,19 @@ val stylesheet :
     the top level with the parent selector applied to their inner rules.
 
     [targets] defaults to {!evergreen_targets} and owns compatibility-prefix
-    generation. It is ignored when [enforce_spec] is [true].
+    generation, which is ignored when [enforce_spec] is [true]. Its versions are
+    floors too, in every mode: an earlier declaration a later one covers is
+    dropped only when every browser at or above them that reads it reads the
+    later one, and stays as the fallback a floor paints otherwise. [judge], when
+    set, is asked the same question. Without [judge] the minifier also keeps the
+    fallback before a CSS Color 4 colour or a runtime substitution.
 
     [judge] names the browsers the sheet is judged for, and is unset by default.
     Each version is a floor, standing for that release and every later one, and
     the run may delete only what every browser at or above the floors ignores: a
     [@supports] guard every one of them satisfies is unwrapped, one every one of
-    them fails is dropped, and a colour fallback every one of them parses past
-    is dead. A floor that implements a production answers for the releases after
+    them fails is dropped, and a colour fallback every one of them reads past is
+    dead. A floor that implements a production answers for the releases after
     it, while one that lacks it does not, since a later release may ship it: a
     guard no floor satisfies stays. Without [judge] every author guard and
     fallback survives for the engine that renders the sheet to answer (CSS

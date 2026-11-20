@@ -87,3 +87,19 @@ val unimplemented_by : targets -> string -> bool
 (** [unimplemented_by targets key] is [true] only when the dataset says some
     engine in [targets] lacks [key]. An unknown key is [false], so this reads as
     "known to be missing" rather than "not known to be present". *)
+
+val engine_parses : engine -> version -> string -> bool option
+(** [engine_parses engine version key] is [Some true] when [engine] at [version]
+    parses [key], so keeps a declaration that uses it, [Some false] when the
+    dataset says it does not, and [None] when the generated table has no [key].
+    It is {!engine_implements} with two differences: iOS Safari parses with the
+    WebKit of the Safari of its version, since BCD records an iOS gap beside a
+    shipped Safari only for productions with no effect on a touch screen, such
+    as the [cursor] keywords; and the {!val-measured} supplement is not read,
+    since it names grammar arms rather than the words of a value. *)
+
+val floors : targets -> (engine * version) list
+(** [floors targets] is each engine of [targets] with its version. *)
+
+val equal_engine : engine -> engine -> bool
+(** [equal_engine a b] is whether [a] and [b] are one engine. *)

@@ -326,6 +326,18 @@ differently. They are the reason to minify again.
   Lists 3 sec. 4.6 gives both functions an optional `<counter-style>`, a
   counter-style name or `symbols()`; it is now read and printed, and the
   default `decimal` is left out (#1462).
+- **A fallback a target browser needs was dropped.** `--minify` turned
+  `a{color:red;color:light-dark(red,blue)}` into
+  `a{color:light-dark(red,#00f)}`, so Chrome 111 to 122 and Safari 16.4 to
+  17.4, which drop `light-dark()`, lost the colour. It did the same before
+  `contrast-color()`, `anchor()`, `anchor-size()`, `stretch` and
+  `image-set()`, also when the two declarations sat in two rules of one
+  selector, and before `width:fit-content(10px)`, which no browser reads, so
+  Chromium 153 painted a different width. The targets are floors: each version
+  and every later one. An earlier declaration is now dropped only when every
+  browser at or past the targets that reads it reads the later one, as the
+  compatibility data records it, and canonical diff counts it dead on the
+  same terms (#1464).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

@@ -4184,7 +4184,9 @@ val optimize :
     graph. See {!Optimize.scope} for the details.
 
     [targets] defaults to {!Optimize.evergreen_targets} and owns compatibility
-    prefix generation. It is ignored when [enforce_spec] is [true].
+    prefix generation, which is ignored when [enforce_spec] is [true]. Its
+    versions are also the floors whose fallbacks deduplication keeps, in every
+    mode; see {!Optimize.stylesheet}.
 
     [judge], unset by default, names the browsers the sheet is judged for; see
     {!Optimize.stylesheet}.
