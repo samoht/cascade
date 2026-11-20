@@ -553,6 +553,24 @@ let test_flex () =
      1 0 -> 1, since flex-basis 0 is not the default 0%). *)
   check_flex ~expected:"1 1 0px" "1 1 0px";
   decl_optimizes ~prop:"flex" ~held:"1 1 0px" ~into:"1 1 0" "1 1 0px";
+  (* CSS Flexbox 1 sec. 7.2 reads a unitless number as a factor wherever one can
+     stand, so a zero basis keeps its unit alone and after one factor. Chrome
+     153 computes [flex:0px] to [1 1 0px] and [flex:0] to [0 1 0%]; [flex:1 0px]
+     to [1 1 0px] and [flex:1 0] to [1 0 0%]. *)
+  check_flex "0px";
+  decl_optimizes ~prop:"flex" ~held:"0px" ~into:"0px" "0px";
+  decl_optimizes ~prop:"flex" ~held:"0em" ~into:"0px" "0em";
+  decl_optimizes ~prop:"flex" ~into:"0px" "calc(0px)";
+  decl_optimizes ~prop:"flex" ~into:"1 1 0" "1 0px";
+  decl_optimizes ~prop:"flex" ~held:"1 0em" ~into:"1 1 0" "0em 1";
+  (* A built [Basis Zero] has no spelling of its own, so it prints as the zero
+     length it stands for rather than as the grow factor [0]. *)
+  List.iter
+    (fun minify ->
+      Alcotest.(check string)
+        "a lone zero basis prints a length" "0px"
+        (Css.Pp.to_string ~minify pp_flex (Basis Zero : flex)))
+    [ true; false ];
   check_flex ~expected:"1 auto" "1 1 auto";
   check_flex "none";
   check_flex "auto";
