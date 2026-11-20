@@ -1078,8 +1078,10 @@ let is_vendor_prefixed : type a. a property -> bool = function
    are legacy name aliases of an unprefixed property, and CSS Cascade 5 sec. 3.1
    makes such an alias the same property under a second name. A prefix the list
    does not name is a property of its own: the [-moz-] spellings and
-   [-webkit-user-select] among them. An alias cascade types none of is read as
-   an unknown property, so its name decides. *)
+   [-webkit-user-select] among them. The list's [-webkit-mask-box-image] set is
+   left out: no Chromium or Firefox release reads [mask-border], so across the
+   targets each of those is a property of its own. An alias cascade types none
+   of is read as an unknown property, so its name decides. *)
 let legacy_alias_of_unknown = function
   | "-webkit-backface-visibility" -> Some (Prop Backface_visibility)
   | "-webkit-background-origin" -> Some (Prop Background_origin)
@@ -1093,17 +1095,6 @@ let legacy_alias_of_unknown = function
   | "-webkit-flex-grow" -> Some (Prop Flex_grow)
   | "-webkit-flex-shrink" -> Some (Prop Flex_shrink)
   | "-webkit-mask" -> Some (Prop Mask)
-  | "-webkit-mask-box-image" -> Some (Prop Mask_border)
-  | "-webkit-mask-box-image-outset" ->
-      Some (Prop (Unknown_property "mask-border-outset"))
-  | "-webkit-mask-box-image-repeat" ->
-      Some (Prop (Unknown_property "mask-border-repeat"))
-  | "-webkit-mask-box-image-slice" ->
-      Some (Prop (Unknown_property "mask-border-slice"))
-  | "-webkit-mask-box-image-source" ->
-      Some (Prop (Unknown_property "mask-border-source"))
-  | "-webkit-mask-box-image-width" ->
-      Some (Prop (Unknown_property "mask-border-width"))
   | "-webkit-order" -> Some (Prop Order)
   | "-webkit-perspective" -> Some (Prop Perspective)
   | "-webkit-perspective-origin" -> Some (Prop Perspective_origin)

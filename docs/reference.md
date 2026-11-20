@@ -327,7 +327,10 @@ A prefixed declaration that the
 section 3.4.1 lists as a legacy alias is the same property as its unprefixed
 twin, so `-webkit-transform` beside an identical `transform` normalises to
 `transform` alone. A prefix the list does not name, such as the `-moz-`
-spellings or `-webkit-user-select`, is a property of its own.
+spellings or `-webkit-user-select`, is a property of its own, and so is a
+listed alias whose unprefixed twin some target browser does not read: no
+Chromium or Firefox release reads `mask-border`, so the list's
+`-webkit-mask-box-image` set stays distinct from it.
 `-webkit-text-decoration-color` is not on the list, but every engine that
 ships it treats it as an alias, and so does cascade. Equivalent shorthand
 decompositions are not modelled.
