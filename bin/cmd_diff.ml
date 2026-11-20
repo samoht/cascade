@@ -766,17 +766,19 @@ let prune_unused_custom_props_arg =
 let browser_arg =
   let doc =
     "Render both files over the document $(b,--html) names in a headless \
-     Chromium and report every computed-style value the two disagree on, \
-     instead of comparing the CSS. The document's own style elements and \
-     stylesheet links are removed and inline style attributes kept; every \
-     element and its ::before, ::after, ::marker, ::placeholder, \
-     ::first-letter and ::first-line are sampled at every viewport width a \
-     media condition in either file names and under every interaction state \
-     either file names, with a state applied to every element at once. Values \
-     are compared as the browser spells them, with no normalisation; the \
-     report also says whether the two paint the same. Needs node and a \
-     headless Chromium ($(b,NODE), $(b,CHROME), or the usual places) and exits \
-     2 without them."
+     Chromium and compare the two renders pixel for pixel, instead of \
+     comparing the CSS. The document's own style elements and stylesheet links \
+     are removed and inline style attributes kept. The page is rendered at \
+     every viewport width a media condition in either file names and under \
+     every interaction state either file names, with a state applied to every \
+     element at once, every animation held at its start and every transition \
+     finished. Where the renders differ, the computed-style values the two \
+     disagree on are listed for the elements under the differing pixels and \
+     their ::before, ::after, ::marker, ::placeholder, ::first-letter and \
+     ::first-line, as the browser spells them. A value that differs where no \
+     pixel does, such as the duration of an animation that never runs, is not \
+     reported. Needs node and a headless Chromium ($(b,NODE), $(b,CHROME), or \
+     the usual places) and exits 2 without them."
   in
   Arg.(value & flag & info [ "browser" ] ~docs:browser_options ~doc)
 
