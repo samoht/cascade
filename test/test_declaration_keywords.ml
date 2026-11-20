@@ -208,6 +208,15 @@ let list_properties () =
      follows, or the spread would rebind as the blur. Held and canonical
      match. *)
   check_declaration ~expected:"box-shadow:0 1px 0 5px" "box-shadow: 0 1px 0 5px";
+  (* A [var()] after four lengths is the colour, but after three it may be the
+     spread, so a zero spread before a [var()] colour stays, as a zero blur
+     does: with [--c:3px], Chromium 153 computes [none] for [0 1px 0 0
+     var(--c)], five lengths, and a 3px spread for [0 1px 0 var(--c)]. A
+     concrete colour lets the zero go. *)
+  check_declaration ~expected:"box-shadow:0 1px 0 0 var(--c)"
+    ~optimized:"box-shadow:0 1px 0 0 var(--c)" "box-shadow: 0 1px 0 0 var(--c)";
+  check_declaration ~expected:"box-shadow:0 1px 0 0 red"
+    ~optimized:"box-shadow:0 1px red" "box-shadow: 0 1px 0 0 red";
   check_declaration
     ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12),0 1px 2px rgb(0 0 0/.24)"
     ~optimized:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"

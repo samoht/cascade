@@ -195,6 +195,15 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
     in
     let spread = option_map_preserve Values.normalize_length s.spread in
     let color = option_map_preserve (normalize_color ~lossless) s.color in
+    (* A [var()] colour could resolve to a length, so dropping a zero length
+       before it lets the shortened form re-bind the colour as that length: [0
+       3px 0 var(--c)] is blur [0] + colour, but [0 3px var(--c)] parses
+       [var(--c)] as the blur, and [0 1px 0 0 var(--c)] loses its spread the
+       same way. Keep the explicit [0] there; a concrete colour is unambiguous
+       and the [0] still drops. *)
+    let colour_may_be_length =
+      match color with Some (Var _) -> true | _ -> false
+    in
     (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths
        and defaults each missing value to [0]. Drop a trailing zero contiguously
        from the end: [spread] is last and drops freely; a zero blur drops only
@@ -202,15 +211,9 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
        re-bind the spread as the blur (e.g. [0 1px 0 5px] must keep the [0]
        blur). *)
     let spread : length option =
-      match spread with Some sp when is_zero_length sp -> None | _ -> spread
-    in
-    (* A [var()] colour could resolve to a length, so dropping a zero blur
-       before it lets the shortened form re-bind the colour as the blur: [0 3px
-       0 var(--c)] is blur [0] + colour, but [0 3px var(--c)] parses [var(--c)]
-       as the blur. Keep the explicit [0] there; a concrete colour is
-       unambiguous and the [0] still drops. *)
-    let colour_may_be_length =
-      match color with Some (Var _) -> true | _ -> false
+      match spread with
+      | Some sp when is_zero_length sp && not colour_may_be_length -> None
+      | _ -> spread
     in
     let blur : length option =
       match blur with
