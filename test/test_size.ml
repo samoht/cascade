@@ -32,6 +32,24 @@ let test_decl_and_rule_sizes_match_minified_output () =
     (String.length (min_rule r))
     (Size.rule Size.default r)
 
+(* A rule prints its nested statements inside its braces, and a declaration
+   written after one where it stands (CSS Nesting 1 sec. 3.4), so the bytes it
+   weighs are those of its whole print. *)
+let test_rule_size_counts_nested_content () =
+  List.iter
+    (fun css ->
+      let r = rule css in
+      Alcotest.(check int)
+        css
+        (String.length (min_rule r))
+        (Size.rule Size.default r))
+    [
+      ".a{top:1px;&:hover{color:red}}";
+      ".a{>span{top:0}color:red}";
+      ".a{@media print{color:red}}";
+      ".a{color:red;.b{top:0;.c{left:0}}}";
+    ]
+
 let test_rules_size_is_sum () =
   let rs = rules ".a{color:red}.b{width:1px}" in
   Alcotest.(check int)
@@ -77,6 +95,8 @@ let suite =
     [
       Alcotest.test_case "decl and rule sizes match minified output" `Quick
         test_decl_and_rule_sizes_match_minified_output;
+      Alcotest.test_case "rule size counts nested content" `Quick
+        test_rule_size_counts_nested_content;
       Alcotest.test_case "rules size is sum" `Quick test_rules_size_is_sum;
       Alcotest.test_case "declaration size is its rendering" `Quick
         test_declaration_size_is_its_rendering;
