@@ -168,9 +168,12 @@ implementation keeps them.
 ## Target layer
 
 - **A guard is unwrapped only if it holds in every browser in B, and deleted
-  only if it fails in every browser in B.** `not` reverses a leaf, so a
-  feature true from the floor makes `not (feature)` false from that release
-  on. A `<general-enclosed>` term is false (CSS Conditional 3 sec. 6).
+  only if it fails in every browser in B.** A declaration leaf holds in a
+  browser that parses its declaration, value included, so `(width:stretch)`
+  holds only where `stretch` parses. `not` reverses a leaf, so a feature true
+  from one release makes `not (feature)` false from that release on. A
+  `<general-enclosed>` term is false in every browser in B (CSS Conditional 3
+  sec. 6), so a guard over one alone is deleted.
 - **A vendor-prefixed declaration is deleted only if no browser in B needs
   it**, and one a browser in B needs is added beside its unprefixed twin.
 - **Nothing untyped is dropped.** What cascade cannot type is never assumed
