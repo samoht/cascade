@@ -842,15 +842,17 @@ let runtime_var_not_folded_contract () =
        (Css.Declaration.to_string folding)
        (Css.Declaration.to_string
           (Css.eval_declaration Css.Context.empty folding)));
-  (* Multiplicative identities never read the variable's value, so they still
-     simplify a runtime var; only value resolution ([* n], n >= 2) is
-     skipped. *)
+  (* [* 1] never reads the variable's value, so it still simplifies a runtime
+     var. A runtime var can take any tokens, so [* 0] keeps it (CSS Values 4
+     sec. 10.10.1): with [--spacing] undefined, Chromium 153 leaves
+     [calc(var(--spacing) * 0)] invalid at computed-value time and [width] auto.
+     Value resolution ([* n], n >= 2) is skipped. *)
   let eval c =
     Css.Declaration.to_string ~minify:true
       (Css.eval_declaration Css.Context.empty (Css.width (Calc c)))
   in
   Alcotest.(check string)
-    "runtime var * 0 folds to 0" "width:0"
+    "runtime var * 0 keeps the var() reference" "width:calc(var(--spacing)*0)"
     (eval (Expr (Var spacing, Mul, Num 0.)));
   Alcotest.(check string)
     "runtime var * 1 folds to the operand" "width:var(--spacing)"
