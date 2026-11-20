@@ -66,27 +66,39 @@ let calc_operand_value : type a. a calc -> a calc = function
    too and hash apart from the keyword the same text parses to. [infinity] /
    [-infinity] are constants of their own in that list and keep their values. *)
 let calc_num : type a. float -> a calc =
- fun f -> if Float.is_nan f then Math_const Nan else Num f
+ fun f -> if Float.is_nan f then Math_const Nan else Num (Pp.printed f)
 
 let rec minify_angle_arg : angle_arg -> angle_arg = function
-  | Operation (l, op, r) -> (
-      let l = minify_angle_arg l in
-      let r = minify_angle_arg r in
+  | Operation (l0, op, r0) as arg -> (
+      let l = minify_angle_arg l0 in
+      let r = minify_angle_arg r0 in
       match (l, op, r) with
-      | Deg a, Add, Deg b -> Deg (a +. b)
-      | Deg a, Sub, Deg b -> Deg (a -. b)
-      | Rad a, Add, Rad b -> Rad (a +. b)
-      | Rad a, Sub, Rad b -> Rad (a -. b)
-      | Turn a, Add, Turn b -> Turn (a +. b)
-      | Turn a, Sub, Turn b -> Turn (a -. b)
-      | Grad a, Add, Grad b -> Grad (a +. b)
-      | Grad a, Sub, Grad b -> Grad (a -. b)
-      | _ -> Operation (l, op, r))
-  | Grouped inner -> (
+      | Deg a, Add, Deg b -> Deg (Pp.printed (a +. b))
+      | Deg a, Sub, Deg b -> Deg (Pp.printed (a -. b))
+      | Rad a, Add, Rad b -> Rad (Pp.printed (a +. b))
+      | Rad a, Sub, Rad b -> Rad (Pp.printed (a -. b))
+      | Turn a, Add, Turn b -> Turn (Pp.printed (a +. b))
+      | Turn a, Sub, Turn b -> Turn (Pp.printed (a -. b))
+      | Grad a, Add, Grad b -> Grad (Pp.printed (a +. b))
+      | Grad a, Sub, Grad b -> Grad (Pp.printed (a -. b))
+      | _ -> if l == l0 && r == r0 then arg else Operation (l, op, r))
+  | Grouped inner as arg -> (
       match minify_angle_arg inner with
-      | Operation _ as inner -> Grouped inner
+      | Operation _ as inner' -> if inner' == inner then arg else Grouped inner'
       | inner -> inner)
   | arg -> arg
+
+(* The angle argument of [sin()], [cos()] and [tan()] folds its own sums. *)
+let minify_trig_fn (fn : math_fn) : math_fn =
+  let arg a rebuild =
+    let a' = minify_angle_arg a in
+    if a' == a then fn else rebuild a'
+  in
+  match fn with
+  | Sin a -> arg a (fun a -> Sin a)
+  | Cos a -> arg a (fun a -> Cos a)
+  | Tan a -> arg a (fun a -> Tan a)
+  | _ -> fn
 
 let round_to_step strategy value step =
   if step = 0. then value
@@ -173,7 +185,7 @@ and pp_math_fn ctx fn =
   | Rem_n (a, b) -> call "rem" [ a; b ]
 
 and pp_angle_arg ctx arg =
-  match if Pp.minified ctx then minify_angle_arg arg else arg with
+  match arg with
   | Deg f -> Pp.unit ctx f "deg"
   | Rad f -> Pp.unit ctx f "rad"
   | Turn f -> Pp.unit ctx f "turn"
@@ -485,9 +497,10 @@ let rec normalize_calc_parens : type a. a calc -> a calc =
       let left' = normalize_calc_parens left in
       let right' = normalize_calc_parens right in
       if left' == left && right' == right then calc else Expr (left', op, right')
-  | Val _ | Var _ | Num _ | Math_const _ | Math_fn _ | Sibling_index
-  | Sibling_count ->
-      calc
+  | Math_fn fn ->
+      let fn' = minify_trig_fn fn in
+      if fn' == fn then calc else Math_fn fn'
+  | Val _ | Var _ | Num _ | Math_const _ | Sibling_index | Sibling_count -> calc
 
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->

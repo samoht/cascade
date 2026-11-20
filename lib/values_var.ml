@@ -41,6 +41,20 @@ let string_of_syntax_fallback ctx value =
       ~opaque:false value
   else Parser.string_of_components value
 
+(* A syntax fallback's normal form is the token stream its minified print reads
+   back as: the stream the reader keeps carries the spelling's whitespace and
+   source positions, which the pretty printer reproduces but which name no part
+   of the value. *)
+let normalize_syntax_fallback (v : 'a var) : 'a var =
+  match v.fallback with
+  | Syntax_fallback components ->
+      let minified =
+        Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
+          ~opaque:false components
+      in
+      { v with fallback = syntax_fallback minified }
+  | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> v
+
 let pp_syntax_fallback ctx value =
   Pp.string ctx (string_of_syntax_fallback ctx value)
 

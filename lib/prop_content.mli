@@ -5,9 +5,10 @@ open Properties_intf
 val pp_content : content Pp.t
 (** [pp_content] is the pretty-printer for [content]. *)
 
-val normalize_content : content -> content
-(** [normalize_content c] is [c] with every quoted string folded onto [String],
-    the one serialisation a string has under minify. *)
+val normalize_content : lossless:bool -> content -> content
+(** [normalize_content ~lossless c] is [c] with every quoted string folded onto
+    [String], the one serialisation a string has under minify, and every image
+    in its normal form. *)
 
 val pp_counter_item : counter_item Pp.t
 (** [pp_counter_item] pretty-prints one [counter-reset]/[counter-increment]

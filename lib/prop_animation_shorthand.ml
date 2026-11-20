@@ -897,14 +897,15 @@ let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
     option_map_preserve
       (normalize_animation_iteration_count ~ctx)
       a.iteration_count
-  in
+  and timeline = option_map_preserve normalize_animation_timeline a.timeline in
   if
     option_is_phys_same duration a.duration
     && option_is_phys_same delay a.delay
     && option_is_phys_same timing_function a.timing_function
     && option_is_phys_same iteration_count a.iteration_count
+    && option_is_phys_same timeline a.timeline
   then a
-  else { a with duration; timing_function; delay; iteration_count }
+  else { a with duration; timing_function; delay; iteration_count; timeline }
 
 (* [pp_animation_initial_none] writes [none] for a shorthand holding nothing but
    initials, on the ground CSS Animations 1 (ED) sec. 4.9 gives: what such a

@@ -495,6 +495,15 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
       value ) ->
       value
 
+(* An unknown property's value is the token stream its minified print reads back
+   as: that print drops the separators a re-read cannot tell from none and
+   respells each number, so a value spelled two ways is one value. *)
+let normalize_opaque_components components =
+  let minified = Parser.to_string_minified_numbers components in
+  if String.equal minified (Parser.string_of_components components) then
+    components
+  else Cursor.remaining (Cursor.of_string minified)
+
 let normalize_property_value : type a.
     ?lossless:bool ->
     ?exact_srgb:bool ->
@@ -577,6 +586,7 @@ let normalize_property_value : type a.
   | Webkit_mask_position -> map_preserve normalize_position_value value
   | Text_indent -> normalize_text_indent value
   | Animation_range -> normalize_animation_range value
+  | Animation_timeline -> normalize_animation_timeline value
   | Shape_image_threshold -> normalize_shape_image_threshold value
   | Tab_size -> normalize_tab_size ~ctx value
   | Hyphenate_limit_chars -> normalize_hyphenate_limit_chars ~ctx value
@@ -662,6 +672,17 @@ let normalize_property_value : type a.
   | Flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis ~ctx value
   | Flex -> normalize_flex ~ctx value
+  | Place_content -> normalize_place_content value
+  | Grid_row_start -> normalize_grid_line value
+  | Grid_row_end -> normalize_grid_line value
+  | Grid_column_start -> normalize_grid_line value
+  | Grid_column_end -> normalize_grid_line value
+  | Grid_row -> normalize_grid_line_pair value
+  | Grid_column -> normalize_grid_line_pair value
+  | Grid_area -> normalize_grid_area value
+  | Unknown_property _ -> normalize_opaque_components value
+  | Place_items -> normalize_place_items value
+  | Position_area -> normalize_position_area value
   | Grid_template_columns -> normalize_grid_template value
   | Grid_template_rows -> normalize_grid_template value
   | Grid_template -> normalize_grid_template value
@@ -688,7 +709,9 @@ let normalize_property_value : type a.
   | Webkit_transition -> map_preserve normalize_transition value
   | Moz_transition -> map_preserve normalize_transition value
   | O_transition -> map_preserve normalize_transition value
-  | List_style -> normalize_list_style value
+  | List_style -> normalize_list_style ~lossless value
+  | List_style_type -> normalize_list_style_type value
+  | List_style_image -> normalize_list_style_image ~lossless value
   | Transition_timing_function -> normalize_timing_function value
   | Animation -> map_preserve (normalize_animation ~ctx) value
   | Webkit_animation -> map_preserve (normalize_animation ~ctx) value
@@ -802,7 +825,7 @@ let normalize_property_value : type a.
   | Vertical_align -> normalize_vertical_align value
   | Border_image -> normalize_border_image value
   | Columns -> normalize_columns_value value
-  | Content -> normalize_content value
+  | Content -> normalize_content ~lossless value
   | Column_width -> normalize_column_width value
   | Page_size -> normalize_page_size value
   | Initial_letter_wrap -> normalize_initial_letter_wrap value

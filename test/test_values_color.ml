@@ -447,8 +447,8 @@ let test_color_space () =
   neg_cursor read_color_space ""
 
 let test_hue () =
-  (* A bare hue is degrees (CSS Color 4 sec. 4.3), but [180] is another node
-     than [180deg]; normalize drops the unit, the printer writes it. *)
+  (* A bare hue is degrees (CSS Color 4, the [<hue>] type), but [180] is another
+     node than [180deg]; normalize drops the unit, the printer writes it. *)
   check_hue "180deg";
   check_hue ~expected:".5turn" "0.5turn";
   check_hue "200grad";
@@ -683,7 +683,7 @@ let test_hue_interpolation () =
 
 let test_component () =
   (* Component tests - various color component values *)
-  (* [50%] is [.5] in a [color()] channel (CSS Color 4 sec. 10.1), but another
+  (* [50%] is [.5] in a [color()] channel (CSS Color 4, the [color()] function), but another
      node: normalize scales it, the printer writes it. *)
   check_component "50%";
   check_component "128";

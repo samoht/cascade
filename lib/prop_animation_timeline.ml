@@ -18,14 +18,33 @@ let normalize_animation_range_item :
         (Named (n, option_map_preserve Values.normalize_length_percentage lp))
   | other -> other
 
-let normalize_animation_range : animation_range -> animation_range =
+(* An end of [normal], and a range name from [0%] to its own [100%], read back
+   as the start alone. *)
+let omitted_end (start : animation_range_item) (end_ : animation_range_item) =
+  match (start, end_) with
+  | _, Normal -> true
+  | Named (start_name, Some start_offset), Named (end_name, Some end_offset) ->
+      equal_animation_range_name start_name end_name
+      && Values.equal_length_percentage start_offset
+           (Pct 0. : length_percentage)
+      && Values.equal_length_percentage end_offset
+           (Pct 100. : length_percentage)
+  | _ -> false
+
+let rec normalize_animation_range : animation_range -> animation_range =
  fun value ->
   match value with
   | Range (a, b) ->
-      preserve_if_equal value
-        (Range
-           ( normalize_animation_range_item a,
-             option_map_preserve normalize_animation_range_item b ))
+      let a = normalize_animation_range_item a in
+      let b =
+        match option_map_preserve normalize_animation_range_item b with
+        | Option.Some b when omitted_end a b -> Option.None
+        | b -> b
+      in
+      preserve_if_equal value (Range (a, b))
+  | Ranges ranges ->
+      let ranges' = map_preserve normalize_animation_range ranges in
+      if ranges' == ranges then value else Ranges ranges'
   | other -> other
 
 let normalize_timeline_inset_item : timeline_inset_item -> timeline_inset_item =
@@ -96,6 +115,23 @@ let canonical_view_timeline_args args =
       in
       String.concat " " ((if axis = "block" then [] else [ axis ]) @ insets)
 
+(* CSS Scroll Animations 1, the [scroll()] and [view()] notations: they take
+   their arguments in any order and drop the defaults, so the canonical
+   arguments are the same timeline. *)
+let rec normalize_animation_timeline (value : animation_timeline) :
+    animation_timeline =
+  match value with
+  | Scroll args ->
+      let args' = canonical_scroll_timeline_args args in
+      if String.equal args args' then value else Scroll args'
+  | View args ->
+      let args' = canonical_view_timeline_args args in
+      if String.equal args args' then value else View args'
+  | Timelines timelines ->
+      let timelines' = map_preserve normalize_animation_timeline timelines in
+      if timelines' == timelines then value else Timelines timelines'
+  | _ -> value
+
 let rec pp_animation_timeline : animation_timeline Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_timeline ctx v
@@ -106,11 +142,11 @@ let rec pp_animation_timeline : animation_timeline Pp.t =
   | Name name -> pp_ident ctx name
   | Scroll args ->
       Pp.string ctx "scroll(";
-      Pp.string ctx (canonical_scroll_timeline_args args);
+      Pp.string ctx args;
       Pp.char ctx ')'
   | View args ->
       Pp.string ctx "view(";
-      Pp.string ctx (canonical_view_timeline_args args);
+      Pp.string ctx args;
       Pp.char ctx ')'
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -160,16 +196,6 @@ let rec pp_animation_range : animation_range Pp.t =
   | Var v -> pp_var pp_animation_range ctx v
   | Ranges ranges -> Pp.list ~sep:Pp.comma pp_animation_range ctx ranges
   | Range (first, None) -> pp_animation_range_item ctx first
-  | Range (first, Some Normal) -> pp_animation_range_item ctx first
-  | Range
-      ( Named (start_name, Some start_offset),
-        Some (Named (end_name, Some end_offset)) )
-    when equal_animation_range_name start_name end_name
-         && Values.equal_length_percentage start_offset
-              (Pct 0. : length_percentage)
-         && Values.equal_length_percentage end_offset
-              (Pct 100. : length_percentage) ->
-      pp_animation_range_item ctx (Named (start_name, Some start_offset))
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;
       if animation_range_needs_space ctx then Pp.space ctx ();

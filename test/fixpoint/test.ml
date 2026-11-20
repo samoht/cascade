@@ -662,48 +662,32 @@ let print_unread mode ((_, _, unread) as result) =
 
 let pending =
   [
-    (* the hue drops [deg], [xyz-d65] prints as [xyz], a [color()] percentage
-       prints as a number, relative colours rewrite their tail *)
-    "color";
     (* an authored hex keeps its digits *)
+    "color";
     "border";
     "outline";
-    (* a quoted [url()] prints unquoted, a string its other quote *)
-    "background";
-    "background-image";
+    (* a string keeps its authored quote and escapes *)
     "content";
-    "list-style-image";
-    "mask";
-    "mask-border";
     (* [ms] prints as [s] *)
     "animation-delay";
     "animation-duration";
-    "transition";
     "transition-delay";
     "transition-duration";
-    (* the reader keeps the case of [none] and the tokens of a [scroll()] or
-       [view()] timeline *)
+    (* the reader keeps the case of [none] *)
     "animation";
-    (* a [calc()] around a number goes *)
+    (* a [var()] fallback keeps its source spelling *)
+    "transition";
+    (* a [calc()] around a number goes, as does a zero [hue-rotate()] angle *)
     "filter";
     "flex";
     "opacity";
-    (* a default component goes: [span 1], [center center], an axis vector,
-       [symbolic], [nonzero], [0deg] *)
-    "animation-range";
+    (* the value is invalid or unknown, and its tokens print without
+       separators *)
     "clip-path";
-    "grid";
-    "grid-column-end";
-    "grid-column-start";
-    "grid-row-end";
-    "grid-row-start";
-    "list-style-type";
-    "position-area";
+    "font-family";
+    "foo";
     "rotate";
     (* the reader keeps the authored number ([1.0000px], [0.5em]) *)
-    "font-family";
-    (* an unknown property's tokens print without separators *)
-    "foo";
     "font-size";
     "margin";
     "margin-block";

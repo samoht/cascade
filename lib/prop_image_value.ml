@@ -33,9 +33,8 @@ let pp_image_set_option ctx { source; resolution; mime_type } =
 let rec pp_background_image : background_image Pp.t =
  fun ctx (image : background_image) ->
   match image with
-  | Url url -> Pp.url ctx url
-  | Quoted (url, quote) ->
-      if Pp.minified ctx then Pp.url ctx url else pp_quoted_url quote ctx url
+  | Url url -> Pp.url_token ctx url
+  | Quoted (url, quote) -> pp_quoted_url quote ctx url
   | Linear_gradient (dir, stops) ->
       pp_linear_gradient_named "linear-gradient" ctx (dir, stops)
   | Linear_gradient_var var_ref ->
@@ -118,6 +117,23 @@ and pp_cross_fade_option ctx { image; percent } =
       Pp.space ctx ();
       Values.pp_percentage ~always:true ctx pct)
     percent
+
+(* The quote that escapes fewer characters of [s], double on a tie. *)
+let url_quote s =
+  if String.contains s '"' && not (String.contains s '\'') then '\'' else '"'
+
+(* CSS Values 4 sec. 4.5, URLs: [url(x)] and [url("x")] are one [<url>]. The
+   normal form is the url token when [x] holds nothing that token would have to
+   escape, and the string otherwise, in the quote that escapes less. *)
+let normalize_url_image (value : background_image) : background_image =
+  match value with
+  | Url url when Common.String.url_needs_quotes url ->
+      Quoted (url, url_quote url)
+  | Quoted (url, _) when not (Common.String.url_needs_quotes url) -> Url url
+  | Quoted (url, quote) ->
+      let quote' = url_quote url in
+      if Char.equal quote quote' then value else Quoted (url, quote')
+  | _ -> value
 
 let rec normalize_background_image ?(lossless = false) :
     background_image -> background_image =
@@ -203,6 +219,14 @@ let rec normalize_background_image ?(lossless = false) :
   | List imgs ->
       preserve_if_equal value
         (List (map_preserve (normalize_background_image ~lossless) imgs))
+  | Url _ | Quoted _ -> normalize_url_image value
+  | Linear_gradient_var v ->
+      Linear_gradient_var (Values.normalize_syntax_fallback v)
+  | Radial_gradient_var v ->
+      Radial_gradient_var (Values.normalize_syntax_fallback v)
+  | Conic_gradient_var v ->
+      Conic_gradient_var (Values.normalize_syntax_fallback v)
+  | Var v -> Var (Values.normalize_syntax_fallback v)
   | other -> other
 
 let rec pp_image_orientation : image_orientation Pp.t =
