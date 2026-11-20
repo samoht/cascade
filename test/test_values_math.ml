@@ -1051,6 +1051,22 @@ let spec_math_signed_percentage_basis () =
   decl_optimizes ~prop:"transform-origin" ~into:"10% 0" "min(10%,20%) 0";
   decl_optimizes ~prop:"background-position-x" ~into:"10px" "min(10px,20px)"
 
+(* A [var()] inside a math function may substitute an operator, and CSS Values 4
+   sec. 10.1 requires whitespace on both sides of [+] and [-], so the whitespace
+   beside a [var()] there is part of the value: with [--op: -], [calc(100%
+   var(--op) 10px)] is [100% - 10px], and [calc(100%var(--op) 10px)] is invalid.
+   Chrome 153 computes 490px for the first and 500px for the second in a 500px
+   box. *)
+let spec_math_var_whitespace () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("width", "calc(100% var(--op) 10px)", "calc(100% var(--op) 10px)");
+      ("width", "calc(1px var(--op) var(--b))", "calc(1px var(--op) var(--b))");
+      ("width", "min(100% var(--op) 10px,2px)", "min(100% var(--op) 10px,2px)");
+      ("--x", "calc(100% var(--op) 10px)", "calc(100% var(--op) 10px)");
+    ]
+
 let suite =
   ( "values_math",
     [
@@ -1084,6 +1100,7 @@ let suite =
       test_case "spec math zero operands" `Quick spec_math_zero_operands;
       test_case "spec math signed percentage basis" `Quick
         spec_math_signed_percentage_basis;
+      test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
