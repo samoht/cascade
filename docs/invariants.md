@@ -142,6 +142,12 @@ implementation keeps them.
   parses the declaration after it.** An earlier declaration that a later one
   of the same element and stratum covers is what a browser paints when it
   parses the earlier and drops the later.
+- **A substitution keeps its place.** A `var()`, `env()` or `attr()` beside
+  other components may supply any number of them, commas included (CSS
+  Variables 1 sec. 3), so no component is added, dropped, merged or moved
+  around one; a component holding none may be respelled where it stands. A
+  substitution that is the whole value, or an operand of a math function,
+  yields one value and leaves the rest of the declaration free to fold.
 - **A shorthand covers what it resets.** A shorthand covers an earlier
   longhand only if it writes that longhand, reset-only sub-properties
   included.
@@ -267,6 +273,7 @@ Each row names the tests that check a statement. A browser harness under
 | Signed percentage basis | `values_math` "spec math signed percentage basis" |
 | Whitespace beside a substitution | `values_math` "spec math var whitespace" |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
+| Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run" |

@@ -283,6 +283,23 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **A value moved or dropped components around a `var()`.** `--minify`
+  treated a `var()` beside other components as one of the property's slots,
+  then filled in, dropped, merged or reordered the slots around it:
+  `flex:var(--g) 0px` became `var(--g) 1 0`, `flex:1 1 var(--b)` became
+  `1 var(--b)`, `gap:var(--a) var(--a)` became `var(--a)`,
+  `list-style:var(--a) none` became `none var(--a) none`,
+  `grid-area:var(--a) / auto / auto`, `border:var(--a) none` and
+  `transition:var(--a) 0s` lost their trailing slots,
+  `transform:translate(var(--a),0px)` lost its second argument,
+  `background:red var(--x)` moved the colour last, and
+  `rgb(var(--r),var(--g),var(--b))` lost its commas. A `var()` may supply
+  any number of components, commas included (CSS Variables 1 sec. 3), and
+  Chromium renders each pair differently for some value of the custom
+  property. Such a value is now written back with every component in place,
+  each still respelled where it stands; a `var()` that is the whole value or
+  sits inside a math function is unchanged. `cascade diff --diff=canonical`
+  no longer calls such a pair equal (#1511).
 - **The space beside a `var()` in a math function was dropped.**
   `--minify` turned `calc(100% var(--op) 10px)` into
   `calc(100%var(--op) 10px)`, in a typed declaration and in a custom property.
