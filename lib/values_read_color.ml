@@ -742,25 +742,20 @@ let rec read_color_mix t : color =
   (* Parse first color and optional percentage *)
   let color1, percent1 = read_color_mix_component t in
 
-  Cursor.comma t;
   Cursor.ws t;
-
-  (* Parse second color and optional percentage *)
-  let color2, percent2 = read_color_mix_component t in
-  Cursor.ws t;
-  (* CSS Color 5 (ED) sec. 3: [[ <color> && <percentage>? ]#], so any number of
-     items may follow. *)
-  let rec read_more acc =
+  (* CSS Color 5 (ED) sec. 3: [[ <color> && <percentage>? ]#], so one item is a
+     mix and any number may follow it. *)
+  let rec read_rest acc =
     if Cursor.peek_comma t then (
       Cursor.comma t;
       Cursor.ws t;
       let item = read_color_mix_component t in
       Cursor.ws t;
-      read_more (item :: acc))
+      read_rest (item :: acc))
     else List.rev acc
   in
-  let more = read_more [] in
-  Mix { in_space; hue; color1; percent1; color2; percent2; more }
+  let rest = read_rest [] in
+  Mix { in_space; hue; color1; percent1; rest }
 
 and read_color_mix_component t =
   (* CSS Color 5 sec. 3: a component is [<color> && <percentage>?] - the two may
@@ -977,10 +972,9 @@ and read_color t : color =
 
 let rec color_has_specified_hue = function
   | Mix { hue = Specified; _ } -> true
-  | Mix { color1; color2; more; _ } ->
+  | Mix { color1; rest; _ } ->
       color_has_specified_hue color1
-      || color_has_specified_hue color2
-      || List.exists (fun (c, _) -> color_has_specified_hue c) more
+      || List.exists (fun (c, _) -> color_has_specified_hue c) rest
   | Relative_rgb (origin, _) -> color_has_specified_hue origin
   | Relative_color (_, origin, _) -> color_has_specified_hue origin
   | Contrast_color color -> color_has_specified_hue color
@@ -996,8 +990,8 @@ let color_exists p =
     p c
     ||
     match c with
-    | Mix { color1; color2; more; _ } ->
-        go color1 || go color2 || List.exists (fun (c, _) -> go c) more
+    | Mix { color1; rest; _ } ->
+        go color1 || List.exists (fun (c, _) -> go c) rest
     | Relative_rgb (origin, _) -> go origin
     | Relative_color (_, origin, _) -> go origin
     | Light_dark (a, b) -> go a || go b
@@ -1024,7 +1018,7 @@ let color_feature_key : color -> string option = function
   | Oklch _ -> Some "css.types.color.oklch"
   | Hwb _ -> Some "css.types.color.hwb"
   | Color _ -> Some "css.types.color.color"
-  | Mix { more = []; _ } -> Some "css.types.color.color-mix"
+  | Mix { rest = [ _ ]; _ } -> Some "css.types.color.color-mix"
   | Mix _ -> Some "css.types.color.color-mix.variadic_color_arguments"
   | Relative_rgb _ -> Some "css.types.color.rgb.relative_syntax"
   | Relative_color (name, _, _) ->
