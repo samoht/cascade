@@ -248,6 +248,28 @@ let node_size_counts_nested_content () =
         (Rule_graph.node_size g (nid i)))
     rules
 
+(* Under a nesting [parent] a rule's selector is the composed one, and [&]
+   weighs as the parent does (CSS Nesting 1 sec. 3, "The Nesting Selector").
+   Under [.p], [.x.y] reads as [& .x.y] and [& &.x] counts [.p] twice: both
+   weigh (0,3,0) and may match one element, so their order decides, as Chromium
+   shows. Read raw, [&] weighs nothing and the two never tie. *)
+let selector_conflict_reads_the_composed_selector () =
+  let parent = Css.Selector.v ".p" in
+  let g =
+    Rule_graph.of_rules ~parent (rules_of ".x.y{color:red}& &.x{color:blue}")
+  in
+  Alcotest.(check bool)
+    "the composed selectors tie" true
+    (Rule_graph.node_selectors_conflict g (nid 0) (nid 1));
+  Alcotest.(check bool)
+    "against a composed selector" true
+    (Rule_graph.node_selector_conflict g
+       (Rule_graph.branches_under ~parent (Css.Selector.v ".x.y"))
+       (nid 1));
+  Alcotest.(check bool)
+    "as the conflict test reads them" true
+    (Rule_graph.conflict g (nid 0) (nid 1))
+
 let try_rewrite_preserves_residual_source_slots () =
   let g =
     Rule_graph.of_rules
@@ -1482,6 +1504,8 @@ let suite =
         refusal_names_the_first_unordered_node;
       Alcotest.test_case "node size counts nested content" `Quick
         node_size_counts_nested_content;
+      Alcotest.test_case "selector conflict reads the composed selector" `Quick
+        selector_conflict_reads_the_composed_selector;
       Alcotest.test_case "try_rewrite rejects a stale consumed node" `Quick
         try_rewrite_rejects_stale;
       Alcotest.test_case "try_rewrite rejects an out-of-range node" `Quick
