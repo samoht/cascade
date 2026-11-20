@@ -242,6 +242,7 @@ let rec normalize_length_percentage ?(strip = true) ?(non_negative = false)
          number and time families. *)
       | Val (Length v) when non_negative && negative_length v ->
           Calc (Val (Length v))
+      | Val (Pct p) when non_negative && p < 0. -> Calc (Val (Pct p))
       | Val v -> normalize_length_percentage ~strip ~non_negative ~ctx v
       | folded -> (
           match infinite_length_percentage folded with
@@ -263,7 +264,7 @@ let negative_number : number -> bool = function Num f -> f < 0. | _ -> false
    pure serialiser. Recurses so nested calls fold ([abs(hypot(3, 4))] -> [5]); a
    non-static operand keeps the call. *)
 let rec normalize_number ?(ctx = default_calc_ctx) ?(non_negative = false)
-    (n : number) : number =
+    ?(integer = false) (n : number) : number =
   (* CSS Values 4 sec. 10.12 checks the property's range on the value the whole
      calculation resolves to rather than on each operand, so the operand fold
      drops [non_negative]. *)
@@ -307,8 +308,13 @@ let rec normalize_number ?(ctx = default_calc_ctx) ?(non_negative = false)
      the reader then refuses would drop it: the arithmetic still folds, and the
      call stays around the result. A literal that was already negative is the
      reader's business, not this fold's. *)
+  (* An <integer> slot rounds a call at computed-value time too, so a call
+     folding to a fraction keeps its wrapper as well. *)
+  let is_literal = match n with Num _ -> true | _ -> false in
   match result with
   | Num f when non_negative && f < 0. && not (negative_number n) -> Calc (Num f)
+  | Num f when integer && (not is_literal) && not (Float.is_integer f) ->
+      Calc (Num f)
   | _ -> result
 
 (* Fold the value-independent parts of a [<percentage>] [calc()] ([calc(1 / 2 *

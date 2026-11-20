@@ -35,7 +35,11 @@ val normalize_length_percentage :
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
 
 val normalize_number :
-  ?ctx:Values_calc.calc_ctx -> ?non_negative:bool -> number -> number
+  ?ctx:Values_calc.calc_ctx ->
+  ?non_negative:bool ->
+  ?integer:bool ->
+  number ->
+  number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
     nested calls; an operand with a [var()] keeps the call. *)

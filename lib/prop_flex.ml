@@ -198,10 +198,19 @@ let rec normalize_flex_basis ?(ctx = default_calc_ctx) (value : flex_basis) :
   | Lh 0. ->
       Zero
   | Calc c -> (
+      (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], [0,inf], and
+         CSS Values 4 sec. 10.12 clamps a call past that range at computed-value
+         time: a call folding below zero keeps its wrapper, since the bare
+         negative literal is refused. *)
+      let negative v =
+        match flex_basis_unit v with Some (_, n) -> n < 0. | None -> false
+      in
       match static_flex_basis_calc ~ctx c with
+      | Some v when negative v -> Calc (Val v)
       | Some v -> normalize_flex_basis ~ctx v
       | None -> (
           match eval_calc ~ctx c with
+          | Val v when negative v -> Calc (Val v)
           | Val v -> normalize_flex_basis ~ctx v
           | folded -> if folded == c then value else Calc folded))
   | Dimension { value = n; unit; _ } -> (
@@ -405,7 +414,14 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Dimension { value; unit; repr } ->
       pp_length ctx (Dimension { value; unit; repr })
   | Var v -> pp_var pp_flex_basis ctx v
-  | Calc cv -> pp_calc pp_flex_basis ctx cv
+  (* Sec. 7.2.3 refuses a negative basis written bare, so a call holding one
+     keeps the wrapper that makes it a clamped value (CSS Values 4 sec.
+     10.12). *)
+  | Calc cv ->
+      pp_calc
+        ~unwrap:(fun v ->
+          match flex_basis_unit v with Some (_, n) -> n >= 0. | None -> true)
+        pp_flex_basis ctx cv
 
 let rec pp_flex : flex Pp.t =
  fun ctx -> function
@@ -740,8 +756,9 @@ let flex_basis_of_length t (length : length) : flex_basis =
 
 (* CSS Values 4 sec. 10.8 gives an operand no keyword: [auto], [content], the
    intrinsic sizes and the CSS-wide keywords are not [<calc-value>]s, so
-   [keywords] is off here and [calc(auto)] fails the way the browser drops
-   it. *)
+   [keywords] is off here and [calc(auto)] fails the way the browser drops it.
+   Sec. 10.12 checks the range on the value the calculation resolves to, so an
+   operand, the only reading with [keywords] off, takes either sign. *)
 let rec read_flex_basis_in_math t : flex_basis =
   read_flex_basis_with ~keywords:false t
 
@@ -769,7 +786,8 @@ and read_flex_basis_with ?(keywords = true) t : flex_basis =
          the intrinsic sizes the box sizes take. *)
     ~default:(fun t ->
       let size t =
-        read_length ~allow_negative:false ~sizing:true ~with_keywords:keywords t
+        read_length ~allow_negative:(not keywords) ~sizing:true
+          ~with_keywords:keywords t
         |> flex_basis_of_length t
       in
       let pos = Cursor.save t in

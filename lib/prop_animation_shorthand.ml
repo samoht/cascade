@@ -889,7 +889,12 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
    output, which is a pass too late for output that is input. *)
 let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
     animation_shorthand =
-  let duration = option_map_preserve (Values.normalize_duration ~ctx) a.duration
+  (* CSS Animations 1 sec. 3.2 gives the duration a [0s,inf] range, which a
+     folded call keeps as its wrapper (CSS Values 4 sec. 10.12). *)
+  let duration =
+    option_map_preserve
+      (Values.normalize_duration ~non_negative:true ~ctx)
+      a.duration
   and delay = option_map_preserve (Values.normalize_duration ~ctx) a.delay
   and timing_function =
     option_map_preserve normalize_timing_function a.timing_function
