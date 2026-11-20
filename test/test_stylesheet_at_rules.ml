@@ -500,7 +500,7 @@ let test_spec_snapshot_tracking_vectors () =
     ~minified:
       ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:white}}}"
     ~optimized:
-      ".card{color:var(--fg);@media(prefers-color-scheme:dark){&{color:#fff}}}";
+      ".card{color:var(--fg)}@media(prefers-color-scheme:dark){.card{color:#fff}}";
   neg_cursor read "@layer reset,,base;";
   check_stylesheet ~expected:"@container card (){.card{color:red}}"
     "@container card () { .card { color: red } }";

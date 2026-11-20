@@ -206,9 +206,9 @@ between the two guards does not reopen it either.
   @supports(nonsense-a:1px){@layer x{.r{top:0}}}
 
 A style rule between the two guards does not reopen it either: it selects
-elements, and the UA's answer is the same for all of them. Dropping the inner
-guard leaves its declaration in the rule that held it, after the declaration
-already there.
+elements, and the UA's answer is the same for all of them. The default targets
+read no nesting, so the rule is flattened first; dropping the inner guard then
+leaves two [.r] rules side by side, and they merge.
 
   $ cat > through-rule.css <<EOF
   > @supports (nonsense-a: 1px) {
@@ -219,7 +219,7 @@ already there.
   > }
   > EOF
   $ cascade --minify through-rule.css
-  @supports(nonsense-a:1px){.r{top:0;left:0}}
+  @supports(nonsense-a:1px){.r{left:0;top:0}}
 
 
 # Controls: conditions that must not move

@@ -266,11 +266,11 @@ let test_large_stylesheet_normalizes_vendor_aliases () =
   Alcotest.(check string)
     "large-sheet aliases compare normalized values" once (minify_str once)
 
-(* A rule whose nested blocks are merged before its declaration runs are
-   hoisted: hoisting [--b:1] back into the rule's own declarations leaves the
-   two [@supports] blocks adjacent, and nothing merged them until the output was
-   optimized again. The padding takes the sheet past the size where the pipeline
-   makes more than one pass. *)
+(* A declaration run written after a nested [@supports] block, and each
+   declaration directly in one, is a nested declarations rule (CSS Nesting 1
+   sec. 3.4 and 5), flattened in place under any targets. The padding takes the
+   sheet past the size where the pipeline makes more than one pass, and the
+   flattened rules come out of the first one as they come out of the second. *)
 let test_large_stylesheet_hoist_rejoins_blocks () =
   let padding =
     List.init 129 (fun i -> Fmt.str ".hoist-padding-%d{order:%d}" i i)
@@ -283,14 +283,15 @@ let test_large_stylesheet_hoist_rejoins_blocks () =
   in
   let once = minify_str input in
   Alcotest.(check bool)
-    "the hoisted declarations leave one block" true
+    "the nested declarations flatten in place" true
     (Astring.String.is_prefix
        ~affix:
-         ".p{--a:1;--b:1;@supports(color:color-mix(in \
-          lab,red,red)){--a:2;--b:2}}"
+         ".p{--a:1}@supports(color:color-mix(in \
+          lab,red,red)){.p{--a:2}}.p{--b:1}@supports(color:color-mix(in \
+          lab,red,red)){.p{--b:2}}"
        once);
   Alcotest.(check string)
-    "hoisting then merging converges in one pass" once (minify_str once)
+    "flattening converges in one pass" once (minify_str once)
 
 (* A distant [@media] merge takes the block between [.a] and [.b] away, which
    joins the two rule runs it separated. The factoring had read them apart, so
@@ -368,6 +369,7 @@ let test_nesting_then_factoring_converges () =
      #ebebeb;display:none;min-width:960px;opacity:0;position:fixed;top:-359px;width:100%;z-index:500}#p \
      form{_width:850px}#k{cursor:default;display:none;margin-top:1px}"
   in
+  let minify_str = minify_str ~targets:nesting_targets in
   let once = minify_str input in
   Alcotest.(check bool)
     "the rules nesting leaves neighbours share their declaration" true
@@ -653,22 +655,23 @@ let test_distant_media_merge () =
     (minify_str
        "@media (width>=1px){a{background-color:red}}a{background:blue}@media \
         (width>=1px){a{background-color:green}}");
-  (* CSS Nesting 1 sec. 3.4: a declaration written after a nested rule stays
-     behind it, so the run between the two blocks is one more rule with the
+  (* CSS Nesting 1 sec. 3.4 and 5: a declaration written after a nested rule
+     stays behind it, as a nested declarations rule, flattened under any
+     targets, so the run between the two blocks is one more rule with the
      enclosing selector. Hoisting the second block over it would compute blue
      where the source computes green. *)
   Alcotest.(check string)
     "keeps blocks apart across a conflicting nested declarations run"
-    ".a{@media(width>=1px){color:red}color:#00f;@media(width>=1px){color:green}}"
+    "@media(width>=1px){.a{color:red}}.a{color:#00f}@media(width>=1px){.a{color:green}}"
     (minify_str
        ".a{@media (width>=1px){color:red}color:blue;@media \
         (width>=1px){color:green}}");
   (* The run sets another property, so nothing an element computes depends on
-     the order: the blocks still merge, and the disjoint run rejoins the rule's
-     own declarations. *)
+     the order: the blocks still merge, and the later colour overrides the
+     earlier one inside the merged block. *)
   Alcotest.(check string)
     "merges across a nested declarations run that sets another property"
-    ".a{outline-color:#00f;@media(width>=1px){color:red;color:green}}"
+    "@media(width>=1px){.a{color:green}}.a{outline-color:#00f}"
     (minify_str
        ".a{@media (width>=1px){color:red}outline-color:blue;@media \
         (width>=1px){color:green}}");
@@ -676,7 +679,7 @@ let test_distant_media_merge () =
      the merge stands. *)
   Alcotest.(check string)
     "merges adjacent blocks inside a rule"
-    ".a{@media(width>=1px){color:red;color:green}color:#00f}"
+    "@media(width>=1px){.a{color:green}}.a{color:#00f}"
     (minify_str
        ".a{@media (width>=1px){color:red}@media \
         (width>=1px){color:green}color:blue}")
@@ -1071,7 +1074,7 @@ let test_no_merge_with_nested () =
         [ Css.Declaration.padding [ Px 10. ] ];
     ]
   in
-  let optimized = stylesheet input in
+  let optimized = stylesheet ~targets:nesting_targets input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
   let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
   let has_bar = Astring.String.is_infix ~affix:".bar{" output_str in

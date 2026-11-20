@@ -10,7 +10,7 @@ preserves the var() reference for non-descendant uses.
   > .other { color: var(--c) }
   > EOF
   $ cascade --minify --inline-vars scoped-decl.css
-  .theme{--c:red;.descendant{color:red}}.other{color:var(--c)}
+  .theme{--c:red}.theme .descendant{color:red}.other{color:var(--c)}
 
 A nested rule's selector is its parent's composed as CSS Nesting 1 sec. 3
 composes it. A type selector parent goes inside [:is()] (Selectors 4 sec.
@@ -33,7 +33,7 @@ branches.
   > .a, .b { --c: red; .x { color: var(--c) } }
   > EOF
   $ cascade --minify --inline-vars list-scope.css
-  .a,.b{.x{color:red}}
+  :is(.a,.b) .x{color:red}
   $ cat > list-branch.css <<EOF
   > .a, .b { --c: red }
   > .a .x { color: var(--c) }
