@@ -435,8 +435,8 @@ let spec_math_result_type () =
   decl_optimizes ~prop:"width" ~into:"5px" "hypot(3px,4px)";
   (* [line-height] is <number> | <length-percentage>, so the length the call
      answers is one of its types and the call stands, where the same call at an
-     <opacity-value> does not. *)
-  decl_optimizes ~prop:"line-height" ~into:"calc(abs(-1px))" "abs(-1px)";
+     <opacity-value> does not; it folds to the length it resolves to. *)
+  decl_optimizes ~prop:"line-height" ~into:"1px" "abs(-1px)";
   decl_optimizes ~prop:"line-height" ~into:"2" "abs(-2)";
   (* Sec. 10.1 puts [calc()] among the math functions rather than above them, so
      the wrapped spelling answers the same type and lands the same way. *)
