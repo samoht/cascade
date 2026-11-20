@@ -268,15 +268,18 @@ let test_inline_warns_for_an_at_rule_reference () =
 
 let test_inline_keep_vars_calc_identity () =
   (* A kept theme var stays a live reference, but [* 1] still simplifies: [p-1]
-     expands to [calc(var(--spacing) * 1)], which must collapse to
-     [var(--spacing)] (Tailwind's form). A kept var can take any tokens at
-     runtime, so [* 0] keeps it (CSS Values 4 sec. 10.10.1): under
-     [--spacing:1px + 2px], Chromium 153 pads [calc(var(--spacing) * 0)] by 1px.
-     Value resolution ([* n], n >= 2) keeps the multiplication too. *)
+     expands to [calc(var(--spacing) * 1)], which drops the factor and keeps the
+     [calc()]. The var substitutes tokens at runtime, and the [calc()] is what
+     makes them arithmetic: under [--spacing:1px 2px], Chromium 153 drops
+     [padding:calc(var(--spacing))] (0px) and reads [padding:var(--spacing)] as
+     two lengths (2px). A kept var can take any tokens at runtime, so [* 0]
+     keeps it (CSS Values 4 sec. 10.10.1): under [--spacing:1px + 2px], Chromium
+     153 pads [calc(var(--spacing) * 0)] by 1px. Value resolution ([* n], n >=
+     2) keeps the multiplication too. *)
   let inline css = parse css |> Css.inline_vars ~keep_vars:[ "spacing" ] in
   Alcotest.(check string)
-    "kept var times one folds to the operand"
-    ":root{--spacing:.25rem}.p{padding:var(--spacing)}"
+    "kept var times one drops the factor"
+    ":root{--spacing:.25rem}.p{padding:calc(var(--spacing))}"
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 1)}"));
   Alcotest.(check string)
