@@ -27,13 +27,7 @@ names the test or type that holds it, or says it is a convention only.
   factoring buckets on, so the first `--minify` pass merges what a second
   would. `test/fixpoint` holds this over every typed declaration its corpora
   read ("normal form"), and its `spellings` corpus holds the second pass
-  still. The reader itself may keep an authored spelling the printer does not
-  write back (`#ffffff`, `500ms`); the "values" pending list there names
-  those. Open gaps: an authored number past eight decimals, which the printer
-  rounds and normalize keeps (`width:33.33333333333333%` and
-  `width:33.33333333%`), and a custom property's tokens, which the printer
-  respells and CSS Variables 1 sec. 4.1 keeps normalize away from
-  (`--x:1.0px` and `--x:1px`).
+  still.
 - **Type-changing rewrites fire only at typed leaves.** The number/percentage
   swap and zero-unit stripping are normalize rewrites at an operand whose whole
   type is known: a bare value, or a math function with no `var()` in it. CSS
@@ -88,13 +82,11 @@ names the test or type that holds it, or says it is a convention only.
   holds only under both properties. Held by "optimize preserves physical
   identity on a fixed point" in `test/test_optimize.ml` and in
   `fuzz/fuzz_optimize.ml`, and by "equal_declaration agrees with compare" in
-  `fuzz/fuzz_declaration.ml`. The same constructor caches `Declaration.size`,
-  the length of the minified print under default flags. `--lossless` and
-  `--enforce-spec` can print a declaration longer, never shorter: an oklch
-  chroma of `.304` prints `76%` by default and `.304` under either flag, and
-  `--enforce-spec` keeps a family name's quotes. Under those flags factoring's
-  cost model under-counts, and can leave unmade a merge that would save
-  bytes.
+  `fuzz/fuzz_declaration.ml`.
+- **A cost model weighs the bytes the run prints.** Factoring, its preflight
+  and the rule graph weigh a declaration by the length of its minified print
+  under the run's own `--lossless` and `--enforce-spec`, which choose some
+  spellings (an oklch chroma's `76%` or `.304`, a family name's quotes).
 - **The canonical diff is the optimizer plus a projection.** Each side runs
   `Css.optimize ~regroup:false`, judged for the default targets unless
   `--enforce-spec` (`?judge`). Then come `Css.flatten_nesting`, the optimizer
@@ -113,9 +105,6 @@ names the test or type that holds it, or says it is a convention only.
     as a whole colour value outside `@keyframes`, `@starting-style` and a rule
     that transitions it (CSS Color 4 sec. 4.4 and 13.3); emission keeps
     `none`, which interpolates differently;
-  - a repeating quotient against its six-figure value (`calc(1/3*100%)`
-    against `33.3333%`), bar `--lossless`, the budget `--minify` already
-    spends on a number; the minifier keeps the authored `calc()`;
   - under `--lossless`, `color(srgb ...)` on whole bytes against its `rgb()`,
     hex or named spelling; `--lossless` emission keeps the authored function;
   - a run of `@property` rules sorted by name, keeping the last registration
@@ -128,21 +117,19 @@ names the test or type that holds it, or says it is a convention only.
     the CSSOM lists, and `--enforce-spec` keeps an alias for an engine that
     reads only the prefix.
 
-  Each equates two values the specs make equal, or, for the quotient, two that
-  render alike within that budget. Emission declines each for the reason its
-  item gives. Beyond the optimizer's own deduplication, the projection deletes
-  only what no browser reads differently: an `@supports` guard that never
-  holds (CSS Conditional 3 sec. 6.1), a superseded registration or layer name,
-  and, only when judging, a prefix no target reads. The `Tree_diff` comparison
-  key (`Css.declaration_value_for_equivalence`) may likewise equate values the
+  Each equates two values the specs make equal, and emission declines each for
+  the reason its item gives. Beyond the optimizer's own deduplication, the
+  projection deletes only what no browser reads differently: an `@supports`
+  guard that never holds (CSS Conditional 3 sec. 6.1), a superseded
+  registration or layer name, and, only when judging, a prefix no target
+  reads. The `Tree_diff` comparison key
+  (`Css.declaration_value_for_equivalence`) may likewise equate values the
   optimizer must not fold on emission, provided their type is proven. A
   phantom canonical difference on equal content is a projection gap in
   `rule_order.ml` or `rule_trace.ml`, not a renderer bug. Held by
   `test/test_css_compare_structure.ml` (for one, "not all and (X) is not a
   difference against not (X)") and by `test/render` "canonical_agree" (a pair
-  the projection calls identical paints one page in Chromium). Open gaps: the
-  two normal-form gaps above, which reach the projection as two declarations
-  with one print, and shorthand composition after the trace (next bullet).
+  the projection calls identical paints one page in Chromium).
 - **The canonical projection is confluent.** It reads a run of style rules as
   the trace of its declarations: an entry per declaration under its selector
   and conditions, two entries ordered only where swapping them side by side
@@ -159,11 +146,8 @@ names the test or type that holds it, or says it is a convention only.
   two writes of one property wherever they stand. The projection compares
   declarations by node and reads them in normal form: the optimizer hands it
   normal forms, and the declaration it builds for an alias is normalised
-  before it is compared. One pass around the trace still reads one rule at a
-  time and is an open gap: shorthand composition after it, which can move a
-  declaration past an untyped one the trace orders it against. Held by
-  `fuzz/fuzz_rule_order.ml` ("independent rules commute", "adjacent
-  occurrences fold", "independent moves converge").
+  before it is compared. Held by `fuzz/fuzz_rule_order.ml` ("independent rules
+  commute", "adjacent occurrences fold", "independent moves converge").
 - **Judge may delete only what every browser at or above the floors
   ignores.** A target version is a floor: that release and every later one.
   The canonical comparison judges for the default targets (`?judge`), and a
@@ -228,7 +212,5 @@ These hold for the source tree:
   declaration table above. Configuration is threaded as arguments. Convention
   only; no lint checks it.
 - **The optimizer matches the typed property GADT, never property-name
-  strings.** Convention only, and not yet complete: `narrowable` in
-  `lib/rule_trace.ml` and `lib/shorthand_coverage.ml` read a vendor prefix
-  from a leading `-` in the name, and `legacy_name_alias_of` in
-  `lib/shorthand_dedup.ml` maps the WHATWG legacy alias names as strings.
+  strings.** A longhand that parses as `Unknown_property` is typed first.
+  Convention only; no lint checks it.
