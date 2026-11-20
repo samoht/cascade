@@ -702,7 +702,14 @@ let canonical_nested_and_flattened_selectors_are_equal () =
   Alcotest.(check bool)
     "different flattened selectors remain distinct" false
     (equal ".long-component-name{color:red;&:hover{color:blue}}"
-       ".long-component-name{color:red}.long-component-name:focus{color:blue}")
+       ".long-component-name{color:red}.long-component-name:focus{color:blue}");
+  (* CSS Nesting 1 sec. 4: [&] cannot represent a pseudo-element, so the nested
+     [&] rule leaves [p::before] red in Chromium 153 where the flat one turns it
+     blue. *)
+  Alcotest.(check bool)
+    "[&] under a pseudo-element is not the pseudo-element" false
+    (equal {|p::before{content:"x";color:red;&{color:blue}}|}
+       {|p::before{content:"x";color:blue}|})
 
 (* A zero-specificity nested branch ties with its parent, so the two orders are
    both cascade-significant and the projection has to place a movable at-rule
