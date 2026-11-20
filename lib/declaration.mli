@@ -224,7 +224,9 @@ val hash : declaration -> int
 
 val size : declaration -> int
 (** [size decl] is the length of [decl]'s minified rendering, cached at
-    construction: [String.length (Pp.to_string ~minify:true pp decl)]. *)
+    construction: [String.length (Pp.to_string ~minify:true pp decl)]. It is
+    taken with [lossless] and [enforce_spec] unset; either flag can print [decl]
+    longer, never shorter. *)
 
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
