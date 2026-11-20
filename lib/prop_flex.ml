@@ -215,9 +215,13 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
   | Grow f ->
       let f' = normalize_flex_factor f in
       if f' == f then value else Grow f'
-  | Basis b ->
-      let b' = normalize_flex_basis ~ctx b in
-      if b' == b then value else Basis b'
+  | Basis b -> (
+      (* CSS Flexbox 1 sec. 7.2 reads a lone unitless number as the grow factor,
+         so a zero basis on its own keeps a length unit. *)
+      match (normalize_flex_basis ~ctx b, b) with
+      | Zero, Px 0. -> value
+      | Zero, _ -> Basis (Px 0.)
+      | b', _ -> if b' == b then value else Basis b')
   | Grow_shrink (g, s) ->
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
@@ -407,6 +411,9 @@ let rec pp_flex : flex Pp.t =
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Grow f -> pp_flex_factor ctx f
+  (* Sec. 7.2 reads a lone [0] as the grow factor, so a lone zero basis has no
+     unitless spelling and prints as the zero length it stands for. *)
+  | Basis Zero -> Pp.unit ctx 0. "px"
   | Basis fb -> pp_flex_basis ctx fb
   | Grow_shrink (grow, shrink) ->
       pp_flex_factor ctx grow;

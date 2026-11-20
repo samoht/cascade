@@ -264,6 +264,12 @@ differently. They are the reason to minify again.
   `123456789.1234568`. A quote inside `local("...")` ended the string early.
   Each now prints a value that reads back as the one written (#1280, #1300,
   #1351, #1368, #1369).
+- **A lone zero flex basis became a grow factor.** `flex:0px`, `flex:0em` and
+  `flex:calc(0px)` became `flex:0`, with or without `--enforce-spec`.
+  Chromium reads `flex:0` as grow 0 over a `0%` basis, where the source is grow
+  1 over a `0px` basis. A lone unitless number in `flex` is the grow factor
+  (CSS Flexbox 1 sec. 7.2), so a zero basis on its own now keeps its unit
+  (#1459).
 - **An `@import` after a `/*! */` comment was dropped.** So was one after an
   unrecognised at-rule, though browsers apply both. They are kept. An `@import`
   after an `@namespace`, and an `@namespace` after a rule, go, as browsers

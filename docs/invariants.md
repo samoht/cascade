@@ -20,7 +20,12 @@ change that breaks one is a defect even when every test passes.
   every operand's spelling, and so does a `var()` fallback; lexical number
   formatting still applies there. The readers keep a percentage a
   percentage until then (`v4109_percentage_beside_var` in
-  `test/test_stylesheet_calc.ml`).
+  `test/test_stylesheet_calc.ml`). Zero-unit stripping also stops where the
+  grammar reads a bare `0` as another type. CSS Flexbox 1 sec. 7.2 reads a
+  lone number in `flex` as the grow factor, so normalize leaves `flex:0px` and
+  never builds a lone `Zero` basis. That node has no spelling of its own, and
+  pp prints it as `0px` (`properties_layout` "flex", `optimize_declarations`
+  "target minify and enforce-spec split").
 - **A custom property is single-valued only by `@property` registration**,
   never by inference from a definition's value. A `calc()` identity that drops
   an operand (`x * 0`, `0 * x`) folds only over an operand with no `var()`, or
