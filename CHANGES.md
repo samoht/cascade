@@ -520,6 +520,12 @@ differently. They are the reason to minify again.
   another slot. Two boxes now print as one only when they are one box,
   `no-clip` is read, and longhands merge into a shorthand only when they spell
   one layer with no `var()` (#1492).
+- **An `ellipse()` lost a radius.** `clip-path:ellipse(10px closest-side)`
+  was minified to `ellipse(10px)`, which Chromium rejects, so the clip
+  disappeared, and `ellipse(closest-side farthest-side)` and
+  `ellipse(var(--v) closest-side)` broke the same way. An omitted size is
+  `closest-side` on both axes (CSS Shapes 1 sec. 3.1), so the radii now drop
+  only as that pair (#1493).
 
 #### Stable output
 
