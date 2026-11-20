@@ -1316,6 +1316,21 @@ let engine_implements engine version key =
       in
       Some (engine_has shipped version)
 
+let engine_shipped engine key =
+  match
+    match Hashtbl.find_opt (Lazy.force table) key with
+    | Some s -> Some s
+    | None -> Hashtbl.find_opt (Lazy.force measured_table) key
+  with
+  | None -> None
+  | Some (support : Baseline.support) ->
+      Some
+        (match engine with
+        | Chrome -> support.chrome
+        | Firefox -> support.firefox
+        | Safari -> support.safari
+        | Ios_safari -> support.safari_ios)
+
 let last_segment key =
   match String.rindex_opt key '.' with
   | None -> key
