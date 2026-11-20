@@ -574,7 +574,8 @@ let spec_property_grammar_table_expansion () =
             (Some "font-size:clamp(1rem,2vw,2rem)", None)
         | "transform", "translateX(10px) rotate(45deg) scale(1.2)" ->
             (Some "transform:translateX(10px)rotate(45deg)scale(1.2)", None)
-        | "rotate", "1 0 0 45deg" -> (Some "rotate:x 45deg", None)
+        | "rotate", "1 0 0 45deg" ->
+            (Some "rotate:45deg 1 0 0", Some "rotate:x 45deg")
         | "font", "italic small-caps bold 16px/1.5 serif" ->
             ( Some "font:italic small-caps bold 16px/1.5 serif",
               Some "font:italic small-caps 700 16px/1.5 serif" )

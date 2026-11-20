@@ -190,10 +190,11 @@ let spec_keyword_case_insensitive () =
     ~upper:".a{color:color-mix(IN srgb,red,blue)}"
     ~lower:".a{color:color-mix(in srgb,red,blue)}";
   (* CSS Values 4 sec. 4.5.1 writes a [<url>] as the [url()] name over a
-     [<string>], or as the url-token a URL with nothing to quote spells
-     shorter. *)
+     [<string>]. The url-token a URL with nothing to quote spells shorter is
+     another node, which normalize reaches; [to_string] writes this one. *)
   pins "background url()" ~upper:".a{background:URL(\"a.png\")}"
-    ~lower:".a{background:url(\"a.png\")}" ~expect:".a{background:url(a.png)}";
+    ~lower:".a{background:url(\"a.png\")}"
+    ~expect:".a{background:url(\"a.png\")}";
   (* CSS Paged Media 3 sec. 4.3: a [<pseudo-page>] comes from the closed set
      [first | left | right | blank], so it is a keyword and not a page name. *)
   pins "@page pseudo-page" ~upper:"@page :FIRST{margin:1in}"
