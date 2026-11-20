@@ -140,7 +140,7 @@ let pp_blur_length ctx (length : length) =
       match Values.calc_length_unit value with
       | Some (_, n) when n < 0. ->
           (* The calculation clamps to zero; a negative literal is invalid. *)
-          Pp.call "calc" pp_length { ctx with in_calc = true } value
+          Pp.call "calc" pp_length ctx value
       | _ -> pp_length ctx length)
   | _ -> pp_length ctx length
 

@@ -172,6 +172,13 @@ where it is called. Each entry says what to write there.
   reason (see [Comparing stylesheets](#comparing-stylesheets)). An exhaustive
   match over `property` needs the two cases, and code that found either among
   the unknown properties finds it typed (#1440, #1442).
+- **`Properties.opacity` and `Properties.shape_image_threshold` keep a
+  percentage.** Both read `50%` as the number `.5`, so a percentage beside a
+  `var()` lost its type (see [Rendering fixes](#rendering-fixes)). They have an
+  `Opacity_percentage` and a `Percentage` case, holding the percentage as
+  written (`50.` for `50%`). An exhaustive match over either type needs the
+  new case; `Css.optimize` turns it into the number wherever no `var()` shares
+  the calculation (#1456).
 - **`Stats` reports only what the optimizer did.** A factoring run records one
   row, so `Stats.iteration_stat`'s `local_iteration` and `active_passes` were
   always 1, and its `iteration` and `Stats.counters`'s `iterations` repeated
@@ -266,6 +273,14 @@ differently. They are the reason to minify again.
   them: `background:#fff url(a.png) no-repeat center` lost its image and colour
   to a later `background-position` and `background-size`. It is now kept.
   Default output is unchanged (#1348).
+- **A percentage beside a `var()` became a number.**
+  `opacity:calc(100% - var(--x))` was minified to `calc(1 - var(--x))`, which
+  a browser drops at computed-value time: with `--x:30%` Chromium shows the
+  source at .7 opacity and the output at full opacity. The same held for the
+  SVG opacities and `shape-image-threshold`, and `cascade diff
+  --diff=canonical` called the two spellings identical. CSS Values 4 sec. 10.9
+  types a calculation by its operands, so a percentage now becomes its number
+  only where no `var()` shares the calculation (#1456).
 
 #### Stable output
 

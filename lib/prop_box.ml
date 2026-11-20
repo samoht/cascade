@@ -421,11 +421,12 @@ let rec pp_zoom : zoom Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_zoom ctx v
 
-(* Opacity as a float (0.0-1.0). Tailwind's minifier writes percentages as
-   decimals (50% -> .5), so minified output emits decimals to match. *)
+(* A pure serialiser: [normalize_opacity] turns a percentage into the number it
+   denotes wherever the operand's type is known. *)
 let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
+  | Opacity_percentage f -> Pp.pct ctx f
   | Calc c -> pp_calc pp_opacity ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -434,19 +435,19 @@ let rec pp_opacity : opacity Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_opacity ctx v
 
-(* Inside an [opacity] [calc()], a raw [<number>] / [<percentage>] is modelled
-   at the calc level as the [Num x] node rather than [Val (Opacity_number x)].
-   The [_dim_only] reader excludes the unitless alternative so
-   [read_calc_factor] falls through to its own [Num] path, matching the
-   [<number-percentage>] convention. *)
+(* Inside an [opacity] [calc()], a raw [<number>] is modelled at the calc level
+   as the [Num x] node and a [<percentage>] as [Val (Opacity_percentage x)]. The
+   [_dim_only] reader excludes the unitless alternative so [read_calc_factor]
+   falls through to its own [Num] path, matching the [<number-percentage>]
+   convention. *)
 let rec read_opacity_dim_only t : opacity =
   Cursor.ws t;
   Cursor.one_of
     [
-      (* A [<percentage>] operand is the number it denotes (50% = 0.5), matching
-         how a bare opacity percentage parses. A raw [<number>] is excluded so
-         [read_calc] falls through to its own [Num] path. *)
-      (fun t -> (Opacity_number (Cursor.pct t /. 100.) : opacity));
+      (* A [<percentage>] operand keeps its type: beside a [var()] it is not the
+         number it denotes. A raw [<number>] is excluded so [read_calc] falls
+         through to its own [Num] path. *)
+      (fun t -> (Opacity_percentage (Cursor.pct t) : opacity));
       (fun t ->
         (* CSS Values 4 sec. 10.8 gives an operand no keyword, so the CSS-wide
            keywords are left out and [calc(inherit)] fails the way the browser
@@ -467,14 +468,11 @@ let rec read_opacity t : opacity =
   in
   let read_number_or_percentage t =
     let n, unit = Cursor.number_with_unit t in
-    let value =
-      match unit with
-      | Some "%" -> n /. 100.
-      | Some unit ->
-          Cursor.err_invalid t (String.concat "" [ "opacity unit: "; unit ])
-      | None -> n
-    in
-    Opacity_number value
+    match unit with
+    | Some "%" -> Opacity_percentage n
+    | Some unit ->
+        Cursor.err_invalid t (String.concat "" [ "opacity unit: "; unit ])
+    | None -> Opacity_number n
   in
   Cursor.enum_or_calls "opacity"
     [
@@ -497,6 +495,7 @@ let rec read_opacity t : opacity =
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
  fun ctx -> function
   | Number n -> Pp.float ctx n
+  | Percentage n -> Pp.pct ctx n
   | Calc c -> pp_calc pp_shape_image_threshold ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -505,14 +504,14 @@ let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_shape_image_threshold ctx v
 
-(* A [<percentage>] operand of a [shape-image-threshold] math function is the
-   number it denotes (50% = .5), and a raw [<number>] is left to [read_calc]'s
-   own [Num] path, the way [opacity] reads the same [<opacity-value>]. *)
+(* A [<percentage>] operand of a [shape-image-threshold] math function keeps its
+   type, and a raw [<number>] is left to [read_calc]'s own [Num] path, the way
+   [opacity] reads the same [<opacity-value>]. *)
 let rec read_threshold_dim_only t : shape_image_threshold =
   Cursor.ws t;
   Cursor.one_of
     [
-      (fun t -> (Number (Cursor.pct t /. 100.) : shape_image_threshold));
+      (fun t -> (Percentage (Cursor.pct t) : shape_image_threshold));
       (fun t ->
         (* Sec. 10.8 again: no keyword is a [<calc-value>]. *)
         Cursor.enum_or_calls "shape-image-threshold"
@@ -538,7 +537,7 @@ let rec read_shape_image_threshold t : shape_image_threshold =
   let read_number t : shape_image_threshold =
     let n, unit = Cursor.number_with_unit t in
     match unit with
-    | Some "%" -> Number (n /. 100.)
+    | Some "%" -> Percentage n
     | Some unit ->
         Cursor.err_invalid t
           (String.concat "" [ "shape-image-threshold unit: "; unit ])
@@ -1262,46 +1261,83 @@ let rec read_object_view_box t : object_view_box =
    * 1)] -> [calc(var(--x))], [calc(10 / 2)] -> [5]), keeping any [var()]. The
    printer is a pure serialiser, so these AST-level folds replace the numeric /
    identity reduction the printer did under minify. *)
-(* A [<percentage>] operand parsed inside an opacity [calc()] is the number it
-   denotes ([Val (Opacity_number f)] = [f]); drop the [Val] wrapper so the
-   generic numeric fold combines it like any other number. *)
-let rec flatten_opacity_pct (c : opacity Values.calc) : opacity Values.calc =
+(* [calc_has_var has_var c] is [true] when [c] holds a [var()], at the calc
+   level or inside a leaf ([has_var]). *)
+let rec calc_has_var has_var (c : _ Values.calc) =
   match c with
-  | Values.Val (Opacity_number f) -> Values.Num f
-  | Values.Nested inner -> Values.Nested (flatten_opacity_pct inner)
-  | Values.Parens inner -> Values.Parens (flatten_opacity_pct inner)
-  | Values.Expr (l, op, r) ->
-      Values.Expr (flatten_opacity_pct l, op, flatten_opacity_pct r)
-  | _ -> c
+  | Values.Val v -> has_var v
+  | Values.Nested inner | Values.Parens inner -> calc_has_var has_var inner
+  | Values.Expr (l, _, r) -> calc_has_var has_var l || calc_has_var has_var r
+  | leaf -> Values.calc_contains_var leaf
 
-(* The same fold [opacity] gets, for the same [<opacity-value>]: a percentage
-   leaf is the number it denotes, so a constant expression over percentages
-   reduces to one number rather than staying a call over two. *)
-let rec flatten_threshold_pct (c : shape_image_threshold Values.calc) :
-    shape_image_threshold Values.calc =
-  match c with
-  | Values.Val (Number f) -> Values.Num f
-  | Values.Nested inner -> Values.Nested (flatten_threshold_pct inner)
-  | Values.Parens inner -> Values.Parens (flatten_threshold_pct inner)
-  | Values.Expr (l, op, r) ->
-      Values.Expr (flatten_threshold_pct l, op, flatten_threshold_pct r)
-  | _ -> c
+(* An [<opacity-value>] is [<number> | <percentage>] with [100%] = [1] (CSS
+   Color 4 sec. 3.2), so where the whole operand's type is known a percentage
+   leaf becomes the number it denotes and the generic numeric fold combines it.
+   CSS Values 4 sec. 10.9 types a math function by its operands, and a [var()]
+   operand substitutes a type of its own: beside one, [100%] and [1] retype the
+   sum differently, so a tree holding a [var()] keeps every leaf. *)
+let numbers_for_percentages ~number ~has_var (c : 'a Values.calc) :
+    'a Values.calc =
+  let rec go (c : 'a Values.calc) : 'a Values.calc =
+    match c with
+    | Values.Val v -> (
+        match number v with Some f -> Values.Num f | None -> c)
+    | Values.Nested inner -> Values.Nested (go inner)
+    | Values.Parens inner -> Values.Parens (go inner)
+    | Values.Expr (l, op, r) -> Values.Expr (go l, op, go r)
+    | _ -> c
+  in
+  if calc_has_var has_var c then c else go c
 
-let normalize_shape_image_threshold (v : shape_image_threshold) :
+let rec threshold_has_var : shape_image_threshold -> bool = function
+  | Var _ -> true
+  | Calc c -> calc_has_var threshold_has_var c
+  | Number _ | Percentage _ | Inherit | Initial | Unset | Revert | Revert_layer
+    ->
+      false
+
+let threshold_number : shape_image_threshold -> float option = function
+  | Number f -> Some f
+  | Percentage f -> Some (f /. 100.)
+  | Calc _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+
+let rec normalize_shape_image_threshold (v : shape_image_threshold) :
     shape_image_threshold =
   match v with
+  | Percentage f -> Number (f /. 100.)
   | Calc c -> (
-      match Values.eval_calc (flatten_threshold_pct c) with
+      let c =
+        numbers_for_percentages ~number:threshold_number
+          ~has_var:threshold_has_var c
+      in
+      match Values.eval_calc c with
       | Values.Num f -> Number f
-      | Values.Val value -> value
+      | Values.Val value -> normalize_shape_image_threshold value
       | folded -> Calc folded)
   | _ -> v
 
-let normalize_opacity (o : opacity) : opacity =
+let rec opacity_has_var : opacity -> bool = function
+  | Var _ -> true
+  | Calc c -> calc_has_var opacity_has_var c
+  | Opacity_number _ | Opacity_percentage _ | Inherit | Initial | Unset | Revert
+  | Revert_layer ->
+      false
+
+let opacity_number : opacity -> float option = function
+  | Opacity_number f -> Some f
+  | Opacity_percentage f -> Some (f /. 100.)
+  | Calc _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+
+let rec normalize_opacity (o : opacity) : opacity =
   match o with
+  | Opacity_percentage f -> Opacity_number (f /. 100.)
   | Calc c -> (
-      match Values.eval_calc (flatten_opacity_pct c) with
+      let c =
+        numbers_for_percentages ~number:opacity_number ~has_var:opacity_has_var
+          c
+      in
+      match Values.eval_calc c with
       | Values.Num f -> Opacity_number f
-      | Values.Val v -> v
+      | Values.Val v -> normalize_opacity v
       | folded -> Calc folded)
   | _ -> o

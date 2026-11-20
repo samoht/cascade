@@ -13,9 +13,14 @@ change that breaks one is a defect even when every test passes.
   `Declaration.hash` invariant (same minified text, same hash) that factoring
   buckets on, and keeps `optimize` a fixed point.
 - **Type-changing rewrites fire only at typed leaves.** The number/percentage
-  swap and zero-unit stripping are suppressed inside math-function value
-  operands (`ctx.in_calc`) and `var()` fallbacks (`ctx.in_function`); lexical
-  number formatting still applies there.
+  swap and zero-unit stripping are normalize rewrites at an operand whose whole
+  type is known: a bare value, or a math function with no `var()` in it. CSS
+  Values 4 sec. 10.9 types a math function by its operands, and a `var()`
+  supplies its type only at substitution. A math function holding one keeps
+  every operand's spelling, and so does a `var()` fallback; lexical number
+  formatting still applies there. The readers keep a percentage a
+  percentage until then (`v4109_percentage_beside_var` in
+  `test/test_stylesheet_calc.ml`).
 - **A custom property is single-valued only by `@property` registration**,
   never by inference from a definition's value.
 - **Source-token fidelity is not a contract.** The AST carries no raw-text

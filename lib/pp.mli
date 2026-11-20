@@ -34,10 +34,6 @@ type ctx = {
   in_function : bool;
       (** Whether inside a CSS function (var fallback, color-mix). Affects
           keyword casing: [currentColor] becomes [currentcolor]. *)
-  in_calc : bool;
-      (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
-          boundary ([calc] is type-aware so [<percentage>] and [<number>] are
-          not interchangeable). *)
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)

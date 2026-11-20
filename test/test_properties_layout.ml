@@ -994,14 +994,18 @@ let test_opacity () =
   check_opacity ~expected:".5" "0.5";
   check_opacity "1";
   check_opacity "0";
-  (* A <percentage> operand inside an opacity calc() is the number it denotes
-     (50% = .5), so the calc parses (was rejected) and folds like any number. *)
-  check_opacity ~expected:"calc(.5*2)" "calc(50% * 2)";
-  decl_optimizes ~prop:"opacity" ~held:"calc(.5*2)" ~into:"1" "calc(50% * 2)";
-  decl_optimizes ~prop:"opacity" ~held:"calc(.5 + .25)" ~into:".75"
+  (* A <percentage> operand inside an opacity calc() reads as a percentage and
+     prints back as one. Without a var() the whole operand's type is known, so
+     it folds to the number it denotes (50% = .5). CSS Values 4 sec. 10.9 types
+     a calc() by its operands, so beside a var() it stays: with [--x:30%],
+     Chromium 153 drops [calc(50% * var(--x))] at computed-value time (opacity
+     1) and computes [calc(.5 * var(--x))] to .15. *)
+  check_opacity ~expected:"calc(50%*2)" "calc(50% * 2)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(50%*2)" ~into:"1" "calc(50% * 2)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(50% + 25%)" ~into:".75"
     "calc(50% + 25%)";
-  decl_optimizes ~prop:"opacity" ~held:"calc(.5*var(--x))"
-    ~into:"calc(.5*var(--x))" "calc(50% * var(--x))";
+  decl_optimizes ~prop:"opacity" ~held:"calc(50%*var(--x))"
+    ~into:"calc(50%*var(--x))" "calc(50% * var(--x))";
   neg_cursor read_opacity "invalid-opacity";
   (* CSS Values 4 sec. 11.4 gives [abs()]/[sign()] exactly one [<calc-sum>]
      argument; [Cursor.call] did not require the reader to consume its whole

@@ -703,14 +703,12 @@ let spec_generated_box_layout_edges () =
      so a value outside the range still reads. *)
   check_shape_image_threshold "-1";
   check_shape_image_threshold "2";
-  check_value_cursor "shape_image_threshold" read_shape_image_threshold
-    pp_shape_image_threshold ~expected:".5" "50%";
+  check_shape_image_threshold "50%";
   (* CSS Values 4 sec. 10.1 puts a math function wherever its type is, and
      [opacity] reads the same [<opacity-value>] that way already. Chrome 153
      takes each of these. *)
   check_shape_image_threshold "calc(.2 + .3)";
-  check_value_cursor "shape_image_threshold" read_shape_image_threshold
-    pp_shape_image_threshold ~expected:"calc(.5 + .25)" "calc(50% + 25%)";
+  check_shape_image_threshold "calc(50% + 25%)";
   check_shape_image_threshold ~expected:".2" "min(.2,.8)";
   neg_cursor read_shape_image_threshold "2px";
   check_tab_size "4";

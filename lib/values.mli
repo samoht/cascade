@@ -863,6 +863,10 @@ val eval_calc : ?ctx:calc_ctx -> 'a calc -> 'a calc
     length arithmetic) is the caller's job. With [~ctx], a [Nested] / [Parens]
     around a single-valued [Var] leaf is also unwrapped (see {!calc_ctx}). *)
 
+val calc_contains_var : 'a calc -> bool
+(** [calc_contains_var c] is [true] when [c] holds a [var()] at the calc level
+    or inside a math function; a [Val] leaf counts as none. *)
+
 val calc_identity :
   zero:'a calc ->
   is_zero:('a -> bool) ->
