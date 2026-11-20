@@ -756,9 +756,13 @@ let text_vendor_alias_twin vendor twin =
               (Declaration.string_of_value ~minify:true vendor)
           with
           | Ok read ->
-              String.equal
-                (Declaration.string_of_value ~minify:true read)
-                (Declaration.string_of_value ~minify:true twin)
+              (* The value as read keeps the copy's spelling ([1 0 0%] for the
+                 twin's [1 0]); its normal form is the one the twin holds. *)
+              let value d =
+                Declaration.string_of_value ~minify:true
+                  (Declaration.normalize ~lossless:true d)
+              in
+              String.equal (value read) (value twin)
           | Error _ -> false)
       | _ -> false)
   | _ -> false
