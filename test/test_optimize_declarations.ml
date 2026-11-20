@@ -816,6 +816,19 @@ let floor_fallbacks_survive () =
     "a{counter-reset:x;counter-reset:reversed(x)}";
   check_modes "a reversed counter alone" "a{counter-reset:reversed(x) 3}"
     "a{counter-reset:reversed(x) 3}";
+  (* CSS Fragmentation 3 sec. 3.1: [always] forces a break in the innermost
+     fragmentation context, a column in a multicol container, and [page] a page
+     break, so neither is the other. web-features records [break-before:always]
+     in Firefox alone; Chrome and Safari drop it and paint [auto]. *)
+  check_modes "always is not page" "a{break-before:always}"
+    "a{break-before:always}";
+  check_modes "break-before:always" "a{break-before:auto;break-before:always}"
+    "a{break-before:auto;break-before:always}";
+  check_modes "break-after:always" "a{break-after:auto;break-after:always}"
+    "a{break-after:auto;break-after:always}";
+  (* The legacy alias maps [always] to [page] (sec. 3.4). *)
+  check_modes "page-break-before:always" "a{page-break-before:always}"
+    "a{break-before:page}";
   Alcotest.(check bool)
     "a fallback in an earlier rule of the selector" true
     (Astring.String.is_infix ~affix:"width:1px"
