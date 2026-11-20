@@ -1,139 +1,209 @@
 # Invariants
 
-These hold across the printer, the optimizer and the canonical comparison. A
-change that breaks one is a defect even when every test passes.
+This page specifies what cascade preserves when it minifies a stylesheet and
+what the canonical comparison promises. Code that departs from a statement
+here is a bug in the code. [Evidence](#evidence) maps each statement to the
+tests that check it, and [design.md](design.md) records how the
+implementation keeps them.
 
-- **pp is a serializer.** `to_string`, pretty or minified, prints the node it
-  is given and picks only among spellings that parse to the same node (`.5`,
-  `#fff`, `:before`, whitespace). Anything that changes the node (`#f00` to
-  `red`, `scale(x,x)` to `scale(x)`, `calc` folding, `0deg` to `0`) is an
-  AST rewrite in the optimizer's normalize pass. The litmus is
-  `parse(A) = parse(B)`, not whether the code is gated on minify. Dropping a
-  `url()`'s quotes, `center center` to `center`, `flex:1 1 0%` to `flex:1`
-  and a computed float to the eight decimals the printer writes are such
-  rewrites too. The AST holds a `<string>` or a url as the string it names,
-  never its source spelling, bar an image's url, which also records whether it
-  was quoted until normalize settles that. Every printer writes one through
-  `Pp.quoted_string`, `Pp.url` or, for an image url held bare,
-  `Pp.url_token` (CSSOM 1 sec. 2.1, serialize a string and serialize a URL),
-  so it reads back as that string whatever it holds (`pp` "string printers
-  round-trip", fuzz `pp` "string printers read back").
-- **Normalize reaches a normal form.** For a typed declaration `d` with
-  `n = normalize d`, `normalize n = n`, and reading `n`'s print back,
-  minified or pretty, and normalising gives `n` again. Two normal forms with
-  one minified text are then one node with one `Declaration.hash`, which
-  factoring buckets on, so the first `--minify` pass merges what a second
-  would. `test/fixpoint` holds this over every typed declaration its corpora
-  read ("normal form"), and its `spellings` corpus holds the second pass
-  still. The reader itself may keep an authored spelling the printer does not
-  write back (`#ffffff`, `500ms`); the "values" pending list there names
-  those. Open gaps: an authored number past eight decimals, which the printer
-  rounds and normalize keeps (`width:33.33333333333333%` and
-  `width:33.33333333%`), and a custom property's tokens, which the printer
-  respells and CSS Variables 1 sec. 4.1 keeps normalize away from
-  (`--x:1.0px` and `--x:1px`).
-- **Type-changing rewrites fire only at typed leaves.** The number/percentage
-  swap and zero-unit stripping are normalize rewrites at an operand whose whole
-  type is known: a bare value, or a math function with no `var()` in it. CSS
-  Values 4 sec. 10.9 types a math function by its operands, and a `var()`
-  supplies its type only at substitution. A math function holding one keeps
-  every operand's spelling, and so does a `var()` fallback; lexical number
-  formatting still applies there. The readers keep a percentage a
-  percentage until then (`v4109_percentage_beside_var` in
-  `test/test_stylesheet_calc.ml`). Zero-unit stripping also stops where the
-  grammar reads a bare `0` as another type. CSS Flexbox 1 sec. 7.2 reads a
-  lone number in `flex` as the grow factor, so normalize leaves `flex:0px` and
-  never builds a lone `Zero` basis. That node has no spelling of its own, and
-  pp prints it as `0px` (`properties_layout` "flex", `optimize_declarations`
-  "target minify and enforce-spec split"). A property's range binds only a
-  literal: CSS Values 4 sec. 10.12 clamps a math function past it at
-  computed-value time, so a reader takes every operand and result of either
-  sign, a comparison folded at read time stays a calculation, and a fold keeps
-  the wrapper around a result the bare literal could not spell (`values_math`
-  "spec math range every family").
-- **A custom property is single-valued only by `@property` registration**,
-  never by inference from a definition's value. A `calc()` identity that drops
-  an operand (`x * 0`, `0 * x`) folds only over an operand with no `var()`, or
-  over a `<number>` or `<integer>` registration, which substitutes one number
-  (`v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`,
-  `calc_zero_product_registered_number` in
-  `test/test_optimize_boundaries.ml`). `x * 1` and `x / 1` keep `x` whatever it
-  substitutes, but not the `calc()` or parentheses around it. `Css.Context` and
-  `--inline-vars` keep those around an unresolved `var()`
-  (`runtime_var_keeps_its_calc` in `test/test_context_eval.ml`), and the
-  optimizer drops a nested one only around a single-valued registration.
-- **Source-token fidelity is not a contract.** The AST carries no raw-text
-  sidecars for byte-identical round trips.
-- **The canonical diff inherits the optimizer.** It compares optimize+minify
-  output and gets no comparison-only normalization of its own; the one
-  exception is the `Tree_diff` comparison key
-  (`Css.declaration_value_for_equivalence`), which may equate values the
-  optimizer must not fold on emission, provided their type is proven.
-  A phantom canonical difference on equal content is a projection gap in
-  `rule_order.ml` or `rule_trace.ml`, not a renderer bug.
-- **The canonical projection is confluent.** It reads a run of style rules as
-  the trace of its declarations: an entry per declaration under its selector
-  and conditions, two entries ordered only where swapping them side by side
-  could change a computed value, and the form printed is a function of that
-  partial order and the entries' text. Where the run's rules begin and end,
-  which occurrences of a selector were folded and in which order, never reach
-  it. A fact that frees a pair by reading a third entry (a slot a later write
-  of the group rewrites, a later twin of one in the other's group) never rests
-  on an entry the projection drops: an entry is dropped only when it is
-  redundant in the run's own order and no such fact about another entry of its
-  group is read off it, so the order of what is left is that order less the
-  entry. A legacy name alias (WHATWG Compatibility Standard sec. 3.4.1) reads
-  as its property before the trace, so `-webkit-transform` and `transform` are
-  two writes of one property wherever they stand. The projection compares
-  declarations by node and reads them in normal form: the optimizer hands it
-  normal forms, and the declaration it builds for an alias is normalised
-  before it is compared. One pass around the trace
-  still reads one rule at a time and is an open gap: shorthand composition
-  after it, which can move a declaration past an untyped one the trace orders
-  it against.
-- **Judge may delete only what every browser at or above the floors
-  ignores.** A target version is a floor: that release and every later one.
-  The canonical comparison judges for the default targets (`?judge`), and a
-  deletion it makes on that ground holds for every browser at or above them,
-  not only for the floor versions. A floor that implements a production
-  answers for the releases after it, so a `@supports` guard every floor
-  satisfies is unwrapped. A floor that lacks one says nothing about them, so
-  a guard no floor satisfies stays unless the data shows the feature never
-  ships. The web-features dataset never shows that. `Supports.implemented_by`
-  answers the question; `equal_canonical_targets` in
-  `test/test_css_compare_structure.ml` holds it (`field-sizing` and
-  `anchor-name` guards separate, `not (display:grid)` does not).
-- **A fallback is dead only when every browser at or above the floors that
-  reads it reads the declaration after it.** An earlier declaration that a
-  later one of the same selector covers is what a browser paints when it reads
-  it and drops the later one at parse time. The minifier and the judge decide that through one function,
-  `Declaration.fallback_for`, asked of the same floors (`Ctx.floors`) by
-  in-rule deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
-  shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
-  projection's shadowing (`Rule_order`). So whatever the minifier deletes the
-  judge also counts dead, which the release criterion assumes. The minifier
-  keeps more: without a judge it also keeps the fallback before a CSS Color 4
-  colour or a runtime substitution. `floor_fallbacks_survive` in
-  `test/test_optimize_declarations.ml` and `equal_canonical_targets` hold it.
-- **Two selectors share a list only when every browser at or above the floors
-  drops both or neither.** A browser drops a whole list over a selector it
-  does not parse (Selectors 4 sec. 3.9). A selector a floor reads is read
-  from then on; one a floor drops may be read from a later release, so
-  `Merge.compatible` lists two such selectors only when every engine ships
-  them in the same release, and one whose production no release ships lists
-  only with selectors waiting on the same productions.
-  `test_compatible_past_the_floors` in `test/test_merge.ml` holds it.
-- **Rule rewrites that move source order reason about overlap.** Factoring a
-  default value into a shared block keeps a rule's own declaration when an
-  earlier overlapping rule writes a different value. Nesting synthesis is
-  adjacent-only, within one cascade context, with an exact selector extension
-  under a non-list parent, and only when it shortens the output. Byte savings
-  never justify a rewrite that is not cascade-safe.
-- **`--enforce-spec` never emits output every browser renders differently.**
-  It drops browser-target facts; it does not license spec literalism
-  (`flex:1 1 0` stays in both modes).
-- **`` `Stylesheet `` scope closes over the CSS text, not the runtime.**
-  Rewrites needing writing mode, direction or runtime custom-property values
-  stay forbidden in every scope.
-- **Speed on real stylesheets is a requirement.** A slow path on realistic
-  input is a defect.
+## Definitions
+
+- **B, the browser set.** In the default mode, B is every release of each
+  target engine from its floor to the newest release in the compatibility data
+  cascade ships, under default settings. The floors are Chrome 111, Firefox
+  128, Safari 16.4 and iOS Safari 16.4. B is dated and finite, so a deletion made
+  on target grounds is checked again when the data is refreshed. Under
+  `--enforce-spec`, B is every conforming implementation, and no rewrite or
+  deletion rests on what a particular browser parses.
+- **Parses and types.** A browser *parses* a rule, selector or declaration
+  when it keeps it after its own error recovery. Cascade *types* a declaration
+  when its reader gives it a property and a value of that property's grammar;
+  a declaration it does not type is kept as an opaque token sequence.
+- **Observational equality over B.** Two stylesheets are observationally equal
+  when, for every HTML document, every surrounding context (sheets before and
+  after, inline styles, the UA sheet) and every environment (viewport, media,
+  user preferences, interaction state), every browser in B gives every element
+  and pseudo-element the same used values at rest and the same interpolation
+  (transitions, animations, gradients, `color-mix()`), up to the bounds of
+  [M6](#master-guarantees). CSSOM text, the spelling `getPropertyValue` and
+  `getComputedStyle` return, is not part of it. A custom property's token
+  stream is the exception and is preserved as written apart from whitespace,
+  because `var()` substitutes it and its spelling can change rendering
+  (`--z:1.0` is not an `<integer>`).
+- **Cascade stratum.** CSS Cascade 5 sec. 6.1 sorts two declarations of one
+  property on one element by origin and importance, context, element-attached
+  styles, layer, specificity and order of appearance. A stratum is a set of
+  declarations equal on every criterion but the last, so order of appearance
+  decides only inside a stratum.
+- **Independence.** Two declarations are independent when no element can
+  match both under both sets of conditions, or when they write no common
+  longhand. A shorthand writes every sub-property, reset-only ones included,
+  and a flow-relative property writes every physical property it can map to.
+- **Assumptions.** Documents are HTML. Three opt-in flags add a hypothesis
+  about the page: `--scope=stylesheet` that the input is the whole author CSS,
+  `--closed-world` that no element matches two selectors whose rules conflict,
+  and `--inline-vars` that no script changes the custom properties it inlines.
+  None of them fixes the writing mode, the direction or any other runtime
+  value. Each guarantee below holds under the hypotheses of the flags given.
+
+## Master guarantees
+
+- **M1.** `--minify` output is observationally equal over B to its input, in
+  every context, for every objective.
+- **M2.** `cascade diff --diff=canonical` exits 0 only when the two inputs are
+  observationally equal over B. A reported difference may paint nothing;
+  over-reporting is allowed and each case is a defect to reduce.
+- **M3.** The canonical form of a sheet equals the canonical form of its
+  `--minify` output. This checks that minifier and comparator agree, not that
+  either is right; the browser is the oracle for both.
+- **M4.** `--minify` is idempotent, `minify (minify S) = minify S`, and
+  deterministic: one input and one set of flags give one output.
+- **M5.** The objective (`transfer` or `raw`) only chooses among
+  observationally equal outputs.
+- **M6.** A number is equal up to six significant figures and a colour up to
+  the fold budget (0.002 ΔE<sub>OK</sub>, functional alpha to three
+  decimals). Each bound is chosen so that no browser in B paints a different
+  pixel. `--lossless` sets every bound to zero. The comparator applies the
+  same bounds and none looser.
+
+## Lexical layer
+
+- **The printer round-trips.** Reading the print of a node, pretty or
+  minified, gives that node back. A spelling the printer chooses (`.5`,
+  `#fff`, `:before`, elided whitespace) is one that reads back as the same
+  node; a rewrite that changes the node (`#f00` to `red`, `calc` folding,
+  `flex:1 1 0%` to `flex:1`) belongs to normalisation, not to the printer.
+  The pretty printer writes back the spelling the author wrote where the node
+  keeps it (`0.90rem`, `#0000FF`).
+- **Token boundaries are safe.** Elided whitespace never joins two tokens into
+  one or splits one into two.
+- **Strings, URLs and idents read back as the value they name.** Each is
+  written escaped as CSSOM 1 sec. 2.1 serialises a string, a URL and an
+  identifier, whatever characters it holds.
+- **A custom property's token stream is written as read**, apart from
+  whitespace (CSS Variables 1 sec. 2.1 and 4.1).
+
+## Value layer
+
+- **Normalisation preserves observational equality and is idempotent.** For a
+  typed declaration `d` and `n = normalize d`, `normalize n = n`, and reading
+  `n`'s print back and normalising gives `n`. Two spellings of one value reach
+  one normal form, so the first `--minify` merges what a second would.
+- **A zero loses its unit only where the grammar reads it as a length.** A
+  bare `0` replaces a zero length only at a whole `<length>` slot with no
+  `<number>` or `<percentage>` alternative. CSS Flexbox 1 sec. 7.1 reads a
+  unitless zero in `flex` as a flex factor, so `flex:0px` keeps its unit.
+- **A number and a percentage swap only at a slot whose type is known.** A
+  math function takes its type from its operands (CSS Values 4 sec. 10.9),
+  and a `var()` supplies its type only at substitution, so a math function
+  holding a `var()`, and a `var()` fallback, keep every operand's type.
+- **A property's range binds only a literal.** CSS Values 4 sec. 10.12 clamps
+  a math function past the range at computed-value time, so a math function
+  of either sign is kept, and a fold keeps the wrapper around a result the
+  bare literal could not spell.
+- **A custom property is single-valued only by `@property` registration.** A
+  `calc()` identity that drops an operand (`x * 0`) folds only over an operand
+  with no `var()` or over a `<number>` or `<integer>` registration.
+- **A colour keeps its interpolation class.** CSS Color 4 sec. 13.3
+  interpolates two legacy sRGB colours in gamma-encoded sRGB and other colours
+  in Oklab, so a colour that can be interpolated keeps a spelling of its
+  class. A missing component (`none`) folds to zero only where the colour is
+  not interpolated (sec. 4.4 and 13.4).
+
+## Declaration layer
+
+- **A fallback is dead only when every browser in B that parses it also
+  parses the declaration after it.** An earlier declaration that a later one
+  of the same element and stratum covers is what a browser paints when it
+  parses the earlier and drops the later.
+- **A shorthand covers what it resets.** A shorthand covers an earlier
+  longhand only if it writes that longhand, reset-only sub-properties
+  included.
+- **`!important` moves a declaration to another stratum.** Deduplication and
+  shorthand composition never combine a normal and an important declaration.
+- **Logical and physical pairs keep their order.** A flow-relative property
+  and a physical property it can map to are not independent, since the
+  writing mode and direction decide which slot they share.
+
+## Rule layer
+
+- **Order matters only inside a stratum between rules that are not
+  independent.** A rewrite may move a rule past any rule it is independent of,
+  and past none other.
+- **Selectors share a list only when every browser in B parses both or
+  neither.** A browser drops a whole list over a selector it does not parse
+  (Selectors 4 sec. 3.9).
+- **Nesting is emitted only where every browser in B parses it.** Nesting is
+  neither synthesised nor relaxed into a form an older member of B misreads.
+- **At-rules keep their identity.** Of two `@keyframes` of one name in one
+  layer the last wins, so dropping the earlier is safe and merging them is
+  not. Every `@font-face` adds a face, so none is dropped for another.
+  `@import` rules keep their order and position. A layer declared inside a
+  conditional group rule contributes its order only when the condition holds
+  (CSS Cascade 5 sec. 6.4.3).
+
+## Target layer
+
+- **A guard is unwrapped only if it holds in every browser in B, and deleted
+  only if it fails in every browser in B.** `not` reverses a leaf, so a
+  feature true from the floor makes `not (feature)` false from that release
+  on. A `<general-enclosed>` term is false (CSS Conditional 3 sec. 6).
+- **A vendor-prefixed declaration is deleted only if no browser in B needs
+  it**, and one a browser in B needs is added beside its unprefixed twin.
+- **Nothing untyped is dropped.** What cascade cannot type is never assumed
+  dropped by a browser in B. A declaration the reader refuses and some browser
+  in B parses is a reader bug.
+
+## Modes
+
+- **Default.** B as defined above, every bound as M6 states it.
+- **`--enforce-spec`** makes B every conforming implementation: a rewrite
+  rests only on what the specifications prove equal, and guards, prefixes,
+  fallbacks and rules over a pseudo-class no target reads are kept.
+- **`--lossless`** sets every approximation bound to zero.
+- **`--scope=stylesheet`, `--closed-world` and `--inline-vars`** add the
+  hypotheses under [Assumptions](#definitions) and keep B.
+- **`--flatten-nesting`** keeps B and removes nesting from the output.
+
+## Non-goals
+
+- CSSOM text, apart from a custom property's token stream.
+- Byte identity with the input, comments included.
+- `@scope` proximity: a rewrite does not reason about it, so `@scope` blocks
+  are opaque to it.
+
+## Evidence
+
+Each row names the tests that check a statement. A browser harness under
+`test/render` or `test/spec/browser` skips without a headless Chromium.
+
+| Statement | Held by |
+|---|---|
+| M1 | `test/render` "render_diff" (each transform paints the source's page in Chromium); the [release criterion](reference.md#release-criteria) |
+| M2 | `test/render` "canonical_agree" (a pair called identical paints one page); `test/test_css_compare_structure.ml` |
+| M3 | The release criterion, over 504 SatCSS sheets and Tailwind's output under both objectives |
+| M4 | `test/fixpoint` (its `spellings` corpus holds the second pass still); `optimize_factor` "pp minify is idempotent"; `test/test_optimize.ml` "optimize preserves physical identity on a fixed point" |
+| M5 | The release criterion, run under both objectives |
+| M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; the css-minify-tests colour fixtures |
+| Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
+| Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
+| Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back" |
+| Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |
+| Normalisation | `test/fixpoint` "normal form" |
+| Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
+| Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
+| Range | `values_math` "spec math range every family" |
+| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
+| Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
+| Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
+| `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
+| Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
+| Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
+| Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml` |
+| Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
+| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
+| Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Nothing untyped dropped | `test/spec/browser/accept_set`; `test/render/parse_recovery` |
+| Modes | `optimize_declarations` "target minify and enforce-spec split" |
+| Assumptions | Convention only: no test exercises a page that breaks a hypothesis |

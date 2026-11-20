@@ -147,8 +147,9 @@ Changes: 1 modified rule
 - `tree` compares only the structure, so formatting changes do not count.
 - `string` compares the text.
 - `canonical` minifies both sides the same way and compares the results. Two
-  stylesheets are the same when every element would get the same computed
-  values, however the rules are written, grouped or ordered. Like the
+  stylesheets are the same when every target browser gives every element the
+  same used values and the same transitions and animations, however the rules
+  are written, grouped or ordered. Like the
   minifier, it assumes current browsers and allows the same rounding;
   `--enforce-spec` and `--lossless` turn those off.
 
