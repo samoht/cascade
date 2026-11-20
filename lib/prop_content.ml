@@ -6,6 +6,12 @@ open Properties_intf
 open Prop_common
 open Prop_image
 
+let pp_counter_style_arg ctx = function
+  | Option.None -> ()
+  | Some style ->
+      Pp.comma ctx ();
+      Prop_list.pp_list_style_type ctx style
+
 let rec pp_content : content Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -21,14 +27,18 @@ let rec pp_content : content Pp.t =
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
-  | Counter name -> Pp.call "counter" pp_ident ctx name
+  | Counter { name; style } ->
+      Pp.string ctx "counter(";
+      pp_ident ctx name;
+      pp_counter_style_arg ctx style;
+      Pp.char ctx ')'
   | String_ref name -> Pp.call "string" pp_ident ctx name
-  | Counters (name, separator) ->
+  | Counters { name; separator; style } ->
       Pp.string ctx "counters(";
       pp_ident ctx name;
-      Pp.char ctx ',';
-      Pp.space ctx ();
+      Pp.comma ctx ();
       Pp.quoted_string ctx separator;
+      pp_counter_style_arg ctx style;
       Pp.char ctx ')'
   | Content_list items -> Pp.list ~sep:Pp.space pp_content ctx items
   | Inherit -> Pp.string ctx "inherit"
@@ -47,6 +57,10 @@ let rec pp_content : content Pp.t =
 let rec normalize_content (c : content) : content =
   match c with
   | Quoted { value; _ } -> String value
+  (* CSS Lists 3 sec. 4.6: an omitted counter style is [decimal]. *)
+  | Counter { name; style = Some Decimal } -> Counter { name; style = None }
+  | Counters { name; separator; style = Some Decimal } ->
+      Counters { name; separator; style = None }
   | Content_list items ->
       let items' = List.map normalize_content items in
       if List.equal ( == ) items items' then c else Content_list items'
@@ -93,13 +107,22 @@ let read_content_string t =
   | Some (value, quote, repr) -> Quoted { value; quote; repr }
   | None -> Cursor.err_expected t "string"
 
+let read_counter_style_arg inner =
+  Cursor.ws inner;
+  if Cursor.comma_opt inner then (
+    Cursor.ws inner;
+    let style = Prop_list.read_counter_style inner in
+    Cursor.ws inner;
+    Some style)
+  else Option.None
+
 let read_content_counter t =
   Cursor.call "counter" t (fun inner ->
       Cursor.ws inner;
       let name = Cursor.ident inner in
-      Cursor.ws inner;
+      let style = read_counter_style_arg inner in
       Cursor.expect_eof inner;
-      Counter name)
+      (Counter { name; style } : content))
 
 let read_content_string_ref t =
   Cursor.call "string" t (fun inner ->
@@ -117,9 +140,9 @@ let read_content_counters t =
       Cursor.comma inner;
       Cursor.ws inner;
       let separator = Cursor.string inner in
-      Cursor.ws inner;
+      let style = read_counter_style_arg inner in
       Cursor.expect_eof inner;
-      (Counters (name, separator) : content))
+      (Counters { name; separator; style } : content))
 
 let rec read_content_attr t =
   Cursor.call "attr" t (fun inner ->

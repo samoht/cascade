@@ -209,8 +209,11 @@ let content_string value = (String value : content)
 let content_attr name =
   (Attr { name; type_ = None; fallback = No_fallback } : content)
 
-let content_counter name = (Counter name : content)
-let content_counters name separator = (Counters (name, separator) : content)
+let content_counter ?style name = (Counter { name; style } : content)
+
+let content_counters ?style name separator =
+  (Counters { name; separator; style } : content)
+
 let content_list items = (Content_list items : content)
 let columns_count count = (Count count : columns_value)
 let columns_width width = (Width width : columns_value)

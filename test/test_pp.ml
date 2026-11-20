@@ -435,7 +435,7 @@ let quotes_case =
     }
 
 let content_strings : Properties.content -> string list = function
-  | String s | Quoted { value = s; _ } | Counters (_, s) -> [ s ]
+  | String s | Quoted { value = s; _ } | Counters { separator = s; _ } -> [ s ]
   | _ -> []
 
 let content_cases =
@@ -461,7 +461,9 @@ let content_cases =
     Case
       {
         name = "counters separator";
-        make = (fun s : Properties.content -> Counters ("c", s));
+        make =
+          (fun s : Properties.content ->
+            Counters { name = "c"; separator = s; style = None });
         pp = Properties.pp_content;
         read = Properties.read_content;
         strings = content_strings;
