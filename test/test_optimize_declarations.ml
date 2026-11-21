@@ -718,10 +718,11 @@ let unknown_at_rule_body_is_compacted () =
    hazard bit for this: sharing one makes a rule holding the slice answer for a
    neighbour holding the source. *)
 let test_border_keeps_longhands_beside_a_border_image () =
-  let minify_str css =
+  let minify_str ?(scope = `Stylesheet) css =
     match Css.of_string ~strict:false css with
     | Ok p ->
-        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+        Css.to_string ~minify:true (Css.optimize ~scope p.stylesheet)
+        |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
   (* A NEIGHBOUR holding one is the hazard, and each longhand needs its OWN bit
@@ -732,11 +733,57 @@ let test_border_keeps_longhands_beside_a_border_image () =
     "c,f{border-width:1px;border-style:solid;border-color:red}a,f{border-image-slice:2}b,c{border-image-source:url(x.png)}"
     (minify_str
        "a{border-image-slice:2}c{border-image-source:url(x.png);border-width:1px;border-style:solid;border-color:red}b{border-image-source:url(x.png)}f{border-image-slice:2;border-width:1px;border-style:solid;border-color:red}");
-  (* With no border-image longhand anywhere there is nothing to reset, so the
-     contraction is the shorter spelling of the same cascade. *)
+  (* With no border-image longhand anywhere in the whole sheet there is nothing
+     to reset, so the contraction is the shorter spelling of the same cascade.
+     In the default scope another sheet may hold one, so the longhands stay. *)
   Alcotest.(check string)
     "and contracts with none of them present" "a{border:1px solid red}"
-    (minify_str "a{border-width:1px;border-style:solid;border-color:red}")
+    (minify_str "a{border-width:1px;border-style:solid;border-color:red}");
+  Alcotest.(check string)
+    "but not where another sheet may hold one"
+    "a{border-width:1px;border-style:solid;border-color:red}"
+    (minify_str ~scope:`Fragment
+       "a{border-width:1px;border-style:solid;border-color:red}")
+
+(* Under [--scope=stylesheet] the neighbour holding a [border-image] value may
+   sit in another block: a rule inside [@media] reaches the same elements as one
+   outside it, so the [border] reset would drop its value there too. Four side
+   shorthands holding one line value are [border] less that reset (CSS
+   Backgrounds 3 sec. 4.4), so they contract under the same condition. *)
+let test_border_reset_reads_every_block () =
+  let minify_str css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true
+          (Css.optimize ~scope:`Stylesheet p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  let image = "@media print{.x{border-image:url(a.png) 30}}" in
+  let sides =
+    "border-top:1px solid red;border-right:1px solid red;border-bottom:1px \
+     solid red;border-left:1px solid red"
+  in
+  Alcotest.(check string)
+    "the longhands stay beside a conditional border-image"
+    "@media \
+     print{.x{border-image:url(a.png)30}}.y{border-width:1px;border-style:solid;border-color:red}"
+    (minify_str
+       (image ^ ".y{border-width:1px;border-style:solid;border-color:red}"));
+  Alcotest.(check string)
+    "and so do the sides"
+    ("@media print{.x{border-image:url(a.png)30}}.y{" ^ sides ^ "}")
+    (minify_str (image ^ ".y{" ^ sides ^ "}"));
+  Alcotest.(check string)
+    "the sides contract with no border-image anywhere" "a{border:1px solid red}"
+    (minify_str ("a{" ^ sides ^ "}"));
+  Alcotest.(check string)
+    "but not over different values"
+    ".y{border-top:1px solid red;border-right:1px solid red;border-bottom:1px \
+     solid red;border-left:2px solid red}"
+    (minify_str
+       ".y{border-top:1px solid red;border-right:1px solid \
+        red;border-bottom:1px solid red;border-left:2px solid red}")
 
 let test_shorthand_drops_the_longhand_it_resets () =
   let minify_str css =
@@ -1158,6 +1205,9 @@ let suite =
       ( "border keeps longhands beside a border-image",
         `Quick,
         test_border_keeps_longhands_beside_a_border_image );
+      ( "border reset reads every block",
+        `Quick,
+        test_border_reset_reads_every_block );
       ( "lossless keeps shorthand longhand order",
         `Quick,
         test_lossless_keeps_shorthand_longhand_order );

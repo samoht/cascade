@@ -14,6 +14,12 @@ val compose_border_via_index :
     would drop a held value, and {!Shorthand_common.resets_held} refuses the
     rest. *)
 
+val compose_border_sides_via_index :
+  ctx:Ctx.t -> bi_hazard:(int -> important:bool -> bool) -> Rule_index.t -> unit
+(** [compose_border_sides_via_index ~ctx ~bi_hazard idx] absorbs every run of
+    the four side shorthands of [idx] holding one line value into [border], as
+    {!val-compose_border_via_index}. *)
+
 val compose_line_via_index : Rule_index.t -> unit
 (** [compose_line_via_index idx] absorbs every width/style/colour run of [idx]
     into its line shorthand ([border-<edge>], [border-block], [border-inline],
