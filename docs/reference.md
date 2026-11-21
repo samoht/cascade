@@ -349,6 +349,11 @@ needs is added on both sides and one no target needs is dropped from both, a
 colour fallback every target reads past is dead, a `-ms-` or `-o-`
 declaration, which no target reads, is dropped from both, and so is a rule
 whose selector no target reads ([Target browsers](#target-browsers)).
+Adding a prefix a target needs is the comparator's side of the one rendering
+change `--minify` makes on purpose ([M1 and M2](invariants.md#master-guarantees)):
+`.a{user-select:none}` compares equal to its minified
+`.a{-webkit-user-select:none;user-select:none}`, though Safari applies only
+the second.
 Each target stands for its version and every later one in the data, so a
 `@supports` guard no target satisfies stays: `@supports (field-sizing:content)` fails in
 Chrome 111 and holds from Chrome 123.
