@@ -805,8 +805,8 @@ module Mask_shorthand = struct
     fun (mask : mask_layer) ->
       if mask.image = None then { mask with image = Some image } else mask
 
-  let read_position_size_item t =
-    let position = read_position_value t in
+  let read_position_size_item ~position t =
+    let position = position t in
     Cursor.ws t;
     let size =
       if Cursor.slash_opt t then Some (read_background_size t) else None
@@ -848,11 +848,11 @@ module Mask_shorthand = struct
       if mask.composite = None then { mask with composite = Some composite }
       else mask
 
-  let read_item t =
+  let read_item ~position t =
     Cursor.one_of
       [
         read_image_item;
-        read_position_size_item;
+        read_position_size_item ~position;
         read_repeat_item;
         read_box_item;
         read_mode_item;
@@ -861,7 +861,7 @@ module Mask_shorthand = struct
       t
 end
 
-let read_mask_layer t : mask_layer =
+let read_mask_layer_with ~position t : mask_layer =
   let apply acc upd =
     let next = upd acc in
     if equal_mask_layer next acc then
@@ -869,17 +869,38 @@ let read_mask_layer t : mask_layer =
     else next
   in
   let layer, _ =
-    Cursor.fold_many Mask_shorthand.read_item ~init:Mask_shorthand.init ~f:apply
-      t
+    Cursor.fold_many
+      (Mask_shorthand.read_item ~position)
+      ~init:Mask_shorthand.init ~f:apply t
   in
   if equal_mask_layer layer Mask_shorthand.init then
     Cursor.err_expected t "mask value";
   layer
 
-let read_mask_layers t : mask =
-  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_layer t with
+let read_mask_layer t = read_mask_layer_with ~position:read_position_value t
+
+let read_mask_layers_with ~position t : mask =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 (read_mask_layer_with ~position) t
+  with
   | [ layer ] -> Layer layer
   | layers -> Layers layers
+
+let read_mask_layers t = read_mask_layers_with ~position:read_position_value t
+
+(* CSS Masking 1 sec. 7.9 gives a layer [<position>], which has no three-value
+   form, and Gecko reads it so. Chromium and WebKit read it with
+   [background-position]'s [<bg-position>], three values included, so a value
+   only that grammar reads is one some browser in B keeps and another drops. The
+   declaration reader keeps such a value as written rather than type it, since a
+   respelling every browser reads would change the browsers that drop it. *)
+let mask_reads_with_bg_position raw =
+  let t = Cursor.of_string raw in
+  match read_mask_layers_with ~position:read_background_position_value t with
+  | (_ : mask) ->
+      Cursor.ws t;
+      Cursor.is_done t
+  | exception Cursor.Parse_error _ -> false
 
 (* CSS Masking 1 sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1 puts
    [none] in the [<mask-reference>] of a layer, so it names the whole value only
