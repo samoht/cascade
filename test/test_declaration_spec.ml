@@ -17,6 +17,17 @@ let an_empty_value_is_no_declaration () =
   neg_cursor read_declaration "position-try: ";
   neg_cursor read_declaration "color: "
 
+(* CSS Values 5 (ED) sec. 8.7 gives attr() a type(<syntax>), and CSS Properties
+   and Values API 1 sec. 5.1 lists the syntax component names without saying
+   whether their case matters. Chromium 153 drops [type(<COLOR>)] and WebKit
+   26.5 reads it, so the declaration is kept as written, never respelled into
+   the [type(<color>)] Chromium would apply. *)
+let attr_type_name_keeps_its_case () =
+  check_declaration ~expected:"color:attr(data-color type(<COLOR>),red)"
+    "color: attr(data-color type(<COLOR>), red)";
+  check_declaration ~expected:"color:attr(data-color type(<color>),red)"
+    "color: attr(data-color type(<color>), red)"
+
 (* CSS Anchor Positioning 1 sec. 6.1 reads a fallback entry as [<dashed-ident>
    || <try-tactic>], so the tactics stand together on one side of the name, and
    Chromium 153 rejects a name between two of them. *)
@@ -1870,6 +1881,8 @@ let suite =
       test_case "a reference box pairs with a shape" `Quick
         reference_box_pairs_with_a_shape;
       test_case "anchor query forms" `Quick anchor_query_forms;
+      test_case "an attr() type name keeps its case" `Quick
+        attr_type_name_keeps_its_case;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
