@@ -898,27 +898,34 @@ let read_position_area_pair t =
       (first, Option.Some second)
   | _ -> Cursor.err_expected t "position-area"
 
-(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free and takes each
-   component at most once, so the group reads in any order and is held
-   name-first with the tactics in block, inline, start order. *)
+(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free, so the name
+   stands before or after the tactics and is held first; the tactics compose in
+   the order written (CSS Anchor Positioning 1 sec. 6.1), so they keep it, and
+   stand together. *)
 let read_position_try_fallback_tactics t =
   let components =
     Cursor.list ~sep:Cursor.ws ~at_least:1 read_position_try_fallback t
   in
-  let pick p = List.filter p components in
-  let name =
-    pick (function (Name _ : position_try_fallback) -> true | _ -> false)
+  let is_name : position_try_fallback -> bool = function
+    | Name _ -> true
+    | Flip_block | Flip_inline | Flip_start -> false
   in
-  let block = pick (function Flip_block -> true | _ -> false) in
-  let inline = pick (function Flip_inline -> true | _ -> false) in
-  let start = pick (function Flip_start -> true | _ -> false) in
-  if
-    List.length name > 1
-    || List.length block > 1
-    || List.length inline > 1
-    || List.length start > 1
-  then Cursor.err_invalid t "position-try-fallbacks repeats a component";
-  name @ block @ inline @ start
+  let name, tactics =
+    match components with
+    | first :: rest when is_name first -> ([ first ], rest)
+    | _ -> (
+        match List.rev components with
+        | last :: rest when is_name last -> ([ last ], List.rev rest)
+        | _ -> ([], components))
+  in
+  let rec repeats = function
+    | [] -> false
+    | x :: rest -> List.mem x rest || repeats rest
+  in
+  if List.exists is_name tactics || repeats tactics then
+    Cursor.err_invalid t
+      "position-try-fallbacks splits or repeats its try-tactic";
+  name @ tactics
 
 let read_position_try_fallback_entry t : position_try_fallback_entry =
   Cursor.one_of

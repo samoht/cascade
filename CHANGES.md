@@ -526,6 +526,12 @@ differently. They are the reason to minify again.
   `ellipse(var(--v) closest-side)` broke the same way. An omitted size is
   `closest-side` on both axes (CSS Shapes 1 sec. 3.1), so the radii now drop
   only as that pair (#1493).
+- **Anchor fallback tactics were reordered.**
+  `position-try-fallbacks:flip-start flip-block` was minified to
+  `flip-block flip-start`, which places the box elsewhere, since the tactics
+  compose in the order written (CSS Anchor Positioning 1 sec. 6.1). A name
+  between two tactics, which Chromium rejects, was moved out to make the entry
+  valid. The tactics now keep their order and a split entry is refused (#1494).
 
 #### Stable output
 
