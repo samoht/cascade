@@ -1161,6 +1161,38 @@ let spec_math_integer_slots () =
         (String.trim (Css.to_string ~minify:true p.stylesheet))
   | Error e -> Alcotest.failf "%s" (Error.to_string e)
 
+(* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
+   [<angle>], so one standing where an angle cannot is invalid. Cascade typed
+   the result as a bare degree count and folded [opacity:asin(0)] to
+   [opacity:0]; Chromium 153 refuses every source here ([CSS.supports] is false)
+   and keeps [rotate:asin(1)] and [opacity:sin(asin(.5))]. *)
+let spec_math_inverse_trig_is_an_angle () =
+  List.iter
+    (fun (prop, value) ->
+      Alcotest.(check string)
+        (String.concat "" [ prop; ":"; value; " is refused" ])
+        ""
+        (match
+           Css.of_string ~strict:false
+             (String.concat "" [ ".x{"; prop; ":"; value; "}" ])
+         with
+        | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
+        | Error e -> Error.to_string e))
+    [
+      ("opacity", "asin(0)");
+      ("opacity", "calc(asin(0))");
+      ("opacity", "acos(1)");
+      ("opacity", "atan2(0,1)");
+      ("z-index", "asin(0)");
+      ("line-height", "atan(0)");
+      ("flex-grow", "acos(1)");
+      ("scale", "asin(0)");
+      ("width", "calc(asin(0)*1px)");
+    ];
+  decl_optimizes ~prop:"rotate" ~held:"90deg" ~into:"90deg" "asin(1)";
+  (* [sin()] of that angle takes it in degrees: [sin(asin(.5))] is [.5]. *)
+  decl_optimizes ~prop:"opacity" ~held:".5" ~into:".5" "sin(asin(.5))"
+
 let suite =
   ( "values_math",
     [
@@ -1197,6 +1229,8 @@ let suite =
       test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
       test_case "spec math infinite range" `Quick spec_math_infinite_range;
       test_case "spec math integer slots" `Quick spec_math_integer_slots;
+      test_case "spec math inverse trig is an angle" `Quick
+        spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick
         spec_math_substitution_never_invalid;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
