@@ -952,6 +952,12 @@ differently. They are the reason to minify again.
   url(b.woff)` was minified into `url(a.woff),url(b.woff)`, which loads a font
   Chromium and Safari never load. Such an item is now dropped (CSS Fonts 4
   sec. 4.3) (#1631).
+- shorthand replaces longhands only when every target browser that reads them
+  reads it**: `border-top-color:light-dark(red,blue)` and three plain sides
+  became one `border-color` Chrome 111 to 122 drop whole, `margin:5px` then
+  `margin-top:clamp(none,1px,2px)` one `margin` Chrome 145 drops, and
+  `text-wrap-mode` with `text-wrap-style:balance` a `text-wrap` Safari 17.4
+  drops (#1633).
 
 #### Stable output
 
