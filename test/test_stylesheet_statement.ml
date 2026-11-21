@@ -480,6 +480,29 @@ let counter_symbol_is_one_image () =
        "@counter-style c{system:additive;additive-symbols:2 url(a.png),1 \
         url(b.png)}")
 
+(* CSS Counter Styles 3 (ED) sec. 3.5: "If the lower bound of any range is
+   higher than the upper bound, the entire descriptor is invalid and must be
+   ignored." Chromium 153 and WebKit 26.5 drop range: 4 2 and range: 1 2, 4 3,
+   and keep a range whose bounds are equal or infinite. *)
+let counter_range_bounds_are_ordered () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  let with_range range =
+    String.concat ""
+      [ "@counter-style c{system:cyclic;symbols:a;range:"; range; "}" ]
+  in
+  List.iter
+    (fun range ->
+      Alcotest.(check string)
+        range "@counter-style c{system:cyclic;symbols:a}"
+        (minify (with_range range)))
+    [ "4 2"; "1 2,4 3"; "2 -1" ];
+  List.iter
+    (fun range ->
+      Alcotest.(check string)
+        range (with_range range)
+        (minify (with_range range)))
+    [ "2 4"; "2 2"; "infinite 2"; "2 infinite"; "infinite infinite"; "-3 -1" ]
+
 let suite =
   ( "stylesheet_statement",
     [
@@ -678,4 +701,7 @@ let suite =
         `Quick,
         counter_symbols_keep_their_kind );
       ("a counter symbol is one image", `Quick, counter_symbol_is_one_image);
+      ( "counter range bounds are ordered",
+        `Quick,
+        counter_range_bounds_are_ordered );
     ] )
