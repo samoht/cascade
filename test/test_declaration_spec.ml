@@ -123,6 +123,44 @@ let line_height_comparison_takes_a_sum () =
   neg_cursor read_declaration "line-height: min(calc(1px * 2px), 1px)";
   neg_cursor read_declaration "line-height: min(1px + 1, 2px)"
 
+(* CSS Values 4 (ED) sec. 10.2 gives a comparison its arguments' type, and sec.
+   10.9 types a calculation from its operands, so a comparison over lengths
+   inside a calc() makes the calculation a length, and sec. 10.1 lets a
+   calculation stand only where its type does. Chromium 153 and WebKit 26.5 drop
+   each mismatch below, at a number, a percentage, a time, an angle and a length
+   slot, and keep each control. *)
+let math_operand_takes_the_slot_type () =
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "fill-opacity: calc(min(10px, 1px) + max(1px, 2px))";
+      "opacity: calc(min(10px, 1px) + max(1px, 2px))";
+      "transition-delay: calc(min(10px, 1px) + max(1px, 2px))";
+      "-webkit-transition-delay: calc(min(10px, 1px) + max(1px, 2px))";
+      "text-size-adjust: calc(min(1px, 1px) + max(1px, 2px))";
+      "offset-rotate: calc(min(45px, 1px) + max(1px, 2px))";
+      "rotate: calc(min(45px, 1px) + max(1px, 2px))";
+      "transform: rotate(calc(min(1px, 2px) + max(1px, 2px)))";
+      "line-height: calc(min(1s, 2s) + max(1s, 2s))";
+      "width: calc(min(1s, 2s) + max(1s, 2s))";
+      "width: calc(min(1s, 2s) + 1px)";
+      "width: calc(min(1s, 2s))";
+      "width: calc(abs(1s) + 1px)";
+      "width: calc(2 * min(1s, 2s))";
+    ];
+  List.iter
+    (fun decl ->
+      match Css.Declaration.of_string decl with
+      | Ok _ -> ()
+      | Error e -> Alcotest.failf "%s: %s" decl (Error.to_string e))
+    [
+      "fill-opacity: calc(min(10%, 1%) + max(1%, 2%))";
+      "transition-delay: calc(min(1s, 2s) + max(1s, 2s))";
+      "offset-rotate: calc(min(45deg, 1deg) + max(1deg, 2deg))";
+      "transform: rotate(calc(min(1deg, 2deg) + max(1deg, 2deg)))";
+      "width: calc(min(1px, 2px) + max(1px, 2px))";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1519,6 +1557,8 @@ let suite =
         contain_intrinsic_size_keeps_a_trailing_auto;
       test_case "a line-height comparison takes a sum" `Quick
         line_height_comparison_takes_a_sum;
+      test_case "a math operand takes the slot type" `Quick
+        math_operand_takes_the_slot_type;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
