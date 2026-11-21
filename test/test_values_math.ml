@@ -1131,6 +1131,36 @@ let spec_math_substitution_never_invalid () =
   decl_optimizes ~prop:"clip-path" ~held:"circle(var(--v) 0%0%)"
     ~into:"circle(var(--v) 0%0%)" "circle(var(--v) 0% 0%)"
 
+(* CSS Values 4 sec. 10.1 puts a math function wherever its resolved type
+   stands, and sec. 10.9 rounds one standing at an [<integer>]. Cascade deleted
+   these, which Chromium 153 accepts ([CSS.supports] is true for each): the
+   counter values, the feature and variation settings and the rotation axis. A
+   call that folds to a constant reads as that number, rounded at an [<integer>]
+   to the nearest, towards positive infinity on a tie. *)
+let spec_math_integer_slots () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~held:into ~into input)
+    [
+      ("counter-increment", "a calc(1)", "a 1");
+      ("counter-increment", "a calc(1.5)", "a 2");
+      ("counter-reset", "a calc(2*3)", "a 6");
+      ("font-feature-settings", "\"liga\" calc(2)", "\"liga\" 2");
+      ("font-variation-settings", "\"wght\" calc(400)", "\"wght\" 400");
+      ("rotate", "1 calc(1) 0 45deg", "45deg 1 1 0");
+    ];
+  (* An [@property] initial value is a math function at a [<number>] syntax,
+     computationally independent, so the rule stands and the value folds. *)
+  let css =
+    "@property --x{syntax:\"<number>\";inherits:false;initial-value:calc(1.5)}"
+  in
+  match Css.of_string ~strict:false css with
+  | Ok p ->
+      Alcotest.(check string)
+        "@property initial-value calc(1.5)"
+        "@property --x{syntax:\"<number>\";inherits:false;initial-value:1.5}"
+        (String.trim (Css.to_string ~minify:true p.stylesheet))
+  | Error e -> Alcotest.failf "%s" (Error.to_string e)
+
 let suite =
   ( "values_math",
     [
@@ -1166,6 +1196,7 @@ let suite =
         spec_math_signed_percentage_basis;
       test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
       test_case "spec math infinite range" `Quick spec_math_infinite_range;
+      test_case "spec math integer slots" `Quick spec_math_integer_slots;
       test_case "spec math substitution never invalid" `Quick
         spec_math_substitution_never_invalid;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
