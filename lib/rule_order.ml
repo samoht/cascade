@@ -656,8 +656,13 @@ let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
    canonical comparison, at every declaration site: a legacy name alias reads as
-   the property it names, which the specs make it whatever the targets, so the
-   passes after this see one property written twice. The optimizer hands the
+   the property it names, which the specs make it, so the passes after this see
+   one property written twice. A value's support is dated per name, though:
+   Chrome 111 to 119 parse [text] under [-webkit-background-clip] and not under
+   [background-clip]. So the alias reads as its property only where every
+   release from [floors] that parses one spelling parses the other
+   ({!Declaration.fallback_for}, both ways); elsewhere it stays a property of
+   its own, which the comparison may over-report. The optimizer hands the
    projection normalised declarations, so the one read under the property's
    grammar is normalised too: [0s] in a [transition] read afresh and the same
    [0s] after {!Declaration.normalize} print alike but are two values to the
@@ -665,11 +670,16 @@ let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
    declaration of a prefix no target reads ({!Shorthand.read_by_no_target}):
    every target ignores it, and one the reader cannot type would otherwise touch
    every other declaration. *)
-let canonical_vendor_aliases ~lossless ~judged (stmts : statement list) :
-    statement list =
+let canonical_vendor_aliases ~lossless ~judged ~floors (stmts : statement list)
+    : statement list =
   let as_property d =
     let aliased = Shorthand.as_aliased_property d in
-    if aliased == d then d else Declaration.normalize ~lossless aliased
+    if
+      aliased == d
+      || Declaration.fallback_for ~floors ~later:aliased d
+      || Declaration.fallback_for ~floors ~later:d aliased
+    then d
+    else Declaration.normalize ~lossless aliased
   in
   let unread decls =
     if judged then
@@ -877,7 +887,7 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
                 (canonical_values ~lossless ~missing:true
                    (normalize_custom_values ~lossless
                       (canonical_vendor_aliases ~lossless
-                         ~judged:(Option.is_some judge)
+                         ~judged:(Option.is_some judge) ~floors:(Ctx.floors ctx)
                          (drop_unparsed_rules ~judged:(Option.is_some judge)
                             (drop_unanswerable_supports stmts)))))))
   in

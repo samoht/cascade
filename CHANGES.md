@@ -836,6 +836,15 @@ differently. They are the reason to minify again.
   `mask-border`, and Chromium leaves the prefixed width at `auto` under the
   second sheet. The set is now a property of its own, and the pair compares
   different, as it did in 1.2.1 (#1517).
+- **A prefixed value was taken for one a browser reads later.** The
+  comparison read every legacy alias as its property whatever the value, so it
+  called `.a{-webkit-background-clip:text}` identical to
+  `.a{background-clip:text}`. Chrome 111 to 119 parse `text` only under the
+  prefixed name and paint the second sheet's box. An alias now reads as its
+  property only where every target release that parses one spelling of the
+  value parses the other, so the pair compares different; `-webkit-mask-image`
+  against `mask-image`, which Chrome reads unprefixed from 120, does too
+  (#1519).
 - **A guard was decided by its property alone.**
   `@supports (break-before:always){a{color:red}}` compared identical to
   `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves

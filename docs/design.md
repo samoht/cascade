@@ -108,8 +108,10 @@ make:
   name the following blocks already declare in that order (CSS Cascade 5 sec.
   6.4.3);
 - a legacy name alias (CSS Cascade 5 sec. 3.1, WHATWG Compatibility sec.
-  3.4.1) read as its property, nested `@media` conditions sorted and
-  deduplicated, and a keyframe's declarations sorted as a rule's are.
+  3.4.1) read as its property where every release from the floors that parses
+  one spelling of its value parses the other (`Declaration.fallback_for`, both
+  ways), nested `@media` conditions sorted and deduplicated, and a keyframe's
+  declarations sorted as a rule's are.
 
 Beyond the optimizer's own deduplication, the projection deletes an
 `@supports` guard false in every release of B, as one over a
