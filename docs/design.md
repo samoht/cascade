@@ -172,7 +172,12 @@ data paints it. It is asked of the same floors (`Ctx.floors`) by in-rule
 deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
 shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
 projection (`Rule_order`), so whatever the minifier deletes the judge also
-counts dead. `Merge.compatible` lists two selectors only when every engine
+counts dead. The data has no key for a vendor-prefixed or legacy keyword
+(`-webkit-box`, `-webkit-sticky`), so `fallback_for` keeps an earlier value of
+the property before a later one using such a keyword the earlier does not,
+rather than count the key as read; in-rule deduplication also keeps the pair
+in the other order (`Declaration.legacy_pair`). Both compare the prefixed
+words of the two values. `Merge.compatible` lists two selectors only when every engine
 ships them in the same release. The projection splits a selector list into
 one rule per branch only when `Merge.listable` says every release reads its
 branches alike (`Rule_order.expand_lists`); any other list stays one rule.

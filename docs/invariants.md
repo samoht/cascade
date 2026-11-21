@@ -298,7 +298,7 @@ Each row names the tests that check a statement. A browser harness under
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
-| Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Fallbacks | `floor_fallbacks_survive` and `prefixed_fallbacks_across_rules` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run"; `optimize_declarations` "border keeps longhands beside a border-image", "border reset reads every block"; `test/test_css_compare_structure.ml` "canonical border sides" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |

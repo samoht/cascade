@@ -390,6 +390,16 @@ differently. They are the reason to minify again.
   In the library, `Css.length` gains `Rex`, `Rcap`, `Rch`, `Svi`, `Svb`,
   `Lvi`, `Lvb`, `Dvi` and `Dvb`, so an exhaustive match over it needs the
   nine cases (#1536).
+- **A fallback before a prefixed value was deleted across rules.**
+  `.a{position:sticky}` before `.a{position:-webkit-sticky}` lost
+  `position:sticky`, and `display:flex` before `display:-webkit-box` lost
+  `flex`, though a browser that reads only the unprefixed value then paints
+  neither. The compatibility data says nothing of which browser reads a
+  prefixed keyword, so an earlier value of the property now stays before one
+  that uses such a keyword, across rules as it did inside one. Two values
+  with the same prefixed words, such as two `-webkit-linear-gradient()`s, are
+  read by the same browsers, and the earlier one now goes inside one rule
+  too (#1538).
 
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
