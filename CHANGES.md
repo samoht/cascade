@@ -711,6 +711,13 @@ differently. They are the reason to minify again.
   prefixed radial gradients now read the syntax the Compatibility Standard
   gives them (sec. 3.3.2), and `-webkit-cross-fade()` reads as Chromium reads
   it (#1533).
+- **Conic stops at a mixed angle or a length were mishandled.** `--minify`
+  deleted `conic-gradient(red calc(10deg + 5%),blue)`, though Chromium paints
+  it, and kept `conic-gradient(red 10px,blue)`, which Chromium drops. A conic
+  stop is now placed by an angle, a percentage, `0` or a math function of
+  both, never by a length (CSS Images 4 sec. 3.5.1), and an angle that is a
+  whole percentage of the turn takes the shorter spelling: `90deg` prints as
+  `25%` (#1534).
 
 #### Stable output
 

@@ -223,11 +223,12 @@ let rec pp_gradient_position : gradient_position Pp.t =
   | Conic_position config -> pp_conic_gradient_config ctx config
   | Var v -> pp_var pp_gradient_position ctx v
 
-let pp_angular_position : angular_position Pp.t =
+let rec pp_angular_position : angular_position Pp.t =
  fun ctx -> function
   | Angle a -> pp_angle ctx a
   | Percentage p -> pp_percentage ctx p
   | Zero -> Pp.char ctx '0'
+  | Calc c -> pp_calc pp_angular_position ctx c
 
 let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
@@ -533,7 +534,7 @@ let drop_default_stop_positions stops =
         | Some deg -> Float.equal deg (expected *. 3.6)
         | None -> false)
     | Zero -> Float.equal expected 0.
-    | Percentage _ -> false
+    | Percentage _ | Calc _ -> false
   in
   let at expected = function
     | Color_percentage (c, Some (Pct p), None) ->
@@ -558,10 +559,45 @@ let drop_default_stop_positions stops =
   | first :: rest when at 0. first -> strip first :: last rest
   | stops -> last stops
 
-let normalize_angular_position (value : angular_position) =
+(* Sec. 3.3.2 measures a conic percentage against 360deg, so an angle that is a
+   short exact percentage of the turn is that percentage, and a zero angle is
+   [0]; a radian other than zero never is. *)
+let angle_turn_percentage (a : angle) =
+  let pct =
+    match a with
+    | Deg d -> Some (d *. 100. /. 360.)
+    | Turn t -> Some (t *. 100.)
+    | Grad g -> Some (g /. 4.)
+    | Rad r when Float.equal r 0. -> Some 0.
+    | Rad _ | Round _ | Mod _ | Rem _ | Calc _ | Var _ | Invalid _ -> None
+  in
+  match pct with
+  | Some p when Float.is_integer (p *. 1000.) -> Some p
+  | Some _ | None -> None
+
+let normalize_angular_position (value : angular_position) : angular_position =
   match value with
-  | Angle a -> preserve_if_equal value (Angle (Values.normalize_angle a))
-  | Percentage _ | Zero -> value
+  | Angle a -> (
+      let a' = Values.normalize_angle a in
+      match angle_turn_percentage a' with
+      | Some p when Float.equal p 0. -> Zero
+      | Some p -> Percentage (Pct p)
+      | None -> if a' == a then value else Angle a')
+  | Percentage _ | Zero | Calc _ -> value
+
+(* A conic stop every position of which is a percentage or a zero is the stop a
+   linear gradient reads, so the rewrites over those apply to it. A lone zero
+   stays an angle, since a lone [0] reads back as a length. *)
+let percentage_stop c p1 p2 : gradient_stop option =
+  let lp : angular_position -> length_percentage option = function
+    | Percentage (Pct p) -> Some (Pct p)
+    | Zero -> Some (Length Zero)
+    | Percentage _ | Angle _ | Calc _ -> None
+  in
+  match (lp p1, Option.map lp p2) with
+  | Some a, None -> Some (Color_percentage (c, Some a, None))
+  | Some a, Some (Some b) -> Some (Color_percentage (c, Some a, Some b))
+  | _ -> None
 
 let rec normalize_gradient_stop ?(lossless = false) :
     gradient_stop -> gradient_stop =
@@ -583,16 +619,27 @@ let rec normalize_gradient_stop ?(lossless = false) :
            ( normalize_color ~lossless c,
              option_map_preserve (Values.normalize_length ~strip:false) l1,
              option_map_preserve (Values.normalize_length ~strip:false) l2 ))
-  | Color_angle (c, p1, p2) ->
-      preserve_if_equal value
-        (Color_angle
-           ( normalize_color ~lossless c,
-             normalize_angular_position p1,
-             option_map_preserve normalize_angular_position p2 ))
+  | Color_angle (c0, p1_0, p2_0) -> (
+      let c = normalize_color ~lossless c0 in
+      let p1 = normalize_angular_position p1_0 in
+      let p2 = option_map_preserve normalize_angular_position p2_0 in
+      match (p1, p2, p1_0) with
+      | Zero, None, Angle (Deg d) when Float.equal d 0. && c == c0 -> value
+      | Zero, None, _ -> Color_angle (c, Angle (Deg 0.), None)
+      | _ -> (
+          match percentage_stop c p1 p2 with
+          | Some stop -> stop
+          | None ->
+              if c == c0 && p1 == p1_0 && p2 == p2_0 then value
+              else Color_angle (c, p1, p2)))
   | Length l ->
       preserve_if_equal value (Length (Values.normalize_length ~strip:false l))
-  | Angle_hint a ->
-      preserve_if_equal value (Angle_hint (Values.normalize_angle a))
+  | Angle_hint a -> (
+      match normalize_angular_position (Angle a) with
+      | Percentage p -> Percentage p
+      | Zero -> Length Zero
+      | Angle a' -> preserve_if_equal value (Angle_hint a')
+      | Calc _ -> value)
   | Direction dir ->
       preserve_if_equal value (Direction (normalize_gradient_direction dir))
   | List stops ->
@@ -815,18 +862,26 @@ module Gradient_stop = struct
     if Float.equal n 0. && Option.is_none unit then Zero
     else Cursor.err_expected t "0"
 
-  let read_angular_position t : angular_position =
+  (* A math function over angles and percentages together, which neither the
+     angle nor the percentage reader takes. *)
+  let rec read_angular_operand t : angular_position =
     Cursor.one_of
       [
         (fun t : angular_position -> Angle (Values.read_angle_unit_required t));
         (fun t : angular_position -> Percentage (read_percentage t));
-        read_angular_zero;
+        (fun t : angular_position ->
+          if Cursor.looking_at_calc t then
+            Calc (Values.read_calc ~result_type:`Value read_angular_operand t)
+          else Cursor.err_expected t "an angle or a percentage");
       ]
       t
 
+  let read_angular_position t : angular_position =
+    Cursor.one_of [ read_angular_operand; read_angular_zero ] t
+
   let is_angle : angular_position -> bool = function
     | Angle (Var _) -> false
-    | Angle _ -> true
+    | Angle _ | Calc _ -> true
     | Percentage _ | Zero -> false
 
   let read_color_angle_angle t =
@@ -887,15 +942,36 @@ let read_gradient_stop t : gradient_stop =
      parsing *)
   read_gradient_stop_single t
 
-(* A conic stop or hint: one placed by an angle first, then every other. *)
+(* A conic stop or hint: one placed by an angle first, then every other. Sec.
+   3.3.2 places neither by a length, so a stop the linear reader takes with a
+   length is no conic stop. *)
 let read_angular_gradient_stop t : gradient_stop =
+  let no_length t : gradient_stop =
+    let is_length : Values.length -> bool = function
+      | Zero | Var _ | Calc _ -> false
+      | _ -> true
+    in
+    let placed_by_length : length_percentage option -> bool = function
+      | Some (Length l) -> is_length l
+      | Some _ | None -> false
+    in
+    match read_gradient_stop_single t with
+    | Color_percentage (_, p1, p2)
+      when placed_by_length p1 || placed_by_length p2 ->
+        Cursor.err_expected t "an angle or a percentage"
+    | Color_length (_, Some l, _) when is_length l ->
+        Cursor.err_expected t "an angle or a percentage"
+    | Length l when is_length l ->
+        Cursor.err_expected t "an angle or a percentage"
+    | stop -> stop
+  in
   Cursor.ws t;
   Cursor.one_of
     [
       Gradient_stop.read_color_angle_angle;
       Gradient_stop.read_color_angle;
       Gradient_stop.read_angle_hint;
-      read_gradient_stop_single;
+      no_length;
     ]
     t
 

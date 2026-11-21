@@ -231,6 +231,10 @@ type angular_position =
   | Angle of angle
   | Percentage of percentage
   | Zero  (** A unitless [0]. *)
+  | Calc of angular_position calc
+      (** A math function over angles and percentages together, such as
+          [calc(10deg + 5%)]. One over angles alone is an [Angle], one over
+          percentages alone a [Percentage]. *)
 
 (** Gradient stop values *)
 type gradient_stop =
