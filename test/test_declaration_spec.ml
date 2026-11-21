@@ -384,6 +384,21 @@ let a_value_a_browser_keeps_reads () =
       "border-image: url(a.png) 30 //";
     ]
 
+(* CSS Images 4 sec. 2.2 gives an image-set option at most one [<resolution>]
+   and one [type()]. Chrome 153 refuses a repeat, and cascade read it as the
+   option without the repeat, which Chrome keeps, so [--minify] turned a dropped
+   declaration into a live one. *)
+let an_image_set_option_names_one_resolution () =
+  check_declaration ~expected:"background-image:image-set(url(a.png)2x)"
+    "background-image: image-set(url(a.png) 2x)";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "background-image: image-set(url(a.png) 1x 2x)";
+      "background-image: image-set(url(a.png) type(\"image/png\") \
+       type(\"image/avif\"))";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1772,6 +1787,8 @@ let suite =
         a_substitution_function_defers_the_property;
       test_case "a value a browser keeps reads" `Quick
         a_value_a_browser_keeps_reads;
+      test_case "an image-set option names one resolution" `Quick
+        an_image_set_option_names_one_resolution;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
       test_case "try tactics stand together" `Quick try_tactics_stand_together;

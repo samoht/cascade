@@ -418,6 +418,10 @@ differently. They are the reason to minify again.
   `writing_mode`, `image_rendering`, `appearance`, `dominant_baseline`,
   `content` and `length` gain the new keywords, so an exhaustive match over
   any of them needs the new cases (#1539).
+- **An invalid `image-set()` came out valid.** `image-set(url(a.png) 1x 2x)`
+  repeats its resolution, so browsers drop the declaration, and `--minify`
+  printed `image-set(url(a.png)1x)`, which they read. The repeat now makes
+  the declaration invalid, as a repeated `type()` does (#1540).
 
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an

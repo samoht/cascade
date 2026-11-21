@@ -494,14 +494,24 @@ let read_image_set_option t : image_set_option =
         Buffer.add_string buf unit_;
         Some (Buffer.contents buf)
   in
+  (* A slot already filled is not read again, so a second resolution or type()
+     is left for the caller to refuse rather than consumed and lost. *)
   let rec loop (mime : string option) (resolution : string option) =
     Cursor.ws t;
-    match (mime, Cursor.function_call "type" Cursor.string t) with
-    | None, Some s -> loop (Some s) resolution
-    | _ -> (
-        match (resolution, read_resolution_opt t) with
-        | None, Some r -> loop mime (Some r)
-        | _ -> (mime, resolution))
+    let mime' =
+      match mime with
+      | None -> Cursor.function_call "type" Cursor.string t
+      | Some _ -> None
+    in
+    match mime' with
+    | Some s -> loop (Some s) resolution
+    | None -> (
+        let resolution' =
+          match resolution with None -> read_resolution_opt t | Some _ -> None
+        in
+        match resolution' with
+        | Some r -> loop mime (Some r)
+        | None -> (mime, resolution))
   in
   (* CSS Images 4 sec. 2.2: [[ <image> | <string> ] [ <resolution> ||
      type(<string>) ]?], so an option may name its image alone, at [1x]. *)
