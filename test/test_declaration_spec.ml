@@ -181,6 +181,26 @@ let transform_origin_z_is_a_length () =
   check_declaration ~expected:"transform-origin:left top 10px"
     "transform-origin: left top 10px"
 
+(* CSS Masking 1 sec. 5.1 spells [clip-path] as [<clip-source> | [ <basic-shape>
+   || <geometry-box> ] | none], and CSS Motion Path 1 (ED) sec. 2.1
+   [offset-path] as [none | <offset-path> || <coord-box>], so a reference box
+   pairs with a shape and with nothing else: [none] and a url stand alone.
+   Chromium 153 and WebKit 26.5 drop each value below. *)
+let reference_box_pairs_with_a_shape () =
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "clip-path: content-box none";
+      "clip-path: none content-box";
+      "clip-path: content-box inherit";
+      "offset-path: content-box none";
+      "offset-path: none content-box";
+    ];
+  check_declaration ~expected:"clip-path:content-box circle()"
+    "clip-path: content-box circle()";
+  check_declaration ~expected:"offset-path:circle() content-box"
+    "offset-path: circle() content-box"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1581,6 +1601,8 @@ let suite =
         math_operand_takes_the_slot_type;
       test_case "the transform-origin Z value is a length" `Quick
         transform_origin_z_is_a_length;
+      test_case "a reference box pairs with a shape" `Quick
+        reference_box_pairs_with_a_shape;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
