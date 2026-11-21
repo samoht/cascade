@@ -735,7 +735,7 @@ let read_num_expr t : float =
   | None -> Cursor.err_invalid t "non-numeric calc expression"
 
 let math_fn_scalar_type = function
-  | Asin _ | Acos _ | Atan _ | Atan2 _ -> Deferred
+  | Asin _ | Acos _ | Atan _ | Atan2 _ -> Result_unit "deg"
   | Sin _ | Cos _ | Tan _ | Sqrt _ | Exp _ | Log _ | Pow _ | Hypot _ | Sign_n _
   | Abs_n _ | Round_n _ | Mod_n _ | Rem_n _ | Min_n _ | Max_n _ | Clamp_n _ ->
       Dimension 0
@@ -942,6 +942,18 @@ let read_folded_percentage_math t =
 let looking_at_percentage_math t =
   Cursor.looking_at_calc t || looking_at_math_function t
 
+(* A call answering a unit of its own (an [<angle>] from [asin()], or the type
+   of its arguments) stands only at a slot whose leaf takes that unit:
+   [line-height:atan(0)] is invalid (CSS Values 4 sec. 10.4). *)
+let check_result_unit t read_a result_type calc =
+  match (result_type, infer_calc_type calc) with
+  | Some (`Value | `Number_or_value), Result_unit unit
+    when Option.is_none
+           (Cursor.option read_a
+              (Cursor.of_string (String.concat "" [ "1"; unit ]))) ->
+      Cursor.err_invalid t "incompatible calc types"
+  | _ -> ()
+
 let read_calc : type a.
     ?result_type:
       [ `Number
@@ -965,6 +977,7 @@ let read_calc : type a.
         Option.iter
           (fun result_type -> validate_calc_type inner result_type result)
           result_type;
+        check_result_unit inner read_a result_type result;
         result)
   in
   if Cursor.looking_at_func "calc" t then read "calc"
@@ -981,6 +994,7 @@ let read_calc : type a.
     Option.iter
       (fun result_type -> validate_calc_type t result_type result)
       result_type;
+    check_result_unit t read_a result_type result;
     result)
   else Cursor.err t "calc() or var()"
 
