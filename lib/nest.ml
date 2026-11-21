@@ -30,6 +30,7 @@ let rec heads = function
   | _ -> false
 
 let is_list = function Selector.List _ -> true | _ -> false
+let leads sel = heads sel && count_nesting sel = 1
 
 (* Selectors 4 sec. 4.2 weighs [:is()] as its most specific argument, so
    spelling a parent selector list out in place of the wrapper holds each branch
@@ -50,7 +51,7 @@ let one_weight = function
 let splices_bare ~leftmost ~parent sel =
   if is_list parent then
     match sel with Selector.Nesting -> one_weight parent | _ -> false
-  else leftmost && heads sel && count_nesting sel = 1
+  else leftmost && leads sel
 
 (* Selectors 4 sec. 4.1: a type or universal selector leads its compound. A
    parent carrying one can only go in bare where the [&] leads too, so [.x &]
@@ -179,14 +180,25 @@ let keep_readable_branches (selector : Selector.t) =
   | sel when keeps sel -> Option.Some sel
   | _ -> Option.None
 
+let rec parent_first (child : Selector.t) =
+  match child with
+  | Selector.List branches -> List.for_all parent_first branches
+  | Selector.Relative (_, right) -> not (contains right)
+  | _ -> (not (contains child)) || leads child
+
 (* Merging composes the same selector flattening does, so it drops the same
    branches. A wrapper left with no branch to merge into keeps nothing of its
-   own, and the empty-rule pass takes it. *)
-let rec merge_lone (rule : rule) =
+   own, and the empty-rule pass takes it. In an [@scope] block the merged
+   selector takes the scoping root implied in front of it (CSS Cascade 6 sec.
+   3.5.3), which is where the parent's was only when the child starts with its
+   parent. *)
+let rec merge_lone ?(in_scope = false) (rule : rule) =
   match (rule.declarations, rule.nested) with
-  | [], [ Rule child ] when not (is_list rule.selector) -> (
+  | [], [ Rule child ]
+    when (not (is_list rule.selector))
+         && ((not in_scope) || parent_first child.selector) -> (
       match keep_readable_branches (combine rule.selector child.selector) with
-      | Option.Some selector -> merge_lone { child with selector }
+      | Option.Some selector -> merge_lone ~in_scope { child with selector }
       | Option.None -> { rule with nested = [] })
   | _ -> rule
 

@@ -3,6 +3,10 @@
 val contains : Selector.t -> bool
 (** [contains selector] is [true] when [selector] contains [&]. *)
 
+val leads : Selector.t -> bool
+(** [leads sel] is [true] when [sel] holds one [&] and it heads the selector, so
+    that a parent substituted for it starts the result. *)
+
 val substitute : ?leftmost:bool -> parent:Selector.t -> Selector.t -> Selector.t
 (** Replace every [&] in a selector with [parent]. *)
 
@@ -24,10 +28,18 @@ val drop_dead_nested : Stylesheet.rule -> Stylesheet.rule
     body keeps exactly what flattening it would keep. Physically unchanged when
     nothing is dead. *)
 
-val merge_lone : Stylesheet.rule -> Stylesheet.rule
+val parent_first : Selector.t -> bool
+(** [parent_first child] is [true] when every branch of the nested selector
+    [child] starts with its parent once composed: it holds no [&], or one [&] at
+    its head, or starts with a combinator. *)
+
+val merge_lone : ?in_scope:bool -> Stylesheet.rule -> Stylesheet.rule
 (** Merge a pure wrapper rule with its sole nested rule when safe. A merge
     {!keep_readable_branches} rejects outright leaves the wrapper empty, for the
-    empty-rule pass to drop. *)
+    empty-rule pass to drop. With [in_scope] (default [false]) the rule stands
+    directly in an [@scope] block, where only a child that starts with its
+    parent ({!parent_first}) merges, since the block implies the scoping root in
+    front of the merged selector (CSS Cascade 6 sec. 3.5.3). *)
 
 val hoist_declaration_runs : Stylesheet.rule -> Stylesheet.rule
 (** [hoist_declaration_runs rule] moves each declaration written after a nested
