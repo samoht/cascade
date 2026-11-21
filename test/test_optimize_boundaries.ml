@@ -1050,6 +1050,51 @@ let v4102_clamp_none_bound () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a{width:clamp(none,50px,80px)}" ".a{width:50px}")
 
+(* CSS Values 4 (ED) sec. 10.9, "Type Checking": a math function "can be used
+   anywhere a value of that type is allowed", so every numeric math function
+   stands in a [<number>] or [<integer>] slot, and sec. 10.3 lets [round()] omit
+   its step when the value is a [<number>], the step then being 1. Chromium 153
+   computes each source below as its output: [z-index:2], [columns] and
+   [column-count] 2, [aspect-ratio:.5], [tab-size:.841471]. Sec. 10.4 has
+   [asin()] and its siblings answer an [<angle>], and sec. 10.3 makes the step
+   of a [<length>] required, so those stay refused. *)
+let v4109_math_in_number_slots () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{z-index:round(1.5)}", ".a{z-index:2}");
+      (".a{columns:round(1.5)}", ".a{columns:2}");
+      (".a{column-count:round(1.5)}", ".a{column-count:2}");
+      (".a{opacity:round(.4)}", ".a{opacity:0}");
+      (".a{line-height:round(1.5)}", ".a{line-height:2}");
+      (".a{font-weight:round(down,450,100)}", ".a{font-weight:400}");
+      (".a{aspect-ratio:cos(60deg)}", ".a{aspect-ratio:.5}");
+      (".a{aspect-ratio:exp(0) / 2}", ".a{aspect-ratio:1/2}");
+      (".a{tab-size:sin(1)}", ".a{tab-size:.84147098}");
+      ( ".a{animation-iteration-count:log(100,10)}",
+        ".a{animation-iteration-count:2}" );
+      (".a{hyphenate-limit-chars:cos(0)}", ".a{hyphenate-limit-chars:1}");
+      (".a{stroke-dashoffset:exp(0)}", ".a{stroke-dashoffset:1}");
+      (".a{counter-increment:a sin(1)}", ".a{counter-increment:a 1}");
+    ];
+  (* Kept, though not folded: the value type keeps the call. *)
+  Alcotest.(check bool)
+    "border-image-outset keeps exp(1)" true
+    (Astring.String.is_infix ~affix:"exp(1)"
+       (optimized_string ".a{border-image-outset:exp(1)}"));
+  List.iter
+    (fun input ->
+      match Css.of_string ~strict:true input with
+      | Ok _ -> Alcotest.failf "%s should be refused" input
+      | Error _ -> ())
+    [
+      ".a{rotate:round(1.5)}";
+      ".a{width:round(1.5px)}";
+      ".a{tab-size:asin(0)}";
+      ".a{counter-increment:a acos(1)}";
+    ]
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1149,4 +1194,7 @@ let suite =
       ( "spec values 10.2 clamp takes a none bound",
         `Quick,
         v4102_clamp_none_bound );
+      ( "spec values 10.9 math functions in number slots",
+        `Quick,
+        v4109_math_in_number_slots );
     ] )
