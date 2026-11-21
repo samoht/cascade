@@ -455,6 +455,17 @@ differently. They are the reason to minify again.
   into the shorthand before it only past declarations that write none of its
   sides, and `cascade diff --diff=canonical` no longer prints such a rule in
   an order it would read differently the next time (#1478).
+- **An `@property` registration was trusted where another can replace it.**
+  `--minify` read a custom property as the type its `@property` gave it, so
+  `@property --n{syntax:"<number>";...}` let `calc(var(--n) * 0px)` fold to
+  `0` and `--c:rgb(255 0 0)` respell as `red`. A script
+  (`CSS.registerProperty()`) or a later sheet registers the name again, and
+  then the source and the output differ: Chromium computes 1px against 0px
+  for the first under a later universal registration. A registration now
+  types its property only under `--scope=stylesheet`, when it is the last for
+  its name outside any conditional rule. Under `--enforce-spec`, an
+  `@property` missing a descriptor is kept rather than dropped, since the
+  current specification reads it as a registration (#1481).
 
 #### Stable output
 

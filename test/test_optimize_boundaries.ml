@@ -557,9 +557,12 @@ let preserve_independent_custom_prop_position () =
     (opt "@property --x{syntax:\"*\";inherits:false}.y{--x:1}")
 
 let calc_flatten_registered_single_valued () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let check label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
     Alcotest.(check string)
       label expected
       (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
@@ -592,9 +595,12 @@ let calc_flatten_registered_single_valued () =
    type. A [<length>] registration is one value too, but of a type the zero has
    to match. *)
 let calc_zero_product_registered_number () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let check label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
     Alcotest.(check string)
       label expected
       (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
@@ -622,6 +628,103 @@ let calc_zero_product_registered_number () =
      * 0)}"
     "@property \
      --n{syntax:\"<length>\";inherits:false;initial-value:0}.a{rotate:calc(var(--n)*0)}"
+
+(* A registration types a custom property only where it is the one every browser
+   applies. CSS Properties and Values API 1 sec. 2.1 takes a
+   [CSS.registerProperty()] record over any [@property], and the last
+   [@property] in document order over the others, so in a fragment a script or a
+   later sheet can register the name again: with [@property
+   --n{syntax:"*";inherits:false}] and [--n:1px + 2] after it, Chromium 153
+   computes the source's [calc(var(--n) * 0px)] to 1px and the folded [0] to
+   0px. A registration inside a conditional group rule applies only where the
+   condition holds (Chromium 153 and WebKit 26.5 register an [@media print]
+   [@property] on paper only). Under [--enforce-spec] a later [@property]
+   without [inherits] is a registration too, since the current sec. 3 makes
+   every descriptor optional, while Chromium 153 and WebKit 26.5 drop it. *)
+let registration_known_only_in_closed_scope () =
+  let opt ?scope ?(enforce_spec = false) css =
+    match Css.of_string ~strict:false ~enforce_spec css with
+    | Ok p ->
+        Css.Optimize.stylesheet ?scope ~enforce_spec p.stylesheet
+        |> Css.Stylesheet.to_string ~minify:true
+        |> String.trim
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let number =
+    "@property --n{syntax:\"<number>\";inherits:false;initial-value:1}"
+  in
+  let length =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  let length' =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0}"
+  in
+  let cat = String.concat "" in
+  let check ?scope ?enforce_spec label css expected =
+    Alcotest.(check string) label expected (opt ?scope ?enforce_spec css)
+  in
+  (* A fragment: nothing registered is known. *)
+  check "fragment keeps the zero product"
+    (cat [ number; ".a{width:calc(var(--n) * 0px)}" ])
+    (cat [ number; ".a{width:calc(var(--n)*0px)}" ]);
+  check "fragment keeps a registered value's tokens"
+    (cat [ length; ".a{--l:0px}" ])
+    (cat [ length'; ".a{--l:0px}" ]);
+  check "fragment keeps the nested calc()"
+    (cat [ length; ".a{width:calc(calc(var(--l)) * 2)}" ])
+    (cat [ length'; ".a{width:calc(calc(var(--l))*2)}" ]);
+  check "fragment keeps a var() out of a shorthand"
+    (cat
+       [
+         length;
+         ".a{margin-top:var(--l);margin-right:1px;margin-bottom:1px;margin-left:1px}";
+       ])
+    (cat
+       [
+         length';
+         ".a{margin-top:var(--l);margin-right:1px;margin-bottom:1px;margin-left:1px}";
+       ]);
+  (* The whole stylesheet: the last registration is the one. *)
+  let scope = `Stylesheet in
+  check ~scope "stylesheet scope folds the zero product"
+    (cat [ number; ".a{width:calc(var(--n) * 0px)}" ])
+    (cat [ number; ".a{width:0}" ]);
+  check ~scope "stylesheet scope types a registered value"
+    (cat [ length; ".a{--l:0px}" ])
+    (cat [ length'; ".a{--l:0}" ]);
+  check ~scope "stylesheet scope drops the nested calc()"
+    (cat [ length; ".a{width:calc(calc(var(--l)) * 2)}" ])
+    (cat [ length'; ".a{width:calc(var(--l)*2)}" ]);
+  check ~scope "a later registration is the one"
+    (cat
+       [
+         number;
+         "@property --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n) * \
+          0px)}";
+       ])
+    (cat
+       [
+         number;
+         "@property \
+          --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n)*0px)}";
+       ]);
+  check ~scope "a conditional registration is not known"
+    "@media print{@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}}.a{width:calc(var(--n) \
+     * 0px)}"
+    "@media print{@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}}.a{width:calc(var(--n)*0px)}";
+  check ~scope ~enforce_spec:true
+    "under --enforce-spec a later partial registration stays and counts"
+    (cat
+       [
+         number;
+         "@property --n{syntax:\"<color>\"}.a{width:calc(var(--n) * 0px)}";
+       ])
+    (cat
+       [
+         number; "@property --n{syntax:\"<color>\"}.a{width:calc(var(--n)*0px)}";
+       ])
 
 let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
@@ -827,6 +930,9 @@ let suite =
       ( "calc flatten gated on single-valued @property registration",
         `Quick,
         calc_flatten_registered_single_valued );
+      ( "registration known only in closed scope",
+        `Quick,
+        registration_known_only_in_closed_scope );
       ( "calc zero product over a registered number",
         `Quick,
         calc_zero_product_registered_number );

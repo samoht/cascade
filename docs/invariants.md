@@ -104,6 +104,13 @@ implementation keeps them.
 - **A custom property is single-valued only by `@property` registration.** A
   `calc()` identity that drops an operand (`x * 0`) folds only over an operand
   with no `var()` or over a `<number>` or `<integer>` registration.
+- **A registration types its property only where every browser in B applies
+  it.** CSS Properties and Values API 1 sec. 2.1 lets `CSS.registerProperty()`
+  and a later `@property` replace a registration, so a custom property takes a
+  registration's type only under `--scope=stylesheet`, from the last
+  `@property` for its name, outside any conditional group rule. Under
+  `--enforce-spec` an `@property` the current sec. 3 reads and a shipping
+  engine drops is kept, and its name has no known type.
 - **A colour keeps its interpolation class.** CSS Color 4 sec. 13.3
   interpolates two legacy sRGB colours in gamma-encoded sRGB and other colours
   in Oklab, so a colour that can be interpolated keeps a spelling of its
@@ -202,7 +209,7 @@ Each row names the tests that check a statement. A browser harness under
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
 | Range | `values_math` "spec math range every family" |
-| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
+| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
