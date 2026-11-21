@@ -553,6 +553,11 @@ differently. They are the reason to minify again.
   the property. A browser reads the first easing keyword as the easing and a
   second as the property, so such a property now prints after its easing,
   `ease` included (#1497).
+- **`flip-x` and `flip-y` anchor fallbacks were deleted.**
+  `position-try:flip-x` and `position-try-fallbacks:flip-y flip-block` were
+  refused as a bad value, so `--minify` dropped a declaration Chromium reads.
+  The physical tactics are now read beside the logical ones (CSS Anchor
+  Positioning 1 sec. 6.1) (#1498).
 
 #### Stable output
 
