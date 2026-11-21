@@ -310,6 +310,10 @@ type background_image =
       (** [-webkit-image-set(<source>#)] legacy spelling *)
   | Cross_fade of cross_fade_option list
       (** [cross-fade(<cf-mixing-image>#)] CSS Images 4 *)
+  | Webkit_cross_fade of background_image * background_image * number_percentage
+      (** [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)], the
+          legacy form no specification defines and Chromium reads, with the
+          weight of the second image. *)
   | Webkit_gradient of Webkit_gradient.t
   | List of background_image list
       (** Comma-separated list of background images *)

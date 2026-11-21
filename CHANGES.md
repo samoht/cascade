@@ -702,6 +702,15 @@ differently. They are the reason to minify again.
   Anchor Positioning 1 sec. 3.2 and 5.1). It kept `anchor(width)` and
   `anchor-size(top)`, which Chromium drops. Both functions now read the
   grammar the specification gives, and print the name first (#1532).
+- **Legacy `-webkit-` images were deleted or rewritten.** `--minify` deleted
+  `-webkit-radial-gradient(center, ellipse cover, red, blue)`, the prefixed
+  syntax with its position first, and every `-webkit-cross-fade(a, b, 50%)`,
+  in each property that takes an image. Chromium paints both. It also read
+  `-webkit-radial-gradient(circle at center, red, blue)`, which Chromium
+  drops, as the unprefixed syntax, and printed a gradient Chromium paints. The
+  prefixed radial gradients now read the syntax the Compatibility Standard
+  gives them (sec. 3.3.2), and `-webkit-cross-fade()` reads as Chromium reads
+  it (#1533).
 
 #### Stable output
 
