@@ -862,7 +862,7 @@ let of_rules ?(size_print = Size.default) ?parent ?closed_world
     ~sizes:
       (Array.mapi
          (fun i (rule : rule) ->
-           selector_sizes.(i) + Size.body size_print rule.declarations)
+           selector_sizes.(i) + Size.block size_print rule)
          rules)
     ~index_capacity:(max 16 (Array.length rules * 2))
     ?parent ?closed_world ?pin_shared_branches ?exclusive rules
@@ -1824,8 +1824,7 @@ let commit t graph ~consumed entering finished =
     let rule = graph.rules.(p) in
     let selector_size = Size.selector rule.selector in
     graph.selector_sizes.(p) <- selector_size;
-    graph.sizes.(p) <-
-      selector_size + Size.body graph.size_print rule.declarations
+    graph.sizes.(p) <- selector_size + Size.block graph.size_print rule
   done;
   Array.iter (fun c -> graph.death.(c) <- graph.generation) consumed;
   Array.iteri

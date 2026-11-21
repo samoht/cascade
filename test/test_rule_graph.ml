@@ -236,6 +236,18 @@ let refusal_names_the_first_unordered_node () =
         (Size.rule Size.default (List.hd produce))
         (Rule_graph.node_size g' (nid 3))
 
+(* A node weighs what its rule prints, nested statements included. *)
+let node_size_counts_nested_content () =
+  let rules = rules_of ".a{top:1px;&:hover{color:red}}.b{>span{top:0}left:0}" in
+  let g = Rule_graph.of_rules rules in
+  List.iteri
+    (fun i r ->
+      Alcotest.(check int)
+        (Pp.to_string ~minify:true Stylesheet.pp_rule r)
+        (String.length (Pp.to_string ~minify:true Stylesheet.pp_rule r))
+        (Rule_graph.node_size g (nid i)))
+    rules
+
 let try_rewrite_preserves_residual_source_slots () =
   let g =
     Rule_graph.of_rules
@@ -1468,6 +1480,8 @@ let suite =
         try_rewrite_safe_factoring;
       Alcotest.test_case "a refusal names the first unordered node" `Quick
         refusal_names_the_first_unordered_node;
+      Alcotest.test_case "node size counts nested content" `Quick
+        node_size_counts_nested_content;
       Alcotest.test_case "try_rewrite rejects a stale consumed node" `Quick
         try_rewrite_rejects_stale;
       Alcotest.test_case "try_rewrite rejects an out-of-range node" `Quick
