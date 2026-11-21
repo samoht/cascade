@@ -330,7 +330,11 @@ twin, so `-webkit-transform` beside an identical `transform` normalises to
 spellings or `-webkit-user-select`, is a property of its own, and so is a
 listed alias whose unprefixed twin some target browser does not read: no
 Chromium or Firefox release reads `mask-border`, so the list's
-`-webkit-mask-box-image` set stays distinct from it.
+`-webkit-mask-box-image` set stays distinct from it. A value is dated per
+name, too: Chrome 111 to 119 parse `text` under `-webkit-background-clip` and
+not under `background-clip`, so `-webkit-background-clip:text` and
+`background-clip:text` compare different, while `content-box`, which both
+names parse in every target, compares as one property.
 `-webkit-text-decoration-color` is not on the list, but every engine that
 ships it treats it as an alias, and so does cascade. Equivalent shorthand
 decompositions are not modelled.
