@@ -11,7 +11,7 @@ let rec pp_border_image_slice_item ctx (value : border_image_slice_item) =
   | Calc c ->
       (* CSS Values 4 sec. 10.13 keeps the call valid where the [0,inf] range is
          exceeded, so [calc(-10%)] computes and a bare [-10%] is dropped. *)
-      Values.pp_calc ~unwrap_num:false
+      Values_calc.pp_calc_with ~unwrap_num:false ~bare_call:true
         ~unwrap:(fun v ->
           match (v : border_image_slice_item) with
           | Pct f -> f >= 0.

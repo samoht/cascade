@@ -484,7 +484,7 @@ let rec pp_text_size_adjust : text_size_adjust Pp.t =
   (* CSS Size Adjustment 1 sec. 3 refuses a negative percentage written on its
      own, so the wrapper comes off only around a leaf that is one by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true
         ~unwrap:(fun (v : text_size_adjust) ->
           match v with Pct n -> n >= 0. | _ -> true)
         pp_text_size_adjust ctx c
@@ -925,5 +925,10 @@ let rec normalize_text_size_adjust (value : text_size_adjust) : text_size_adjust
   | Calc c -> (
       match eval_calc c with
       | Val (Pct n as leaf) when n >= 0. -> normalize_text_size_adjust leaf
+      (* A call answering a percentage folds to the leaf that spells it. *)
+      | Math_fn fn -> (
+          match Values_calc.math_fn_result fn with
+          | Some (United (n, "%")) when n >= 0. -> Pct n
+          | _ -> if Math_fn fn == c then value else Calc (Math_fn fn))
       | folded -> if folded == c then value else Calc folded)
   | value -> value

@@ -660,6 +660,13 @@ differently. They are the reason to minify again.
 
 #### Smaller output
 
+- **Math functions over two units of one type fold.** `min(1s,1000ms)`,
+  `calc(1s + 500ms)`, `min(1turn,10deg)` and `max(1cm,10mm)` were kept as
+  written, since the fold compared and summed only equal units. Units with a
+  fixed ratio now convert first (CSS Values 4 sec. 10.7), so they fold to `1s`,
+  `1.5s`, `10deg` and `1cm`, and `line-height:abs(-1px)` folds to `1px`. A
+  call that still cannot fold, such as `min(1s,var(--x))`, prints bare rather
+  than inside `calc()` (#1507).
 - **Prefixed copies of widely available properties go.** `--minify` dropped
   `-webkit-animation-delay:1s` beside `animation-delay:1s`, but kept
   `-webkit-flex-grow:1` beside `flex-grow:1`, because it compared the two only

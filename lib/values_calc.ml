@@ -363,29 +363,90 @@ let absolute_units =
 let is_absolute_unit unit =
   List.mem (String.lowercase_ascii unit) absolute_units
 
-(* Sec. 10.2 answers a comparison with the one type its arguments share, so
-   every unit has to match and the result keeps it. *)
-let compared_results f results =
+(* Two values of one quantity converted through a ratio that floats cannot hold
+   exactly, such as [1cm] and [10mm], are the same quantity. *)
+let same_quantity a b =
+  Float.abs (a -. b)
+  <= 1e-9 *. Float.max 1. (Float.max (Float.abs a) (Float.abs b))
+
+(* CSS Values 4 sec. 10.7 (simplification): units of one type with a fixed ratio
+   between them convert to the type's canonical unit before they are compared or
+   combined. Each maps to that unit and the factor to it. *)
+let canonical_unit unit =
+  match String.lowercase_ascii unit with
+  | "px" -> Option.Some ("px", 1.)
+  | "in" -> Option.Some ("px", 96.)
+  | "cm" -> Option.Some ("px", 96. /. 2.54)
+  | "mm" -> Option.Some ("px", 96. /. 25.4)
+  | "q" -> Option.Some ("px", 96. /. 101.6)
+  | "pt" -> Option.Some ("px", 4. /. 3.)
+  | "pc" -> Option.Some ("px", 16.)
+  | "s" -> Option.Some ("s", 1.)
+  | "ms" -> Option.Some ("s", 0.001)
+  | "deg" -> Option.Some ("deg", 1.)
+  | "grad" -> Option.Some ("deg", 0.9)
+  | "rad" -> Option.Some ("deg", 180. /. Float.pi)
+  | "turn" -> Option.Some ("deg", 360.)
+  | "hz" -> Option.Some ("hz", 1.)
+  | "khz" -> Option.Some ("hz", 1000.)
+  | "dppx" | "x" -> Option.Some ("dppx", 1.)
+  | "dpi" -> Option.Some ("dppx", 1. /. 96.)
+  | "dpcm" -> Option.Some ("dppx", 2.54 /. 96.)
+  | _ -> Option.None
+
+(* The values of results that share a type, in one unit, and how to rebuild a
+   result in that unit: their own when they all carry it, the canonical one when
+   they carry several units with a fixed ratio between them and [convert] allows
+   it. *)
+let shared_unit_values ?(convert = true) results =
   match results with
-  | Some first :: rest
-    when List.for_all
-           (function
-             | Some r ->
-                 Option.equal String.equal (math_result_unit r)
-                   (math_result_unit first)
-             | None -> false)
-           rest ->
-      let value =
-        List.fold_left
-          (fun acc r ->
-            match r with Some r -> f acc (math_result_value r) | None -> acc)
-          (math_result_value first) rest
+  | [] -> Option.None
+  | first :: rest -> (
+      let same r =
+        Option.equal String.equal (math_result_unit r) (math_result_unit first)
       in
-      Option.some
-        (match math_result_unit first with
-        | Some unit -> United (value, unit)
-        | None -> Scalar value)
-  | _ -> Option.none
+      if List.for_all same rest then
+        Option.Some
+          ( List.map math_result_value results,
+            fun v ->
+              match math_result_unit first with
+              | Option.Some unit -> United (v, unit)
+              | Option.None -> Scalar v )
+      else if not convert then Option.None
+      else
+        let canonical r =
+          match r with
+          | United (v, unit) ->
+              Option.map (fun (c, k) -> (c, v *. k)) (canonical_unit unit)
+          | Scalar _ -> Option.None
+        in
+        match List.map canonical results with
+        | Option.Some (c, _) :: _ as all
+          when List.for_all
+                 (function
+                   | Option.Some (c', _) -> String.equal c c'
+                   | Option.None -> false)
+                 all ->
+            Option.Some
+              (List.filter_map (Option.map snd) all, fun v -> United (v, c))
+        | _ -> Option.None)
+
+(* Sec. 10.2 answers a comparison with the one type its arguments share. Its
+   value is one of the arguments, which is the result as written. *)
+let compared_results f results =
+  if List.exists Option.is_none results then Option.none
+  else
+    let results = List.filter_map Fun.id results in
+    match shared_unit_values results with
+    | Option.Some ((v0 :: rest as values), _) ->
+        let picked = List.fold_left f v0 rest in
+        List.find_map
+          (fun (r, v) ->
+            if same_quantity v picked || (Float.is_nan v && Float.is_nan picked)
+            then Option.Some r
+            else Option.None)
+          (List.combine results values)
+    | _ -> Option.none
 
 let rec math_arg_result (arg : math_arg) : math_result option =
   match arg with
@@ -408,24 +469,14 @@ and math_fn_result (fn : math_fn) : math_result option =
       | Some (United (v, unit)) -> Option.some (United (Float.abs v, unit))
       | None -> Option.none)
   | Hypot args -> (
+      (* A root in a converted unit is a coefficient no literal spells exactly,
+         so [hypot()] folds over one unit only. *)
       let results = List.filter_map math_arg_result args in
-      match results with
-      | first :: rest
-        when List.compare_lengths results args = 0
-             && List.for_all
-                  (fun r ->
-                    Option.equal String.equal (math_result_unit r)
-                      (math_result_unit first))
-                  rest ->
-          let square acc r =
-            let v = math_result_value r in
-            acc +. (v *. v)
-          in
-          let root = Float.sqrt (List.fold_left square 0. results) in
-          Option.some
-            (match math_result_unit first with
-            | Some unit -> United (root, unit)
-            | None -> Scalar root)
+      match shared_unit_values ~convert:false results with
+      | Option.Some (values, rebuild) when List.compare_lengths results args = 0
+        ->
+          let square acc v = acc +. (v *. v) in
+          Option.some (rebuild (Float.sqrt (List.fold_left square 0. values)))
       | _ -> Option.none)
   | Round_n (strategy, value, step) ->
       stepped_result (round_to_step strategy) value step
@@ -467,8 +518,10 @@ and compared_result f args = compared_results f (List.map math_arg_result args)
    with that type, so two units have to match and the result keeps theirs. *)
 and stepped_result f a b =
   match (math_arg_result a, math_arg_result b) with
-  | Some (Scalar a), Some (Scalar b) -> Option.some (Scalar (f a b))
-  | Some (United (a, u)), Some (United (b, v)) when String.equal u v ->
+  | Option.Some (Scalar a), Option.Some (Scalar b) ->
+      Option.some (Scalar (f a b))
+  | Option.Some (United (a, u)), Option.Some (United (b, v))
+    when String.equal u v ->
       Option.some (United (f a b, u))
   | _ -> Option.none
 
@@ -980,14 +1033,23 @@ let negative_length : length -> bool = function
       f < 0.
   | _ -> false
 
+(* The math functions answering their arguments' type (CSS Values 4 secs. 10.2,
+   10.5, 10.6 and 10.9). *)
+let is_typed_math_fn = function
+  | Min_n _ | Max_n _ | Clamp_n _ | Abs_n _ | Hypot _ | Round_n _ | Mod_n _
+  | Rem_n _ ->
+      true
+  | _ -> false
+
 let pp_calc_with : type a.
     ?unwrap_num:bool ->
     ?unwrap:(a -> bool) ->
     ?pp_unwrapped:a Pp.t ->
+    ?bare_call:bool ->
     a Pp.t ->
     a calc Pp.t =
- fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) ?pp_unwrapped pp_value ctx
-     calc ->
+ fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) ?pp_unwrapped
+     ?(bare_call = false) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1009,6 +1071,11 @@ let pp_calc_with : type a.
   | Val v when Pp.minified ctx && unwrap v ->
       Option.value pp_unwrapped ~default:pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
+  (* Sec. 10.1 reads a math function answering its arguments' type wherever
+     [calc()] around it reads, as the same calculation, so at a slot whose
+     reader reads the bare call back to this node one that did not fold is
+     written bare, the way the typed length nodes print. *)
+  | Math_fn fn when bare_call && is_typed_math_fn fn -> pp_math_fn ctx fn
   | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =
