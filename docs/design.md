@@ -155,8 +155,9 @@ when it holds, `Flatten.rules_with_nested_declarations` still flattens each
 rule holding a nested declarations rule, which the compat data has no key
 for. The `&` relaxation and synthesis run only when it holds. Nesting synthesis
 is adjacent-only, within one cascade context, with an exact selector extension
-under a non-list parent that carries no pseudo-element, and only when it
-shortens the output. Every composition goes through `Nest.substitute`, which
+under a non-list parent that carries no pseudo-element, leaving no `&` in what
+remains of the child, since sec. 4 has that `&` name `:scope` or the enclosing
+rule, and only when it shortens the output. Every composition goes through `Nest.substitute`, which
 splices in for `&` only the parent branches without a pseudo-element and
 stands `:is()` of the parent for an `&` left with none, a selector
 `Nest.keep_readable_branches` then drops.
