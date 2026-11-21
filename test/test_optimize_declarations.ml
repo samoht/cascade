@@ -826,6 +826,11 @@ let floor_fallbacks_survive () =
     "a{top:0;top:anchor(bottom)}";
   check_modes "stretch" "a{width:1px;width:stretch}"
     "a{width:1px;width:stretch}";
+  (* Chrome 153 reads the [/ <'column-height'>] of [columns] (CSS Multicol 2
+     sec. 4.5); Firefox and Safari drop that declaration and paint the one
+     before it. *)
+  check_modes "a column height" "a{columns:10px 2;columns:10px 2/5px}"
+    "a{columns:10px 2;columns:10px 2/5px}";
   check_modes "image-set()"
     "a{background:url(a.png);background:image-set(url(a.png) 1x)}"
     "a{background:url(a.png);background:image-set(url(a.png)1x)}";
