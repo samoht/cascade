@@ -117,6 +117,7 @@ let vars_of_angular_position (value : Properties.angular_position) :
   | Angle angle -> vars_of_angle angle
   | Percentage percentage -> vars_of_percentage percentage
   | Zero -> []
+  | Calc calc -> vars_of_calc calc
 
 let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
     =
