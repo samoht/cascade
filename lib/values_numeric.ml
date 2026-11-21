@@ -299,20 +299,25 @@ let rec normalize_length_percentage ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
-      match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
+      let folded =
+        match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
+        | Val _ as folded -> folded
+        | folded -> (
+            match infinite_length_percentage folded with
+            | Some v -> Val v
+            | None -> folded)
+      in
+      match folded with
       (* Sec. 10.12 clamps a call past the property's range at computed-value
          time and keeps the declaration, so folding one to a literal the reader
          then refuses would drop it: the arithmetic still folds, and the call
-         stays around the result. This is what [normalize_number] does for the
-         number and time families. *)
+         stays around the result, an infinite one included. This is what
+         [normalize_number] does for the number and time families. *)
       | Val (Length v) when non_negative && negative_length v ->
           Calc (Val (Length v))
       | Val (Pct p) when non_negative && p < 0. -> Calc (Val (Pct p))
       | Val v -> normalize_length_percentage ~strip ~non_negative ~ctx v
-      | folded -> (
-          match infinite_length_percentage folded with
-          | Some v -> v
-          | None -> Calc (map_calc canonical_lp_leaf folded)))
+      | folded -> Calc (map_calc canonical_lp_leaf folded))
   | Length l -> (
       match normalize_length ~strip ~non_negative ~ctx l with
       (* A [<length>] calculation in a [<length-percentage>] slot reads back as

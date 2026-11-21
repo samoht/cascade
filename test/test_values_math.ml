@@ -1072,6 +1072,41 @@ let spec_math_var_whitespace () =
       ("--x", "calc(100% var(--op) 10px)", "calc(100% var(--op) 10px)");
     ]
 
+(* CSS Values 4 sec. 10.7.1 lets [-infinity] reach a length, and sec. 10.12
+   clamps the result to the property's range at computed-value time, so
+   [calc(-infinity*1px)] is [0px] in a sizing property, where the folded literal
+   [-3.40282e38px] is refused: Chromium 153 computes [min-height] [0px] against
+   [auto] and [max-width] [0px] against [none]. The fold keeps the call around
+   the result, as for any other negative one. *)
+let spec_math_infinite_range () =
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (input, into) -> decl_optimizes ~prop ~held:input ~into input)
+        [
+          ("calc(-infinity*1px)", "calc(-3.40282e38px)");
+          ("calc(infinity*-1px)", "calc(-3.40282e38px)");
+          ("calc(-infinity*1%)", "calc(-3.40282e38%)");
+          ("calc(infinity*1px)", "3.40282e38px");
+        ])
+    [
+      "width";
+      "height";
+      "min-width";
+      "min-height";
+      "max-width";
+      "max-height";
+      "inline-size";
+      "block-size";
+      "min-inline-size";
+      "min-block-size";
+      "max-inline-size";
+      "max-block-size";
+    ];
+  (* Control: a property that takes a negative length takes the literal. *)
+  decl_optimizes ~prop:"margin-left" ~held:"calc(-infinity*1px)"
+    ~into:"-3.40282e38px" "calc(-infinity*1px)"
+
 let suite =
   ( "values_math",
     [
@@ -1106,6 +1141,7 @@ let suite =
       test_case "spec math signed percentage basis" `Quick
         spec_math_signed_percentage_basis;
       test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
+      test_case "spec math infinite range" `Quick spec_math_infinite_range;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;

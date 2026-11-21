@@ -283,6 +283,11 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **An infinite negative size became an invalid literal.** `--minify` turned
+  `min-height:calc(-infinity*1px)` into `-3.40282e38px`, which the twelve
+  sizing properties refuse, so the declaration was dropped where the source
+  clamps to `0px` (CSS Values 4 sec. 10.12). The call now stays around the
+  folded value, as for any other negative result (#1512).
 - **A value moved or dropped components around a `var()`.** `--minify`
   treated a `var()` beside other components as one of the property's slots,
   then filled in, dropped, merged or reordered the slots around it:

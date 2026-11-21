@@ -266,7 +266,7 @@ Each row names the tests that check a statement. A browser harness under
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
 | `var()` components | `declaration` "complex values"; `properties_background` "background-image" |
-| Range | `values_math` "spec math range every family" |
+| Range | `values_math` "spec math range every family", "spec math infinite range" |
 | Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
 | Zero operands | `values_math` "spec math zero operands" |
