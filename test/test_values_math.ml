@@ -1020,6 +1020,37 @@ let spec_math_zero_operands () =
       ("opacity", "round(1,0)", "calc(NaN)");
     ]
 
+(* A percentage in a position resolves against the box less the image (CSS
+   Backgrounds 3 sec. 3.6, CSS Images 3 sec. 5.5), which is negative when the
+   image is the larger. A comparison, [abs()] or a stepped function over such a
+   percentage depends on that sign, so [min(10%,20%)] is [20%] of the basis
+   there, not [10%]: the call is kept. A percentage whose basis cannot be
+   negative, as in [transform-origin], still folds. *)
+let spec_math_signed_percentage_basis () =
+  let optimized prop value =
+    let css = String.concat "" [ ".x{"; prop; ":"; value; "}" ] in
+    match Css.of_string ~strict:false css with
+    | Ok p -> Css.to_string ~minify:true (Css.optimize p.stylesheet)
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let keeps prop value call =
+    let out = optimized prop value in
+    Alcotest.(check bool)
+      (Fmt.str "%s:%s keeps %s in %s" prop value call out)
+      true
+      (Astring.String.is_infix ~affix:call out)
+  in
+  keeps "background-position" "min(10%,20%) 0" "min(10%,20%)";
+  keeps "background-position-x" "max(10%,20%)" "max(10%,20%)";
+  keeps "background-position" "calc(min(10%,20%) + 1px) 0" "min(10%,20%)";
+  keeps "object-position" "min(10%,20%) 0" "min(10%,20%)";
+  keeps "mask-position" "clamp(10%,15%,20%) 0" "clamp(10%,15%,20%)";
+  keeps "background" "url(a.png) min(10%,20%) 0" "min(10%,20%)";
+  keeps "mask" "url(a.png) min(10%,20%) 0" "min(10%,20%)";
+  keeps "background-position" "abs(-10%) 0" "abs(-10%)";
+  decl_optimizes ~prop:"transform-origin" ~into:"10% 0" "min(10%,20%) 0";
+  decl_optimizes ~prop:"background-position-x" ~into:"10px" "min(10px,20px)"
+
 let suite =
   ( "values_math",
     [
@@ -1051,6 +1082,8 @@ let suite =
         spec_math_function_every_type;
       test_case "spec math fixed-ratio units" `Quick spec_math_fixed_ratio_units;
       test_case "spec math zero operands" `Quick spec_math_zero_operands;
+      test_case "spec math signed percentage basis" `Quick
+        spec_math_signed_percentage_basis;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;

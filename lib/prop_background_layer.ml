@@ -111,7 +111,9 @@ let normalize_background_shorthand ?(lossless = false)
   let size = drop_initial_slot (Auto : background_size) b.size in
   (* The size is written after the position and a [/], so the position can only
      go once the size has. *)
-  let position = option_map_preserve normalize_position_value b.position in
+  let position =
+    option_map_preserve (normalize_position_value ~signed_basis:true) b.position
+  in
   let position =
     match position with
     | Some p when Option.is_none size && position_is_layer_initial p ->
@@ -476,7 +478,12 @@ let read_background_box_list t : background_box =
 let rec normalize_background_position_axis :
     background_position_axis -> background_position_axis =
  fun value ->
-  let lp = Values.normalize_length_percentage in
+  (* Sec. 3.6 resolves the percentage against the box less the image, which can
+     be negative, so a call whose value turns on that sign stays. *)
+  let lp v =
+    if Values_numeric.length_percentage_sign_dependent v then v
+    else Values.normalize_length_percentage v
+  in
   let start_edge : position_axis_edge -> bool = function
     | Left | Top -> true
     | _ -> false

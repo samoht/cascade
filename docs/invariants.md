@@ -107,6 +107,12 @@ implementation keeps them.
   a math function past the range at computed-value time, so a math function
   of either sign is kept, and a fold keeps the wrapper around a result the
   bare literal could not spell.
+- **A percentage folds through a non-linear function only over a basis that
+  cannot be negative.** A comparison, `abs()`, `sign()`, `hypot()` or a
+  stepped function over a percentage turns on the sign of the basis it
+  resolves against; in `background-position`, `mask-position` and
+  `object-position` that basis is the box less the image (CSS Backgrounds 3
+  sec. 3.6), so such a call stays as written there.
 - **A math function folds over units with a fixed ratio.** CSS Values 4 sec.
   10.7 converts `s` and `ms`, `deg`, `grad` and `turn`, and the absolute
   lengths before it compares or sums them, so `min(1s,1000ms)` is `1s`. A call
@@ -256,6 +262,7 @@ Each row names the tests that check a statement. A browser harness under
 | Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
 | Zero operands | `values_math` "spec math zero operands" |
+| Signed percentage basis | `values_math` "spec math signed percentage basis" |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
