@@ -183,7 +183,14 @@ module Transform = struct
   let read_perspective t : transform =
     Cursor.call "perspective" t (fun inner ->
         Cursor.ws inner;
-        let len = read_length inner in
+        (* CSS Transforms 2 sec. 13.1: [perspective( [ <length [0,inf]> | none ]
+           )]. *)
+        let len =
+          if Cursor.looking_at inner "none" then (
+            Cursor.expect_string "none" inner;
+            (None : length))
+          else read_length inner
+        in
         Cursor.ws inner;
         Cursor.expect_eof inner;
         (Perspective len : transform))

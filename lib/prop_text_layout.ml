@@ -16,6 +16,11 @@ let rec read_text_align t : text_align =
       ("end", End);
       ("match-parent", Match_parent);
       ("-webkit-match-parent", Webkit_match_parent);
+      (* WebKit's alignment of block descendants, which Blink, WebKit and Gecko
+         read. *)
+      ("-webkit-left", Webkit_left);
+      ("-webkit-right", Webkit_right);
+      ("-webkit-center", Webkit_center);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -234,6 +239,9 @@ let rec pp_text_align : text_align Pp.t =
   | End -> Pp.string ctx "end"
   | Match_parent -> Pp.string ctx "match-parent"
   | Webkit_match_parent -> Pp.string ctx "-webkit-match-parent"
+  | Webkit_left -> Pp.string ctx "-webkit-left"
+  | Webkit_right -> Pp.string ctx "-webkit-right"
+  | Webkit_center -> Pp.string ctx "-webkit-center"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -396,6 +404,22 @@ let rec pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+(* CSS Text 4 sec. 3.1. *)
+let rec pp_white_space_collapse : white_space_collapse Pp.t =
+ fun ctx -> function
+  | Collapse -> Pp.string ctx "collapse"
+  | Discard -> Pp.string ctx "discard"
+  | Preserve -> Pp.string ctx "preserve"
+  | Preserve_breaks -> Pp.string ctx "preserve-breaks"
+  | Preserve_spaces -> Pp.string ctx "preserve-spaces"
+  | Break_spaces -> Pp.string ctx "break-spaces"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_white_space_collapse ctx v
+
 let rec pp_white_space : white_space Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_white_space ctx v
@@ -405,8 +429,15 @@ let rec pp_white_space : white_space Pp.t =
   | Pre_wrap -> Pp.string ctx "pre-wrap"
   | Pre_line -> Pp.string ctx "pre-line"
   | Break_spaces -> Pp.string ctx "break-spaces"
-  | Collapse -> Pp.string ctx "collapse"
-  | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
+  | Longhands (collapse, mode) -> (
+      match (collapse, mode) with
+      | Some c, Some m ->
+          pp_white_space_collapse ctx c;
+          Pp.space ctx ();
+          pp_text_wrap_mode ctx m
+      | Some c, None -> pp_white_space_collapse ctx c
+      | None, Some m -> pp_text_wrap_mode ctx m
+      | None, None -> Pp.string ctx "normal")
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -690,15 +721,47 @@ let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
     ~calls:[ ("var", fun t -> Var (read_var read_hyphenate_limit_chars t)) ]
     ~default:read_slots t
 
+(* CSS Text 4 sec. 3: [white-space] is [normal | pre | pre-wrap | pre-line |
+   <'white-space-collapse'> || <'text-wrap-mode'>]. [nowrap] and [break-spaces]
+   are both a legacy keyword and a lone longhand value, and read as the
+   keyword. *)
+let read_white_space_collapse_word t : white_space_collapse =
+  Cursor.enum "white-space-collapse"
+    [
+      ("collapse", (Collapse : white_space_collapse));
+      ("discard", Discard);
+      ("preserve", Preserve);
+      ("preserve-breaks", Preserve_breaks);
+      ("preserve-spaces", Preserve_spaces);
+      ("break-spaces", Break_spaces);
+    ]
+    t
+
+let read_text_wrap_mode_word t : text_wrap_mode =
+  Cursor.enum "text-wrap-mode"
+    [ ("wrap", (Wrap : text_wrap_mode)); ("nowrap", No_wrap) ]
+    t
+
+let read_white_space_longhands ~both t : white_space =
+  let first =
+    Cursor.one_of
+      [
+        (fun t -> Either.Left (read_white_space_collapse_word t));
+        (fun t -> Either.Right (read_text_wrap_mode_word t));
+      ]
+      t
+  in
+  Cursor.ws t;
+  let second read = if both then Some (read t) else Cursor.option read t in
+  match first with
+  | Left c -> Longhands (Some c, second read_text_wrap_mode_word)
+  | Right m -> Longhands (second read_white_space_collapse_word, Some m)
+
 let rec read_white_space t : white_space =
   Cursor.ws t;
-  match Cursor.peek_keyword t with
-  | Some "preserve" ->
-      ignore (Cursor.ident t : string);
-      Cursor.ws t;
-      Cursor.expect_string "nowrap" t;
-      Preserve_nowrap
-  | _ ->
+  Cursor.one_of
+    [
+      read_white_space_longhands ~both:true;
       Cursor.enum_or_var "white-space"
         [
           ("normal", (Normal : white_space));
@@ -707,31 +770,16 @@ let rec read_white_space t : white_space =
           ("pre-wrap", Pre_wrap);
           ("pre-line", Pre_line);
           ("break-spaces", Break_spaces);
-          ("collapse", Collapse);
           ("inherit", Inherit);
           ("initial", Initial);
           ("unset", Unset);
           ("revert", Revert);
           ("revert-layer", Revert_layer);
         ]
-        ~var:(fun t -> Var (read_var read_white_space t))
-        t
-
-(* CSS Text 4 sec. 3.1. *)
-let rec pp_white_space_collapse : white_space_collapse Pp.t =
- fun ctx -> function
-  | Collapse -> Pp.string ctx "collapse"
-  | Discard -> Pp.string ctx "discard"
-  | Preserve -> Pp.string ctx "preserve"
-  | Preserve_breaks -> Pp.string ctx "preserve-breaks"
-  | Preserve_spaces -> Pp.string ctx "preserve-spaces"
-  | Break_spaces -> Pp.string ctx "break-spaces"
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_white_space_collapse ctx v
+        ~var:(fun t -> Var (read_var read_white_space t));
+      read_white_space_longhands ~both:false;
+    ]
+    t
 
 let rec read_white_space_collapse t : white_space_collapse =
   Cursor.enum_or_var "white-space-collapse"

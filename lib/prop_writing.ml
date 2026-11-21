@@ -141,6 +141,7 @@ let rec pp_dominant_baseline : dominant_baseline Pp.t =
   | Middle -> Pp.string ctx "middle"
   | Text_top -> Pp.string ctx "text-top"
   | Text_bottom -> Pp.string ctx "text-bottom"
+  | Hanging -> Pp.string ctx "hanging"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -168,6 +169,9 @@ let rec pp_unicode_bidi : unicode_bidi Pp.t =
   | Bidi_override -> Pp.string ctx "bidi-override"
   | Isolate_override -> Pp.string ctx "isolate-override"
   | Plaintext -> Pp.string ctx "plaintext"
+  | Webkit_isolate -> Pp.string ctx "-webkit-isolate"
+  | Webkit_isolate_override -> Pp.string ctx "-webkit-isolate-override"
+  | Webkit_plaintext -> Pp.string ctx "-webkit-plaintext"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -182,6 +186,12 @@ let rec pp_writing_mode : writing_mode Pp.t =
   | Vertical_lr -> Pp.string ctx "vertical-lr"
   | Sideways_lr -> Pp.string ctx "sideways-lr"
   | Sideways_rl -> Pp.string ctx "sideways-rl"
+  | Lr -> Pp.string ctx "lr"
+  | Lr_tb -> Pp.string ctx "lr-tb"
+  | Rl -> Pp.string ctx "rl"
+  | Rl_tb -> Pp.string ctx "rl-tb"
+  | Tb -> Pp.string ctx "tb"
+  | Tb_rl -> Pp.string ctx "tb-rl"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -318,6 +328,10 @@ let rec read_unicode_bidi t : unicode_bidi =
       ("bidi-override", Bidi_override);
       ("isolate-override", Isolate_override);
       ("plaintext", Plaintext);
+      (* The prefixed spellings Blink and WebKit still read. *)
+      ("-webkit-isolate", Webkit_isolate);
+      ("-webkit-isolate-override", Webkit_isolate_override);
+      ("-webkit-plaintext", Webkit_plaintext);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -335,6 +349,14 @@ let rec read_writing_mode t : writing_mode =
       ("vertical-lr", Vertical_lr);
       ("sideways-lr", Sideways_lr);
       ("sideways-rl", Sideways_rl);
+      (* CSS Writing Modes 4 sec. 3.1.1: the SVG 1.1 values, which compute to
+         [horizontal-tb] and [vertical-rl]. *)
+      ("lr", Lr);
+      ("lr-tb", Lr_tb);
+      ("rl", Rl);
+      ("rl-tb", Rl_tb);
+      ("tb", Tb);
+      ("tb-rl", Tb_rl);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -382,6 +404,7 @@ let rec read_dominant_baseline t : dominant_baseline =
       ("middle", Middle);
       ("text-top", Text_top);
       ("text-bottom", Text_bottom);
+      ("hanging", Hanging);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);

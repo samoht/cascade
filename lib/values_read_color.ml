@@ -1034,28 +1034,10 @@ let color_uses_feature_where lacks =
 let read_system_color t : system_color =
   Cursor.ws t;
   let keyword = Cursor.ident t in
-  match String.lowercase_ascii keyword with
-  | "accentcolor" -> Accent_color
-  | "accentcolortext" -> Accent_color_text
-  | "activetext" -> Active_text
-  | "buttonborder" -> Button_border
-  | "buttonface" -> Button_face
-  | "buttontext" -> Button_text
-  | "canvas" -> Canvas
-  | "canvastext" -> Canvas_text
-  | "field" -> Field
-  | "fieldtext" -> Field_text
-  | "graytext" -> Gray_text
-  | "highlight" -> Highlight
-  | "highlighttext" -> Highlight_text
-  | "linktext" -> Link_text
-  | "mark" -> Mark
-  | "marktext" -> Mark_text
-  | "selecteditem" -> Selected_item
-  | "selecteditemtext" -> Selected_item_text
-  | "visitedtext" -> Visited_text
-  | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
-  | _ -> Cursor.err_invalid t (String.concat "" [ "system color: "; keyword ])
+  match system_color_of_string keyword with
+  | Some c -> c
+  | None ->
+      Cursor.err_invalid t (String.concat "" [ "system color: "; keyword ])
 
 (** Read color_name value *)
 let read_color_name t : color_name =

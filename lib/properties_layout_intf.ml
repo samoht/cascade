@@ -106,6 +106,7 @@ type display =
   | Webkit_inline_flex
   | Ms_flexbox
   | Webkit_box
+  | Webkit_inline_box
   | Moz_box
   | Moz_inline_box
   | Inherit
@@ -289,6 +290,9 @@ type overflow =
   | Scroll
   | Auto
   | Clip
+  | Overlay
+      (** [overlay], which CSS Overflow 3 sec. 3.1 makes a legacy alias of
+          [auto]. *)
   | Initial
   | Inherit
   | Unset

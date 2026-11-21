@@ -54,6 +54,12 @@ module Cursor_prop = struct
         ("nwse-resize", Nwse_resize);
         ("zoom-in", Zoom_in);
         ("zoom-out", Zoom_out);
+        (* The prefixed spellings WebKit and Blink still read beside the
+           standard ones. *)
+        ("-webkit-grab", Webkit_grab);
+        ("-webkit-grabbing", Webkit_grabbing);
+        ("-webkit-zoom-in", Webkit_zoom_in);
+        ("-webkit-zoom-out", Webkit_zoom_out);
         ("inherit", Inherit);
         ("initial", Initial);
         ("unset", Unset);
@@ -372,6 +378,14 @@ let rec pp_appearance : appearance Pp.t =
   | Textfield -> Pp.string ctx "textfield"
   | Menulist -> Pp.string ctx "menulist"
   | Base_select -> Pp.string ctx "base-select"
+  | Searchfield -> Pp.string ctx "searchfield"
+  | Textarea -> Pp.string ctx "textarea"
+  | Checkbox -> Pp.string ctx "checkbox"
+  | Radio -> Pp.string ctx "radio"
+  | Listbox -> Pp.string ctx "listbox"
+  | Meter -> Pp.string ctx "meter"
+  | Progress_bar -> Pp.string ctx "progress-bar"
+  | Menulist_button -> Pp.string ctx "menulist-button"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -510,6 +524,10 @@ let rec pp_cursor : cursor Pp.t =
   | Nwse_resize -> Pp.string ctx "nwse-resize"
   | Zoom_in -> Pp.string ctx "zoom-in"
   | Zoom_out -> Pp.string ctx "zoom-out"
+  | Webkit_grab -> Pp.string ctx "-webkit-grab"
+  | Webkit_grabbing -> Pp.string ctx "-webkit-grabbing"
+  | Webkit_zoom_in -> Pp.string ctx "-webkit-zoom-in"
+  | Webkit_zoom_out -> Pp.string ctx "-webkit-zoom-out"
   | Url (url, coords, fallback) ->
       Pp.url ctx url;
       (match coords with
@@ -1187,6 +1205,14 @@ let rec read_appearance t : appearance =
       ("textfield", Textfield);
       ("menulist", Menulist);
       ("base-select", Base_select);
+      ("searchfield", Searchfield);
+      ("textarea", Textarea);
+      ("checkbox", Checkbox);
+      ("radio", Radio);
+      ("listbox", Listbox);
+      ("meter", Meter);
+      ("progress-bar", Progress_bar);
+      ("menulist-button", Menulist_button);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);

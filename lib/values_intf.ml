@@ -259,6 +259,10 @@ type length =
   | Moz_max_content  (** -moz-max-content (legacy intrinsic sizing) *)
   | Moz_min_content  (** -moz-min-content (legacy intrinsic sizing) *)
   | Moz_fit_content  (** -moz-fit-content (legacy intrinsic sizing) *)
+  | Webkit_fill_available
+      (** -webkit-fill-available, the prefixed [stretch] Blink and WebKit read
+      *)
+  | Moz_available  (** -moz-available, the prefixed [stretch] Gecko reads *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
   | Hairline  (** hairline line-width keyword for text-decoration-thickness *)
   | Thin  (** thin line-width keyword for text-decoration-thickness *)
@@ -569,6 +573,31 @@ type system_color =
   | Visited_text  (** Text of visited links *)
   (* WebKit-specific system colors *)
   | Webkit_focus_ring_color  (** WebKit-specific focus ring color *)
+  (* CSS Color 4 Appendix A: the deprecated system colours a user agent must
+     still support. *)
+  | Active_border
+  | Active_caption
+  | App_workspace
+  | Background
+  | Button_highlight
+  | Button_shadow
+  | Caption_text
+  | Inactive_border
+  | Inactive_caption
+  | Inactive_caption_text
+  | Info_background
+  | Info_text
+  | Menu
+  | Menu_text
+  | Scrollbar
+  | Three_d_dark_shadow
+  | Three_d_face
+  | Three_d_highlight
+  | Three_d_light_shadow
+  | Three_d_shadow
+  | Window
+  | Window_frame
+  | Window_text
 
 (** CSS color values. *)
 type color =

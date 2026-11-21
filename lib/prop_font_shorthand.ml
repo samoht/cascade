@@ -746,6 +746,18 @@ let try_numeric_font_weight r (weight : font_weight option ref) =
       Cursor.restore r before;
       false
 
+(* CSS Fonts 4 sec. 2.4: the [font] shorthand takes [<'font-style'>], whose
+   [oblique] may carry one angle. A following number or length is the weight or
+   the size, so an angle is only taken when one reads. *)
+let read_shorthand_oblique r : font_style =
+  Cursor.ws r;
+  let before = Cursor.save r in
+  match read_angle_unit_required r with
+  | angle -> Oblique_angle angle
+  | exception Cursor.Parse_error _ ->
+      Cursor.restore r before;
+      Oblique
+
 let read_optional_line_height r =
   Cursor.ws r;
   match Cursor.peek_delim r with
@@ -768,7 +780,9 @@ let read_font_shorthand r : font_shorthand =
     Cursor.ws r;
     if Cursor.is_done r then ()
     else if font_shorthand_prefix_ident (Cursor.peek_keyword r) then (
-      assign (font_prefix_slot_of (Cursor.ident ~keep_case:false r));
+      (match font_prefix_slot_of (Cursor.ident ~keep_case:false r) with
+      | Style Oblique -> assign (Style (read_shorthand_oblique r))
+      | slot -> assign slot);
       consume_prefix ())
     else if try_numeric_font_weight r weight then consume_prefix ()
   in
