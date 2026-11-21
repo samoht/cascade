@@ -1107,6 +1107,30 @@ let spec_math_infinite_range () =
   decl_optimizes ~prop:"margin-left" ~held:"calc(-infinity*1px)"
     ~into:"-3.40282e38px" "calc(-infinity*1px)"
 
+(* CSS Variables 1 sec. 3 takes a declaration holding a [var()] as valid at
+   parse time, so no type check on the call's operands can refuse it before
+   substitution. Cascade deleted these as invalid; Chromium 153 computes
+   [rotate:atan2(var(--y),var(--x))] as [45deg] with both at [1],
+   [rotate:acos(var(--v))] as [90deg] and [rotate:x acos(var(--v))] as [x 90deg]
+   with [--v:0], and [clip-path:circle(var(--v) 0% 0%)] as [circle(10px at 0%
+   0%)] with [--v:10px at]. The print of [calc(atan2(...))] is one of them, so a
+   second pass kept deleting what the first printed. *)
+let spec_math_substitution_never_invalid () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~held:input ~into input)
+    [
+      ("rotate", "atan2(var(--y),var(--x))", "atan2(var(--y),var(--x))");
+      ("rotate", "acos(var(--v))", "acos(var(--v))");
+      ("rotate", "asin(var(--v))", "asin(var(--v))");
+      ("rotate", "atan(var(--v))", "atan(var(--v))");
+      ("rotate", "atan2(1px,var(--x))", "atan2(1px,var(--x))");
+      ("rotate", "x acos(var(--v))", "x acos(var(--v))");
+    ];
+  decl_optimizes ~prop:"rotate" ~held:"atan2(var(--y),var(--x))"
+    ~into:"atan2(var(--y),var(--x))" "calc(atan2(var(--y),var(--x)))";
+  decl_optimizes ~prop:"clip-path" ~held:"circle(var(--v) 0%0%)"
+    ~into:"circle(var(--v) 0%0%)" "circle(var(--v) 0% 0%)"
+
 let suite =
   ( "values_math",
     [
@@ -1142,6 +1166,8 @@ let suite =
         spec_math_signed_percentage_basis;
       test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
       test_case "spec math infinite range" `Quick spec_math_infinite_range;
+      test_case "spec math substitution never invalid" `Quick
+        spec_math_substitution_never_invalid;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
