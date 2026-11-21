@@ -830,13 +830,16 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in oklch,#08c 50%,transparent)"
     ~optimized:"oklch(.5998 .1412 241.555/.5)"
     "color-mix(in oklch, #0088cc 50%, transparent)";
+  (* With the Editor's Draft D50 white the mix is lab(53.287 -12.256 -44.558),
+     sRGB red 0 on the gamut edge: one decimal (53.3 -12.3 -44.6) leaves the
+     gamut by a byte, and two decimals paint (0,136,204). *)
   check_color ~expected:"color-mix(in lab,#08c 50%,transparent)"
-    ~optimized:"lab(53.3-12.2-44.6/.5)"
+    ~optimized:"lab(53.29-12.26-44.56/.5)"
     "color-mix(in lab, #0088cc 50%, transparent)";
-  (* The hue is the D50 white point's of CSS Color 4 sec. 9 in the TR, (0.96422,
-     1, 0.82521); the Editor's Draft's xy-derived white puts it at 254.621. *)
+  (* The hue is the one the D50 white of CSS Color 4 (Editor's Draft) sec. 2, x
+     0.3457 and y 0.3585, gives: 254.621. *)
   check_color ~expected:"color-mix(in lch,#08c 50%,transparent)"
-    ~optimized:"lch(53.3 46.2 254.628/.5)"
+    ~optimized:"lch(53.3 46.2 254.621/.5)"
     "color-mix(in lch, #0088cc 50%, transparent)";
   (* No explicit percentage: the 50/50 default restores the colour the same
      way. *)
