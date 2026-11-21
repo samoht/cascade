@@ -514,8 +514,13 @@ module Animation = struct
         { acc with name = Some (Ambiguous name) }
     | _ -> acc
 
-  let read_component t =
-    let read_duration t = Duration (read_duration t) in
+  (* Sec. 3.11 gives the first time to animation-duration, which is [[0s,inf]],
+     and the second to animation-delay, which sec. 3.6 lets be negative. *)
+  let read_component state t =
+    let read_duration t =
+      if !(state.duration_count) = 0 then Duration (read_duration t)
+      else Duration (read_time t)
+    in
     let read_timing t = Timing_function (read_timing_function t) in
     let read_iteration t = Iteration_count (read_animation_count_item t) in
     let read_direction t =
@@ -592,7 +597,7 @@ module Animation = struct
   let read_shorthand t =
     let state = read_state () in
     let acc, _ =
-      Cursor.fold_many read_component ~init:default_shorthand
+      Cursor.fold_many (read_component state) ~init:default_shorthand
         ~f:(apply_component t state) t
     in
     (* CSS spec: All components are optional *)

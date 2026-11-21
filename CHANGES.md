@@ -283,6 +283,10 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **An animation with a negative delay was deleted.** `--minify` refused
+  `animation:foo 1s -1s`, though it printed that form itself from
+  `calc(-1s)`. CSS Animations 1 sec. 3.6 lets the delay, the second time, be
+  negative; only the duration must not be. The declaration is now kept (#1514).
 - **A math function over a `var()` could delete its declaration.**
   `--minify` deleted `rotate:atan2(var(--y),var(--x))`, the same over
   `acos()`, `asin()` and `atan()`, `rotate:x acos(var(--v))` and
