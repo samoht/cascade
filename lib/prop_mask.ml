@@ -111,13 +111,15 @@ let normalize_clip_path_circle value =
 let normalize_clip_path_ellipse value =
   match value with
   | Clip_path_ellipse r ->
-      let rx =
-        option_map_preserve normalize_clip_path_extent r.rx
-        |> drop_default_clip_path_extent
-      in
-      let ry =
-        option_map_preserve normalize_clip_path_extent r.ry
-        |> drop_default_clip_path_extent
+      (* ellipse() takes its two radii together or not at all (Chromium rejects
+         one), so only the pair of default [closest-side] drops. *)
+      let rx = option_map_preserve normalize_clip_path_extent r.rx in
+      let ry = option_map_preserve normalize_clip_path_extent r.ry in
+      let rx, ry =
+        match (rx, ry) with
+        | Option.Some Closest_side, Option.Some Closest_side ->
+            (Option.None, Option.None)
+        | _ -> (rx, ry)
       in
       let position =
         option_map_preserve (normalize_position_value ~strip:false) r.position
