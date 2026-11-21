@@ -257,3 +257,19 @@ let holds_only_initial d =
 let tr_reset_hazard = reset_hazard ~slots_of:tr_overwritten_slots
 let td_reset_hazard = reset_hazard ~slots_of:td_overwritten_slots
 let bi_reset_hazard = reset_hazard ~slots_of:bi_overwritten_slots
+
+let rewritten_after ~slots_of idx i ~missing ~important =
+  let n = Rule_index.length idx in
+  let rec scan j written =
+    if j >= n then written
+    else
+      let d = Rule_index.decl_at idx j in
+      let written =
+        if (not important) || is_important d then written lor slots_of d
+        else written
+      in
+      scan (j + 1) written
+  in
+  Int.equal (scan (i + 1) 0 land missing) missing
+
+let bi_rewritten_after = rewritten_after ~slots_of:bi_overwritten_slots

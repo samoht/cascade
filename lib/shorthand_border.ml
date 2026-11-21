@@ -359,6 +359,46 @@ let compose_line_via_index idx =
         ~try_compose:(try_compose_line_at ~part_of ~build))
     line_families
 
+(* CSS Backgrounds 3 sec. 4.4: [border] sets the four sides to one [<line-width>
+   || <line-style> || <color>] and resets [border-image] to its initial value,
+   so four side shorthands holding one such value compose into it where that
+   reset drops nothing ([bi_hazard], and {!Shorthand_common.guard_reset} under
+   [`Stylesheet]). A CSS-wide keyword would reset [border-image] to something
+   other than its initial value, so only a line value or [none] composes. *)
+let border_side : declaration -> (int * Properties.border) option = function
+  | Declaration { property = Border_top; value; _ } -> Some (0, value)
+  | Declaration { property = Border_right; value; _ } -> Some (1, value)
+  | Declaration { property = Border_bottom; value; _ } -> Some (2, value)
+  | Declaration { property = Border_left; value; _ } -> Some (3, value)
+  | _ -> None
+
+let try_compose_border_sides_at ~bi_hazard idx i =
+  let positions = [ i; i + 1; i + 2; i + 3 ] in
+  if
+    i + 3 >= Rule_index.length idx
+    || List.exists (Rule_index.is_absorbed idx) positions
+  then None
+  else
+    let raw = List.map (Rule_index.decl_at idx) positions in
+    let sides = List.filter_map border_side raw in
+    let text d = Declaration.string_of_value ~minify:true d in
+    match (sides, raw) with
+    | (_, ((Properties.Shorthand _ | None) as value)) :: _, first :: rest
+      when List.length sides = 4
+           && List.equal Int.equal
+                (List.sort_uniq Int.compare (List.map fst sides))
+                [ 0; 1; 2; 3 ]
+           && same_importance raw
+           && (not (List.exists has_runtime_substitution raw))
+           && List.for_all (fun d -> String.equal (text d) (text first)) rest
+           && not (bi_hazard i ~important:(is_important first)) ->
+        Some (Declaration.v ~important:(is_important first) Border value, 4)
+    | _ -> None
+
+let compose_border_sides_via_index ~ctx ~bi_hazard idx =
+  compose_run_via_index idx
+    ~try_compose:(guard_reset ~ctx (try_compose_border_sides_at ~bi_hazard))
+
 (* Compose the [border] shorthand from the three whole-border longhands
    [border-width] / [border-style] / [border-color] when they appear as a
    contiguous run (any order, single-valued, same importance). The [border]
