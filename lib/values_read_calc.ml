@@ -707,6 +707,57 @@ let check_math_family t family (calc : _ calc) =
       | _ -> ())
   | _ -> ()
 
+(* A unit of [family], for asking a slot's leaf reader whether it takes that
+   type. *)
+let family_unit = function
+  | Number -> Option.none
+  | Length -> Option.some "px"
+  | Percent -> Option.some "%"
+  | Time -> Option.some "s"
+  | Angle -> Option.some "deg"
+  | Frequency -> Option.some "hz"
+  | Resolution -> Option.some "dppx"
+  | Flex -> Option.some "fr"
+
+(* The unit a call answering its arguments' type carries, folded or not. *)
+let math_fn_unit fn =
+  match math_fn_result fn with
+  | Some (United (_, unit)) -> Option.some unit
+  | Some (Scalar _) -> Option.none
+  | None -> Option.bind (math_fn_family fn) family_unit
+
+(* CSS Values 4 (ED) sec. 10.1 lets a calculation stand only where its type
+   does, and sec. 10.9 types it from its operands. A [<length>] or a [<time>]
+   leaf comes through the slot's own reader, which vouches for its type; a
+   comparison, a stepped-value call, [abs()] or [hypot()] reads its arguments
+   with any unit, so its type is checked here against the same reader: the call
+   stands only where a literal of its unit would. [calc(min(1s, 2s))] is no
+   [<length>], and [calc(min(10px, 1px))] no [<alpha-value>]. *)
+let check_operand_types : type a. (Cursor.t -> a) -> Cursor.t -> a calc -> unit
+    =
+ fun read_a t calc ->
+  let slot_takes unit =
+    let probe = Cursor.of_string (String.concat "" [ "1"; unit ]) in
+    match read_a probe with
+    | _ ->
+        Cursor.ws probe;
+        Cursor.is_done probe
+    | exception Cursor.Parse_error _ -> false
+  in
+  let rec check : a calc -> unit = function
+    | Math_fn fn -> (
+        match math_fn_unit fn with
+        | Some unit when not (slot_takes unit) ->
+            Cursor.err_invalid t "incompatible calc types"
+        | Some _ | None -> ())
+    | Nested inner | Parens inner -> check inner
+    | Expr (left, _, right) ->
+        check left;
+        check right
+    | Num _ | Math_const _ | Val _ | Var _ | Sibling_index | Sibling_count -> ()
+  in
+  check calc
+
 type inferred_calc_type =
   | Dimension of int
     (* Exponent 0 is a number, 1 is the contextual numeric value, and
@@ -942,18 +993,6 @@ let read_folded_percentage_math t =
 let looking_at_percentage_math t =
   Cursor.looking_at_calc t || looking_at_math_function t
 
-(* A call answering a unit of its own (an [<angle>] from [asin()], or the type
-   of its arguments) stands only at a slot whose leaf takes that unit:
-   [line-height:atan(0)] is invalid (CSS Values 4 sec. 10.4). *)
-let check_result_unit t read_a result_type calc =
-  match (result_type, infer_calc_type calc) with
-  | Some (`Value | `Number_or_value), Result_unit unit
-    when Option.is_none
-           (Cursor.option read_a
-              (Cursor.of_string (String.concat "" [ "1"; unit ]))) ->
-      Cursor.err_invalid t "incompatible calc types"
-  | _ -> ()
-
 let read_calc : type a.
     ?result_type:
       [ `Number
@@ -977,7 +1016,7 @@ let read_calc : type a.
         Option.iter
           (fun result_type -> validate_calc_type inner result_type result)
           result_type;
-        check_result_unit inner read_a result_type result;
+        check_operand_types read_a inner result;
         result)
   in
   if Cursor.looking_at_func "calc" t then read "calc"
@@ -994,7 +1033,7 @@ let read_calc : type a.
     Option.iter
       (fun result_type -> validate_calc_type t result_type result)
       result_type;
-    check_result_unit t read_a result_type result;
+    check_operand_types read_a t result;
     result)
   else Cursor.err t "calc() or var()"
 
