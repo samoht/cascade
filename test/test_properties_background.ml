@@ -533,10 +533,12 @@ let test_background_image () =
     "conic-gradient(red 0deg, blue 360deg)";
   decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,#00f)"
     "conic-gradient(red 0turn, blue 1turn)";
+  (* Sec. 3.3.2 measures a conic percentage against 360deg, so [90deg] is [25%],
+     the shorter spelling. *)
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(red 10% 90deg,#00f)"
+    ~into:"conic-gradient(red 10% 25%,#00f)"
     "conic-gradient(red 10% 90deg, blue)";
-  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,90deg,#00f)"
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,25%,#00f)"
     "conic-gradient(red, 90deg, blue)";
   (* An angle places a stop on a circle only: a linear or radial stop takes a
      length-percentage (sec. 3.5.1). *)
