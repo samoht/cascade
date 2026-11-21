@@ -562,6 +562,46 @@ let undecidable_colour_channels_stay () =
     (Css.to_string
        (Css.stylesheet ".a{color:rgba(0, 0, 0, 0.09999999999999998)}"))
 
+(* A [var()] beside a channel leaves the channel's number to be quantised once
+   substituted, so the rule holds there too. With [--b:0], Chromium 153 paints
+   [rgba(0,0,var(--b),0.09999999999999998)] at alpha 25 and [rgb(0 0
+   var(--b)/.1)] at 26, and [rgb(0 0 var(--b)/.0996)] at 25: rounding [.0996] to
+   [.1] crosses the byte under every reading. *)
+let colour_channels_beside_var () =
+  let check name want css = Alcotest.(check string) name want (minified css) in
+  check "an alpha past the half beside a var() stays"
+    ".a{color:rgba(0,0,var(--b),.09999999999999998)}"
+    ".a{color:rgba(0,0,var(--b),0.09999999999999998)}";
+  check "an alpha keeps the digits that hold its byte"
+    ".a{color:rgb(0 0 var(--b)/.0996)}" ".a{color:rgb(0 0 var(--b)/.0996)}";
+  check "an alpha rounds where its byte holds"
+    ".a{color:rgb(0 0 var(--b)/.123)}" ".a{color:rgb(0 0 var(--b)/.12345)}";
+  Alcotest.(check string)
+    "inlining the var() keeps the colour as written"
+    ".a{color:rgba(0,0,0,.09999999999999998)}"
+    (Css.to_string ~minify:true
+       (Css.inline_vars
+          (Css.stylesheet
+             ":root{--b:0}.a{color:rgba(0,0,var(--b),0.09999999999999998)}")));
+  let eval custom css =
+    let ctx =
+      Css.Context.v
+        ~custom_properties:[ ok (Css.Declaration.of_string custom) ]
+        ()
+    in
+    Css.Declaration.to_string ~minify:true
+      (Css.eval_declaration ctx (ok (Css.Declaration.of_string css)))
+  in
+  Alcotest.(check string)
+    "evaluating substitutes into the colour as written"
+    "color:rgba(0,0,0,.09999999999999998)"
+    (eval "--b:0" "color:rgba(0,0,var(--b),0.09999999999999998)");
+  Alcotest.(check string)
+    "evaluating resolves one the value makes decidable"
+    (Css.Declaration.to_string ~minify:true
+       (ok (Css.Declaration.of_string "color:hsl(0 50% 50%)")))
+    (eval "--h:0" "color:hsl(var(--h) 50% 50.0000000001%)")
+
 (* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
    its typed values alone: reading the print back has to land on the node that
    printed it, not merely on the same text. *)
@@ -880,6 +920,8 @@ let suite =
         number_spellings_keep_their_value;
       test_case "undecidable colour channels stay" `Quick
         undecidable_colour_channels_stay;
+      test_case "colour channels beside a var()" `Quick
+        colour_channels_beside_var;
       test_case "multi-value grammars" `Quick multi_value_grammars;
       test_case "dimension before a signed number" `Quick
         dimension_before_signed_number;
