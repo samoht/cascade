@@ -2878,7 +2878,10 @@ val legacy_alias : 'a property -> any_property option
     under WHATWG Compatibility Standard sec. 3.4.1, such as [transform] for
     [-webkit-transform], and [None] for every other property. The
     [-webkit-mask-box-image] set is no alias: no Chromium or Firefox release
-    reads [mask-border]. *)
+    reads [mask-border]. An unknown property is no alias either, so
+    [-webkit-perspective], [-webkit-background-origin] and [-webkit-mask], which
+    a target engine reads under a grammar of their own that cascade does not
+    type, answer [None]. *)
 
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)

@@ -2,9 +2,8 @@
    flex-wrap, flex-flow, the flex shorthand and its grow/shrink/basis longhands,
    and order.
 
-   The -webkit- aliases (-webkit-flex-direction, -webkit-flex-wrap,
-   -webkit-flex-flow) reuse these printers and readers verbatim; only their
-   dispatch arms live in properties.ml.
+   The -webkit- aliases of each of these reuse these printers and readers
+   verbatim; only their dispatch arms live in properties.ml.
 
    This module has no .mli and is private to the library; [Properties] includes
    it, so every name here stays visible under [Css.Properties] exactly as when

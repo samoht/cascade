@@ -128,8 +128,10 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
       | Margin_left | Margin_right | Margin_top | Margin_bottom
       | Margin_block_start | Margin_block_end | Column_gap | Row_gap
       | Text_underline_offset | Letter_spacing | Border_top_left_radius
-      | Border_top_right_radius | Border_bottom_left_radius
-      | Border_bottom_right_radius | Border_start_start_radius
+      | Webkit_border_top_left_radius | Border_top_right_radius
+      | Webkit_border_top_right_radius | Border_bottom_left_radius
+      | Webkit_border_bottom_left_radius | Border_bottom_right_radius
+      | Webkit_border_bottom_right_radius | Border_start_start_radius
       | Border_start_end_radius | Border_end_start_radius
       | Border_end_end_radius | Outline_offset | Line_height_step | Perspective
       | Word_spacing | Text_decoration_thickness | Scroll_margin_top
@@ -178,10 +180,11 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | (Flex_direction | Webkit_flex_direction), value -> value
   | (Flex_wrap | Webkit_flex_wrap), value -> value
   | (Flex_flow | Webkit_flex_flow), value -> value
-  | Flex, value -> value
-  | (Flex_grow | Flex_shrink), value -> value
-  | Flex_basis, value -> value
-  | Order, value -> value
+  | (Flex | Webkit_flex), value -> value
+  | (Flex_grow | Webkit_flex_grow | Flex_shrink | Webkit_flex_shrink), value ->
+      value
+  | (Flex_basis | Webkit_flex_basis), value -> value
+  | (Order | Webkit_order), value -> value
   | (Align_items | Webkit_align_items), value -> value
   | (Justify_content | Webkit_justify_content), value -> value
   | Justify_items, value -> value
@@ -383,9 +386,9 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Initial_letter_wrap, value -> value
   | Dominant_baseline, value -> value
   | View_timeline_inset, value -> value
-  | Perspective_origin, value -> value
-  | Transform_style, value -> value
-  | Backface_visibility, value -> value
+  | (Perspective_origin | Webkit_perspective_origin), value -> value
+  | (Transform_style | Webkit_transform_style), value -> value
+  | (Backface_visibility | Webkit_backface_visibility), value -> value
   | Object_position, value -> value
   | Rotate, value -> value
   | Transition_behavior, value -> value
@@ -405,7 +408,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Column_count, value -> value
   | Column_span, value -> value
   | Background_attachment, value -> value
-  | Transform_origin, value -> value
+  | (Transform_origin | Webkit_transform_origin), value -> value
   | Transform_box, value -> value
   | Text_shadow, value -> value
   | Clip_path, value -> value
@@ -531,6 +534,7 @@ let normalize_property_value : type a.
   | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
   | Transform_origin -> normalize_transform_origin value
+  | Webkit_transform_origin -> normalize_transform_origin value
   | Offset_path -> normalize_offset_path value
   | Offset -> normalize_offset ~ctx value
   | Offset_anchor -> normalize_offset_anchor value
@@ -577,6 +581,7 @@ let normalize_property_value : type a.
   | Object_view_box -> normalize_object_view_box value
   | Object_position -> normalize_position_value ~signed_basis:true value
   | Perspective_origin -> normalize_position_value value
+  | Webkit_perspective_origin -> normalize_position_value value
   | Background_position ->
       map_preserve (normalize_position_value ~signed_basis:true) value
   | Background_position_x -> normalize_background_position_axis value
@@ -667,14 +672,18 @@ let normalize_property_value : type a.
   | Backdrop_filter -> normalize_filter ~lossless value
   | Webkit_backdrop_filter -> normalize_filter ~lossless value
   | Flex_grow -> normalize_flex_factor value
+  | Webkit_flex_grow -> normalize_flex_factor value
   | Stroke_miterlimit -> normalize_stroke_miterlimit value
   | Stroke_dashoffset -> normalize_stroke_dashoffset ~ctx value
   | Stroke_dasharray -> normalize_stroke_dasharray ~ctx value
   | Paint_order -> normalize_paint_order value
   | Vector_effect -> normalize_vector_effect value
   | Flex_shrink -> normalize_flex_factor value
+  | Webkit_flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis ~ctx value
+  | Webkit_flex_basis -> normalize_flex_basis ~ctx value
   | Flex -> normalize_flex ~ctx value
+  | Webkit_flex -> normalize_flex ~ctx value
   | Place_content -> normalize_place_content value
   | Grid_row_start -> normalize_grid_line value
   | Grid_row_end -> normalize_grid_line value
@@ -742,11 +751,19 @@ let normalize_property_value : type a.
   | Text_underline_offset -> Values.normalize_length ~ctx value
   | Letter_spacing -> Values.normalize_length ~ctx value
   | Border_top_left_radius -> normalize_length_box ~non_negative:true ~ctx value
+  | Webkit_border_top_left_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
   | Border_top_right_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Webkit_border_top_right_radius ->
       normalize_length_box ~non_negative:true ~ctx value
   | Border_bottom_left_radius ->
       normalize_length_box ~non_negative:true ~ctx value
+  | Webkit_border_bottom_left_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
   | Border_bottom_right_radius ->
+      normalize_length_box ~non_negative:true ~ctx value
+  | Webkit_border_bottom_right_radius ->
       normalize_length_box ~non_negative:true ~ctx value
   | Border_start_start_radius ->
       normalize_length_box ~non_negative:true ~ctx value

@@ -575,6 +575,32 @@ let same_value_text vendor twin =
     (Declaration.string_of_value ~minify:true vendor)
     (Declaration.string_of_value ~minify:true twin)
 
+(* The legacy name aliases cascade types under their unprefixed property's
+   grammar alone: beside that property with one value and importance, such an
+   alias says nothing the property does not. *)
+let types_only_as_alias : type a. a Properties.property -> bool = function
+  | Webkit_backface_visibility | Webkit_border_top_left_radius
+  | Webkit_border_top_right_radius | Webkit_border_bottom_right_radius
+  | Webkit_border_bottom_left_radius | Webkit_flex | Webkit_flex_grow
+  | Webkit_flex_shrink | Webkit_flex_basis | Webkit_order
+  | Webkit_perspective_origin | Webkit_transform_origin | Webkit_transform_style
+    ->
+      true
+  | _ -> false
+
+let legacy_alias_twin vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = alias; important = i1; _ },
+      Declaration { property; important = i2; _ } )
+    when types_only_as_alias alias -> (
+      match Properties.legacy_alias alias with
+      | Some (Prop aliased) ->
+          Option.is_some (Properties.eq_property aliased property)
+          && same_value_text vendor twin
+          && Bool.equal i1 i2
+      | None -> false)
+  | _ -> false
+
 let vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_transform; important = i1; _ },
@@ -612,6 +638,7 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_transition vendor twin
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
+      || legacy_alias_twin vendor twin
 
 (* A legacy name alias is its property under a second name, so it reads as that
    property: its value under the property's grammar, its importance kept. Every
@@ -758,10 +785,7 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
       | Option.None -> false
       | Option.Some targets -> (
           match Webkit_fallback.of_declaration targets other with
-          | Option.Some needed ->
-              String.equal
-                (Declaration.property_name needed)
-                (String.lowercase_ascii (Declaration.property_name decl))
+          | Option.Some needed -> Declaration.same_property needed decl
           | Option.None -> false)
     in
     let has_dead_prefix (_, decl) =
