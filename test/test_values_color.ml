@@ -1105,6 +1105,29 @@ let legacy_syntax_takes_no_none () =
   check_color ~expected:"hsl(none 50%50%)" "hsl(none 50% 50%)";
   check_color ~expected:"rgb(none 0 0)" "rgb(none 0 0)"
 
+(* CSS Color 4 sec. 5.1 and 7.1: the legacy [rgb()] syntax takes three
+   percentages or three numbers, and the legacy [hsl()] syntax percentages for
+   saturation and lightness and its alpha after a comma. Chromium 153 rejects
+   [rgb(255,0%,0)], [rgb(100%,0,0)], [hsl(0,50,50)] and [hsl(0,50%,50%/.5)], and
+   applies [rgb(255,0,0)], [rgb(100%,0%,0%)], [hsl(0,50%,50%,.5)] and the modern
+   [hsl(0 50 50)]. *)
+let legacy_syntax_keeps_its_grammar () =
+  List.iter (neg_cursor read_color)
+    [
+      "rgb(255,0%,0)";
+      "rgb(100%,0,0)";
+      "rgba(255,0%,0,.5)";
+      "hsl(0,50,50)";
+      "hsl(0,50%,50)";
+      "hsl(0,50%,50%/.5)";
+      "hsla(0,50%,50%/.5)";
+    ];
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"red" "rgb(255,0,0)";
+  optimizes ~into:"red" "rgb(100%,0%,0%)";
+  optimizes ~into:"#bf404080" "hsl(0,50%,50%,.5)";
+  optimizes ~into:"#bf4040" "hsl(0 50 50)"
+
 let suite =
   ( "values_color",
     [
@@ -1145,4 +1168,6 @@ let suite =
       test_case "alpha none is missing" `Quick alpha_none_is_missing;
       test_case "negative chroma clamps" `Quick negative_chroma_clamps;
       test_case "legacy syntax takes no none" `Quick legacy_syntax_takes_no_none;
+      test_case "legacy syntax keeps its grammar" `Quick
+        legacy_syntax_keeps_its_grammar;
     ] )
