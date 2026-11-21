@@ -741,8 +741,9 @@ let test_columns_composes () =
   (* [auto] is the width's initial, so the count alone names the same pair. *)
   sheet_optimizes_to ~into:".x{columns:3}"
     ".x{column-width:auto;column-count:3;column-height:auto;column-wrap:auto}";
-  (* The shorthand has no spelling for a height of its own, so that run keeps
-     its longhands. *)
+  (* [columns:10em 2/5em] spells this run, but a browser in B that predates the
+     height drops that whole declaration while it reads the width and count
+     longhands, so the run keeps them. *)
   sheet_optimizes_to
     ~into:
       ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
