@@ -1116,11 +1116,32 @@ let interpolation_class_is_a_difference () =
   differ "a missing-axis OKLab at zero alpha is not transparent"
     ".a{color:oklab(0% none none/0)}" ".a{color:#0000}"
 
+(* CSS Color 4 sec. 4.4: a missing alpha is zero at rest, so [rgb(0 0 0 / none)]
+   paints nothing where [#000] paints black, and sec. 13.4 gives it the other
+   colour's alpha in an interpolation, where [#0000] keeps zero. A negative
+   chroma clamps to zero at parsed-value time (sec. 9.3). *)
+let missing_alpha_is_a_difference () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a missing alpha is not opaque" false
+    (equal ".a{color:rgb(0 0 0/none)}" ".a{color:#000}");
+  Alcotest.(check bool)
+    "nor in a lab-family colour" false
+    (equal ".a{color:oklch(.5 .1 20/none)}" ".a{color:oklch(.5 .1 20)}");
+  Alcotest.(check bool)
+    "nor a zero alpha" false
+    (equal ".a{color:rgb(0 0 0/none)}" ".a{color:#0000}");
+  Alcotest.(check bool)
+    "a negative chroma is zero" true
+    (equal ".a{color:lch(50% -10 0)}" ".a{color:lch(50 0 0)}")
+
 let suite =
   ( "css_compare_values",
     [
       Alcotest.test_case "interpolation class is a difference" `Quick
         interpolation_class_is_a_difference;
+      Alcotest.test_case "missing alpha is a difference" `Quick
+        missing_alpha_is_a_difference;
       Alcotest.test_case "semantically equivalent color-mix values" `Quick
         semantically_equivalent_color_mix_values;
       Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
