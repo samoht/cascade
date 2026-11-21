@@ -126,6 +126,13 @@ implementation keeps them.
 - **A shorthand covers what it resets.** A shorthand covers an earlier
   longhand only if it writes that longhand, reset-only sub-properties
   included.
+- **A shorthand built from part of its longhands resets only what nothing
+  sets.** The longhands it leaves out go to their initial values, and author
+  CSS beats the user-agent sheet (CSS Cascade 5 sec. 6.2). `--scope=stylesheet`
+  rules out author CSS outside the sheet, so such a shorthand is built there
+  only when no other rule of the sheet, in any block, and no user-agent rule
+  or presentational hint of the HTML rendering section (sec. 15) sets one of
+  them. Without the flag it is not built.
 - **`!important` moves a declaration to another stratum.** Deduplication and
   shorthand composition never combine a normal and an important declaration.
 - **Logical and physical pairs keep their order.** A flow-relative property
@@ -213,6 +220,7 @@ Each row names the tests that check a statement. A browser harness under
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
+| Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
 | Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
 | Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |

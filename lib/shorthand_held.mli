@@ -77,6 +77,11 @@ val an_written_slots : Declaration.declaration -> int
 (** [an_written_slots d] is the [animation] slots [d] writes, initial values
     included. *)
 
+val holds_only_initial : Declaration.declaration -> bool
+(** [holds_only_initial d] is [true] when [d] writes [transition] or [animation]
+    slots and holds each at its initial value, so a shorthand that resets them
+    drops nothing [d] set. *)
+
 val tr_reset_hazard :
   Rule_index.t -> int -> held:held -> missing:int -> important:bool -> bool
 (** [tr_reset_hazard] is {!val-reset_hazard} over the [transition] slots. *)

@@ -49,6 +49,27 @@ val strip_vendor_prefix : string -> string option
 (** [strip_vendor_prefix name] is [name] without its [-webkit-], [-moz-], [-ms-]
     or [-o-] prefix, or [None] when it carries none. *)
 
+val resets_held :
+  ctx:Ctx.t ->
+  Rule_index.t ->
+  at:int ->
+  len:int ->
+  Declaration.declaration ->
+  bool
+(** [resets_held ~ctx idx ~at ~len shorthand] is whether [shorthand], composed
+    under [`Stylesheet] scope from the [len] positions of [idx] from [at],
+    resets a longhand something else holds ({!Ctx.resets_held}). It is [false]
+    under [`Fragment]. *)
+
+val guard_reset :
+  ctx:Ctx.t ->
+  (Rule_index.t -> int -> (Declaration.declaration * int) option) ->
+  Rule_index.t ->
+  int ->
+  (Declaration.declaration * int) option
+(** [guard_reset ~ctx try_compose idx i] is [try_compose idx i] unless
+    {!resets_held} refuses the composition it returns. *)
+
 val property_of_name : string -> Properties.any_property option
 (** [property_of_name name] is the typed property [name] spells, if the reader
     types one. *)

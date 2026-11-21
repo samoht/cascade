@@ -507,13 +507,15 @@ let test_font_composes_the_whole_run () =
   (* sec. 5.3 writes the width slot as [<font-width-css3>], the nine keywords
      and no percentage, so a width the longhand normalised to its percentage
      takes its keyword back and one no keyword names stays a longhand. Chrome
-     146 refuses `font: 125% 12px serif` and reads `font: expanded 12px
-     serif`. *)
+     146 refuses `font: 125% 12px serif` and reads `font: expanded 12px serif`.
+     The runs write the style and the weight too: the HTML rendering section's
+     user-agent sheet holds both on some elements ([b], [h1], [em]), and a
+     shorthand leaving them to its reset would override it. *)
   sheet_optimizes_to ~scope:`Stylesheet ~into:".x{font:expanded 12px serif}"
-    ".x{font-family:serif;font-size:12px;font-stretch:expanded}";
+    ".x{font-style:normal;font-weight:normal;font-family:serif;font-size:12px;font-stretch:expanded}";
   sheet_optimizes_to ~scope:`Stylesheet
     ~into:".x{font:12px serif;font-stretch:110%}"
-    ".x{font-family:serif;font-size:12px;font-stretch:110%}"
+    ".x{font-style:normal;font-weight:normal;font-family:serif;font-size:12px;font-stretch:110%}"
 
 (* CSS Cascade 5 sec. 2.1 makes [!important] a property of one declaration, and
    sec. 8 gives an important declaration its own origin in the cascade, so a

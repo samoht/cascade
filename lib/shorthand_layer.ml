@@ -213,7 +213,8 @@ let try_compose_background_at ~ctx idx i =
         Some (shorthand, len)
 
 let compose_background_via_index ~ctx idx =
-  compose_run_via_index idx ~try_compose:(try_compose_background_at ~ctx)
+  compose_run_via_index idx
+    ~try_compose:(guard_reset ~ctx (try_compose_background_at ~ctx))
 
 let compose_background_shorthand ~ctx decls =
   let idx = Rule_index.build (List.map snd decls) in
@@ -482,7 +483,7 @@ let compose_mask_via_index ~ctx idx =
         if is_mask_border_decl_raw d then seen_mask_border := true;
         incr i
       in
-      match try_compose_mask_at ~ctx idx !i with
+      match guard_reset ~ctx (try_compose_mask_at ~ctx) idx !i with
       | Some (shorthand, k) ->
           let absorbed = List.init k (fun j -> !i + j) in
           if Rule_index.absorb idx ~at:!i ~absorbed ~shorthand then i := !i + k

@@ -212,7 +212,8 @@ let try_compose_font_at ~allow_partial idx i =
 
 let compose_font_via_index ~ctx idx =
   let allow_partial = scope ctx = `Stylesheet in
-  compose_run_via_index idx ~try_compose:(try_compose_font_at ~allow_partial)
+  compose_run_via_index idx
+    ~try_compose:(guard_reset ~ctx (try_compose_font_at ~allow_partial))
 
 (* The property a declaration writes. A typed value reader that rejects its
    input leaves the declaration as [Unknown_property] under the property's own

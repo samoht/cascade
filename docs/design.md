@@ -155,3 +155,14 @@ takes the last `@property` for a name at the top level or in an `@layer`; one
 inside another block, or kept as an unknown at-rule, leaves the name unknown.
 The calc-simplifier context, the typed promotion of custom-property values and
 the fold of a registered `var()` into a shorthand all read it.
+
+## Partial shorthands
+
+`Ctx.resets_held` answers whether a shorthand composed under
+`--scope=stylesheet` resets a slot something else holds. `Optimize` builds it
+from a count, per slot and importance, of the sheet's declarations that hold a
+slot at other than its initial value, less the composing rule's own, and from
+the slots the user-agent sheet holds: `font-weight`, `font-style`,
+`font-size`, `font-family`, `background-color` and `background-image`.
+`Shorthand_common.guard_reset` applies it to every composer that builds a
+shorthand from part of its family.
