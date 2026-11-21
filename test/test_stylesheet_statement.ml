@@ -529,6 +529,27 @@ let counter_range_bounds_are_ordered () =
     "-3 -1" (with_range "-3-1")
     (minify (with_range "-3 -1"))
 
+(* CSS Fonts 4 (ED) sec. 4.2 spells the @font-face font-family descriptor
+   <family-name>, and CSS Values 4 sec. 4.2 keeps a CSS-wide keyword and
+   [default] out of its <custom-ident>+. Chromium 153 and WebKit 26.5 still read
+   [none default] and [inherit foo], and WebKit [serif Foo] too, so each is kept
+   as written; both drop [default], [serif], a list and [x "y"]. *)
+let font_face_family_keeps_engine_splits () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  let face family =
+    String.concat "" [ "@font-face{font-family:"; family; ";src:url(a.woff)}" ]
+  in
+  List.iter
+    (fun family ->
+      Alcotest.(check string) family (face family) (minify (face family)))
+    [ "none default"; "inherit foo"; "foo inherit"; "serif Foo" ];
+  List.iter
+    (fun family ->
+      Alcotest.(check string)
+        family "@font-face{src:url(a.woff)}"
+        (minify (face family)))
+    [ "default"; "serif"; "Brand,Other"; "x \"y\"" ]
+
 let suite =
   ( "stylesheet_statement",
     [
@@ -733,4 +754,7 @@ let suite =
       ( "counter range bounds are ordered",
         `Quick,
         counter_range_bounds_are_ordered );
+      ( "a font-face family keeps engine splits",
+        `Quick,
+        font_face_family_keeps_engine_splits );
     ] )
