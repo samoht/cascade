@@ -171,6 +171,12 @@ implementation keeps them.
   applies nowhere.
 - **Nesting is emitted only where every browser in B parses it.** Nesting is
   neither synthesised nor relaxed into a form an older member of B misreads.
+- **A nested selector means what CSS Nesting 1 makes it mean.** `&` matches
+  what `:is()` of the parent matches (sec. 4), so a parent branch carrying a
+  pseudo-element gives it nothing to match, and a nested declarations rule
+  matches the parent's elements and pseudo-elements at the parent's own weight
+  (sec. 5). Flattening, merging a wrapper into its child and synthesis compose
+  selectors under this reading.
 - **At-rules keep their identity.** Of two `@keyframes` of one name in one
   layer the last wins, so dropping the earlier is safe and merging them is
   not. Every `@font-face` adds a face, so none is dropped for another.
@@ -246,6 +252,7 @@ Each row names the tests that check a statement. A browser harness under
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |
 | Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
+| Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml` |
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Nothing untyped dropped | `test/spec/browser/accept_set`; `test/render/parse_recovery` |

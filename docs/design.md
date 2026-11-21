@@ -149,7 +149,11 @@ both against the WHATWG Compatibility Standard sec. 3.4.1 list.
 Factoring a default value into a shared block keeps a rule's own declaration
 when an earlier overlapping rule writes a different value. Nesting synthesis
 is adjacent-only, within one cascade context, with an exact selector extension
-under a non-list parent, and only when it shortens the output.
+under a non-list parent that carries no pseudo-element, and only when it
+shortens the output. Every composition goes through `Nest.substitute`, which
+splices in for `&` only the parent branches without a pseudo-element and
+stands `:is()` of the parent for an `&` left with none, a selector
+`Nest.keep_readable_branches` then drops.
 
 The rule graph (`lib/rule_graph.ml`) that factoring and merging reorder over
 reads a rule with nested content as parts: its own declarations under its

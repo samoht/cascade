@@ -125,6 +125,11 @@ let test_merge_lone_pseudo_element_parent () =
   Alcotest.(check string)
     "a pseudo-class ::before does not take goes too" ".a:before{}"
     (merged ".a::before{.b,&:hover{color:red}}");
+  (* CSS Nesting 1 sec. 4: [&] cannot represent a pseudo-element, so [&] alone
+     under one matches nothing, though [.a::before] written flat would. *)
+  Alcotest.(check string)
+    "[&] alone under a pseudo-element parent goes" ".a:before{}"
+    (merged ".a::before{&{color:red}}");
   (* Control: no pseudo-element, so the merge is valid and still happens. *)
   Alcotest.(check string)
     "a plain parent still merges" ".a .b{color:red}"
@@ -170,6 +175,15 @@ let test_rules_synthesizes_isolated_chain () =
     [ ".card{color:red;.title{width:1px}}" ]
     (rule_strings nested)
 
+(* CSS Nesting 1 sec. 4: [&] cannot represent a pseudo-element, so nesting
+   [.a::part(p):hover] under [.a::part(p)] as [&:hover] would match nothing
+   where the flat rule matches the hovered part. *)
+let test_rules_keep_a_pseudo_element_parent_flat () =
+  let original = rules ".a::part(p){color:red}.a::part(p):hover{color:blue}" in
+  Alcotest.(check (list string))
+    "no nesting under a pseudo-element" (rule_strings original)
+    (rule_strings (Nest.rules original))
+
 let test_rules_preserves_competing_outside_selector () =
   let original =
     rules ".card{color:red}.card .title{width:1px}.title{font-weight:bold}"
@@ -181,9 +195,12 @@ let test_rules_preserves_competing_outside_selector () =
 (* The same rule read by [drop_dead_nested], which keeps the rule and edits its
    selector list where [merge_lone] above folds the whole thing away. A branch
    composing to a combinator after the pseudo-element goes ([& b] under
-   [a::before] is [a::before b]); a branch putting the combinator before it
-   stays ([.x &] is [.x a::before]). Dropping the nested rule outright would
-   take the live branch with it, and keeping it whole would leave a branch no
+   [a::before] is [a::before b]), and so does one putting the combinator before
+   it: CSS Nesting 1 sec. 4 makes [&] match what [:is()] of the parent matches,
+   and [:is()] matches no pseudo-element, so [.x &] is [.x :is(a::before)] and
+   Chromium 153 leaves the pseudo-element unstyled. A branch that does not go
+   through the pseudo-element stays. Dropping the nested rule outright would
+   take a live branch with it, and keeping it whole would leave a branch no
    engine matches. *)
 let test_drop_dead_nested_keeps_live_branches () =
   let dropped css =
@@ -191,9 +208,10 @@ let test_drop_dead_nested_keeps_live_branches () =
       (Nest.drop_dead_nested (rule css))
   in
   Alcotest.(check string)
-    "the dead branch goes and the live one stays"
-    {|a:before{content:"";.x &{color:red}}|}
+    "[&] names no pseudo-element, so both branches are dead"
+    {|a:before{content:""}|}
     (dropped {|a::before{content:"";.x &,& b{color:red}}|});
+
   Alcotest.(check string)
     "a nested rule whose every branch is dead goes with its body"
     {|a:before{content:""}|}
@@ -222,6 +240,8 @@ let suite =
         test_hoist_declaration_runs;
       Alcotest.test_case "rules synthesizes isolated chain" `Quick
         test_rules_synthesizes_isolated_chain;
+      Alcotest.test_case "rules keep a pseudo-element parent flat" `Quick
+        test_rules_keep_a_pseudo_element_parent_flat;
       Alcotest.test_case "rules preserves competing outside selector" `Quick
         test_rules_preserves_competing_outside_selector;
     ] )
