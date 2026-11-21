@@ -186,6 +186,13 @@ type alignment_baseline =
     [<length-percentage> | sub | super | top | center | bottom]. *)
 type baseline_shift =
   | Shift of length_percentage
+  | Unitless of float
+      (** A bare number, which no specification grants in a style sheet (SVG 2
+          sec. 4.2 keeps it to presentation attributes) and Chromium reads as a
+          length in px. *)
+  | Baseline
+      (** The SVG 1.1 sec. 10.9.2 keyword, which CSS Inline 3 dropped and
+          Chromium reads. *)
   | Sub
   | Super
   | Top

@@ -510,6 +510,8 @@ let rec read_stroke_dasharray t : stroke_dasharray =
                  _;
                }) ->
             true
+        | Some (Component.Func _) ->
+            Cursor.looking_at_calc t || Values.looking_at_math_function t
         | _ -> false
       in
       let rec go acc =
