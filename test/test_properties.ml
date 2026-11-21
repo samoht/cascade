@@ -288,7 +288,8 @@ let canonical_math_block_context () =
 
 (* WHATWG Compatibility Standard sec. 3.4.1 lists the [-webkit-] properties that
    are legacy name aliases of an unprefixed property. The table below is that
-   list, less the [-webkit-mask-box-image] set; a name off it, such as
+   list, less the [-webkit-mask-box-image] set and the two aliases Chromium
+   reads under a grammar of their own; a name off it, such as
    [-webkit-user-select] or any [-moz-] spelling, is a property of its own. *)
 let whatwg_legacy_aliases =
   [
@@ -306,7 +307,6 @@ let whatwg_legacy_aliases =
     ("-webkit-animation-timing-function", "animation-timing-function");
     ("-webkit-backface-visibility", "backface-visibility");
     ("-webkit-background-clip", "background-clip");
-    ("-webkit-background-origin", "background-origin");
     ("-webkit-background-size", "background-size");
     ("-webkit-border-bottom-left-radius", "border-bottom-left-radius");
     ("-webkit-border-bottom-right-radius", "border-bottom-right-radius");
@@ -333,7 +333,6 @@ let whatwg_legacy_aliases =
     ("-webkit-mask-repeat", "mask-repeat");
     ("-webkit-mask-size", "mask-size");
     ("-webkit-order", "order");
-    ("-webkit-perspective", "perspective");
     ("-webkit-perspective-origin", "perspective-origin");
     ("-webkit-transform", "transform");
     ("-webkit-transform-origin", "transform-origin");
@@ -393,6 +392,12 @@ let vendor_prefix_and_aliases_are_property_facts () =
       "-webkit-mask-box-image-slice";
       "-webkit-mask-box-image-source";
       "-webkit-mask-box-image-width";
+      (* Chromium 153 reads [-webkit-perspective:5] as a perspective of [5px]
+         and [-webkit-background-origin:padding] as [padding-box], and refuses
+         both values under the unprefixed name, so neither alias takes its
+         property's grammar and cascade types neither under it. *)
+      "-webkit-perspective";
+      "-webkit-background-origin";
       "-moz-transform";
       "-moz-box-sizing";
       "-webkit-text-decoration-color";
