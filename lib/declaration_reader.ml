@@ -906,6 +906,10 @@ let browser_reads_ungranted (Prop prop : any_property) raw_value =
               Cursor.ws t;
               Cursor.is_done t
           | Some _ | None -> false))
+  (* CSS Masking 1 sec. 7.9 gives a layer [<position>], which Gecko reads, and
+     Chromium and WebKit read it with [background-position]'s three-value
+     grammar ({!Properties.mask_reads_with_bg_position}). *)
+  | Mask -> Properties.mask_reads_with_bg_position raw_value
   | _ -> false
 
 let allows_unknown_fallback prop name raw_value =
