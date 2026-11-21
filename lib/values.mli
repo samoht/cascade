@@ -699,6 +699,15 @@ val read_time : Cursor.t -> duration
 val read_number : Cursor.t -> number
 (** [read_number t] parses a CSS number (int/float). *)
 
+val read_constant_number : Cursor.t -> float
+(** [read_constant_number t] reads a literal number, or a math function that
+    folds to a constant number (CSS Values 4 sec. 10.1), as that number. *)
+
+val read_constant_integer : Cursor.t -> int
+(** [read_constant_integer t] reads a literal integer, or a math function that
+    folds to a constant number, rounded to the nearest integer and towards
+    positive infinity on a tie (CSS Values 4 sec. 10.9). *)
+
 val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] parses a CSS transition-behavior value. *)
 

@@ -270,7 +270,7 @@ let read_counter_item ~reversed t =
     | Option.None -> (read_counter_name t, false)
   in
   Cursor.ws t;
-  let value = Cursor.integer_opt t in
+  let value = Cursor.option Values.read_constant_integer t in
   { name; reversed; value }
 
 let rec read_counter_set ~reversed t : counter_set =

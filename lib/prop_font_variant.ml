@@ -938,7 +938,7 @@ let rec pp_font_variant : font_variant Pp.t =
   | Var v -> pp_var pp_font_variant ctx v
 
 let read_font_feature_value t : font_feature_value =
-  match Cursor.option Cursor.int t with
+  match Cursor.option Values.read_constant_integer t with
   | Some value ->
       if value < 0 then
         Cursor.err t "font-feature-settings value must be non-negative";
@@ -956,6 +956,11 @@ let read_font_feature_setting t : font_feature_setting =
     | Some
         (Component.Preserved { kind = Token.Number_tok _ | Token.Ident _; _ })
       ->
+        Some (read_font_feature_value t)
+    | Some (Component.Func _) when Values.looking_at_math_function t ->
+        Some (read_font_feature_value t)
+    | Some (Component.Func { node = { name; _ }; _ })
+      when String.equal (String.lowercase_ascii name) "calc" ->
         Some (read_font_feature_value t)
     | _ -> None
   in
@@ -986,7 +991,7 @@ let rec read_font_feature_settings t : font_feature_settings =
 let read_font_variation_setting t : font_variation_setting =
   let tag = read_opentype_tag t in
   Cursor.ws t;
-  let value = Cursor.number t in
+  let value = Values.read_constant_number t in
   { tag; value }
 
 let rec read_font_variation_settings t : font_variation_settings =

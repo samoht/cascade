@@ -1007,11 +1007,11 @@ let read_rotate_z t : rotate_value =
 
 (* Read custom axis: x y z angle. *)
 let read_rotate_axis_angle t : rotate_value =
-  let first = Cursor.number t in
+  let first = Values.read_constant_number t in
   Cursor.ws t;
-  let second = Cursor.number t in
+  let second = Values.read_constant_number t in
   Cursor.ws t;
-  let third = Cursor.number t in
+  let third = Values.read_constant_number t in
   Cursor.ws t;
   let angle = read_angle t in
   Axis (first, second, third, angle)
@@ -1028,11 +1028,11 @@ let read_rotate_angle_axis_tail angle t =
       Cursor.skip t;
       (Z angle : rotate_value)
   | _ ->
-      let first = Cursor.number t in
+      let first = Values.read_constant_number t in
       Cursor.ws t;
-      let second = Cursor.number t in
+      let second = Values.read_constant_number t in
       Cursor.ws t;
-      let third = Cursor.number t in
+      let third = Values.read_constant_number t in
       (Axis (first, second, third, angle) : rotate_value)
 
 (* CSS Transforms 2 sec. 5 [rotate] also accepts angle then axis: [<angle>
