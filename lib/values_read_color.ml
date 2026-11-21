@@ -978,10 +978,17 @@ and read_color_attr t : color =
   Cursor.ws t;
   let name = Cursor.ident t in
   Cursor.ws t;
+  (* A syntax component name is read as written: Chromium drops [type(<COLOR>)],
+     so the typed reader refuses it and the declaration keeps the author's
+     spelling, which WebKit reads. *)
   Cursor.call "type" t (fun inner ->
       Cursor.ws inner;
       Cursor.expect '<' inner;
-      Cursor.expect_string "color" inner;
+      (match Cursor.ident ~keep_case:true inner with
+      | "color" -> ()
+      | name ->
+          Cursor.err_invalid inner
+            (String.concat "" [ "attr() type: <"; name; ">" ]));
       Cursor.expect '>' inner;
       Cursor.ws inner;
       Cursor.expect_eof inner);
