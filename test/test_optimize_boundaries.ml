@@ -1095,6 +1095,52 @@ let v4109_math_in_number_slots () =
       ".a{counter-increment:a acos(1)}";
     ]
 
+(* CSS Sizing 4 (ED) sec. 7, "Calculating With Intrinsic Sizes": the basis of
+   [calc-size()] is a size keyword, a [<calc-sum>], a nested [calc-size()] or
+   [any], after which [size] is a syntax error; [size] stands for the basis
+   inside the math functions of the calculation too, as in the section's
+   [calc-size(auto, round(up, size, 20px))]. Sec. 3.2 adds it to [<box-size>],
+   which [flex-basis] takes through [<'width'>]. A [<size-keyword>] basis covers
+   "related sizing functions, like the fit-content() function in width", which
+   Chromium 153 drops and the spec keeps. Chromium 153 reads every other kept
+   form below, refuses every refused one, and drops [flex:1 calc-size(auto,
+   size)], so the three longhands stay apart. *)
+let sizing7_calc_size () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{width:calc-size(any, 10px)}", ".a{width:calc-size(any,10px)}");
+      ( ".a{width:calc-size(auto, round(size, 10px))}",
+        ".a{width:calc-size(auto,round(size,10px))}" );
+      ( ".a{min-height:calc-size(auto, round(size, 10px))}",
+        ".a{min-height:calc-size(auto,round(size,10px))}" );
+      (".a{max-width:calc-size(any, 10px)}", ".a{max-width:calc-size(any,10px)}");
+      ( ".a{flex-basis:calc-size(auto, size)}",
+        ".a{flex-basis:calc-size(auto,size)}" );
+      ( ".a{flex-basis:calc-size(any, 10px)}",
+        ".a{flex-basis:calc-size(any,10px)}" );
+      ( ".a{flex-basis:calc-size(min-content, 2 * size)}",
+        ".a{flex-basis:calc-size(min-content,2*size)}" );
+      ( ".a{flex-basis:calc-size(calc-size(auto, size), size)}",
+        ".a{flex-basis:calc-size(calc-size(auto,size),size)}" );
+      ( ".a{width:calc-size(fit-content(10px), size)}",
+        ".a{width:calc-size(fit-content(10px),size)}" );
+      ( ".a{flex-grow:1;flex-shrink:1;flex-basis:calc-size(auto,size)}",
+        ".a{flex-grow:1;flex-shrink:1;flex-basis:calc-size(auto,size)}" );
+    ];
+  List.iter
+    (fun input ->
+      match Css.of_string ~strict:true input with
+      | Ok _ -> Alcotest.failf "%s should be refused" input
+      | Error _ -> ())
+    [
+      ".a{width:calc-size(any, size)}";
+      ".a{max-width:calc-size(none, size)}";
+      ".a{width:calc-size(auto, max-content)}";
+      ".a{width:calc-size(auto, sin(size))}";
+    ]
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1197,4 +1243,5 @@ let suite =
       ( "spec values 10.9 math functions in number slots",
         `Quick,
         v4109_math_in_number_slots );
+      ("spec sizing 7 calc-size", `Quick, sizing7_calc_size);
     ] )
