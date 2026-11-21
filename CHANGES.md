@@ -507,6 +507,19 @@ differently. They are the reason to minify again.
   conic stop is placed by one or two angles or percentages, and a conic hint
   by one (CSS Images 4 sec. 3.3.2). Both are now read, and a first stop at
   `0deg` and a last at `360deg` lose the position they take by default (#1491).
+- **`mask` boxes moved, and layer longhands merged into the wrong layers.**
+  One box in a `mask` layer sets both `mask-origin` and `mask-clip`, and two
+  set them in order (CSS Masking 1 sec. 7.9), but `--minify` dropped each
+  `border-box` on its own. So `mask:url(a.png) border-box content-box` became
+  `mask:url(a.png)content-box`, which moves the origin, and `padding-box
+  border-box` became `padding-box`, which moves the clip. `mask:url(a.png)
+  no-clip` was refused and deleted. Mask longhands with two images and one
+  `mask-repeat:no-repeat` became `mask:url(a.png),url(b.png)no-repeat`,
+  which repeats the first image, and `background` did the same with one image
+  and two repeats, or with a `var()` in a longhand, which can stand for
+  another slot. Two boxes now print as one only when they are one box,
+  `no-clip` is read, and longhands merge into a shorthand only when they spell
+  one layer with no `var()` (#1492).
 
 #### Stable output
 
