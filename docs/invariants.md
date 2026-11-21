@@ -211,7 +211,7 @@ Each row names the tests that check a statement. A browser harness under
 | M4 | `test/fixpoint` (its `spellings` corpus holds the second pass still); `optimize_factor` "pp minify is idempotent"; `test/test_optimize.ml` "optimize preserves physical identity on a fixed point" |
 | M5 | The release criterion, run under both objectives |
 | M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; the css-minify-tests colour fixtures |
-| Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
+| Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node"; `fuzz/fuzz_supports.ml` "generated tree reparses" (`@supports` conditions of nested `not`, `and` and `or`) |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
 | Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back" |
 | Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |

@@ -146,6 +146,46 @@ let test_supports_context_syntax buf =
   if serialized <> reparsed then
     failf "supports syntax changed: %S -> %S" serialized reparsed
 
+(* A condition tree of [not], [and] and [or] up to four deep, each node chosen
+   by one byte of [buf], so every nesting of the three is reached. *)
+let generated_tree buf =
+  let leaf i =
+    let property =
+      pick [ ("display", "grid"); ("gap", "1rem"); ("color", "red") ] buf i
+    in
+    match byte_at buf (i + 1) mod 2 with
+    | 0 -> Css.Supports.property (fst property) (snd property)
+    | _ -> Css.Supports.func "selector" ":has(img)"
+  in
+  let rec node depth i =
+    if depth = 0 then (leaf i, i + 2)
+    else
+      match byte_at buf i mod 4 with
+      | 0 -> (leaf (i + 1), i + 3)
+      | 1 ->
+          let c, i = node (depth - 1) (i + 1) in
+          (Css.Supports.Not c, i)
+      | k ->
+          let a, i = node (depth - 1) (i + 1) in
+          let b, i = node (depth - 1) i in
+          ( (if k = 2 then Css.Supports.And (a, b) else Css.Supports.Or (a, b)),
+            i )
+  in
+  fst (node 4 0)
+
+(* CSS Conditional 3 sec. 2: what the printer writes is a condition the reader
+   reads back, and reads back as the same text, however [not], [and] and [or]
+   nest. *)
+let test_generated_tree_reparses buf =
+  let condition = generated_tree buf in
+  let once = Css.Supports.to_string condition in
+  match Css.Supports.of_string once with
+  | Error _ -> failf "generated supports condition does not reparse: %S" once
+  | Ok reread ->
+      let twice = Css.Supports.to_string reread in
+      if once <> twice then
+        failf "generated supports condition changed: %S -> %S" once twice
+
 let spec_supports_vector buf = pick Supports_inventory.rows buf 0
 
 let test_spec_supports_structural_vectors buf =
@@ -186,6 +226,7 @@ let suite =
       test_case "compare crash safety" [ bytes; bytes ] test_compare;
       test_case "generated condition serialization idempotent" [ bytes ]
         test_generated_condition_serialization_idempotent;
+      test_case "generated tree reparses" [ bytes ] test_generated_tree_reparses;
       test_case "supports context syntax invariant" [ bytes ]
         test_supports_context_syntax;
       test_case "spec supports structural vectors" [ bytes ]
