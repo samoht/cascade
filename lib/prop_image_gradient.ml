@@ -236,10 +236,7 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_gradient_stop ctx v
   | Color_percentage (c, pos1_opt, pos2_opt) -> (
-      let rendered_color =
-        Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
-          pp_color c
-      in
+      let rendered_color = Pp.render ctx pp_color c in
       Pp.string ctx rendered_color;
       match pos1_opt with
       | None -> ()

@@ -822,7 +822,7 @@ let rec read_offset_rotate t : offset_rotate =
    [pp_number_percentage] picks between [<number>] and [<percentage>] spelling
    and the spacing depends on the choice. *)
 let render_number_percentages ctx vs =
-  List.map (Pp.to_string ~minify:(Pp.minified ctx) pp_number_percentage) vs
+  List.map (Pp.render ctx pp_number_percentage) vs
 
 let pp_number_percentage_separated ctx vs =
   let needs_sep prev next =

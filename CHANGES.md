@@ -940,6 +940,10 @@ differently. They are the reason to minify again.
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by
   source order (#1355).
+- nested value prints under the sheet's flags**: `--enforce-spec` printed
+  `oklch(.7 76%20)` in a border, a gradient stop and `override-colors` where
+  `color` kept `.304`, and `Css.minify ~rename_custom_property` now renames a
+  `var()` inside a border colour (#1614).
 
 #### Which rules merge
 

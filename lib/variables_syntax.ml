@@ -164,8 +164,7 @@ let pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
   (* CSS Properties and Values API 1 sec. 3.1: the [syntax] descriptor is a
      [<string>], so its text is written the way every string is. *)
-  Pp.quoted_string ctx
-    (Pp.to_string ~minify:(Pp.minified ctx) pp_syntax_inner syn)
+  Pp.quoted_string ctx (Pp.render ctx pp_syntax_inner syn)
 
 (** Pretty-print a value according to its syntax type *)
 let pp_registered_angle ctx = function

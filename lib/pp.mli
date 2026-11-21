@@ -127,6 +127,11 @@ val to_string :
     runs [formatter] under the context {!val-ctx} builds from the same five
     options and returns the result. *)
 
+val render : ctx -> 'a t -> 'a -> string
+(** [render ctx formatter value] is {!val-to_string} of [value] under the
+    options [ctx] was built with, for a printer that measures or inspects a
+    nested value before writing it into [ctx]. *)
+
 (** {2 Primitive Formatters} *)
 
 val nop : 'a t

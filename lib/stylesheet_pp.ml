@@ -302,13 +302,9 @@ let pp_condition_function ctx name rendered =
 let rec pp_conditional : conditional Pp.t =
  fun ctx -> function
   | Media_condition condition ->
-      pp_condition_function ctx "media"
-        (Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless Media.pp
-           condition)
+      pp_condition_function ctx "media" (Pp.render ctx Media.pp condition)
   | Supports_condition_test condition ->
-      pp_condition_function ctx "supports"
-        (Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless
-           Supports.pp condition)
+      pp_condition_function ctx "supports" (Pp.render ctx Supports.pp condition)
   | And (a, b) ->
       pp_conditional ctx a;
       Pp.string ctx " and ";
@@ -530,10 +526,7 @@ let pp_font_palette_descriptor : font_palette_descriptor Pp.t =
       Pp.list ~sep:Pp.comma
         (fun ctx (index, color) ->
           Pp.string ctx (Int.to_string index);
-          let rendered =
-            Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
-              Values.pp_color color
-          in
+          let rendered = Pp.render ctx Values.pp_color color in
           if (not (Pp.minified ctx)) || rendered = "" || rendered.[0] <> '#'
           then Pp.space ctx ();
           Pp.string ctx rendered)
@@ -640,10 +633,7 @@ and pp_media_statement ctx condition content =
       (* Per cascade's minify policy (README sec. "Minify policy"), elide
          whitespace at safe token boundaries: a leading [(] needs no space.
          Idents like [screen] still need it. *)
-      let rendered =
-        Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless Media.pp
-          condition
-      in
+      let rendered = Pp.render ctx Media.pp condition in
       if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '('
       then ()
       else Pp.string ctx " ";
@@ -681,10 +671,7 @@ and pp_supports_statement ctx condition content =
      when the condition opens with [(] - any other start ([not],
      [selector(...)], etc.) needs the space to keep token shape. *)
   Pp.string ctx "@supports";
-  let rendered =
-    Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless
-      pp_supports_condition_value condition
-  in
+  let rendered = Pp.render ctx pp_supports_condition_value condition in
   if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '(' then ()
   else Pp.string ctx " ";
   Pp.string ctx rendered;

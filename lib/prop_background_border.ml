@@ -565,10 +565,7 @@ let pp_border_shorthand : border_shorthand Pp.t =
     style;
   Option.iter
     (fun c ->
-      let rendered =
-        Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
-          pp_color c
-      in
+      let rendered = Pp.render ctx pp_color c in
       (* CSS Syntax: a [#hex] hash token is unambiguous after an ident, so
          minified output drops the separating space. *)
       let leads_with_delim =
