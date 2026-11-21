@@ -563,6 +563,10 @@ differently. They are the reason to minify again.
   declaration Chromium reads. The `/ <'column-height'>` part is now read (CSS
   Multicol 2 sec. 4.5), and a `columns` before one stays as the fallback
   Firefox and Safari paint (#1499).
+- **The `scroll` timeline range was deleted.** `animation-range:scroll`,
+  `animation-range-start:scroll 10%` and a `scroll 50%` keyframe were refused,
+  so `--minify` dropped what Chromium reads. `scroll` is now read beside the
+  other named ranges (Scroll-driven Animations 1 sec. 3.1) (#1500).
 
 #### Stable output
 
