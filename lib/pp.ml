@@ -594,6 +594,14 @@ let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
 let printed f =
   if Float.is_finite f then float_of_string (string_of_float f) else f
 
+let string_of_float_exact f =
+  let max_decimals =
+    if Float.is_finite f && not (Float.equal (printed f) f) then
+      -snd (shortest_digits (Float.abs f))
+    else 8
+  in
+  string_of_float ~drop_leading_zero:true ~max_decimals f
+
 let round_sig n f =
   if f = 0.0 then 0.0
   else

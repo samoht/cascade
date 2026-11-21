@@ -398,11 +398,12 @@ let is_signed_number_repr repr =
    reparses to the same float; the equality guard keeps high-precision authored
    values exact when the printer's decimal bound would round them. *)
 let minified_number_repr ?(preserve_sign = false)
-    ({ value; repr; _ } : Token.number) =
-  let compact = Pp.string_of_float ~drop_leading_zero:true value in
+    ({ repr; _ } as number : Token.number) =
   (* The token's value stops at the printer's eight decimals; the stream keeps
-     the authored number, so the guard reads the representation. *)
-  let exact = Option.value (float_of_string_opt repr) ~default:value in
+     the authored number, so the spelling and its guard read the
+     representation. *)
+  let exact = Token.authored_value number in
+  let compact = Pp.string_of_float_exact exact in
   let shorter candidate =
     String.length candidate < String.length repr
     &&

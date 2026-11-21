@@ -711,6 +711,93 @@ let try_fold_relative_color_static name origin t : color option =
   | "color" -> try_fold_color_function_static origin t
   | _ -> Option.None
 
+(* {1 Undecidable channels}
+
+   A colour channel paints as one of 256 bytes. An engine reads a channel's
+   number as a double or as its nearest 32-bit float, and cascade prints it to
+   eight decimals, so a number at the edge of a byte's half can round three
+   ways: Chromium 153 paints [rgba(0,0,0,0.09999999999999998)] at alpha 25 and
+   [rgb(0 0 0/0.09999999999999998)] at 26. A channel is decidable when the three
+   readings quantise to one byte; a colour with a channel that is not is kept as
+   written. *)
+
+type reading = Double | Single
+
+let number_reading reading (n : Token.number) : Token.number =
+  match reading with
+  | Double -> { n with value = Token.authored_value n }
+  | Single -> { n with value = single_of_float (Token.authored_value n) }
+
+(* Whether the readings of [n] can differ at all. *)
+let number_has_readings (n : Token.number) =
+  let d = Token.authored_value n in
+  (not (Float.equal n.value d)) || not (Float.equal (single_of_float d) d)
+
+let token_reading reading (tok : Token.t) : Token.t =
+  match tok.kind with
+  | Number_tok n -> { tok with kind = Number_tok (number_reading reading n) }
+  | Percentage n -> { tok with kind = Percentage (number_reading reading n) }
+  | Dimension { number; unit_ } ->
+      {
+        tok with
+        kind = Dimension { number = number_reading reading number; unit_ };
+      }
+  | _ -> tok
+
+let token_has_readings (tok : Token.t) =
+  match tok.kind with
+  | Number_tok n | Percentage n | Dimension { number = n; _ } ->
+      number_has_readings n
+  | _ -> false
+
+(* The arguments of a colour function a channel check can read: tokens only, no
+   [var()], math function or block, whose value is known before substitution. *)
+let static_arguments (fn : Component.func Component.node) =
+  List.for_all
+    (function Component.Preserved _ -> true | _ -> false)
+    fn.node.arguments
+
+let has_readings (fn : Component.func Component.node) =
+  List.exists
+    (function Component.Preserved tok -> token_has_readings tok | _ -> false)
+    fn.node.arguments
+
+let with_reading reading (fn : Component.func Component.node) =
+  let arguments =
+    List.map
+      (function
+        | Component.Preserved tok ->
+            Component.Preserved (token_reading reading tok)
+        | c -> c)
+      fn.node.arguments
+  in
+  { fn with node = { fn.node with arguments } }
+
+(* The colour functions whose channels a fold quantises. *)
+let channel_functions =
+  [
+    "rgb"; "rgba"; "hsl"; "hsla"; "hwb"; "lab"; "lch"; "oklab"; "oklch"; "color";
+  ]
+
+let kept_as_written parser t (fn : Component.func Component.node) color =
+  let fn_name = Common.String.lowercase_ascii_preserve fn.node.name in
+  if
+    List.mem fn_name channel_functions && static_arguments fn && has_readings fn
+  then
+    let read reading =
+      parser
+        (Cursor.of_components ~enforce_spec:(Cursor.enforce_spec t)
+           (with_reading reading fn).node.arguments)
+    in
+    if
+      decidable_channels ~printed:color ~double:(read Double)
+        ~single:(read Single)
+    then color
+    else
+      Authored_color
+        { color; minified = Parser.to_string_minified_numbers [ Func fn ] }
+  else color
+
 let rec read_color_mix t : color =
   Cursor.ws t;
   (* CSS Color 5 sec. 3: an omitted [<color-interpolation-method>] defaults to
@@ -949,7 +1036,7 @@ and read_color t : color =
         match List.assoc_opt fn_name color_parsers with
         | Some parser ->
             Cursor.skip t;
-            parser (Cursor.func_sub fn t)
+            kept_as_written parser t fn (parser (Cursor.func_sub fn t))
         | None when fn_name = "var" -> Var (read_var read_color t)
         | None ->
             Cursor.err t (String.concat "" [ "unknown color function: "; name ])

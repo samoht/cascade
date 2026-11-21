@@ -608,6 +608,13 @@ type color =
   | Authored_hex of { value : string; r : int; g : int; b : int; a : int }
       (** A parsed hex colour preserving the source spelling without the leading
           [#]. Optimisation folds this to the canonical semantic colour. *)
+  | Authored_color of { color : color; minified : string }
+      (** A colour function kept as written: one of its channels is undecidable,
+          its double, its nearest 32-bit float and its eight-decimal print
+          quantising to different bytes, so the pixel depends on how an engine
+          reads it and on its syntax. [color] is its reading, for what asks
+          which function it is, and [minified] is the source without the
+          whitespace CSS reads as nothing. It is never folded or respelled. *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }

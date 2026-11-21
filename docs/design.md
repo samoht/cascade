@@ -23,6 +23,14 @@ carrying an exponent, as the value that print reads back as (`Pp.printed`):
 every authored digit, and the minifier of an opaque stream guards on it, so a
 stream printed as written loses none.
 
+A static colour function (rgb, hsl, hwb, lab, lch, oklab, oklch, color) with a
+number whose readings differ is read twice more, once with every number as
+its double (`Token.authored_value`) and once as its nearest 32-bit float, and
+`Values_color_fold.decidable_channels` compares the bytes the three paint, the
+32-bit reading in 32-bit arithmetic. When they differ the reader returns
+`Authored_color`, the source with its whitespace minified, which no fold
+rewrites and the printer writes back as it is.
+
 ## Math functions over several units
 
 A comparison over units with a fixed ratio (`Values_calc.compared_results`)

@@ -61,6 +61,17 @@ val static_color_to_srgb_bytes : color -> (int * int * int * int) option
 (** [static_color_to_srgb_bytes c] is the [(r, g, b, a)] sRGB bytes of the
     static colour [c]. *)
 
+val single_of_float : float -> float
+(** [single_of_float f] is the 32-bit float nearest to [f], as a double. *)
+
+val decidable_channels : printed:color -> double:color -> single:color -> bool
+(** [decidable_channels ~printed ~double ~single] is whether three readings of
+    one static colour paint the same bytes: its numbers at the printer's eight
+    decimals, as doubles, and as their nearest 32-bit floats in 32-bit
+    arithmetic. When they do not, a channel sits at the edge of a byte's half
+    and which byte it paints is the engine's. A colour that is not static is
+    decidable: nothing quantises it before substitution. *)
+
 val nonkeyword_color : color -> color
 (** [nonkeyword_color c] re-spells a colour written as a bare keyword (a named
     colour, or transparent) as its hex form, leaving every other colour

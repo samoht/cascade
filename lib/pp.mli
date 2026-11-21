@@ -254,6 +254,11 @@ val printed : float -> float
     and a value the optimizer computes take it, so that the node built is the
     node its print reads back as. A NaN or an infinity is itself. *)
 
+val string_of_float_exact : float -> string
+(** [string_of_float_exact f] is {!string_of_float} with [drop_leading_zero]
+    when its eight decimals read back as [f], and the shortest decimal that does
+    otherwise: [0.09999999999999998] is [".09999999999999998"], not [".1"]. *)
+
 val nan_value : ctx -> string -> unit
 (** [nan_value ctx suffix] writes the CSS spelling of a NaN-valued number:
     [calc(NaN)], or [calc(NaN * 1suffix)] when [suffix] is a unit. CSS Values 4

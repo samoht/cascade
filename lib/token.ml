@@ -45,6 +45,11 @@ type t = { kind : kind; loc : Loc.t; repr : string option }
 let equal_hash_flag (a : hash_flag) b = a = b
 let equal_number_flag (a : number_flag) b = a = b
 
+let authored_value (number : number) =
+  match float_of_string_opt number.repr with
+  | Some v -> v
+  | None -> number.value
+
 let integer_opt number =
   match number.number_flag with
   | Integer -> int_of_string_opt number.repr

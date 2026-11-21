@@ -848,6 +848,105 @@ let static_color_to_linear_srgb (c : color) :
           Some (lin, f255 a)
       | None -> None)
 
+(* The gamma-encoded sRGB channels and the alpha of a static colour written in a
+   channel function, before any byte rounding; [None] when one is known only at
+   used-value time. *)
+let static_srgb_floats (c : color) : ((float * float * float) * float) option =
+  let alpha : alpha -> float option = function
+    | None -> Some 1.
+    | Num f -> Some f
+    | Pct f -> Some (f /. 100.)
+    | _ -> Option.None
+  in
+  let channel : channel -> float option = function
+    | Int i -> Some (Float.of_int i /. 255.)
+    | Num f -> Some (f /. 255.)
+    | Pct f -> Some (f /. 100.)
+    | None -> Some 0.
+    | Var _ -> Option.None
+  in
+  let channels r g b a =
+    match (channel r, channel g, channel b, alpha a) with
+    | Some r, Some g, Some b, Some a -> Some ((r, g, b), a)
+    | _ -> Option.None
+  in
+  let hsl h s l a =
+    match
+      (deg_of_hue h, float_of_percentage s, float_of_percentage l, alpha a)
+    with
+    | Some hue, Some saturation, Some lightness, Some a ->
+        let hue = normalize_hue hue in
+        Some (hsl_to_rgb_float ~hue ~saturation ~lightness, a)
+    | _ -> Option.None
+  in
+  let hwb h w bl a =
+    match
+      (deg_of_hue h, float_of_percentage w, float_of_percentage bl, alpha a)
+    with
+    | Some hue, Some w, Some bl, Some a ->
+        let w = w /. 100. and bl = bl /. 100. in
+        if w +. bl >= 1. then
+          let g = w /. (w +. bl) in
+          Some ((g, g, g), a)
+        else
+          let hue = normalize_hue hue in
+          let r, g, b = hsl_to_rgb_float ~hue ~saturation:100. ~lightness:50. in
+          let scale c = (c *. (1. -. w -. bl)) +. w in
+          Some ((scale r, scale g, scale b), a)
+    | _ -> Option.None
+  in
+  match c with
+  | Rgb (Channels { r; g; b }) -> channels r g b None
+  | Rgba { rgb = Channels { r; g; b }; a } -> channels r g b a
+  | Hsl { h; s; l; a } -> hsl h s l a
+  | Hwb { h; w; b; a } -> hwb h w b a
+  | Color { space = Srgb; components = [ c1; c2; c3 ]; alpha = a } -> (
+      let component : component -> float option = function
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.)
+        | Component_none -> Some 0.
+        | _ -> Option.None
+      in
+      match (component c1, component c2, component c3, alpha a) with
+      | Some r, Some g, Some b, Some a -> Some ((r, g, b), a)
+      | _ -> Option.None)
+  | _ -> (
+      match static_color_to_linear_srgb c with
+      | Some ((r, g, b), a) ->
+          let encode = Color_space.srgb_of_linear in
+          Some ((encode r, encode g, encode b), a)
+      | Option.None -> Option.None)
+
+let single_of_float f = Int32.float_of_bits (Int32.bits_of_float f)
+
+(* The bytes a static colour paints at: in 32-bit arithmetic for a reading of
+   its numbers as 32-bit floats, which is how Chromium 153 paints [.7] at 179 in
+   every syntax. *)
+let srgb_bytes ~single ((r, g, b), a) =
+  let byte v =
+    let v = Float.max 0. (Float.min 1. v) in
+    let product =
+      if single then single_of_float (single_of_float v *. 255.) else v *. 255.
+    in
+    Float.to_int (Float.round product)
+  in
+  (byte r, byte g, byte b, byte a)
+
+let decidable_channels ~printed ~double ~single =
+  match
+    ( static_srgb_floats printed,
+      static_srgb_floats double,
+      static_srgb_floats single )
+  with
+  | Some p, Some d, Some s ->
+      let equal (r, g, b, a) (r', g', b', a') =
+        Int.equal r r' && Int.equal g g' && Int.equal b b' && Int.equal a a'
+      in
+      let bytes = srgb_bytes ~single:false p in
+      equal bytes (srgb_bytes ~single:false d)
+      && equal bytes (srgb_bytes ~single:true s)
+  | _ -> true
+
 (* CSS Color 4 sec. 14.2: the sRGB colour a display renders for a static colour,
    gamut mapping the ones sRGB cannot hold. This always answers, so it serves a
    caller that has to write an sRGB colour; the optimizer must not use it, as
@@ -1161,6 +1260,8 @@ let rec with_alpha (c : color) (a : alpha) : color =
   in
   match c with
   | Hex { r; g; b; _ } | Authored_hex { r; g; b; _ } -> srgb r g b
+  (* The new alpha is the caller's, so the colour is built from its reading. *)
+  | Authored_color { color; _ } -> with_alpha color a
   | Transparent -> srgb 0 0 0
   | Named n -> (
       match rgba_of_hex (snd (color_name_hex n)) with

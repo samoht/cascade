@@ -604,6 +604,7 @@ and pp_color_default : color Pp.t =
       else (
         Pp.char ctx '#';
         Pp.string ctx value)
+  | Authored_color { minified; _ } -> Pp.string ctx minified
   | Rgb rgb -> pp_rgb_color ctx rgb
   | Rgba { rgb; a } -> pp_rgba_color ctx rgb a
   | Hsl { h; s; l; a } -> pp_hsl_color ctx h s l a

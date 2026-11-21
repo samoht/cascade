@@ -254,6 +254,11 @@ where it is called. Each entry says what to write there.
   or `clamp()` over a time, an angle or a percentage had no node, which is why
   the slots of those types refused it. A match over `math_fn` needs the three
   arms; each holds the `math_arg`s as written (#1475).
+- **`Values.color` has an `Authored_color` case.** A colour function whose
+  channel paints a different byte depending on how an engine reads its number
+  is kept as written, as `Authored_color { color; minified }`: `color` is its
+  reading, `minified` the source the printer writes. A match over
+  `Values.color` needs the arm; a fold leaves it as it is.
 - **`Pp.quoted` is gone.** It wrote a string between double quotes without
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
@@ -795,7 +800,11 @@ differently. They are the reason to minify again.
   printed alike, and minifying that again merged them. The printer writes a
   number to eight decimals while the reader kept every digit. A number read
   past eight decimals is now the eight-decimal value, so one run merges them;
-  the SatCSS sheets held 252 such declarations.
+  the SatCSS sheets held 252 such declarations. A colour channel that the
+  digits past eight decimals move across a byte's half is kept as written
+  instead: `rgba(0,0,0,0.09999999999999998)` paints alpha 25 in Chromium, its
+  space-syntax spelling 26, and 1.2.1 folded both to `#00000019` and printed
+  `rgb(0 0 0/.1)` under `--lossless`.
 - **Output shifted for unrelated reasons.** Merges that save the same number of
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by

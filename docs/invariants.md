@@ -145,6 +145,17 @@ implementation keeps them.
   in Oklab, so a colour that can be interpolated keeps a spelling of its
   class. A missing component (`none`) folds to zero only where the colour is
   not interpolated (sec. 4.4 and 13.4).
+- **A colour channel on the edge of a byte is kept as written.** A colour
+  channel paints as one of 256 bytes. It is decidable when its number
+  quantises to one byte read as a double, as the nearest 32-bit float and at
+  the eight decimals the printer writes. An engine may read a number
+  either way (Chromium 153 reads a comma-syntax `rgba()` alpha as a double and
+  the other channels as 32-bit floats), and cascade may print the
+  eight-decimal value, so when the three agree every one of those paths paints
+  alike. A colour with an undecidable channel is kept in its own function,
+  syntax and digits, bar the whitespace CSS reads as nothing, and equals only
+  its own spelling. Only Chromium is measured; for Firefox and Safari the rule
+  is conservative.
 
 ## Declaration layer
 
@@ -295,6 +306,7 @@ Each row names the tests that check a statement. A browser harness under
 | Zero operands | `values_math` "spec math zero operands" |
 | Signed percentage basis | `values_math` "spec math signed percentage basis" |
 | Whitespace beside a substitution | `values_math` "spec math var whitespace" |
+| Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
