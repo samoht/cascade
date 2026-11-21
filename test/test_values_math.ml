@@ -190,8 +190,12 @@ let spec_values_l45_math_color () =
   check_length ~expected:"calc-size(auto,size + 1rem)"
     "calc-size(auto, size + 1rem)";
   check_length ~expected:"anchor-size(width)" "anchor-size(width)";
-  check_length ~expected:"anchor(--tooltip width,10px)"
-    "anchor(--tooltip width, 10px)";
+  (* CSS Anchor Positioning 1 (ED) sec. 3.2 spells [<anchor-side>] without the
+     [<anchor-size>] keywords, and sec. 5.1 makes every argument of
+     [anchor-size()] optional. *)
+  check_length ~expected:"anchor(--tooltip top,10px)"
+    "anchor(--tooltip top, 10px)";
+  check_length "anchor-size()";
   check_number ~expected:"calc(1 + sibling-index())" "calc(1 + sibling-index())";
   check_number ~expected:"calc(sibling-count() - 1)" "calc(sibling-count() - 1)";
   check_percentage ~expected:"calc(50% + 10%)" "calc(50% + 10%)";
@@ -237,7 +241,7 @@ let spec_values_l45_math_color () =
     "color(display-p3 none 0.5 1)";
   neg_cursor read_length "calc-size()";
   neg_cursor read_length "anchor()";
-  neg_cursor read_length "anchor-size()";
+  neg_cursor read_length "anchor(--tooltip width, 10px)";
   neg_cursor read_number "sibling-index(1)";
   neg_cursor read_color "color-mix(in oklab)";
   neg_cursor read_color "color-mix(in oklab, red calc(50%) calc(20%), blue)";

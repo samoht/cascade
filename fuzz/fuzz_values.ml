@@ -256,7 +256,8 @@ let valid_length_vectors =
     "1cqmin";
     "1cqmax";
     "anchor-size(width)";
-    "anchor(--tooltip width, 10px)";
+    "anchor(--tooltip top, 10px)";
+    "anchor-size()";
     "calc-size(auto, size + 1rem)";
   ]
 
@@ -332,7 +333,8 @@ let test_spec_invalid_value_vectors buf =
              "calc()";
              "calc(10px +)";
              "anchor()";
-             "anchor-size()";
+             "anchor(--tooltip width, 10px)";
+             "anchor-size(top)";
              "calc-size()";
            ]
            buf 1)
@@ -521,7 +523,7 @@ let invalid_value_mutation buf =
         | 0 -> "calc(" ^ value ^ " +)"
         | 1 -> "clamp(" ^ value ^ "," ^ value ^ ")"
         | 2 -> value ^ " " ^ value
-        | _ -> "anchor-size()" )
+        | _ -> "anchor-size(top)" )
   | `Color, value ->
       ( `Color,
         match byte_at buf 7 mod 4 with
