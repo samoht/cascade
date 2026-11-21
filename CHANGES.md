@@ -418,6 +418,12 @@ differently. They are the reason to minify again.
   `writing_mode`, `image_rendering`, `appearance`, `dominant_baseline`,
   `content` and `length` gain the new keywords, so an exhaustive match over
   any of them needs the new cases (#1539).
+- **An invalid `mask-position` came out valid.** `mask-position:left 10px
+  top` uses the three-value form only `background-position` has, so
+  Chromium, Firefox and Safari drop it, and `--minify` printed
+  `mask-position:10px 0`, which they read.
+  `mask-position` now reads the `<position>` of CSS Values 4, while
+  `-webkit-mask-position` keeps the legacy form browsers read there.
 - **An invalid `image-set()` came out valid.** `image-set(url(a.png) 1x 2x)`
   repeats its resolution, so browsers drop the declaration, and `--minify`
   printed `image-set(url(a.png)1x)`, which they read. The repeat now makes

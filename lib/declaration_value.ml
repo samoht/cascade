@@ -214,6 +214,12 @@ let read_normal_or_length name t =
     ~default:(Values.read_length ~with_keywords:false)
     t
 
+(* CSS Masking 1 sec. 7.4: [mask-position] is [<position>#], which CSS Values 4
+   sec. 8.3 gives no three-value form. [background-position] and
+   [-webkit-mask-position] keep the legacy [<bg-position>] that has one. *)
+let read_mask_position t : background_position =
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_position_value t
+
 (* CSS Transforms 2 sec. 3: [perspective] is [none | <length [0,inf]>]; the
    keyword is its initial value, so it has to read. *)
 let read_perspective_value t =
@@ -1415,7 +1421,7 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
   | Mask_mode -> Some (v Mask_mode (read_mask_mode t))
   | Mask_border -> Some (v Mask_border (read_mask_border t))
   | Mask_size -> Some (v Mask_size (read_background_size_list t))
-  | Mask_position -> Some (v Mask_position (read_background_position t))
+  | Mask_position -> Some (v Mask_position (read_mask_position t))
   | Mask_repeat -> Some (v Mask_repeat (read_background_repeat_list t))
   | Mask_clip -> Some (v Mask_clip (read_mask_box_list ~clip:true t))
   | Mask_origin -> Some (v Mask_origin (read_mask_box_list t))
