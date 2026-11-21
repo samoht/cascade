@@ -29,7 +29,7 @@ let rec read_alpha t : alpha =
   in
   let read_none t : alpha =
     Cursor.expect_string "none" t;
-    None
+    Alpha_none
   in
   let read_pct t : alpha =
     (* Alpha percentages are clamped to 0-100 per CSS spec *)
@@ -134,7 +134,7 @@ let read_rgb_space_separated t : color =
         Cursor.err t "unexpected tokens after rgb()";
       match alpha with
       | None -> Rgb (Channels { r; g; b })
-      | Num _ | Pct _ | Var _ | Calc _ ->
+      | Alpha_none | Num _ | Pct _ | Var _ | Calc _ ->
           Rgba { rgb = Channels { r; g; b }; a = alpha }))
   else
     let r = read_channel t in
@@ -147,7 +147,7 @@ let read_rgb_space_separated t : color =
     if not (Cursor.is_done t) then Cursor.err t "unexpected tokens after rgb()";
     match alpha with
     | None -> Rgb (Channels { r; g; b })
-    | Num _ | Pct _ | Var _ | Calc _ ->
+    | Alpha_none | Num _ | Pct _ | Var _ | Calc _ ->
         Rgba { rgb = Channels { r; g; b }; a = alpha }
 
 let read_rgb_comma_separated t : color =
@@ -328,12 +328,17 @@ let read_number_or_none ?pct_scale t : float option =
     | Some unit ->
         Cursor.err_invalid t (String.concat "" [ "invalid unit: "; unit ])
 
+(* CSS Color 4 sec. 9.3 and 9.4: a negative chroma clamps to zero at
+   parsed-value time. *)
+let read_chroma ~pct_scale t =
+  Option.map (Float.max 0.) (read_number_or_none ~pct_scale t)
+
 let read_oklch t : color =
   Cursor.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec. *)
   let l = read_ok_lightness t in
   Cursor.ws t;
-  let c = read_number_or_none ~pct_scale:0.004 t in
+  let c = read_chroma ~pct_scale:0.004 t in
   Cursor.ws t;
   let h = read_hue t in
   let alpha = read_optional_alpha t in
@@ -399,7 +404,7 @@ let read_lch t : color =
              Cursor.err_invalid t (String.concat "" [ "lch L unit: "; u ])
           : percentage)
   in
-  let read_c = read_number_or_none ~pct_scale:1.5 in
+  let read_c = read_chroma ~pct_scale:1.5 in
   let l, c, h = Cursor.triple ~sep:Cursor.ws read_l_axis read_c read_hue t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;

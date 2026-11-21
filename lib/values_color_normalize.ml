@@ -93,7 +93,7 @@ let rec round_alpha ~lossless (a : alpha) : alpha =
   | Var ({ fallback = Fallback f; _ } as v) ->
       let f' = round_alpha ~lossless f in
       if f' == f then a else Var { v with fallback = Fallback f' }
-  | Var _ | Pct _ | None -> a
+  | Var _ | Pct _ | None | Alpha_none -> a
 
 (* Canonicalise a colour's alpha for a colour the static fold leaves alone (e.g.
    a [var()] channel). CSS Color 4 sec. 4.2: a fully-opaque [/ 1] / [/ 100%] is
@@ -488,6 +488,10 @@ let has_missing_component (c : color) =
   | Hsl { h = Hue_none; _ } | Hwb { h = Hue_none; _ } -> true
   | Hsl { s = None; _ } | Hsl { l = None; _ } -> true
   | Hwb { w = None; _ } | Hwb { b = None; _ } -> true
+  | Rgba { a = Alpha_none; _ }
+  | Hsl { a = Alpha_none; _ }
+  | Hwb { a = Alpha_none; _ } ->
+      true
   | _ -> false
 
 (* A fold computes coefficients that can print longer than the call it replaces,

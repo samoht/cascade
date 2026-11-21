@@ -82,6 +82,7 @@ let rec pp_hue : hue Pp.t =
 let rec pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
+  | Alpha_none -> Pp.string ctx "none"
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_alpha ctx v
@@ -90,7 +91,7 @@ let rec pp_alpha : alpha Pp.t =
 (* Helper to print optional alpha with the correct leading separator *)
 let pp_opt_alpha ctx = function
   | None -> ()
-  | (Num _ | Pct _ | Var _ | Calc _) as a ->
+  | (Alpha_none | Num _ | Pct _ | Var _ | Calc _) as a ->
       Pp.op_char ctx '/';
       pp_alpha ctx a
 

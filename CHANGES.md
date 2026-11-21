@@ -883,6 +883,10 @@ differently. They are the reason to minify again.
 - gradient whose interpolation hint is not between two colour stops is
   invalid**, as CSS Images 4 sec. 3.5.1, Chromium and Firefox say, so
   `--minify` drops it instead of keeping it (#1607).
+- `none` alpha is kept**: `rgb(0 0 0 / none)`, transparent at rest (CSS Color
+  4 sec. 4.4), no longer minifies to the opaque `#000`, and `--diff=canonical`
+  tells it from an opaque or a zero-alpha colour. A negative `lch()` or
+  `oklch()` chroma clamps to zero at parse (sec. 9.3) (#1612).
 
 #### Stable output
 

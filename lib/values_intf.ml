@@ -500,7 +500,10 @@ type angle =
 
 (** CSS alpha values (for HSL/HWB/etc) *)
 type alpha =
-  | None
+  | None  (** No alpha written: opaque. *)
+  | Alpha_none
+      (** CSS Color 4 sec. 4.4 [none]: zero at rest, the other colour's alpha in
+          an interpolation. *)
   | Num of float
   | Pct of float
   | Var of alpha var

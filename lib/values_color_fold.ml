@@ -569,7 +569,7 @@ let alpha_opaque : alpha -> bool = function
   | None -> true
   | Num f -> f >= 1.0
   | Pct f -> f >= 100.0
-  | Var _ | Calc _ -> false
+  | Alpha_none | Var _ | Calc _ -> false
 
 let mix_lab_family in_space color1 color2 ~p1 ~p2 =
   match (in_space, color1, color2) with
