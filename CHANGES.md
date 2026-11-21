@@ -1014,6 +1014,10 @@ The new form of a diagnostic is under [Breaking](#command-line).
   3.1.7) and browsers drop it; the same reading dropped
   `additive-symbols:2 url(a.png),1 url(b.png)`. A symbol is now one image
   (#1526).
+- **A reference box beside `none` was kept.** `clip-path:content-box none`
+  and `offset-path:content-box none` were kept, though a box pairs only with a
+  shape (CSS Masking 1 sec. 5.1, CSS Motion Path 1 sec. 2.1) and browsers drop
+  both. Each now goes with a warning (#1529).
 - **`@charset` is read as browsers read it.** It warns and goes unless the
   sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
   comment or an `@layer` statement (#1294).
