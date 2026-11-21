@@ -792,6 +792,13 @@ differently. They are the reason to minify again.
   `[\x01]{}` and keeps `[\1 ]{}`). Every name is now written as CSSOM sec.
   2.1 serialises an identifier, selectors included, so a class holding a
   letter from U+0080 up also prints the letter instead of a hex escape (#1551).
+- **Unwrapping `:is()` took other selectors down.** `--minify` printed
+  `.c,:is([x=a s])` as `.c,[x=a s]`. `:is()` drops an argument a browser
+  cannot read on its own, but a plain list is dropped whole, and Chromium
+  reads no `s` flag, so `.c` lost its colour there. The same happened to
+  `:is(:-moz-focusring)` and `:not(:not(...))`, and `cascade diff
+  --diff=canonical` called the two spellings equal. An argument some target
+  browser does not read now keeps its `:is()` (#1552).
 
 #### Stable output
 

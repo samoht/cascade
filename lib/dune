@@ -44,6 +44,7 @@
   selector_pseudo
   selector_reader
   selector_printer
+  selector_targets
   shorthand_border
   shorthand_box
   shorthand_common
