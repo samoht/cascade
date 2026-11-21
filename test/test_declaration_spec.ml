@@ -448,6 +448,21 @@ let mask_shorthand_keeps_a_three_value_position () =
       "mask: url(a.png) left 10px top 5px 6px"; "mask: url(a.png) left 10px foo";
     ]
 
+(* CSS Motion Path 1 (ED) sec. 2.2 spells [offset-distance] as a plain
+   [<length-percentage>], and sec. 2.6 puts that longhand in the [offset]
+   shorthand, so the shorthand takes the negative distance the longhand does.
+   Chromium 153 and WebKit 26.5 keep each value below. *)
+let offset_takes_a_negative_distance () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("offset: none -1px", "offset:none -1px");
+      ("offset: none -10%", "offset:none -10%");
+      ("offset: none -1px auto", "offset:none -1px auto");
+      ("offset: none 30deg -1px", "offset:none -1px 30deg");
+      ("offset-distance: -1px", "offset-distance:-1px");
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1883,6 +1898,8 @@ let suite =
       test_case "anchor query forms" `Quick anchor_query_forms;
       test_case "an attr() type name keeps its case" `Quick
         attr_type_name_keeps_its_case;
+      test_case "offset takes a negative distance" `Quick
+        offset_takes_a_negative_distance;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
