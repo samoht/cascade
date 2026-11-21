@@ -848,6 +848,28 @@ let nested_block_separator () =
     ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
     ".a{top:0}@supports(color:red){.a{color:red}}.a .b{left:0}"
 
+(* A later value using a prefixed or legacy keyword the earlier does not use is
+   one the data cannot say every browser reading the earlier reads, so the
+   earlier stays as its fallback across rules too. Two values with the same
+   prefixed words are read by the same browsers, and a later value with none is
+   one the data answers for. *)
+let prefixed_fallbacks_across_rules () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( ".a{position:sticky}.a{position:-webkit-sticky}",
+        ".a{position:sticky;position:-webkit-sticky}" );
+      ( ".a{display:flex}.b{color:red}.a{display:-webkit-box}",
+        ".a{display:flex;display:-webkit-box}.b{color:red}" );
+      ( ".x{width:-webkit-max-content;width:max-content}.x{width:250px}",
+        ".x{width:250px}" );
+      ( "a{background-image:-webkit-linear-gradient(red,blue);background-image:-webkit-linear-gradient(red,green)}",
+        "a{background-image:-webkit-linear-gradient(red,green)}" );
+      ( "a{display:-webkit-box;display:-moz-box}",
+        "a{display:-webkit-box;display:-moz-box}" );
+    ]
+
 (* An earlier declaration of a property is a fallback for a browser that drops
    the later one at parse time, and the default targets are floors: Chrome 111,
    Firefox 128, Safari 16.4 and every later release. web-features records
@@ -1224,6 +1246,9 @@ let suite =
         `Quick,
         target_minify_enforce_spec_split );
       ("floor fallbacks survive", `Quick, floor_fallbacks_survive);
+      ( "prefixed fallbacks across rules",
+        `Quick,
+        prefixed_fallbacks_across_rules );
       ( "target evergreen compatibility prefixes",
         `Quick,
         target_evergreen_compatibility_prefixes );
