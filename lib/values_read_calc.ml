@@ -131,6 +131,8 @@ let length_sizing_keywords : (string * length) list =
     ("-webkit-max-content", Webkit_max_content);
     ("-webkit-min-content", Webkit_min_content);
     ("-webkit-fit-content", Webkit_fit_content);
+    ("-webkit-fill-available", Webkit_fill_available);
+    ("-moz-available", Moz_available);
     ("-moz-max-content", Moz_max_content);
     ("-moz-min-content", Moz_min_content);
     ("-moz-fit-content", Moz_fit_content);

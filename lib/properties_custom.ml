@@ -386,6 +386,8 @@ let string_of_kind_value : type a. a kind -> a -> string =
       | Normal -> "normal"
       | Open_quote -> "open-quote"
       | Close_quote -> "close-quote"
+      | No_open_quote -> "no-open-quote"
+      | No_close_quote -> "no-close-quote"
       | Image _ | Attr _ | Counter _ | Counters _ | String_ref _
       | Content_list _ | With_alt _ | Inherit | Initial | Unset | Revert
       | Revert_layer | Var _ ->

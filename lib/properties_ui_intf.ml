@@ -43,6 +43,10 @@ type cursor =
   | All_scroll
   | Zoom_in
   | Zoom_out
+  | Webkit_grab
+  | Webkit_grabbing
+  | Webkit_zoom_in
+  | Webkit_zoom_out
   | Url of string * (float * float) option * cursor
   | Inherit
   | Initial

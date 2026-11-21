@@ -281,6 +281,7 @@ let rec pp_image_rendering : image_rendering Pp.t =
   | High_quality -> Pp.string ctx "high-quality"
   | Crisp_edges -> Pp.string ctx "crisp-edges"
   | Pixelated -> Pp.string ctx "pixelated"
+  | Webkit_optimize_contrast -> Pp.string ctx "-webkit-optimize-contrast"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -345,6 +346,8 @@ let rec read_image_rendering (t : Cursor.t) : image_rendering =
       ("high-quality", High_quality);
       ("crisp-edges", Crisp_edges);
       ("pixelated", Pixelated);
+      (* WebKit's spelling of [crisp-edges], which Blink and WebKit read. *)
+      ("-webkit-optimize-contrast", Webkit_optimize_contrast);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
@@ -500,10 +503,9 @@ let read_image_set_option t : image_set_option =
         | None, Some r -> loop mime (Some r)
         | _ -> (mime, resolution))
   in
+  (* CSS Images 4 sec. 2.2: [[ <image> | <string> ] [ <resolution> ||
+     type(<string>) ]?], so an option may name its image alone, at [1x]. *)
   let mime, resolution = loop None None in
-  if Option.is_none mime && Option.is_none resolution then
-    Cursor.err_invalid t
-      "image-set option requires a <resolution> or type(<string>)";
   { source; resolution; mime_type = mime }
 
 let read_image_set_body t : background_image =

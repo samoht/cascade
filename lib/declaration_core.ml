@@ -753,9 +753,19 @@ let rec first_release ~floor engine decl =
       first_release_with ~tokens:(lazy (value_tokens decl)) ~floor engine decl
 
 let display_value_is_vendor : Properties.display -> bool = function
-  | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
-  | Moz_inline_box ->
+  | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box
+  | Webkit_inline_box | Moz_box | Moz_inline_box ->
       true
+  | _ -> false
+
+let rec cursor_is_legacy : Properties.cursor -> bool = function
+  | Webkit_grab | Webkit_grabbing | Webkit_zoom_in | Webkit_zoom_out -> true
+  | Url (_, _, fallback) -> cursor_is_legacy fallback
+  | _ -> false
+
+let rec overflow_is_legacy : Properties.overflow -> bool = function
+  | Overlay -> true
+  | Overflow_pair (x, y) -> overflow_is_legacy x || overflow_is_legacy y
   | _ -> false
 
 let background_image_is_vendor : Properties.background_image -> bool = function
@@ -843,8 +853,30 @@ let rec value_is_vendor_prefixed decl =
      are the same browser-compat pattern: old Safari only understands the
      prefixed keyword, so the earlier declaration is a real fallback. *)
   | Declaration { property = Position; value = Webkit_sticky; _ } -> true
-  | Declaration { property = Text_align; value = Webkit_match_parent; _ } ->
+  | Declaration
+      {
+        property = Text_align;
+        value = Webkit_match_parent | Webkit_left | Webkit_right | Webkit_center;
+        _;
+      } ->
       true
+  (* The other prefixed or legacy keywords a browser in B reads beside, or in
+     place of, the standard one. *)
+  | Declaration { property = Cursor; value; _ } -> cursor_is_legacy value
+  | Declaration { property = Unicode_bidi; value; _ } -> (
+      match value with
+      | Webkit_isolate | Webkit_isolate_override | Webkit_plaintext -> true
+      | _ -> false)
+  | Declaration
+      { property = Image_rendering; value = Webkit_optimize_contrast; _ } ->
+      true
+  | Declaration { property = Writing_mode; value; _ } -> (
+      match value with
+      | Lr | Lr_tb | Rl | Rl_tb | Tb | Tb_rl -> true
+      | _ -> false)
+  | Declaration { property = Overflow; value; _ } -> overflow_is_legacy value
+  | Declaration { property = Overflow_x; value; _ } -> overflow_is_legacy value
+  | Declaration { property = Overflow_y; value; _ } -> overflow_is_legacy value
   (* [width:-webkit-max-content;width:max-content] and the other intrinsic
      sizing properties: the prefixed keyword is a fallback for old Safari /
      Firefox, so the earlier declaration must survive minify dedup. *)
