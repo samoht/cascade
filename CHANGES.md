@@ -997,6 +997,12 @@ The new form of a diagnostic is under [Breaking](#command-line).
   `transform-origin:50% center 50%` was kept and minified into `50% 50% 50%`,
   though CSS Transforms 1 sec. 4 makes the third value a `<length>` and
   browsers drop it. It now goes with a warning (#1525).
+- **A list of images in a counter-style symbol was kept.**
+  `@counter-style` read `prefix:url(a.png),none` as a `background-image` list
+  and kept it, though a `<symbol>` is one image (CSS Counter Styles 3 sec.
+  3.1.7) and browsers drop it; the same reading dropped
+  `additive-symbols:2 url(a.png),1 url(b.png)`. A symbol is now one image
+  (#1526).
 - **`@charset` is read as browsers read it.** It warns and goes unless the
   sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
   comment or an `@layer` statement (#1294).
