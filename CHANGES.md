@@ -899,6 +899,9 @@ differently. They are the reason to minify again.
   10.1 and 10.10): `rgb(calc(10%) 0 0)`, `hsl(calc(10deg) 50% 50%)` and
   `lch(50% 30 calc(10deg))`, which browsers apply, are no longer deleted, and
   a folded `rgb()` channel rounds as its literal does (#1616).
+- type(<COLOR>), red)` is kept as written** instead of respelled
+  `type(<color>)`, which Chromium applies though it drops the original
+  (#1617).
 
 #### Stable output
 
