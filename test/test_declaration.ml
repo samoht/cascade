@@ -87,6 +87,23 @@ let complex_values () =
   (* An interpolation hint is positional in the same way. *)
   decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,30%,#00f)"
     "linear-gradient(0deg, red, 30%, blue)";
+  (* A [var()] in a stop may hold a position or several stops ([--a:red 20%]),
+     so it is not one unpositioned stop: reversing the list would reverse inside
+     the variable too, and dropping a default position from it would change
+     which stop the position lands on. *)
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(0deg,var(--a),var(--b))"
+    "linear-gradient(to top, var(--a), var(--b))";
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(0deg,var(--stops),#00f)"
+    "linear-gradient(0deg, var(--stops), blue)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(var(--a) 0%,green)"
+    "linear-gradient(var(--a) 0%, green)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red,var(--a) 100%)"
+    "linear-gradient(red, var(--a) 100%)";
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(var(--a) 10%,var(--a) 60%)"
+    "linear-gradient(var(--a) 10%, var(--a) 60%)";
   (* The legacy prefixed gradients measure their angle from a different zero, so
      the same rewrite would point them elsewhere. *)
   decl_optimizes ~prop:"background"
