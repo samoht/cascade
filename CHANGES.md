@@ -993,6 +993,10 @@ The new form of a diagnostic is under [Breaking](#command-line).
   drop each one. A comparison, `abs()`, `hypot()` or a stepped-value call in a
   calculation now has to carry a unit the property takes (CSS Values 4 sec.
   10.1 and 10.9), and the declaration goes with a warning otherwise (#1524).
+- **A percentage Z offset in `transform-origin` was kept.**
+  `transform-origin:50% center 50%` was kept and minified into `50% 50% 50%`,
+  though CSS Transforms 1 sec. 4 makes the third value a `<length>` and
+  browsers drop it. It now goes with a warning (#1525).
 - **`@charset` is read as browsers read it.** It warns and goes unless the
   sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
   comment or an `@layer` statement (#1294).
