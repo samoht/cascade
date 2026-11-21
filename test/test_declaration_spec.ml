@@ -492,6 +492,25 @@ let invalid_substitution_drops_the_declaration () =
       "color: var(--x, env(safe-area-inset-top))";
     ]
 
+(* SVG 2 (ED) sec. 8.13 spells [vector-effect] as [none | non-scaling-stroke |
+   non-scaling-size | non-rotation | fixed-position], one keyword and no host
+   space. Chromium 153 and WebKit 26.5 drop each list below. *)
+let vector_effect_is_one_keyword () =
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "vector-effect: "; value ]))
+    [
+      "non-scaling-stroke non-scaling-stroke";
+      "non-scaling-stroke non-rotation";
+      "non-scaling-stroke viewport";
+      "non-scaling-stroke screen";
+    ];
+  check_declaration ~expected:"vector-effect:non-scaling-stroke"
+    "vector-effect: non-scaling-stroke";
+  check_declaration ~expected:"vector-effect:fixed-position"
+    "vector-effect: fixed-position"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1931,6 +1950,8 @@ let suite =
         offset_takes_a_negative_distance;
       test_case "an invalid substitution drops the declaration" `Quick
         invalid_substitution_drops_the_declaration;
+      test_case "vector-effect is one keyword" `Quick
+        vector_effect_is_one_keyword;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
