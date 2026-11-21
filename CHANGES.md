@@ -845,6 +845,12 @@ differently. They are the reason to minify again.
   value parses the other, so the pair compares different; `-webkit-mask-image`
   against `mask-image`, which Chrome reads unprefixed from 120, does too
   (#1519).
+- **The prefix carve-out is documented.** The reference and the invariants
+  now state that `--minify` adds a prefix a target needs beside its unprefixed
+  twin and that `cascade diff --diff=canonical` compares modulo those
+  prefixes, so `.a{user-select:none}` and
+  `.a{-webkit-user-select:none;user-select:none}` compare equal on purpose
+  (#1520).
 - **A guard was decided by its property alone.**
   `@supports (break-before:always){a{color:red}}` compared identical to
   `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves

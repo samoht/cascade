@@ -49,10 +49,17 @@ implementation keeps them.
 ## Master guarantees
 
 - **M1.** `--minify` output is observationally equal over B to its input, in
-  every context, for every objective.
+  every context, for every objective, with one intended rendering change: a
+  vendor-prefixed declaration a browser in B needs is added beside its
+  unprefixed twin ([Target layer](#target-layer)), so that browser applies
+  what the other browsers in B apply.
 - **M2.** `cascade diff --diff=canonical` exits 0 only when the two inputs are
-  observationally equal over B. A reported difference may paint nothing;
-  over-reporting is allowed and each case is a defect to reduce.
+  observationally equal over B, modulo the prefixes the targets need: such a
+  prefix is written on both sides, the comparator's side of M1's exception.
+  So `.a{user-select:none}` and `.a{-webkit-user-select:none;user-select:none}`
+  compare equal on purpose, although Safari, which reads the property only
+  prefixed, applies it under the second alone. A reported difference may paint
+  nothing; over-reporting is allowed and each case is a defect to reduce.
 - **M3.** The canonical form of a sheet equals the canonical form of its
   `--minify` output. This checks that minifier and comparator agree, not that
   either is right; the browser is the oracle for both.
@@ -260,6 +267,8 @@ Each row names the tests that check a statement. A browser harness under
 |---|---|
 | M1 | `test/render` "render_diff" (each transform paints the source's page in Chromium); the [release criterion](reference.md#release-criteria) |
 | M2 | `test/render` "canonical_agree" (a pair called identical paints one page); `test/test_css_compare_structure.ml` |
+| M1's prefix exception | `test/test_webkit_fallback.ml` "synthesis writes the pair", "an authored prefix is left alone" |
+| M2's prefix exception | `test/test_css_compare_structure.ml` "canonical legacy name alias" ("a prefix a target needs is written on both sides"), "canonical judges for the targets" ("a prefix a target needs is on both sides", "a prefix a target needs survives a merge", "a mask composite's prefixed vocabulary too", "a supports guard a target reads prefixed too") |
 | M3 | The release criterion, over 504 SatCSS sheets and Tailwind's output under both objectives |
 | M4 | `test/fixpoint` (its `spellings` corpus holds the second pass still); `optimize_factor` "pp minify is idempotent"; `test/test_optimize.ml` "optimize preserves physical identity on a fixed point" |
 | M5 | The release criterion, run under both objectives |
