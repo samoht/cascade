@@ -564,7 +564,8 @@ let read_counter_style_system_descriptor r =
     r
 
 (* CSS Counter Styles 3 (ED) sec. 3.1.7: <symbol> = <string> | <image> |
-   <custom-ident>, each kept as the kind it is. *)
+   <custom-ident>, each kept as the kind it is. The image is one image, not the
+   comma list a [background-image] takes. *)
 let read_counter_symbol r : counter_symbol =
   match Cursor.string_opt r with
   | Some symbol -> String symbol
@@ -572,7 +573,7 @@ let read_counter_symbol r : counter_symbol =
       match Cursor.peek r with
       | Some (Component.Func _)
       | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-          Image (Properties.read_background_image r)
+          Image (Prop_image_value.read_bg_image r)
       | Some _ | None -> Ident (Cursor.custom_ident "counter style symbol" r))
 
 let read_counter_symbols_descriptor r =
