@@ -1001,6 +1001,11 @@ let substitution_takes_no_slot () =
       ("flex", "var(--g) 0px", "var(--g) 0px");
       ("flex", "var(--g) 1", "var(--g) 1");
       ("flex", "1 1 var(--b)", "1 1 var(--b)");
+      (* A [var()] factor may supply none, so the zero basis keeps its unit:
+         with [--g: ;] Chromium 153 computes [flex:var(--g) 1 0px] as grow 1,
+         shrink 1, basis [0px], and [var(--g) 1 0] as shrink 0, basis [0%]. *)
+      ("flex", "var(--g) 1 0px", "var(--g) 1 0px");
+      ("flex", "1 var(--g) 0px", "1 var(--g) 0px");
       ("-webkit-flex", "var(--g) 0px", "var(--g) 0px");
       ("gap", "var(--a) var(--a)", "var(--a) var(--a)");
       ("overflow", "var(--a) var(--a)", "var(--a) var(--a)");
