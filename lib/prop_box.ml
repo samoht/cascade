@@ -253,9 +253,22 @@ let aspect_ratio_of_numbers ~auto (a : number) (b : number) : aspect_ratio =
 (* CSS Sizing 4 sec. 5 spells the value [<ratio>], whose CSS Values 4 sec. 6.5
    numbers carry a [0,inf] range, so a call folding below it keeps its wrapper:
    the literal underneath is one [read_aspect_ratio_number] refuses. *)
-let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
+(* CSS Values 4 sec. 10.10 simplifies arithmetic over numbers to one number,
+   so [calc(2 * 16/9)] and [calc(16/9 * 2)] are one ratio; a quotient the exact
+   fold keeps is written at the six-significant-figure budget of M6, as
+   line-height writes one, so both spellings reach one normal form. Lossless
+   mode keeps the call. *)
+let normalize_aspect_ratio ?(lossless = false) : aspect_ratio -> aspect_ratio =
  fun value ->
-  let number = Values.normalize_number ~non_negative:true in
+  let number n =
+    match Values.normalize_number ~non_negative:true n with
+    | Num _ as n -> n
+    | n when lossless -> n
+    | n -> (
+        match eval_number_value n with
+        | Some f when f >= 0. && Float.is_finite f -> Num (Pp.round_sig 6 f)
+        | Some _ | None -> n)
+  in
   match value with
   | Auto_ratio_calc (a, b) ->
       aspect_ratio_of_numbers ~auto:true (number a) (number b)
@@ -744,21 +757,16 @@ let rec pp_table_layout : table_layout Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-(* Sec. 6.5 refuses a negative ratio number written on its own, so the fold
-   comes off only where its result is a ratio number by itself. *)
-let pp_aspect_ratio_number ctx value =
-  match (Pp.minified ctx, eval_number_value value) with
-  | true, Some value when value >= 0. -> Pp.float ctx value
-  | _ -> pp_number ctx value
-
+(* CSS Values 4 sec. 6.5 reads a lone [<number>] as [<number> / 1], so a literal
+   [1] after the slash is a spelling the printer may drop; a calculation folds
+   in [normalize_aspect_ratio], never here. *)
 let pp_aspect_ratio_pair ctx a b =
-  let b_value = eval_number_value b in
-  if Pp.minified ctx && b_value = Some 1. then pp_aspect_ratio_number ctx a
-  else (
-    pp_aspect_ratio_number ctx a;
-    if b_value <> Some 1. then (
+  pp_number ctx a;
+  match (b : number) with
+  | Num 1. -> ()
+  | _ ->
       Pp.op_char ctx '/';
-      pp_aspect_ratio_number ctx b))
+      pp_number ctx b
 
 let rec pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function

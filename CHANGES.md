@@ -726,6 +726,12 @@ differently. They are the reason to minify again.
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by
   source order (#1355).
+- **Two spellings of one `aspect-ratio` merged only on a second run.**
+  `a{aspect-ratio:calc(2*16/9)}b{aspect-ratio:calc(16/9*2)}` minified into two
+  rules printing `3.55555556`, which a second run merged. The printer folded
+  the calculation and the optimiser did not; the optimiser now folds it, to
+  six significant figures as `line-height` does, and `--lossless` keeps it
+  (#1527).
 
 #### Which rules merge
 
