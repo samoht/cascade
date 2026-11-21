@@ -400,6 +400,27 @@ let an_image_set_option_names_one_resolution () =
        type(\"image/avif\"))";
     ]
 
+(* CSS Masking 1 sec. 7.4 gives [mask-position] [<position>#], and CSS Values 4
+   sec. 8.3 gives [<position>] no three-value form: only [background-position]
+   keeps one, through the legacy [<bg-position>] of CSS Backgrounds 3 sec. 3.6,
+   and [-webkit-mask-position] is read as it. Chrome 153 refuses
+   [mask-position:left 10px top] and keeps the other forms. *)
+let mask_position_takes_no_three_value_form () =
+  check_declaration ~expected:"mask-position:right 10px bottom 5px"
+    "mask-position: right 10px bottom 5px";
+  check_declaration ~expected:"-webkit-mask-position:left 10px top"
+    "-webkit-mask-position: left 10px top";
+  check_declaration ~expected:"background-position:left 10px top"
+    "background-position: left 10px top";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "mask-position: left 10px top";
+      "mask-position: left top 10px";
+      "mask-position: center top 10px";
+      "mask-position: left 10px top, center";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1790,6 +1811,8 @@ let suite =
         a_value_a_browser_keeps_reads;
       test_case "an image-set option names one resolution" `Quick
         an_image_set_option_names_one_resolution;
+      test_case "mask-position takes no three-value form" `Quick
+        mask_position_takes_no_three_value_form;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
       test_case "try tactics stand together" `Quick try_tactics_stand_together;
