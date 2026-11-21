@@ -31,7 +31,7 @@ val canonicalize_custom_shadow_components :
     shape otherwise kept. *)
 
 val canonicalize_custom_colors_components :
-  lossless:bool -> ?resolve_missing:bool -> Component.t list -> Component.t list
+  lossless:bool -> Component.t list -> Component.t list
 (** [canonicalize_custom_colors_components ~lossless components] is [components]
     with every colour it holds folded to its canonical form. *)
 

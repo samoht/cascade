@@ -159,6 +159,16 @@ implementation keeps them.
   as nothing, and equals only its own spelling; substituting its `var()`
   reads it again. Only Chromium is measured; for Firefox and Safari the rule
   is conservative.
+  interpolates two legacy sRGB colours (hex, named, `rgb()`, `hsl()`,
+  `hwb()`) in gamma-encoded sRGB and other colours in Oklab, so a colour that
+  can be interpolated keeps a spelling of its class. A missing component
+  (`none`) folds to zero only where the colour is not interpolated (sec. 4.4
+  and 13.4). Any colour value can be: a gradient, a `color-mix()` reading it
+  through `currentcolor`, an animation's implicit keyframe, or a transition
+  any sheet, user style or script declares, so the minifier and the
+  comparator keep both in every mode, `--scope=stylesheet` included. A
+  `color-mix()` is a colour of its interpolation space (CSS Color 5 sec. 3),
+  never a legacy one.
 
 ## Declaration layer
 
@@ -314,6 +324,7 @@ Each row names the tests that check a statement. A browser harness under
 | Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
 | Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay", "colour channels beside a var()"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
+| Interpolation class | `values_color` "fold keeps interpolation class"; `test/test_css_compare_values.ml` "interpolation class is a difference", "canonical missing components under interpolation", "under a transition" |
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
 | Fallbacks | `floor_fallbacks_survive`, `prefixed_fallbacks_across_rules` and `legacy_keyword_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |

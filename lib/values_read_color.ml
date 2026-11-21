@@ -6,16 +6,17 @@ open Values_var
 open Values_color_fold
 open Values_read_calc
 
-(** Read a percentage value as float (number followed by %) Used for color
-    components where 0-100% clamping is required *)
-let read_percentage_float t : float =
+(** Read an [hsl()] or [hwb()] percentage, clamped to 0-100%, or [None] for the
+    [none] keyword, which CSS Color 4 sec. 4.4 keeps missing: it is zero at rest
+    and takes the other colour's component in an interpolation. *)
+let read_percentage_float t : percentage option =
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
-    0.)
+    Option.None)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
-    | Some "%" | None -> max 0. (min 100. n)
+    | Some "%" | None -> Some (Pct (max 0. (min 100. n)))
     | Some unit ->
         Cursor.err_invalid t (String.concat "" [ "percentage unit: "; unit ])
 
@@ -252,7 +253,7 @@ let read_separated_values t p1 p2 =
 
 let read_hsl t : color =
   Cursor.ws t;
-  let h = match read_hue t with Hue_none -> Unitless 0. | h -> h in
+  let h = read_hue t in
   Cursor.ws t;
   (* Handle comma or space separator after hue *)
   let comma_separated = Cursor.comma_opt t in
@@ -274,11 +275,11 @@ let read_hsl t : color =
   in
   Cursor.ws t;
   Cursor.expect_eof t;
-  Hsl { h; s = Pct s; l = Pct l; a }
+  Hsl { h; s; l; a }
 
 let read_hwb t : color =
   Cursor.ws t;
-  let h = match read_hue t with Hue_none -> Unitless 0. | h -> h in
+  let h = read_hue t in
   let w, b =
     read_separated_values t read_percentage_float read_percentage_float
   in
@@ -290,7 +291,7 @@ let read_hwb t : color =
   in
   Cursor.ws t;
   Cursor.expect_eof t;
-  Hwb { h; w = Pct w; b = Pct b; a }
+  Hwb { h; w; b; a }
 
 let read_ok_lightness t : percentage option =
   Cursor.ws t;
@@ -554,10 +555,6 @@ let relative_color_has_empty_alpha cvs =
   in
   loop cvs
 
-(* The origin may be a [color()] node, which the byte converter has no arm for.
-   The linear route covers every space whose matrices are wired up, so a
-   relative colour folds whether its origin was written as a hex or as the
-   [color()] the same conversion reaches. *)
 (* The conversion error the fold takes from the space a colour is written in:
    none for an sRGB spelling, the wide-gamut bound for a [color()] matrix, the
    Lab bound for the Lab family, and nothing for an authored sRGB value. *)
@@ -570,37 +567,35 @@ let conversion_error_of_color (c : color) =
   | Oklab _ | Oklch _ | Lab _ | Lch _ -> Color_space.lab_conversion_error
   | _ -> 0.
 
-let relative_origin_srgb_bytes origin : (int * int * int * int) option =
-  match static_color_to_srgb_bytes origin with
-  | Some _ as found -> found
-  | Option.None -> (
-      match static_color_to_linear_srgb origin with
-      | Some (linear, alpha_f) -> (
-          match
-            Color_space.srgb_bytes_of_linear
-              ~error:(conversion_error_of_color origin)
-              linear
-          with
-          | Some (r, g, b) ->
-              let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
-              Some
-                (r, g, b, Float.to_int (Float.round (clamp01 alpha_f *. 255.0)))
-          | Option.None -> Option.None)
-      | Option.None -> Option.None)
-
-(* The call names no alpha of its own, so the origin's carries through. *)
+(* CSS Color 5 sec. 4.1: [color(from <origin> srgb r g b)] is the origin
+   converted to sRGB, a [color(srgb ...)] and so not a legacy colour, which CSS
+   Color 4 sec. 13.3 interpolates in Oklab where a hex would interpolate in
+   sRGB. The call names no alpha of its own, so the origin's carries through. *)
 let folded_srgb_color origin (alpha : alpha) : color option =
-  match relative_origin_srgb_bytes origin with
+  let channels =
+    match static_color_to_srgb_bytes origin with
+    | Some (r, g, b, a) ->
+        let unit byte = Float.of_int byte /. 255. in
+        Some ((unit r, unit g, unit b), unit a)
+    | Option.None ->
+        Option.map
+          (fun (linear, a) -> (Color_space.rgb_of_linear_rgb linear, a))
+          (static_color_to_linear_srgb origin)
+  in
+  match channels with
   | None -> Option.None
-  | Some (r, g, b, origin_a_byte) ->
-      let a : alpha =
-        match alpha with
-        | None when origin_a_byte = 255 -> None
-        | None -> Num (Float.of_int origin_a_byte /. 255.)
-        | a -> a
+  | Some ((r, g, b), origin_alpha) ->
+      let round6 v = Float.round (v *. 1e6) /. 1e6 in
+      let alpha : alpha =
+        match alpha with None -> alpha_of_unit_float origin_alpha | a -> a
       in
       Option.Some
-        (Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a })
+        (Color
+           {
+             space = Srgb;
+             components = [ Num (round6 r); Num (round6 g); Num (round6 b) ];
+             alpha;
+           })
 
 (* CSS Color 5 secs. 4.3 to 4.9 and 5.1 name the channel keywords each relative
    colour function binds; [alpha] is bound by all of them. *)

@@ -52,9 +52,14 @@ whitespace.
 Value-level rewrites:
 
 - **Colours:** hex when no longer than the name (`black` -> `#000`,
-  `blue` -> `#00f`; `red` stays a name). Modern colour functions
-  (`lab`/`lch`/`oklab`/`oklch`/`color()`) fold to shorter sRGB only within the
-  ΔE<sub>OK</sub> budget below.
+  `blue` -> `#00f`; `red` stays a name). A legacy sRGB colour (hex, named,
+  `rgb()`, `hsl()`, `hwb()`) folds to hex or a name, and any other colour
+  (`lab`/`lch`/`oklab`/`oklch`/`color()`) keeps its notation, its coefficients
+  rounded within the ΔE<sub>OK</sub> budget below: CSS Color 4 sec. 13.3
+  interpolates the two kinds in different spaces, so `color(srgb 1 0 0)` is not
+  `red` in a gradient or a transition. A static `color-mix()` folds to a colour
+  in its interpolation space (`color-mix(in srgb,red,blue)` ->
+  `color(srgb .5 0 .5)`), and a `none` component is kept.
 - **Numbers and lengths:** drop leading and trailing zeros (`0.5` -> `.5`);
   convert compatible units only when shorter (`12pt` stays `12pt`).
 - **Math:** `calc()`, `hypot()` and the rest fold constant subexpressions only

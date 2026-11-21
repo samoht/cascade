@@ -307,7 +307,13 @@ let pure_minify_value_fallbacks () =
             Css.Variables.typed_custom_property "--tw-duration" Time (Ms 200.);
             transition_duration (Ms 200.);
             color
-              (Hsl { h = Angle (Deg 120.); s = Pct 50.; l = Pct 50.; a = None });
+              (Hsl
+                 {
+                   h = Angle (Deg 120.);
+                   s = Some (Pct 50.);
+                   l = Some (Pct 50.);
+                   a = None;
+                 });
           ];
       ]
   in
@@ -470,8 +476,8 @@ let constructed_custom_property_reparses () =
         Css.Values.Hsl
           {
             h = Unitless 120.;
-            s = Var (Css.Values.var_ref "s");
-            l = Pct 50.;
+            s = Some (Var (Css.Values.var_ref "s"));
+            l = Some (Pct 50.);
             a = None;
           } );
     ];

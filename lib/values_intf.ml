@@ -617,8 +617,10 @@ type color =
           whitespace CSS reads as nothing. It is never folded or respelled. *)
   | Rgb of rgb
   | Rgba of { rgb : rgb; a : alpha }
-  | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
-  | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
+  | Hsl of { h : hue; s : percentage option; l : percentage option; a : alpha }
+      (** HSL. s and l can be [None] to represent CSS [none]. *)
+  | Hwb of { h : hue; w : percentage option; b : percentage option; a : alpha }
+      (** HWB. w and b can be [None] to represent CSS [none]. *)
   | Color of { space : color_space; components : component list; alpha : alpha }
   | Relative_rgb of color * string
       (** [rgb(from <origin> <channels> [/ <alpha>]?)] with a parsed origin and

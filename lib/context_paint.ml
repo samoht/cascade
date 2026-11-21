@@ -194,10 +194,20 @@ let simplify_rgb_color component percentage alpha_value rgb hue
       Values.Rgba { rgb = rgb value; a = alpha_value a }
   | Values.Hsl { h; s; l; a } ->
       Values.Hsl
-        { h = hue h; s = percentage s; l = percentage l; a = alpha_value a }
+        {
+          h = hue h;
+          s = Option.map percentage s;
+          l = Option.map percentage l;
+          a = alpha_value a;
+        }
   | Values.Hwb { h; w; b; a } ->
       Values.Hwb
-        { h = hue h; w = percentage w; b = percentage b; a = alpha_value a }
+        {
+          h = hue h;
+          w = Option.map percentage w;
+          b = Option.map percentage b;
+          a = alpha_value a;
+        }
   | Values.Color { space; components; alpha } ->
       Values.Color
         {

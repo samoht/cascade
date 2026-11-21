@@ -761,6 +761,21 @@ differently. They are the reason to minify again.
   repeats its resolution, so browsers drop the declaration, and `--minify`
   printed `image-set(url(a.png)1x)`, which they read. The repeat now makes
   the declaration invalid, as a repeated `type()` does (#1540).
+- **A colour changed the way it blends.** `--minify` turned
+  `linear-gradient(color(srgb 1 0 0),color(srgb 0 0 1))` into
+  `linear-gradient(red,#00f)`, and Chromium paints the middle of the first
+  (139,83,162) and of the second (127,0,128): CSS Color 4 interpolates a hex,
+  a name, `rgb()`, `hsl()` and `hwb()` in sRGB and every other colour in
+  Oklab. The same fold to hex changed transitions, animations and
+  `color-mix()` over `currentcolor`, and reading `none` as zero changed them
+  too, since an interpolation gives a missing component the other colour's.
+  An `oklch()`, `lab()` or `color()` colour now stays in its notation,
+  rounded within the same budget, a static `color-mix()` folds to a colour of
+  its interpolation space (`color(srgb .5 0 .5)` for `color-mix(in
+  srgb,red,blue)`), and `none` is kept, in `hsl()` and `hwb()` too.
+  `cascade diff --diff=canonical` no longer calls those spellings identical.
+  The SatCSS sheets minify as before; Tailwind's output keeps its `oklch()`
+  palette, about 3 KB larger raw and 0.7 KB under gzip (#1549).
 
 #### Stable output
 

@@ -84,6 +84,18 @@ reads it as the size either way. `Context.eval` substitutes the
 references a context binds into such a stream and reads the result again, so a
 value that types once substituted evaluates as any other.
 
+## Colour folds
+
+`Values.normalize_color` keeps a colour in its interpolation class: a legacy
+sRGB colour folds to hex or a name through its sRGB bytes, and a Lab-family or
+`color()` colour stays in its own notation, its coefficients rounded to the
+canonical budget and up to five decimals finer where the coarser rounding
+would change the sRGB fold verdict (`verdict_preserving`). A static
+`color-mix()` or relative colour folds to the colour it computes to, a
+`color(srgb ...)` for an sRGB mix, and the fold is kept only when it prints no
+longer than the call. A `none` component is never resolved, so the canonical
+projection adds no colour normalisation of its own.
+
 ## Interning and physical identity
 
 `Declaration.v` and `Declaration.theme_guarded` intern each declaration in a
@@ -117,13 +129,8 @@ make:
   sequence where a bare generic family proves a font stack, a time (`500ms`
   against `.5s`) and, bar `--lossless`, an angle; emission keeps the tokens as
   written;
-- `oklab(0% none none/.5)` against `oklab(0% 0 0/.5)` for a colour standing as
-  a whole colour value outside `@keyframes`, `@starting-style` and a rule that
-  transitions it (CSS Color 4 sec. 4.4 and 13.4);
 - a repeating quotient against its six-figure value (`calc(1/3*100%)` against
   `33.3333%`), bar `--lossless`, the bound M6 sets;
-- under `--lossless`, `color(srgb ...)` on whole bytes against its `rgb()`,
-  hex or named spelling;
 - a run of `@property` rules sorted by name, keeping the last registration of
   each (CSS Properties and Values API 1 sec. 3), which is the last valid one
   since the reader keeps no other as an `@property` (under `--enforce-spec`

@@ -397,14 +397,14 @@ let static_color_to_srgb_channels :
       match (channel_srgb_slot r, channel_srgb_slot g, channel_srgb_slot b) with
       | Some r, Some g, Some b -> Some (r, g, b, alpha_value_byte a)
       | _ -> Option.None)
-  | Hsl { h; s; l; a } -> (
+  | Hsl { h; s = Some s; l = Some l; a } -> (
       match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
       | Some hue, Some saturation, Some lightness ->
           let hue = normalize_hue hue in
           let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
           Some (Some r, Some g, Some b, alpha_value_byte a)
       | _ -> Option.None)
-  | Hwb { h; w; b; a } -> (
+  | Hwb { h; w = Some w; b = Some b; a } -> (
       match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
       | Some hue, Some whiteness, Some blackness ->
           let hue = normalize_hue hue in
@@ -466,28 +466,6 @@ let exact_rgb_to_srgb_bytes c : (int * int * int * int) option =
   | Transparent -> Some (0, 0, 0, 0)
   | _ -> None
 
-(* CSS Color 4 sec. 10.2: [color(srgb r g b)] is [rgb()] with its channels
-   scaled to [0..1], so the two functions spell one colour exactly when every
-   channel lands on a whole byte. No other [color()] space converts to sRGB
-   without a transfer function or a matrix, so nothing else here is exact; a
-   channel outside the gamut, a [none] and a [var()] are all left alone. *)
-let exact_srgb_function_channels c : (int * int * int * alpha) option =
-  let byte : component -> int option = function
-    | Num f when f >= 0. && f <= 1. ->
-        let b = f *. 255. in
-        if Float.is_integer b then Some (Float.to_int b) else None
-    | Pct f when f >= 0. && f <= 100. ->
-        let b = f *. 255. /. 100. in
-        if Float.is_integer b then Some (Float.to_int b) else None
-    | _ -> None
-  in
-  match c with
-  | Color { space = Srgb; components = [ r; g; b ]; alpha } -> (
-      match (byte r, byte g, byte b) with
-      | Some r, Some g, Some b -> Some (r, g, b, alpha)
-      | _ -> None)
-  | _ -> None
-
 (* CSS Color 5 5: combine two [color-mix] percentages into the final
    per-component weights and an [alpha] multiplier. [p1] / [p2] are in [0..100];
    missing values are normalised by the caller. *)
@@ -499,72 +477,6 @@ let mix_weights p1 p2 : (float * float * float) option =
     let w2 = p2 /. sum in
     let alpha_mult = if sum >= 100. then 1. else sum /. 100. in
     Some (w1, w2, alpha_mult)
-
-(* Linearly interpolate two byte channels to a byte. *)
-let lerp_byte b1 b2 w1 w2 =
-  Float.to_int
-    (Float.round ((Float.of_int b1 *. w1) +. (Float.of_int b2 *. w2)))
-
-(* Mix two static colours in sRGB per CSS Color 5 sec. 3. [None] if either
-   operand can't fold statically ([Var] / [Calc]) or the weights reduce to zero.
-   CSS Color 4 sec. 4.4 [none] sentinel: a [none] channel inherits the other
-   operand's channel rather than averaging in a zero; both [none] yields [none]
-   (returned as zero, since the caller routes through [Hex] and [#000000] is the
-   shortest fully-[none] spelling). *)
-let mix_srgb_bytes c1 c2 ~p1 ~p2 =
-  match
-    (static_color_to_srgb_channels c1, static_color_to_srgb_channels c2)
-  with
-  | Some (r1, g1, b1, a1), Some (r2, g2, b2, a2) -> (
-      match mix_weights p1 p2 with
-      | None -> Option.None
-      | Some (w1, w2, alpha_mult) ->
-          (* CSS Color 4 sec. 13.3: colours with alpha interpolate
-             premultiplied, then un-premultiply by the result alpha - otherwise
-             a transparent operand ([#0000]) bleeds its zero channels in and
-             darkens the result. A [none] (or absent) alpha contributes as fully
-             opaque to its own channels. *)
-          let alpha_f = function
-            | Some a -> Float.of_int a /. 255.
-            | None -> 1.
-          in
-          let af1 = alpha_f a1 and af2 = alpha_f a2 in
-          (* Un-premultiply by the interpolated alpha only; the [alpha_mult]
-             (<100%-sum) scaling applies to the final alpha, not the
-             channels. *)
-          let interp_alpha = (af1 *. w1) +. (af2 *. w2) in
-          let mix_channel x y =
-            match (x, y) with
-            | Some bx, Some by ->
-                let pre =
-                  (Float.of_int bx *. af1 *. w1)
-                  +. (Float.of_int by *. af2 *. w2)
-                in
-                let v =
-                  if interp_alpha <= 0. then 0. else pre /. interp_alpha
-                in
-                Some (Float.to_int (Float.round v))
-            | Some b, None | None, Some b -> Some b
-            | None, None -> None
-          in
-          let r = mix_channel r1 r2 in
-          let g = mix_channel g1 g2 in
-          let b = mix_channel b1 b2 in
-          let a =
-            match (a1, a2) with
-            | Some av1, Some av2 ->
-                let alpha_pre = lerp_byte av1 av2 w1 w2 in
-                Some
-                  (Float.to_int
-                     (Float.round (Float.of_int alpha_pre *. alpha_mult)))
-            | Some av, None | None, Some av ->
-                Some
-                  (Float.to_int (Float.round (Float.of_int av *. alpha_mult)))
-            | None, None -> None
-          in
-          let unwrap = function Some v -> v | None -> 0 in
-          Some (unwrap r, unwrap g, unwrap b, unwrap a))
-  | _ -> Option.None
 
 let static_alpha_value = function
   | (None : alpha) -> Some 1.
@@ -898,8 +810,8 @@ let static_srgb_floats (c : color) : ((float * float * float) * float) option =
   match c with
   | Rgb (Channels { r; g; b }) -> channels r g b None
   | Rgba { rgb = Channels { r; g; b }; a } -> channels r g b a
-  | Hsl { h; s; l; a } -> hsl h s l a
-  | Hwb { h; w; b; a } -> hwb h w b a
+  | Hsl { h; s = Some s; l = Some l; a } -> hsl h s l a
+  | Hwb { h; w = Some w; b = Some b; a } -> hwb h w b a
   | Color { space = Srgb; components = [ c1; c2; c3 ]; alpha = a } -> (
       let component : component -> float option = function
         | Num f -> Some f
@@ -1029,7 +941,7 @@ let alpha_of_unit_float a : alpha =
    multiplied by its operand alpha before mixing and the sum divided by the
    interpolated alpha, so a [transparent] operand contributes only alpha and not
    its zero coordinates. The [alpha_mult] (<100%-sum) scaling lands on the final
-   alpha, never the coordinates - matching [mix_srgb_bytes]. *)
+   alpha, never the coordinates. *)
 let premult_mix3 ~w1 ~w2 ~a1 ~a2 (x1, y1, z1) (x2, y2, z2) =
   let interp_alpha = (a1 *. w1) +. (a2 *. w2) in
   let axis c1 c2 =

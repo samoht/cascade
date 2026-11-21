@@ -83,18 +83,9 @@ val exact_rgb_to_srgb_bytes : color -> (int * int * int * int) option
 (** [exact_rgb_to_srgb_bytes c] is the sRGB bytes of the [rgb()] colour [c] when
     every channel lands on a whole byte. *)
 
-val exact_srgb_function_channels : color -> (int * int * int * alpha) option
-(** [exact_srgb_function_channels c] is the bytes and alpha of the
-    [color(srgb ...)] colour [c] when every channel lands on a whole byte. *)
-
 val mix_weights : float -> float -> (float * float * float) option
 (** [mix_weights p1 p2] is the two [color-mix()] component weights and the alpha
     multiplier for the percentages [p1] and [p2]. *)
-
-val mix_srgb_bytes :
-  color -> color -> p1:float -> p2:float -> (int * int * int * int) option
-(** [mix_srgb_bytes c1 c2 ~p1 ~p2] is the sRGB bytes of [c1] and [c2] mixed in
-    sRGB. *)
 
 val mix_lab_family :
   color_space option -> color -> color -> p1:float -> p2:float -> color option

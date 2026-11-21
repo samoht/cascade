@@ -282,8 +282,16 @@ let string_of_scaled_color_axis ~pct_scale ctx f =
      shortest-spelling minify win, but [%] on these axes is an evergreen-target
      fact; [--enforce-spec] keeps the spec-canonical number serialisation. *)
   if ctx.Pp.minify && (not ctx.Pp.lossless) && not ctx.Pp.enforce_spec then
-    let pct = String.concat "" [ string_of_lab_float (f /. pct_scale); "%" ] in
-    if String.length pct < String.length n then pct else n
+    let p = string_of_lab_float (f /. pct_scale) in
+    (* Only a percentage the reader scales back to the number's value is the
+       same node. *)
+    let same =
+      match (float_of_string_opt p, float_of_string_opt n) with
+      | Some p, Some n -> Float.equal (p *. pct_scale) n
+      | _ -> false
+    in
+    let pct = String.concat "" [ p; "%" ] in
+    if same && String.length pct < String.length n then pct else n
   else n
 
 let space_after_color_percentage ctx (l : percentage option) ~next =
@@ -339,13 +347,18 @@ let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
 
 let pp_oklch = Pp.call "oklch" (pp_pct_chroma_hue_alpha ~chroma_pct_scale:0.004)
 
-let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
+let pp_hue_pct_pct_alpha :
+    (hue * percentage option * percentage option * alpha) Pp.t =
  fun ctx (h, s, l, a) ->
+  let pp_slot ctx = function
+    | Some p -> pp_percentage ctx p
+    | None -> Pp.string ctx "none"
+  in
   pp_hue ctx h;
   Pp.space ctx ();
-  pp_percentage ctx s;
+  pp_slot ctx s;
   Pp.pct_sp ctx ();
-  pp_percentage ctx l;
+  pp_slot ctx l;
   pp_opt_alpha ctx a
 
 let pp_hsl = Pp.call "hsl" pp_hue_pct_pct_alpha
@@ -367,12 +380,19 @@ let pp_lab_like_args ~axis_pct_scale :
   space_after_color_percentage ctx printed_l ~next:(Some a);
   Pp.string ctx a;
   (* CSS Color 4 lab / oklab tokens parse the same with or without whitespace
-     between an unsigned-number [a] and a sign-prefixed [b] ([.285] then [-.149]
-     is two number tokens either way), so under cascade's README shortest-valid
-     policy the gap elides when the boundary is unambiguous. *)
+     between a number [a], signed or not, and a sign-prefixed [b] ([.285] or
+     [-.285] then [-.149] is two number tokens either way), so under cascade's
+     README shortest-valid policy the gap elides when the boundary is
+     unambiguous. A [none] [a] keeps it: [none-.149] is one ident. *)
+  let numeric s =
+    starts_unsigned_number s
+    || String.length s > 1
+       && (s.[0] = '-' || s.[0] = '+')
+       && starts_unsigned_number (String.sub s 1 (String.length s - 1))
+  in
   if
     not
-      (ctx.Pp.minify && starts_unsigned_number a
+      (ctx.Pp.minify && numeric a
       && String.length b > 0
       && (b.[0] = '-' || b.[0] = '+'))
   then Pp.pct_sp ctx ();

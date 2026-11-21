@@ -384,28 +384,15 @@ val normalize_duration :
     property refuses a negative literal, so a call folding to one keeps its
     wrapper rather than becoming CSS the reader drops. *)
 
-val normalize_color :
-  ?lossless:bool -> ?exact_srgb:bool -> ?resolve_missing:bool -> color -> color
-(** [normalize_color ?lossless c] canonicalises a color to its shortest
-    spelling: a static colour in any space folds through sRGB to hex/named, hex
-    shortens, and named<->hex picks the shorter. [lossless] disables lossy
-    static colour-space and color-mix folds while preserving exact named/hex and
-    byte-exact rgb folds.
-
-    [exact_srgb] (default [false], and only consulted under [lossless])
-    additionally folds a [color(srgb ...)] whose channels all land on a whole
-    byte, the one [color()] conversion that loses nothing. It exists for the
-    canonical diff projection, where [color(srgb 1 0 0)] and [rgb(255 0 0)] must
-    not read as a difference; emission leaves the authored function alone.
-
-    [resolve_missing] (default [false]) reads a [none] channel of a Lab-family
-    colour as the zero CSS Color 4 sec. 4.4 says a missing component behaves as,
-    so [oklab(0% none none / .5)] folds like [oklab(0% 0 0 / .5)] does. It is
-    not carried into a nested colour, because sec. 13.3 gives a missing
-    component the other colour's analogous component wherever two colours are
-    interpolated: a [color-mix()] operand, a [var()] fallback and a
-    relative-colour origin keep their [none]. Like [exact_srgb] it is for the
-    canonical diff projection, and emission never sets it. *)
+val normalize_color : ?lossless:bool -> color -> color
+(** [normalize_color ?lossless c] canonicalises a colour to its shortest
+    spelling within its interpolation class (CSS Color 4 sec. 13.3): a legacy
+    sRGB colour folds to hex or named, hex shortens and named<->hex picks the
+    shorter, while any other colour stays in its own notation with its
+    coefficients rounded as far as its sRGB bytes hold, and a [color-mix()]
+    folds to a colour in its interpolation space. A [none] component is never
+    dropped. [lossless] disables the rounding and the [color-mix()] folds while
+    preserving exact named/hex and byte-exact rgb folds. *)
 
 val pp_number_percentage : number_percentage Pp.t
 (** [pp_number_percentage] pretty-prints {!number_percentage} values. A number

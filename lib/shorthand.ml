@@ -44,7 +44,6 @@ let drop_redundant_decoration_color_aliases =
 let as_aliased_property = Shorthand_dedup.as_aliased_property
 let read_by_no_target = Shorthand_dedup.read_by_no_target
 let is_all_declaration = Shorthand_dedup.is_all_declaration
-let transitioned_in_rule = Shorthand_timing.transitioned_in_rule
 let merge_box_shorthand_longhands = Shorthand_box.merge_box_shorthand_longhands
 let merge_overflow_longhands = Shorthand_box.merge_overflow_longhands
 
