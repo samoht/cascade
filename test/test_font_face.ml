@@ -771,6 +771,34 @@ let spec_src_printer_routes () =
       Alcotest.failf "src printer routes disagree with the spec oracle:\n%s"
         (String.concat "\n" mismatches)
 
+(* CSS Values 4 (ED) sec. 10.12 clamps a math function past a property's range
+   at computed-value time instead of invalidating it, so the [<percentage
+   [0,inf]>] of size-adjust (CSS Fonts 5 sec. 4.4) and of the metric overrides
+   (CSS Fonts 4 sec. 4.10) takes calc(-10%), and only the literal -10% is out.
+   Chromium 153 keeps each call below, and WebKit 26.5 keeps the size-adjust
+   one; the call stays, since -10% alone would be dropped. *)
+let font_metric_math_below_range () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (Css_test_helpers.ok (size_adjust_of_string input)
+        |> string_of_size_adjust))
+    [ ("calc(-10%)", "calc(-10%)"); ("calc(10% - 20%)", "calc(-10%)") ];
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (Css_test_helpers.ok (metric_override_of_string input)
+        |> string_of_metric_override))
+    [ ("calc(-10%)", "calc(-10%)"); ("min(-10%, 5%)", "calc(-10%)") ];
+  List.iter
+    (fun input ->
+      match size_adjust_of_string input with
+      | Ok _ -> Alcotest.failf "size-adjust: %s read" input
+      | Error _ -> ())
+    [ "-10%" ]
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -809,4 +837,6 @@ let suite =
       test_case "spec family name reserved words" `Quick
         spec_family_name_reserved_words;
       test_case "spec src printer routes" `Quick spec_src_printer_routes;
+      test_case "font metric math below range" `Quick
+        font_metric_math_below_range;
     ] )
