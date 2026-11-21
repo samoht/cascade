@@ -363,6 +363,12 @@ differently. They are the reason to minify again.
   of colours, and Firefox 150 reads them. `--minify` read the first two of
   `color-mix(in srgb,red,blue,green)` and folded them to `purple`. A mix of
   three or more colours now keeps every item as written (#1465).
+- **A `color-mix()` of one colour was deleted.** CSS Color 5 lets the list
+  hold a single item, and Firefox 150 reads `color-mix(in srgb,blue)`.
+  `--minify` refused it and dropped the declaration, so
+  `a{color:red;color:color-mix(in srgb,blue)}` became `a{color:red}`. It is
+  now read and kept as written, and the `color:red` before it stays for the
+  browsers that drop it, Chromium 153 among them (#1483).
 - **A reversed counter was deleted.** `--minify` refused
   `counter-reset:reversed(x)`, which CSS Lists 3 grants and Firefox reads, so
   it dropped the declaration, and after `counter-reset:x` it kept only the

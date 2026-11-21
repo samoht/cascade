@@ -831,6 +831,11 @@ let floor_fallbacks_survive () =
     "a{background:url(a.png);background:image-set(url(a.png)1x)}";
   (* web-features records the variadic color-mix() in Firefox 150 alone, so
      every other floor drops the later declaration and paints red. *)
+  (* One item is the variadic grammar too: Firefox reads it from 150, behind
+     the pref that reads three, and Chromium 153 drops it. *)
+  check_modes "a color-mix() of one item"
+    "a{color:red;color:color-mix(in srgb,blue)}"
+    "a{color:red;color:color-mix(in srgb,#00f)}";
   check_modes "a variadic color-mix()"
     "a{color:red;color:color-mix(in srgb,red,blue,green)}"
     "a{color:red;color:color-mix(in srgb,red,#00f,green)}";
