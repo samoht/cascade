@@ -43,6 +43,28 @@ let anchor_query_where_the_property_takes_one () =
   neg_cursor read_declaration "translate: anchor-size(width)";
   neg_cursor read_declaration "scroll-margin: anchor-size(width)"
 
+(* CSS Overflow 3 (ED) sec. 5.2 spells [scrollbar-gutter] as [auto | stable &&
+   both-edges?], and [&&] takes its members in either order. Chromium 153 and
+   WebKit 26.5 keep [both-edges stable]. *)
+let scrollbar_gutter_takes_either_order () =
+  check_declaration ~expected:"scrollbar-gutter:stable both-edges"
+    "scrollbar-gutter: both-edges stable";
+  neg_cursor read_declaration "scrollbar-gutter: both-edges";
+  neg_cursor read_declaration "scrollbar-gutter: both-edges stable both-edges"
+
+(* CSS Motion Path 1 (ED) sec. 2.1 spells [offset-path] as [none | <offset-path>
+   || <coord-box>], so a box stands alone, and sec. 2.6 lets the [offset]
+   shorthand follow the path with [<'offset-distance'> || <'offset-rotate'>].
+   Chromium 153 and WebKit 26.5 keep [content-box auto] and [content-box 10px
+   auto]. CSS Masking 1 sec. 5.1 gives [clip-path] no such tail. *)
+let offset_path_box_takes_a_tail () =
+  check_declaration ~expected:"offset:content-box auto"
+    "offset: content-box auto";
+  check_declaration ~expected:"offset:content-box 10px auto"
+    "offset: content-box 10px auto";
+  neg_cursor read_declaration "clip-path: content-box 10px";
+  neg_cursor read_declaration "offset-path: content-box 10px"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1431,6 +1453,10 @@ let suite =
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
       test_case "try tactics stand together" `Quick try_tactics_stand_together;
+      test_case "scrollbar-gutter takes either order" `Quick
+        scrollbar_gutter_takes_either_order;
+      test_case "an offset path box takes a tail" `Quick
+        offset_path_box_takes_a_tail;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
