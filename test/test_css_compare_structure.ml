@@ -1259,6 +1259,29 @@ let mask_box_image_is_no_alias () =
         "the minifier keeps both writes" source
         (Cascade.Css.to_string ~minify:true (Cascade.Css.optimize stylesheet))
 
+(* [-webkit-background-clip] is a legacy name alias of [background-clip], but a
+   value's support is dated per name: web-features gives the unprefixed [text]
+   Chrome 120 and no Firefox release, inside the default floors (Chrome 111,
+   Firefox 128). Chromium 111 parses [text] only under the alias
+   (css_parsing_utils.cc, [ConsumePrefixedBackgroundBox] allows it and
+   [ConsumeBackgroundBox] does not), and 120 adds [ConsumeBackgroundBoxOrText];
+   Chromium 153 reads both. So in Chrome 111 to 119 the prefixed sheet clips to
+   the text and the unprefixed one paints the box. A value both names read from
+   every floor, [content-box], still compares as one property. *)
+let alias_value_support_is_dated () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a value one name reads later is no alias" false
+    (equal ".a{-webkit-background-clip:text}" ".a{background-clip:text}");
+  Alcotest.(check bool)
+    "so the prefixed write is live beside the unprefixed one" false
+    (equal ".a{-webkit-background-clip:text;background-clip:text}"
+       ".a{background-clip:text}");
+  Alcotest.(check bool)
+    "a value both names read from the floors is one property" true
+    (equal ".a{-webkit-background-clip:content-box}"
+       ".a{background-clip:content-box}")
+
 (* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
    and substitute its computed value into the property containing [var()]. A
    [color] declaration therefore reads [--x] without writing it: crossing a
@@ -1532,6 +1555,8 @@ let suite =
         canonical_legacy_name_alias;
       Alcotest.test_case "the mask-box-image set is no alias" `Quick
         mask_box_image_is_no_alias;
+      Alcotest.test_case "an alias's value support is dated" `Quick
+        alias_value_support_is_dated;
       Alcotest.test_case "canonical var reader crosses guarded writer" `Quick
         canonical_var_reader_crosses_guarded_writer;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
