@@ -167,6 +167,8 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
   | Shadow body -> preserve_if_equal shadow (Shadow (normalize_body body))
   | Inset (Body body) ->
       preserve_if_equal shadow (Inset (Body (normalize_body body)) : shadow)
+  | Inset (Trailing body) ->
+      preserve_if_equal shadow (Inset (Trailing (normalize_body body)) : shadow)
   | Inset (Toggle ({ body; _ } as toggle)) ->
       preserve_if_equal shadow
         (Inset (Toggle { toggle with body = normalize_body body }) : shadow)

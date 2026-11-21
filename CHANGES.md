@@ -293,13 +293,17 @@ differently. They are the reason to minify again.
   `transition:var(--a) 0s` lost their trailing slots,
   `transform:translate(var(--a),0px)` lost its second argument,
   `background:red var(--x)` moved the colour last, and
-  `rgb(var(--r),var(--g),var(--b))` lost its commas. A `var()` may supply
+  `rgb(var(--r),var(--g),var(--b))` lost its commas, and
+  `flex:var(--g) 1 0px` became `var(--g) 1 0`. A `var()` may supply
   any number of components, commas included (CSS Variables 1 sec. 3), and
   Chromium renders each pair differently for some value of the custom
   property. Such a value is now written back with every component in place,
   each still respelled where it stands; a `var()` that is the whole value or
   sits inside a math function is unchanged. `cascade diff --diff=canonical`
-  no longer calls such a pair equal (#1511).
+  no longer calls such a pair equal. In the library, `Properties.inset` gains
+  a `Trailing` case for an `inset` written after a body holding a `var()`, so
+  a match on it is no longer exhaustive: treat `Trailing body` as `Body body`
+  with the keyword printed last (#1511).
 - **The space beside a `var()` in a math function was dropped.**
   `--minify` turned `calc(100% var(--op) 10px)` into
   `calc(100%var(--op) 10px)`, in a typed declaration and in a custom property.

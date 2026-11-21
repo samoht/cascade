@@ -260,13 +260,48 @@ let function_identity name =
   | "hsla" -> "hsl"
   | name -> name
 
+(* A comma list read as runs: each segment holding a substitution on its own,
+   and each maximal run of segments holding none as one [Plain]. *)
+type run = Plain | Holding of Component.t list
+
+let rec comma_segments acc segment = function
+  | [] -> List.rev (List.rev segment :: acc)
+  | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+      comma_segments (List.rev segment :: acc) [] rest
+  | c :: rest -> comma_segments acc (c :: segment) rest
+
+let holds_substitution =
+  List.exists (fun c -> is_substitution c || slotted_substitution c)
+
+let runs components =
+  comma_segments [] [] (significant components)
+  |> List.fold_left
+       (fun acc segment ->
+         match (holds_substitution segment, acc) with
+         | false, Plain :: _ -> acc
+         | false, _ -> Plain :: acc
+         | true, _ -> Holding segment :: acc)
+       []
+  |> List.rev
+
 (* [slots_kept source print] is whether [print] keeps every slot of [source]
-   that a substitution may move: each substitution call as written, in the same
-   place among the same separators, inside the same functions. A component with
-   no substitution in it may be respelled in its place ([0px] as [0], [#ff0000]
-   as [red]); none may be added, dropped or moved. *)
-let rec slots_kept source print =
-  List.equal slot_kept (significant source) (significant print)
+   that a substitution may move. A substitution may supply commas, so a comma
+   list is compared run by run: each segment holding a substitution keeps each
+   call as written, in the same place among the same separators, inside the same
+   functions, and a component with no substitution in it may be respelled in its
+   place ([0px] as [0], [#ff0000] as [red]) but not added, dropped or moved. A
+   run of segments holding none stays on each side of such a segment where it
+   was, so what precedes and follows the substitution is still a segment of the
+   same kind, and inside it the folds apply: [linear-gradient(to bottom, red,
+   var(--x))] may drop its direction, [linear-gradient(to bottom, var(--x))] may
+   not, since [--x: to left, red] gives it a second one. *)
+let rec slots_kept source print = List.equal run_kept (runs source) (runs print)
+
+and run_kept a b =
+  match (a, b) with
+  | Plain, Plain -> true
+  | Holding a, Holding b -> List.equal slot_kept a b
+  | Plain, Holding _ | Holding _, Plain -> false
 
 and slot_kept a b =
   match (a, b) with

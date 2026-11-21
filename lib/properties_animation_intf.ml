@@ -377,6 +377,9 @@ and shadow_body = {
 and inset =
   | Var of shadow var  (** [inset var(--x)]: the whole body from one var. *)
   | Body of shadow_body  (** [inset 2px 4px red]: a concrete inset body. *)
+  | Trailing of shadow_body
+      (** [2px 4px var(--c) inset]: a body written before the keyword, which a
+          [var()] in the body keeps in place. *)
   | Toggle of { name : string; no_fallback : bool; body : shadow_body }
       (** [var(--name) <body>]: a dynamic inset toggle (Tailwind's ring system).
       *)
