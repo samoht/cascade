@@ -8,15 +8,19 @@ open Values_read_calc
 
 (** Read an [hsl()] or [hwb()] percentage, clamped to 0-100%, or [None] for the
     [none] keyword, which CSS Color 4 sec. 4.4 keeps missing: it is zero at rest
-    and takes the other colour's component in an interpolation. *)
-let read_percentage_float t : percentage option =
+    and takes the other colour's component in an interpolation. [legacy] refuses
+    the bare number only the modern syntax takes. *)
+let read_percentage_float ?(legacy = false) t : percentage option =
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
     None)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
-    | Some "%" | None -> Some (Pct (max 0. (min 100. n)))
+    | Some "%" -> Some (Pct (max 0. (min 100. n)))
+    (* CSS Color 4 sec. 7.1: only the modern syntax takes a bare number. *)
+    | None when legacy -> Cursor.err_invalid t "number in legacy hsl() syntax"
+    | None -> Some (Pct (max 0. (min 100. n)))
     | Some unit ->
         Cursor.err_invalid t (String.concat "" [ "percentage unit: "; unit ])
 
@@ -160,11 +164,23 @@ let read_rgb_comma_separated t : color =
   let alpha = if Cursor.comma_opt t then read_alpha t else None in
   Cursor.ws t;
   Cursor.expect_eof t;
-  (* CSS Color 4 sec. 5.1: the legacy syntax takes no [none]. *)
+  (* CSS Color 4 sec. 5.1: the legacy syntax takes no [none], and three
+     percentages or three numbers. A [var()] channel is typed at
+     substitution. *)
   let missing (c : channel) = match c with None -> true | _ -> false in
   let missing_alpha = match alpha with Alpha_none -> true | _ -> false in
   if missing r || missing g || missing b || missing_alpha then
     Cursor.err_invalid t "none in legacy rgb() syntax";
+  let kind (c : channel) =
+    match c with
+    | Pct _ -> Some true
+    | Int _ | Num _ -> Some false
+    | Var _ | None -> Option.None
+  in
+  (match (kind r, kind g, kind b) with
+  | Some x, Some y, Some z when not (Bool.equal x y && Bool.equal y z) ->
+      Cursor.err_invalid t "mixed numbers and percentages in legacy rgb()"
+  | _ -> ());
   match alpha with
   | None -> Rgb (Channels { r; g; b })
   | a -> Rgba { rgb = Channels { r; g; b }; a }
@@ -263,16 +279,18 @@ let read_hsl t : color =
   (* Handle comma or space separator after hue *)
   let comma_separated = Cursor.comma_opt t in
   Cursor.ws t;
-  let s = read_percentage_float t in
+  let s = read_percentage_float ~legacy:comma_separated t in
   Cursor.ws t;
   if comma_separated then Cursor.comma t
   else if Cursor.comma_opt t then
     Cursor.err_invalid t "mixed comma and space separated hsl() syntax";
   Cursor.ws t;
-  let l = read_percentage_float t in
+  let l = read_percentage_float ~legacy:comma_separated t in
   let a =
     Cursor.ws t;
     if comma_separated && Cursor.comma_opt t then read_alpha t
+    else if comma_separated && Cursor.peek_delim t = Some '/' then
+      Cursor.err_invalid t "slash alpha in legacy hsl() syntax"
     else if (not comma_separated) && Cursor.comma_opt t then
       Cursor.err_invalid t "mixed comma and space separated hsl() syntax"
     else if Cursor.peek_delim t = Some '/' then read_optional_alpha t

@@ -887,6 +887,11 @@ differently. They are the reason to minify again.
   4 sec. 4.4), no longer minifies to the opaque `#000`, and `--diff=canonical`
   tells it from an opaque or a zero-alpha colour. A negative `lch()` or
   `oklch()` chroma clamps to zero at parse (sec. 9.3) (#1612).
+- legacy comma-separated `rgb()` and `hsl()` syntax is read by its own
+  grammar** (CSS Color 4 sec. 5.1 and 7.1): it takes no `none`, `rgb()` takes
+  three numbers or three percentages, and `hsl()` takes percentages and a
+  comma alpha, so `color:blue;color:rgb(255,0%,0)` no longer becomes
+  `color:red` (#1613).
 
 #### Stable output
 
