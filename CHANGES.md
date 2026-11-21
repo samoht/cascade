@@ -607,7 +607,8 @@ differently. They are the reason to minify again.
   `a,a:has-slotted{color:red}` compared identical to
   `a{color:red}a:has-slotted{color:red}`, though Chromium 153 drops the first
   rule whole and leaves `a` uncoloured. A list whose selectors some target
-  release reads apart now compares as one rule (#1487).
+  release reads apart now compares as one rule, and one no target parses,
+  such as a list holding a `-ms-` pseudo-element, as no rule (#1487).
 - **A guard was decided by its property alone.**
   `@supports (break-before:always){a{color:red}}` compared identical to
   `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves

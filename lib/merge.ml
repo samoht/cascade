@@ -296,25 +296,11 @@ let dropped_by_key key =
   | Some dropped -> dropped
   | None -> read_dropped_by_key key
 
-(* The union of what drops each node of [sel], or [None] when [reach] has no
-   answer for one. *)
-let rec dropped_by_nodes acc sel =
-  match acc with
-  | None -> None
-  | Some d -> (
-      match reach sel with
-      | Unknown -> None
-      | Dropped e -> dropped_by_children (Some (union d e)) sel
-      | Key key -> (
-          match dropped_by_key key with
-          | None -> None
-          | Some e -> dropped_by_children (Some (union d e)) sel))
-
 (* Selectors 4 sec. 4.2 and 4.3 drop a selector a browser does not parse from a
    forgiving [:is()] or [:where()] alone, so what drops their arguments drops
-   nothing outside them. *)
-and dropped_by_children acc : Selector.t -> dropped option = function
-  | Is _ | Where _ -> acc
+   nothing outside them: these are the nodes under [sel] whose drop drops it. *)
+let counted_children : Selector.t -> Selector.t list = function
+  | Is _ | Where _ -> []
   | Compound xs
   | List xs
   | Not xs
@@ -333,10 +319,48 @@ and dropped_by_children acc : Selector.t -> dropped option = function
   | Host (Some xs)
   | Cue (Some xs)
   | Cue_region (Some xs) ->
-      List.fold_left dropped_by_nodes acc xs
-  | Combined (a, _, b) -> dropped_by_nodes (dropped_by_nodes acc a) b
-  | Relative (_, b) -> dropped_by_nodes acc b
-  | _ -> acc
+      xs
+  | Combined (a, _, b) -> [ a; b ]
+  | Relative (_, b) -> [ b ]
+  | _ -> []
+
+(* The union of what drops each node of [sel], or [None] when [reach] has no
+   answer for one. *)
+let rec dropped_by_nodes acc sel =
+  match acc with
+  | None -> None
+  | Some d -> (
+      let here =
+        match reach sel with
+        | Unknown -> None
+        | Dropped e -> Some (union d e)
+        | Key key -> Option.map (union d) (dropped_by_key key)
+      in
+      match here with
+      | None -> None
+      | here -> List.fold_left dropped_by_nodes here (counted_children sel))
+
+(* The union of what is known to drop each node of [sel]: a node [reach] or the
+   data has no answer for drops nothing here, so the union is what drops [sel]
+   at least. *)
+let rec known_drops acc sel =
+  let acc =
+    match reach sel with
+    | Unknown -> acc
+    | Dropped e -> union acc e
+    | Key key -> (
+        match dropped_by_key key with Some e -> union acc e | None -> acc)
+  in
+  List.fold_left known_drops acc (counted_children sel)
+
+(* A list is dropped in a browser that drops one of its branches, so what drops
+   any node of any branch drops it. Only the [Forever] facts settle that no
+   release parses it: the data records a partial implementation as none, so an
+   unshipped key may still parse. *)
+let parsed_by_none sel =
+  let d = known_drops none sel in
+  let never = function Forever -> true | From _ -> false in
+  never d.chrome && never d.firefox && never d.safari && never d.ios_safari
 
 (* Everything [compatible] reads off a selector: [Uniform d] when the targets
    [d] drop each of its branches, [Apart] when they drop different branches or
