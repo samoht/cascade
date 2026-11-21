@@ -160,6 +160,11 @@ let read_rgb_comma_separated t : color =
   let alpha = if Cursor.comma_opt t then read_alpha t else None in
   Cursor.ws t;
   Cursor.expect_eof t;
+  (* CSS Color 4 sec. 5.1: the legacy syntax takes no [none]. *)
+  let missing (c : channel) = match c with None -> true | _ -> false in
+  let missing_alpha = match alpha with Alpha_none -> true | _ -> false in
+  if missing r || missing g || missing b || missing_alpha then
+    Cursor.err_invalid t "none in legacy rgb() syntax";
   match alpha with
   | None -> Rgb (Channels { r; g; b })
   | a -> Rgba { rgb = Channels { r; g; b }; a }
@@ -275,6 +280,15 @@ let read_hsl t : color =
   in
   Cursor.ws t;
   Cursor.expect_eof t;
+  (* CSS Color 4 sec. 7.1: the legacy syntax takes no [none]. *)
+  (if comma_separated then
+     match (h, s, l, a) with
+     | Hue_none, _, _, _
+     | _, Option.None, _, _
+     | _, _, Option.None, _
+     | _, _, _, Alpha_none ->
+         Cursor.err_invalid t "none in legacy hsl() syntax"
+     | _ -> ());
   Hsl { h; s; l; a }
 
 let read_hwb t : color =
