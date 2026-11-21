@@ -329,36 +329,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.-moz-transition.negative";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
-         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
-         lone negative fills no slot. Chrome takes it";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.-o-transition.negative";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
-         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
-         lone negative fills no slot. Chrome takes it";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.at-rules.counter-style.symbols.image";
       support =
         {
@@ -1017,7 +987,9 @@ let measured =
       why =
         "CSS Fonts 4 sec. 4.4 writes the descriptor auto | \
          <font-weight-absolute>{1,2}, so a pair of endpoints is the range a \
-         variable font is asked for. Chrome takes only one value";
+         variable font is asked for, a keyword endpoint included. Chrome takes \
+         a pair of numbers (100 900) and refuses a pair holding a keyword \
+         (bold 400); the key names the two-value form such a pair is";
       measured = "Chrome 153";
     };
     {
@@ -1032,7 +1004,9 @@ let measured =
       why =
         "CSS Fonts 4 sec. 4.5 writes the descriptor auto | \
          <font-stretch-css3>{1,2}, so a pair of endpoints is the range a \
-         variable font is asked for. Chrome takes only one value";
+         variable font is asked for, a keyword endpoint included. Chrome takes \
+         a pair of percentages (50% 200%) and refuses a pair holding a keyword \
+         (75% condensed); the key names the two-value form such a pair is";
       measured = "Chrome 153";
     };
   ]
