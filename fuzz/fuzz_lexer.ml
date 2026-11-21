@@ -114,9 +114,9 @@ let test_escape_bound_stable buf =
    consume a number. It has to come back as one <number-token> of the value
    printed, within the precision the printer states: the sign and non-zeroness
    kept, [max_decimals] (8) significant digits for a magnitude that rounds to
-   zero at 8 decimal places, and otherwise half a unit of the 8th decimal place
-   or of the 12th significant digit. An infinity is clamped and a NaN has no
-   number token, so both are left out. *)
+   zero at 8 decimal places, and otherwise half a unit of the 8th decimal place,
+   a magnitude past it reading back as its own double. An infinity is clamped
+   and a NaN has no number token, so both are left out. *)
 let test_printed_number_lexes_back f drop_leading_zero =
   if Float.is_finite f then
     let printed = Css.Pp.string_of_float ~drop_leading_zero f in
@@ -125,7 +125,7 @@ let test_printed_number_lexes_back f drop_leading_zero =
         let mag = Float.abs f in
         let tolerance =
           if Float.equal (floor ((mag *. 1e8) +. 0.5)) 0. then 5e-8 *. mag
-          else 5e-9 +. (5e-12 *. mag)
+          else 5e-9 +. (0x1p-52 *. mag)
         in
         if
           Bool.(

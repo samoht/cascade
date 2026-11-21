@@ -126,13 +126,14 @@ let float_rounding_and_trim () =
   check_float_n ~minify:true 2 0.999 ~expected:"1"
 
 let float_large_decimal () =
-  (* A non-integer whose scaled magnitude passes [max_int] stringifies through
-     exponent notation, and the decimal point is then spliced into what is no
-     longer a pure digit string. Print the magnitude itself instead. *)
-  check_float (1e11 +. 0.5) ~expected:"100000000000";
-  check_float 123456789012.25 ~expected:"123456789012";
-  check_float 999999999999.75 ~expected:"1e12";
-  check_float (-123456789012.25) ~expected:"-123456789012";
+  (* A non-integer whose magnitude, scaled to the eight decimal places, passes
+     [2^62] has fewer than eight decimals in its shortest decimal, so the places
+     keep every digit it reads back from. *)
+  check_float (1e11 +. 0.5) ~expected:"100000000000.5";
+  check_float 123456789012.25 ~expected:"123456789012.25";
+  check_float 999999999999.75 ~expected:"999999999999.75";
+  check_float (-123456789012.25) ~expected:"-123456789012.25";
+  check_float 46116860184.27387904 ~expected:"46116860184.27388";
   (* Below the overflow the scaled-integer path stays byte for byte the same. *)
   check_float (1e10 +. 0.5) ~expected:"10000000000.5"
 
@@ -144,11 +145,21 @@ let float_large_decimal_reparses () =
     | Some v ->
         check bool
           (Fmt.str "%s reads back as %f" printed f)
-          true
-          (Float.abs (v -. f) <= Float.abs f *. 1e-9)
+          true (Float.equal v f)
   in
   List.iter check_reparse
-    [ 1e11 +. 0.5; 123456789012.25; 999999999999.75; -123456789012.25 ]
+    [
+      1e11 +. 0.5;
+      123456789012.25;
+      999999999999.75;
+      -123456789012.25;
+      46116860184.27387904;
+      0x1p62;
+      -0x1p62;
+      0x1p62 +. 1024.;
+      1.7976931348623157e308;
+      0x1p52 -. 0.5;
+    ]
 
 let float_large_decimal_in_stylesheet () =
   let check_sheet name input expected =
@@ -158,8 +169,20 @@ let float_large_decimal_in_stylesheet () =
         check string name expected (to_string ~minify:true stylesheet)
   in
   check_sheet "scale" "a{transform:scale(123456789012.25)}"
-    "a{transform:scale(123456789012)}";
-  check_sheet "opacity" "b{opacity:calc(999999999999.75)}" "b{opacity:1e12}"
+    "a{transform:scale(123456789012.25)}";
+  check_sheet "opacity" "b{opacity:calc(999999999999.75)}"
+    "b{opacity:999999999999.75}";
+  (* A browser subtracts a calc()'s operands in double precision before it
+     clamps a length: with [--b:46116860184px], Chrome computes the first width
+     to 0.27388px and its 12-digit print [46116860184.3px] to 0.3px, two layout
+     units apart, and the second to 0.5px against 0px. *)
+  check_sheet "calc operand" "a{width:calc(46116860184.27387904px - var(--b))}"
+    "a{width:calc(46116860184.27388px - var(--b))}";
+  check_sheet "half pixel" "a{width:calc(123456789012.5px - var(--b))}"
+    "a{width:calc(123456789012.5px - var(--b))}";
+  check_sheet "integral operand"
+    "a{width:calc(4611686018427387904px - var(--b))}"
+    "a{width:calc(4.611686018427388e18px - var(--b))}"
 
 (* A magnitude past the [int] range prints in exponent notation. The exponent
    carries no sign and no leading zeros whatever the C library's printf pads it
@@ -184,7 +207,7 @@ let float_exponent_digits () =
    its own value, and printing it as [0] or [-0] would change the value. The
    rule [Pp.string_of_float] states: such a magnitude keeps [max_decimals]
    significant digits, as decimals while it has at most 24 leading zeros and in
-   exponent notation (12 significant digits) past that. *)
+   exponent notation past that. *)
 let float_sub_floor_magnitude () =
   let zeros n = String.make n '0' in
   check_float 1e-9 ~expected:".000000001";
@@ -195,8 +218,9 @@ let float_sub_floor_magnitude () =
   check_float 4e-33 ~expected:"4e-33";
   check_float (-4e-33) ~expected:"-4e-33";
   check_float 1e-40 ~expected:"1e-40";
-  (* The least subnormal double. *)
-  check_float 5e-324 ~expected:"4.94065645841e-324";
+  check_float 1.23456789012345e-30 ~expected:"1.2345679e-30";
+  (* The least subnormal double, whose shortest decimal is one digit. *)
+  check_float 5e-324 ~expected:"5e-324";
   check string "string_of_float keeps the sign" "-0.0000000012"
     (Pp.string_of_float (-1.2e-9));
   check_float_n 2 0.001 ~expected:".001"
@@ -206,10 +230,9 @@ let float_sub_floor_magnitude () =
    3 sec. 4.3.13 gives a number the value of its decimal digits), with a half
    going away from zero. That is what the css-minify-tests corpus expects:
    colors/0048 and colors/0049 print [0.8765] as [.877] at three places, though
-   its double, 0.87649999999999995, lies below the half. The 12 significant
-   digits round the exact value of the double with ties to even, IEEE 754-2019
-   sec. 4.3.1. No digit comes from the C library, so they are the same on every
-   platform: mingw's runtime printed [100000000000.5] as [100000000001]. *)
+   its double, 0.87649999999999995, lies below the half. No digit comes from the
+   C library, so they are the same on every platform: mingw's runtime printed
+   [100000000000.5] as [100000000001]. *)
 let float_rounding_rule () =
   let at d f = Pp.string_of_float ~max_decimals:d f in
   check string "0.125 at 2" "0.13" (at 2 0.125);
@@ -229,21 +252,24 @@ let float_rounding_rule () =
      eight places keep every one of them. *)
   check_float 123456789.123456789 ~expected:"123456789.12345679";
   check_float 98765432.987654321 ~expected:"98765432.98765433";
-  (* Twelve significant digits, past the scaled [int] range: an exact half goes
-     to the even neighbour. *)
-  check_float 100000000000.5 ~expected:"100000000000";
-  check_float 100000000001.5 ~expected:"100000000002";
-  check_float (-100000000000.5) ~expected:"-100000000000";
-  check_float (-100000000001.5) ~expected:"-100000000002";
-  check_float 50000000000.25 ~expected:"50000000000.2";
-  check_float 50000000000.75 ~expected:"50000000000.8"
+  (* Past the scaled [int] range the shortest decimal has fewer than eight
+     places, and an exact half is a digit like any other. *)
+  check_float 100000000000.5 ~expected:"100000000000.5";
+  check_float 100000000001.5 ~expected:"100000000001.5";
+  check_float (-100000000000.5) ~expected:"-100000000000.5";
+  check_float (-100000000001.5) ~expected:"-100000000001.5";
+  check_float 50000000000.25 ~expected:"50000000000.25";
+  check_float 50000000000.75 ~expected:"50000000000.75"
 
 (* The [int] boundary: an integral value below 2^62 prints every digit, one at
-   or past it prints 12 significant digits in exponent notation. *)
+   or past it its shortest decimal in exponent notation, which reads back as the
+   same double (CSS Syntax 3 sec. 4.3.13). Twelve digits would read back as
+   4611686018430000000, 2,612,096 away. *)
 let float_int_boundary () =
   check_float (0x1p62 -. 512.) ~expected:"4611686018427387392";
-  check_float 0x1p62 ~expected:"4.61168601843e18";
-  check_float (-0x1p62) ~expected:"-4.61168601843e18"
+  check_float 0x1p62 ~expected:"4.611686018427388e18";
+  check_float (-0x1p62) ~expected:"-4.611686018427388e18";
+  check_float (0x1p62 +. 1024.) ~expected:"4.611686018427389e18"
 
 (* CSS Values 4 sec. 10.7.2 puts the [NaN] keyword in the math-function grammar
    and nowhere else, and sec. 10.9.2 keeps NaN inside a calculation tree, so a
