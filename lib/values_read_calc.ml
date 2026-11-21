@@ -1108,17 +1108,6 @@ let read_number_percentage_expression t =
    [read_length] mutual-recursion group (see below); the function-call
    dispatcher in [length_function_readers] references them. *)
 
-let read_anchor_size_length inner =
-  let size = Cursor.consume_remaining_as_string ~trim:true inner in
-  if size = "" then Cursor.err_expected inner "anchor-size argument";
-  Anchor_size size
-
-let read_anchor_name_side inner first =
-  if Custom_property_name.is_valid first then
-    let side = Cursor.ident inner in
-    (Some first, side)
-  else (None, first)
-
 let read_attr_length_type inner =
   Cursor.ws inner;
   let body = Cursor.consume_remaining_as_string ~trim:true inner in

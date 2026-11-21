@@ -84,5 +84,14 @@ val px_values : length list -> float list option
 (** [px_values ls] is the [px] coefficients of [ls] when every length is in
     [px]. *)
 
+val pp_percentage : ?always:bool -> percentage Pp.t
+(** [pp_percentage ?always] pretty-prints {!Values_intf.percentage} values. *)
+
+val pp_anchor_side : anchor_side Pp.t
+(** [pp_anchor_side] pretty-prints {!Values_intf.anchor_side} values. *)
+
+val pp_anchor_size : anchor_size Pp.t
+(** [pp_anchor_size] pretty-prints {!Values_intf.anchor_size} values. *)
+
 val pp_length : ?always:bool -> length Pp.t
 (** [pp_length ?always] pretty-prints {!Values_intf.length} values. *)

@@ -9,9 +9,6 @@ val angle_degrees_opt : angle -> float option
 val pp_angle : angle Pp.t
 (** [pp_angle] pretty-prints {!Values_intf.angle} values. *)
 
-val pp_percentage : ?always:bool -> percentage Pp.t
-(** [pp_percentage ?always] pretty-prints {!Values_intf.percentage} values. *)
-
 val normalize_length :
   ?strip:bool ->
   ?non_negative:bool ->

@@ -225,6 +225,9 @@ module Length = struct
           Values.Calc_size (simplify ~visited basis, simplify_calc ~visited calc)
       | Values.Anchor (name, side, fallback) ->
           Values.Anchor (name, side, Option.map (simplify ~visited) fallback)
+      | Values.Anchor_size (name, size, fallback) ->
+          Values.Anchor_size
+            (name, size, Option.map (simplify ~visited) fallback)
       | value -> value
     in
     let ops : Values.length Calc_residual.ops =

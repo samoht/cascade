@@ -194,6 +194,12 @@ val color_mix_var_pct_fallback :
 
 (** {1 Pretty-printing Functions} *)
 
+val pp_anchor_side : anchor_side Pp.t
+(** [pp_anchor_side] pretty-prints {!anchor_side} values. *)
+
+val pp_anchor_size : anchor_size Pp.t
+(** [pp_anchor_size] pretty-prints {!anchor_size} values. *)
+
 val pp_length : ?always:bool -> length Pp.t
 (** [pp_length ?always] pretty-prints {!length} values. When [always] is true,
     units are always included even for zero values (required for CSS [@property]
@@ -713,6 +719,14 @@ val read_transition_behavior : Cursor.t -> transition_behavior
 
 val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
+
+val read_anchor_side : Cursor.t -> anchor_side
+(** [read_anchor_side t] parses a CSS Anchor Positioning 1 [<anchor-side>]: a
+    side keyword or a [<percentage>]. *)
+
+val read_anchor_size : Cursor.t -> anchor_size
+(** [read_anchor_size t] parses a CSS Anchor Positioning 1 [<anchor-size>]
+    keyword. *)
 
 val read_length_percentage :
   ?allow_negative:bool ->

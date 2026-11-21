@@ -43,6 +43,14 @@ val read_transition_behavior : Cursor.t -> transition_behavior
 val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
 
+val read_anchor_side : Cursor.t -> anchor_side
+(** [read_anchor_side t] parses a CSS Anchor Positioning 1 [<anchor-side>]: a
+    side keyword or a [<percentage>]. *)
+
+val read_anchor_size : Cursor.t -> anchor_size
+(** [read_anchor_size t] parses a CSS Anchor Positioning 1 [<anchor-size>]
+    keyword. *)
+
 val read_length_percentage :
   ?allow_negative:bool ->
   ?with_keywords:bool ->
