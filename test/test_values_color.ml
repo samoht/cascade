@@ -1128,6 +1128,16 @@ let legacy_syntax_keeps_its_grammar () =
   optimizes ~into:"#bf404080" "hsl(0,50%,50%,.5)";
   optimizes ~into:"#bf4040" "hsl(0 50 50)"
 
+(* CSS Color 4 (Editor's Draft) sec. 2 defines the D50 white by its
+   chromaticity, x 0.345700 and y 0.358500, and sec. 19 takes its XYZ from those
+   figures, [D50 = [0.3457 / 0.3585, 1.00000, (1.0 - 0.3457 - 0.3585) /
+   0.3585]], with the Bradford matrices derived from the same whites. sRGB white
+   then adapts to that white exactly and is achromatic in Lab: LCh chroma 0 and
+   hue 0. The TR's rounded white (0.96422, 1, 0.82521) leaves it a chroma of
+   0.016 at hue 33.1. *)
+let lab_family_uses_the_ed_d50_white () =
+  decl_optimizes ~prop:"color" ~into:"lch(100 0 0)" "lch(from #fff l c h)"
+
 let suite =
   ( "values_color",
     [
@@ -1170,4 +1180,6 @@ let suite =
       test_case "legacy syntax takes no none" `Quick legacy_syntax_takes_no_none;
       test_case "legacy syntax keeps its grammar" `Quick
         legacy_syntax_keeps_its_grammar;
+      test_case "lab family uses the ED D50 white" `Quick
+        lab_family_uses_the_ed_d50_white;
     ] )
