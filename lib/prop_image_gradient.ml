@@ -405,6 +405,50 @@ let pp_radial_gradient_named name ctx (config, stops) =
       | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (config, stops)
 
+(* CSS Image Values 3 (W3C Working Draft, 17 February 2011) sec. 5.2.1, the
+   syntax the Compatibility Standard sec. 3.3.2 gives the prefixed radial
+   gradients: [[<bg-position>,]? [[<shape> || <size>] | [<length> |
+   <percentage>]{2},]? <color-stop>#]. The position comes first, with no [at],
+   and [contain] and [cover] are the shorter synonyms of [closest-side] and
+   [farthest-corner]. *)
+let pp_legacy_radial_size : radial_size Pp.t =
+ fun ctx -> function
+  | Closest_side -> Pp.string ctx "contain"
+  | Farthest_corner -> Pp.string ctx "cover"
+  | Ellipse_radii (a, b) ->
+      pp_length_percentage ctx a;
+      Pp.space ctx ();
+      pp_length_percentage ctx b
+  | size -> pp_radial_size ctx size
+
+let pp_legacy_radial_gradient_named name ctx (config, stops) =
+  Pp.call name
+    (fun ctx ((config : radial_gradient_config), stops) ->
+      (* Sec. 5.2.1 reads a lone argument that is a position or a size as a
+         position, so two radii keep the position before them. *)
+      let position =
+        match (config.position, config.shape, config.size) with
+        | None, None, Some (Ellipse_radii _) -> Some (Center : position_value)
+        | position, _, _ -> position
+      in
+      Option.iter
+        (fun position ->
+          pp_position_value ctx position;
+          Pp.comma ctx ())
+        position;
+      (match (config.shape, config.size) with
+      | None, None -> ()
+      | shape, size ->
+          Option.iter (pp_radial_shape ctx) shape;
+          Option.iter
+            (fun size ->
+              if Option.is_some shape then Pp.space ctx ();
+              pp_legacy_radial_size ctx size)
+            size;
+          Pp.comma ctx ());
+      Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+    ctx (config, stops)
+
 let normalize_radial_size : radial_size -> radial_size =
  fun value ->
   match value with
@@ -1150,6 +1194,72 @@ let read_radial_gradient_body_stops t =
   if stops = [] then
     Cursor.err_expected t "at least one color stop in radial-gradient()";
   Radial_gradient (config, stops)
+
+(* The legacy prelude of [pp_legacy_radial_gradient_named], as Chromium reads
+   it. The position is CSS 2.1's one- or two-value one. A radius is
+   non-negative, as Chromium takes a zero one. An argument that reads as a
+   position or a size is a position (sec. 5.2.1). Chromium also takes the comma
+   after the shape and size as optional. The stops are colour stops only, with
+   no interpolation hint and no colour space. *)
+let read_legacy_radial_size_keyword t : radial_size =
+  Cursor.enum "radial-size"
+    [
+      ("closest-side", (Closest_side : radial_size));
+      ("contain", Closest_side);
+      ("farthest-side", Farthest_side);
+      ("closest-corner", Closest_corner);
+      ("farthest-corner", Farthest_corner);
+      ("cover", Farthest_corner);
+    ]
+    t
+
+let read_legacy_radial_gradient_body t =
+  let read_position t =
+    let position = read_legacy_position_value t in
+    Cursor.ws t;
+    Cursor.comma t;
+    position
+  in
+  let read_radius t =
+    let radius = read_length_percentage ~allow_negative:false t in
+    Cursor.ws t;
+    radius
+  in
+  let read_radii t : radial_size =
+    let a = read_radius t in
+    let b = read_radius t in
+    Ellipse_radii (a, b)
+  in
+  Cursor.ws t;
+  let position = Cursor.option read_position t in
+  Cursor.ws t;
+  let shape = Cursor.option Radial_config.read_shape t in
+  Cursor.ws t;
+  let size = Cursor.option read_legacy_radial_size_keyword t in
+  Cursor.ws t;
+  let shape =
+    match shape with
+    | None -> Cursor.option Radial_config.read_shape t
+    | shape -> shape
+  in
+  let size =
+    match (shape, size) with
+    | None, None -> Cursor.option read_radii t
+    | _ -> size
+  in
+  if Option.is_some shape || Option.is_some size then (
+    Cursor.ws t;
+    ignore (Cursor.comma_opt t));
+  let stops = read_gradient_stops t in
+  if stops = [] then
+    Cursor.err_expected t "at least one color stop in -webkit-radial-gradient()";
+  List.iter
+    (function
+      | (Length _ | Percentage _ : gradient_stop) ->
+          Cursor.err_invalid t "an interpolation hint in a legacy gradient"
+      | _ -> ())
+    stops;
+  Radial_gradient ({ shape; size; position; interpolation = None }, stops)
 
 let read_radial_gradient_body t =
   match read_gradient_var_only t with

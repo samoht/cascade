@@ -65,9 +65,10 @@ let rec pp_background_image : background_image Pp.t =
       pp_webkit_linear_gradient_named "-webkit-repeating-linear-gradient" ctx
         (dir, stops)
   | Webkit_radial_gradient (config, stops) ->
-      pp_radial_gradient_named "-webkit-radial-gradient" ctx (config, stops)
+      pp_legacy_radial_gradient_named "-webkit-radial-gradient" ctx
+        (config, stops)
   | Webkit_repeating_radial_gradient (config, stops) ->
-      pp_radial_gradient_named "-webkit-repeating-radial-gradient" ctx
+      pp_legacy_radial_gradient_named "-webkit-repeating-radial-gradient" ctx
         (config, stops)
   | Moz_linear_gradient (dir, stops) ->
       pp_webkit_linear_gradient_named "-moz-linear-gradient" ctx (dir, stops)
@@ -100,6 +101,15 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "cross-fade"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_cross_fade_option ctx os)
         ctx options
+  | Webkit_cross_fade (first, second, weight) ->
+      Pp.call "-webkit-cross-fade"
+        (fun ctx (first, second, weight) ->
+          pp_background_image ctx first;
+          Pp.comma ctx ();
+          pp_background_image ctx second;
+          Pp.comma ctx ();
+          pp_number_percentage ctx weight)
+        ctx (first, second, weight)
   | Webkit_gradient gradient -> pp_webkit_gradient ctx gradient
   | Var v -> pp_var pp_background_image ctx v
   | List images -> Pp.list ~sep:Pp.comma pp_background_image ctx images
@@ -233,6 +243,12 @@ let rec normalize_background_image ?(lossless = false) :
         if image == o.image then o else { o with image }
       in
       preserve_if_equal value (Cross_fade (map_preserve normalize_opt opts))
+  | Webkit_cross_fade (first, second, weight) ->
+      preserve_if_equal value
+        (Webkit_cross_fade
+           ( normalize_background_image ~lossless first,
+             normalize_background_image ~lossless second,
+             Values.normalize_number_percentage weight ))
   | List imgs ->
       preserve_if_equal value
         (List (map_preserve (normalize_background_image ~lossless) imgs))
@@ -519,12 +535,12 @@ let webkit_bg_image_calls =
     ("-webkit-repeating-linear-gradient", read_webkit_repeating_linear_gradient);
     ( "-webkit-radial-gradient",
       fun t ->
-        Cursor.call "-webkit-radial-gradient" t read_radial_gradient_body_stops
+        Cursor.call "-webkit-radial-gradient" t read_legacy_radial_gradient_body
         |> webkit_radial_gradient_of_radial );
     ( "-webkit-repeating-radial-gradient",
       fun t ->
         Cursor.call "-webkit-repeating-radial-gradient" t
-          read_radial_gradient_body_stops
+          read_legacy_radial_gradient_body
         |> webkit_repeat_radial_of_radial );
   ]
 
@@ -598,6 +614,8 @@ and read_bg_image_misc_calls () =
         Cursor.call "-webkit-image-set" t read_image_set_body
         |> webkit_image_set_of_set );
     ("cross-fade", fun t -> Cursor.call "cross-fade" t read_cross_fade_body);
+    ( "-webkit-cross-fade",
+      fun t -> Cursor.call "-webkit-cross-fade" t read_webkit_cross_fade_body );
     ( "-webkit-gradient",
       fun t -> Cursor.call "-webkit-gradient" t read_webkit_gradient_body );
     ("var", fun t -> Var (Values.read_var read_bg_image t));
@@ -625,6 +643,28 @@ and read_cross_fade_body t : background_image =
   if not (Cursor.is_done t) then
     Cursor.err_expected t "end of cross-fade() arguments";
   Cross_fade opts
+
+(* [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)], as Chromium
+   reads it: either image may be [none], neither a CSS-wide keyword. *)
+and read_webkit_cross_fade_body t : background_image =
+  let image t : background_image =
+    Cursor.ws t;
+    match read_bg_image t with
+    | Initial | Inherit | Unset | Revert | Revert_layer ->
+        Cursor.err_expected t "an image"
+    | image -> image
+  in
+  let first = image t in
+  Cursor.ws t;
+  Cursor.comma t;
+  let second = image t in
+  Cursor.ws t;
+  Cursor.comma t;
+  Cursor.ws t;
+  let weight = Values.read_number_percentage t in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  Webkit_cross_fade (first, second, weight)
 
 and read_cross_fade_option t : cross_fade_option =
   Cursor.ws t;
@@ -662,7 +702,11 @@ let read_background_image t : background_image =
 let read_background_images t : background_image list =
   Cursor.list ~sep:Cursor.comma read_background_image t
 
-let minify_background_image : background_image -> background_image = function
+let rec minify_background_image : background_image -> background_image =
+  function
+  | Webkit_cross_fade (first, second, weight) ->
+      Webkit_cross_fade
+        (minify_background_image first, minify_background_image second, weight)
   | Linear_gradient (dir, stops) ->
       Linear_gradient (dir, List.map minify_gradient_stop stops)
   | Repeating_linear_gradient (dir, stops) ->

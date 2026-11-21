@@ -62,6 +62,13 @@ val pp_radial_gradient_named :
 (** [pp_radial_gradient_named name ctx (config, stops)] prints a radial gradient
     as the function [name], eliding a default [config]. *)
 
+val pp_legacy_radial_gradient_named :
+  string -> Pp.ctx -> radial_gradient_config * gradient_stop list -> unit
+(** [pp_legacy_radial_gradient_named name ctx (config, stops)] prints a radial
+    gradient as the function [name] in the legacy syntax of CSS Image Values 3
+    (Working Draft, 17 February 2011) sec. 5.2.1: the position first, with no
+    [at], then the shape and size. *)
+
 val normalize_gradient_direction : gradient_direction -> gradient_direction
 (** [normalize_gradient_direction v] is [v] in its canonical spelling. *)
 
@@ -140,6 +147,11 @@ val read_webkit_linear_gradient_body : Cursor.t -> background_image
 
 val read_radial_gradient_body_stops : Cursor.t -> background_image
 (** [read_radial_gradient_body_stops t] reads a [background_image] from [t]. *)
+
+val read_legacy_radial_gradient_body : Cursor.t -> background_image
+(** [read_legacy_radial_gradient_body t] reads the arguments of a legacy
+    prefixed radial gradient, in the syntax {!pp_legacy_radial_gradient_named}
+    prints. *)
 
 val read_radial_gradient_body : Cursor.t -> background_image
 (** [read_radial_gradient_body t] reads a [background_image] from [t]. *)
