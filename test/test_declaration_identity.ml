@@ -522,6 +522,46 @@ let number_spellings_keep_their_value () =
     "a custom property is not folded" false
     (Css.Declaration.equal_declaration custom custom')
 
+(* A colour channel is decidable when the three readings an engine or cascade's
+   printer can take of its number quantise to one 8-bit value: the double, the
+   nearest 32-bit float, and the eight-decimal print. Chromium 153 paints
+   [rgba(0,0,0,0.09999999999999998)] at alpha 25 (the double) and [rgb(0 0
+   0/0.09999999999999998)] or [hsl(0 0% 0%/0.09999999999999998)] at 26 (the
+   32-bit float), [rgb(127.49999999999999,0,0)] at red 128 and [rgb(127.49999 0
+   0)] at 127, and [.7] at 179 in every syntax. A colour with an undecidable
+   channel is kept as written; a decidable one folds. *)
+let undecidable_colour_channels_stay () =
+  let check name want css = Alcotest.(check string) name want (minified css) in
+  check "a comma alpha past the half stays"
+    ".a{color:rgba(0,0,0,.09999999999999998)}"
+    ".a{color:rgba(0,0,0,0.09999999999999998)}";
+  check "a space alpha past the half stays"
+    ".a{color:rgb(0 0 0/.09999999999999998)}"
+    ".a{color:rgb(0 0 0/0.09999999999999998)}";
+  check "an hsl() alpha past the half stays"
+    ".a{color:hsl(0 0%0%/.09999999999999998)}"
+    ".a{color:hsl(0 0% 0%/0.09999999999999998)}";
+  check "a channel past the half stays" ".a{color:rgb(127.49999999999999,0,0)}"
+    ".a{color:rgb(127.49999999999999,0,0)}";
+  check "a shadow keeps such a colour"
+    ".a{box-shadow:0 0 0 1px rgba(0,0,0,.09999999999999998)}"
+    ".a{box-shadow:0 0 0 1px rgba(0,0,0,0.09999999999999998)}";
+  check "the half itself folds" ".a{color:#0000001a}" ".a{color:rgba(0,0,0,.1)}";
+  check "so does its other spelling" ".a{color:#0000001a}"
+    ".a{color:rgb(0 0 0/0.1)}";
+  check "an alpha every reading rounds alike folds" ".a{color:#000000b3}"
+    ".a{color:rgb(0 0 0/.7)}";
+  check "a channel every reading rounds alike folds" ".a{color:#7f0000}"
+    ".a{color:rgb(127.49999 0 0)}";
+  check "the two are two colours"
+    ".a{color:rgba(0,0,0,.09999999999999998)}.b{color:#0000001a}"
+    ".a{color:rgba(0,0,0,0.09999999999999998)}.b{color:rgba(0,0,0,.1)}";
+  Alcotest.(check string)
+    "a pretty print keeps its tokens"
+    ".a {\n  color: rgba(0,0,0,.09999999999999998);\n}"
+    (Css.to_string
+       (Css.stylesheet ".a{color:rgba(0, 0, 0, 0.09999999999999998)}"))
+
 (* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
    its typed values alone: reading the print back has to land on the node that
    printed it, not merely on the same text. *)
@@ -838,6 +878,8 @@ let suite =
         number_spellings_have_one_node;
       test_case "number spellings keep their value" `Quick
         number_spellings_keep_their_value;
+      test_case "undecidable colour channels stay" `Quick
+        undecidable_colour_channels_stay;
       test_case "multi-value grammars" `Quick multi_value_grammars;
       test_case "dimension before a signed number" `Quick
         dimension_before_signed_number;

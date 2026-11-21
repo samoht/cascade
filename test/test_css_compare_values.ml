@@ -11,6 +11,27 @@ let equal_canonical_custom_signed_leading_zero () =
        ".a{--t:calc(var(--s)*-.5);translate:var(--t)}"
        ".a{--t:calc(var(--s)*-0.5);translate:var(--t)}")
 
+(* A colour channel whose double, 32-bit float and eight-decimal readings round
+   to different bytes paints by the engine and the syntax: Chromium 153 paints
+   [rgba(0,0,0,0.09999999999999998)] at alpha 25 and [rgba(0,0,0,.1)] at 26.
+   Such a colour equals only its own spelling. *)
+let equal_canonical_undecidable_channel () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "an alpha past the half is not the half" false
+    (equal ".a{color:rgba(0,0,0,0.09999999999999998)}"
+       ".a{color:rgba(0,0,0,.1)}");
+  Alcotest.(check bool)
+    "nor the byte below it" false
+    (equal ".a{color:rgba(0,0,0,0.09999999999999998)}" ".a{color:#00000019}");
+  Alcotest.(check bool)
+    "its own spelling is itself" true
+    (equal ".a{color:rgba(0,0,0,0.09999999999999998)}"
+       ".a{color:rgba(0, 0, 0, .09999999999999998)}");
+  Alcotest.(check bool)
+    "a decidable alpha keeps the six-figure bound" true
+    (equal ".a{color:rgba(0,0,0,.7)}" ".a{color:rgba(0,0,0,.7000001)}")
+
 (* SVG 2 sec. 13.5.3: [stroke-width] takes a [<number>] in user units, and a CSS
    pixel is one user unit, so [1] and [1px] draw the same stroke. Tailwind
    writes [stroke-1] unitless and tw writes [1px]. *)
@@ -1221,4 +1242,6 @@ let suite =
         `Quick equal_canonical_lossless_exact_srgb;
       Alcotest.test_case "canonical numeric precision modes" `Quick
         canonical_numeric_division_follows_precision_mode;
+      Alcotest.test_case "canonical undecidable colour channel" `Quick
+        equal_canonical_undecidable_channel;
     ] )
