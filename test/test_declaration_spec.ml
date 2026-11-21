@@ -23,7 +23,8 @@ let an_empty_value_is_no_declaration () =
 let try_tactics_stand_together () =
   neg_cursor read_declaration
     "position-try-fallbacks: flip-block --a flip-start";
-  neg_cursor read_declaration "position-try-fallbacks: flip-block flip-block"
+  neg_cursor read_declaration "position-try-fallbacks: flip-block flip-block";
+  neg_cursor read_declaration "position-try-fallbacks: flip-x flip-x"
 
 (* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
    and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
@@ -1138,6 +1139,11 @@ let spec_remaining_prop_vectors () =
         "position-try-fallbacks:flip-start flip-block" );
       ( "position-try-fallbacks: flip-start flip-block --a",
         "position-try-fallbacks:--a flip-start flip-block" );
+      (* Sec. 6.1 also gives the physical tactics [flip-x] and [flip-y]. *)
+      ("position-try-fallbacks: flip-x", "position-try-fallbacks:flip-x");
+      ( "position-try-fallbacks: flip-y flip-block, --a flip-x",
+        "position-try-fallbacks:flip-y flip-block,--a flip-x" );
+      ("position-try: most-width flip-y", "position-try:most-width flip-y");
       ( "position-try-fallbacks: --a flip-start, flip-inline",
         "position-try-fallbacks:--a flip-start,flip-inline" );
       ("scrollbar-color: auto", "scrollbar-color:auto");
