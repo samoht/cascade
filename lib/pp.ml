@@ -486,75 +486,47 @@ let shortest_digits x =
   in
   go 1
 
-(* Whether the digit string [s] is at least [2^62], the [int] range the
-   positional spelling stays within. *)
-let reaches_int_limit s =
-  let limit = "4611686018427387904" in
-  let n = String.length s and l = String.length limit in
-  n > l || (n = l && String.compare s limit >= 0)
-
-(* [abs_f] with 12 significant digits, its exact value rounded to nearest with
-   ties to even as C's [%.12g] does on glibc and macOS, and spelt the same way
-   with the exponent made canonical: positional while the decimal exponent is in
-   [[-4, 12)], exponent notation otherwise, trailing zeros dropped. CSS Syntax 3
-   sec. 4.3.13 reads [1e30] and [4e-33] without a [+] or a padded exponent. *)
-let format_significant is_neg abs_f =
-  let m, b = binary abs_f in
-  let s, e = exact_digits m b in
-  let r = round_digits ~tie:Even s 12 in
-  let point = String.length s - 1 + e in
-  let r, point =
-    if String.length r > 12 then (String.sub r 0 12, point + 1) else (r, point)
-  in
-  let rec sig_end i = if i > 1 && r.[i - 1] = '0' then sig_end (i - 1) else i in
-  let n = sig_end 12 in
-  let b = Buffer.create 24 in
+(* [s * 10^e], [s] a digit string with no leading zero, in exponent notation,
+   trailing zeros dropped. CSS Syntax 3 sec. 4.3.13 reads [1e30] and [4e-33]
+   without a [+] or a padded exponent. *)
+let format_exponent is_neg s e =
+  let rec sig_end i = if i > 1 && s.[i - 1] = '0' then sig_end (i - 1) else i in
+  let n = sig_end (String.length s) in
+  let b = Buffer.create (n + 8) in
   if is_neg then Buffer.add_char b '-';
-  if point < -4 || point >= 12 then (
-    Buffer.add_char b r.[0];
-    if n > 1 then (
-      Buffer.add_char b '.';
-      Buffer.add_substring b r 1 (n - 1));
-    Buffer.add_char b 'e';
-    Buffer.add_string b (string_of_int point))
-  else if point < 0 then (
-    Buffer.add_string b "0.";
-    Buffer.add_string b (String.make (-point - 1) '0');
-    Buffer.add_substring b r 0 n)
-  else (
-    for i = 0 to point do
-      Buffer.add_char b (if i < n then r.[i] else '0')
-    done;
-    if n > point + 1 then (
-      Buffer.add_char b '.';
-      Buffer.add_substring b r (point + 1) (n - point - 1)));
+  Buffer.add_char b s.[0];
+  if n > 1 then (
+    Buffer.add_char b '.';
+    Buffer.add_substring b s 1 (n - 1));
+  Buffer.add_char b 'e';
+  Buffer.add_string b (string_of_int (String.length s - 1 + e));
   Buffer.contents b
 
+(* An integral [abs_f] prints every digit below [2^62], and its shortest decimal
+   in exponent notation from there, where it has no [int]. *)
 let format_integer is_neg abs_f =
   match Common.int_of_float_opt abs_f with
   | Some i -> string_of_int (if is_neg then -i else i)
-  | None -> format_significant is_neg abs_f
+  | None ->
+      let s, e = shortest_digits abs_f in
+      format_exponent is_neg s e
 
 (* [abs_f] at [d] decimal places: its shortest decimal, rounded with a half
    going away from zero. One that rounds to [0] keeps [max 1 d] significant
-   digits instead, positional up to 24 leading zeros; one whose scaled magnitude
-   reaches [2^62], or that has more leading zeros, takes 12 significant
-   digits. *)
+   digits instead, positional while the rounded value has at most 24 leading
+   zeros and in exponent notation past that, so that its print reads back as a
+   value printed the same way. A shortest decimal whose scaled magnitude reaches
+   [2^62] has fewer than [d] places, so the places keep every digit it has. *)
 let format_shortest ~drop_leading_zero d is_neg abs_f =
   let s, e = shortest_digits abs_f in
   let scaled d = round_digits ~tie:Away s (String.length s + e + d) in
-  let write r d =
-    if reaches_int_limit r then format_significant is_neg abs_f
-    else format_decimal ~drop_leading_zero r d is_neg
-  in
   match scaled d with
   | "0" ->
-      let leading_zeros = -(String.length s + e) in
-      if leading_zeros > 24 then format_significant is_neg abs_f
-      else
-        let d = max 1 d + leading_zeros in
-        write (scaled d) d
-  | r -> write r d
+      let d = max 1 d - (String.length s + e) in
+      let r = scaled d in
+      if d - String.length r > 24 then format_exponent is_neg r (-d)
+      else format_decimal ~drop_leading_zero r d is_neg
+  | r -> format_decimal ~drop_leading_zero r d is_neg
 
 (* The hot path. [p], [abs_f] times an exact [10^d], is off the shortest decimal
    times [10^d] by one and a half of its ulps at most, and below [2^52] an ulp

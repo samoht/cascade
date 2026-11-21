@@ -83,6 +83,13 @@ implementation keeps them.
   `flex:1 1 0%` to `flex:1`) belongs to normalisation, not to the printer.
   The pretty printer writes back the spelling the author wrote where the node
   keeps it (`0.90rem`, `#0000FF`).
+- **A number prints within one budget and no further.** A number prints at
+  eight decimal places, rounding the shortest decimal that reads back as its
+  double, or at eight significant digits where that rounds to zero. A number
+  whose magnitude, scaled to the eight places, reaches 2^62 prints the
+  shortest decimal itself, which reads back as the same double: a browser
+  adds a `calc()`'s operands in double precision before it clamps a length,
+  so a coarser print moves the sum.
 - **Token boundaries are safe.** Elided whitespace never joins two tokens into
   one or splits one into two. Inside a math function the whitespace around
   `+` and `-` is kept (CSS Values 4 sec. 10.8), and so is the whitespace
@@ -307,6 +314,7 @@ Each row names the tests that check a statement. A browser harness under
 | Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node"; `fuzz/fuzz_supports.ml` "generated tree reparses" (`@supports` conditions of nested `not`, `and` and `or`) |
 | M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; `test/test_declaration_identity.ml` "colour channels beside a var()" (the alpha rounding); the css-minify-tests colour fixtures |
 | Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
+| Number budget | `pp` "float int boundary", "float large decimal reparses", "float large decimal in stylesheet"; fuzz `pp` "string_of_float rounds by its stated rule" |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
 | Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back" |
 | Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |

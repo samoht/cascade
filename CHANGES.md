@@ -776,6 +776,13 @@ differently. They are the reason to minify again.
   `cascade diff --diff=canonical` no longer calls those spellings identical.
   The SatCSS sheets minify as before; Tailwind's output keeps its `oklch()`
   palette, about 3 KB larger raw and 0.7 KB under gzip (#1549).
+- **Huge numbers lost digits.** `--minify` printed a number from 2^62 up, or
+  a fraction from about 4.6e10 up, with 12 significant digits:
+  `46116860184.27387904px` became `46116860184.3px` and `123456789012.5px`
+  became `123456789012px`. A browser clamps such a length, but it adds a
+  `calc()`'s operands first, so `calc(123456789012.5px - var(--b))` with
+  `--b:123456789012px` rendered 0px wide instead of half a pixel. Such a
+  number now prints the shortest digits that read back as its value (#1550).
 
 #### Stable output
 

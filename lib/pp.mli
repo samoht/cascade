@@ -228,18 +228,17 @@ val string_of_float :
     The decimal places round the shortest decimal that reads back as [f], the
     number an author wrote when it has at most 15 significant digits, and a half
     goes away from zero: [0.8765] at three places is [0.877] although its double
-    lies just below the half. The 12 significant digits below round the exact
-    value of [f] to the nearest with ties to even, so [100000000000.5] prints as
-    [100000000000]. Every digit is computed in OCaml, never by the C library, so
-    the bytes are the same on every platform.
-    - An integral [f] prints every digit below [2^62] in magnitude, and 12
-      significant digits in exponent notation from there.
+    lies just below the half. Every digit is computed in OCaml, never by the C
+    library, so the bytes are the same on every platform.
+    - An integral [f] prints every digit below [2^62] in magnitude, and its
+      shortest decimal in exponent notation from there.
     - A fractional [f] whose magnitude, scaled by [10^max_decimals], reaches
-      [2^62] prints with 12 significant digits, in exponent notation from
-      [1e12].
+      [2^62] prints its shortest decimal, which has fewer places than that. Such
+      an [f], like an integral one past [2^62], reads back from its print as
+      itself.
     - A non-zero [f] that would round to [0] keeps [max_decimals] significant
       digits (one at least) instead, in decimals while it has at most 24 leading
-      zeros after the point, and past that 12 in exponent notation.
+      zeros after the point, and in exponent notation past that.
     - [drop_leading_zero] (defaults to [false]) writes [.5] for [0.5].
 
     Exponent notation is the shortest spelling CSS Syntax 3 sec. 4.3.13 reads:
