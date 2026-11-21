@@ -161,6 +161,26 @@ let math_operand_takes_the_slot_type () =
       "width: calc(min(1px, 2px) + max(1px, 2px))";
     ]
 
+(* CSS Transforms 1 (ED) sec. 4 spells the third value of [transform-origin]
+   [<length>?] and says it "must be of type <length>", so a percentage is no Z
+   offset. Chromium 153 and WebKit 26.5 drop each percentage below and keep each
+   length. *)
+let transform_origin_z_is_a_length () =
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "transform-origin: "; value ]))
+    [
+      "50% center 50%";
+      "10px 20px 30%";
+      "left top 10%";
+      "10px 20px calc(10% + 1px)";
+    ];
+  check_declaration ~expected:"transform-origin:10px 20px 30px"
+    "transform-origin: 10px 20px 30px";
+  check_declaration ~expected:"transform-origin:left top 10px"
+    "transform-origin: left top 10px"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1559,6 +1579,8 @@ let suite =
         line_height_comparison_takes_a_sum;
       test_case "a math operand takes the slot type" `Quick
         math_operand_takes_the_slot_type;
+      test_case "the transform-origin Z value is a length" `Quick
+        transform_origin_z_is_a_length;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
