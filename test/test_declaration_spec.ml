@@ -1109,7 +1109,7 @@ let spec_values_l45_edges () =
       "width: calc(* 1px)";
       "width: min()";
       "height: clamp(10px, 20px)";
-      "margin: anchor-size()";
+      "margin: anchor-size(top)";
       "top: anchor()";
       "color: lab(50% 20)";
       "color: oklch(60% .2)";
