@@ -2,6 +2,17 @@ open Selector_intf
 open Selector_make
 open Selector_pseudo
 
+(* CSSOM 1 sec. 2.1 (serialize an identifier) for every name a selector holds:
+   [Parser.escape_ident] escapes a control character, a leading digit and the
+   code points an ident cannot hold, so the print reads back as the name. *)
+let ident ctx name = Pp.string ctx (Parser.escape_ident name)
+
+let pp_aria_attr : aria_attr Pp.t =
+ fun ctx a -> ident ctx (string_of_aria_attr a)
+
+let pp_attr_name : attr_name Pp.t =
+ fun ctx a -> ident ctx (string_of_attr_name a)
+
 let pp_attr_flag ctx = function
   | Some Insensitive ->
       Pp.char ctx ' ';
@@ -24,12 +35,6 @@ let pp_token : string Pp.t =
     Pp.space ctx ();
     Pp.string ctx token;
     Pp.space ctx ())
-
-let pp_aria_attr : aria_attr Pp.t =
- fun ctx a -> Pp.string ctx (string_of_aria_attr a)
-
-let pp_attr_name : attr_name Pp.t =
- fun ctx a -> Pp.string ctx (string_of_attr_name a)
 
 (** Pretty print nth expression *)
 let pp_nth : nth Pp.t =
@@ -94,11 +99,14 @@ let elem_func ctx name pp_content value =
   pp_func ctx ~prefix:"::" name pp_content value
 
 let pp_vt_class_selector ctx (sel : vt_class_selector) =
-  (match sel.name with Some n -> Pp.string ctx n | None -> ());
+  (match sel.name with
+  | Some "*" -> Pp.char ctx '*'
+  | Some n -> ident ctx n
+  | None -> ());
   List.iter
     (fun cls ->
       Pp.char ctx '.';
-      Pp.string ctx cls)
+      ident ctx cls)
     sel.classes
 
 let pp_combinator ctx = function
@@ -131,144 +139,13 @@ let pp_relative_combinator ctx = function
       Pp.string ctx "/deep/";
       Pp.space_if_pretty ctx ()
 
-let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
+let idents ctx names = Pp.list ~sep:Pp.comma ident ctx names
 
 let lang_range ctx string =
   if attr_value_needs_quoting string then Pp.quoted_string ctx string
   else Pp.string ctx string
 
 let langs ctx strings = Pp.list ~sep:Pp.comma lang_range ctx strings
-let hex_digits = "0123456789abcdef"
-
-let add_selector_hex_escape buf code =
-  Buffer.add_char buf '\\';
-  let rec emit n acc =
-    match (n, acc) with
-    | 0, [] -> Buffer.add_char buf '0'
-    | 0, digits -> List.iter (Buffer.add_char buf) digits
-    | _ -> emit (n / 16) (hex_digits.[n mod 16] :: acc)
-  in
-  emit code [];
-  Buffer.add_char buf ' '
-
-let first_needs_hex_escape name =
-  match String.length name with
-  | 0 -> false
-  | len ->
-      let first = name.[0] in
-      (first >= '0' && first <= '9')
-      || (first = '-' && len > 1 && name.[1] >= '0' && name.[1] <= '9')
-
-let add_selector_ascii buf ~first_needs_hex_escape i c =
-  if i = 0 && first_needs_hex_escape then
-    add_selector_hex_escape buf (Char.code c)
-  else
-    match c with
-    | '\x00' .. '\x1F' | '\x7F' -> add_selector_hex_escape buf (Char.code c)
-    | '[' -> Buffer.add_string buf "\\["
-    | ']' -> Buffer.add_string buf "\\]"
-    | '\\' -> Buffer.add_string buf "\\\\"
-    | '(' -> Buffer.add_string buf "\\("
-    | ')' -> Buffer.add_string buf "\\)"
-    | ',' -> Buffer.add_string buf "\\,"
-    | '/' -> Buffer.add_string buf "\\/"
-    | ':' -> Buffer.add_string buf "\\:"
-    | '%' -> Buffer.add_string buf "\\%"
-    | '.' -> Buffer.add_string buf "\\."
-    | '#' -> Buffer.add_string buf "\\#"
-    | ' ' -> Buffer.add_string buf "\\ "
-    | '"' -> Buffer.add_string buf "\\\""
-    | '\'' -> Buffer.add_string buf "\\'"
-    | '@' -> Buffer.add_string buf "\\@"
-    | '*' -> Buffer.add_string buf "\\*"
-    | '>' -> Buffer.add_string buf "\\>"
-    | '+' -> Buffer.add_string buf "\\+"
-    | '~' -> Buffer.add_string buf "\\~"
-    | '&' -> Buffer.add_string buf "\\&"
-    | '^' -> Buffer.add_string buf "\\^"
-    | '$' -> Buffer.add_string buf "\\$"
-    | '=' -> Buffer.add_string buf "\\="
-    | '!' -> Buffer.add_string buf "\\!"
-    | '|' -> Buffer.add_string buf "\\|"
-    | c when is_valid_nmchar c -> Buffer.add_char buf c
-    | c ->
-        Buffer.add_char buf '\\';
-        Buffer.add_char buf c
-
-let add_selector_uchar buf ~add_ascii i u =
-  let cp = Uchar.to_int u in
-  if cp < 0x80 then add_ascii i (Char.chr cp)
-  else add_selector_hex_escape buf cp
-
-let add_selector_malformed buf ~add_ascii name i len =
-  for j = i to i + len - 1 do
-    let c = name.[j] in
-    if Char.code c < 0x80 then add_ascii j c
-    else add_selector_hex_escape buf (Char.code c)
-  done
-
-(* Fast path: most identifiers in real CSS are pure ASCII without any of the
-   characters the full escaper would need to handle. [is_safe_nmchar] is the
-   subset of {!is_valid_nmchar} that also rules out the leading-digit /
-   leading-dash-digit pattern so the unmodified bytes are a valid CSS ident
-   already. *)
-
-(** Escape a class or ID name for use inside a selector, following CSS section
-    9.1 rules: hex-escape control bytes and leading digits (or a leading dash
-    followed by a digit), and backslash-escape the punctuation characters that
-    otherwise terminate or reframe the selector. *)
-let is_safe_nmchar = function
-  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
-  | _ -> false
-
-(* Toplevel: [let exception] allocates the constructor on every call, and both
-   of these run once per selector name in the optimizer's inner loops. *)
-exception Char_rejected
-
-let name_is_plain_ascii_ident name =
-  let len = String.length name in
-  if len = 0 then false
-  else if first_needs_hex_escape name then false
-  else
-    try
-      for i = 0 to len - 1 do
-        if not (is_safe_nmchar name.[i]) then raise Char_rejected
-      done;
-      true
-    with Char_rejected -> false
-
-let name_is_ascii name =
-  let len = String.length name in
-  try
-    for i = 0 to len - 1 do
-      if Char.code (String.unsafe_get name i) >= 0x80 then raise Char_rejected
-    done;
-    true
-  with Char_rejected -> false
-
-let escape_selector_name name =
-  if String.length name = 0 then ""
-  else if name = "-" then "\\-"
-  else if name_is_plain_ascii_ident name then name
-  else
-    let buf = Buffer.create (String.length name * 2) in
-    let first_needs_hex_escape = first_needs_hex_escape name in
-    let add_ascii = add_selector_ascii buf ~first_needs_hex_escape in
-    (* A name with escapable punctuation but no byte >= 0x80 (the common
-       Tailwind case: [hover:p-4], [w-1/2], [bg-[#fff]]) has no multi-byte
-       sequence to decode, so escape it byte by byte and skip the decoder, which
-       would box a [Uchar] per character. [String.iteri]'s index is the byte
-       offset, which equals the fold's index for single-byte input. *)
-    if name_is_ascii name then String.iteri add_ascii name
-    else begin
-      let folder () i = function
-        | Common.String.Scalar u -> add_selector_uchar buf ~add_ascii i u
-        | Common.String.Malformed len ->
-            add_selector_malformed buf ~add_ascii name i len
-      in
-      Common.String.utf8_fold folder () name
-    end;
-    Buffer.contents buf
 
 (* Minified output takes the shorter of the ident and the string spelling, which
    Selectors 4 sec. 6.1 accepts at the same grammar position; pretty output
@@ -277,7 +154,7 @@ let pp_attr_value ctx value =
   if not (Pp.minified ctx) then Pp.quoted_string ctx value
   else if not (attr_value_needs_quoting value) then Pp.string ctx value
   else
-    let ident = escape_selector_name value in
+    let ident = Parser.escape_ident value in
     if ident <> "" && String.length ident < Pp.size Pp.quoted_string value then
       Pp.string ctx ident
     else Pp.quoted_string ctx value
@@ -311,7 +188,7 @@ let pp_ns ctx = function
          prefix entirely, which is encoded by passing [None : ns option]. *)
       Pp.char ctx '|'
   | Prefix p ->
-      Pp.string ctx (escape_selector_name p);
+      ident ctx p;
       Pp.char ctx '|'
 
 (** Pretty print nth function with optional "of" clause *)
@@ -376,20 +253,20 @@ and pp : t Pp.t =
  fun ctx -> function
   | Element (ns, name) ->
       Pp.option pp_ns ctx ns;
-      Pp.string ctx (escape_selector_name name)
+      ident ctx name
   | Class name ->
       Pp.char ctx '.';
-      Pp.string ctx (escape_selector_name name)
+      ident ctx name
   | Id name ->
       Pp.char ctx '#';
-      Pp.string ctx (escape_selector_name name)
+      ident ctx name
   | Universal ns ->
       Pp.option pp_ns ctx ns;
       Pp.char ctx '*'
   | Attribute (ns, attr_name, match_type, flag) ->
       Pp.char ctx '[';
       Pp.option pp_ns ctx ns;
-      Pp.string ctx (string_of_attr_name attr_name);
+      pp_attr_name ctx attr_name;
       pp_attribute_match ctx match_type;
       pp_attr_flag ctx flag;
       Pp.char ctx ']'
@@ -452,9 +329,9 @@ and pp : t Pp.t =
   | Current -> pseudo ctx "current"
   | Popover_open -> pseudo ctx "popover-open"
   | Open -> pseudo ctx "open"
-  | Unknown_pseudo_class name -> pseudo ctx name
+  | Unknown_pseudo_class name -> pseudo ctx (Parser.escape_ident name)
   | Unknown_pseudo_class_call (name, args) ->
-      pp_func ctx ~prefix:":" name
+      pp_func ctx ~prefix:":" (Parser.escape_ident name)
         (fun ctx args ->
           Pp.string ctx
             (if Pp.minified ctx then Parser.to_string_minified args
@@ -525,7 +402,7 @@ and pp : t Pp.t =
   | Webkit_details_marker -> vendor_elem ctx "webkit-details-marker"
   | Details_content -> elem ctx "details-content"
   (* Functional pseudo-elements *)
-  | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.space Pp.string) idents
+  | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.space ident) idents
   | Slotted selectors -> elem_func ctx "slotted" sels selectors
   | Cue None -> elem ctx "cue"
   | Cue (Some selectors) -> elem_func ctx "cue" sels selectors
@@ -544,9 +421,9 @@ and pp : t Pp.t =
       pp_nth_func ctx "nth-last-of-type" expr of_sel
   | Nth_col expr -> pp_nth_col_func ctx "nth-col" expr
   | Nth_last_col expr -> pp_nth_col_func ctx "nth-last-col" expr
-  | Dir dir -> func ctx "dir" Pp.string dir
+  | Dir dir -> func ctx "dir" ident dir
   | Lang names -> func ctx "lang" langs names
-  | State name -> func ctx "state" Pp.string name
+  | State name -> func ctx "state" ident name
   | Current_of selectors -> func ctx "current" sels selectors
   | Host None -> pseudo ctx "host"
   | Host (Some selectors) -> func ctx "host" sels selectors
@@ -556,8 +433,8 @@ and pp : t Pp.t =
   | Active_view_transition_type None ->
       Pp.string ctx ":active-view-transition-type()"
   | Active_view_transition_type (Some t) ->
-      func ctx "active-view-transition-type" strs t
-  | Highlight names -> elem_func ctx "highlight" strs names
+      func ctx "active-view-transition-type" idents t
+  | Highlight names -> elem_func ctx "highlight" idents names
   | View_transition -> elem ctx "view-transition"
   | View_transition_group sel ->
       elem_func ctx "view-transition-group" pp_vt_class_selector sel
@@ -567,9 +444,9 @@ and pp : t Pp.t =
       pp_func ctx ~prefix:"::" "view-transition-old" pp_vt_class_selector sel
   | View_transition_new sel ->
       pp_func ctx ~prefix:"::" "view-transition-new" pp_vt_class_selector sel
-  | Unknown_pseudo_element name -> elem ctx name
+  | Unknown_pseudo_element name -> elem ctx (Parser.escape_ident name)
   | Unknown_pseudo_element_call (name, args) ->
-      pp_func ctx ~prefix:"::" name
+      pp_func ctx ~prefix:"::" (Parser.escape_ident name)
         (fun ctx args ->
           Pp.string ctx
             (if Pp.minified ctx then Parser.to_string_minified args

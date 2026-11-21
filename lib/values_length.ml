@@ -1048,7 +1048,7 @@ and pp_anchor_length ~always ctx name side fallback =
     (fun ctx (name, side, fallback) ->
       Option.iter
         (fun name ->
-          Pp.string ctx name;
+          Pp.string ctx (Parser.escape_ident name);
           Pp.space ctx ())
         name;
       pp_anchor_side ctx side;

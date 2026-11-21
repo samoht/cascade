@@ -316,7 +316,7 @@ Each row names the tests that check a statement. A browser harness under
 | Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
 | Number budget | `pp` "float int boundary", "float large decimal reparses", "float large decimal in stylesheet"; fuzz `pp` "string_of_float rounds by its stated rule" |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
-| Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back" |
+| Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back"; `selector` "identifiers escape control characters"; `stylesheet_families` "spec cssom 1 2.1 control characters in names" |
 | Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |
 | Normalisation | `test/fixpoint` "normal form" and its `spellings` corpus; `test/test_declaration_identity.ml` "number spellings have one node" |
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |

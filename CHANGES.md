@@ -783,6 +783,15 @@ differently. They are the reason to minify again.
   `calc()`'s operands first, so `calc(123456789012.5px - var(--b))` with
   `--b:123456789012px` rendered 0px wide instead of half a pixel. Such a
   number now prints the shortest digits that read back as its value (#1550).
+- **Names with a control character broke their rule.** A control character
+  written as an escape (`\1 `) in an attribute name, in `::part()`,
+  `:state()`, `:dir()`, `::highlight()` or the view transition selectors, in
+  an `@namespace` prefix or `@supports` function, or in the name `attr()`,
+  `env()` or `anchor()` reads, was printed back raw. A browser reads the raw
+  character as punctuation and drops the rule or declaration (Chromium drops
+  `[\x01]{}` and keeps `[\1 ]{}`). Every name is now written as CSSOM sec.
+  2.1 serialises an identifier, selectors included, so a class holding a
+  letter from U+0080 up also prints the letter instead of a hex escape (#1551).
 
 #### Stable output
 

@@ -592,7 +592,7 @@ and pp_light_dark_color ctx light dark =
 
 and pp_color_attr ctx name fallback =
   Pp.string ctx "attr(";
-  Pp.string ctx name;
+  Pp.string ctx (Parser.escape_ident name);
   Pp.space ctx ();
   Pp.string ctx "type(<color>)";
   Option.iter

@@ -139,7 +139,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
 let pp_env : type a. a Pp.t -> a env Pp.t =
  fun pp_value ctx (env : a env) ->
   Pp.string ctx "env(";
-  Pp.string ctx env.name;
+  Pp.string ctx (Parser.escape_ident env.name);
   (* A digit after an ident continues it, so the space is lexical. *)
   List.iter
     (fun i ->
@@ -188,7 +188,7 @@ let pp_attr_type ctx (type_ : attr_type) =
   | Number_type -> Pp.string ctx "number"
 
 let pp_attr_call pp_value ctx (attr : _ attr_call) =
-  Pp.string ctx attr.name;
+  Pp.string ctx (Parser.escape_ident attr.name);
   Option.iter
     (fun type_ ->
       Pp.space ctx ();

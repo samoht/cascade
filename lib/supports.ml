@@ -279,12 +279,14 @@ let pp_function_feature ctx = function
   | At_rule rule ->
       let pp_at_rule ctx name =
         Pp.char ctx '@';
-        Pp.string ctx name
+        Pp.string ctx (Parser.escape_ident name)
       in
       Pp.call "at-rule" pp_at_rule ctx rule
-  | Named_feature feature -> Pp.call "named-feature" Pp.string ctx feature
-  | Env name -> Pp.call "env" Pp.string ctx name
-  | General (name, args) -> Pp.call name Pp.string ctx args
+  | Named_feature feature ->
+      Pp.call "named-feature" Pp.string ctx (Parser.escape_ident feature)
+  | Env name -> Pp.call "env" Pp.string ctx (Parser.escape_ident name)
+  | General (name, args) ->
+      Pp.call (Parser.escape_ident name) Pp.string ctx args
 
 let rec pp_aux ~verbatim ~in_and ctx = function
   | Property feature ->
