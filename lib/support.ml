@@ -24,7 +24,10 @@ type measurement = {
 
 (* Measured by hand where web-features records no key. Each is a production a
    specification grants and a browser has not shipped, so cascade reading it is
-   right and the browser's answer says nothing about the value.
+   right and the browser's answer says nothing about the value; or, under
+   [css.types.], a legacy function a browser ships that the dataset files only
+   as the prefixed form of another key, which a function of a value is matched
+   to by its name.
 
    This is library knowledge rather than a test fixture: it is a fact about CSS
    in the world, which is what cascade models. A harness carrying it would be
@@ -37,6 +40,22 @@ type measurement = {
    left to drift. *)
 let measured =
   [
+    {
+      key = "css.types.image.-webkit-cross-fade";
+      support =
+        {
+          Baseline.chrome = Some (17, 0);
+          firefox = None;
+          safari = Some (5, 1);
+          safari_ios = Some (5, 0);
+        };
+      why =
+        "-webkit-cross-fade(<image>, <image>, <number> | <percentage>) is in \
+         no specification. MDN's compatibility data files it under \
+         css.types.image.cross-fade as the -webkit- prefixed form, from Chrome \
+         17 and Safari 5.1, and never in Firefox";
+      measured = "Chrome 153";
+    };
     {
       key = "css.properties.width.contain";
       support =
@@ -1362,14 +1381,22 @@ let unimplemented_by targets key =
    parse: the 43 such keys are cursor keywords, [resize],
    [background-attachment: fixed], [display-mode], [:fullscreen] and
    [::selection]. So for parsing, iOS Safari answers as Safari at its version.
-   The measured supplement is left out: it names a grammar arm by a key of its
-   own ([font-family.inherit] is Chrome reading [inherit] beside another family
+   The measured supplement is read only for a [css.types.] key, a function a
+   word of a value names. Elsewhere it names a grammar arm by a key of its own
+   ([font-family.inherit] is Chrome reading [inherit] beside another family
    name), which a word of a value cannot be matched to. *)
 let compare_version (ma, na) (mb, nb) =
   match Int.compare ma mb with 0 -> Int.compare na nb | c -> c
 
 let parse_release engine key =
-  match Hashtbl.find_opt (Lazy.force table) key with
+  let support =
+    match Hashtbl.find_opt (Lazy.force table) key with
+    | Some _ as support -> support
+    | None when String.starts_with ~prefix:"css.types." key ->
+        Hashtbl.find_opt (Lazy.force measured_table) key
+    | None -> None
+  in
+  match support with
   | None -> None
   | Some (support : Baseline.support) ->
       Some
