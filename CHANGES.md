@@ -359,6 +359,12 @@ differently. They are the reason to minify again.
   browser at or past the targets that reads it reads the later one, as the
   compatibility data records it, and canonical diff counts it dead on the
   same terms (#1464).
+- **A fallback a later browser reads was dropped.** `--minify` turned
+  `a{width:anchor-size(width);width:stretch}` into `a{width:stretch}`, since
+  Chrome 111 reads neither. Chrome 125 to 137, and Firefox from 147, read the
+  first alone and lost the width. A fallback is now dead only when every
+  release from the targets to the newest the compatibility data records that
+  reads it reads the later declaration too (#1486).
 - **A third colour in `color-mix()` was lost.** CSS Color 5 mixes any number
   of colours, and Firefox 150 reads them. `--minify` read the first two of
   `color-mix(in srgb,red,blue,green)` and folded them to `purple`. A mix of

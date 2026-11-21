@@ -426,6 +426,9 @@ let equal_canonical_targets () =
     "and one in an earlier rule of the selector" false
     (equal "a{width:1px}a{width:stretch}" "a{width:stretch}");
   Alcotest.(check bool)
+    "and one a release past the floors reads alone" false
+    (equal "a{width:anchor-size(width);width:stretch}" "a{width:stretch}");
+  Alcotest.(check bool)
     "one every floor parses past is dead" true
     (equal "a{display:block;display:grid}" "a{display:grid}");
   Alcotest.(check bool)

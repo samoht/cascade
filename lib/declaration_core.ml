@@ -536,35 +536,24 @@ let rec first_release ~floor engine decl =
   | Declaration _ ->
       first_release_with ~tokens:(lazy (value_tokens decl)) ~floor engine decl
 
-let rec dropping_floors floors decl =
-  match decl with
-  | Theme_guarded { decl; _ } -> dropping_floors floors decl
-  | Declaration { property = Custom_property _; _ } -> []
-  | Declaration _ ->
-      let tokens = lazy (value_tokens decl) in
-      List.filter_map
-        (fun (engine, floor) ->
-          match first_release_with ~tokens ~floor engine decl with
-          | Option.Some release when Support.compare_version release floor = 0
-            ->
-              Option.None
-          | Option.Some _ | Option.None -> Option.Some engine)
-        (Support.floors floors)
-
-(* A floor stands for its release and every later one, and a shipped production
-   stays, so a declaration every floor parses is read by every browser at or
-   above them. [earlier] is what a browser paints in place of [later] only where
-   it reads [earlier] and drops [later]: a browser dropping both, as Safari does
-   [user-select:auto] and [user-select:none], paints neither. *)
+(* The browsers judged for are each engine from its floor to the newest release
+   the data records, and a shipped production stays. [earlier] is what a browser
+   paints in place of [later] only where it parses [earlier] and drops [later]:
+   in an engine, from the release that first parses [earlier] until the one that
+   first parses [later], if that comes after it. A browser dropping both, as
+   Safari does [user-select:auto] and [user-select:none], paints neither, and
+   one parsing both paints [later]. *)
 let fallback_for ~floors ~later earlier =
-  match dropping_floors floors later with
-  | [] -> false
-  | dropping ->
-      let dropped_earlier = dropping_floors floors earlier in
-      List.exists
-        (fun engine ->
-          not (List.exists (Support.equal_engine engine) dropped_earlier))
-        dropping
+  List.exists
+    (fun (engine, floor) ->
+      match first_release ~floor engine earlier with
+      | Option.None -> false
+      | Option.Some reads_earlier -> (
+          match first_release ~floor engine later with
+          | Option.None -> true
+          | Option.Some reads_later ->
+              Support.compare_version reads_later reads_earlier > 0))
+    (Support.floors floors)
 
 (* Rewrite the value of a custom declaration through [f], which sees its
    minified serialisation. Everything else the declaration carries - its

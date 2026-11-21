@@ -105,7 +105,10 @@ included, and is unknown in an engine whose releases disagree on it; `not`,
 engine, so the guard is unwrapped when true in every release and dropped when
 false in every one. `Supports.never_holds` answers for a
 `<general-enclosed>` term. `Declaration.fallback_for` decides whether an earlier
-declaration is dead, asked of the same floors (`Ctx.floors`) by in-rule
+declaration is dead: it is when, in each engine, the first release that
+parses it (`Declaration.first_release`) parses the later one too, so, a
+shipped production staying, no release from the floor to the newest in the
+data paints it. It is asked of the same floors (`Ctx.floors`) by in-rule
 deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
 shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
 projection (`Rule_order`), so whatever the minifier deletes the judge also
