@@ -240,7 +240,14 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
   | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
-      let b' = normalize_flex_basis ~ctx b in
+      (* A [var()] factor may supply no factor at all (CSS Variables 1 sec. 3),
+         and a bare [0] after one factor is the shrink (sec. 7.2), so the zero
+         basis keeps the unit it was written with. *)
+      let b' =
+        match (normalize_flex_basis ~ctx b, g', s') with
+        | Zero, (Var _ : flex_factor), _ | Zero, _, Var _ -> b
+        | b', _, _ -> b'
+      in
       (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
          of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
       match (g', s', b') with

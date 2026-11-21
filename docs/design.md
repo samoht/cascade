@@ -43,7 +43,20 @@ written, among the same separators and inside the same functions, with no
 component added, dropped or moved. Otherwise it keeps the value as an
 `Unknown_property` token stream under the property's name.
 `Declaration.normalize` applies the same test to each fold of such a value and
-keeps the value when a fold fails it. `Context.eval` substitutes the
+keeps the value when a fold fails it. A substitution may supply commas, so a
+comma list is compared run by run: a segment holding a substitution keeps its
+slots, and a run of segments holding none stays on each side where it was,
+free to fold inside. The normalisers keep what the test would refuse whole: a
+`box-shadow` keeps an `inset` written after a body holding a `var()`
+(`Trailing`), a gradient keeps a direction written before a `var()` first
+stop and never merges two `var()` stops, and `flex` keeps the unit of a zero
+basis after a `var()` factor: the factor may supply nothing, and a bare `0`
+after one factor is the shrink. That is the one respelling in place found to
+move a component to another slot. A zero length loses its unit only where no
+`<number>` can stand, and beside a `var()` that slot may shift, which matters
+only where a neighbouring slot takes a number: `flex` does; `font` does not,
+since a `0` there cannot be a weight (its range starts at 1) and Chromium 153
+reads it as the size either way. `Context.eval` substitutes the
 references a context binds into such a stream and reads the result again, so a
 value that types once substituted evaluates as any other.
 

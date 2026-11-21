@@ -294,6 +294,9 @@ let simplify_shadow_leaf length color simplify ~authored ~visited
   | Properties.Inset (Properties.Body body) ->
       (Properties.Inset (Properties.Body (simplify_body body))
         : Properties.shadow)
+  | Properties.Inset (Properties.Trailing body) ->
+      (Properties.Inset (Properties.Trailing (simplify_body body))
+        : Properties.shadow)
   | Properties.Inset (Properties.Toggle { name; no_fallback; body }) ->
       (Properties.Inset
          (Properties.Toggle { name; no_fallback; body = simplify_body body })

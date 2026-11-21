@@ -135,6 +135,21 @@ let normalize_url_image (value : background_image) : background_image =
       if Char.equal quote quote' then value else Quoted (url, quote')
   | _ -> value
 
+(* A first stop that is a [var()] colour may supply a direction of its own (CSS
+   Variables 1 sec. 3), so the direction written before it stays. *)
+let leads_with_substitution : gradient_stop list -> bool = function
+  | Var _ :: _
+  | Color_percentage (Values.Var _, _, _) :: _
+  | Color_length (Values.Var _, _, _) :: _ ->
+      true
+  | _ -> false
+
+let linear_direction d stops =
+  let d' = normalize_gradient_direction d in
+  match d' with
+  | Default_direction when leads_with_substitution stops -> d
+  | _ -> d'
+
 let rec normalize_background_image ?(lossless = false) :
     background_image -> background_image =
  fun value ->
@@ -145,12 +160,14 @@ let rec normalize_background_image ?(lossless = false) :
   in
   match value with
   | Linear_gradient (d, s) ->
-      let d = normalize_gradient_direction d in
+      let d = linear_direction d s in
       let s = stops s in
       let d, s =
-        match drop_to_top_direction d s with
-        | Option.Some (d, s) -> (d, s)
-        | Option.None -> (d, s)
+        if leads_with_substitution s then (d, s)
+        else
+          match drop_to_top_direction d s with
+          | Option.Some (d, s) -> (d, s)
+          | Option.None -> (d, s)
       in
       preserve_if_equal value (Linear_gradient (d, s))
   | Radial_gradient (c, s) ->
@@ -161,7 +178,7 @@ let rec normalize_background_image ?(lossless = false) :
         (Conic_gradient (normalize_conic_config c, stops s))
   | Repeating_linear_gradient (d, s) ->
       preserve_if_equal value
-        (Repeating_linear_gradient (normalize_gradient_direction d, stops s))
+        (Repeating_linear_gradient (linear_direction d s, stops s))
   | Repeating_radial_gradient (c, s) ->
       preserve_if_equal value
         (Repeating_radial_gradient (normalize_radial_config c, stops s))
