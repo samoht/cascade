@@ -250,31 +250,36 @@ let test_css_wide_keywords_parse buf =
   | "font-family" | "font-feature-settings" -> ()
   | _ -> run keyword
 
+(* A CSS-wide keyword beside a font-family name is a word of a longer name to
+   Chromium 153 and WebKit 26.5, which docs/invariants.md keeps as written, so
+   that property is left out. *)
 let test_css_wide_mixes_rejected buf =
   let property, _run = generated_property_vector buf in
   let keyword =
     pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 3
   in
-  let value =
-    match property with
-    | "display" -> keyword ^ " block"
-    | "position" -> keyword ^ " static"
-    | "overflow" -> keyword ^ " hidden"
-    | "border" -> keyword ^ " solid"
-    | "font-weight" -> keyword ^ " bold"
-    | "transform" | "transforms" -> keyword ^ " rotate(1deg)"
-    | "transition" -> keyword ^ " opacity 1s"
-    | "animation" -> keyword ^ " fade 1s"
-    | "background-image" -> keyword ^ " url(a.png)"
-    | "background" -> keyword ^ " red"
-    | "content" -> keyword ^ " none"
-    | "container" -> keyword ^ " / inline-size"
-    | "scroll-snap-type" -> keyword ^ " mandatory"
-    | "clip-path" -> keyword ^ " inset(1px)"
-    | _ -> keyword ^ " " ^ valid_value property buf
-  in
-  assert_invalid_declaration_contract "CSS-wide property mix"
-    (property ^ ":" ^ value)
+  if String.equal property "font-family" then ()
+  else
+    let value =
+      match property with
+      | "display" -> keyword ^ " block"
+      | "position" -> keyword ^ " static"
+      | "overflow" -> keyword ^ " hidden"
+      | "border" -> keyword ^ " solid"
+      | "font-weight" -> keyword ^ " bold"
+      | "transform" | "transforms" -> keyword ^ " rotate(1deg)"
+      | "transition" -> keyword ^ " opacity 1s"
+      | "animation" -> keyword ^ " fade 1s"
+      | "background-image" -> keyword ^ " url(a.png)"
+      | "background" -> keyword ^ " red"
+      | "content" -> keyword ^ " none"
+      | "container" -> keyword ^ " / inline-size"
+      | "scroll-snap-type" -> keyword ^ " mandatory"
+      | "clip-path" -> keyword ^ " inset(1px)"
+      | _ -> keyword ^ " " ^ valid_value property buf
+    in
+    assert_invalid_declaration_contract "CSS-wide property mix"
+      (property ^ ":" ^ value)
 
 type property_grammar_vector = {
   property : string;
@@ -707,7 +712,13 @@ let invalid_property_mutation
        Cascade 5 sec. 7.3 gives a trailing mutation that holds for every
        property instead, since a CSS-wide keyword is the whole value or
        nothing. *)
+    (* Except at font-family: Chromium 153 and WebKit 26.5 read a CSS-wide
+       keyword as a word of a longer family name, so docs/invariants.md keeps
+       [initial Arial] as written, and only the row's negatives stay invalid
+       there. *)
     match byte_at buf 4 mod 6 with
+    | (1 | 2 | 5) when String.equal row.property "font-family" ->
+        pick row.negatives buf 5
     | 0 -> pick row.negatives buf 5
     | 1 -> "initial " ^ value
     | 2 -> "inherit " ^ value

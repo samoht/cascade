@@ -250,12 +250,15 @@ let invalid () =
   neg "font-family: serif serif";
   neg "font-family: serif Foo";
   (* CSS Values 4 sec. 4.2 excludes a CSS-wide keyword and [default] from
-     [<custom-ident>] itself, so those are turned away at every word rather than
-     only at the first. Chrome takes [Foo inherit] as a name; the exclusion is
-     on the type, and cascade holds the strict side. *)
-  neg "font-family: inherit inherit";
-  neg "font-family: Foo inherit";
-  neg "font-family: Foo default";
+     [<custom-ident>] itself, but Chromium 153 and WebKit 26.5 read one inside a
+     family of several words, so docs/invariants.md keeps such a declaration as
+     written. One standing alone in a list is dropped by both. *)
+  check_declaration ~expected:"font-family:inherit inherit"
+    "font-family: inherit inherit";
+  check_declaration ~expected:"font-family:Foo inherit"
+    "font-family: Foo inherit";
+  check_declaration ~expected:"font-family:Foo default"
+    "font-family: Foo default";
   typed_invalid "font-family: Arial, inherit";
   typed_invalid "font-family: revert-layer, serif";
   neg "font-family: system-ui revert-layer, serif";
