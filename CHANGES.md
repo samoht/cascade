@@ -986,6 +986,13 @@ The new form of a diagnostic is under [Breaking](#command-line).
   outside `auto | optimizeSpeed | optimizeLegibility | geometricPrecision` was
   printed back. Each now goes with a warning, as browsers drop it (#1292,
   #1294, #1440).
+- **A math function of the wrong type inside `calc()` was kept.**
+  `opacity:calc(min(10px,1px) + max(1px,2px))` and the same length comparison
+  at a time, a percentage or an angle were kept, and
+  `width:calc(min(1s,2s) + max(1s,2s))` was printed as `width:3s`; browsers
+  drop each one. A comparison, `abs()`, `hypot()` or a stepped-value call in a
+  calculation now has to carry a unit the property takes (CSS Values 4 sec.
+  10.1 and 10.9), and the declaration goes with a warning otherwise (#1524).
 - **`@charset` is read as browsers read it.** It warns and goes unless the
   sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
   comment or an `@layer` statement (#1294).
