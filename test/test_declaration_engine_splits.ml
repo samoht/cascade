@@ -3,6 +3,8 @@
 
 open Alcotest
 open Cascade
+open Css.Declaration
+open Css_test_helpers
 open Declaration_helpers
 
 (* Forms no specification grants that a browser in B parses, kept as written
@@ -69,9 +71,48 @@ let engine_splits_keep_as_written () =
         ".a{font-family:serif;font-family:inherit foo}" );
     ]
 
+(* More forms no specification grants that Chromium 153 reads and WebKit 26.5
+   drops, kept as written: [resize: auto] (CSS UI 4 sec. 4.1 has none),
+   [text-orientation: sideways-right] (CSS Writing Modes 4 sec. 5.1 has
+   sideways), [alignment-baseline: auto] (CSS Inline 3 sec. 4.2.2 has none), a
+   trailing comma after a column-rule list (CSS Gaps 1 sec. 4.4 has no empty
+   entry), and [historical-forms] repeated (CSS Fonts 4 takes it once). Each
+   drops in both once anything else is wrong. *)
+let engine_splits_keep_as_written_2 () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("resize: auto", "resize:auto");
+      ("text-orientation: sideways-right", "text-orientation:sideways-right");
+      ("alignment-baseline: auto", "alignment-baseline:auto");
+      ("column-rule: red,", "column-rule:red,");
+      ("column-rule: 1px solid red,", "column-rule:1px solid red,");
+      ("column-rule-width: 1px,", "column-rule-width:1px,");
+      ("column-rule-style: solid,", "column-rule-style:solid,");
+      ("column-rule-color: red,", "column-rule-color:red,");
+      ( "font-variant-alternates: historical-forms historical-forms",
+        "font-variant-alternates:historical-forms historical-forms" );
+    ];
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "resize: auto auto";
+      "text-orientation: sideways-right upright";
+      "column-rule: red,,";
+      "column-rule-width: ,1px";
+      "font-variant-alternates: historical-forms, historical-forms";
+      "font-variant-alternates: stylistic(a) stylistic(a)";
+    ];
+  (* WebKit paints the declaration before, so it is no dead fallback. *)
+  Alcotest.(check string)
+    "a fallback before resize: auto" ".a{resize:both;resize:auto}"
+    (Css.minify (Css.stylesheet ".a{resize:both;resize:auto}"))
+
 let suite =
   ( "declaration_engine_splits",
     [
       test_case "engine splits keep as written" `Quick
         engine_splits_keep_as_written;
+      test_case "engine splits keep as written, second set" `Quick
+        engine_splits_keep_as_written_2;
     ] )

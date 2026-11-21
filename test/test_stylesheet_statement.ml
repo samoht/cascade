@@ -550,6 +550,26 @@ let font_face_family_keeps_engine_splits () =
         (minify (face family)))
     [ "default"; "serif"; "Brand,Other"; "x \"y\"" ]
 
+(* CSS Fonts 4 (ED) sec. 6.6 writes each font-variation-settings entry
+   <opentype-tag> <number>, so a bare tag is no entry. Chromium 153 reads one at
+   the @font-face descriptor and gives it 1; WebKit 26.5 drops it, so the
+   descriptor is kept as written. A list holding an entry neither reads still
+   goes. *)
+let font_face_variation_tag_kept_as_written () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  let face desc =
+    String.concat "" [ "@font-face{font-family:a;src:url(a.woff);"; desc; "}" ]
+  in
+  List.iter
+    (fun desc -> Alcotest.(check string) desc (face desc) (minify (face desc)))
+    [
+      "font-variation-settings:\"wght\"";
+      "font-variation-settings:\"wght\",\"wdth\" 2";
+    ];
+  Alcotest.(check string)
+    "an entry neither reads" "@font-face{font-family:a;src:url(a.woff)}"
+    (minify (face "font-variation-settings:\"wght\" x"))
+
 let suite =
   ( "stylesheet_statement",
     [
@@ -757,4 +777,7 @@ let suite =
       ( "a font-face family keeps engine splits",
         `Quick,
         font_face_family_keeps_engine_splits );
+      ( "a font-face variation tag is kept as written",
+        `Quick,
+        font_face_variation_tag_kept_as_written );
     ] )
