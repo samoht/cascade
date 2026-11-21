@@ -363,6 +363,7 @@ type animation_range_name =
   | Exit
   | Entry_crossing
   | Exit_crossing
+  | Scroll  (** Scroll-driven Animations 1 sec. 3.1 [scroll]. *)
 
 (** Sec. 6.2: one end of [animation-range]. *)
 type animation_range_item =

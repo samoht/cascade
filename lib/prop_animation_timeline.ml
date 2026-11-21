@@ -163,6 +163,7 @@ let pp_animation_range_name : animation_range_name Pp.t =
   | Exit -> Pp.string ctx "exit"
   | Entry_crossing -> Pp.string ctx "entry-crossing"
   | Exit_crossing -> Pp.string ctx "exit-crossing"
+  | Scroll -> Pp.string ctx "scroll"
 
 let rec pp_animation_range_item : animation_range_item Pp.t =
  fun ctx -> function
@@ -660,6 +661,7 @@ let read_animation_range_name t : animation_range_name =
       ("exit", Exit);
       ("entry-crossing", Entry_crossing);
       ("exit-crossing", Exit_crossing);
+      ("scroll", Scroll);
     ]
     t
 
