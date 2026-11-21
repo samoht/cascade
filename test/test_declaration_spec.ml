@@ -65,6 +65,35 @@ let offset_path_box_takes_a_tail () =
   neg_cursor read_declaration "clip-path: content-box 10px";
   neg_cursor read_declaration "offset-path: content-box 10px"
 
+(* CSS Sizing 4 (ED) sec. 5.2 spells [contain-intrinsic-size] as [[ auto? [ none
+   | <length [0,inf]> ] ]{1,2}], so [auto] opens a slot and never ends one, and
+   no specification grants [0 auto]. Chromium 153 reads one slot followed by a
+   lone [auto] as that slot, and WebKit 26.5 drops it. A browser in B parses it,
+   so the declaration is kept as written: rewritten to [0] it would apply in
+   WebKit too, and dropped it would not apply in Chromium. A longer value, or
+   one that leaves anything after the [auto], both drop. *)
+let contain_intrinsic_size_keeps_a_trailing_auto () =
+  check_declaration ~expected:"contain-intrinsic-size:0 auto"
+    "contain-intrinsic-size: 0 auto";
+  check_declaration ~expected:"contain-intrinsic-size:2ch auto"
+    "contain-intrinsic-size: 2ch auto";
+  check_declaration ~expected:"contain-intrinsic-size:none auto"
+    "contain-intrinsic-size: none auto";
+  check_declaration ~expected:"contain-intrinsic-size:auto none auto"
+    "contain-intrinsic-size: auto none auto";
+  neg_cursor read_declaration "contain-intrinsic-size: 1px 2px auto";
+  neg_cursor read_declaration "contain-intrinsic-size: 0 auto auto";
+  neg_cursor read_declaration "contain-intrinsic-size: 0 auto red";
+  neg_cursor read_declaration "contain-intrinsic-size: -1px auto";
+  neg_cursor read_declaration "contain-intrinsic-width: 2ch auto";
+  (* WebKit paints the earlier declaration, so it is no dead fallback. *)
+  Alcotest.(check string)
+    "a trailing auto keeps its fallback"
+    ".a{contain-intrinsic-size:1px;contain-intrinsic-size:0 auto}"
+    (Css.minify
+       (Css.stylesheet
+          ".a { contain-intrinsic-size: 1px; contain-intrinsic-size: 0 auto }"))
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1457,6 +1486,8 @@ let suite =
         scrollbar_gutter_takes_either_order;
       test_case "an offset path box takes a tail" `Quick
         offset_path_box_takes_a_tail;
+      test_case "contain-intrinsic-size keeps a trailing auto" `Quick
+        contain_intrinsic_size_keeps_a_trailing_auto;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
