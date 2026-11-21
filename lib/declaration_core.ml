@@ -452,6 +452,9 @@ let rec background_image_uses_color p : Properties.background_image -> bool =
   | Repeating_conic_gradient (_, stops) ->
       List.exists (gradient_stop_uses_color p) stops
   | List imgs -> List.exists (background_image_uses_color p) imgs
+  | Webkit_cross_fade (first, second, _) ->
+      background_image_uses_color p first
+      || background_image_uses_color p second
   | _ -> false
 
 let rec filter_uses_color p : Properties.filter -> bool = function

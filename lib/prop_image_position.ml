@@ -362,6 +362,17 @@ let rec read_position_value t : position_value =
     (Position_value.read_4_value :: common_position_readers read_var)
     t
 
+(* CSS 2.1 sec. 14.2.1 [<bg-position>], the one- or two-value position the
+   legacy prefixed gradients take: no edge offset and no CSS-wide keyword. *)
+let rec read_legacy_position_value t : position_value =
+  let read_var t : position_value =
+    Var (read_var read_legacy_position_value t)
+  in
+  match Cursor.one_of (common_position_readers read_var) t with
+  | Inherit | Initial | Unset | Revert | Revert_layer ->
+      Cursor.err_expected t "a position"
+  | position -> position
+
 let rec read_background_position_value t : position_value =
   let read_var t : position_value =
     Var (read_var read_background_position_value t)

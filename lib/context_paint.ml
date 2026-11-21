@@ -519,6 +519,11 @@ let simplify_background_image_leaf ctx
                  simplify ~authored ~visited option.Properties.image;
              })
            options)
+  | Properties.Webkit_cross_fade (first, second, weight) ->
+      Properties.Webkit_cross_fade
+        ( simplify ~authored ~visited first,
+          simplify ~authored ~visited second,
+          weight )
   | Properties.List images ->
       Properties.List (List.map (simplify ~authored ~visited) images)
   | value -> value

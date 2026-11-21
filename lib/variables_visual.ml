@@ -142,10 +142,18 @@ let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
   | Position position -> vars_of_gradient_position position
   | Direction direction -> vars_of_gradient_direction direction
 
-let vars_of_background_image (value : Properties.background_image) :
+let rec vars_of_background_image (value : Properties.background_image) :
     any_var list =
   match value with
   | Var v -> [ V v ]
+  | Webkit_cross_fade (first, second, weight) ->
+      let weight =
+        match weight with
+        | Var v -> [ V v ]
+        | Calc calc -> vars_of_calc calc
+        | Num _ | Pct _ -> []
+      in
+      vars_of_background_image first @ vars_of_background_image second @ weight
   | Linear_gradient (direction, stops)
   | Repeating_linear_gradient (direction, stops)
   | Webkit_linear_gradient (direction, stops)

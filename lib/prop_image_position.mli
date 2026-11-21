@@ -29,5 +29,9 @@ val normalize_position_value :
 val read_position_value : Cursor.t -> position_value
 (** [read_position_value t] reads a [position_value] from [t]. *)
 
+val read_legacy_position_value : Cursor.t -> position_value
+(** [read_legacy_position_value t] reads the one- or two-value [<bg-position>]
+    of CSS 2.1 sec. 14.2.1, the position a legacy prefixed gradient takes. *)
+
 val read_background_position_value : Cursor.t -> position_value
 (** [read_background_position_value t] reads a [position_value] from [t]. *)
