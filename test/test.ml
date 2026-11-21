@@ -85,6 +85,7 @@ let () =
       Test_declaration_keywords.suite;
       Test_declaration_validity.suite;
       Test_declaration_spec.suite;
+      Test_declaration_engine_splits.suite;
       Test_declaration_grammar.suite;
       Test_declaration_identity.suite;
       Test_properties.suite;
