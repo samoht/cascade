@@ -117,6 +117,8 @@ let rec pp_alignment_baseline : alignment_baseline Pp.t =
 let rec pp_baseline_shift : baseline_shift Pp.t =
  fun ctx -> function
   | Shift value -> pp_length_percentage ~always:true ctx value
+  | Unitless n -> Pp.float ctx n
+  | Baseline -> Pp.string ctx "baseline"
   | Sub -> Pp.string ctx "sub"
   | Super -> Pp.string ctx "super"
   | Top -> Pp.string ctx "top"
@@ -238,29 +240,45 @@ let rec read_alignment_baseline t : alignment_baseline =
     ~var:(fun t -> Var (Values.read_var read_alignment_baseline t))
     t
 
+(* CSS Values 4 sec. 10.1 puts a math function wherever the shift stands, and
+   SVG 2 sec. 11.3 reads a bare coefficient here as a length in user units, so
+   the call answers on either type: [sqrt(4)] is a shift where a length-typed
+   [abs(-1px)] is one too. Sec. 10.8 gives an operand no keyword. *)
+let read_baseline_shift_math t : baseline_shift =
+  Cursor.one_of
+    [
+      (fun t ->
+        (Shift (Values.read_length_percentage ~with_keywords:false t)
+          : baseline_shift));
+      (fun t ->
+        Shift
+          (Calc
+             (Values.read_calc ~result_type:`Number
+                (Values.read_length_percentage ~with_keywords:false)
+                t)));
+    ]
+    t
+
+(* Chromium also reads a bare number, as px, and SVG 1.1's [baseline]; both are
+   kept as written, never respelled into a value the specification grants. *)
+let read_baseline_shift_literal t : baseline_shift =
+  Cursor.one_of
+    [
+      (fun t ->
+        (Shift (Values.read_length_percentage ~with_keywords:false t)
+          : baseline_shift));
+      (fun t ->
+        match Cursor.number_opt t with
+        | Some n -> Unitless n
+        | None -> Cursor.err_expected t "a length, a percentage or a number");
+    ]
+    t
+
 let rec read_baseline_shift t : baseline_shift =
-  (* CSS Values 4 sec. 10.1 puts a math function wherever the shift stands, and
-     SVG 2 sec. 11.3 reads a bare coefficient here as a length in user units, so
-     the call answers on either type: [sqrt(4)] is a shift where a length-typed
-     [abs(-1px)] is one too. Sec. 10.8 gives an operand no keyword. *)
-  let read_math t : baseline_shift =
-    Cursor.one_of
-      [
-        (fun t ->
-          (Shift (Values.read_length_percentage ~with_keywords:false t)
-            : baseline_shift));
-        (fun t ->
-          Shift
-            (Calc
-               (Values.read_calc ~result_type:`Number
-                  (Values.read_length_percentage ~with_keywords:false)
-                  t)));
-      ]
-      t
-  in
   Cursor.enum_or_calls "baseline-shift"
     [
-      ("sub", (Sub : baseline_shift));
+      ("baseline", (Baseline : baseline_shift));
+      ("sub", Sub);
       ("super", Super);
       ("top", Top);
       ("center", Center);
@@ -273,11 +291,9 @@ let rec read_baseline_shift t : baseline_shift =
     ]
     ~calls:
       (("var", fun t -> Var (Values.read_var read_baseline_shift t))
-      :: ("calc", read_math)
-      :: Values.math_function_calls read_math)
-    ~default:(fun t ->
-      Shift (Values.read_length_percentage ~with_keywords:false t))
-    t
+      :: ("calc", read_baseline_shift_math)
+      :: Values.math_function_calls read_baseline_shift_math)
+    ~default:read_baseline_shift_literal t
 
 let rec read_direction t : direction =
   Cursor.enum_or_var "direction"

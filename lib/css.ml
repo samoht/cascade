@@ -245,8 +245,8 @@ let conic_gradient
       { angle = None; position = None; interpolation = None }) stops =
   (Conic_gradient (config, stops) : background_image)
 
-let object_view_box_inset ?right ?bottom ?left top : object_view_box =
-  Inset (top, right, bottom, left)
+let object_view_box_inset ?right ?bottom ?left ?round top : object_view_box =
+  Inset (top, right, bottom, left, round)
 
 let grid_tracks tracks = (Tracks tracks : grid_template)
 let grid_repeat count tracks = (Repeat (count, tracks) : grid_template)

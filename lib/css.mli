@@ -1518,9 +1518,14 @@ val radius : length -> border_radius
     [border-radius: 0.375rem]. *)
 
 val object_view_box_inset :
-  ?right:length -> ?bottom:length -> ?left:length -> length -> object_view_box
-(** [object_view_box_inset ?right ?bottom ?left top] is an [inset()] object view
-    box. *)
+  ?right:length ->
+  ?bottom:length ->
+  ?left:length ->
+  ?round:border_radius ->
+  length ->
+  object_view_box
+(** [object_view_box_inset ?right ?bottom ?left ?round top] is an [inset()]
+    object view box, rounded by [round]. *)
 
 val object_view_box : object_view_box -> declaration
 (** [object_view_box box] is the CSS [object-view-box] property. *)

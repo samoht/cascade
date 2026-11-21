@@ -942,6 +942,61 @@ let conic_angular_stops () =
       "radial-gradient(red 0deg, blue)";
     ]
 
+(* Three values Chromium 153 keeps and the reader dropped. SVG 2 sec. 13.5.6
+   spells [stroke-dasharray] as [[ <length-percentage> | <number> ]+]#, and CSS
+   Values 4 sec. 10.1 puts a math function in every one of those slots, the
+   first or a later one. CSS Images 5 (ED) sec. 3.1 takes [object-view-box: none
+   | <basic-shape-rect>], whose [inset()] carries a [round <'border-radius'>]
+   (CSS Shapes 1 sec. 3). [baseline-shift] is [<length-percentage> | sub | super
+   | top | center | bottom] in CSS Inline 3 (ED) sec. 4.2.3, and SVG 2 sec. 4.2
+   grants a unitless number in a presentation attribute only. Chromium also
+   takes a number in a style sheet, as a length in px, and the [baseline]
+   keyword of SVG 1.1 sec. 10.9.2, so both stay as written. *)
+let svg_and_box_values () =
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"stroke-dasharray" ~into input)
+    [
+      ("calc(50%) calc(25%)", "50% 25%");
+      ("1 2 calc(3%)", "1 2 3%");
+      ("1 calc(2)", "1 2");
+      ("calc(1px) calc(2px)", "1px 2px");
+    ];
+  List.iter
+    (fun (input, held) ->
+      check_declaration
+        ~expected:(String.concat "" [ "object-view-box:"; held ])
+        (String.concat "" [ "object-view-box: "; input ]))
+    [
+      ("inset(0 round 0)", "inset(0 round 0)");
+      ("inset(1px 2px round 3px)", "inset(1px 2px round 3px)");
+      ("inset(10% round 50%)", "inset(10% round 50%)");
+      ("inset(1px round 1px 2px / 3px)", "inset(1px round 1px 2px/3px)");
+    ];
+  List.iter
+    (fun (input, held) ->
+      check_declaration
+        ~expected:(String.concat "" [ "baseline-shift:"; held ])
+        (String.concat "" [ "baseline-shift: "; input ]))
+    [
+      ("1", "1");
+      ("+.5", ".5");
+      ("-1", "-1");
+      ("baseline", "baseline");
+      ("BASELINE", "baseline");
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "stroke-dasharray: 1 1 calc(10deg)";
+      "stroke-dasharray: 1 1 calc(1px + 1)";
+      "object-view-box: inset(0 round -1px)";
+      "object-view-box: inset(0 round)";
+      "object-view-box: inset(1px 2px 3px 4px 5px)";
+      "object-view-box: circle(10px)";
+      "baseline-shift: 1 2";
+      "baseline-shift: auto";
+    ]
+
 let suite =
   ( "declaration",
     [
@@ -962,6 +1017,7 @@ let suite =
       test_case "vendor prefixes" `Quick vendor_prefixes;
       test_case "legacy webkit images" `Quick legacy_webkit_images;
       test_case "conic angular stops" `Quick conic_angular_stops;
+      test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)
       test_case "error missing colon" `Quick error_missing_colon;
       test_case "of_string has one failure mode" `Quick

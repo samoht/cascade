@@ -240,7 +240,14 @@ type object_fit =
 
 type object_view_box =
   | None
-  | Inset of length * length option * length option * length option
+  | Inset of
+      length
+      * length option
+      * length option
+      * length option
+      * border_radius option
+      (** [inset()] with one to four offsets and its optional
+          [round <'border-radius'>] (CSS Shapes 1 sec. 3). *)
   | Xywh of {
       x : length_percentage;
       y : length_percentage;
