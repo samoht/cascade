@@ -838,6 +838,12 @@ let floor_fallbacks_survive () =
   check_modes "image-set()"
     "a{background:url(a.png);background:image-set(url(a.png) 1x)}"
     "a{background:url(a.png);background:image-set(url(a.png)1x)}";
+  (* MDN's compatibility data records -webkit-cross-fade() as the prefixed form
+     of cross-fade() in Chrome and Safari and never in Firefox, so Firefox
+     paints the image before it. *)
+  check_modes "-webkit-cross-fade()"
+    "a{background-image:url(x.png);background-image:-webkit-cross-fade(url(a.png),url(b.png),.5)}"
+    "a{background-image:url(x.png);background-image:-webkit-cross-fade(url(a.png),url(b.png),.5)}";
   (* web-features records the variadic color-mix() in Firefox 150 alone, so
      every other floor drops the later declaration and paints red. *)
   (* One item is the variadic grammar too: Firefox reads it from 150, behind
