@@ -1227,6 +1227,38 @@ let canonical_legacy_name_alias () =
   case "a prefix a target needs is written on both sides" true
     "a{-webkit-user-select:none;user-select:none}" "a{user-select:none}"
 
+(* WHATWG Compatibility Standard sec. 3.4.1 lists [-webkit-mask-box-image] and
+   its longhands as legacy name aliases of [mask-border] and its longhands, but
+   no Chromium or Firefox release reads [mask-border] (web-features gives Safari
+   17.2 alone), so across the targets the prefixed spelling is a property of its
+   own. Chromium 153: [CSS.supports] answers true for
+   [-webkit-mask-box-image-width] and false for [mask-border-width];
+   [mask-border-width:3px] leaves [-webkit-mask-box-image-width] at [auto],
+   where [-webkit-mask-box-image-width:3px] computes [3px]. The positive
+   control, [-webkit-transform:translateX(1px)], computes the same matrix under
+   both names. So neither spelling stands in for the other, and the minifier
+   keeps the prefixed write beside the unprefixed one. *)
+let mask_box_image_is_no_alias () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "the prefixed longhand is not the unprefixed one" false
+    (equal ".a{-webkit-mask-box-image-width:1px}" ".a{mask-border-width:1px}");
+  Alcotest.(check bool)
+    "nor is the prefixed shorthand" false
+    (equal ".a{-webkit-mask-box-image:url(m.png) 10}"
+       ".a{mask-border:url(m.png) 10}");
+  Alcotest.(check bool)
+    "the prefixed write beside the unprefixed one is live" false
+    (equal ".a{-webkit-mask-box-image-width:1px;mask-border-width:1px}"
+       ".a{mask-border-width:1px}");
+  let source = ".c{-webkit-mask-box-image-width:1px;mask-border-width:1px}" in
+  match Cascade.Css.of_string source with
+  | Error _ -> Alcotest.failf "%s does not parse" source
+  | Ok { Cascade.Css.stylesheet; _ } ->
+      Alcotest.(check string)
+        "the minifier keeps both writes" source
+        (Cascade.Css.to_string ~minify:true (Cascade.Css.optimize stylesheet))
+
 (* CSS Variables 1 secs. 2 and 3 make a custom property an ordinary cascade slot
    and substitute its computed value into the property containing [var()]. A
    [color] declaration therefore reads [--x] without writing it: crossing a
@@ -1498,6 +1530,8 @@ let suite =
         canonical_supports_hoisting;
       Alcotest.test_case "canonical legacy name alias" `Quick
         canonical_legacy_name_alias;
+      Alcotest.test_case "the mask-box-image set is no alias" `Quick
+        mask_box_image_is_no_alias;
       Alcotest.test_case "canonical var reader crosses guarded writer" `Quick
         canonical_var_reader_crosses_guarded_writer;
       Alcotest.test_case "canonical keeps custom-property importance" `Quick
