@@ -530,9 +530,13 @@ let property_value_uses_runtime_subst (type a)
   | Padding_bottom -> Values.length_has_runtime_subst value
   | Padding_left -> Values.length_has_runtime_subst value
   | Border_top_left_radius -> length_list_has_runtime_subst value
+  | Webkit_border_top_left_radius -> length_list_has_runtime_subst value
   | Border_top_right_radius -> length_list_has_runtime_subst value
+  | Webkit_border_top_right_radius -> length_list_has_runtime_subst value
   | Border_bottom_left_radius -> length_list_has_runtime_subst value
+  | Webkit_border_bottom_left_radius -> length_list_has_runtime_subst value
   | Border_bottom_right_radius -> length_list_has_runtime_subst value
+  | Webkit_border_bottom_right_radius -> length_list_has_runtime_subst value
   | Outline_width -> Properties.border_width_has_runtime_subst value
   | Margin -> length_list_has_runtime_subst value
   | Padding -> length_list_has_runtime_subst value

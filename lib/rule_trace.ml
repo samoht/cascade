@@ -341,6 +341,14 @@ let deduplicated ~ctx d first second =
        (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false
           [ first; second ]))
 
+(* Whether [d] writes a vendor's own property, which an engine may read without
+   reading a later write of the same slots under another name. *)
+let vendor_prefixed d =
+  match unguarded d with
+  | Declaration.Declaration { property; _ } ->
+      Properties.is_vendor_prefixed property
+  | Declaration.Theme_guarded _ -> false
+
 (* Whether [y] at position [q] of [x]'s group overrides [x] at [p]: it comes
    later at [x]'s importance, or it is important and [x] is not. The group has
    one selector and one set of conditions, so [y] applies to every element [x]
@@ -378,9 +386,7 @@ let kill_entry ~ctx entries members p =
         else if
           q > p
           && List.equal Shorthand.overlap_key_equal x.keys y.keys
-          && (not
-                (String.starts_with ~prefix:"-"
-                   (Declaration.property_name y.decl)))
+          && (not (vendor_prefixed y.decl))
           && deduplicated ~ctx x.decl x.decl y.decl
         then x.dead <- true
         else if Shorthand.overlap_keys_intersect x.keys y.keys then

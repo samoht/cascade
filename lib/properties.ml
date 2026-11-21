@@ -527,6 +527,20 @@ let property_of_lowercase_name prop_name =
   | "text-combine-upright" -> Prop Text_combine_upright
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
+  | "-webkit-backface-visibility" -> Prop Webkit_backface_visibility
+  | "-webkit-border-top-left-radius" -> Prop Webkit_border_top_left_radius
+  | "-webkit-border-top-right-radius" -> Prop Webkit_border_top_right_radius
+  | "-webkit-border-bottom-right-radius" ->
+      Prop Webkit_border_bottom_right_radius
+  | "-webkit-border-bottom-left-radius" -> Prop Webkit_border_bottom_left_radius
+  | "-webkit-flex" -> Prop Webkit_flex
+  | "-webkit-flex-grow" -> Prop Webkit_flex_grow
+  | "-webkit-flex-shrink" -> Prop Webkit_flex_shrink
+  | "-webkit-flex-basis" -> Prop Webkit_flex_basis
+  | "-webkit-order" -> Prop Webkit_order
+  | "-webkit-perspective-origin" -> Prop Webkit_perspective_origin
+  | "-webkit-transform-origin" -> Prop Webkit_transform_origin
+  | "-webkit-transform-style" -> Prop Webkit_transform_style
   | "-moz-transform" -> Prop Moz_transform
   | "-ms-transform" -> Prop Ms_transform
   | "-o-transform" -> Prop O_transform

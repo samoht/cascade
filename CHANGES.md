@@ -749,6 +749,21 @@ differently. They are the reason to minify again.
   unprefixed property's grammar and dropped when the values agree, which
   shrinks the SatCSS output by about 0.7% raw and 0.3% under gzip.
   `--enforce-spec` keeps every copy (#1439).
+- **Thirteen more prefixed aliases are typed.** `--minify` printed
+  `-webkit-flex:0 0 auto` and `-webkit-transform-origin:top left` as written,
+  and kept `-webkit-flex:0 1 main-size`, which no target browser parses, since
+  cascade had no type for these WHATWG Compatibility legacy aliases.
+  `-webkit-flex` and its three longhands, `-webkit-order`, the four
+  `-webkit-border-*-radius` corners, `-webkit-transform-origin`,
+  `-webkit-transform-style`, `-webkit-perspective-origin` and
+  `-webkit-backface-visibility` now read under their unprefixed property's
+  grammar, which every target engine parses them with. They print as
+  `flex:none` and `transform-origin:0 0` do, and a value that grammar refuses
+  is dropped with a warning. A few SatCSS sheets shrink, most of them under
+  `--enforce-spec`, which keeps every prefixed copy. In the library,
+  `Properties.property` gains a constructor for each, `Webkit_flex` and
+  `Webkit_transform_origin` among them, carrying its unprefixed property's
+  value type (#1518).
 - **An overridden `content` goes.** `--minify` kept both declarations of
   `.a{content:"a";content:"b"}`, since a later `content` can be a value some
   browser rejects and the earlier its fallback. After a string, a quote

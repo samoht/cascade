@@ -569,6 +569,19 @@ let property_tag : type a. a property -> int = function
   | Offset_anchor -> 534
   | Offset_position -> 535
   | Offset -> 536
+  | Webkit_backface_visibility -> 552
+  | Webkit_border_top_left_radius -> 553
+  | Webkit_border_top_right_radius -> 554
+  | Webkit_border_bottom_right_radius -> 555
+  | Webkit_border_bottom_left_radius -> 556
+  | Webkit_flex -> 557
+  | Webkit_flex_grow -> 558
+  | Webkit_flex_shrink -> 559
+  | Webkit_flex_basis -> 560
+  | Webkit_order -> 561
+  | Webkit_perspective_origin -> 562
+  | Webkit_transform_origin -> 563
+  | Webkit_transform_style -> 564
 (* PROPERTY_TAG_END *)
 
 (* Two property identities order by tag, and the two payload-carrying
@@ -1150,5 +1163,20 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Overscroll_behavior_inline, Overscroll_behavior_inline -> Some Equal
   | Accent_color, Accent_color -> Some Equal
   | Caret_color, Caret_color -> Some Equal
+  | Webkit_backface_visibility, Webkit_backface_visibility -> Some Equal
+  | Webkit_border_top_left_radius, Webkit_border_top_left_radius -> Some Equal
+  | Webkit_border_top_right_radius, Webkit_border_top_right_radius -> Some Equal
+  | Webkit_border_bottom_right_radius, Webkit_border_bottom_right_radius ->
+      Some Equal
+  | Webkit_border_bottom_left_radius, Webkit_border_bottom_left_radius ->
+      Some Equal
+  | Webkit_flex, Webkit_flex -> Some Equal
+  | Webkit_flex_grow, Webkit_flex_grow -> Some Equal
+  | Webkit_flex_shrink, Webkit_flex_shrink -> Some Equal
+  | Webkit_flex_basis, Webkit_flex_basis -> Some Equal
+  | Webkit_order, Webkit_order -> Some Equal
+  | Webkit_perspective_origin, Webkit_perspective_origin -> Some Equal
+  | Webkit_transform_origin, Webkit_transform_origin -> Some Equal
+  | Webkit_transform_style, Webkit_transform_style -> Some Equal
   | _ -> None
 (* PROPERTY_EQ_END *)

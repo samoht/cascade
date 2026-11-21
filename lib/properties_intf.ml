@@ -659,6 +659,19 @@ type 'a property =
   | Offset_anchor : offset_anchor property
   | Offset_position : offset_position property
   | Offset : offset property
+  | Webkit_backface_visibility : backface_visibility property
+  | Webkit_border_top_left_radius : length list property
+  | Webkit_border_top_right_radius : length list property
+  | Webkit_border_bottom_right_radius : length list property
+  | Webkit_border_bottom_left_radius : length list property
+  | Webkit_flex : flex property
+  | Webkit_flex_grow : flex_factor property
+  | Webkit_flex_shrink : flex_factor property
+  | Webkit_flex_basis : flex_basis property
+  | Webkit_order : order property
+  | Webkit_perspective_origin : perspective_origin property
+  | Webkit_transform_origin : transform_origin property
+  | Webkit_transform_style : transform_style property
 
 type any_property = Prop : 'a property -> any_property
 
