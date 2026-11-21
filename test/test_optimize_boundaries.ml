@@ -950,11 +950,22 @@ let c736_revert_rule_keeps_its_rule () =
         ".a{color:red}.a{color:var(--n,revert-rule)}" );
       ( ".a{color:red}.a{&{color:revert-rule}}",
         ".a{color:red}.a{color:revert-rule}" );
-      ( ".n{color:red;& .k{margin:0}color:revert-rule}",
-        ".n{color:red;.k{margin:0}color:revert-rule}" );
       ( "@supports (color:revert-rule){.a{color:blue}}",
         "@supports(color:revert-rule){.a{color:#00f}}" );
-    ]
+    ];
+  (* A declaration after a nested rule sits in a nested declarations rule of its
+     own (CSS Nesting 1 sec. 3.4), so it may be written nested or unnested after
+     its parent, but never in the parent's own run. *)
+  let output =
+    optimized_string ".n{color:red;& .k{margin:0}color:revert-rule}"
+  in
+  Alcotest.(check bool)
+    (Fmt.str "revert-rule stays out of its parent's run (got %s)" output)
+    false
+    (Astring.String.is_infix ~affix:"color:red;color:revert-rule" output);
+  Alcotest.(check bool)
+    "revert-rule is kept" true
+    (Astring.String.is_infix ~affix:"color:revert-rule" output)
 
 let suite =
   ( "optimize_boundaries",
