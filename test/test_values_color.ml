@@ -1088,6 +1088,23 @@ let negative_chroma_clamps () =
   optimizes ~into:"lch(50 0 0)" "lch(50% -10 0)";
   optimizes ~into:"oklch(.5 0 20)" "oklch(.5 -.1 20)"
 
+(* CSS Color 4 sec. 5.1 and 7.1: the legacy comma-separated [rgb()] and [hsl()]
+   syntax takes no [none]; only the modern syntax does. Chromium 153 rejects
+   [hsl(none,50%,50%)], [rgb(none,0,0)] and [rgb(0,0,0,none)], so a declaration
+   of them is dropped and an earlier one applies. *)
+let legacy_syntax_takes_no_none () =
+  List.iter (neg_cursor read_color)
+    [
+      "hsl(none,50%,50%)";
+      "hsl(0,none,50%)";
+      "hsla(0,50%,50%,none)";
+      "rgb(none,0,0)";
+      "rgb(0,none,0)";
+      "rgba(0,0,0,none)";
+    ];
+  check_color ~expected:"hsl(none 50%50%)" "hsl(none 50% 50%)";
+  check_color ~expected:"rgb(none 0 0)" "rgb(none 0 0)"
+
 let suite =
   ( "values_color",
     [
@@ -1127,4 +1144,5 @@ let suite =
         fold_keeps_interpolation_class;
       test_case "alpha none is missing" `Quick alpha_none_is_missing;
       test_case "negative chroma clamps" `Quick negative_chroma_clamps;
+      test_case "legacy syntax takes no none" `Quick legacy_syntax_takes_no_none;
     ] )
