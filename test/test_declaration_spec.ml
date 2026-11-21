@@ -421,6 +421,22 @@ let mask_position_takes_no_three_value_form () =
       "mask-position: left 10px top, center";
     ]
 
+(* The [mask] shorthand takes [<position>] too (CSS Masking 1 sec. 7.9), but
+   Chromium and WebKit read its layer's position with [background-position]'s
+   three-value grammar, and Gecko does not. A declaration some browser in B
+   reads and another drops is kept as written: dropping it changes the first,
+   and rewriting it into a form every browser reads changes the second. *)
+let mask_shorthand_keeps_a_three_value_position () =
+  check_declaration ~expected:"mask:url(a.png) left 10px top"
+    "mask: url(a.png) left 10px top";
+  check_declaration ~expected:"mask:url(a.png) left top 10px,none"
+    "mask: url(a.png) left top 10px, none";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "mask: url(a.png) left 10px top 5px 6px"; "mask: url(a.png) left 10px foo";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1813,6 +1829,8 @@ let suite =
         an_image_set_option_names_one_resolution;
       test_case "mask-position takes no three-value form" `Quick
         mask_position_takes_no_three_value_form;
+      test_case "mask shorthand keeps a three-value position" `Quick
+        mask_shorthand_keeps_a_three_value_position;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
       test_case "try tactics stand together" `Quick try_tactics_stand_together;

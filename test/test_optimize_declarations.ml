@@ -906,6 +906,24 @@ let legacy_keyword_fallbacks_survive () =
       ("a{cursor:-webkit-grab;cursor:-webkit-grab}", "a{cursor:-webkit-grab}");
     ]
 
+(* A [mask] whose layer position has three values is read by Chromium and WebKit
+   and dropped by Gecko, so [--minify] keeps it as written, with no two-value
+   respelling, which Gecko would read. The [-webkit-mask] twin the targets ask
+   for carries the same value, which each of those engines reads or drops as it
+   does [mask]. *)
+let mask_three_value_position_kept_as_written () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( "a{mask:url(a.png) left 10px top}",
+        "a{-webkit-mask:url(a.png) left 10px top;mask:url(a.png) left 10px top}"
+      );
+      ( "a{mask:url(a.png);mask:url(b.png) left 10px top}",
+        "a{-webkit-mask:url(a.png);mask:url(a.png);-webkit-mask:url(b.png) \
+         left 10px top;mask:url(b.png) left 10px top}" );
+    ]
+
 (* An earlier declaration of a property is a fallback for a browser that drops
    the later one at parse time, and the default targets are floors: Chrome 111,
    Firefox 128, Safari 16.4 and every later release. web-features records
@@ -1288,6 +1306,9 @@ let suite =
       ( "legacy keyword fallbacks survive",
         `Quick,
         legacy_keyword_fallbacks_survive );
+      ( "mask three-value position kept as written",
+        `Quick,
+        mask_three_value_position_kept_as_written );
       ( "target evergreen compatibility prefixes",
         `Quick,
         target_evergreen_compatibility_prefixes );
