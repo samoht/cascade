@@ -752,6 +752,140 @@ let rec first_release ~floor engine decl =
   | Declaration _ ->
       first_release_with ~tokens:(lazy (value_tokens decl)) ~floor engine decl
 
+let display_value_is_vendor : Properties.display -> bool = function
+  | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
+  | Moz_inline_box ->
+      true
+  | _ -> false
+
+let background_image_is_vendor : Properties.background_image -> bool = function
+  | Webkit_linear_gradient _ | Webkit_repeating_linear_gradient _
+  | Webkit_radial_gradient _ | Webkit_repeating_radial_gradient _
+  | Moz_linear_gradient _ | Moz_repeating_linear_gradient _
+  | Moz_radial_gradient _ | Moz_repeating_radial_gradient _
+  | O_linear_gradient _ | O_repeating_linear_gradient _ | O_radial_gradient _
+  | O_repeating_radial_gradient _ | Webkit_image_set _ | Webkit_gradient _ ->
+      true
+  | _ -> false
+
+(* A shorthand carries the same image the longhand does, so the prefixed
+   spelling is the same fallback whichever property writes it. [background] and
+   [mask] carry one image per layer; [border-image] and [mask-border] carry a
+   single source. *)
+let background_layer_is_vendor (layer : Properties.background) =
+  match layer with
+  | Shorthand { image = Some image; _ } -> background_image_is_vendor image
+  | _ -> false
+
+let mask_layer_is_vendor (layer : Properties.mask_layer) =
+  match layer.image with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
+let mask_value_is_vendor (value : Properties.mask) =
+  match value with
+  | Layer layer -> mask_layer_is_vendor layer
+  | Layers layers -> List.exists mask_layer_is_vendor layers
+  | _ -> false
+
+let border_image_source_is_vendor (value : Properties.border_image) =
+  match value.source with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
+(* A value whose rendering begins with a vendor prefix (-webkit-, -moz-, -ms-,
+   -o-). Preserves legacy fallbacks like [display:-webkit-box;display:flex]: old
+   browsers understand only the prefixed spelling, so dropping the earlier
+   declaration removes a real compat fallback. *)
+(* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
+   or-pattern does not refine the value type, so each constructor is matched on
+   its own; everything else is not a sizing fallback. *)
+let sizing_value_is_vendor_prefixed : type a. a Properties.property -> a -> bool
+    =
+ fun property value ->
+  let pfx = Values.length_percentage_is_vendor_prefixed in
+  match property with
+  | Width -> pfx value
+  | Height -> pfx value
+  | Min_width -> pfx value
+  | Min_height -> pfx value
+  | Max_width -> pfx value
+  | Max_height -> pfx value
+  | Block_size -> pfx value
+  | Inline_size -> pfx value
+  | Min_block_size -> pfx value
+  | Min_inline_size -> pfx value
+  | Max_block_size -> pfx value
+  | Max_inline_size -> pfx value
+  | _ -> false
+
+let rec value_is_vendor_prefixed decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> value_is_vendor_prefixed decl
+  | Declaration { property = Display; value; _ } ->
+      display_value_is_vendor value
+  | Declaration { property = Background_image; value; _ } ->
+      List.exists background_image_is_vendor value
+  | Declaration { property = Webkit_mask_image; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Mask_image; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Border_image_source; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Background; value; _ } ->
+      List.exists background_layer_is_vendor value
+  | Declaration { property = Mask; value; _ } -> mask_value_is_vendor value
+  | Declaration { property = Border_image; value; _ } ->
+      border_image_source_is_vendor value
+  | Declaration { property = Mask_border; value; _ } ->
+      border_image_source_is_vendor value
+  (* [position:-webkit-sticky;position:sticky] and the [text-align] equivalent
+     are the same browser-compat pattern: old Safari only understands the
+     prefixed keyword, so the earlier declaration is a real fallback. *)
+  | Declaration { property = Position; value = Webkit_sticky; _ } -> true
+  | Declaration { property = Text_align; value = Webkit_match_parent; _ } ->
+      true
+  (* [width:-webkit-max-content;width:max-content] and the other intrinsic
+     sizing properties: the prefixed keyword is a fallback for old Safari /
+     Firefox, so the earlier declaration must survive minify dedup. *)
+  | Declaration { property; value; _ } ->
+      sizing_value_is_vendor_prefixed property value
+
+(* The dataset gives a vendor-prefixed or legacy keyword no key, so it cannot
+   say which engine reads one. A declaration using one is marked by the prefixed
+   words of its value, or by its whole value for an unprefixed legacy keyword
+   such as [overflow:overlay]. Two values of one property with different marks
+   may each be what some browser in B reads alone; two with the same marks, such
+   as two [-webkit-linear-gradient()]s, are read by the same browsers, and the
+   data decides as for any other pair. *)
+let legacy_marks decl =
+  if not (value_is_vendor_prefixed decl) then []
+  else
+    let prefixed : Token.kind -> string option = function
+      | (Ident w | Function w) when String.starts_with ~prefix:"-" w ->
+          Some (String.lowercase_ascii w)
+      | _ -> None
+    in
+    match List.filter_map prefixed (value_tokens decl) with
+    | [] -> [ string_of_value ~minify:true decl ]
+    | words -> List.sort_uniq String.compare words
+
+let marks_differ later earlier =
+  same_property later earlier
+  && not (List.equal String.equal (legacy_marks later) (legacy_marks earlier))
+
+(* [earlier] is what a browser paints where it reads [earlier] and drops
+   [later]. A later value with no such keyword is one the data answers for. *)
+let legacy_vendor_fallback ~later earlier =
+  value_is_vendor_prefixed later && marks_differ later earlier
+
+(* Inside one rule a prefixed or legacy keyword also stays before a later
+   standard value, for a browser older than the floors that reads only the
+   prefixed one. *)
+let legacy_pair later earlier =
+  (value_is_vendor_prefixed earlier || value_is_vendor_prefixed later)
+  && marks_differ later earlier
+
 (* The browsers judged for are each engine from its floor to the newest release
    the data records, and a shipped production stays. [earlier] is what a browser
    paints in place of [later] only where it parses [earlier] and drops [later]:
@@ -760,16 +894,17 @@ let rec first_release ~floor engine decl =
    Safari does [user-select:auto] and [user-select:none], paints neither, and
    one parsing both paints [later]. *)
 let fallback_for ~floors ~later earlier =
-  List.exists
-    (fun (engine, floor) ->
-      match first_release ~floor engine earlier with
-      | Option.None -> false
-      | Option.Some reads_earlier -> (
-          match first_release ~floor engine later with
-          | Option.None -> true
-          | Option.Some reads_later ->
-              Support.compare_version reads_later reads_earlier > 0))
-    (Support.floors floors)
+  legacy_vendor_fallback ~later earlier
+  || List.exists
+       (fun (engine, floor) ->
+         match first_release ~floor engine earlier with
+         | Option.None -> false
+         | Option.Some reads_earlier -> (
+             match first_release ~floor engine later with
+             | Option.None -> true
+             | Option.Some reads_later ->
+                 Support.compare_version reads_later reads_earlier > 0))
+       (Support.floors floors)
 
 (* Rewrite the value of a custom declaration through [f], which sees its
    minified serialisation. Everything else the declaration carries - its

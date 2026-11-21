@@ -173,8 +173,18 @@ val fallback_for :
     engine [floors] names, from its floor to the newest the web-features dataset
     records, parses [earlier] and drops [later] at parse time, so paints
     [earlier] where [later] covers it. Which release parses a declaration is
-    {!first_release}. [false] means every such release that parses [earlier]
+    {!first_release}. A vendor-prefixed or legacy keyword the dataset does not
+    model, such as [-webkit-box], counts as dropped by some release: an earlier
+    value of the property is a fallback for a later one using such keywords the
+    earlier does not. [false] means every such release that parses [earlier]
     parses [later], so [earlier] is dead wherever [later] covers it. *)
+
+val legacy_pair : declaration -> declaration -> bool
+(** [legacy_pair later earlier] is [true] when [later] and [earlier] set one
+    property and differ in which vendor-prefixed or legacy keywords they use,
+    one of them using some, such as [display:-webkit-box] and [display:flex].
+    Deduplication inside one rule keeps both, in either order, for a browser
+    older than the floors that reads only the prefixed one. *)
 
 val map_custom_value : (string -> string) -> declaration -> declaration
 (** [map_custom_value f d] is [d] with its custom-property value replaced by
