@@ -726,37 +726,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.contain-intrinsic-size.auto_none_auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Sizing 4 (ED) sec. 5.2 spells contain-intrinsic-size [ auto? [ \
-         none | <length [0,inf]> ] ]{1,2}, so auto none is one whole slot and \
-         the auto after it is no slot at all. Chrome takes the trailing bare \
-         auto";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.contain-intrinsic-size.none_auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "The same sec. 5.2 grammar puts auto before the none or length of its \
-         own slot and never after one, so none auto is a slot and a keyword \
-         with no slot to open. Chrome takes the trailing bare auto here too";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.properties.break-before.all";
       support =
         {
