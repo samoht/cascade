@@ -683,10 +683,15 @@ let rows =
           "non-scaling-size";
           "non-rotation";
           "fixed-position";
+        ];
+      negatives =
+        [
+          "bogus";
+          "screen";
+          "none non-scaling-stroke";
           "non-scaling-stroke screen";
           "non-scaling-stroke fixed-position";
         ];
-      negatives = [ "bogus"; "screen"; "none non-scaling-stroke" ];
     };
     {
       property = "paint-order";
