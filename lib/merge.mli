@@ -7,6 +7,14 @@ val listable : Selector.t -> bool
     parse one of its selectors (Selectors 4 sec. 3.9), so a grouping pass lists
     only selectors {!compatible} with each other. *)
 
+val parsed_by_none : Selector.t -> bool
+(** [parsed_by_none sel] is whether no release of any target engine, from its
+    evergreen floor on, parses [sel]: each engine drops one of its branches in
+    every release (Selectors 4 sec. 3.9), as the facts about prefixed names
+    record. A node cascade has no answer for counts as parsed, and so does one
+    the data records as unshipped, since it records a partial implementation as
+    none. *)
+
 val key : Selector.t -> Selector.t list
 (** Canonical key for same-target selector comparison. *)
 
