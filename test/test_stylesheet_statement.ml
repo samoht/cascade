@@ -448,6 +448,38 @@ let counter_symbols_keep_their_kind () =
     "@counter-style c { system: cyclic; symbols: \"a\"; prefix: url(p.png); \
      suffix: s }"
 
+(* CSS Counter Styles 3 (ED) sec. 3.1.7 spells <symbol> as <string> | <image> |
+   <custom-ident>, one image and no list of them, and sec. 3.3 separates the
+   entries of additive-symbols with commas. Chromium 153 and WebKit 26.5 drop
+   prefix: url(a.png), none and the same list in suffix, pad, negative and
+   symbols. *)
+let counter_symbol_is_one_image () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  List.iter
+    (fun descriptor ->
+      Alcotest.(check string)
+        descriptor "@counter-style c{system:cyclic;symbols:a}"
+        (minify
+           (String.concat ""
+              [ "@counter-style c{system:cyclic;symbols:a;"; descriptor; "}" ])))
+    [
+      "prefix:url(a.png), none";
+      "prefix:url(a.png), url(b.png)";
+      "suffix:url(a.png), none";
+      "pad:2 url(a.png), none";
+      "negative:url(a.png), none";
+    ];
+  Alcotest.(check string)
+    "an image list is no symbols" "@counter-style c{system:cyclic}"
+    (minify "@counter-style c{system:cyclic;symbols:url(a.png), none}");
+  Alcotest.(check string)
+    "an image per additive entry"
+    "@counter-style c{system:additive;additive-symbols:2 url(a.png),1 \
+     url(b.png)}"
+    (minify
+       "@counter-style c{system:additive;additive-symbols:2 url(a.png),1 \
+        url(b.png)}")
+
 let suite =
   ( "stylesheet_statement",
     [
@@ -645,4 +677,5 @@ let suite =
       ( "a counter-style symbol keeps its kind",
         `Quick,
         counter_symbols_keep_their_kind );
+      ("a counter symbol is one image", `Quick, counter_symbol_is_one_image);
     ] )
