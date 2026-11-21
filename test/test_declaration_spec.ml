@@ -463,6 +463,35 @@ let offset_takes_a_negative_distance () =
       ("offset-distance: -1px", "offset-distance:-1px");
     ]
 
+(* CSS Values 5 (ED) sec. 8.7 spells attr() with an <attr-name> it cannot omit,
+   and CSS Environment Variables 1 sec. 3 env() with a name, so an empty call is
+   no substitution function; CSS Variables 1 sec. 3 makes a declaration holding
+   a syntactically invalid one invalid at parse time, whatever var() fallback it
+   stands in. Chromium 153 and WebKit 26.5 drop each of the first group, a
+   custom property included, and keep the second. *)
+let invalid_substitution_drops_the_declaration () =
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "content: var(--x, attr())";
+      "content: \"a\" var(--x, attr())";
+      "color: var(--x, attr())";
+      "width: var(--x, env())";
+      "width: calc(var(--x, attr()) + 1px)";
+      "--y: var(--x, attr())";
+      "--y: var(--x, var(--z, attr()))";
+      "--y: foo attr()";
+    ];
+  List.iter
+    (fun decl ->
+      match Css.Declaration.of_string decl with
+      | Ok _ -> ()
+      | Error e -> Alcotest.failf "%s: %s" decl (Error.to_string e))
+    [
+      "content: var(--x, attr(data-a))";
+      "color: var(--x, env(safe-area-inset-top))";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1900,6 +1929,8 @@ let suite =
         attr_type_name_keeps_its_case;
       test_case "offset takes a negative distance" `Quick
         offset_takes_a_negative_distance;
+      test_case "an invalid substitution drops the declaration" `Quick
+        invalid_substitution_drops_the_declaration;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
