@@ -78,6 +78,7 @@ let read_display_legacy t : display =
       ("-webkit-inline-flex", Webkit_inline_flex);
       ("-ms-flexbox", Ms_flexbox);
       ("-webkit-box", Webkit_box);
+      ("-webkit-inline-box", Webkit_inline_box);
       ("-moz-box", Moz_box);
       ("-moz-inline-box", Moz_inline_box);
       ("inherit", Inherit);
@@ -178,6 +179,7 @@ let rec read_overflow_single (t : Cursor.t) : overflow =
       ("scroll", Scroll);
       ("auto", Auto);
       ("clip", Clip);
+      ("overlay", Overlay);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
@@ -317,6 +319,7 @@ let rec pp_display : display Pp.t =
   | Webkit_inline_flex -> Pp.string ctx "-webkit-inline-flex"
   | Ms_flexbox -> Pp.string ctx "-ms-flexbox"
   | Webkit_box -> Pp.string ctx "-webkit-box"
+  | Webkit_inline_box -> Pp.string ctx "-webkit-inline-box"
   | Moz_box -> Pp.string ctx "-moz-box"
   | Moz_inline_box -> Pp.string ctx "-moz-inline-box"
   | Inherit -> Pp.string ctx "inherit"
@@ -587,6 +590,7 @@ let rec pp_overflow : overflow Pp.t =
   | Scroll -> Pp.string ctx "scroll"
   | Auto -> Pp.string ctx "auto"
   | Clip -> Pp.string ctx "clip"
+  | Overlay -> Pp.string ctx "overlay"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"

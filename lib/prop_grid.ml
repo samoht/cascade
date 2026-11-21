@@ -637,13 +637,39 @@ let read_place_content_unsafe t =
     ]
     t
 
-(* CSS Align 3 sec. 7.2: the second value usually copies the first, except a
-   baseline position makes justify-content default to start. *)
-let read_place_content_baseline t =
-  match read_align_content t with
-  | (Baseline | First_baseline | Last_baseline) as align ->
-      (Align_justify (align, Start) : place_content)
-  | _ -> Cursor.err_invalid t "place-content baseline"
+(* CSS Align 3 sec. 7.2: a lone value sets justify-content to itself, except a
+   baseline position, which sets it to start. The lone values with a one-word
+   node are read by [read_place_content_single]; this reads the rest, such as
+   [flex-start], as the pair they name. *)
+let justify_of_lone_align : align_content -> justify_content option = function
+  | Baseline | First_baseline | Last_baseline -> Some Start
+  | Normal -> Some Normal
+  | Center -> Some Center
+  | Start -> Some Start
+  | End -> Some End
+  | Flex_start -> Some Flex_start
+  | Flex_end -> Some Flex_end
+  | Safe_center -> Some Safe_center
+  | Safe_start -> Some Safe_start
+  | Safe_end -> Some Safe_end
+  | Safe_flex_start -> Some Safe_flex_start
+  | Safe_flex_end -> Some Safe_flex_end
+  | Unsafe_center -> Some Unsafe_center
+  | Unsafe_start -> Some Unsafe_start
+  | Unsafe_end -> Some Unsafe_end
+  | Unsafe_flex_start -> Some Unsafe_flex_start
+  | Unsafe_flex_end -> Some Unsafe_flex_end
+  | Space_between -> Some Space_between
+  | Space_around -> Some Space_around
+  | Space_evenly -> Some Space_evenly
+  | Stretch -> Some Stretch
+  | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> None
+
+let read_place_content_lone t =
+  let align = read_align_content t in
+  match justify_of_lone_align align with
+  | Some justify -> (Align_justify (align, justify) : place_content)
+  | None -> Cursor.err_invalid t "place-content"
 
 let read_place_content_single t =
   Cursor.enum "place-content"
@@ -676,8 +702,8 @@ let rec read_place_content t : place_content =
            read_place_content_pair;
            read_place_content_safe;
            read_place_content_unsafe;
-           read_place_content_baseline;
            read_place_content_single;
+           read_place_content_lone;
          ])
     t
 
@@ -1418,20 +1444,39 @@ let is_grid_area_ws = function
   | ' ' | '\t' | '\n' | '\r' | '\012' -> true
   | _ -> false
 
+(* CSS Grid 2 sec. 7.3 tokenizes a row string with longest-match semantics into
+   named cell tokens (a run of name code points, CSS Syntax 3 sec. 4.2, so a
+   name may start with a digit and holds any non-ASCII code point), null cell
+   tokens (a run of [.]), white space, and trash tokens (any other code point),
+   so [a.b] is three cells. A trash token makes the declaration invalid; it is
+   kept as a cell here for {!validate_grid_area_cell} to refuse. *)
+let is_grid_area_name_byte c =
+  (c >= 'a' && c <= 'z')
+  || (c >= 'A' && c <= 'Z')
+  || (c >= '0' && c <= '9')
+  || c = '_' || c = '-'
+  || Char.code c >= 0x80
+
 let grid_area_row_cells row =
   let len = String.length row in
   let rec skip_ws i =
     if i < len && is_grid_area_ws row.[i] then skip_ws (i + 1) else i
   in
-  let rec take_cell start i =
-    if i < len && not (is_grid_area_ws row.[i]) then take_cell start (i + 1)
+  let rec run same start i =
+    if i < len && same row.[i] then run same start (i + 1)
     else (String.sub row start (i - start), i)
+  in
+  let take_cell start =
+    let c = row.[start] in
+    if is_grid_area_name_byte c then run is_grid_area_name_byte start start
+    else if c = '.' then run (Char.equal '.') start start
+    else (String.sub row start 1, start + 1)
   in
   let rec loop acc i =
     let start = skip_ws i in
     if start >= len then List.rev acc
     else
-      let cell, next = take_cell start start in
+      let cell, next = take_cell start in
       loop (cell :: acc) next
   in
   loop [] 0
@@ -1443,21 +1488,14 @@ let grid_area_null_cell cell =
   let rec loop i = i = len || (cell.[i] = '.' && loop (i + 1)) in
   loop 0
 
-(* CSS Grid Layout 2 section 7.3: each row string is a sequence of [.] (null
-   cell) tokens or [<custom-ident>] cell names. A [<custom-ident>] starts with a
-   letter, [_], or [-]-followed-by-letter, and continues with letters / digits /
-   [_] / [-]. *)
 let grid_area_ident_cell cell =
   let len = String.length cell in
-  let is_start c =
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-  in
-  let is_continue c = is_start c || (c >= '0' && c <= '9') in
   len > 0
-  && is_start cell.[0]
   &&
-  let rec loop i = i = len || (is_continue cell.[i] && loop (i + 1)) in
-  loop 1
+  let rec loop i =
+    i = len || (is_grid_area_name_byte cell.[i] && loop (i + 1))
+  in
+  loop 0
 
 let validate_grid_area_cell t cell =
   if not (grid_area_null_cell cell || grid_area_ident_cell cell) then

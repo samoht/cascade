@@ -400,6 +400,24 @@ differently. They are the reason to minify again.
   with the same prefixed words, such as two `-webkit-linear-gradient()`s, are
   read by the same browsers, and the earlier one now goes inside one rule
   too (#1538).
+- **Prefixed, legacy and newer keywords were deleted.** `--minify` dropped,
+  with a warning, values Chromium 153 reads: `cursor:-webkit-grab`,
+  `display:-webkit-inline-box`, `width:-webkit-fill-available`,
+  `overflow:overlay`, `writing-mode:tb-rl`, the deprecated system colours
+  such as `Window` and `ThreeDFace`, `place-content:flex-start`,
+  `content:no-open-quote`, `font:oblique 10deg 12px a`,
+  `image-set("a.png")`, a grid area named `1a`, `perspective(none)`,
+  `white-space:preserve` and `border-image:url(a.png) 30 // 5px`, among
+  others. Each is now read, and a prefixed or legacy keyword keeps an earlier
+  value of its property as its fallback, as `-webkit-box` does.
+  In the library, `Css.white_space` spells the longhand pair as
+  `Longhands (collapse, mode)`, which replaces `Collapse` and
+  `Preserve_nowrap`: a match on either moves to `Longhands (Some Collapse,
+  None)` or `Longhands (Some Preserve, Some No_wrap)`. `system_color`,
+  `cursor`, `display`, `overflow`, `text_align`, `unicode_bidi`,
+  `writing_mode`, `image_rendering`, `appearance`, `dominant_baseline`,
+  `content` and `length` gain the new keywords, so an exhaustive match over
+  any of them needs the new cases (#1539).
 
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an

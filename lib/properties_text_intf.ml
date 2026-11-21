@@ -27,6 +27,9 @@ type text_align =
   | End
   | Match_parent
   | Webkit_match_parent
+  | Webkit_left
+  | Webkit_right
+  | Webkit_center
   | Inherit
   | Initial
   | Unset
@@ -754,29 +757,13 @@ type dominant_baseline =
   | Middle
   | Text_top
   | Text_bottom
+  | Hanging
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
   | Var of dominant_baseline var
-
-(** CSS white-space values *)
-type white_space =
-  | Normal
-  | Nowrap
-  | Pre
-  | Pre_wrap
-  | Pre_line
-  | Break_spaces
-  | Collapse
-  | Preserve_nowrap
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of white_space var
 
 (* CSS Text 4 sec. 3.1: [white-space-collapse] says how white space and segment
    breaks in the source collapse. *)
@@ -797,6 +784,26 @@ type white_space_collapse =
   | Revert
   | Revert_layer
   | Var of white_space_collapse var
+
+(** CSS white-space values *)
+type white_space =
+  | Normal
+  | Nowrap
+  | Pre
+  | Pre_wrap
+  | Pre_line
+  | Break_spaces
+  | Longhands of white_space_collapse option * text_wrap_mode option
+      (** CSS Text 4 sec. 3: [<'white-space-collapse'> || <'text-wrap-mode'>],
+          as written; at least one is present. A legacy keyword such as [nowrap]
+          is its own constructor, because a browser that predates the longhand
+          form reads it and not the pair it names. *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of white_space var
 
 (** CSS word-break values *)
 type word_break =

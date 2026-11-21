@@ -2,31 +2,57 @@
 
 open Values_intf
 
-let read_system_color_of_string keyword : color option =
+let system_color_of_string keyword : system_color option =
   (* System colors are case-insensitive per CSS spec *)
   match String.lowercase_ascii keyword with
-  | "accentcolor" -> Some (System Accent_color)
-  | "accentcolortext" -> Some (System Accent_color_text)
-  | "activetext" -> Some (System Active_text)
-  | "buttonborder" -> Some (System Button_border)
-  | "buttonface" -> Some (System Button_face)
-  | "buttontext" -> Some (System Button_text)
-  | "canvas" -> Some (System Canvas)
-  | "canvastext" -> Some (System Canvas_text)
-  | "field" -> Some (System Field)
-  | "fieldtext" -> Some (System Field_text)
-  | "graytext" -> Some (System Gray_text)
-  | "highlight" -> Some (System Highlight)
-  | "highlighttext" -> Some (System Highlight_text)
-  | "linktext" -> Some (System Link_text)
-  | "mark" -> Some (System Mark)
-  | "marktext" -> Some (System Mark_text)
-  | "selecteditem" -> Some (System Selected_item)
-  | "selecteditemtext" -> Some (System Selected_item_text)
-  | "visitedtext" -> Some (System Visited_text)
+  | "accentcolor" -> Some Accent_color
+  | "accentcolortext" -> Some Accent_color_text
+  | "activetext" -> Some Active_text
+  | "buttonborder" -> Some Button_border
+  | "buttonface" -> Some Button_face
+  | "buttontext" -> Some Button_text
+  | "canvas" -> Some Canvas
+  | "canvastext" -> Some Canvas_text
+  | "field" -> Some Field
+  | "fieldtext" -> Some Field_text
+  | "graytext" -> Some Gray_text
+  | "highlight" -> Some Highlight
+  | "highlighttext" -> Some Highlight_text
+  | "linktext" -> Some Link_text
+  | "mark" -> Some Mark
+  | "marktext" -> Some Mark_text
+  | "selecteditem" -> Some Selected_item
+  | "selecteditemtext" -> Some Selected_item_text
+  | "visitedtext" -> Some Visited_text
   (* WebKit-specific system colors *)
-  | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
+  | "-webkit-focus-ring-color" -> Some Webkit_focus_ring_color
+  | "activeborder" -> Some Active_border
+  | "activecaption" -> Some Active_caption
+  | "appworkspace" -> Some App_workspace
+  | "background" -> Some Background
+  | "buttonhighlight" -> Some Button_highlight
+  | "buttonshadow" -> Some Button_shadow
+  | "captiontext" -> Some Caption_text
+  | "inactiveborder" -> Some Inactive_border
+  | "inactivecaption" -> Some Inactive_caption
+  | "inactivecaptiontext" -> Some Inactive_caption_text
+  | "infobackground" -> Some Info_background
+  | "infotext" -> Some Info_text
+  | "menu" -> Some Menu
+  | "menutext" -> Some Menu_text
+  | "scrollbar" -> Some Scrollbar
+  | "threeddarkshadow" -> Some Three_d_dark_shadow
+  | "threedface" -> Some Three_d_face
+  | "threedhighlight" -> Some Three_d_highlight
+  | "threedlightshadow" -> Some Three_d_light_shadow
+  | "threedshadow" -> Some Three_d_shadow
+  | "window" -> Some Window
+  | "windowframe" -> Some Window_frame
+  | "windowtext" -> Some Window_text
   | _ -> None
+
+let read_system_color_of_string keyword : color option =
+  Option.map (fun c -> System c) (system_color_of_string keyword)
 
 (* CSS Color 4 sec. 6.1: the named colours, each with its canonical CSS spelling
    and its sRGB bytes. This list is the only place either is written down.

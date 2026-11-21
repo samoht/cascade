@@ -26,6 +26,8 @@ let rec pp_content : content Pp.t =
   | Image image -> pp_background_image ctx image
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
+  | No_open_quote -> Pp.string ctx "no-open-quote"
+  | No_close_quote -> Pp.string ctx "no-close-quote"
   | Attr attr -> Pp.call "attr" (Values.pp_attr_call pp_content) ctx attr
   | Counter { name; style } ->
       Pp.string ctx "counter(";
@@ -187,6 +189,8 @@ and read_content_single t =
       ("normal", Normal);
       ("open-quote", Open_quote);
       ("close-quote", Close_quote);
+      ("no-open-quote", No_open_quote);
+      ("no-close-quote", No_close_quote);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);

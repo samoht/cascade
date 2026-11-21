@@ -196,7 +196,8 @@ let length_scale ?(exact = true) op v n =
    width:max-content]). *)
 let length_is_vendor_prefixed_sizing : length -> bool = function
   | Webkit_max_content | Webkit_min_content | Webkit_fit_content
-  | Moz_max_content | Moz_min_content | Moz_fit_content ->
+  | Moz_max_content | Moz_min_content | Moz_fit_content | Webkit_fill_available
+  | Moz_available ->
       true
   | _ -> false
 
@@ -981,6 +982,8 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Webkit_max_content -> Pp.string ctx "-webkit-max-content"
   | Webkit_min_content -> Pp.string ctx "-webkit-min-content"
   | Webkit_fit_content -> Pp.string ctx "-webkit-fit-content"
+  | Webkit_fill_available -> Pp.string ctx "-webkit-fill-available"
+  | Moz_available -> Pp.string ctx "-moz-available"
   | Moz_max_content -> Pp.string ctx "-moz-max-content"
   | Moz_min_content -> Pp.string ctx "-moz-min-content"
   | Moz_fit_content -> Pp.string ctx "-moz-fit-content"

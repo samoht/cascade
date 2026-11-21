@@ -26,6 +26,9 @@ type unicode_bidi =
   | Bidi_override
   | Isolate_override
   | Plaintext
+  | Webkit_isolate
+  | Webkit_isolate_override
+  | Webkit_plaintext
   | Inherit
   | Initial
   | Unset
@@ -40,6 +43,12 @@ type writing_mode =
   | Vertical_lr
   | Sideways_lr
   | Sideways_rl
+  | Lr  (** The SVG 1.1 values CSS Writing Modes 4 sec. 3.1.1 keeps. *)
+  | Lr_tb
+  | Rl
+  | Rl_tb
+  | Tb
+  | Tb_rl
   | Inherit
   | Initial
   | Unset
@@ -196,6 +205,15 @@ type appearance =
   | Textfield
   | Menulist
   | Base_select
+  | Searchfield
+      (** CSS UI 4 sec. 7.2 [<compat-auto>], which behaves as [auto]. *)
+  | Textarea
+  | Checkbox
+  | Radio
+  | Listbox
+  | Meter
+  | Progress_bar
+  | Menulist_button  (** CSS UI 4 sec. 7.2 [<compat-special>]. *)
   | Inherit
   | Initial
   | Unset

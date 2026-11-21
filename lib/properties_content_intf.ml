@@ -21,6 +21,8 @@ type content =
   | Normal
   | Open_quote
   | Close_quote
+  | No_open_quote
+  | No_close_quote
   | Attr of content attr_call
   | Counter of {
       name : string;
@@ -438,6 +440,7 @@ type image_rendering =
   | High_quality
   | Crisp_edges
   | Pixelated
+  | Webkit_optimize_contrast
   | Initial
   | Inherit
   | Unset
