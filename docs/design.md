@@ -23,13 +23,22 @@ carrying an exponent, as the value that print reads back as (`Pp.printed`):
 every authored digit, and the minifier of an opaque stream guards on it, so a
 stream printed as written loses none.
 
-A static colour function (rgb, hsl, hwb, lab, lch, oklab, oklch, color) with a
-number whose readings differ is read twice more, once with every number as
-its double (`Token.authored_value`) and once as its nearest 32-bit float, and
+A colour function (rgb, hsl, hwb, lab, lch, oklab, oklch, color, but not a
+relative one) with a number whose readings differ, a `var()` fallback's or a
+math function's included, is read twice more, once with every number as its
+double (`Token.authored_value`) and once as its nearest 32-bit float.
 `Values_color_fold.decidable_channels` compares the bytes the three paint, the
-32-bit reading in 32-bit arithmetic. When they differ the reader returns
+32-bit reading in 32-bit arithmetic. A colour whose bytes wait on a
+substitution or on a construct cascade does not compute is compared by its
+numbers as printed against the doubles, and by its alpha and rgb channel bytes
+under the 32-bit reading. When they differ the reader returns
 `Authored_color`, the source with its whitespace minified, which no fold
-rewrites and the printer writes back as it is.
+rewrites and the printer writes back as it is. `Variables` collects the
+references of its reading, `Css.inline_vars` substitutes into its printed
+tokens and reads the result again, and `Context.eval` does the same through
+`Context_paint`. The alpha rounding of a colour the fold leaves a function
+takes the fewest decimals from three whose byte is the authored one under
+both readings.
 
 ## Math functions over several units
 

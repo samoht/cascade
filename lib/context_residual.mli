@@ -118,3 +118,9 @@ module Calc_residual : sig
       (default always) says which fallbacks may stand for an unresolved
       reference. *)
 end
+
+val var_components :
+  Component.t list -> (string * Component.t list option) option
+(** [var_components args] is the bare name and the trimmed fallback, if any, of
+    the [var()] whose arguments are [args]; [None] when they name no custom
+    property. *)

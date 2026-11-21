@@ -68,8 +68,9 @@ implementation keeps them.
 - **M5.** The objective (`transfer` or `raw`) only chooses among
   observationally equal outputs.
 - **M6.** A number is equal up to six significant figures and a colour up to
-  the fold budget (0.002 ΔE<sub>OK</sub>, functional alpha to three
-  decimals). Each bound is chosen so that no browser in B paints a different
+  the fold budget (0.002 ΔE<sub>OK</sub>; a functional alpha to the fewest
+  decimals, from three, that paint its byte read as a double and as a 32-bit
+  float). Each bound is chosen so that no browser in B paints a different
   pixel. `--lossless` sets every bound to zero. The comparator applies the
   same bounds and none looser.
 
@@ -152,9 +153,11 @@ implementation keeps them.
   either way (Chromium 153 reads a comma-syntax `rgba()` alpha as a double and
   the other channels as 32-bit floats), and cascade may print the
   eight-decimal value, so when the three agree every one of those paths paints
-  alike. A colour with an undecidable channel is kept in its own function,
-  syntax and digits, bar the whitespace CSS reads as nothing, and equals only
-  its own spelling. Only Chromium is measured; for Firefox and Safari the rule
+  alike. The rule holds for every number of a colour function, beside a
+  `var()` as much as in a static colour. A colour with an undecidable channel
+  is kept in its own function, syntax and digits, bar the whitespace CSS reads
+  as nothing, and equals only its own spelling; substituting its `var()`
+  reads it again. Only Chromium is measured; for Firefox and Safari the rule
   is conservative.
 
 ## Declaration layer
@@ -292,6 +295,8 @@ Each row names the tests that check a statement. A browser harness under
 | M5 | The release criterion, run under both objectives |
 | M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; the css-minify-tests colour fixtures |
 | Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node"; `fuzz/fuzz_supports.ml` "generated tree reparses" (`@supports` conditions of nested `not`, `and` and `or`) |
+| M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; `test/test_declaration_identity.ml` "colour channels beside a var()" (the alpha rounding); the css-minify-tests colour fixtures |
+| Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
 | Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back" |
 | Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |
@@ -307,6 +312,7 @@ Each row names the tests that check a statement. A browser harness under
 | Signed percentage basis | `values_math` "spec math signed percentage basis" |
 | Whitespace beside a substitution | `values_math` "spec math var whitespace" |
 | Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
+| Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay", "colour channels beside a var()"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |

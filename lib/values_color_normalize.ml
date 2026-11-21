@@ -64,15 +64,33 @@ let round_color_axis ~lossless ~decimals f =
     let m = 10. ** float_of_int decimals in
     Float.round (f *. m) /. m
 
-(* An alpha coefficient at 3 decimals: alpha reaches the screen as one of 256
-   steps (CSS Color 4 sec. 4.2), 1/255 ~ 0.004 apart, so 3 decimals keep the
-   byte. A [calc()] keeps its operands at that precision. *)
+(* The byte an alpha paints at read as a double and as a 32-bit float in 32-bit
+   arithmetic. *)
+let alpha_bytes f =
+  let f = Float.max 0. (Float.min 1. f) in
+  let byte f = Float.to_int (Float.round f) in
+  (byte (f *. 255.), byte (single_of_float (single_of_float f *. 255.)))
+
+(* An alpha coefficient at the fewest decimals, from 3, that paint its byte
+   under both readings. Alpha reaches the screen as one of 256 steps, 1/255 ~
+   0.004 apart, so 3 decimals keep the byte except near a step's half, where
+   [.0996] (25) at [.1] would paint 26. A [calc()] operand reaches the byte only
+   through the result, so it keeps its digits. *)
 let rec round_alpha ~lossless (a : alpha) : alpha =
   match a with
   | Num f ->
-      let r = round_color_axis ~lossless ~decimals:3 f in
-      if Float.equal r f then a else Num r
-  | Calc c -> Calc (map_calc (round_alpha ~lossless) c)
+      let target = alpha_bytes f in
+      let same (b, s) (b', s') = Int.equal b b' && Int.equal s s' in
+      let rec go decimals =
+        if decimals > 8 then a
+        else
+          let r = round_color_axis ~lossless ~decimals f in
+          if Float.equal r f then a
+          else if same (alpha_bytes r) target then Num r
+          else go (decimals + 1)
+      in
+      go 3
+  | Calc _ -> a
   | Var ({ fallback = Fallback f; _ } as v) ->
       let f' = round_alpha ~lossless f in
       if f' == f then a else Var { v with fallback = Fallback f' }

@@ -69,8 +69,10 @@ val decidable_channels : printed:color -> double:color -> single:color -> bool
     one static colour paint the same bytes: its numbers at the printer's eight
     decimals, as doubles, and as their nearest 32-bit floats in 32-bit
     arithmetic. When they do not, a channel sits at the edge of a byte's half
-    and which byte it paints is the engine's. A colour that is not static is
-    decidable: nothing quantises it before substitution. *)
+    and which byte it paints is the engine's. A colour whose bytes wait on a
+    substitution or a construct cascade does not compute is decidable when its
+    numbers print as the doubles written and its alpha and rgb channels paint
+    the same bytes as 32-bit floats. *)
 
 val nonkeyword_color : color -> color
 (** [nonkeyword_color c] re-spells a colour written as a bare keyword (a named

@@ -750,28 +750,41 @@ let token_has_readings (tok : Token.t) =
       number_has_readings n
   | _ -> false
 
-(* The arguments of a colour function a channel check can read: tokens only, no
-   [var()], math function or block, whose value is known before substitution. *)
-let static_arguments (fn : Component.func Component.node) =
-  List.for_all
-    (function Component.Preserved _ -> true | _ -> false)
-    fn.node.arguments
+(* Every number of a colour function counts, a [var()] fallback's and a math
+   function's as much as a channel's: each is quantised once substituted. *)
+let rec component_has_readings : Component.t -> bool = function
+  | Preserved tok -> token_has_readings tok
+  | Func { node = { arguments; _ }; _ } ->
+      List.exists component_has_readings arguments
+  | Block { node = { value; _ }; _ } -> List.exists component_has_readings value
+  | Flat { node; _ } -> List.exists token_has_readings node
 
-let has_readings (fn : Component.func Component.node) =
-  List.exists
-    (function Component.Preserved tok -> token_has_readings tok | _ -> false)
-    fn.node.arguments
+let rec component_reading reading : Component.t -> Component.t = function
+  | Preserved tok -> Preserved (token_reading reading tok)
+  | Func fn ->
+      Func
+        {
+          fn with
+          node =
+            {
+              fn.node with
+              arguments = List.map (component_reading reading) fn.node.arguments;
+            };
+        }
+  | Block b ->
+      Block
+        {
+          b with
+          node =
+            {
+              b.node with
+              value = List.map (component_reading reading) b.node.value;
+            };
+        }
+  | Flat f -> Flat { f with node = List.map (token_reading reading) f.node }
 
 let with_reading reading (fn : Component.func Component.node) =
-  let arguments =
-    List.map
-      (function
-        | Component.Preserved tok ->
-            Component.Preserved (token_reading reading tok)
-        | c -> c)
-      fn.node.arguments
-  in
-  { fn with node = { fn.node with arguments } }
+  match component_reading reading (Func fn) with Func fn -> fn | _ -> fn
 
 (* The colour functions whose channels a fold quantises. *)
 let channel_functions =
@@ -779,10 +792,23 @@ let channel_functions =
     "rgb"; "rgba"; "hsl"; "hsla"; "hwb"; "lab"; "lch"; "oklab"; "oklch"; "color";
   ]
 
+(* A relative colour's channels are expressions over its origin, which was
+   checked when it was read; the fold of the expressions carries its own
+   conversion budget. *)
+let is_relative (fn : Component.func Component.node) =
+  match
+    List.filter (fun c -> not (Component.is_whitespace c)) fn.node.arguments
+  with
+  | Component.Preserved { kind = Token.Ident from; _ } :: _ ->
+      String.equal (String.lowercase_ascii from) "from"
+  | _ -> false
+
 let kept_as_written parser t (fn : Component.func Component.node) color =
   let fn_name = Common.String.lowercase_ascii_preserve fn.node.name in
   if
-    List.mem fn_name channel_functions && static_arguments fn && has_readings fn
+    List.mem fn_name channel_functions
+    && (not (is_relative fn))
+    && List.exists component_has_readings fn.node.arguments
   then
     let read reading =
       parser
@@ -1084,6 +1110,7 @@ let color_exists p =
     | Light_dark (a, b) -> go a || go b
     | Contrast_color c -> go c
     | Attribute (_, Some c) -> go c
+    | Authored_color { color; _ } -> go color
     | _ -> false
   in
   go

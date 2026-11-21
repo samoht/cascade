@@ -70,6 +70,20 @@ let read_custom_components read = function
         (Properties.components_of_custom_property_value value)
   | _ -> None
 
+let var_components args : (string * Component.t list option) option =
+  try
+    let cursor = Cursor.of_components args in
+    let raw_name = Cursor.ident ~keep_case:true cursor in
+    if not (Custom_property_name.is_valid raw_name) then None
+    else
+      let name = Custom_property_name.strip_prefix raw_name in
+      let fallback =
+        Cursor.ws cursor;
+        if Cursor.comma_opt cursor then Some (Cursor.remaining cursor) else None
+      in
+      Some (name, Option.map (Common.List.trim Component.is_whitespace) fallback)
+  with Cursor.Parse_error _ -> None
+
 let map_var_fallback f = function
   | Values.Empty -> Values.Empty
   | Values.Empty2 -> Values.Empty2

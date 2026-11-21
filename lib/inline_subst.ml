@@ -159,19 +159,7 @@ let rec components_contain preserved components =
       | Component.Flat { node; _ } -> List.exists preserved node)
     components
 
-let parse_var_components args : (string * Component.t list option) option =
-  try
-    let cursor = Cursor.of_components args in
-    let raw_name = Cursor.ident ~keep_case:true cursor in
-    if not (Custom_property_name.is_valid raw_name) then None
-    else
-      let name = Custom_property_name.strip_prefix raw_name in
-      let fallback =
-        Cursor.ws cursor;
-        if Cursor.comma_opt cursor then Some (Cursor.remaining cursor) else None
-      in
-      Some (name, Option.map trim_components fallback)
-  with Cursor.Parse_error _ -> None
+let parse_var_components = Context_residual.var_components
 
 let rec substitute_components ~kept visible ~visited components =
   let one = function

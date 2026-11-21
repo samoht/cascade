@@ -88,6 +88,7 @@ let vars_of_component (value : Values.component) : any_var list =
 let rec vars_of_color (value : Values.color) : any_var list =
   match value with
   | Var v -> [ V v ]
+  | Authored_color { color; _ } -> vars_of_color color
   | Rgb rgb -> vars_of_rgb rgb
   | Rgba { rgb; a } -> vars_of_rgb rgb @ vars_of_alpha a
   | Hsl { h; s; l; a } ->

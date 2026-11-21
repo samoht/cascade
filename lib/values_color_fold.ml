@@ -932,6 +932,47 @@ let srgb_bytes ~single ((r, g, b), a) =
   in
   (byte r, byte g, byte b, byte a)
 
+(* A colour whose bytes cascade does not compute (a substitution, a math
+   function, [none], a relative origin) is printed with its numbers at eight
+   decimals, which a browser reads as the double it wrote whatever its path, and
+   respelled from comma to space syntax, which moves an alpha from the double
+   path to the 32-bit one. So its numbers are compared as printed and as
+   doubles, and the bytes of its alpha and rgb channels under the 32-bit reading
+   too. [direct_bytes] is those bytes. *)
+let direct_bytes ~single (c : color) =
+  let byte f = Some (Float.to_int (Float.round f)) in
+  let unit_byte f =
+    let f = Float.max 0. (Float.min 1. f) in
+    byte
+      (if single then single_of_float (single_of_float f *. 255.) else f *. 255.)
+  in
+  let alpha : alpha -> int option = function
+    | Num f -> unit_byte f
+    | Pct f -> unit_byte (f /. 100.)
+    | _ -> Option.None
+  in
+  let channel : channel -> int option = function
+    | Int i -> Some i
+    | Num f -> byte (if single then single_of_float f else f)
+    | Pct f -> unit_byte (f /. 100.)
+    | _ -> Option.None
+  in
+  let rgb : rgb -> int option list = function
+    | Channels { r; g; b } -> [ channel r; channel g; channel b ]
+    | Var _ -> []
+  in
+  match c with
+  | Rgb v -> rgb v
+  | Rgba { rgb = v; a } -> alpha a :: rgb v
+  | Hsl { a; _ } | Hwb { a; _ } -> [ alpha a ]
+  | Color { alpha = a; _ }
+  | Lab { alpha = a; _ }
+  | Oklab { alpha = a; _ }
+  | Lch { alpha = a; _ }
+  | Oklch { alpha = a; _ } ->
+      [ alpha a ]
+  | _ -> []
+
 let decidable_channels ~printed ~double ~single =
   match
     ( static_srgb_floats printed,
@@ -945,7 +986,12 @@ let decidable_channels ~printed ~double ~single =
       let bytes = srgb_bytes ~single:false p in
       equal bytes (srgb_bytes ~single:false d)
       && equal bytes (srgb_bytes ~single:true s)
-  | _ -> true
+  | _ ->
+      let equal (a : color) b = a = b in
+      equal printed double
+      && List.equal (Option.equal Int.equal)
+           (direct_bytes ~single:false printed)
+           (direct_bytes ~single:true single)
 
 (* CSS Color 4 sec. 14.2: the sRGB colour a display renders for a static colour,
    gamut mapping the ones sRGB cannot hold. This always answers, so it serves a
