@@ -678,6 +678,12 @@ differently. They are the reason to minify again.
   `animation-range-start:scroll 10%` and a `scroll 50%` keyframe were refused,
   so `--minify` dropped what Chromium reads. `scroll` is now read beside the
   other named ranges (Scroll-driven Animations 1 sec. 3.1) (#1500).
+- **`scrollbar-gutter` and `offset` written in another order were deleted.**
+  `scrollbar-gutter:both-edges stable` and `offset:content-box auto` were
+  refused as a bad value, so `--minify` dropped declarations Chromium and
+  Safari read. Both orders CSS Overflow 3 sec. 5.2 grants are now read, and a
+  reference box with no shape before an offset distance or rotation (CSS
+  Motion Path 1 sec. 2.1 and 2.6) (#1521).
 
 #### Stable output
 
