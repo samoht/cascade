@@ -695,6 +695,13 @@ differently. They are the reason to minify again.
   Each argument of `min()`, `max()` and `clamp()` is now read as the sum CSS
   Values 4 sec. 10.2 grants, and arguments of two types are still refused
   (#1523).
+- **Anchor-positioned boxes lost their position.** `--minify` deleted
+  `top:anchor(50%)`, `top:anchor(top --a)`, `width:anchor-size()` and every
+  other `anchor()` or `anchor-size()` with a percentage side, the name after
+  the keyword, or no argument, though Chromium places the box by each (CSS
+  Anchor Positioning 1 sec. 3.2 and 5.1). It kept `anchor(width)` and
+  `anchor-size(top)`, which Chromium drops. Both functions now read the
+  grammar the specification gives, and print the name first (#1532).
 
 #### Stable output
 

@@ -14,6 +14,9 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Nested inner -> vars_of_calc inner
   | Parens inner -> vars_of_calc inner
 
+let vars_of_percentage (value : Values.percentage) : any_var list =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
 let rec vars_of_length (value : Values.length) : any_var list =
   match value with
   | Var v -> [ V v ]
@@ -23,7 +26,13 @@ let rec vars_of_length (value : Values.length) : any_var list =
   | Hypot values -> List.concat_map vars_of_length values
   | Abs value -> vars_of_length value
   | Calc_size (basis, calc) -> vars_of_length basis @ vars_of_calc calc
-  | Anchor (_, _, Some fallback) -> vars_of_length fallback
+  | Anchor (_, side, fallback) ->
+      let side =
+        match side with Percentage_side p -> vars_of_percentage p | _ -> []
+      in
+      side @ Option.fold ~none:[] ~some:vars_of_length fallback
+  | Anchor_size (_, _, fallback) ->
+      Option.fold ~none:[] ~some:vars_of_length fallback
   | _ -> []
 
 let vars_of_length_list (values : Values.length list) : any_var list =
@@ -75,9 +84,6 @@ let vars_of_component (value : Values.component) : any_var list =
   | Angle hue -> vars_of_hue hue
   | Component_none -> []
   | _ -> []
-
-let vars_of_percentage (value : Values.percentage) : any_var list =
-  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
 let rec vars_of_color (value : Values.color) : any_var list =
   match value with

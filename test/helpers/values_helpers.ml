@@ -23,6 +23,12 @@ let check_duration = check_value_cursor "duration" read_duration pp_duration
 let check_percentage =
   check_value_cursor "percentage" read_percentage pp_percentage
 
+let check_anchor_side =
+  check_value_cursor "anchor_side" read_anchor_side pp_anchor_side
+
+let check_anchor_size =
+  check_value_cursor "anchor_size" read_anchor_size pp_anchor_size
+
 let check_number = check_value_cursor "number" read_number pp_number
 let check_math_arg = check_value_cursor "math_arg" read_math_arg pp_math_arg
 let check_component = check_value_cursor "component" read_component pp_component

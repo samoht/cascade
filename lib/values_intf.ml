@@ -142,6 +142,35 @@ type 'a attr_call = {
   fallback : 'a attr_fallback;
 }
 
+(** CSS percentage values *)
+type percentage =
+  | Pct of float
+  | Num of float
+  | Var of percentage var
+  | Calc of percentage calc
+
+(** CSS Anchor Positioning 1 (ED) sec. 3.2 [<anchor-side>]: the edge or point of
+    the anchor box that [anchor()] resolves to. *)
+type anchor_side =
+  | Inside
+  | Outside
+  | Top
+  | Left
+  | Right
+  | Bottom
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Center
+  | Percentage_side of percentage
+      (** A [<percentage>] along the axis, a literal or a math function of
+          percentage type. *)
+
+(** CSS Anchor Positioning 1 (ED) sec. 5.1 [<anchor-size>]: the dimension of the
+    anchor box that [anchor-size()] resolves to. *)
+type anchor_size = Width | Height | Block | Inline | Self_block | Self_inline
+
 (** CSS length values.
 
     Supports absolute, relative, viewport (including dynamic/large/small),
@@ -237,12 +266,14 @@ type length =
   | Hypot of length list  (** CSS [hypot()] math function *)
   | Abs of length  (** CSS [abs()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)
-  | Anchor_size of string
+  | Anchor_size of string option * anchor_size option * length option
       (** CSS [anchor-size()] function, from
           {{:https://www.w3.org/TR/css-anchor-position-1/} CSS Anchor
-           Positioning Level 1}. *)
-  | Anchor of string option * string * length option
-      (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
+           Positioning Level 1} sec. 5.1: optional anchor name, optional size
+          keyword, and optional fallback. *)
+  | Anchor of string option * anchor_side * length option
+      (** CSS [anchor()] function, sec. 3.2: optional anchor name, side, and
+          fallback. *)
   | Attr of length attr_call
       (** CSS Values 5 sec. 8.7 [attr(<attr-name> <attr-type>?, <fallback>?)]
           for typed-value contexts. *)
@@ -472,13 +503,6 @@ type component =
   | Var of component var
   | Calc of component calc
   | Component_none
-
-(** CSS percentage values *)
-type percentage =
-  | Pct of float
-  | Num of float
-  | Var of percentage var
-  | Calc of percentage calc
 
 (** CSS length or percentage values. *)
 type length_percentage =

@@ -809,6 +809,39 @@ let px_values values =
       | _ -> None)
     values (Some [])
 
+let rec pp_percentage ?(always = false) : percentage Pp.t =
+ fun ctx -> function
+  | Pct f -> Pp.pct ctx f
+  | Num f -> Pp.float ctx f
+  | Var v -> pp_var (pp_percentage ~always) ctx v
+  | Calc c -> pp_calc (pp_percentage ~always) ctx c
+
+let pp_anchor_side : anchor_side Pp.t =
+ fun ctx -> function
+  | Inside -> Pp.string ctx "inside"
+  | Outside -> Pp.string ctx "outside"
+  | Top -> Pp.string ctx "top"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Bottom -> Pp.string ctx "bottom"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Center -> Pp.string ctx "center"
+  | Percentage_side p -> pp_percentage ctx p
+
+let pp_anchor_size : anchor_size Pp.t =
+ fun ctx size ->
+  Pp.string ctx
+    (match size with
+    | Width -> "width"
+    | Height -> "height"
+    | Block -> "block"
+    | Inline -> "inline"
+    | Self_block -> "self-block"
+    | Self_inline -> "self-inline")
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
@@ -915,8 +948,8 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_calc_contents (pp_length ~always) ctx calc)
         ctx (basis, calc)
-  | Anchor_size size ->
-      Pp.call "anchor-size" (fun ctx size -> Pp.string ctx size) ctx size
+  | Anchor_size (name, size, fallback) ->
+      pp_anchor_size_length ~always ctx name size fallback
   | Anchor (name, side, fallback) ->
       pp_anchor_length ~always ctx name side fallback
   | Attr attr -> Pp.call "attr" (pp_attr_call (pp_length ~always)) ctx attr
@@ -943,6 +976,9 @@ and pp_length_math_arg ~always ctx (length : length) =
   | Calc cv -> pp_calc_contents (pp_length ~always) ctx cv
   | _ -> pp_length ~always ctx length
 
+(* CSS Anchor Positioning 1 (ED) sec. 3.2 and 5.1 take the name and the keyword
+   in either order; the name is written first. CSS Values 4 (ED) sec. 2.1 omits
+   the comma before the fallback when nothing precedes it. *)
 and pp_anchor_length ~always ctx name side fallback =
   Pp.call "anchor"
     (fun ctx (name, side, fallback) ->
@@ -951,13 +987,29 @@ and pp_anchor_length ~always ctx name side fallback =
           Pp.string ctx name;
           Pp.space ctx ())
         name;
-      Pp.string ctx side;
-      Option.iter
-        (fun fallback ->
-          Pp.comma ctx ();
-          pp_length ~always ctx fallback)
-        fallback)
+      pp_anchor_side ctx side;
+      pp_anchor_fallback ~always ctx fallback)
     ctx (name, side, fallback)
+
+and pp_anchor_size_length ~always ctx name size fallback =
+  Pp.call "anchor-size"
+    (fun ctx (name, size, fallback) ->
+      Option.iter (Pp.string ctx) name;
+      Option.iter
+        (fun size ->
+          if Option.is_some name then Pp.space ctx ();
+          pp_anchor_size ctx size)
+        size;
+      match (name, size, fallback) with
+      | None, None, Some fallback -> pp_length ~always ctx fallback
+      | _ -> pp_anchor_fallback ~always ctx fallback)
+    ctx (name, size, fallback)
+
+and pp_anchor_fallback ~always ctx = function
+  | None -> ()
+  | Some fallback ->
+      Pp.comma ctx ();
+      pp_length ~always ctx fallback
 
 and pp_round_length ~always ctx strategy value step =
   Pp.call "round"

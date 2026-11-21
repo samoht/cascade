@@ -28,6 +28,12 @@ val check_duration : check
 val check_percentage : check
 (** [check_percentage] checks a [<percentage>]. *)
 
+val check_anchor_side : check
+(** [check_anchor_side] checks an [<anchor-side>]. *)
+
+val check_anchor_size : check
+(** [check_anchor_size] checks an [<anchor-size>]. *)
+
 val check_number : check
 (** [check_number] checks a [<number>]. *)
 

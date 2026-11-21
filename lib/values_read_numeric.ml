@@ -5,6 +5,73 @@ open Values_var
 open Values_calc
 open Values_read_calc
 
+let rec read_percentage t : percentage =
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then Var (read_var read_percentage t)
+  else if Cursor.looking_at_calc t then
+    Calc (read_calc ~result_type:`Value read_percentage t)
+  else Pct (Cursor.pct t)
+
+(* CSS Anchor Positioning 1 (ED) sec. 3.2 [<anchor-side>]. A [var()] could
+   substitute a keyword as well as a percentage, so it is no side: the
+   declaration keeps it as a substitution instead. *)
+let read_anchor_side t : anchor_side =
+  Cursor.enum "anchor side"
+    ~default:(fun t ->
+      if Cursor.looking_at t "var(" then Cursor.err_expected t "anchor side";
+      Percentage_side (read_percentage t))
+    [
+      ("inside", Inside);
+      ("outside", Outside);
+      ("top", Top);
+      ("left", Left);
+      ("right", Right);
+      ("bottom", Bottom);
+      ("start", Start);
+      ("end", End);
+      ("self-start", Self_start);
+      ("self-end", Self_end);
+      ("center", Center);
+    ]
+    t
+
+(* Sec. 5.1 [<anchor-size>]. *)
+let read_anchor_size t : anchor_size =
+  Cursor.enum "anchor size"
+    [
+      ("width", Width);
+      ("height", Height);
+      ("block", Block);
+      ("inline", Inline);
+      ("self-block", Self_block);
+      ("self-inline", Self_inline);
+    ]
+    t
+
+(* Sec. 3.2 and 5.1 put an optional [<anchor-name>], a [<dashed-ident>], on
+   either side of the keyword: [<anchor-name>? && <anchor-side>] and
+   [<anchor-name> || <anchor-size>]. Each is read at most once. *)
+let read_anchor_name_and keyword t =
+  let read_name t =
+    match Cursor.peek_ident t with
+    | Some name when Custom_property_name.is_valid name ->
+        Cursor.skip t;
+        name
+    | Some _ | None -> Cursor.err_expected t "anchor name"
+  in
+  Cursor.ws t;
+  let name = Cursor.option read_name t in
+  Cursor.ws t;
+  let keyword = Cursor.option keyword t in
+  Cursor.ws t;
+  let name =
+    match (name, keyword) with
+    | None, Some _ -> Cursor.option read_name t
+    | _ -> name
+  in
+  Cursor.ws t;
+  (name, keyword)
+
 let rec read_length ?(allow_negative = true) ?(with_keywords = true)
     ?(sizing = false) ?(length_only = false) t : length =
   Cursor.ws t;
@@ -111,7 +178,8 @@ and length_function_readers ~allow_negative ~length_only ~with_keywords =
       ("rem", read_rem_length ~allow_negative ~length_only);
       ("hypot", read_hypot_length ~allow_negative ~length_only);
       ("abs", read_abs_length ~allow_negative ~length_only);
-      ("anchor-size", read_anchor_size_length);
+      ( "anchor-size",
+        read_anchor_size_length ~allow_negative ~length_only ~with_keywords );
       ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
       ("attr", read_attr_length ~allow_negative ~length_only ~with_keywords);
     ]
@@ -256,20 +324,48 @@ and read_calc_size_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.expect_eof inner;
   Calc_size (basis, calc)
 
+(* CSS Anchor Positioning 1 (ED) sec. 3.2: [anchor( <anchor-name>? &&
+   <anchor-side>, <length-percentage>? )]. *)
 and read_anchor_length ~allow_negative ~length_only ~with_keywords inner =
-  let first = Cursor.ident inner in
-  Cursor.ws inner;
-  let name, side = read_anchor_name_side inner first in
-  Cursor.ws inner;
-  let fallback =
-    if Cursor.comma_opt inner then (
+  match read_anchor_name_and read_anchor_side inner with
+  | _, None -> Cursor.err_expected inner "anchor side"
+  | name, Some side ->
+      let fallback : length option =
+        if Cursor.comma_opt inner then
+          Option.some
+            (read_anchor_fallback ~allow_negative ~length_only ~with_keywords
+               inner)
+        else Option.none
+      in
       Cursor.ws inner;
-      Some (read_length ~allow_negative ~length_only ~with_keywords inner))
-    else None
+      Cursor.expect_eof inner;
+      Anchor (name, side, fallback)
+
+(* Sec. 5.1: [anchor-size( [ <anchor-name> || <anchor-size> ]? ,
+   <length-percentage>? )]. CSS Values 4 (ED) sec. 2.1 "Component Value Types"
+   omits the comma when every item before it is omitted, so a bare fallback
+   stands alone and a leading comma is refused. *)
+and read_anchor_size_length ~allow_negative ~length_only ~with_keywords inner =
+  let read_fallback =
+    read_anchor_fallback ~allow_negative ~length_only ~with_keywords
+  in
+  let name, size = read_anchor_name_and read_anchor_size inner in
+  let fallback : length option =
+    match (name, size) with
+    | Option.None, Option.None ->
+        if Cursor.is_done inner then Option.none
+        else Option.some (read_fallback inner)
+    | _ ->
+        if Cursor.comma_opt inner then Option.some (read_fallback inner)
+        else Option.none
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
-  Anchor (name, side, fallback)
+  Anchor_size (name, size, fallback)
+
+and read_anchor_fallback ~allow_negative ~length_only ~with_keywords inner =
+  Cursor.ws inner;
+  read_length ~allow_negative ~length_only ~with_keywords inner
 
 and read_attr_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.ws inner;
@@ -720,19 +816,13 @@ let read_transition_behavior t : transition_behavior =
     [ ("normal", Normal); ("allow-discrete", Allow_discrete) ]
     t
 
-(** Read a percentage type with var() and calc() support *)
-let rec read_percentage t : percentage =
-  Cursor.ws t;
-  if Cursor.looking_at t "var(" then Var (read_var read_percentage t)
-  else if Cursor.looking_at_calc t then
-    Calc (read_calc ~result_type:`Value read_percentage t)
-  else Pct (Cursor.pct t)
-
 (* CSS Values 4 sec. 10.4: math functions that produce a non-length type ([asin]
    / [acos] / [atan] / [atan2] return angles, [sin] / [cos] / [tan] return
    numbers). Used in a [<length-percentage>] context they are spec-invalid;
    lightning et al. preserve verbatim, so cascade captures the original call as
    [Invalid [<call>]]. *)
+
+(** Read a percentage type with var() and calc() support *)
 let length_invalid_function_name name =
   match String.lowercase_ascii name with
   | "asin" | "acos" | "atan" | "atan2" | "sin" | "cos" | "tan" -> true

@@ -56,14 +56,6 @@ let rec pp_angle : angle Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-(** Pretty printer for percentage types *)
-let rec pp_percentage ?(always = false) : percentage Pp.t =
- fun ctx -> function
-  | Pct f -> Pp.pct ctx f
-  | Num f -> Pp.float ctx f
-  | Var v -> pp_var (pp_percentage ~always) ctx v
-  | Calc c -> pp_calc (pp_percentage ~always) ctx c
-
 (* Evaluate the static CSS math functions on a [<length>], so the printer stays
    a pure serialiser. min / max / clamp reduce to one dimension when the
    operands share a unit; round / mod / rem / hypot / abs fold on [px] operands;
