@@ -184,9 +184,18 @@ counts nested content" check it.
 The optimizer decides on the property, never on its name.
 `Properties.is_vendor_prefixed` and `Properties.legacy_alias` match the
 property GADT with no wildcard, so a new constructor fails the build until it
-is classified; a property cascade does not type answers by the name the reader
-kept for it. `properties` "vendor prefix and aliases are property facts" checks
-both against the WHATWG Compatibility Standard sec. 3.4.1 list.
+is classified. Each legacy name alias of the WHATWG Compatibility Standard
+sec. 3.4.1 is a constructor typed under its unprefixed property's grammar,
+which the reader picks once, so `legacy_alias` maps a typed case to a typed
+case and an unknown property is no alias. A listed name is left out when some
+target engine does not read it as its property under that grammar: the
+`-webkit-mask-box-image` set, since no Chromium or Firefox release reads
+`mask-border`; `-webkit-perspective` and `-webkit-background-origin`, whose
+values Chromium reads past the unprefixed grammar (`5`, `padding`); and
+`-webkit-mask`, which WebKit parses as a shorthand of its own.
+`properties` "vendor prefix and aliases are property facts" checks the list,
+and `css_compare_structure` "the mask-box-image set is no alias" the
+comparison.
 
 ## Rewrites that move rules
 

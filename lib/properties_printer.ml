@@ -135,9 +135,13 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_image -> pp pp_border_image
   | Border_radius -> pp pp_border_radius
   | Border_top_left_radius -> pp (pp_box_shorthand pp_length)
+  | Webkit_border_top_left_radius -> pp (pp_box_shorthand pp_length)
   | Border_top_right_radius -> pp (pp_box_shorthand pp_length)
+  | Webkit_border_top_right_radius -> pp (pp_box_shorthand pp_length)
   | Border_bottom_left_radius -> pp (pp_box_shorthand pp_length)
+  | Webkit_border_bottom_left_radius -> pp (pp_box_shorthand pp_length)
   | Border_bottom_right_radius -> pp (pp_box_shorthand pp_length)
+  | Webkit_border_bottom_right_radius -> pp (pp_box_shorthand pp_length)
   | Border_top_color -> pp pp_color
   | Border_right_color -> pp pp_color
   | Border_bottom_color -> pp pp_color
@@ -199,7 +203,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Column_rule -> pp (Pp.list ~sep:Pp.comma pp_border)
   | Column_span -> pp pp_column_span
   | Transform_style -> pp pp_transform_style
+  | Webkit_transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
+  | Webkit_backface_visibility -> pp pp_backface_visibility
   | Scroll_snap_align -> pp pp_scroll_snap_align
   | Scroll_snap_stop -> pp pp_scroll_snap_stop
   | Scroll_behavior -> pp pp_scroll_behavior
@@ -218,8 +224,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Box_decoration_break -> pp pp_box_decoration_break
   | Webkit_box_decoration_break -> pp pp_box_decoration_break
   | Flex_grow -> pp pp_flex_factor
+  | Webkit_flex_grow -> pp pp_flex_factor
   | Flex_shrink -> pp pp_flex_factor
+  | Webkit_flex_shrink -> pp pp_flex_factor
   | Order -> pp pp_order
+  | Webkit_order -> pp pp_order
   | Flex_direction -> pp pp_flex_direction
   | Flex_wrap -> pp pp_flex_wrap
   | Flex_flow -> pp pp_flex_flow
@@ -288,7 +297,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_auto_columns -> pp pp_grid_template
   | Grid_auto_rows -> pp pp_grid_template
   | Flex -> pp pp_flex
+  | Webkit_flex -> pp pp_flex
   | Flex_basis -> pp pp_flex_basis
+  | Webkit_flex_basis -> pp pp_flex_basis
   | Align_content -> pp pp_align_content
   | Justify_self -> pp pp_justify_self
   | Place_content -> pp pp_place_content
@@ -443,6 +454,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | View_timeline -> pp pp_view_timeline_shorthand
   | Timeline_scope -> pp pp_timeline_scope
   | Perspective_origin -> pp pp_perspective_origin
+  | Webkit_perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_rotate_value
   | Transition_duration -> pp pp_duration
@@ -460,6 +472,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_bottom -> pp pp_border
   | Border_left -> pp pp_border
   | Transform_origin -> pp pp_transform_origin
+  | Webkit_transform_origin -> pp pp_transform_origin
   | Transform_box -> pp pp_transform_box
   | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
   | Clip_path -> pp pp_clip_path

@@ -439,9 +439,23 @@ let scroll_padding_keys =
   ]
 
 (* The slots a property names, before flow-relative aliasing. *)
-let property_slots : type a. a Properties.property -> overlap_key list =
+let rec property_slots : type a. a Properties.property -> overlap_key list =
   function
   | All -> [ key "*" ]
+  | Webkit_backface_visibility -> property_slots Backface_visibility
+  | Webkit_border_top_left_radius -> property_slots Border_top_left_radius
+  | Webkit_border_top_right_radius -> property_slots Border_top_right_radius
+  | Webkit_border_bottom_right_radius ->
+      property_slots Border_bottom_right_radius
+  | Webkit_border_bottom_left_radius -> property_slots Border_bottom_left_radius
+  | Webkit_flex -> property_slots Flex
+  | Webkit_flex_grow -> property_slots Flex_grow
+  | Webkit_flex_shrink -> property_slots Flex_shrink
+  | Webkit_flex_basis -> property_slots Flex_basis
+  | Webkit_order -> property_slots Order
+  | Webkit_perspective_origin -> property_slots Perspective_origin
+  | Webkit_transform_origin -> property_slots Transform_origin
+  | Webkit_transform_style -> property_slots Transform_style
   | Margin ->
       [
         key "margin-top";
