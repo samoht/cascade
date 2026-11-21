@@ -248,6 +248,13 @@ where it is called. Each entry says what to write there.
 Each entry here is a sheet that 1.2.1 minified into one a browser renders
 differently. They are the reason to minify again.
 
+- **An inverse trigonometric function counted as a number.** `--minify`
+  turned `opacity:asin(0)` into `opacity:0`, and did the same at `z-index`,
+  `line-height`, `flex-grow`, `scale` and inside `calc(asin(0)*1px)`, though
+  `asin()`, `acos()`, `atan()` and `atan2()` answer an angle (CSS Values 4
+  sec. 10.4) and browsers drop those declarations. It also folded
+  `sin(asin(.5))` to `-.98803162`, reading the angle's degrees as radians.
+  Such a declaration is now dropped, and `sin(asin(.5))` is `.5` (#1516).
 - **`&` under a pseudo-element styled the pseudo-element.** CSS Nesting 1
   sec. 4 says `&` cannot represent a pseudo-element, so
   `p::before{&{color:blue}}` styles nothing, and Chromium leaves the

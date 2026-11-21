@@ -228,6 +228,10 @@ and eval_angle_arg : angle_arg -> float option = function
   | Rad f -> Some f
   | Turn f -> Some (f *. 2. *. Float.pi)
   | Grad f -> Some (f *. Float.pi /. 200.)
+  (* Sec. 10.4: an inverse trigonometric call is an angle, which [eval_math_fn]
+     gives in degrees; a bare number is radians. *)
+  | Numeric_arg (Math_call (Asin _ | Acos _ | Atan _ | Atan2 _) as arg) ->
+      Option.map (fun d -> d *. Float.pi /. 180.) (eval_math_arg arg)
   | Numeric_arg arg -> eval_math_arg arg
   | Operation (l, op, r) -> (
       match (eval_angle_arg l, eval_angle_arg r) with
@@ -509,9 +513,11 @@ and math_fn_result (fn : math_fn) : math_result option =
       | Some (United (v, unit)) when is_absolute_unit unit ->
           Option.some (Scalar (sign v))
       | Some (United _) | None -> Option.none)
-  (* Every other math function is typed [<number>] in, [<number>] out, bar the
-     inverse trig functions, whose [<angle>] result only the angle evaluator can
-     place. *)
+  (* Sec. 10.4: the inverse trigonometric functions answer an [<angle>], which
+     [eval_math_fn] gives in degrees. *)
+  | Asin _ | Acos _ | Atan _ | Atan2 _ ->
+      Option.map (fun v -> United (v, "deg")) (eval_math_fn fn)
+  (* Every other math function is typed [<number>] in, [<number>] out. *)
   | _ -> Option.map (fun v -> Scalar v) (eval_math_fn fn)
 
 and compared_result f args = compared_results f (List.map math_arg_result args)
