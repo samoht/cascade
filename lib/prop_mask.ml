@@ -1150,7 +1150,25 @@ let read_clip_geometry_box t =
 
 let rec read_clip_path (t : Cursor.t) : clip_path =
   Cursor.ws t;
-  let read_basic_shape t : clip_path =
+  let shape_calls =
+    [
+      ("inset", read_clip_path_inset);
+      ("circle", read_clip_path_circle);
+      ("ellipse", read_clip_path_ellipse);
+      ("polygon", read_clip_path_polygon);
+      ("path", read_clip_path_path);
+      ("xywh", read_clip_path_xywh);
+      ("rect", read_clip_path_rect);
+      ("shape", read_clip_path_shape);
+      ("var", fun t -> (Var (Values.read_var read_clip_path t) : clip_path));
+    ]
+  in
+  (* The half of [<basic-shape> || <geometry-box>] a box pairs with: a shape
+     function, or a [var()] that may stand for one. *)
+  let read_pair_shape t : clip_path =
+    Cursor.enum_or_calls "clip-path shape" [] ~calls:shape_calls t
+  in
+  let read_shape_or_alone t : clip_path =
     Cursor.one_of
       [
         (fun t -> Clip_path_url (Cursor.url t));
@@ -1164,40 +1182,34 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
               ("revert", Revert);
               ("revert-layer", Revert_layer);
             ]
-            ~calls:
-              [
-                ("inset", read_clip_path_inset);
-                ("circle", read_clip_path_circle);
-                ("ellipse", read_clip_path_ellipse);
-                ("polygon", read_clip_path_polygon);
-                ("path", read_clip_path_path);
-                ("xywh", read_clip_path_xywh);
-                ("rect", read_clip_path_rect);
-                ("shape", read_clip_path_shape);
-                ( "var",
-                  fun t -> (Var (Values.read_var read_clip_path t) : clip_path)
-                );
-              ]
-            t);
+            ~calls:shape_calls t);
       ]
       t
   in
-  (* CSS Masking 1 sec. 5.1 [<basic-shape> || <geometry-box>]: a shape and a
-     reference box may appear in either order, or just a box on its own. *)
+  (* CSS Masking 1 sec. 5.1 [<clip-source> | [ <basic-shape> || <geometry-box> ]
+     | none]: a shape and a reference box may appear in either order, or just a
+     box on its own, and a url, [none] or a CSS-wide keyword stands alone. *)
   match read_clip_geometry_box_opt t with
   | Some box -> (
       Cursor.ws t;
       (* What follows a lone box may belong to the caller: the [offset]
          shorthand of CSS Motion Path 1 (ED) sec. 2.6 puts a distance or a
          rotation after its path. *)
-      match Cursor.option read_basic_shape t with
+      match Cursor.option read_pair_shape t with
       | Some shape -> Clip_path_with_box { shape; box; box_first = true }
       | None -> Clip_path_box box)
   | None -> (
-      let shape = read_basic_shape t in
+      let shape = read_shape_or_alone t in
       Cursor.ws t;
-      if Cursor.is_done t then shape
-      else
-        match read_clip_geometry_box_opt t with
-        | Some box -> Clip_path_with_box { shape; box; box_first = false }
-        | None -> shape)
+      match shape with
+      | Clip_path_url _ | Clip_path_none | Inherit | Initial | Unset | Revert
+      | Revert_layer | Clip_path_box _ | Clip_path_with_box _ | Invalid _ ->
+          shape
+      | Clip_path_inset _ | Clip_path_circle _ | Clip_path_ellipse _
+      | Clip_path_polygon _ | Clip_path_path _ | Clip_path_shape _
+      | Clip_path_xywh _ | Clip_path_rect _ | Var _ -> (
+          if Cursor.is_done t then shape
+          else
+            match read_clip_geometry_box_opt t with
+            | Some box -> Clip_path_with_box { shape; box; box_first = false }
+            | None -> shape))
