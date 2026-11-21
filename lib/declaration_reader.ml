@@ -830,9 +830,10 @@ let read_typed_property_value : type a. a property -> Cursor.t -> declaration =
    rather than reading it, so a caller holding one does not have to spell it out
    for the parser to read back: [pp_property] under minify writes [page-break-*]
    as its CSS Fragmentation 3 sec. 3.4 [break-*] alias, which names a different
-   property. A value whose substitution takes a slot of the property's grammar
-   is typed only if the typed value prints back every slot as written; else it
-   is kept as the token stream it is until substitution. *)
+   property. A value holding a substitution is typed only if the typed value is
+   not marked invalid and, where the substitution takes a slot of the property's
+   grammar, prints back every slot as written; else it is kept as the token
+   stream it is until substitution. *)
 let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
     =
  fun prop_type t ->
@@ -844,18 +845,25 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
   | Custom_property _ -> read_typed_property_value prop_type t
   | _ ->
       let components = Cursor.lookahead Cursor.drain_to_decl_end t in
-      if not (substitution_takes_a_slot components) then
-        read_typed_property_value prop_type t
+      if
+        (not (components_have_substitution components))
+        || components_have_invalid_substitution components
+      then read_typed_property_value prop_type t
       else
         let start = Cursor.save t in
         let decl = read_typed_property_value prop_type t in
+        (* CSS Variables 1 sec. 3 takes the declaration as valid at parse time,
+           so a typed value the reader marks invalid is a guess too. *)
         if
-          slots_kept components (Declaration_core.value_components decl)
-          || components_have_invalid_substitution components
-        then decl
-        else (
+          is_invalid decl
+          || substitution_takes_a_slot components
+             && not
+                  (slots_kept components
+                     (Declaration_core.value_components decl))
+        then (
           Cursor.restore t start;
           read_unknown_property_declaration t (canonical_prop_name prop_type))
+        else decl
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;

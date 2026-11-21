@@ -283,6 +283,13 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **A math function over a `var()` could delete its declaration.**
+  `--minify` deleted `rotate:atan2(var(--y),var(--x))`, the same over
+  `acos()`, `asin()` and `atan()`, `rotate:x acos(var(--v))` and
+  `clip-path:circle(var(--v) 0% 0%)` as invalid, and printed the first from
+  `rotate:calc(atan2(...))`, so a second pass deleted what the first kept. A
+  declaration holding a `var()` is valid until substitution (CSS Variables 1
+  sec. 3), and such a value is now kept as written (#1513).
 - **An infinite negative size became an invalid literal.** `--minify` turned
   `min-height:calc(-infinity*1px)` into `-3.40282e38px`, which the twelve
   sizing properties refuse, so the declaration was dropped where the source
