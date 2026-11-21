@@ -610,7 +610,8 @@ let nesting_synthesis_can_be_disabled () =
        *)):where(.dark,.dark *){color:blue;font-size:2rem}"
   in
   let out ?regroup () =
-    Css.to_string ~minify:true (Css.optimize ?regroup sheet)
+    Css.to_string ~minify:true
+      (Css.optimize ?regroup ~targets:Optimize_helpers.nesting_targets sheet)
   in
   Alcotest.(check bool)
     "regrouping on nests the second rule" true
@@ -769,7 +770,10 @@ let test_shorthand_drops_the_longhand_it_resets () =
    the next [;] or to the block's [}], so a declaration followed by a nested
    at-rule or nested rule owes it a separator; without one the declaration runs
    on into the next sibling and the reader drops the rule. [Css.of_string
-   ~strict:true] is the gate: it turns any recovery warning into an error. *)
+   ~strict:true] is the gate: it turns any recovery warning into an error. A
+   declaration directly in a nested at-rule is a nested declarations rule (CSS
+   Nesting 1 sec. 5), which the optimizer flattens under any targets, so each
+   block comes out as a rule of its own. *)
 let nested_block_separator () =
   let check name input expected =
     let output = optimized_string input in
@@ -782,20 +786,20 @@ let nested_block_separator () =
   in
   check "adjacent same-condition blocks merge"
     ".a{@supports (color:red){color:red}@supports (color:red){top:0}}"
-    ".a{@supports(color:red){color:red;top:0}}";
+    "@supports(color:red){.a{color:red;top:0}}";
   check "three blocks in a row"
     ".a{@supports (color:red){color:red}@supports (color:red){top:0}@supports \
      (color:red){left:0}}"
-    ".a{@supports(color:red){color:red;top:0;left:0}}";
+    "@supports(color:red){.a{color:red;left:0;top:0}}";
   check "nested at-rule before a nested rule"
     ".a{@supports (color:red){color:red}.b{top:0}}"
-    ".a{@supports(color:red){color:red}.b{top:0}}";
+    "@supports(color:red){.a{color:red}}.a .b{top:0}";
   check "two nested at-rules"
     ".a{@supports (color:red){color:red}@media print{top:0}}"
-    ".a{@supports(color:red){color:red}@media print{top:0}}";
+    "@supports(color:red){.a{color:red}}@media print{.a{top:0}}";
   check "declaration then nested at-rule then nested rule"
     ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
-    ".a{top:0;@supports(color:red){color:red}.b{left:0}}"
+    ".a{top:0}@supports(color:red){.a{color:red}}.a .b{left:0}"
 
 (* An earlier declaration of a property is a fallback for a browser that drops
    the later one at parse time, and the default targets are floors: Chrome 111,

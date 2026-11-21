@@ -74,36 +74,31 @@ let test_combine_reads_back () =
    wrapper into its lone [&:hover] child builds the selector that nesting
    synthesis then compares with its neighbour's. Built in the reader's shape,
    the pair nests on the first pass instead of only once the printed text is
-   read back, so minifying the output again changes nothing. *)
+   read back, so minifying the output again changes nothing. The innermost body
+   is a nested rule, not a nested declarations rule, which would be flattened
+   under any targets (CSS Nesting 1 sec. 5). *)
 let test_merged_selector_nests_on_first_pass () =
   let minify css =
     match Css.of_string css with
     | Ok { stylesheet; _ } ->
-        Css.to_string ~minify:true (Css.optimize stylesheet)
+        Css.to_string ~minify:true
+          (Css.optimize ~targets:Optimize_helpers.nesting_targets stylesheet)
     | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
   in
   let once =
     minify
       ".b{color:red;@media (prefers-color-scheme:dark){&:where(.s,.s \
        *){color:blue}}@media (prefers-color-scheme:dark){&:where(.s,.s \
-       *){&:hover{@media (hover:hover){color:green}}}}}"
+       *){&:hover{@media (hover:hover){&{color:green}}}}}}"
   in
   Alcotest.(check string)
     "nested on the first pass"
     ".b{color:red;@media(prefers-color-scheme:dark){&:where(.s,.s \
-     *){color:#00f;&:hover{@media(hover:hover){color:green}}}}}"
+     *){color:#00f;&:hover{@media(hover:hover){&{color:green}}}}}}"
     once;
   Alcotest.(check string) "a fixed point" once (minify once)
 
-(* Browsers that parse nesting, nested declarations included (CSS Nesting 1 sec.
-   5): the floors at which a nested form may stay. *)
-let nesting_targets =
-  {
-    Css.Optimize.chrome = (130, 0);
-    firefox = (132, 0);
-    safari = (18, 2);
-    ios_safari = (18, 2);
-  }
+let nesting_targets = Optimize_helpers.nesting_targets
 
 let minify_for targets css =
   match Css.of_string css with
@@ -124,6 +119,76 @@ let test_merge_lone_in_scope () =
   Alcotest.(check string)
     "a child starting with its parent merges" "@scope(.c){.a .b{color:red}}"
     (minify_for nesting_targets "@scope (.c){.a{.b{color:red}}}")
+
+(* A form is emitted only if every browser the run serves parses it. MDN's
+   browser-compat-data records CSS Nesting ([css.selectors.nesting]) in full
+   from Chrome 120, Firefox 117 and Safari 17.2; Chrome 111 and Safari 16.4, the
+   default floors, read none of it (CSS Syntax 3 throws a nested rule away with
+   the declaration it ends up in), and Chrome 112 to 119 and Safari 16.5 to 17.1
+   refuse a nested selector that starts with an identifier. So under the default
+   floors nesting is neither synthesised nor kept: an author's nesting is
+   flattened, which CSS Nesting 1 sec. 4 and 5 make exact. Under
+   [--enforce-spec] the browsers are every conforming implementation, which
+   includes one that predates CSS Nesting. *)
+let test_nesting_follows_the_floors () =
+  let minify ?(enforce_spec = false) ?targets css =
+    match Css.of_string css with
+    | Ok { stylesheet; _ } ->
+        Css.to_string ~minify:true
+          (Css.optimize ~enforce_spec ?targets stylesheet)
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  Alcotest.(check string)
+    "no nesting is synthesised for the default floors"
+    ".a{color:red}.a .b{color:#00f}"
+    (minify ".a{color:red}.a .b{color:blue}");
+  Alcotest.(check string)
+    "nor under --enforce-spec" ".a{color:red}.a .b{color:#00f}"
+    (minify ~enforce_spec:true ".a{color:red}.a .b{color:blue}");
+  Alcotest.(check string)
+    "an author's nesting is flattened for the default floors"
+    ".a{color:red}.a .b{color:#00f}"
+    (minify ".a{color:red;.b{color:blue}}");
+  Alcotest.(check string)
+    "and under --enforce-spec" ".a{color:red}.a .b{color:#00f}"
+    (minify ~enforce_spec:true ".a{color:red;.b{color:blue}}");
+  Alcotest.(check string)
+    "no relaxed selector either" ".a{color:#00f}.a div{color:red}"
+    (minify ".a{color:blue;& div{color:red}}");
+  (* [Css.Optimize.rules] keeps an author's nesting, so the [&] prefix stays
+     there too: [div] alone starts with an identifier. *)
+  Alcotest.(check (list string))
+    "nor through the rule-list entry point"
+    [ ".a{color:red;& div{top:0}}" ]
+    (rule_strings (Css.Optimize.rules [ rule ".a{color:red;& div{top:0}}" ]));
+  (* Floors that parse nesting keep and synthesise it. *)
+  Alcotest.(check string)
+    "nesting is synthesised where every target parses it"
+    ".a{color:red;.b{color:#00f}}"
+    (minify ~targets:nesting_targets ".a{color:red}.a .b{color:blue}");
+  Alcotest.(check string)
+    "and an author's nesting stays" ".a{color:red;.b{color:#00f}}"
+    (minify ~targets:nesting_targets ".a{color:red;.b{color:blue}}")
+
+(* CSS Nesting 1 sec. 3.4 and 5 keep a declaration written after a nested rule
+   in place, as a nested declarations rule, where Chrome 120 to 129, Firefox 117
+   to 131 and Safari 17.2 to 18.1 moved it ahead of every nested rule. So
+   [.a{&{color:red}color:blue}] is blue in one and red in the other, and the
+   compatibility data cascade ships names no release that reads it in place. A
+   rule holding one is flattened under any floors, into the order the
+   specification gives. *)
+let test_nested_declarations_are_flattened () =
+  let minify = minify_for in
+  Alcotest.(check string)
+    "a declaration after a nested rule" ".a{color:#00f}"
+    (minify nesting_targets ".a{&{color:red}color:blue}");
+  Alcotest.(check string)
+    "a declaration in a nested @media" "@media print{.a{color:#00f}}"
+    (minify nesting_targets ".a{@media print{color:blue}}");
+  (* Control: a rule with no nested declarations stays nested. *)
+  Alcotest.(check string)
+    "nested rules alone stay" ".a{color:red;&:hover{color:#00f}}"
+    (minify nesting_targets ".a{color:red;&:hover{color:blue}}")
 
 let test_merge_lone_wrapper () =
   let merged = Nest.merge_lone (rule ".card{.title{color:red}}") in
@@ -263,6 +328,10 @@ let suite =
         test_merged_selector_nests_on_first_pass;
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
       Alcotest.test_case "merge_lone in scope" `Quick test_merge_lone_in_scope;
+      Alcotest.test_case "nesting follows the floors" `Quick
+        test_nesting_follows_the_floors;
+      Alcotest.test_case "nested declarations are flattened" `Quick
+        test_nested_declarations_are_flattened;
       Alcotest.test_case "merge_lone pseudo-element parent" `Quick
         test_merge_lone_pseudo_element_parent;
       Alcotest.test_case "drop_dead_nested keeps live branches" `Quick

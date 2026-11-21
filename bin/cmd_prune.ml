@@ -191,8 +191,7 @@ let cmd =
          removed; check those before shipping the result.";
       `P
         "Nesting is flattened before anything is judged, since a nested \
-         selector is written against its parent. Pipe the result through \
-         $(b,cascade --minify) to nest it again.";
+         selector is written against its parent.";
       `S Manpage.s_examples;
       `P "See what would go, then write the pruned stylesheet:";
       `Pre

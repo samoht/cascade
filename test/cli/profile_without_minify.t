@@ -43,9 +43,9 @@ its time. It opens with where the run spent its time.
   time: read Ns, optimize Ns, print Ns, total Ns
 
 The footer counts the declaration blocks the nested-merge safety check looked
-up. Neither rule above carries a nested block, so none is looked up. Two
-`.q` rules, the first carrying a nested block, put the second rule's block to
-that nested body once, and merging them leaves no second rule to look up again.
+up. Neither rule above carries a nested block, so none is looked up. Nor does
+either `.q` rule below once the default targets, which read no nesting, have
+the first one flattened.
 
   $ grep "nested-merge probes" profile2.txt
   nested-merge probes: 0
@@ -55,4 +55,4 @@ that nested body once, and merging them leaves no second rule to look up again.
   > EOF
   $ cascade --minify --profile nested.css > /dev/null 2>profile3.txt
   $ grep "nested-merge probes" profile3.txt
-  nested-merge probes: 1
+  nested-merge probes: 0

@@ -72,4 +72,4 @@ A parent with no pseudo-element still merges, and reads back the same way.
   > .a { color: red; .b { color: blue } }
   > CSS
   $ cascade --minify plain_nested.css
-  .a{color:red;.b{color:#00f}}
+  .a{color:red}.a .b{color:#00f}
