@@ -86,8 +86,9 @@ val keys_under : string -> string list
 
 val measured : measurement list
 (** [measured] is what this project measured for productions web-features gives
-    no key. Every entry names the specification that grants the grammar and the
-    build it was measured on, so a later build can be compared against it. *)
+    no key. Every entry names the specification that grants the grammar, or for
+    a legacy function the compatibility data that records it, and the build it
+    was measured on, so a later build can be compared against it. *)
 
 val unimplemented_by : targets -> string -> bool
 (** [unimplemented_by targets key] is [true] only when the dataset says some
@@ -105,8 +106,9 @@ val parse_release : engine -> string -> version option option
     Safari parses with the WebKit of the Safari of its version, since BCD
     records an iOS gap beside a shipped Safari only for productions with no
     effect on a touch screen, such as the [cursor] keywords; and the
-    {!val-measured} supplement is not read, since it names grammar arms rather
-    than the words of a value. *)
+    {!val-measured} supplement is read only for a [css.types.] key, a function a
+    word of a value names, since elsewhere it names grammar arms rather than the
+    words of a value. *)
 
 val floors : targets -> (engine * version) list
 (** [floors targets] is each engine of [targets] with its version. *)
