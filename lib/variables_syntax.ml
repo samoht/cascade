@@ -326,7 +326,6 @@ let read_remaining_typed reader what =
   if value = "" then Cursor.err_expected reader what;
   value
 
-(** Read a value according to its syntax type *)
 let rec read_value : type a. Cursor.t -> a syntax -> a =
  fun reader syntax ->
   match syntax with
@@ -344,7 +343,7 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Resolution -> read_remaining_typed reader "<resolution>"
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
-  | Number -> Cursor.number reader
+  | Number -> Values.read_constant_number reader
   | Integer -> Cursor.int reader
   | Percentage -> Values.read_percentage reader
   | Length_percentage -> Values.read_length_percentage reader
