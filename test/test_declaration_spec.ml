@@ -1110,6 +1110,12 @@ let spec_remaining_prop_vectors () =
       ("animation-composition: add", "animation-composition:add");
       ("animation-range-start: entry 10%", "animation-range-start:entry 10%");
       ("animation-range-end: exit 90%", "animation-range-end:exit 90%");
+      (* Scroll-driven Animations 1 sec. 3.1 names [scroll], the full range of
+         the scroll container, among the timeline ranges. *)
+      ("animation-range: scroll", "animation-range:scroll");
+      ("animation-range: entry scroll", "animation-range:entry scroll");
+      ("animation-range-start: scroll 10%", "animation-range-start:scroll 10%");
+      ("animation-range-end: scroll 90%", "animation-range-end:scroll 90%");
       ("scroll-timeline-name: --scroller", "scroll-timeline-name:--scroller");
       ("scroll-timeline-axis: inline", "scroll-timeline-axis:inline");
       ("view-timeline-inset: auto 10%", "view-timeline-inset:auto 10%");

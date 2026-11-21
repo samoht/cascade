@@ -35,6 +35,10 @@ let test_spec_keyframe_position_vectors () =
       (" 75% ", Some (Percent 75.));
       ("from", Some From);
       ("to", Some To);
+      ("entry 10%", Some (Timeline_range ("entry", 10.)));
+      (* Scroll-driven Animations 1 sec. 3.1 names [scroll] among the view
+         progress ranges, and Chromium 153 keeps a [scroll 50%] keyframe. *)
+      ("scroll 50%", Some (Timeline_range ("scroll", 50.)));
     ]
   in
   List.iter
