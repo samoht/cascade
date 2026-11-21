@@ -298,6 +298,54 @@ let minify_optimizes_and_prints () =
        ~rename_custom_property:(fun n -> String.concat "" [ "tw-"; n ])
        (Css.stylesheet ".a{--x:1px;width:var(--x)}"))
 
+(* A colour printed inside a border, a gradient stop or [override-colors]
+   follows the flags of the sheet it is printed in. [--enforce-spec] keeps the
+   spec-canonical number for an [oklch()] chroma, as a [color] value does. *)
+let nested_colour_follows_print_flags () =
+  let colour = "oklch(.7 .304 20)" in
+  let css =
+    String.concat ""
+      [
+        ".a{color:";
+        colour;
+        ";border:1px solid ";
+        colour;
+        ";background:linear-gradient(";
+        colour;
+        ",red)}@font-palette-values --p{font-family:x;override-colors:0 ";
+        colour;
+        "}";
+      ]
+  in
+  Alcotest.(check string)
+    "enforce-spec reaches every colour"
+    (String.concat ""
+       [
+         ".a{color:";
+         colour;
+         ";border:1px solid ";
+         colour;
+         ";background:linear-gradient(";
+         colour;
+         ",red)}@font-palette-values --p{font-family:x;override-colors:0 ";
+         colour;
+         "}";
+       ])
+    (Css.minify ~enforce_spec:true (Css.stylesheet css))
+
+(* A renamed custom property is renamed inside a gradient stop and a border
+   colour, as everywhere else. *)
+let nested_colour_follows_renaming () =
+  Alcotest.(check string)
+    "a renamed custom property is renamed in a nested colour"
+    ".a{--tw-c:red;border:1px solid \
+     var(--tw-c);background:linear-gradient(var(--tw-c),#00f)}"
+    (Css.minify
+       ~rename_custom_property:(fun n -> String.concat "" [ "tw-"; n ])
+       (Css.stylesheet
+          ".a{--c:red;border:1px solid \
+           var(--c);background:linear-gradient(var(--c),blue)}"))
+
 let pure_minify_value_fallbacks () =
   let stylesheet =
     v
@@ -699,6 +747,10 @@ let suite =
       Alcotest.test_case "minify flag" `Quick minify_flag;
       Alcotest.test_case "minify optimizes and prints" `Quick
         minify_optimizes_and_prints;
+      Alcotest.test_case "nested colour follows print flags" `Quick
+        nested_colour_follows_print_flags;
+      Alcotest.test_case "nested colour follows renaming" `Quick
+        nested_colour_follows_renaming;
       Alcotest.test_case "pure minify value fallbacks" `Quick
         pure_minify_value_fallbacks;
       Alcotest.test_case "constructed offset shorthand" `Quick
