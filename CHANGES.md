@@ -283,6 +283,16 @@ differently. They are the reason to minify again.
   and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
   rather than the old one. A rule whose selector holds `&` past its parent's
   prefix now stays where it is (#1506).
+- **A math function at a counter, feature or axis number was deleted.**
+  `--minify` deleted `counter-increment:a calc(1)`, `counter-reset:a
+  calc(2*3)`, `font-feature-settings:"liga" calc(1)`,
+  `font-variation-settings:"wght" calc(400)` and `rotate:1 calc(1) 0 45deg`,
+  and an `@property` rule whose `<number>` initial value was `calc(1.5)`.
+  CSS Values 4 sec. 10.1 puts a math function at any slot of its type, and
+  sec. 10.9 rounds one at an integer. A call that folds to a constant is now
+  read as that number, rounded at an integer (`calc(1.5)` is `2`). In the
+  library, `Values.read_constant_number` and `Values.read_constant_integer`
+  read such a value (#1515).
 - **An animation with a negative delay was deleted.** `--minify` refused
   `animation:foo 1s -1s`, though it printed that form itself from
   `calc(-1s)`. CSS Animations 1 sec. 3.6 lets the delay, the second time, be
