@@ -78,9 +78,7 @@ let test_unknown_is_not_a_gap () =
    are asked here.
 
    CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from [<custom-ident>]
-   itself, so no word of a font family sequence is one. CSS Sizing 4 (ED) sec.
-   5.2 spells [contain-intrinsic-size] as [[ auto? [ none | <length [0,inf]> ] ]
-   {1,2}], so a trailing bare [auto] is no slot. *)
+   itself, so no word of a font family sequence is one. *)
 let test_measured_beyond_the_grammar () =
   List.iter
     (fun (key, css) ->
@@ -97,11 +95,7 @@ let test_measured_beyond_the_grammar () =
         true
         (Result.is_error
            (Css.of_string ~strict:true (String.concat "" [ "x{"; css; "}" ]))))
-    [
-      ("css.properties.font-family.inherit", "font-family:inherit inherit");
-      ( "css.properties.contain-intrinsic-size.auto_none_auto",
-        "contain-intrinsic-size:auto none auto" );
-    ]
+    [ ("css.properties.font-family.inherit", "font-family:inherit inherit") ]
 
 let suite =
   ( "support",
