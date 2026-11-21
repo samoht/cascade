@@ -990,6 +990,14 @@ let spec_remaining_prop_vectors () =
       ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
       ("scroll-padding: 1rem 2rem", "scroll-padding:1rem 2rem");
       ("columns: 12rem 3", "columns:12rem 3");
+      (* CSS Multicol 2 sec. 4.5: [[<'column-width'> || <'column-count'>] [/
+         <'column-height'>]?], the height a non-negative length, which Chromium
+         153 parses. *)
+      ("columns: 0/0", "columns:0/0");
+      ("columns: 10px 2 / 5px", "columns:10px 2/5px");
+      ("columns: 2 10px / 1em", "columns:10px 2/1em");
+      ("columns: auto / 10px", "columns:auto/10px");
+      ("columns: 3 / 2rem", "columns:3/2rem");
       ( "column-rule: 1px solid currentColor",
         "column-rule:1px solid currentColor" );
       ("column-span: all", "column-span:all");
@@ -1187,6 +1195,10 @@ let spec_remaining_prop_vectors () =
       "scroll-snap-align: start center end";
       "scroll-snap-stop: normal always";
       "columns: 1 2 3";
+      "columns: /5px";
+      "columns: 2/50%";
+      "columns: 10px/-1px";
+      "columns: 10px / auto auto";
       "column-rule: solid solid";
       "column-span: all none";
       "break-before: page column";
