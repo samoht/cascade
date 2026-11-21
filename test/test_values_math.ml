@@ -1366,6 +1366,23 @@ let contain_intrinsic_size_folds_in_normalisation () =
   decl_optimizes ~prop:"contain-intrinsic-width" ~into:"auto 100px"
     "auto calc(1e2px)"
 
+(* CSS Values 4 (ED) sec. 10.1 makes calc() one math function among the rest, so
+   it stands as an argument of another, and sec. 10.10 simplifies the whole.
+   Chromium 153 and WebKit 26.5 keep each value below and compute it to the
+   number it folds to. *)
+let nested_calc_in_math_argument () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("opacity", "min(calc(1 + 2), 1)", "1");
+      ("z-index", "min(calc(1 + 2), 1)", "1");
+      ("flex-grow", "min(calc(1 + 2), 1)", "1");
+      ("line-height", "min(calc(3), 1)", "1");
+      ("line-height", "min(3, 1, calc(2))", "1");
+      ("opacity", "max(calc(1/2), .2)", ".5");
+      ("opacity", "calc(min(calc(1 + 2), 1))", "1");
+    ]
+
 let suite =
   ( "values_math",
     [
@@ -1431,4 +1448,6 @@ let suite =
         aspect_ratio_folds_in_normalisation;
       test_case "contain-intrinsic-size folds in normalisation" `Quick
         contain_intrinsic_size_folds_in_normalisation;
+      test_case "nested calc in a math argument" `Quick
+        nested_calc_in_math_argument;
     ] )
