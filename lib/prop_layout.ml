@@ -282,14 +282,21 @@ let rec pp_contain_intrinsic_size : contain_intrinsic_size Pp.t =
 (* The same fold as everywhere else a length carries its authored spelling: the
    reader keeps it for the unminified round-trip and the printer drops it under
    [--minify], so it has to go before anything keyed on the node compares two
-   spellings of one size. *)
+   spellings of one size. A calculation folds first (CSS Values 4 sec. 10.10),
+   so [calc(1e2px)] is the [100px] that [100E0px] spells; sec. 10.12 keeps the
+   call around a result below the [0,inf] range. The unit of a zero stays, as it
+   did. *)
+let normalize_contain_intrinsic_length length =
+  Values.canonical_dimension
+    (Values.normalize_length ~strip:false ~non_negative:true length)
+
 let normalize_contain_intrinsic_size_item :
     contain_intrinsic_size_item -> contain_intrinsic_size_item = function
   | Length length as value ->
-      let length' = Values.canonical_dimension length in
+      let length' = normalize_contain_intrinsic_length length in
       if length' == length then value else Length length'
   | Auto length as value ->
-      let length' = Values.canonical_dimension length in
+      let length' = normalize_contain_intrinsic_length length in
       if length' == length then value else Auto length'
   | value -> value
 

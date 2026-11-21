@@ -732,6 +732,11 @@ differently. They are the reason to minify again.
   the calculation and the optimiser did not; the optimiser now folds it, to
   six significant figures as `line-height` does, and `--lossless` keeps it
   (#1527).
+- **A `contain-intrinsic-size` calculation merged only on a second run.**
+  `a{contain-intrinsic-inline-size:100E0px}b{contain-intrinsic-inline-size:calc(1e2px)}`
+  minified into two rules printing `100px`, which a second run merged. The
+  optimiser now folds the calculation in every `contain-intrinsic-*` property
+  (#1528).
 
 #### Which rules merge
 
