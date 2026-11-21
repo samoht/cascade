@@ -851,6 +851,9 @@ let canonical_shadow_color_var_fallback_alpha_equal () =
   check "box-shadow blur then fallback alpha spelling"
     ".a{box-shadow:inset 1px 1px 2px var(--c, rgb(1 2 3 / 25%))}"
     ".a{box-shadow:inset 1px 1px 2px var(--c, rgb(1 2 3/.25))}";
+  check "box-shadow trailing inset then fallback alpha spelling"
+    ".a{box-shadow:1px 1px 2px var(--c, rgb(1 2 3 / 25%)) inset}"
+    ".a{box-shadow:1px 1px 2px var(--c, rgb(1 2 3/.25)) inset}";
   (* The [var()] may substitute a comma (CSS Variables 1 sec. 3): with [--c:
      red, 1px 1px] the first spelling insets the second shadow and the second
      the first, as Chromium 153 computes. *)
