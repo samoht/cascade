@@ -152,6 +152,8 @@ let pp_position_try_fallback : position_try_fallback Pp.t =
   | Flip_block -> Pp.string ctx "flip-block"
   | Flip_inline -> Pp.string ctx "flip-inline"
   | Flip_start -> Pp.string ctx "flip-start"
+  | Flip_x -> Pp.string ctx "flip-x"
+  | Flip_y -> Pp.string ctx "flip-y"
   | Name name -> pp_ident ctx name
 
 let pp_position_try_fallback_entry : position_try_fallback_entry Pp.t =
@@ -760,12 +762,16 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
 let read_position_try_fallback t =
   Cursor.ws t;
   match Cursor.peek_keyword t with
-  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) -> (
+  | Some
+      (("flip-block" | "flip-inline" | "flip-start" | "flip-x" | "flip-y") as
+       keyword) -> (
       let _ = Cursor.ident t in
       match keyword with
       | "flip-block" -> (Flip_block : position_try_fallback)
       | "flip-inline" -> Flip_inline
       | "flip-start" -> Flip_start
+      | "flip-x" -> Flip_x
+      | "flip-y" -> Flip_y
       | _ -> assert false)
   | _ -> Name (read_dashed_ident t)
 
@@ -908,7 +914,7 @@ let read_position_try_fallback_tactics t =
   in
   let is_name : position_try_fallback -> bool = function
     | Name _ -> true
-    | Flip_block | Flip_inline | Flip_start -> false
+    | Flip_block | Flip_inline | Flip_start | Flip_x | Flip_y -> false
   in
   let name, tactics =
     match components with
