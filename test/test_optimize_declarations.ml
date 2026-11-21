@@ -870,6 +870,42 @@ let prefixed_fallbacks_across_rules () =
         "a{display:-webkit-box;display:-moz-box}" );
     ]
 
+(* The compatibility data has no key for a vendor-prefixed or legacy keyword, so
+   it cannot say that every browser in B reading one value also reads the other
+   (docs/invariants.md, declaration layer). Inside one rule both values stay, in
+   either order, and across two rules an earlier value stays before a later one
+   using such a keyword. *)
+let legacy_keyword_fallbacks_survive () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( "a{cursor:grab;cursor:-webkit-grab}",
+        "a{cursor:grab;cursor:-webkit-grab}" );
+      ( "a{cursor:-webkit-grab;cursor:grab}",
+        "a{cursor:-webkit-grab;cursor:grab}" );
+      ( ".a{cursor:grab}.a{cursor:-webkit-grab}",
+        ".a{cursor:grab;cursor:-webkit-grab}" );
+      ( ".a{cursor:grab}.b{color:red}.a{cursor:-webkit-grab}",
+        ".a{cursor:grab;cursor:-webkit-grab}.b{color:red}" );
+      ("a{overflow:auto;overflow:overlay}", "a{overflow:auto;overflow:overlay}");
+      ( "a{text-align:center;text-align:-webkit-center}",
+        "a{text-align:center;text-align:-webkit-center}" );
+      ( "a{display:inline-flex;display:-webkit-inline-box}",
+        "a{display:inline-flex;display:-webkit-inline-box}" );
+      ( "a{writing-mode:vertical-rl;writing-mode:tb-rl}",
+        "a{writing-mode:vertical-rl;writing-mode:tb-rl}" );
+      ( "a{unicode-bidi:isolate;unicode-bidi:-webkit-isolate}",
+        "a{unicode-bidi:isolate;unicode-bidi:-webkit-isolate}" );
+      ( "a{image-rendering:pixelated;image-rendering:-webkit-optimize-contrast}",
+        "a{image-rendering:pixelated;image-rendering:-webkit-optimize-contrast}"
+      );
+      ( "a{min-height:100vh;min-height:-webkit-fill-available}",
+        "a{min-height:100vh;min-height:-webkit-fill-available}" );
+      (* One value written twice is no fallback. *)
+      ("a{cursor:-webkit-grab;cursor:-webkit-grab}", "a{cursor:-webkit-grab}");
+    ]
+
 (* An earlier declaration of a property is a fallback for a browser that drops
    the later one at parse time, and the default targets are floors: Chrome 111,
    Firefox 128, Safari 16.4 and every later release. web-features records
@@ -1249,6 +1285,9 @@ let suite =
       ( "prefixed fallbacks across rules",
         `Quick,
         prefixed_fallbacks_across_rules );
+      ( "legacy keyword fallbacks survive",
+        `Quick,
+        legacy_keyword_fallbacks_survive );
       ( "target evergreen compatibility prefixes",
         `Quick,
         target_evergreen_compatibility_prefixes );

@@ -302,6 +302,89 @@ let a_substitution_function_defers_the_property () =
       "width: -f()";
     ]
 
+(* CSS 2.1 sec. 4.2 has a browser keep a declaration it parses, and a reader
+   that refuses one has [--minify] delete what that browser renders. Chrome 153
+   keeps every declaration read here (CSS.supports true). The prefixed and
+   legacy keywords are read in place of the standard ones by Blink, WebKit or
+   Gecko; the rest are grammar the specifications cited grant. *)
+let a_value_a_browser_keeps_reads () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("cursor: -webkit-grab", "cursor:-webkit-grab");
+      ("cursor: -webkit-grabbing", "cursor:-webkit-grabbing");
+      ("cursor: -webkit-zoom-in", "cursor:-webkit-zoom-in");
+      ("cursor: -webkit-zoom-out", "cursor:-webkit-zoom-out");
+      ( "image-rendering: -webkit-optimize-contrast",
+        "image-rendering:-webkit-optimize-contrast" );
+      ("display: -webkit-inline-box", "display:-webkit-inline-box");
+      ( "unicode-bidi: -webkit-isolate-override",
+        "unicode-bidi:-webkit-isolate-override" );
+      ("unicode-bidi: -webkit-isolate", "unicode-bidi:-webkit-isolate");
+      ("unicode-bidi: -webkit-plaintext", "unicode-bidi:-webkit-plaintext");
+      (* CSS Overflow 3 sec. 3.1: a legacy alias of [auto]. *)
+      ("overflow: overlay", "overflow:overlay");
+      ("overflow-y: overlay", "overflow-y:overlay");
+      ("width: -webkit-fill-available", "width:-webkit-fill-available");
+      ("min-height: -webkit-fill-available", "min-height:-webkit-fill-available");
+      ("text-align: -webkit-center", "text-align:-webkit-center");
+      ("text-align: -webkit-left", "text-align:-webkit-left");
+      ("text-align: -webkit-right", "text-align:-webkit-right");
+      (* CSS Writing Modes 4 sec. 3.1.1: the SVG 1.1 values. *)
+      ("writing-mode: tb", "writing-mode:tb");
+      ("writing-mode: tb-rl", "writing-mode:tb-rl");
+      ("writing-mode: lr", "writing-mode:lr");
+      ("writing-mode: lr-tb", "writing-mode:lr-tb");
+      ("writing-mode: rl", "writing-mode:rl");
+      ("writing-mode: rl-tb", "writing-mode:rl-tb");
+      (* CSS Color 4 Appendix A: the deprecated system colours, which CSS Color
+         4 sec. 15.5 serialises in lowercase. *)
+      ("color: Window", "color:window");
+      ("color: WindowText", "color:windowtext");
+      ("color: ThreeDFace", "color:threedface");
+      ("background-color: Menu", "background-color:menu");
+      ("color: InfoBackground", "color:infobackground");
+      ("border: 1px solid ButtonShadow", "border:1px solid buttonshadow");
+      (* CSS Align 3 sec. 7.2: a lone value sets both axes. *)
+      ("place-content: flex-start", "place-content:flex-start");
+      ("place-content: flex-end", "place-content:flex-end");
+      (* CSS Generated Content 3 sec. 1. *)
+      ("content: no-open-quote", "content:no-open-quote");
+      ("content: no-close-quote", "content:no-close-quote");
+      ("content: open-quote no-close-quote", "content:open-quote no-close-quote");
+      (* CSS Fonts 4 sec. 2.4: [oblique <angle>] is a font-style. *)
+      ("font: oblique 10deg 12px a", "font:oblique 10deg 12px a");
+      ("font: oblique 10deg bold 12px a", "font:oblique 10deg bold 12px a");
+      ("dominant-baseline: hanging", "dominant-baseline:hanging");
+      (* CSS UI 4 sec. 7.2. *)
+      ("appearance: checkbox", "appearance:checkbox");
+      ("appearance: radio", "appearance:radio");
+      ("appearance: menulist-button", "appearance:menulist-button");
+      (* CSS Images 4 sec. 2.2: the resolution of an option is optional. *)
+      ( "background-image: image-set(\"a.png\")",
+        "background-image:image-set(\"a.png\")" );
+      (* CSS Grid 2 sec. 7.3: a named cell token is a run of name code points,
+         so it may start with a digit or hold a non-ASCII one. *)
+      ("grid-template-areas: \"1a\"", "grid-template-areas:\"1a\"");
+      ("grid-template-areas: \"\u{e9}\"", "grid-template-areas:\"\u{e9}\"");
+      (* CSS Transforms 2 sec. 13.1. *)
+      ("transform: perspective(none)", "transform:perspective(none)");
+      (* CSS Text 4 sec. 3: the longhand pair, in grammar order. *)
+      ("white-space: preserve", "white-space:preserve");
+      ( "white-space: nowrap preserve-breaks",
+        "white-space:preserve-breaks nowrap" );
+      (* CSS Backgrounds 3 sec. 6.7: [//] leaves the width out. *)
+      ("border-image: url(a.png) 30 // 5px", "border-image:url(a.png)30//5px");
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "grid-template-areas: \"a$\"";
+      "white-space: nowrap nowrap";
+      "white-space: preserve collapse";
+      "border-image: url(a.png) 30 //";
+    ]
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1688,6 +1771,8 @@ let suite =
         grid_shorthand_names_both_axes;
       test_case "a substitution function defers the property" `Quick
         a_substitution_function_defers_the_property;
+      test_case "a value a browser keeps reads" `Quick
+        a_value_a_browser_keeps_reads;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
       test_case "try tactics stand together" `Quick try_tactics_stand_together;
