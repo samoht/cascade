@@ -1155,6 +1155,10 @@ module Transform_origin = struct
      intrinsic-sizing ones a bare length would accept are out. *)
   let read_slot t = read_length ~with_keywords:false t
 
+  (* Sec. 4: "A third value always represents the Z position (or offset) and
+     must be of type <length>", so it takes no percentage. *)
+  let read_z t = read_length ~with_keywords:false ~length_only:true t
+
   let read_position t : transform_origin =
     let position =
       match read_position_value t with
@@ -1163,7 +1167,7 @@ module Transform_origin = struct
       | position -> position
     in
     Cursor.ws t;
-    match Cursor.option read_slot t with
+    match Cursor.option read_z t with
     | Some z -> (
         match position with
         | XY (x, y) -> XYZ (x, y, z)
@@ -1185,7 +1189,7 @@ module Transform_origin = struct
       match Cursor.option read_slot t with
       | Some y -> (
           Cursor.ws t;
-          match Cursor.option read_slot t with
+          match Cursor.option read_z t with
           | Some z -> XYZ (x, y, z)
           | None -> XY (x, y))
       (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin
