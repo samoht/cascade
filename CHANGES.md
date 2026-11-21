@@ -892,6 +892,9 @@ differently. They are the reason to minify again.
   three numbers or three percentages, and `hsl()` takes percentages and a
   comma alpha, so `color:blue;color:rgb(255,0%,0)` no longer becomes
   `color:red` (#1613).
+- conversions use the Editor's Draft D50 white** (x 0.3457, y 0.3585) and its
+  Bradford matrices, so sRGB white is achromatic: `lch(from #fff l c h)` is
+  `lch(100 0 0)` (#1615).
 
 #### Stable output
 
