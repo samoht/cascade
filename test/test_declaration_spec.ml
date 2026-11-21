@@ -94,6 +94,35 @@ let contain_intrinsic_size_keeps_a_trailing_auto () =
        (Css.stylesheet
           ".a { contain-intrinsic-size: 1px; contain-intrinsic-size: 0 auto }"))
 
+(* CSS Values 4 (ED) sec. 10.2 spells each argument of min(), max() and clamp()
+   as a [<calc-sum>], so a nested calc(), a product or a bare sum is an argument
+   as much as a literal is, and the arguments share one type. CSS Inline 3 sec.
+   5.1 gives line-height a [<number>] and a [<length-percentage>]. Chromium 153
+   and WebKit 26.5 keep each value below and drop each one mixing a number with
+   a length, or a product of two lengths. *)
+let line_height_comparison_takes_a_sum () =
+  let keeps value ~expected =
+    check_declaration ~roundtrip:true
+      ~expected:(String.concat "" [ "line-height:"; expected ])
+      (String.concat "" [ "line-height: "; value ])
+  in
+  keeps "min(calc(1em + 2px), 1px)" ~expected:"min(1em + 2px,1px)";
+  keeps "clamp(0px, calc(1em + 2px), 100px)"
+    ~expected:"clamp(0px,1em + 2px,100px)";
+  keeps "calc(min(calc(1em + 2px), 1px) + max(1px, 2px))"
+    ~expected:"calc(min(1em + 2px,1px) + max(1px,2px))";
+  keeps "max(1em + 2px, 1px)" ~expected:"max(1em + 2px,1px)";
+  keeps "min(calc(10% + 2px), 1px)" ~expected:"min(10% + 2px,1px)";
+  keeps "min(calc(1em * 2), 1px)" ~expected:"min(1em*2,1px)";
+  keeps "min(min(1px, 2em), 1px)" ~expected:"min(min(1px,2em),1px)";
+  keeps "max(calc(1em + 2px))" ~expected:"max(1em + 2px)";
+  keeps "min(var(--a), 1px)" ~expected:"min(var(--a),1px)";
+  neg_cursor read_declaration "line-height: min(calc(1 + 2), 1px)";
+  neg_cursor read_declaration "line-height: min(calc(1/3), 1px)";
+  neg_cursor read_declaration "line-height: min(1em, 1)";
+  neg_cursor read_declaration "line-height: min(calc(1px * 2px), 1px)";
+  neg_cursor read_declaration "line-height: min(1px + 1, 2px)"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1488,6 +1517,8 @@ let suite =
         offset_path_box_takes_a_tail;
       test_case "contain-intrinsic-size keeps a trailing auto" `Quick
         contain_intrinsic_size_keeps_a_trailing_auto;
+      test_case "a line-height comparison takes a sum" `Quick
+        line_height_comparison_takes_a_sum;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
