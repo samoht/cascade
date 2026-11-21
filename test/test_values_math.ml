@@ -1193,6 +1193,33 @@ let spec_math_inverse_trig_is_an_angle () =
   (* [sin()] of that angle takes it in degrees: [sin(asin(.5))] is [.5]. *)
   decl_optimizes ~prop:"opacity" ~held:".5" ~into:".5" "sin(asin(.5))"
 
+(* docs/invariants.md, "Normalisation preserves observational equality and is
+   idempotent": two spellings of one value reach one normal form, so the first
+   --minify merges what a second would, and the printer folds nothing ("The
+   printer round-trips"). calc(2 * 16/9) and calc(16/9 * 2) are one
+   aspect-ratio, CSS Values 4 sec. 10.10 simplifies arithmetic over numbers to
+   one number, and M6 bounds a number at six significant figures, as line-height
+   does. *)
+let aspect_ratio_folds_in_normalisation () =
+  decl_optimizes ~prop:"aspect-ratio" ~held:"calc(16/9)" ~into:"1.77778"
+    "calc(16 / 9)";
+  decl_optimizes ~prop:"aspect-ratio" ~held:"calc(2*16/9)" ~into:"3.55556"
+    "calc(2 * 16/9)";
+  decl_optimizes ~prop:"aspect-ratio" ~held:"auto calc(16/9)"
+    ~into:"auto 1.77778" "auto calc(16 / 9)";
+  decl_lossless ~prop:"aspect-ratio" ~into:"calc(16/9)" "calc(16 / 9)";
+  let once =
+    Css.minify
+      (Css.stylesheet
+         "a{aspect-ratio:calc(2 * 16/9)}b{aspect-ratio:calc(16/9 * 2)}")
+  in
+  Alcotest.(check string)
+    "two spellings of one ratio merge in one pass" "a,b{aspect-ratio:3.55556}"
+    once;
+  Alcotest.(check string)
+    "the merged ratio is a fixed point" once
+    (Css.minify (Css.stylesheet once))
+
 let suite =
   ( "values_math",
     [
@@ -1244,4 +1271,6 @@ let suite =
         spec_math_type_at_the_number_percentage_readers;
       test_case "spec math range keeps the call" `Quick
         spec_math_range_keeps_the_call;
+      test_case "aspect-ratio folds in normalisation" `Quick
+        aspect_ratio_folds_in_normalisation;
     ] )
