@@ -1169,6 +1169,32 @@ let flex_basis_calc_size () =
       ".a{flex:1 calc-size(auto, size)}";
     ]
 
+(* A shorthand replaces its longhands only where every browser of B that reads
+   each longhand reads the shorthand: a browser dropping the shorthand drops
+   every side it writes, where the longhands lost one. web-features records
+   [light-dark()] from Chrome 123 (floor 111), and Chromium 145 drops a
+   [clamp()] bound of [none] that Chromium 151 reads (CSS Values 4 (ED) sec.
+   10.2). Under the source such a browser keeps the three plain sides. Longhands
+   that all need the same release compose as before. *)
+let compose_over_floors () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( ".c{border-top-color:light-dark(red,blue);border-right-color:red;border-bottom-color:red;border-left-color:red}",
+        ".c{border-top-color:light-dark(red,#00f);border-right-color:red;border-bottom-color:red;border-left-color:red}"
+      );
+      ( ".a{margin-top:clamp(none,1px,2px);margin-right:5px;margin-bottom:5px;margin-left:5px}",
+        ".a{margin-top:clamp(none,1px,2px);margin-right:5px;margin-bottom:5px;margin-left:5px}"
+      );
+      ( ".a{margin:5px;margin-top:clamp(none,1px,2px)}",
+        ".a{margin:5px;margin-top:clamp(none,1px,2px)}" );
+      ( ".a{margin-top:1px;margin-right:5px;margin-bottom:5px;margin-left:5px}",
+        ".a{margin:1px 5px 5px}" );
+      ( ".c{border-top-color:light-dark(red,blue);border-right-color:light-dark(red,blue);border-bottom-color:light-dark(red,blue);border-left-color:light-dark(red,blue)}",
+        ".c{border-color:light-dark(red,#00f)}" );
+    ]
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1273,4 +1299,5 @@ let suite =
         v4109_math_in_number_slots );
       ("spec sizing 7 calc-size", `Quick, sizing7_calc_size);
       ("flex-basis calc-size content", `Quick, flex_basis_calc_size);
+      ("composition reads over the floors", `Quick, compose_over_floors);
     ] )
