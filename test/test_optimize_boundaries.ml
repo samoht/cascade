@@ -967,6 +967,54 @@ let c736_revert_rule_keeps_its_rule () =
     "revert-rule is kept" true
     (Astring.String.is_infix ~affix:"color:revert-rule" output)
 
+(* CSS Values 4 (ED) sec. 10.2, "Comparison Functions": either bound of
+   [clamp()] can be [none], for no clamp from that side. Chromium 151 and WebKit
+   read it and Chromium 145 drops it, so the call never folds into a value that
+   browser reads, the declaration before it stays, and a guard over it is
+   undecided. Chromium 153 computes [clamp(none,90px,80px)] as 80px. *)
+let v4102_clamp_none_bound () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{width:clamp(none,50px,80px)}", ".a{width:clamp(none,50px,80px)}");
+      (".a{width:clamp(10px,50px,none)}", ".a{width:clamp(10px,50px,none)}");
+      (".a{width:clamp(none,50px,none)}", ".a{width:clamp(none,50px,none)}");
+      (".a{width:clamp(none,90px,80px)}", ".a{width:clamp(none,90px,80px)}");
+      ( ".a{width:100px;width:clamp(none,50px,80px)}",
+        ".a{width:100px;width:clamp(none,50px,80px)}" );
+      ( ".a{width:calc(clamp(none,1px,2px) + 1px)}",
+        ".a{width:calc(clamp(none,1px,2px) + 1px)}" );
+      (".a{rotate:clamp(none,5deg,10deg)}", ".a{rotate:clamp(none,5deg,10deg)}");
+      ( ".a{animation-range:clamp(1px, 5px, none)}",
+        ".a{animation-range:clamp(1px,5px,none)}" );
+      ( ".a{animation-range-start:clamp(1px, 5px, none)}",
+        ".a{animation-range-start:clamp(1px,5px,none)}" );
+      (".a{columns:clamp(1px, 5px, none)}", ".a{columns:clamp(1px,5px,none)}");
+      ( "@supports (width:clamp(none,1px,2px)){.a{color:blue}}",
+        "@supports(width:clamp(none,1px,2px)){.a{color:#00f}}" );
+    ];
+  (* Each keeps its call; the shortest spelling is the bare call. *)
+  List.iter
+    (fun (input, call) ->
+      let output = optimized_string input in
+      Alcotest.(check bool)
+        (Fmt.str "%s keeps %s (got %s)" input call output)
+        true
+        (Astring.String.is_infix ~affix:call output))
+    [
+      (".a{border-width:clamp(none,1px,2px)}", "clamp(none,1px,2px)");
+      (".a{border:clamp(1px,5px,none) solid}", "clamp(1px,5px,none)");
+      (".a{line-height:clamp(none,1.5,2)}", "clamp(none,1.5,2)");
+      (".a{line-height:clamp(1px,5px,none)}", "clamp(1px,5px,none)");
+      (".a{transition-duration:clamp(none,1s,2s)}", "clamp(none,1s,2s)");
+      (".a{z-index:clamp(none,5,10)}", "clamp(none,5,10)");
+    ];
+  Alcotest.(check bool)
+    "a none bound is no fold" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a{width:clamp(none,50px,80px)}" ".a{width:50px}")
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1060,4 +1108,7 @@ let suite =
       ( "spec cascade 7.3.6 revert-rule keeps its rule",
         `Quick,
         c736_revert_rule_keeps_its_rule );
+      ( "spec values 10.2 clamp takes a none bound",
+        `Quick,
+        v4102_clamp_none_bound );
     ] )
