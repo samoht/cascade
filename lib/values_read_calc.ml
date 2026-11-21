@@ -964,6 +964,25 @@ let looking_at_math_function t =
       || List.mem name number_math_function_names
   | None -> false
 
+(* CSS Values 4 (ED) sec. 10.1 puts a math function wherever a number, a
+   dimension or a percentage stands. Where the reader keeps only the number and
+   its unit, a static one is the number and unit it computes (sec. 10.10); one
+   that does not fold is refused. *)
+let read_folded_dimension t : float * string option =
+  let arg =
+    match Cursor.peek_function_name t with
+    | Some "calc" -> read_math_call_arg "calc" t
+    | Some _ | None -> (
+        match (read_calc_numeric_function t : unit calc) with
+        | Math_fn fn -> Math_call fn
+        | Num f -> Lit f
+        | _ -> Cursor.err_expected t "a math function")
+  in
+  match math_arg_result arg with
+  | Some (Scalar v) -> (v, Option.none)
+  | Some (United (v, unit)) -> (v, Option.some unit)
+  | None -> Cursor.err_invalid t "a math function that does not fold"
+
 let math_function_calls read =
   List.map
     (fun n -> (n, read))

@@ -895,6 +895,10 @@ differently. They are the reason to minify again.
 - conversions use the Editor's Draft D50 white** (x 0.3457, y 0.3585) and its
   Bradford matrices, so sRGB white is achromatic: `lch(from #fff l c h)` is
   `lch(100 0 0)` (#1615).
+- math function at a colour channel is read and folded** (CSS Values 4 sec.
+  10.1 and 10.10): `rgb(calc(10%) 0 0)`, `hsl(calc(10deg) 50% 50%)` and
+  `lch(50% 30 calc(10deg))`, which browsers apply, are no longer deleted, and
+  a folded `rgb()` channel rounds as its literal does (#1616).
 
 #### Stable output
 

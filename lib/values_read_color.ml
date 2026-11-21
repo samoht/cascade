@@ -6,6 +6,14 @@ open Values_var
 open Values_color_fold
 open Values_read_calc
 
+(* A channel literal, or a math function standing for one (CSS Values 4 sec.
+   10.1): the colour keeps the number and unit, so a static call folds to them,
+   and a call holding a [var()] keeps the declaration as written instead. *)
+let number_with_unit t =
+  if Cursor.looking_at_calc t || looking_at_math_function t then
+    read_folded_dimension t
+  else Cursor.number_with_unit t
+
 (** Read an [hsl()] or [hwb()] percentage, clamped to 0-100%, or [None] for the
     [none] keyword, which CSS Color 4 sec. 4.4 keeps missing: it is zero at rest
     and takes the other colour's component in an interpolation. [legacy] refuses
@@ -15,7 +23,7 @@ let read_percentage_float ?(legacy = false) t : percentage option =
     Cursor.expect_string "none" t;
     None)
   else
-    let n, unit = Cursor.number_with_unit t in
+    let n, unit = number_with_unit t in
     match unit with
     | Some "%" -> Some (Pct (max 0. (min 100. n)))
     (* CSS Color 4 sec. 7.1: only the modern syntax takes a bare number. *)
@@ -68,15 +76,8 @@ let rec read_channel t : channel =
   else if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
     (None : channel))
-  else if
-    match Cursor.peek t with
-    | Some (Component.Func { node = { name; _ }; _ })
-      when String.lowercase_ascii name <> "var" ->
-        true
-    | _ -> false
-  then Int (int_of_float (max 0. (min 255. (read_num_expr t))))
   else
-    let n, unit = Cursor.number_with_unit t in
+    let n, unit = number_with_unit t in
     match unit with
     | Some "%" ->
         (* Clamp percentage to 0-100 per CSS spec *)
@@ -216,7 +217,7 @@ let rec read_color_component t : component =
   else if Cursor.looking_at_calc t then
     Calc (read_calc ~result_type:`Number_or_value read_color_component t)
   else
-    let n, unit = Cursor.number_with_unit t in
+    let n, unit = number_with_unit t in
     match unit with
     | Some "%" -> Pct n
     | Some u -> Cursor.err_invalid t (String.concat "" [ "unit: "; u ])
@@ -252,7 +253,7 @@ let rec read_hue t : hue =
     Hue_none)
   else if Cursor.looking_at t "var(" then Var (read_var read_hue t)
   else
-    let n, unit_raw = Cursor.number_with_unit t in
+    let n, unit_raw = number_with_unit t in
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
     | "" ->
@@ -331,7 +332,7 @@ let read_ok_lightness t : percentage option =
     Cursor.expect_string "none" t;
     None)
   else
-    let n, unit = Cursor.number_with_unit t in
+    let n, unit = number_with_unit t in
     (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather than
        invalidating the colour, matching lab/lch. 0% to 100% names the same 0 to
        1 a bare number does, so both spellings clamp alike. *)
@@ -347,7 +348,7 @@ let read_number_or_none ?pct_scale t : float option =
     Cursor.expect_string "none" t;
     None)
   else
-    let n, unit = Cursor.number_with_unit t in
+    let n, unit = number_with_unit t in
     match unit with
     | Some "%" ->
         Some
@@ -400,7 +401,7 @@ let read_lab t : color =
       Cursor.expect_string "none" t;
       None)
     else
-      let n, unit = Cursor.number_with_unit t in
+      let n, unit = number_with_unit t in
       Some
         (match unit with
          | Some "%" -> Pct (max 0. (min 100. n))
@@ -427,7 +428,7 @@ let read_lch t : color =
          distinguish so [lch(54.321 ...)] doesn't round-trip as [lch(54.321%
          ...)] - the [Pct] / [Num] variants drive different printers (the
          [%]-typed one scales the precision by 100 and emits [%]). *)
-      let n, unit = Cursor.number_with_unit t in
+      let n, unit = number_with_unit t in
       Some
         (match unit with
          | Some "%" -> Pct (max 0. (min 100. n))
