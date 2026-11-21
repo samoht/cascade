@@ -591,6 +591,14 @@ differently. They are the reason to minify again.
   the link. A target now stands for its version and every later one, so a
   guard is dropped only when every browser at or past the targets fails it,
   and the pair compares different (#1463).
+- **A guard was decided by its property alone.**
+  `@supports (break-before:always){a{color:red}}` compared identical to
+  `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves
+  the rule unapplied, and so did a guard on `width:stretch`, which Chrome
+  reads only from 138. A guard is now true from the first release that parses
+  every production its declaration uses, value included, and is unwrapped only
+  when true, and dropped only when false, in every release from the targets to
+  the newest the compatibility data records (#1484).
 - **A sheet differed from its own minified output.** This is the check the
   comparison exists for, and with 1.2.1 it failed on 139 of the 504 SatCSS
   sheets and on Tailwind's output. The comparison now treats as equal each

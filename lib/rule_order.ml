@@ -615,10 +615,10 @@ let rec canonical_values ~lossless ~missing (stmts : statement list) :
    [@supports] guard false in every world selects no user agent and its block
    never applies: Tailwind writes [@supports (@media(width>=1px): var(--tw))]
    for [supports-[@media(width>=1px)]:flex] where tw writes nothing, and the two
-   render alike. The optimizer keeps such a guard open for a sheet it emits; the
-   projection answers for the spec as written and the browsers of today, and
-   neither reading answers the guard yes, so the block goes under [enforce_spec]
-   too. *)
+   render alike. A guard is dropped when it is false in every browser the
+   comparison answers for, and this one is false in every conforming
+   implementation, so in every release of the dated browser set and under
+   [enforce_spec] alike. The optimizer keeps it open for a sheet it emits. *)
 let rec drop_unanswerable_supports (stmts : statement list) : statement list =
   List.filter_map
     (fun stmt ->

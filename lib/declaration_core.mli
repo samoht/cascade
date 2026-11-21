@@ -132,6 +132,18 @@ val value_of : declaration -> 'a Properties.property -> 'a option
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 
+val first_release :
+  floor:Support.version ->
+  Support.engine ->
+  declaration ->
+  Support.version option
+(** [first_release ~floor engine decl] is the first release of [engine] at or
+    past [floor] that parses [decl], as the web-features dataset records the
+    productions [decl] uses: its property, a colour construct, or a keyword or
+    function of its value. [None] is no release the dataset records. A
+    production the dataset has no key for counts as parsed, and a custom
+    property, or a declaration holding [var()], waits on no value. *)
+
 val fallback_for :
   floors:Support.targets -> later:declaration -> declaration -> bool
 (** [fallback_for ~floors ~later earlier] is [true] when a browser at or above

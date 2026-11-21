@@ -68,7 +68,8 @@ make:
   deduplicated, and a keyframe's declarations sorted as a rule's are.
 
 Beyond the optimizer's own deduplication, the projection deletes an
-`@supports` guard that never holds (CSS Conditional 3 sec. 6), a superseded
+`@supports` guard false in every release of B, as one over a
+`<general-enclosed>` term is (CSS Conditional 3 sec. 6), a superseded
 registration or layer name, and, when judging, a prefix no target reads. The
 structural diff's comparison key (`Css.declaration_value_for_equivalence`)
 equates values of a proven type by their minified spelling. A phantom
@@ -96,8 +97,14 @@ printed form projects to itself.
 ## Target decisions
 
 A target version is a floor: that release and every later one in the data.
-`Supports.implemented_by` answers whether every browser at or above the floors
-implements a production. `Declaration.fallback_for` decides whether an earlier
+`Supports.implemented_by` decides an `@supports` guard over those releases
+when the run judges for targets (`?judge`): a declaration leaf is true from the
+first release that parses every production its declaration uses, value
+included, and is unknown in an engine whose releases disagree on it; `not`,
+`and` and `or` follow CSS Conditional 3 sec. 6's three-valued logic engine by
+engine, so the guard is unwrapped when true in every release and dropped when
+false in every one. `Supports.never_holds` answers for a
+`<general-enclosed>` term. `Declaration.fallback_for` decides whether an earlier
 declaration is dead, asked of the same floors (`Ctx.floors`) by in-rule
 deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
 shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
