@@ -1220,6 +1220,32 @@ let aspect_ratio_folds_in_normalisation () =
     "the merged ratio is a fixed point" once
     (Css.minify (Css.stylesheet once))
 
+(* The same invariant at contain-intrinsic-*: CSS Values 4 sec. 10.10 simplifies
+   calc(1e2px) to the dimension 100px, which 100E0px also spells, so the two
+   reach one normal form and the first --minify merges them. *)
+let contain_intrinsic_size_folds_in_normalisation () =
+  List.iter
+    (fun prop ->
+      decl_optimizes ~prop ~into:"100px" "calc(1e2px)";
+      let src =
+        String.concat "" [ "a{"; prop; ":100E0px}b{"; prop; ":calc(1e2px)}" ]
+      in
+      let once = Css.minify (Css.stylesheet src) in
+      Alcotest.(check string)
+        (prop ^ ": two spellings merge in one pass")
+        (String.concat "" [ "a,b{"; prop; ":100px}" ])
+        once;
+      Alcotest.(check string)
+        (prop ^ ": a fixed point") once
+        (Css.minify (Css.stylesheet once)))
+    [
+      "contain-intrinsic-width";
+      "contain-intrinsic-inline-size";
+      "contain-intrinsic-size";
+    ];
+  decl_optimizes ~prop:"contain-intrinsic-width" ~into:"auto 100px"
+    "auto calc(1e2px)"
+
 let suite =
   ( "values_math",
     [
@@ -1273,4 +1299,6 @@ let suite =
         spec_math_range_keeps_the_call;
       test_case "aspect-ratio folds in normalisation" `Quick
         aspect_ratio_folds_in_normalisation;
+      test_case "contain-intrinsic-size folds in normalisation" `Quick
+        contain_intrinsic_size_folds_in_normalisation;
     ] )
