@@ -165,8 +165,8 @@ let test_white_space () =
   neg_cursor read_white_space "no-wrap";
   (* contradictory *)
   neg_cursor ~allow_partial:true read_white_space "normal nowrap";
-  (* incomplete *)
-  neg_cursor read_white_space "preserve"
+  (* CSS Text 4 sec. 3: a lone [<'white-space-collapse'>] is a value. *)
+  check_white_space "preserve"
 
 let test_word_break () =
   check_word_break "normal";
