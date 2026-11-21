@@ -154,3 +154,37 @@ range is: it is not the zero line.
   }
   $ printf 'a{grid-row:calc(-1e30)}' | cascade fmt --minify - 2>&1
   a{grid-row:calc(-1e30)}
+
+An integer past the `int` range at an `<integer>` slot. CSS Values 4
+sec. 5.2 converts a value out of the supported range to the closest one
+supported, and each target clamps an integer far below 2^62 (Chromium
+153 computes `z-index` to 2147483647, `column-count` to 65535 and
+`grid-row` to 10000000 from 99999999999999999999 and from
+4611686018427387903 alike). The reader takes the integer at the end of
+the `int` range and keeps the declaration, which every target clamps to
+the same value.
+
+  $ for d in 'z-index:99999999999999999999' 'z-index:-99999999999999999999' 'order:99999999999999999999' 'column-count:99999999999999999999' '-webkit-line-clamp:99999999999999999999' 'counter-reset:c 99999999999999999999' 'grid-row:99999999999999999999' 'grid-column:span 99999999999999999999'; do printf 'a{%s}' "$d" | cascade fmt --minify - 2>&1; done
+  a{z-index:4611686018427387903}
+  a{z-index:-4611686018427387904}
+  a{order:4611686018427387903}
+  a{column-count:4611686018427387903}
+  a{-webkit-line-clamp:4611686018427387903}
+  a{counter-reset:c 4611686018427387903}
+  a{grid-row:4611686018427387903}
+  a{grid-column:span 4611686018427387903}
+  $ printf ':nth-child(99999999999999999999){color:red}' | cascade fmt --minify - 2>&1
+  :nth-child(4611686018427387903){color:red}
+  $ printf '@counter-style c{system:fixed 99999999999999999999;symbols:a}' | cascade fmt --minify - 2>&1
+  @counter-style c{system:fixed 4611686018427387903;symbols:a}
+
+A number token keeps its type where cascade does not type the value.
+CSS Syntax 3 sec. 4.3.13 gives `99999999999999999999` the integer type
+and `1e20` and `2.0` the number type, and Chromium 153 reads `orphans`
+as an `<integer>`: it keeps the first and drops the other two.
+
+  $ for d in 'orphans:99999999999999999999' 'widows:2.0' 'counter-set:c -99999999999999999999' 'math-depth:99999999999999999999'; do printf 'a{%s}' "$d" | cascade fmt --minify - 2>&1; done
+  a{orphans:99999999999999999999}
+  a{widows:2.0}
+  a{counter-set:c -99999999999999999999}
+  a{math-depth:99999999999999999999}
