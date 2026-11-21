@@ -603,6 +603,12 @@ differently. They are the reason to minify again.
   cascade cannot read back, and `((display:grid) and ((color:red) or
   (gap:1px))) or (top:0)` lost the parentheses around its inner `or`. Every
   operand now keeps the parentheses the grammar asks of it (#1485).
+- **A list a browser drops whole compared equal to its rules.**
+  `a,a:has-slotted{color:red}` compared identical to
+  `a{color:red}a:has-slotted{color:red}`, though Chromium 153 drops the first
+  rule whole and leaves `a` uncoloured. A list whose selectors some target
+  release reads apart now compares as one rule, and one no target parses,
+  such as a list holding a `-ms-` pseudo-element, as no rule (#1487).
 - **A guard was decided by its property alone.**
   `@supports (break-before:always){a{color:red}}` compared identical to
   `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves

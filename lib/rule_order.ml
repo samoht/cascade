@@ -141,15 +141,22 @@ let gathered_declarations decls =
    declaration is the same declaration written inline, so two sheets that factor
    the same content differently ([.absolute,.sr-only {position:absolute}] vs the
    declaration inline in [.sr-only]) only converge once grouping is undone.
-   Every list expands, whether or not a branch occurs elsewhere: the projection
-   must not depend on how the input happened to group its selectors. *)
+   Every list every browser reads alike expands, whether or not a branch occurs
+   elsewhere: the projection must not depend on how the input happened to group
+   its selectors. A browser drops a whole list over a selector it does not parse
+   (Selectors 4 sec. 3.9), so a list whose branches some browser of the dated
+   set reads apart ({!Merge.listable}) is one rule there and stays one:
+   [a,a:has-slotted] is not [a] and [a:has-slotted] in a browser that drops
+   [:has-slotted]. *)
 let expand_lists (stmt : statement) : statement list =
   match stmt with
   | Rule r when r.nested = [] && r.merge_key = None -> (
       match Edge.selectors r.selector with
       | [] | [ _ ] -> [ stmt ]
-      | branches -> List.map (fun selector -> Rule { r with selector }) branches
-      )
+      | branches ->
+          if Merge.listable r.selector then
+            List.map (fun selector -> Rule { r with selector }) branches
+          else [ stmt ])
   | _ -> [ stmt ]
 
 (* Coalescing two occurrences of a selector concatenates their declarations, so
@@ -629,6 +636,22 @@ let rec drop_unanswerable_supports (stmts : statement list) : statement list =
             (Stylesheet.map_statement_children drop_unanswerable_supports stmt))
     stmts
 
+(* Selectors 4 sec. 3.9 makes a style rule invalid in a browser that does not
+   parse one of its selectors, so a rule each target engine drops in every
+   release of the dated browser set applies nowhere: a list holding a [-ms-]
+   pseudo-element, which every target drops, is one. A comparison that judges
+   for targets drops such a rule from both sides, so a sheet that merged two of
+   them projects as the sheet that wrote them apart. Under [enforce_spec] a
+   conforming implementation may parse a prefixed name, and the rule stays. *)
+let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
+  if not judged then stmts
+  else
+    Stylesheet.edit_statements
+      (function
+        | Rule r when Merge.parsed_by_none r.selector -> Stylesheet_intf.Drop
+        | _ -> Stylesheet_intf.Keep)
+      stmts
+
 (* The normal optimizer drops this typed alias under its maintained-browser
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
@@ -855,7 +878,8 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
                    (normalize_custom_values ~lossless
                       (canonical_vendor_aliases ~lossless
                          ~judged:(Option.is_some judge)
-                         (drop_unanswerable_supports stmts))))))
+                         (drop_unparsed_rules ~judged:(Option.is_some judge)
+                            (drop_unanswerable_supports stmts)))))))
   in
   let result =
     canonicalize_block ~ctx

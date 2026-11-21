@@ -70,11 +70,11 @@ make:
 Beyond the optimizer's own deduplication, the projection deletes an
 `@supports` guard false in every release of B, as one over a
 `<general-enclosed>` term is (CSS Conditional 3 sec. 6), a superseded
-registration or layer name, and, when judging, a prefix no target reads. The
-structural diff's comparison key (`Css.declaration_value_for_equivalence`)
-equates values of a proven type by their minified spelling. A phantom
-canonical difference on equal content is a projection gap in `rule_order.ml`
-or `rule_trace.ml`.
+registration or layer name, and, when judging, a prefix no target reads and
+a rule no target parses. The structural diff's comparison key
+(`Css.declaration_value_for_equivalence`) equates values of a proven type by
+their minified spelling. A phantom canonical difference on equal content is
+a projection gap in `rule_order.ml` or `rule_trace.ml`.
 
 ## The trace
 
@@ -113,7 +113,13 @@ deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
 shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
 projection (`Rule_order`), so whatever the minifier deletes the judge also
 counts dead. `Merge.compatible` lists two selectors only when every engine
-ships them in the same release.
+ships them in the same release. The projection splits a selector list into
+one rule per branch only when `Merge.listable` says every release reads its
+branches alike (`Rule_order.expand_lists`); any other list stays one rule.
+When judging, it first drops a rule each target engine drops in every
+release (`Merge.parsed_by_none`, `Rule_order.drop_unparsed_rules`): only the
+recorded facts about prefixed names settle that, never an unshipped key,
+since the data records a partial implementation as none.
 
 ## Cost models
 
