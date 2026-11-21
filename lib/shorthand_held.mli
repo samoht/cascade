@@ -94,3 +94,10 @@ val td_reset_hazard :
 val bi_reset_hazard :
   Rule_index.t -> int -> held:held -> missing:int -> important:bool -> bool
 (** [bi_reset_hazard] is {!val-reset_hazard} over the [border-image] slots. *)
+
+val bi_rewritten_after :
+  Rule_index.t -> int -> missing:int -> important:bool -> bool
+(** [bi_rewritten_after idx i ~missing ~important] is [true] when the
+    declarations of [idx] after [i] write every [border-image] slot of [missing]
+    at an importance that overrides a run at [i] of importance [important], so
+    whatever the run resets there is written again. *)
