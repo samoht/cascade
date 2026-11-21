@@ -1185,12 +1185,14 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
   (* CSS Masking 1 sec. 5.1 [<basic-shape> || <geometry-box>]: a shape and a
      reference box may appear in either order, or just a box on its own. *)
   match read_clip_geometry_box_opt t with
-  | Some box ->
+  | Some box -> (
       Cursor.ws t;
-      if Cursor.is_done t then Clip_path_box box
-      else
-        let shape = read_basic_shape t in
-        Clip_path_with_box { shape; box; box_first = true }
+      (* What follows a lone box may belong to the caller: the [offset]
+         shorthand of CSS Motion Path 1 (ED) sec. 2.6 puts a distance or a
+         rotation after its path. *)
+      match Cursor.option read_basic_shape t with
+      | Some shape -> Clip_path_with_box { shape; box; box_first = true }
+      | None -> Clip_path_box box)
   | None -> (
       let shape = read_basic_shape t in
       Cursor.ws t;

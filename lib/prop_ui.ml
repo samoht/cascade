@@ -1060,16 +1060,26 @@ let rec read_scrollbar_gutter (t : Cursor.t) : scrollbar_gutter =
      ~var:(fun t ->
        (Var (Values.read_var read_scrollbar_gutter t) : scrollbar_gutter))
      ~default:(fun t ->
+       (* CSS Overflow 3 (ED) sec. 5.2: [stable && both-edges?], either
+          order. *)
+       let both_edges t =
+         Cursor.ws t;
+         match Cursor.peek_keyword t with
+         | Some "both-edges" ->
+             let _ = Cursor.ident t in
+             true
+         | Some _ | None -> false
+       in
+       let leading = both_edges t in
+       Cursor.ws t;
        Cursor.expect_string "stable" t;
+       let trailing = (not leading) && both_edges t in
        Cursor.ws t;
        match Cursor.peek_keyword t with
-       | Some "both-edges" ->
-           let _ = Cursor.ident t in
-           Stable_both_edges
        | Some s ->
            Cursor.err_invalid t
              (String.concat "" [ "unexpected scrollbar-gutter modifier: "; s ])
-       | None -> Stable)
+       | None -> if leading || trailing then Stable_both_edges else Stable)
      t
     : scrollbar_gutter)
 
