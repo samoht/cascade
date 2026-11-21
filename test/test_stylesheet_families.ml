@@ -232,6 +232,37 @@ let s4370_at_rule_prelude_name_escapes () =
         "@counter-style \xc3\xa9x{system:cyclic;symbols:\"x\";suffix:\" \"}" );
     ]
 
+(* CSSOM 1 sec. 2.1 (serialize an identifier) writes a control character as a
+   code point escape. Raw, U+0001 is a delim token (CSS Syntax 3 sec. 4.3.1) and
+   Chrome drops the rule or declaration around it; it keeps each input below. A
+   name in a selector, a prelude or a value is written escaped. *)
+let cssom21_control_characters_in_names () =
+  check_escape_roundtrips
+    [
+      ("[\\1 ]{color:red}", "[\\1 ]{color:red}");
+      ("[data-\\1 ]{color:red}", "[data-\\1 ]{color:red}");
+      ("a::part(\\1 ){color:red}", "a::part(\\1 ){color:red}");
+      ("a:state(\\1 ){color:red}", "a:state(\\1 ){color:red}");
+      ( "@supports selector([\\1 ]){.a{color:red}}",
+        "@supports selector([\\1 ]){.a{color:red}}" );
+      ( "@namespace \\1  url(x);[\\1 |a]{color:red}",
+        "@namespace \\1 \"x\";[\\1 |a]{color:red}" );
+      (".a{content:attr(\\1 )}", ".a{content:attr(\\1 )}");
+      (".a{width:attr(\\1  px)}", ".a{width:attr(\\1  px)}");
+      (".a{width:env(\\1 )}", ".a{width:env(\\1 )}");
+      (".a{margin:env(\\1 ) 1px}", ".a{margin:env(\\1 )1px}");
+      ( "@supports env(\\1 ){.a{color:red}}",
+        "@supports env(\\1 ){.a{color:red}}" );
+      (".a{top:anchor(--\\1  top)}", ".a{top:anchor(--\\1  top)}");
+      ( ".a{color:attr(\\1  type(<color>),red)}",
+        ".a{color:attr(\\1  type(<color>),red)}" );
+      ( "@supports at-rule(@\\1 ){.a{color:red}}",
+        "@supports at-rule(@\\1 ){.a{color:red}}" );
+      ( "@supports named-feature(\\1 ){.a{color:red}}",
+        "@supports named-feature(\\1 ){.a{color:red}}" );
+      ("@supports \\1 (x){.a{color:red}}", "@supports \\1 (x){.a{color:red}}");
+    ]
+
 (* The same rule for a name a declaration's value carries: printed raw it ends
    its own declaration, so it is written with the escapes CSS Syntax 3 sec.
    4.3.7 reads back as the same name. *)
@@ -741,6 +772,9 @@ let suite =
       ( "spec syntax 3 4.3.7 property value name escapes",
         `Quick,
         s4370_property_value_name_escapes );
+      ( "spec cssom 1 2.1 control characters in names",
+        `Quick,
+        cssom21_control_characters_in_names );
       ( "spec conditional 3 2.2 supports property name escapes",
         `Quick,
         s4370_supports_property_name_escapes );

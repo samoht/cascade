@@ -592,6 +592,47 @@ let roundtrip () =
   check_class_roundtrip "with-hyphen";
   check_class_roundtrip "with_underscore"
 
+(* CSSOM 1 sec. 2.1 (serialize an identifier) writes a control character as a
+   code point escape, [\1 ]. Written raw it is a delim token (CSS Syntax 3 sec.
+   4.3.1), and Chrome drops each rule below once its escape is replaced by the
+   raw U+0001. Every slot that holds an author's identifier prints it escaped,
+   in both modes, and the print reads back as the selector. *)
+let identifiers_escape_control_characters () =
+  List.iter
+    (fun (input, pretty) ->
+      let sel = v input in
+      List.iter
+        (fun (minify, expected) ->
+          let out = to_string ~minify sel in
+          Alcotest.(check string)
+            (Fmt.str "%S %s" input (if minify then "minified" else "pretty"))
+            expected out;
+          Alcotest.(check bool)
+            (Fmt.str "%S reads back" out)
+            true
+            (equal (v out) sel))
+        [ (true, input); (false, pretty) ])
+    [
+      ("\\1 ", "\\1 ");
+      (".\\1 ", ".\\1 ");
+      ("#\\1 ", "#\\1 ");
+      ("[\\1 ]", "[\\1 ]");
+      ("[\\1 x]", "[\\1 x]");
+      ("[data-\\1 ]", "[data-\\1 ]");
+      ("[aria-\\1 ]", "[aria-\\1 ]");
+      ("[\\1 |a]", "[\\1 |a]");
+      ("[a=\\1 ]", "[a=\"\\1\"]");
+      ("a::part(\\1 )", "a::part(\\1 )");
+      ("a:state(\\1 )", "a:state(\\1 )");
+      (":dir(\\1 )", ":dir(\\1 )");
+      ("::highlight(\\1 )", "::highlight(\\1 )");
+      ( ":active-view-transition-type(\\1 )",
+        ":active-view-transition-type(\\1 )" );
+      ("::view-transition-group(\\1 )", "::view-transition-group(\\1 )");
+      ("::view-transition-old(*.\\1 )", "::view-transition-old(*.\\1 )");
+      ("a::-webkit-\\1 ", "a::-webkit-\\1 ");
+    ]
+
 (* Not a roundtrip test *)
 (* Test invalid selectors *)
 let invalid () =
@@ -621,16 +662,22 @@ let invalid () =
     "CSS identifier '--id' cannot start with '--' (reserved for custom \
      properties)" (fun () -> ignore (id "--id"));
 
-  (* class_ and id accept dash-digit, but escape it properly *)
+  (* class_ and id accept dash-digit. CSSOM 1 sec. 2.1 escapes the digit after a
+     leading [-] as a code point, and writes a code point an ident takes from
+     U+0080 up as itself. *)
   let sel = class_ "-9test" in
   let output = to_string ~minify:true sel in
   Alcotest.(check string)
-    "class starting with dash-digit gets escaped" ".\\2d 9test" output;
+    "class starting with dash-digit gets escaped" ".-\\39 test" output;
 
   let sel = id "-9test" in
   let output = to_string ~minify:true sel in
   Alcotest.(check string)
-    "id starting with dash-digit gets escaped" "#\\2d 9test" output;
+    "id starting with dash-digit gets escaped" "#-\\39 test" output;
+
+  Alcotest.(check string)
+    "a non-ASCII class is written as itself" ".caf\xc3\xa9"
+    (to_string ~minify:true (class_ "caf\xc3\xa9"));
 
   (* Parser syntax path: [--] is a valid ident start. *)
   check_minified_equiv ".--var";
@@ -834,6 +881,8 @@ let suite =
       test_case "where is" `Quick where_is_cases;
       (* Parser/serializer coverage. *)
       test_case "roundtrip" `Quick roundtrip;
+      test_case "identifiers escape control characters" `Quick
+        identifiers_escape_control_characters;
       (* Parser/API-policy error coverage. *)
       test_case "of_string empty is an error" `Quick of_string_empty_is_error;
       test_case "invalid" `Quick invalid;
