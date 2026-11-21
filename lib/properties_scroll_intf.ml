@@ -21,6 +21,11 @@ type columns_value =
       (** A count given as a math function with no width beside it. CSS Values 4
           sec. 10.12 checks the [1,inf] range on what it resolves to, so a call
           the literal grammar refuses is still a declaration. *)
+  | With_height of columns_value * length
+      (** [<width-and-count> / <'column-height'>] per CSS Multicol 2 sec. 4.5:
+          one of the forms above, then a non-negative height. A height of [auto]
+          is the initial the shorthand writes anyway, so it reads as the form
+          alone. *)
   | Inherit
   | Initial
   | Unset

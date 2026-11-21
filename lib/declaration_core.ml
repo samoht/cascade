@@ -502,6 +502,17 @@ let is_var : Token.kind -> bool = function
   | Function name -> String.equal (String.lowercase_ascii name) "var"
   | _ -> false
 
+(* The productions a value uses that no word of it names, by the key each is
+   filed under: the [/ <'column-height'>] of [columns] (CSS Multicol 2 sec. 4.5)
+   is the [column-height] longhand's production. Each key names its production
+   exactly, so the measured supplement answers for it as well. *)
+let rec structure_keys decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> structure_keys decl
+  | Declaration { property = Columns; value = With_height _; _ } ->
+      [ "css.properties.column-height" ]
+  | Declaration _ -> []
+
 (* CSS 2.1 sec. 4.2 has a browser ignore a declaration whose value it does not
    parse. Which productions a declaration uses is read off its property, its
    colours and the words of its value, and a release parses the declaration once
@@ -515,6 +526,11 @@ let first_release_with ~tokens ~floor engine decl =
   let acc =
     combine (Option.Some floor)
       (release (String.concat "" [ "css.properties."; property ]))
+  in
+  let acc =
+    List.fold_left
+      (fun acc key -> combine acc (Support.engine_shipped engine key))
+      acc (structure_keys decl)
   in
   let tokens = Lazy.force tokens in
   if List.exists is_var tokens then acc
