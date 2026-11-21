@@ -863,6 +863,85 @@ let legacy_webkit_images () =
       "-webkit-cross-fade(url(a.png), url(b.png), 1px)";
     ]
 
+(* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
+   [<angle-percentage> | <zero>]: [<angular-color-stop> = <color>
+   <color-stop-angle>?], [<color-stop-angle> = [ <angle-percentage> | <zero>
+   ]{1,2}], [<angular-color-hint> = <angle-percentage> | <zero>]. Sec. 3.3.2
+   measures a percentage against 360deg, so an angle that is a whole percentage
+   of the turn takes the shorter spelling, and the fixup of sec. 3.5.3 puts an
+   unplaced first and last stop at 0% and 100%. A length is no position of a
+   conic stop, and an angle no position of a linear or radial one. Chromium 153
+   agrees in every slot that takes an [<image>]. *)
+let conic_angular_stops () =
+  List.iter
+    (fun (input, held, into) ->
+      decl_optimizes ~prop:"background-image" ~held ~into input)
+    [
+      ( "conic-gradient(red 0deg, blue 360deg)",
+        "conic-gradient(red 0deg,blue 360deg)",
+        "conic-gradient(red,#00f)" );
+      ( "conic-gradient(red 90deg, blue 0)",
+        "conic-gradient(red 90deg,blue 0)",
+        "conic-gradient(red 25%,#00f 0)" );
+      ( "conic-gradient(red 10%, 90deg, blue)",
+        "conic-gradient(red 10%,90deg,blue)",
+        "conic-gradient(red 10%,25%,#00f)" );
+      ( "repeating-conic-gradient(from 45deg, red 0deg 10deg, blue 10deg 20deg)",
+        "repeating-conic-gradient(from 45deg,red 0deg 10deg,blue 10deg 20deg)",
+        "repeating-conic-gradient(from 45deg,red 0 10deg,#00f 10deg 20deg)" );
+      ( "conic-gradient(red calc(10deg + 5%), blue)",
+        "conic-gradient(red calc(10deg + 5%),blue)",
+        "conic-gradient(red calc(10deg + 5%),#00f)" );
+      ( "conic-gradient(red 0.5turn 1turn)",
+        "conic-gradient(red .5turn 1turn)",
+        "conic-gradient(red 50% 100%)" );
+      ( "conic-gradient(red 1rad, blue 200grad)",
+        "conic-gradient(red 1rad,blue 200grad)",
+        "conic-gradient(red 1rad,#00f 50%)" );
+    ];
+  check_declaration
+    ~expected:"background-image:conic-gradient(red 0,blue 1turn)"
+    "background-image: conic-gradient(red 0, blue 1turn)";
+  List.iter
+    (fun prop ->
+      check_declaration
+        ~expected:
+          (String.concat "" [ prop; ":conic-gradient(red 0deg,blue 360deg)" ])
+        (String.concat "" [ prop; ": conic-gradient(red 0deg, blue 360deg)" ]))
+    [
+      "background";
+      "list-style-image";
+      "list-style";
+      "border-image-source";
+      "mask-image";
+      "mask";
+      "content";
+    ];
+  List.iter
+    (fun input ->
+      match read_declaration (Cursor.of_string input) with
+      | Some _ -> ()
+      | None -> Alcotest.failf "%s was not read" input)
+    [
+      "border-image: conic-gradient(red 0deg, blue 360deg) 1";
+      "shape-outside: conic-gradient(red 0deg, blue 360deg)";
+    ];
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "background-image: "; value ]))
+    [
+      "conic-gradient(red 10px, blue)";
+      "conic-gradient(red 0px, blue)";
+      "conic-gradient(red, 10px, blue)";
+      "conic-gradient(red 0 10px, blue)";
+      "conic-gradient(red 10deg 20deg 30deg, blue)";
+      "conic-gradient(red calc(10deg + 5px), blue)";
+      "repeating-conic-gradient(red 10px, blue 20px)";
+      "linear-gradient(red 0deg, blue)";
+      "radial-gradient(red 0deg, blue)";
+    ]
+
 let suite =
   ( "declaration",
     [
@@ -882,6 +961,7 @@ let suite =
       test_case "custom properties basic" `Quick custom_properties_basic;
       test_case "vendor prefixes" `Quick vendor_prefixes;
       test_case "legacy webkit images" `Quick legacy_webkit_images;
+      test_case "conic angular stops" `Quick conic_angular_stops;
       (* Error handling *)
       test_case "error missing colon" `Quick error_missing_colon;
       test_case "of_string has one failure mode" `Quick
