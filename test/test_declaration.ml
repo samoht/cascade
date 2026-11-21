@@ -743,6 +743,126 @@ let with_value_contract () =
   | Error _ -> ()
   | Ok d -> Alcotest.failf "center read as %s" (to_string d)
 
+(* The Compatibility Standard sec. 3.3.2 and 3.3.4 make
+   [-webkit-radial-gradient()] and [-webkit-repeating-radial-gradient()] aliases
+   of the radial gradients of CSS Image Values 3 (W3C Working Draft, 17 February
+   2011) sec. 5.2.1: [[<bg-position>,]? [[<shape> || <size>] | [<length> |
+   <percentage>]{2},]? <color-stop>[, <color-stop>]+], where [contain] is a
+   synonym for [closest-side], [cover] for [farthest-corner], the omitted shape
+   and size are [ellipse cover], the omitted position is [center], and an
+   argument that reads as a position or a size is a position. No [at], no single
+   radius, no colour space and no interpolation hint. Chromium 153 reads exactly
+   that, a zero radius and a missing comma after the shape included.
+   [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)] is in no
+   specification; Chromium 153 reads it in every [<image>] slot, [none] for
+   either image included, and serialises [50%] as [0.5]. *)
+let legacy_webkit_images () =
+  let radial = "-webkit-radial-gradient" in
+  let fn name args = String.concat "" [ name; args ] in
+  List.iter
+    (fun (input, held, into) ->
+      decl_optimizes ~prop:"background-image" ~held:(fn radial held)
+        ~into:(fn radial into) (fn radial input))
+    [
+      ( "(center, ellipse cover, red, blue)",
+        "(center,ellipse cover,red,blue)",
+        "(red,#00f)" );
+      ( "(center, circle, red, blue)",
+        "(center,circle,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(center, circle contain, red, blue)",
+        "(center,circle contain,red,blue)",
+        "(circle contain,red,#00f)" );
+      ( "(center, closest-side, red, blue)",
+        "(center,contain,red,blue)",
+        "(contain,red,#00f)" );
+      ( "(center, farthest-corner circle, red, blue)",
+        "(center,circle cover,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(10px 20px, 30px 40px, red, blue)",
+        "(10px 20px,30px 40px,red,blue)",
+        "(10px 20px,30px 40px,red,#00f)" );
+      ("(10px, red, blue)", "(10px,red,blue)", "(10px,red,#00f)");
+      ("(circle red, blue)", "(circle,red,blue)", "(circle,red,#00f)");
+      ( "(center, 0 20px, red, blue)",
+        "(center,0 20px,red,blue)",
+        "(center,0 20px,red,#00f)" );
+    ];
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-repeating-radial-gradient(center,cover,red,blue 10%)"
+    ~into:"-webkit-repeating-radial-gradient(red,#00f 10%)"
+    "-webkit-repeating-radial-gradient(center, cover, red, blue 10%)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-cross-fade(url(a.png),url(b.png),50%)"
+    ~into:"-webkit-cross-fade(url(a.png),url(b.png),.5)"
+    "-webkit-cross-fade(url(a.png), url(b.png), 50%)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-cross-fade(url(a.png),linear-gradient(red,blue),.5)"
+    ~into:"-webkit-cross-fade(url(a.png),linear-gradient(red,#00f),.5)"
+    "-WEBKIT-CROSS-FADE(url(a.png), linear-gradient(red, blue), 0.5)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-cross-fade(none,url(b.png),1)"
+    ~into:"-webkit-cross-fade(none,url(b.png),1)"
+    "-webkit-cross-fade(none, url(b.png), 1)";
+  (* Every [<image>] slot reads both. *)
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (input, held) ->
+          check_declaration
+            ~expected:(String.concat "" [ prop; ":"; held ])
+            (String.concat "" [ prop; ": "; input ]))
+        [
+          ( "-webkit-cross-fade(url(a.png), url(b.png), 50%)",
+            "-webkit-cross-fade(url(a.png),url(b.png),50%)" );
+          ( "-webkit-radial-gradient(center, ellipse cover, red, blue)",
+            "-webkit-radial-gradient(center,ellipse cover,red,blue)" );
+        ])
+    [
+      "background";
+      "list-style-image";
+      "list-style";
+      "border-image-source";
+      "mask-image";
+      "mask";
+      "content";
+    ];
+  (* [shape-outside] keeps an image as its source text. *)
+  List.iter
+    (fun value ->
+      let input = Fmt.str "shape-outside: %s" value in
+      match read_declaration (Cursor.of_string input) with
+      | Some _ -> ()
+      | None -> Alcotest.failf "%s was not read" input)
+    [
+      "-webkit-cross-fade(url(a.png), url(b.png), 50%)";
+      "-webkit-radial-gradient(center, ellipse cover, red, blue)";
+    ];
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "background-image: "; value ]))
+    [
+      "-webkit-radial-gradient(circle at center, red, blue)";
+      "-webkit-radial-gradient(at center, red, blue)";
+      "-webkit-radial-gradient(center, circle 10px, red, blue)";
+      "-webkit-radial-gradient(center, 10px, red, blue)";
+      "-webkit-radial-gradient(center, ellipse 10px 20px, red, blue)";
+      "-webkit-radial-gradient(center, circle ellipse, red, blue)";
+      "-webkit-radial-gradient(center, -10px 20px, red, blue)";
+      "-webkit-radial-gradient(in oklab, red, blue)";
+      "-webkit-radial-gradient(left 10px top, circle, red, blue)";
+      "-webkit-radial-gradient(top 10px, circle, red, blue)";
+      "-webkit-radial-gradient(center circle, red, blue)";
+      "-webkit-radial-gradient(center red, blue)";
+      "-webkit-radial-gradient(center, red, 30%, blue)";
+      "-webkit-cross-fade(url(a.png), url(b.png))";
+      "-webkit-cross-fade(url(a.png) 50%, url(b.png))";
+      "-webkit-cross-fade(url(a.png), url(b.png), 50%, 1)";
+      "-webkit-cross-fade(initial, url(b.png), 50%)";
+      "-webkit-cross-fade(url(a.png), url(b.png), 1px)";
+    ]
+
 let suite =
   ( "declaration",
     [
@@ -761,6 +881,7 @@ let suite =
       (* Custom properties and vendor prefixes *)
       test_case "custom properties basic" `Quick custom_properties_basic;
       test_case "vendor prefixes" `Quick vendor_prefixes;
+      test_case "legacy webkit images" `Quick legacy_webkit_images;
       (* Error handling *)
       test_case "error missing colon" `Quick error_missing_colon;
       test_case "of_string has one failure mode" `Quick
