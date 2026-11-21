@@ -684,6 +684,11 @@ differently. They are the reason to minify again.
   Safari read. Both orders CSS Overflow 3 sec. 5.2 grants are now read, and a
   reference box with no shape before an offset distance or rotation (CSS
   Motion Path 1 sec. 2.1 and 2.6) (#1521).
+- **`contain-intrinsic-size` with a trailing `auto` was deleted.**
+  `contain-intrinsic-size:0 auto` was refused as a bad value, so `--minify`
+  dropped a declaration Chromium reads as `0`. No specification grants the
+  form and Safari drops it, so it is now kept as written, and a declaration
+  before it stays as Safari's fallback (#1522).
 
 #### Stable output
 
