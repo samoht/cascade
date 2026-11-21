@@ -288,8 +288,8 @@ let canonical_math_block_context () =
 
 (* WHATWG Compatibility Standard sec. 3.4.1 lists the [-webkit-] properties that
    are legacy name aliases of an unprefixed property. The table below is that
-   list, less the [-webkit-mask-box-image] set and the two aliases Chromium
-   reads under a grammar of their own; a name off it, such as
+   list, less the [-webkit-mask-box-image] set and the three aliases a target
+   engine reads under a grammar of their own; a name off it, such as
    [-webkit-user-select] or any [-moz-] spelling, is a property of its own. *)
 let whatwg_legacy_aliases =
   [
@@ -324,7 +324,6 @@ let whatwg_legacy_aliases =
     ("-webkit-flex-shrink", "flex-shrink");
     ("-webkit-flex-wrap", "flex-wrap");
     ("-webkit-justify-content", "justify-content");
-    ("-webkit-mask", "mask");
     ("-webkit-mask-clip", "mask-clip");
     ("-webkit-mask-composite", "mask-composite");
     ("-webkit-mask-image", "mask-image");
@@ -398,6 +397,12 @@ let vendor_prefix_and_aliases_are_property_facts () =
          property's grammar and cascade types neither under it. *)
       "-webkit-perspective";
       "-webkit-background-origin";
+      (* WebKit declares [-webkit-mask] as a shorthand of its own, not an alias
+         of [mask]: its longhands are [-webkit-mask-source-type] and
+         [-webkit-mask-clip] in place of [mask-mode] and [mask-clip], and it has
+         no [mask-composite] (Source/WebCore/css/CSSProperties.json, tag
+         WebKit-7615.1.26.11.23 of Safari 16.4 and main). *)
+      "-webkit-mask";
       "-moz-transform";
       "-moz-box-sizing";
       "-webkit-text-decoration-color";
