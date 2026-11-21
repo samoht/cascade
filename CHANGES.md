@@ -546,6 +546,13 @@ differently. They are the reason to minify again.
   three ranges. The shorthand pairs each start with its end (CSS Animations 2
   sec. 6.3), so lists of one length now compose range by range and lists of
   different lengths stay longhands (#1496).
+- **A transition of a property named like an easing keyword changed.**
+  `transition:ease ease 1s` transitions a property named `ease`, and was
+  minified to `transition:ease 1s`, which transitions `all`;
+  `ease-in linear 1s` became `linear 1s ease-in`, which swaps the easing and
+  the property. A browser reads the first easing keyword as the easing and a
+  second as the property, so such a property now prints after its easing,
+  `ease` included (#1497).
 
 #### Stable output
 

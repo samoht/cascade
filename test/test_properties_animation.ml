@@ -373,6 +373,18 @@ let test_transition () =
   check_transition "inherit";
   check_transition "initial";
   check_transition "none";
+  (* CSS Transitions 1 sec. 2.5 gives [<single-transition-property>] and
+     [<easing-function>] to one [||] group, and Chromium 153 reads the first
+     easing keyword as the easing and a second as the property, so a property
+     named like an easing keyword prints after the easing, the default [ease]
+     included. *)
+  check_transition ~expected:"ease-in linear 1s" "ease-in linear 1s";
+  check_transition ~expected:"linear ease-in 1s" "linear 1s ease-in";
+  decl_optimizes ~prop:"transition" ~into:"ease ease 1s" "ease ease 1s";
+  decl_optimizes ~prop:"transition" ~into:"ease ease 1s" "1s ease ease";
+  decl_optimizes ~prop:"transition" ~into:"step-end ease-out"
+    "step-end ease-out";
+  decl_optimizes ~prop:"transition" ~into:"opacity 1s" "opacity 1s ease";
   neg_cursor ~allow_partial:true read_transition "2invalid"
 
 let test_animation_direction () =
