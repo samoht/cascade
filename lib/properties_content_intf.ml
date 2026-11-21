@@ -199,6 +199,8 @@ type position_try_fallback =
   | Flip_block
   | Flip_inline
   | Flip_start
+  | Flip_x  (** Sec. 6.1 [flip-x], the horizontal axis. *)
+  | Flip_y  (** Sec. 6.1 [flip-y], the vertical axis. *)
   | Name of string
 
 (** CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
