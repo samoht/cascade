@@ -148,6 +148,9 @@ implementation keeps them.
   around one; a component holding none may be respelled where it stands. A
   substitution that is the whole value, or an operand of a math function,
   yields one value and leaves the rest of the declaration free to fold.
+- **A declaration holding a substitution is never invalid.** CSS Variables 1
+  sec. 3 takes it as valid at parse time, so no check of its operands' types
+  deletes it before substitution.
 - **A shorthand covers what it resets.** A shorthand covers an earlier
   longhand only if it writes that longhand, reset-only sub-properties
   included.
@@ -274,6 +277,7 @@ Each row names the tests that check a statement. A browser harness under
 | Whitespace beside a substitution | `values_math` "spec math var whitespace" |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
+| Substitution never invalid | `values_math` "spec math substitution never invalid" |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run" |
