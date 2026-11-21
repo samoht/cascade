@@ -948,6 +948,45 @@ let test_no_merge_pseudo_some_target_lacks () =
     "a pseudo-element every target reads lists" ".a::placeholder,.b{color:red}"
     (minify_str ".a::placeholder{color:red}.b{color:red}")
 
+(* Selectors 4 sec. 4.2 drops an argument a browser does not parse from the
+   forgiving [:is()] alone, and sec. 3.9 drops a whole list over one it does not
+   parse. Chromium 153 keeps [.c,:is([x=a s])] and colours [.c], drops [.c,[x=a
+   s]], and drops [.c,:not(:not([x=a s]))] ([:not()] is not forgiving). So an
+   argument some target drops, the [s] flag (Firefox alone), [:-moz-focusring]
+   or [:popover-open] (Chrome 114, after the Chrome 111 floor), keeps its
+   [:is()] and its [:not()]; one every target reads leaves them. *)
+let test_is_keeps_argument_some_target_drops () =
+  List.iter
+    (fun (name, css, expected) ->
+      Alcotest.(check string) name expected (minify_str css))
+    [
+      ( "lone argument in a list",
+        ".c,:is([x=a s]){color:red}",
+        ".c,:is([x=a s]){color:red}" );
+      ( "argument list",
+        ":is(.c,[x=a s]){color:red}",
+        ":is(.c,[x=a s]){color:red}" );
+      ( "argument in a compound",
+        ".c,.b:is([x=a s]){color:red}",
+        ".b:is([x=a s]),.c{color:red}" );
+      ( "double negation",
+        ".c,:not(:not([x=a s])){color:red}",
+        ".c,:not(:not([x=a s])){color:red}" );
+      ( "vendor pseudo-class",
+        ".c,:is(:-moz-focusring){color:red}",
+        ".c,:is(:-moz-focusring){color:red}" );
+      ( "pseudo-class past a floor",
+        ".c,:is(:popover-open){color:red}",
+        ".c,:is(:popover-open){color:red}" );
+      ( "every target reads the i flag",
+        ":is(.c,[x=a i]){color:red}",
+        ".c,[x=a i]{color:red}" );
+      ("every target reads a class", ".c,:is(.d){color:red}", ".c,.d{color:red}");
+      ( "every target reads a double negation",
+        ":not(:not(.c)){color:red}",
+        ".c{color:red}" );
+    ]
+
 (* SVG 2, "The 'text-rendering' property": [auto | optimizeSpeed |
    optimizeLegibility | geometricPrecision], keywords read ASCII
    case-insensitively (CSS Values 4 sec. 4.1). Every target reads each of them,
@@ -1275,6 +1314,9 @@ let suite =
       ( "no merge pseudo some target lacks",
         `Quick,
         test_no_merge_pseudo_some_target_lacks );
+      ( "is keeps an argument some target drops",
+        `Quick,
+        test_is_keeps_argument_some_target_drops );
       ( "fullscreen vendor pseudo-classes",
         `Quick,
         test_fullscreen_vendor_pseudo_classes );
