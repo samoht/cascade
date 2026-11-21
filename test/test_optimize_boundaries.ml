@@ -755,6 +755,22 @@ let stylesheet_scope_reset_held () =
   same "a rule in another block holds the delay"
     "@media \
      screen{.y{transition-delay:1s}}.x{transition-property:opacity;transition-duration:1s}";
+  (* Two rules of one selector merge into one body. A shorthand built from the
+     second rule alone resets the image the first set; Chromium 153 then paints
+     none. 1.2.1 printed [.x{background:no-repeat fixed}] and
+     [.x{border-image-source:url(b.png);border-image:30 round}]. *)
+  Alcotest.(check string)
+    "the image the first rule sets survives the second's background"
+    ".x{background-image:url(b.png);background-position:0 \
+     0;background-size:auto;background-repeat:no-repeat;background-attachment:fixed;background-origin:padding-box;background-clip:border-box}"
+    (opt
+       ".x{background-image:url(b.png)}.x{background-position:0 \
+        0;background-size:auto;background-repeat:no-repeat;background-attachment:fixed;background-origin:padding-box;background-clip:border-box}");
+  Alcotest.(check string)
+    "the source the first rule sets survives the second's border-image"
+    ".x{border-image:url(b.png)30 round}"
+    (opt
+       ".x{border-image-source:url(b.png)}.x{border-image-slice:30;border-image-repeat:round}");
   (* Where nothing holds the others, the shorthand is still built. *)
   Alcotest.(check string)
     "nothing holds the other background longhands" ".x{background:red}"
