@@ -689,6 +689,12 @@ differently. They are the reason to minify again.
   dropped a declaration Chromium reads as `0`. No specification grants the
   form and Safari drops it, so it is now kept as written, and a declaration
   before it stays as Safari's fallback (#1522).
+- **A `line-height` comparison over a sum was deleted.**
+  `line-height:min(calc(1em + 2px),1px)` and `max(1em + 2px,1px)` were refused
+  as a bad value, so `--minify` dropped declarations Chromium and Safari read.
+  Each argument of `min()`, `max()` and `clamp()` is now read as the sum CSS
+  Values 4 sec. 10.2 grants, and arguments of two types are still refused
+  (#1523).
 
 #### Stable output
 
