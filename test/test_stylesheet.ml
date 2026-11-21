@@ -1046,6 +1046,25 @@ let page_margin_edges () =
   neg_cursor read "@page { @top-left; }";
   neg_cursor read "@page { @top-left { color: notacolor } }"
 
+(* CSS Paged Media 3 sec. 4.3: [<page-selector> = [<ident-token>?
+   <pseudo-page>*]!], so the page name is an ident token, which CSS Syntax 3
+   sec. 4.3.7 reads through its escapes, and a number is none. Chromium 153
+   keeps [@page \1 ], [@page a\:b], [@page \31 a] and [@page \u00e9] and drops
+   [@page 1] and [@page -1]. The name prints back through the identifier
+   serialiser (CSSOM 1 sec. 2.1). *)
+let page_selector_idents () =
+  check_stylesheet ~expected:"@page \\1 {margin:0}" "@page \\1 { margin: 0 }";
+  check_stylesheet ~expected:"@page x\\1 {margin:0}" "@page x\\1 { margin: 0 }";
+  check_stylesheet ~expected:"@page a\\:b{margin:0}" "@page a\\:b { margin: 0 }";
+  check_stylesheet ~expected:"@page \\31 a{margin:0}"
+    "@page \\31 a { margin: 0 }";
+  check_stylesheet ~expected:"@page \xc3\xa9:first{margin:0}"
+    "@page \xc3\xa9:first { margin: 0 }";
+  check_stylesheet ~expected:"@page --a{margin:0}" "@page --a { margin: 0 }";
+  neg_cursor read "@page 1 { margin: 0 }";
+  neg_cursor read "@page -1 { margin: 0 }";
+  neg_cursor read "@page a :first { margin: 0 }"
+
 let property_rule_edges () =
   check_stylesheet
     ~expected:
@@ -1514,6 +1533,7 @@ let suite =
         spec_keyframes_shadow_color_var );
       ("page", `Quick, page_case);
       ("page margin edges", `Quick, page_margin_edges);
+      ("page selector idents", `Quick, page_selector_idents);
       ( "spec page margin descriptor matrix",
         `Quick,
         spec_page_margin_descriptor_matrix );
