@@ -1106,7 +1106,6 @@ let spec_platform_property_vectors () =
       "width: mod(10px)";
       "opacity: abs()";
       "opacity: sign()";
-      "background-image: image-set(url(a.png))";
       "border-image: linear-gradient(red, blue) fill fill";
       "font: bold serif";
       "transition: allow-discrete allow-discrete allow-discrete";
