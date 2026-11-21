@@ -509,6 +509,39 @@ let test_background_image () =
   check_background_image ~minify:false
     ~expected:"conic-gradient(in hsl longer hue, red, blue)"
     "conic-gradient(in hsl longer hue, red, blue)";
+  (* CSS Images 4 sec. 3.3.2: a conic stop is placed by [<angle-percentage> |
+     <zero>]{1,2}, and a conic hint by [<angle-percentage> | <zero>]. *)
+  check_background_image ~expected:"conic-gradient(red 0deg,blue 360deg)"
+    "conic-gradient(red 0deg, blue 360deg)";
+  check_background_image ~expected:"conic-gradient(red 0,blue 1turn)"
+    "conic-gradient(red 0, blue 1turn)";
+  check_background_image ~expected:"conic-gradient(red 90deg,blue 0)"
+    "conic-gradient(red 90deg, blue 0)";
+  check_background_image
+    ~expected:"conic-gradient(from 90deg at 0 0,red 0deg,blue 1turn)"
+    "conic-gradient(from 90deg at 0 0, red 0deg, blue 1turn)";
+  check_background_image
+    ~expected:"repeating-conic-gradient(red 0deg 10deg,blue 10deg 20deg)"
+    "repeating-conic-gradient(red 0deg 10deg, blue 10deg 20deg)";
+  check_background_image ~expected:"conic-gradient(red 0 90deg,blue 25% 1turn)"
+    "conic-gradient(red 0 90deg, blue 25% 1turn)";
+  check_background_image ~expected:"conic-gradient(red,90deg,blue)"
+    "conic-gradient(red, 90deg, blue)";
+  (* The first stop's position defaults to the start of the circle and the
+     last's to its end (sec. 3.5.3), [0deg] and [360deg] in a conic gradient. *)
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,#00f)"
+    "conic-gradient(red 0deg, blue 360deg)";
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,#00f)"
+    "conic-gradient(red 0turn, blue 1turn)";
+  decl_optimizes ~prop:"background-image"
+    ~into:"conic-gradient(red 10% 90deg,#00f)"
+    "conic-gradient(red 10% 90deg, blue)";
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,90deg,#00f)"
+    "conic-gradient(red, 90deg, blue)";
+  (* An angle places a stop on a circle only: a linear or radial stop takes a
+     length-percentage (sec. 3.5.1). *)
+  neg_cursor read_background_image "linear-gradient(red 10deg, blue)";
+  neg_cursor read_background_image "radial-gradient(red, 10deg, blue)";
   (* CSS Images 4 sec. 3.5.6 gives the color-stop-list a comma-separated list of
      stops and hints, so a trailing item outside that grammar is invalid (CSS
      Syntax 3 sec. 8.2). [Cursor.call] did not require [linear-gradient()] /

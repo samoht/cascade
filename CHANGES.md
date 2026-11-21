@@ -500,6 +500,13 @@ differently. They are the reason to minify again.
   longer reversed or stripped of a position. A radial prelude the reader
   cannot finish now keeps the whole value as written, since the comma after a
   prelude is omitted only with the prelude (CSS Values 4 sec. 2.6) (#1490).
+- **Conic gradients placed by angles were deleted.**
+  `conic-gradient(red 0deg,blue 360deg)`, `conic-gradient(red 0,blue 1turn)`
+  and the same after `from 90deg at 0 0` were refused as a bad value, so
+  `--minify` dropped the declaration where Chromium paints the gradient. A
+  conic stop is placed by one or two angles or percentages, and a conic hint
+  by one (CSS Images 4 sec. 3.3.2). Both are now read, and a first stop at
+  `0deg` and a last at `360deg` lose the position they take by default (#1491).
 
 #### Stable output
 

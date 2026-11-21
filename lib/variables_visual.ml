@@ -111,6 +111,13 @@ let vars_of_gradient_position (value : Properties.gradient_position) :
   | Conic_position config -> vars_of_conic_gradient_config config
   | Var v -> [ V v ]
 
+let vars_of_angular_position (value : Properties.angular_position) :
+    any_var list =
+  match value with
+  | Angle angle -> vars_of_angle angle
+  | Percentage percentage -> vars_of_percentage percentage
+  | Zero -> []
+
 let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
     =
   match value with
@@ -126,6 +133,11 @@ let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
   | Length length -> vars_of_length length
   | Channel channel -> vars_of_channel channel
   | Percentage percentage -> vars_of_percentage percentage
+  | Color_angle (color, first, second) ->
+      vars_of_color color
+      @ vars_of_angular_position first
+      @ Option.fold ~none:[] ~some:vars_of_angular_position second
+  | Angle_hint angle -> vars_of_angle angle
   | List stops -> List.concat_map vars_of_gradient_stop stops
   | Position position -> vars_of_gradient_position position
   | Direction direction -> vars_of_gradient_direction direction
