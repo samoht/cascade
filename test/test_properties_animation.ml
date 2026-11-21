@@ -777,10 +777,31 @@ let quoted_none_names_keyframes () =
   check string "longhand keeps the string" {|.a{animation-name:"none"}|}
     (minify {|.a{animation-name:"none"}|})
 
+(* CSS Animations 1 sec. 3.11 gives the first [<time>] of a [<single-animation>]
+   to animation-duration, which is [[0s,inf]], and the second to
+   animation-delay, which sec. 3.6 lets be negative. Cascade refused a negative
+   second time and deleted the declaration; Chromium 153 computes
+   animation-delay [-1s] for [animation:foo 1s -1s], and refuses [foo -1s],
+   whose negative time is the duration. *)
+let animation_negative_delay () =
+  List.iter
+    (fun (input, into) ->
+      decl_optimizes ~prop:"animation" ~held:into ~into input)
+    [
+      ("foo 1s -1s", "foo 1s -1s");
+      ("foo 1s linear -1s infinite", "foo 1s linear -1s infinite");
+      ("foo 1s -1s,bar 2s", "foo 1s -1s,bar 2s");
+    ];
+  Alcotest.(check string)
+    "a negative duration is refused" ""
+    (offset_minified ".x{animation:foo -1s}")
+
 let suite =
   ( "properties_animation",
     [
       test_case "transform" `Quick test_transform;
+      test_case "spec animations 3.11 negative delay" `Quick
+        animation_negative_delay;
       test_case "animation quoted none" `Quick quoted_none_names_keyframes;
       test_case "transforms" `Quick test_transforms;
       test_case "will_change" `Quick test_will_change;
