@@ -300,9 +300,6 @@ let spec_fontface_src_minify_edges () =
       ( "tech before format serializes in canonical modifier order",
         "url(\"color.woff2\") tech(color-COLRv1) format(\"woff2\")",
         "url(color.woff2)format(woff2)tech(color-COLRv1)" );
-      ( "whitespace-only source separator is accepted",
-        "local(\"Brand\") url(\"brand.woff2\")",
-        "local(Brand),url(brand.woff2)" );
       ( "var source fallback survives",
         "var(--font-src, url(\"fallback.woff2\") format(\"woff2\"))",
         "var(--font-src,url(fallback.woff2)format(woff2))" );

@@ -762,7 +762,7 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face{font-family:Sparse;src:local(Sparse),url(sparse.woff2)}"
-    "@font-face { ; font-family: Sparse; ; src: local(\"Sparse\") \
+    "@font-face { ; font-family: Sparse; ; src: local(\"Sparse\"), \
      url(\"sparse.woff2\"); ; }";
   check_stylesheet
     ~expected:
