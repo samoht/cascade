@@ -799,6 +799,27 @@ let font_metric_math_below_range () =
       | Error _ -> ())
     [ "-10%" ]
 
+(* CSS Fonts 4 (ED) sec. 4.3 spells [src] as a comma-separated <font-src-list>,
+   and sec. 4.3.1 drops an item whose component value does not parse: two
+   sources with no comma between them are one item that does not parse. Chromium
+   153 and WebKit 26.5 drop src: url(a.woff) url(b.woff), and keep only
+   url(c.woff) after it. Read as two items, the declaration would load a font
+   both browsers never load. *)
+let font_src_items_need_commas () =
+  let minify css = Css.minify (Css.stylesheet css) in
+  let face src =
+    String.concat "" [ "@font-face{font-family:a;src:"; src; "}" ]
+  in
+  List.iter
+    (fun (src, expected) ->
+      Alcotest.(check string) src expected (minify (face src)))
+    [
+      ("url(a.woff) url(b.woff)", "");
+      ("local(\"\") url(test.woff)", "");
+      ( "url(a.woff) url(b.woff), url(c.woff)",
+        "@font-face{font-family:a;src:url(c.woff)}" );
+    ]
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -839,4 +860,5 @@ let suite =
       test_case "spec src printer routes" `Quick spec_src_printer_routes;
       test_case "font metric math below range" `Quick
         font_metric_math_below_range;
+      test_case "font src items need commas" `Quick font_src_items_need_commas;
     ] )
