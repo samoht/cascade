@@ -145,8 +145,10 @@ let border_width_of_length_calc calc = map_calc_opt border_width_of_length calc
 
 let length_linear_term : length -> (string * float * (float -> length)) option =
   function
-  | Zero -> Some ("px", 0., fun _ -> Zero)
-  | Px n -> Some ("px", n, fun n -> if n = 0. then Zero else Px n)
+  (* An operand keeps its unit: CSS Values 4 sec. 10.9 types a bare [0] in a
+     math function as a <number>, so a zero term is written [0px]. *)
+  | Zero -> Some ("px", 0., fun n -> Px n)
+  | Px n -> Some ("px", n, fun n -> Px n)
   | Cm n -> Some ("cm", n, fun n -> Cm n)
   | Mm n -> Some ("mm", n, fun n -> Mm n)
   | Q n -> Some ("q", n, fun n -> Q n)
@@ -194,7 +196,7 @@ let append_border_width_term (acc : length calc)
 let rebuild_border_width_length_terms
     (terms : (string * float * (float -> length)) list) : length calc =
   match collect_border_width_terms terms with
-  | [] -> Val Zero
+  | [] -> Val (Px 0.)
   | [ (_, n, make) ] -> Val (make n)
   | (_, n, make) :: rest ->
       List.fold_left append_border_width_term (Val (make n)) rest
@@ -485,7 +487,7 @@ let rec pp_border_width : border_width Pp.t =
   | Fit_content -> Pp.string ctx "fit-content"
   | From_font -> Pp.string ctx "from-font"
   | Calc cv ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true
         ~unwrap:(fun v -> not (negative_border_width v))
         pp_border_width ctx cv
   | Min args -> pp_border_width_minmax "min" ctx args
