@@ -908,17 +908,18 @@ let spec_fontface_descriptors () =
      and [Cambria Math] are installed fonts and [serif Foo] is not. The
      [font-family] property reads them that way; the descriptor held every word
      of the sequence to the whole exclusion list, so it dropped a real font
-     name. Chrome 153 reads the first two at both and drops the third at
-     both. *)
+     name. Chrome 153 reads the first two at both and drops the third at both,
+     but WebKit 26.5 reads the third as a descriptor, so it is kept as
+     written. *)
   check_stylesheet
     ~expected:"@font-face{font-family:\"Cambria Math\";src:url(font.woff2)}"
     "@font-face { font-family: Cambria Math; src: url(font.woff2); }";
   check_stylesheet
     ~expected:"@font-face{font-family:\"Foo serif\";src:url(font.woff2)}"
     "@font-face { font-family: Foo serif; src: url(font.woff2); }";
-  assert_minify_and_optimize
-    "@font-face { font-family: serif Foo; src: url(font.woff2); }"
-    ~minified:"@font-face{src:url(font.woff2)}" ~optimized:"";
+  check_stylesheet
+    ~expected:"@font-face{font-family:serif Foo;src:url(font.woff2)}"
+    "@font-face { font-family: serif Foo; src: url(font.woff2); }";
   (* A family name that merely starts with one is a name, not a keyword: sec.
      2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
   check_stylesheet

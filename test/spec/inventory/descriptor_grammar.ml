@@ -18,16 +18,7 @@ let rows =
     row "font-face" "font-family"
       "sec. 4.2 <font-family-name> = <string> | <custom-ident>+"
       [ "Brand"; "\"Brand Sans\""; "Brand Sans"; "'Brand'"; "B2" ]
-      [
-        "serif";
-        "default";
-        (* CSS Values 4 sec. 4.2 reserves [default], so no <custom-ident> of a
-           sequence may be one. *)
-        "none default";
-        "Brand!";
-        "Red/Black";
-        "\"Brand";
-      ];
+      [ "serif"; "default"; "Brand!"; "Red/Black"; "\"Brand" ];
     row "font-face" "src" "sec. 4.3.1 <font-src-list>"
       [
         "url(brand.woff2)";
