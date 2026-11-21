@@ -718,6 +718,12 @@ differently. They are the reason to minify again.
   both, never by a length (CSS Images 4 sec. 3.5.1), and an angle that is a
   whole percentage of the turn takes the shorter spelling: `90deg` prints as
   `25%` (#1534).
+- **Some SVG and replaced-element values were deleted.** `--minify` deleted
+  `stroke-dasharray:1 2 calc(3%)` and every dash pattern with a math function
+  after its first dash, `object-view-box:inset(0 round 4px)` and every
+  rounded `inset()`, and `baseline-shift:1` and `baseline-shift:baseline`,
+  which Chromium reads (the number as px), so an earlier `baseline-shift`
+  won. Each is now kept (#1535).
 
 #### Stable output
 

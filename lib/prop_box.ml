@@ -204,15 +204,20 @@ let read_overflow t : overflow =
    6.1.1). *)
 let normalize_object_view_box (value : object_view_box) : object_view_box =
   match value with
-  | Inset (top, right, bottom, left) ->
+  | Inset (top, right, bottom, left, rounded) ->
       let nl = Values.normalize_length ~strip:true in
       let top' = nl top in
       let right' = option_map_preserve nl right in
       let bottom' = option_map_preserve nl bottom in
       let left' = option_map_preserve nl left in
-      if top' == top && right' == right && bottom' == bottom && left' == left
+      let rounded' =
+        option_map_preserve (normalize_border_radius ~strip:true) rounded
+      in
+      if
+        top' == top && right' == right && bottom' == bottom && left' == left
+        && rounded' == rounded
       then value
-      else Inset (top', right', bottom', left')
+      else Inset (top', right', bottom', left', rounded')
   | Xywh r ->
       let lp = Values.normalize_length_percentage ~strip:true in
       let x = lp r.x in
@@ -861,10 +866,11 @@ let rec pp_object_view_box : object_view_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_object_view_box ctx v
   | None -> Pp.string ctx "none"
-  | Inset (top, right, bottom, left) ->
+  | Inset (top, right, bottom, left, rounded) ->
       Pp.string ctx "inset(";
       pp_length ctx top;
       pp_optional_inset_sides pp_length ctx right bottom left;
+      pp_clip_path_round ctx rounded;
       Pp.char ctx ')'
   | Xywh { x; y; width; height; rounded } ->
       Pp.string ctx "xywh(";
@@ -1226,14 +1232,15 @@ let read_object_view_box_inset t =
       let top = read_length t in
       Cursor.ws t;
       let read_opt () : length option =
-        if Cursor.is_done t then None else Some (read_length t)
+        let side = Cursor.option read_length t in
+        Cursor.ws t;
+        side
       in
       let right = read_opt () in
-      Cursor.ws t;
       let bottom = if Option.is_some right then read_opt () else None in
-      Cursor.ws t;
       let left = if Option.is_some bottom then read_opt () else None in
-      (Inset (top, right, bottom, left) : object_view_box))
+      let rounded = read_clip_path_round t in
+      (Inset (top, right, bottom, left, rounded) : object_view_box))
 
 let read_object_view_box_xywh t =
   Cursor.call "xywh" t (fun inner ->

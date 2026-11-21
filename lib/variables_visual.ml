@@ -411,11 +411,12 @@ let vars_of_clip (value : Properties.clip) =
 let vars_of_object_view_box (value : Properties.object_view_box) =
   match value with
   | Var v -> [ V v ]
-  | Inset (a, b, c, d) ->
+  | Inset (a, b, c, d, r) ->
       vars_of_length a
       @ Option.value ~default:[] (Option.map vars_of_length b)
       @ Option.value ~default:[] (Option.map vars_of_length c)
       @ Option.value ~default:[] (Option.map vars_of_length d)
+      @ Option.value ~default:[] (Option.map vars_of_border_radius r)
   | Xywh { x; y; width; height; rounded }
   | Rect { top = x; right = y; bottom = width; left = height; rounded } ->
       vars_of_length_percentage x
