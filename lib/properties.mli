@@ -276,6 +276,11 @@ val pp_mask_layer : mask_layer Pp.t
 val read_mask_layer : Cursor.t -> mask_layer
 (** [read_mask_layer t] parses one [mask] layer. *)
 
+val mask_reads_with_bg_position : string -> bool
+(** [mask_reads_with_bg_position raw] is whether [raw] is a [mask] value when a
+    layer's position takes [background-position]'s three-value form, as Chromium
+    and WebKit read it and CSS Masking 1 and Gecko do not. *)
+
 val pp_min_intrinsic_sizing_keyword : min_intrinsic_sizing_keyword Pp.t
 (** [pp_min_intrinsic_sizing_keyword] pretty-prints a [min-intrinsic-sizing]
     keyword. *)
