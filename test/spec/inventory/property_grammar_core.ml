@@ -79,8 +79,12 @@ let rows =
           "stretch";
           "calc(1rem + 2px)";
           "attr(data-w px, calc(10px + 0px))";
+          "anchor-size()";
+          "anchor-size(width --a)";
+          "anchor-size(50%)";
         ];
-      negatives = [ "red"; "fit-content()" ];
+      negatives =
+        [ "red"; "fit-content()"; "anchor-size(foo)"; "anchor-size(--a --b)" ];
     };
     {
       property = "margin";

@@ -175,8 +175,8 @@ let rows =
     ]
   @ rows_for
       [ "margin-left"; "margin-right"; "margin-top"; "margin-bottom" ]
-      [ "0"; "1px"; "10%"; "auto"; "anchor-size(width)" ]
-      [ "red"; "1px 2px" ]
+      [ "0"; "1px"; "10%"; "auto"; "anchor-size(width)"; "anchor-size()" ]
+      [ "red"; "1px 2px"; "anchor-size(top)" ]
     (* CSS Logical 1 sec. 4.4: <'padding-top'>{1,2}. *)
   @ rows_for
       [ "padding-inline"; "padding-block" ]
@@ -319,9 +319,19 @@ let rows =
         negatives = [ "1px 2px 3px"; "red" ];
       };
     ]
+  (* CSS Anchor Positioning 1 (ED) sec. 3.2 takes a [<percentage>] side and the
+     name on either side of it, and sec. 5.1 [anchor-size()] with no argument,
+     in every inset property. *)
   @ rows_for [ "inset" ]
-      [ "auto"; "1px"; "10%"; "1px 2px 3px 4px" ]
-      [ "red"; "1px 2px 3px 4px 5px" ]
+      [
+        "auto";
+        "1px";
+        "10%";
+        "1px 2px 3px 4px";
+        "anchor(--a 50%)";
+        "anchor(50%) 1px";
+      ]
+      [ "red"; "1px 2px 3px 4px 5px"; "anchor(width)" ]
   @ rows_for
       [ "inset-inline"; "inset-block" ]
       [ "auto"; "1px"; "10%"; "1px 2px" ]
@@ -337,8 +347,17 @@ let rows =
         "inset-block-start";
         "inset-block-end";
       ]
-      [ "auto"; "1px"; "10%" ]
-      [ "red"; "1px 2px"; "1px 2px 3px 4px" ]
+      [
+        "auto"; "1px"; "10%"; "anchor(50%)"; "anchor(top --a)"; "anchor-size()";
+      ]
+      [
+        "red";
+        "1px 2px";
+        "1px 2px 3px 4px";
+        "anchor(foo)";
+        "anchor(50px)";
+        "anchor(--a)";
+      ]
   @ rows_for
       [ "overflow-x"; "overflow-y" ]
       [ "visible"; "hidden"; "clip"; "auto"; "scroll" ]

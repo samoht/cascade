@@ -201,6 +201,57 @@ let reference_box_pairs_with_a_shape () =
   check_declaration ~expected:"offset-path:circle() content-box"
     "offset-path: circle() content-box"
 
+(* CSS Anchor Positioning 1 (ED) sec. 3.2 spells [anchor( <anchor-name>? &&
+   <anchor-side>, <length-percentage>? )], so the name and the side come in
+   either order and a [<percentage>] is a side. Sec. 5.1 spells [anchor-size( [
+   <anchor-name> || <anchor-size> ]? , <length-percentage>? )], and CSS Values 4
+   (ED) sec. 2.1 "Component Value Types" omits the comma when every item before
+   it is omitted, so [anchor-size()] and [anchor-size(10px)] are both values.
+   Each form is one node, printed name first. *)
+let anchor_query_forms () =
+  check_declaration ~expected:"top:anchor(50%)" "top: anchor(50%)";
+  check_declaration ~expected:"top:anchor(-10%)" "top: anchor(-10%)";
+  check_declaration ~expected:"top:anchor(--a 50%)" "top: anchor(--a 50%)";
+  check_declaration ~expected:"top:anchor(--a 50%)" "top: anchor(50% --a)";
+  check_declaration ~expected:"top:anchor(--a top)" "top: anchor(top --a)";
+  check_declaration ~expected:"top:anchor(top)" "top: anchor(TOP)";
+  check_declaration ~expected:"top:anchor(self-end,10px)"
+    "top: anchor(self-end, 10px)";
+  check_declaration ~expected:"top:anchor(50%)" "top: anchor(calc(50%))";
+  check_declaration ~expected:"inset:anchor(50%)" "inset: anchor(50%)";
+  check_declaration ~expected:"width:anchor-size()" "width: anchor-size()";
+  check_declaration ~expected:"top:anchor-size()" "top: anchor-size()";
+  check_declaration ~expected:"margin-top:anchor-size()"
+    "margin-top: anchor-size()";
+  check_declaration ~expected:"width:anchor-size(10px)"
+    "width: anchor-size(10px)";
+  check_declaration ~expected:"width:anchor-size(50%)" "width: anchor-size(50%)";
+  check_declaration ~expected:"width:anchor-size(--a)" "width: anchor-size(--a)";
+  check_declaration ~expected:"width:anchor-size(--a width)"
+    "width: anchor-size(width --a)";
+  check_declaration ~expected:"width:anchor-size(self-inline)"
+    "width: anchor-size(SELF-INLINE)";
+  check_declaration ~expected:"width:anchor-size(--a,10px)"
+    "width: anchor-size(--a, 10px)";
+  check_declaration ~expected:"width:calc(anchor-size()*2)"
+    "width: calc(anchor-size() * 2)";
+  neg_cursor read_declaration "top: anchor()";
+  neg_cursor read_declaration "top: anchor(--a)";
+  neg_cursor read_declaration "top: anchor(foo)";
+  neg_cursor read_declaration "top: anchor(width)";
+  neg_cursor read_declaration "top: anchor(50px)";
+  neg_cursor read_declaration "top: anchor(0)";
+  neg_cursor read_declaration "top: anchor(top top)";
+  neg_cursor read_declaration "top: anchor(--a --b top)";
+  neg_cursor read_declaration "top: anchor(top 10px)";
+  neg_cursor read_declaration "top: anchor(top,)";
+  neg_cursor read_declaration "top: anchor(calc(50% + 1px))";
+  neg_cursor read_declaration "width: anchor-size(foo)";
+  neg_cursor read_declaration "width: anchor-size(top)";
+  neg_cursor read_declaration "width: anchor-size(width height)";
+  neg_cursor read_declaration "width: anchor-size(--a --b)";
+  neg_cursor read_declaration "width: anchor-size(, 10px)"
+
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
    built from strings, and sec. 7.8 gives [grid] those forms plus the two
@@ -1603,6 +1654,7 @@ let suite =
         transform_origin_z_is_a_length;
       test_case "a reference box pairs with a shape" `Quick
         reference_box_pairs_with_a_shape;
+      test_case "anchor query forms" `Quick anchor_query_forms;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick
