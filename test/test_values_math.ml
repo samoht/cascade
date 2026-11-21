@@ -1383,6 +1383,36 @@ let nested_calc_in_math_argument () =
       ("opacity", "calc(min(calc(1 + 2), 1))", "1");
     ]
 
+(* The same invariant at every property that holds a bare dimension the way
+   contain-intrinsic-* does: calc(1e2px) and 100E0px both spell 100px (CSS
+   Values 4 sec. 10.10), so they reach one normal form, the first --minify
+   merges the two rules, and a second run changes nothing (M4). *)
+let dimension_folds_in_normalisation () =
+  List.iter
+    (fun prop ->
+      let src =
+        String.concat "" [ "a{"; prop; ":100E0px}b{"; prop; ":calc(1e2px)}" ]
+      in
+      let once = Css.minify (Css.stylesheet src) in
+      Alcotest.(check bool)
+        (prop ^ ": two spellings merge in one pass: " ^ once)
+        true
+        (String.starts_with ~prefix:"a,b{" once);
+      Alcotest.(check string)
+        (prop ^ ": a fixed point") once
+        (Css.minify (Css.stylesheet once)))
+    [
+      "background-size";
+      "mask-size";
+      "-webkit-mask-size";
+      "tab-size";
+      "column-width";
+      "columns";
+      "overflow-clip-margin";
+      "grid-template-columns";
+      "initial-letter-wrap";
+    ]
+
 let suite =
   ( "values_math",
     [
@@ -1450,4 +1480,6 @@ let suite =
         contain_intrinsic_size_folds_in_normalisation;
       test_case "nested calc in a math argument" `Quick
         nested_calc_in_math_argument;
+      test_case "a dimension folds in normalisation" `Quick
+        dimension_folds_in_normalisation;
     ] )
