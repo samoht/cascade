@@ -807,14 +807,12 @@ let is_plus_or_minus_delim = function
    minified serialiser keeps it even though neither neighbour is word-like.
    [in_math] enters at a math function's arguments and carries through a
    grouping paren, itself a math operand; a nested function has its own grammar.
-   A [var()], [env()] or [attr()] there may substitute the operator, so the
+   An arbitrary substitution function there may substitute the operator, so the
    whitespace beside one is a separator too, unless the other side is a [*], [/]
    or comma, beside which no operator is valid. *)
 let is_substitution = function
-  | Component.Func { node = { name; _ }; _ } -> (
-      match String.lowercase_ascii name with
-      | "var" | "env" | "attr" -> true
-      | _ -> false)
+  | Component.Func { node = { name; _ }; _ } ->
+      Component.is_substitution_function name
   | _ -> false
 
 let is_product_or_comma = function

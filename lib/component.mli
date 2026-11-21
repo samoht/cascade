@@ -114,6 +114,17 @@ val flat_var_refs : Token.t list -> string list
     references, in order: for each [var(] in it, the first custom-property name
     after it. *)
 
+val is_substitution_function : string -> bool
+(** [is_substitution_function name] is whether a function named [name] is an
+    arbitrary substitution function, matched ASCII case-insensitively: [var()],
+    [env()] and [attr()], [if()] (CSS Values 5 sec. 8.3), or a
+    [<dashed-function>] such as [--f()] (CSS Mixins 1 sec. 3). A declaration
+    holding one is valid at parse time whatever its property. *)
+
+val flat_substitutes : Token.t list -> bool
+(** [flat_substitutes tokens] is [true] when the {!Flat} run [tokens] calls an
+    arbitrary substitution function, at any depth of the run. *)
+
 val shallow : t list -> t list
 (** [shallow cvs] is [cvs], unless [cvs] is a {!Flat} run alone, the arguments
     of a function opened past {!Parser.max_nesting_depth}: then it is the run's

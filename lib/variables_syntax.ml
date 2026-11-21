@@ -69,29 +69,28 @@ let components_of_value_string value =
 let var_refs_in_value_string value =
   var_refs_in_components [] (components_of_value_string value)
 
-(* CSS Values 5 calls var(), attr() and env() arbitrary substitution functions:
-   what each stands for is known only while an element is being styled. Walks
-   into arguments and blocks, so one nested in another's fallback still counts,
-   and a [var(] inside a string or url stays an atomic [Preserved] token rather
-   than a [Func], as it does for the reference walk above. *)
+(* CSS Values 5 calls var(), attr(), env() and if() arbitrary substitution
+   functions, and CSS Mixins 1 adds the dashed function: what each stands for is
+   known only while an element is being styled. Walks into arguments and blocks,
+   so one nested in another's fallback still counts, and a [var(] inside a
+   string or url stays an atomic [Preserved] token rather than a [Func], as it
+   does for the reference walk above. *)
 let rec substitution_fn_in_components (components : Component.t list) =
   List.find_map
     (fun (c : Component.t) ->
       match c with
-      | Component.Func { node = { name; arguments; _ }; _ } -> (
-          match String.lowercase_ascii name with
-          | ("var" | "attr" | "env") as fn -> Option.Some fn
-          | _ -> substitution_fn_in_components arguments)
+      | Component.Func { node = { name; arguments; _ }; _ } ->
+          if Component.is_substitution_function name then Option.Some name
+          else substitution_fn_in_components arguments
       | Component.Block { node = { value; _ }; _ } ->
           substitution_fn_in_components value
       | Component.Flat { node; _ } ->
           List.find_map
             (fun (tok : Token.t) ->
               match tok.kind with
-              | Token.Function name -> (
-                  match String.lowercase_ascii name with
-                  | ("var" | "attr" | "env") as fn -> Option.Some fn
-                  | _ -> Option.None)
+              | Token.Function name when Component.is_substitution_function name
+                ->
+                  Option.Some name
               | _ -> Option.None)
             node
       | Component.Preserved _ -> Option.None)

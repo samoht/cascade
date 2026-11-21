@@ -107,7 +107,9 @@ let is_zero_length : length -> bool = function
   | Rem 0.
   | Em 0.
   | Ex 0.
+  | Rex 0.
   | Cap 0.
+  | Rcap 0.
   | Ic 0.
   | Ric 0.
   | Rlh 0.
@@ -126,14 +128,20 @@ let is_zero_length : length -> bool = function
   | Vb 0.
   | Dvh 0.
   | Dvw 0.
+  | Dvi 0.
+  | Dvb 0.
   | Dvmin 0.
   | Dvmax 0.
   | Lvh 0.
   | Lvw 0.
+  | Lvi 0.
+  | Lvb 0.
   | Lvmin 0.
   | Lvmax 0.
   | Svh 0.
   | Svw 0.
+  | Svi 0.
+  | Svb 0.
   | Svmin 0.
   | Svmax 0.
   | Cqw 0.

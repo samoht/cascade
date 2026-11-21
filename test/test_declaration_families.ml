@@ -479,6 +479,19 @@ let flexbox_flex_and_basis () =
   check_declaration ~expected:"flex-basis:1000px" "flex-basis: 1e3px";
   check_declaration ~expected:"flex-basis:10px" "flex-basis: 10.0px";
   check_declaration ~expected:"flex:3.40282e38px" "flex: 1e999px";
+  (* CSS Values 4 sec. 6.1.4 container units, sec. 6.1.2.1 logical viewport
+     units and sec. 6.1.1 root font units are lengths there too; Chrome 153
+     keeps each. *)
+  check_declaration ~expected:"flex-basis:1cqw" "flex-basis: 1cqw";
+  check_declaration ~expected:"flex-basis:calc(1cqmin + 1px)"
+    "flex-basis: calc(1cqmin + 1px)";
+  check_declaration ~expected:"flex:1 1cqi" "flex: 1 1 1cqi";
+  check_declaration ~expected:"flex-basis:1svi" "flex-basis: 1svi";
+  check_declaration ~expected:"flex-basis:1rcap" "flex-basis: 1rcap";
+  check_declaration ~expected:"font-size:1rcap" "font-size: 1rcap";
+  check_declaration ~expected:"border-top-width:1rex" "border-top-width: 1rex";
+  check_declaration ~expected:"line-height:calc(1rch + 1px)"
+    "line-height: calc(1rch + 1px)";
   decl_optimizes ~prop:"flex-basis" ~into:"0" "0px";
   (* CSS Values 4 sec. 10.10.1: a static product over a percentage folds as it
      does in [width], so [calc(.5 * 100%)] is [50%]. Tailwind writes [basis-1/2]

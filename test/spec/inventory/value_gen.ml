@@ -478,6 +478,94 @@ let substitution_shapes =
     "env(--cascade-no-such-var, 1px)";
   ]
 
+(* CSS Values 4 sec. 6: every <length> unit, absolute (sec. 6.2) and relative
+   (sec. 6.1.1 font, sec. 6.1.2 viewport, sec. 6.1.4 container), bare and as a
+   math operand. A reader that lists units by hand misses one; the browser says
+   which property takes a length at all. *)
+let length_units =
+  [
+    "px";
+    "cm";
+    "mm";
+    "q";
+    "in";
+    "pt";
+    "pc";
+    "em";
+    "rem";
+    "ex";
+    "rex";
+    "cap";
+    "rcap";
+    "ch";
+    "rch";
+    "ic";
+    "ric";
+    "lh";
+    "rlh";
+    "vw";
+    "vh";
+    "vi";
+    "vb";
+    "vmin";
+    "vmax";
+    "svw";
+    "svh";
+    "svi";
+    "svb";
+    "svmin";
+    "svmax";
+    "lvw";
+    "lvh";
+    "lvi";
+    "lvb";
+    "lvmin";
+    "lvmax";
+    "dvw";
+    "dvh";
+    "dvi";
+    "dvb";
+    "dvmin";
+    "dvmax";
+    "cqw";
+    "cqh";
+    "cqi";
+    "cqb";
+    "cqmin";
+    "cqmax";
+  ]
+
+let unit_shapes =
+  List.concat_map
+    (fun unit ->
+      [
+        String.concat "" [ "2"; unit ];
+        String.concat "" [ "calc(2"; unit; " + 1px)" ];
+      ])
+    length_units
+
+(* CSS Values 5 sec. 8.3 [if()] and CSS Mixins 1 sec. 3 [<dashed-function>] are
+   arbitrary substitution functions, as [var()] is: valid at parse time whatever
+   the property when the call matches its own grammar. A [;] cannot be written
+   into a declaration block here, so every [if()] has one branch. *)
+let conditional_shapes =
+  [
+    "if(media(print):1px)";
+    "if(else:red)";
+    "if(supports(display:grid):auto)";
+    "if(not style(--x):none)";
+    "if(media(print) and (x):1)";
+    "if(foo)";
+    "if(x:1px)";
+    "if(else and media(print):1px)";
+    "calc(if(else:1px) * 2)";
+    "1px if(else:2px)";
+    "--f()";
+    "--f(1px, red)";
+    "--f(!)";
+    "--f(1px,)";
+  ]
+
 (* CSS Values 4 sec. 4.1.1: every property takes a CSS-wide keyword "as the sole
    component of their property value", and combining one with anything else
    "results in an invalid declaration". Sec. 10.8 leaves it out of <calc-value>
@@ -585,6 +673,8 @@ let vectors_for ~seed name =
         malformed;
         math_shapes;
         substitution_shapes;
+        unit_shapes;
+        conditional_shapes;
         wide_keyword_shapes;
         own;
         near;
