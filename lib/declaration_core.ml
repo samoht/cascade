@@ -157,6 +157,188 @@ let rec important = function
   | Declaration { property; value; _ } -> v ~important:true property value
   | Theme_guarded g -> theme_guarded ~var_name:g.var_name (important g.decl)
 
+(* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
+   substitution functions: each carries an unknown token stream into the value,
+   so a declaration holding one is valid at parse time and only decided once
+   substitution has run. A call with an empty argument list matches no
+   substitution grammar and so defers nothing. *)
+let is_substitution_call name arguments =
+  (match String.lowercase_ascii_preserve name with
+    | "var" | "env" | "attr" -> true
+    | _ -> false)
+  && List.exists
+       (fun component -> not (Component.is_whitespace component))
+       arguments
+
+(* The fallback of a substitution call's [arguments], after the first comma. *)
+let rec substitution_fallback = function
+  | [] -> []
+  | Component.Preserved { kind = Token.Comma; _ } :: fallback -> fallback
+  | _ :: rest -> substitution_fallback rest
+
+let rec slotted_substitution = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      is_substitution_call name arguments
+      || List.exists
+           (if Parser.is_math_function name then math_operand_slot
+            else slotted_substitution)
+           arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists slotted_substitution value
+  | Component.Flat { node; _ } ->
+      Component.flat_calls [ "var"; "env"; "attr" ] node
+  | Component.Preserved _ -> false
+
+and math_operand_slot = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      (not (is_substitution_call name arguments))
+      && List.exists
+           (if Parser.is_math_function name then math_operand_slot
+            else slotted_substitution)
+           arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists math_operand_slot value
+  | (Component.Flat _ | Component.Preserved _) as c -> slotted_substitution c
+
+(* CSS Variables 1 sec. 3 checks a declaration holding a substitution against
+   its property's grammar only after substitution, and the call may supply any
+   number of components, commas and slashes included. A typed reader gives the
+   call one slot, so that slot and every default, elision or reordering decided
+   around it is a guess: [flex: var(--g) 0px] read as grow, shrink 1 and basis
+   0px prints [var(--g) 1 0], which [--g: 1 0] makes invalid. A substitution
+   takes no slot only as the whole value, whose fallback is a whole value in
+   turn, or as an operand of a math function, which yields one value whatever it
+   substitutes. *)
+let rec substitution_takes_a_slot components =
+  match List.filter (Fun.negate Component.is_whitespace) components with
+  | [ Component.Func { node = { name; arguments; _ }; _ } ]
+    when is_substitution_call name arguments ->
+      substitution_takes_a_slot (substitution_fallback arguments)
+  | components -> List.exists slotted_substitution components
+
+let rec substitution_name = function
+  | [] | Component.Preserved { kind = Token.Comma; _ } :: _ -> []
+  | c :: rest -> c :: substitution_name rest
+
+let is_substitution = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      is_substitution_call name arguments
+  | _ -> false
+
+let significant = List.filter (Fun.negate Component.is_whitespace)
+
+let rec same_tokens a b = List.equal same_token (significant a) (significant b)
+
+and same_token a b =
+  match (a, b) with
+  | Component.Func { node = f; _ }, Component.Func { node = g; _ } ->
+      String.equal
+        (String.lowercase_ascii_preserve f.name)
+        (String.lowercase_ascii_preserve g.name)
+      && same_tokens f.arguments g.arguments
+  | Component.Block { node = x; _ }, Component.Block { node = y; _ } ->
+      Token.equal_bracket x.opening y.opening && same_tokens x.value y.value
+  | _ ->
+      String.equal
+        (Parser.string_of_components [ a ])
+        (Parser.string_of_components [ b ])
+
+(* A separator or operator token places the components around it, so it is part
+   of the slot structure rather than a value in a slot. *)
+let is_structural = function
+  | Component.Preserved
+      { kind = Token.Comma | Token.Delim _ | Token.Colon | Token.Semicolon; _ }
+    ->
+      true
+  | _ -> false
+
+(* CSS Color 4 sec. 5.1 and 7 give [rgba()] and [hsla()] the grammar and
+   behaviour of [rgb()] and [hsl()], so either name is the same function. *)
+let function_identity name =
+  match String.lowercase_ascii_preserve name with
+  | "rgba" -> "rgb"
+  | "hsla" -> "hsl"
+  | name -> name
+
+(* A comma list read as runs: each segment holding a substitution on its own,
+   and each maximal run of segments holding none as one [Plain]. *)
+type run = Plain | Holding of Component.t list
+
+let rec comma_segments acc segment = function
+  | [] -> List.rev (List.rev segment :: acc)
+  | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+      comma_segments (List.rev segment :: acc) [] rest
+  | c :: rest -> comma_segments acc (c :: segment) rest
+
+let holds_substitution =
+  List.exists (fun c -> is_substitution c || slotted_substitution c)
+
+let runs components =
+  comma_segments [] [] (significant components)
+  |> List.fold_left
+       (fun acc segment ->
+         match (holds_substitution segment, acc) with
+         | false, Plain :: _ -> acc
+         | false, _ -> Plain :: acc
+         | true, _ -> Holding segment :: acc)
+       []
+  |> List.rev
+
+(* [slots_kept source print] is whether [print] keeps every slot of [source]
+   that a substitution may move. A substitution may supply commas, so a comma
+   list is compared run by run: each segment holding a substitution keeps each
+   call as written, in the same place among the same separators, inside the same
+   functions, and a component with no substitution in it may be respelled in its
+   place ([0px] as [0], [#ff0000] as [red]) but not added, dropped or moved. A
+   run of segments holding none stays on each side of such a segment where it
+   was, so what precedes and follows the substitution is still a segment of the
+   same kind, and inside it the folds apply: [linear-gradient(to bottom, red,
+   var(--x))] may drop its direction, [linear-gradient(to bottom, var(--x))] may
+   not, since [--x: to left, red] gives it a second one. *)
+let rec slots_kept source print = List.equal run_kept (runs source) (runs print)
+
+and run_kept a b =
+  match (a, b) with
+  | Plain, Plain -> true
+  | Holding a, Holding b -> List.equal slot_kept a b
+  | Plain, Holding _ | Holding _, Plain -> false
+
+and slot_kept a b =
+  match (a, b) with
+  | Component.Func { node = f; _ }, Component.Func { node = g; _ }
+    when is_substitution a && is_substitution b ->
+      (* The name stays as written; the fallback is a value in the slot. *)
+      String.equal
+        (String.lowercase_ascii_preserve f.name)
+        (String.lowercase_ascii_preserve g.name)
+      && same_tokens
+           (substitution_name f.arguments)
+           (substitution_name g.arguments)
+      && slots_kept
+           (substitution_fallback f.arguments)
+           (substitution_fallback g.arguments)
+  | _ when is_substitution a || is_substitution b -> false
+  | Component.Func { node = f; _ }, Component.Func { node = g; _ }
+    when slotted_substitution a ->
+      String.equal (function_identity f.name) (function_identity g.name)
+      && slots_kept f.arguments g.arguments
+  | Component.Block { node = x; _ }, Component.Block { node = y; _ }
+    when slotted_substitution a ->
+      Token.equal_bracket x.opening y.opening && slots_kept x.value y.value
+  | _ when slotted_substitution a || slotted_substitution b -> false
+  | _ when is_structural a || is_structural b -> same_token a b
+  | _ -> true
+
+let value_components_of : type a. a property -> a -> Component.t list =
+ fun property value ->
+  let buf = Buffer.create 32 in
+  Properties.pp_property_value (Pp.ctx buf) (property, value);
+  Cursor.remaining (Cursor.of_string (Buffer.contents buf))
+
+let rec value_components = function
+  | Declaration { property; value; _ } -> value_components_of property value
+  | Theme_guarded { decl; _ } -> value_components decl
+
 (* Apply AST-level value normalisation so the optimizer holds a canonical AST.
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
@@ -167,7 +349,15 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
         Properties.normalize_property_value ~lossless ~exact_srgb
           ~resolve_missing ~ctx property value
       in
-      if value' == value then decl else v ~important property value'
+      if value' == value then decl
+      else
+        (* A fold may not move what a substitution can supply. *)
+        let source = value_components_of property value in
+        if
+          substitution_takes_a_slot source
+          && not (slots_kept source (value_components_of property value'))
+        then decl
+        else v ~important property value'
   | Theme_guarded g as themed ->
       let decl = normalize ~lossless ~exact_srgb ~resolve_missing ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl

@@ -258,6 +258,19 @@ let pick_important_custom ~layer_order pool =
     (List.map (fun d -> (rank_of d, d)) pool)
     ~compare_score:compare
 
+(* CSS Variables 1 sec. 2.1 gives a CSS-wide keyword written to a custom
+   property "its usual meaning", so the binding is what the cascade makes of the
+   keyword against the element the sheet is read for, and never the keyword's
+   own tokens. A resolver with no element holds no value it can put in place of
+   the reference. *)
+let is_css_wide_binding decl =
+  match
+    String.lowercase_ascii
+      (String.trim (Declaration.string_of_value ~minify:true decl))
+  with
+  | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+  | _ -> false
+
 let lookup_custom_property ?layer ?layer_order ctx name =
   let ctx = scope ?layer_order ?layer ctx in
   let layer_order = ctx.layer_order in

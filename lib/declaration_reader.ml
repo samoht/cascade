@@ -407,19 +407,6 @@ and component_contains_var = function
   | Component.Flat { node; _ } -> Component.flat_calls [ "var" ] node
   | Component.Preserved _ -> false
 
-(* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
-   substitution functions: each carries an unknown token stream into the value,
-   so a declaration holding one is valid at parse time and only decided once
-   substitution has run. A call with an empty argument list matches no
-   substitution grammar and so defers nothing. *)
-let is_substitution_call name arguments =
-  (match String.lowercase_ascii_preserve name with
-    | "var" | "env" | "attr" -> true
-    | _ -> false)
-  && List.exists
-       (fun component -> not (Component.is_whitespace component))
-       arguments
-
 let rec components_have_substitution components =
   List.exists component_has_substitution components
 
@@ -817,11 +804,35 @@ let read_unknown_property_declaration t name =
   | _ -> ());
   unknown_property ~important:is_important name raw_value
 
+(* The typed value of [prop_type] at [t], with [!important]. *)
+let read_typed_property_value : type a. a property -> Cursor.t -> declaration =
+ fun prop_type t ->
+  (* The typed value readers and [validate_no_extra_tokens] reject a right-hand
+     side without knowing which property they serve, so a [Bad_value] surfaces
+     with an empty property name ([bad value for :]). Stamp the property back on
+     so the warning names it ([bad value for background-image:]). *)
+  let read () =
+    let value = Cursor.declaration_value t in
+    let decl = read_value prop_type value in
+    validate_no_extra_tokens value;
+    let is_important = read_importance t in
+    validate_no_extra_tokens t;
+    (match Cursor.peek_delim t with
+    | Some '!' -> Cursor.err_invalid t "duplicate !important"
+    | _ -> ());
+    if is_important then important decl else decl
+  in
+  try read ()
+  with Cursor.Parse_error e ->
+    Error.fail (Error.with_property (canonical_prop_name prop_type) e)
+
 (* The declaration [prop_type] forms over the value at [t]. Takes the property
    rather than reading it, so a caller holding one does not have to spell it out
    for the parser to read back: [pp_property] under minify writes [page-break-*]
    as its CSS Fragmentation 3 sec. 3.4 [break-*] alias, which names a different
-   property. *)
+   property. A value whose substitution takes a slot of the property's grammar
+   is typed only if the typed value prints back every slot as written; else it
+   is kept as the token stream it is until substitution. *)
 let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
     =
  fun prop_type t ->
@@ -830,26 +841,21 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
      tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
   | Unknown_property name -> read_unknown_property_declaration t name
-  | _ -> (
-      (* The typed value readers and [validate_no_extra_tokens] reject a
-         right-hand side without knowing which property they serve, so a
-         [Bad_value] surfaces with an empty property name ([bad value for :]).
-         Stamp the property back on so the warning names it ([bad value for
-         background-image:]). *)
-      let read () =
-        let value = Cursor.declaration_value t in
-        let decl = read_value prop_type value in
-        validate_no_extra_tokens value;
-        let is_important = read_importance t in
-        validate_no_extra_tokens t;
-        (match Cursor.peek_delim t with
-        | Some '!' -> Cursor.err_invalid t "duplicate !important"
-        | _ -> ());
-        if is_important then important decl else decl
-      in
-      try read ()
-      with Cursor.Parse_error e ->
-        Error.fail (Error.with_property (canonical_prop_name prop_type) e))
+  | Custom_property _ -> read_typed_property_value prop_type t
+  | _ ->
+      let components = Cursor.lookahead Cursor.drain_to_decl_end t in
+      if not (substitution_takes_a_slot components) then
+        read_typed_property_value prop_type t
+      else
+        let start = Cursor.save t in
+        let decl = read_typed_property_value prop_type t in
+        if
+          slots_kept components (Declaration_core.value_components decl)
+          || components_have_invalid_substitution components
+        then decl
+        else (
+          Cursor.restore t start;
+          read_unknown_property_declaration t (canonical_prop_name prop_type))
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;

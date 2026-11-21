@@ -3,6 +3,14 @@ open Values
 open Properties_intf
 open Prop_common
 
+(* Whether a [var()] in [body] may supply components of its own (CSS Variables 1
+   sec. 3), so an [inset] written after it stays there. *)
+let body_substitutes (body : shadow_body) =
+  (match body.color with Some (Var _) -> true | _ -> false)
+  || List.exists
+       (function Some (Var _ : length) -> true | _ -> false)
+       [ Some body.h_offset; Some body.v_offset; body.blur; body.spread ]
+
 module Shadow = struct
   let read_lengths lengths =
     match lengths with
@@ -74,16 +82,21 @@ module Shadow = struct
         | None -> ()
     in
     read_lengths_loop 0;
+    let leading = !inset in
     let _ : bool = try_inset () in
     let _ : bool = try_color () in
     let _ : bool = try_inset () in
+    let trailing = !inset && not leading in
     let lengths, color =
       take_trailing_color_var (List.rev !lengths_rev) !color
     in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
         let body = { h_offset; v_offset; blur; spread; color } in
-        (if !inset then Inset (Body body) else Shadow body : shadow)
+        (if trailing && body_substitutes body then Inset (Trailing body)
+         else if !inset then Inset (Body body)
+         else Shadow body
+          : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
 end
 
@@ -168,6 +181,10 @@ let rec pp_shadow : shadow Pp.t =
       Pp.string ctx "inset";
       Pp.space ctx ();
       pp_shadow_body ctx body
+  | Inset (Trailing body) ->
+      pp_shadow_body ctx body;
+      Pp.space ctx ();
+      Pp.string ctx "inset"
   | Inset (Var v) ->
       Pp.string ctx "inset";
       Pp.space ctx ();
@@ -185,56 +202,63 @@ let rec pp_shadow : shadow Pp.t =
   | Var v -> pp_var pp_shadow ctx v
   | List shadows -> Pp.list ~sep:Pp.comma pp_shadow ctx shadows
 
+let normalize_shadow_body ~lossless (s : shadow_body) : shadow_body =
+  (* The blur is the one slot with a floor, so unwrapping a math function there
+     could turn a value browsers take into one they drop. *)
+  let blur =
+    option_map_preserve (Values.normalize_length ~non_negative:true) s.blur
+  in
+  let spread = option_map_preserve Values.normalize_length s.spread in
+  let color = option_map_preserve (normalize_color ~lossless) s.color in
+  (* A [var()] colour could resolve to a length, so dropping a zero length
+     before it lets the shortened form re-bind the colour as that length: [0 3px
+     0 var(--c)] is blur [0] + colour, but [0 3px var(--c)] parses [var(--c)] as
+     the blur, and [0 1px 0 0 var(--c)] loses its spread the same way. Keep the
+     explicit [0] there; a concrete colour is unambiguous and the [0] still
+     drops. *)
+  let colour_may_be_length =
+    match color with Some (Var _) -> true | _ -> false
+  in
+  (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths and
+     defaults each missing value to [0]. Drop a trailing zero contiguously from
+     the end: [spread] is last and drops freely; a zero blur drops only when no
+     spread follows - otherwise it is positional and dropping it would re-bind
+     the spread as the blur (e.g. [0 1px 0 5px] must keep the [0] blur). *)
+  let spread : length option =
+    match spread with
+    | Some sp when is_zero_length sp && not colour_may_be_length -> None
+    | _ -> spread
+  in
+  let blur : length option =
+    match blur with
+    | Some b
+      when is_zero_length b && Option.is_none spread && not colour_may_be_length
+      ->
+        None
+    | _ -> blur
+  in
+  {
+    h_offset = Values.normalize_length s.h_offset;
+    v_offset = Values.normalize_length s.v_offset;
+    blur;
+    spread;
+    color;
+  }
+
 let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
  fun value ->
-  let normalize_body (s : shadow_body) : shadow_body =
-    (* The blur is the one slot with a floor, so unwrapping a math function
-       there could turn a value browsers take into one they drop. *)
-    let blur =
-      option_map_preserve (Values.normalize_length ~non_negative:true) s.blur
-    in
-    let spread = option_map_preserve Values.normalize_length s.spread in
-    let color = option_map_preserve (normalize_color ~lossless) s.color in
-    (* A [var()] colour could resolve to a length, so dropping a zero length
-       before it lets the shortened form re-bind the colour as that length: [0
-       3px 0 var(--c)] is blur [0] + colour, but [0 3px var(--c)] parses
-       [var(--c)] as the blur, and [0 1px 0 0 var(--c)] loses its spread the
-       same way. Keep the explicit [0] there; a concrete colour is unambiguous
-       and the [0] still drops. *)
-    let colour_may_be_length =
-      match color with Some (Var _) -> true | _ -> false
-    in
-    (* CSS Backgrounds 3 sec. 6.1 orders the optional blur then spread lengths
-       and defaults each missing value to [0]. Drop a trailing zero contiguously
-       from the end: [spread] is last and drops freely; a zero blur drops only
-       when no spread follows - otherwise it is positional and dropping it would
-       re-bind the spread as the blur (e.g. [0 1px 0 5px] must keep the [0]
-       blur). *)
-    let spread : length option =
-      match spread with
-      | Some sp when is_zero_length sp && not colour_may_be_length -> None
-      | _ -> spread
-    in
-    let blur : length option =
-      match blur with
-      | Some b
-        when is_zero_length b && Option.is_none spread
-             && not colour_may_be_length ->
-          None
-      | _ -> blur
-    in
-    {
-      h_offset = Values.normalize_length s.h_offset;
-      v_offset = Values.normalize_length s.v_offset;
-      blur;
-      spread;
-      color;
-    }
-  in
+  let normalize_body = normalize_shadow_body ~lossless in
   match value with
   | Shadow s -> preserve_if_equal value (Shadow (normalize_body s))
   | Inset (Body s) ->
       preserve_if_equal value (Inset (Body (normalize_body s)) : shadow)
+  (* The keyword moves first, its canonical place, unless a [var()] in the body
+     may supply components it would then precede. *)
+  | Inset (Trailing s) ->
+      let substitutes = body_substitutes s in
+      let s = normalize_body s in
+      if substitutes then preserve_if_equal value (Inset (Trailing s) : shadow)
+      else Inset (Body s)
   | Inset (Toggle { name; no_fallback; body }) ->
       preserve_if_equal value
         (Inset (Toggle { name; no_fallback; body = normalize_body body })
