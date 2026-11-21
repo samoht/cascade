@@ -758,6 +758,21 @@ and read_math_arg t =
   validate_calc_type t `Value expr;
   expr
 
+(* A [none] bound (CSS Values 4 (ED) sec. 10.2) has no typed [Clamp] form, so it
+   reads as the generic comparison, which keeps it. *)
+and read_border_width_clamp t : border_width =
+  let typed t : border_width =
+    match
+      Cursor.call "clamp" t
+        (Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg)
+    with
+    | [ lower; value; upper ] -> Clamp (lower, value, upper)
+    | _ -> Cursor.err_invalid t "invalid clamp"
+  in
+  Cursor.one_of
+    [ typed; (fun t : border_width -> Calc (read_none_bounded_clamp t)) ]
+    t
+
 and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
   let read_var t : border_width =
     Var (read_var (read_border_width_with ~keywords ~allow_negative) t)
@@ -775,14 +790,6 @@ and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
       (Cursor.call "max" t
          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg))
   in
-  let read_clamp t : border_width =
-    match
-      Cursor.call "clamp" t
-        (Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg)
-    with
-    | [ lower; value; upper ] -> Clamp (lower, value, upper)
-    | _ -> Cursor.err_invalid t "invalid clamp"
-  in
   Cursor.enum_or_calls "border-width"
     (if keywords then
        [
@@ -798,7 +805,8 @@ and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
      else [])
     ~calls:
       (("var", read_var) :: ("calc", read_calc) :: ("min", read_min)
-     :: ("max", read_max) :: ("clamp", read_clamp)
+     :: ("max", read_max)
+      :: ("clamp", read_border_width_clamp)
       :: Values.typed_math_function_calls read_calc)
     ~default:(read_length_as_border_width ~allow_negative)
     t

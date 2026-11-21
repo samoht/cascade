@@ -677,9 +677,10 @@ let three_or a b =
    release the dataset records, and a shipped production stays. A declaration
    feature holds in all of them when the floor parses the declaration, fails in
    all of them when no release the dataset records does, and is undecided when a
-   release past the floor first parses it ({!Declaration.first_release}). [not]
-   reverses a leaf, so a feature that fails at the floor and holds from a later
-   release is undecided under [not] too. *)
+   release past the floor first parses it, or the dataset cannot tell which
+   release first does ({!Declaration.first_release}). [not] reverses a leaf, so
+   a feature that fails at the floor and holds from a later release is undecided
+   under [not] too. *)
 let implemented_by_engine engine floor cond =
   (* The feature's declaration is opaque, since the browser is the parser it is
      meant for; the typed reading is taken here to see the productions it uses,
@@ -702,8 +703,9 @@ let implemented_by_engine engine floor cond =
         | None -> None
         | Some _ -> (
             match Declaration.first_release ~floor engine decl with
-            | None -> Some false
-            | Some release ->
+            | Never -> Some false
+            | Unrecorded -> None
+            | From release ->
                 if Support.compare_version release floor = 0 then Some true
                 else None))
   in

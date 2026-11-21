@@ -95,6 +95,14 @@ val unimplemented_by : targets -> string -> bool
     engine in [targets] lacks [key]. An unknown key is [false], so this reads as
     "known to be missing" rather than "not known to be present". *)
 
+(** The first release of an engine that parses a declaration. *)
+type release =
+  | From of version  (** Parsed from this release on. *)
+  | Never  (** Parsed by no release the dataset records. *)
+  | Unrecorded
+      (** Uses a production the dataset has no key for and some release in it
+          drops, so the first release that parses it is unknown. *)
+
 val compare_version : version -> version -> int
 (** [compare_version a b] orders versions by major, then minor. *)
 

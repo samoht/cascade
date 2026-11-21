@@ -201,9 +201,18 @@ and read_implicit_calc_length ~length_only inner =
   validate_calc_type inner `Value expr;
   match expr with Val l -> l | expr -> Calc expr
 
+(* CSS Values 4 (ED) sec. 10.2 takes [none] for either bound of [clamp()], to
+   clamp from the other side only. *)
+and read_clamp_bound ~length_only inner =
+  match Cursor.peek_keyword inner with
+  | Some "none" ->
+      Cursor.skip inner;
+      (None : length)
+  | _ -> read_implicit_calc_length ~length_only inner
+
 and read_clamp_length ?(length_only = false) inner =
   Cursor.ws inner;
-  let min = read_implicit_calc_length ~length_only inner in
+  let min = read_clamp_bound ~length_only inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
@@ -211,7 +220,7 @@ and read_clamp_length ?(length_only = false) inner =
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_implicit_calc_length ~length_only inner in
+  let max = read_clamp_bound ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Clamp (min, value, max)

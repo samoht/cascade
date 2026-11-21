@@ -813,6 +813,13 @@ differently. They are the reason to minify again.
   `counter-increment:a sign(1)` and `z-index:round(1.5)` are now read as
   Chromium reads them (CSS Values 4 sec. 10.3 lets `round()` omit its step)
   (#1568).
+- and a `none` bound of `clamp()` were dropped.** `--minify` deleted
+  `width:revert-rule` and `width:clamp(none,50%,80px)` with a warning, though
+  Chromium and WebKit read both, and merged `.c{--x:1}.c{--x:revert-rule}`
+  into one rule, which changes what the keyword rolls back to (CSS Cascade 5
+  sec. 7.3.6). Both are now kept, `clamp()` with a `none` bound is never
+  folded, and a rule holding `revert-rule` is never merged, split, or let
+  shadow an earlier rule (#1569).
 
 #### Stable output
 

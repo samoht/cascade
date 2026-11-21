@@ -187,7 +187,18 @@ and pp_math_fn ctx fn =
   | Rem_n (a, b) -> call "rem" [ a; b ]
   | Min_n args -> call "min" args
   | Max_n args -> call "max" args
-  | Clamp_n (lo, v, hi) -> call "clamp" [ lo; v; hi ]
+  | Clamp_n (lo, v, hi) ->
+      let bound ctx = function
+        | Some arg -> pp_math_arg ctx arg
+        | None -> Pp.string ctx "none"
+      in
+      Pp.string ctx "clamp(";
+      bound ctx lo;
+      Pp.comma ctx ();
+      pp_math_arg ctx v;
+      Pp.comma ctx ();
+      bound ctx hi;
+      Pp.char ctx ')'
 
 and pp_angle_arg ctx arg =
   match arg with
@@ -298,10 +309,14 @@ and eval_math_fn fn =
   | Rem_n (a, b) -> binary Float.rem a b
   | Min_n args -> fold_args Float.min Float.infinity args
   | Max_n args -> fold_args Float.max Float.neg_infinity args
-  | Clamp_n (lo, v, hi) -> (
+  | Clamp_n (Some lo, v, Some hi) -> (
       match (eval_math_arg lo, eval_math_arg v, eval_math_arg hi) with
       | Some lo, Some v, Some hi -> Some (Float.max lo (Float.min v hi))
       | _ -> None)
+  (* A [none] bound is newer than [clamp()] itself, so the call stays for the
+     browser that drops it rather than folding into a value that browser
+     reads. *)
+  | Clamp_n (None, _, _) | Clamp_n (_, _, None) -> None
 
 (* What a static math function reduces to: a plain coefficient, or one that
    carries a unit. CSS Values 4 sec. 10.7 gives [abs()] and [hypot()] the type
@@ -491,11 +506,12 @@ and math_fn_result (fn : math_fn) : math_result option =
   | Min_n args -> compared_result Float.min args
   | Max_n args -> compared_result Float.max args
   (* Sec. 10.2: clamp(MIN, VAL, MAX) is max(MIN, min(VAL, MAX)). *)
-  | Clamp_n (lo, v, hi) -> (
+  | Clamp_n (Some lo, v, Some hi) -> (
       match compared_result Float.min [ v; hi ] with
       | Some inner ->
           compared_results Float.max [ math_arg_result lo; Some inner ]
       | None -> Option.none)
+  | Clamp_n (None, _, _) | Clamp_n (_, _, None) -> Option.none
   (* Sec. 10.6: the answer turns on whether the argument is zero, and a relative
      unit has a reference that can be -- a zero font-size, a zero viewport, a
      zero container, a percentage of zero -- so the coefficient's sign is not
@@ -587,8 +603,9 @@ and math_fn_contains_var = function
   | Hypot args | Min_n args | Max_n args ->
       List.exists math_arg_contains_var args
   | Clamp_n (a, b, c) ->
-      math_arg_contains_var a || math_arg_contains_var b
-      || math_arg_contains_var c
+      Option.fold ~none:false ~some:math_arg_contains_var a
+      || math_arg_contains_var b
+      || Option.fold ~none:false ~some:math_arg_contains_var c
 
 let rec calc_contains_var : type a. a calc -> bool = function
   | Var _ -> true

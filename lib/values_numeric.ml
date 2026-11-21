@@ -111,7 +111,9 @@ let rec math_arg_has_pct : math_arg -> bool = function
 and math_fn_has_pct = function
   | Min_n args | Max_n args | Hypot args -> List.exists math_arg_has_pct args
   | Clamp_n (a, b, c) ->
-      math_arg_has_pct a || math_arg_has_pct b || math_arg_has_pct c
+      Option.fold ~none:false ~some:math_arg_has_pct a
+      || math_arg_has_pct b
+      || Option.fold ~none:false ~some:math_arg_has_pct c
   | Abs_n a | Sign_n a -> math_arg_has_pct a
   | Round_n (_, a, b) | Mod_n (a, b) | Rem_n (a, b) ->
       math_arg_has_pct a || math_arg_has_pct b
@@ -178,6 +180,12 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
             match infinite_length folded with
             | Some v -> v
             | None -> Calc (map_calc canonical_dimension folded)))
+    (* CSS Values 4 (ED) sec. 10.2: a [none] bound is newer than [clamp()]
+       itself, so the call stays for the browser that drops it rather than
+       folding into a value that browser reads. *)
+    | Clamp (((None : length) as mn), v, mx)
+    | Clamp (mn, v, ((None : length) as mx)) ->
+        Clamp (nf mn, nf v, nf mx)
     | Clamp (mn, v, mx) -> (
         let mn = nf mn and v = nf v and mx = nf mx in
         if mn = v && v = mx then v

@@ -45,6 +45,11 @@ val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc_expr read t] parses a calc expression body -- the contents of a
     [calc(...)] form without the surrounding [calc(] and [)]. *)
 
+val read_none_bounded_clamp : Cursor.t -> 'a calc
+(** [read_none_bounded_clamp t] reads a [clamp()] call with a [none] bound (CSS
+    Values 4 (ED) sec. 10.2) as the generic comparison, for a slot whose own
+    [clamp()] reader has no such bound. It fails on any other call. *)
+
 val read_calc_numeric_function : Cursor.t -> 'a calc
 (** [read_calc_numeric_function t] parses a numeric math function call as a
     [calc()] operand. *)

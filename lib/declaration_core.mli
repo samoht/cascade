@@ -149,16 +149,15 @@ val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 
 val first_release :
-  floor:Support.version ->
-  Support.engine ->
-  declaration ->
-  Support.version option
+  floor:Support.version -> Support.engine -> declaration -> Support.release
 (** [first_release ~floor engine decl] is the first release of [engine] at or
     past [floor] that parses [decl], as the web-features dataset records the
     productions [decl] uses: its property, a colour construct, or a keyword or
-    function of its value. [None] is no release the dataset records. A
-    production the dataset has no key for counts as parsed, and a custom
-    property, or a declaration holding [var()], waits on no value. *)
+    function of its value. A production the dataset has no key for counts as
+    parsed, except those cascade knows a recorded release drops, which make the
+    answer {!Support.constructor-Unrecorded}: a [clamp()] bound of [none] and a
+    CSS-wide keyword the dataset does not name. A custom property, or a
+    declaration holding [var()], waits on no value. *)
 
 val fallback_for :
   floors:Support.targets -> later:declaration -> declaration -> bool

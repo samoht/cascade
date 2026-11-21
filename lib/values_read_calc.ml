@@ -633,21 +633,35 @@ and read_comparison : type a.
   in
   comparison_of_args t (mk args) args
 
+(* CSS Values 4 (ED) sec. 10.2 takes [none] for either bound of [clamp()]. *)
+and read_clamp_bound t =
+  Cursor.ws t;
+  match Cursor.peek_keyword t with
+  | Some "none" ->
+      Cursor.skip t;
+      Option.None
+  | _ -> Option.Some (read_math_arg t)
+
 and read_comparison_clamp : type a. Cursor.t -> a calc =
  fun t ->
   let args =
     Cursor.call "clamp" t (fun inner ->
         Cursor.ws inner;
-        let args =
-          Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg_ws
-            inner
-        in
+        let lo = read_clamp_bound inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let v = read_math_arg_ws inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let hi = read_clamp_bound inner in
         Cursor.ws inner;
         Cursor.expect_eof inner;
-        args)
+        [ lo; Option.Some v; hi ])
   in
   match args with
-  | [ lo; v; hi ] -> comparison_of_args t (Clamp_n (lo, v, hi)) args
+  | [ lo; Option.Some v; hi ] ->
+      let bound = function Option.Some arg -> [ arg ] | Option.None -> [] in
+      comparison_of_args t (Clamp_n (lo, v, hi)) (bound lo @ (v :: bound hi))
   | _ -> Cursor.err_invalid t "clamp() takes three arguments"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
@@ -696,7 +710,7 @@ let math_fn_family fn : unit_family option =
   let args =
     match fn with
     | Min_n args | Max_n args | Hypot args -> args
-    | Clamp_n (a, b, c) -> [ a; b; c ]
+    | Clamp_n (a, b, c) -> List.filter_map Fun.id [ a; Some b; c ]
     | Abs_n a -> [ a ]
     | Round_n (_, a, b) | Mod_n (a, b) | Rem_n (a, b) -> [ a; b ]
     | _ -> []
@@ -882,6 +896,32 @@ let validate_calc_type t result_type calc =
 (* CSS Values 4 sec. 10.2 comparison functions. Their answer is one of their
    arguments, so a slot spelling the arguments' type already has a leaf for the
    result and the call folds to it rather than standing as a calculation. *)
+(* Whether the [clamp()] call at [t] has a top-level [none] bound. *)
+let clamp_has_none_bound t =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; arguments; _ }; _ })
+    when String.equal (String.lowercase_ascii name) "clamp" -> (
+      let rec split arg args = function
+        | [] -> List.rev (List.rev arg :: args)
+        | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+            split [] (List.rev arg :: args) rest
+        | c :: rest when Component.is_whitespace c -> split arg args rest
+        | c :: rest -> split (c :: arg) args rest
+      in
+      let is_none = function
+        | [ Component.Preserved { kind = Token.Ident word; _ } ] ->
+            String.equal (String.lowercase_ascii word) "none"
+        | _ -> false
+      in
+      match split [] [] arguments with
+      | [ low; _; high ] -> is_none low || is_none high
+      | _ -> false)
+  | _ -> false
+
+let read_none_bounded_clamp t =
+  if clamp_has_none_bound t then read_comparison_clamp t
+  else Cursor.err t "expected clamp() with a none bound"
+
 let comparison_math_function_names = [ "min"; "max"; "clamp" ]
 
 (* Sec. 10.9 stepped-value functions, sec. 10.5 [hypot()] and sec. 10.6 [abs()]:
