@@ -278,6 +278,14 @@ root spelled out (`& <parent>`, which sec. 3.5.1 weighs at zero) and prints
 the bare composition when the nested selector starts with its parent
 (`Nest.parent_first`); `Nest.merge_lone` merges there only in that case.
 
+A rule holding `revert-rule` (`Declaration.rolls_back_rule`, which the reader
+makes true by keeping every such declaration as tokens) is a run of its own in
+the optimizer (`Optimize.rolls_back`, read where a run is collected, rejoined
+and split after nested rules are lifted) and a barrier in the projection
+(`Rule_order.element_rules`). `Cover.covered` and the projection's shadowing
+never let such a declaration cover an earlier rule's write, and
+`Nest.hoist_declaration_runs` leaves it in its nested declarations rule.
+
 The rule graph (`lib/rule_graph.ml`) that factoring and merging reorder over
 reads a rule with nested content as parts: its own declarations under its
 selector, and each rule its body holds at any depth under the composed

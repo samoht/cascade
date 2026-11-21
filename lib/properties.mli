@@ -770,7 +770,7 @@ val read_css_wide : Cursor.t -> css_wide
 
 val is_css_wide_keyword : string -> bool
 (** [is_css_wide_keyword s] is [true] when [s] (case-insensitively) is one of
-    [initial], [inherit], [unset], [revert], [revert-layer]. *)
+    [initial], [inherit], [unset], [revert], [revert-layer], [revert-rule]. *)
 
 val value_has_css_wide_mix : string -> bool
 (** [value_has_css_wide_mix value] is [true] when [value] is not itself a lone
@@ -782,6 +782,11 @@ val components_have_css_wide_mix : Component.t list -> bool
     {!value_has_css_wide_mix}, but operates on a component list directly so
     callers that already hold one avoid the round-trip through a string buffer.
 *)
+
+val components_hold_revert_rule : Component.t list -> bool
+(** [components_hold_revert_rule cvs] is [true] when [cvs] hold the
+    [revert-rule] keyword (CSS Cascade 5 sec. 7.3.6) at any depth, as a whole
+    value or as a substitution function's fallback. *)
 
 val pp_visibility : visibility Pp.t
 (** [pp_visibility] is the pretty-printer for [visibility]. *)

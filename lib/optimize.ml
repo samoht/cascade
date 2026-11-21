@@ -86,9 +86,26 @@ let supports_decision ~ctx ~supports cond =
    with continues the run. Splicing here, while the run is collected, costs the
    guard nothing; unwrapping it after the run was processed would send the
    preceding rules through the local passes once per guard. *)
+(* CSS Cascade 5 sec. 7.3.6 rolls a [revert-rule] value back past the style rule
+   holding it, so that rule is a run of its own: the run passes merge, factor
+   and shadow across rules, and each would change what the keyword rolls back
+   to. *)
+let rolls_back (r : rule) =
+  List.exists Declaration.rolls_back_rule r.declarations
+
+(* [rules] cut so that each rule {!rolls_back} stands alone. *)
+let split_rollbacks rules =
+  let flush runs = function [] -> runs | run -> List.rev run :: runs in
+  let rec go runs run = function
+    | [] -> List.rev (flush runs run)
+    | r :: rest when rolls_back r -> go ([ r ] :: flush runs run) [] rest
+    | r :: rest -> go runs (r :: run) rest
+  in
+  go [] [] rules
+
 let rec collect_rules ~holds (stmt_acc : statement list) (rules_acc : rule list)
     : statement list -> statement list * rule list * statement list = function
-  | (Rule r as stmt) :: rest ->
+  | (Rule r as stmt) :: rest when not (rolls_back r) ->
       collect_rules ~holds (stmt :: stmt_acc) (r :: rules_acc) rest
   | Supports (cond, block) :: rest when holds cond ->
       collect_rules ~holds stmt_acc rules_acc (block @ rest)
@@ -282,7 +299,7 @@ and rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports ~before merged
   in
   let rec walk acc run joined before = function
     | [] -> List.rev (flush acc run joined)
-    | (Rule r as stmt) :: rest ->
+    | (Rule r as stmt) :: rest when not (rolls_back r) ->
         let skipped, before = find stmt false before in
         let joined =
           joined || match run with [] -> false | _ :: _ -> skipped
@@ -482,7 +499,8 @@ and process_rule_run ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc stmt
     r rest =
   let holds cond = supports_decision ~ctx ~supports cond = `True in
   let plain_stmts, plain_rules, rest =
-    collect_rules ~holds [ stmt ] [ r ] rest
+    if rolls_back r then ([ stmt ], [ r ], rest)
+    else collect_rules ~holds [ stmt ] [ r ] rest
   in
   let optimized =
     rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports plain_rules
@@ -661,29 +679,29 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       (fun held (r : rule) -> Shorthand.held_add held r.declarations)
       Shorthand.held_none with_optimized_nested
   in
-  (* Apply local rule normalization before the DAG factor scheduler decides
-     global selector/declaration grouping. *)
-  let prepared = Rule.normalize ~ctx ~held with_optimized_nested in
-  (* Factoring is greedy and global: extracting one shared declaration subset
-     can leave behind leftovers that are themselves factorable. The local linear
-     optimizations above always run; this incremental gate only decides whether
-     the expensive global factoring fixpoint is likely to buy enough bytes to
-     justify the full indexed scheduler walk. *)
-  let factored =
-    if Ctx.regroup ctx then begin
+  let run rules =
+    (* Apply local rule normalization before the DAG factor scheduler decides
+       global selector/declaration grouping. *)
+    let prepared = Rule.normalize ~ctx ~held rules in
+    (* Factoring is greedy and global: extracting one shared declaration subset
+       can leave behind leftovers that are themselves factorable. The local
+       linear optimizations above always run; this incremental gate only decides
+       whether the expensive global factoring fixpoint is likely to buy enough
+       bytes to justify the full indexed scheduler walk. *)
+    if Ctx.regroup ctx then
       (* The global scheduler reaches a fixed point for the graph it receives,
          but settling its result can merge nodes and expose a new graph. Repeat
          only when that cheap postprocessing changed the result; most sheets
          still pay for one global walk. *)
       factor_rules_until_settled ?factor_cache ~ctx ~held prepared
-    end
     else merge_adjacent_and_mark ~ctx (ref false) prepared
   in
-  (* After factoring so the greedy scheduler sees the unconstrained input (a
-     local pre-merge can lock a pair together and hide a larger group): this
-     only picks up the merges factoring did not make because its preflight
-     skipped the run. *)
-  factored
+  (* Lifting a lone nested rule into its wrapper can leave a rule holding
+     [revert-rule] in the run, which is then a run of its own
+     ({!rolls_back}). *)
+  match split_rollbacks with_optimized_nested with
+  | [ _ ] -> run with_optimized_nested
+  | runs -> List.concat_map run runs
 
 (* CSS Animations 1 sec. 3: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the

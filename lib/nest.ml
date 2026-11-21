@@ -279,10 +279,15 @@ let rec crossing barrier (stmts : statement list) =
       in
       crossing barrier rest
 
+(* A declaration holding [revert-rule] rolls back past the nested declarations
+   rule it sits in (CSS Cascade 5 sec. 7.3.6), which is not its parent's, so it
+   never moves into the parent's run. *)
 let crosses_freely barrier decl =
   match barrier with
   | Opaque -> false
-  | Crossed decls -> Shorthand.declarations_commute [ decl ] decls
+  | Crossed decls ->
+      (not (Declaration.rolls_back_rule decl))
+      && Shorthand.declarations_commute [ decl ] decls
 
 (* CSS Nesting 1 sec. 3.4 keeps a declaration written after a nested statement
    behind it. Moving one back into the rule's own run is cascade-neutral exactly

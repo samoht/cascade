@@ -972,3 +972,20 @@ let rec value_size ?(minify = true) ?(inline = false) decl =
    so they do not apply here: nothing licenses building such a value. *)
 let value_has_css_wide_mix decl =
   Properties.value_has_css_wide_mix (string_of_value ~minify:true decl)
+
+(* The reader keeps every declaration holding [revert-rule] as tokens: a
+   property's as the opaque tokens of its name, a custom property's as its own,
+   since the keyword there rolls back the custom property itself (CSS Cascade 5
+   sec. 7.3.6). A typed value never holds it. *)
+let rec rolls_back_rule = function
+  | Theme_guarded { decl; _ } -> rolls_back_rule decl
+  | Declaration { property = Unknown_property _; value; _ } ->
+      Properties.components_hold_revert_rule value
+  | Declaration
+      {
+        property = Custom_property _;
+        value = Custom_value { value = Tokens value; _ };
+        _;
+      } ->
+      Properties.components_hold_revert_rule value
+  | Declaration _ -> false

@@ -231,6 +231,12 @@ implementation keeps them.
   written after a nested statement writes in its own position (sec. 3.4).
   Two rules are independent only when every write of one is independent of
   every write of the other.
+- **A rule holding `revert-rule` keeps its bounds.** CSS Cascade 5 sec. 7.3.6
+  rolls such a value back as if the style rule holding it were absent, so no
+  rewrite merges that rule with another, moves its declarations into another
+  rule (a parent's included, CSS Nesting 1 sec. 3.4), or lets one of them
+  shadow a write of an earlier rule. The keyword counts whole, as a
+  substitution fallback, and in a custom property's value.
 - **Selectors share a list only when every browser in B parses both or
   neither.** A browser drops a whole list over a selector it does not parse
   (Selectors 4 sec. 3.9), so a list some browser in B parses apart is one
@@ -349,6 +355,7 @@ Each row names the tests that check a statement. A browser harness under
 | List composition | `shorthand_compose` "layer run is one plain layer"; `shorthand_compose` "timeline and range compose"; `declaration_shorthand` "mask boxes" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
+| `revert-rule` | `test/test_optimize_boundaries.ml` "spec cascade 7.3.6 revert-rule keeps its rule"; `test/test_css_compare_structure.ml` "canonical keeps a revert-rule apart" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |
 | Forgiving `:is()` | `optimize_factor` "is keeps an argument some target drops"; `css_compare_structure` "canonical :is() keeps an argument some target drops" |
 | Nesting | `test_nesting_follows_the_floors`, `test_nested_declarations_are_flattened` in `test/test_nest.ml`; `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis" |

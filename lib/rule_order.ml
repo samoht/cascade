@@ -11,10 +11,17 @@ open Stylesheet
    of one property on overlapping selectors keep order while a [var()] reader
    (which writes its own property, not the one it reads) moves freely. An
    [@layer] statement pins the layer order at its first occurrence, so it stays
-   a barrier; a named [@layer] block only holds its place among layer blocks. *)
+   a barrier; a named [@layer] block only holds its place among layer blocks. A
+   rule holding [revert-rule] is one too: the keyword rolls back past that rule
+   (CSS Cascade 5 sec. 7.3.6), so the rule's bounds are read. *)
 let rec element_rules (stmt : statement) : rule list option =
   match stmt with
-  | Rule r -> if r.nested = [] then Some [ r ] else None
+  | Rule r ->
+      if
+        r.nested = []
+        && not (List.exists Declaration.rolls_back_rule r.declarations)
+      then Some [ r ]
+      else None
   | Media (_, b) | Supports (_, b) | Container (_, _, b) -> block_rules b
   | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
   | Property _ | Layer_decl _ | Layer _ | Moz_document _ | Starting_style _
@@ -278,7 +285,8 @@ let rec expand_blocks (stmt : statement) : statement list =
    appearance, then the later wins. Dropping it lets a sheet that hoisted the
    declaration into a shared group converge with one that wrote it inline - the
    hoisted copy survives expansion only to be overridden. A later normal write
-   leaves an earlier important one standing. A property whose duplicates the
+   leaves an earlier important one standing, and a later [revert-rule] rolls
+   back to the earlier write rather than over it. A property whose duplicates the
    declaration dedup keeps verbatim ([content], [outline]) is shadowed only
    where that dedup would drop the earlier write in one rule, so a sheet that
    wrote the two in one rule converges with one that wrote them in two. A later
@@ -292,6 +300,7 @@ let shadows ~ctx d l =
          (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false [ d; l ]))
   else
     (Declaration.is_important l || not (Declaration.is_important d))
+    && (not (Declaration.rolls_back_rule l))
     && not (Declaration.fallback_for ~floors:(Ctx.floors ctx) ~later:l d)
 
 (* One backward pass: [later] holds, per selector, the declarations of each

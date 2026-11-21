@@ -195,3 +195,11 @@ val value_has_css_wide_mix : declaration -> bool
     the whole value of a declaration or nothing, so the reader rejects one and a
     browser drops the declaration. This is that rule read off an emission, for
     the composer deciding whether a contraction it built can be written out. *)
+
+val rolls_back_rule : declaration -> bool
+(** [rolls_back_rule decl] is [true] when [decl]'s value holds [revert-rule],
+    whole or as a substitution fallback. CSS Cascade 5 sec. 7.3.6 rolls such a
+    value back to what the property would be without the style rule holding
+    [decl], so the rule's identity is part of its meaning: no rewrite merges
+    that rule with another, moves [decl] into another rule, or lets [decl] cover
+    a declaration of another rule. *)

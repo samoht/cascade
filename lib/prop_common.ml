@@ -53,6 +53,29 @@ let css_wide_keywords =
 let is_css_wide_keyword value =
   List.mem (String.lowercase_ascii value) css_wide_keywords
 
+(* CSS Cascade 5 sec. 7.3.6: [revert-rule] rolls a value back past the style
+   rule that holds it. It reaches a property as the whole value, as the fallback
+   of a substitution function, or as a custom property's value. *)
+let rec components_hold_revert_rule components =
+  List.exists component_holds_revert_rule components
+
+and component_holds_revert_rule = function
+  | Component.Preserved { kind = Token.Ident ident; _ } ->
+      String.equal (String.lowercase_ascii ident) "revert-rule"
+  | Component.Preserved _ -> false
+  | Component.Block { node = { value; _ }; _ } ->
+      components_hold_revert_rule value
+  | Component.Func { node = { arguments; _ }; _ } ->
+      components_hold_revert_rule arguments
+  | Component.Flat { node; _ } ->
+      List.exists
+        (fun (token : Token.t) ->
+          match token.kind with
+          | Token.Ident ident ->
+              String.equal (String.lowercase_ascii ident) "revert-rule"
+          | _ -> false)
+        node
+
 (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword must stand alone, so it is invalid
    mixed with other tokens (e.g. [font: initial 16px serif]). True when [value]
    is not itself a lone CSS-wide keyword yet contains one as an identifier. *)
