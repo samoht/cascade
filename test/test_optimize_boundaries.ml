@@ -1141,6 +1141,34 @@ let sizing7_calc_size () =
       ".a{width:calc-size(auto, sin(size))}";
     ]
 
+(* CSS Sizing 4 (ED) sec. 7: a [<size-keyword>] basis of [calc-size()] is "any
+   sizing keywords allowed in the context", and CSS Flexbox 1 sec. 7.2 gives
+   [flex-basis] the [content] keyword [width] lacks. Chromium 153 reads
+   [flex-basis:calc-size(content, size)] and refuses the same call in [width]
+   and in the [flex] shorthand, as it refuses any [calc-size()] basis there. *)
+let flex_basis_calc_size () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( ".a{flex-basis:calc-size(content, size)}",
+        ".a{flex-basis:calc-size(content,size)}" );
+      ( ".a{flex-basis:calc-size(content, size * 2)}",
+        ".a{flex-basis:calc-size(content,size*2)}" );
+      ( ".a{flex-basis:calc-size(content, 10px)}",
+        ".a{flex-basis:calc-size(content,10px)}" );
+    ];
+  List.iter
+    (fun input ->
+      match Css.of_string ~strict:true input with
+      | Ok _ -> Alcotest.failf "%s should be refused" input
+      | Error _ -> ())
+    [
+      ".a{width:calc-size(content, size)}";
+      ".a{flex:calc-size(content, size)}";
+      ".a{flex:1 calc-size(auto, size)}";
+    ]
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1244,4 +1272,5 @@ let suite =
         `Quick,
         v4109_math_in_number_slots );
       ("spec sizing 7 calc-size", `Quick, sizing7_calc_size);
+      ("flex-basis calc-size content", `Quick, flex_basis_calc_size);
     ] )
