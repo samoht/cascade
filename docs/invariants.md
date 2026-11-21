@@ -238,7 +238,9 @@ implementation keeps them.
   it**, and one a browser in B needs is added beside its unprefixed twin.
 - **Nothing untyped is dropped.** What cascade cannot type is never assumed
   dropped by a browser in B. A declaration the reader refuses and some browser
-  in B parses is a reader bug.
+  in B parses is a reader bug. A form no specification grants and a browser
+  in B parses is kept as the author wrote it, never rewritten into a granted
+  form, which would apply where that browser alone applied it.
 
 ## Modes
 
@@ -305,6 +307,6 @@ Each row names the tests that check a statement. A browser harness under
 | Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml`; `test_scope_keeps_the_implied_root`, `test_nested_scope_roots_under_the_parent` in `test/test_flatten.ml`; `test_merge_lone_in_scope`, `test_nesting_selector_is_not_reparented` in `test/test_nest.ml` |
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
-| Nothing untyped dropped | `test/spec/browser/accept_set`; `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots" |
+| Nothing untyped dropped | `test/spec/browser/accept_set`; `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots"; `declaration_spec` "contain-intrinsic-size keeps a trailing auto" |
 | Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print" |
 | Assumptions | Convention only: no test exercises a page that breaks a hypothesis |

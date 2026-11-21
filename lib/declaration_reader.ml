@@ -774,12 +774,37 @@ let is_unknown_property_name = is_decl_unknown_property_name
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
    declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
-let allows_unknown_fallback name raw_value =
+(* A form no specification grants and a browser in B parses. The typed reader
+   refuses it and the declaration keeps the text the author wrote: rewritten
+   into a granted form it would apply in the engines that drop it, and dropped
+   it would no longer apply in the engine that reads it. *)
+let browser_reads_ungranted (Prop prop : any_property) raw_value =
+  match prop with
+  (* CSS Sizing 4 (ED) sec. 5.2 lets [auto] open a slot and never end one.
+     Chromium 153 reads one slot followed by a lone [auto] as that slot: its
+     slot reader takes the [auto], finds no [none] or length and gives the slot
+     up without giving the [auto] back. WebKit drops it. *)
+  | Contain_intrinsic_size -> (
+      let t = Cursor.of_string raw_value in
+      match Properties.read_contain_intrinsic_size_item t with
+      | exception Cursor.Parse_error _ -> false
+      | _ -> (
+          Cursor.ws t;
+          match Cursor.peek_keyword t with
+          | Some "auto" ->
+              Cursor.skip t;
+              Cursor.ws t;
+              Cursor.is_done t
+          | Some _ | None -> false))
+  | _ -> false
+
+let allows_unknown_fallback prop name raw_value =
   (not (raw_value_has_invalid_substitution raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
      || has_var_color_function raw_value
-     || raw_value_contains_substitution raw_value)
+     || raw_value_contains_substitution raw_value
+     || browser_reads_ungranted prop raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
@@ -894,7 +919,13 @@ let read_regular_property_declaration t : declaration =
          CSS this reader cannot represent, which is what
          [allows_unknown_fallback] names. *)
       let raw_value = String.trim (Parser.string_of_components components) in
-      if not (allows_unknown_fallback name raw_value) then raise exn;
+      Cursor.restore t start;
+      let prop =
+        match read_any_property t with
+        | prop -> prop
+        | exception Cursor.Parse_error _ -> Prop (Unknown_property name)
+      in
+      if not (allows_unknown_fallback prop name raw_value) then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii_preserve (read_property_name t) in
       Cursor.ws t;
@@ -920,7 +951,8 @@ let read_regular_value_declaration : type a.
       try read_typed_value_declaration prop t
       with Cursor.Parse_error _ as exn ->
         let raw_value = String.trim (Parser.string_of_components components) in
-        if not (allows_unknown_fallback name raw_value) then raise exn;
+        if not (allows_unknown_fallback (Prop prop) name raw_value) then
+          raise exn;
         Cursor.restore t start;
         read_unknown_property_declaration t name)
 
