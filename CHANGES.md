@@ -558,6 +558,11 @@ differently. They are the reason to minify again.
   refused as a bad value, so `--minify` dropped a declaration Chromium reads.
   The physical tactics are now read beside the logical ones (CSS Anchor
   Positioning 1 sec. 6.1) (#1498).
+- **`columns` with a column height was deleted.** `columns:10px 2/5px` and
+  `columns:0/0` were refused as a bad value, so `--minify` dropped a
+  declaration Chromium reads. The `/ <'column-height'>` part is now read (CSS
+  Multicol 2 sec. 4.5), and a `columns` before one stays as the fallback
+  Firefox and Safari paint (#1499).
 
 #### Stable output
 

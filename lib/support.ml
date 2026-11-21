@@ -250,6 +250,21 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.properties.column-height";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Multicol 2 sec. 4.2 and 4.5 give column-height as a longhand and \
+         as the [/ <'column-height'>] of columns; web-features records \
+         neither, and Chrome parses both";
+      measured = "Chrome 153";
+    };
+    {
       key = "css.properties.column-rule.trailing_comma";
       support =
         {

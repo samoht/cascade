@@ -30,11 +30,14 @@ let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
       vars_of_number_value width @ vars_of_number_value height
   | _ -> []
 
-let vars_of_columns_value (value : Properties.columns_value) : any_var list =
+let rec vars_of_columns_value (value : Properties.columns_value) : any_var list
+    =
   match value with
   | Var v -> [ V v ]
   | Width l -> vars_of_length l
   | Both (l, _) -> vars_of_length l
+  | With_height (base, height) ->
+      vars_of_columns_value base @ vars_of_length height
   | _ -> []
 
 let vars_of_column_width (value : Properties.column_width) : any_var list =
