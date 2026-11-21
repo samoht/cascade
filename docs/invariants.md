@@ -76,7 +76,9 @@ implementation keeps them.
   The pretty printer writes back the spelling the author wrote where the node
   keeps it (`0.90rem`, `#0000FF`).
 - **Token boundaries are safe.** Elided whitespace never joins two tokens into
-  one or splits one into two.
+  one or splits one into two. Inside a math function the whitespace around
+  `+` and `-` is kept (CSS Values 4 sec. 10.8), and so is the whitespace
+  beside a `var()`, `env()` or `attr()` that may substitute one.
 - **Strings, URLs and idents read back as the value they name.** Each is
   written escaped as CSSOM 1 sec. 2.1 serialises a string, a URL and an
   identifier, whatever characters it holds.
@@ -263,6 +265,7 @@ Each row names the tests that check a statement. A browser harness under
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
 | Zero operands | `values_math` "spec math zero operands" |
 | Signed percentage basis | `values_math` "spec math signed percentage basis" |
+| Whitespace beside a substitution | `values_math` "spec math var whitespace" |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
 | Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
