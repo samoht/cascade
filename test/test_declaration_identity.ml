@@ -371,9 +371,11 @@ let nan_has_one_node () =
   Alcotest.(check string)
     "calc(0/0) merges" ".a,.b{opacity:calc(0/0)}"
     (minified ".a{opacity:calc(0/0)}.b{opacity:calc(0/0)}");
+  (* [asin()] answers an angle (CSS Values 4 sec. 10.4), so its NaN stands at an
+     angle slot. *)
   Alcotest.(check string)
-    "calc(asin(2)) merges" ".a,.b{opacity:calc(asin(2))}"
-    (minified ".a{opacity:calc(asin(2))}.b{opacity:calc(asin(2))}");
+    "calc(asin(2)) merges" ".a,.b{rotate:asin(2)}"
+    (minified ".a{rotate:calc(asin(2))}.b{rotate:calc(asin(2))}");
   Alcotest.(check string)
     "a NaN length merges" ".a,.b{width:calc(NaN*1px)}"
     (minified ".a{width:calc(NaN*1px)}.b{width:calc(NaN*1px)}");

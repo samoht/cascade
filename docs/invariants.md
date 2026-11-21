@@ -105,6 +105,9 @@ implementation keeps them.
   written as a gradient stop's colour can supply its position or several
   stops. No rewrite reverses a stop list holding one, drops that stop's
   position or folds it with a neighbour.
+- **A math function stands only where its type does.** An inverse
+  trigonometric function answers an `<angle>` (CSS Values 4 sec. 10.4), so it
+  is refused at a slot that takes no angle and is an angle inside `sin()`.
 - **A property's range binds only a literal.** CSS Values 4 sec. 10.12 clamps
   a math function past the range at computed-value time, so a math function
   of either sign is kept, and a fold keeps the wrapper around a result the
@@ -270,6 +273,7 @@ Each row names the tests that check a statement. A browser harness under
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
 | `var()` components | `declaration` "complex values"; `properties_background` "background-image" |
 | Range | `values_math` "spec math range every family", "spec math infinite range" |
+| Math result types | `values_math` "spec math inverse trig is an angle" |
 | Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
 | Zero operands | `values_math` "spec math zero operands" |
