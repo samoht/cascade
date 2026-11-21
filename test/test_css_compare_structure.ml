@@ -761,6 +761,19 @@ let canonical_folds_an_adjacent_same_selector_pair () =
     "two writes of one property stay distinct" false
     (equal ".w{color:red}.w{color:blue}" ".w{color:blue}.w{color:red}")
 
+(* CSS Cascade 5 sec. 7.3.6: [revert-rule] rolls back past the rule holding it,
+   so Chrome 153 paints the pair apart red and folded the inherited colour. *)
+let canonical_keeps_a_revert_rule_apart () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a revert-rule rule does not fold into the rule before it" false
+    (equal ".w{color:red}.w{color:revert-rule}"
+       ".w{color:red;color:revert-rule}");
+  Alcotest.(check bool)
+    "the same rules are equal" true
+    (equal ".w{color:red}.w{color:revert-rule}"
+       ".w{color:red}\n.w{color: revert-rule}")
+
 (* CSS Position 3 sec. 3.1 makes [inset] the [top right bottom left] shorthand,
    so the four longhands written in one rule and the same four gathered from two
    rules are one sheet whichever side composes them, and whatever stands between
@@ -1730,6 +1743,8 @@ let suite =
         equal_canonical_nested_media_conjoin;
       Alcotest.test_case "canonical border sides" `Quick
         equal_canonical_border_sides;
+      Alcotest.test_case "canonical keeps a revert-rule apart" `Quick
+        canonical_keeps_a_revert_rule_apart;
       Alcotest.test_case "canonical composes gathered longhands" `Quick
         canonical_composes_gathered_longhands;
       Alcotest.test_case "canonical order reads shared longhands" `Quick

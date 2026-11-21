@@ -921,6 +921,41 @@ let c61_important_blocks_longhand () =
     "important shorthand keeps priority over later normal longhand"
     ".box{margin:2px!important}" output
 
+(* CSS Cascade 5 sec. 7.3.6 (Editor's Draft): [revert-rule] rolls the cascaded
+   value back as if the style rule holding it were absent, and every property
+   takes it (sec. 7.3). Chrome 153 reads [.a{color:red}.a{color:revert-rule}] as
+   red and the same two declarations in one rule as the inherited colour, so the
+   rule a declaration sits in is part of its meaning: no rewrite merges two such
+   rules, hoists the declaration into its parent, or lets it shadow a write of
+   another rule. A custom property rolls back the same way, and a [var()]
+   fallback reaches it too. Chrome 145 drops the declaration, so the one before
+   it in its rule stays. *)
+let c736_revert_rule_keeps_its_rule () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{width:revert-rule}", ".a{width:revert-rule}");
+      (".a{animation-name:revert-rule}", ".a{animation-name:revert-rule}");
+      (".a{all:revert-rule}", ".a{all:revert-rule}");
+      ( ".a{color:red}.a{color:revert-rule}",
+        ".a{color:red}.a{color:revert-rule}" );
+      (".a{color:red;color:revert-rule}", ".a{color:red;color:revert-rule}");
+      ( ".a{color:red;margin:0}.a{color:revert-rule}",
+        ".a{color:red;margin:0}.a{color:revert-rule}" );
+      ( ".a{color:red}.b{color:blue}.a{color:revert-rule}",
+        ".a{color:red}.b{color:#00f}.a{color:revert-rule}" );
+      (".a{--x:1}.a{--x:revert-rule}", ".a{--x:1}.a{--x:revert-rule}");
+      ( ".a{color:red}.a{color:var(--n,revert-rule)}",
+        ".a{color:red}.a{color:var(--n,revert-rule)}" );
+      ( ".a{color:red}.a{&{color:revert-rule}}",
+        ".a{color:red}.a{color:revert-rule}" );
+      ( ".n{color:red;& .k{margin:0}color:revert-rule}",
+        ".n{color:red;.k{margin:0}color:revert-rule}" );
+      ( "@supports (color:revert-rule){.a{color:blue}}",
+        "@supports(color:revert-rule){.a{color:#00f}}" );
+    ]
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1011,4 +1046,7 @@ let suite =
       ( "spec cascade 6.1 important shorthand blocks normal longhand",
         `Quick,
         c61_important_blocks_longhand );
+      ( "spec cascade 7.3.6 revert-rule keeps its rule",
+        `Quick,
+        c736_revert_rule_keeps_its_rule );
     ] )
