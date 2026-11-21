@@ -1030,6 +1030,31 @@ let substitution_takes_no_slot () =
   check_declaration ~expected:"margin:env(safe-area-inset-top)0px 0px"
     ~optimized:"margin:env(safe-area-inset-top)0 0"
     "margin: env(safe-area-inset-top) 0px 0px";
+  (* An [inset] written after a body holding a [var()] stays where it was
+     written, so the shadow stays typed and its other folds apply. *)
+  check_declaration ~expected:"box-shadow:1px 1px 0px var(--c) inset"
+    ~optimized:"box-shadow:1px 1px 0 var(--c) inset"
+    "box-shadow: 1px 1px 0px var(--c) inset";
+  (* A comma list keeps each segment holding a substitution as written and a run
+     of segments holding none on each side where it had one; inside such a run
+     the folds still apply. So the colours and the end positions of a gradient
+     fold around its [var()] stops, and so does the default direction when a
+     plain stop follows it. With the [var()] first, [to bottom] stays: Chromium
+     153 paints [linear-gradient(to left, red, blue)] for the shorter form with
+     [--x: to left, red], and nothing for the source. *)
+  check_declaration
+    ~expected:
+      "background-image:linear-gradient(to bottom,transparent 0%,var(--g) \
+       9.27%,var(--g) 90.7%,transparent 100%)"
+    ~optimized:
+      "background-image:linear-gradient(#0000,var(--g) 9.27%,var(--g) \
+       90.7%,#0000)"
+    "background-image: linear-gradient(to bottom, transparent 0%, var(--g) \
+     9.27%, var(--g) 90.7%, transparent 100%)";
+  check_declaration
+    ~expected:"background-image:linear-gradient(to bottom,var(--x),blue)"
+    ~optimized:"background-image:linear-gradient(to bottom,var(--x),#00f)"
+    "background-image: linear-gradient(to bottom, var(--x), blue)";
   (* A fallback is the whole value in turn. *)
   check_declaration ~expected:"flex:var(--x,var(--g) 0px)"
     ~optimized:"flex:var(--x,var(--g) 0px)" "flex: var(--x, var(--g) 0px)"
