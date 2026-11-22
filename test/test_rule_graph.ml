@@ -44,6 +44,42 @@ let idempotent_after_reparse () =
       Alcotest.(check string) ("fixed point: " ^ s) once twice)
     cases
 
+(* Above 128 rules the optimizer makes one pass, so whatever the search reads of
+   where a rule stands has to be where it prints. In each case below a merge
+   produces a rule that prints later than the first rule it replaced, because it
+   must follow a rule standing in between; a second merge is safe only by where
+   that rule prints (the leftover of the first merge does not stand between the
+   members of the second, and the provider of a default is the first member
+   printed), so a search reading the first source position finds it only on a
+   second pass. Unrelated rules take the run past 128. *)
+let fixed_point_when_a_merged_rule_prints_late () =
+  let padding =
+    String.concat "" (List.init 130 (fun i -> Fmt.str ".pad%d{order:%d}" i i))
+  in
+  List.iter
+    (fun (name, css) ->
+      let once = optimize_str (css ^ padding) in
+      let twice = optimize_str once in
+      Alcotest.(check string) ("fixed point: " ^ name) once twice)
+    [
+      ( "a leftover printed after the members",
+        ".a .k{border:1px solid \
+         red;border-right:none;height:28px;padding-left:10px}.a .b{border:1px \
+         solid \
+         red;cursor:pointer;height:30px;padding-right:5px;padding-top:3px;width:30px}.a.c \
+         .k{border:1px solid \
+         red;border-right:none;font-size:12px;height:28px;padding-left:10px}.a.c \
+         .b{cursor:pointer;height:30px;padding-right:5px;padding-top:3px;width:30px}"
+      );
+      ( "a provider printed first",
+        ".drop-down>.body{background:#fff;margin:0;padding:4px;position:absolute;width:200px}#search>.js-only.drop-down>.head{background:#fff \
+         url(a.png) no-repeat left center;padding:0 0 0 \
+         12px;width:20px}#search>.drop-down{margin-right:.5em}#search \
+         .results,#search>form>input{width:175px}#search \
+         .results{background:#fff;margin:0;padding:4px;position:absolute;width:200px;z-index:22}"
+      );
+    ]
+
 (* The graph projection is source-stable: independent nodes keep first
    appearance order, and real cascade dependencies still pin source order. *)
 let graph_projection_keeps_source_order () =
@@ -185,7 +221,7 @@ let refusal_names_the_first_unordered_node () =
        ~consume:(nids [ 0; 2 ])
        ~produce:(rules_of ".a,.b{color:red}.x{top:0}")
    with
-  | Error (Rule_graph.Ambiguous_external_order { produced; external_ }) ->
+  | Error (Rule_graph.Ambiguous_external_order { produced; external_; _ }) ->
       Alcotest.(check (pair int int))
         "first produced node, around the middle rule" (3, 1)
         (Rule_graph.Node_id.to_int produced, Rule_graph.Node_id.to_int external_)
@@ -197,8 +233,42 @@ let refusal_names_the_first_unordered_node () =
   | Ok g' ->
       Alcotest.(check int)
         "the produced node weighs its printed size"
-        (Size.rule (List.hd produce))
+        (Size.rule Size.default (List.hd produce))
         (Rule_graph.node_size g' (nid 3))
+
+(* A node weighs what its rule prints, nested statements included. *)
+let node_size_counts_nested_content () =
+  let rules = rules_of ".a{top:1px;&:hover{color:red}}.b{>span{top:0}left:0}" in
+  let g = Rule_graph.of_rules rules in
+  List.iteri
+    (fun i r ->
+      Alcotest.(check int)
+        (Pp.to_string ~minify:true Stylesheet.pp_rule r)
+        (String.length (Pp.to_string ~minify:true Stylesheet.pp_rule r))
+        (Rule_graph.node_size g (nid i)))
+    rules
+
+(* Under a nesting [parent] a rule's selector is the composed one, and [&]
+   weighs as the parent does (CSS Nesting 1 sec. 3, "The Nesting Selector").
+   Under [.p], [.x.y] reads as [& .x.y] and [& &.x] counts [.p] twice: both
+   weigh (0,3,0) and may match one element, so their order decides, as Chromium
+   shows. Read raw, [&] weighs nothing and the two never tie. *)
+let selector_conflict_reads_the_composed_selector () =
+  let parent = Css.Selector.v ".p" in
+  let g =
+    Rule_graph.of_rules ~parent (rules_of ".x.y{color:red}& &.x{color:blue}")
+  in
+  Alcotest.(check bool)
+    "the composed selectors tie" true
+    (Rule_graph.node_selectors_conflict g (nid 0) (nid 1));
+  Alcotest.(check bool)
+    "against a composed selector" true
+    (Rule_graph.node_selector_conflict g
+       (Rule_graph.branches_under ~parent (Css.Selector.v ".x.y"))
+       (nid 1));
+  Alcotest.(check bool)
+    "as the conflict test reads them" true
+    (Rule_graph.conflict g (nid 0) (nid 1))
 
 let try_rewrite_preserves_residual_source_slots () =
   let g =
@@ -217,6 +287,161 @@ let try_rewrite_preserves_residual_source_slots () =
         "residual selector keeps its original source slot"
         ".form-input,.form-select{display:block}.form-input{color:red}.marker{z-index:1}.form-select{color:blue}"
         (graph_to_string g')
+
+(* --- the printed order a rewrite keeps --- *)
+
+(* What a rewrite must keep of the printed order: it is Kahn's algorithm over
+   the graph with the first source appearance as the tie-break, which the
+   order-maintenance list answers without running it; every pair the graph
+   orders keeps that order; and a live node prints at the largest origin up to
+   it, never earlier than its own. *)
+let check_printed_order msg g =
+  let order = Rule_graph.canonical_order g in
+  Alcotest.(check (list int))
+    (msg ^ ": Kahn's order by first appearance")
+    (int_order (Rule_graph.canonical_order_by g (Rule_graph.node_origin g)))
+    (int_order order);
+  let n = Array.length order in
+  for i = 0 to n - 1 do
+    let a = order.(i) in
+    if Rule_graph.node_slot g a < Rule_graph.node_origin g a then
+      Alcotest.failf "%s: node %d prints before its origin" msg
+        (Rule_graph.Node_id.to_int a);
+    if i > 0 then begin
+      let p = order.(i - 1) in
+      if Rule_graph.compare_position g p a >= 0 then
+        Alcotest.failf "%s: compare_position disagrees at %d" msg i;
+      if Rule_graph.node_slot g p > Rule_graph.node_slot g a then
+        Alcotest.failf "%s: slot decreases at %d" msg i
+    end;
+    for j = i + 1 to n - 1 do
+      if Rule_graph.precedes g order.(j) a then
+        Alcotest.failf "%s: %d printed after %d, which it precedes" msg
+          (Rule_graph.Node_id.to_int a)
+          (Rule_graph.Node_id.to_int order.(j))
+    done
+  done
+
+(* Where each live node prints, as (position, slot). *)
+let placement g =
+  let order = Rule_graph.canonical_order g in
+  Array.to_list
+    (Array.mapi
+       (fun i id ->
+         (Rule_graph.Node_id.to_int id, (i, Rule_graph.node_slot g id)))
+       order)
+
+(* [moved] names every node the rewrite left live whose slot changed or which
+   changed places with another such node. *)
+let check_moved msg before g' =
+  let after = placement g' in
+  let moved = int_order (Array.of_list (Rule_graph.moved g')) in
+  let kept =
+    List.filter_map
+      (fun (id, (i, slot)) ->
+        match List.assoc_opt id after with
+        | Some (i', slot') -> Some (id, i, slot, i', slot')
+        | None -> None)
+      before
+  in
+  List.iter
+    (fun (id, _, slot, _, slot') ->
+      if slot <> slot' && not (List.mem id moved) then
+        Alcotest.failf "%s: node %d changed slot unannounced" msg id)
+    kept;
+  List.iter
+    (fun (a, i, _, i', _) ->
+      List.iter
+        (fun (b, j, _, j', _) ->
+          if i < j && i' > j' && not (List.mem a moved || List.mem b moved) then
+            Alcotest.failf "%s: %d and %d swapped unannounced" msg a b)
+        kept)
+    kept
+
+(* Commit candidates greedily, the first one each graph accepts, and check the
+   printed order after every commit. *)
+let commit_greedily msg css =
+  let rec loop g commits =
+    if commits = 0 then ()
+    else
+      let candidates =
+        Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id g
+      in
+      match
+        List.find_map
+          (fun (c : Rule_rewrite.candidate) ->
+            Rule_graph.try_rewrite g ~consume:c.consume ~produce:c.produce)
+          candidates
+      with
+      | None -> ()
+      | Some g' ->
+          let msg' = Fmt.str "%s, commit %d" msg (Rule_graph.generation g') in
+          check_printed_order msg' g';
+          check_moved msg' (placement g) g';
+          loop g' (commits - 1)
+  in
+  let g = Rule_graph.of_rules (rules_of css) in
+  check_printed_order msg g;
+  loop g 64
+
+let pad css =
+  css ^ String.concat "" (List.init 130 (fun i -> Fmt.str ".p%d{order:%d}" i i))
+
+let printed_order_after_every_commit () =
+  List.iter
+    (fun (msg, css) -> commit_greedily msg css)
+    [
+      ( "late merged rule",
+        ".a .k{border:1px solid \
+         red;border-right:none;height:28px;padding-left:10px}.a .b{border:1px \
+         solid \
+         red;cursor:pointer;height:30px;padding-right:5px;padding-top:3px;width:30px}.a.c \
+         .k{border:1px solid \
+         red;border-right:none;font-size:12px;height:28px;padding-left:10px}.a.c \
+         .b{cursor:pointer;height:30px;padding-right:5px;padding-top:3px;width:30px}"
+      );
+      ( "provider printed late",
+        ".drop-down>.body{background:#fff;margin:0;padding:4px;position:absolute;width:200px}#search>.js-only.drop-down>.head{background:#fff;padding:0 \
+         0 0 12px;width:20px}#search>.drop-down{margin-right:.5em}#search \
+         .results,#search>form>input{width:175px}#search \
+         .results{background:#fff;margin:0;padding:4px;position:absolute;width:200px;z-index:22}"
+      );
+      ( "chains",
+        ".a{color:red;margin:0}.b{color:blue}.c{margin:1px}.a{padding:0}.d{color:red;padding:0}.b{margin:0}.e{padding:1px}.a{color:red;margin:2px}.d{margin:2px}"
+      );
+      ( "shared bodies",
+        ".x{top:0;left:0}.y{top:1px}.z{top:0;left:0}.w{left:1px}.v{top:0;left:0}.y{left:0}.u{top:0}"
+      );
+    ];
+  commit_greedily "padded"
+    (pad ".a{color:red}.b{color:blue}.c{margin:0}.a{margin:0}.d{color:red}")
+
+(* A merged rule that must follow a rule printed after the first rule it
+   replaces comes right after that rule, and a rule it must precede that printed
+   before then moves behind it. The rest keeps its place. *)
+let late_produced_node_drags_its_successors () =
+  let g =
+    Rule_graph.of_rules
+      (rules_of ".a{color:red}.z{color:blue}.y{margin:1px}.a{margin:0}")
+  in
+  match
+    Rule_graph.try_rewrite g
+      ~consume:(nids [ 0; 3 ])
+      ~produce:(rules_of ".a{color:red;margin:0}")
+  with
+  | None -> Alcotest.fail "the same-selector merge should commit"
+  | Some g' ->
+      Alcotest.(check string)
+        "printed order" ".y{margin:1px}.a{color:red;margin:0}.z{color:blue}"
+        (graph_to_string g');
+      Alcotest.(check (list int))
+        "the dragged rule is reported" [ 1 ]
+        (int_order (Array.of_list (Rule_graph.moved g')));
+      Alcotest.(check (list int))
+        "slots follow the printed order" [ 2; 2; 2 ]
+        (List.map (Rule_graph.node_slot g')
+           (Array.to_list (Rule_graph.canonical_order g')));
+      check_printed_order "dragging" g'
 
 (* A consumed node can be the middle of a compact transitive source-order chain.
    It remains a zero-output relay, so the surviving endpoints cannot be reversed
@@ -245,34 +470,6 @@ let rewrite_keeps_constraints_through_dead_relays () =
         "live endpoints retain their source constraint" true
         (position 0 0 order < position 2 0 order)
 
-(* The order of a run, asked without holding its graph: a pair is kept in source
-   order when the two rules conflict and follows the rank otherwise. A shared
-   selector branch alone pins nothing, and a pair the caller asserts exclusive
-   is free. *)
-let run_order_follows_rank_between_conflicts () =
-  let reversed ?exclusive css =
-    let rules = rules_of css in
-    Rule_graph.run_order
-      (Rule_graph.run ?exclusive ~folds:(fun _ -> false) rules)
-      (fun id -> -Rule_graph.Node_id.to_int id)
-    |> int_order
-  in
-  Alcotest.(check (list int))
-    "disjoint properties follow the rank" [ 1; 0 ]
-    (reversed ".a{color:red}.b{margin:0}");
-  Alcotest.(check (list int))
-    "a conflicting pair keeps source order" [ 0; 1 ]
-    (reversed ".a{color:red}.b{color:blue}");
-  Alcotest.(check (list int))
-    "only the conflicting pair is held" [ 2; 0; 1 ]
-    (reversed ".a{color:red}.b{color:blue}.c{margin:0}");
-  Alcotest.(check (list int))
-    "a shared branch is not a pin" [ 1; 0 ]
-    (reversed ".a{color:red}.a{margin:0}");
-  Alcotest.(check (list int))
-    "an exclusive pair follows the rank" [ 1; 0 ]
-    (reversed ~exclusive:(fun _ _ -> true) ".a{color:red}.b{color:blue}")
-
 (* A later rewrite can add a back edge around a consumed node in a compact
    chain. Cycle detection must traverse the dead relay, not just live nodes. *)
 let rewrite_rejects_cycle_through_dead_relay () =
@@ -295,6 +492,46 @@ let rewrite_rejects_cycle_through_dead_relay () =
       with
       | None -> ()
       | Some _ -> Alcotest.fail "cycle through dead relay should be rejected")
+
+(* A consumed rule stays in the graph as a relay, and orders the rules on either
+   side of it even when they do not conflict. Here [.a] writes [color] and [.b]
+   writes [margin], and only [.x], which wrote both, stood between them; once it
+   is consumed, a graph built afresh from the rules the graph prints leaves them
+   free and accepts merging [.c] into [.b] ahead of [.a]. Whether a rewrite is
+   accepted reads the live rules alone, so the rewritten graph accepts it
+   too. *)
+let acceptance_reads_live_rules () =
+  let g =
+    Rule_graph.of_rules
+      (rules_of
+         ".c{color:green}.a{color:red}.x{color:blue;margin:0}.b{margin:1px}")
+  in
+  let merge = rules_of ".b,.c{color:green;margin:1px}" in
+  match
+    Rule_graph.try_rewrite g ~consume:(nids [ 2 ])
+      ~produce:(rules_of ".x{padding:0}")
+  with
+  | None -> Alcotest.fail "a disjoint replacement commits"
+  | Some g' ->
+      let printed = int_order (Rule_graph.canonical_order g') in
+      let rank id =
+        let rec find at = function
+          | [] -> Alcotest.failf "node %d does not print" id
+          | x :: rest -> if Int.equal x id then at else find (at + 1) rest
+        in
+        nid (find 0 printed)
+      in
+      let afresh = Rule_graph.of_rules (ordered_rules g') in
+      Alcotest.(check bool)
+        "a graph built afresh accepts the merge" true
+        (Option.is_some
+           (Rule_graph.try_rewrite afresh
+              ~consume:[ rank 0; rank 3 ]
+              ~produce:merge));
+      Alcotest.(check bool)
+        "the rewritten graph accepts it too" true
+        (Option.is_some
+           (Rule_graph.try_rewrite g' ~consume:(nids [ 0; 3 ]) ~produce:merge))
 
 (* --- conflict predicate: the bidimensional + specificity edge --- *)
 
@@ -945,9 +1182,9 @@ let reachability_survives_a_rewrite () =
    reachable set of the node it produces, a bit per node. The rules rewritten
    below order against three neighbours and nothing in the run of N beside them,
    so doubling N must leave the words a rewrite allocates about where they were.
-   The first attempt on a graph makes room past its last node and settles the
-   sets the questions read; the graph keeps both, so each case measures the
-   attempt after it. *)
+   The first attempt on a graph makes room past its last node, and the first
+   question to its reachability makes the table of sets, a word per node; the
+   graph keeps both, so each case measures an attempt after them. *)
 let neighbours = ".z{margin:0}.w{margin:1px}.z{margin:2px}"
 
 let a_rejected_rewrite_copies_no_node () =
@@ -984,6 +1221,7 @@ let a_committed_rewrite_copies_no_node () =
       | Some g' -> g'
     in
     let g' = replace g n ".z{margin:0}" in
+    ignore (Rule_graph.precedes g' (nid (n + 1)) (nid (n + 2)));
     measure (fun () -> replace g' (n + 1) ".w{margin:1px}")
   in
   let a1 = commit 2000 in
@@ -1170,12 +1408,16 @@ let same_selector_commute_is_subquadratic () =
    they do not pair with each other, so the three never share a selector list
    and the enumerator settles for a compatible subset. Both pairs save the same,
    and an equal saving goes to the shorter shared rule. *)
+(* Chrome 111, a default target, predates [:user-valid] (Chrome 119), so it
+   drops a list holding one whole (Selectors 4 sec. 3.9): [.x:user-valid] groups
+   with nothing. A plain selector still groups with an [:is(:where(...))]
+   variant, which every target parses. *)
 let grouping_respects_non_transitive_compatibility () =
   let newer = ".x:user-valid{color:red}" in
   let plain = ".y{color:red}" in
   let guarded = ":is(:where(.group):hover .z){color:red}" in
   Alcotest.(check string)
-    "newer groups with plain" ".x:user-valid,.y{color:red}"
+    "newer never groups with plain" ".x:user-valid{color:red}.y{color:red}"
     (optimize_str (newer ^ plain));
   Alcotest.(check string)
     "plain groups with guarded" ".y,:is(:where(.group):hover .z){color:red}"
@@ -1185,8 +1427,8 @@ let grouping_respects_non_transitive_compatibility () =
     ".x:user-valid{color:red}:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ guarded));
   Alcotest.(check string)
-    "all three settle for the shorter compatible subset"
-    ".x:user-valid,.y{color:red}:is(:where(.group):hover .z){color:red}"
+    "all three group only the two every target parses"
+    ".x:user-valid{color:red}.y,:is(:where(.group):hover .z){color:red}"
     (optimize_str (newer ^ plain ^ guarded))
 
 (* Every rule here carries the same body and a selector no other rule shares, so
@@ -1260,6 +1502,10 @@ let suite =
         try_rewrite_safe_factoring;
       Alcotest.test_case "a refusal names the first unordered node" `Quick
         refusal_names_the_first_unordered_node;
+      Alcotest.test_case "node size counts nested content" `Quick
+        node_size_counts_nested_content;
+      Alcotest.test_case "selector conflict reads the composed selector" `Quick
+        selector_conflict_reads_the_composed_selector;
       Alcotest.test_case "try_rewrite rejects a stale consumed node" `Quick
         try_rewrite_rejects_stale;
       Alcotest.test_case "try_rewrite rejects an out-of-range node" `Quick
@@ -1268,10 +1514,18 @@ let suite =
         try_rewrite_rejects_unsafe_cross;
       Alcotest.test_case "try_rewrite preserves residual source slots" `Quick
         try_rewrite_preserves_residual_source_slots;
+      Alcotest.test_case "fixed point when a merged rule prints late" `Quick
+        fixed_point_when_a_merged_rule_prints_late;
+      Alcotest.test_case "the printed order holds after every commit" `Quick
+        printed_order_after_every_commit;
+      Alcotest.test_case "a late merged rule drags its successors" `Quick
+        late_produced_node_drags_its_successors;
       Alcotest.test_case "rewrite constraints cross dead relays" `Quick
         rewrite_keeps_constraints_through_dead_relays;
       Alcotest.test_case "rewrite rejects cycle through a dead relay" `Quick
         rewrite_rejects_cycle_through_dead_relay;
+      Alcotest.test_case "acceptance reads live rules only" `Quick
+        acceptance_reads_live_rules;
       Alcotest.test_case "conflict: same-property tied pair" `Quick
         conflict_same_property_tie;
       Alcotest.test_case "conflict: higher specificity is not an edge" `Quick
@@ -1296,8 +1550,6 @@ let suite =
         rules_conflict_specificity;
       Alcotest.test_case "optimize keeps case-folded pairs in order" `Quick
         optimize_keeps_case_folded_order;
-      Alcotest.test_case "run_order follows the rank between conflicts" `Quick
-        run_order_follows_rank_between_conflicts;
       Alcotest.test_case "canonical_order pins a conflicting pair" `Quick
         canonical_order_pins_conflict;
       Alcotest.test_case "canonical_order keeps disjoint source order" `Quick

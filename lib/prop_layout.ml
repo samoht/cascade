@@ -226,13 +226,6 @@ let rec pp_position_area : position_area Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_position_area ctx v
   | None -> Pp.string ctx "none"
-  (* css-anchor-position-1 sec. 3.1.2: a lone keyword stands for [X span-all]
-     when it names an axis and repeats itself only when it names neither, so
-     only an axis-ambiguous pair collapses. [top center] is a different area
-     from [top]. *)
-  | Area (first, Some second)
-    when Pp.minified ctx && equal_position_area_keyword first second ->
-      pp_position_area_keyword ctx first
   | Area (first, second) ->
       pp_position_area_keyword ctx first;
       Option.iter
@@ -245,6 +238,16 @@ let rec pp_position_area : position_area Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+(* css-anchor-position-1 sec. 3.1.2: a lone keyword stands for [X span-all] when
+   it names an axis and repeats itself only when it names neither, so only an
+   axis-ambiguous pair collapses. [top center] is a different area from
+   [top]. *)
+let normalize_position_area (value : position_area) : position_area =
+  match value with
+  | Area (first, Some second) when equal_position_area_keyword first second ->
+      Area (first, Option.None)
+  | _ -> value
 
 let pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t =
  fun ctx -> function

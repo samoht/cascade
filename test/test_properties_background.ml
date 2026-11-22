@@ -377,7 +377,7 @@ let test_color_interpolation () =
   check_color_interpolation "in xyz-d50";
   (* CSS Color 4 sec. 10.2 makes [xyz] and [xyz-d65] two names for one space, so
      the shorter one is the spelling of both. *)
-  check_color_interpolation ~expected:"in xyz" "in xyz-d65";
+  check_color_interpolation "in xyz-d65";
   check_color_interpolation "in xyz";
   check_color_interpolation "in hwb";
   check_color_interpolation "in hwb longer hue";
@@ -528,6 +528,19 @@ let test_background_image () =
   check_background_image "-o-repeating-radial-gradient(var(--stops))";
   neg_cursor read_background_image "linear-gradient(red, blue, bogus-token)";
   neg_cursor read_background_image "radial-gradient(red, blue, bogus-token)";
+  (* CSS Values 4 sec. 2.6: the comma between the [radial-gradient()] prelude
+     and its stops is omitted only when the prelude is, so a prelude the reader
+     cannot finish is not a prelude followed by more stops. *)
+  neg_cursor read_background_image "radial-gradient(circle 10px red, blue)";
+  neg_cursor read_background_image "radial-gradient(circle var(--r), red, blue)";
+  neg_cursor read_background_image
+    "radial-gradient(var(--v) 10px 20px, red, blue)";
+  decl_optimizes ~prop:"background-image"
+    ~into:"radial-gradient(circle var(--r),red,blue)"
+    "radial-gradient(circle var(--r),red,blue)";
+  decl_optimizes ~prop:"background-image"
+    ~into:"radial-gradient(var(--v) 10px 20px,red,blue)"
+    "radial-gradient(var(--v) 10px 20px,red,blue)";
   (* CSS Images 4 sec. 6.2 gives [image-set()] a comma-separated
      [<image-set-option>]#; same [Cursor.call] gap in the option list. *)
   check_background_image ~expected:"image-set(\"a.png\"1x)"

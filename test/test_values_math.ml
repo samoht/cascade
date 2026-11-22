@@ -226,8 +226,8 @@ let spec_values_l45_math_color () =
     ~optimized:"color-mix(in oklab,red var(--p),#00f)"
     "color-mix(in oklab, var(--p) red, blue)";
   check_color ~expected:"hsl(0 50%50%)" ~optimized:"#bf4040" "hsl(none 50% 50%)";
-  check_color ~expected:"rgb(from var(--c) r g b/.5)"
-    "rgb(from var(--c) r g b / 50%)";
+  check_color ~expected:"rgb(from var(--c) r g b/50%)"
+    ~optimized:"rgb(from var(--c) r g b/.5)" "rgb(from var(--c) r g b / 50%)";
   check_color ~expected:"color(display-p3 none .5 1)"
     "color(display-p3 none 0.5 1)";
   neg_cursor read_length "calc-size()";
@@ -419,9 +419,9 @@ let spec_math_result_type () =
   (* CSS Backgrounds 3 sec. 6.2 spells <border-image-slice> over [<number> |
      <percentage>] with no length among them, so the slot answers the same way
      an <opacity-value> does, longhand and shorthand alike. *)
-  decl_optimizes ~prop:"border-image-slice" ~into:"abs(-1)" "abs(-1)";
+  decl_optimizes ~prop:"border-image-slice" ~into:"1" "abs(-1)";
   decl_optimizes ~prop:"border-image-slice" ~into:"30%" "30%";
-  decl_optimizes ~prop:"border-image-slice" ~into:"calc(abs(-30%))" "abs(-30%)";
+  decl_optimizes ~prop:"border-image-slice" ~into:"30%" "abs(-30%)";
   neg_cursor P.read_border_image_slice "abs(-1px)";
   neg_cursor P.read_border_image_slice "hypot(3px,4px)";
   neg_cursor P.read_border_image_slice "calc(abs(-1px))";
@@ -604,10 +604,7 @@ let spec_math_at_the_remaining_readers () =
   neg_cursor P.read_column_count "calc(inherit)";
   neg_cursor P.read_font_size_adjust "-1";
   neg_cursor P.read_initial_letter "calc(inherit)";
-  neg_cursor P.read_interest_delay "-1s";
-  (* Sec. 10.12 does not lift the range off a neighbouring property: the two
-     durations Chrome refuses whatever the spelling stay refused. *)
-  neg_cursor read_duration "calc(-1s)"
+  neg_cursor P.read_interest_delay "-1s"
 
 (* Sec. 10.9 types a calculation and sec. 10.1 admits it only where that type
    stands, so a call answering its arguments' type reaches a [<number>] or
@@ -838,6 +835,146 @@ let test_calc_operator_whitespace () =
   check_math_arg "1 - 2";
   check_math_arg "4 + 1"
 
+(* CSS Values 4 (ED) sec. 10.12: a math function whose value falls outside the
+   property's range is valid at parse time and clamped at computed-value time,
+   so a negative operand or result reads, and a fold keeps the wrapper around a
+   result the bare literal could not spell. Chrome 153 keeps every row here and
+   computes each one clamped; it drops every bare negative literal they would
+   otherwise fold to. *)
+let spec_math_range_every_family () =
+  let keeps prop ?(held = fun v -> v) cases =
+    List.iter
+      (fun (input, into) -> decl_optimizes ~prop ~held:(held input) ~into input)
+      cases
+  in
+  (* Non-negative lengths and percentages, read through a typed calc. *)
+  keeps "font-size"
+    [
+      ("calc(-1px)", "calc(-1px)");
+      ("calc(2*-1px)", "calc(-2px)");
+      ("calc(-1px + 1em)", "calc(1em - 1px)");
+      ("calc(-1%)", "calc(-1%)");
+      ("calc(1px - 2px)", "calc(-1px)");
+      ("calc(1% - 2%)", "calc(-1%)");
+    ];
+  keeps "flex-basis"
+    [
+      ("calc(-1px)", "calc(-1px)");
+      ("calc(-1%)", "calc(-1%)");
+      ("calc(1px - 2px)", "calc(-1px)");
+    ];
+  keeps "flex" [ ("calc(-1px)", "calc(-1px)"); ("calc(1% - 2%)", "calc(-1%)") ];
+  keeps "font-stretch" [ ("calc(-1%)", "calc(-1%)") ];
+  keeps "text-size-adjust" [ ("calc(-1%)", "calc(-1%)") ];
+  (* Non-negative times, through the longhands and the shorthand slot. *)
+  List.iter
+    (fun prop ->
+      keeps prop [ ("calc(-1s)", "calc(-1s)"); ("calc(1s - 2s)", "calc(-1s)") ])
+    [ "transition-duration"; "animation-duration"; "animation" ];
+  (* The transition reader names the [all] a lone time leaves out. *)
+  decl_optimizes ~prop:"transition" ~held:"all calc(-1s)" ~into:"all calc(-1s)"
+    "calc(-1s)";
+  decl_optimizes ~prop:"transition" ~held:"all calc(1s - 2s)"
+    ~into:"all calc(-1s)" "calc(1s - 2s)";
+  (* Non-negative lengths and percentages the fold reached as a bare literal. *)
+  List.iter
+    (fun prop ->
+      keeps prop
+        [
+          ("calc(-1px)", "calc(-1px)");
+          ("calc(1px - 2px)", "calc(-1px)");
+          ("calc(1% - 2%)", "calc(-1%)");
+        ])
+    [ "gap"; "scroll-padding"; "scroll-padding-inline"; "scroll-padding-block" ];
+  keeps "border-spacing" [ ("calc(1px - 2px)", "calc(-1px)") ];
+  List.iter
+    (fun prop -> keeps prop [ ("calc(1% - 2%)", "calc(-1%)") ])
+    [
+      "width";
+      "height";
+      "min-width";
+      "max-height";
+      "inline-size";
+      "min-block-size";
+      "max-inline-size";
+      "border-radius";
+      "shape-margin";
+      "stroke-width";
+      "stroke-dasharray";
+    ];
+  (* An <integer> slot rounds a fractional call at computed-value time, and the
+     bare fraction is refused; hyphenate-limit-chars counts from one. *)
+  keeps "hyphenate-limit-chars"
+    [ ("calc(1.5)", "calc(1.5)"); ("calc(0)", "calc(0)") ];
+  (* A comparison is a math function too, folded or not: it keeps a wrapper
+     below the range wherever the reader or the fold reached a literal. *)
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("border-width", "min(-1px,2px)", "calc(-1px)");
+      ("border-top-width", "max(-2px,-1px)", "calc(-1px)");
+      ("outline-width", "clamp(-3px,-2px,-1px)", "calc(-2px)");
+      ("column-rule-width", "min(-1px,2px)", "calc(-1px)");
+      ("zoom", "min(-1,2)", "calc(-1)");
+      ("animation-iteration-count", "min(-1,2)", "calc(-1)");
+      ("tab-size", "min(-1,2)", "calc(-1)");
+      ("hyphenate-limit-chars", "min(-1,2)", "calc(-1)");
+      ("font-stretch", "min(-1%,2%)", "calc(-1%)");
+      ("text-size-adjust", "min(-1%,2%)", "calc(-1%)");
+      ("font-size", "min(-1px,2px)", "calc(-1px)");
+      ("gap", "min(-1px,2px)", "calc(-1px)");
+    ]
+
+(* CSS Values 4 sec. 10.1 puts every math function wherever a value of its
+   resolved type stands, and sec. 10.2 answers a comparison with the type its
+   arguments share: a time, an angle or a percentage as readily as a length or a
+   number. Chrome 153 keeps every row here; cascade dropped each one. A fold
+   that would leave the property's range keeps its wrapper (sec. 10.12). *)
+let spec_math_function_every_type () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      (* <time>, through the duration and delay readers and the shorthands. *)
+      ("transition-duration", "min(1s,2s)", "1s");
+      ("transition-duration", "max(1s,2s)", "2s");
+      ("transition-duration", "clamp(1s,2s,3s)", "2s");
+      ("transition-duration", "abs(-1s)", "1s");
+      ("transition-duration", "min(-1s,2s)", "calc(-1s)");
+      ("transition-delay", "min(-1s,2s)", "-1s");
+      ("animation-duration", "max(1s,2s)", "2s");
+      ("animation-delay", "abs(-1s)", "1s");
+      ("interest-delay-start", "min(1s,2s)", "1s");
+      ("interest-delay-end", "max(1s,2s)", "2s");
+      ("transition", "opacity min(1s,2s)", "opacity 1s");
+      ("animation", "x min(1s,2s)", "x 1s");
+      (* <angle>. *)
+      ("rotate", "min(10deg,20deg)", "10deg");
+      ("rotate", "clamp(1deg,2deg,3deg)", "2deg");
+      ("rotate", "abs(-10deg)", "10deg");
+      ("offset-rotate", "max(10deg,20deg)", "20deg");
+      (* <number> | <percentage>, folded to the shorter of the two spellings a
+         literal of the same value takes. *)
+      ("opacity", "min(10%,20%)", ".1");
+      ("opacity", "max(10%,20%)", ".2");
+      ("fill-opacity", "clamp(10%,20%,30%)", ".2");
+      ("stroke-opacity", "min(10%,20%)", ".1");
+      ("flood-opacity", "min(10%,20%)", ".1");
+      ("stop-opacity", "min(10%,20%)", ".1");
+      ("shape-image-threshold", "min(10%,20%)", ".1");
+      ("zoom", "min(10%,20%)", ".1");
+      ("zoom", "min(-10%,20%)", "calc(-.1)");
+      ("scale", "min(10%,20%)", ".1");
+      ("border-image-slice", "min(10%,20%)", "10%");
+      (* A percentage comparison inside a sum turns into its number with the
+         percentage beside it. *)
+      ("opacity", "calc(min(50%,10%) + 1%)", ".11");
+    ];
+  (* Sec. 10.2: the arguments of a comparison share a type, and at a slot that
+     does not resolve a percentage against a length the two differ. Chrome 153
+     refuses both. *)
+  neg_cursor Css.Properties.read_opacity "calc(min(50%, 1px) + max(1px, 2px))";
+  neg_cursor read_duration "min(1s, 2px)"
+
 let suite =
   ( "values_math",
     [
@@ -863,6 +1000,10 @@ let suite =
         spec_values_l45_math_color;
       test_case "spec math function edges" `Quick spec_math_function_edges;
       test_case "spec math operand range" `Quick spec_math_operand_range;
+      test_case "spec math range every family" `Quick
+        spec_math_range_every_family;
+      test_case "spec math function every type" `Quick
+        spec_math_function_every_type;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;

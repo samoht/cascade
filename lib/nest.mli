@@ -37,6 +37,18 @@ val hoist_declaration_runs : Stylesheet.rule -> Stylesheet.rule
     computes the same values while the rest rejoins the declaration passes.
     Physically unchanged when nothing moves. *)
 
+val leaves :
+  ?parent:Selector.t -> Stylesheet.statement list -> Stylesheet.rule list option
+(** [leaves ?parent stmts] is every declaration [stmts] write, at any depth, as
+    the style rules that write them in source order, each under the selector the
+    cascade weighs it by and with no nested statement. [parent] is the selector
+    of the style rule whose body [stmts] is: a nested rule's selector is
+    composed with it (CSS Nesting 1 sec. 3) and a declarations run (sec. 3.4) is
+    a rule with that selector. A conditional group's rules are read as though
+    its condition held. [None] when some declaration has no selector to weigh it
+    by: a declarations run with no [parent], or a rule under [@scope], whose [&]
+    is the scoping root. *)
+
 val rules : Stylesheet.rule list -> Stylesheet.rule list
 (** Synthesize nested rules from adjacent flat selector chains. *)
 

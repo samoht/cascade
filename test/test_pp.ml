@@ -390,6 +390,264 @@ let rename_custom_property_case () =
   check string "identity by default" ":root{--a:1px}.x{width:var(--a)}"
     (printed ":root{--a:1px}.x{width:var(--a)}")
 
+(* CSSOM 1 sec. 2.1 (serialize a string, serialize a URL): a printer of a
+   [<string>] or a url writes the text the reader takes back to the same string,
+   whatever it holds. Each case builds a node around [s], prints it pretty and
+   minified, reads the text back and takes the strings out of the result. *)
+type string_case =
+  | Case : {
+      name : string;
+      make : string -> 'a;
+      pp : 'a Pp.t;
+      read : Cursor.t -> 'a;
+      strings : 'a -> string list;
+    }
+      -> string_case
+
+let awkward_strings =
+  [
+    "\"";
+    "'";
+    "\\";
+    "\n";
+    "\"\"";
+    "a\"b'c\\d\ne";
+    "a b";
+    "a\tb";
+    "a(b)";
+    "\\b c.woff";
+    "x\\";
+    "\r\012";
+    "\127";
+  ]
+
+let quotes_case =
+  Case
+    {
+      name = "quotes";
+      make = (fun s : Properties.quotes -> Pairs [ (s, ""); ("", s) ]);
+      pp = Properties.pp_quotes;
+      read = Properties.read_quotes;
+      strings =
+        (function
+        | Pairs pairs -> List.concat_map (fun (o, c) -> [ o; c ]) pairs
+        | _ -> []);
+    }
+
+let content_strings : Properties.content -> string list = function
+  | String s | Quoted { value = s; _ } | Counters { separator = s; _ } -> [ s ]
+  | _ -> []
+
+let content_cases =
+  [
+    Case
+      {
+        name = "content string";
+        make = (fun s : Properties.content -> String s);
+        pp = Properties.pp_content;
+        read = Properties.read_content;
+        strings = content_strings;
+      };
+    Case
+      {
+        name = "content single-quoted string";
+        make =
+          (fun s : Properties.content ->
+            Quoted { value = s; quote = '\''; repr = None });
+        pp = Properties.pp_content;
+        read = Properties.read_content;
+        strings = content_strings;
+      };
+    Case
+      {
+        name = "counters separator";
+        make =
+          (fun s : Properties.content ->
+            Counters { name = "c"; separator = s; style = None });
+        pp = Properties.pp_content;
+        read = Properties.read_content;
+        strings = content_strings;
+      };
+  ]
+
+let image_strings : Properties.background_image -> string list = function
+  | Url u | Quoted (u, _) -> [ u ]
+  | Image_set options ->
+      List.concat_map
+        (fun (o : Properties.image_set_option) ->
+          (match o.source with Url u | String u -> [ u ])
+          @ Option.to_list o.mime_type)
+        options
+  | _ -> []
+
+let image_case name make =
+  Case
+    {
+      name;
+      make;
+      pp = Properties.pp_background_image;
+      read = Properties.read_background_image;
+      strings = image_strings;
+    }
+
+let image_cases =
+  [
+    image_case "url" (fun s : Properties.background_image -> Url s);
+    image_case "single-quoted url" (fun s : Properties.background_image ->
+        Quoted (s, '\''));
+    image_case "image-set string and type" (fun s ->
+        Image_set
+          [ { source = String s; resolution = Some "1x"; mime_type = Some s } ]);
+    image_case "image-set url" (fun s ->
+        Image_set
+          [ { source = Url s; resolution = Some "1x"; mime_type = None } ]);
+  ]
+
+let clip_path_case =
+  Case
+    {
+      name = "clip-path url";
+      make = (fun s : Properties.clip_path -> Clip_path_url s);
+      pp = Properties.pp_clip_path;
+      read = Properties.read_clip_path;
+      strings = (function Clip_path_url u -> [ u ] | _ -> []);
+    }
+
+let src_strings (src : Font_face.src) =
+  List.concat_map
+    (function
+      | Font_face.Url { url; format; _ } | Quoted_url { url; format; _ } ->
+          url :: Option.to_list format
+      | Local name -> [ name ]
+      | Var _ -> [])
+    src
+
+let src_case name make =
+  Case
+    {
+      name;
+      make;
+      pp = Font_face.pp;
+      read = Font_face.read_src;
+      strings = src_strings;
+    }
+
+let font_face_cases =
+  [
+    src_case "font src url and format" (fun s ->
+        [ Font_face.Url { url = s; format = Some s; tech = None } ]);
+    src_case "font src single-quoted url" (fun s ->
+        [ Quoted_url { url = s; quote = '\''; format = None; tech = None } ]);
+    src_case "font src local" (fun s -> [ Local s ]);
+  ]
+
+let import_case =
+  Case
+    {
+      name = "@import";
+      make =
+        (fun s : Stylesheet.import_rule ->
+          { url = s; layer = None; supports = None; media = None });
+      pp = Stylesheet.pp_import_rule;
+      read = Stylesheet.read_import_rule;
+      strings = (fun (r : Stylesheet.import_rule) -> [ r.url ]);
+    }
+
+let namespace_case name make =
+  Case
+    {
+      name;
+      make = (fun s -> Stylesheet.v [ Namespace (Some "p", make s) ]);
+      pp = Stylesheet.pp;
+      read = Stylesheet.read;
+      strings =
+        List.concat_map (function
+          | Stylesheet.Namespace (_, (Url (u, _) | Quoted u)) -> [ u ]
+          | _ -> []);
+    }
+
+let namespace_cases =
+  [
+    namespace_case "@namespace string" (fun s : Stylesheet.namespace_url ->
+        Quoted s);
+    namespace_case "@namespace url" (fun s -> Url (s, Bare));
+    namespace_case "@namespace single-quoted url" (fun s ->
+        Url (s, Quoted '\''));
+  ]
+
+let other_cases =
+  [
+    Case
+      {
+        name = "keyframes name";
+        make = (fun s : Properties.animation_name -> Quoted s);
+        pp = Properties.pp_animation_name;
+        read = Properties.read_animation_name;
+        strings =
+          (function Quoted s | Name s | Ambiguous s -> [ s ] | _ -> []);
+      };
+    Case
+      {
+        name = "registered string value";
+        make = Fun.id;
+        pp = Variables.pp_value Variables.String;
+        read = (fun t -> Variables.read_value t Variables.String);
+        strings = (fun s -> [ s ]);
+      };
+    Case
+      {
+        name = "registered custom-ident value";
+        make = Fun.id;
+        pp = Variables.pp_value Variables.Custom_ident;
+        read = (fun t -> Variables.read_value t Variables.Custom_ident);
+        strings = (fun s -> [ s ]);
+      };
+    Case
+      {
+        name = "string_of_kind_value content";
+        make = (fun s : Properties.content -> String s);
+        pp =
+          (fun ctx v ->
+            Pp.string ctx (Properties.string_of_kind_value Properties.Content v));
+        read = Properties.read_content;
+        strings = content_strings;
+      };
+  ]
+
+let string_cases =
+  (quotes_case :: content_cases)
+  @ image_cases
+  @ (clip_path_case :: font_face_cases)
+  @ (import_case :: namespace_cases)
+  @ other_cases
+
+let check_string_case s minify (Case { name; make; pp; read; strings }) =
+  let text = Pp.to_string ~minify pp (make s) in
+  let label = Fmt.str "%s %S (minify=%b) printed %S" name s minify text in
+  match read (Cursor.of_string text) with
+  | v -> check (list string) label (strings (make s)) (strings v)
+  | exception Error.Parse_error _ ->
+      Alcotest.failf "%s does not read back" label
+
+let string_printers_round_trip () =
+  List.iter
+    (fun s ->
+      List.iter
+        (fun minify -> List.iter (check_string_case s minify) string_cases)
+        [ true; false ])
+    awkward_strings
+
+(* The same holds where the printer writes tokens rather than a typed node: a
+   custom property's [url("...")] drops its quotes only when the bare body can
+   hold the string, and two [quotes] values that differ print apart. *)
+let token_strings_round_trip () =
+  check string "a tab keeps the url quoted" {|a{--x:url("a\9 b")}|}
+    (printed {|a{--x:url("a\9 b")}|});
+  check string "a plain url drops its quotes" "a{--x:url(a.png)}"
+    (printed {|a{--x:url("a.png")}|});
+  let a = printed {|q{quotes:'"' '"'}|} and b = printed {|q{quotes:'""' ''}|} in
+  check bool "two quotes values print apart" false (String.equal a b)
+
 let suite =
   ( "pp",
     [
@@ -425,4 +683,8 @@ let suite =
       Alcotest.test_case "combinations" `Quick combinations;
       Alcotest.test_case "rename custom property" `Quick
         rename_custom_property_case;
+      Alcotest.test_case "string printers round-trip" `Quick
+        string_printers_round_trip;
+      Alcotest.test_case "token strings round-trip" `Quick
+        token_strings_round_trip;
     ] )

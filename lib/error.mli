@@ -47,6 +47,13 @@ type kind =
       (** Expected a specific lexical thing, e.g. ["';'"] or ["')'"]. *)
   | Bad_selector of string
       (** Selector parser rejected the prelude; payload is a short reason. *)
+  | Untargeted_selector of string
+      (** The prelude is a selector no browser the minifier targets reads, so
+          each of them drops the rule: one holding, outside every forgiving
+          list, a pseudo-class none of them reads (Selectors 4 sec. 3.9), or a
+          keyframe selector outside CSS Animations 1's grammar. Payload names
+          it: the pseudo-class, colon and all, or [keyframe selector] and the
+          prelude. *)
   | Bad_value of { property : string; reason : string }
       (** Property value validator rejected the right-hand side. *)
   | Bad_condition of { at_rule : string; reason : string }
@@ -238,41 +245,3 @@ val unknown_at_rule : Loc.t -> string -> t
 
 val unterminated : Loc.t -> Sort.t -> t
 (** [unterminated loc s] flags an EOF inside an unclosed node of sort [s]. *)
-
-(** {2 Raising constructors}
-
-    [fail_x args] is [fail (x args)]. Deprecated, removed in 1.4.0: call {!fail}
-    on the constructor's value. *)
-
-val fail_sort_mismatch :
-  Loc.t -> sort:Sort.t -> expected:Sort.t -> found:Sort.t -> 'a
-[@@deprecated "use Error.fail (Error.sort_mismatch ...); removed in 1.4.0"]
-(** [fail_sort_mismatch loc ~sort ~expected ~found] raises {!sort_mismatch}. *)
-
-val fail_unexpected_token : Loc.t -> sort:Sort.t -> Token.kind -> 'a
-[@@deprecated "use Error.fail (Error.unexpected_token ...); removed in 1.4.0"]
-(** [fail_unexpected_token loc ~sort k] raises {!unexpected_token}. *)
-
-val fail_missing_token : Loc.t -> sort:Sort.t -> string -> 'a
-[@@deprecated "use Error.fail (Error.missing_token ...); removed in 1.4.0"]
-(** [fail_missing_token loc ~sort what] raises {!missing_token}. *)
-
-val fail_bad_selector : Loc.t -> string -> 'a
-[@@deprecated "use Error.fail (Error.bad_selector ...); removed in 1.4.0"]
-(** [fail_bad_selector loc reason] raises {!bad_selector}. *)
-
-val fail_bad_value : Loc.t -> property:string -> reason:string -> 'a
-[@@deprecated "use Error.fail (Error.bad_value ...); removed in 1.4.0"]
-(** [fail_bad_value loc ~property ~reason] raises {!bad_value}. *)
-
-val fail_bad_condition : Loc.t -> at_rule:string -> reason:string -> 'a
-[@@deprecated "use Error.fail (Error.bad_condition ...); removed in 1.4.0"]
-(** [fail_bad_condition loc ~at_rule ~reason] raises {!bad_condition}. *)
-
-val fail_unknown_at_rule : Loc.t -> string -> 'a
-[@@deprecated "use Error.fail (Error.unknown_at_rule ...); removed in 1.4.0"]
-(** [fail_unknown_at_rule loc name] raises {!unknown_at_rule}. *)
-
-val fail_unterminated : Loc.t -> Sort.t -> 'a
-[@@deprecated "use Error.fail (Error.unterminated ...); removed in 1.4.0"]
-(** [fail_unterminated loc s] raises {!unterminated}. *)

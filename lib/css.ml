@@ -209,13 +209,19 @@ let content_string value = (String value : content)
 let content_attr name =
   (Attr { name; type_ = None; fallback = No_fallback } : content)
 
-let content_counter name = (Counter name : content)
-let content_counters name separator = (Counters (name, separator) : content)
+let content_counter ?style name = (Counter { name; style } : content)
+
+let content_counters ?style name separator =
+  (Counters { name; separator; style } : content)
+
 let content_list items = (Content_list items : content)
 let columns_count count = (Count count : columns_value)
 let columns_width width = (Width width : columns_value)
 let columns_both width count = (Both (width, count) : columns_value)
-let counter_item ?value name : counter_item = { name; value }
+
+let counter_item ?(reversed = false) ?value name : counter_item =
+  { name; reversed; value }
+
 let counter_set items = (Counters items : counter_set)
 let background_size_pair width height = (Size (width, height) : background_size)
 
@@ -582,11 +588,6 @@ let stylesheet ?strict ?filename ?meta ?enforce_spec css =
   | Ok { stylesheet; _ } -> stylesheet
   | Error e ->
       invalid_arg (String.concat "" [ "Css.stylesheet: "; Error.to_string e ])
-
-let of_string_exn ?strict ?filename ?meta ?enforce_spec css =
-  match of_string ?strict ?filename ?meta ?enforce_spec css with
-  | Ok { stylesheet; _ } -> stylesheet
-  | Error e -> Error.fail e
 
 (* Splicing a [@layer] body into its parent replaces one statement with several,
    which [edit_statements] cannot express and which does not need it: the splice
@@ -1045,5 +1046,4 @@ let resolve_theme ?theme ?theme_defaults stylesheet =
 let add_var_fallbacks lookup =
   Inline.var_fallbacks (bindable_theme_defaults lookup)
 
-let decode_import_url = Inline.decode_import_url
 let inline_imports = Inline.imports

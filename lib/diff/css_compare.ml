@@ -27,6 +27,7 @@ type stats = {
   regrouped_rules : int;
   container_changes : int;
   layer_order_swaps : int;
+  text_only : bool;
 }
 
 (* ===== Helper Functions ===== *)
@@ -136,8 +137,9 @@ let relocate ~shift ~source (e : Error.t) =
 (* [css] read the way [diff] compares it, with its warnings and error placed in
    the file [filename] names. The warnings of one parse share one source, so the
    moved one is built once, from both parts preprocessed as the reader does (CSS
-   Syntax 3 (ED) sec. 3.3), and they share its index in turn. *)
-let parse_input ?filename css =
+   Syntax 3 (ED) sec. 3.3), and they share its index in turn. [enforce_spec]
+   reads it for every engine, as [--enforce-spec] has {!Css.of_string} read. *)
+let parse_input ?filename ?enforce_spec css =
   let stripped = strip_tool_header css in
   let relocate =
     match tool_header_end css with
@@ -150,7 +152,7 @@ let parse_input ?filename css =
         in
         relocate ~shift:(String.length prefix) ~source
   in
-  match Css.of_string ?filename stripped with
+  match Css.of_string ?filename ?enforce_spec stripped with
   | Ok parse ->
       Ok { parse with Css.warnings = List.map relocate parse.warnings }
   | Error e -> Error (relocate e)
@@ -409,13 +411,6 @@ let rec collect_keyed_rules acc path stmts =
           | None -> acc))
     acc stmts
 
-let sig_of_decls decls =
-  decls
-  |> List.map (fun d -> (Css.declaration_name d, Css.declaration_value d))
-  |> List.sort (fun (a1, b1) (a2, b2) ->
-      let c = String.compare a1 a2 in
-      if c <> 0 then c else String.compare b1 b2)
-
 let reported_declaration d =
   let value = Css.declaration_value ~minify:false d in
   let value =
@@ -430,27 +425,36 @@ let group_into_table rules = Group.by Fun.id rules
    table's capacity, neither of which is a fact about the sheet. *)
 let keys_in_source_order rules = Group.keys Fun.id rules
 
-(* Compare two declaration lists with the same key and emit diffs *)
+(* Compare two declaration lists with the same key and emit diffs. The
+   declarations are keyed as the tree diff keys them, so two spellings of one
+   value are one declaration here as there: a respelled colour is neither a
+   modified rule nor a reorder. *)
 let diff_same_key_pair key d1 d2 =
-  let sig1 = sig_of_decls d1 in
-  let sig2 = sig_of_decls d2 in
-  if
-    sig1 = sig2
-    && (not (List.equal Declaration.equal_declaration d1 d2))
-    && D.reorder_is_significant d1 d2
-  then
-    Some
-      (D.Reordered
-         {
-           selector = key;
-           expected_pos = -1;
-           actual_pos = -1;
-           swapped_with = None;
-           old_declarations = Some d1;
-           new_declarations = Some d2;
-         }
-        : D.rule_diff)
-  else if sig1 <> sig2 then
+  if Tree_diff_rules.same_declarations d1 d2 then None
+  else if Tree_diff_rules.same_declaration_set d1 d2 then
+    if D.reorder_is_significant d1 d2 then
+      Some
+        (D.Reordered
+           {
+             selector = key;
+             expected_pos = -1;
+             actual_pos = -1;
+             swapped_with = None;
+             old_declarations = Some d1;
+             new_declarations = Some d2;
+           }
+          : D.rule_diff)
+    else None
+  else
+    let only_in decls ~not_in =
+      let names = List.map Css.declaration_name not_in in
+      List.filter_map
+        (fun d ->
+          let name = Css.declaration_name d in
+          if List.exists (String.equal name) names then None
+          else Some (reported_declaration d))
+        decls
+    in
     Some
       (D.Content_changed
          {
@@ -458,22 +462,10 @@ let diff_same_key_pair key d1 d2 =
            old_declarations = d1;
            new_declarations = d2;
            property_changes = [];
-           added_properties =
-             List.filter_map
-               (fun d ->
-                 let p = Css.declaration_name d in
-                 if List.mem_assoc p sig1 then None
-                 else Some (reported_declaration d))
-               d2;
-           removed_properties =
-             List.filter_map
-               (fun d ->
-                 let p = Css.declaration_name d in
-                 if List.mem_assoc p sig2 then None
-                 else Some (reported_declaration d))
-               d1;
-         })
-  else None
+           added_properties = only_in d2 ~not_in:d1;
+           removed_properties = only_in d1 ~not_in:d2;
+         }
+        : D.rule_diff)
 
 let diff_count_mismatch key ds1 ds2 =
   let n1 = List.length ds1 in
@@ -618,6 +610,7 @@ type t = {
   result : result;
   expected_warnings : Error.t list;
   actual_warnings : Error.t list;
+  text_only : bool;
 }
 
 type mode = [ `Auto | `Tree | `String | `Canonical ]
@@ -665,7 +658,22 @@ let commutes a b =
   let canon stmts =
     Css.to_string ~minify:true (Css.canonicalize_rule_order stmts)
   in
-  String.equal (canon [ a; b ]) (canon [ b; a ])
+  let single = function Css.Selector.List _ -> false | _ -> true in
+  (match (a, b) with
+    | ( Css.Stylesheet.Rule ({ nested = []; _ } as ra),
+        Css.Stylesheet.Rule ({ nested = []; _ } as rb) )
+      when single ra.selector && single rb.selector ->
+        (* The projection orders two rules on different selectors only where a
+           declaration of one decides one of the other, which
+           {!Rule_graph.rules_conflict} answers on the safe side, so the
+           projection is asked only when it says they may. *)
+        (not
+           (String.equal
+              (Css.Selector.to_string ra.selector)
+              (Css.Selector.to_string rb.selector)))
+        && not (Rule_graph.rules_conflict ra rb)
+    | _ -> false)
+  || String.equal (canon [ a; b ]) (canon [ b; a ])
 
 let statement_key stmt =
   match Css.as_rule stmt with
@@ -836,6 +844,46 @@ let diff_tree ~expected_parse ~actual_parse =
   | Ok _, Error e -> Actual_error e
   | Error e, Ok _ -> Expected_error e
 
+(* ===== What the parse dropped ===== *)
+
+(* What one side lost that the comparison has to answer for, in the order its
+   reader reported it. A declaration the reader refuses is one the browser
+   refuses: test/spec/browser/accept_set holds the reader to the browser's
+   accept set, so the browser drops it from whichever sheet holds it and paints
+   the same, and it is not a loss the verdict answers for. The warning still
+   says where the reader may have lagged. A rule is: nothing holds the rule
+   reader to a browser, and the rule takes everything it held with it. The
+   exception is a rule over a selector no target reads
+   ({!Error.Untargeted_selector}): every target drops it too, and the comparison
+   judges for those targets. Under [--enforce-spec] the reader keeps such a rule
+   over a pseudo-class, and the comparison sees it; a keyframe selector outside
+   the grammar is one every engine drops. *)
+let losses ws =
+  List.filter_map
+    (fun (w : Error.t) ->
+      match (w.kind, w.recovery) with
+      | Untargeted_selector _, _ -> None
+      | _, Error.Recovery.Dropped { construct = Rule; text } -> Some text
+      | _, (Dropped { construct = Declaration; _ } | Recovered) -> None)
+    ws
+
+(* One loss accounts for another when the two readers threw away the same text.
+   A loss the reader could not name accounts for nothing: nothing shows the
+   other side lost those same bytes. *)
+let accounts_for t1 t2 =
+  match (t1, t2) with
+  | Some a, Some b -> String.equal a b
+  | None, _ | _, None -> false
+
+(* Two sides that lost the same run of text saw the same thing twice, so what
+   they hid cannot separate them and the comparison's verdict stands. *)
+let unread_separates t =
+  let expected = losses t.expected_warnings in
+  let actual = losses t.actual_warnings in
+  not
+    (List.compare_lengths expected actual = 0
+    && List.for_all2 accounts_for expected actual)
+
 let parse_warnings = function
   | Ok { Css.warnings; _ } -> warnings
   | Error _ -> []
@@ -847,7 +895,12 @@ let diff ?(mode = `Auto) ?(lossless = false) ?(enforce_spec = false)
   let expected = strip_tool_header expected in
   let actual = strip_tool_header actual in
   if expected = actual then
-    { result = No_diff; expected_warnings = []; actual_warnings = [] }
+    {
+      result = No_diff;
+      expected_warnings = [];
+      actual_warnings = [];
+      text_only = false;
+    }
   else
     match mode with
     | `String ->
@@ -855,12 +908,19 @@ let diff ?(mode = `Auto) ?(lossless = false) ?(enforce_spec = false)
           result = diff_string ~expected ~actual;
           expected_warnings = [];
           actual_warnings = [];
+          text_only = false;
         }
     | (`Auto | `Tree | `Canonical) as mode ->
-        let expected_parse =
-          parse_input ?filename:expected_filename expected_input
+        (* [--enforce-spec] shapes the canonical comparison alone. *)
+        let enforce_spec =
+          match mode with `Canonical -> enforce_spec | `Auto | `Tree -> false
         in
-        let actual_parse = parse_input ?filename:actual_filename actual_input in
+        let expected_parse =
+          parse_input ?filename:expected_filename ~enforce_spec expected_input
+        in
+        let actual_parse =
+          parse_input ?filename:actual_filename ~enforce_spec actual_input
+        in
         let result =
           match mode with
           | `Auto -> diff_auto ~expected ~actual ~expected_parse ~actual_parse
@@ -869,11 +929,24 @@ let diff ?(mode = `Auto) ?(lossless = false) ?(enforce_spec = false)
                 ~expected ~actual ~expected_parse ~actual_parse
           | `Tree -> diff_tree ~expected_parse ~actual_parse
         in
-        {
-          result;
-          expected_warnings = parse_warnings expected_parse;
-          actual_warnings = parse_warnings actual_parse;
-        }
+        let t =
+          {
+            result;
+            expected_warnings = parse_warnings expected_parse;
+            actual_warnings = parse_warnings actual_parse;
+            text_only = false;
+          }
+        in
+        (* In mode [`Auto] a string diff is what is left once the tree diff and
+           the declaration-order recovery both came back empty: the two parsed
+           stylesheets are equal. That says nothing when a rule either reader
+           dropped may hold the difference. *)
+        let text_only =
+          match (mode, result) with
+          | `Auto, String_diff _ -> not (unread_separates t)
+          | _ -> false
+        in
+        { t with text_only }
 
 let equal ?mode ?lossless ?enforce_spec ?prune_unused_custom_props a b =
   match
@@ -921,6 +994,7 @@ let compute_stats ~expected_str ~actual_str diff_result =
           (match d.layer_order with
           | None -> 0
           | Some { swapped; _ } -> List.length swapped);
+        text_only = false;
       }
   | _ ->
       (* For non-tree diffs, just return character stats *)
@@ -937,6 +1011,7 @@ let compute_stats ~expected_str ~actual_str diff_result =
         regrouped_rules = 0;
         container_changes = 0;
         layer_order_swaps = 0;
+        text_only = diff_result.text_only;
       }
 
 (* Alias for compute_stats *)
@@ -1077,40 +1152,6 @@ let pp_warnings ?(expected = "Expected") ?(actual = "Actual") ?max ?(more = "")
 
 let has_warnings t = t.expected_warnings <> [] || t.actual_warnings <> []
 
-(* ===== What the parse dropped ===== *)
-
-(* What one side lost that the comparison has to answer for, in the order its
-   reader reported it. A declaration the reader refuses is one the browser
-   refuses: test/spec/browser/accept_set holds the reader to the browser's
-   accept set, so the browser drops it from whichever sheet holds it and paints
-   the same, and it is not a loss the verdict answers for. The warning still
-   says where the reader may have lagged. A rule is: nothing holds the rule
-   reader to a browser, and the rule takes everything it held with it. *)
-let losses ws =
-  List.filter_map
-    (fun (w : Error.t) ->
-      match w.recovery with
-      | Error.Recovery.Dropped { construct = Rule; text } -> Some text
-      | Dropped { construct = Declaration; _ } | Recovered -> None)
-    ws
-
-(* One loss accounts for another when the two readers threw away the same text.
-   A loss the reader could not name accounts for nothing: nothing shows the
-   other side lost those same bytes. *)
-let accounts_for t1 t2 =
-  match (t1, t2) with
-  | Some a, Some b -> String.equal a b
-  | None, _ | _, None -> false
-
-(* Two sides that lost the same run of text saw the same thing twice, so what
-   they hid cannot separate them and the comparison's verdict stands. *)
-let unread_separates t =
-  let expected = losses t.expected_warnings in
-  let actual = losses t.actual_warnings in
-  not
-    (List.compare_lengths expected actual = 0
-    && List.for_all2 accounts_for expected actual)
-
 let pp_diff ?(expected = "Expected") ?(actual = "Actual") ?(color = false)
     ?depth ?entries buf t =
   pp_result ~expected ~actual ~color ?depth ?entries buf t.result
@@ -1156,8 +1197,11 @@ let emit_changes buf stats =
      results that never reached one: a comparison that fell through to the
      string diff, a side whose content the parser discarded, a parse error. The
      line says what it knows - nothing was classified - and leaves the verdict
-     to the report under it. *)
-  if entries = [] && container = 0 && layers = 0 then
+     to the report under it. The one exception is a string diff over two parsed
+     stylesheets the comparison found equal: that it does know. *)
+  if stats.text_only then
+    Buffer.add_string buf "Changes: no structural change; the text differs\n"
+  else if entries = [] && container = 0 && layers = 0 then
     Buffer.add_string buf
       "Changes: none classified structurally (see report below)\n"
   else (

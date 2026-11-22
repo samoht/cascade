@@ -26,6 +26,10 @@ bench/differential/run.sh candidates --baseline ../cascade-main --quick
 bench/differential/run.sh refresh
 bench/differential/run.sh refresh --random 20000 8
 
+# Count the SatCSS sheets where a scheduler run over a graph built afresh from
+# a run's output commits again; there should be none.
+bench/differential/run.sh settle
+
 # Check that output never follows a hash table's iteration order.
 bench/differential/run.sh hashseed
 

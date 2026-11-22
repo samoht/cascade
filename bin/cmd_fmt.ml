@@ -21,10 +21,7 @@ let print_factor_profile_footer (counters : Stats.counters) =
   Fmt.epr "@.factor committed savings: %d bytes@." counters.factor_bytes_saved;
   Fmt.epr "factor preflight: %d skipped, estimated gain %d bytes@."
     counters.factor_fixpoints_skipped counters.factor_preflight_gain;
-  Fmt.epr "nested-merge probes: %d@." counters.nested_merge_probes;
-  if counters.factor_transfer_reverts > 0 then
-    Fmt.epr "factor transfer gate: %d segments reverted@."
-      counters.factor_transfer_reverts
+  Fmt.epr "nested-merge probes: %d@." counters.nested_merge_probes
 
 (* Where the run went, then the factoring passes the optimizer spent most of its
    time in. *)
@@ -84,9 +81,8 @@ let process_css ~verbosity ~input_path ~minify ~scope ~flatten_nesting ~lossless
     let read = Unix.gettimeofday () in
     let stylesheet =
       if minify then
-        (* Raw output ships uncompressed, so the aggressive global-factoring
-           fixpoint is worth its cost only here: under the transfer objective
-           its extra raw-byte wins grow gzip and get discarded anyway. *)
+        (* Raw output ships uncompressed, so only there is the aggressive
+           global-factoring search worth its wall clock. *)
         let aggressive = objective = `Raw in
         Css.optimize ~scope ~flatten_nesting ~lossless ~enforce_spec ~aggressive
           ~closed_world ~objective ~stats stylesheet
@@ -162,8 +158,10 @@ let enforce_spec_arg =
      or container feature, the $(b,&) prefix on a nested selector, the \
      author's :not(:dir(ltr)) and input:not(:enabled), the number form of an \
      oklab/oklch axis, and the quotes around a multi-word font family. It also \
-     holds the reader to the CSS Syntax 3 sec. 4.2 ident code points, which \
-     applies with or without $(b,--minify)."
+     has the reader keep a rule whose selector holds a pseudo-class no target \
+     reads, $(b,:-o-prefocus) for one, which it otherwise drops with a \
+     warning, and holds it to the CSS Syntax 3 sec. 4.2 ident code points; \
+     both apply with or without $(b,--minify)."
   in
   Arg.(value & flag & info [ "enforce-spec" ] ~docs:minify_options ~doc)
 
@@ -181,12 +179,14 @@ let lossless_arg =
 let objective_arg =
   let doc =
     "Size metric $(b,--minify) optimises for. $(b,transfer) (the default) \
-     keeps a global-factoring result only when it also shrinks the estimated \
-     gzip (DEFLATE) size of the output, since repeated declaration text is \
-     nearly free once compressed; $(b,raw) keeps every raw-byte win and drives \
-     the factoring fixpoint to convergence, the right objective when the \
-     output ships uncompressed (inline style attributes, email HTML), at the \
-     cost of markedly more wall clock. Has no effect without $(b,--minify)."
+     minimises output bytes, but merges rules with one body only where they \
+     print within 128 rules of each other, because a compressor encodes a \
+     repeated declaration in two or three bytes wherever it sits, but a \
+     selector moved away from its neighbours stops compressing against them; \
+     $(b,raw) merges them at any distance. $(b,raw) also drives the factoring \
+     fixpoint to convergence, the right objective when the output ships \
+     uncompressed (inline style attributes, email HTML), at the cost of \
+     markedly more wall clock. Has no effect without $(b,--minify)."
   in
   Arg.(
     value

@@ -29,6 +29,7 @@ let rec pp_break_value : break_value Pp.t =
   | Var v -> pp_var pp_break_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
+  | Always -> Pp.string ctx "always"
   | All -> Pp.string ctx "all"
   | Avoid_page -> Pp.string ctx "avoid-page"
   | Page -> Pp.string ctx "page"
@@ -339,11 +340,7 @@ let rec read_break_value t : break_value =
       ("auto", (Auto : break_value));
       ("avoid", Avoid);
       ("all", All);
-      (* CSS Fragmentation 3 sec. 3.4: legacy [page-break-*: always] maps to
-         [break-*: page]. The reader accepts the legacy spelling so the
-         page-break alias dispatch (which routes to [Break_before/after]) can
-         keep using this reader. *)
-      ("always", Page);
+      ("always", Always);
       ("avoid-page", Avoid_page);
       ("page", Page);
       ("left", Left);

@@ -553,6 +553,24 @@ let test_flex () =
      1 0 -> 1, since flex-basis 0 is not the default 0%). *)
   check_flex ~expected:"1 1 0px" "1 1 0px";
   decl_optimizes ~prop:"flex" ~held:"1 1 0px" ~into:"1 1 0" "1 1 0px";
+  (* CSS Flexbox 1 sec. 7.2 reads a unitless number as a factor wherever one can
+     stand, so a zero basis keeps its unit alone and after one factor. Chrome
+     153 computes [flex:0px] to [1 1 0px] and [flex:0] to [0 1 0%]; [flex:1 0px]
+     to [1 1 0px] and [flex:1 0] to [1 0 0%]. *)
+  check_flex "0px";
+  decl_optimizes ~prop:"flex" ~held:"0px" ~into:"0px" "0px";
+  decl_optimizes ~prop:"flex" ~held:"0em" ~into:"0px" "0em";
+  decl_optimizes ~prop:"flex" ~into:"0px" "calc(0px)";
+  decl_optimizes ~prop:"flex" ~into:"1 1 0" "1 0px";
+  decl_optimizes ~prop:"flex" ~held:"1 0em" ~into:"1 1 0" "0em 1";
+  (* A built [Basis Zero] has no spelling of its own, so it prints as the zero
+     length it stands for rather than as the grow factor [0]. *)
+  List.iter
+    (fun minify ->
+      Alcotest.(check string)
+        "a lone zero basis prints a length" "0px"
+        (Css.Pp.to_string ~minify pp_flex (Basis Zero : flex)))
+    [ true; false ];
   check_flex ~expected:"1 auto" "1 1 auto";
   check_flex "none";
   check_flex "auto";
@@ -865,7 +883,9 @@ let test_place_content () =
 let test_place_items () =
   check_place_items "stretch";
   check_place_items "start end";
-  check_place_items ~expected:"center" "center center";
+  check_place_items "center center";
+  decl_optimizes ~prop:"place-items" ~held:"center center" ~into:"center"
+    "center center";
   check_place_items "inherit";
   (* css-align-3 (ED) sec. 4.2: <baseline-position> = [ first | last ]? &&
      baseline, in either half of the sec. 7.3 shorthand. *)
@@ -886,7 +906,9 @@ let test_place_items () =
   check_place_items "stretch center";
   check_place_items "stretch normal";
   check_place_items "stretch safe center";
-  check_place_items ~expected:"stretch" "stretch stretch";
+  check_place_items "stretch stretch";
+  decl_optimizes ~prop:"place-items" ~held:"stretch stretch" ~into:"stretch"
+    "stretch stretch";
   check_place_items "center stretch"
 
 let test_box_decoration_break () =
@@ -994,14 +1016,18 @@ let test_opacity () =
   check_opacity ~expected:".5" "0.5";
   check_opacity "1";
   check_opacity "0";
-  (* A <percentage> operand inside an opacity calc() is the number it denotes
-     (50% = .5), so the calc parses (was rejected) and folds like any number. *)
-  check_opacity ~expected:"calc(.5*2)" "calc(50% * 2)";
-  decl_optimizes ~prop:"opacity" ~held:"calc(.5*2)" ~into:"1" "calc(50% * 2)";
-  decl_optimizes ~prop:"opacity" ~held:"calc(.5 + .25)" ~into:".75"
+  (* A <percentage> operand inside an opacity calc() reads as a percentage and
+     prints back as one. Without a var() the whole operand's type is known, so
+     it folds to the number it denotes (50% = .5). CSS Values 4 sec. 10.9 types
+     a calc() by its operands, so beside a var() it stays: with [--x:30%],
+     Chromium 153 drops [calc(50% * var(--x))] at computed-value time (opacity
+     1) and computes [calc(.5 * var(--x))] to .15. *)
+  check_opacity ~expected:"calc(50%*2)" "calc(50% * 2)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(50%*2)" ~into:"1" "calc(50% * 2)";
+  decl_optimizes ~prop:"opacity" ~held:"calc(50% + 25%)" ~into:".75"
     "calc(50% + 25%)";
-  decl_optimizes ~prop:"opacity" ~held:"calc(.5*var(--x))"
-    ~into:"calc(.5*var(--x))" "calc(50% * var(--x))";
+  decl_optimizes ~prop:"opacity" ~held:"calc(50%*var(--x))"
+    ~into:"calc(50%*var(--x))" "calc(50% * var(--x))";
   neg_cursor read_opacity "invalid-opacity";
   (* CSS Values 4 sec. 11.4 gives [abs()]/[sign()] exactly one [<calc-sum>]
      argument; [Cursor.call] did not require the reader to consume its whole

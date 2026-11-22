@@ -75,11 +75,15 @@ The two assumptions described at the top each have a switch:
 - `--lossless` stops rounding. Colours and repeating decimals from `calc()`
   stay exact, and declarations keep the author's order.
 
-By default the minifier optimises for the size after gzip compression,
-because servers usually send CSS compressed. `--objective=raw` optimises the uncompressed size
-instead, for CSS that ships uncompressed such as email HTML; it is noticeably
-slower. On the SatCSS corpus, `--minify` takes about 2.2 ms per KB of input, so
-a 200 KB stylesheet takes a few hundred milliseconds.
+By default the minifier makes the output as small as it can, but merges rules
+with one body only where they print within 128 rules of each other. Servers
+usually send CSS compressed, and a compressor encodes a repeated declaration in
+two or three bytes wherever it sits, but a selector moved away from its
+neighbours stops compressing against them. `--objective=raw` merges them at any
+distance instead, for
+CSS that ships uncompressed such as email HTML; it is noticeably slower. On
+the SatCSS corpus, `--minify` takes about 2.2 ms per KB of input, so a 200 KB
+stylesheet takes a few hundred milliseconds.
 
 A few options trade safety for size, and are off by default:
 
@@ -143,8 +147,9 @@ Changes: 1 modified rule
 - `tree` compares only the structure, so formatting changes do not count.
 - `string` compares the text.
 - `canonical` minifies both sides the same way and compares the results. Two
-  stylesheets are the same when every element would get the same computed
-  values, however the rules are written, grouped or ordered. Like the
+  stylesheets are the same when every target browser gives every element the
+  same used values and the same transitions and animations, however the rules
+  are written, grouped or ordered. Like the
   minifier, it assumes current browsers and allows the same rounding;
   `--enforce-spec` and `--lossless` turn those off.
 

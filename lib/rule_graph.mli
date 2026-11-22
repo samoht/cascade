@@ -40,7 +40,13 @@ type node_id = Node_id.t
     structural pin used to keep produced selector residuals contiguous. *)
 type edge_reason = Cascade_conflict | Shared_branch_pin
 
-(** Why a graph rewrite was rejected. *)
+(** Why a graph rewrite was rejected. A produced rule is ordered against a rule
+    it conflicts with as the sources it draws on that conflict with that rule
+    are, by where they print: an ambiguous order has them on both sides of it,
+    and a new conflict has none. Neither reads a rule a rewrite consumed. A
+    [Cycle] runs through live rules; a [Relay_cycle] runs only through rules
+    earlier rewrites consumed, so a graph built afresh from the rules the graph
+    prints ({!rebuild}) has none. *)
 type rewrite_error =
   | Empty_consume
   | Empty_produce
@@ -52,8 +58,10 @@ type rewrite_error =
   | Ambiguous_produced_order of { left : node_id; right : node_id }
   | New_produced_conflict of { left : node_id; right : node_id }
   | Cycle
+  | Relay_cycle
 
 val of_rules :
+  ?size_print:Size.print ->
   ?parent:Selector.t ->
   ?closed_world:bool ->
   ?pin_shared_branches:bool ->
@@ -61,9 +69,11 @@ val of_rules :
   Stylesheet.rule list ->
   t
 (** [of_rules ?parent rules] builds the graph over [rules] (node [i] is the
-    [i]th rule). [parent], when set, is the enclosing nesting selector: each
-    rule's relative selector is expanded against it so overlap is computed on
-    the effective (parent-qualified) selector rather than the raw nested form.
+    [i]th rule). [size_print] (default {!Size.default}) is the print the run
+    makes, which every node's size and every rewrite's saving are measured
+    under. [parent], when set, is the enclosing nesting selector: each rule's
+    relative selector is expanded against it so overlap is computed on the
+    effective (parent-qualified) selector rather than the raw nested form.
     [closed_world] (default [false]) makes distinct selectors assumed not to
     match a common element, so they never cascade-conflict on selector grounds.
     [pin_shared_branches] (default [true]) adds conservative structural edges
@@ -72,7 +82,23 @@ val of_rules :
     already been expanded may disable them. [exclusive i j], when given, asserts
     that rules [i] and [j] never apply to one element together, as two rules
     under a condition and its negation do, so no cascade conflict is recorded
-    between them; it does not reach the nodes a rewrite produces. *)
+    between them; it does not reach the nodes a rewrite produces.
+
+    A rule writes everything its body holds: each rule nested in it, at any
+    depth, under its composed selector, and a conditional group's rules as
+    though the condition held ({!Nest.leaves}). Two rules conflict when some
+    selector of one ties with some selector of the other and what the two write
+    under those selectors meets, so a rewrite moving a rule past another reads
+    every one of its writes. Raises [Invalid_argument] when a rule is not
+    {!weighable}. *)
+
+val weighable : ?parent:Selector.t -> Stylesheet.rule -> bool
+(** [weighable ?parent r] is whether every declaration [r] writes, at any depth,
+    has a selector the cascade weighs it by, which {!of_rules} needs of each
+    rule. A rule under an [@scope] nested in [r] has none. *)
+
+val size_print : t -> Size.print
+(** [size_print t] is the print [t]'s sizes are measured under. *)
 
 val node_count : t -> int
 (** Number of nodes. *)
@@ -97,12 +123,30 @@ val selector_branch_key : Selector.t -> string
     under which a branch is pinned and shared. *)
 
 val node_origin : t -> node_id -> int
-(** [node_origin t i] is source-position metadata for local scheduling. Authored
-    nodes use their original position. Produced grouped nodes use the earliest
-    matching consumed selector branch, while single-source residuals keep their
-    original consumed node's position. The canonical projection uses this value
-    as its stable tie-break key, so unconstrained nodes keep first-appearance
-    source order. *)
+(** [node_origin t i] is the first source appearance of node [i], the key
+    {!canonical_order} breaks ties on: an authored node's position, and for a
+    node a rewrite produced the earliest origin of the consumed nodes it shares
+    a selector branch with (of all of them when it shares none). *)
+
+val compare_position : t -> node_id -> node_id -> int
+(** [compare_position t i j] orders nodes [i] and [j] as {!canonical_order}
+    prints them: negative when [i] comes first. It answers in constant time for
+    every node of [t], consumed ones included, which keep the place they had.
+    The order is the lineage's, kept by its newest graph: an older graph reads
+    it restricted to its own nodes, a linear extension of its edges too. *)
+
+val node_slot : t -> node_id -> int
+(** [node_slot t i] is the source position where node [i] prints: the largest
+    {!node_origin} of the nodes up to it in {!compare_position}, consumed ones
+    included. It never decreases along the order, is never below
+    [node_origin t i], and is [i]'s own position for a graph {!of_rules} built.
+*)
+
+val moved : t -> node_id list
+(** [moved t] is the live nodes, besides the nodes it produced, whose place in
+    {!compare_position} or whose {!node_slot} the rewrite that made [t] changed:
+    the nodes that had to wait for a produced node, and the nodes whose slot
+    that changed. Empty for a graph {!of_rules} built. *)
 
 val generation : t -> int
 (** [generation t] increments after every successful rewrite. Candidate queues
@@ -117,6 +161,13 @@ val exists_live_node : t -> (node_id -> bool) -> bool
     [List.exists f (live_nodes t)] without the list: the candidate search runs
     it once per proposed group over the whole graph, and answers no at almost
     every node, so the list was the scan's whole cost. *)
+
+val exists_live_between : t -> node_id -> node_id -> (node_id -> bool) -> bool
+(** [exists_live_between t lo hi f] is whether [f] holds of some live node
+    printed strictly between [lo] and [hi], asked in printed order and stopping
+    at the first that says yes. It walks those nodes alone, consumed ones
+    included, so a test of what stands between two rules costs their distance
+    rather than the size of the graph. *)
 
 val declaration_body_key : t -> node_id -> int list
 (** [declaration_body_key t i] is a hash key for bucketing nodes with identical
@@ -152,7 +203,9 @@ type facts
 
 val facts : ?parent:Selector.t -> Stylesheet.rule -> facts
 (** [facts ?parent r] is what {!val-rules_conflict} reads off [r], read once for
-    a caller that asks about [r] against many rules. *)
+    a caller that asks about [r] against many rules: what [r] writes under each
+    selector, at any depth. Raises [Invalid_argument] when [r] is not
+    {!weighable}. *)
 
 val facts_conflict : facts -> facts -> bool
 (** [facts_conflict (facts ?parent a) (facts ?parent b)] is
@@ -174,10 +227,54 @@ val conflicts_after : facts_index -> after:int -> facts -> bool
     a position greater than [after] has [facts_conflict f g]. It tests only the
     rules after [after] sharing a specificity and an overlap key with [f]. *)
 
-val selectors_conflict : Selector.t -> Selector.t -> bool
-(** [selectors_conflict a b] is the selector half of {!val-rules_conflict}: some
-    branch of [a] and some branch of [b] have equal specificity and may match
-    one element. *)
+type branches
+(** The comma branches of a selector, each with its summary and its specificity:
+    what the selector half of {!val-rules_conflict} reads off it. *)
+
+val branches : Selector.t -> branches
+(** [branches s] is the branches of [s]. *)
+
+val branches_under : ?parent:Selector.t -> Selector.t -> branches
+(** [branches_under ?parent s] is {!val-branches} of [s] as the cascade weighs
+    it: under a nesting [parent], each branch of [s] expanded against each
+    branch of [parent], as {!val-rules_conflict} reads a rule. *)
+
+val selector_branches : t -> Selector.t -> branches
+(** [selector_branches t s] is [branches_under ?parent s] for the nesting
+    [parent] [t] was built under: the branches a rule selecting [s] has among
+    the nodes of [t]. *)
+
+val branches_conflict : branches -> branches -> bool
+(** [branches_conflict (branches a) (branches b)] is the selector half of
+    {!val-rules_conflict} between a rule selecting [a] and one selecting [b]. *)
+
+val branch_specificities : branches -> Selector.specificity list
+(** [branch_specificities b] is the specificity of each branch of [b]. *)
+
+val node_selector_conflict : t -> branches -> node_id -> bool
+(** [node_selector_conflict t (selector_branches t a) i] is the selector half of
+    {!val-rules_conflict} between a rule selecting [a] and node [i]: some branch
+    of [a] and some branch [i] writes under have equal specificity and may match
+    one element. The branches [i] writes under are those of its selector and,
+    for a rule with nested content, those of every rule its body holds at any
+    depth, each composed with the nesting parent of [t]. It reads what [t] holds
+    for [i] rather than its selector again. *)
+
+val node_selectors_conflict : t -> node_id -> node_id -> bool
+(** [node_selectors_conflict t i j] is whether some branch [i] writes under and
+    some branch [j] writes under, as {!node_selector_conflict} reads them, have
+    equal specificity and may match one element. For a rule [i] with no nested
+    content it is
+    [node_selector_conflict t (selector_branches t (node_rule t i).selector) j].
+*)
+
+val node_writes_cross :
+  t -> branches -> (Declaration.declaration list -> bool) -> node_id -> bool
+(** [node_writes_cross t (selector_branches t a) crosses i] is whether node [i]
+    writes, under a selector that {!node_selector_conflict} ties with [a],
+    declarations [crosses] holds of: its own run for a rule with no nested
+    content, and each rule its body holds at any depth, under its composed
+    selector, for one with some. *)
 
 val precedes : t -> node_id -> node_id -> bool
 (** [precedes t i j] is [true] when the graph requires node [i] to be emitted
@@ -207,49 +304,21 @@ val canonical_order_by : t -> (node_id -> int) -> node_id array
     comparison passes a content-derived rank so two source orderings of
     cascade-independent rules converge to one form. *)
 
-type run
-(** The order of one run of rules a canonical projection settles, kept while
-    some of its rules fold together. Unlike {!t}, a consumed node leaves no
-    relay behind: once it is gone, two rules only it ordered are free. *)
-
-val run :
-  ?parent:Selector.t ->
-  ?exclusive:(node_id -> node_id -> bool) ->
-  folds:(node_id -> bool) ->
-  Stylesheet.rule list ->
-  run
-(** [run ?parent ?exclusive ~folds rules] is the run of [rules], node [i] the
-    [i]th rule standing at position [i]. Until a fold, {!run_order} orders it as
-    {!canonical_order_by} orders
-    [of_rules ?parent ~pin_shared_branches:false ?exclusive rules]. [folds i]
-    says whether node [i] may later be consumed by {!fold}; the fewer that may,
-    the fewer edges the run holds. [exclusive i j] asserts that nodes [i] and
-    [j] never apply to one element together, so no cascade conflict is recorded
-    between them, and it speaks for the nodes {!fold} produces too. *)
-
-val run_order : run -> (node_id -> int) -> node_id array
-(** [run_order r rank] is the live nodes of [r] in a linear extension of their
-    conflicts, choosing among the nodes free to come next the one with the
-    smallest [rank]. That order becomes where the nodes stand. [rank] must be
-    injective on the live nodes. *)
-
-val run_conflict : run -> node_id -> node_id -> bool
-(** [run_conflict r i j] is {!rules_conflict} between the rules of nodes [i] and
-    [j], whatever [exclusive] says. *)
-
-val fold : run -> node_id list -> Stylesheet.rule -> at:node_id -> node_id
-(** [fold r consumed rule ~at] replaces the live nodes [consumed], each one
-    [run]'s [folds] allowed or one an earlier fold produced, by a new node for
-    [rule] standing where [at] stood, and is that node. [at] is one of
-    [consumed]. *)
-
 val canonical_order : t -> node_id array
 (** [canonical_order t] is the live node indices in a canonical linear extension
     of the dependency DAG (a path from the earlier to the later node of every
     conflicting pair). Among the nodes currently free to come next, Kahn's
-    algorithm takes the smallest first-appearance source key, then the node id.
-    Every constrained pair keeps its required order; unconstrained pairs are
-    projected deterministically without inventing a lexicographic CSS order. *)
+    algorithm takes the smallest {!node_origin}, then the node id, consumed
+    nodes taking their turn as relays. Every constrained pair keeps its required
+    order; unconstrained pairs are projected deterministically without inventing
+    a lexicographic CSS order.
+
+    The lineage keeps that order as rewrites land rather than running Kahn again
+    ({!compare_position} reads it), so this walks it in time linear in the
+    nodes. A node a rewrite produces prints after its last predecessor, before
+    the first node free then whose origin is later than its own; the nodes it
+    must precede that printed before that predecessor wait for it and come after
+    it, interleaved by origin with the nodes that follow. *)
 
 val rewrite :
   t ->
@@ -257,6 +326,12 @@ val rewrite :
   produce:Stylesheet.rule list ->
   (t, rewrite_error) result
 (** [rewrite] is {!val-try_rewrite} with rejection diagnostics. *)
+
+val rebuild : t -> t
+(** [rebuild t] is the graph {!of_rules} builds from the live rules of [t] in
+    the order [t] prints them, with the context [t] was built in and an
+    [exclusive] that still speaks for the rules it spoke for. It holds no rule a
+    rewrite consumed, and its {!generation} follows [t]'s. *)
 
 val try_rewrite :
   t -> consume:node_id list -> produce:Stylesheet.rule list -> t option

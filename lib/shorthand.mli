@@ -53,6 +53,21 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     for indexing potential declaration overlaps. {!val-broad_overlap_key} means
     [d] is broad and must be checked against every non-exempt property. *)
 
+val declaration_slot_keys : Declaration.declaration -> overlap_key list
+(** [declaration_slot_keys d] is the keys of the slots [d] writes in every
+    engine that reads it, a subset of {!val-declaration_overlap_keys} sorted the
+    same way: the slots its property names, without the physical sides a
+    flow-relative slot may resolve to. It is empty for [all], a custom property,
+    a property the model cannot place and a vendor-prefixed property, which
+    write slots of their own only in some engines or none the model names. *)
+
+val footprint_family : Declaration.declaration -> int option
+(** [footprint_family d] is the rank of the first shorthand family whose
+    footprint holds every slot [d] writes. Declarations of one rank are the
+    shorthand and longhands that family composes from: [top] and [inset] share
+    one, [color] has none. This is [None] when [d] is broad, a custom property,
+    or a property no family holds. *)
+
 val declarations_overlap_with_keys :
   Declaration.declaration ->
   overlap_key list ->
@@ -60,7 +75,9 @@ val declarations_overlap_with_keys :
   overlap_key list ->
   bool
 (** [declarations_overlap_with_keys a a_keys b b_keys] is
-    {!val-declarations_overlap} using precomputed declaration footprints. *)
+    {!val-declarations_overlap} using precomputed declaration footprints:
+    [a_keys] is [declaration_overlap_keys a] and [b_keys] is
+    [declaration_overlap_keys b]. *)
 
 val declarations_conflict_with_keys :
   Declaration.declaration ->
@@ -70,9 +87,11 @@ val declarations_conflict_with_keys :
   bool
 (** [declarations_conflict_with_keys a a_keys b b_keys] is [true] when source
     order decides between [a] and [b] on an element both apply to: they are of
-    one importance (CSS Cascade 5 sec. 6.1 ranks importance first), they are not
-    the same declaration, and they overlap by
-    {!val-declarations_overlap_with_keys}. *)
+    one importance (CSS Cascade 5 sec. 6.1 ranks importance first), they overlap
+    by {!val-declarations_overlap_with_keys}, and they write some shared
+    longhand differently. [border:1px solid red] and [border-width:1px] do not
+    conflict: the shorthand sets every [border-*-width] the longhand writes to
+    the same [1px]. *)
 
 val declaration_is_broad : Declaration.declaration -> bool
 (** [declaration_is_broad d] is [true] when [d] may write a cascade slot any
@@ -102,6 +121,17 @@ val drop_redundant_decoration_color_aliases :
 (** Drop an identical WebKit [text-decoration-color] compatibility alias when
     its unprefixed twin is present. Differing values or importance, and a
     prefixed-only declaration, are kept. *)
+
+val as_aliased_property : Declaration.declaration -> Declaration.declaration
+(** [as_aliased_property d] is [d] written under the property it is a legacy
+    name alias of (WHATWG Compatibility Standard sec. 3.4.1), with its value
+    read under that property's grammar and its importance kept, or [d] itself
+    when its name is no such alias or the property refuses its value. *)
+
+val read_by_no_target : Declaration.declaration -> bool
+(** [read_by_no_target decl] is whether no browser a {!Support.targets} names
+    reads [decl]'s property: one with the [-ms-], [-o-] or [-khtml-] prefix,
+    [font-smooth] or [font-smoothing]. *)
 
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)

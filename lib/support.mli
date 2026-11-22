@@ -3,7 +3,7 @@
     Cascade reads against the specifications, so it accepts grammar a browser
     has not shipped. Whether that is true of a given production is a fact about
     browsers, and this answers it from the web-features dataset
-    {!Baseline.support} carries rather than from a list written by hand. A
+    {!Baseline.val-support} carries rather than from a list written by hand. A
     browser that catches up moves the answer at the next
     [scripts/gen_baseline.sh] run.
 
@@ -45,6 +45,12 @@ val engine_implements : engine -> version -> string -> bool option
     about one engine is what a harness comparing cascade against a single
     browser needs; {!implemented} answers for a whole target set. *)
 
+val engine_shipped : engine -> string -> version option option
+(** [engine_shipped engine key] is [Some (Some v)] when [engine] shipped [key]
+    in [v], [Some None] when the dataset records [engine] without it, and [None]
+    when the dataset does not model [key]. It reads the same sources as
+    {!engine_implements}. *)
+
 type measurement = {
   key : string;  (** the BCD-style key the fact would carry *)
   support : Baseline.support;  (** what each engine was measured to do *)
@@ -61,8 +67,8 @@ type measurement = {
     library knows. *)
 
 val self_measured : string -> bool
-(** [self_measured key] is whether [key] is answered by {!measured} rather than
-    by the generated table. A caller reporting on a gap should say which,
+(** [self_measured key] is whether [key] is answered by {!val-measured} rather
+    than by the generated table. A caller reporting on a gap should say which,
     because a fact this project measured can drift from the browser and a
     generated one cannot. *)
 
@@ -87,3 +93,23 @@ val unimplemented_by : targets -> string -> bool
 (** [unimplemented_by targets key] is [true] only when the dataset says some
     engine in [targets] lacks [key]. An unknown key is [false], so this reads as
     "known to be missing" rather than "not known to be present". *)
+
+val compare_version : version -> version -> int
+(** [compare_version a b] orders versions by major, then minor. *)
+
+val parse_release : engine -> string -> version option option
+(** [parse_release engine key] is [Some (Some v)] when [engine] parses [key]
+    from release [v] on, [Some None] when the dataset records no release of
+    [engine] that does, and [None] when the generated table has no [key]. It
+    reads the table as {!engine_implements} does, with two differences: iOS
+    Safari parses with the WebKit of the Safari of its version, since BCD
+    records an iOS gap beside a shipped Safari only for productions with no
+    effect on a touch screen, such as the [cursor] keywords; and the
+    {!val-measured} supplement is not read, since it names grammar arms rather
+    than the words of a value. *)
+
+val floors : targets -> (engine * version) list
+(** [floors targets] is each engine of [targets] with its version. *)
+
+val equal_engine : engine -> engine -> bool
+(** [equal_engine a b] is whether [a] and [b] are one engine. *)

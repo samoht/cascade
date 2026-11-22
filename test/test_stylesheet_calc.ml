@@ -597,12 +597,12 @@ let v4107_typed_math_fn_units () =
       ( "calc(30deg + atan2(1, 1)) -> 75deg",
         ".x { transform: rotate(calc(30deg + atan2(1, 1))) }",
         ".x{transform:rotate(75deg)}" );
-      (* [opacity] folds its [calc()] through the untyped numeric reduction,
-         which has no unit to rebuild, so the call stays rather than becoming
-         the [30] that a browser clamps to full opacity. *)
-      ( "calc(abs(-30%)) on an opacity keeps the call",
+      (* [opacity] reads a percentage as the number it is a hundredth of, so a
+         call answering one folds to that number, not to the [30] a browser
+         clamps to full opacity. *)
+      ( "calc(abs(-30%)) on an opacity folds to its number",
         ".x { opacity: calc(abs(-30%)) }",
-        ".x{opacity:calc(abs(-30%))}" );
+        ".x{opacity:.3}" );
     ]
 
 let v4107_numeric_reduction () =
@@ -694,9 +694,14 @@ let v4107_math_product_reduction () =
    is [5.999994px] - so the reduction happens at the fold that produces the
    irrational, never at print time. *)
 let authored_precision_preserved () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let normalize css =
     match Css.of_string ~strict:false css with
-    | Ok parsed -> minify parsed.stylesheet
+    | Ok parsed ->
+        Css.optimize ~scope:`Stylesheet parsed.stylesheet
+        |> Css.to_string ~minify:true
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   (* An [@property --n] registration, and the minified form it prints as, so the
@@ -874,6 +879,73 @@ let v4107_division_zero () =
      whitespace per shortest-wins)"
     ".x{width:calc(1px/0)}"
     (normalize ".x { width: calc(1px / 0) }")
+
+(* CSS Values 4 sec. 10.9 (Type Checking): a math function's type is the
+   combination of its operands' types, and a [var()] operand has no type until
+   it substitutes. [100%] and [1] are one opacity alone, but beside a [var()]
+   the swap retypes the sum: with [--x:30%], [calc(100% - var(--x))] is [.7] and
+   [calc(1 - var(--x))] is invalid at computed-value time (Chromium 153: opacity
+   [1]). A registered [<percentage>] does not change that. A [var()] fallback
+   keeps its authored spelling as well. *)
+let v4109_percentage_beside_var () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let same css = Alcotest.(check string) css css (normalize css) in
+  same ".x{opacity:calc(100% - var(--x))}";
+  same
+    "@property \
+     --x{syntax:\"<percentage>\";inherits:false;initial-value:0%}.x{opacity:calc(100% \
+     - var(--x))}";
+  same ".x{opacity:calc(var(--x)*50%)}";
+  same ".x{opacity:calc(var(--x,50%) - 10%)}";
+  same ".x{fill-opacity:calc(100% - var(--x))}";
+  same ".x{shape-image-threshold:calc(50% - var(--x))}";
+  same ".x{opacity:var(--o,50%)}";
+  same ".x{shape-image-threshold:var(--o,50%)}";
+  (* Without a [var()] the whole operand's type is known, so the shorter number
+     spelling still wins. *)
+  Alcotest.(check string)
+    "a constant calc() folds" ".x{opacity:.8}"
+    (normalize ".x{opacity:calc(100% - 20%)}");
+  Alcotest.(check string)
+    "a bare percentage" ".x{opacity:.5}"
+    (normalize ".x{opacity:50%}");
+  Alcotest.(check string)
+    "a bare threshold percentage" ".x{shape-image-threshold:.5}"
+    (normalize ".x{shape-image-threshold:50%}")
+
+(* CSS Values 4 sec. 10.10.1 drops an operand of [x * 0] only where the result's
+   type and value do not depend on it, and an unregistered [var()] substitutes
+   tokens of no known type or count (CSS Variables 1 sec. 3). Chromium 153: with
+   [--u] undefined, [calc(var(--u) * 0px)] makes [width] invalid at
+   computed-value time (auto, 784px) where [0] is 0px; under [--x:1px + 2px],
+   [calc(0 * var(--x))] is [0 * 1px + 2px], 2px; and [--y:calc(var(--x) * 0)]
+   with [--x] undefined leaves [--y] invalid, so [width:var(--y,10px)] takes its
+   fallback. *)
+let v41011_zero_product_over_var () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let same css = Alcotest.(check string) css css (normalize css) in
+  same ".x{width:calc(var(--u)*0px)}";
+  same ".x{width:calc(0px*var(--u))}";
+  same ".x{--x:1px + 2px;width:calc(0*var(--x))}";
+  same ".x{width:calc(1px + var(--u)*0)}";
+  same ".x{opacity:calc(var(--u)*0)}";
+  same ".x{--y:calc(var(--x)*0)}";
+  same ".x{rotate:calc(var(--u)*0deg)}";
+  (* An operand with no [var()] has the type its literals give it. *)
+  Alcotest.(check string)
+    "a constant zero product folds" ".x{width:0}"
+    (normalize ".x{width:calc(2px * 0)}");
+  Alcotest.(check string)
+    "x * 1 still folds over a var()" ".x{width:calc(var(--u))}"
+    (normalize ".x{width:calc(var(--u) * 1)}")
 
 let v410_invalid_calc_extra () =
   Alcotest.(check bool)
@@ -1065,6 +1137,12 @@ let suite =
       ( "spec values 4 10.7 division by zero preserved",
         `Quick,
         v4107_division_zero );
+      ( "spec values 4 10.9 percentage beside a var() keeps its type",
+        `Quick,
+        v4109_percentage_beside_var );
+      ( "spec values 4 10.10.1 zero product over a var() is kept",
+        `Quick,
+        v41011_zero_product_over_var );
       ( "spec values 4 10 invalid calc extra rejected (negative)",
         `Quick,
         v410_invalid_calc_extra );

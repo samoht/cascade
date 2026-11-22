@@ -297,15 +297,18 @@ let rec pp_aux ~verbatim ~in_and ctx = function
   | And (a, b) -> pp_and ~verbatim ctx a b
   | Or (a, b) -> pp_or ~verbatim ctx a b
 
+(* CSS Conditional 3 sec. 2: [not] takes a [<supports-in-parens>], which an
+   [and], an [or] and another [not] are not, so each takes parentheses. *)
 and pp_not ~verbatim ~in_and ctx cond =
   if in_and then Pp.char ctx '(';
   Pp.string ctx "not ";
   (match cond with
-  | And _ | Or _ ->
+  | And _ | Or _ | Not _ ->
       Pp.char ctx '(';
-      pp_aux ~verbatim ~in_and ctx cond;
+      pp_aux ~verbatim ~in_and:false ctx cond;
       Pp.char ctx ')'
-  | _ -> pp_aux ~verbatim ~in_and ctx cond);
+  | Property _ | Function _ | General_enclosed _ ->
+      pp_aux ~verbatim ~in_and ctx cond);
   if in_and then Pp.char ctx ')'
 
 and pp_and_branch ~verbatim ctx = function
@@ -329,7 +332,7 @@ and pp_or_branch ~verbatim ~is_left ctx = function
       Pp.char ctx '(';
       pp_or_and_left ~verbatim ~is_left ctx a;
       Pp.string ctx " and ";
-      pp_aux ~verbatim ~in_and:true ctx b;
+      pp_and_branch ~verbatim ctx b;
       Pp.char ctx ')'
   | Not _ as branch -> pp_aux ~verbatim ~in_and:true ctx branch
   | branch -> pp_aux ~verbatim ~in_and:false ctx branch
@@ -339,7 +342,7 @@ and pp_or_and_left ~verbatim ~is_left ctx = function
       Pp.char ctx '(';
       pp_aux ~verbatim ~in_and:true ctx branch;
       Pp.char ctx ')'
-  | branch -> pp_aux ~verbatim ~in_and:true ctx branch
+  | branch -> pp_and_branch ~verbatim ctx branch
 
 and pp_or ~verbatim ctx a b =
   pp_or_branch ~verbatim ~is_left:true ctx a;
@@ -668,11 +671,18 @@ let three_or a b =
   | Some false, Some false -> Some false
   | _ -> None
 
-let implemented_by_engine engine version cond =
-  let implements key = Support.engine_implements engine version key in
+(* The browsers a run judges for are each engine from its floor to the newest
+   release the dataset records, and a shipped production stays. A declaration
+   feature holds in all of them when the floor parses the declaration, fails in
+   all of them when no release the dataset records does, and is undecided when a
+   release past the floor first parses it ({!Declaration.first_release}). [not]
+   reverses a leaf, so a feature that fails at the floor and holds from a later
+   release is undecided under [not] too. *)
+let implemented_by_engine engine floor cond =
   (* The feature's declaration is opaque, since the browser is the parser it is
-     meant for; the typed reading is taken here to see the colours it uses, and
-     a value cascade's own grammar refuses answers nothing. *)
+     meant for; the typed reading is taken here to see the productions it uses,
+     and a value cascade's own grammar refuses, or a property the dataset does
+     not name, answers nothing. *)
   let declaration name decl =
     let typed =
       Declaration.parse_declaration name
@@ -681,26 +691,19 @@ let implemented_by_engine engine version cond =
     match typed with
     | None -> None
     | Some decl when Declaration.is_invalid decl -> None
-    | Some decl ->
-        let property =
-          implements (String.concat "" [ "css.properties."; name ])
-        in
-        let unknown key = implements key = None in
-        let colours =
-          if
-            Declaration.value_uses_color
-              (Values.color_uses_feature_where unknown)
-              decl
-          then None
-          else if
-            Declaration.value_uses_color
-              (Values.color_uses_feature_where (fun key ->
-                   implements key = Some false))
-              decl
-          then Some false
-          else Some true
-        in
-        three_and property colours
+    | Some decl -> (
+        match
+          Support.parse_release engine
+            (String.concat ""
+               [ "css.properties."; String.lowercase_ascii name ])
+        with
+        | None -> None
+        | Some _ -> (
+            match Declaration.first_release ~floor engine decl with
+            | None -> Some false
+            | Some release ->
+                if Support.compare_version release floor = 0 then Some true
+                else None))
   in
   let rec go = function
     | Property (Declaration (Property_name { name; _ }, decl)) ->

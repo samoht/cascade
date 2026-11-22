@@ -10,7 +10,7 @@ val property_name : ?repr:string -> string -> property_name
     the spelling the author wrote when it differs from [name], which is how an
     escape survives the round trip; a name cascade generates has none.
 
-    @raise Invalid_argument if [name] does not read as one ident. *)
+    It raises [Invalid_argument] if [name] does not read as one ident. *)
 
 type declaration_feature =
   | Declaration of property_name * Declaration.t
@@ -79,20 +79,18 @@ val property : string -> string -> t
 (** [property name value] parses [name: value] as a structured supports
     declaration feature. [value] keeps the spelling it is given.
 
-    @raise Invalid_argument
-      if [name] is not one ident or [value] is not a [<declaration-value>] (CSS
-      Syntax 3 (ED) sec. 7.2). The feature writes the value between its own
-      parentheses, so an unmatched closing bracket closes them and the tail
-      becomes a second branch of the condition. Use {!of_string} to deal with
-      untrusted input. *)
+    It raises [Invalid_argument] if [name] is not one ident or [value] is not a
+    [<declaration-value>] (CSS Syntax 3 (ED) sec. 7.2). The feature writes the
+    value between its own parentheses, so an unmatched closing bracket closes
+    them and the tail becomes a second branch of the condition. Use {!of_string}
+    to deal with untrusted input. *)
 
 val func : string -> string -> t
 (** [func name args] parses [args] as CSS component values for a supports
     function feature.
 
-    @raise Invalid_argument
-      if [args] does not match the grammar of a function [name] names. Use
-      {!of_string} to deal with untrusted input. *)
+    It raises [Invalid_argument] if [args] does not match the grammar of a
+    function [name] names. Use {!of_string} to deal with untrusted input. *)
 
 val to_string : ?minify:bool -> ?verbatim:bool -> t -> string
 (** [to_string ?minify ?verbatim cond] renders the condition as a CSS
@@ -133,19 +131,26 @@ val equal : t -> t -> bool
 (** [equal a b] tests structural equality. *)
 
 val implemented_by : Support.targets -> t -> bool option
-(** [implemented_by targets cond] is [Some true] when every browser in [targets]
-    satisfies [cond], [Some false] when none of them does, and [None] otherwise:
-    when the targets disagree, or when the web-features dataset cannot say for
-    one of them, which is a property it has no key for, a vendor-prefixed one
-    among them, a value using a construct it does not name, one cascade's reader
-    refuses, or a function or general-enclosed feature. Each engine is answered
-    on its own and combinators follow CSS Conditional 3 sec. 6's three-valued
-    logic. *)
+(** [implemented_by targets cond] answers for the browsers [targets] dates: each
+    engine from its version in [targets] to the newest release the web-features
+    dataset records. It is [Some true] when [cond] holds in every one of them,
+    [Some false] when it fails in every one, and [None] otherwise. A declaration
+    feature holds from the first release that parses every production the
+    declaration uses ({!Declaration.first_release}): its property, a colour
+    construct, a keyword or function of its value. So a feature the floor parses
+    holds throughout, one no recorded release parses fails throughout, and one a
+    later release first parses is [None], under [not] as well. The dataset
+    cannot say for a property it has no key for, a vendor-prefixed one among
+    them, or a value cascade's reader refuses, nor for a function or
+    general-enclosed feature. Each engine is answered on its own and combinators
+    follow CSS Conditional 3 sec. 6's three-valued logic. *)
 
 val never_holds : t -> bool
 (** [never_holds cond] is [true] when [cond] is false however a user agent
     answers its feature tests, reading a parenthesised [<general-enclosed>] term
-    as the constant false CSS Conditional 3 sec. 6.1 makes it: a guard over
+    as the constant false CSS Conditional 3 sec. 6.1 makes it. Such a guard is
+    false in every conforming implementation, so in every release of the dated
+    browser set and in every engine [--enforce-spec] answers for: a guard over
     [(@media(width>=1px): var(--tw))], whose declaration has no property ident,
     selects no user agent, and neither does one conjoined with it. A function
     form stays a feature test, since cascade's own feature grammar may refuse an

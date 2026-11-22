@@ -2,7 +2,7 @@
 
     A recorder is threaded through only the optimizer run that receives it, so
     an optimization started while another is in progress counts its own work.
-    Readers take a {!snapshot}: a value, not a view, so a later run cannot
+    Readers take a {!val-snapshot}: a value, not a view, so a later run cannot
     rewrite what an earlier one reported. *)
 
 type t
@@ -38,8 +38,6 @@ type counters = {
       (** total raw-byte gain estimated by the global factoring preflight *)
   factor_bytes_saved : int;
       (** total committed byte savings reported by global factoring passes *)
-  factor_transfer_reverts : int;
-      (** factoring results discarded because the estimated DEFLATE size grew *)
   nested_merge_probes : int;
       (** declaration blocks the nested-merge safety check looked up *)
 }
@@ -64,9 +62,6 @@ val start_fixpoint : t -> int
 
 val skip_fixpoint : t -> unit
 (** Count one fixpoint the preflight declined to run. *)
-
-val revert_fixpoint : t -> unit
-(** Count one factoring result the transfer gate threw away. *)
 
 val add_preflight_gain : t -> int -> unit
 (** Add the preflight's raw-byte gain estimate for one segment. *)

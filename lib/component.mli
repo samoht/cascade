@@ -27,7 +27,7 @@ type t =
           opening token, its contents and the closer matching it; a closer
           matching no opener in the run stays a token, as CSS Syntax 3 (ED) sec.
           5.5.9 keeps it in a block. A [Flat] is only ever the whole of a
-          {!block}'s value or a {!func}'s arguments, and prints back as its
+          {!type-block}'s value or a {!func}'s arguments, and prints back as its
           tokens. *)
 
 and block = {
@@ -119,7 +119,7 @@ val shallow : t list -> t list
     of a function opened past {!Parser.max_nesting_depth}: then it is the run's
     tokens, each a {!Preserved}, so a reader of the first few arguments sees the
     tokens it would see in a tree. A block the run opens is its opening token
-    there, not a {!Block}. *)
+    there, not a {!constructor-Block}. *)
 
 val has_var : t list -> bool
 (** [has_var cvs] is [true] when a [var()] function appears anywhere in [cvs],

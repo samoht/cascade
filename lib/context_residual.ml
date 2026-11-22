@@ -332,7 +332,11 @@ module Calc_residual = struct
     | Values.Rem_n (a, b) ->
         math_arg_contains_var a || math_arg_contains_var b
     | Values.Log (a, None) -> math_arg_contains_var a
-    | Values.Hypot args -> List.exists math_arg_contains_var args
+    | Values.Hypot args | Values.Min_n args | Values.Max_n args ->
+        List.exists math_arg_contains_var args
+    | Values.Clamp_n (a, b, c) ->
+        math_arg_contains_var a || math_arg_contains_var b
+        || math_arg_contains_var c
 
   let rec contains_var : type a. a Values.calc -> bool = function
     | Values.Var _ -> true
@@ -375,11 +379,13 @@ module Calc_residual = struct
 
   (* Value-independent multiplicative identities ([x * 0], [x * 1], ...) live in
      [Values.calc_identity], shared with the AST evaluators so the paths never
-     drift. They hold for any operand, so they apply to an unresolved [var()]
-     too; [ops.is_zero] collapses a literal zero ([0px], not just [0]). Additive
-     terms fold only through the preceding same-type value combination. *)
+     drift. [x * 1] applies to an unresolved [var()] too; a zero product does
+     not, since a runtime [var()] can substitute any tokens. [ops.is_zero]
+     collapses a literal zero ([0px], not just [0]). Additive terms fold only
+     through the preceding same-type value combination. *)
   let fold_identity_expr ops left op right =
-    Values.calc_identity ~zero:ops.zero ~is_zero:ops.is_zero left op right
+    Values.calc_identity ~ctx:Values.default_calc_ctx ~zero:ops.zero
+      ~is_zero:ops.is_zero left op right
 
   let fold_calc_expr ops left op right =
     match fold_num_expr left op right with
@@ -392,10 +398,14 @@ module Calc_residual = struct
             | Some folded -> folded
             | None -> Values.Expr (left, op, right)))
 
+  (* A [var()] left here is unresolved, and it substitutes tokens (CSS Variables
+     1 sec. 3): the [calc()] or the parentheses around it are what make [1px +
+     2px] one term, so they stay. The optimizer drops them where a registration
+     makes the var single-valued. *)
   let fold_calc_wrapper wrap reduced =
     let open Values in
     match reduced with
-    | (Val _ | Num _ | Math_const _ | Var _) as leaf -> leaf
+    | (Val _ | Num _ | Math_const _) as leaf -> leaf
     | reduced -> wrap reduced
 
   let rec fold_calc : type a. a ops -> a Values.calc -> a Values.calc =
@@ -441,7 +451,6 @@ module Calc_residual = struct
         match ops.of_unitless_number n with
         | Some value -> value
         | None -> ops.of_calc (Values.Num n))
-    | Values.Var var -> ops.of_var var
     | calc -> ops.of_calc calc
 
   let simplify_calc_value ops simplify simplify_calc ~authored ~visited calc =

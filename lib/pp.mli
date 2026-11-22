@@ -34,10 +34,6 @@ type ctx = {
   in_function : bool;
       (** Whether inside a CSS function (var fallback, color-mix). Affects
           keyword casing: [currentColor] becomes [currentcolor]. *)
-  in_calc : bool;
-      (** Inside a [calc()]: suppress canonicalisations that cross a typed leaf
-          boundary ([calc] is type-aware so [<percentage>] and [<number>] are
-          not interchangeable). *)
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -139,9 +135,6 @@ val nop : 'a t
 val string : string t
 (** [string] writes a string value to the buffer. *)
 
-val quoted : string t
-(** [quoted] writes a double-quoted string value to the buffer. *)
-
 val char : char t
 (** [char] writes a single character to the buffer. *)
 
@@ -152,7 +145,9 @@ val last_char : ctx -> char option
 
 val quoted_string : ?quote:char -> string t
 (** [quoted_string ?quote] writes a [quote]-delimited string (default ['"'])
-    with proper escaping of the delimiter quote and backslashes. *)
+    that reads back as the one given: the delimiter and backslashes are
+    backslash-escaped and control characters hex-escaped (CSSOM 1 sec. 2.1).
+    Every printer of a [<string>] goes through it. *)
 
 (** {2 Layout Control}
 
@@ -252,6 +247,12 @@ val string_of_float :
     as [3.40282e38] or [-3.40282e38], the largest single-precision float, and
     NaN as [NaN], the spelling [float_of_string] reads back; {!nan_value} is its
     CSS spelling. *)
+
+val printed : float -> float
+(** [printed f] is the float the text {!float} writes for [f] reads back as: [f]
+    at the printer's eight decimal places. A value the optimizer computes takes
+    it, so that the node it builds is the node its print reads back as. A NaN or
+    an infinity is itself. *)
 
 val nan_value : ctx -> string -> unit
 (** [nan_value ctx suffix] writes the CSS spelling of a NaN-valued number:
@@ -362,7 +363,15 @@ val call_3 : string -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 (** [call_3 name a b c] formats a 3-arg function call: [name(a, b, c)]. *)
 
 val url : string t
-(** [url] formats a CSS url with quotes: url("s"). *)
+(** [url] writes the url [s] as [url(s)], with [s] in the form {!quoted_string}
+    writes when the bare body cannot hold it (a space, a quote, a parenthesis, a
+    backslash or a control character). Use it for a value whose reader gives
+    both spellings one node. *)
+
+val url_token : string t
+(** [url_token] writes the url [s] as the url token [url(s)], escaping what the
+    token cannot hold as written (CSS Syntax 3 (ED) sec. 4.3.6). Use it for a
+    value whose node records that the url was not quoted. *)
 
 val rename_custom_property : ctx -> string -> string
 (** [rename_custom_property ctx name] is [name] under [ctx]'s rename, for the

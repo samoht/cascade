@@ -41,7 +41,8 @@ let test_finalize_composes_and_canonicalizes_selector () =
 
 let test_drop_shadowed_declarations_keeps_live_properties () =
   let optimized =
-    Rule.drop_shadowed (rules ".a{color:red;width:1px}.a{color:blue}")
+    Rule.drop_shadowed ~floors:Support.evergreen
+      (rules ".a{color:red;width:1px}.a{color:blue}")
   in
   Alcotest.(check (list string))
     "only fully shadowed declaration is removed"
@@ -50,7 +51,8 @@ let test_drop_shadowed_declarations_keeps_live_properties () =
 
 let test_drop_shadowed_selector_list_requires_all_branches () =
   let optimized =
-    Rule.drop_shadowed (rules ".a,.b{color:red}.a{color:blue}.b{color:green}")
+    Rule.drop_shadowed ~floors:Support.evergreen
+      (rules ".a,.b{color:red}.a{color:blue}.b{color:green}")
   in
   Alcotest.(check (list string))
     "list declaration drops when every branch is shadowed"
@@ -72,8 +74,12 @@ let disjoint_property_run n =
 let test_drop_shadowed_disjoint_properties_is_subquadratic () =
   let small = disjoint_property_run 2_000 in
   let large = disjoint_property_run 4_000 in
-  let small_words = measure (fun () -> Rule.drop_shadowed small) in
-  let large_words = measure (fun () -> Rule.drop_shadowed large) in
+  let small_words =
+    measure (fun () -> Rule.drop_shadowed ~floors:Support.evergreen small)
+  in
+  let large_words =
+    measure (fun () -> Rule.drop_shadowed ~floors:Support.evergreen large)
+  in
   let ratio = large_words /. small_words in
   Alcotest.(check bool)
     (Fmt.str "alloc %.0f -> %.0f (%.2fx for 2x N)" small_words large_words ratio)
@@ -187,9 +193,9 @@ let test_normalize_deduplicates_once () =
   in
   let twice ctx ~held run =
     List.map (Rule.single ~ctx) run
-    |> Rule.drop_shadowed
+    |> Rule.drop_shadowed ~floors:Support.evergreen
     |> List.map (Rule.finalize ~held ~canonicalize_selector:false ~ctx)
-    |> Rule.drop_shadowed
+    |> Rule.drop_shadowed ~floors:Support.evergreen
   in
   let runs =
     [

@@ -1156,6 +1156,12 @@ let spec_keyframes_selector_matrix () =
    declaration block (CSS Animations 1 sec. 3), so the same declaration
    normalises the same way inside one. *)
 let spec_keyframes_shadow_color_var () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
+  let minify s =
+    s |> Css.optimize ~scope:`Stylesheet |> Css.to_string ~minify:true
+  in
   let sheet css =
     match Css.of_string ~strict:false css with
     | Ok { Css.stylesheet; _ } -> stylesheet
@@ -1187,7 +1193,7 @@ let spec_keyframes_shadow_color_var () =
      too (docs/invariants.md, "pp is a serializer"). *)
   let pretty =
     Css.to_string
-      (Css.optimize
+      (Css.optimize ~scope:`Stylesheet
          (sheet (registration ^ ".a{--ring:red;box-shadow:0 0 var(--ring)}")))
   in
   Alcotest.(check bool)

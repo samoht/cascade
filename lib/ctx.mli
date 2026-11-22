@@ -24,12 +24,14 @@ val of_scope :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?targets:Support.targets ->
   ?judge:Support.targets ->
   ?stats:Stats.t ->
   scope option ->
   t
-(** Build a context from an optional scope. [judge] names the browsers the run
-    judges for (default none); [enforce_spec] drops it. *)
+(** Build a context from an optional scope. [targets] names the floors the
+    minifier serves (default {!Support.evergreen}); [judge] names the browsers
+    the run judges for (default none), and [enforce_spec] drops it. *)
 
 val v :
   ?lossless:bool ->
@@ -39,8 +41,14 @@ val v :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?targets:Support.targets ->
   ?judge:Support.targets ->
   ?registered:(string -> bool) ->
+  ?resets_held:
+    (rule:Declaration.declaration list ->
+    Declaration.declaration list ->
+    Declaration.declaration ->
+    bool) ->
   ?stats:Stats.t ->
   scope ->
   t
@@ -53,6 +61,19 @@ val scope : t -> scope
 
 val registered : t -> string -> bool
 (** Whether a custom property name is registered. *)
+
+val resets_held :
+  t ->
+  rule:Declaration.declaration list ->
+  Declaration.declaration list ->
+  Declaration.declaration ->
+  bool
+(** [resets_held t ~rule answered shorthand] is whether [shorthand], composed in
+    [rule], sets to its initial value a longhand that no declaration of
+    [answered] writes (its run, and the declarations of [rule] that win over it)
+    and that a declaration outside [rule], or the user-agent sheet, may hold at
+    another value. The composer answers for [rule]'s own declarations. It is
+    [true] when the context was built without that knowledge. *)
 
 val lossless : t -> bool
 (** Whether lossless value optimization is enabled. *)
@@ -93,11 +114,14 @@ val closed_world : t -> bool
     you control. *)
 
 val objective : t -> objective
-(** Size metric optimizations are judged by. Under [`Transfer] (the default) the
-    global factoring result is kept only when it does not grow the estimated
-    DEFLATE-compressed output; [`Raw] keeps every raw-byte win, the right
-    objective when the output ships uncompressed (inline [style], email) or for
-    structural comparisons against raw-size oracles. *)
+(** Size metric optimizations are judged by. Under [`Transfer] (the default)
+    factoring minimises output bytes, but merges rules with one body only where
+    they print within 128 rules of each other, since a compressor encodes a
+    repeated declaration in a few bytes wherever it sits but a selector moved
+    away from its neighbours stops compressing against them; [`Raw] merges them
+    at any distance, the right objective when the output ships uncompressed
+    (inline [style], email) or for structural comparisons against raw-size
+    oracles. *)
 
 val enforce_spec : t -> bool
 (** Whether the evergreen-browser target is dropped. Off by default: a vendor-
@@ -109,6 +133,14 @@ val judge : t -> Support.targets option
     decided and a fallback they all parse past is dead. [None], the default and
     what {!enforce_spec} forces, keeps every guard and fallback for the engine
     that renders the sheet to answer. *)
+
+val floors : t -> Support.targets
+(** The floors a fallback is judged against: {!judge} when the run judges for
+    browsers, the targets the minifier serves otherwise. Each stands for its
+    version and every later release, so an earlier declaration is dead only when
+    every browser at or above them that reads it reads the later one
+    ({!Declaration.fallback_for}). They hold under {!val-enforce_spec} too,
+    since they only ever keep a declaration. *)
 
 val stats : t -> Stats.t
 (** Profiling recorder for the run this context belongs to. *)

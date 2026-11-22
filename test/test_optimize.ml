@@ -118,24 +118,6 @@ let test_deduplicate_declarations_physical_identity () =
   check bool "re-deduplicating a fixed point preserves physical identity" true
     (again == canon)
 
-(* [duplicate_buggy_properties] and [apply_property_duplication] are kept for
-   one release as the identities they always were: no declaration is duplicated,
-   the WebKit fallbacks being [add_compatibility_prefixes]'s. *)
-let test_property_duplication_aliases () =
-  let decls =
-    [
-      v Webkit_text_decoration Inherit;
-      v Text_decoration_color (hex_color "0000ff");
-    ]
-  in
-  check bool "duplicate_buggy_properties returns its input" true
-    ((duplicate_buggy_properties [@alert "-deprecated"]) decls == decls);
-  let sheet = Css.stylesheet ".a{-webkit-text-decoration:inherit;color:red}" in
-  check string "apply_property_duplication returns its input"
-    (Css.to_string ~minify:true sheet)
-    (Css.to_string ~minify:true
-       ((apply_property_duplication [@alert "-deprecated"]) sheet))
-
 (** Test rule optimization *)
 let single_rule () =
   let selector = Css.Selector.class_ "test" in
@@ -932,6 +914,12 @@ let test_merge_consecutive_starting_style () =
    block, or the same registered value canonicalises one way in a rule and
    another inside one of them. *)
 let test_promote_registered_reaches_at_rule_declarations () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
+  let minify s =
+    s |> Css.optimize ~scope:`Stylesheet |> Css.to_string ~minify:true
+  in
   let registration =
     "@property --c{syntax:\"<color>\";inherits:false;initial-value:red}"
   in
@@ -956,6 +944,12 @@ let test_promote_registered_reaches_at_rule_declarations () =
    computed-value time (ED sec. 2.4) and computes to the registration's initial
    value, which unquoting it would replace with the name itself. *)
 let test_promote_registered_keeps_unmatched_string_quoted () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
+  let minify s =
+    s |> Css.optimize ~scope:`Stylesheet |> Css.to_string ~minify:true
+  in
   let check name registration body expected =
     Alcotest.(check string)
       name (registration ^ expected)
@@ -1149,7 +1143,6 @@ let suite =
       ( "deduplicate declarations preserves physical identity",
         `Quick,
         test_deduplicate_declarations_physical_identity );
-      ("property duplication aliases", `Quick, test_property_duplication_aliases);
       ("optimize single rule", `Quick, single_rule);
       ("optimize stylesheet", `Quick, optimize_all);
       ("optimize media queries", `Quick, media_queries);

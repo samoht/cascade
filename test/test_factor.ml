@@ -59,7 +59,7 @@ let test_skipped_segment_builds_no_graph () =
   in
   let ctx = Ctx.v `Stylesheet in
   let finalize = Rule.finalize ~ctx in
-  let summary = measure (fun () -> Preflight.summarize input) in
+  let summary = measure (fun () -> Preflight.summarize Size.default input) in
   let run = measure (fun () -> Factor.run ~ctx ~finalize input) in
   if run > 2. *. summary then
     Alcotest.failf "skipping allocated %.0f words, the summary alone %.0f" run
@@ -586,9 +586,109 @@ let test_remaining_printer_fold_spellings_factor () =
        ".a{color:hsl(.5turn 50% 50%/var(--a))}.b{color:hsl(180 50% \
         50%/var(--a))}")
 
+let optimize_with ?objective css =
+  match Css.of_string css with
+  | Ok { stylesheet; _ } ->
+      Css.optimize ?objective stylesheet |> Css.to_string ~minify:true
+  | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+
+let contains ~sub s =
+  let n = String.length sub in
+  let rec at i =
+    i + n <= String.length s && (String.sub s i n = sub || at (i + 1))
+  in
+  at 0
+
+let occurrences ~sub s =
+  let n = String.length sub in
+  let rec count i acc =
+    if i + n > String.length s then acc
+    else if String.sub s i n = sub then count (i + n) (acc + 1)
+    else count (i + 1) acc
+  in
+  count 0 0
+
+let check_contains what ~sub s =
+  if not (contains ~sub s) then Alcotest.failf "%s: %s not in %s" what sub s
+
+(* The transfer objective merges a run of identical bodies only within 128
+   printed rules, and the raw objective at any distance; under both, factoring
+   reads the members of a bucket in the order they print, wherever that is, so
+   it takes [.a] and [.b], 262 rules apart, out of their places. The padding
+   rules write a property nothing else writes, so no rule stands in the way of
+   either merge. *)
+let test_transfer_factors_at_any_distance () =
+  let padding first count =
+    String.concat ""
+      (List.init count (fun i -> Fmt.str ".pad%d{order:%d}" (first + i) i))
+  in
+  let css =
+    String.concat ""
+      [
+        ".a{color:red;margin:0}";
+        ".c{float:right;padding:0}";
+        padding 0 60;
+        ".d{float:right;padding:0}";
+        padding 60 200;
+        ".b{color:red;margin:0}";
+      ]
+  in
+  let transfer = optimize_with css in
+  check_contains "transfer factors far rules" ~sub:".a,.b{color:red;margin:0}"
+    transfer;
+  check_contains "transfer merges near rules"
+    ~sub:".c,.d{float:right;padding:0}" transfer;
+  let raw = optimize_with ~objective:`Raw css in
+  check_contains "raw merges far rules" ~sub:".a,.b{color:red;margin:0}" raw;
+  check_contains "raw merges near rules" ~sub:".c,.d{float:right;padding:0}" raw;
+  Alcotest.(check string)
+    "transfer is a fixed point" transfer (optimize_with transfer)
+
+(* Twenty sprite rules share three declarations. Factoring them out shrinks the
+   raw output by a third, and the transfer objective keeps the factoring;
+   nothing judges it again on an estimate of the compressed size. *)
+let test_transfer_keeps_near_factoring () =
+  let css =
+    String.concat ""
+      (List.init 20 (fun i ->
+           Fmt.str
+             ".icon-%d{background-position:-%dpx \
+              0;display:inline-block;width:16px;height:16px}"
+             i (i * 16)))
+  in
+  let transfer = optimize_with css in
+  Alcotest.(check int)
+    "shared declarations written once" 1
+    (occurrences ~sub:"display:inline-block" transfer);
+  Alcotest.(check string)
+    "transfer is a fixed point" transfer (optimize_with transfer)
+
+(* The schedule reads the rules a run prints, not how many there are: four rules
+   factor the same alone as among 140 rules nothing shares a declaration with,
+   once those are taken back out. The candidates a commit brings about wait for
+   the queue to drain at every size. *)
+let test_schedule_ignores_run_size () =
+  let css =
+    ".extra-ref-cite{margin:0}.extra-ref-cite{font-size:90%}.bookmarks{font-size:90%;margin:0}#dlpage \
+     .list-subjects{font-size:90%}"
+  in
+  let padding =
+    String.concat "" (List.init 140 (fun i -> Fmt.str ".zq%d{order:%d}" i i))
+  in
+  let alone = optimize_with css in
+  let among = optimize_with (css ^ padding) in
+  Alcotest.(check string)
+    "the four rules among the padding" (alone ^ padding) among
+
 let suite =
   ( "factor",
     [
+      Alcotest.test_case "transfer factors at any distance" `Quick
+        test_transfer_factors_at_any_distance;
+      Alcotest.test_case "transfer keeps a near factoring" `Quick
+        test_transfer_keeps_near_factoring;
+      Alcotest.test_case "the schedule ignores the run's size" `Quick
+        test_schedule_ignores_run_size;
       Alcotest.test_case "run reaches fixpoint with finalizer" `Quick
         test_run_reaches_fixpoint_with_finalizer;
       Alcotest.test_case "factoring output is finalized" `Quick

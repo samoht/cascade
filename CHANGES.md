@@ -1,261 +1,853 @@
 ## 1.3.0 (unreleased)
 
+1.2.1 could minify a sheet into one that renders differently from its source,
+and `cascade diff --diff=canonical` could not be relied on to tell a change in
+rendering from a change in spelling. This release fixes both, and makes cascade
+two to three times cheaper to run.
+
+- **Minified output that renders as its source does.** `--minify` read
+  `-webkit-linear-gradient(top,...)` as the unprefixed syntax reads it, so the
+  gradient changed direction. It listed a rule over a vendor selector with
+  other rules, and a browser that does not read that selector then dropped them
+  all. It could drop a border side, move a rule past one that styles the same
+  element, and print `p:not(:not(.a .b))` as another selector. Run on 1.2.1's
+  `--minify` output, 1.3's canonical diff finds a difference from the source
+  in 190 of the 504 sheets of the SatCSS corpus, most of them over a prefixed
+  gradient. If you ship CSS minified by 1.2.1, upgrade and minify again.
+- **A canonical diff you can gate a build on.** `cascade diff --diff=canonical
+  style.css style.min.css` exits 0 for each of the 504 SatCSS sheets and for
+  Tailwind's output against its own `--minify` output. With 1.2.1, 139 of the
+  504 failed that check: 94 reported a difference and 45 exited 2. 1.2.1 also
+  called two sheets identical when one had lost a rule inside `@media` to a
+  parse error.
+- **Speed.** `--minify` takes less than half the CPU of 1.2.1 over the SatCSS
+  corpus, and about a third on Tailwind's output. `cascade diff
+  --diff=canonical` of Tailwind's stylesheet against tw's takes less than a
+  third of the CPU.
+- **Stable output.** Minifying `--minify` output again returns it byte for
+  byte, on all 504 SatCSS sheets and on Tailwind's output. With 1.2.1, 69 of
+  those sheets and both Tailwind stylesheets shrank again. Output no longer
+  depends on hash order, and numbers print the same on Windows as elsewhere.
+- **Warnings you can read.** A warning reads `file:line:column: warning:
+  message` over the source line and a caret. Repeats are counted under the
+  first, so netflix.com's sheet prints about 40 lines where it printed nearly
+  500, and `-q` silences them.
+- **Smaller output.** Over the SatCSS corpus and Tailwind's output, `--minify`
+  output is about 1.7% smaller raw than with 1.2.1, and about the same size
+  compressed: half a percent smaller under gzip, a little less under brotli.
+  One sheet can still come out a little larger compressed; [Which rules
+  merge](#which-rules-merge) says why.
+
+The price is under [Breaking](#breaking). On the command line, a script that
+reads cascade's diagnostics needs a new pattern. In the library, parsers return
+a `result` instead of raising, and two spellings of one selector are one value.
+`Css.to_string ~minify:true` prints the sheet it is given, and `Css.minify`
+does what it used to. Each removed function is listed with what to call
+instead, and most migrations are a rename or a deleted call.
+
 ### Breaking
 
-- A selector reads into one node whatever its spelling. `Selector.Before`,
-  `After`, `First_letter` and `First_line` take no colon form, the `*_quoted`
-  attribute matches are gone and every value is held decoded, and `Selector.Odd`
-  and `Even` are `An_plus_b (2, 1)` and `An_plus_b (2, 0)` (#1357).
-- `Component.t` has a `Flat` case: the contents of a block or function nested
-  past `Parser.max_nesting_depth` (128), kept as the tokens read rather than as
-  a tree. A match over `Component.t` needs a case for it (#1296).
-- `Selector`, `Container`, `Supports` and `Declaration.of_string` return
-  `(_, Error.t) result` instead of raising: match on it, or use `Selector.v` or
-  `Container.v`, which raise `Invalid_argument`, for text written in a program
-  (#1299).
-- `Media.of_string_strict` and `value_of_string`, `Keyframe.selector_of_string`,
-  `Declaration.with_value` and `Font_face.*_of_string` return a result too, and
-  `Aria.of_string` an option (#1299).
-- `Css.of_string_exn` is deprecated and goes in 1.4.0: use `Css.stylesheet`,
-  which raises `Invalid_argument` where it raised `Error.Parse_error`. Until
-  then `of_string_exn` keeps its 1.2 behaviour (#1299, #1367).
-- `Optimize.duplicate_buggy_properties` and
-  `Optimize.apply_property_duplication` are deprecated and go in 1.4.0: drop the
-  call, since both return their input, as they always did.
-  `Optimize.add_compatibility_prefixes` writes the WebKit fallbacks they were
-  documented to add (#1345, #1367).
-- `Error.fail_sort_mismatch` and the seven other `Error.fail_*` raising
-  constructors are deprecated and go in 1.4.0: call `Error.fail` on the
-  constructor's value, as in `Error.fail (Error.bad_value loc ~property
-  ~reason)`. `Cursor.try_enum` and `Cursor.err_eof` are deprecated and go in
-  1.4.0: use `Cursor.option (Cursor.enum label table)`, which also skips leading
-  whitespace, and `Error.fail (Error.unterminated loc sort)`.
-  `Optimize.edges_of_rule` and its `edge` and `packed_property` types are
-  deprecated and go in 1.4.0: build the pairs from
-  `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
-  `Declaration.prop_key`. Until then each keeps its 1.2 behaviour; nothing in
-  Cascade called them (#1371).
-- `Stats.iteration_stat` loses `iteration`, `local_iteration` and
-  `active_passes`, `changed_passes` becomes `changed : bool`, and
-  `Stats.counters` loses `iterations`. A factoring run records exactly one row,
-  so `local_iteration` and `active_passes` were always 1, and `iteration` and
-  `iterations` always repeated the run number: read as counts of separate
-  passes, they described work the optimizer never did. `--profile` prints one
-  row per run with `run`, `rules-in`, `rules-out`, `bytes-in`, `saved`,
-  `changed` and `time` (#1372).
-- `Declaration.custom_property` and `Supports.property`, `func` and
-  `property_name` raise `Invalid_argument` instead of `Failure` (#1299).
-- `Reader` loses `Parse_error`, the `err` functions and its call stack, and
-  `Reader.skip` past the end raises `Invalid_argument` (#1299).
-- A parse error or warning prints as `file:line:column: message`, then the
-  source line with a caret under the span; the CLI adds `warning:` or `error:`
-  after the location. Byte ranges, the reader's breadcrumb
-  (`read_declaration/float:`) and the `(in component)` tag are gone, and
-  `Error.position` gives the line and column (#1299, #1330, #1331).
-- `cascade diff --json` gives each warning and error `file`, `line` and `column`
-  members, and its `message` is the reason alone (#1331).
-- `cascade diff` names each input in its warnings, and `Css.of_string` without
-  `~filename` leaves the name unset, printed as `<CSS input>` (#1299).
-- `Error.t`'s `source` is an `Error.Source.t`, shared by the errors of one
-  parse; `Error.Source.text` gives the string. `Error.in_source`,
-  `Cursor.of_components` and `Stylesheet.read_stylesheet_of_rules` take one
-  (#1310).
-- `Error.kind` has an `Invalid_statement` case, for a statement read whole that
-  the rules around it refuse, such as an `@import` after a style rule, which was
-  a `Bad_value` for a property called `stylesheet` (#1331).
-- `Css.to_string ~minify:true` prints the sheet it is given. Folding selectors
-  such as `:nth-child(1)` and `:is(:link,:visited)`, dropping an `@charset` or
-  an `@font-face` without `font-family` or `src`, moving a registered `<color>`
-  variable in a `box-shadow`, rounding a colour's alpha to three decimals,
-  dropping an opaque `/1` from `lab()` and `oklab()`, dropping `0%` and `100%`
-  from a gradient's end stops and folding the spaces and dots inside a
-  `grid-template-areas` row happen in `Css.optimize`. `Css.minify` optimizes and
-  prints in one call; `Selector.canonicalize`, `Stylesheet.drop_inert_at_rules`
-  and `Stylesheet.normalize_shadow_color_vars` each take one step (#1350, #1351,
-  #1354, #1370).
-- Two declarations of one custom property with one value are equal and hash
-  alike wherever they were read: a custom property's tokens carry no source
-  position, so `Component.source_loc` gives `Loc.dummy` for each. Those
+#### Command line
+
+- **Warnings and errors have a new form.** They were hard to locate: a warning
+  gave a byte range, a trace of the reader's own functions
+  (`read_declaration/float:`) and an `(in component)` tag, and cascade's own
+  messages took another form (`Error: ...`). Every diagnostic now reads
+  `file:line:column: warning: message` or `file: error: message`, as a
+  compiler's does, and a parse diagnostic is followed by the source line with a
+  caret under the span. A warning from `cascade diff` names the input it is
+  about, and a sheet parsed from a string without a name prints as `<CSS
+  input>`. This affects scripts that match cascade's standard error. Match the
+  new form, or read `cascade diff --json` (#1299, #1330, #1331, #1337).
+- **`cascade diff` gives positions as members, counted from 1.** `--json` made
+  a consumer parse the location out of each message. The text report counted
+  lines and columns from 0 while warnings counted from 1, so a difference at
+  the start of the second line read `line 1, col 0`. Each warning and error of
+  the `--json` document now has `file`, `line` and `column` members, and its
+  `message` is the reason alone. The report and the document count from 1, and
+  the report's `@@` header names the line instead of a byte offset. This
+  affects consumers of `--json` and of the text report. Read the location from
+  the members, and stop adding 1 (#1331, #1334).
+- **A missing input file exits 124.** `cascade fmt missing.css` exited 1, the
+  status of a file that failed to parse, so a build could not tell the two
+  apart. It now exits 124, as the other commands do. A script that tests for
+  status 1 on a missing file tests for 124 (#1338).
+
+#### OCaml library
+
+cascade keeps no deprecated aliases, so a removed function fails to compile
+where it is called. Each entry says what to write there.
+
+- **Parsers return a `result`.** Parsers reported failure in three ways,
+  `Error.Parse_error`, `Failure` and `Invalid_argument`, so no single handler
+  caught a malformed input. `Selector.of_string`, `Container.of_string`,
+  `Supports.of_string`, `Declaration.of_string`, `Declaration.with_value`,
+  `Media.of_string_strict`, `Media.value_of_string`,
+  `Keyframe.selector_of_string` and `Font_face.*_of_string` now return `(_,
+  Error.t) result`, and `Aria.of_string` an option. Every caller is affected.
+  Match on the result, and print an error with `Error.to_string`. For CSS
+  written in the program, use `Selector.v`, `Container.v` or `Css.stylesheet`,
+  which raise `Invalid_argument` (#1299, #1367).
+- **`Css.of_string_exn` is gone.** It raised `Error.Parse_error`, where every
+  other function for CSS written in the program raises `Invalid_argument`. Use
+  `Css.stylesheet`, which takes the same arguments. A handler for
+  `Error.Parse_error` around the call moves to `Css.of_string` and its `Error`
+  case (#1299, #1367, #1391).
+- **Misuse raises `Invalid_argument`.** `Declaration.custom_property`,
+  `Supports.property`, `Supports.func` and `Supports.property_name` raised
+  `Failure` on a bad argument. A `try ... with Failure _` around them still
+  compiles and stops catching, so search for it and catch `Invalid_argument`
+  instead (#1299).
+- **`Css.to_string ~minify:true` prints the sheet it is given.** The minified
+  printer also rewrote the sheet, so the printed text did not read back as the
+  value printed. It folded `:nth-child(1)` and `:is(:link,:visited)`, dropped
+  an `@charset` and an `@font-face` without `font-family` or `src`, and moved a
+  registered `<color>` variable in a `box-shadow`. It also rounded a colour's
+  alpha, dropped `0%` and `100%` from a gradient's end stops and folded the
+  rows of `grid-template-areas`. This affects code that prints with
+  `~minify:true` without optimising first: it compiles, and its output gets
+  longer. Call `Css.minify`. It optimises and prints in one call, as `cascade
+  --minify` does. To take one step alone, call `Selector.canonicalize`,
+  `Stylesheet.drop_inert_at_rules` or `Stylesheet.normalize_shadow_color_vars`
+  (#1350, #1351, #1354, #1367, #1370).
+- **`Selector`: one value whatever the spelling.** `:before` and `::before`,
+  `[x=a]` and `[x="a"]`, `odd` and `2n+1` were different values, so equality,
+  hashing and deduplication missed them, and parsing a printed selector could
+  give back another value. This affects code that builds or matches these
+  constructors. `Before`, `After`, `First_letter` and `First_line` take no
+  argument and `colon_form` is gone. `Exact_quoted (v, _)` and the other
+  `*_quoted` attribute matches are `Exact v` and so on, with `v` decoded. `Odd`
+  is `An_plus_b (2, 1)` and `Even` is `An_plus_b (2, 0)`. The printer picks the
+  spelling. `Selector.t` also has `Webkit_full_screen`,
+  `Webkit_full_screen_ancestor` and `Moz_full_screen` cases, which an
+  exhaustive match needs (#1357, #1408).
+- **`Error` has a shared source and three new kinds.** Each error located
+  itself by counting lines from the start of its source, so printing the
+  warnings of a sheet cost its size per warning. The errors of one parse now
+  share one index, and the `source` field of `Error.t` is an `Error.Source.t`.
+  This affects code that reads or builds that field, or passes `?source` to
+  `Cursor.of_components` or `Stylesheet.read_stylesheet_of_rules`. Wrap the
+  text with `Error.Source.v` and read it back with `Error.Source.text`;
+  `Error.position` gives the line and column. `Error.kind` has three new cases
+  that an exhaustive match needs. `Invalid_statement` is a statement the rules
+  around it refuse, such as an `@import` after a style rule, which was a
+  `Bad_value` for a property called `stylesheet`. `Untargeted_selector` is a
+  selector no target browser reads, and `Too_deep` is input nested past the
+  reader's bound. The eight `Error.fail_*` functions each spelled `Error.fail`
+  on one constructor. Call `Error.fail` on the constructor's value, as in
+  `Error.fail (Error.bad_value loc ~property ~reason)` (#1296, #1299, #1310,
+  #1331, #1371, #1391, #1429).
+- **`Reader` has no error type of its own.** `Reader.Parse_error`, its
+  `Reader.parse_error` record, `Reader.pp_parse_error`, `Reader.with_filename`,
+  the `err` functions (`err`, `err_eof`, `err_expected`,
+  `err_expected_but_eof`, `err_invalid`) and the context stack (`push_context`,
+  `pop_context`, `with_context`, `callstack`) are gone. They kept a second
+  error type beside `Error.t` that no parser raised and no `of_string`
+  returned. This affects code that writes its own readers on `Reader`. Build an
+  `Error.t` and raise it with `Error.fail`: `Error.unterminated` for `err_eof`,
+  `Error.missing_token` for `err_expected` and `err_expected_but_eof`,
+  `Error.bad_value` for `err` and `err_invalid`. Catch `Error.Parse_error`,
+  print with `Error.to_string`, name the source with `Error.with_filename` and
+  label a sub-reader with `Error.with_context`. `Reader.skip` at the end of
+  input raises `Invalid_argument`, since reading past the end is a bug in the
+  caller. Test `Reader.is_done` first (#1299).
+- **`Cursor.try_enum` and `Cursor.err_eof` are gone.** Each repeated another
+  function. Use `Cursor.option (Cursor.enum label table)`, which also skips
+  leading whitespace, and `Error.fail (Error.unterminated loc sort)` (#1371,
+  #1391).
+- **`Component.t` has a `Flat` case.** Deeply nested input overflowed the stack
+  (see [Parsing](#parsing)). The contents of a block or function nested past
+  `Parser.max_nesting_depth` (128) are now kept as the tokens read, not as a
+  tree. An exhaustive match over `Component.t` needs a `Flat` case. Code that
+  only looks for a `Block` or a `Func` can ignore it (#1296).
+- **A custom property's tokens carry no source position.** Two declarations of
+  one custom property with one value compared and hashed differently depending
+  on where they were read, so a table keyed on declarations kept both. The
   positions were offsets into the value's own text and located nothing in the
-  sheet. `Component.without_locs` drops the positions from a token list (#1353).
+  sheet. `Component.source_loc` now gives `Loc.dummy` for these tokens.
+  `Component.as_values` drops the positions from a token list you build (#1353,
+  #1386).
+- **`Properties.property` has `Text_rendering` and `Webkit_touch_callout`
+  cases.** Both properties were read as unknown, which kept rules apart for no
+  reason (see [Comparing stylesheets](#comparing-stylesheets)). An exhaustive
+  match over `property` needs the two cases, and code that found either among
+  the unknown properties finds it typed (#1440, #1442).
+- **`Properties.opacity` and `Properties.shape_image_threshold` keep a
+  percentage.** Both read `50%` as the number `.5`, so a percentage beside a
+  `var()` lost its type (see [Rendering fixes](#rendering-fixes)). They have an
+  `Opacity_percentage` and a `Percentage` case, holding the percentage as
+  written (`50.` for `50%`). An exhaustive match over either type needs the
+  new case; `Css.optimize` turns it into the number wherever no `var()` shares
+  the calculation (#1456).
+- **`Stats` reports only what the optimizer did.** A factoring run records one
+  row, so `Stats.iteration_stat`'s `local_iteration` and `active_passes` were
+  always 1, and its `iteration` and `Stats.counters`'s `iterations` repeated
+  the run number. `Stats.revert_fixpoint` and `factor_transfer_reverts` counted
+  runs thrown away by a gate that no longer exists. All are gone,
+  `changed_passes` is `changed : bool`, and `Stats.record_iteration` takes the
+  remaining fields. `elapsed` is 0 unless the recorder was made with
+  `~profile:true`, as the byte columns already were. This affects code that
+  reads `Stats` records. Read the run number from `fixpoint`, test `changed`
+  where you tested `changed_passes > 0`, and delete the reads of the removed
+  fields (#1372, #1399).
+- **Three `Optimize` functions are gone.**
+  `Optimize.duplicate_buggy_properties` and
+  `Optimize.apply_property_duplication` were documented as duplicating
+  properties for buggy browsers, and returned their input unchanged. Delete the
+  call; `Optimize.add_compatibility_prefixes` writes the WebKit fallbacks they
+  were documented to add. `Optimize.edges_of_rule`, with its `edge` and
+  `packed_property` types, was read by nothing in cascade. Build the pairs from
+  `Selector_summary.of_selector` and `Stylesheet.declarations`, keyed by
+  `Declaration.property_key` (#1345, #1367, #1371, #1391).
+- **An `@import` rule's `url` holds the url, not its source text.** The field
+  held the source spelling (`url("theme.css")`, `'theme.css'`) when the rule
+  was read from a sheet and the decoded url on other paths, so a printer could
+  not tell `@import '"x".css'` from a spelling and printed it unescaped. It now
+  holds the decoded url on every path: `theme.css` for each of `url(theme.css)`,
+  `url("theme.css")` and `"theme.css"`. Code that reads `url` gets the url
+  directly. Code that builds an `import_rule` writes the url, `url =
+  "theme.css"`; a record built with `url = "url(theme.css)"` now prints as
+  `@import "url(theme.css)"`, an import of the file named `url(theme.css)`
+  (#1460).
+- **`Css.decode_import_url` is gone.** It recovered the url from the source
+  spelling the `url` field held, which the field no longer holds, and applied to
+  a decoded url it read `"url(a.css)"` as `a.css`. Replace
+  `Css.decode_import_url ir.url` with `ir.url` (#1460).
+- **A `@counter-style` symbol says which kind it is.** `Symbols` held a
+  `string list` and `Prefix` and `Suffix` a `string`, so an image symbol was
+  kept as the text it was written with and printed back as a string. They now
+  hold `Stylesheet.counter_symbol` values: `String`, `Image` (a
+  `Properties.background_image`) or `Ident`. Code that matches or builds these
+  descriptors wraps each string in `String`, or in `Ident` for a name written
+  without quotes (#1461).
+- **`counter()` and `counters()` content items carry a counter style.**
+  `Counter of string` and `Counters of string * string` had no room for the
+  style CSS Lists 3 sec. 4.6 lets them name. They are now `Counter { name;
+  style }` and `Counters { name; separator; style }`, the style a
+  `list_style_type option`. A pattern or a constructor names the fields, with
+  `style = None` for the default; `Css.content_counter` and
+  `Css.content_counters` take an optional `?style` (#1462).
+- **`content` has a `With_alt` case.** CSS Generated Content 3 sec. 1.1 lets
+  `content` end with `/` and an alternative text, which the type had no room
+  for. A match over `Properties.content` needs a `With_alt { content; alt }`
+  arm; `alt` is the list of strings, `counter()`, `counters()` and `attr()`
+  items after the slash (#1474).
+- **`Values.math_fn` has `Min_n`, `Max_n` and `Clamp_n`.** A `min()`, `max()`
+  or `clamp()` over a time, an angle or a percentage had no node, which is why
+  the slots of those types refused it. A match over `math_fn` needs the three
+  arms; each holds the `math_arg`s as written (#1475).
+- **`Pp.quoted` is gone.** It wrote a string between double quotes without
+  escaping it, so a quote or a backslash inside ended the string or started an
+  escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
+  and takes an optional `~quote` (#1460).
 
-### Printing
+### Minified output
 
-- `--minify` keeps the space between an `env()` name and its indices:
-  `env(--branding-padding 2)` came out as `env(--branding-padding2)`, another
-  variable (#1369).
-- `--minify` keeps the string in `animation: "none"`, which names `@keyframes
-  "none"`. It came out as the keyword `none`, no animation, and `animation:
-  "none" 1s` lost its name (#1368).
-- `lab()` and `oklab()` print a percentage alpha as written, as the other colour
-  functions do: `lab(50% 20 30 / 40%)` came out as `lab(50% 20 30 / .4)`
-  (#1370).
-- A `local()` font name reads as the name it decodes to, so `local(\2197)` and a
-  quote inside `local("...")` print back as that name (#1351).
-- `--minify` prints an attribute value as the shorter of an escaped ident and a
-  string that reads back as written, so `[x="a b"]` prints as `[x=a\ b]`.
-  `[x="-2"]` and `[x="-"]` became selectors browsers drop, and `[x="a\\b"]`
-  another value (#1292, #1357).
-- Pretty output spells a selector one way: `::before`, a quoted attribute value
-  and `odd`/`even`, whatever the input wrote (#1357).
-- Very large numbers keep their sign. `width:4611686018427387904px` came out
-  negative under `--minify`, and `z-index:calc(1e30)` as `-1` (#1280).
-- `@media (aspect-ratio:1.5/1)` prints as written instead of being rounded down
-  to `1/1` (#1280).
-- Numbers print the same on Windows as elsewhere: `3.40282e38px` came out there
-  as `3.40282e038px`, and `100000000000.5` as `100000000001` (#1286, #1292,
-  #1300).
-- A number with more than 15 significant digits keeps its last decimals:
-  `123456789.12345679` came out as `123456789.1234568` (#1300).
-- Large numbers in media features and keyframe offsets print as `1e30` like
-  everywhere else, instead of `1e+30` (#1292).
-- A number too small for eight decimals keeps its value. `(min-resolution:
-  4e-33dpi)` and `entry 4e-33%` came out as `0dpi` and `0%`, and a negative one
-  as `-0` (#1292).
+#### Rendering fixes
 
-### Minification
+Each entry here is a sheet that 1.2.1 minified into one a browser renders
+differently. They are the reason to minify again.
 
-- `--minify --scope=stylesheet` keeps a declaration written before longhands of
-  its family: `background:#fff url(a.png) no-repeat center` lost its image and
-  colour to `background-position` and `background-size`, and `font-weight:700`
-  to `font-size` and `font-family` (#1348).
-- An `@import` after a `/*! */` comment or an unrecognised at-rule is kept under
-  `--minify`, as browsers apply it; it was dropped. One after an `@namespace`,
-  and an `@namespace` after a rule, go as browsers ignore them (#1294).
-- A later `@media` or `@container` block no longer merges into an earlier one
-  across a list like `.a:after,.a:before` that styles the same pseudo-element,
-  and now merges across a more specific rule (#1295).
-- `--minify` keeps in order two rules that differ only in the case of a type
-  selector (`DIV`, `div`), of an ID (quirks mode) or of an attribute value read
-  through an `i` or `s` flag; it could move one past the other (#1295).
-- `--minify` is about a third faster on large sheets, with the same output
-  (#1306, #1307, #1313, #1322, #1323, #1324, #1325, #1329, #1344, #1347, #1356,
-  #1361, #1362, #1363, #1364, #1365, #1374, #1375, #1376, #1377, #1378, #1379,
-  #1380).
-- `--minify` breaks a tie between merges that save the same by the shortest
-  result, then by source order, so output no longer shifts for unrelated
-  reasons; some sheets come out slightly smaller (#1355).
-- `--minify` reverses a `0deg` gradient whose end stops sit at `0%` and `100%`:
-  `linear-gradient(0deg,red 0%,blue 100%)` came out as
-  `linear-gradient(0deg,red,#00f)`, which minifying again shortened to
-  `linear-gradient(#00f,red)`. An opaque `/1` goes from an `oklch()` or `lch()`
-  with a `none` component, as from every other colour (#1370).
-- `--minify` prints `:not(:not(X))` as `:is(X)` when `X` holds a type or a
-  combinator: `p:not(:not(.a .b))` came out as `p.a .b`, another selector
-  (#1350).
-- `--minify` output no longer shrinks when minified again: nesting a merged rule
-  under a neighbour happens in the first pass. `Selector.compound`, `combine`
-  and `reshape` build a selector in the shape the parser reads (#1342).
+- **Prefixed gradients changed direction.** `--minify` read
+  `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
+  omitted direction for `bottom`, so it printed
+  `-webkit-linear-gradient(0deg,...)` for both. A prefixed gradient's side
+  keyword names the side it starts from (CSS Image Values 3, Working Draft of
+  17 February 2011, sec. 5.1.1), and is now read that way. This is the
+  difference 1.3 finds most often in 1.2.1's output of the SatCSS corpus
+  (#1418).
+- **Vendor selectors took other rules down with them.** A browser that cannot
+  read one selector of a list drops the rule for the whole list (Selectors 4
+  sec. 3.9). `--minify` merged `.a:-moz-focusring{color:red}` and
+  `.b{color:red}` into one list, so Chromium lost `.b`'s colour, and merged
+  `a::-moz-placeholder` with `a::-webkit-input-placeholder`, so Chromium
+  dropped both. It also did the reverse, and split an author's list such as
+  `input::file-selector-button,b::-moz-selection{background:red}`, so Chromium
+  painted a button the source left alone. Which targets drop a selector is now
+  read from MDN's compatibility data, Firefox's selector parser and browser
+  probes. Two selectors share a list only when the same targets drop each, and
+  an author's list stays as written (#1407, #1428, #1437).
+- **Rules over vendor pseudo-classes were dropped or revived.** `--minify`
+  dropped rules over `:-webkit-full-screen`, `:-moz-full-screen`,
+  `:-webkit-any-link` or `:-moz-only-whitespace` as unknown, though a target
+  browser reads each. Such a rule now stays as written. In the other direction
+  it printed `input:-webkit-input-placeholder`, a rule every browser drops, as
+  `input::-webkit-input-placeholder`, which they read, so the placeholder took
+  a colour the source never gave it. Only `:before`, `:after`, `:first-line`
+  and `:first-letter` are pseudo-elements after one colon (Selectors 4 sec.
+  3.6.1). A rule is now dropped only when no target reads its selector, with a
+  warning that says so (#1408, #1427, #1449).
+- **A rule could move past another that styles the same element.** A later
+  `@media` or `@container` block merged into an earlier one across a list like
+  `.a:after,.a:before` that styles the same pseudo-element. Two rules could
+  also swap when they differ only in the case of a type selector (`DIV`,
+  `div`), of an ID (quirks mode) or of an attribute value read through an `i`
+  or `s` flag. Both orders are now kept (#1295).
+- **A rule with nested content moved past one that styles the same
+  element.** `--minify` read a rule as the declarations before its first
+  nested statement, so what a nested rule, a nested `@media` or a later
+  declaration wrote did not stop a move. `.a{top:1px}.d{color:red}
+  .a{@media (min-width:1px){color:blue}}` became `.a{top:1px;@media
+  (width>=1px){color:#00f}}.d{color:red}`, and an element with both classes
+  turned red. A rule now counts everything its body writes, under each
+  nested rule's composed selector, and a merge or move that would cross a
+  rule competing with any of it stays in source order. Of 9,000 random
+  sheets with nesting, the number Chromium renders differently after
+  `--minify` falls from 28 to 17. The rest come from writing or removing
+  nesting, which this fix does not touch (#1479).
+- **A border side was lost.** When `--minify` moved declarations two rules
+  share into one rule, it could drop a longhand a rule wrote after its own
+  shorthand: `.b{background:#fff;border:1px solid #ddd}` beside
+  `.a{background:#fff;border:1px solid #ccc;border-top:3px solid red}` became
+  `.a,.b{background:#fff;border:1px solid#ddd}.a{border:1px solid#ccc}`, and
+  `.a` lost its red top border. 1.2.1's output of ebay, google-1 and sina in
+  the SatCSS corpus loses a border side this way. What a rule keeps now stays
+  in the order it wrote it (#1404).
+- **Selectors came out as other selectors.** `p:not(:not(.a .b))` was printed
+  as `p.a .b`; a double negation holding a type or a combinator now prints as
+  `:is(X)`. Attribute values were unquoted into selectors browsers drop
+  (`[x="-2"]`, `[x="-"]`) or into another value (`[x="a\\b"]`). The printer now
+  takes the shorter of an escaped ident and a string that reads back as
+  written, so `[x="a b"]` prints as `[x=a\ b]` (#1292, #1350, #1357).
+- **Values changed.** `animation:"none" 1s`, which runs the `@keyframes` named
+  `"none"`, became `animation:1s`. `env(--branding-padding 2)` became
+  `env(--branding-padding2)`, another variable. `width:4611686018427387904px`
+  came out negative and `z-index:calc(1e30)` as `-1`. `@media
+  (aspect-ratio:1.5/1)` was rounded to `1`, and `123456789.12345679` to
+  `123456789.1234568`. A quote inside `local("...")` ended the string early.
+  Each now prints a value that reads back as the one written (#1280, #1300,
+  #1351, #1368, #1369).
+- **A lone zero flex basis became a grow factor.** `flex:0px`, `flex:0em` and
+  `flex:calc(0px)` became `flex:0`, with or without `--enforce-spec`.
+  Chromium reads `flex:0` as grow 0 over a `0%` basis, where the source is grow
+  1 over a `0px` basis. A lone unitless number in `flex` is the grow factor
+  (CSS Flexbox 1 sec. 7.2), so a zero basis on its own now keeps its unit
+  (#1459).
+- **Strings and urls came out unescaped.** `quotes:'"' '"'` and
+  `quotes:'""' ''` both printed `quotes:""""""`, which Chromium drops, and
+  a backslash or a newline in a `quotes` string was written raw. The same held
+  for `image-set()` strings and `type()`, `clip-path:url()`, `@font-face`
+  `src` urls and `format()`, `@namespace` urls, and a custom property's
+  `url()` holding a tab, which came out bare; `@import '"x".css'` printed
+  `@import "x".css` unminified. A registered `<custom-ident>` lost its escapes,
+  so `initial-value:a\ b` became `a b`, and Chromium dropped the `@property`
+  rule. Every string, url and registered ident is now written escaped, so it
+  reads back as the one written (#1460).
+- **A `@counter-style` image symbol became text.**
+  `@counter-style c{system:cyclic;symbols:url(a.png)}` minified to
+  `symbols:"url(a.png)"`. Chromium supports no image symbol and drops the
+  source's descriptor, so its list falls back to decimal, but it keeps the
+  output's string and draws the text `url(a.png)` as the marker. A symbol is a
+  string, an image or an ident (CSS Counter Styles 3 sec. 3.1.7), and each now
+  prints as the kind it was written as (#1461).
+- **`counter()` and `counters()` with a counter style were dropped.**
+  `content:counter(n,upper-roman)`, `counter(n,c)`, `counter(n,disc)`,
+  `counter(n,none)` and `counters(n,".",lower-alpha)` were refused as a bad
+  value, so the generated content was lost, where Chromium draws each one. CSS
+  Lists 3 sec. 4.6 gives both functions an optional `<counter-style>`, a
+  counter-style name or `symbols()`; it is now read and printed, and the
+  default `decimal` is left out (#1462).
+- **A fallback a target browser needs was dropped.** `--minify` turned
+  `a{color:red;color:light-dark(red,blue)}` into
+  `a{color:light-dark(red,#00f)}`, so Chrome 111 to 122 and Safari 16.4 to
+  17.4, which drop `light-dark()`, lost the colour. It did the same before
+  `contrast-color()`, `anchor()`, `anchor-size()`, `stretch` and
+  `image-set()`, also when the two declarations sat in two rules of one
+  selector, and before `width:fit-content(10px)`, which no browser reads, so
+  Chromium 153 painted a different width. The targets are floors: each version
+  and every later one. An earlier declaration is now dropped only when every
+  browser at or past the targets that reads it reads the later one, as the
+  compatibility data records it, and canonical diff counts it dead on the
+  same terms (#1464).
+- **A fallback a later browser reads was dropped.** `--minify` turned
+  `a{width:anchor-size(width);width:stretch}` into `a{width:stretch}`, since
+  Chrome 111 reads neither. Chrome 125 to 137, and Firefox from 147, read the
+  first alone and lost the width. A fallback is now dead only when every
+  release from the targets to the newest the compatibility data records that
+  reads it reads the later declaration too (#1486).
+- **A third colour in `color-mix()` was lost.** CSS Color 5 mixes any number
+  of colours, and Firefox 150 reads them. `--minify` read the first two of
+  `color-mix(in srgb,red,blue,green)` and folded them to `purple`. A mix of
+  three or more colours now keeps every item as written (#1465).
+- **A `color-mix()` of one colour was deleted.** CSS Color 5 lets the list
+  hold a single item, and Firefox 150 reads `color-mix(in srgb,blue)`.
+  `--minify` refused it and dropped the declaration, so
+  `a{color:red;color:color-mix(in srgb,blue)}` became `a{color:red}`. It is
+  now read and kept as written, and the `color:red` before it stays for the
+  browsers that drop it, Chromium 153 among them (#1483).
+- **A reversed counter was deleted.** `--minify` refused
+  `counter-reset:reversed(x)`, which CSS Lists 3 grants and Firefox reads, so
+  it dropped the declaration, and after `counter-reset:x` it kept only the
+  earlier write. It now reads `reversed()` in `counter-reset`, and keeps the
+  earlier write as the fallback for Chrome and Safari, which drop it (#1466).
+- **`break-before:always` became `page`.** `--minify` read `always` as
+  `page`, though in a multicol container `always` breaks the column and `page`
+  the page (CSS Fragmentation 3). Chrome drops `always`, so it broke a page
+  the source never broke. Both values now print as written, the legacy
+  `page-break-before:always` still maps to `page`, and an earlier
+  `break-before:auto` stays as the fallback for browsers that drop `always`
+  (#1467).
+- **Two selectors a later browser reads apart shared a list.** `--minify`
+  listed `.a:popover-open` and `.b:user-valid`, which Chrome 111 and Safari
+  16.4 both drop, though Chrome 114 to 118 reads the first alone and Safari
+  16.5 and 16.6 the second alone, and each dropped the rule. The targets are
+  floors, so two selectors now list only when every release at or past them
+  reads both or neither (#1468).
+- **Math functions outside a property's range were dropped or broken.**
+  `font-size:calc(-1px)`, `transition-duration:calc(-1s)`,
+  `flex-basis:calc(-1%)` and `font-stretch:min(-1%,2%)` were dropped, and
+  `scroll-padding-inline:calc(2px - 3px)`, `gap:calc(-1px)`,
+  `width:calc(1% - 2%)`, `border-width:min(-1px,2px)` and
+  `zoom:min(-1,2)` became a negative literal every browser drops. A math
+  function past the range is valid and clamped (CSS Values 4 sec. 10.12), so
+  each is now kept, folded where it can be, inside `calc()` (#1473).
+- **`content` with an alternative text was dropped.** `content:"a" / "b"`,
+  `content:url(a.png) / "b"` and `content:counter(n) / "b"` were refused as a
+  bad value, so the generated content was lost where Chromium draws it. The
+  alternative text after the slash (CSS Generated Content 3 sec. 1.1), with
+  `attr()`, `counter()` and `counters()` in it, is now read and printed, and a
+  value holding one keeps the `content` written before it for browsers that
+  predate it (#1474).
+- **Math functions over times, angles and percentages were dropped.**
+  `transition-duration:min(1s,2s)`, `transition-delay:abs(-1s)`,
+  `rotate:min(10deg,20deg)`, `opacity:min(10%,20%)`, `zoom:max(10%,20%)`,
+  `border-image-slice:clamp(10%,20%,30%)` and the same calls in the
+  transition and animation shorthands, `offset-rotate`, the SVG opacities,
+  `shape-image-threshold` and `scale` were refused, so the declaration was
+  lost. Every math function now reads wherever its type stands (CSS Values 4
+  sec. 10.1) and folds to the literal of its value (#1475).
+- **An `@import` after a `/*! */` comment was dropped.** So was one after an
+  unrecognised at-rule, though browsers apply both. They are kept. An `@import`
+  after an `@namespace`, and an `@namespace` after a rule, go, as browsers
+  ignore them (#1294).
+- **`--scope=stylesheet` dropped declarations a page needs.** A declaration
+  written before longhands of its family was reset by the shorthand built from
+  them: `background:#fff url(a.png) no-repeat center` lost its image and colour
+  to a later `background-position` and `background-size`. It is now kept.
+  Default output is unchanged (#1348).
+- **A percentage beside a `var()` became a number.**
+  `opacity:calc(100% - var(--x))` was minified to `calc(1 - var(--x))`, which
+  a browser drops at computed-value time: with `--x:30%` Chromium shows the
+  source at .7 opacity and the output at full opacity. The same held for the
+  SVG opacities and `shape-image-threshold`, and `cascade diff
+  --diff=canonical` called the two spellings identical. CSS Values 4 sec. 10.9
+  types a calculation by its operands, so a percentage now becomes its number
+  only where no `var()` shares the calculation (#1456).
+- **A product with zero dropped a `var()`.** `width:calc(var(--u) * 0px)`
+  was minified to `width:0`, though with `--u` undefined the source is invalid
+  at computed-value time and Chromium lays the element out at `auto`. A
+  `var()` substitutes tokens, so `calc(0 * var(--x))` under `--x:1px + 2px`
+  is 2px, not 0, and `--y:calc(var(--x) * 0)` became `--y:0`. `cascade diff
+  --diff=canonical`, `--inline-vars` with a kept variable and `Css.Context`
+  runtime variables made the same fold. A zero product now drops an operand
+  only when it holds no `var()`, or is an `@property` registered as
+  `<number>` or `<integer>` (#1457).
+- **A scroll-driven animation ended at the wrong point.**
+  `animation-range:entry 10% normal` was minified to
+  `animation-range:entry 10%`, which ends the animation at `entry 100%`
+  rather than at `normal`: an omitted end takes the start's range name (CSS
+  Scroll Animations 1 sec. 6.2). The end now goes only where it says what
+  leaving it out says (#1470).
+- **A zero `text-shadow` blur went before a `var()`.**
+  `text-shadow:0px 5px 0px var(--c)` was minified to `text-shadow:0 5px
+  var(--c)`, where `var(--c)` can be the blur: with `--c:3px` the source draws
+  no shadow and the output a blurred one. The zero stays before a `var()`
+  colour, as it already did in `box-shadow` (#1471).
+- **A zero `box-shadow` spread went before a `var()`.**
+  `box-shadow:0 1px 0 0 var(--c)` was minified to `box-shadow:0 1px 0
+  var(--c)`, where `var(--c)` can be the spread: with `--c:3px` the source
+  draws no shadow and the output a spread one. The zero stays before a
+  `var()` colour, as the blur's does (#1472).
+- **A margin longhand jumped a logical one.** `--minify` folded
+  `margin:0;margin-block-start:5px;margin-top:1px` into
+  `margin:1px 0 0;margin-block-start:5px`, which moves `margin-top` before the
+  logical write of the same side, so Chromium sets the top margin to 5px
+  instead of 1px. The same happened to `padding` and to
+  `-webkit-margin-before` and `-webkit-padding-before`. A longhand now folds
+  into the shorthand before it only past declarations that write none of its
+  sides, and `cascade diff --diff=canonical` no longer prints such a rule in
+  an order it would read differently the next time (#1478).
+- **An `@property` registration was trusted where another can replace it.**
+  `--minify` read a custom property as the type its `@property` gave it, so
+  `@property --n{syntax:"<number>";...}` let `calc(var(--n) * 0px)` fold to
+  `0` and `--c:rgb(255 0 0)` respell as `red`. A script
+  (`CSS.registerProperty()`) or a later sheet registers the name again, and
+  then the source and the output differ: Chromium computes 1px against 0px
+  for the first under a later universal registration. A registration now
+  types its property only under `--scope=stylesheet`, when it is the last for
+  its name outside any conditional rule. Under `--enforce-spec`, an
+  `@property` missing a descriptor is kept rather than dropped, since the
+  current specification reads it as a registration (#1481).
+- **`--scope=stylesheet` built shorthands that reset what another rule set.**
+  `h1{font-size:20px;font-family:serif}` became `h1{font:20px serif}`, which
+  resets the browser's bold heading weight (700 to 400 in Chromium), and an
+  `em` lost its italic the same way. Next to `.y{font-weight:bold}` or
+  `.y{background-repeat:no-repeat}`, `.x` lost the weight or the repeat on an
+  element of both classes, and a `transition-delay` inside `@media` was reset
+  by a `transition` built outside it. The scope rules out CSS outside the
+  sheet. The sheet's other rules and the browser's own still apply, so a
+  shorthand is now built from part of its longhands only when none of them
+  sets the others (#1482).
+- **Gradients over a `var()` changed.**
+  `linear-gradient(to top,var(--a),var(--b))` was minified to
+  `linear-gradient(var(--b),var(--a))`, which with `--a:red 20%` puts the red
+  at the other end, since a variable can hold a position or several stops.
+  `linear-gradient(red,var(--a) 100%)` lost its `100%`, which with
+  `--a:red 10% 20%` turned a gradient Chromium drops into one it paints. And
+  `radial-gradient(circle var(--r),red,blue)` became
+  `radial-gradient(circle,var(--r),red,#00f)`, a gradient over three stops
+  where the source sizes the circle. A stop whose colour is a `var()` is no
+  longer reversed or stripped of a position. A radial prelude the reader
+  cannot finish now keeps the whole value as written, since the comma after a
+  prelude is omitted only with the prelude (CSS Values 4 sec. 2.6) (#1490).
+
+#### Stable output
+
+- **Minifying twice gave other bytes than minifying once.** With 1.2.1, 69 of
+  the 504 SatCSS sheets and both Tailwind sheets shrank when their `--minify`
+  output was minified again, by up to 434 bytes. One run left work for the
+  next. A merged rule was nested under its neighbour only on the second run,
+  and `linear-gradient(0deg,red 0%,blue 100%)` took two runs to reach
+  `linear-gradient(#00f,red)`. A sheet of more than 128 rules got one pass
+  where a smaller one got up to five. The optimiser now finishes in one pass at
+  every size, and a second `--minify` changes none of the 504 sheets nor
+  Tailwind's output. A pipeline that minifies at two stages gets the bytes of
+  one that minifies once (#1342, #1370, #1395, #1401, #1402, #1403, #1424).
+- **Two spellings of one value merged only on a second run.**
+  `a{background:url("i.png")}b{background:url(i.png)}` minified to two rules,
+  and minifying that again gave `a,b{...}`. The same held for `center center`
+  and `center` in `position-area` and `place-items`, `flex:1 1 0%` and
+  `flex:1`, a quoted `url()` in `list-style`, `content` and `mask`, `rotate:1 0
+  0 10deg` and `rotate:x 10deg`, two spellings of a colour, a `calc()` or an
+  unknown property's value, and more. The printer wrote the short spelling
+  while the optimiser held the long one. The optimiser now holds the short one
+  before it merges, so one run does. `Css.to_string`, which prints without
+  optimising, writes a value as it is held: `url("i.png")`, `flex:1 1 0%` and
+  `hsl(120deg 50% 50%)` stay so, and `Css.minify` shortens them. A prefixed
+  copy that spells its twin's value another way, such as `-ms-flex:0 0 auto`
+  beside `flex:none`, now goes as one spelled alike does, which takes about
+  28 kB off the SatCSS output (#1469).
+- **Output shifted for unrelated reasons.** Merges that save the same number of
+  bytes were ordered by hash, so a change inside cascade could move the output
+  of a sheet nobody touched. A tie now breaks by the shortest result, then by
+  source order (#1355).
+
+#### Which rules merge
+
+- **The default objective bounds merges by distance.** With 1.2.1, `--minify`
+  merged rules at any distance, then threw a whole factoring run away when an
+  estimate of the gzip size grew. Near merges were lost with far ones, a better
+  search could make the output larger, and a short sheet was searched
+  differently from a long one. The default `--objective=transfer` now minimises
+  output bytes, and merges rules with identical bodies only within 128 printed
+  rules of each other. A compressor encodes a repeated declaration in two or
+  three bytes wherever it sits, but a selector moved away from its neighbours
+  stops compressing against them. Nothing judges the result afterwards, and the
+  search is the same at every size. `--objective=raw` merges at any distance,
+  for output that ships uncompressed. Against 1.2.1 the output is smaller in
+  total, but not on every sheet. 182 sheets shrink by more than 1% raw. About
+  twenty grow by more than 1% under gzip, at most by about 3%, and 27 under
+  brotli, one cnn sheet by about 7% (#1399, #1422, #1423, #1425).
+- **A merge of rules with nested content was weighed without it.** Factoring
+  counted a rule's selector and the declarations before its first nested
+  statement, so a merge of two `.a` rules carrying nested rules was scored
+  without the separators it adds or drops. It now weighs each rule at all it
+  prints. The output of the SatCSS and Tailwind sheets and of 9,000 random
+  sheets with nesting is unchanged (#1488).
+
+#### Smaller output
+
+- **Prefixed copies of widely available properties go.** `--minify` dropped
+  `-webkit-animation-delay:1s` beside `animation-delay:1s`, but kept
+  `-webkit-flex-grow:1` beside `flex-grow:1`, because it compared the two only
+  when it had a type for both spellings. An untyped copy is now read under the
+  unprefixed property's grammar and dropped when the values agree, which
+  shrinks the SatCSS output by about 0.7% raw and 0.3% under gzip.
+  `--enforce-spec` keeps every copy (#1439).
+- **An overridden `content` goes.** `--minify` kept both declarations of
+  `.a{content:"a";content:"b"}`, since a later `content` can be a value some
+  browser rejects and the earlier its fallback. After a string, a quote
+  keyword, a counter, `none` or a CSS-wide keyword, which every browser reads,
+  nothing is left to fall back to, and the earlier declaration is dropped. So
+  is a normal `content` beside an important one, in either order (#1417,
+  #1419).
+- **An overridden `text-rendering` goes,** now that the property is typed
+  (#1440).
+- **`--enforce-spec` and `--lossless` left merges unmade.** Factoring weighed
+  each declaration at its default spelling, which is shorter than the one
+  either flag prints: `--enforce-spec` keeps a family name's quotes, and both
+  keep an oklch chroma's number where the default writes a percentage. A
+  shared `font-family:"A B"` stayed in each rule where lifting it saved bytes.
+  Factoring now weighs the bytes the run prints, which changes 21 of the 505
+  SatCSS and Tailwind sheets under `--enforce-spec` and none under
+  `--lossless`; default output is unchanged (#1477).
+
+### Formatted output
+
+- `cascade fmt` kept whichever spelling the input used, so one selector printed
+  two ways. It now prints `::before` for `:before` and `odd` for `2n+1`
+  (#1357).
+- `lab()` and `oklab()` printed a percentage alpha as a number: `lab(50% 20 30
+  / 40%)` came out as `lab(50% 20 30 / .4)`. It prints as written, as in the
+  other colour functions (#1370).
+
+### Comparing stylesheets
+
+#### `cascade diff --diff=canonical`
+
+- **Two sheets were called identical when they are not.** One sheet could lose
+  a rule or a declaration inside an `@media` block to a parse error and still
+  compare identical: `@media screen{a!{color:red}b{color:red}}` against `@media
+  screen{b{color:red}}` exited 0. That loss now counts as unread, as one inside
+  `@supports` does, and the command exits 2. The comparison also called
+  `.o{width:76px}.g,.o{display:none}.p{display:block}.g{width:24px}` identical
+  to a sheet that gives an element of both classes a width of 76px instead of
+  24px, and called `.a{color:red}@media screen{.b{color:blue}.a{color:red}}`
+  identical to the same sheet without its last `.a`, which on screen paints
+  an element of both classes blue instead of red. A rule inside a condition
+  that repeats an earlier write of its selector is now dropped only when
+  nothing, `all` included, wrote the same property in between, inside the
+  block or out. Each pair now compares different (#1312, #1406, #1451).
+- **A guard a newer browser reads was no difference.**
+  `@supports (field-sizing:content){a{color:red}}` compared identical to an
+  empty sheet, and so did a guard on `anchor-name`, since no target version
+  reads either. Chrome ships them from 123 and 125, and Chromium 153 colours
+  the link. A target now stands for its version and every later one, so a
+  guard is dropped only when every browser at or past the targets fails it,
+  and the pair compares different (#1463).
+- **A double negation in `@supports` was printed invalid.**
+  `@supports not (not (display:grid))` came out as
+  `@supports not not (display:grid)`, which Chromium drops with its block and
+  cascade cannot read back, and `((display:grid) and ((color:red) or
+  (gap:1px))) or (top:0)` lost the parentheses around its inner `or`. Every
+  operand now keeps the parentheses the grammar asks of it (#1485).
+- **A list a browser drops whole compared equal to its rules.**
+  `a,a:has-slotted{color:red}` compared identical to
+  `a{color:red}a:has-slotted{color:red}`, though Chromium 153 drops the first
+  rule whole and leaves `a` uncoloured. A list whose selectors some target
+  release reads apart now compares as one rule, and one no target parses,
+  such as a list holding a `-ms-` pseudo-element, as no rule (#1487).
+- **A guard was decided by its property alone.**
+  `@supports (break-before:always){a{color:red}}` compared identical to
+  `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves
+  the rule unapplied, and so did a guard on `width:stretch`, which Chrome
+  reads only from 138. A guard is now true from the first release that parses
+  every production its declaration uses, value included, and is unwrapped only
+  when true, and dropped only when false, in every release from the targets to
+  the newest the compatibility data records (#1484).
+- **A sheet differed from its own minified output.** This is the check the
+  comparison exists for, and with 1.2.1 it failed on 139 of the 504 SatCSS
+  sheets and on Tailwind's output. The comparison now treats as equal each
+  rewrite below, none of which can change a computed value. All 504 sheets and
+  Tailwind's output compare identical to their `--minify` output under both
+  objectives (#1394, #1405, #1409, #1410, #1411, #1412, #1413, #1414, #1415,
+  #1416, #1430, #1431, #1438, #1440, #1441, #1442, #1443, #1450, #1454).
+  - The split of a selector's declarations across rules.
+    `.a{width:1px}.b{width:2px}.c{height:3px}.a{height:4px}` equals
+    `.c{height:3px}.a{height:4px;width:1px}.b{width:2px}`, and
+    `.a,.b{speak:none}.a,.b{top:7px}` equals `.a,.b{speak:none;top:7px}`. The
+    comparison used to join two occurrences of a selector at a time, and which
+    pair it joined first decided the result. It now reads a run of rules one
+    declaration at a time and orders two only where swapping them could change
+    a value.
+  - Longhands against their shorthand. `top`, `right`, `bottom` and `left`
+    compare equal to `inset` also when another declaration sits between them,
+    and so do `border-width`, `border-style` and `border-color` against
+    `border`.
+  - An order no element can observe. Two rules that write the same declarations
+    compare equal in either order. So do a normal and an important declaration
+    of one rule (CSS Cascade 5 sec. 6.1), and two rules that write one value
+    through two spellings, as `-moz-transform:rotate(180deg)` and
+    `-webkit-transform:rotate(180deg)` do.
+  - A legacy alias against its property. The WHATWG Compatibility Standard
+    makes `-webkit-flex-grow` the same property as `flex-grow`, so in
+    `-webkit-flex-grow:1;flex-grow:2` the later write wins whatever the two
+    values and wherever they stand, and a later `flex` writes over both. The
+    comparison equated an alias only with an identical twin in the same rule,
+    so it called instagram's sheet different from 1.2.1's output of it, which
+    keeps `-webkit-flex-basis`, `-grow` and `-shrink` before `flex:1 150px`.
+  - A declaration no target reads. A `-ms-`, `-o-` or `-khtml-` declaration,
+    `font-smooth` and `font-smoothing` are dropped from both sides, and a
+    prefixed copy a target needs, such as the `-webkit-hyphens` of Safari 16.4,
+    is kept on both. `--enforce-spec` turns this off.
+  - A property cascade did not type. `text-rendering`, `-webkit-touch-callout`
+    and an untyped prefixed spelling such as `-moz-transform-origin` were taken
+    to write every property, so they held apart rules that write nothing in
+    common. Each now writes its own property alone.
+- **A rule no browser reads withheld the verdict.** The comparison exited 2 on
+  a sheet against its `--minify` output when the sheet held a rule over
+  `:-o-prefocus`, `:-moz-submit-invalid`, `:selected`, a misspelt pseudo-class
+  such as `:h`, or a keyframe selector such as `0` for `0%`. No target reads
+  any of them, so every target drops the rule. The warning now says so. The
+  comparison judges for the targets, so it does not count the loss and no
+  longer exits 2 for it. Under `--enforce-spec` the reader keeps such a rule
+  and the comparison reports a sheet that lost it (#1429, #1446).
+
+#### `cascade diff` without `--diff`
+
+- **A colour written two ways was reported as a modified rule.**
+  `color:#ffffff` against `color:#fff` showed as a rule annotated
+  "(declarations differ in subtle ways)". The default mode now compares
+  declarations the way `--diff=tree` does. When the two files parse to the same
+  stylesheet, the report says "no structural change; the text differs" above
+  the text diff. It still exits 1, because the default mode counts any
+  difference in the text (#1400).
+- **A changed rule could go unreported.** When the other file held two
+  identical copies of its counterpart, pairing one copy claimed both and the
+  change was dropped. It is reported (#1297).
+
+### Warnings, errors and help
+
+The new form of a diagnostic is under [Breaking](#command-line).
+
+- **A noisy sheet buried its warnings.** A warning already printed for the same
+  file is now counted under the first, and a last line gives the total and
+  points to `-v`. netflix.com's sheet prints about 40 lines of warnings where
+  it printed nearly 500. `-q` was documented and silenced nothing; it now
+  prints no warning, and `-v` prints every one, in `fmt`, `apply`, `prune` and
+  the `diff` report (#1332, #1341).
+- **Some messages pointed at the wrong thing.** A selector the reader refuses
+  was a `bad value: ...` naming no property, and is a `bad selector: ...`. A
+  declaration with no value, such as `.b { color: }`, was reported one column
+  past the `}` that ends it, and is reported at the `}`. A bad `@font-face`
+  descriptor value pointed at line 1 of a copy of the value, and is located in
+  the sheet (#1330, #1339, #1340).
+- **A mistyped command was taken for a file.** `cascade fmtt a.css` complained
+  about `a.css`. It now says `fmtt` is an unknown command and suggests `fmt`.
+  `--flatten-nesting` without `--minify` did nothing and said nothing, and is
+  now noted (#1333).
+- **The help pages are written for a first reading.** They group the options by
+  what they act on, give every command examples and describe the `diff` report
+  and its `--json` members (#1333, #1335).
+- **`diff --browser` promised more than it checks.** Its help said it reports
+  every computed-style value the two files disagree on. It compares renders
+  pixel for pixel and lists computed values only under pixels that differ, so
+  a value no pixel shows, such as the duration of an animation that never
+  runs, goes unreported. The help now says so (#1455).
 
 ### Parsing
 
-- A rule whose attribute selector has a number as its value, such as
-  `[data-x=2]`, `[data-x=2px]` or `[data-x=50%]`, is dropped with a warning, as
-  browsers drop it, instead of being kept as `[data-x="2"]` (#1292).
-- An invalid declaration in an `@keyframes` frame warns, as one in a style rule
-  does, and so do an `!important` one and an `animation-*` property other than
-  `animation-timing-function`, which browsers ignore there. The first went
-  silently and the others stayed (#1294).
-- An `@charset` warns and goes unless the sheet opens with exactly
-  `@charset "UTF-8";`, so not after whitespace, a comment or an `@layer`
-  statement. An `@import` after an unrecognised at-rule no longer warns (#1294).
-- Input nesting blocks or functions more than 128 deep no longer crashes
-  cascade with a stack overflow. A value nested deeper is kept and printed back
-  as written; a rule nested deeper loses its contents with a warning (#1296).
-- A selector nesting `:is()` more than 100 deep drops its rule with a warning
-  instead of reading as an `:is()` that matches nothing (#1296).
-- Parsing is faster and the lexer allocates half as much per token, most of all
-  on custom properties and `var()` fallbacks, and on a sheet of top-level rules
-  or one holding its rules in an `@layer` or `@media` block, as Tailwind output
-  does, each rule read before the next is parsed. A sheet of fallbacks that do
-  not match their property's grammar cost its size squared (#1311, #1314, #1315,
-  #1381, #1382, #1387).
-- A custom property's value is its tokens as read. `--x:\!important` keeps the
-  escaped ident as its value instead of becoming a lone backslash flagged
-  important, `--x:a/**/b` stays two tokens, written back with the empty comment
-  and kept apart from `--x:a b`, and a single-quoted string is the same value as
-  a double-quoted one whether parsed or built from text (#1386).
+- **A custom property's value could change on the way through.** It was printed
+  and lexed again, so `--x:\!important` became a lone backslash marked
+  important, and `--x:a/**/b` became `--x:a b`, another token sequence. The
+  value is now the tokens the parser read. `'a'` and `"a"` stay one value
+  (#1386).
+- **Deep nesting crashed cascade.** Input nesting blocks or functions more than
+  128 deep overflowed the stack. A value nested deeper is now kept and printed
+  back as written, and a rule nested deeper loses its contents with a warning.
+  A selector nesting `:is()` more than 100 deep read as an `:is()` that matches
+  nothing; its rule is dropped with a warning (#1296).
+- **Rules and declarations a browser drops were kept.** `[data-x=2]`, an
+  attribute selector with a number as its value, was kept as `[data-x="2"]` and
+  so matched elements no browser matches. In an `@keyframes` frame, an
+  `!important` declaration or an `animation-*` property other than
+  `animation-timing-function` stayed in the output. A `text-rendering` value
+  outside `auto | optimizeSpeed | optimizeLegibility | geometricPrecision` was
+  printed back. Each now goes with a warning, as browsers drop it (#1292,
+  #1294, #1440).
+- **`@charset` is read as browsers read it.** It warns and goes unless the
+  sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
+  comment or an `@layer` statement (#1294).
 
-### CLI tools
+### `--inline-vars`
 
-- `--inline-vars` composes a nested rule's selector as CSS Nesting does: `.x&`
-  under `a` no longer reads as the class `.xa`, and a definition on a selector
-  list reaches a consumer under one of its branches (#1352).
-- `--inline-vars` folds a variable that several rules define with one value, so
-  inlining its output again changes nothing. One whose definitions disagree is
-  named: `--x takes different values in different scopes` (#1343).
-- On Windows the lines of `cascade`'s output and help pages end in LF, as
-  elsewhere, and `cascade diff --browser` starts node without a POSIX shell and
-  finds it on `PATH` under `PATHEXT` (#1291).
-- `--inline-imports` inlines Windows drive paths (`C:/a.css`, `C:\a.css`,
-  `C:a.css`), UNC paths and `file:` URLs and checks them against
-  `--import-root`. It left them alone as remote URLs or looked a UNC path up
-  under the importing file's directory (#1291).
-- `cascade fmt --minify --profile` opens with the time spent reading, optimising
-  and printing, names its columns in words and counts `nested-merge probes`,
-  also read as `Stats.counters.nested_merge_probes` (#1301, #1336).
-- Printing the warnings of a large sheet no longer costs its size per warning: a
-  2 MB sheet prints about twenty times faster (#1310).
-- A bad `@font-face` `font-weight`, `font-style` or `font-stretch` value is
-  reported where the sheet holds it and names its descriptor; it pointed at line
-  1 of a copy of the value (#1330).
-- A parse warning already printed for the same file is counted under the first,
-  and a last line gives the total and points to `-v`: netflix.com's sheet prints
-  about 40 lines of warnings, not nearly 500 (#1332, #1341).
-- `-v` prints every warning and `-q` none, in `fmt`, `apply`, `prune` and the
-  `diff` report (#1332).
-- A selector the reader refuses is reported as `bad selector: ...` rather than
-  as a `bad value: ...` naming no property (#1340).
-- A declaration with no value, such as `.b { color: }`, is reported at the `}`
-  that ends it, not one column past it (#1339).
-- `cascade fmtt a.css` says `fmtt` is an unknown command and suggests `fmt`
-  instead of complaining about `a.css`; a word that names no file and holds no
-  `.` or `/` is not taken for a stylesheet (#1333).
-- The messages cascade writes itself take the `file: error: message` form of its
-  parse warnings, such as `broken.css: error: parse dropped every rule`, and
-  name `cascade` when no file is at fault (#1337).
-- `cascade fmt missing.css` exits 124, as the other commands do for a missing
-  file, instead of 1, the status of a file that failed to parse (#1338).
-- The help pages group the options by what they act on, give every command
-  examples and describe the `diff` report and its `--json` members (#1333,
-  #1335).
-- `--flatten-nesting` without `--minify` is noted as doing nothing, and
-  `--keep-vars='*'` no longer prints a stray `[1]` (#1333).
+- **A value could land in the wrong rule.** `--inline-vars` read `.x&` under
+  `a` as the class `.xa` and folded a value defined there into a rule styling
+  `a.x`. It now composes a nested rule's selector as CSS Nesting does, and a
+  definition on a selector list reaches a consumer under one of its branches
+  (#1352).
+- **Inlining its own output folded more.** A variable that several rules define
+  with one value was kept, then folded on a second run. It is folded the first
+  time. One whose definitions disagree is named: `--x takes different values in
+  different scopes` (#1343).
+- **A `calc()` around a kept variable was dropped.** With `--keep-vars`,
+  `padding:calc(var(--s) * 1)` and `width:calc(var(--s))` came out as a bare
+  `var(--s)`, and `calc(calc(var(--s)) * 2)` as `calc(var(--s)*2)`. A variable
+  substitutes tokens, and `calc()` is what reads them as one sum: under
+  `--s:1px + 2px`, Chromium computes `width:calc(var(--s))` to 3px and
+  `width:var(--s)` to `auto`, and under `--s:1px 2px` the padding goes the
+  other way. `Css.Context` runtime variables did the same. The `calc()` now
+  stays, as it does under `--minify`, which drops a nested one only where an
+  `@property` registration makes the variable one value (#1458).
 
-### Diff report
+### Windows
 
-- When the comparison falls back to the text, the report and the `--json`
-  document give the first difference's line and column counting from 1, as a
-  parse warning does: a difference at the start of the second line read `line 1,
-  col 0`. The report's `@@` header names that line instead of a byte offset
-  (#1334).
-- `cascade diff` no longer slows down quadratically with the number of rules
-  that moved or changed selector: netflix.com's stylesheet against its own
-  `--minify` output takes 0.2 s of CPU instead of 1.2 s (#1297).
-- A changed rule is reported when the other file holds two identical copies of
-  its counterpart. Pairing one copy claimed both, and the change was dropped
-  (#1297).
-- `cascade diff --diff=canonical` is faster and lighter, for the same report:
-  Tailwind's stylesheet against tw's takes about a quarter of the time and a
-  third of the memory (#1304, #1305, #1308, #1309, #1327, #1328).
-- `cascade diff --diff=canonical` keeps a rule after an earlier one that writes
-  another value to an element both match, also when a rule writing its own
-  value stands between them: `.z{color:red}.j{color:blue}.a{color:blue}` and
-  `.a{color:blue}.z{color:red}.j{color:blue}` compared identical (#1326).
-- A rule or declaration dropped inside an `@media` block counts as unread, as
-  one inside `@supports` does, where it was `Recovered`: `cascade diff` exits 2
-  instead of reporting two sheets identical when one lost a rule there (#1312).
+- **A build gave other bytes on Windows.** Numbers printed differently:
+  `3.40282e38px` came out as `3.40282e038px`, and `100000000000.5` as
+  `100000000001`. `cascade` also wrote CRLF line endings in its output and help
+  pages. Numbers print as elsewhere and lines end in LF (#1286, #1291, #1292,
+  #1300).
+- **Local paths were taken for remote URLs.** `--inline-imports` left Windows
+  drive paths (`C:/a.css`, `C:\a.css`, `C:a.css`) and `file:` URLs alone, and
+  looked a UNC path up under the importing file's directory. It inlines them
+  and checks them against `--import-root`. `cascade diff --browser` starts node
+  without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).
+
+### Speed
+
+- **`--minify` takes less than half the CPU of 1.2.1** over the SatCSS corpus,
+  and about a third on Tailwind's stylesheet and on tw's. Each step left the
+  output byte for byte as it was (#1306, #1307, #1313, #1322, #1323, #1324,
+  #1325, #1329, #1344, #1347, #1356, #1361, #1362, #1363, #1364, #1365, #1374,
+  #1375, #1376, #1377, #1378, #1379, #1380, #1384, #1385, #1420, #1421, #1434,
+  #1435, #1436).
+- **`cascade diff --diff=canonical` takes less than a third of the CPU** on
+  Tailwind's stylesheet against tw's, and less than half the memory (#1304,
+  #1305, #1308, #1309, #1326, #1327, #1328, #1426, #1447, #1450).
+- **`cascade diff` no longer slows with the square of the rules that moved.**
+  netflix.com's stylesheet against its own `--minify` output takes 0.2 s of CPU
+  instead of 1.2 s (#1297).
+- **Parsing is faster,** most of all on Tailwind's output. A sheet of `var()`
+  fallbacks that do not match their property's grammar cost its size squared,
+  and a custom property's value was lexed twice. Each top-level rule is now
+  read before the next is parsed, and so is each rule of a top-level `@layer`,
+  `@media`, `@supports` or `@container` block. Tailwind's output gains most,
+  since it sits in one `@layer` (#1311, #1314, #1315, #1381, #1382, #1383,
+  #1387).
+- **Printing warnings no longer costs the sheet's size per warning.** A 2 MB
+  sheet prints its warnings about twenty times faster (#1310).
+- **`--profile` says where a run goes.** `cascade fmt --minify --profile` opens
+  with the time spent reading, optimising and printing, names its columns in
+  words and prints one row per factoring run. It counts `nested-merge probes`,
+  also read as `Stats.counters.nested_merge_probes` (#1301, #1336, #1372).
 
 ### Library
 
-- `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
-  as WHATWG URL does, since a digit cannot open a scheme (#1291).
-- `Reader` exposes `origin` and `original_offset`, which map a position in the
-  preprocessed input back to a byte offset in the string the reader was given
+- **The optimizer's building blocks are public modules.** `Rule_graph`,
+  `Rule_candidate`, `Rule_rewrite`, `Rule_scheduler`, `Ctx`, `Factor`, `Size`
+  and twenty other modules the tests and benches drive were private, and a
+  build could compile those clients before the modules they name, failing
+  with "is an alias for module Cascade__Rule_candidate, which is missing".
+  They are now part of `Cascade`'s public interface (#1543).
+- **`Css.minify`** optimises and prints in one call, as `cascade --minify`
+  does. `Selector.v`, `Container.v` and `Css.stylesheet` read CSS written in
+  the program (#1299, #1367).
+- **`Source_index` offsets drifted by a byte per CRLF,** so a tool locating
+  `@import` in a CRLF file cut statements in the wrong place, and a NUL could
+  make `Source_index.v` raise. Offsets and slices index the string you passed,
+  also when it starts with a BOM. `Reader.origin` and `Reader.original_offset`
+  map a position in the preprocessed input back to a byte offset in that string
   (#1285).
-- `Source_index` offsets and slices index the string you passed even when it has
-  CRLF line endings, starts with a BOM or holds a NUL. They drifted by a byte
-  per CRLF, and a NUL could make `Source_index.v` raise (#1285).
+- **`Selector.specificity` counted a prefixed pseudo-element as a class.**
+  `input::-webkit-input-placeholder` weighed (0,1,1) where Selectors 4 sec. 17
+  and the browsers give (0,0,2). `::-webkit-scrollbar` and `::details-content`
+  were counted the same way. Each now counts with the type selectors (#1444).
+- **A selector built in the program is the one the parser reads.**
+  `Selector.compound`, `combine` and `reshape` build a selector in the parser's
+  shape, so it equals the selector read back from its printed text (#1342).
+- **`Css.Context.resolve_url`** resolves `1:/x` against the base as a relative
+  path, as WHATWG URL does, since a digit cannot open a scheme (#1291).
+- **`Properties.is_vendor_prefixed` and `Properties.legacy_alias`** say
+  whether a property is a vendor's own extension and which property a
+  WHATWG Compatibility legacy alias such as `-webkit-transform` names. The
+  optimizer now asks them instead of reading the property's name (#1480).
+- **`Rule_graph` read a rule's raw selector under a nesting parent.** Asked
+  whether two rules of a graph built with `~parent` tie, it weighed `&` at
+  nothing, where CSS Nesting 1 weighs it as the parent: `.x.y` and `& &.x`
+  under `.p` did not tie, although Chromium applies whichever comes last. It
+  now reads each rule by its composed selector, and
+  `Rule_graph.selector_branches` composes a selector to ask with. No caller in
+  cascade builds a graph under a parent, so output is unchanged (#1489).
 
 ## 1.2.1
 

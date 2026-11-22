@@ -754,6 +754,44 @@ let scrollbar_state_pseudo_classes_read () =
   round_trips "::-webkit-scrollbar:corner-present:window-inactive";
   round_trips "::-webkit-scrollbar-button:start:decrement"
 
+(* Selectors 4 sec. 3.6.1 reads the four CSS 2.1 pseudo-elements after one colon
+   too, "for compatibility", and no other: Firefox's parser takes one colon for
+   those four alone (Servo's [is_css2_pseudo_element]), and Chrome 151 and
+   WebKit 26.5 drop [.a:-webkit-input-placeholder] and every other name below
+   with one colon while they keep it with two. One colon there is an unknown
+   pseudo-class, so a rule holding one stays as invalid as its author wrote it,
+   and never reads as the [::] node that a browser does read.
+
+   [:-moz-placeholder] is the exception: Firefox's parser lists it as a
+   pseudo-class (Servo's non_ts_pseudo_class_list.rs, ESR 128), so Firefox reads
+   the rule, which stays, as the unknown pseudo-class it is. *)
+let single_colon_pseudo_elements () =
+  let one_colon =
+    List.filter_map
+      (fun pe ->
+        match String.index_opt pe '(' with
+        | Some _ -> None
+        | None ->
+            if String.starts_with ~prefix:"::" pe then
+              Some (String.sub pe 1 (String.length pe - 1))
+            else None)
+      modelled_pseudo_element_spellings
+  in
+  let legacy = [ ":before"; ":after"; ":first-line"; ":first-letter" ] in
+  List.iter
+    (fun pe ->
+      if Stdlib.not (List.mem pe (":-moz-placeholder" :: legacy)) then
+        neg_cursor read (String.concat "" [ ".a"; pe ]))
+    one_colon;
+  (match Cursor.option read (Cursor.of_string ".a:-moz-placeholder") with
+  | None -> Alcotest.fail "selector should parse: .a:-moz-placeholder"
+  | Some sel ->
+      Alcotest.(check string)
+        "round trip .a:-moz-placeholder" ".a:-moz-placeholder"
+        (to_string ~minify:true sel));
+  neg_cursor read ".a:-webkit-input-placeholder";
+  neg_cursor read ".a:-ms-input-placeholder,.b"
+
 let suite =
   let open Alcotest in
   ( "selector_pseudo",
@@ -771,4 +809,6 @@ let suite =
         modelled_raw_ident_pseudo_elements;
       test_case "scrollbar state pseudo-classes" `Quick
         scrollbar_state_pseudo_classes_read;
+      test_case "single-colon pseudo-elements" `Quick
+        single_colon_pseudo_elements;
     ] )

@@ -19,6 +19,11 @@ val any : (t -> bool) -> t -> bool
 val has_pseudo_element : t -> bool
 (** [has_pseudo_element s] is [any is_pseudo_element s]. *)
 
+val untargeted : t -> string option
+(** [untargeted s] is a pseudo-class no browser the minifier targets reads that
+    [s] holds outside every [:is()] and [:where()], so that each of them drops a
+    rule over [s], if there is one. *)
+
 val has_unknown_pseudo_class : t -> bool
 (** [has_unknown_pseudo_class s] is whether [s] holds a pseudo-class cascade
     does not model. *)
@@ -56,7 +61,7 @@ val compound_refusal : seen:t list -> t -> compound_refusal option
 
 val has_refused_simple_in_compound : t -> bool
 (** [has_refused_simple_in_compound s] is whether a compound of [s] carries a
-    component {!compound_refusal} refuses. *)
+    component {!val-compound_refusal} refuses. *)
 
 val pseudo_class_all_idents : unit -> (string * t) list
 (** [pseudo_class_all_idents ()] is every name read after a single colon. *)

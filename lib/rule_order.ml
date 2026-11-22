@@ -32,186 +32,131 @@ and block_rules (stmts : statement list) : rule list option =
       | _ -> None)
     (Some []) stmts
 
-(* The graph node standing for one element. A block collapses to a single
-   pseudo-rule holding every contained selector branch and declaration: its edge
-   set is the cross product, a superset of the true per-rule edges, so conflict
-   detection stays conservative while the block reorders as one unit. The
-   applicability condition itself is irrelevant to safety: whether or not the
-   condition holds, a swap with a non-conflicting neighbour cannot change any
-   computed value. *)
-let element_node (stmt : statement) (rules : rule list) : rule =
-  match (stmt, rules) with
-  | Rule r, _ -> r
-  | _, [] ->
-      {
-        selector = Selector.universal;
-        declarations = [];
-        nested = [];
-        merge_key = None;
-      }
-  | _, rules ->
-      let branches =
-        List.concat_map (fun (r : rule) -> Edge.selectors r.selector) rules
-      in
-      let selector =
-        match branches with [ sel ] -> sel | sels -> Selector.List sels
-      in
-      {
-        selector;
-        declarations = List.concat_map (fun (r : rule) -> r.declarations) rules;
-        nested = [];
-        merge_key = None;
-      }
-
 (* Source-order-preserving edge count: [indeg.(j)] is the number of
    source-earlier declarations that overlap [j], which must all be emitted
    before [j]. [footprints] is the overlap key list of each declaration, hoisted
    out of the pair loop: computing it names the property, which serializes the
    declaration's property through a fresh buffer. *)
+(* CSS Cascade 5 sec. 6.1 sorts by importance before order of appearance, so two
+   declarations of different importance never decide each other in one rule,
+   whatever they write. *)
+let orders a a_keys b b_keys =
+  Bool.equal (Declaration.is_important a) (Declaration.is_important b)
+  && Shorthand.declarations_overlap_with_keys a a_keys b b_keys
+
 let overlap_indegrees (arr : Declaration.declaration array) footprints :
     int array =
   let n = Array.length arr in
   let indeg = Array.make n 0 in
   for j = 0 to n - 1 do
     for i = 0 to j - 1 do
-      if
-        Shorthand.declarations_overlap_with_keys arr.(i) footprints.(i) arr.(j)
-          footprints.(j)
-      then indeg.(j) <- indeg.(j) + 1
+      if orders arr.(i) footprints.(i) arr.(j) footprints.(j) then
+        indeg.(j) <- indeg.(j) + 1
     done
   done;
   indeg
 
 (* Among not-yet-emitted declarations whose overlapping predecessors are all
-   emitted ([indeg = 0]), the one with the smallest content key (then index). *)
-let ready_min ~emitted ~indeg ~keys =
+   emitted ([indeg = 0]), the one with the smallest key (then index). *)
+let ready_min ~compare ~emitted ~indeg ~keys =
   let best = ref (-1) in
   for i = 0 to Array.length keys - 1 do
     if (not emitted.(i)) && indeg.(i) = 0 then
       if
         !best < 0
         ||
-        let c = String.compare keys.(i) keys.(!best) in
+        let c = compare keys.(i) keys.(!best) in
         c < 0 || (c = 0 && i < !best)
       then best := i
   done;
   !best
 
-(* Canonical order for a rule's declarations. Two declarations whose footprints
-   overlap - the same property, or a shorthand and a longhand writing a common
-   slot - keep their source order because it is cascade-significant; two with
-   disjoint footprints can never change each other's computed value, so they
-   sort into a deterministic content order. The declaration-level analogue of
-   the rule-level reordering, so two rules holding the same declarations in a
-   different commuting order project to one canonical form. Preserves physical
-   identity when the source order is already canonical. *)
-let canonical_declarations (decls : Declaration.declaration list) :
+(* A rule's declarations in the order [compare] gives their [key]s, within what
+   the cascade allows. Two declarations whose footprints overlap - the same
+   property, or a shorthand and a longhand writing a common slot - keep their
+   source order because it is cascade-significant; two with disjoint footprints
+   can never change each other's computed value, so they sort. Preserves
+   physical identity when the source order is already that order. *)
+let ordered_declarations ~key ~compare (decls : Declaration.declaration list) :
     Declaration.declaration list =
   match decls with
   | [] | [ _ ] -> decls
   | _ ->
       let arr = Array.of_list decls in
       let n = Array.length arr in
-      let keys =
-        Array.map (fun d -> Pp.to_string ~minify:true Declaration.pp d) arr
-      in
+      let keys = Array.map key arr in
       let footprints = Array.map Shorthand.declaration_overlap_keys arr in
       let indeg = overlap_indegrees arr footprints in
       let emitted = Array.make n false in
       let order = Array.make n 0 in
       let changed = ref false in
       for pos = 0 to n - 1 do
-        let b = ready_min ~emitted ~indeg ~keys in
+        let b = ready_min ~compare ~emitted ~indeg ~keys in
         if b <> pos then changed := true;
         emitted.(b) <- true;
         order.(pos) <- b;
         for j = b + 1 to n - 1 do
           if
             (not emitted.(j))
-            && Shorthand.declarations_overlap_with_keys arr.(b) footprints.(b)
-                 arr.(j) footprints.(j)
+            && orders arr.(b) footprints.(b) arr.(j) footprints.(j)
           then indeg.(j) <- indeg.(j) - 1
         done
       done;
       if not !changed then decls
       else Array.to_list (Array.map (fun i -> arr.(i)) order)
 
-(* The conditions every rule of an element sits under: a block's own, and those
-   of the one block it holds, if it holds exactly one. A condition only some of
-   its rules sit under is not the element's. *)
-type condition =
-  | Media_condition of Media.t
-  | Supports_condition of Supports.t
-  | Container_condition of string option * Container.t
+let declaration_text d = Pp.to_string ~minify:true Declaration.pp d
 
-let rec element_conditions (stmt : statement) =
-  let inner = function [ only ] -> element_conditions only | _ -> [] in
-  match stmt with
-  | Media (q, b) -> Media_condition q :: inner b
-  | Supports (c, b) -> Supports_condition c :: inner b
-  | Container (name, Option.Some c, b) -> (
-      match (name, c) with
-      | Option.None, Container.Named (name, c) ->
-          Container_condition (Option.Some name, c) :: inner b
-      | _ -> Container_condition (name, c) :: inner b)
-  | Container (_, Option.None, _)
-  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
-  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
-  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
-  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-  | Unknown_at_rule _ ->
-      []
+(* Canonical order for a rule's declarations: the commuting ones by content. The
+   declaration-level analogue of the rule-level reordering, so two rules holding
+   the same declarations in a different commuting order project to one canonical
+   form. *)
+let canonical_declarations decls =
+  ordered_declarations ~key:declaration_text ~compare:String.compare decls
 
-(* Media Queries 4 sec. 3.4: [not] negates the query it prefixes, all of it.
-   [only] is not a negation and a query list has no single one. *)
-let negated_media : Media.t -> Media.t option = function
-  | Cond (Not c) -> Option.Some (Cond c)
-  | Cond c -> Option.Some (Cond (Not c))
-  | Type ({ prefix = Option.None; _ } as q) ->
-      Option.Some (Type { q with prefix = Option.Some Media.Not })
-  | Type ({ prefix = Option.Some Media.Not; _ } as q) ->
-      Option.Some (Type { q with prefix = Option.None })
-  | Type { prefix = Option.Some Media.Only; _ } | List _ -> Option.None
-
-(* Whether two conditions cannot both hold for one element. Only a condition and
-   its exact negation are read: Media Queries 4 sec. 3.4 and CSS Conditional 3
-   sec. 6.1 have [not] negate the whole query or condition, turning true into
-   false, false into true and unknown into unknown, which applies nothing, so
-   the two are never true together. CSS Conditional 5 sec. 7.2 picks an
-   element's query container by name and by the features the query asks, which a
-   negation shares, so a container query and its negation on one name ask one
-   container. *)
-let excludes a b =
-  let negates negate equal x y =
-    match negate y with Option.Some ny -> equal x ny | Option.None -> false
+(* The order a rule's declarations are composed in. The shorthand composers fold
+   a run of adjacent longhands, so a declaration standing between two longhands
+   of one family keeps them apart, and whether [top], [right], [bottom] and
+   [left] become [inset] would turn on where the source, or the merge of two
+   rules, happened to put an unrelated [position]. Ranking each declaration by
+   its {!Shorthand.footprint_family} first brings every family together wherever
+   the overlap order lets it, so the composers read the declarations a rule
+   holds, not the order it holds them in. Within a family the wider footprint
+   comes first, so [border-width], [border-style] and [border-color] stand
+   together ahead of a [border-top-color] that overrides one side of them. *)
+let gathered_declarations decls =
+  let key d =
+    ( Option.value ~default:max_int (Shorthand.footprint_family d),
+      List.length (Shorthand.declaration_overlap_keys d),
+      declaration_text d )
   in
-  match (a, b) with
-  | Media_condition x, Media_condition y ->
-      negates negated_media Media.equal x y
-      || negates negated_media Media.equal y x
-  | Supports_condition x, Supports_condition y ->
-      Supports.equal x (Supports.Not y) || Supports.equal y (Supports.Not x)
-  | Container_condition (nx, x), Container_condition (ny, y) ->
-      Option.equal String.equal nx ny
-      && (Container.equal x (Container.Not y)
-         || Container.equal y (Container.Not x))
-  | _ -> false
+  let compare (f, w, t) (f', w', t') =
+    match Int.compare f f' with
+    | 0 -> ( match Int.compare w' w with 0 -> String.compare t t' | c -> c)
+    | c -> c
+  in
+  ordered_declarations ~key ~compare decls
 
 (* A grouped rule is the sequence of its per-branch rules, and a hoisted shared
    declaration is the same declaration written inline, so two sheets that factor
    the same content differently ([.absolute,.sr-only {position:absolute}] vs the
    declaration inline in [.sr-only]) only converge once grouping is undone.
-   Every list expands, whether or not a branch occurs elsewhere: the projection
-   must not depend on how the input happened to group its selectors. *)
+   Every list every browser reads alike expands, whether or not a branch occurs
+   elsewhere: the projection must not depend on how the input happened to group
+   its selectors. A browser drops a whole list over a selector it does not parse
+   (Selectors 4 sec. 3.9), so a list whose branches some browser of the dated
+   set reads apart ({!Merge.listable}) is one rule there and stays one:
+   [a,a:has-slotted] is not [a] and [a:has-slotted] in a browser that drops
+   [:has-slotted]. *)
 let expand_lists (stmt : statement) : statement list =
   match stmt with
   | Rule r when r.nested = [] && r.merge_key = None -> (
       match Edge.selectors r.selector with
       | [] | [ _ ] -> [ stmt ]
-      | branches -> List.map (fun selector -> Rule { r with selector }) branches
-      )
+      | branches ->
+          if Merge.listable r.selector then
+            List.map (fun selector -> Rule { r with selector }) branches
+          else [ stmt ])
   | _ -> [ stmt ]
 
 (* Coalescing two occurrences of a selector concatenates their declarations, so
@@ -219,525 +164,71 @@ let expand_lists (stmt : statement) : statement list =
    shared default the other specialises) becomes dead. Reduce with the same
    cascade dedup the optimizer uses - keep the last write of each property,
    preserving genuine fallback pairs - so a coalesced rule holds the same
-   declaration set a sheet that never split it would. *)
+   declaration set a sheet that never split it would. Composition waits for
+   {!composed}: a family composed from part of its longhands here could not take
+   the rest when a later merge brings them. *)
 let coalesced_declarations ~ctx decls =
-  Shorthand.deduplicate_declarations_with ~ctx decls
+  canonical_declarations
+    (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false decls)
 
-(* Two rules that agree wherever they meet. Restrict each to the declarations
-   that overlap the other rule at all; when those two sequences are equal, the
-   writes reaching any one property are the same declarations in the same order
-   whichever rule comes first, so swapping the two changes no computed value.
-   The graph's test is pairwise, and a prefixed property beside its unprefixed
-   twin writes one slot twice, so it reads the two copies of a hoisted group as
-   tied writers of that slot. Factoring produces exactly that shape: it writes
-   one declaration list into every branch of the group. *)
-let overlapping_writes_equal (a : rule) (b : rule) =
-  let with_keys (r : rule) =
-    List.map (fun d -> (d, Shorthand.declaration_overlap_keys d)) r.declarations
+(* Two adjacent rules over one selector list give every element the declarations
+   of one rule over both bodies, in the same order, whichever branches it
+   matches. {!expand_lists} would write each branch's two halves as occurrences
+   the projection must fold back, and a declaration the footprint model cannot
+   place reads as touching the other branch's second half, which holds them
+   apart. So the two join while the list still says they are one. *)
+let join_adjacent_lists ~ctx changed (stmts : statement list) : statement list =
+  let list_rule = function
+    | Rule
+        ({ selector = Selector.List _; nested = []; merge_key = None; _ } as r)
+      ->
+        Some r
+    | _ -> None
   in
-  let touching x y =
-    List.filter_map
-      (fun (decl, keys) ->
-        let meets (other, other_keys) =
-          Shorthand.declarations_overlap_with_keys decl keys other other_keys
-        in
-        if List.exists meets y then Some decl else None)
-      x
+  let same (a : rule) (b : rule) =
+    String.equal
+      (Pp.to_string ~minify:true Selector.pp a.selector)
+      (Pp.to_string ~minify:true Selector.pp b.selector)
   in
-  let a = with_keys a and b = with_keys b in
-  List.equal Declaration.same_minified (touching a b) (touching b a)
-
-(* The shape a run element folds in: a style rule merges declaration lists under
-   one selector, a conditional block concatenates bodies under an unchanged
-   prelude. [element_shape] is the one place the statements that can pair are
-   enumerated - the key that decides two elements share a cascade slot and the
-   merge that folds them both read it, so a statement cannot become mergeable
-   for one and stay unknown to the other. *)
-type block_prelude =
-  | Media_query of Media.t
-  | Feature_query of Supports.t
-  | Container_query of string option * Container.t option
-
-type merge_shape = Style of rule | Block of block_prelude * statement list
-
-let element_shape (stmt : statement) =
-  match stmt with
-  | Rule r when r.merge_key = None -> Some (Style r)
-  | Media (m, body) -> Some (Block (Media_query m, body))
-  | Supports (c, body) -> Some (Block (Feature_query c, body))
-  | Container (name, cond, body) ->
-      Some (Block (Container_query (name, cond), body))
-  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
-  | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
-  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
-  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-  | Unknown_at_rule _ ->
-      None
-
-let block_statement prelude body =
-  match prelude with
-  | Media_query m -> Media (m, body)
-  | Feature_query c -> Supports (c, body)
-  | Container_query (name, cond) -> Container (name, cond, body)
-
-(* What makes two run elements the same cascade slot, so that one can fold into
-   the other. Style, media and supports shapes retain their text keys, while a
-   container condition uses the structural equality that decides whether two
-   queries select the same containers. Its normalised spelling is only a hash:
-   collisions still reach [equal] instead of becoming merges. *)
-module Shape_key = struct
-  type t = Text of string | Container of string option * Container.t option
-
-  let equal a b =
-    match (a, b) with
-    | Text a, Text b -> String.equal a b
-    | Container (an, ac), Container (bn, bc) ->
-        Option.equal String.equal an bn && Option.equal Container.equal ac bc
-    | (Text _ | Container _), _ -> false
-
-  let hash = function
-    | Text text -> Hashtbl.hash (0, text)
-    | Container (name, cond) ->
-        let cond =
-          Option.map
-            (fun c -> Container.to_string ~minify:true (Container.normalize c))
-            cond
-        in
-        Hashtbl.hash (1, name, cond)
-end
-
-module Shape_table = Hashtbl.Make (Shape_key)
-
-let shape_key = function
-  | Style r -> Shape_key.Text (Pp.to_string ~minify:true Selector.pp r.selector)
-  | Block (Media_query m, _) ->
-      Shape_key.Text (String.concat "" [ "@media "; Media.to_string m ])
-  | Block (Feature_query c, _) ->
-      Shape_key.Text (String.concat "" [ "@supports "; Supports.to_string c ])
-  | Block (Container_query (name, cond), _) -> Shape_key.Container (name, cond)
-
-let element_key (stmt : statement) = Option.map shape_key (element_shape stmt)
-
-(* A run element and what the rounds of {!settle} read off it, worked out once:
-   the graph node standing for it, its shape key, the conditions every rule of
-   it sits under, and its serialized text, which ranks it among the elements it
-   is free to pass. *)
-type element = {
-  stmt : statement;
-  rules : rule list;
-  node : rule;
-  plain : bool;
-  key : Shape_key.t option;
-  conditions : condition list;
-  text : string Lazy.t;
-}
-
-let element stmt rules =
-  {
-    stmt;
-    rules;
-    node = element_node stmt rules;
-    plain = (match stmt with Rule _ -> true | _ -> false);
-    key = element_key stmt;
-    conditions = element_conditions stmt;
-    text = lazy (Pp.to_string ~minify:true pp_stylesheet [ stmt ]);
-  }
-
-(* The elements a run has held, by graph node: the ones it started with, then
-   each one a fold produced, numbered as {!Rule_graph.fold} numbers its
-   nodes. *)
-type store = { mutable elements : element array; mutable count : int }
-
-let add_element store e =
-  if store.count = Array.length store.elements then begin
-    let grown = Array.make (2 * store.count) e in
-    Array.blit store.elements 0 grown 0 store.count;
-    store.elements <- grown
-  end;
-  store.elements.(store.count) <- e;
-  store.count <- store.count + 1
-
-(* Two nodes of a run, the one whose writes would move and the one they would
-   move to. *)
-module Move_table = Hashtbl.Make (struct
-  type t = int * int
-
-  let equal (a, b) (c, d) = Int.equal a c && Int.equal b d
-  let hash = Hashtbl.hash
-end)
-
-(* One run being settled: its elements, the graph of their order, and for each
-   move a round found observed, the node that observed it, all kept across
-   rounds. *)
-type settling = {
-  canon_body : statement list -> statement list;
-  ctx : Ctx.t;
-  parent : Selector.t option;
-  store : store;
-  graph : Rule_graph.run;
-  observers : int Move_table.t;
-}
-
-(* Mutable state of one coalescing scan over the run's current order: the node
-   standing at each position as the scan found it, which is what the conflict
-   test reads, the element each position holds once the scan has folded into it,
-   the positions accumulated into each surviving one, and which remain. *)
-type scan = {
-  st : settling;
-  start : int array;
-  where : int array;  (** the position of each node in [start], or [-1] *)
-  current : (statement * rule list) array;
-  members : int list array;
-  alive : bool array;
-  mutable merged_any : bool;
-}
-
-let start_element scan i = scan.st.store.elements.(scan.start.(i))
-let node = Rule_graph.Node_id.of_int_exn
-
-let nodes_conflict scan i j =
-  Rule_graph.run_conflict scan.st.graph
-    (node scan.start.(i))
-    (node scan.start.(j))
-
-(* Nothing strictly between [lo] and [hi] observes any accumulated occurrence in
-   [mems] moving across it. A conflict between two rules that write the
-   overlapping slots identically is not observable, so it does not count; only
-   plain style rules qualify, since a conditional block's node is the
-   concatenation of its interior rules and that sequence is not the one any
-   single element sees. *)
-let observer scan ~lo ~hi mems =
-  let observed m a =
-    nodes_conflict scan m a
-    &&
-    let em = start_element scan m and ea = start_element scan a in
-    not (em.plain && ea.plain && overlapping_writes_equal em.node ea.node)
+  let rec go acc = function
+    | a :: b :: rest -> (
+        match (list_rule a, list_rule b) with
+        | Some ra, Some rb when same ra rb ->
+            let declarations =
+              coalesced_declarations ~ctx (ra.declarations @ rb.declarations)
+            in
+            changed := true;
+            go acc (Rule { ra with declarations } :: rest)
+        | _ -> go (a :: acc) (b :: rest))
+    | rest -> List.rev_append acc rest
   in
-  let rec find m =
-    if m >= hi then Option.None
-    else if List.exists (observed m) mems then Option.Some m
-    else find (m + 1)
+  go [] stmts
+
+(* Whether two of [decls] share a footprint family, the least a composer
+   needs. *)
+let composable decls =
+  let rec go seen = function
+    | [] -> false
+    | d :: rest -> (
+        match Shorthand.footprint_family d with
+        | None -> go seen rest
+        | Some f -> List.exists (Int.equal f) seen || go (f :: seen) rest)
   in
-  find (lo + 1)
+  go [] decls
 
-(* [moving] is [lo] or [hi], and its writes cross the interval. A move of one
-   element no element folded into yet is decided by its two nodes and the nodes
-   between them, and those do not change between rounds, only where they stand:
-   a node that observed it once and still stands between the two observes it
-   again, and the interval need not be read. *)
-let interval_clear scan ~lo ~hi ~moving =
-  match scan.members.(moving) with
-  | [ only ] as mems when only = moving -> (
-      let other = if moving = lo then hi else lo in
-      let move = (scan.start.(moving), scan.start.(other)) in
-      let between node =
-        let p = scan.where.(node) in
-        lo < p && p < hi
-      in
-      match Move_table.find_opt scan.st.observers move with
-      | Option.Some node when between node -> false
-      | _ -> (
-          match observer scan ~lo ~hi mems with
-          | Option.Some m ->
-              Move_table.replace scan.st.observers move scan.start.(m);
-              false
-          | Option.None -> true))
-  | mems -> Option.is_none (observer scan ~lo ~hi mems)
-
-(* Moving an earlier [@supports] block down to a later block with the same
-   condition happens only when that condition is true. In that case a
-   declaration in the later block can make an intervening declaration
-   irrelevant: an identical selector writing the same non-important property
-   wins after both the original and merged order. Remove only those exact
-   shadowed writes before asking whether the earlier block still conflicts with
-   the interval. Other statements and importance combinations stay pinned. *)
-let drop_shadowed_by_rules later_rules (rule : rule) : rule =
-  let selector = Pp.to_string ~minify:true Selector.pp rule.selector in
-  let shadowed : (Declaration.prop_key, unit) Hashtbl.t = Hashtbl.create 8 in
-  List.iter
-    (fun (later : rule) ->
-      if
-        String.equal selector
-          (Pp.to_string ~minify:true Selector.pp later.selector)
-      then
-        List.iter
-          (fun decl ->
-            if not (Declaration.is_important decl) then
-              Hashtbl.replace shadowed (Declaration.property_key decl) ())
-          later.declarations)
-    later_rules;
-  let declarations =
-    List.filter
-      (fun decl ->
-        Declaration.is_important decl
-        || not (Hashtbl.mem shadowed (Declaration.property_key decl)))
-      rule.declarations
-  in
-  if List.compare_lengths declarations rule.declarations = 0 then rule
-  else { rule with declarations }
-
-let supports_merge_down_clear scan ~from ~into =
-  match (fst scan.current.(from), fst scan.current.(into)) with
-  | Supports _, Supports _ ->
-      let moving =
-        element_node (fst scan.current.(from)) (snd scan.current.(from))
-      in
-      let later_rules = snd scan.current.(into) in
-      let rec clear i =
-        if i >= into then true
-        else
-          let conflicts =
-            match fst scan.current.(i) with
-            | Rule rule ->
-                let residual = drop_shadowed_by_rules later_rules rule in
-                residual.declarations <> []
-                && Rule_graph.rules_conflict ?parent:scan.st.parent moving
-                     residual
-            | _ -> List.exists (nodes_conflict scan i) scan.members.(from)
-          in
-          (not conflicts) && clear (i + 1)
-      in
-      clear (from + 1)
-  | _ -> false
-
-(* The element a merge produces. Two elements only ever pair on an equal
-   [element_key], and the key carries the slot's shape, so the two sides always
-   agree; a pair that did not agree declines to merge, which is always sound
-   since leaving a run alone is what the coalescing scan starts from. A block
-   merge concatenates the bodies in source order and re-canonicalises the
-   result: the two halves were each canonical alone, but their concatenation
-   need not be. *)
-let merged_element scan ~from ~into =
-  let earlier, later = if from < into then (from, into) else (into, from) in
-  match
-    ( element_shape (fst scan.current.(earlier)),
-      element_shape (fst scan.current.(later)) )
-  with
-  | Some (Style a), Some (Style b) ->
-      let merged =
-        {
-          a with
-          declarations =
-            canonical_declarations
-              (coalesced_declarations ~ctx:scan.st.ctx
-                 (a.declarations @ b.declarations));
-        }
-      in
-      Some (Rule merged, [ merged ])
-  | Some (Block (prelude, ba)), Some (Block (_, bb)) ->
-      let stmt = block_statement prelude (scan.st.canon_body (ba @ bb)) in
-      Some (stmt, Option.value ~default:[] (element_rules stmt))
-  | (Some (Style _ | Block _) | None), _ -> None
-
-let merge scan changed ~from ~into =
-  match merged_element scan ~from ~into with
-  | None -> ()
-  | Some element ->
-      scan.current.(into) <- element;
-      scan.members.(into) <- scan.members.(from) @ scan.members.(into);
-      scan.alive.(from) <- false;
-      scan.merged_any <- true;
-      changed := true
-
-(* Fold the earlier occurrence [i] down into [j] when nothing in between
-   observes its writes moving; otherwise fold [j]'s writes up into [i] when
-   nothing in between observes those. *)
-let try_merge scan changed ~last ~key i j =
-  if
-    interval_clear scan ~lo:i ~hi:j ~moving:i
-    || supports_merge_down_clear scan ~from:i ~into:j
-  then begin
-    merge scan changed ~from:i ~into:j;
-    Shape_table.replace last key j
-  end
-  else if interval_clear scan ~lo:i ~hi:j ~moving:j then
-    merge scan changed ~from:j ~into:i
-  else Shape_table.replace last key j
-
-(* Coalesce same-slot elements within one run. Folding an occurrence into
-   another moves its writes past every element in between, which is observable
-   only if one of those elements conflicts with what moved; the conflict test is
-   {!Rule_graph.facts_conflict}, which is the conflict of the graph over the
-   run, against every original occurrence already accumulated into the surviving
-   element. A conditional block's node is the union of its interior selectors
-   and declarations, a superset of its true conflicts, so the same test covers a
-   block merge. [blocks] says whether blocks fold at all. An element the scan
-   folded into becomes one new node of the graph. *)
-(* The run after [scan]: each surviving element, an element the scan folded
-   into standing as one new node of the graph in place of every node folded
-   into it. *)
-let folded scan =
-  let st = scan.st and ids = scan.start in
-  let survivor p =
-    match scan.members.(p) with
-    | [ q ] when q = p -> ids.(p)
-    | members ->
-        let stmt, rules = scan.current.(p) in
-        let e = element stmt rules in
-        (* the graph asks [exclusive] about the node it adds *)
-        add_element st.store e;
-        Rule_graph.Node_id.to_int
-          (Rule_graph.fold st.graph
-             (List.map (fun q -> node ids.(q)) members)
-             e.node
-             ~at:(node ids.(p)))
-  in
-  let rec collect p acc =
-    if p < 0 then acc
-    else collect (p - 1) (if scan.alive.(p) then survivor p :: acc else acc)
-  in
-  Array.of_list (collect (Array.length ids - 1) [])
-
-let coalesce ~blocks st changed (ids : int array) : int array =
-  let n = Array.length ids in
-  if n < 2 then ids
+(* A rule body once every merge is done, composed over its gathered order. One
+   rule, and the merge of two that hold the same declarations, reach one body:
+   CSSOM serializes a declaration block the same way, composing a shorthand
+   whenever the block holds all of its longhands, wherever they stand. *)
+let composed_declarations ~ctx decls =
+  if not (composable decls) then decls
   else
-    let scan =
-      {
-        st;
-        start = ids;
-        where =
-          (let where = Array.make st.store.count (-1) in
-           Array.iteri (fun p id -> where.(id) <- p) ids;
-           where);
-        current =
-          Array.map
-            (fun id ->
-              let e = st.store.elements.(id) in
-              (e.stmt, e.rules))
-            ids;
-        members = Array.init n (fun i -> [ i ]);
-        alive = Array.make n true;
-        merged_any = false;
-      }
-    in
-    let last = Shape_table.create 16 in
-    let key e =
-      match e.stmt with Rule _ -> e.key | _ -> if blocks then e.key else None
-    in
-    for j = 0 to n - 1 do
-      match key (start_element scan j) with
-      | None -> ()
-      | Some key -> (
-          match Shape_table.find_opt last key with
-          | Some i when scan.alive.(i) -> try_merge scan changed ~last ~key i j
-          | _ -> Shape_table.replace last key j)
-    done;
-    if scan.merged_any then folded scan else ids
+    Common.List.preserve decls
+      (canonical_declarations
+         (Shorthand.deduplicate_declarations_with ~ctx
+            (gathered_declarations decls)))
 
-(* Reorder a run into a canonical linear extension of its dependency graph,
-   breaking ties among independent elements by serialized statement content so
-   two source orderings converge to one form, while preserving the run as it
-   stands when that order already matches it. The graph expands each element's
-   relative selectors against the enclosing nesting context, so overlap is
-   computed on the effective selector, and records no conflict between two
-   elements under a condition and its negation, which never apply together. *)
-let sort st changed ids =
-  let n = Array.length ids in
-  if n < 2 then ids
-  else
-    let text i = Lazy.force st.store.elements.(ids.(i)).text in
-    let ranked = Array.init n Fun.id in
-    Array.sort
-      (fun a b ->
-        match String.compare (text a) (text b) with
-        | 0 -> Int.compare a b
-        | c -> c)
-      ranked;
-    let rank = Array.make st.store.count 0 in
-    Array.iteri (fun pos i -> rank.(ids.(i)) <- pos) ranked;
-    let order =
-      Array.map Rule_graph.Node_id.to_int
-        (Rule_graph.run_order st.graph (fun id ->
-             rank.(Rule_graph.Node_id.to_int id)))
-    in
-    if Array.for_all2 Int.equal order ids then ids
-    else begin
-      changed := true;
-      order
-    end
-
-(* Sort and coalesce to a fixed point: sorting can empty the interval between
-   two same-selector occurrences that a conflicting element previously kept
-   apart, enabling a merge the source order hid, so equivalent sheets converge
-   regardless of which arrangement they started from. Each merging round removes
-   at least one element, so this terminates. Each round reads the graph and the
-   elements the rounds before it left, so a round costs what changed since.
-
-   Fold what the run already offers before sorting it. Sorting is free to move
-   two same-selector occurrences apart, and a pair the input wrote adjacent has
-   an empty interval and so always merges; taking it first is what makes the
-   merged and unmerged spellings of that pair converge, where sorting first
-   strands the one that arrived already foldable.
-
-   Blocks are the exception. {!expand_blocks} has already written every block as
-   one block per rule, so the merged and unmerged spellings of a block pair
-   arrive identical and there is nothing to converge; folding them before the
-   sort would instead regroup the rules in the order the input wrote them, and
-   the block each rule landed in would decide where it sorts. They fold once the
-   sort has put the rules in canonical order. *)
-(* Only two elements of one shape key fold, and folding keeps the key, so an
-   element alone with its key stays in the graph to the end. *)
-let folds elements =
-  let sharing = Shape_table.create 16 in
-  Array.iter
-    (fun e ->
-      Option.iter
-        (fun key ->
-          Shape_table.replace sharing key
-            (1 + Option.value ~default:0 (Shape_table.find_opt sharing key)))
-        e.key)
-    elements;
-  fun id ->
-    match elements.(Rule_graph.Node_id.to_int id).key with
-    | Some key -> Shape_table.find sharing key > 1
-    | None -> false
-
-let settling ~canon_body ~ctx ?parent elements =
-  let store = { elements; count = Array.length elements } in
-  let exclusive i j =
-    let conditions id =
-      store.elements.(Rule_graph.Node_id.to_int id).conditions
-    in
-    let cj = conditions j in
-    List.exists (fun a -> List.exists (excludes a) cj) (conditions i)
-  in
-  let graph =
-    Rule_graph.run ?parent ~exclusive ~folds:(folds elements)
-      (Array.to_list (Array.map (fun e -> e.node) elements))
-  in
-  { canon_body; ctx; parent; store; graph; observers = Move_table.create 16 }
-
-let settle ~canon_body ~ctx ?parent changed (run : (statement * rule list) list)
-    : statement list =
-  match run with
-  | [] -> []
-  | [ (stmt, _) ] -> [ stmt ]
-  | run ->
-      let elements =
-        Array.of_list (List.map (fun (stmt, rules) -> element stmt rules) run)
-      in
-      let st = settling ~canon_body ~ctx ?parent elements in
-      let rec rounds ids =
-        let ids = coalesce ~blocks:false st changed ids in
-        let ids = sort st changed ids in
-        let coalesced = coalesce ~blocks:true st changed ids in
-        if coalesced == ids then ids else rounds coalesced
-      in
-      rounds (Array.init (Array.length elements) Fun.id)
-      |> Array.map (fun id -> st.store.elements.(id).stmt)
-      |> Array.to_list
-
-(* A declaration a conditional group repeats from the rule with the identical
-   selector before it, value and all, changes nothing: an engine reading the
-   guard sets the same value twice and one that does not reads the first rule
-   alone, so the sheet with the repeat and the one without paint alike. The
-   repeat is dropped so the two converge, unless a rule between the two writes
-   the property: an element both match then reads the repeat as the winner. Only
-   a rule directly inside the group is read, and only a declaration neither side
-   marks [!important]. *)
+(* The body of a conditional block. *)
 let conditional_body : statement -> statement list option = function
   | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Option.Some b
   | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
@@ -781,112 +272,41 @@ let rec expand_blocks (stmt : statement) : statement list =
           List.map (fun piece -> with_conditional_body stmt [ piece ]) pieces)
   | _ -> [ stmt ]
 
-let keys_written stmt =
-  Stylesheet.fold_statements
-    (fun acc stmt ->
-      match stmt with
-      | Rule r -> List.map Declaration.property_key r.declarations @ acc
-      | _ -> acc)
-    [] [ stmt ]
+(* A declaration a later rule with the *identical* selector also writes is dead
+   when the later one is at least as important: same element set, same
+   specificity, and CSS Cascade 5 sec. 6.1 ranks importance before order of
+   appearance, then the later wins. Dropping it lets a sheet that hoisted the
+   declaration into a shared group converge with one that wrote it inline - the
+   hoisted copy survives expansion only to be overridden. A later normal write
+   leaves an earlier important one standing. A property whose duplicates the
+   declaration dedup keeps verbatim ([content], [outline]) is shadowed only
+   where that dedup would drop the earlier write in one rule, so a sheet that
+   wrote the two in one rule converges with one that wrote them in two. A later
+   write a browser at or above the floors drops at parse time leaves the earlier
+   one as what that browser paints ({!Declaration.fallback_for}). *)
+(* Whether the later write [l] of [d]'s property shadows [d]. *)
+let shadows ~ctx d l =
+  if Shorthand.is_intentionally_duplicated d then
+    not
+      (List.memq d
+         (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false [ d; l ]))
+  else
+    (Declaration.is_important l || not (Declaration.is_important d))
+    && not (Declaration.fallback_for ~floors:(Ctx.floors ctx) ~later:l d)
 
-(* Per selector, the declarations of the last unguarded rule and where it
-   stands; per property key, where the last rule to write it stands. A key
-   written since that rule is one whose write stands after it. Writing every key
-   into a set per selector instead cost each statement a pass over every
-   selector seen, which is the square of the sheet. *)
-type repeats = {
-  seen : (string, Declaration.declaration list * int) Hashtbl.t;
-  last_write : (Declaration.prop_key, int) Hashtbl.t;
-  dropped : bool ref;
-}
-
-let selector_text sel = Pp.to_string ~minify:true Selector.pp sel
-
-let note_writes t position stmt =
-  List.iter
-    (fun k -> Hashtbl.replace t.last_write k position)
-    (keys_written stmt)
-
-let repeated t sel d =
-  (not (Declaration.is_important d))
-  &&
-  match Hashtbl.find_opt t.seen sel with
-  | Some (decls, position) ->
-      (match Hashtbl.find_opt t.last_write (Declaration.property_key d) with
-        | Some written -> written <= position
-        | None -> true)
-      && List.exists
-           (fun d0 ->
-             (not (Declaration.is_important d0))
-             && Declaration.equal_declaration d0 d)
-           decls
-  | None -> false
-
-let prune_guarded_rule t : statement -> statement option = function
-  | Rule r when r.nested = [] ->
-      let sel = selector_text r.selector in
-      let kept = List.filter (fun d -> not (repeated t sel d)) r.declarations in
-      if List.compare_lengths kept r.declarations = 0 then Option.Some (Rule r)
-      else (
-        t.dropped := true;
-        if kept = [] then Option.None
-        else Option.Some (Rule { r with declarations = kept }))
-  | stmt -> Option.Some stmt
-
-(* A group emptied by the pruning goes with it; one that was empty already stays
-   as it was. *)
-let prune_guard t stmt body : statement option =
-  let body' = List.filter_map (prune_guarded_rule t) body in
-  if body' = [] && body <> [] then Option.None
-  else Option.Some (with_conditional_body stmt body')
-
-let drop_guarded_repeats outer_changed stmts =
-  let t =
-    {
-      seen = Hashtbl.create 16;
-      last_write = Hashtbl.create 64;
-      dropped = ref false;
-    }
-  in
-  let rec go position = function
-    | [] -> []
-    | (Rule r as stmt) :: rest ->
-        note_writes t position stmt;
-        Hashtbl.replace t.seen (selector_text r.selector)
-          (r.declarations, position);
-        stmt :: go (position + 1) rest
-    | stmt :: rest -> (
-        let pruned =
-          match conditional_body stmt with
-          | Option.Some body -> prune_guard t stmt body
-          | Option.None -> Option.Some stmt
-        in
-        match pruned with
-        | Option.Some stmt' ->
-            note_writes t position stmt';
-            stmt' :: go (position + 1) rest
-        | Option.None -> go (position + 1) rest)
-  in
-  let result = go 0 stmts in
-  if !(t.dropped) then (
-    outer_changed := true;
-    result)
-  else stmts
-
-(* A declaration a later rule with the *identical* selector also writes is dead:
-   same element set, same specificity, later wins. Dropping it lets a sheet that
-   hoisted the declaration into a shared group converge with one that wrote it
-   inline - the hoisted copy survives expansion only to be overridden. Neither
-   may carry [!important], which changes the winner. *)
-(* One backward pass: [later] holds, per selector, the properties that the
-   statements already walked write without [!important], and those are exactly
-   the statements after the current one. Consulting it is a lookup rather than a
-   rescan of the tail, so no selector is serialised more than once. *)
-let drop_shadowed_declarations stmts =
+(* One backward pass: [later] holds, per selector, the declarations of each
+   property the statements already walked write, in source order, and those are
+   exactly the statements after the current one. Consulting it is a lookup
+   rather than a rescan of the tail, so no selector is serialised more than
+   once. *)
+let drop_shadowed_declarations ~ctx stmts =
   (* Properties are keyed by their AST identity: two constructors that print
      alike are different properties, and a name-keyed table would have one
      shadow the other. *)
-  let later : (string, (Declaration.prop_key, unit) Hashtbl.t) Hashtbl.t =
+  let later :
+      ( string,
+        (Declaration.prop_key, Declaration.declaration list) Hashtbl.t )
+      Hashtbl.t =
     Hashtbl.create 64
   in
   let written sel =
@@ -897,29 +317,31 @@ let drop_shadowed_declarations stmts =
         Hashtbl.replace later sel props;
         props
   in
-  let record sel declarations =
-    let props = written sel in
+  let record props declarations =
     List.iter
       (fun d ->
-        if not (Declaration.is_important d) then
-          Hashtbl.replace props (Declaration.property_key d) ())
-      declarations
+        let key = Declaration.property_key d in
+        let laters = Option.value ~default:[] (Hashtbl.find_opt props key) in
+        Hashtbl.replace props key (d :: laters))
+      (List.rev declarations)
+  in
+  let shadowed props d =
+    match Hashtbl.find_opt props (Declaration.property_key d) with
+    | None -> false
+    | Some laters -> List.exists (shadows ~ctx d) laters
   in
   let rec go = function
     | [] -> []
     | (Rule r as stmt) :: rest ->
         (* The tail first, so [later] describes it by the time [stmt] asks. *)
         let rest = go rest in
-        let sel = Pp.to_string ~minify:true Selector.pp r.selector in
-        let shadowed = written sel in
-        let kept =
-          List.filter
-            (fun d ->
-              Declaration.is_important d
-              || not (Hashtbl.mem shadowed (Declaration.property_key d)))
-            r.declarations
+        let props =
+          written (Pp.to_string ~minify:true Selector.pp r.selector)
         in
-        record sel r.declarations;
+        let kept =
+          List.filter (fun d -> not (shadowed props d)) r.declarations
+        in
+        record props r.declarations;
         if List.compare_lengths kept r.declarations = 0 then stmt :: rest
         else Rule { r with declarations = kept } :: rest
     | stmt :: rest -> stmt :: go rest
@@ -933,6 +355,15 @@ let drop_shadowed_declarations stmts =
 let rec recurse ~ctx ~(parent : Selector.t option) changed (stmt : statement) :
     statement =
   let here b = canonicalize_block ~ctx ~parent changed b in
+  (* A conditional block of plain rules is an element of the run around it,
+     which reads its entries again with every other entry of that run in view:
+     only there is it known whether an entry is a repeat that nothing else's
+     order rests on, so its own run drops none. *)
+  let element b =
+    canonicalize_block ~ctx ~parent
+      ~drops:(Option.is_none (element_rules stmt))
+      changed b
+  in
   match stmt with
   | Rule r ->
       let child_parent =
@@ -948,9 +379,9 @@ let rec recurse ~ctx ~(parent : Selector.t option) changed (stmt : statement) :
       if nested == r.nested && declarations == r.declarations then stmt
       else Rule { r with declarations; nested }
   | Layer (n, b) -> Layer (n, here b)
-  | Media (m, b) -> Media (m, here b)
-  | Container (n, c, b) -> Container (n, c, here b)
-  | Supports (s, b) -> Supports (s, here b)
+  | Media (m, b) -> Media (m, element b)
+  | Container (n, c, b) -> Container (n, c, element b)
+  | Supports (s, b) -> Supports (s, element b)
   | Moz_document (c, b) -> Moz_document (c, here b)
   | When (c, b) -> When (c, here b)
   | Else (c, b) -> Else (c, here b)
@@ -964,15 +395,15 @@ let rec recurse ~ctx ~(parent : Selector.t option) changed (stmt : statement) :
   | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
       stmt
 
-and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
+and canonicalize_block ~ctx ~parent ?drops changed (stmts : statement list) :
     statement list =
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
   let stmts = List.map (recurse ~ctx ~parent changed) stmts in
   let expanded =
-    List.concat_map expand_lists stmts
-    |> drop_shadowed_declarations
-    |> drop_guarded_repeats changed
+    join_adjacent_lists ~ctx changed stmts
+    |> List.concat_map expand_lists
+    |> drop_shadowed_declarations ~ctx
     |> List.concat_map expand_blocks
   in
   if List.compare_lengths expanded stmts <> 0 then changed := true;
@@ -999,11 +430,12 @@ and canonicalize_block ~ctx ~parent changed (stmts : statement list) :
         in
         let run, layers, moved, rest = take [] [] false stmts in
         if moved then changed := true;
-        let canon_body = canonicalize_block ~ctx ~parent changed in
         let settled =
           match run with
           | [] -> []
-          | run -> settle ~canon_body ~ctx ?parent changed run
+          | run ->
+              changed := true;
+              Rule_trace.settle ~ctx ?parent ?drops (List.map fst run)
         in
         settled @ layers @ go rest
     | stmt :: rest -> stmt :: go rest
@@ -1190,10 +622,10 @@ let rec canonical_values ~lossless ~missing (stmts : statement list) :
    [@supports] guard false in every world selects no user agent and its block
    never applies: Tailwind writes [@supports (@media(width>=1px): var(--tw))]
    for [supports-[@media(width>=1px)]:flex] where tw writes nothing, and the two
-   render alike. The optimizer keeps such a guard open for a sheet it emits; the
-   projection answers for the spec as written and the browsers of today, and
-   neither reading answers the guard yes, so the block goes under [enforce_spec]
-   too. *)
+   render alike. A guard is dropped when it is false in every browser the
+   comparison answers for, and this one is false in every conforming
+   implementation, so in every release of the dated browser set and under
+   [enforce_spec] alike. The optimizer keeps it open for a sheet it emits. *)
 let rec drop_unanswerable_supports (stmts : statement list) : statement list =
   List.filter_map
     (fun stmt ->
@@ -1204,12 +636,53 @@ let rec drop_unanswerable_supports (stmts : statement list) : statement list =
             (Stylesheet.map_statement_children drop_unanswerable_supports stmt))
     stmts
 
+(* Selectors 4 sec. 3.9 makes a style rule invalid in a browser that does not
+   parse one of its selectors, so a rule each target engine drops in every
+   release of the dated browser set applies nowhere: a list holding a [-ms-]
+   pseudo-element, which every target drops, is one. A comparison that judges
+   for targets drops such a rule from both sides, so a sheet that merged two of
+   them projects as the sheet that wrote them apart. Under [enforce_spec] a
+   conforming implementation may parse a prefixed name, and the rule stays. *)
+let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
+  if not judged then stmts
+  else
+    Stylesheet.edit_statements
+      (function
+        | Rule r when Merge.parsed_by_none r.selector -> Stylesheet_intf.Drop
+        | _ -> Stylesheet_intf.Keep)
+      stmts
+
 (* The normal optimizer drops this typed alias under its maintained-browser
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
-   canonical comparison, at every declaration site. *)
-let canonical_vendor_aliases (stmts : statement list) : statement list =
-  Stylesheet.map_declarations Shorthand.drop_redundant_decoration_color_aliases
+   canonical comparison, at every declaration site: a legacy name alias reads as
+   the property it names, which the specs make it whatever the targets, so the
+   passes after this see one property written twice. The optimizer hands the
+   projection normalised declarations, so the one read under the property's
+   grammar is normalised too: [0s] in a [transition] read afresh and the same
+   [0s] after {!Declaration.normalize} print alike but are two values to the
+   dedup. A comparison that judges for targets also drops, from both sides, a
+   declaration of a prefix no target reads ({!Shorthand.read_by_no_target}):
+   every target ignores it, and one the reader cannot type would otherwise touch
+   every other declaration. *)
+let canonical_vendor_aliases ~lossless ~judged (stmts : statement list) :
+    statement list =
+  let as_property d =
+    let aliased = Shorthand.as_aliased_property d in
+    if aliased == d then d else Declaration.normalize ~lossless aliased
+  in
+  let unread decls =
+    if judged then
+      Common.List.filter_preserve
+        (fun d -> not (Shorthand.read_by_no_target d))
+        decls
+    else decls
+  in
+  Stylesheet.map_declarations
+    (fun decls ->
+      unread
+        (Shorthand.drop_redundant_decoration_color_aliases
+           (Common.List.map_preserve as_property decls)))
     stmts
 
 (* CSS Properties and Values API 1 sec. 2: registrations for different custom
@@ -1271,483 +744,6 @@ let rec sort_property_runs (stmts : statement list) : statement list =
             go (List.rev_append (sort_property_run run) acc) rest)
   in
   go [] stmts
-
-(* CSS Cascade 5 sec. 6.4.3: cascade layers are sorted by the order in which
-   they first are declared, so all an [@layer a;] statement contributes is the
-   position it gives [a] in that order (sec. 6.4.4.2). A name whose removal
-   leaves the whole order untouched contributes nothing, and the projection
-   drops it, so [@layer a;@layer a{...}] and [@layer a{...}] read as one sheet.
-   Emission keeps the statement: it is visible through the CSSOM, and a sheet
-   concatenated after this one can bind the position it fixes. *)
-
-(* One position in the layer order. [Named] dedups by layer name, a
-   re-declaration naming no new layer. [Opaque] stands for a position whose
-   names cannot be read here: an anonymous layer (sec. 6.4.2.1), the layers an
-   [@import] carries in with it, or a layer declared inside a conditional group
-   rule, which sec. 6.4.3 has contribute to the order only when the condition
-   holds. Each carries the index of the statement that raised it, so the two
-   orders being weighed line their opaque positions up while no name ever dedups
-   into one: a pin whose name is refilled across an unreadable position is left
-   alone, which is what makes reading the sheet this coarsely safe. *)
-type slot = Named of layer_name | Opaque of int
-
-let equal_slot a b =
-  match (a, b) with
-  | Named a, Named b -> equal_layer_name a b
-  | Opaque a, Opaque b -> Int.equal a b
-  | (Named _ | Opaque _), _ -> false
-
-(* Sec. 6.4.2: [a.b] is shorthand for those layers nested in order, so naming a
-   sublayer declares each of its parents first. *)
-let layer_name_slots (name : layer_name) : slot list =
-  let rec loop acc rev_prefix = function
-    | [] -> List.rev acc
-    | ident :: rest ->
-        let rev_prefix = ident :: rev_prefix in
-        loop (Named (List.rev rev_prefix) :: acc) rev_prefix rest
-  in
-  loop [] [] name
-
-let rec declares_layer (stmts : statement list) : bool =
-  List.exists
-    (fun stmt ->
-      match stmt with
-      | Layer _ | Layer_decl _ | Import _ -> true
-      | ( Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
-        | Property _ | Media _ | Container _ | Supports _ | Moz_document _
-        | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-        | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-        | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
-        | Font_palette_values _ | Font_feature_values _ | View_transition _
-        | Position_try _ | Viewport _ | Unknown_at_rule _ ) as stmt ->
-          declares_layer (Stylesheet.statement_children stmt))
-    stmts
-
-(* The positions statement [i] adds to the layer order. A named [@layer] block
-   or an [@import ... layer(x)] declares its own name, and whatever either holds
-   inside is a sublayer sorting within it rather than a position out here. *)
-let statement_slots i (stmt : statement) : slot list =
-  match stmt with
-  | Layer_decl names -> List.concat_map layer_name_slots names
-  | Layer (Some name, _) -> layer_name_slots name
-  | Import { layer = Some (_ :: _ as name); _ } -> layer_name_slots name
-  | Layer (None, _) | Import _ -> [ Opaque i ]
-  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
-  | Property _ | Media _ | Container _ | Supports _ | Moz_document _
-  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-  | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
-  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-  | Unknown_at_rule _ ->
-      if declares_layer (Stylesheet.statement_children stmt) then [ Opaque i ]
-      else []
-
-(* [fixed.(i)] is what statement [i] contributes when it is not a pin, read
-   once; [pins.(i)] is the names a pin still carries, which the pruning below
-   shortens. A pin left with no name contributes nothing and keeps its index, so
-   the opaque positions stay keyed the way [target] saw them. *)
-let layer_order ~(fixed : slot list array)
-    ~(pins : layer_name list option array) =
-  let add (seen, rev) slot =
-    match slot with
-    | Named name when List.exists (equal_layer_name name) seen -> (seen, rev)
-    | Named name -> (name :: seen, slot :: rev)
-    | Opaque _ -> (seen, slot :: rev)
-  in
-  let rec loop i acc =
-    if i >= Array.length fixed then List.rev (snd acc)
-    else
-      let slots =
-        match pins.(i) with
-        | None -> fixed.(i)
-        | Some names -> List.concat_map layer_name_slots names
-      in
-      loop (i + 1) (List.fold_left add acc slots)
-  in
-  loop 0 ([], [])
-
-(* Weigh one pin's names left to right, each candidate against the order the
-   sheet came in with rather than against the last candidate, so every name kept
-   is one the sheet's own order needs. *)
-let rec prune_pin ~(fixed : slot list array)
-    ~(pins : layer_name list option array) ~target i kept_rev = function
-  | [] -> List.rev kept_rev
-  | name :: rest ->
-      pins.(i) <- Some (List.rev_append kept_rev rest);
-      if List.equal equal_slot (layer_order ~fixed ~pins) target then
-        prune_pin ~fixed ~pins ~target i kept_rev rest
-      else begin
-        pins.(i) <- Some (List.rev_append kept_rev (name :: rest));
-        prune_pin ~fixed ~pins ~target i (name :: kept_rev) rest
-      end
-
-(* Top level only. A pin written inside a [@layer] block names a sublayer of it,
-   and the sublayer order runs across every block of that layer rather than
-   within one, so a block on its own does not say whether such a pin binds. *)
-let fold_layer_pins (stmts : statement list) : statement list =
-  let is_pin = function Layer_decl (_ :: _) -> true | _ -> false in
-  if not (List.exists is_pin stmts) then stmts
-  else
-    let work = Array.of_list stmts in
-    let pins : layer_name list option array =
-      Array.map (function Layer_decl names -> Some names | _ -> None) work
-    in
-    let fixed =
-      Array.mapi
-        (fun i stmt ->
-          match stmt with Layer_decl _ -> [] | stmt -> statement_slots i stmt)
-        work
-    in
-    let target = layer_order ~fixed ~pins in
-    (* One sweep is not enough: a name only reads as needed while a later one it
-       is weighed against is still there, and drops out once that one goes. Each
-       sweep only removes, so repeating to a fixed point terminates, and every
-       candidate is still weighed against the order the sheet came in with. *)
-    let sweep () =
-      let dropped = ref false in
-      Array.iteri
-        (fun i names ->
-          match names with
-          | Some (_ :: _ as names) ->
-              let kept = prune_pin ~fixed ~pins ~target i [] names in
-              if List.compare_lengths kept names <> 0 then dropped := true
-          | Some [] | None -> ())
-        pins;
-      !dropped
-    in
-    let rec settle changed = if sweep () then settle true else changed in
-    if not (settle false) then stmts
-    else
-      let rebuild i (stmt : statement) : statement option =
-        match (stmt, pins.(i)) with
-        | Layer_decl _, Some [] -> None
-        | Layer_decl _, Some (_ :: _ as names) -> Some (Layer_decl names)
-        | stmt, (None | Some _) -> Some stmt
-      in
-      List.filter_map Fun.id (List.mapi rebuild stmts)
-
-(* Sec. 6.1 sorts declarations by layer, in the order sec. 6.4.3 gives the
-   layers, before order of appearance, so the blocks of two different layers
-   decide no tie between themselves whichever comes first. A run of layer blocks
-   therefore reads in the sheet's layer order, a stable sort keeping two blocks
-   of one layer in the order they came. Sorting by that order leaves the order
-   itself where it was: a name the run is first to declare only moves behind
-   names ranked before it, which were declared first.
-
-   Only a block holding style rules alone moves: plain rules, under [@media],
-   [@supports], [@container] or [@starting-style], whose rules sec. 6.1 sorts by
-   layer like any other (CSS Transitions 2 sec. 3.1 has [@starting-style] rules
-   cascade as ordinary style rules). It moves across what it decides nothing
-   with: unlayered style rules of that same shape, which sec. 6.1 sorts apart
-   from every layer; an [@property], whose registration holds for the whole
-   document wherever it is written; and an [@keyframes], which a block of style
-   rules neither defines nor overrides. Those keep their own order and come
-   first, the blocks after them. A block holding anything else, a nested
-   [@layer] above all, which writes into a sublayer another block may name
-   outright ([a{@layer b}] and [a.b]), stays where it is and ends the run, as
-   does an [@layer] statement, which fixes a position. A position in the order
-   that cannot be read ({!Opaque}) leaves no rank to sort by, so the sheet is
-   left as it came. The pins are folded again afterwards: one whose order the
-   blocks now spell by themselves contributes nothing. *)
-let rec style_only (stmt : statement) =
-  match stmt with
-  | Rule r -> r.nested = []
-  | Media (_, b) | Supports (_, b) | Container (_, _, b) | Starting_style b ->
-      List.for_all style_only b
-  | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
-  | Property _ | Layer_decl _ | Layer _ | Moz_document _ | When _ | Else _
-  | Supports_condition _ | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _
-  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
-  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-      false
-
-(* What a layer block moves across without deciding anything with it. *)
-let passes_layer_blocks (stmt : statement) =
-  match stmt with
-  | Property _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ -> true
-  | stmt -> style_only stmt
-
-(* The rank of each name in the sheet's layer order, or [None] when a position
-   in that order cannot be read. *)
-let layer_ranks (stmts : statement list) =
-  let work = Array.of_list stmts in
-  let pins =
-    Array.map (function Layer_decl names -> Some names | _ -> None) work
-  in
-  let fixed =
-    Array.mapi
-      (fun i stmt ->
-        match stmt with Layer_decl _ -> [] | stmt -> statement_slots i stmt)
-      work
-  in
-  let order = layer_order ~fixed ~pins in
-  if List.exists (function Opaque _ -> true | Named _ -> false) order then
-    Option.None
-  else
-    Option.Some
-      (fun name ->
-        let rec find i = function
-          | [] -> max_int
-          | Named n :: _ when equal_layer_name n name -> i
-          | _ :: rest -> find (i + 1) rest
-        in
-        find 0 order)
-
-(* One run from the head of [stmts]: what passes, in order, the movable blocks
-   with their rank, and the rest. [moved] is set when a block and something that
-   passes change places. *)
-let take_layer_run ~block ~moved stmts =
-  let rec take others blocks = function
-    | s :: rest as l -> (
-        match block s with
-        | Some r ->
-            if others <> [] then moved := true;
-            take others ((r, s) :: blocks) rest
-        | None ->
-            if passes_layer_blocks s then begin
-              if blocks <> [] then moved := true;
-              take (s :: others) blocks rest
-            end
-            else (List.rev others, List.rev blocks, l))
-    | [] -> (List.rev others, List.rev blocks, [])
-  in
-  take [] [] stmts
-
-let sort_layer_blocks (stmts : statement list) : statement list =
-  match layer_ranks stmts with
-  | Option.None -> stmts
-  | Option.Some rank ->
-      let block (stmt : statement) =
-        match stmt with
-        | Layer (Some name, body) when List.for_all style_only body ->
-            Some (rank name)
-        | _ -> None
-      in
-      let moved = ref false in
-      let rec go = function
-        | [] -> []
-        | stmt :: rest
-          when Option.is_none (block stmt) && not (passes_layer_blocks stmt) ->
-            stmt :: go rest
-        | stmts ->
-            let others, blocks, rest = take_layer_run ~block ~moved stmts in
-            let sorted =
-              List.stable_sort (fun (a, _) (b, _) -> Int.compare a b) blocks
-            in
-            if not (List.for_all2 (fun (_, a) (_, b) -> a == b) blocks sorted)
-            then moved := true;
-            others @ List.map snd sorted @ go rest
-      in
-      let sorted = go stmts in
-      if !moved then fold_layer_pins sorted else stmts
-
-(* A sheet may name its layers in one [@layer a, b;] statement, in per-layer
-   statements, or in the blocks themselves. Two sheets that establish the same
-   layer order in the same places reach two different canonical forms, because
-   the optimizer folds an empty layer block into a trailing declaration while
-   the pin logic splits a leading multi-name statement, and the comparison then
-   reports the two render-equal sheets as different. This is the normal form
-   that removes the dependence on the spelling.
-
-   A block's statements are read as runs separated by a barrier: a statement
-   that is not itself a layer construct but declares a layer below it, such as
-   an [@media] holding an [@layer] or an [@import] with a layer. A barrier's
-   contribution to the order depends on its condition, so no name crosses one.
-   Within a barrier-free run, every layer name the run introduces, each [a.b]
-   path expanded to its prefixes [a] then [a.b], is written once in
-   first-appearance order as one [@layer <names>;] statement at the run's first
-   name-bearing construct. The run's other layer statements and empty layer
-   blocks go, since the statement carries their only effect. Nothing moves past
-   a barrier and the names keep first-appearance order, so the order the sheet
-   renders with is unchanged, and a nested layer is normalized inside the block
-   that holds it. *)
-
-(* The prefixes a layer path declares, outermost first: [a.b] declares [a] then
-   [a.b], and an ident that holds an escaped dot is one name with no prefixes to
-   split. *)
-let layer_name_prefixes (name : layer_name) : layer_name list =
-  let rec go acc cur = function
-    | [] -> List.rev acc
-    | x :: rest ->
-        let cur = cur @ [ x ] in
-        go (cur :: acc) cur rest
-  in
-  go [] [] name
-
-(* The layer names a run introduces, each path expanded, in first-appearance
-   order and deduplicated. *)
-let run_layer_names (run : statement list) : layer_name list =
-  let seen = ref [] in
-  let add name =
-    List.iter
-      (fun prefix ->
-        if not (List.exists (Stylesheet.equal_layer_name prefix) !seen) then
-          seen := !seen @ [ prefix ])
-      (layer_name_prefixes name)
-  in
-  let names_of stmt =
-    match stmt with
-    | Layer (Some name, _) -> [ name ]
-    | Layer_decl names -> names
-    | Import rule -> (
-        match Stylesheet.import_layer_name rule with
-        | Some (_ :: _ as name) -> [ name ]
-        | Some [] | None -> [])
-    | Layer (None, _)
-    | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
-    | Property _ | Media _ | Container _ | Supports _ | Moz_document _
-    | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-    | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
-    | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
-    | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-    | Unknown_at_rule _ ->
-        []
-  in
-  List.iter (fun stmt -> List.iter add (names_of stmt)) run;
-  !seen
-
-(* Put a run's style-only layer blocks into rank order. A block holding a nested
-   layer keeps its place, since the sublayer it holds contributes in source
-   order; moving it would change which of two writes to the sublayer wins. *)
-let sort_layer_blocks_by_rank (names : layer_name list) (stmts : statement list)
-    : statement list =
-  let rank name =
-    let rec go i = function
-      | [] -> max_int
-      | x :: rest ->
-          if Stylesheet.equal_layer_name x name then i else go (i + 1) rest
-    in
-    go 0 names
-  in
-  let name = function Layer (Some name, _) -> name | _ -> [] in
-  let sortable = function
-    | Layer (Some _, body) -> List.for_all style_only body
-    | _ -> false
-  in
-  let rec go = function
-    | [] -> []
-    | block :: _ as stmts when sortable block ->
-        let rec take acc = function
-          | block :: rest when sortable block -> take (block :: acc) rest
-          | rest -> (List.rev acc, rest)
-        in
-        let blocks, rest = take [] stmts in
-        List.stable_sort
-          (fun a b -> Int.compare (rank (name a)) (rank (name b)))
-          blocks
-        @ go rest
-    | stmt :: rest -> stmt :: go rest
-  in
-  go stmts
-
-(* Rewrite one barrier-free run to its normal form: one [@layer <names>;]
-   statement at the run's first name-bearing construct, the other declarations
-   and empty layer blocks gone, the style-only blocks in rank order. *)
-type layer_verdict = Keep | Drop | Other
-
-let canonical_layer_run (run : statement list) : statement list =
-  match run_layer_names run with
-  | [] -> run
-  | names ->
-      let empty block =
-        List.for_all
-          (function
-            | Rule { declarations = []; nested = []; _ } -> true
-            | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
-            | Namespace _ | Property _ | Layer_decl _ | Layer _ | Media _
-            | Container _ | Supports _ | Moz_document _ | Starting_style _
-            | When _ | Else _ | Supports_condition _ | Origin _ | Scope _
-            | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
-            | Counter_style _ | Page _ | Page_with_margins _
-            | Font_palette_values _ | Font_feature_values _ | View_transition _
-            | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-                false)
-          block
-      in
-      let verdict = function
-        | Layer (Some _, block) -> if empty block then Drop else Keep
-        | Layer_decl (_ :: _) -> Drop
-        | Import rule -> (
-            match Stylesheet.import_layer_name rule with
-            | Some (_ :: _) -> Keep
-            | Some [] | None -> Other)
-        | Layer (None, _)
-        | Layer_decl []
-        | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Namespace _
-        | Property _ | Media _ | Container _ | Supports _ | Moz_document _
-        | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-        | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-        | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
-        | Font_palette_values _ | Font_feature_values _ | View_transition _
-        | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-            Other
-      in
-      let emitted = ref false in
-      let out = ref [] in
-      let emit () =
-        if not !emitted then (
-          emitted := true;
-          out := Layer_decl names :: !out)
-      in
-      List.iter
-        (fun stmt ->
-          match verdict stmt with
-          | Keep ->
-              emit ();
-              out := stmt :: !out
-          | Drop -> emit ()
-          | Other -> out := stmt :: !out)
-        run;
-      sort_layer_blocks_by_rank names (List.rev !out)
-
-(* A statement that is a layer construct itself, and one whose transitive
-   content declares a layer, the second being a barrier for the run around
-   it. *)
-let is_layer_construct = function
-  | Layer (Some _, _) | Layer_decl (_ :: _) -> true
-  | Layer (None, _)
-  | Layer_decl []
-  | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
-  | Namespace _ | Property _ | Media _ | Container _ | Supports _
-  | Moz_document _ | Starting_style _ | When _ | Else _ | Supports_condition _
-  | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _
-  | Font_face _ | Counter_style _ | Page _ | Page_with_margins _
-  | Font_palette_values _ | Font_feature_values _ | View_transition _
-  | Position_try _ | Viewport _ | Unknown_at_rule _ ->
-      false
-
-let rec statement_declares_layer stmt =
-  is_layer_construct stmt
-  || (match stmt with
-    | Import rule -> (
-        match Stylesheet.import_layer_name rule with
-        | Some (_ :: _) -> true
-        | Some [] | None -> false)
-    | _ -> false)
-  || Stylesheet.fold_statements
-       (fun acc child -> acc || statement_declares_layer child)
-       false
-       (Stylesheet.statement_children stmt)
-
-let is_barrier stmt =
-  (not (is_layer_construct stmt)) && statement_declares_layer stmt
-
-let rec canonical_layer_declarations (stmts : statement list) : statement list =
-  let stmts =
-    List.map
-      (Stylesheet.map_statement_children canonical_layer_declarations)
-      stmts
-  in
-  let rec go run acc = function
-    | [] -> List.rev_append (canonical_layer_run (List.rev run)) acc
-    | stmt :: rest when is_barrier stmt ->
-        go []
-          (stmt :: List.rev_append (canonical_layer_run (List.rev run)) acc)
-          rest
-    | stmt :: rest -> go (stmt :: run) acc rest
-  in
-  List.rev (go [] [] stmts)
 
 (* Media Queries 4 sec. 2.3 makes [all] the identity media type, so the Level 3
    [not all and (X)] is the Level 4 [not (X)]; sec. 4.2 gives [min-X]/[max-X]
@@ -1854,20 +850,36 @@ let rec canonical_keyframe_declarations (stmts : statement list) :
           Stylesheet.map_statement_children canonical_keyframe_declarations stmt)
     stmts
 
+(* Every rule body of the settled sheet through {!composed_declarations}, at any
+   depth. It runs once the runs have settled, so the longhands a merge gathers
+   are all in one body before any of them composes. *)
+let rec composed ~ctx (stmts : statement list) : statement list =
+  Common.List.map_preserve
+    (fun stmt ->
+      match Stylesheet.map_statement_children (composed ~ctx) stmt with
+      | Rule r as stmt ->
+          let declarations = composed_declarations ~ctx r.declarations in
+          if declarations == r.declarations then stmt
+          else Rule { r with declarations }
+      | stmt -> stmt)
+    stmts
+
 let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
     (stmts : statement list) : statement list =
   let changed = ref false in
   let ctx = Ctx.of_scope ~enforce_spec ?judge None in
   let normalized =
-    fold_layer_pins
+    Rule_order_layer.fold_layer_pins
       (canonical_media_nesting
       @@ canonical_query_preludes
            (canonical_keyframe_declarations
            @@ sort_property_runs
                 (canonical_values ~lossless ~missing:true
                    (normalize_custom_values ~lossless
-                      (canonical_vendor_aliases
-                         (drop_unanswerable_supports stmts))))))
+                      (canonical_vendor_aliases ~lossless
+                         ~judged:(Option.is_some judge)
+                         (drop_unparsed_rules ~judged:(Option.is_some judge)
+                            (drop_unanswerable_supports stmts)))))))
   in
   let result =
     canonicalize_block ~ctx
@@ -1876,5 +888,6 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
   in
   (* The runs above leave layer blocks side by side, which is where their order
      can be read. *)
-  canonical_layer_declarations
-    (sort_layer_blocks (if !changed then result else normalized))
+  let settled = if !changed then result else normalized in
+  Rule_order_layer.canonical_layer_declarations
+    (Rule_order_layer.sort_layer_blocks (composed ~ctx settled))

@@ -252,9 +252,11 @@ val pp_counter_item : counter_item Pp.t
 (** [pp_counter_item] pretty-prints one [counter-reset]/[counter-increment]
     item. *)
 
-val read_counter_item : Cursor.t -> counter_item
-(** [read_counter_item t] parses one [counter-reset]/[counter-increment] item.
-*)
+val read_counter_item : reversed:bool -> Cursor.t -> counter_item
+(** [read_counter_item ~reversed t] parses one
+    [counter-reset]/[counter-increment] item. [reversed] admits a
+    [reversed( <counter-name> )] item, which CSS Lists 3 sec. 4.1 grants
+    [counter-reset] alone. *)
 
 val pp_font_synthesis_feature : font_synthesis_feature Pp.t
 (** [pp_font_synthesis_feature] pretty-prints one [font-synthesis] feature. *)
@@ -1276,6 +1278,20 @@ val pp_overflow_wrap : overflow_wrap Pp.t
 val read_overflow_wrap : Cursor.t -> overflow_wrap
 (** [read_overflow_wrap t] is the [overflow_wrap] parsed from [t]. *)
 
+val pp_text_rendering : text_rendering Pp.t
+(** [pp_text_rendering] is the pretty-printer for [text_rendering]. *)
+
+val read_text_rendering : Cursor.t -> text_rendering
+(** [read_text_rendering t] is the [text_rendering] parsed from [t]. *)
+
+val pp_webkit_touch_callout : webkit_touch_callout Pp.t
+(** [pp_webkit_touch_callout] is the pretty-printer for [webkit_touch_callout].
+*)
+
+val read_webkit_touch_callout : Cursor.t -> webkit_touch_callout
+(** [read_webkit_touch_callout t] is the [webkit_touch_callout] parsed from [t].
+*)
+
 val pp_hyphens : hyphens Pp.t
 (** [pp_hyphens] is the pretty-printer for [hyphens]. *)
 
@@ -2073,8 +2089,9 @@ val read_content : Cursor.t -> content
 val pp_counter_set : counter_set Pp.t
 (** [pp_counter_set] is the pretty-printer for [counter_set]. *)
 
-val read_counter_set : Cursor.t -> counter_set
-(** [read_counter_set t] is the [counter_set] parsed from [t]. *)
+val read_counter_set : reversed:bool -> Cursor.t -> counter_set
+(** [read_counter_set ~reversed t] is the [counter_set] parsed from [t];
+    [reversed] is as for {!read_counter_item}. *)
 
 val pp_content_visibility : content_visibility Pp.t
 (** [pp_content_visibility] is the pretty-printer for [content_visibility]. *)
@@ -2850,8 +2867,24 @@ val shadow :
 val pp_any_property : any_property Pp.t
 (** [pp_any_property] pretty-prints any CSS property. *)
 
+val is_vendor_prefixed : 'a property -> bool
+(** [is_vendor_prefixed property] is [true] iff [property] is a vendor's own
+    extension, a name starting with a single [-] (CSS 2.1 sec. 4.1.2.1). The
+    classification is exhaustive over the property GADT; an unknown property
+    answers by its name. *)
+
+val legacy_alias : 'a property -> any_property option
+(** [legacy_alias property] is the property [property] is a legacy name alias of
+    under WHATWG Compatibility Standard sec. 3.4.1, such as [transform] for
+    [-webkit-transform], and [None] for every other property. *)
+
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
+
+val of_name : string -> any_property
+(** [of_name name] is the property [name] spells, in any case, or
+    [Unknown_property] when the reader types none. It reads no tokens, so it
+    answers for a name already read as an identifier. *)
 
 val property_value_kind : 'a property -> 'a property_value_kind option
 (** [property_value_kind property] returns the optional property-specific

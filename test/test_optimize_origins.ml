@@ -265,12 +265,7 @@ let c62_imports_keep_origin () =
   in
   let import =
     Css.Stylesheet.Import
-      {
-        url = "url(\"theme-base.css\")";
-        layer = None;
-        supports = None;
-        media = None;
-      }
+      { url = "theme-base.css"; layer = None; supports = None; media = None }
   in
   let input =
     [
@@ -731,7 +726,7 @@ let c64_layer_decls_import_cross () =
       Css.Stylesheet.Layer_decl [ [ "default" ] ];
       Css.Stylesheet.Import
         {
-          url = "url(\"theme.css\")";
+          url = "theme.css";
           layer = Some [ "theme" ];
           supports = None;
           media = None;

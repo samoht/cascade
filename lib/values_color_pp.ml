@@ -52,7 +52,6 @@ let pp_hue_float ctx f =
 let rec pp_hue : hue Pp.t =
  fun ctx -> function
   | Unitless f -> pp_hue_float ctx f
-  | Angle (Deg f) when Pp.minified ctx -> pp_hue_float ctx f
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
   | Hue_none -> Pp.string ctx "none"
@@ -176,7 +175,6 @@ let pp_component_float ~decimals ctx f =
 let rec pp_component_prec ~decimals : component Pp.t =
  fun ctx -> function
   | Num f -> pp_component_float ~decimals ctx f
-  | Pct f when Pp.minified ctx -> pp_component_float ~decimals ctx (f /. 100.)
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -374,7 +372,7 @@ let pp_color_space : color_space Pp.t =
   | Oklab -> Pp.string ctx "oklab"
   | Xyz -> Pp.string ctx "xyz"
   | Xyz_d50 -> Pp.string ctx "xyz-d50"
-  | Xyz_d65 -> Pp.string ctx (if Pp.minified ctx then "xyz" else "xyz-d65")
+  | Xyz_d65 -> Pp.string ctx "xyz-d65"
   | Lch -> Pp.string ctx "lch"
   | Oklch -> Pp.string ctx "oklch"
   | Hsl -> Pp.string ctx "hsl"
@@ -466,13 +464,13 @@ let rec pp_color_in_mix : color Pp.t =
   | Current -> Pp.string ctx "currentcolor" (* lowercase in color-mix *)
   | c -> pp_color ctx c
 
-and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
+and pp_color_mix ctx in_space hue color1 percent1 rest =
   (* Pure serialiser: the interpolation method, hue strategy, and percentages
      print exactly as held. Dropping the default [in oklab] header, the default
      [shorter] hue, and the redundant percentages are AST rewrites done by
      [normalize_color]. *)
   Pp.call "color-mix"
-    (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
+    (fun ctx (in_space, hue, color1, percent1, rest) ->
       (match in_space with
       | Some space ->
           Pp.string ctx "in ";
@@ -491,22 +489,24 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
           Pp.space ctx ();
           pp_percentage ctx p
       | None -> ());
-      Pp.comma ctx ();
-      pp_color_in_mix ctx color2;
-      match percent2 with
-      | Some p ->
-          Pp.space ctx ();
-          pp_percentage ctx p
-      | None -> ())
+      let item (color, percent) =
+        Pp.comma ctx ();
+        pp_color_in_mix ctx color;
+        match percent with
+        | Some p ->
+            Pp.space ctx ();
+            pp_percentage ctx p
+        | None -> ()
+      in
+      List.iter item rest)
     ctx
-    (in_space, hue, color1, percent1, color2, percent2)
+    (in_space, hue, color1, percent1, rest)
 
 and pp_typed_relative_color_call ctx name origin tail =
+  (* The reader puts back a separator this drops
+     ({!relative_color_splits_tokens}), so the two spellings are one node. *)
   let tail =
-    if Pp.minified ctx then
-      tail |> minify_relative_color_alpha |> minify_relative_color_numbers
-      |> minify_relative_color_spaces
-    else tail
+    if Pp.minified ctx then minify_relative_color_spaces tail else tail
   in
   Pp.call name
     (fun ctx (origin, tail) ->
@@ -609,7 +609,7 @@ and pp_color_default : color Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
-      pp_color_mix ctx in_space hue color1 percent1 color2 percent2
+  | Mix { in_space; hue; color1; percent1; rest } ->
+      pp_color_mix ctx in_space hue color1 percent1 rest
 
 let pp_specified_color = pp_color_default

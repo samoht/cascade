@@ -24,12 +24,14 @@ let broad_overlap_key = Shorthand_coverage.broad_overlap_key
 let overlap_keys_broad = Shorthand_coverage.overlap_keys_broad
 let overlap_keys_intersect = Shorthand_coverage.overlap_keys_intersect
 let declaration_overlap_keys = Shorthand_coverage.declaration_overlap_keys
+let declaration_slot_keys = Shorthand_coverage.declaration_slot_keys
+let footprint_family = Shorthand_coverage.footprint_family
 
 let declarations_overlap_with_keys =
   Shorthand_coverage.declarations_overlap_with_keys
 
 let declarations_conflict_with_keys =
-  Shorthand_coverage.declarations_conflict_with_keys
+  Shorthand_dedup.declarations_conflict_with_keys
 
 let declaration_is_broad = Shorthand_coverage.declaration_is_broad
 let custom_property_name = Shorthand_coverage.custom_property_name
@@ -39,6 +41,8 @@ let declarations_commute = Shorthand_dedup.declarations_commute
 let drop_redundant_decoration_color_aliases =
   Shorthand_dedup.drop_redundant_decoration_color_aliases
 
+let as_aliased_property = Shorthand_dedup.as_aliased_property
+let read_by_no_target = Shorthand_dedup.read_by_no_target
 let is_all_declaration = Shorthand_dedup.is_all_declaration
 let transitioned_in_rule = Shorthand_timing.transitioned_in_rule
 let merge_box_shorthand_longhands = Shorthand_box.merge_box_shorthand_longhands
@@ -73,7 +77,7 @@ let compose_index_group_b ~ctx ~held kept =
   compose_font_variant_via_index idx;
   compose_grid_via_index idx;
   compose_grid_template_via_index idx;
-  compose_border_via_index
+  compose_border_via_index ~ctx
     ~bi_hazard:(fun i ~important ->
       bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
     idx;
@@ -117,11 +121,29 @@ let compose_reduced ~held ~ctx ~merge_box props kept =
     (* Composition reads a family's declarations together, so one declaration on
        its own composes to itself in either scope; the test of that asks every
        value the grammar inventory models. *)
-    let kept =
+    (* A shorthand composition writes can override an earlier declaration of
+       the same property whole, which only the deduplication sees; what that
+       drops can let another composition through. Each round drops a
+       declaration, so this ends. *)
+    let rec compose kept =
       match kept with
-      | _ :: _ :: _ when merge_box -> compose_shorthands ~held ~ctx kept
+      | _ :: _ :: _ when merge_box ->
+          let composed = compose_shorthands ~held ~ctx kept in
+          if List.equal (fun (_, a) (_, b) -> a == b) composed kept then kept
+          else
+            let deduplicated =
+              List.rev
+                (List.fold_left
+                   (deduplicate_step ~floors:(Ctx.floors ctx)
+                      ~judged:(Option.is_some (Ctx.judge ctx)))
+                   [] composed)
+            in
+            if List.length deduplicated < List.length composed then
+              compose deduplicated
+            else composed
       | _ -> kept
     in
+    let kept = compose kept in
     let kept = drop_vendor_aliases ~ctx kept in
     List.map (fun (_, decl) -> decl) kept
   in
@@ -142,7 +164,8 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
   let kept =
     List.rev
       (List.fold_left
-         (deduplicate_step ?targets:(Ctx.judge ctx))
+         (deduplicate_step ~floors:(Ctx.floors ctx)
+            ~judged:(Option.is_some (Ctx.judge ctx)))
          [] indexed_props)
   in
   compose_reduced ~held ~ctx ~merge_box props kept

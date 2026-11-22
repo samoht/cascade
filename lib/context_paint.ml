@@ -243,8 +243,11 @@ let simplify_nested_color ctx percentage simplify ~authored ~visited
           mix with
           color1 = simplify ~authored ~visited mix.color1;
           percent1 = Option.map percentage mix.percent1;
-          color2 = simplify ~authored ~visited mix.color2;
-          percent2 = Option.map percentage mix.percent2;
+          rest =
+            List.map
+              (fun (c, p) ->
+                (simplify ~authored ~visited c, Option.map percentage p))
+              mix.rest;
         }
   | value -> value
 

@@ -190,6 +190,35 @@ let canonical_reports_reset_crossing_declaration () =
       Alcotest.fail "fell back to a byte diff of the canonical forms"
   | _ -> Alcotest.fail "expected a tree diff"
 
+(* A rule's nested writes keep their order against the rules around it (CSS
+   Nesting 1 sec. 3 and 3.4): each pair moves a nested write past a rule that
+   ties with it, and Chromium computes a different value on an element both
+   match. 1.2.1 minified each first sheet into the second. *)
+let canonical_separates_moved_nested_writes () =
+  List.iter
+    (fun (name, a, b) ->
+      Alcotest.(check bool)
+        name false
+        (Cascade_diff.Css_compare.equal ~mode:`Canonical a b))
+    [
+      ( "a nested conditional",
+        ".a{top:1px}.d{color:red}.a{@media (min-width:1px){color:blue}}",
+        ".a{top:1px;@media(width>=1px){color:#00f}}.d{color:red}" );
+      ( "a nested rule",
+        ".a .c{top:2px}:not(.a){font-weight:bold;.b~&{align-items:start}}.a \
+         .c{place-items:center}",
+        ".a \
+         .c{place-items:center;top:2px}:not(.a){font-weight:700;.b~&{align-items:start}}"
+      );
+      ( "a declaration after a nested rule",
+        "[class~=a]{float:left}.a,.b{background:red}[class~=a]{&>span{margin-block-start:7px}all:initial}",
+        "[class~=a]{float:left;>span{margin-block-start:7px}all:initial}.a,.b{background:red}"
+      );
+      ( "a nested rule merged ahead",
+        "p,span{color:initial}span.a{all:unset}p,span{&:is(.a,.d){float:left}}",
+        "p,span{color:initial;&:is(.a,.d){float:left}}span.a{all:unset}" );
+    ]
+
 (* A declaration a conditional group repeats from the rule with the identical
    selector before it, value and all, changes nothing: an engine reading the
    guard sets the same value twice, one that does not reads the first rule
@@ -251,6 +280,81 @@ let equal_canonical_targets () =
     "a prefix a target needs is on both sides" true
     (equal ".a{-webkit-user-select:none;user-select:none}"
        ".a{user-select:none}");
+  (* Safari 16.4 reads [hyphens] only prefixed, so the twin a target needs is on
+     both sides however the declarations were split across rules: the
+     projection's merge of two occurrences of one selector must not drop it
+     where the minifier writes it. yahoo-uk-2 in SatCSS. *)
+  Alcotest.(check bool)
+    "a prefix a target needs survives a merge" true
+    (equal ".a{hyphens:auto}.a{color:red}"
+       ".a{color:red;-webkit-hyphens:auto;hyphens:auto}");
+  (* No target reads a [-ms-] or [-o-] property: Chrome 151 and WebKit 26.5 list
+     none and support none, and Firefox's property tables carry only [moz] and
+     [webkit] prefixes. So such a declaration is no difference, and one cascade
+     cannot type no longer holds a rule apart where every target ignores it.
+     yahoo-uk-3 in SatCSS. *)
+  Alcotest.(check bool)
+    "a declaration no target reads is no difference" true
+    (equal ".a{color:red;-ms-transition:all 1s}" ".a{color:red}");
+  Alcotest.(check bool)
+    "nor does it hold a rule apart" true
+    (equal
+       ".a,.c{-moz-transition:all 1s;-ms-transition:all \
+        1s}.a{z-index:4}.r{width:1px}.a{width:2px}"
+       ".a,.c{-moz-transition:all 1s;-ms-transition:all \
+        1s}.r{width:1px}.a{width:2px;z-index:4}");
+  Alcotest.(check bool)
+    "every engine reads it under enforce-spec" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
+       ".a{color:red;-ms-transition:all 1s}" ".a{color:red}");
+  (* Nor do [font-smooth] and [font-smoothing]: Chrome 151 and WebKit 26.5 parse
+     neither, Firefox's property table lists neither, and MDN records
+     [font-smooth] only under the prefixed names [-webkit-font-smoothing] and
+     [-moz-osx-font-smoothing]. yahoo-uk-2 in SatCSS. *)
+  Alcotest.(check bool)
+    "font-smooth is read by no target" true
+    (equal ".a{color:red;font-smooth:always;font-smoothing:antialiased}"
+       ".a{color:red}");
+  Alcotest.(check bool)
+    "nor does it hold a rule apart" true
+    (equal
+       ".e,.v{font-smooth:always;font-smoothing:antialiased}.e,.v,.t \
+        .v{color:#fff}.s{z-index:-1}.c b,.c i{vertical-align:middle}.c \
+        b{color:#fff}"
+       ".e,.v{font-smooth:always;font-smoothing:antialiased}.s{z-index:-1}.c \
+        b,.c i{vertical-align:middle}.e,.v,.c b,.t .v{color:#fff}");
+  (* Nor a [-khtml-] one, Konqueror's: Chrome 151 and WebKit 26.5 parse no
+     [-khtml-user-select], and Firefox's tables carry no such prefix. *)
+  Alcotest.(check bool)
+    "a -khtml- property is read by no target" true
+    (equal ".a{color:red;-khtml-user-select:none}" ".a{color:red}");
+  (* [-webkit-touch-callout] is iOS Safari's own longhand (MDN: iOS Safari 2, no
+     other engine), so it touches only itself, and a rule it shares a selector
+     list with folds as any other. w3schools-cleancss in SatCSS. *)
+  Alcotest.(check bool)
+    "-webkit-touch-callout touches only itself" true
+    (equal
+       ".f,.l,.o{-webkit-touch-callout:none;user-select:none}.f,.l{display:inline-block}.b{color:#fff;display:inline-block}"
+       ".f,.l,.o{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}.b,.f,.l{display:inline-block}.b{color:#fff}");
+  Alcotest.(check bool)
+    "font-smooth under enforce-spec" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
+       ".a{color:red;font-smooth:always}" ".a{color:red}");
+  (* SVG 2, "The 'text-rendering' property": a longhand of its own, read by
+     every target, that touches no other declaration. networkx-theme and
+     netflix-csso in SatCSS. *)
+  Alcotest.(check bool)
+    "text-rendering touches only itself" true
+    (equal
+       ".h,.k{font-size:inherit;text-rendering:auto}.p{float:right}.h,.k{font-family:inherit}"
+       ".h,.k{font-size:inherit;text-rendering:auto;font-family:inherit}.p{float:right}");
+  Alcotest.(check bool)
+    "so the rules it shares a selector with fold" true
+    (equal
+       "h2{color:#fff}a:last-child{margin-bottom:0}a .n,a .t{color:#fff}a .e,a \
+        .n,a .t{text-rendering:optimizeLegibility}"
+       "h2,a .n,a .t{color:#fff}a:last-child{margin-bottom:0}a .e,a .n,a \
+        .t{text-rendering:optimizeLegibility}");
   Alcotest.(check bool)
     "a mask composite's prefixed vocabulary too" true
     (equal ".a{-webkit-mask-composite:source-in;mask-composite:intersect}"
@@ -269,6 +373,100 @@ let equal_canonical_targets () =
     "a guard no target satisfies still separates" false
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
        ".a{color:blue}");
+  (* The targets are floors: Chrome 111 and every later Chrome. No floor reads
+     [field-sizing] or [anchor-name], but web-features records Chrome shipping
+     them in 123 and 125, and Chromium 153 applies both blocks, so a browser the
+     targets cover renders the two sheets apart. *)
+  Alcotest.(check bool)
+    "a guard a browser past the floors satisfies separates" false
+    (equal "@supports (field-sizing:content){a{color:red}}" "b{}");
+  Alcotest.(check bool)
+    "so does one on anchor-name" false
+    (equal "@supports (anchor-name:--a){a{color:red}}" "b{}");
+  (* A guard is decided by what its declaration's value uses, not by its
+     property alone. web-features records [width:stretch] from Chrome 138 and in
+     no Firefox or Safari, and [break-before:always] in Firefox alone; Chromium
+     153 drops the second, so the guarded rule never applies there. *)
+  Alcotest.(check bool)
+    "a guard on a value a floor lacks is not unwrapped" false
+    (equal "@supports (width:stretch){a{color:red}}" "a{color:red}");
+  Alcotest.(check bool)
+    "nor on one Chromium drops" false
+    (equal "@supports (break-before:always){a{color:red}}" "a{color:red}");
+  Alcotest.(check bool)
+    "and its negation is not dropped" false
+    (equal "@supports not (width:stretch){a{color:red}}" "b{}");
+  (* [not] reverses a leaf: every floor fails [field-sizing:content], so the
+     negation holds there, and fails from Chrome 123. *)
+  Alcotest.(check bool)
+    "a negation a later release fails is not unwrapped" false
+    (equal "@supports not (field-sizing:content){a{color:red}}" "a{color:red}");
+  (* The browsers judged for are dated: each floor up to the newest release the
+     data records. It records [width:fit-content(10px)] in no engine, so the
+     guard fails in every one of them and selects none. *)
+  Alcotest.(check bool)
+    "a guard no release of the data satisfies selects none" true
+    (equal "@supports (width:fit-content(10px)){a{color:red}}" "b{}");
+  (* Every floor reads [display:grid], and a browser that ships a production
+     keeps it, so the negation fails in every browser at or past the floors. *)
+  Alcotest.(check bool)
+    "a guard failing past every floor is no difference" true
+    (equal "@supports not (display:grid){a{color:red}}" "b{}");
+  (* A fallback is dead only when every browser at or above the floors reads the
+     declaration after it. Chrome 111 reads neither light-dark() (Chrome 123)
+     nor anchor-size() (Chrome 125), so it paints the red and the 1px. *)
+  Alcotest.(check bool)
+    "a fallback a floor needs separates" false
+    (equal "a{color:red;color:light-dark(red,blue)}"
+       "a{color:light-dark(red,blue)}");
+  Alcotest.(check bool)
+    "so does one before a value outside colours" false
+    (equal "a{width:1px;width:anchor-size(width)}" "a{width:anchor-size(width)}");
+  Alcotest.(check bool)
+    "and one in an earlier rule of the selector" false
+    (equal "a{width:1px}a{width:stretch}" "a{width:stretch}");
+  Alcotest.(check bool)
+    "and one a release past the floors reads alone" false
+    (equal "a{width:anchor-size(width);width:stretch}" "a{width:stretch}");
+  (* A browser drops a whole list over a selector it does not parse (Selectors 4
+     sec. 3.9). web-features records [:has-slotted] in Firefox from 136 alone,
+     and Chromium 153 drops [a,a:has-slotted{color:red}] whole, so [a] keeps its
+     colour only in the sheet that wrote two rules. *)
+  Alcotest.(check bool)
+    "a list a browser reads apart is one rule" false
+    (equal "a,a:has-slotted{color:red}" "a{color:red}a:has-slotted{color:red}");
+  Alcotest.(check bool)
+    "a list every browser reads alike is its rules" true
+    (equal "a,b{color:red}" "a{color:red}b{color:red}");
+  (* Every target drops a [-ms-] pseudo-element: Chromium 153 keeps no rule of
+     [a::-ms-input-placeholder{color:red}], and neither Firefox's selector
+     parser nor WebKit knows the name. By Selectors 4 sec. 3.9 a list holding
+     one is invalid in every browser of the dated set, so it applies nowhere.
+     baidu-3 in SatCSS writes two such lists apart and csso merges them: each is
+     dead, and so is the merge. A list Firefox parses whole is a rule. *)
+  let ms = "::-ms-input-placeholder"
+  and webkit = "::-webkit-input-placeholder" in
+  Alcotest.(check bool)
+    "a list no target parses is no rule" true
+    (equal ("a" ^ ms ^ ",a" ^ webkit ^ "{color:red}") "b{}");
+  Alcotest.(check bool)
+    "nor is the merge of two" true
+    (equal
+       ("a" ^ ms ^ ",a" ^ webkit ^ "{color:red}b{color:blue}c" ^ ms ^ ",c"
+      ^ webkit ^ "{color:red}")
+       ("b{color:blue}a" ^ ms ^ ",a" ^ webkit ^ ",c" ^ ms ^ ",c" ^ webkit
+      ^ "{color:red}"));
+  Alcotest.(check bool)
+    "a list Firefox parses is a rule" false
+    (equal ("a::-moz-placeholder,a" ^ webkit ^ "{color:red}") "b{}");
+  Alcotest.(check bool)
+    "under --enforce-spec a list no target parses is a rule" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true
+       ("a" ^ ms ^ "{color:red}")
+       "b{}");
+  Alcotest.(check bool)
+    "one every floor parses past is dead" true
+    (equal "a{display:block;display:grid}" "a{display:grid}");
   Alcotest.(check bool)
     "a different fallback under an unknown guard still differs" false
     (equal ".a{color:red}@supports (display:wibble){.a{color:blue}}"
@@ -420,6 +618,36 @@ let canonical_drops_redundant_decoration_color_alias () =
     (equal ".a{text-decoration-color:red}"
        ".a{-webkit-text-decoration-color:red}")
 
+(* WHATWG Compatibility Standard sec. 3.4.1 makes [-webkit-flex-grow] a legacy
+   name alias of [flex-grow], and CSS Cascade 5 sec. 2.3 makes such an alias the
+   same property under a second name, so the later of the two writes wins
+   whatever their values, and a later [flex] writes over both. Chromium computes
+   [flex-grow] 2 for [-webkit-flex-grow:1;flex-grow:2] and 1 for the reverse. *)
+let canonical_reads_legacy_alias_as_its_property () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a later write of the property ends the alias" true
+    (equal ".a{flex-grow:2}" ".a{-webkit-flex-grow:1;flex-grow:2}");
+  Alcotest.(check bool)
+    "a later alias ends the property" true
+    (equal ".a{flex-grow:1}" ".a{flex-grow:2;-webkit-flex-grow:1}");
+  Alcotest.(check bool)
+    "a later alias is not dropped" false
+    (equal ".a{flex-grow:2}" ".a{flex-grow:2;-webkit-flex-grow:1}");
+  Alcotest.(check bool)
+    "a later shorthand ends the aliased longhands" true
+    (equal ".a{flex:1 150px}"
+       ".a{-webkit-flex-basis:150px;-webkit-flex-grow:1;-webkit-flex-shrink:1;flex:1 \
+        150px}");
+  Alcotest.(check bool)
+    "the alias and the property are one write across rules" true
+    (equal ".a{transform:rotate(1deg)}"
+       ".a{-webkit-transform:none}.a{transform:rotate(1deg)}");
+  Alcotest.(check bool)
+    "an alias orders against the property in another rule" true
+    (equal ".b{transform:none}.a{transform:rotate(1deg)}"
+       ".b{transform:none}.a{-webkit-transform:rotate(1deg)}")
+
 (* Media Queries 4 sec. 4.2 gives [min-X]/[max-X] and the range form one
    meaning, and cascade's own minified output writes the range form, so the fold
    has to hold on the comparison side once the projection stops taking the
@@ -525,6 +753,119 @@ let canonical_folds_an_adjacent_same_selector_pair () =
   Alcotest.(check bool)
     "two writes of one property stay distinct" false
     (equal ".w{color:red}.w{color:blue}" ".w{color:blue}.w{color:red}")
+
+(* CSS Position 3 sec. 3.1 makes [inset] the [top right bottom left] shorthand,
+   so the four longhands written in one rule and the same four gathered from two
+   rules are one sheet whichever side composes them, and whatever stands between
+   them in either rule. *)
+let canonical_composes_gathered_longhands () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "longhands from one rule and from two compose alike" true
+    (equal
+       ".c{position:absolute;right:0}.a \
+        .b{bottom:40px;left:0;position:absolute;right:0;top:0;z-index:1}"
+       ".a .b,.c{position:absolute;right:0}.a \
+        .b{bottom:40px;left:0;top:0;z-index:1}");
+  Alcotest.(check bool)
+    "a declaration between the longhands does not keep them apart" true
+    (equal ".x{top:0;position:absolute;right:0;bottom:40px;left:0}"
+       ".x{position:absolute;top:0;right:0;bottom:40px;left:0}");
+  (* Composing part of a family before the merge brings the rest would leave
+     [grid-row] and [grid-column] where the whole rule gives [grid-area]. *)
+  Alcotest.(check bool)
+    "a merged rule composes once it holds every longhand" true
+    (equal
+       ".ca{grid-row-start:1;grid-column-start:2;grid-row-end:3;grid-column-end:4}"
+       ".ca{grid-row-start:1}.ca{grid-column-start:2;grid-row-end:3;grid-column-end:4}");
+  (* A side the other does not write is still a difference. *)
+  Alcotest.(check bool)
+    "three longhands are not the shorthand" false
+    (equal ".x{top:0;position:absolute;right:0;bottom:40px}"
+       ".x{position:absolute;inset:0 0 40px}")
+
+(* CSS Backgrounds 3 sec. 3.4: [border:1px solid red] sets every
+   [border-*-width] to [1px], which is all [border-width:1px] writes, so the two
+   rules agree on every longhand they share and their order is no difference.
+   The reorder report has to answer the same way: a rule that only moved between
+   two writes of itself, as [.t] does here, is not reported as moved because the
+   shorthand on one side was composed and on the other was not. *)
+let canonical_order_reads_shared_longhands () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a shorthand and a longhand that agree commute" true
+    (equal ".i{border:1px solid red}.d{border-width:1px}"
+       ".d{border-width:1px}.i{border:1px solid red}");
+  Alcotest.(check bool)
+    "a longhand the shorthand overrides does not" false
+    (equal ".i{border:2px solid red}.d{border-width:1px}"
+       ".d{border-width:1px}.i{border:2px solid red}");
+  let report a b =
+    let buf = Buffer.create 256 in
+    Cascade_diff.Css_compare.pp_diff buf
+      (Cascade_diff.Css_compare.diff ~mode:`Canonical a b);
+    Buffer.contents buf
+  in
+  let r =
+    report
+      ".i{border-color:red;border-style:solid;color:blue;border-width:1px}.d{border-width:1px;right:0}.t{padding:5px}.w{padding-bottom:0}.t{padding:5px}.x{color:red}"
+      ".i{border:1px solid \
+       red;color:blue}.d{border-width:1px;right:0}.w{padding-bottom:0}.t{padding:5px}.x{color:green}"
+  in
+  Alcotest.(check bool)
+    "the real difference is reported" true
+    (Astring.String.is_infix ~affix:"color: red -> green" r);
+  Alcotest.(check bool)
+    "no rule is reported moved" false
+    (Astring.String.is_infix ~affix:"moved" r)
+
+(* [-moz-transform] and [-webkit-transform] write one slot: Firefox reads both
+   as [transform], Chromium and WebKit the second alone. Two rules whose every
+   write to it carries [rotate(180deg)] leave it at that value in each engine,
+   whichever comes first, so their order is no difference. taobao-1 in SatCSS,
+   whose reduced pair Chromium renders alike. A rule that writes the slot with
+   another value is still ordered. *)
+let canonical_alias_writes_agree () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "alias writes of one value commute" true
+    (equal
+       ".a{-moz-transform:rotate(180deg);-webkit-transform:rotate(180deg)}.c{-moz-transform:rotate(180deg)}"
+       ".a,.c{-moz-transform:rotate(180deg)}.a{-webkit-transform:rotate(180deg)}");
+  (* [-moz-transform-origin] is no typed property, but an engine that reads it
+     reads it as [transform-origin] (Firefox's longhands.toml gives that
+     property the [moz] and [webkit] prefixes), so it writes that slot and no
+     other one, and two rules whose every shared write carries one value commute
+     through it too. The two prefixes still write one slot. *)
+  Alcotest.(check bool)
+    "an untyped prefixed spelling writes its property's slot" true
+    (equal
+       ".a,.b{-moz-transform:rotate(180deg);-moz-transform-origin:50% \
+        30%;-moz-transition:-moz-transform .2s \
+        ease-in;-webkit-transform:rotate(180deg)}.c{-moz-transform:rotate(180deg);-moz-transform-origin:50% \
+        30%;-moz-transition:-moz-transform .2s ease-in}"
+       ".a,.b,.c{-moz-transform:rotate(180deg);-moz-transform-origin:50% \
+        30%;-moz-transition:-moz-transform .2s \
+        ease-in}.a,.b{-webkit-transform:rotate(180deg)}");
+  Alcotest.(check bool)
+    "and no other slot" true
+    (equal ".a{-webkit-transform-origin:0 0}.b{top:1px}"
+       ".b{top:1px}.a{-webkit-transform-origin:0 0}");
+  (* Safari 16.4 needs [-webkit-hyphens], and Firefox 128 reads [hyphens], so
+     [-moz-hyphens] beside them is dead on every target whatever it writes. *)
+  Alcotest.(check bool)
+    "only the prefix a target needs is kept" true
+    (equal ".a{-moz-hyphens:none;-webkit-hyphens:none;hyphens:none}"
+       ".a{-webkit-hyphens:none;hyphens:none}");
+  Alcotest.(check bool)
+    "two prefixed spellings of one property are ordered" false
+    (equal ".a{-webkit-transform-origin:0 0}.b{-moz-transform-origin:1px 1px}"
+       ".b{-moz-transform-origin:1px 1px}.a{-webkit-transform-origin:0 0}");
+  Alcotest.(check bool)
+    "alias writes of two values do not" false
+    (equal
+       ".a{-moz-transform:rotate(1deg);-webkit-transform:rotate(2deg)}.c{-moz-transform:rotate(1deg)}"
+       ".a,.c{-moz-transform:rotate(1deg)}.a{-webkit-transform:rotate(2deg)}")
 
 (* Factoring writes one declaration list into every branch of a selector list,
    so the expanded copies are identical wherever they meet. A prefixed property
@@ -835,8 +1176,10 @@ let canonical_supports_hoisting () =
 
    A prefix the list does NOT name is a private extension in the vendor's own
    namespace and a property of its own, so it stays distinct however its value
-   reads. A differing value or importance is two writes of one property and
-   stays distinct as well. *)
+   reads. A differing value is two writes of one property, and the later wins
+   (CSS Cascade 5 sec. 6.1, order of appearance): Chromium computes [matrix(2,
+   0, 0, 2, 0, 0)] for [-webkit-transform:none;transform:scale(2)] as for
+   [transform:scale(2)] alone. *)
 let canonical_legacy_name_alias () =
   let case label expected a b =
     Alcotest.(check bool)
@@ -852,7 +1195,7 @@ let canonical_legacy_name_alias () =
     "a{-webkit-flex-wrap:wrap;flex-wrap:wrap}" "a{flex-wrap:wrap}";
   case "the listed alias holds for animation-delay" true
     "a{-webkit-animation-delay:1s;animation-delay:1s}" "a{animation-delay:1s}";
-  case "a differing value is two writes of one property" false
+  case "a differing value is two writes of one property" true
     "a{-webkit-transform:none;transform:scale(2)}" "a{transform:scale(2)}";
   case "a listed alias alone is not the unprefixed property dropped" false
     "a{-webkit-transform:none}" "a{}";
@@ -1162,6 +1505,8 @@ let suite =
         equal_canonical_negated_bound;
       Alcotest.test_case "canonical reports a reset crossing a declaration"
         `Quick canonical_reports_reset_crossing_declaration;
+      Alcotest.test_case "canonical separates moved nested writes" `Quick
+        canonical_separates_moved_nested_writes;
       Alcotest.test_case "canonical guarded repeat" `Quick
         equal_canonical_guarded_repeat;
       Alcotest.test_case "canonical nested media order" `Quick
@@ -1178,6 +1523,8 @@ let suite =
         canonical_drops_unanswerable_supports;
       Alcotest.test_case "canonical drops redundant decoration-color alias"
         `Quick canonical_drops_redundant_decoration_color_alias;
+      Alcotest.test_case "canonical reads a legacy alias as its property" `Quick
+        canonical_reads_legacy_alias_as_its_property;
       Alcotest.test_case "canonical folds container function case" `Quick
         canonical_folds_container_function_case;
       Alcotest.test_case "canonical folds media range spellings" `Quick
@@ -1188,6 +1535,12 @@ let suite =
         canonical_movable_at_rule_ignores_nesting;
       Alcotest.test_case "canonical folds an adjacent same-selector pair" `Quick
         canonical_folds_an_adjacent_same_selector_pair;
+      Alcotest.test_case "canonical composes gathered longhands" `Quick
+        canonical_composes_gathered_longhands;
+      Alcotest.test_case "canonical order reads shared longhands" `Quick
+        canonical_order_reads_shared_longhands;
+      Alcotest.test_case "alias writes of one value agree" `Quick
+        canonical_alias_writes_agree;
       Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
         canonical_folds_a_factored_vendor_twin_group;
       Alcotest.test_case "canonical ignores how a block groups its rules" `Quick

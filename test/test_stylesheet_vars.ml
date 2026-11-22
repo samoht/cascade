@@ -307,6 +307,16 @@ let normalize_minified css =
   | Ok parsed -> minify parsed.stylesheet |> String.trim
   | Error _ -> Alcotest.failf "failed to parse: %s" css
 
+(* A registration types its property only under [--scope=stylesheet], where no
+   script or later sheet registers the name again (CSS Properties and Values API
+   1 sec. 2.1). *)
+let normalize_closed css =
+  match Css.of_string ~strict:false css with
+  | Ok parsed ->
+      Css.optimize ~scope:`Stylesheet parsed.stylesheet
+      |> Css.to_string ~minify:true |> String.trim
+  | Error _ -> Alcotest.failf "failed to parse: %s" css
+
 (* CSS Custom Properties L1 section 2 preserves unregistered custom-property
    declarations as opaque token streams. CSS Properties and Values API 1 section
    2 lifts a custom property into a typed value only after an @property
@@ -357,7 +367,7 @@ let customprops13_registered_numeric_calc () =
     "registered numeric custom property reduces to typed number"
     "@property \
      --text-sm--line-height{syntax:\"<number>\";inherits:true;initial-value:1}.x{--text-sm--line-height:1.42857}"
-    (normalize_minified
+    (normalize_closed
        "@property --text-sm--line-height { syntax: \"<number>\"; inherits: \
         true; initial-value: 1 } .x { --text-sm--line-height: calc(1.25 / \
         .875) }")
@@ -371,7 +381,7 @@ let customprops13_registered_oklch_chroma () =
     "registered OKLCH custom property uses typed color minification"
     "@property \
      --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:#71717b}"
-    (normalize_minified
+    (normalize_closed
        "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
         285.938) }");
@@ -383,7 +393,7 @@ let customprops13_registered_oklch_chroma () =
     "registration applies to a prior usage nested in a layer"
     "@layer utilities{.x{--color-zinc-500:#71717b}}@property \
      --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}"
-    (normalize_minified
+    (normalize_closed
        "@layer utilities { .x { --color-zinc-500: oklch(55.2% .016 285.938) } \
         } @property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black }")
@@ -397,7 +407,7 @@ let customprops13_registered_percent_calc () =
     "registered percent custom property uses typed calc minification"
     "@property \
      --tw-translate-x{syntax:\"<percentage>\";inherits:false;initial-value:0%}.x{--tw-translate-x:50%}"
-    (normalize_minified
+    (normalize_closed
        "@property --tw-translate-x { syntax: \"<percentage>\"; inherits: \
         false; initial-value: 0% } .x { --tw-translate-x: calc(1 / 2 * 100%) }")
 
@@ -410,7 +420,7 @@ let customprops13_registered_negative_dimension_calc () =
     "registered length custom property reduces to dimension"
     "@property \
      --tw-tracking{syntax:\"<length>\";inherits:false;initial-value:0}.x{--tw-tracking:-.05em}"
-    (normalize_minified
+    (normalize_closed
        "@property --tw-tracking { syntax: \"<length>\"; inherits: false; \
         initial-value: 0px } .x { --tw-tracking: calc(.05em * -1) }")
 
@@ -432,14 +442,14 @@ let customprops13_registered_angle_time_calc () =
     "registered angle custom property reduces to an angle"
     "@property \
      --tw-rotate{syntax:\"<angle>\";inherits:false;initial-value:0deg}.x{--tw-rotate:0deg}"
-    (normalize_minified
+    (normalize_closed
        "@property --tw-rotate { syntax: \"<angle>\"; inherits: false; \
         initial-value: 0deg } .x { --tw-rotate: calc(1deg * 0) }");
   Alcotest.(check string)
     "registered time custom property reduces to a duration"
     "@property \
      --tw-delay{syntax:\"<time>\";inherits:false;initial-value:0s}.x{--tw-delay:2s}"
-    (normalize_minified
+    (normalize_closed
        "@property --tw-delay { syntax: \"<time>\"; inherits: false; \
         initial-value: 0s } .x { --tw-delay: calc(1s * 2) }");
   (* A percentage is ambiguous (length vs number percentage) so an unregistered
@@ -516,7 +526,7 @@ let customprops13_shortest_oklab_sign_boundaries () =
     "registered OKLab custom property uses typed color minification"
     "@property \
      --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:#000}.prose{--tw-prose-kbd-shadows:#1118281a}"
-    (normalize_minified
+    (normalize_closed
        "@property --tw-prose-kbd-shadows { syntax: \"<color>\"; inherits: \
         true; initial-value: black } .prose { --tw-prose-kbd-shadows: \
         oklab(21% -.003 -.034 / .1) }")

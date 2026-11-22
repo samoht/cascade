@@ -807,8 +807,9 @@ let read_shadow_content_value : type a.
   | Box_shadow -> Some (v Box_shadow (read_shadow t))
   | Text_shadow -> Some (v Text_shadow (read_text_shadows t))
   | Content -> Some (v Content (read_content t))
-  | Counter_reset -> Some (v Counter_reset (read_counter_set t))
-  | Counter_increment -> Some (v Counter_increment (read_counter_set t))
+  | Counter_reset -> Some (v Counter_reset (read_counter_set ~reversed:true t))
+  | Counter_increment ->
+      Some (v Counter_increment (read_counter_set ~reversed:false t))
   | Z_index -> Some (v Z_index (Properties.read_z_index t))
   | Opacity -> Some (v Opacity (Properties.read_opacity t))
   | Fill_opacity -> Some (v Fill_opacity (Properties.read_opacity t))
@@ -993,6 +994,9 @@ let read_text_flow_value : type a. a property -> Cursor.t -> declaration option
   | Overflow_wrap -> Some (v Overflow_wrap (read_overflow_wrap t))
   | Line_break -> Some (v Line_break (read_line_break t))
   | Hyphens -> Some (v Hyphens (read_hyphens t))
+  | Text_rendering -> Some (v Text_rendering (read_text_rendering t))
+  | Webkit_touch_callout ->
+      Some (v Webkit_touch_callout (read_webkit_touch_callout t))
   | Word_spacing -> Some (v Word_spacing (read_word_spacing t))
   | _ -> None
 

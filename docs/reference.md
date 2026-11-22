@@ -10,10 +10,10 @@ the README first; come here to check a detail.
 
 | Flag | Purpose |
 |---|---|
-| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline re-runs until the AST stops changing, since rule-order canonicalisation can expose a merge a single pass would miss: up to five times for a sheet of at most 128 rules, once above that. |
-| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) keeps a global-factoring result only when it also shrinks the estimated gzip (DEFLATE) size of the output, since repeated declaration text is nearly free once compressed. `raw` keeps every raw-byte win and drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
+| `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline makes one pass at every size, and each step finishes in it what it starts, so minifying the output again returns it. |
+| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes, but merges rules with one body only where they print within 128 rules of each other, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges them at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
-| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also holds the parser to the ident code points CSS Syntax 3 lists, which is the one part that acts without `--minify`. |
+| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the `&` prefix on a nested selector, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also has the parser keep a rule over a pseudo-class no target reads, and holds it to the ident code points CSS Syntax 3 lists; those parts act without `--minify` too. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. See [Scope](#scope). Has no effect without `--minify`. |
 | `--flatten-nesting` | Desugar nested rules into flat top-level rules for browsers that pre-date CSS Nesting. By default cascade preserves nesting since modern browsers parse it natively and it is usually shorter. Has no effect without `--minify`. |
@@ -35,14 +35,17 @@ Cascade picks the shortest spelling that renders the same at every choice
 point. Where the CSS specifications and the browsers' error recovery allow
 several valid serialisations, it chooses the shortest.
 
-Rendering is what a browser paints. The CSSOM is not part of it: a rewrite may
-change both the declaration text a script reads back through
-`getPropertyValue` and the computed value it reads through `getComputedStyle`,
-provided every rendered result is identical. `background:none` becomes
-`background:0 0`, one byte shorter and painting the same in every case, while
-`getComputedStyle` reports `background-position` as `0% 0%` for the input and
-`0px 0px` for the output. A page that reads its own computed styles back sees
-the minified spelling.
+What `--minify` preserves is observational equality over the target browsers,
+defined in [invariants.md](invariants.md#definitions): in every document and
+surrounding context, every element gets the same used values and the same
+transitions and animations. The CSSOM text is not part of it: a rewrite may
+change the declaration text a script reads back through `getPropertyValue` and
+the computed value it reads through `getComputedStyle`. `background:none`
+becomes `background:0 0`, one byte shorter and painting the same in every
+case, while `getComputedStyle` reports `background-position` as `0% 0%` for
+the input and `0px 0px` for the output. A custom property is the exception:
+`var()` substitutes its tokens, so its value is kept as written, apart from
+whitespace.
 
 ### What runs
 
@@ -121,25 +124,69 @@ same element and whose equal-importance declarations overlap once shorthands
 are expanded. Independent rules stay unordered.
 
 Candidate rewrites are scheduled through a priority queue, largest saving
-first. Applying one updates the graph and re-enumerates only the affected
-neighbourhood; a full enumeration is kept as the fallback when the queue
-drains. The output is a topological order of the final graph, with the first
+first. Applying one updates the graph; when the queue drains, the candidates
+of the neighbourhood the commits touched are worked out again, and every
+candidate whose refusal no longer stands is queued again, at every size. The output is a topological order of the final graph, with the first
 source appearance as the tie-break, so rules keep their source order wherever
 the cascade does not force another.
 
-The candidate set is bounded and deterministic. Rules sharing a declaration,
-or writing a property once, form a bucket, and the factoring candidates are
-subsets of a bucket's members in source order. In a run of at most 128 rules
-they are the whole bucket, the bucket less one member, and runs of neighbouring
-members. Above 128 rules they are runs of up to 24 neighbours spanning at most
-128 source positions, and one budget of 256 subsets per kind is spent on the
-buckets in order of first source position, then size, then the rule and
-declaration where the bucket's key first appears. A run keeps the bounds its
-first graph sets. Subsets that factor the same declarations out of the same
-rules are one candidate. Equal savings rank by rewrite kind, then by the
-produced rules one by one, shortest first and then by their text, then by the
-source positions of the consumed rules, earliest first; never by a hash or the
-order of a table.
+The graph keeps that order as rewrites land, in an order-maintenance list
+(Dietz and Sleator; the list labelling of Bender et al.) that tells which of
+two rules prints first in constant time, rather than working it out at the
+end. A merged rule's first source appearance is the earliest of the rules it
+replaces that share a selector branch with it, or of all of them when none
+does. It prints right after the last rule it must follow, as soon as no rule
+free to come first appears earlier in the source; the replaced rules stay in
+the order as relays, so every order they imposed still holds. When that last
+rule prints after the merged rule's first appearance, the rules the merged
+rule must precede that printed before it wait for it, and come after it
+interleaved by first appearance with the rules that follow; every other rule
+keeps its place. Each rule's slot is the largest first source position up to
+it in that order: where it prints, on the source scale.
+
+The candidate set is bounded and deterministic, and reads the rules a run
+prints and their order, never where they were written. Rules sharing a
+declaration, or writing a property once, form a bucket, and the factoring
+candidates are runs of up to 24 neighbouring members of a bucket, in the order
+they print, wherever that is; a bucket with more than 256 such runs offers
+none. One budget of 256 subsets per kind is spent on the buckets in the order
+their first members print, then by size, then by where the key's declaration
+stands in that first member. Under `--objective=raw` a bucket of up to 12 members
+is tried whole, less one member and as runs of neighbours, a larger one as up
+to 32 runs, and no budget is shared. Subsets that factor the same declarations
+out of the same rules are one candidate. The test for a rule standing between the members of a
+merge reads the printed order, and the provider of a default is the member
+printed first. Equal savings rank by rewrite kind, then by the produced rules
+one by one, shortest first and then by their text, then by the slots of the
+consumed rules when the candidate was queued, earliest first; never by a hash
+or the order of a table.
+
+Rules with one body form a bucket too. Under `--objective=transfer` its
+members merge in runs, read in the order they print. A run starts at the first
+member no earlier run holds. It takes every member printed within 128 rules of
+that one, counting only the rules that print. A commit anywhere changes how many
+rules print between two members, so every time the queue drains each bucket of
+two or more members is split again, and offered again where its runs changed.
+While at most 129 rules print, no run can be split. Under `--objective=raw` a
+bucket merges whole.
+
+These bounds read the rules a run prints and their order, and a rewrite is
+accepted or refused on the live rules and where they print, so a second
+`--minify`, which builds its graph afresh from the output, offers the same
+candidates and refuses them all. One question still reads the rules earlier
+rewrites consumed: whether a member overriding a default precedes its provider,
+which drops the entry from the group. The run is factored once, and nothing is
+checked or factored again to confirm it.
+
+The pipeline makes one pass, at every size, and nothing runs to confirm it.
+Each step finishes what it starts in that pass instead: a block merge
+optimizes again the rule runs it joins, a hoist joins the blocks it leaves
+adjacent, a dead nested rule takes the blocks it empties, a shorthand
+composition deduplicates what it overrides, and the compatibility prefixes are
+the ones a second pass would settle on, and a rule run that nesting changes is
+optimized again. The corpus tests check that optimizing the output again
+returns it. Of the 504 SatCSS sheets and Tailwind's two, none changes on a
+second `--minify`.
 
 ### Approximation and lossless mode
 
@@ -189,16 +236,33 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
   `backdrop-filter`, `hyphens` and `mask` where Safari 16.4 or Chrome 111 still
   need them. The prefixed `mask-mode` and `mask-composite` are not generated,
   because their legacy grammars differ.
+- Each target stands for its version and every later one, up to the newest
+  release in the compatibility data cascade ships. An earlier declaration of
+  a property is dropped only when every such browser that reads it reads the
+  later one, so `a{width:1px;width:stretch}` keeps `width:1px` for Chrome 111
+  to 137, Firefox and Safari, which drop `stretch`. This holds under `--enforce-spec` too.
 - A `min-`/`max-` media or container feature becomes the range syntax,
   `(min-width: 700px)` to `(width >= 700px)`.
 - A nested selector loses its `&` prefix, `& div` to `div`.
 - An `oklab` or `oklch` axis takes the percentage spelling where it is
   shorter, `oklch(.7 .304 20)` to `oklch(.7 76% 20)`.
+- A rule whose selector holds, outside `:is()` and `:where()`, a pseudo-class
+  no target reads is dropped by the reader, with or without `--minify`, and a
+  warning names it, since every target drops the whole rule (Selectors 4
+  section 3.9). The list comes from MDN's browser-compat-data, Firefox's
+  selector parser and Chrome and WebKit: `:-o-prefocus`,
+  `:-moz-submit-invalid`, `:selected`, `:-moz-any-link`, `:-ms-fullscreen`,
+  `:-ms-full-screen`, `:-o-full-screen`, `:full-screen`, and the
+  pseudo-element names written with one colon, such as
+  `:-webkit-input-placeholder` and `:selection`, that only the CSS 2.1 four
+  (`:before`, `:after`, `:first-line`, `:first-letter`) may take.
+  `:-moz-placeholder` is not one: Firefox still reads it.
 
-`--enforce-spec` removes all of these. It also keeps the quotes around a
+`--enforce-spec` removes all of these, and the reader keeps such a rule as
+written, apart from every other selector. It also keeps the quotes around a
 multi-word font family, and it holds the parser to the ident code points CSS
-Syntax 3 lists rather than accepting anything above U+007F; that last part
-applies even without `--minify`.
+Syntax 3 lists rather than accepting anything above U+007F; the two reader
+parts apply even without `--minify`.
 
 An `@supports` condition is never assumed true or false, because support
 depends on the rendering browser, down to its experimental-feature settings.
@@ -215,7 +279,7 @@ disjunction, for example `(-webkit-backdrop-filter: ...) or
 | `--diff=MODE` | What counts as a difference: `auto` (default), `tree`, `string` or `canonical`. |
 | `--limit=auto\|none\|N` | How many top-level differences to print. `auto` (default) prints them all while the report stays short, then keeps as many as fit; `none` prints every one; an integer prints exactly that many. |
 | `--lossless` | Disable colour and numeric approximation in the `canonical` comparison. |
-| `--enforce-spec` | Assume no browser in the `canonical` comparison: every `@supports` guard, vendor prefix and colour fallback is kept, so two sheets that differ on one are reported. |
+| `--enforce-spec` | Judge the `canonical` comparison for every conforming implementation rather than the targets: every `@supports` guard, vendor prefix, colour fallback and rule over a pseudo-class no target reads is kept, so two sheets that differ on one are reported. |
 | `--prune-unused-custom-props` | Drop custom properties nothing references, on both sides, before a `canonical` comparison. The comparison is then blind to differences in unused custom properties. |
 | `--browser --html FILE` | Render both files over `FILE` in headless Chromium and compare the screenshots instead of the CSS. |
 | `--json` | Write the comparison as one JSON document. The exit status is unchanged. |
@@ -226,8 +290,9 @@ disjunction, for example `(-webkit-backdrop-filter: ...) or
 
 `--diff=canonical` parses and minifies each input independently with the same
 settings, then compares the two results byte for byte. `--lossless` applies to
-both sides; the comparison itself adds no tolerance. Before comparing, it
-treats as equal the changes that cannot alter a computed value:
+both sides, and the comparison applies the minifier's approximation bounds and
+none looser. Before comparing, it treats as equal the changes that cannot
+alter a used value:
 
 - declarations or rules that set different properties may swap freely;
 - a rule inside a `@media`, `@supports` or `@container` block holding only
@@ -236,6 +301,9 @@ treats as equal the changes that cannot alter a computed value:
 - distinct custom properties may swap within a rule;
 - different factorings of the same content compare equal, such as a
   declaration hoisted into a shared selector list versus written inline;
+- a declaration may stand in any occurrence of its selector that no
+  conflicting write separates it from, so how a selector's declarations are
+  split into rules, and which of its rules were merged, does not matter;
 - where a layer block stands among unlayered rules, and whether layer order is
   declared up front or implied by block order, does not matter, since the
   cascade sorts by layer first.
@@ -260,15 +328,21 @@ cascade's six-figure `1.55556`; under `--lossless` it equals no finite decimal.
 
 For browsers, the comparison assumes the targets `--minify` uses: a
 `@supports` guard every target satisfies is unwrapped, a prefix a target
-needs is added on both sides and one no target needs is dropped from both, and
-a colour fallback every target parses past is dead. `--enforce-spec` turns
-these off. An `@supports` guard that no browser can answer yes to, such as one
+needs is added on both sides and one no target needs is dropped from both, a
+colour fallback every target reads past is dead, a `-ms-` or `-o-`
+declaration, which no target reads, is dropped from both, and so is a rule
+whose selector no target reads ([Target browsers](#target-browsers)).
+Each target stands for its version and every later one in the data, so a
+`@supports` guard no target satisfies stays: `@supports (field-sizing:content)` fails in
+Chrome 111 and holds from Chrome 123.
+`--enforce-spec` turns these off. An `@supports` guard that no browser can answer yes to, such as one
 over a `<general-enclosed>` term that CSS Conditional 3 section 6.1 makes
 false, selects nothing on either side, and its block is dropped from both.
 
-`canonical` reports a difference only when some element could compute a
-different value. Two files that render the same compare equal even when one
-contains something the other lacks, an empty rule for example. Use `tree` or
+`canonical` exits 0 only when every target browser renders the two files
+alike, in the sense of [invariants.md](invariants.md#master-guarantees). It
+may report a difference that paints nothing. Content that changes nothing an
+element renders, an empty rule for example, is no difference; use `tree` or
 `string` to catch that.
 
 ### Unreadable input and exit codes
@@ -279,12 +353,26 @@ compares the text each side dropped. If that text matches byte for byte, it
 cannot hide a difference and the exit is 0. If it differs, the exit is 2,
 because one side dropped a rule the other did not.
 
-A declaration cascade cannot read is handled differently. Its reader follows
-the browser's accept set (`test/spec/browser/accept_set`), so a declaration it
-refuses is one the browser would also drop. It is dropped on that side, a
-parse warning is printed, and the verdict is taken over what remains. The
+A rule dropped because its selector holds a pseudo-class no target reads is
+not counted against the verdict in `canonical` mode: every target drops it too,
+and the comparison judges for those targets. Under `--enforce-spec` the reader
+keeps that rule on both sides, so a sheet that lost it differs and the exit is
+1. A pseudo-class cascade does not know at all is not on that list, and a rule
+lost to it still withholds the verdict.
+
+A declaration cascade cannot read is handled differently. The reader accepts
+a declaration exactly when the target browsers do, so one it refuses is one
+every target drops, and the verdict rests on that. It is dropped on that side,
+a parse warning is printed, and the verdict is taken over what remains. The
 report and the `--json` document count the unreadable declarations and rules
 on each side.
+
+Two browser harnesses test the reader against Chromium in both directions.
+`test/spec/browser/accept_set` asks the browser about values generated for
+every property the reader dispatches on, and reports a value the browser keeps
+that the reader drops as well as the reverse. `test/render/parse_recovery`
+checks that, over malformed CSS, the reader keeps the rules and declarations
+the browser's CSSOM keeps.
 
 ### Browser comparison
 
@@ -459,3 +547,12 @@ regeneration command.
 The [SatCSS benchmark](../bench/satcss/) is regenerated locally and not part
 of the normal tests, because its upstream repository carries no licence for
 redistributing the website stylesheets.
+
+## Release criteria
+
+For each of the 504 SatCSS sheets and Tailwind's output, `cascade diff
+--diff=canonical SHEET <(cascade fmt --minify -q SHEET)` exits 0 under the
+default and under `--objective=raw`; an exit 1 or 2 blocks the release until
+fixed. Canonical diff reads both sides through one normaliser, so each minimal
+reduction of a change is also rendered against its source with `cascade diff
+--browser`.

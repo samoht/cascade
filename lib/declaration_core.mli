@@ -74,11 +74,6 @@ val value_uses_color_4 : declaration -> bool
 (** [value_uses_color_4 decl] is [true] when [decl]'s typed value contains any
     CSS Color 4 / 5 construct. [var()] returns [false]. *)
 
-val value_uses_color_unimplemented_by : Support.targets -> declaration -> bool
-(** [value_uses_color_unimplemented_by targets decl] is [true] when a browser in
-    [targets] does not parse a colour construct [decl]'s typed value uses, and
-    so drops the declaration and paints the one before it. *)
-
 val value_uses_runtime_subst : declaration -> bool
 (** [value_uses_runtime_subst decl] is [true] when [decl]'s typed length value
     contains a [var()] / [env()] / [attr()] / anchor query, possibly through
@@ -113,7 +108,7 @@ val compare_prop_key : prop_key -> prop_key -> int
 (** [compare_prop_key a b] is a total order on property identities, [0] exactly
     where {!equal_prop_key} is [true]. It orders the property tag rather than
     the runtime representation, so an ordered container keyed on a property
-    stays off {!Stdlib.compare}. *)
+    stays off [Stdlib.compare]. *)
 
 val property_key : declaration -> prop_key
 (** [property_key decl] is the identity of [decl]'s property. Two declarations
@@ -130,12 +125,33 @@ val value_of : declaration -> 'a Properties.property -> 'a option
 (** [value_of decl property] is [decl]'s value when {!property_key} names
     [property], and [None] otherwise. The witness ties the result to the type
     that property carries, so a caller reads the typed value without naming the
-    existential {!constructor-Declaration} binds, which no constructor name
-    resolves against. A theme guard is read through, as {!property_key} reads
-    through it. *)
+    existential {!Declaration_intf.constructor-Declaration} binds, which no
+    constructor name resolves against. A theme guard is read through, as
+    {!property_key} reads through it. *)
 
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
+
+val first_release :
+  floor:Support.version ->
+  Support.engine ->
+  declaration ->
+  Support.version option
+(** [first_release ~floor engine decl] is the first release of [engine] at or
+    past [floor] that parses [decl], as the web-features dataset records the
+    productions [decl] uses: its property, a colour construct, or a keyword or
+    function of its value. [None] is no release the dataset records. A
+    production the dataset has no key for counts as parsed, and a custom
+    property, or a declaration holding [var()], waits on no value. *)
+
+val fallback_for :
+  floors:Support.targets -> later:declaration -> declaration -> bool
+(** [fallback_for ~floors ~later earlier] is [true] when some release of an
+    engine [floors] names, from its floor to the newest the web-features dataset
+    records, parses [earlier] and drops [later] at parse time, so paints
+    [earlier] where [later] covers it. Which release parses a declaration is
+    {!first_release}. [false] means every such release that parses [earlier]
+    parses [later], so [earlier] is dead wherever [later] covers it. *)
 
 val map_custom_value : (string -> string) -> declaration -> declaration
 (** [map_custom_value f d] is [d] with its custom-property value replaced by

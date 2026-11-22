@@ -7,10 +7,10 @@ val angle_degrees_opt : angle -> float option
 (** [angle_degrees_opt a] converts concrete angle units to degrees. *)
 
 val pp_angle : angle Pp.t
-(** [pp_angle] pretty-prints {!angle} values. *)
+(** [pp_angle] pretty-prints {!Values_intf.angle} values. *)
 
 val pp_percentage : ?always:bool -> percentage Pp.t
-(** [pp_percentage ?always] pretty-prints {!percentage} values. *)
+(** [pp_percentage ?always] pretty-prints {!Values_intf.percentage} values. *)
 
 val normalize_length :
   ?strip:bool ->
@@ -20,8 +20,8 @@ val normalize_length :
   length
 (** [normalize_length ?strip l] evaluates the static CSS math functions on a
     [<length>] (min / max / clamp reduce to one dimension on shared units; round
-    / mod / rem / hypot / abs fold on {!Calc.px}; calc folds through the
-    simplifier), recursing into nested calls; a non-static operand keeps the
+    / mod / rem / hypot / abs fold on {!Values_calc.Calc.px}; calc folds through
+    the simplifier), recursing into nested calls; a non-static operand keeps the
     call. *)
 
 val normalize_length_percentage :
@@ -35,7 +35,11 @@ val normalize_length_percentage :
     [calc(var(--x) + 3px)], and [calc(1px + 2px)] becomes [3px]. *)
 
 val normalize_number :
-  ?ctx:Values_calc.calc_ctx -> ?non_negative:bool -> number -> number
+  ?ctx:Values_calc.calc_ctx ->
+  ?non_negative:bool ->
+  ?integer:bool ->
+  number ->
+  number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
     nested calls; an operand with a [var()] keeps the call. *)
@@ -69,10 +73,12 @@ val normalize_angle : ?ctx:Values_calc.calc_ctx -> angle -> angle
     pi) stays as-is. *)
 
 val pp_length_percentage : ?always:bool -> length_percentage Pp.t
-(** [pp_length_percentage ?always] pretty-prints {!length_percentage} values. *)
+(** [pp_length_percentage ?always] pretty-prints
+    {!Values_intf.length_percentage} values. *)
 
 val pp_number_percentage : number_percentage Pp.t
-(** [pp_number_percentage] pretty-prints {!number_percentage} values. *)
+(** [pp_number_percentage] pretty-prints {!Values_intf.number_percentage}
+    values. *)
 
 val normalize_number_percentage :
   ?ctx:Values_calc.calc_ctx -> number_percentage -> number_percentage
@@ -83,14 +89,15 @@ val normalize_number_percentage :
     12.1-12.2 and Filter Effects 1 sec. 6.1). *)
 
 val pp_duration : duration Pp.t
-(** [pp_duration] pretty-prints {!duration} values. *)
+(** [pp_duration] pretty-prints {!Values_intf.duration} values. *)
 
 val pp_duration_preserve_ms : duration Pp.t
-(** [pp_duration_preserve_ms] pretty-prints {!duration} values without
-    shortening milliseconds to seconds. *)
+(** [pp_duration_preserve_ms] pretty-prints {!Values_intf.duration} values
+    without shortening milliseconds to seconds. *)
 
 val pp_number : number Pp.t
-(** [pp_number] pretty-prints {!number} values. *)
+(** [pp_number] pretty-prints {!Values_intf.number} values. *)
 
 val pp_transition_behavior : transition_behavior Pp.t
-(** [pp_transition_behavior] pretty-prints {!transition_behavior} values. *)
+(** [pp_transition_behavior] pretty-prints {!Values_intf.transition_behavior}
+    values. *)

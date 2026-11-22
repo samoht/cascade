@@ -267,19 +267,24 @@ let test_inline_warns_for_an_at_rule_reference () =
     !warned
 
 let test_inline_keep_vars_calc_identity () =
-  (* A kept theme var stays a live reference, but the value-independent calc
-     identities still simplify: [p-1] expands to [calc(var(--spacing) * 1)],
-     which must collapse to [var(--spacing)] (Tailwind's form), and [* 0] to a
-     bare zero. Only value resolution ([* n], n >= 2) keeps the
-     multiplication. *)
+  (* A kept theme var stays a live reference, but [* 1] still simplifies: [p-1]
+     expands to [calc(var(--spacing) * 1)], which drops the factor and keeps the
+     [calc()]. The var substitutes tokens at runtime, and the [calc()] is what
+     makes them arithmetic: under [--spacing:1px 2px], Chromium 153 drops
+     [padding:calc(var(--spacing))] (0px) and reads [padding:var(--spacing)] as
+     two lengths (2px). A kept var can take any tokens at runtime, so [* 0]
+     keeps it (CSS Values 4 sec. 10.10.1): under [--spacing:1px + 2px], Chromium
+     153 pads [calc(var(--spacing) * 0)] by 1px. Value resolution ([* n], n >=
+     2) keeps the multiplication too. *)
   let inline css = parse css |> Css.inline_vars ~keep_vars:[ "spacing" ] in
   Alcotest.(check string)
-    "kept var times one folds to the operand"
-    ":root{--spacing:.25rem}.p{padding:var(--spacing)}"
+    "kept var times one drops the factor"
+    ":root{--spacing:.25rem}.p{padding:calc(var(--spacing))}"
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 1)}"));
   Alcotest.(check string)
-    "kept var times zero folds to zero" ":root{--spacing:.25rem}.p{padding:0}"
+    "kept var times zero keeps the var() reference"
+    ":root{--spacing:.25rem}.p{padding:calc(var(--spacing)*0)}"
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 0)}"));
   Alcotest.(check string)
@@ -288,17 +293,34 @@ let test_inline_keep_vars_calc_identity () =
     (minified
        (inline ":root{--spacing:.25rem}.p{padding:calc(var(--spacing) * 4)}"))
 
+(* A kept var substitutes tokens at runtime (CSS Variables 1 sec. 3), and the
+   [calc()] around it is what makes them arithmetic: under [--s:1px + 2px],
+   Chromium 153 computes [width:calc(var(--s))] to 3px and [width:var(--s)] to
+   auto, and under [--s:1px 2px] [padding:calc(var(--s))] is invalid where
+   [padding:var(--s)] is two lengths. A nested [calc()] keeps its grouping for
+   the same reason: [calc(calc(var(--s)) * 2)] is 6px, [calc(var(--s) * 2)] 5px.
+   The optimizer keeps both for an unregistered var. *)
+let test_inline_keep_vars_calc_wrapper () =
+  let inline css = parse css |> Css.inline_vars ~keep_vars:[ "s" ] in
+  let same label css =
+    Alcotest.(check string) label css (minified (inline css))
+  in
+  same "a calc() around a kept var stays"
+    ":root{--s:.25rem}.p{width:calc(var(--s))}";
+  same "a nested calc() around a kept var stays"
+    ":root{--s:.25rem}.p{width:calc(calc(var(--s))*2)}"
+
 let test_inline_zero_value_collapse () =
-  (* [divide-x-0] multiplies a literal [0px] by a kept reverse var; [0 * x] is
-     zero for every [x], so the [calc()] and the [var()] both drop out. The
-     printer keeps the zero's unit ([0px]); stripping it to [0] is the
-     optimizer's zero-length minification, not the printer's job. *)
+  (* [divide-x-0] multiplies a literal [0px] by a kept reverse var. A kept var
+     can take any tokens at runtime, so [0px * x] is not zero for every [x]:
+     under [--tw-divide-x-reverse:1 + 1px], Chromium 153 computes it to 1px. The
+     [calc()] and the [var()] stay. *)
   let inline css =
     parse css |> Css.inline_vars ~keep_vars:[ "tw-divide-x-reverse" ]
   in
   Alcotest.(check string)
-    "literal zero times a kept var collapses, dropping the calc and var"
-    ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:0px}"
+    "literal zero times a kept var keeps the var() reference"
+    ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:calc(0px*var(--tw-divide-x-reverse))}"
     (minified
        (inline
           ":root{--tw-divide-x-reverse:0}.d{border-inline-start-width:calc(0px \
@@ -311,14 +333,6 @@ let test_inline_oklch_number_lightness () =
      [.7] into [.7%] (0.7%). *)
   check_inline_case "oklch number lightness keeps its number form"
     ".b{color:oklch(.7 .15 145.5)}" ".b{color:oklch(.7 .15 145.5)}"
-
-let test_decode_import_url () =
-  Alcotest.(check string)
-    "url form" "theme.css"
-    (Css.decode_import_url "url(\"theme.css\")");
-  Alcotest.(check string)
-    "string form" "theme.css"
-    (Css.decode_import_url "\"theme.css\"")
 
 let test_inline_import_loader () =
   let loader =
@@ -1043,11 +1057,12 @@ let suite =
         test_inline_warns_for_an_at_rule_reference;
       Alcotest.test_case "inline vars apply calc identities to kept vars" `Quick
         test_inline_keep_vars_calc_identity;
+      Alcotest.test_case "inline vars keep a calc() around a kept var" `Quick
+        test_inline_keep_vars_calc_wrapper;
       Alcotest.test_case "inline vars collapse a literal zero times a kept var"
         `Quick test_inline_zero_value_collapse;
       Alcotest.test_case "inline vars keep an oklch number lightness" `Quick
         test_inline_oklch_number_lightness;
-      Alcotest.test_case "decode import url forms" `Quick test_decode_import_url;
       Alcotest.test_case "inline imports resolves loader stylesheet" `Quick
         test_inline_import_loader;
       Alcotest.test_case "inline imports preserves unresolved import" `Quick

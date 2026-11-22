@@ -130,29 +130,23 @@ let factoring_run n =
   |> String.concat "" |> rules |> Rule_graph.of_rules
 
 (* A settled run is a fixed point of its search: every candidate of the graph it
-   returns, under the bounds the run started with, is refused there, so running
-   the scheduler again on that graph commits nothing. Both runs stay on one side
-   of the 128 nodes that set those bounds. *)
+   returns is refused there, so running the scheduler again on that graph
+   commits nothing. *)
 let a_settled_run_is_a_fixed_point () =
   let ctx = Ctx.fragment and finalize = Fun.id in
   List.iter
     (fun (label, graph) ->
-      let nodes = Rule_graph.node_count graph in
-      let { Rule_scheduler.graph = settled_graph; settled } =
+      let { Rule_scheduler.graph = settled_graph; settled; _ } =
         Rule_scheduler.run ~ctx ~finalize graph
       in
       Alcotest.(check bool) (label ^ ": settled") true settled;
       Alcotest.(check bool)
         (label ^ ": it rewrote") true
         (Rule_graph.generation settled_graph > 0);
-      Alcotest.(check bool)
-        (label ^ ": on the bounds' side it started on")
-        true
-        (nodes <= 128 = (Rule_graph.node_count settled_graph <= 128));
       Alcotest.(check (list int))
         (label ^ ": candidates the settled graph accepts")
         []
-        (Rule_candidate.enumerate ~nodes ~ctx ~finalize settled_graph
+        (Rule_candidate.enumerate ~ctx ~finalize settled_graph
         |> List.filter_map (fun (c : Rule_rewrite.candidate) ->
             match
               Rule_graph.rewrite settled_graph ~consume:c.consume
@@ -168,9 +162,69 @@ let a_settled_run_is_a_fixed_point () =
         (Rule_graph.generation again.graph))
     [ ("small run", factoring_run 40); ("large run", factoring_run 200) ]
 
+(* Rules the run printed, in that order. *)
+let printed graph =
+  Array.to_list
+    (Array.map (Rule_graph.node_rule graph) (Rule_graph.canonical_order graph))
+
+(* A rule a rewrite consumed stays in the graph as a relay. Here [p.k] and
+   [span.m] can match no element together, and only [.x], which wrote [color]
+   for both, stood between them; once it is consumed nothing live orders them.
+   Merging the identical bodies of [p.c] and [span.d] then has to print ahead of
+   [p.k] and after [span.m], as the source does: through the relay that closes a
+   loop, but a graph built afresh from the rules the graph prints has none, and
+   the run merges them there. *)
+let merges_past_a_relay_cycle () =
+  let graph =
+    rules
+      "p.c{color:green}p.k{color:red}p.x,span.x{color:#000}span.m{color:blue}span.d{color:green}"
+    |> Rule_graph.of_rules
+  in
+  match
+    Rule_graph.try_rewrite graph
+      ~consume:[ Rule_graph.Node_id.of_int_exn 2 ]
+      ~produce:(rules "p.x,span.x{margin:0}")
+  with
+  | None -> Alcotest.fail "a disjoint replacement commits"
+  | Some graph ->
+      let { Rule_scheduler.graph; _ } =
+        Rule_scheduler.run ~ctx:Ctx.fragment ~finalize:Fun.id graph
+      in
+      let texts =
+        List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) (printed graph)
+      in
+      let has s text =
+        let n = String.length s in
+        let rec at i =
+          i + n <= String.length text
+          && (String.equal (String.sub text i n) s || at (i + 1))
+        in
+        at 0
+      in
+      let index s =
+        let rec find i = function
+          | [] ->
+              Alcotest.failf "no printed rule holds %s in %s" s
+                (render (printed graph))
+          | text :: rest -> if has s text then i else find (i + 1) rest
+        in
+        find 0 texts
+      in
+      Alcotest.(check int)
+        "the two bodies print once" 1
+        (List.length (List.filter (has "color:green") texts));
+      Alcotest.(check bool)
+        "the merge prints after span.m" true
+        (index "span.m" < index "color:green");
+      Alcotest.(check bool)
+        "and before p.k" true
+        (index "color:green" < index "p.k")
+
 let suite =
   ( "rule_scheduler",
     [
+      Alcotest.test_case "merges past a cycle through a relay" `Quick
+        merges_past_a_relay_cycle;
       Alcotest.test_case "a settled run is a fixed point" `Quick
         a_settled_run_is_a_fixed_point;
       Alcotest.test_case "merges identical bodies" `Quick merges_identical_body;

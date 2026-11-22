@@ -365,7 +365,7 @@ let invalid () =
   check ~expected:"flex-basis:calc(50% - 10px)" "flex-basis: calc(50% - 10px)";
   check ~expected:"opacity:inherit" "opacity: inherit";
   check ~expected:"opacity:.5" "opacity: 0.5";
-  check ~expected:"fill-opacity:.5" "fill-opacity: 50%";
+  check ~expected:"fill-opacity:50%" "fill-opacity: 50%";
 
   (* CSS Values 4 sec. 10.2: the arguments of [min()] / [max()] / [clamp()]
      "must have a consistent type or else the function is invalid", and sec.
@@ -519,6 +519,10 @@ let spec_property_grammar_table_expansion () =
       ("list-style", "square inside");
       ("content", "open-quote attr(title) close-quote");
       ("counter-reset", "section 1");
+      (* CSS Lists 3 sec. 4.1: [<reversed-counter-name> <integer>?], with
+         [reversed( <counter-name> )]. *)
+      ("counter-reset", "reversed(section)");
+      ("counter-reset", "reversed(section) 5 page");
       ("counter-increment", "section");
       ("resize", "both");
       ("cursor", "url(cursor.cur), pointer");
@@ -570,7 +574,8 @@ let spec_property_grammar_table_expansion () =
             (Some "font-size:clamp(1rem,2vw,2rem)", None)
         | "transform", "translateX(10px) rotate(45deg) scale(1.2)" ->
             (Some "transform:translateX(10px)rotate(45deg)scale(1.2)", None)
-        | "rotate", "1 0 0 45deg" -> (Some "rotate:x 45deg", None)
+        | "rotate", "1 0 0 45deg" ->
+            (Some "rotate:45deg 1 0 0", Some "rotate:x 45deg")
         | "font", "italic small-caps bold 16px/1.5 serif" ->
             ( Some "font:italic small-caps bold 16px/1.5 serif",
               Some "font:italic small-caps 700 16px/1.5 serif" )
@@ -647,6 +652,9 @@ let spec_property_grammar_table_expansion () =
       ("place-content", "left");
       ("content", "open-quote none");
       ("counter-reset", "none section");
+      (* Sec. 4.2 gives [counter-increment] no reversed counter. *)
+      ("counter-increment", "reversed(section)");
+      ("counter-reset", "reversed(none)");
       ("resize", "block inline both");
       ("cursor", "url(cursor.cur)");
       ("user-select", "all none");

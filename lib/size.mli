@@ -1,17 +1,38 @@
 (** Minified CSS byte-size estimates used by optimizer cost models. *)
 
-val decls : Declaration.declaration list -> int
-(** Minified size of a declaration list without separator bytes. *)
+type print
+(** The flags a run prints with. A declaration's minified spelling depends on
+    them, so a cost model measures under the run's own. *)
+
+val default : print
+(** [default] is the print with [lossless] and [enforce_spec] unset. *)
+
+val print : lossless:bool -> enforce_spec:bool -> print
+(** [print ~lossless ~enforce_spec] is the print with those flags. *)
+
+val decl : print -> Declaration.declaration -> int
+(** [decl p d] is the length of [d]'s minified print under [p]. Under {!default}
+    it is {!Declaration.size}. *)
+
+val decls : print -> Declaration.declaration list -> int
+(** [decls p ds] is the minified size of [ds] under [p], without separator
+    bytes. *)
 
 val selector : Selector.t -> int
 (** Minified size of a selector. *)
 
-val body : Declaration.declaration list -> int
-(** Minified size of a rule body: the declarations, their separators and the
-    braces. *)
+val body : print -> Declaration.declaration list -> int
+(** [body p ds] is the minified size of a rule body under [p]: the declarations,
+    their separators and the braces. *)
 
-val rule : Stylesheet.rule -> int
-(** Minified size of one rule. *)
+val block : print -> Stylesheet.rule -> int
+(** [block p r] is the minified size under [p] of what [r] prints after its
+    selector: the braces and everything between them, its declarations and its
+    nested statements. *)
 
-val rules : Stylesheet.rule list -> int
-(** Minified size of a rule list. *)
+val rule : print -> Stylesheet.rule -> int
+(** [rule p r] is the minified size of [r] under [p], nested statements
+    included. *)
+
+val rules : print -> Stylesheet.rule list -> int
+(** [rules p rs] is the minified size of [rs] under [p]. *)

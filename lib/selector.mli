@@ -39,8 +39,8 @@ val of_string : string -> (t, Error.t) result
 val v : string -> t
 (** [v s] is the selector [s] spells, for selector text written in a program.
 
-    @raise Invalid_argument
-      if [s] is malformed. Use {!of_string} to deal with untrusted input. *)
+    It raises [Invalid_argument] if [s] is malformed. Use {!of_string} to deal
+    with untrusted input. *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)
@@ -329,8 +329,7 @@ val matches_nothing : t -> bool
 val has_unknown_pseudo_class : t -> bool
 (** [has_unknown_pseudo_class sel] returns [true] when [sel] contains an
     [Unknown_pseudo_class] / [Unknown_pseudo_class_call] anywhere in the tree.
-    Used to flag unforgiving-site unknown pseudo-classes ([.x,:future-pseudo])
-    as spec deviations in strict mode. *)
+*)
 
 val modifier_prefix : t -> string option
 (** [modifier_prefix sel] extracts the modifier prefix from the first class in

@@ -32,11 +32,15 @@ let () =
       Test_resolve.suite;
       Test_sort.suite;
       Test_rule_graph.suite;
+      Test_order_maintenance.suite;
       Test_rule_rewrite.suite;
       Test_rule_candidate.suite;
       Test_subsets.suite;
       Test_rule_scheduler.suite;
+      Test_reach.suite;
       Test_rule_order.suite;
+      Test_rule_order_layer.suite;
+      Test_rule_trace.suite;
       Test_common.suite;
       Test_ctx.suite;
       Test_stats.suite;

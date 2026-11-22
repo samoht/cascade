@@ -63,9 +63,9 @@ let test_color () =
 
   (* Modern color notations. pp preserves the authored function node; the
      equivalent hex form is the optimize+minify oracle. *)
-  check_color ~expected:"hsl(180 50%25%)" ~optimized:"#206060"
+  check_color ~expected:"hsl(180deg 50%25%)" ~optimized:"#206060"
     "hsl(180deg 50% 25%)";
-  check_color ~expected:"hwb(90 10%20%)" ~optimized:"#73cc1a"
+  check_color ~expected:"hwb(90deg 10%20%)" ~optimized:"#73cc1a"
     "hwb(90deg 10% 20%)";
   check_color ~expected:"hsl(180 50%25%/.5)" ~optimized:"#20606080"
     "hsl(180 50% 25% / 0.5)";
@@ -75,13 +75,15 @@ let test_color () =
   (* CSS Color 4 section 4.2: alpha [<percentage>] is spec-equivalent to the
      corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
      number form per cssnano. *)
-  check_color ~expected:"hsl(180 50%25%/30%)" ~optimized:"#2060604d"
+  check_color ~expected:"hsl(180deg 50%25%/30%)" ~optimized:"#2060604d"
     "hsl(180deg 50% 25% / 30%)";
   check_color ~optimized:"red" "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
-  check_color ~expected:"color(oklab .5 .1-.05)" "color(oklab 50% 0.1 -0.05)";
-  check_color ~expected:"color(lch .5 40 120)" "color(lch 50% 40 120)";
+  check_color ~expected:"color(oklab 50% .1-.05)"
+    ~optimized:"color(oklab .5 .1-.05)" "color(oklab 50% 0.1 -0.05)";
+  check_color ~expected:"color(lch 50% 40 120)"
+    ~optimized:"color(lch .5 40 120)" "color(lch 50% 40 120)";
   check_color ~expected:"color(xyz .3 .4 .5)" ~optimized:"#5cb8b5"
     "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
@@ -151,7 +153,7 @@ let test_color () =
   check_color ~expected:"var(--color,)" "var(--color,)";
 
   (* Custom properties inline mode tests with complex color fallbacks *)
-  check_color ~expected:"var(--theme-primary,hsl(210 75%50%))"
+  check_color ~expected:"var(--theme-primary,hsl(210deg 75%50%))"
     ~optimized:"var(--theme-primary,#2080df)"
     "var(--theme-primary, hsl(210deg 75% 50%))";
   check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
@@ -445,7 +447,9 @@ let test_color_space () =
   neg_cursor read_color_space ""
 
 let test_hue () =
-  check_hue ~expected:"180" "180deg";
+  (* A bare hue is degrees (CSS Color 4, the [<hue>] type), but [180] is another
+     node than [180deg]; normalize drops the unit, the printer writes it. *)
+  check_hue "180deg";
   check_hue ~expected:".5turn" "0.5turn";
   check_hue "200grad";
   check_hue "3.14159rad";
@@ -679,7 +683,9 @@ let test_hue_interpolation () =
 
 let test_component () =
   (* Component tests - various color component values *)
-  check_component ~expected:".5" "50%";
+  (* [50%] is [.5] in a [color()] channel (CSS Color 4, the [color()] function), but another
+     node: normalize scales it, the printer writes it. *)
+  check_component "50%";
   check_component "128";
   check_component ~expected:".5" "0.5";
   neg_cursor read_component "invalid";
@@ -688,7 +694,7 @@ let test_component () =
   (* Clamped in output *)
   check_component ~expected:"255" "256";
   (* Clamped in output *)
-  check_component ~expected:"1" "150%" (* Clamped in output *)
+  check_component ~expected:"100%" "150%" (* Clamped in output *)
 
 let test_channel () =
   check_channel "255";
@@ -782,6 +788,22 @@ let spec_color5_function_edges () =
     "color-mix(in oklch, oklch(0.7 0.15 350), oklch(0.7 0.15 10))";
   check_color ~expected:"color-mix(in lch,lch(70 50 350),lch(70 50 10))"
     ~optimized:"#fc84ae" "color-mix(in lch, lch(70 50 350), lch(70 50 10))";
+  (* CSS Color 5 (ED) sec. 3 takes any number of [<color> && <percentage>?]
+     items, and sec. 3.3 mixes them in order, each into the result so far. A mix
+     of three keeps all three; folding the first two alone loses the third. *)
+  check_color ~expected:"color-mix(in srgb,red,blue,green)"
+    ~optimized:"color-mix(in srgb,red,#00f,green)"
+    "color-mix(in srgb, red, blue, green)";
+  check_color ~expected:"color-mix(in srgb,red 20%,blue,green 30%)"
+    ~optimized:"color-mix(in srgb,red 20%,#00f,green 30%)"
+    "color-mix(in srgb, red 20%, blue, green 30%)";
+  (* The list is [#], so one item is a mix too. Sec. 3.3 takes its colour,
+     converted to the interpolation space, with its alpha scaled by what the
+     percentage leaves over. Firefox reads it from 150. *)
+  check_color ~expected:"color-mix(in srgb,blue)"
+    ~optimized:"color-mix(in srgb,#00f)" "color-mix(in srgb, blue)";
+  check_color ~expected:"color-mix(in srgb,blue 40%)"
+    ~optimized:"color-mix(in srgb,#00f 40%)" "color-mix(in srgb, blue 40%)";
   (* CSS Color 4 sec. 13.3: [color-mix(in srgb, ...)] interpolates premultiplied
      channels then un-premultiplies by the interpolated alpha; the <100%-sum
      scaling applies only to the result alpha. *)
@@ -906,7 +928,7 @@ let spec_color5_mix_rectangular_spaces () =
   check_color ~expected:"color-mix(in xyz,red,blue)"
     ~optimized:"color(xyz .296436 .142416 .484931)"
     "color-mix(in xyz, red, blue)";
-  check_color ~expected:"color-mix(in xyz,red,blue)"
+  check_color ~expected:"color-mix(in xyz-d65,red,blue)"
     ~optimized:"color(xyz .296436 .142416 .484931)"
     "color-mix(in xyz-d65, red, blue)";
   check_color ~expected:"color-mix(in xyz-d50,red,blue)"

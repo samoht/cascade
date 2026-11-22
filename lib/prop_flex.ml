@@ -198,10 +198,19 @@ let rec normalize_flex_basis ?(ctx = default_calc_ctx) (value : flex_basis) :
   | Lh 0. ->
       Zero
   | Calc c -> (
+      (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], [0,inf], and
+         CSS Values 4 sec. 10.12 clamps a call past that range at computed-value
+         time: a call folding below zero keeps its wrapper, since the bare
+         negative literal is refused. *)
+      let negative v =
+        match flex_basis_unit v with Some (_, n) -> n < 0. | None -> false
+      in
       match static_flex_basis_calc ~ctx c with
+      | Some v when negative v -> Calc (Val v)
       | Some v -> normalize_flex_basis ~ctx v
       | None -> (
           match eval_calc ~ctx c with
+          | Val v when negative v -> Calc (Val v)
           | Val v -> normalize_flex_basis ~ctx v
           | folded -> if folded == c then value else Calc folded))
   | Dimension { value = n; unit; _ } -> (
@@ -215,13 +224,19 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
   | Grow f ->
       let f' = normalize_flex_factor f in
       if f' == f then value else Grow f'
-  | Basis b ->
-      let b' = normalize_flex_basis ~ctx b in
-      if b' == b then value else Basis b'
-  | Grow_shrink (g, s) ->
+  | Basis b -> (
+      (* CSS Flexbox 1 sec. 7.2 reads a lone unitless number as the grow factor,
+         so a zero basis on its own keeps a length unit. *)
+      match (normalize_flex_basis ~ctx b, b) with
+      | Zero, Px 0. -> value
+      | Zero, _ -> Basis (Px 0.)
+      | b', _ -> if b' == b then value else Basis b')
+  | Grow_shrink (g, s) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
-      if g' == g && s' == s then value else Grow_shrink (g', s')
+      match s' with
+      | Number 1. -> Grow g'
+      | _ -> if g' == g && s' == s then value else Grow_shrink (g', s'))
   | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
@@ -231,6 +246,11 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
       match (g', s', b') with
       | Number 0., Number 0., (Auto : flex_basis) -> None
       | Number 1., Number 1., Auto -> Auto
+      (* Sec. 7.1.1: an omitted basis is [0%] and an omitted shrink [1], so [g 1
+         0%] is [g] and [g s 0%] is [g s]. A [0] or [0px] basis is a length,
+         another computed value, and stays. *)
+      | _, Number 1., Pct 0. -> Grow g'
+      | _, _, Pct 0. -> Grow_shrink (g', s')
       | _ -> if g' == g && s' == s && b' == b then value else Full (g', s', b'))
   | _ -> value
 
@@ -394,7 +414,14 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Dimension { value; unit; repr } ->
       pp_length ctx (Dimension { value; unit; repr })
   | Var v -> pp_var pp_flex_basis ctx v
-  | Calc cv -> pp_calc pp_flex_basis ctx cv
+  (* Sec. 7.2.3 refuses a negative basis written bare, so a call holding one
+     keeps the wrapper that makes it a clamped value (CSS Values 4 sec.
+     10.12). *)
+  | Calc cv ->
+      pp_calc
+        ~unwrap:(fun v ->
+          match flex_basis_unit v with Some (_, n) -> n >= 0. | None -> true)
+        pp_flex_basis ctx cv
 
 let rec pp_flex : flex Pp.t =
  fun ctx -> function
@@ -407,6 +434,9 @@ let rec pp_flex : flex Pp.t =
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Grow f -> pp_flex_factor ctx f
+  (* Sec. 7.2 reads a lone [0] as the grow factor, so a lone zero basis has no
+     unitless spelling and prints as the zero length it stands for. *)
+  | Basis Zero -> Pp.unit ctx 0. "px"
   | Basis fb -> pp_flex_basis ctx fb
   | Grow_shrink (grow, shrink) ->
       pp_flex_factor ctx grow;
@@ -414,30 +444,22 @@ let rec pp_flex : flex Pp.t =
       pp_flex_factor ctx shrink
   | Full (grow, shrink, basis) ->
       pp_flex_factor ctx grow;
-      (* CSS Flexbox 1 sec. 7.1.1: the one-number [flex: g] form expands to [g 1
-         0%], so only a [0%] basis (with the default [1] shrink) is the
-         droppable shorthand default. A length [0] / [0px] basis is a different
-         computed value and is kept. An omitted flex-shrink is [1]. *)
-      let basis_is_default = match basis with Pct 0.0 -> true | _ -> false in
+      Pp.space ctx ();
+      (* CSS Flexbox 1 sec. 7.1.1: an omitted flex-shrink is [1], so [g b] reads
+         back as [g 1 b]. A basis that serialises as a bare number ([0], [0px]
+         -> [0], or a unitless basis) would reparse as the shrink factor, so the
+         shrink stays to disambiguate. Leaving out a [0%] basis reads back as
+         another node, {!normalize_flex}'s to make. *)
       let shrink_is_default =
         match shrink with Number 1.0 -> true | _ -> false
       in
-      if basis_is_default then (
-        if not shrink_is_default then (
-          Pp.space ctx ();
-          pp_flex_factor ctx shrink))
-      else (
-        Pp.space ctx ();
-        (* A basis that serialises as a bare number ([0], [0px] -> [0], or a
-           unitless basis) would reparse as the shrink factor, so keep the
-           shrink to disambiguate. *)
-        let basis_bare_number =
-          match basis with Num _ | Zero | Px 0.0 -> true | _ -> false
-        in
-        if (not shrink_is_default) || basis_bare_number then (
-          pp_flex_factor ctx shrink;
-          Pp.space ctx ());
-        pp_flex_basis ctx basis)
+      let basis_bare_number =
+        match basis with Num _ | Zero | Px 0.0 -> true | _ -> false
+      in
+      if (not shrink_is_default) || basis_bare_number then (
+        pp_flex_factor ctx shrink;
+        Pp.space ctx ());
+      pp_flex_basis ctx basis
 
 let rec read_order t : order =
   let read_calc_order t =
@@ -734,8 +756,9 @@ let flex_basis_of_length t (length : length) : flex_basis =
 
 (* CSS Values 4 sec. 10.8 gives an operand no keyword: [auto], [content], the
    intrinsic sizes and the CSS-wide keywords are not [<calc-value>]s, so
-   [keywords] is off here and [calc(auto)] fails the way the browser drops
-   it. *)
+   [keywords] is off here and [calc(auto)] fails the way the browser drops it.
+   Sec. 10.12 checks the range on the value the calculation resolves to, so an
+   operand, the only reading with [keywords] off, takes either sign. *)
 let rec read_flex_basis_in_math t : flex_basis =
   read_flex_basis_with ~keywords:false t
 
@@ -763,7 +786,8 @@ and read_flex_basis_with ?(keywords = true) t : flex_basis =
          the intrinsic sizes the box sizes take. *)
     ~default:(fun t ->
       let size t =
-        read_length ~allow_negative:false ~sizing:true ~with_keywords:keywords t
+        read_length ~allow_negative:(not keywords) ~sizing:true
+          ~with_keywords:keywords t
         |> flex_basis_of_length t
       in
       let pos = Cursor.save t in

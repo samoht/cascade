@@ -150,28 +150,34 @@ let legacy_vendor_fallback new_decl existing =
   && (not (same_value new_decl existing))
   && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
-(* The earlier declaration is a real cascade fallback when the later one uses
-   CSS Color 4 / 5 syntax that older browsers drop. With a target contract the
-   browsers are named, and the fallback is one only where a target does not
-   parse the later colour; every target parsing it makes the earlier declaration
-   dead at cascade time. *)
-let legacy_color_fallback ?targets new_decl existing =
-  Declaration.same_property new_decl existing
+(* An earlier declaration the later one covers is a fallback for a browser that
+   drops the later one at parse time and reads it. The floors stand for their
+   releases and every later one, so the earlier declaration is dead only when
+   every browser at or above them that reads it also reads the later one
+   ({!Declaration.fallback_for}). The minifier and a run that judges for
+   browsers ask this one question of the same floors ({!Ctx.floors}), so
+   whatever the minifier deletes the judge also counts dead. *)
+let floor_fallback ~floors new_decl existing =
+  (not (same_value new_decl existing))
+  && Declaration.fallback_for ~floors ~later:new_decl existing
+
+(* A run that does not judge also keeps the fallback before a CSS Color 4 / 5
+   colour every floor reads, for a browser older than them. *)
+let legacy_color_fallback ~judged new_decl existing =
+  (not judged)
+  && Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
-  && (match targets with
-    | Some targets ->
-        Declaration.value_uses_color_unimplemented_by targets new_decl
-    | None -> Declaration.value_uses_color_4 new_decl)
+  && Declaration.value_uses_color_4 new_decl
   && not (Declaration.value_uses_color_4 existing)
 
 (* Same shape: the later value uses a runtime substitution ([var()] / [env()] /
    [attr()]) and the earlier doesn't, so the earlier is a static fallback for
    browsers that can't resolve the substitution at parse time. Every target
    resolves one, and a declaration holding a substitution is never dropped at
-   parse time, so under a target contract the later one always wins the cascade
-   and the earlier is dead. *)
-let legacy_runtime_subst_fallback ?targets new_decl existing =
-  Option.is_none targets
+   parse time, so a run that judges for targets finds the later one always wins
+   the cascade and the earlier dead. *)
+let legacy_runtime_subst_fallback ~judged new_decl existing =
+  (not judged)
   && Declaration.same_property new_decl existing
   && (not (same_value new_decl existing))
   && Declaration.value_uses_runtime_subst new_decl
@@ -182,13 +188,14 @@ let same_property_value_declaration new_decl existing =
   && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
-let covered_by_new_declaration ?targets new_decl existing =
+let covered_by_new_declaration ~floors ~judged new_decl existing =
   (not (is_intentionally_duplicated existing))
   && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
   && (not (legacy_vendor_fallback new_decl existing))
-  && (not (legacy_color_fallback ?targets new_decl existing))
-  && not (legacy_runtime_subst_fallback ?targets new_decl existing)
+  && (not (floor_fallback ~floors new_decl existing))
+  && (not (legacy_color_fallback ~judged new_decl existing))
+  && not (legacy_runtime_subst_fallback ~judged new_decl existing)
 
 let filter_preserve = List.filter_preserve
 
@@ -206,11 +213,45 @@ let is_all_declaration = function
       | _ -> false)
   | _ -> false
 
-let deduplicate_step ?targets kept (idx, decl) =
-  if is_intentionally_duplicated decl then
+(* A [content] value every target reads: nothing written before it is left to
+   fall back to. An image, [attr()], a [var()] or a list holding one of those
+   may be what some browser rejects, and keeps the declarations before it. *)
+let rec plain_content : Properties.content -> bool = function
+  | String _ | Quoted _ | None | Normal | Open_quote | Close_quote | Inherit
+  | Initial | Unset | Revert | Revert_layer ->
+      true
+  (* Chrome 153 refuses a [symbols()] counter style. *)
+  | Counter { style; _ } | Counters { style; _ } -> (
+      match style with Some (Symbols _) -> false | _ -> true)
+  | Content_list items -> List.for_all plain_content items
+  (* A browser that predates the alternative text of CSS Generated Content 3
+     sec. 1.1 drops the value that holds one. *)
+  | Image _ | Attr _ | String_ref _ | Var _ | With_alt _ -> false
+
+let superseding_content new_decl existing =
+  match (new_decl, existing) with
+  | ( Declaration { property = Content; value; important; _ },
+      Declaration { property = Content; important = old_important; _ } ) ->
+      plain_content value && (important || not old_important)
+  | _ -> false
+
+(* A normal [content] after an important plain one stands in for nothing: the
+   important one wins whatever the order, and every target reads it. *)
+let under_important_content kept decl =
+  (not (is_important decl))
+  && List.exists
+       (fun (_, old) -> is_important old && superseding_content old decl)
+       kept
+
+let deduplicate_step ~floors ~judged kept (idx, decl) =
+  if under_important_content kept decl then kept
+  else if is_intentionally_duplicated decl then
     let kept =
       filter_preserve
-        (fun (_, old) -> not (same_property_value_declaration decl old))
+        (fun (_, old) ->
+          not
+            (same_property_value_declaration decl old
+            || superseding_content decl old))
         kept
     in
     (idx, decl) :: kept
@@ -219,7 +260,8 @@ let deduplicate_step ?targets kept (idx, decl) =
   else
     let kept =
       filter_preserve
-        (fun (_, old) -> not (covered_by_new_declaration ?targets decl old))
+        (fun (_, old) ->
+          not (covered_by_new_declaration ~floors ~judged decl old))
         kept
     in
     if is_all_declaration decl then add_all_declaration_rev idx decl kept
@@ -571,135 +613,65 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
 
-(* WHATWG Compatibility Standard sec. 3.4.1: these [-webkit-] properties "must
-   be supported as legacy name aliases of the corresponding unprefixed
-   property", and CSS Cascade 5 sec. 2.3 makes a legacy name alias the SAME
-   property under a second name rather than a property of its own. A prefix the
-   list does not name is a private extension in the vendor's namespace, so it is
-   its own property and never an alias -- [-moz-] spellings and
-   [-webkit-user-select] among them. *)
-let legacy_name_alias_of = function
-  | "-webkit-align-content" -> Some "align-content"
-  | "-webkit-align-items" -> Some "align-items"
-  | "-webkit-align-self" -> Some "align-self"
-  | "-webkit-animation" -> Some "animation"
-  | "-webkit-animation-delay" -> Some "animation-delay"
-  | "-webkit-animation-direction" -> Some "animation-direction"
-  | "-webkit-animation-duration" -> Some "animation-duration"
-  | "-webkit-animation-fill-mode" -> Some "animation-fill-mode"
-  | "-webkit-animation-iteration-count" -> Some "animation-iteration-count"
-  | "-webkit-animation-name" -> Some "animation-name"
-  | "-webkit-animation-play-state" -> Some "animation-play-state"
-  | "-webkit-animation-timing-function" -> Some "animation-timing-function"
-  | "-webkit-backface-visibility" -> Some "backface-visibility"
-  | "-webkit-background-clip" -> Some "background-clip"
-  | "-webkit-background-origin" -> Some "background-origin"
-  | "-webkit-background-size" -> Some "background-size"
-  | "-webkit-border-bottom-left-radius" -> Some "border-bottom-left-radius"
-  | "-webkit-border-bottom-right-radius" -> Some "border-bottom-right-radius"
-  | "-webkit-border-radius" -> Some "border-radius"
-  | "-webkit-border-top-left-radius" -> Some "border-top-left-radius"
-  | "-webkit-border-top-right-radius" -> Some "border-top-right-radius"
-  | "-webkit-box-shadow" -> Some "box-shadow"
-  | "-webkit-box-sizing" -> Some "box-sizing"
-  | "-webkit-filter" -> Some "filter"
-  | "-webkit-flex" -> Some "flex"
-  | "-webkit-flex-basis" -> Some "flex-basis"
-  | "-webkit-flex-direction" -> Some "flex-direction"
-  | "-webkit-flex-flow" -> Some "flex-flow"
-  | "-webkit-flex-grow" -> Some "flex-grow"
-  | "-webkit-flex-shrink" -> Some "flex-shrink"
-  | "-webkit-flex-wrap" -> Some "flex-wrap"
-  | "-webkit-justify-content" -> Some "justify-content"
-  | "-webkit-mask" -> Some "mask"
-  | "-webkit-mask-box-image" -> Some "mask-border"
-  | "-webkit-mask-box-image-outset" -> Some "mask-border-outset"
-  | "-webkit-mask-box-image-repeat" -> Some "mask-border-repeat"
-  | "-webkit-mask-box-image-slice" -> Some "mask-border-slice"
-  | "-webkit-mask-box-image-source" -> Some "mask-border-source"
-  | "-webkit-mask-box-image-width" -> Some "mask-border-width"
-  | "-webkit-mask-clip" -> Some "mask-clip"
-  | "-webkit-mask-composite" -> Some "mask-composite"
-  | "-webkit-mask-image" -> Some "mask-image"
-  | "-webkit-mask-origin" -> Some "mask-origin"
-  | "-webkit-mask-position" -> Some "mask-position"
-  | "-webkit-mask-repeat" -> Some "mask-repeat"
-  | "-webkit-mask-size" -> Some "mask-size"
-  | "-webkit-order" -> Some "order"
-  | "-webkit-perspective" -> Some "perspective"
-  | "-webkit-perspective-origin" -> Some "perspective-origin"
-  | "-webkit-transform" -> Some "transform"
-  | "-webkit-transform-origin" -> Some "transform-origin"
-  | "-webkit-transform-style" -> Some "transform-style"
-  | "-webkit-transition" -> Some "transition"
-  | "-webkit-transition-delay" -> Some "transition-delay"
-  | "-webkit-transition-duration" -> Some "transition-duration"
-  | "-webkit-transition-property" -> Some "transition-property"
-  | "-webkit-transition-timing-function" -> Some "transition-timing-function"
-  | _ -> None
+(* A legacy name alias is its property under a second name, so it reads as that
+   property: its value under the property's grammar, its importance kept. Every
+   pass after this one then sees two writes of one property where the sheet
+   wrote the alias and the property, and the later wins whatever the values or
+   the rules that hold them. A value the property's grammar refuses keeps the
+   alias as written. *)
+let as_aliased_property decl =
+  match decl with
+  | Declaration.Theme_guarded _ -> decl
+  | Declaration.Declaration { property; _ } -> (
+      match Properties.legacy_alias property with
+      | None -> decl
+      | Some (Prop unprefixed) -> (
+          match
+            Declaration.parse_declaration
+              (Pp.to_string ~minify:false Properties.pp_property unprefixed)
+              (Declaration.string_of_value ~minify:true decl)
+          with
+          | Some d when Declaration.is_important decl -> Declaration.important d
+          | Some d -> d
+          | None -> decl))
 
-(* One property written twice with one value says what writing it once says, so
-   the alias and its twin compare as the twin alone. This assumes nothing about
-   which browsers are targeted -- the two names ARE one property -- so it holds
-   where the target-dependent prefix drops do not. A differing value or
-   importance is two writes of one property and stays. [unprefixed] is the
-   property [vendor] is an alias of. *)
-let legacy_name_alias_twin ~unprefixed vendor twin =
-  String.equal unprefixed (Declaration.property_name twin)
-  && same_value_text vendor twin
-  && Bool.equal
-       (Declaration.is_important vendor)
-       (Declaration.is_important twin)
-
-(* Canonical comparison follows the aliasing the specs prove on their own,
-   without enabling every target-dependent optimizer rewrite. Sec. 3.4.1 above
-   settles the [-webkit-] list; [-webkit-text-decoration-color] is not on it but
-   every engine that ships the prefix aliases it, and Cascade normalizes it
-   whatever the target. A differing fallback, mismatched importance, or prefix
-   without a standard twin remains observable and is kept. A declaration's own
-   name says whether it is a legacy alias, so that name is read once per
-   declaration. *)
+(* [-webkit-text-decoration-color] is not on the sec. 3.4.1 list, so
+   {!as_aliased_property} leaves it as written, but every engine that ships the
+   prefix aliases it and Cascade normalizes it whatever the target. Beside an
+   identical unprefixed twin it says nothing the twin does not. A differing
+   fallback, mismatched importance, or the prefix alone remains observable and
+   is kept. *)
 let drop_redundant_decoration_color_aliases declarations =
   filter_preserve
     (fun declaration ->
-      let legacy_twin =
-        match legacy_name_alias_of (Declaration.property_name declaration) with
-        | None -> fun _ -> false
-        | Some unprefixed -> legacy_name_alias_twin ~unprefixed declaration
-      in
-      not
-        (List.exists
-           (fun twin ->
-             decoration_color_alias_twin declaration twin || legacy_twin twin)
-           declarations))
+      not (List.exists (decoration_color_alias_twin declaration) declarations))
     declarations
 
-(* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
-   [-o-]) return the unprefixed remainder; otherwise [None]. *)
-let strip_vendor_prefix name =
-  let n = String.length name in
-  let try_prefix p =
-    let pn = String.length p in
-    if n > pn && String.sub name 0 pn = p then
-      Some (String.sub name pn (n - pn))
-    else None
+(* Whether [decl]'s property is one no browser a judge can name reads. Chrome
+   151 and WebKit 26.5 list no [-ms-] or [-o-] property and support none, and
+   Firefox's property tables carry only the [moz] and [webkit] prefixes: those
+   were Internet Explorer's and Presto's, and neither parses a [-khtml-] one,
+   Konqueror's. Nor is [font-smooth] or [font-smoothing] a property of any
+   target: neither engine parses either, Firefox's longhands.toml lists neither,
+   and MDN's compatibility data records [font-smooth] only under the prefixed
+   names the reader types. *)
+let read_by_no_target decl =
+  let name = String.lowercase_ascii (Declaration.property_name decl) in
+  let has p =
+    String.length name > String.length p
+    && String.equal (String.sub name 0 (String.length p)) p
   in
-  match try_prefix "-webkit-" with
-  | Some _ as r -> r
-  | None -> (
-      match try_prefix "-moz-" with
-      | Some _ as r -> r
-      | None -> (
-          match try_prefix "-ms-" with
-          | Some _ as r -> r
-          | None -> try_prefix "-o-"))
+  has "-ms-" || has "-o-" || has "-khtml-"
+  || match name with "font-smooth" | "font-smoothing" -> true | _ -> false
 
-(* Structural vendor-alias drop for [Unknown_property] pairs. Both [vendor] and
-   [twin] are [Unknown_property] declarations; we drop [vendor] when stripping
-   its vendor prefix yields [twin]'s name and the component-value lists are
-   structurally equal under matching importance. An untyped vendor longhand with
-   a typed twin ([-webkit-animation-delay] beside [animation-delay]) is not
-   compared here. *)
+(* Structural vendor-alias drop for an [Unknown_property] [vendor]: we drop
+   [vendor] when stripping its vendor prefix yields [twin]'s name and the two
+   values agree under matching importance. When [twin] is untyped too their
+   component-value lists are compared; when the reader types [twin], [vendor]'s
+   value is read under [twin]'s grammar and the two minified values compared, as
+   the next pass would see them, so typing the unprefixed property does not keep
+   a prefixed copy the untyped pair would drop. A typed vendor longhand
+   ([-webkit-animation-delay] beside [animation-delay]) is not compared here. *)
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
@@ -710,6 +682,28 @@ let text_vendor_alias_twin vendor twin =
       match strip_vendor_prefix vname with
       | Some modern -> String.equal tname modern && vv = tv
       | None -> false)
+  | ( Declaration { property = Unknown_property vname; important = vi; _ },
+      Declaration { important = ti; _ } )
+    when Bool.equal vi ti -> (
+      match strip_vendor_prefix vname with
+      | Some modern
+        when String.equal
+               (String.lowercase_ascii modern)
+               (Declaration.property_name twin) -> (
+          match
+            Declaration.with_value twin
+              (Declaration.string_of_value ~minify:true vendor)
+          with
+          | Ok read ->
+              (* The value as read keeps the copy's spelling ([1 0 0%] for the
+                 twin's [1 0]); its normal form is the one the twin holds. *)
+              let value d =
+                Declaration.string_of_value ~minify:true
+                  (Declaration.normalize ~lossless:true d)
+              in
+              String.equal (value read) (value twin)
+          | Error _ -> false)
+      | _ -> false)
   | _ -> false
 
 (* {!Baseline.greenfield_properties} is generated from web-features as names.
@@ -755,11 +749,27 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
     (int * declaration) list =
   if Ctx.enforce_spec ctx then kept (* spec-literal: keep every vendor prefix *)
   else
+    (* A comparison that judges for targets one of which reads only the prefixed
+       spelling keeps that spelling there, as the minifier's synthesis writes it
+       for those targets; another prefix of the same property is dead all the
+       same. *)
+    let target_needs decl other =
+      match Ctx.judge ctx with
+      | Option.None -> false
+      | Option.Some targets -> (
+          match Webkit_fallback.of_declaration targets other with
+          | Option.Some needed ->
+              String.equal
+                (Declaration.property_name needed)
+                (String.lowercase_ascii (Declaration.property_name decl))
+          | Option.None -> false)
+    in
     let has_dead_prefix (_, decl) =
       List.exists
         (fun (_, other) ->
           (vendor_alias_twin decl other || text_vendor_alias_twin decl other)
-          && unprefixed_is_widely_available other)
+          && unprefixed_is_widely_available other
+          && not (target_needs decl other))
         kept
     in
     filter_preserve (fun item -> not (has_dead_prefix item)) kept
@@ -912,6 +922,34 @@ let implied_longhand covering covered : Declaration.declaration option =
       | _ -> None)
   | _ -> None
 
+(* Whether [covering] sets every slot [covered] writes to the value [covered]
+   writes there, so the two agree on every longhand they share and either order
+   computes the same values. Only what {!implied_longhand} can prove counts. *)
+let implies covering covered =
+  (not (Declaration.same_property covering covered))
+  && declaration_covers covering covered
+  &&
+  match implied_longhand covering covered with
+  | Some implied ->
+      (* [implied] is built here from the shorthand's slots and the initials it
+         resets the rest to, so it has not been through the normalisation every
+         parsed declaration carries. Canonicalise it before comparing, or a slot
+         filled by an initial reads as different from the same value written
+         out. *)
+      String.equal
+        (string_of_value ~minify:true (Declaration.normalize implied))
+        (string_of_value ~minify:true covered)
+  | None -> false
+
+(* Source order decides between two declarations only where they write some
+   shared longhand differently: [border:1px solid red] and [border-width:1px]
+   agree on every [border-*-width] they share, so neither order wins anything.
+   The footprint test alone reads them as a conflict because the two are spelt
+   differently. *)
+let declarations_conflict_with_keys a a_keys b b_keys =
+  Shorthand_coverage.declarations_conflict_with_keys a a_keys b b_keys
+  && not (implies a b || implies b a)
+
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
    the initial), so a later longhand in the same rule that writes the same value
    at the same importance is redundant and dropped. Guard on equal value, so
@@ -920,20 +958,7 @@ let drop_longhands_after_covering_shorthand props =
   let arr = Array.of_list props in
   let dropped = Array.make (Array.length arr) false in
   let redundant_via j li =
-    (not (Declaration.same_property arr.(j) li))
-    && Bool.equal (is_important arr.(j)) (is_important li)
-    &&
-    match implied_longhand arr.(j) li with
-    | Some implied ->
-        (* [implied] is built here from the shorthand's slots and the initials
-           it resets the rest to, so it has not been through the normalisation
-           every declaration in [props] already carries. Canonicalise it before
-           comparing, or a slot filled by an initial reads as different from the
-           same value written out. *)
-        String.equal
-          (string_of_value ~minify:true (Declaration.normalize implied))
-          (string_of_value ~minify:true li)
-    | None -> false
+    Bool.equal (is_important arr.(j)) (is_important li) && implies arr.(j) li
   in
   Array.iteri
     (fun i li ->

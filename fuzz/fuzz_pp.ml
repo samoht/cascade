@@ -241,10 +241,79 @@ let double =
           if neg then -.x else x);
     ]
 
+(* Non-empty text built from the characters a [<string>] or a url body has to
+   escape (a quote, a backslash, whitespace, a parenthesis, a control character,
+   a hex digit after an escape) and plain ones. NUL is left out: CSS Syntax 3
+   (ED) sec. 3.3 reads it back as U+FFFD. *)
+let pieces =
+  [|
+    "\"";
+    "'";
+    "\\";
+    "\n";
+    "\t";
+    " ";
+    "(";
+    ")";
+    "a";
+    "f";
+    "0";
+    "\r";
+    "\012";
+    "\001";
+    "\127";
+    "\u{e9}";
+  |]
+
+let awkward =
+  map
+    [ list1 (range (Array.length pieces)) ]
+    (fun picks -> String.concat "" (List.map (Array.get pieces) picks))
+
+(* CSSOM 1 sec. 2.1: each string printer writes text the reader takes back to
+   the string it was given, pretty and minified. *)
+let check_string_printers s =
+  let round_trip name pp read strings v =
+    List.iter
+      (fun minify ->
+        let text = Pp.to_string ~minify pp v in
+        match read (Cursor.of_string text) with
+        | back ->
+            if not (List.equal String.equal (strings v) (strings back)) then
+              failf "%s %S (minify=%b) printed %S" name s minify text
+        | exception Error.Parse_error _ ->
+            failf "%s %S (minify=%b) printed %S, which does not read" name s
+              minify text)
+      [ true; false ]
+  in
+  let module P = Css.Properties in
+  round_trip "quotes" P.pp_quotes P.read_quotes
+    (function
+      | P.Pairs l -> List.concat_map (fun (o, c) -> [ o; c ]) l | _ -> [])
+    (P.Pairs [ (s, s) ]);
+  round_trip "content" P.pp_content P.read_content
+    (function P.String x | P.Quoted { value = x; _ } -> [ x ] | _ -> [])
+    (P.String s);
+  round_trip "url" P.pp_background_image P.read_background_image
+    (function P.Url u | P.Quoted (u, _) -> [ u ] | _ -> [])
+    (P.Url s);
+  round_trip "font src" Css.Font_face.pp Css.Font_face.read_src
+    (List.concat_map (function
+      | Css.Font_face.Url { url; format; _ } | Quoted_url { url; format; _ } ->
+          url :: Option.to_list format
+      | Local name -> [ name ]
+      | Var _ -> []))
+    [ Css.Font_face.Url { url = s; format = Some s; tech = None }; Local s ];
+  round_trip "@import" Css.Stylesheet.pp_import_rule
+    Css.Stylesheet.read_import_rule
+    (fun (r : Css.Stylesheet.import_rule) -> [ r.url ])
+    { url = s; layer = None; supports = None; media = None }
+
 let suite =
   ( "pp",
     [
       test_case "string_of_float rounds by its stated rule"
         [ range 13; double ]
         check_rounding;
+      test_case "string printers read back" [ awkward ] check_string_printers;
     ] )

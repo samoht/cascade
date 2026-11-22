@@ -16,7 +16,8 @@ type layer_name = string list
 (** {2 Import Rule} *)
 
 type import_rule = {
-  url : string;  (** URL or string to import *)
+  url : string;
+      (** The URL to import, as the string the [url()] or [<string>] holds. *)
   layer : layer_name option;
       (** The layer this import declares: {!constructor-None} for none,
           [Some []] for the anonymous [layer] keyword. *)
@@ -260,11 +261,18 @@ and counter_style_system =
   | Additive
   | Extends of string
 
+(** A [<symbol>] of CSS Counter Styles 3 sec. 3.1.7, held as the kind it was
+    written as: a marker shows a string's text, an image, or an ident's name. *)
+and counter_symbol =
+  | String of string
+  | Image of Properties.background_image
+  | Ident of string
+
 and counter_style_descriptor =
   | System of counter_style_system
-  | Symbols of string list
-  | Suffix of string
-  | Prefix of string
+  | Symbols of counter_symbol list
+  | Suffix of counter_symbol
+  | Prefix of counter_symbol
   | Fallback of string
   | Range of string
   | Pad of string

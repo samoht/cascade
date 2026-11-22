@@ -110,7 +110,9 @@ let rec read_font_style t : font_style =
 
 (* CSS Values 4 sec. 10.8 gives an operand no keyword: the absolute and relative
    sizes and the CSS-wide keywords are not [<calc-value>]s, so [keywords] is off
-   here and [calc(medium)] fails the way the browser drops it. *)
+   here and [calc(medium)] fails the way the browser drops it. Sec. 10.12 checks
+   the range on the value the calculation resolves to, so an operand, the only
+   reading with [keywords] off, takes either sign. *)
 let rec read_font_size_in_math t : font_size =
   read_font_size_with ~keywords:false t
 
@@ -122,12 +124,12 @@ and read_font_size_with ?(keywords = true) t : font_size =
     Calc (read_calc ~result_type:`Value read_font_size_in_math t)
   in
   let read_length t : font_size =
-    let len = read_non_negative_length ~with_keywords:false t in
-    Length len
+    Length (read_length ~allow_negative:(not keywords) ~with_keywords:false t)
   in
   let read_pct t : font_size =
     let n = Cursor.pct t in
-    if n < 0. then Cursor.err_invalid t "negative font-size percentage";
+    if keywords && n < 0. then
+      Cursor.err_invalid t "negative font-size percentage";
     Pct n
   in
   Cursor.enum_or_calls "font-size"
@@ -542,6 +544,14 @@ let read_line_height_clamp t : line_height =
 (* The number path first, so a comparison whose arguments are all numbers keeps
    folding to the coefficient it always did. *)
 let line_height_math_calls number =
+  (* The number path takes a comparison of numbers only: one over lengths or
+     percentages is the typed [Min]/[Max]/[Clamp] the list readers build. *)
+  let number t : line_height =
+    match number t with
+    | (Calc (Math_fn (Min_n _ | Max_n _ | Clamp_n _)) : line_height) ->
+        Cursor.err_invalid t "a comparison of lengths"
+    | value -> value
+  in
   ( "min",
     fun t ->
       Cursor.one_of
@@ -744,15 +754,43 @@ let rec read_font t : font =
         in
         Shorthand body
 
+(* CSS Fonts 4 sec. 2.3: a font-stretch percentage written as a literal is
+   non-negative. *)
+let checked_font_stretch t n : font_stretch =
+  if n < 0. then err_invalid_value t "font-stretch" (Pp.string_of_float n);
+  Pct n
+
+(* A comparison folded at read time is still a math function: CSS Values 4 sec.
+   10.12 clamps one below the range, so it keeps a wrapper there rather than
+   being refused the way the literal is. *)
+let folded_font_stretch _ n : font_stretch =
+  if n < 0. then Calc (Val (Pct n)) else Pct n
+
+let font_stretch_keywords =
+  [
+    ("ultra-condensed", (Ultra_condensed : font_stretch));
+    ("extra-condensed", Extra_condensed);
+    ("condensed", Condensed);
+    ("semi-condensed", Semi_condensed);
+    ("normal", Normal);
+    ("semi-expanded", Semi_expanded);
+    ("expanded", Expanded);
+    ("extra-expanded", Extra_expanded);
+    ("ultra-expanded", Ultra_expanded);
+    ("inherit", Inherit);
+    ("initial", Initial);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
+
 let rec read_font_stretch_with ~keywords t : font_stretch =
-  (* CSS Fonts 4 sec. 2.3: font-stretch percentage is non-negative. Sec. 10.12
-     puts the range on the value a math function resolves to, so a folded
-     comparison answers to it the way a literal does. *)
-  let checked t n : font_stretch =
-    if n < 0. then err_invalid_value t "font-stretch" (Pp.string_of_float n);
-    Pct n
+  (* An operand, the only reading with [keywords] off, takes either sign: the
+     range is on the value the whole calculation resolves to. *)
+  let read_percentage t : font_stretch =
+    let n = Cursor.pct t in
+    if keywords then checked_font_stretch t n else Pct n
   in
-  let read_percentage t : font_stretch = checked t (Cursor.pct t) in
   (* Sec. 10.1 puts a math function wherever the [<percentage>] stands, [calc()]
      being one of them rather than the gate to the rest, and sec. 10.12 checks
      the [0,inf] range on the value it resolves to: the call keeps out of
@@ -769,28 +807,12 @@ let rec read_font_stretch_with ~keywords t : font_stretch =
          t)
   in
   Cursor.enum_or_calls "font-stretch"
-    (if keywords then
-       [
-         ("ultra-condensed", (Ultra_condensed : font_stretch));
-         ("extra-condensed", Extra_condensed);
-         ("condensed", Condensed);
-         ("semi-condensed", Semi_condensed);
-         ("normal", Normal);
-         ("semi-expanded", Semi_expanded);
-         ("expanded", Expanded);
-         ("extra-expanded", Extra_expanded);
-         ("ultra-expanded", Ultra_expanded);
-         ("inherit", Inherit);
-         ("initial", Initial);
-         ("unset", Unset);
-         ("revert", Revert);
-         ("revert-layer", Revert_layer);
-       ]
-     else [])
+    (if keywords then font_stretch_keywords else [])
     ~calls:
       (("var", fun t -> Var (read_var (read_font_stretch_with ~keywords) t))
       :: ("calc", read_math)
-      :: Values.percentage_math_function_calls ~pct:checked read_math)
+      :: Values.percentage_math_function_calls ~pct:folded_font_stretch
+           read_math)
     ~default:read_percentage t
 
 let read_font_stretch t : font_stretch = read_font_stretch_with ~keywords:true t
@@ -802,16 +824,28 @@ let read_font_stretch t : font_stretch = read_font_stretch_with ~keywords:true t
    declaration shares that reference, so their sum is the same value whatever
    the reference turns out to be. *)
 let normalize_font_size (fs : font_size) : font_size =
+  (* CSS Fonts 4 sec. 2.5 gives font-size a [0,inf] range, which sec. 10.12 of
+     CSS Values 4 checks on the value a math function resolves to at
+     computed-value time: a call folding below it keeps its wrapper, since the
+     bare negative literal is refused. *)
+  let in_range : font_size -> bool = function
+    | Length l -> not (Values_calc.negative_length l)
+    | Pct p -> p >= 0.
+    | _ -> true
+  in
   match fs with
-  | Length l -> preserve_if_equal fs (Length (Values.normalize_length l))
+  | Length l ->
+      preserve_if_equal fs
+        (Length (Values.normalize_length ~non_negative:true l))
   | Calc c -> (
       match length_of_font_size_calc c with
       | None -> (
           match Values.eval_calc c with
-          | Values.Val v -> v
+          | Values.Val v when in_range v -> v
+          | Values.Val v -> Calc (Val v)
           | folded -> Calc folded)
       | Some lc -> (
-          match Values.normalize_length (Calc lc) with
+          match Values.normalize_length ~non_negative:true (Calc lc) with
           | Calc folded -> (
               match font_size_of_length_calc folded with
               | Some folded -> Calc folded

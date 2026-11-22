@@ -139,7 +139,8 @@ let absolute_unit_px_ratio = function
    units (em/rem/vw/...) still require cascade context and stay unfolded. *)
 let length_combine op v1 v2 =
   let combine a b =
-    match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
+    Pp.printed
+      (match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan)
   in
   match (op, calc_length_unit v1, calc_length_unit v2) with
   | (Add | Sub), Some (unit1, a), Some (unit2, b) when String.equal unit1 unit2
@@ -585,7 +586,8 @@ let rec resolve_lp_calc_vars ctx :
 let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
     length_percentage option =
   let combine a b =
-    match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
+    Pp.printed
+      (match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan)
   in
   match (op, v1, v2) with
   | (Add | Sub), Length a, Length b -> (
@@ -655,11 +657,13 @@ let linear_lp_calc calc =
       match terms with
       | [] -> Val (Length Zero)
       | { unit; value = n; _ } :: rest ->
+          (* A coefficient is a sum the fold computed, so it takes the value its
+             print reads back as. *)
           List.fold_left
             (fun acc { unit; value = n; _ } ->
               let op, n = linear_calc_op n in
-              Expr (acc, op, Val (lp_of_unit unit n)))
-            (Val (lp_of_unit unit n))
+              Expr (acc, op, Val (lp_of_unit unit (Pp.printed n))))
+            (Val (lp_of_unit unit (Pp.printed n)))
             rest)
 
 (* One rounding rule, written once: the strategy and its tie-break are sec.
@@ -673,11 +677,6 @@ let round_length_step = round_to_step
 let pp_typed_math_call ctx name pp_arg args =
   Pp.string ctx name;
   Pp.char ctx '(';
-  (* A calc-family math function's arguments are a typed-boundary calc context:
-     keep the unit on a zero so [clamp(0px, 0em, 0vh)] stays unit-tagged rather
-     than collapsing to the foldable-looking [clamp(0, 0, 0)] (which would lose
-     round-trip stability). *)
-  let ctx = { ctx with Pp.in_calc = true } in
   let sep ctx () =
     Pp.char ctx ',';
     if not (Pp.minified ctx) then Pp.char ctx ' '
@@ -914,9 +913,7 @@ and pp_calc_wrapped_length ~always ctx length =
    [Calc] inside other length shapes still serializes through [pp_length]. *)
 and pp_length_math_arg ~always ctx (length : length) =
   match length with
-  | Calc cv ->
-      let ctx = { ctx with in_calc = true } in
-      pp_calc_contents (pp_length ~always) ctx cv
+  | Calc cv -> pp_calc_contents (pp_length ~always) ctx cv
   | _ -> pp_length ~always ctx length
 
 and pp_anchor_length ~always ctx name side fallback =
@@ -938,13 +935,11 @@ and pp_anchor_length ~always ctx name side fallback =
 and pp_round_length ~always ctx strategy value step =
   Pp.call "round"
     (fun ctx (strategy, value, step) ->
-      (* [round()] is a math function (CSS Values 4 10.x): its value/step
-         operands are a typed calc context, so keep their units. The [strategy]
-         keyword is not a math operand and is emitted as-is. *)
+      (* The [strategy] keyword is not a math operand and is emitted as-is;
+         [nearest] is the default. *)
       if strategy <> "nearest" then (
         Pp.string ctx strategy;
         Pp.comma ctx ());
-      let ctx = { ctx with in_calc = true } in
       pp_length ~always ctx value;
       Pp.comma ctx ();
       pp_length ~always ctx step)
@@ -953,7 +948,6 @@ and pp_round_length ~always ctx strategy value step =
 and pp_mod_length ~always ctx a b =
   Pp.call "mod"
     (fun ctx (a, b) ->
-      let ctx = { ctx with in_calc = true } in
       pp_length ~always ctx a;
       Pp.comma ctx ();
       pp_length ~always ctx b)
@@ -962,14 +956,13 @@ and pp_mod_length ~always ctx a b =
 and pp_rem_length ~always ctx a b =
   Pp.call "rem"
     (fun ctx (a, b) ->
-      let ctx = { ctx with in_calc = true } in
       pp_length ~always ctx a;
       Pp.comma ctx ();
       pp_length ~always ctx b)
     ctx (a, b)
 
 and pp_hypot_length ~always ctx values =
-  Pp.call_list "hypot" (pp_length ~always) { ctx with in_calc = true } values
+  Pp.call_list "hypot" (pp_length ~always) ctx values
 
 and pp_length_calc ~always ctx cv = pp_generic_length_calc ~always ctx cv
 

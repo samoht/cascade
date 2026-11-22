@@ -86,6 +86,12 @@ and math_fn =
           keyword rather than an operand; the default is [nearest]. *)
   | Mod_n of math_arg * math_arg
   | Rem_n of math_arg * math_arg
+  | Min_n of math_arg list
+  | Max_n of math_arg list
+  | Clamp_n of math_arg * math_arg * math_arg
+      (** Sec. 10.2 comparisons whose arguments carry a unit no typed reader of
+          the slot spells on its own (a time, an angle, a percentage); they
+          answer the type the arguments share. *)
 
 (** [sin] / [cos] / [tan] accept an [<angle>] or unitless [<number>] expression
     (treated as radians). Arithmetic over angles ([22deg + 23deg]) and
@@ -593,8 +599,9 @@ type color =
       hue : hue_interpolation;
       color1 : color;
       percent1 : percentage option;
-      color2 : color;
-      percent2 : percentage option;
+      rest : (color * percentage option) list;
+          (** The items after the first, in order: CSS Color 5 (ED) sec. 3 takes
+              one or more. *)
     }
 
 (** CSS duration values. *)

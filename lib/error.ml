@@ -39,6 +39,7 @@ type kind =
   | Unexpected_token of Token.kind
   | Missing_token of string
   | Bad_selector of string
+  | Untargeted_selector of string
   | Bad_value of { property : string; reason : string }
   | Bad_condition of { at_rule : string; reason : string }
   | Unknown_at_rule of string
@@ -102,6 +103,9 @@ let pp_kind : kind Pp.t =
   | Bad_selector reason ->
       Pp.string ctx "bad selector: ";
       Pp.string ctx reason
+  | Untargeted_selector pseudo_class ->
+      Pp.string ctx "no target browser reads ";
+      Pp.string ctx pseudo_class
   | Bad_value { property = ""; reason } ->
       Pp.string ctx "bad value: ";
       Pp.string ctx reason
@@ -136,8 +140,9 @@ let pp_message : t Pp.t =
   | Unexpected_token _ | Missing_token _ | Too_deep _ ->
       Pp.string ctx " in ";
       Sort.pp ctx t.sort
-  | Sort_mismatch _ | Bad_selector _ | Bad_value _ | Bad_condition _
-  | Unknown_at_rule _ | Invalid_statement _ | Unterminated _ ->
+  | Sort_mismatch _ | Bad_selector _ | Untargeted_selector _ | Bad_value _
+  | Bad_condition _ | Unknown_at_rule _ | Invalid_statement _ | Unterminated _
+    ->
       ()
 
 (* [source:line:column], the form an editor jumps to. An error without a source
@@ -253,19 +258,3 @@ let bad_condition loc ~at_rule ~reason =
 
 let unknown_at_rule loc name = v ~loc ~sort:Sort.At_rule (Unknown_at_rule name)
 let unterminated loc s = v ~loc ~sort:s (Unterminated s)
-
-let fail_sort_mismatch loc ~sort ~expected ~found =
-  fail (sort_mismatch loc ~sort ~expected ~found)
-
-let fail_unexpected_token loc ~sort k = fail (unexpected_token loc ~sort k)
-let fail_missing_token loc ~sort what = fail (missing_token loc ~sort what)
-let fail_bad_selector loc reason = fail (bad_selector loc reason)
-
-let fail_bad_value loc ~property ~reason =
-  fail (bad_value loc ~property ~reason)
-
-let fail_bad_condition loc ~at_rule ~reason =
-  fail (bad_condition loc ~at_rule ~reason)
-
-let fail_unknown_at_rule loc name = fail (unknown_at_rule loc name)
-let fail_unterminated loc s = fail (unterminated loc s)

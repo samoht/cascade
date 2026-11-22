@@ -68,10 +68,6 @@ let rec pp_grid_line : grid_line Pp.t =
       Pp.string ctx "span";
       Pp.char ctx ' ';
       pp_ident ctx name
-  | Span_num_name (1, name) when Pp.minified ctx ->
-      Pp.string ctx "span";
-      Pp.char ctx ' ';
-      pp_ident ctx name
   | Span_num_name (n, name) ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
@@ -80,6 +76,41 @@ let rec pp_grid_line : grid_line Pp.t =
       pp_ident ctx name
   | Calc c -> pp_calc ~unwrap_num:false pp_grid_line ctx c
   | Var v -> pp_var pp_grid_line ctx v
+
+(* CSS Grid 2 (ED) sec. 8.3: an omitted span count is [1], so [span 1 name] is
+   [span name]. *)
+let normalize_grid_line (value : grid_line) : grid_line =
+  match value with Span_num_name (1, name) -> Span_name name | _ -> value
+
+let normalize_grid_line_pair (value : grid_line_pair) : grid_line_pair =
+  match value with
+  | Lines (start, end_) ->
+      let start' = normalize_grid_line start
+      and end' = normalize_grid_line end_ in
+      if start' == start && end' == end_ then value else Lines (start', end')
+  | Var _ -> value
+
+let normalize_grid_area (value : grid_area) : grid_area =
+  match value with
+  | Lines { row_start; column_start; row_end; column_end } ->
+      let row_start' = normalize_grid_line row_start
+      and column_start' = normalize_grid_line column_start
+      and row_end' = normalize_grid_line row_end
+      and column_end' = normalize_grid_line column_end in
+      if
+        row_start' == row_start
+        && column_start' == column_start
+        && row_end' == row_end && column_end' == column_end
+      then value
+      else
+        Lines
+          {
+            row_start = row_start';
+            column_start = column_start';
+            row_end = row_end';
+            column_end = column_end';
+          }
+  | _ -> value
 
 let rec pp_grid_line_pair : grid_line_pair Pp.t =
  fun ctx -> function
@@ -235,10 +266,6 @@ let rec pp_grid_template : grid_template Pp.t =
           Pp.space ctx ();
           pp_grid_template ctx columns)
         auto_columns
-  | Auto_flow_rows (Row, None, columns) ->
-      Pp.string ctx "none";
-      Pp.slash ctx ();
-      pp_grid_template ctx columns
   | Auto_flow_rows (flow, auto_rows, columns) ->
       pp_grid_auto_flow_shorthand ctx flow;
       Option.iter
@@ -324,6 +351,11 @@ let rec normalize_grid_template (value : grid_template) : grid_template =
       let columns' = option_map_preserve normalize_grid_template columns in
       if rows' == rows && columns' == columns then value
       else Auto_flow_columns (rows', flow, columns')
+  (* CSS Grid 2 (ED) sec. 7.8: [auto-flow / <columns>] sets the rows to [none],
+     the flow to its initial [row] and the auto rows to their initial [auto],
+     which is what the template form [none / <columns>] sets. *)
+  | Auto_flow_rows (Row, None, columns) ->
+      Split (None, normalize_grid_template columns)
   | Auto_flow_rows (flow, rows, columns) ->
       let rows' = option_map_preserve normalize_grid_template rows in
       let columns' = normalize_grid_template columns in
@@ -449,6 +481,56 @@ let rec pp_grid_template_areas : grid_template_areas Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_grid_template_areas ctx v
 
+(* CSS Align 3 (ED) secs. 5.1 and 5.2: a lone [place-content] or [place-items]
+   value sets both axes, and the reader gives some lone values a node of their
+   own. These name the pair each of those one-word nodes stands for. *)
+let place_content_single (a : align_content) (j : justify_content) :
+    place_content option =
+  match (a, j) with
+  | Normal, Normal -> Some Normal
+  | Start, Start -> Some Start
+  | End, End -> Some End
+  | Center, Center -> Some Center
+  | Stretch, Stretch -> Some Stretch
+  | Space_between, Space_between -> Some Space_between
+  | Space_around, Space_around -> Some Space_around
+  | Space_evenly, Space_evenly -> Some Space_evenly
+  | Safe_center, Safe_center -> Some Safe_center
+  | Safe_start, Safe_start -> Some Safe_start
+  | Safe_end, Safe_end -> Some Safe_end
+  | Unsafe_center, Unsafe_center -> Some Unsafe_center
+  | Unsafe_start, Unsafe_start -> Some Unsafe_start
+  | Unsafe_end, Unsafe_end -> Some Unsafe_end
+  | _ -> None
+
+let place_items_single (a : align_items) (j : justify_items) :
+    place_items option =
+  match (a, j) with
+  | Normal, Normal -> Some Normal
+  | Start, Start -> Some Start
+  | End, End -> Some End
+  | Center, Center -> Some Center
+  | Stretch, Stretch -> Some Stretch
+  | Baseline, Baseline -> Some Baseline
+  | First_baseline, First_baseline -> Some First_baseline
+  | Last_baseline, Last_baseline -> Some Last_baseline
+  | Safe_start, Safe_start -> Some Start_safe
+  | Safe_end, Safe_end -> Some End_safe
+  | Safe_center, Safe_center -> Some Center_safe
+  | _ -> None
+
+let normalize_place_content (value : place_content) : place_content =
+  match value with
+  | Align_justify (a, j) ->
+      Option.value ~default:value (place_content_single a j)
+  | _ -> value
+
+let normalize_place_items (value : place_items) : place_items =
+  match value with
+  | Stretch_stretch -> Stretch
+  | Align_justify (a, j) -> Option.value ~default:value (place_items_single a j)
+  | _ -> value
+
 let rec pp_place_content : place_content Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_place_content ctx v
@@ -471,8 +553,12 @@ let rec pp_place_content : place_content Pp.t =
   | Align_justify (a, j) ->
       let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_content a in
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_content j in
+      (* A lone value the reader gives a one-word node to is another node;
+         {!normalize_place_content} makes that fold. *)
       let can_omit_justify =
-        match (a, j) with Var _, _ | _, Var _ -> false | _ -> true
+        match (a, j) with
+        | Var _, _ | _, Var _ -> false
+        | _ -> Option.is_none (place_content_single a j)
       in
       if Pp.minified ctx && can_omit_justify && a_s = j_s then Pp.string ctx a_s
       else (
@@ -499,15 +585,18 @@ let rec pp_place_items : place_items Pp.t =
   | Start_safe -> Pp.string ctx "safe start"
   | End_safe -> Pp.string ctx "safe end"
   | Center_safe -> Pp.string ctx "safe center"
-  | Stretch_stretch when Pp.minified ctx -> Pp.string ctx "stretch"
   | Stretch_stretch -> Pp.string ctx "stretch stretch"
   | Align_justify (a, j) ->
       let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_items a in
       let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_items j in
-      (* CSS Align 3 sec. 7.3: when align and justify render to the same token,
-         the single-value spelling is canonical. *)
+      (* CSS Align 3 sec. 7.3: a lone value sets both axes. Where the reader
+         gives that value a one-word node, the pair is another node and
+         {!normalize_place_items} makes the fold; elsewhere the lone value reads
+         back as this pair. *)
       let can_omit_justify =
-        match (a, j) with Var _, _ | _, Var _ -> false | _ -> true
+        match (a, j) with
+        | Var _, _ | _, Var _ -> false
+        | _ -> Option.is_none (place_items_single a j)
       in
       if Pp.minified ctx && can_omit_justify && a_s = j_s then Pp.string ctx a_s
       else (
@@ -1600,9 +1689,13 @@ let read_grid_template_areas_row t rows rendered =
   match Cursor.string_opt t with
   | None -> `Stop
   | Some s ->
+      (* CSS Grid 1 sec. 7.3 reads a row as name and null-cell tokens between
+         whitespace, which [validate_grid_area_rows] checks, so a row holds no
+         character a string has to escape once each whitespace is a space. *)
+      let row = String.map (fun c -> if is_grid_area_ws c then ' ' else c) s in
       `Continue
         ( grid_area_row_cells s :: rows,
-          String.concat "" [ "\""; s; "\"" ] :: rendered )
+          String.concat "" [ "\""; row; "\"" ] :: rendered )
 
 let read_grid_template_areas_rows t =
   let rec loop rows rendered =

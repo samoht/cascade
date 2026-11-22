@@ -58,7 +58,7 @@ let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
    (e.g. [to_string ~minify:true] on a typed colour) keeps the authored
    coefficient. [lossless] suppresses the reduction. *)
 let round_color_axis ~lossless ~decimals f =
-  if lossless then f
+  if lossless then Pp.printed f
   else
     let f = Pp.round_sig 6 f in
     let m = 10. ** float_of_int decimals in
@@ -478,9 +478,56 @@ let fold_relative_color_static_origin name origin tail : color option =
    producing a canonical [color] so [pp_color] stays a pure serialiser. The sRGB
    fold runs on the authored coefficients first; [round_lab_family_axes] then
    rounds only what survives in its own colour space. *)
+(* CSS Color 4, the predefined XYZ spaces: [xyz] is an alias of [xyz-d65]. *)
+let canonical_color_space : color_space -> color_space = function
+  | Xyz_d65 -> Xyz
+  | space -> space
+
+(* CSS Color 4, the [color()] function: a channel percentage is the channel
+   number scaled by [100%], so [100%] is [1]. The relative-colour tail takes its
+   shortest number and alpha spellings, which name the same channels. Both are
+   respellings within one value, so they hold under [lossless] too. *)
+let canonical_color_spelling (c : color) : color =
+  match c with
+  | Color { space; components; alpha } ->
+      let space' = canonical_color_space space in
+      let component (k : component) : component =
+        match k with Pct f -> Num (Pp.printed (f /. 100.)) | k -> k
+      in
+      let components' =
+        if
+          List.exists
+            (function (Pct _ : component) -> true | _ -> false)
+            components
+        then List.map component components
+        else components
+      in
+      if space' == space && components' == components then c
+      else Color { space = space'; components = components'; alpha }
+  | Relative_rgb (origin, tail) ->
+      let tail' =
+        tail |> minify_relative_color_alpha |> minify_relative_color_numbers
+      in
+      if String.equal tail tail' then c else Relative_rgb (origin, tail')
+  | Relative_color (name, origin, tail) ->
+      let tail' =
+        tail |> minify_relative_color_alpha |> minify_relative_color_numbers
+      in
+      if String.equal tail tail' then c else Relative_color (name, origin, tail')
+  (* CSS Color 4, the [<hue>] type: a bare hue number is degrees. *)
+  | Lch ({ h = Angle (Deg f); _ } as r) -> Lch { r with h = Unitless f }
+  | Oklch ({ h = Angle (Deg f); _ } as r) -> Oklch { r with h = Unitless f }
+  | Hsl ({ h = Angle (Deg f); _ } as r) -> Hsl { r with h = Unitless f }
+  | Hwb ({ h = Angle (Deg f); _ } as r) -> Hwb { r with h = Unitless f }
+  | Mix ({ in_space = Some space; _ } as mix) ->
+      let space' = canonical_color_space space in
+      if space' == space then c else Mix { mix with in_space = Some space' }
+  | c -> c
+
 let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
     ?(resolve_missing = false) (c : color) : color =
   let c = if resolve_missing then zero_missing_components c else c in
+  let c = canonical_color_spelling c in
   let normalize_color ?(lossless = lossless) =
     normalize_color ~lossless ~exact_srgb
   in
@@ -517,9 +564,25 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
       | Some (r, g, b, a) -> hex_of_byte_quad r g b a
       | Option.None ->
           canonical_hsl_hue_in_color ~lossless (drop_full_alpha ~lossless c))
-  | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
+  | Mix { in_space; hue; color1; percent1; rest = [ (color2, percent2) ] } ->
       normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
         ~percent2
+  | Mix ({ color1; rest; _ } as mix) ->
+      (* CSS Color 5 (ED) sec. 3.3 takes one item into the interpolation space
+         with its alpha scaled by what its percentage leaves over, and mixes
+         three or more one into the result of the others, in order, after
+         normalising all their percentages together. The fold reads two, so any
+         other mix keeps its items and the percentages they were written with: a
+         browser that drops it paints the declaration before it, so a fold into
+         a colour every browser reads would change what that browser paints. *)
+      let hue = match mix.hue with Shorter -> Default | h -> h in
+      Mix
+        {
+          mix with
+          hue;
+          color1 = normalize_color ~lossless color1;
+          rest = List.map (fun (c, p) -> (normalize_color ~lossless c, p)) rest;
+        }
   | Light_dark (l, d) ->
       Light_dark (normalize_color ~lossless l, normalize_color ~lossless d)
   | Contrast_color inner -> Contrast_color (normalize_color ~lossless inner)
@@ -559,13 +622,15 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
 
 and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
     ~percent2 =
+  (* CSS Color 4, hue interpolation: [shorter] is the default, so the fold below
+     reads a written one as the default. *)
+  let hue = match hue with Shorter -> Default | h -> h in
   let keep () =
     (* CSS Color 5 sec. 3 / CSS Color 4 sec. 13.4: [shorter] is the default hue
        and drops, and percentages that restate the [100% - other] default drop
        too. The interpolation method itself is required syntax, so a written [in
        oklab] stays - dropping it yields [color-mix(<color>, <color>)], which
        every browser rejects. *)
-    let hue = match hue with Shorter -> Default | h -> h in
     let pct (p : percentage option) =
       match p with Some (Pct f) -> Some f | _ -> None
     in
@@ -583,8 +648,7 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
         hue;
         color1 = normalize_color ~lossless color1;
         percent1;
-        color2 = normalize_color ~lossless color2;
-        percent2;
+        rest = [ (normalize_color ~lossless color2, percent2) ];
       }
   in
   let folded : color option =

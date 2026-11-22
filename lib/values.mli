@@ -18,6 +18,10 @@ val var_ref :
     [var()] reference instead of folding it to its [default], so a runtime
     stylesheet or script can still override [--name]. *)
 
+val normalize_syntax_fallback : 'a var -> 'a var
+(** [normalize_syntax_fallback v] is [v] with a [Syntax_fallback] replaced by
+    the token stream its minified print reads back as. *)
+
 val syntax_fallback : string -> 'a fallback
 (** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
     [var()] reference. *)
@@ -262,16 +266,22 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
+type calc_ctx = {
+  var_is_single_valued : string -> bool;
+  var_is_number : string -> bool;
+  budget : bool;
+}
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
     [var_is_single_valued n] reports whether [--n] is registered with a
     single-component [@property] syntax, so its [var()] substitutes exactly one
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
-    may be unwrapped. [budget] folds a non-terminating quotient to the
-    six-significant-figure computed-value budget, as a number's fold already
-    does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient keeps the
-    [calc()] the author wrote, which is what {!default_calc_ctx} and the
-    minifier do. The canonical comparison spends the budget, since the two
+    may be unwrapped. [var_is_number n] reports a [<number>] or [<integer>]
+    registration, whose [var()] substitutes one number, so a zero product over
+    it folds (see {!calc_identity}). [budget] folds a non-terminating quotient
+    to the six-significant-figure computed-value budget, as a number's fold
+    already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient
+    keeps the [calc()] the author wrote, which is what {!default_calc_ctx} and
+    the minifier do. The canonical comparison spends the budget, since the two
     spellings render alike. *)
 
 val length_from_calc_unit : string -> float -> length
@@ -341,12 +351,14 @@ val normalize_number_percentage :
     stay opaque - inside a [calc()], the two spellings are not interchangeable.
 *)
 
-val normalize_number : ?ctx:calc_ctx -> ?non_negative:bool -> number -> number
+val normalize_number :
+  ?ctx:calc_ctx -> ?non_negative:bool -> ?integer:bool -> number -> number
 (** [normalize_number n] evaluates the static CSS math functions on a [<number>]
     ([hypot(3, 4)] becomes [5], [calc(1 + 2)] becomes [3]), recursing into
     nested calls; an operand with a [var()] keeps the call. [non_negative] says
-    the property refuses a negative literal, so a call folding to one keeps its
-    wrapper rather than becoming CSS the reader drops. *)
+    the property refuses a negative literal, and [integer] a fractional one, so
+    a call folding to one keeps its wrapper rather than becoming CSS the reader
+    drops. *)
 
 val normalize_percentage : ?ctx:calc_ctx -> percentage -> percentage
 (** [normalize_percentage p] folds the value-independent parts of a
@@ -863,19 +875,27 @@ val eval_calc : ?ctx:calc_ctx -> 'a calc -> 'a calc
     length arithmetic) is the caller's job. With [~ctx], a [Nested] / [Parens]
     around a single-valued [Var] leaf is also unwrapped (see {!calc_ctx}). *)
 
+val calc_contains_var : 'a calc -> bool
+(** [calc_contains_var c] is [true] when [c] holds a [var()] at the calc level
+    or inside a math function; a [Val] leaf counts as none. *)
+
 val calc_identity :
+  ctx:calc_ctx ->
   zero:'a calc ->
   is_zero:('a -> bool) ->
   'a calc ->
   calc_op ->
   'a calc ->
   'a calc option
-(** [calc_identity ~zero ~is_zero l op r] applies the value-independent CSS
+(** [calc_identity ~ctx ~zero ~is_zero l op r] applies the value-independent CSS
     Values 4 sec. 10.10.1 identities to one [Expr (l, op, r)] node, returning
-    the folded operand when one applies. These hold for any operand including a
-    kept [var()] (inside [calc()] a [var()] is single-valued): [x * 1], [1 * x],
-    and [x / 1] keep [x]; [x * 0] / [0 * x] reduce to [zero]. [is_zero]
-    recognises a typed zero leaf ([0px]). Additive zero terms do not fold here:
+    the folded operand when one applies. [x * 1], [1 * x] and [x / 1] keep [x]
+    for any operand, a [var()] included, since the factor binds to one term of
+    whatever it substitutes. [x * 0] and [0 * x] reduce to [zero] only when [x]
+    holds no [var()]: an unregistered [var()] substitutes tokens of any type and
+    count, or none. Over a [<number>] registration ([ctx.var_is_number]) they
+    reduce to the number [0], and a typed zero leaf ([0px], recognised by
+    [is_zero]) times one stays that leaf. Additive zero terms do not fold here:
     the spec only combines sum children with identical units. Numeric [op]
     numeric is the caller's job. *)
 

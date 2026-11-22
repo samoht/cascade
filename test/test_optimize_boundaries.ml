@@ -483,7 +483,7 @@ let cascade2_import_after_bang_comment () =
      test/render/parse_recovery.ml), so the optimizer keeps the import. *)
   let import =
     Css.Stylesheet.Import
-      { url = "url(a.css)"; layer = None; supports = None; media = None }
+      { url = "a.css"; layer = None; supports = None; media = None }
   in
   let rule =
     Css.rule ~selector:(Css.Selector.class_ "a")
@@ -557,9 +557,12 @@ let preserve_independent_custom_prop_position () =
     (opt "@property --x{syntax:\"*\";inherits:false}.y{--x:1}")
 
 let calc_flatten_registered_single_valued () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
   let check label css expected =
     let input = Css.Stylesheet.read (Cursor.of_string css) in
-    let optimized = Css.Optimize.stylesheet input in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
     Alcotest.(check string)
       label expected
       (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
@@ -582,6 +585,183 @@ let calc_flatten_registered_single_valued () =
     "@property --x{syntax:\"*\";inherits:false}.a{width:calc(calc(var(--x)) * \
      2)}"
     "@property --x{syntax:\"*\";inherits:false}.a{width:calc(calc(var(--x))*2)}"
+
+(* CSS Values 4 sec. 10.10.1 folds [x * 0] to a zero only over an operand of
+   known type. An unregistered [var()] has none: it substitutes tokens, so
+   [calc(0 * var(--x))] under [--x:1px + 2px] is [0 * 1px + 2px], and an
+   undefined one makes the declaration invalid at computed-value time. A
+   [<number>] registration substitutes one number, always valid (CSS Properties
+   and Values API 1 sec. 2.4), so the product is a zero of the other operand's
+   type. A [<length>] registration is one value too, but of a type the zero has
+   to match. *)
+let calc_zero_product_registered_number () =
+  (* A registration types its property only under [--scope=stylesheet], where no
+     script or later sheet registers the name again (CSS Properties and Values
+     API 1 sec. 2.1). *)
+  let check label css expected =
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
+    Alcotest.(check string)
+      label expected
+      (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
+  in
+  check "a <number> registration folds the zero product"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:calc(var(--n) \
+     * 0px)}"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:0}";
+  check "and keeps a number zero a number"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:calc(10px \
+     * (var(--n) * 0 + 1))}"
+    "@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}.a{width:10px}";
+  check "an unregistered var keeps it" ".a{width:calc(var(--n) * 0px)}"
+    ".a{width:calc(var(--n)*0px)}";
+  check "a universal registration keeps it"
+    "@property --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n) * 0px)}"
+    "@property --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n)*0px)}";
+  check "a <length> registration keeps it"
+    "@property \
+     --n{syntax:\"<length>\";inherits:false;initial-value:0px}.a{rotate:calc(var(--n) \
+     * 0)}"
+    "@property \
+     --n{syntax:\"<length>\";inherits:false;initial-value:0}.a{rotate:calc(var(--n)*0)}"
+
+(* A registration types a custom property only where it is the one every browser
+   applies. CSS Properties and Values API 1 sec. 2.1 takes a
+   [CSS.registerProperty()] record over any [@property], and the last
+   [@property] in document order over the others, so in a fragment a script or a
+   later sheet can register the name again: with [@property
+   --n{syntax:"*";inherits:false}] and [--n:1px + 2] after it, Chromium 153
+   computes the source's [calc(var(--n) * 0px)] to 1px and the folded [0] to
+   0px. A registration inside a conditional group rule applies only where the
+   condition holds (Chromium 153 and WebKit 26.5 register an [@media print]
+   [@property] on paper only). Under [--enforce-spec] a later [@property]
+   without [inherits] is a registration too, since the current sec. 3 makes
+   every descriptor optional, while Chromium 153 and WebKit 26.5 drop it. *)
+let registration_known_only_in_closed_scope () =
+  let opt ?scope ?(enforce_spec = false) css =
+    match Css.of_string ~strict:false ~enforce_spec css with
+    | Ok p ->
+        Css.Optimize.stylesheet ?scope ~enforce_spec p.stylesheet
+        |> Css.Stylesheet.to_string ~minify:true
+        |> String.trim
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let number =
+    "@property --n{syntax:\"<number>\";inherits:false;initial-value:1}"
+  in
+  let length =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  let length' =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0}"
+  in
+  let cat = String.concat "" in
+  let check ?scope ?enforce_spec label css expected =
+    Alcotest.(check string) label expected (opt ?scope ?enforce_spec css)
+  in
+  (* A fragment: nothing registered is known. *)
+  check "fragment keeps the zero product"
+    (cat [ number; ".a{width:calc(var(--n) * 0px)}" ])
+    (cat [ number; ".a{width:calc(var(--n)*0px)}" ]);
+  check "fragment keeps a registered value's tokens"
+    (cat [ length; ".a{--l:0px}" ])
+    (cat [ length'; ".a{--l:0px}" ]);
+  check "fragment keeps the nested calc()"
+    (cat [ length; ".a{width:calc(calc(var(--l)) * 2)}" ])
+    (cat [ length'; ".a{width:calc(calc(var(--l))*2)}" ]);
+  check "fragment keeps a var() out of a shorthand"
+    (cat
+       [
+         length;
+         ".a{margin-top:var(--l);margin-right:1px;margin-bottom:1px;margin-left:1px}";
+       ])
+    (cat
+       [
+         length';
+         ".a{margin-top:var(--l);margin-right:1px;margin-bottom:1px;margin-left:1px}";
+       ]);
+  (* The whole stylesheet: the last registration is the one. *)
+  let scope = `Stylesheet in
+  check ~scope "stylesheet scope folds the zero product"
+    (cat [ number; ".a{width:calc(var(--n) * 0px)}" ])
+    (cat [ number; ".a{width:0}" ]);
+  check ~scope "stylesheet scope types a registered value"
+    (cat [ length; ".a{--l:0px}" ])
+    (cat [ length'; ".a{--l:0}" ]);
+  check ~scope "stylesheet scope drops the nested calc()"
+    (cat [ length; ".a{width:calc(calc(var(--l)) * 2)}" ])
+    (cat [ length'; ".a{width:calc(var(--l)*2)}" ]);
+  check ~scope "a later registration is the one"
+    (cat
+       [
+         number;
+         "@property --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n) * \
+          0px)}";
+       ])
+    (cat
+       [
+         number;
+         "@property \
+          --n{syntax:\"*\";inherits:false}.a{width:calc(var(--n)*0px)}";
+       ]);
+  check ~scope "a conditional registration is not known"
+    "@media print{@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}}.a{width:calc(var(--n) \
+     * 0px)}"
+    "@media print{@property \
+     --n{syntax:\"<number>\";inherits:false;initial-value:1}}.a{width:calc(var(--n)*0px)}";
+  check ~scope ~enforce_spec:true
+    "under --enforce-spec a later partial registration stays and counts"
+    (cat
+       [
+         number;
+         "@property --n{syntax:\"<color>\"}.a{width:calc(var(--n) * 0px)}";
+       ])
+    (cat
+       [
+         number; "@property --n{syntax:\"<color>\"}.a{width:calc(var(--n)*0px)}";
+       ])
+
+(* [--scope=stylesheet] rules out author CSS the optimizer does not see, not the
+   user-agent sheet nor the sheet's own other rules, and author beats UA (CSS
+   Cascade 5 sec. 6.2). A shorthand built from some of its longhands sets the
+   others to their initial values, so it is built only where no rule of the
+   sheet and no rule or presentational hint of the HTML rendering section (sec.
+   15) holds one of them. Chromium 153: [h1{font-size:20px; font-family:serif}]
+   as [h1{font:20px serif}] takes an [h1] from weight 700 to 400 and an [em]
+   from italic to normal; beside [.y{font-weight:bold}] an element of both
+   classes goes from 700 to 400; beside [.y{background-repeat:no-repeat}]
+   [background:red] repeats; and a [transition-delay:1s] inside [@media screen]
+   is lost to [transition:opacity 1s]. *)
+let stylesheet_scope_reset_held () =
+  let opt css =
+    let input = Css.Stylesheet.read (Cursor.of_string css) in
+    Css.Optimize.stylesheet ~scope:`Stylesheet input
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  let same label css = Alcotest.(check string) label css (opt css) in
+  same "the UA sheet holds an h1's weight"
+    "h1{font-size:20px;font-family:serif}";
+  same "the UA sheet holds an em's style" "em{font-size:20px;font-family:serif}";
+  same "another rule holds the weight"
+    ".y{font-weight:700}.x{font-size:20px;font-family:serif}";
+  same "another rule holds the repeat"
+    ".y{background-repeat:no-repeat}.x{background-color:red;background-image:none}";
+  same "a rule in another block holds the delay"
+    "@media \
+     screen{.y{transition-delay:1s}}.x{transition-property:opacity;transition-duration:1s}";
+  (* Where nothing holds the others, the shorthand is still built. *)
+  Alcotest.(check string)
+    "nothing holds the other background longhands" ".x{background:red}"
+    (opt ".x{background-color:red;background-image:none}");
+  Alcotest.(check string)
+    "nothing holds the other transition longhands" ".x{transition:opacity 1s}"
+    (opt ".x{transition-property:opacity;transition-duration:1s}")
 
 let c61_no_nested_boundary_merge () =
   (* Scope proximity and page context are cascade-visible boundaries. The same
@@ -787,6 +967,15 @@ let suite =
       ( "calc flatten gated on single-valued @property registration",
         `Quick,
         calc_flatten_registered_single_valued );
+      ( "stylesheet scope resets only what nothing holds",
+        `Quick,
+        stylesheet_scope_reset_held );
+      ( "registration known only in closed scope",
+        `Quick,
+        registration_known_only_in_closed_scope );
+      ( "calc zero product over a registered number",
+        `Quick,
+        calc_zero_product_registered_number );
       ( "preserve independent custom-property rule position",
         `Quick,
         preserve_independent_custom_prop_position );

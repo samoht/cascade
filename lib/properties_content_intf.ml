@@ -8,22 +8,36 @@ open Properties_background_intf
 (* Content Types *)
 
 (** CSS Generated Content 3 sec. 2 [content]: the replacement and list forms
-    both take an [<image>], which is the {!type-background_image} vocabulary
-    without its comma list. *)
+    both take an [<image>], which is the
+    {!Properties_background_intf.type-background_image} vocabulary without its
+    comma list. *)
 type content =
   | String of string
   | Quoted of { value : string; quote : char; repr : string option }
   | Image of background_image
-      (** The [<image>] of {!type-background_image}, aliased below. *)
+      (** The [<image>] of {!Properties_background_intf.type-background_image},
+          aliased below. *)
   | None
   | Normal
   | Open_quote
   | Close_quote
   | Attr of content attr_call
-  | Counter of string
-  | Counters of string * string
+  | Counter of {
+      name : string;
+      style : Properties_border_intf.list_style_type option;
+          (** CSS Lists 3 sec. 4.6 [<counter-style>]: a counter-style name,
+              [none] or [symbols()]; [None] is the default [decimal]. *)
+    }
+  | Counters of {
+      name : string;
+      separator : string;
+      style : Properties_border_intf.list_style_type option;
+    }
   | String_ref of string
   | Content_list of content list
+  | With_alt of { content : content; alt : content list }
+      (** CSS Generated Content 3 sec. 1.1: [content / alt], the alternative
+          text a [<string>], [counter()], [counters()] or [attr()] list. *)
   | Inherit
   | Initial
   | Unset
@@ -31,7 +45,13 @@ type content =
   | Revert_layer
   | Var of content var
 
-type counter_item = { name : string; value : int option }
+type counter_item = {
+  name : string;
+  reversed : bool;
+      (** Written [reversed(name)]: CSS Lists 3 sec. 4.1 lets [counter-reset]
+          instantiate a reversed counter. *)
+  value : int option;
+}
 
 type counter_set =
   | None
@@ -747,6 +767,9 @@ type isolation =
 type break_value =
   | Auto
   | Avoid
+  | Always
+      (** CSS Fragmentation 3 sec. 3.1: a break in the innermost fragmentation
+          context, which is not {!Page} inside a multicol container. *)
   | All
   | Avoid_page
   | Page

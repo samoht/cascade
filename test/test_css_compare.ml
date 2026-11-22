@@ -292,6 +292,47 @@ let zero_counters_unparsed_do_not_claim_equivalence () =
     "a comparison that never parsed is not an absence of differences" false
     (contains_substring output "No structural differences")
 
+(* Each pair writes one stylesheet two ways: a colour, an attribute value, a
+   pseudo-element, an [An+B], a number, a family name and the layout. Mode
+   [`Auto] still reports the text (its verdict follows the bytes), but it says
+   only the text differs and invents no modified, added or reordered rule. *)
+let spelling_pairs =
+  [
+    (".a{color:#ffffff;top:0}", ".a{color:#fff;top:0}");
+    ( ".a{display:-webkit-box;display:flex;color:#ffffff}",
+      ".a{display:-webkit-box;display:flex;color:#fff}" );
+    ({|[x="a b"]{top:0}|}, {|[x=a\ b]{top:0}|});
+    ("a::before{top:0}", "a:before{top:0}");
+    ("li:nth-child(odd){top:0}", "li:nth-child(2n+1){top:0}");
+    (".a{width:0.5px}", ".a{width:.5px}");
+    ({|.a{font-family:"Foo Bar"}|}, ".a{font-family:Foo Bar}");
+    (".x{color:red}", ".x { color: red }");
+  ]
+
+let auto_spelling_is_text_only () =
+  List.iter
+    (fun (expected, actual) ->
+      let result = Cascade_diff.Css_compare.diff ~mode:`Auto expected actual in
+      (match result.Cascade_diff.Css_compare.result with
+      | Cascade_diff.Css_compare.String_diff _ -> ()
+      | _ -> Alcotest.failf "%s vs %s: expected a string diff" expected actual);
+      let output = rendered_stats ~mode:`Auto expected actual in
+      Alcotest.(check bool)
+        (Fmt.str "%s vs %s: says only the text differs" expected actual)
+        true
+        (contains_substring output "no structural change; the text differs"))
+    spelling_pairs
+
+let auto_real_difference_still_differs () =
+  Alcotest.(check bool)
+    "a changed colour differs" false
+    (Cascade_diff.Css_compare.equal ~mode:`Auto ".a{color:#fff}"
+       ".a{color:#eee}");
+  let output = rendered_stats ~mode:`Auto ".a{color:#fff}" ".a{color:#eee}" in
+  Alcotest.(check bool)
+    "a changed colour is not text-only" false
+    (contains_substring output "the text differs")
+
 (* The canonical minified form is the verdict in [`Canonical] mode: two sheets
    whose canonical bytes differ differ, whether or not the tree diff reached the
    divergence. Here a layer-order pin that is the only declaration of its layer,
@@ -542,6 +583,10 @@ let suite =
         zero_counters_do_not_claim_equivalence;
       Alcotest.test_case "zero counters unparsed do not claim equivalence"
         `Quick zero_counters_unparsed_do_not_claim_equivalence;
+      Alcotest.test_case "auto spelling is text only" `Quick
+        auto_spelling_is_text_only;
+      Alcotest.test_case "auto real difference still differs" `Quick
+        auto_real_difference_still_differs;
       Alcotest.test_case "canonical byte residual is a difference" `Quick
         canonical_byte_residual_is_a_difference;
       Alcotest.test_case "canonical byte equality is no diff" `Quick

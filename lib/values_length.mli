@@ -85,4 +85,4 @@ val px_values : length list -> float list option
     [px]. *)
 
 val pp_length : ?always:bool -> length Pp.t
-(** [pp_length ?always] pretty-prints {!length} values. *)
+(** [pp_length ?always] pretty-prints {!Values_intf.length} values. *)

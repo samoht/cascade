@@ -142,7 +142,7 @@ let spec_property_grammar_edges () =
   check_clip_path "xywh(0 0 100% 100% round 10px)";
   check_clip_path "rect(0px 0px 10px 10px)";
   check_content "counter(page)";
-  check_content "counters(section, \".\")";
+  check_content ~expected:"counters(section,\".\")" "counters(section, \".\")";
   neg_cursor read_font_feature_settings "\"kern\" -1";
   neg_cursor read_font_variation_settings "\"wg\" 400";
   neg_cursor read_timing_function "linear()";
@@ -160,7 +160,54 @@ let spec_property_grammar_edges () =
      invalidating the declaration. *)
   neg_cursor read_clip_path "xywh(0 0 1px 1px foo)";
   neg_cursor read_clip_path "rect(0px 0px 10px 10px foo)";
-  neg_cursor read_content "counter()"
+  neg_cursor read_content "counter()";
+  (* CSS Lists 3 sec. 4.6: [counter( <counter-name>, <counter-style>? )] and
+     [counters( <counter-name>, <string>, <counter-style>? )], with
+     [<counter-style> = <counter-style-name> | <symbols()>]. Chrome 153 keeps
+     every name form, [none] among them, and serialises [decimal], the default,
+     as nothing. *)
+  check_content "counter(n,c)";
+  check_content "counter(n,disc)";
+  check_content "counter(n,none)";
+  check_content "counter(n,Foo)";
+  check_content ~expected:"counter(n,decimal)" "counter(n, DECIMAL)";
+  check_content ~expected:"counter(n,symbols(cyclic\"*\"))"
+    "counter(n,symbols(cyclic \"*\"))";
+  check_content "counters(n,\".\",c)";
+  check_content "counters(n,\".\",symbols(\"*\"))";
+  check_content "\"a\" counter(n,c)";
+  decl_optimizes ~prop:"content" ~into:"counter(n,c)" "counter(n,c)";
+  decl_optimizes ~prop:"content" ~into:"counter(n)" "counter(n,decimal)";
+  decl_optimizes ~prop:"content" ~into:"counters(n,\".\")"
+    "counters(n,\".\",decimal)";
+  neg_cursor read_content "counter(n,\"x\")";
+  neg_cursor read_content "counter(n,inherit)";
+  neg_cursor read_content "counter(n,default)";
+  neg_cursor read_content "counter(n,)";
+  neg_cursor read_content "counter(n,c,d)";
+  neg_cursor read_content "counters(n,\".\",\"x\")";
+  (* CSS Generated Content 3 sec. 1.1 follows the content with an optional [/ [
+     <string> | <counter> | attr() ]+] alternative text. Chrome 153 keeps each
+     of these, and refuses an empty alternative, an image or a keyword in it,
+     and one after [none] or [normal]. *)
+  check_content "\"a\"/\"b\"";
+  check_content ~expected:"\"a\"/\"b\"" "\"a\" / \"b\"";
+  check_content "url(a.png)/\"b\"";
+  check_content "counter(n)/\"b\"";
+  check_content "\"a\"/attr(x)";
+  check_content "\"a\"/counter(n,upper-roman)";
+  check_content "\"a\"/counters(n,\".\")";
+  check_content "\"a\"/\"b\" attr(x) counter(n)";
+  check_content "open-quote/\"x\"";
+  check_content "\"a\" counter(n)/\"\"";
+  check_content ~minify:false "\"a\" / \"b\" \"c\"";
+  decl_optimizes ~prop:"content" ~into:"\"a\"/\"b\"" "'a' / 'b'";
+  neg_cursor read_content "\"a\" /";
+  neg_cursor ~allow_partial:true read_content "\"a\" / url(b.png)";
+  neg_cursor ~allow_partial:true read_content "none / \"b\"";
+  neg_cursor ~allow_partial:true read_content "normal / \"b\"";
+  neg_cursor ~allow_partial:true read_content "\"a\" / open-quote";
+  neg_cursor ~allow_partial:true read_content "\"a\" / \"b\" / \"c\""
 
 let spec_ui_property_edges () =
   check_text_wrap "pretty";
@@ -239,6 +286,115 @@ let canonical_math_block_context () =
   in
   check string "square block ends math context" "calc([f()+ 1])" actual
 
+(* WHATWG Compatibility Standard sec. 3.4.1 lists the [-webkit-] properties that
+   are legacy name aliases of an unprefixed property. The table below is that
+   list; a name off it, such as [-webkit-user-select] or any [-moz-] spelling,
+   is a property of its own. *)
+let whatwg_legacy_aliases =
+  [
+    ("-webkit-align-content", "align-content");
+    ("-webkit-align-items", "align-items");
+    ("-webkit-align-self", "align-self");
+    ("-webkit-animation", "animation");
+    ("-webkit-animation-delay", "animation-delay");
+    ("-webkit-animation-direction", "animation-direction");
+    ("-webkit-animation-duration", "animation-duration");
+    ("-webkit-animation-fill-mode", "animation-fill-mode");
+    ("-webkit-animation-iteration-count", "animation-iteration-count");
+    ("-webkit-animation-name", "animation-name");
+    ("-webkit-animation-play-state", "animation-play-state");
+    ("-webkit-animation-timing-function", "animation-timing-function");
+    ("-webkit-backface-visibility", "backface-visibility");
+    ("-webkit-background-clip", "background-clip");
+    ("-webkit-background-origin", "background-origin");
+    ("-webkit-background-size", "background-size");
+    ("-webkit-border-bottom-left-radius", "border-bottom-left-radius");
+    ("-webkit-border-bottom-right-radius", "border-bottom-right-radius");
+    ("-webkit-border-radius", "border-radius");
+    ("-webkit-border-top-left-radius", "border-top-left-radius");
+    ("-webkit-border-top-right-radius", "border-top-right-radius");
+    ("-webkit-box-shadow", "box-shadow");
+    ("-webkit-box-sizing", "box-sizing");
+    ("-webkit-filter", "filter");
+    ("-webkit-flex", "flex");
+    ("-webkit-flex-basis", "flex-basis");
+    ("-webkit-flex-direction", "flex-direction");
+    ("-webkit-flex-flow", "flex-flow");
+    ("-webkit-flex-grow", "flex-grow");
+    ("-webkit-flex-shrink", "flex-shrink");
+    ("-webkit-flex-wrap", "flex-wrap");
+    ("-webkit-justify-content", "justify-content");
+    ("-webkit-mask", "mask");
+    ("-webkit-mask-box-image", "mask-border");
+    ("-webkit-mask-box-image-outset", "mask-border-outset");
+    ("-webkit-mask-box-image-repeat", "mask-border-repeat");
+    ("-webkit-mask-box-image-slice", "mask-border-slice");
+    ("-webkit-mask-box-image-source", "mask-border-source");
+    ("-webkit-mask-box-image-width", "mask-border-width");
+    ("-webkit-mask-clip", "mask-clip");
+    ("-webkit-mask-composite", "mask-composite");
+    ("-webkit-mask-image", "mask-image");
+    ("-webkit-mask-origin", "mask-origin");
+    ("-webkit-mask-position", "mask-position");
+    ("-webkit-mask-repeat", "mask-repeat");
+    ("-webkit-mask-size", "mask-size");
+    ("-webkit-order", "order");
+    ("-webkit-perspective", "perspective");
+    ("-webkit-perspective-origin", "perspective-origin");
+    ("-webkit-transform", "transform");
+    ("-webkit-transform-origin", "transform-origin");
+    ("-webkit-transform-style", "transform-style");
+    ("-webkit-transition", "transition");
+    ("-webkit-transition-delay", "transition-delay");
+    ("-webkit-transition-duration", "transition-duration");
+    ("-webkit-transition-property", "transition-property");
+    ("-webkit-transition-timing-function", "transition-timing-function");
+  ]
+
+let name_of (Prop p) = Css.Pp.to_string ~minify:false pp_property p
+
+let vendor_prefix_and_aliases_are_property_facts () =
+  List.iter
+    (fun (alias, property) ->
+      let (Prop a) = of_name alias in
+      let (Prop p) = of_name property in
+      check bool (alias ^ " is vendor-prefixed") true (is_vendor_prefixed a);
+      check bool (property ^ " is not") false (is_vendor_prefixed p);
+      check (option string)
+        (alias ^ " aliases " ^ property)
+        (Some property)
+        (Option.map name_of (legacy_alias a));
+      check (option string)
+        (property ^ " aliases nothing")
+        None
+        (Option.map name_of (legacy_alias p)))
+    whatwg_legacy_aliases;
+  List.iter
+    (fun name ->
+      let (Prop p) = of_name name in
+      check (option string)
+        (name ^ " aliases nothing")
+        None
+        (Option.map name_of (legacy_alias p)))
+    [
+      "-webkit-user-select";
+      "-moz-transform";
+      "-moz-box-sizing";
+      "-webkit-text-decoration-color";
+      "-x-unknown";
+    ];
+  List.iter
+    (fun (name, prefixed) ->
+      let (Prop p) = of_name name in
+      check bool name prefixed (is_vendor_prefixed p))
+    [
+      ("-moz-box-sizing", true);
+      ("-x-unknown", true);
+      ("--custom", false);
+      ("page-break-before", false);
+      ("unknown-property", false);
+    ]
+
 let suite =
   ( "properties",
     [
@@ -257,4 +413,6 @@ let suite =
       test_case "math_function_at_integer_positions" `Quick
         math_function_at_integer_positions;
       test_case "css_wide" `Quick test_css_wide;
+      test_case "vendor prefix and aliases are property facts" `Quick
+        vendor_prefix_and_aliases_are_property_facts;
     ] )

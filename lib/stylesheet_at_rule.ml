@@ -3,15 +3,23 @@ open Stylesheet_pp
 
 (** {1 Reading/Parsing} *)
 
+(* CSS Animations 1 sec. 3 takes [from], [to] and a percentage as a keyframe
+   selector, and every engine drops a keyframe rule over anything else: Chrome
+   151 and WebKit 26.5 keep no keyframe for YUI's [0], and Firefox's
+   [KeyframePercentage] takes those three alone. So the rule goes as one no
+   target reads ({!Error.Untargeted_selector}). *)
 let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
+  let loc = Cursor.position r in
   let selector_str = Cursor.drain_until_block_as_string ~trim:true r in
   let selector =
     match Keyframe.selector_of_string selector_str with
     | Ok selector -> selector
     | Error _ ->
-        Cursor.err_invalid r
-          (String.concat "" [ "keyframe selector: "; selector_str ])
+        Error.fail
+          (Cursor.error ~sort:Sort.Selector r ~loc
+             (Error.Untargeted_selector
+                (String.concat "" [ "keyframe selector "; selector_str ])))
   in
   let declarations = Cursor.braces Declaration.read_keyframe_declarations r in
   { selector; declarations }
@@ -78,25 +86,10 @@ let read_layer_name_component (r : Cursor.t) : layer_name =
   extend [ first ]
 
 (* CSS Cascade 5 sec. 2 [@import] prelude: [<url> [layer | layer(<layer-name>)]?
-   [supports(<supports-condition>)]? <media-query-list>?]. The [~keep_url_repr]
-   flavour preserves the original quote / [url(...)] form in [url] so the
-   at-rule dispatch can round-trip author input verbatim; the canonical flavour
-   ([keep_url_repr=false]) stores the decoded string for the top-level
-   [read_import_rule] reader. *)
-let read_import_url ~keep_url_repr (r : Cursor.t) =
-  let pos = Cursor.position r in
-  let value = Cursor.one_of [ Cursor.url; Cursor.string ] r in
-  if keep_url_repr then
-    let end_pos = Cursor.position r in
-    match Cursor.source r with
-    | Some source
-      when end_pos.start_pos <= String.length source
-           && pos.start_pos <= end_pos.start_pos
-           && pos.start_pos >= 0 ->
-        String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
-        |> String.trim
-    | _ -> value
-  else value
+   [supports(<supports-condition>)]? <media-query-list>?]. The url is held as
+   the string it names, whichever of [url()] and [<string>] spelled it. *)
+let read_import_url (r : Cursor.t) =
+  Cursor.one_of [ Cursor.url; Cursor.string ] r
 
 let read_import_layer (r : Cursor.t) =
   match
@@ -169,10 +162,10 @@ let read_import_media (r : Cursor.t) : Media.t option =
               }))
     else Some (Media.read ~recover:false (Cursor.sub r components))
 
-let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
+let read_import_prelude (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
   Cursor.ws r;
-  let url = read_import_url ~keep_url_repr r in
+  let url = read_import_url r in
   Cursor.ws r;
   let layer = read_import_layer r in
   Cursor.ws r;
@@ -182,8 +175,7 @@ let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   if Cursor.peek_semicolon r then Cursor.skip r;
   { url; layer; supports; media }
 
-let read_import (r : Cursor.t) : statement =
-  Import (read_import_prelude ~keep_url_repr:true r)
+let read_import (r : Cursor.t) : statement = Import (read_import_prelude r)
 
 let read_namespace (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "namespace" r;
@@ -539,4 +531,4 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
 (* Reader for import_rule *)
 let read_import_rule (r : Cursor.t) : import_rule =
   Cursor.ws r;
-  read_import_prelude ~keep_url_repr:false r
+  read_import_prelude r

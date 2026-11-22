@@ -17,7 +17,6 @@ type ctx = {
   out : out;
   inline : bool;
   in_function : bool;
-  in_calc : bool;
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -77,7 +76,6 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
     out;
     inline;
     in_function = false;
-    in_calc = false;
     in_style_rule = false;
     lossless;
     enforce_spec;
@@ -118,11 +116,6 @@ let size ?minify ?indent ?inline ?lossless ?enforce_spec pp a =
 let nop _ _ = ()
 let string ctx s = emit_string ctx.out s
 let char ctx c = emit_char ctx.out c
-
-let quoted ctx s =
-  char ctx '"';
-  string ctx s;
-  char ctx '"'
 
 (* The last byte emitted so far, for token-boundary spacing decisions. *)
 let last_char ctx =
@@ -598,6 +591,9 @@ let string_of_float ?(drop_leading_zero = false) ?(max_decimals = 8) f =
       if abs_f = floor abs_f then format_integer is_neg abs_f
       else format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f
 
+let printed f =
+  if Float.is_finite f then float_of_string (string_of_float f) else f
+
 let round_sig n f =
   if f = 0.0 then 0.0
   else
@@ -760,16 +756,30 @@ let call_list name pp_item = call name (list ~sep:comma pp_item)
 let call_2 name pp_a pp_b = call name (pair ~sep:comma pp_a pp_b)
 let call_3 name pp_a pp_b pp_c = call name (triple ~sep:comma pp_a pp_b pp_c)
 
+(* CSSOM 1 sec. 2.1 serializes a URL as [url(] and the serialized string; the
+   bare body is the shorter spelling of the same url wherever it can hold it. *)
 let url ctx s =
   string ctx "url(";
-  (* Only quote if the URL contains special characters *)
-  let needs_quotes =
-    String.exists
-      (fun c ->
-        c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
-      s
-  in
-  if needs_quotes then quoted_string ctx s else string ctx s;
+  if Common.String.url_needs_quotes s then quoted_string ctx s else string ctx s;
   string ctx ")"
+
+(* CSS Syntax 3 (ED) sec. 4.3.6: inside a url token a space, a quote, a
+   parenthesis and a backslash end or break the token unless escaped, and a
+   non-printable code point is a parse error unless escaped. *)
+let url_token ctx s =
+  string ctx "url(";
+  let len = String.length s in
+  String.iteri
+    (fun i c ->
+      match c with
+      | ' ' | '"' | '\'' | '(' | ')' | '\\' ->
+          char ctx '\\';
+          char ctx c
+      | '\x00' .. '\x1F' | '\x7F' ->
+          let next = if i + 1 < len then Some s.[i + 1] else None in
+          hex_escape_byte ctx ~next c
+      | c -> char ctx c)
+    s;
+  char ctx ')'
 
 let rename_custom_property ctx name = ctx.rename_custom_property name

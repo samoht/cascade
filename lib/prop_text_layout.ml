@@ -169,9 +169,16 @@ let normalize_hyphenate_limit_chars_item ~ctx :
   | Auto -> item
   (* Sec. 6.2 counts characters, so each slot is a [1,inf] [<integer>] and a
      call folding below it keeps its wrapper. *)
-  | Chars n ->
-      let n' = Values.normalize_number ~ctx ~non_negative:true n in
-      if n' == n then item else Chars n'
+  | Chars n -> (
+      let n' =
+        Values.normalize_number ~ctx ~non_negative:true ~integer:true n
+      in
+      match (n, n') with
+      | ( (Calc _ | Round _ | Mod _ | Rem _ | Hypot _ | Pow _ | Sqrt _ | Abs _),
+          Num f )
+        when f < 1. ->
+          Chars (Calc (Num f))
+      | _ -> if n' == n then item else Chars n')
 
 let normalize_hyphenate_limit_chars ~ctx :
     hyphenate_limit_chars -> hyphenate_limit_chars =
@@ -360,6 +367,13 @@ let rec pp_text_spacing_trim : text_spacing_trim Pp.t =
 let pp_hyphenate_limit_chars_item : hyphenate_limit_chars_item Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
+  (* A [1,inf] [<integer>] slot: CSS Values 4 sec. 10.12 rounds and clamps a
+     call, and refuses a fraction or a count below one written on its own, so
+     such a leaf keeps its wrapper. *)
+  | Chars (Calc (Num f)) when f < 1. || not (Float.is_integer f) ->
+      Pp.string ctx "calc(";
+      Values.pp_number ctx (Num f);
+      Pp.char ctx ')'
   | Chars n -> Values.pp_number ctx n
 
 let rec pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t =
@@ -419,6 +433,30 @@ let rec pp_overflow_wrap : overflow_wrap Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Break_word -> Pp.string ctx "break-word"
   | Anywhere -> Pp.string ctx "anywhere"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_text_rendering : text_rendering Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_text_rendering ctx v
+  | Auto -> Pp.string ctx "auto"
+  | Optimize_speed -> Pp.string ctx "optimizeSpeed"
+  | Optimize_legibility -> Pp.string ctx "optimizeLegibility"
+  | Geometric_precision -> Pp.string ctx "geometricPrecision"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_webkit_touch_callout : webkit_touch_callout Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_webkit_touch_callout ctx v
+  | Default -> Pp.string ctx "default"
+  | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -745,6 +783,36 @@ let rec read_overflow_wrap t : overflow_wrap =
     ~var:(fun t -> Var (Values.read_var read_overflow_wrap t))
     t
 
+let rec read_text_rendering t : text_rendering =
+  Cursor.enum_or_var "text-rendering"
+    [
+      ("auto", (Auto : text_rendering));
+      ("optimizespeed", Optimize_speed);
+      ("optimizelegibility", Optimize_legibility);
+      ("geometricprecision", Geometric_precision);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_text_rendering t))
+    t
+
+let rec read_webkit_touch_callout t : webkit_touch_callout =
+  Cursor.enum_or_var "-webkit-touch-callout"
+    [
+      ("default", (Default : webkit_touch_callout));
+      ("none", None);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_webkit_touch_callout t))
+    t
+
 let rec read_hyphens t : hyphens =
   Cursor.enum_or_var "hyphens"
     [
@@ -763,8 +831,10 @@ let rec read_hyphens t : hyphens =
 let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
   Cursor.ws t;
   match Cursor.percentage_opt t with
+  (* Sec. 10.12 checks the range on the value a math function resolves to, so an
+     operand, the only reading with [keywords] off, takes either sign. *)
   | Some n ->
-      if n < 0.0 then
+      if keywords && n < 0.0 then
         Cursor.err t "text-size-adjust percentages cannot be negative"
       else Pct n
   | _ ->
@@ -783,12 +853,11 @@ let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
              (read_text_size_adjust_with ~keywords:false)
              t)
       in
-      (* Sec. 10.12 puts the [0,inf] range on the value a math function resolves
-         to, so a folded comparison answers to it the way a literal does. *)
-      let checked t n : text_size_adjust =
-        if n < 0.0 then
-          Cursor.err t "text-size-adjust percentages cannot be negative"
-        else Pct n
+      (* A comparison folded at read time is still a math function: sec. 10.12
+         clamps one below the [0,inf] range, so it keeps a wrapper there rather
+         than being refused the way the literal is. *)
+      let folded _ n : text_size_adjust =
+        if n < 0.0 then Calc (Val (Pct n)) else Pct n
       in
       Cursor.enum_or_calls "text-size-adjust"
         (if keywords then
@@ -807,7 +876,7 @@ let rec read_text_size_adjust_with ~keywords t : text_size_adjust =
              fun t ->
                Var (Values.read_var (read_text_size_adjust_with ~keywords) t) )
           :: ("calc", read_math)
-          :: Values.percentage_math_function_calls ~pct:checked read_math)
+          :: Values.percentage_math_function_calls ~pct:folded read_math)
         t
 
 let read_text_size_adjust t : text_size_adjust =

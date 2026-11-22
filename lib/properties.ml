@@ -26,9 +26,9 @@ include Properties_custom
 include Properties_normalize
 include Properties_printer
 
-let read_any_property t =
-  (* CSS property names are case-insensitive per CSS Syntax 3 (ED) sec. 8.1. *)
-  let prop_name = String.lowercase_ascii_preserve (Cursor.ident t) in
+(* [prop_name] is lower case. A name the table does not type, custom or not,
+   comes back as [Unknown_property]. *)
+let property_of_lowercase_name prop_name =
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
   | "all" -> Prop All
@@ -440,6 +440,8 @@ let read_any_property t =
   | "grid-template" -> Prop Grid_template
   | "grid-template-areas" -> Prop Grid_template_areas
   | "hyphens" -> Prop Hyphens
+  | "text-rendering" -> Prop Text_rendering
+  | "-webkit-touch-callout" -> Prop Webkit_touch_callout
   | "isolation" -> Prop Isolation
   | "justify-items" -> Prop Justify_items
   | "justify-self" -> Prop Justify_self
@@ -594,12 +596,21 @@ let read_any_property t =
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
+  | _ -> Prop (Unknown_property prop_name)
+
+let of_name name =
+  property_of_lowercase_name (String.lowercase_ascii_preserve name)
+
+let read_any_property t =
+  (* CSS property names are case-insensitive per CSS Syntax 3 (ED) sec. 8.1. *)
+  let prop_name = String.lowercase_ascii_preserve (Cursor.ident t) in
+  match property_of_lowercase_name prop_name with
   (* Custom properties [--*] always pass through as [Unknown_property] (their
      value is opaque); other unrecognized names fail here. The lenient
      declaration recovery in [Declaration.read_regular_property_declaration]
      catches and falls back to [read_unknown_property_declaration]. *)
-  | _ when Custom_property_name.has_prefix prop_name ->
-      Prop (Unknown_property prop_name)
-  | _ ->
+  | Prop (Unknown_property _)
+    when not (Custom_property_name.has_prefix prop_name) ->
       Cursor.err_invalid t
         (String.concat "" [ "unknown property: "; prop_name ])
+  | property -> property

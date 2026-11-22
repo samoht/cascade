@@ -377,18 +377,16 @@ let string_of_kind_value : type a. a kind -> a -> string =
   | Value -> Parser.string_of_components value
   | Content -> (
       match value with
-      | String "" -> "\"\""
-      | String s -> String.concat "" [ "\""; s; "\"" ]
+      | String s -> Pp.to_string Pp.quoted_string s
       | Quoted { value; quote; repr = _ } ->
-          let quote = String.make 1 quote in
-          String.concat "" [ quote; value; quote ]
+          Pp.to_string (Pp.quoted_string ~quote) value
       | None -> "none"
       | Normal -> "normal"
       | Open_quote -> "open-quote"
       | Close_quote -> "close-quote"
       | Image _ | Attr _ | Counter _ | Counters _ | String_ref _
-      | Content_list _ | Inherit | Initial | Unset | Revert | Revert_layer
-      | Var _ ->
+      | Content_list _ | With_alt _ | Inherit | Initial | Unset | Revert
+      | Revert_layer | Var _ ->
           "initial")
   | Font_weight -> Pp.to_string pp_font_weight value
   | Shadow -> "0 0 #0000"

@@ -507,13 +507,15 @@ let test_font_composes_the_whole_run () =
   (* sec. 5.3 writes the width slot as [<font-width-css3>], the nine keywords
      and no percentage, so a width the longhand normalised to its percentage
      takes its keyword back and one no keyword names stays a longhand. Chrome
-     146 refuses `font: 125% 12px serif` and reads `font: expanded 12px
-     serif`. *)
+     146 refuses `font: 125% 12px serif` and reads `font: expanded 12px serif`.
+     The runs write the style and the weight too: the HTML rendering section's
+     user-agent sheet holds both on some elements ([b], [h1], [em]), and a
+     shorthand leaving them to its reset would override it. *)
   sheet_optimizes_to ~scope:`Stylesheet ~into:".x{font:expanded 12px serif}"
-    ".x{font-family:serif;font-size:12px;font-stretch:expanded}";
+    ".x{font-style:normal;font-weight:normal;font-family:serif;font-size:12px;font-stretch:expanded}";
   sheet_optimizes_to ~scope:`Stylesheet
     ~into:".x{font:12px serif;font-stretch:110%}"
-    ".x{font-family:serif;font-size:12px;font-stretch:110%}"
+    ".x{font-style:normal;font-weight:normal;font-family:serif;font-size:12px;font-stretch:110%}"
 
 (* CSS Cascade 5 sec. 2.1 makes [!important] a property of one declaration, and
    sec. 8 gives an important declaration its own origin in the cascade, so a
@@ -1056,6 +1058,32 @@ let test_a_single_declaration_composes_to_itself () =
         Cascade_spec_inventory.Property_grammar.rows)
     [ `Fragment; `Stylesheet ]
 
+(* The contraction writes [transition:opacity 2s] after the earlier
+   [transition], which it then overrides whole; one optimization drops the
+   earlier one too. The padding takes the sheet past the size where the pipeline
+   makes more than one pass, which hid it. *)
+let test_contraction_drops_what_it_overrides () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".contract-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let css =
+    padding
+    ^ ".x{transition:color \
+       1s;transition-property:opacity;transition-duration:2s}"
+  in
+  match Css.of_string ~strict:false css with
+  | Error _ -> Alcotest.fail "parse failed"
+  | Ok p ->
+      let out =
+        Css.to_string ~minify:true
+          (Css.optimize ~scope:`Stylesheet p.stylesheet)
+      in
+      Alcotest.(check bool)
+        "the composed shorthand stands alone" true
+        (Astring.String.is_suffix ~affix:".x{transition:opacity 2s}"
+           (String.trim out))
+
 let suite =
   ( "shorthand_compose",
     [
@@ -1065,6 +1093,8 @@ let suite =
         test_layer_contraction_keeps_an_earlier_shorthand;
       Alcotest.test_case "font contraction keeps an earlier longhand" `Quick
         test_font_contraction_keeps_an_earlier_longhand;
+      Alcotest.test_case "contraction drops what it overrides" `Quick
+        test_contraction_drops_what_it_overrides;
       Alcotest.test_case "transition contraction covers reset longhands" `Quick
         test_transition_contraction_covers_reset_longhands;
       Alcotest.test_case "transition contraction covers other rules" `Quick

@@ -104,7 +104,7 @@ let list_properties () =
      optimizer makes and the printer keeps the spelling. *)
   check_declaration ~expected:"color:oklab(from #0000001a l a b/.2)"
     ~optimized:"color:#0003" "color: oklab(from #0000001a l a b / .2)";
-  check_declaration ~expected:"color:oklab(from rgb(0 0 0/.1) l a b/.2)"
+  check_declaration ~expected:"color:oklab(from rgb(0 0 0/.1) l a b/20%)"
     ~optimized:"color:#0003" "color: oklab(from rgb(0 0 0 / .1) l a b / 20%)";
   check_declaration ~expected:"color:oklch(from #123456 l c h)"
     ~optimized:"color:#123456" "color: oklch(from #123456 l c h)";
@@ -128,12 +128,15 @@ let list_properties () =
   check_declaration ~expected:"color:oklch(0%0 0)" "color: oklch(0% 0 0)";
   check_declaration ~expected:"color:oklch(0%0 0)" "color: oklch(-200% 0 0)";
 
-  (* [center] minifies to the same pair of percentages a written-out position
-     does, and a percentage delimits itself, so neither spelling keeps the space
-     between them. *)
+  (* [center] names the same pair of percentages a written-out position does,
+     and a percentage delimits itself, so the normal form keeps no space between
+     them. The keyword is another node, which the printer writes as it is. *)
   check_declaration
     ~expected:
-      "background:-webkit-gradient(radial,50%50%,0,50%50%,100,from(blue),to(yellow))"
+      "background:-webkit-gradient(radial,center center,0,center \
+       center,100,from(blue),to(yellow))"
+    ~optimized:
+      "background:-webkit-gradient(radial,50%50%,0,50%50%,100,from(#00f),to(#ff0))"
     "background: -webkit-gradient(radial, center center, 0, center center, \
      100, from(blue), to(yellow))";
   check_declaration
@@ -152,6 +155,9 @@ let list_properties () =
   check_declaration
     ~expected:
       "background:-webkit-gradient(linear,0 0,0 \
+       100%,from(#00f),color-stop(50%,red),to(#ff0))"
+    ~optimized:
+      "background:-webkit-gradient(linear,0 0,0 \
        100%,from(#00f),color-stop(.5,red),to(#ff0))"
     "background: -webkit-gradient(linear, 0 0, 0 100%, from(#00f), \
      color-stop(50%, red), to(#ff0))";
@@ -162,7 +168,8 @@ let list_properties () =
      [0deg-1]. *)
   check_declaration ~expected:"rotate:0deg -1 0 0" "rotate: -1 0 0 0deg";
   check_declaration ~expected:"rotate:45deg 1 0-1" "rotate: 1 0 -1 45deg";
-  check_declaration ~expected:"rotate:x 45deg" "rotate: 1 0 0 45deg";
+  check_declaration ~expected:"rotate:45deg 1 0 0" ~optimized:"rotate:x 45deg"
+    "rotate: 1 0 0 45deg";
 
   (* CSS Syntax 3 sec. 4.3.6 ends a url token at EOF as it does at [)]: the
      missing closer is a parse error and the token still reads. *)
@@ -201,6 +208,15 @@ let list_properties () =
      follows, or the spread would rebind as the blur. Held and canonical
      match. *)
   check_declaration ~expected:"box-shadow:0 1px 0 5px" "box-shadow: 0 1px 0 5px";
+  (* A [var()] after four lengths is the colour, but after three it may be the
+     spread, so a zero spread before a [var()] colour stays, as a zero blur
+     does: with [--c:3px], Chromium 153 computes [none] for [0 1px 0 0
+     var(--c)], five lengths, and a 3px spread for [0 1px 0 var(--c)]. A
+     concrete colour lets the zero go. *)
+  check_declaration ~expected:"box-shadow:0 1px 0 0 var(--c)"
+    ~optimized:"box-shadow:0 1px 0 0 var(--c)" "box-shadow: 0 1px 0 0 var(--c)";
+  check_declaration ~expected:"box-shadow:0 1px 0 0 red"
+    ~optimized:"box-shadow:0 1px red" "box-shadow: 0 1px 0 0 red";
   check_declaration
     ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12),0 1px 2px rgb(0 0 0/.24)"
     ~optimized:"box-shadow:0 1px 3px #0000001f,0 1px 2px #0000003d"
@@ -211,6 +227,16 @@ let list_properties () =
 
   (* Text shadow *)
   check_declaration ~expected:"text-shadow:none" "text-shadow: none";
+  (* CSS Text Decoration 4 sec. 6.2 spells a shadow [<color>? && <length>{2,3}],
+     so a [var()] after two lengths may be the blur. A zero blur before a
+     [var()] colour stays, as in [box-shadow]: with [--c:3px], Chromium 153
+     computes [none] for [0 5px 0 var(--c)], four lengths, and a 3px blur for [0
+     5px var(--c)]. *)
+  check_declaration ~expected:"text-shadow:0px 5px 0px var(--c)"
+    ~optimized:"text-shadow:0 5px 0 var(--c)"
+    "text-shadow: 0px 5px 0px var(--c)";
+  check_declaration ~expected:"text-shadow:0 5px 0 red"
+    ~optimized:"text-shadow:0 5px red" "text-shadow: 0 5px 0 red";
   check_declaration ~expected:"text-shadow:1px 1px 2px black"
     ~optimized:"text-shadow:1px 1px 2px #000" "text-shadow: 1px 1px 2px black";
   check_declaration ~expected:"text-shadow:0 0 10px blue,0 0 20px red"

@@ -56,7 +56,8 @@ let grid_shorthand_names_both_axes () =
   neg_cursor read_declaration "grid-template: \"a\" repeat(2, 1fr)";
   neg_cursor read_declaration "grid-template: \"a\" auto / repeat(2, 1fr)";
   neg_cursor read_declaration "grid-template: \"a\" / \"b\"";
-  check_declaration ~expected:"grid:none/1fr" "grid: auto-flow / 1fr";
+  check_declaration ~expected:"grid:auto-flow/1fr" ~optimized:"grid:none/1fr"
+    "grid: auto-flow / 1fr";
   neg_cursor read_declaration "grid-template: 10px";
   neg_cursor read_declaration "grid-template: auto";
   neg_cursor read_declaration "grid: 10px";
@@ -561,7 +562,7 @@ let spec_platform_property_vectors () =
       ("text-box-trim: trim-both", "text-box-trim:trim-both");
       ("writing-mode: sideways-rl", "writing-mode:sideways-rl");
       ("animation-timeline: scroll()", "animation-timeline:scroll()");
-      ("animation-timeline: scroll(Block)", "animation-timeline:scroll()");
+      ("animation-timeline: scroll(Block)", "animation-timeline:scroll(Block)");
       ( "animation-range: entry 0% exit 100%",
         "animation-range:entry 0%exit 100%" );
       ("animation-range: Cover 10%", "animation-range:cover 10%");
@@ -864,7 +865,7 @@ let spec_values_l45_edges () =
       ("color: oklch(60% .2 120)", "color:oklch(60%.2 120)");
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
       ( "color: rgb(from var(--c) r g b / 50%)",
-        "color:rgb(from var(--c) r g b/.5)" );
+        "color:rgb(from var(--c) r g b/50%)" );
       (* Each channel is one component value, so a space between two of them is
          a separator the tokens do not need: [20%g] is a percentage and an
          ident, and [calc(...)10] a function and a number. *)

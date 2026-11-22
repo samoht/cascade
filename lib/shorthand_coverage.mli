@@ -57,6 +57,31 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     keys touched by [d], sorted by {!val-overlap_key_compare} without repeats.
 *)
 
+val declaration_slot_keys : Declaration.declaration -> overlap_key list
+(** [declaration_slot_keys d] is the keys of the slots [d] writes in every
+    engine that reads it, sorted like {!val-declaration_overlap_keys}: the slots
+    its property names, without the physical sides a flow-relative slot may
+    resolve to. It is empty for [all], a custom property, a property the model
+    cannot place and a vendor-prefixed property. *)
+
+val property_slot_keys : 'a Properties.property -> overlap_key list
+(** [property_slot_keys p] is {!val-declaration_slot_keys} of a declaration of
+    [p]. *)
+
+val reset_slots :
+  Declaration.declaration -> Declaration.declaration list -> overlap_key list
+(** [reset_slots shorthand run] is the slots [shorthand] writes, the
+    [border-image] a [border] resets and the [mask-border] a [mask] resets
+    included, that no declaration of [run] writes: the slots a shorthand
+    composed from [run] sets to their initial value. *)
+
+val footprint_family : Declaration.declaration -> int option
+(** [footprint_family d] is the rank of the first shorthand family whose
+    footprint holds every slot [d] writes, among the families that together
+    spell out every longhand the model knows. Declarations of one rank are the
+    shorthand and longhands that family composes from. This is [None] when [d]
+    is broad, a custom property, or a property no family holds. *)
+
 val declarations_overlap_with_keys :
   Declaration.declaration ->
   overlap_key list ->
@@ -64,7 +89,9 @@ val declarations_overlap_with_keys :
   overlap_key list ->
   bool
 (** [declarations_overlap_with_keys a a_keys b b_keys] is
-    {!val-declarations_overlap} using precomputed footprints. *)
+    {!val-declarations_overlap} using precomputed footprints: [a_keys] is
+    [declaration_overlap_keys a] and [b_keys] is [declaration_overlap_keys b].
+*)
 
 val declarations_conflict_with_keys :
   Declaration.declaration ->

@@ -262,6 +262,31 @@ let test_lossless_keeps_unknown_property_order () =
     ".a{margin:0;margin-top:var(--a) var(--b)}"
     (opt ".a{margin:0;margin-top:var(--a) var(--b)}")
 
+(* Folding a [margin] or [padding] longhand into the shorthand before it moves
+   the longhand to the shorthand's place, past every declaration between them.
+   One that writes the same side then decides it instead: Chromium computes
+   [margin-top] 1px for [margin:0;margin-block-start:5px;margin-top:1px] and 5px
+   for [margin:1px 0 0;margin-block-start:5px], and [-webkit-margin-before] and
+   [-webkit-padding-before] alias [margin-block-start] and [padding-block-start]
+   there. A declaration that writes another property still lets the longhand
+   fold. *)
+let test_box_longhand_folds_past_nothing_it_meets () =
+  let opt css =
+    match Css.of_string ~strict:false css with
+    | Ok p -> Css.to_string ~minify:true (Css.optimize p.stylesheet)
+    | Error _ -> Alcotest.fail "parse"
+  in
+  List.iter
+    (fun css -> Alcotest.(check string) css css (opt css))
+    [
+      ".c{margin:0;margin-block-start:5px;margin-top:1px}";
+      ".c{margin:0;-webkit-margin-before:5px;margin-top:1px}";
+      ".c{padding:0;-webkit-padding-before:5px;padding-top:1px}";
+    ];
+  Alcotest.(check string)
+    "a declaration of another property" ".c{margin:1px 0 0;color:red}"
+    (opt ".c{margin:0;color:red;margin-top:1px}")
+
 (* A typed shorthand and the typed longhands it resets write common cascade
    slots, so the canonical order has to keep them in source order. Each case is
    one family whose two declarations render differently when swapped; the
@@ -772,6 +797,87 @@ let nested_block_separator () =
     ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
     ".a{top:0;@supports(color:red){color:red}.b{left:0}}"
 
+(* An earlier declaration of a property is a fallback for a browser that drops
+   the later one at parse time, and the default targets are floors: Chrome 111,
+   Firefox 128, Safari 16.4 and every later release. web-features records
+   light-dark() from Chrome 123 and Safari 17.5, contrast-color() from Chrome
+   147, anchor() and anchor-size() from Chrome 125, the stretch keyword from
+   Chrome 138 and in no Firefox or Safari, and image-set() from Safari 17. So a
+   floor drops each later declaration below and paints the earlier one, which
+   stays in both modes. *)
+let floor_fallbacks_survive () =
+  let check_modes name input expected =
+    Alcotest.(check string)
+      (name ^ " default") expected (optimized_string input);
+    Alcotest.(check string)
+      (name ^ " enforce-spec") expected
+      (optimized_string ~enforce_spec:true input)
+  in
+  check_modes "light-dark()" "a{color:red;color:light-dark(red,blue)}"
+    "a{color:red;color:light-dark(red,#00f)}";
+  check_modes "contrast-color()" "a{color:red;color:contrast-color(red)}"
+    "a{color:red;color:contrast-color(red)}";
+  check_modes "a Color 4 fallback before light-dark()"
+    "a{color:#944a4b;color:light-dark(red,blue)}"
+    "a{color:#944a4b;color:light-dark(red,#00f)}";
+  check_modes "anchor-size()" "a{width:1px;width:anchor-size(width)}"
+    "a{width:1px;width:anchor-size(width)}";
+  check_modes "anchor()" "a{top:0;top:anchor(bottom)}"
+    "a{top:0;top:anchor(bottom)}";
+  check_modes "stretch" "a{width:1px;width:stretch}"
+    "a{width:1px;width:stretch}";
+  check_modes "image-set()"
+    "a{background:url(a.png);background:image-set(url(a.png) 1x)}"
+    "a{background:url(a.png);background:image-set(url(a.png)1x)}";
+  (* web-features records the variadic color-mix() in Firefox 150 alone, so
+     every other floor drops the later declaration and paints red. *)
+  (* One item is the variadic grammar too: Firefox reads it from 150, behind
+     the pref that reads three, and Chromium 153 drops it. *)
+  check_modes "a color-mix() of one item"
+    "a{color:red;color:color-mix(in srgb,blue)}"
+    "a{color:red;color:color-mix(in srgb,#00f)}";
+  check_modes "a variadic color-mix()"
+    "a{color:red;color:color-mix(in srgb,red,blue,green)}"
+    "a{color:red;color:color-mix(in srgb,red,#00f,green)}";
+  (* web-features records reversed() in Firefox 96 alone, so Chrome and Safari
+     drop the later declaration and reset [x] to 0. *)
+  check_modes "a reversed counter"
+    "a{counter-reset:x;counter-reset:reversed(x)}"
+    "a{counter-reset:x;counter-reset:reversed(x)}";
+  check_modes "a reversed counter alone" "a{counter-reset:reversed(x) 3}"
+    "a{counter-reset:reversed(x) 3}";
+  (* CSS Fragmentation 3 sec. 3.1: [always] forces a break in the innermost
+     fragmentation context, a column in a multicol container, and [page] a page
+     break, so neither is the other. web-features records [break-before:always]
+     in Firefox alone; Chrome and Safari drop it and paint [auto]. *)
+  check_modes "always is not page" "a{break-before:always}"
+    "a{break-before:always}";
+  check_modes "break-before:always" "a{break-before:auto;break-before:always}"
+    "a{break-before:auto;break-before:always}";
+  check_modes "break-after:always" "a{break-after:auto;break-after:always}"
+    "a{break-after:auto;break-after:always}";
+  (* The legacy alias maps [always] to [page] (sec. 3.4). *)
+  check_modes "page-break-before:always" "a{page-break-before:always}"
+    "a{break-before:page}";
+  (* The browsers judged for run from each floor to the newest recorded release.
+     Chrome 111 parses neither [anchor-size()] (Chrome 125) nor [stretch]
+     (Chrome 138), but Chrome 125 to 137 parses the first alone, and so does
+     Firefox from 147, which records no [stretch]: each paints the earlier
+     width. *)
+  check_modes "a fallback a later release reads"
+    "a{width:anchor-size(width);width:stretch}"
+    "a{width:anchor-size(width);width:stretch}";
+  Alcotest.(check bool)
+    "a fallback in an earlier rule of the selector" true
+    (Astring.String.is_infix ~affix:"width:1px"
+       (optimized_string "a{width:1px}b{color:red}a{width:stretch}"));
+  (* Every floor reads [display:grid] and [width:fit-content], so the earlier
+     declaration is dead in every browser at or above them. *)
+  check_modes "a value every floor reads" "a{display:block;display:grid}"
+    "a{display:grid}";
+  check_modes "fit-content" "a{width:1px;width:fit-content}"
+    "a{width:fit-content}"
+
 let target_minify_enforce_spec_split () =
   let check_modes name input ~default ~spec =
     Alcotest.(check string) (name ^ " default") default (optimized_string input);
@@ -781,6 +887,12 @@ let target_minify_enforce_spec_split () =
   in
   check_modes "explicit flex zero basis is not one-value shorthand"
     "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
+  check_modes "a lone zero flex basis keeps its unit" "a { flex: 0px }"
+    ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
+  check_modes "a lone zero flex basis in em keeps a unit" "a { flex: 0em }"
+    ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
+  check_modes "a zero flex basis after one factor keeps its meaning"
+    "a { flex: 1 0px }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
   check_modes "color-mix keeps the required in oklab in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
@@ -1022,6 +1134,9 @@ let suite =
       ( "lossless keeps unknown property order",
         `Quick,
         test_lossless_keeps_unknown_property_order );
+      ( "a box longhand folds past nothing it meets",
+        `Quick,
+        test_box_longhand_folds_past_nothing_it_meets );
       ( "shorthand drops the longhand it resets",
         `Quick,
         test_shorthand_drops_the_longhand_it_resets );
@@ -1043,6 +1158,7 @@ let suite =
       ( "target minify and enforce-spec split",
         `Quick,
         target_minify_enforce_spec_split );
+      ("floor fallbacks survive", `Quick, floor_fallbacks_survive);
       ( "target evergreen compatibility prefixes",
         `Quick,
         target_evergreen_compatibility_prefixes );

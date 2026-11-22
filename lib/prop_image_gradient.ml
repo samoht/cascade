@@ -268,34 +268,18 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | Direction dir -> pp_gradient_direction ctx dir
 
 let pp_webkit_gradient_point ctx = function
-  | Webkit_gradient.Left_top ->
-      Pp.string ctx (if Pp.minified ctx then "0 0" else "left top")
-  | Webkit_gradient.Left_bottom ->
-      Pp.string ctx (if Pp.minified ctx then "0 100%" else "left bottom")
-  | Webkit_gradient.Center ->
-      (* A percentage delimits itself, so the pair needs no space between them
-         and the written-out position prints the same way. *)
-      Pp.string ctx (if Pp.minified ctx then "50%50%" else "center center")
+  | Webkit_gradient.Left_top -> Pp.string ctx "left top"
+  | Webkit_gradient.Left_bottom -> Pp.string ctx "left bottom"
+  | Webkit_gradient.Center -> Pp.string ctx "center center"
   | Webkit_gradient.Position position -> pp_position_value ctx position
-
-let pp_webkit_gradient_position ctx (pct : percentage) =
-  match (Pp.minified ctx, pct) with
-  | true, Pct value -> Pp.float ctx (value /. 100.)
-  | _ -> pp_percentage ctx pct
 
 let pp_webkit_gradient_stop ctx = function
   | Webkit_gradient.From color -> Pp.call "from" pp_color ctx color
   | Webkit_gradient.To color -> Pp.call "to" pp_color ctx color
-  | Webkit_gradient.Color_stop (Pct 0., color)
-  | Webkit_gradient.Color_stop (Num 0., color) ->
-      Pp.call "from" pp_color ctx color
-  | Webkit_gradient.Color_stop (Pct 100., color)
-  | Webkit_gradient.Color_stop (Num 1., color) ->
-      Pp.call "to" pp_color ctx color
   | Webkit_gradient.Color_stop (position, color) ->
       Pp.call "color-stop"
         (fun ctx (position, color) ->
-          pp_webkit_gradient_position ctx position;
+          pp_percentage ctx position;
           Pp.comma ctx ();
           pp_color ctx color)
         ctx (position, color)
@@ -418,6 +402,31 @@ let normalize_radial_size : radial_size -> radial_size =
         (Circle_radius (Values.normalize_length ~strip:false r))
   | other -> other
 
+(* CSS Image Values 3 (W3C Working Draft, 17 February 2011) sec. 5.1.1, the
+   syntax the Compatibility Standard sec. 3.3.1 gives the prefixed linear
+   gradients: a side keyword names where the gradient starts, [left], [bottom],
+   [right] and [top] being 0deg, 90deg, 180deg and 270deg measured
+   counterclockwise from the right, and an omitted direction defaults to [top].
+   The reader keeps the keyword the sheet wrote in the [To_] constructor of the
+   same name, and the legacy printer writes it back, so only the default folds:
+   [top], and an angle on 270deg. *)
+let rec normalize_legacy_gradient_direction :
+    gradient_direction -> gradient_direction =
+ fun value ->
+  match value with
+  | Default_direction -> value
+  | To_top -> Default_direction
+  | Angle a -> (
+      match Values.angle_degrees_opt a with
+      | Some deg when Float.rem (deg -. 270.) 360. = 0. -> Default_direction
+      | _ -> preserve_if_equal value (Angle (Values.normalize_angle a)))
+  | With_interpolation (dir, interp) ->
+      preserve_if_equal value
+        (With_interpolation (normalize_legacy_gradient_direction dir, interp))
+  | To_right | To_bottom | To_left | To_top_right | To_bottom_right
+  | To_bottom_left | To_top_left | Var _ ->
+      value
+
 let rec normalize_gradient_direction : gradient_direction -> gradient_direction
     =
  fun value ->
@@ -444,12 +453,21 @@ let rec normalize_gradient_direction : gradient_direction -> gradient_direction
     other ->
       other
 
+(* A [var()] or [attr()] standing for a stop's colour is substituted before the
+   stop list is parsed (CSS Values 5 sec. 7), so it may hold a position or
+   several stops ([--a:red 20%]). A stop whose colour is one is not known to be
+   a single stop, and no rewrite that moves or drops positions applies to it. *)
+let single_stop_color : color -> bool = function
+  | Var _ | Attribute _ -> false
+  | _ -> true
+
 (* CSS Images 4 sec. 3.5.3: an omitted position on the first stop is [0%] and on
    the last [100%], so a stop holding exactly that one position drops it and the
    resolved stop list stays the same. *)
 let drop_default_stop_positions stops =
   let at expected = function
-    | Color_percentage (_, Some (Pct p), None) -> Float.equal p expected
+    | Color_percentage (c, Some (Pct p), None) ->
+        single_stop_color c && Float.equal p expected
     | _ -> false
   in
   let strip = function
@@ -496,29 +514,57 @@ let rec normalize_gradient_stop ?(lossless = false) :
         (List (map_preserve (normalize_gradient_stop ~lossless) stops))
   | other -> other
 
+(* The legacy WebKit gradient takes a point as numbers and percentages as well
+   as keywords, and a stop position as a number in [0, 1] as well as a
+   percentage, with [from()] and [to()] the stops at [0] and [1]. The shortest
+   spellings are those. *)
+let normalize_webkit_gradient_point (point : Webkit_gradient.point) :
+    Webkit_gradient.point =
+  match point with
+  | Left_top -> Position (XY (Zero, Zero))
+  | Left_bottom -> Position (XY (Zero, Pct 100.))
+  | Center -> Position (XY (Pct 50., Pct 50.))
+  | Position _ -> point
+
 let normalize_webkit_gradient_stop :
     ?lossless:bool -> Webkit_gradient.stop -> Webkit_gradient.stop =
  fun ?(lossless = false) value ->
   match value with
   | From c -> preserve_if_equal value (From (normalize_color ~lossless c))
   | To c -> preserve_if_equal value (To (normalize_color ~lossless c))
-  | Color_stop (p, c) ->
-      preserve_if_equal value (Color_stop (p, normalize_color ~lossless c))
+  | Color_stop (p, c) -> (
+      let c = normalize_color ~lossless c in
+      let p : percentage =
+        match p with Pct f -> Num (Pp.printed (f /. 100.)) | p -> p
+      in
+      match (p, value) with
+      | Num 0., _ -> From c
+      | Num 1., _ -> To c
+      | p, Color_stop (p0, c0) when p == p0 && c == c0 -> value
+      | p, _ -> Color_stop (p, c))
 
 let normalize_webkit_gradient ?(lossless = false) :
     Webkit_gradient.t -> Webkit_gradient.t =
  fun value ->
+  let point = normalize_webkit_gradient_point in
+  let stops = map_preserve (normalize_webkit_gradient_stop ~lossless) in
   match value with
   | Linear r ->
-      let stops =
-        map_preserve (normalize_webkit_gradient_stop ~lossless) r.stops
-      in
-      if stops == r.stops then value else Linear { r with stops }
+      let start = point r.start
+      and finish = point r.finish
+      and stops = stops r.stops in
+      if start == r.start && finish == r.finish && stops == r.stops then value
+      else Linear { start; finish; stops }
   | Radial r ->
-      let stops =
-        map_preserve (normalize_webkit_gradient_stop ~lossless) r.stops
-      in
-      if stops == r.stops then value else Radial { r with stops }
+      let inner_center = point r.inner_center
+      and outer_center = point r.outer_center
+      and stops = stops r.stops in
+      if
+        inner_center == r.inner_center
+        && outer_center == r.outer_center
+        && stops == r.stops
+      then value
+      else Radial { r with inner_center; outer_center; stops }
 
 let normalize_radial_config (c : radial_gradient_config) =
   (* CSS Images 4 section 3.2: inside a radial-gradient() prelude the default
@@ -556,13 +602,13 @@ let rec fold_double_position_stops stops =
   | Color_percentage (c1, Option.Some p1, Option.None)
     :: Color_percentage (c2, Option.Some p2, Option.None)
     :: rest
-    when Values.equal_color c1 c2 ->
+    when single_stop_color c1 && Values.equal_color c1 c2 ->
       Color_percentage (c1, Option.Some p1, Option.Some p2)
       :: fold_double_position_stops rest
   | Color_length (c1, Option.Some l1, Option.None)
     :: Color_length (c2, Option.Some l2, Option.None)
     :: rest
-    when Values.equal_color c1 c2 ->
+    when single_stop_color c1 && Values.equal_color c1 c2 ->
       Color_length (c1, Option.Some l1, Option.Some l2)
       :: fold_double_position_stops rest
   | stop :: rest ->
@@ -574,17 +620,18 @@ let rec fold_double_position_stops stops =
    A)]: turning the gradient line 180 degrees reaches the default [to bottom],
    and reversing the stops undoes the turn. Only sound when no stop carries a
    position and no interpolation hint is present, since those would each have to
-   be mirrored to [100% - p], which is longer rather than shorter for lengths.
-   The legacy prefixed gradients measure their angle from a different zero, so
-   they are deliberately not folded here. *)
+   be mirrored to [100% - p], which is longer rather than shorter for lengths,
+   and only when each stop is one stop ([single_stop_color]). The legacy
+   prefixed gradients measure their angle from a different zero, so they are
+   deliberately not folded here. *)
 let reversible_unpositioned_stops (stops : gradient_stop list) =
   List.length stops > 1
   && List.for_all
        (fun stop ->
          match stop with
-         | Color_percentage (_, Option.None, Option.None)
-         | Color_length (_, Option.None, Option.None) ->
-             true
+         | Color_percentage (c, Option.None, Option.None)
+         | Color_length (c, Option.None, Option.None) ->
+             single_stop_color c
          | _ -> false)
        stops
 
@@ -975,10 +1022,14 @@ let read_webkit_linear_gradient_body t =
   let stops = read_gradient_stops t in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in -webkit-linear-gradient()";
-  Webkit_linear_gradient (Option.value ~default:To_bottom direction, stops)
+  Webkit_linear_gradient
+    (Option.value ~default:Default_direction direction, stops)
 
 let read_radial_gradient_body_stops t =
   Cursor.ws t;
+  (* CSS Values 4 sec. 2.6: the comma after the prelude is omitted only with the
+     prelude, so a prelude the reader stops inside is an error rather than a
+     prelude followed by stops. *)
   let config =
     match
       Cursor.option
@@ -988,12 +1039,14 @@ let read_radial_gradient_body_stops t =
             cfg.shape = None && cfg.size = None && cfg.position = None
             && cfg.interpolation = None
           then Cursor.err_invalid t "no radial config";
-          Cursor.ws t;
-          ignore (Cursor.comma_opt t);
           cfg)
         t
     with
-    | Some cfg -> cfg
+    | Some cfg ->
+        Cursor.ws t;
+        if not (Cursor.comma_opt t) then
+          Cursor.err_expected t "',' after radial-gradient prelude";
+        cfg
     | None ->
         { shape = None; size = None; position = None; interpolation = None }
   in

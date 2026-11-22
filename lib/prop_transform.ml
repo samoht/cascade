@@ -256,6 +256,11 @@ let normalize_rotate ?(ctx = Values.default_calc_ctx) :
     | X a -> preserve_if_equal value (X (na a))
     | Y a -> preserve_if_equal value (Y (na a))
     | Z a -> preserve_if_equal value (Z (na a))
+    (* CSS Transforms 2 sec. 5, [rotate]: [x], [y] and [z] name the unit vectors
+       [1 0 0], [0 1 0] and [0 0 1]. *)
+    | Axis (1., 0., 0., a) -> X (na a)
+    | Axis (0., 1., 0., a) -> Y (na a)
+    | Axis (0., 0., 1., a) -> Z (na a)
     | Axis (x, y, z, a) -> preserve_if_equal value (Axis (x, y, z, na a))
     | other -> other
 
@@ -961,9 +966,6 @@ let rec pp_rotate_value : rotate_value Pp.t =
       Pp.string ctx "z";
       Pp.space ctx ();
       pp_required_unit_angle ctx a
-  | Axis (1., 0., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (X a)
-  | Axis (0., 1., 0., a) when Pp.minified ctx -> pp_rotate_value ctx (Y a)
-  | Axis (0., 0., 1., a) when Pp.minified ctx -> pp_rotate_value ctx (Z a)
   | Axis (x, y, z, a) ->
       (* CSS Transforms 2 sec. 5 [rotate] [<angle> <number>{3}] is shorter under
          minify when the angle leads (csso convention) and a following number

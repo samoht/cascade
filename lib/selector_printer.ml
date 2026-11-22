@@ -486,6 +486,9 @@ and pp : t Pp.t =
   | Webkit_autofill -> vendor ctx "webkit-autofill"
   | Moz_ui_invalid -> vendor ctx "moz-ui-invalid"
   | Moz_ui_valid -> vendor ctx "moz-ui-valid"
+  | Webkit_full_screen -> vendor ctx "webkit-full-screen"
+  | Webkit_full_screen_ancestor -> vendor ctx "webkit-full-screen-ancestor"
+  | Moz_full_screen -> vendor ctx "moz-full-screen"
   | Scrollbar_state state -> pseudo ctx (scrollbar_state_ident state)
   (* Vendor-specific pseudo-elements *)
   | Moz_placeholder -> vendor_elem ctx "moz-placeholder"

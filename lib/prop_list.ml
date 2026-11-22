@@ -29,11 +29,6 @@ let pp_list_style_symbol ctx (symbol : list_style_symbol) =
 let pp_list_style_symbols ctx (kind, symbols) =
   let first = ref true in
   let sep symbol = pp_list_style_symbol_sep ctx first symbol in
-  let kind =
-    match kind with
-    | Option.Some Symbolic when Pp.minified ctx -> Option.None
-    | kind -> (kind : symbols_type option)
-  in
   Option.iter
     (fun kind ->
       sep (String "");
@@ -202,12 +197,28 @@ let list_style_slot_is_var (s : list_style_shorthand) =
     | _ -> false)
   || match s.image with Some (Var _ : list_style_image) -> true | _ -> false
 
-let normalize_list_style_shorthand (s : list_style_shorthand) :
+(* CSS Counter Styles 3 (ED) sec. 6.1: an omitted [symbols()] type is
+   [symbolic]. *)
+let normalize_list_style_type (value : list_style_type) : list_style_type =
+  match value with
+  | Symbols (Option.Some Symbolic, symbols) -> Symbols (Option.None, symbols)
+  | _ -> value
+
+let normalize_list_style_image ~lossless (value : list_style_image) :
+    list_style_image =
+  match value with
+  | Image i ->
+      let i' = normalize_background_image ~lossless i in
+      if i' == i then value else Image i'
+  | _ -> value
+
+let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
     list_style_shorthand =
   if list_style_slot_is_var s then s
   else
     let type_ =
       drop_default ~is_default:(fun (t : list_style_type) -> t = Disc) s.type_
+      |> option_map_preserve normalize_list_style_type
     in
     let position =
       drop_default
@@ -216,6 +227,7 @@ let normalize_list_style_shorthand (s : list_style_shorthand) :
     in
     let image =
       drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
+      |> option_map_preserve (normalize_list_style_image ~lossless)
     in
     if
       option_is_phys_same type_ s.type_
@@ -224,9 +236,9 @@ let normalize_list_style_shorthand (s : list_style_shorthand) :
     then s
     else { type_; position; image }
 
-let normalize_list_style : list_style -> list_style = function
+let normalize_list_style ~lossless : list_style -> list_style = function
   | Shorthand s as value ->
-      let s' = normalize_list_style_shorthand s in
+      let s' = normalize_list_style_shorthand ~lossless s in
       if s' == s then value else Shorthand s'
   | value -> value
 
@@ -345,6 +357,15 @@ let rec read_list_style_type t : list_style_type =
                : list_style_type));
          ])
     t
+
+(* CSS Lists 3 sec. 4.6: the [<counter-style>] of [counter()] and [counters()]
+   is a [<counter-style-name>] or [symbols()], so the string and the CSS-wide
+   keywords [list-style-type] also takes are refused here. *)
+let read_counter_style t : list_style_type =
+  match read_list_style_type t with
+  | String _ | Inherit | Initial | Unset | Revert | Revert_layer ->
+      Cursor.err_expected t "counter style"
+  | style -> style
 
 let rec read_list_style_position t : list_style_position =
   Cursor.enum_or_var "list-style-position"

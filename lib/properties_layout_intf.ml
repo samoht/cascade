@@ -213,6 +213,9 @@ type z_index =
 (** CSS opacity values. *)
 type opacity =
   | Opacity_number of float
+  | Opacity_percentage of float
+      (** [<percentage>], kept apart from the number it denotes until a typed
+          leaf picks the spelling (CSS Values 4 sec. 10.9). *)
   | Calc of opacity calc
   | Inherit
   | Initial
@@ -227,6 +230,7 @@ type opacity =
     is inside the shape. *)
 type shape_image_threshold =
   | Number of float
+  | Percentage of float
   | Calc of shape_image_threshold calc
   | Inherit
   | Initial
@@ -678,8 +682,8 @@ type flex_basis =
   | Abs of length
   | Dimension of { value : float; unit : string; repr : string }
       (** A dimension whose authored spelling the typed constructors above do
-          not carry, e.g. [1e3px] or [10.0px]. {!type-length} holds one the same
-          way. *)
+          not carry, e.g. [1e3px] or [10.0px]. {!Values.type-length} holds one
+          the same way. *)
   | Calc of flex_basis calc
   | Var of flex_basis var
 
@@ -710,7 +714,7 @@ type border_width =
   | Pct of float
   | Dimension of { value : float; unit : string; repr : string }
       (** A length in a unit [border_width] does not name, carrying the authored
-          spelling in [repr] the way {!length} does. *)
+          spelling in [repr] the way {!Values.type-length} does. *)
   | Zero
   | Auto
   | Max_content

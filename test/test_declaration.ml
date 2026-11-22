@@ -87,11 +87,55 @@ let complex_values () =
   (* An interpolation hint is positional in the same way. *)
   decl_optimizes ~prop:"background" ~into:"linear-gradient(0deg,red,30%,#00f)"
     "linear-gradient(0deg, red, 30%, blue)";
+  (* A [var()] in a stop may hold a position or several stops ([--a:red 20%]),
+     so it is not one unpositioned stop: reversing the list would reverse inside
+     the variable too, and dropping a default position from it would change
+     which stop the position lands on. *)
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(0deg,var(--a),var(--b))"
+    "linear-gradient(to top, var(--a), var(--b))";
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(0deg,var(--stops),#00f)"
+    "linear-gradient(0deg, var(--stops), blue)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(var(--a) 0%,green)"
+    "linear-gradient(var(--a) 0%, green)";
+  decl_optimizes ~prop:"background" ~into:"linear-gradient(red,var(--a) 100%)"
+    "linear-gradient(red, var(--a) 100%)";
+  decl_optimizes ~prop:"background"
+    ~into:"linear-gradient(var(--a) 10%,var(--a) 60%)"
+    "linear-gradient(var(--a) 10%, var(--a) 60%)";
   (* The legacy prefixed gradients measure their angle from a different zero, so
      the same rewrite would point them elsewhere. *)
   decl_optimizes ~prop:"background"
     ~into:"-webkit-linear-gradient(0deg,red,#00f)"
     "-webkit-linear-gradient(0deg, red, blue)";
+  (* CSS Image Values 3 (W3C Working Draft, 17 February 2011) sec. 5.1.1, the
+     syntax the Compatibility Standard sec. 3.3.1 gives the prefixed linear
+     gradients: a side keyword names where the gradient starts, [left],
+     [bottom], [right] and [top] being 0deg, 90deg, 180deg and 270deg, and an
+     omitted direction defaults to [top]. So [top] and 270deg are the default,
+     and a side stays the side it starts from, where the unprefixed reading
+     would turn it into the opposite one. *)
+  List.iter
+    (fun (fn, into, css) ->
+      decl_optimizes ~prop:"background-image"
+        ~into:(String.concat "" [ fn; into ])
+        (String.concat "" [ fn; css ]))
+    (List.concat_map
+       (fun fn ->
+         [
+           (fn, "(red,#00f)", "(red, blue)");
+           (fn, "(red,#00f)", "(top, red, blue)");
+           (fn, "(red,#00f)", "(270deg, red, blue)");
+           (fn, "(red,#00f)", "(-90deg, red, blue)");
+           (fn, "(left,red,#00f)", "(left, red, blue)");
+           (fn, "(bottom,red,#00f)", "(bottom, red, blue)");
+           (fn, "(right,red,#00f)", "(right, red, blue)");
+           (fn, "(180deg,red,#00f)", "(180deg, red, blue)");
+         ])
+       [
+         "-webkit-linear-gradient"; "-moz-linear-gradient"; "-o-linear-gradient";
+       ]);
 
   (* The SVG and filter opacities are <alpha-value>, so they minify like
      [opacity] rather than surviving as opaque unknown-property text. *)

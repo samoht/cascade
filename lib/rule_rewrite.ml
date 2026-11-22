@@ -29,14 +29,11 @@ let finalize_produce (finalize : Stylesheet.rule -> Stylesheet.rule)
       else Option.Some rule)
     produce
 
-let v ~kind ~finalize graph ~consume ~(produce : Stylesheet.rule list) =
-  let produce = finalize_produce finalize produce in
+let of_finalized ~kind graph ~consume ~produce ~size =
   match produce with
   | [] -> Option.None
   | _ ->
-      let before_size = consumed_size graph consume in
-      let after_size = Size.rules produce in
-      let saving = before_size - after_size in
+      let saving = consumed_size graph consume - size in
       if saving <= 0 then Option.None
       else
         Option.Some
@@ -47,3 +44,8 @@ let v ~kind ~finalize graph ~consume ~(produce : Stylesheet.rule list) =
             produce;
             saving;
           }
+
+let v ~kind ~finalize graph ~consume ~(produce : Stylesheet.rule list) =
+  let produce = finalize_produce finalize produce in
+  of_finalized ~kind graph ~consume ~produce
+    ~size:(Size.rules (Rule_graph.size_print graph) produce)

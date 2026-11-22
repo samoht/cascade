@@ -256,6 +256,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Line_break -> pp pp_line_break
   | Hyphens -> pp pp_hyphens
   | Webkit_hyphens -> pp pp_hyphens
+  | Text_rendering -> pp pp_text_rendering
+  | Webkit_touch_callout -> pp pp_webkit_touch_callout
   | Font_stretch -> pp pp_font_stretch
   | Font_optical_sizing -> pp pp_font_optical_sizing
   | Font_kerning -> pp pp_font_kerning

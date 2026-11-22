@@ -388,7 +388,6 @@ module Refresh = struct
 
   let check label ctx rules =
     let g = Rule_graph.of_rules rules in
-    let nodes = Rule_graph.node_count g in
     let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
     ignore (Rule_candidate.refresh state);
     let rec loop step g candidates =
@@ -400,7 +399,7 @@ module Refresh = struct
           incr commits;
           let carried = Rule_candidate.candidates state in
           let expected =
-            observed (Rule_candidate.enumerate ~nodes ~ctx ~finalize:Fun.id g')
+            observed (Rule_candidate.enumerate ~ctx ~finalize:Fun.id g')
           in
           let got = observed carried in
           if not (List.equal String.equal expected got) then begin
@@ -467,12 +466,52 @@ module Refresh = struct
       (List.length files) !commits
 end
 
+(* A run is a fixed point of a graph built afresh from the rules it prints, in
+   that order: a run over that graph commits nothing. Each sheet's rules are
+   scheduled once, and the sheets whose fresh run commits are counted. This
+   checks one build against itself, so it needs no baseline. *)
+module Settle = struct
+  let printed g =
+    Array.to_list
+      (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
+
+  let run paths =
+    let files =
+      List.concat_map
+        (fun path ->
+          if Sys.is_directory path then css_files path [] else [ path ])
+        paths
+      |> List.sort String.compare
+    in
+    let ctx = Ctx.fragment and finalize = Fun.id in
+    let moved = ref 0 in
+    List.iter
+      (fun path ->
+        match Candidates.rules (read_file path) with
+        | [] -> ()
+        | rules ->
+            let outcome =
+              Rule_scheduler.run ~ctx ~finalize (Rule_graph.of_rules rules)
+            in
+            let again =
+              Rule_scheduler.run ~ctx ~finalize
+                (Rule_graph.of_rules (printed outcome.graph))
+            in
+            let commits = Rule_graph.generation again.graph > 0 in
+            if commits then incr moved;
+            Fmt.pr "%s\t%s\n%!" path (if commits then "moves" else "stays"))
+      files;
+    Fmt.epr "settle: %d sheets, %d move on a fresh graph\n%!"
+      (List.length files) !moved
+end
+
 let usage () =
   fail
     "usage: driver outputs CORPUS_ROOT\n\
     \       driver candidates [--quick]\n\
     \       driver refresh PATH...\n\
-    \       driver refresh --random COUNT SIZE"
+    \       driver refresh --random COUNT SIZE\n\
+    \       driver settle PATH..."
 
 let () =
   match Array.to_list Sys.argv with
@@ -482,4 +521,5 @@ let () =
   | [ _; "refresh"; "--random"; count; size ] ->
       Refresh.run_random ~count:(int_of_string count) ~size:(int_of_string size)
   | _ :: "refresh" :: (_ :: _ as paths) -> Refresh.run paths
+  | _ :: "settle" :: (_ :: _ as paths) -> Settle.run paths
   | _ -> usage ()

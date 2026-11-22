@@ -80,8 +80,12 @@ let rec pp_animation_name : animation_name Pp.t =
          a [<string>], and only the ident arm excludes [none], [default] and the
          CSS-wide keywords. Unquoting one of those names writes a different
          declaration, and in a list it writes no declaration at all. *)
-      if Pp.minified ctx && not (keyframes_name_needs_quotes name) then
-        Pp.string ctx name
+      let ident = Parser.escape_ident name in
+      if
+        Pp.minified ctx
+        && (not (keyframes_name_needs_quotes name))
+        && String.length ident <= String.length name + 2
+      then Pp.string ctx ident
       else Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
@@ -885,7 +889,12 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
    output, which is a pass too late for output that is input. *)
 let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
     animation_shorthand =
-  let duration = option_map_preserve (Values.normalize_duration ~ctx) a.duration
+  (* CSS Animations 1 sec. 3.2 gives the duration a [0s,inf] range, which a
+     folded call keeps as its wrapper (CSS Values 4 sec. 10.12). *)
+  let duration =
+    option_map_preserve
+      (Values.normalize_duration ~non_negative:true ~ctx)
+      a.duration
   and delay = option_map_preserve (Values.normalize_duration ~ctx) a.delay
   and timing_function =
     option_map_preserve normalize_timing_function a.timing_function
@@ -893,14 +902,15 @@ let normalize_animation_shorthand ~ctx (a : animation_shorthand) :
     option_map_preserve
       (normalize_animation_iteration_count ~ctx)
       a.iteration_count
-  in
+  and timeline = option_map_preserve normalize_animation_timeline a.timeline in
   if
     option_is_phys_same duration a.duration
     && option_is_phys_same delay a.delay
     && option_is_phys_same timing_function a.timing_function
     && option_is_phys_same iteration_count a.iteration_count
+    && option_is_phys_same timeline a.timeline
   then a
-  else { a with duration; timing_function; delay; iteration_count }
+  else { a with duration; timing_function; delay; iteration_count; timeline }
 
 (* [pp_animation_initial_none] writes [none] for a shorthand holding nothing but
    initials, on the ground CSS Animations 1 (ED) sec. 4.9 gives: what such a

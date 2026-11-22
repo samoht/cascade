@@ -24,8 +24,9 @@ type scope = [ `Fragment | `Stylesheet ]
     guaranteed not to disturb any prior write. *)
 
 type objective = [ `Raw | `Transfer ]
-(** The size objective for global factoring. [`Raw] keeps raw-byte wins;
-    [`Transfer] rejects a result that grows the estimated DEFLATE size. *)
+(** The size objective for global factoring. [`Transfer] merges rules only
+    within 128 rules of where each selector was written; [`Raw] merges at any
+    distance. *)
 
 type browser_version = int * int
 
@@ -51,11 +52,6 @@ val deduplicate_declarations :
     importance the last one wins. [scope] (default [`Fragment]) gates
     partial-coverage shorthand synthesis; see the {!scope} doc. *)
 
-val duplicate_buggy_properties : declaration list -> declaration list
-[@@deprecated "drop the call, it returns its input; removed in 1.4.0"]
-(** [duplicate_buggy_properties decls] is [decls]. The WebKit fallbacks it was
-    documented to add are {!add_compatibility_prefixes}'s. *)
-
 type ctx
 (** Optimization context: the {!scope} together with the registered-custom-
     property predicate and the [lossless], [aggressive], [extend_lists], and
@@ -70,20 +66,23 @@ val ctx_of_scope :
   ?closed_world:bool ->
   ?objective:objective ->
   ?enforce_spec:bool ->
+  ?targets:targets ->
   ?judge:targets ->
   ?stats:Stats.t ->
   scope option ->
   ctx
 (** [ctx_of_scope ?lossless ?aggressive ?regroup ?extend_lists ?closed_world
-     ?objective ?enforce_spec ?judge ?stats scope] builds the context the
-    composers take; [None] is [`Fragment]. [aggressive] forces the expensive
+     ?objective ?enforce_spec ?targets ?judge ?stats scope] builds the context
+    the composers take; [None] is [`Fragment]. [aggressive] forces the expensive
     global factoring fixpoint to run even when its preflight predicts low or no
     gain. [regroup] permits order-dependent regrouping of adjacent rules.
     [extend_lists] is for direct DAG-scheduler experiments; the main stylesheet
     optimizer enables guarded selector-list extension internally. [closed_world]
     asserts the caller knows the exact HTML and that no element matches two
     clashing selectors, so the optimizer may merge rules it would otherwise keep
-    apart; unsafe for an unknown DOM. [objective] defaults to [`Transfer]. *)
+    apart; unsafe for an unknown DOM. [objective] defaults to [`Transfer].
+    [targets] (default {!evergreen_targets}) are the floors whose fallbacks
+    deduplication keeps. *)
 
 val compose_shorthands :
   ?held:Shorthand.held ->
@@ -124,40 +123,6 @@ val drop_unknown_at_rules : t -> t
     stylesheet onto what one browser applies of it. Serialisation does not do
     this: the reader of a transform's output is not always a browser, and an
     agent that later implements the name would render the two differently. *)
-
-(** {1 Edge Model}
-
-    Deprecated, removed in 1.4.0: nothing in Cascade reads these. *)
-
-include sig
-  [@@@alert "-deprecated"]
-
-  (** Existential wrapper that hides the value type of a typed property tag, so
-      properties of different value types can live in the same edge list. *)
-  type packed_property = Packed : 'a Properties.property -> packed_property
-  [@@deprecated "use Declaration.prop_key; removed in 1.4.0"]
-
-  type edge = {
-    summary : Selector_summary.t;
-    property : packed_property;
-    important : bool;
-  }
-  [@@deprecated
-    "use Selector_summary.t and Declaration.prop_key; removed in 1.4.0"]
-  (** A single property write in the CSS graph: a selector's subject summary
-      paired with the typed property it writes. This is the (selector, property)
-      edge from the CSS-graph model of Hague-Lin-Hong (TOPLAS 2019), modulo the
-      cheap subject-summary fingerprint used in place of full selector
-      intersection. *)
-
-  val edges_of_rule : rule -> edge list
-  [@@deprecated
-    "use Selector_summary.of_selector and Stylesheet.declarations; removed in \
-     1.4.0"]
-  (** [edges_of_rule r] enumerates the property writes in [r]. If [r.selector]
-      is a comma-separated list, one edge is emitted per (subject summary,
-      property) pair; otherwise one edge per declaration. *)
-end
 
 (** {1 Rule Optimization} *)
 
@@ -274,11 +239,6 @@ val drop_empty_rules : statement list -> statement list
 
 (** {1 Stylesheet Optimization} *)
 
-val apply_property_duplication : t -> t
-[@@deprecated "drop the call, it returns its input; removed in 1.4.0"]
-(** [apply_property_duplication ss] is [ss]; see {!duplicate_buggy_properties}.
-*)
-
 val add_compatibility_prefixes : targets:targets -> t -> t
 (** [add_compatibility_prefixes ~targets ss] adds the vendor-prefixed
     declarations and feature-query alternatives required by [targets]. An
@@ -315,14 +275,23 @@ val stylesheet :
     the top level with the parent selector applied to their inner rules.
 
     [targets] defaults to {!evergreen_targets} and owns compatibility-prefix
-    generation. It is ignored when [enforce_spec] is [true].
+    generation, which is ignored when [enforce_spec] is [true]. Its versions are
+    floors too, in every mode: an earlier declaration a later one covers is
+    dropped only when every browser at or above them that reads it reads the
+    later one, and stays as the fallback a floor paints otherwise. [judge], when
+    set, is asked the same question. Without [judge] the minifier also keeps the
+    fallback before a CSS Color 4 colour or a runtime substitution.
 
-    [judge] names the browsers the sheet is judged for, and is unset by default:
-    a [@supports] guard every one of them satisfies is unwrapped, one none of
-    them satisfies is dropped, and a colour fallback every one of them parses
-    past is dead. Without it every author guard and fallback survives for the
-    engine that renders the sheet to answer (CSS Conditional 5 sec. 2). It is
-    ignored when [enforce_spec] is [true].
+    [judge] names the browsers the sheet is judged for, and is unset by default.
+    Each version is a floor, and the browsers judged for are every release from
+    it to the newest one the web-features dataset records. The run may delete
+    only what every one of them ignores: a [@supports] guard true in every one
+    of them is unwrapped, one false in every one is dropped, and a colour
+    fallback every one of them reads past is dead. A guard true at the floor and
+    false from a later release, or the reverse, stays. Without [judge] every
+    author guard and fallback survives for the engine that renders the sheet to
+    answer (CSS Conditional 5 sec. 2). It is ignored when [enforce_spec] is
+    [true].
 
     [scope] (default [`Fragment]) gates partial-coverage shorthand synthesis;
     see the {!scope} doc.
@@ -339,8 +308,9 @@ val stylesheet :
     prefix.
 
     When [aggressive] is [true] (default [false]), global factoring runs even
-    when its preflight predicts low or no gain, candidate limits widen, and the
-    top-level statement pipeline uses a larger structural-fixpoint cap.
+    when its preflight predicts low or no gain and candidate limits widen. In
+    every mode the top-level statement pipeline makes one pass, and optimising
+    the result again returns it.
 
     When [regroup] is [true] (the default), order-dependent adjacent rule runs
     may be regrouped by factoring shared declarations and synthesising nesting.
@@ -354,9 +324,10 @@ val stylesheet :
     the CSS you control). The default is safe for any page.
 
     [objective] (default [`Transfer]) chooses the size metric for global
-    factoring. [`Transfer] discards a result that grows estimated DEFLATE size
-    even when it shrinks raw bytes; [`Raw] keeps every raw-byte win and suits
-    output that ships uncompressed.
+    factoring. [`Transfer] minimises output bytes over merges that keep every
+    selector within 128 rules of where it was written, since a selector moved
+    away from its neighbours stops compressing against them; [`Raw] merges at
+    any distance and suits output that ships uncompressed.
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. This is opt-in
@@ -364,7 +335,7 @@ val stylesheet :
     stylesheet, or [getComputedStyle]) - the same closed-world assumption as
     {!Css.inline_vars}.
 
-    [stats] records what this run did; read it back with {!Stats.snapshot}.
+    [stats] records what this run did; read it back with {!Stats.val-snapshot}.
     Without it the run counts into a recorder of its own that nobody reads. *)
 
 val flatten_nesting : t -> t

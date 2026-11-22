@@ -66,27 +66,39 @@ let calc_operand_value : type a. a calc -> a calc = function
    too and hash apart from the keyword the same text parses to. [infinity] /
    [-infinity] are constants of their own in that list and keep their values. *)
 let calc_num : type a. float -> a calc =
- fun f -> if Float.is_nan f then Math_const Nan else Num f
+ fun f -> if Float.is_nan f then Math_const Nan else Num (Pp.printed f)
 
 let rec minify_angle_arg : angle_arg -> angle_arg = function
-  | Operation (l, op, r) -> (
-      let l = minify_angle_arg l in
-      let r = minify_angle_arg r in
+  | Operation (l0, op, r0) as arg -> (
+      let l = minify_angle_arg l0 in
+      let r = minify_angle_arg r0 in
       match (l, op, r) with
-      | Deg a, Add, Deg b -> Deg (a +. b)
-      | Deg a, Sub, Deg b -> Deg (a -. b)
-      | Rad a, Add, Rad b -> Rad (a +. b)
-      | Rad a, Sub, Rad b -> Rad (a -. b)
-      | Turn a, Add, Turn b -> Turn (a +. b)
-      | Turn a, Sub, Turn b -> Turn (a -. b)
-      | Grad a, Add, Grad b -> Grad (a +. b)
-      | Grad a, Sub, Grad b -> Grad (a -. b)
-      | _ -> Operation (l, op, r))
-  | Grouped inner -> (
+      | Deg a, Add, Deg b -> Deg (Pp.printed (a +. b))
+      | Deg a, Sub, Deg b -> Deg (Pp.printed (a -. b))
+      | Rad a, Add, Rad b -> Rad (Pp.printed (a +. b))
+      | Rad a, Sub, Rad b -> Rad (Pp.printed (a -. b))
+      | Turn a, Add, Turn b -> Turn (Pp.printed (a +. b))
+      | Turn a, Sub, Turn b -> Turn (Pp.printed (a -. b))
+      | Grad a, Add, Grad b -> Grad (Pp.printed (a +. b))
+      | Grad a, Sub, Grad b -> Grad (Pp.printed (a -. b))
+      | _ -> if l == l0 && r == r0 then arg else Operation (l, op, r))
+  | Grouped inner as arg -> (
       match minify_angle_arg inner with
-      | Operation _ as inner -> Grouped inner
+      | Operation _ as inner' -> if inner' == inner then arg else Grouped inner'
       | inner -> inner)
   | arg -> arg
+
+(* The angle argument of [sin()], [cos()] and [tan()] folds its own sums. *)
+let minify_trig_fn (fn : math_fn) : math_fn =
+  let arg a rebuild =
+    let a' = minify_angle_arg a in
+    if a' == a then fn else rebuild a'
+  in
+  match fn with
+  | Sin a -> arg a (fun a -> Sin a)
+  | Cos a -> arg a (fun a -> Cos a)
+  | Tan a -> arg a (fun a -> Tan a)
+  | _ -> fn
 
 let round_to_step strategy value step =
   if step = 0. then value
@@ -171,9 +183,12 @@ and pp_math_fn ctx fn =
       Pp.char ctx ')'
   | Mod_n (a, b) -> call "mod" [ a; b ]
   | Rem_n (a, b) -> call "rem" [ a; b ]
+  | Min_n args -> call "min" args
+  | Max_n args -> call "max" args
+  | Clamp_n (lo, v, hi) -> call "clamp" [ lo; v; hi ]
 
 and pp_angle_arg ctx arg =
-  match if Pp.minified ctx then minify_angle_arg arg else arg with
+  match arg with
   | Deg f -> Pp.unit ctx f "deg"
   | Rad f -> Pp.unit ctx f "rad"
   | Turn f -> Pp.unit ctx f "turn"
@@ -231,6 +246,14 @@ and eval_math_fn fn =
     | Some av, Some bv -> Some (f av bv)
     | _ -> None
   in
+  let fold_args f initial args =
+    List.fold_left
+      (fun acc a ->
+        match (acc, eval_math_arg a) with
+        | Some acc, Some v -> Some (f acc v)
+        | _ -> None)
+      (Some initial) args
+  in
   match fn with
   | Sin a -> Option.map Float.sin (eval_angle_arg a)
   | Cos a -> Option.map Float.cos (eval_angle_arg a)
@@ -267,6 +290,12 @@ and eval_math_fn fn =
       binary (round_to_step strategy) value step
   | Mod_n (a, b) -> binary mod_value a b
   | Rem_n (a, b) -> binary Float.rem a b
+  | Min_n args -> fold_args Float.min Float.infinity args
+  | Max_n args -> fold_args Float.max Float.neg_infinity args
+  | Clamp_n (lo, v, hi) -> (
+      match (eval_math_arg lo, eval_math_arg v, eval_math_arg hi) with
+      | Some lo, Some v, Some hi -> Some (Float.max lo (Float.min v hi))
+      | _ -> None)
 
 (* What a static math function reduces to: a plain coefficient, or one that
    carries a unit. CSS Values 4 sec. 10.7 gives [abs()] and [hypot()] the type
@@ -334,6 +363,30 @@ let absolute_units =
 let is_absolute_unit unit =
   List.mem (String.lowercase_ascii unit) absolute_units
 
+(* Sec. 10.2 answers a comparison with the one type its arguments share, so
+   every unit has to match and the result keeps it. *)
+let compared_results f results =
+  match results with
+  | Some first :: rest
+    when List.for_all
+           (function
+             | Some r ->
+                 Option.equal String.equal (math_result_unit r)
+                   (math_result_unit first)
+             | None -> false)
+           rest ->
+      let value =
+        List.fold_left
+          (fun acc r ->
+            match r with Some r -> f acc (math_result_value r) | None -> acc)
+          (math_result_value first) rest
+      in
+      Option.some
+        (match math_result_unit first with
+        | Some unit -> United (value, unit)
+        | None -> Scalar value)
+  | _ -> Option.none
+
 let rec math_arg_result (arg : math_arg) : math_result option =
   match arg with
   | Lit f -> Option.some (Scalar f)
@@ -378,6 +431,14 @@ and math_fn_result (fn : math_fn) : math_result option =
       stepped_result (round_to_step strategy) value step
   | Mod_n (a, b) -> stepped_result mod_value a b
   | Rem_n (a, b) -> stepped_result Float.rem a b
+  | Min_n args -> compared_result Float.min args
+  | Max_n args -> compared_result Float.max args
+  (* Sec. 10.2: clamp(MIN, VAL, MAX) is max(MIN, min(VAL, MAX)). *)
+  | Clamp_n (lo, v, hi) -> (
+      match compared_result Float.min [ v; hi ] with
+      | Some inner ->
+          compared_results Float.max [ math_arg_result lo; Some inner ]
+      | None -> Option.none)
   (* Sec. 10.6: the answer turns on whether the argument is zero, and a relative
      unit has a reference that can be -- a zero font-size, a zero viewport, a
      zero container, a percentage of zero -- so the coefficient's sign is not
@@ -399,6 +460,8 @@ and math_fn_result (fn : math_fn) : math_result option =
      inverse trig functions, whose [<angle>] result only the angle evaluator can
      place. *)
   | _ -> Option.map (fun v -> Scalar v) (eval_math_fn fn)
+
+and compared_result f args = compared_results f (List.map math_arg_result args)
 
 (* Sec. 10.9 gives the stepped-value functions arguments of one type and answers
    with that type, so two units have to match and the result keeps theirs. *)
@@ -460,7 +523,11 @@ and math_fn_contains_var = function
   | Rem_n (a, b) ->
       math_arg_contains_var a || math_arg_contains_var b
   | Log (a, None) -> math_arg_contains_var a
-  | Hypot args -> List.exists math_arg_contains_var args
+  | Hypot args | Min_n args | Max_n args ->
+      List.exists math_arg_contains_var args
+  | Clamp_n (a, b, c) ->
+      math_arg_contains_var a || math_arg_contains_var b
+      || math_arg_contains_var c
 
 let rec calc_contains_var : type a. a calc -> bool = function
   | Var _ -> true
@@ -485,9 +552,10 @@ let rec normalize_calc_parens : type a. a calc -> a calc =
       let left' = normalize_calc_parens left in
       let right' = normalize_calc_parens right in
       if left' == left && right' == right then calc else Expr (left', op, right')
-  | Val _ | Var _ | Num _ | Math_const _ | Math_fn _ | Sibling_index
-  | Sibling_count ->
-      calc
+  | Math_fn fn ->
+      let fn' = minify_trig_fn fn in
+      if fn' == fn then calc else Math_fn fn'
+  | Val _ | Var _ | Num _ | Math_const _ | Sibling_index | Sibling_count -> calc
 
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
@@ -612,30 +680,64 @@ let fold_zero_numeric_expr : type a.
       match value with Some 0. -> Some (Num 0.) | _ -> None)
   | _ -> None
 
-(* CSS Values 4 sec. 10.10.1 value-independent multiplicative calc identities:
-   these fold even across a kept [var()] ([var * 1 = var]). A zero sum term is
-   deliberately not an identity here: the spec only combines sum children with
-   identical units and warns that removing any other zero can change the calc's
-   type. Zero-producing products take the type's canonical zero from [~zero],
-   and [~is_zero] recognises a typed zero leaf ([0px], not just [0]). Operands
-   are already evaluated; numeric op numeric is the caller's job. *)
+(* Context threaded through the calc simplifier. [var_is_single_valued n]
+   reports whether [--n] has a single-component [@property] syntax, so
+   [calc(var(--n))] substitutes one term and its redundant grouping may be
+   dropped. [var_is_number n] reports a [<number>] or [<integer>] registration,
+   whose [var()] substitutes one number. The default knows nothing, so every
+   such rewrite is a no-op. *)
+type calc_ctx = {
+  var_is_single_valued : string -> bool;
+  var_is_number : string -> bool;
+  budget : bool;
+}
+
+let default_calc_ctx =
+  {
+    var_is_single_valued = (fun _ -> false);
+    var_is_number = (fun _ -> false);
+    budget = false;
+  }
+
+(* CSS Values 4 sec. 10.10.1 value-independent multiplicative calc identities.
+   [x * 1], [1 * x] and [x / 1] keep [x] whatever it substitutes: the factor
+   binds to one term of it. A zero product drops [x], so it folds only where
+   [x]'s type and validity are known. An unregistered [var()] substitutes tokens
+   of any type and count, and none at all when undefined (CSS Variables 1 sec.
+   3), so [x] holds no [var()], or is a [<number>] registration, which
+   substitutes one number and leaves the product the type of the other factor. A
+   zero sum term is deliberately not an identity here: the spec only combines
+   sum children with identical units and warns that removing any other zero can
+   change the calc's type. Zero-producing products take the type's canonical
+   zero from [~zero], and [~is_zero] recognises a typed zero leaf ([0px], not
+   just [0]). Operands are already evaluated; numeric op numeric is the caller's
+   job. *)
 let calc_identity : type a.
+    ctx:calc_ctx ->
     zero:a calc ->
     is_zero:(a -> bool) ->
     a calc ->
     calc_op ->
     a calc ->
     a calc option =
- fun ~zero ~is_zero l op r ->
+ fun ~ctx ~zero ~is_zero l op r ->
+  let typed x = not (calc_contains_var x) in
+  let number = function
+    | (Var v : a calc) -> ctx.var_is_number v.name
+    | _ -> false
+  in
+  let drops x = typed x || number x in
+  let zero_times x = if typed x then zero else Num 0. in
   match (l, op, r) with
   | _, Mul, Num 1. | _, Div, Num 1. -> Some l
   | Num 1., Mul, _ -> Some r
-  | _, Mul, Num 0. | Num 0., Mul, _ -> Some zero
+  | x, Mul, Num 0. when drops x -> Some (zero_times x)
+  | Num 0., Mul, x when drops x -> Some (zero_times x)
   (* A typed zero ([0px]) keeps its own spelling here; the optimizer's
      zero-length strip canonicalises it, so a non-optimised serialisation still
      reads [0px] rather than a bare [0]. *)
-  | (Val v as z), Mul, _ when is_zero v -> Some z
-  | _, Mul, (Val v as z) when is_zero v -> Some z
+  | (Val v as z), Mul, x when is_zero v && drops x -> Some z
+  | x, Mul, (Val v as z) when is_zero v && drops x -> Some z
   | _ -> None
 
 (* CSS Values 4 10.7 structural simplification of a typed calc AST. Folds [Expr
@@ -643,15 +745,6 @@ let calc_identity : type a.
    ([calc_identity]). The per-type evaluators ([eval_length_calc] /
    [eval_lp_calc]) add the typed [Val] combinations ([1px + 2px], [2px * 3]) and
    pass their own [~zero] / [~is_zero] so a typed zero collapses too. *)
-(* Context threaded through the calc simplifier. [var_is_single_valued n] reports
-   whether [--n] has a single-component [@property] syntax, so [calc(var(--n))]
-   substitutes one term and its redundant grouping may be dropped. The default
-   knows nothing, so every such rewrite is a no-op. *)
-type calc_ctx = { var_is_single_valued : string -> bool; budget : bool }
-
-let default_calc_ctx =
-  { var_is_single_valued = (fun _ -> false); budget = false }
-
 (* A nested [calc()] or a parenthesised group around a single leaf is redundant
    grouping: drop it. A [var()] leaf is only safe to unwrap when the var is
    single-valued; otherwise its substitution could be a multi-term expression
@@ -703,7 +796,7 @@ let rec eval_calc_inner : type a. ctx:calc_ctx -> a calc -> a calc =
           | None -> Expr (l, op, r))
       | _ -> (
           match
-            calc_identity ~zero:(Num 0.) ~is_zero:(fun _ -> false) l op r
+            calc_identity ~ctx ~zero:(Num 0.) ~is_zero:(fun _ -> false) l op r
           with
           | Some folded -> folded
           | None -> (
@@ -735,7 +828,7 @@ let settle_computed : type a. (a -> a) -> a calc * bool -> a calc =
    typed value it produces, and an operand a kept [calc()] will print settles
    here because nothing further will fold it. *)
 let fold_typed_expr : type a.
-    budget:bool ->
+    ctx:calc_ctx ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
     combine:(calc_op -> a -> a -> a option) ->
     round:(a -> a) ->
@@ -746,7 +839,8 @@ let fold_typed_expr : type a.
     calc_op ->
     a calc * bool ->
     a calc * bool =
- fun ~budget ~scale ~combine ~round ~is_zero ~zero ~computed lf op rf ->
+ fun ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed lf op rf ->
+  let budget = ctx.budget in
   let l = fst lf and r = fst rf in
   let lc = calc_operand_value l in
   let rc = calc_operand_value r in
@@ -787,7 +881,7 @@ let fold_typed_expr : type a.
   | _, _, _, None -> (
       (* An identity returns one operand verbatim, so the surviving value keeps
          that operand's provenance rather than the expression's. *)
-      match calc_identity ~zero ~is_zero l op r with
+      match calc_identity ~ctx ~zero ~is_zero l op r with
       | Some folded -> (folded, snd lf || snd rf)
       | None -> keep ())
 
@@ -827,8 +921,8 @@ let eval_typed_calc : type a.
     | Parens inner -> wrap (fun r -> Parens r) inner
     | Expr (left, op, right) ->
         let computed = calc_is_computed left || calc_is_computed right in
-        fold_typed_expr ~budget:ctx.budget ~scale ~combine ~round ~is_zero ~zero
-          ~computed (reduce left) op (reduce right)
+        fold_typed_expr ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed
+          (reduce left) op (reduce right)
   and wrap rewrap inner =
     let reduced, computed = reduce inner in
     (unwrap_grouping ~ctx ~rewrap reduced, computed)
@@ -915,9 +1009,7 @@ let pp_calc_with : type a.
   | Val v when Pp.minified ctx && unwrap v ->
       Option.value pp_unwrapped ~default:pp_value ctx v
   | Num n when Pp.minified ctx && unwrap_num -> Pp.float ctx n
-  | _ ->
-      let ctx = { ctx with in_calc = true } in
-      Pp.call "calc" (pp_calc_contents pp_value) ctx calc
+  | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =
   pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc

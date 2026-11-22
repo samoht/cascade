@@ -29,5 +29,4 @@ let () =
       Fuzz_keyframe.suite;
       Fuzz_apply.suite;
       Fuzz_pp.suite;
-      Fuzz_gzip_size.suite;
     ]

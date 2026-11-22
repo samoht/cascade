@@ -146,6 +146,30 @@ let test_factor_interval_schedule () =
   Alcotest.(check string)
     "interval factoring is idempotent" once (minify_str once)
 
+(* Factoring weighs a rewrite by the bytes the run prints, and the flags change
+   some spellings: [--enforce-spec] keeps a multi-word family name's quotes and
+   [--lossless] keeps an oklch chroma's number where the default writes [76%].
+   Each pair below prints 97 and 91 bytes unfactored and 95 and 89 factored, so
+   the run takes the factored form. *)
+let factoring_weighs_the_flagged_print () =
+  let minify ~lossless ~enforce_spec css =
+    Css.minify ~lossless ~enforce_spec (Css.stylesheet css)
+  in
+  Alcotest.(check string)
+    "enforce-spec weighs the quoted family"
+    ".aaaaaaaaaa,.bbbbbbbbbb{font-family:\"Axxxxxxxx \
+     B\"}.aaaaaaaaaa{width:1px}.bbbbbbbbbb{height:1px}"
+    (minify ~lossless:false ~enforce_spec:true
+       ".aaaaaaaaaa{font-family:\"Axxxxxxxx \
+        B\";width:1px}.bbbbbbbbbb{font-family:\"Axxxxxxxx B\";height:1px}");
+  Alcotest.(check string)
+    "lossless weighs the number chroma"
+    ".aaaaaaaaa,.bbbbbbbbb{color:oklch(.7 .304 \
+     20)}.aaaaaaaaa{width:1px}.bbbbbbbbb{height:1px}"
+    (minify ~lossless:true ~enforce_spec:false
+       ".aaaaaaaaa{color:oklch(.7 .304 20);width:1px}.bbbbbbbbb{color:oklch(.7 \
+        .304 20);height:1px}")
+
 let test_factor_interval_keeps_overrides () =
   (* A same-property different-value member can still join the common-property
      group, but its value must be emitted after the shared rule. This catches
@@ -156,6 +180,27 @@ let test_factor_interval_keeps_overrides () =
     ".a,.b,.c{display:block;color:#00f}.a,.c{color:red}"
     (minify_str
        ".a{display:block;color:red}.b{display:block;color:blue}.a{display:block;color:red}.c{display:block;color:red}")
+
+let test_factor_override_keeps_its_longhand () =
+  (* A member that overrides the group's default [border] keeps its own [border]
+     in the leftover, and a longhand it wrote after that shorthand has to stay
+     after it: [border] resets [border-top-color], so the longhand written first
+     would be dead and the element's top border would take the shorthand's
+     colour. Every border longhand is a reset of the same kind. *)
+  Alcotest.(check string)
+    "an override keeps the longhand written after it"
+    ".a,.b{color:red;border:1px solid#ddd}.a{border:1px \
+     solid#ccc;border-top-color:red}"
+    (minify_str
+       ".b{color:red;border:1px solid #ddd}.a{color:red;border:1px solid \
+        #ccc;border-top-color:red}");
+  Alcotest.(check string)
+    "and a side shorthand written after it"
+    ".a,.b{color:red;border:1px solid#ddd}.a{border:1px \
+     solid#ccc;border-top:3px solid red}"
+    (minify_str
+       ".b{color:red;border:1px solid #ddd}.a{color:red;border:1px solid \
+        #ccc;border-top:3px solid red}")
 
 let test_factor_selector_branch_keeps_later_override () =
   (* Extracting the shared overflow/position declarations must not let the
@@ -221,6 +266,132 @@ let test_large_stylesheet_normalizes_vendor_aliases () =
   Alcotest.(check string)
     "large-sheet aliases compare normalized values" once (minify_str once)
 
+(* A rule whose nested blocks are merged before its declaration runs are
+   hoisted: hoisting [--b:1] back into the rule's own declarations leaves the
+   two [@supports] blocks adjacent, and nothing merged them until the output was
+   optimized again. The padding takes the sheet past the size where the pipeline
+   makes more than one pass. *)
+let test_large_stylesheet_hoist_rejoins_blocks () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".hoist-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    ".p{--a:1;@supports (color:color-mix(in \
+     lab,red,red)){--a:2}--b:1;@supports (color:color-mix(in \
+     lab,red,red)){--b:2}}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the hoisted declarations leave one block" true
+    (Astring.String.is_prefix
+       ~affix:
+         ".p{--a:1;--b:1;@supports(color:color-mix(in \
+          lab,red,red)){--a:2;--b:2}}"
+       once);
+  Alcotest.(check string)
+    "hoisting then merging converges in one pass" once (minify_str once)
+
+(* A distant [@media] merge takes the block between [.a] and [.b] away, which
+   joins the two rule runs it separated. The factoring had read them apart, so
+   the declarations [.a] and [.b] share were only factored when the output was
+   optimized again. *)
+let test_large_stylesheet_block_merge_rejoins_runs () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".media-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    "@media \
+     (prefers-color-scheme:dark){.z:where(.s){color:red}}.a:where(.d){--f:red;--s:var(--v,var(--p),var(--f) \
+     var(--fp),var(--t) var(--tp))}@media \
+     (prefers-color-scheme:dark){.a:where(.s){--f:red}}.b:where(.d){--f:blue;--s:var(--v,var(--p),var(--f) \
+     var(--fp),var(--t) var(--tp))}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the joined run shares its declarations" true
+    (Astring.String.is_infix ~affix:".a:where(.d),.b:where(.d){--f:red;--s:"
+       once);
+  Alcotest.(check string)
+    "merging blocks then factoring converges in one pass" once (minify_str once)
+
+(* [.x] and [.y] share [color:red] and sit 141 rules apart, with pairs of
+   identical bodies between them that merge. Factoring reads a bucket's members
+   in the order they print, wherever that is, so it pairs the two on the input
+   as on the output: a search limited to 128 source positions paired them only
+   when the output was minified again. *)
+let test_large_stylesheet_factoring_reaches_span () =
+  let pairs =
+    List.init 70 (fun i -> Fmt.str ".a%d{width:%dpx}.b%d{width:%dpx}" i i i i)
+  in
+  let input =
+    String.concat ""
+      ((".x{color:red;margin:0}" :: pairs) @ [ ".y{color:red;padding:0}" ])
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the rules the merges brought within reach share their declaration" true
+    (Astring.String.is_prefix ~affix:".x,.y{color:red}" once);
+  Alcotest.(check string)
+    "factoring over the printed span converges in one pass" once
+    (minify_str once)
+
+(* A rewrite leaves the rules it consumed in the graph's order, and the orders
+   they imposed stand. Here they made [.MomentCapsuleCoverAttribution] and a
+   later rule ambiguous to merge across, an order a graph of the output, which
+   holds only the rules it prints, does not have: minifying the output again
+   merged them. *)
+let test_large_stylesheet_factoring_past_consumed_rules () =
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".relay-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input =
+    ".MomentMediaItem-entity--image{display:block}.MomentButton{display:inline-block}.MomentCapsuleCoverAttribution{display:block}.MomentCapsuleCoverAttribution,.MomentCapsuleCoverAttribution:hover{color:#aab8c2}.MomentSportsScores--portrait \
+     .MomentSportsScores-sportsTeamScore{-ms-flex-negative:0}.MomentCapsuleCover \
+     .MomentUserByline-nameBreak{display:block}" ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "factoring past consumed rules converges in one pass" once (minify_str once)
+
+(* Nesting takes [#p form] into [#p] once the run is factored, and [#p], which
+   nests a rule, is then no member of the bucket [display:none] files: the rule
+   that bucket printed between [#s,#t] and [#k] is gone, so the two are
+   neighbours and share it. Minifying the output again factored it out of
+   them. *)
+let test_nesting_then_factoring_converges () =
+  let input =
+    "#s,#t{display:none}#p{_position:absolute;background:#fafafa;border-bottom:1px \
+     solid \
+     #ebebeb;display:none;min-width:960px;opacity:0;position:fixed;top:-359px;width:100%;z-index:500}#p \
+     form{_width:850px}#k{cursor:default;display:none;margin-top:1px}"
+  in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the rules nesting leaves neighbours share their declaration" true
+    (Astring.String.is_prefix ~affix:"#k,#s,#t{display:none}" once);
+  Alcotest.(check string)
+    "nesting then factoring converges in one pass" once (minify_str once)
+
+(* The rule nested in [@media] under a pseudo-element matches nothing and goes
+   once the rule's body is optimized, which leaves the [@media] empty after the
+   body's own pass dropped its empty blocks. Below 129 rules the pipeline's next
+   pass dropped it; above, nothing did until the output was minified again. *)
+let test_large_stylesheet_drops_block_left_empty () =
+  let padding =
+    List.init 129 (fun i -> Fmt.str ".empty-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  let input = padding ^ ".a::before { @media print { .b { color: blue } } }" in
+  let once = minify_str input in
+  Alcotest.(check bool)
+    "the emptied block goes" false
+    (Astring.String.is_infix ~affix:"@media" once);
+  Alcotest.(check string)
+    "dropping dead nested rules converges in one pass" once (minify_str once)
+
 let test_large_stylesheet_factoring_reaches_fixpoint () =
   (* Large graphs refresh candidates in batches. The refreshed batch can itself
      expose another profitable grouping, which must be enumerated before the
@@ -282,6 +453,44 @@ let test_prefix_synthesis_reaches_fixpoint () =
       "a{mask-position:10% 20%}b{-webkit-mask-position:10%\t20%}";
       "a{backdrop-filter:blur(max(0px, \
        1em))}b{-webkit-backdrop-filter:blur(max(0px,1em))}";
+    ]
+
+let test_large_stylesheet_prefix_twin_shadows_in_one_pass () =
+  (* Above 128 rules the pipeline makes one pass, so the prefix pass is the last
+     word. The twins it writes into [label] and [.b] cover what the first rule
+     writes for both of its selectors, and a pass that leaves that rule standing
+     leaves the drop to the next caller. *)
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".p%d{order:%d}" i i) |> String.concat ""
+  in
+  let input =
+    ".b,label{-webkit-user-select:none}label{-o-user-select:none;user-select:none}.b{user-select:none}"
+    ^ padding
+  in
+  let once = minify_str input in
+  Alcotest.(check string)
+    "large-sheet prefix twins shadow in one pass" once (minify_str once)
+
+(* The prefix pass writes [-webkit-mask-composite:xor] for [exclude] and a twin
+   of the [env()] value. The vendor-alias drop reads the twin as dead, and [xor]
+   then makes the prefixed property the author's, so nothing writes the twin
+   back: a second pass dropped it. *)
+let test_large_stylesheet_prefix_twins_settle_in_one_pass () =
+  let padding =
+    List.init 130 (fun i -> Fmt.str ".twin-padding-%d{order:%d}" i i)
+    |> String.concat ""
+  in
+  List.iter
+    (fun rule ->
+      let once = minify_str (rule ^ padding) in
+      Alcotest.(check string)
+        (rule ^ ": prefix twins settle in one pass")
+        once (minify_str once))
+    [
+      "a{mask-composite:exclude;mask-composite:env(safe-area-inset-top)}";
+      "a{mask-composite:env(safe-area-inset-top);mask-composite:exclude}";
+      "a{mask-composite:env(safe-area-inset-top);mask-composite:exclude!important}";
+      "a{mask-composite:exclude;mask-composite:env(safe-area-inset-top)!important}";
     ]
 
 let test_prefixed_longhand_contracts_in_one_pass () =
@@ -646,7 +855,10 @@ let test_pp_minify_is_idempotent () =
   assert_pp_idempotent normalize_pairs;
   assert_pp_idempotent gradient_shape_pairs
 
-let test_no_merge_vendor_pseudo () =
+(* [::file-selector-button] is read by every target (Chrome 89, Firefox 82,
+   Safari 14.1, iOS Safari 14.5), so a list holding it is one each of them
+   parses, and two rules with one body share it. *)
+let test_merge_pseudo_element_every_target_reads () =
   let input =
     [
       Css.rule ~selector:Css.Selector.File_selector_button
@@ -658,13 +870,190 @@ let test_no_merge_vendor_pseudo () =
   in
   let optimized = stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let has_file_selector =
-    Astring.String.is_infix ~affix:"::file-selector-button{" output_str
+  let rules = List.length (String.split_on_char '{' output_str) - 1 in
+  Alcotest.(check int) (Fmt.str "one rule: %s" output_str) 1 rules
+
+(* Selectors 4 sec. 3.9: a selector list holding a pseudo-class the browser does
+   not support is invalid as a whole, so listing a vendor pseudo-class with
+   another selector takes that selector's rule away in every engine without the
+   prefix. Chromium drops [.a:-moz-focusring,.b] and [.b] loses its colour;
+   Firefox drops a list holding [:-webkit-any()]. [:-webkit-autofill] is one
+   every target reads (Firefox since 86), so it lists. *)
+let test_no_merge_vendor_pseudo_class () =
+  List.iter
+    (fun (name, css) -> Alcotest.(check string) name css (minify_str css))
+    [
+      ("focus ring", ".a:-moz-focusring{color:red}.b{color:red}");
+      ("ui-invalid", ".a:-moz-ui-invalid{color:red}.b{color:red}");
+      ("-webkit-any()", ":-webkit-any(a,b) p{color:red}.b{color:red}");
+      ( "scrollbar state",
+        "::-webkit-scrollbar:horizontal{width:1px}.b{width:1px}" );
+    ];
+  Alcotest.(check string)
+    "a prefix every target reads lists" ".b,input:-webkit-autofill{color:red}"
+    (minify_str "input:-webkit-autofill{color:red}.b{color:red}")
+
+(* Selectors 4 sec. 3.9 again, for every kind of selector some target does not
+   parse, not only the prefixed pseudo-classes. Chromium 151 and WebKit 26.5
+   drop a rule over [::-moz-placeholder], [::-ms-input-placeholder],
+   [::-moz-selection] or [:lang(en,fr)]; MDN's compatibility data puts
+   [:user-valid] in Chrome 119 and [:dir()] in Chrome 120, after the Chrome 111
+   target, gives the [s] attribute flag to Firefox alone, and records no engine
+   for the column combinator. Listing any of them with another selector takes
+   that selector's rule away there. [::placeholder] is read by every target
+   (Chrome 57, Firefox 51, Safari 10.1), so it lists. *)
+let test_no_merge_pseudo_some_target_lacks () =
+  List.iter
+    (fun (name, css) -> Alcotest.(check string) name css (minify_str css))
+    [
+      ( "-moz- and -webkit- placeholder",
+        "a::-moz-placeholder{color:#999}a::-webkit-input-placeholder{color:#999}"
+      );
+      ("-ms- placeholder", ".a::-ms-input-placeholder{color:red}.b{color:red}");
+      ("unknown pseudo-element", ".a::-moz-selection{color:red}.b{color:red}");
+      ("newer pseudo-class", ".a:user-valid{color:red}.b{color:red}");
+      ("dir()", ".a:dir(rtl){color:red}.b{color:red}");
+      ("lang() list", ".a:lang(en,fr){color:red}.b{color:red}");
+      ("case-sensitive attribute", "[a=b s]{color:red}.b{color:red}");
+      ("column combinator", ".a||.b{color:red}.c{color:red}");
+      (* The targets are floors. Chrome 111 and Safari 16.4 read neither
+         [:popover-open] (Chrome 114, Safari 17) nor [:user-valid] (Chrome 119,
+         Safari 16.5), but Chrome 114 to 118 reads the first alone and Safari
+         16.5 and 16.6 the second alone, and each drops the list. *)
+      ( "two pseudo-classes later releases read apart",
+        ".a:popover-open{color:red}.b:user-valid{color:red}" );
+    ];
+  (* [:user-valid] and [:user-invalid] ship in the same release of every engine,
+     so every browser at or above the floors reads both or neither. *)
+  Alcotest.(check string)
+    "two pseudo-classes every release reads alike list"
+    ".a:user-valid,.b:user-invalid{color:red}"
+    (minify_str ".a:user-valid{color:red}.b:user-invalid{color:red}");
+  (* A grouping pass that factors a shared declaration out builds a list too. *)
+  let out =
+    minify_str
+      ".a{color:red;margin:0}.b::-moz-placeholder{color:red}.c{margin:0}"
   in
-  let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
-  Alcotest.(check bool)
-    "doesn't merge vendor pseudo-elements" true
-    (has_file_selector && has_foo)
+  let listed =
+    String.split_on_char '}' out
+    |> List.exists (fun rule ->
+        Astring.String.is_infix ~affix:"-moz-placeholder" rule
+        && String.contains rule ',')
+  in
+  Alcotest.(check bool) (Fmt.str "factored: %s" out) false listed;
+  Alcotest.(check string)
+    "a pseudo-element every target reads lists" ".a::placeholder,.b{color:red}"
+    (minify_str ".a::placeholder{color:red}.b{color:red}")
+
+(* SVG 2, "The 'text-rendering' property": [auto | optimizeSpeed |
+   optimizeLegibility | geometricPrecision], keywords read ASCII
+   case-insensitively (CSS Values 4 sec. 4.1). Every target reads each of them,
+   so an earlier declaration a later one overrides is dead, and a value outside
+   the grammar is one every target drops. *)
+let test_text_rendering_typed () =
+  Alcotest.(check string)
+    "keyword case" "a{text-rendering:optimizeLegibility}"
+    (minify_str "a{text-rendering:OPTIMIZELEGIBILITY}");
+  Alcotest.(check string)
+    "an overridden declaration is dead"
+    "a{color:red;text-rendering:optimizeSpeed}"
+    (minify_str
+       "a{text-rendering:optimizeLegibility;color:red;text-rendering:optimizeSpeed}");
+  Alcotest.(check string)
+    "a value outside the grammar" "a{color:red}"
+    (minify_str "a{color:red;text-rendering:crisp}")
+
+(* A prefixed copy of a widely available property, with its value and
+   importance, is dead beside the unprefixed declaration whatever the reader
+   types: cascade drops [-webkit-animation-delay] beside [animation-delay], and
+   [-webkit-flex-grow] beside [flex-grow] is the same pair (MDN: flex-grow in
+   Chrome 29, Firefox 20, Safari 9). A copy with another value, and every copy
+   under [--enforce-spec], stays. *)
+let test_untyped_vendor_alias_of_typed_twin () =
+  Alcotest.(check string)
+    "an untyped copy of a typed property" "a{flex-grow:1}"
+    (minify_str "a{-webkit-flex-grow:1;flex-grow:1}");
+  Alcotest.(check string)
+    "read under the twin's grammar" "a{background-size:cover}"
+    (minify_str "a{-moz-background-size:COVER;background-size:cover}");
+  Alcotest.(check string)
+    "another value" "a{-moz-background-size:cover;background-size:contain}"
+    (minify_str "a{-moz-background-size:cover;background-size:contain}");
+  (* CSS Flexbox 1 sec. 7.1.1 makes [1 0 0%] the spelled-out [1 0] and [1 1] the
+     spelled-out [1], so each copy names its twin's value. *)
+  Alcotest.(check string)
+    "a spelled-out flex" "a{flex:1 0}"
+    (minify_str "a{-ms-flex:1 0 0%;-webkit-flex:1 0 0%;flex:1 0}");
+  Alcotest.(check string)
+    "a spelled-out flex shrink" "a{flex:1}"
+    (minify_str "a{-webkit-flex:1 1;flex:1 1}");
+  Alcotest.(check string)
+    "enforce-spec" "a{-webkit-flex-grow:1;flex-grow:1}"
+    (optimized_string ~enforce_spec:true "a{-webkit-flex-grow:1;flex-grow:1}")
+
+(* [-webkit-touch-callout: default | none] (Apple's Safari CSS Reference; MDN:
+   iOS Safari 2). Its keywords read ASCII case-insensitively, an earlier one a
+   later one overrides is dead, and any other value is dropped. *)
+let test_touch_callout_typed () =
+  Alcotest.(check string)
+    "keyword case" "a{-webkit-touch-callout:none}"
+    (minify_str "a{-webkit-touch-callout:NONE}");
+  Alcotest.(check string)
+    "an overridden declaration is dead" "a{-webkit-touch-callout:default}"
+    (minify_str "a{-webkit-touch-callout:none;-webkit-touch-callout:default}");
+  Alcotest.(check string)
+    "a value outside the grammar" "a{color:red}"
+    (minify_str "a{color:red;-webkit-touch-callout:auto}")
+
+(* The prefixed spellings of [:fullscreen] are read by the targets: Chromium and
+   WebKit keep a [:-webkit-full-screen] rule, and MDN's compatibility data lists
+   [:-moz-full-screen] in Firefox since 9 with no removal. A rule over one is
+   not dropped, and the two spellings, each unread by some target, stay in rules
+   of their own. *)
+let test_fullscreen_vendor_pseudo_classes () =
+  List.iter
+    (fun (name, css) -> Alcotest.(check string) name css (minify_str css))
+    [
+      ("webkit", ".a:-webkit-full-screen{width:100%}");
+      ("moz", ":-moz-full-screen{width:100%!important}");
+      ("webkit ancestor", ".a:-webkit-full-screen-ancestor{width:100%}");
+      ( "the two spellings stay apart",
+        ".a:-webkit-full-screen{width:100%}.a:-moz-full-screen{width:100%}" );
+    ]
+
+(* A [content] sequence in one rule is kept for the fallback it may carry, a
+   later value some browser cannot read. A string, a quote keyword, a counter or
+   [none] is read by every target, so a later one of those leaves nothing
+   earlier to fall back to, and the earlier declaration is dead (CSS Cascade 5
+   sec. 6.1: one importance, the later wins). *)
+let test_content_superseded_by_a_plain_value () =
+  List.iter
+    (fun (name, want, css) ->
+      Alcotest.(check string) name want (minify_str css))
+    [
+      ("a later string", ".a{content:\"b\"}", ".a{content:\"a\";content:\"b\"}");
+      ( "an empty string",
+        ".a:before{content:\"\"}",
+        ".a:before{content:\"x\";content:\"\"}" );
+      ( "a later important value",
+        ".a{content:\"b\"!important}",
+        ".a{content:\"a\";content:\"b\"!important}" );
+      ( "a counter",
+        ".a{content:counter(n)}",
+        ".a{content:\"a\";content:counter(n)}" );
+      ( "a normal value after an important one",
+        ".a{content:\"a\"!important}",
+        ".a{content:\"a\"!important;content:\"b\"}" );
+      (* A browser that predates the alternative text of CSS Generated Content 3
+         sec. 1.1 drops the value holding one, and Chrome 153 refuses symbols()
+         as a counter style, so each keeps the declaration before it. *)
+      ( "a counter in a symbols() style",
+        ".a{content:\"a\";content:counter(n,symbols(cyclic\"*\"))}",
+        ".a{content:\"a\";content:counter(n,symbols(cyclic\"*\"))}" );
+      ( "an alternative text",
+        ".a{content:\"a\";content:\"b\"/\"c\"}",
+        ".a{content:\"a\";content:\"b\"/\"c\"}" );
+    ]
 
 let test_no_merge_with_nested () =
   let input =
@@ -689,9 +1078,83 @@ let test_no_merge_with_nested () =
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 
+(* A rule writes everything its body holds, at any depth: a nested style rule
+   under its composed selector (CSS Nesting 1 sec. 3), a nested conditional
+   group under its condition, and a declaration written after a nested statement
+   in its own position (sec. 3.4). A merge or a move that carries the rule past
+   another one sharing a specificity and a slot with any of those writes changes
+   which one wins (CSS Cascade 5 sec. 6.1, order of appearance). Each case is a
+   sheet whose two named writes compete on one element in Chromium, where the
+   second wins. It still wins only while it prints after the first, which the
+   flattened output shows as text order. *)
+let nested_writes_keep_their_order () =
+  let flat css =
+    match Css.of_string ~strict:false css with
+    | Ok { Css.stylesheet; _ } ->
+        Css.to_string ~minify:true (Css.flatten_nesting stylesheet)
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  let wrong (name, css, first, second) =
+    let out = flat (minify_str css) in
+    let at sub = Astring.String.find_sub ~sub out in
+    match (at first, at second) with
+    | Option.Some i, Option.Some j when i < j -> Option.None
+    | _ -> Fmt.kstr Option.some "%s: %S before %S in %s" name first second out
+  in
+  match
+    List.filter_map wrong
+      [
+        (* [.a.d] takes blue from the nested [@media] *)
+        ( "a nested conditional",
+          ".a{top:1px}.d{color:red}.a{@media (min-width:1px){color:blue}}",
+          "color:red",
+          "color:#00f" );
+        (* [.b~:not(.a)] ties with [.a .c] at (0,2,0) *)
+        ( "a nested rule crossed by a later rule",
+          ".a .c{top:2px}:not(.a){font-weight:bold;.b~&{align-items:start}}.a \
+           .c{place-items:center}",
+          "align-items:start",
+          "place-items:center" );
+        (* [all:initial] follows the nested rule, and resets [background] *)
+        ( "a declaration after a nested rule",
+          "[class~=a]{float:left}.a,.b{background:red}[class~=a]{&>span{margin-block-start:7px}all:initial}",
+          "background:red",
+          "all:initial" );
+        (* [:is(p,span):is(.a,.d)] ties with [span.a] at (0,1,1) *)
+        ( "a nested rule merged ahead",
+          "p,span{color:initial}span.a{all:unset}p,span{&:is(.a,.d){float:left}}",
+          "all:unset",
+          "float:left" );
+        ( "a nested sibling rule crossed by a shorthand",
+          ".b+.c{margin-left:2px}:not(.a){margin-left:2px;.b~&{margin-block-start:7px}}.b+.c{margin:1px}",
+          "margin-block-start:7px",
+          "margin:1px" );
+        ( "a nested descendant rule writing all",
+          ".a :is(.c,.d){animation:x \
+           1s}:not(.a){z-index:auto;.b{all:initial}}.a \
+           :is(.c,.d){text-wrap:balance}",
+          "all:initial",
+          "text-wrap:balance" );
+        ( "a nested ancestor rule",
+          ".d,.a .c{flex-basis:10px}*{color:revert-layer;.a \
+           &{white-space-collapse:preserve}}.d,.a .c{white-space:nowrap}",
+          "white-space-collapse:preserve",
+          "white-space:nowrap" );
+        ( "a nested conditional resetting a longhand",
+          ".a,#i2{line-height:2;color:currentcolor}.a:where(.b){@supports \
+           (display:grid){font:12px \
+           serif}}.a.c.d{color:currentcolor;margin-inline:5px}.c:first-child{margin-inline:5px}",
+          "line-height:2",
+          "font:12px serif" );
+      ]
+  with
+  | [] -> ()
+  | failures -> Alcotest.failf "%a" Fmt.(list ~sep:cut string) failures
+
 let suite =
   ( "optimize_factor",
     [
+      ("nested writes keep their order", `Quick, nested_writes_keep_their_order);
       ( "root custom sort keeps other positions",
         `Quick,
         root_custom_sort_keeps_other_positions );
@@ -708,6 +1171,12 @@ let suite =
       ("factor shared declarations", `Quick, test_factor_shared_declarations);
       ("factor weighted intervals", `Quick, test_factor_interval_schedule);
       ("factor interval overrides", `Quick, test_factor_interval_keeps_overrides);
+      ( "factoring weighs the flagged print",
+        `Quick,
+        factoring_weighs_the_flagged_print );
+      ( "factor override keeps its longhand",
+        `Quick,
+        test_factor_override_keeps_its_longhand );
       ( "factor selector branch keeps later override",
         `Quick,
         test_factor_selector_branch_keeps_later_override );
@@ -723,9 +1192,33 @@ let suite =
       ( "large stylesheet factoring reaches fixpoint",
         `Quick,
         test_large_stylesheet_factoring_reaches_fixpoint );
+      ( "large stylesheet hoist rejoins blocks",
+        `Quick,
+        test_large_stylesheet_hoist_rejoins_blocks );
+      ( "large stylesheet block merge rejoins runs",
+        `Quick,
+        test_large_stylesheet_block_merge_rejoins_runs );
+      ( "large stylesheet factoring reaches span",
+        `Quick,
+        test_large_stylesheet_factoring_reaches_span );
+      ( "large stylesheet factoring past consumed rules",
+        `Quick,
+        test_large_stylesheet_factoring_past_consumed_rules );
+      ( "large stylesheet drops block left empty",
+        `Quick,
+        test_large_stylesheet_drops_block_left_empty );
+      ( "nesting then factoring converges",
+        `Quick,
+        test_nesting_then_factoring_converges );
       ( "prefix synthesis reaches fixpoint in one pass",
         `Quick,
         test_prefix_synthesis_reaches_fixpoint );
+      ( "large stylesheet prefix twins settle in one pass",
+        `Quick,
+        test_large_stylesheet_prefix_twins_settle_in_one_pass );
+      ( "large stylesheet prefix twin shadows in one pass",
+        `Quick,
+        test_large_stylesheet_prefix_twin_shadows_in_one_pass );
       ( "prefixed longhand contracts in one pass",
         `Quick,
         test_prefixed_longhand_contracts_in_one_pass );
@@ -767,6 +1260,23 @@ let suite =
         `Quick,
         test_pp_picks_shortest_same_node );
       ("pp minify is idempotent", `Quick, test_pp_minify_is_idempotent);
-      ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
+      ( "merge pseudo-element every target reads",
+        `Quick,
+        test_merge_pseudo_element_every_target_reads );
+      ("no merge vendor pseudo-class", `Quick, test_no_merge_vendor_pseudo_class);
+      ("text-rendering is typed", `Quick, test_text_rendering_typed);
+      ("touch-callout is typed", `Quick, test_touch_callout_typed);
+      ( "untyped vendor alias of a typed twin",
+        `Quick,
+        test_untyped_vendor_alias_of_typed_twin );
+      ( "no merge pseudo some target lacks",
+        `Quick,
+        test_no_merge_pseudo_some_target_lacks );
+      ( "fullscreen vendor pseudo-classes",
+        `Quick,
+        test_fullscreen_vendor_pseudo_classes );
+      ( "content superseded by a plain value",
+        `Quick,
+        test_content_superseded_by_a_plain_value );
       ("no merge with nested", `Quick, test_no_merge_with_nested);
     ] )

@@ -21,8 +21,18 @@ val pp_list_style_shorthand : list_style_shorthand Pp.t
 (** [pp_list_style_shorthand] is the pretty-printer for [list_style_shorthand].
 *)
 
-val normalize_list_style : list_style -> list_style
-(** [normalize_list_style v] is [v] with its shorthand components normalised. *)
+val normalize_list_style : lossless:bool -> list_style -> list_style
+(** [normalize_list_style ~lossless v] is [v] with its shorthand components
+    normalised. *)
+
+val normalize_list_style_type : list_style_type -> list_style_type
+(** [normalize_list_style_type v] is [v] without a [symbols()] type that names
+    the default, [symbolic]. *)
+
+val normalize_list_style_image :
+  lossless:bool -> list_style_image -> list_style_image
+(** [normalize_list_style_image ~lossless v] is [v] with its image in its normal
+    form. *)
 
 val pp_list_style : list_style Pp.t
 (** [pp_list_style] is the pretty-printer for [list_style]. *)
@@ -35,6 +45,10 @@ val read_list_style_symbol : Cursor.t -> list_style_symbol
 
 val read_list_style_type : Cursor.t -> list_style_type
 (** [read_list_style_type t] is the [list_style_type] parsed from [t]. *)
+
+val read_counter_style : Cursor.t -> list_style_type
+(** [read_counter_style t] reads the [<counter-style>] of [counter()] and
+    [counters()]: a counter-style name, [none] or [symbols()]. *)
 
 val read_list_style_position : Cursor.t -> list_style_position
 (** [read_list_style_position t] is the [list_style_position] parsed from [t].

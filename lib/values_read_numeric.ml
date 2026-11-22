@@ -441,6 +441,16 @@ let rec read_angle_with ~unitless_zero t : angle =
       (fun a b -> (Mod (a, b) : angle))
       (read_angle_with ~unitless_zero)
       t
+  else if
+    List.exists
+      (fun name -> Cursor.looking_at_func name t)
+      typed_math_function_names
+  then (
+    (* CSS Values 4 sec. 10.1: a comparison, [abs()] or [hypot()] over angles
+       stands where an angle does. *)
+    let c = read_calc ~result_type:`Value (read_angle_with ~unitless_zero) t in
+    check_math_family t Angle c;
+    Calc c)
   else
     match angle_trig_function t with
     | Some (kind, name) -> read_angle_trig kind name t
@@ -484,6 +494,15 @@ let read_time_number t : duration =
   | "" -> Cursor.err_invalid t "a time needs a unit, [0] included"
   | _ -> Cursor.err_invalid t (String.concat "" [ "time unit: "; unit ])
 
+(* CSS Values 4 sec. 10.1: a math function answering its arguments' type
+   ([min()], [abs()], ...) stands at a slot of that type, read as a calculation
+   whose arguments have to be of the slot's [family]. *)
+let typed_math_calls family read_operand make =
+  typed_math_function_calls (fun t ->
+      let c = read_calc ~result_type:`Value read_operand t in
+      check_math_family t family c;
+      make c)
+
 let read_duration_round read_duration_self t =
   read_round_call
     (fun s v step -> (Round (s, v, step) : duration))
@@ -492,35 +511,41 @@ let read_duration_round read_duration_self t =
 let rec read_duration_with ?(css_wide = true) ?(allow_negative = false)
     ~canonicalize_ms t : duration =
   (* CSS Values 4 sec. 10.8 gives a math operand no keyword, and sec. 10.12
-     checks the property's range on the value the whole calculation resolves to
-     rather than on each operand: whether a negative one stands is the caller's
-     [allow_negative], not the operand reader's. *)
+     checks the property's range on the value the whole calculation resolves to,
+     clamping it at computed-value time, so a negative operand or result reads
+     whatever [allow_negative] says of a literal. *)
   let read_operand t =
-    read_duration_with ~css_wide:false ~allow_negative ~canonicalize_ms:false t
+    read_duration_with ~css_wide:false ~allow_negative:true
+      ~canonicalize_ms:false t
   in
   Cursor.enum_or_calls
     ~default:(read_duration_number ~allow_negative)
     "duration"
     (if css_wide then duration_css_wide else [])
     ~calls:
-      [
-        ( "var",
-          fun t ->
-            Var
-              (read_var
-                 (read_duration_with ~css_wide ~allow_negative ~canonicalize_ms)
-                 t) );
-        ("calc", fun t -> Calc (read_calc ~result_type:`Value read_operand t));
-        ("round", read_duration_round read_operand);
-        ( "rem",
-          read_binary_call "rem"
-            (fun a b -> (Rem (a, b) : duration))
-            read_operand );
-        ( "mod",
-          read_binary_call "mod"
-            (fun a b -> (Mod (a, b) : duration))
-            read_operand );
-      ]
+      ([
+         ( "var",
+           fun t : duration ->
+             Var
+               (read_var
+                  (read_duration_with ~css_wide ~allow_negative ~canonicalize_ms)
+                  t) );
+         ( "calc",
+           fun t : duration ->
+             Calc (read_calc ~result_type:`Value read_operand t) );
+         ("round", read_duration_round read_operand);
+         ( "rem",
+           read_binary_call "rem"
+             (fun a b -> (Rem (a, b) : duration))
+             read_operand );
+         ( "mod",
+           read_binary_call "mod"
+             (fun a b -> (Mod (a, b) : duration))
+             read_operand );
+       ]
+      (* CSS Values 4 sec. 10.1 puts every math function wherever its resolved
+         type stands; the stepped ones above keep their typed node. *)
+      @ typed_math_calls Time read_operand (fun c : duration -> Calc c))
     t
 
 (** Read a duration value *)
@@ -535,18 +560,20 @@ let rec read_time_with ?(css_wide = true) t : duration =
   Cursor.enum_or_calls ~default:read_time_number "time"
     (if css_wide then duration_css_wide else [])
     ~calls:
-      [
-        ("var", fun t -> Var (read_var read_time t));
-        ( "calc",
-          fun t -> Calc (read_calc ~result_type:`Value read_time_in_calc t) );
-        ("round", read_duration_round read_time);
-        ( "rem",
-          read_binary_call "rem" (fun a b -> (Rem (a, b) : duration)) read_time
-        );
-        ( "mod",
-          read_binary_call "mod" (fun a b -> (Mod (a, b) : duration)) read_time
-        );
-      ]
+      ([
+         ("var", fun t : duration -> Var (read_var read_time t));
+         ( "calc",
+           fun t : duration ->
+             Calc (read_calc ~result_type:`Value read_time_in_calc t) );
+         ("round", read_duration_round read_time);
+         ( "rem",
+           read_binary_call "rem" (fun a b -> (Rem (a, b) : duration)) read_time
+         );
+         ( "mod",
+           read_binary_call "mod" (fun a b -> (Mod (a, b) : duration)) read_time
+         );
+       ]
+      @ typed_math_calls Time read_time_in_calc (fun c : duration -> Calc c))
     t
 
 and read_time t : duration = read_time_with t
@@ -601,42 +628,49 @@ and read_number_function t =
       | "calc" ->
           let read_number_dim_only t = Cursor.err t "expected numeric factor" in
           Some (Calc (read_calc ~result_type:`Number read_number_dim_only t))
+      (* CSS Values 4 sec. 10.12 clamps a comparison past the property's range
+         at computed-value time, as it does any math function, so the folded
+         value stays a calculation rather than becoming the literal the range
+         check refuses. *)
       | "min" ->
           Some
-            (Num
-               (Cursor.call "min" t (fun inner ->
-                    let nums =
-                      Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
-                        inner
-                    in
-                    Cursor.ws inner;
-                    Cursor.expect_eof inner;
-                    List.fold_left Float.min Float.infinity nums)))
+            (Calc
+               (Num
+                  (Cursor.call "min" t (fun inner ->
+                       let nums =
+                         Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
+                           inner
+                       in
+                       Cursor.ws inner;
+                       Cursor.expect_eof inner;
+                       List.fold_left Float.min Float.infinity nums))))
       | "max" ->
           Some
-            (Num
-               (Cursor.call "max" t (fun inner ->
-                    let nums =
-                      Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
-                        inner
-                    in
-                    Cursor.ws inner;
-                    Cursor.expect_eof inner;
-                    List.fold_left Float.max Float.neg_infinity nums)))
+            (Calc
+               (Num
+                  (Cursor.call "max" t (fun inner ->
+                       let nums =
+                         Cursor.list ~sep:Cursor.comma ~at_least:1 read_num_expr
+                           inner
+                       in
+                       Cursor.ws inner;
+                       Cursor.expect_eof inner;
+                       List.fold_left Float.max Float.neg_infinity nums))))
       | "clamp" ->
           Some
-            (Num
-               (Cursor.call "clamp" t (fun inner ->
-                    let min_value = read_num_expr inner in
-                    Cursor.ws inner;
-                    Cursor.comma inner;
-                    let value = read_num_expr inner in
-                    Cursor.ws inner;
-                    Cursor.comma inner;
-                    let max_value = read_num_expr inner in
-                    Cursor.ws inner;
-                    Cursor.expect_eof inner;
-                    Float.max min_value (Float.min value max_value))))
+            (Calc
+               (Num
+                  (Cursor.call "clamp" t (fun inner ->
+                       let min_value = read_num_expr inner in
+                       Cursor.ws inner;
+                       Cursor.comma inner;
+                       let value = read_num_expr inner in
+                       Cursor.ws inner;
+                       Cursor.comma inner;
+                       let max_value = read_num_expr inner in
+                       Cursor.ws inner;
+                       Cursor.expect_eof inner;
+                       Float.max min_value (Float.min value max_value)))))
       | "round" -> Some (read_round_number t)
       (* CSS Values 4 sec. 10.6: [sign(A)] answers a [<number>] whatever A's own
          type was, so [Sign] holds only the [<number>] case and an argument of

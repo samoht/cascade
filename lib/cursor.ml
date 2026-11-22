@@ -29,6 +29,9 @@ type t = {
          nested block body this is the block's closing delimiter position, not
          the end of the whole input; for a streamed body it is known once the
          body is read to its end. *)
+  enforce_spec : bool;
+      (* Whether the reader judges for every engine rather than for the browsers
+         the minifier targets: {!Reader.enforce_spec}. *)
   depth : int;
       (* Function-call nesting depth, bumped by [call] each time it descends
          into a function's arguments. Bounds recursion ([calc(calc(...))],
@@ -43,7 +46,7 @@ type t = {
 let max_nesting_depth = 100
 
 let of_components ?source:indexed ?(recover = false)
-    ?(meta = Loc.default_meta_level) ?eof_loc cvs =
+    ?(meta = Loc.default_meta_level) ?(enforce_spec = false) ?eof_loc cvs =
   let source = Option.map Error.Source.text indexed in
   {
     cvs;
@@ -54,11 +57,15 @@ let of_components ?source:indexed ?(recover = false)
     recover;
     meta;
     eof_loc = Lazy.from_val eof_loc;
+    enforce_spec;
     depth = 0;
   }
 
-let of_streamed ?source ?meta cvs body =
-  { (of_components ?source ~recover:true ?meta cvs) with stream = Holds body }
+let of_streamed ?source ?meta ?enforce_spec cvs body =
+  {
+    (of_components ?source ~recover:true ?meta ?enforce_spec cvs) with
+    stream = Holds body;
+  }
 
 let sub ?eof_loc t cvs =
   {
@@ -71,8 +78,11 @@ let sub ?eof_loc t cvs =
     meta = t.meta;
     eof_loc =
       (match eof_loc with Some _ -> Lazy.from_val eof_loc | None -> t.eof_loc);
+    enforce_spec = t.enforce_spec;
     depth = t.depth;
   }
+
+let enforce_spec t = t.enforce_spec
 
 let push_warning t ~recovery e =
   t.warnings := Error.with_recovery recovery e :: !(t.warnings)
@@ -111,6 +121,7 @@ let of_string ?(meta = Loc.default_meta_level) ?unicode_ranges s =
     recover = false;
     meta;
     eof_loc = Lazy.from_val None;
+    enforce_spec = Reader.enforce_spec reader;
     depth = 0;
   }
 
@@ -125,6 +136,7 @@ let of_reader ?(meta = Loc.default_meta_level) r =
     recover = false;
     meta;
     eof_loc = Lazy.from_val None;
+    enforce_spec = Reader.enforce_spec r;
     depth = 0;
   }
 
@@ -400,7 +412,6 @@ let err ?loc ?got t msg =
       | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc)
 
 let err_invalid ?loc t msg = err ?loc t (String.concat "" [ "invalid: "; msg ])
-let err_eof t = raise_ t (Error.Unterminated sort) (position t)
 
 let err_expected ?loc t what =
   err ?loc t (String.concat "" [ "expected "; what ])
@@ -1109,16 +1120,6 @@ let keyword table s =
     | (k, v) :: rest -> if String.equal k key then Some v else find rest
   in
   find table
-
-let try_enum table t =
-  match peek t with
-  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match keyword table s with
-      | Some v ->
-          let _ = next t in
-          Some v
-      | None -> None)
-  | _ -> None
 
 let enum ?default label table t =
   ws t;

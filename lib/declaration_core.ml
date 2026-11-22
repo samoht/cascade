@@ -321,14 +321,6 @@ let rec value_uses_color p = function
 
 let value_uses_color_4 decl = value_uses_color Values.color_is_color_4 decl
 
-(* Whether a browser in [targets] drops [decl] at parse time for a colour it
-   does not read: the earlier declaration is a fallback for that browser and
-   dead everywhere else. *)
-let value_uses_color_unimplemented_by targets decl =
-  value_uses_color
-    (Values.color_uses_feature_where (Support.unimplemented_by targets))
-    decl
-
 let length_list_has_runtime_subst lengths =
   List.exists Values.length_has_runtime_subst lengths
 
@@ -435,6 +427,133 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
   | Declaration { property; value; _ } ->
       Pp.to_string ~minify ~inline pp_property_value (property, value)
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
+
+let later_version a b = if Support.compare_version a b >= 0 then a else b
+
+(* What one need asks of a release: [Some (Some v)] parses from [v], [Some None]
+   is shipped by no release of the data, and [None] is a production the data
+   does not name, which counts as parsed. *)
+let combine acc need =
+  match (acc, need) with
+  | Option.None, _ -> Option.None
+  | acc, Option.None -> acc
+  | Option.Some _, Option.Some Option.None -> Option.None
+  | Option.Some a, Option.Some (Option.Some v) ->
+      Option.Some (later_version a v)
+
+(* BCD files a keyword a property takes as [css.properties.<property>.<word>]
+   and a function as the same key, or as [<word>_function] where a keyword
+   shares its name. A function no key of the property names is filed under the
+   value type that takes it, [css.types.<function>] or
+   [css.types.<type>.<function>]; a deeper key is a detail of some production
+   rather than the production. A name two value types share, such as the
+   [rect()] of [<shape>] and of [<basic-shape>], is parsed from the first
+   release that ships either. *)
+let type_keys name =
+  List.filter
+    (fun key ->
+      String.starts_with ~prefix:"css.types." key
+      && List.length (String.split_on_char '.' key) <= 4)
+    (Support.keys_named name)
+
+let earliest releases =
+  List.fold_left
+    (fun acc release ->
+      match (acc, release) with
+      | Option.None, r | r, Option.None -> r
+      | Option.Some a, Option.Some b ->
+          Option.Some (if Support.compare_version a b <= 0 then a else b))
+    Option.None releases
+
+let word_need ~release property (kind : Token.kind) =
+  let of_property word =
+    String.concat "" [ "css.properties."; property; "."; word ]
+  in
+  match kind with
+  | Ident word -> release (of_property (String.lowercase_ascii word))
+  | Function name -> (
+      let name = String.lowercase_ascii name in
+      match
+        List.find_map release
+          [
+            of_property (String.concat "" [ name; "_function" ]);
+            of_property name;
+          ]
+      with
+      | Option.Some _ as need -> need
+      | Option.None -> (
+          match List.filter_map release (type_keys name) with
+          | [] -> Option.None
+          | releases -> Option.Some (earliest releases)))
+  | _ -> Option.None
+
+let value_tokens decl =
+  let lexer = Lexer.of_string (string_of_value ~minify:true decl) in
+  let rec go acc =
+    match (Lexer.next lexer).kind with Eof -> acc | kind -> go (kind :: acc)
+  in
+  go []
+
+let is_var : Token.kind -> bool = function
+  | Function name -> String.equal (String.lowercase_ascii name) "var"
+  | _ -> false
+
+(* CSS 2.1 sec. 4.2 has a browser ignore a declaration whose value it does not
+   parse. Which productions a declaration uses is read off its property, its
+   colours and the words of its value, and a release parses the declaration once
+   it parses every one of them, as the data records it. A custom property takes
+   any value, and CSS Custom Properties 1 sec. 3 has a declaration holding
+   [var()] assumed valid at parse time, so neither waits on its value. The
+   colour constructs are gathered from the typed value. *)
+let first_release_with ~tokens ~floor engine decl =
+  let release = Support.parse_release engine in
+  let property = String.lowercase_ascii (property_name decl) in
+  let acc =
+    combine (Option.Some floor)
+      (release (String.concat "" [ "css.properties."; property ]))
+  in
+  let tokens = Lazy.force tokens in
+  if List.exists is_var tokens then acc
+  else
+    let colour_keys = ref [] in
+    ignore
+      (value_uses_color
+         (Values.color_uses_feature_where (fun key ->
+              colour_keys := key :: !colour_keys;
+              false))
+         decl);
+    let acc =
+      List.fold_left (fun acc key -> combine acc (release key)) acc !colour_keys
+    in
+    List.fold_left
+      (fun acc kind -> combine acc (word_need ~release property kind))
+      acc tokens
+
+let rec first_release ~floor engine decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> first_release ~floor engine decl
+  | Declaration { property = Custom_property _; _ } -> Option.Some floor
+  | Declaration _ ->
+      first_release_with ~tokens:(lazy (value_tokens decl)) ~floor engine decl
+
+(* The browsers judged for are each engine from its floor to the newest release
+   the data records, and a shipped production stays. [earlier] is what a browser
+   paints in place of [later] only where it parses [earlier] and drops [later]:
+   in an engine, from the release that first parses [earlier] until the one that
+   first parses [later], if that comes after it. A browser dropping both, as
+   Safari does [user-select:auto] and [user-select:none], paints neither, and
+   one parsing both paints [later]. *)
+let fallback_for ~floors ~later earlier =
+  List.exists
+    (fun (engine, floor) ->
+      match first_release ~floor engine earlier with
+      | Option.None -> false
+      | Option.Some reads_earlier -> (
+          match first_release ~floor engine later with
+          | Option.None -> true
+          | Option.Some reads_later ->
+              Support.compare_version reads_later reads_earlier > 0))
+    (Support.floors floors)
 
 (* Rewrite the value of a custom declaration through [f], which sees its
    minified serialisation. Everything else the declaration carries - its

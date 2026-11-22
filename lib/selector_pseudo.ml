@@ -154,6 +154,9 @@ let pseudo_vendor_idents =
     ("-ms-input-placeholder", Ms_input_placeholder);
     ("-moz-ui-invalid", Moz_ui_invalid);
     ("-moz-ui-valid", Moz_ui_valid);
+    ("-webkit-full-screen", Webkit_full_screen);
+    ("-webkit-full-screen-ancestor", Webkit_full_screen_ancestor);
+    ("-moz-full-screen", Moz_full_screen);
     ("-webkit-scrollbar", Webkit_scrollbar Scrollbar);
     ("-webkit-search-cancel-button", Webkit_search_cancel_button);
     ("-webkit-search-decoration", Webkit_search_decoration);
@@ -177,11 +180,8 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
-(* Names the [::] reader takes and the [:] reader does not. Chrome 151 and
-   WebKit 26.5 drop [:cue] and [:-webkit-scrollbar-thumb] while keeping the [::]
-   spelling of both, so these stay out of [pseudo_class_all_idents];
-   [::-webkit-scrollbar] itself keeps the single-colon spelling cascade has
-   always read for it and stays in [pseudo_vendor_idents].
+(* Names the [::] reader alone takes, as it does every pseudo-element name but
+   the CSS 2.1 four ([pseudo_class_all_idents]); these have no other table.
 
    WebVTT 1 sec. 8.2 requires "the ::cue, ::cue(selector), ::cue-region and
    ::cue-region(selector) pseudo-elements", and sec. 8.2.1 and sec. 8.2.3 define
@@ -194,6 +194,11 @@ let pseudo_element_double_colon_idents =
   :: List.map
        (fun part -> (scrollbar_part_ident part, Webkit_scrollbar part))
        [ Button; Track; Track_piece; Thumb; Corner; Resizer ]
+
+let pseudo_element_unknown_idents =
+  lazy
+    (pseudo_element_modern_idents @ pseudo_vendor_idents
+   @ pseudo_element_double_colon_idents @ pseudo_element_legacy_idents)
 
 (* Every [::] form, and only those: a pseudo-element names a box other than the
    originating element, where an element-tied pseudo-class ([:hover], [:focus])
@@ -256,6 +261,66 @@ let has_unknown_pseudo_class =
   any (function
     | Unknown_pseudo_class _ | Unknown_pseudo_class_call _ -> true
     | _ -> false)
+
+(* The pseudo-classes no browser the minifier targets reads, by name. MDN's
+   browser-compat-data records [:-moz-any-link] for Firefox 1 to 50 alone and
+   [:-ms-fullscreen] for Internet Explorer 11 alone, and records the other
+   prefixed ones for no browser. Firefox's parser (Servo's
+   non_ts_pseudo_class_list.rs and its aliases, ESR 128) lists none of them, bar
+   [:-moz-locale-dir()], which it reads in its own sheets alone, and Chrome 151
+   and WebKit 26.5 drop a rule holding any one.
+
+   Past the list, no target reads a pseudo-element name after one colon: Firefox
+   reads one colon as a pseudo-element for the CSS 2.1 four alone, which the [:]
+   reader types, and Chrome 151 and WebKit 26.5 drop every other one
+   ([:selection], [:-webkit-scrollbar-thumb], [:cue]). [:-moz-placeholder] is
+   not one, as Firefox still lists it as a pseudo-class. Nor does any read a
+   name with no vendor prefix that the compatibility data does not record: every
+   pseudo-class an engine ships unprefixed is a standard one, which the data
+   records ([:h], which Chrome 151 and WebKit 26.5 drop and Firefox's parser
+   does not list).
+
+   Any other prefixed name may be an engine's own, as Firefox's
+   [:-moz-only-whitespace] and Chrome's and WebKit's [:-webkit-any-link] are, so
+   its rule stays. *)
+let unrecorded name =
+  (String.length name = 0 || not (Char.equal name.[0] '-'))
+  && Option.is_none
+       (Support.implemented Support.evergreen
+          (String.concat "" [ "css.selectors."; name ]))
+
+let pseudo_element_name name =
+  List.exists
+    (fun (n, sel) -> String.equal n name && is_pseudo_element sel)
+    (Lazy.force pseudo_element_unknown_idents)
+
+let untargeted_pseudo_class name =
+  match String.lowercase_ascii name with
+  | "-o-prefocus" | "-moz-submit-invalid" | "-moz-any-link" | "-ms-fullscreen"
+  | "-ms-full-screen" | "-o-full-screen" | "-moz-locale-dir" ->
+      true
+  | "-moz-placeholder" -> false
+  | name -> pseudo_element_name name || unrecorded name
+
+(* Selectors 4 sec. 3.9 drops a whole rule over an invalid selector, and sec.
+   4.2 and 4.3 let [:is()] and [:where()] drop an invalid argument alone, so
+   only a pseudo-class outside them takes the rule with it. *)
+let rec untargeted = function
+  | (Unknown_pseudo_class name | Unknown_pseudo_class_call (name, _))
+    when untargeted_pseudo_class name ->
+      Option.Some name
+  | Compound xs | List xs | Not xs | Has xs -> List.find_map untargeted xs
+  | Combined (a, _, b) -> (
+      match untargeted a with
+      | Option.Some _ as n -> n
+      | Option.None -> untargeted b)
+  | Relative (_, b) -> untargeted b
+  | Nth_child (_, Some xs)
+  | Nth_last_child (_, Some xs)
+  | Nth_of_type (_, Some xs)
+  | Nth_last_of_type (_, Some xs) ->
+      List.find_map untargeted xs
+  | _ -> Option.None
 
 (* CSS Selectors 4 17.1: a forgiving [:is()] / [:where()] with no surviving
    valid argument matches nothing, and a compound or combined selector that
@@ -526,16 +591,20 @@ let rec has_refused_simple_in_compound = function
 
 (* The merged lists are static across the lifetime of the program (every
    constituent is a [let] binding above); memoise them so the [@] cons-chain
-   only happens once instead of per [:foo] / [::foo] pseudo read. *)
+   only happens once instead of per [:foo] / [::foo] pseudo read.
+
+   Selectors 4 sec. 3.6.1 reads the four CSS 2.1 pseudo-elements after one colon
+   and no other: Firefox takes one colon for those four alone, and Chrome 151
+   and WebKit 26.5 drop [:-webkit-input-placeholder], [:selection] and every
+   other pseudo-element name with one colon. So the [:] reader takes the vendor
+   pseudo-classes and leaves every other pseudo-element name to the unknown
+   pseudo-class it is there. *)
 let pseudo_class_all_idents_lazy =
   lazy
     (pseudo_class_base_idents @ pseudo_class_scrollbar_idents
-   @ pseudo_element_legacy_idents @ pseudo_element_modern_idents
-   @ pseudo_vendor_idents)
+   @ pseudo_element_legacy_idents
+    @ List.filter
+        (fun (_, pc) -> not (is_pseudo_element pc))
+        pseudo_vendor_idents)
 
 let pseudo_class_all_idents () = Lazy.force pseudo_class_all_idents_lazy
-
-let pseudo_element_unknown_idents =
-  lazy
-    (pseudo_element_modern_idents @ pseudo_vendor_idents
-   @ pseudo_element_double_colon_idents @ pseudo_element_legacy_idents)

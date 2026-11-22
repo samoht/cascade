@@ -64,8 +64,13 @@ type t = {
   result : result;
   expected_warnings : Error.t list;
   actual_warnings : Error.t list;
+  text_only : bool;
 }
-(** A comparison outcome plus the parse warnings each side accumulated. A
+(** A comparison outcome plus the parse warnings each side accumulated.
+    [text_only] is [true] when mode [`Auto] parsed the two sides to equal
+    stylesheets and [result] is the {!constructor-String_diff} of their text, so
+    they differ in spelling or layout only; it is [false] whenever a rule one
+    side's reader dropped may hide a difference ({!unread_separates}). A
     declaration the parser rejects is dropped from that side's AST, so without
     the warnings a structural diff would read as a phantom addition on the side
     that parsed (or as no difference at all when both sides collapse to the same
@@ -126,9 +131,9 @@ val diff :
     located in that side's text as given, banner included. [lossless] preserves
     exact colour channels and non-terminating numeric arithmetic during
     canonical comparison. Canonical comparison judges for the browsers
-    {!Css.optimize} targets by default, so a [@supports] guard every target
-    satisfies, a prefix a target needs and a fallback every target parses past
-    are no difference; [enforce_spec] (default [false]) keeps every one of
+    {!Cascade.Css.optimize} targets by default, so a [@supports] guard every
+    target satisfies, a prefix a target needs and a fallback every target parses
+    past are no difference; [enforce_spec] (default [false]) keeps every one of
     those, since an engine outside the targets reads them.
 
     Two sheets that hold the same rules and the same declarations, and differ
@@ -254,10 +259,12 @@ type stats = {
   regrouped_rules : int;
   container_changes : int;
   layer_order_swaps : int;
+  text_only : bool;
 }
 (** Summary of differences extracted from a {!t}. [layer_order_swaps] counts the
     pairs of cascade layers the two sheets declare in the opposite relative
-    order, as {!Tree_diff.type-layer_order_diff} reports them. *)
+    order, as {!Tree_diff.type-layer_order_diff} reports them. [text_only] is
+    the {!t}'s own. *)
 
 val stats : expected_str:string -> actual_str:string -> t -> stats
 (** [stats ~expected_str ~actual_str result] computes a {!type-stats} record

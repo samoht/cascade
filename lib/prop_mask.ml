@@ -143,7 +143,16 @@ let normalize_clip_path_polygon value =
         if x' == x && y' == y then (x, y) else (x', y')
       in
       let points = map_preserve normalize_point r.points in
-      if points == r.points then value else Clip_path_polygon { r with points }
+      (* CSS Shapes 1 sec. 3.1, [polygon()]: an omitted fill rule is
+         [nonzero]. *)
+      let fill_rule =
+        match r.fill_rule with
+        | Some Nonzero -> (None : clip_path_fill_rule option)
+        | rule -> rule
+      in
+      if points == r.points && fill_rule == r.fill_rule && not r.spaced then
+        value
+      else Clip_path_polygon { fill_rule; points; spaced = false }
   | _ -> value
 
 let rec normalize_clip_path : clip_path -> clip_path =
@@ -307,12 +316,6 @@ let pp_clip_path_round ctx (rounded : border_radius option) =
       Pp.space ctx ();
       pp_border_radius ctx r
 
-let minified_clip_path_fill_rule ctx (fill_rule : clip_path_fill_rule option) :
-    clip_path_fill_rule option =
-  match fill_rule with
-  | Some Nonzero when Pp.minified ctx -> None
-  | other -> other
-
 let pp_clip_path_polygon_rule ctx fill_rule points =
   Option.iter
     (fun rule ->
@@ -320,7 +323,7 @@ let pp_clip_path_polygon_rule ctx fill_rule points =
       if points <> [] then (
         Pp.char ctx ',';
         if not (Pp.minified ctx) then Pp.space ctx ()))
-    (minified_clip_path_fill_rule ctx fill_rule)
+    fill_rule
 
 let pp_clip_path_polygon_sep spaced ctx () =
   Pp.char ctx ',';
@@ -371,10 +374,7 @@ let rec pp_clip_path : clip_path Pp.t =
       in
       Pp.string ctx rendered
   | Clip_path_none -> Pp.string ctx "none"
-  | Clip_path_url url ->
-      Pp.string ctx "url(";
-      Pp.string ctx url;
-      Pp.char ctx ')'
+  | Clip_path_url url -> Pp.url ctx url
   | Clip_path_inset { top; right; bottom; left; rounded } ->
       Pp.string ctx "inset(";
       pp_length_percentage ctx top;

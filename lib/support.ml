@@ -1316,19 +1316,47 @@ let engine_implements engine version key =
       in
       Some (engine_has shipped version)
 
+let engine_shipped engine key =
+  match
+    match Hashtbl.find_opt (Lazy.force table) key with
+    | Some s -> Some s
+    | None -> Hashtbl.find_opt (Lazy.force measured_table) key
+  with
+  | None -> None
+  | Some (support : Baseline.support) ->
+      Some
+        (match engine with
+        | Chrome -> support.chrome
+        | Firefox -> support.firefox
+        | Safari -> support.safari
+        | Ios_safari -> support.safari_ios)
+
 let last_segment key =
   match String.rindex_opt key '.' with
   | None -> key
   | Some i -> String.sub key (i + 1) (String.length key - i - 1)
 
+(* Every key by its last segment, built once: the optimizer asks about the words
+   of a declaration's value, and a scan of the dataset per word would cost more
+   than the rest of the question. *)
+let by_last_segment =
+  lazy
+    (let index = Hashtbl.create 1024 in
+     let add key _ =
+       let segment = last_segment key in
+       let keys = Option.value ~default:[] (Hashtbl.find_opt index segment) in
+       Hashtbl.replace index segment (key :: keys)
+     in
+     Hashtbl.iter add (Lazy.force table);
+     Hashtbl.iter add (Lazy.force measured_table);
+     Hashtbl.filter_map_inplace
+       (fun _ keys -> Some (List.sort_uniq String.compare keys))
+       index;
+     index)
+
 let keys_named segment =
-  let of_table t =
-    Hashtbl.fold
-      (fun key _ acc ->
-        if String.equal (last_segment key) segment then key :: acc else acc)
-      (Lazy.force t) []
-  in
-  List.sort_uniq String.compare (of_table table @ of_table measured_table)
+  Option.value ~default:[]
+    (Hashtbl.find_opt (Lazy.force by_last_segment) segment)
 
 let keys_under prefix =
   let of_table t =
@@ -1343,3 +1371,44 @@ let unimplemented_by targets key =
   match implemented targets key with
   | Some false -> true
   | Some true | None -> false
+
+(* iOS Safari runs the WebKit release Safari of the same version runs, with one
+   CSS parser on both. Where BCD records iOS Safari without a production Safari
+   ships, the production has no effect on a touch screen rather than failing to
+   parse: the 43 such keys are cursor keywords, [resize],
+   [background-attachment: fixed], [display-mode], [:fullscreen] and
+   [::selection]. So for parsing, iOS Safari answers as Safari at its version.
+   The measured supplement is left out: it names a grammar arm by a key of its
+   own ([font-family.inherit] is Chrome reading [inherit] beside another family
+   name), which a word of a value cannot be matched to. *)
+let compare_version (ma, na) (mb, nb) =
+  match Int.compare ma mb with 0 -> Int.compare na nb | c -> c
+
+let parse_release engine key =
+  match Hashtbl.find_opt (Lazy.force table) key with
+  | None -> None
+  | Some (support : Baseline.support) ->
+      Some
+        (match engine with
+        | Chrome -> support.chrome
+        | Firefox -> support.firefox
+        | Safari -> support.safari
+        | Ios_safari -> (
+            match (support.safari_ios, support.safari) with
+            | Some a, Some b -> Some (if compare_version a b <= 0 then a else b)
+            | (Some _ as v), None | None, v -> v))
+
+let floors (targets : targets) =
+  [
+    (Chrome, targets.chrome);
+    (Firefox, targets.firefox);
+    (Safari, targets.safari);
+    (Ios_safari, targets.ios_safari);
+  ]
+
+let equal_engine a b =
+  match (a, b) with
+  | Chrome, Chrome | Firefox, Firefox | Safari, Safari | Ios_safari, Ios_safari
+    ->
+      true
+  | (Chrome | Firefox | Safari | Ios_safari), _ -> false

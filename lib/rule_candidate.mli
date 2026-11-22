@@ -23,9 +23,8 @@ val start :
   t
 (** [start ~ctx ~finalize graph] files the rules of [graph]; the first
     {!refresh} offers its candidates. [finalize] scores and normalizes every
-    produced rule, and the size of [graph] sets how widely subsets are searched
-    on every graph {!rewrite} reaches from it. [graph] pins rules that share a
-    selector branch, as {!Rule_graph.of_rules} does by default. *)
+    produced rule. [graph] pins rules that share a selector branch, as
+    {!Rule_graph.of_rules} does by default. *)
 
 val rewrite : t -> Rule_graph.t -> consume:Rule_graph.node_id list -> unit
 (** [rewrite t graph ~consume] refiles the rules [Rule_graph.rewrite] consumed
@@ -35,10 +34,10 @@ val rewrite : t -> Rule_graph.t -> consume:Rule_graph.node_id list -> unit
 val refresh : t -> offer list
 (** [refresh t] works out the candidates the rewrites since the last refresh
     brought about, and is the offers it made, in the order it made them.
-    Afterwards {!candidates} [t] is {!enumerate}[ ~nodes graph] for the last
-    graph [graph] and the [nodes] of the graph [t] started from. The cost
-    follows what the rewrites changed: the keys their rules are filed under, and
-    the candidates that read a source span or an order they touched. *)
+    Afterwards {!candidates} [t] is {!enumerate}[ graph] for the last graph
+    [graph]. The cost follows what the rewrites changed: the keys their rules
+    are filed under, and the candidates that read a span or an order of the
+    printed rules they touched, moved or reslotted. *)
 
 val offers : t -> offer list
 (** [offers t] is every offer [t] makes as of the last {!refresh}, in the order
@@ -52,11 +51,9 @@ val candidates : t -> Rule_rewrite.candidate list
 (** [candidates t] is the candidates of [offers t]. *)
 
 val enumerate :
-  ?nodes:int ->
   ctx:Ctx.t ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
   Rule_graph.t ->
   Rule_rewrite.candidate list
-(** [enumerate ?nodes ~ctx ~finalize graph] is the candidates of [graph], worked
-    out from nothing. [nodes] (default the node count of [graph]) is the size of
-    the graph the search width is chosen for. *)
+(** [enumerate ~ctx ~finalize graph] is the candidates of [graph], worked out
+    from nothing. *)

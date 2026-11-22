@@ -103,13 +103,13 @@ module Gradient_direction : sig
       [<angle>], or a [<direction> in <color-interpolation>] form). *)
 end
 
-(** {2:types Value and property types}
+(** {2:value_types Value and property types}
 
-    The CSS value and property types are the ones {!Values}, {!Properties},
-    {!Variables} and {!Stylesheet} define, re-exported here with their
-    constructors so that [open Cascade.Css] brings them into scope. A
-    stylesheet's own AST types and the cascade's internal records stay in
-    {!Stylesheet} and {!Properties}. *)
+    The CSS value and property types are the ones {!Values},
+    {!module-Properties}, {!module-Variables} and {!Stylesheet} define,
+    re-exported here with their constructors so that [open Cascade.Css] brings
+    them into scope. A stylesheet's own AST types and the cascade's internal
+    records stay in {!Stylesheet} and {!module-Properties}. *)
 
 include module type of struct
     include Values_intf
@@ -169,6 +169,7 @@ include module type of struct
    and type font_palette_descriptor := Stylesheet.font_palette_descriptor
    and type font_feature_values_block := Stylesheet.font_feature_values_block
    and type counter_style_system := Stylesheet.counter_style_system
+   and type counter_symbol := Stylesheet.counter_symbol
    and type counter_style_descriptor := Stylesheet.counter_style_descriptor
    and type view_transition_descriptor := Stylesheet.view_transition_descriptor
    and type font_variant_descriptor := Stylesheet.font_variant_descriptor
@@ -1351,18 +1352,21 @@ val content_string : string -> content
 val content_attr : string -> content
 (** [content_attr name] is an [attr(name)] content item. *)
 
-val content_counter : string -> content
-(** [content_counter name] is a [counter(name)] content item. *)
+val content_counter : ?style:list_style_type -> string -> content
+(** [content_counter ?style name] is a [counter(name, style)] content item, the
+    style left out when [style] is [None]. *)
 
-val content_counters : string -> string -> content
-(** [content_counters name separator] is a [counters(name, separator)] content
-    item. *)
+val content_counters : ?style:list_style_type -> string -> string -> content
+(** [content_counters ?style name separator] is a
+    [counters(name, separator, style)] content item. *)
 
 val content_list : content list -> content
 (** [content_list items] is a space-separated content value. *)
 
-val counter_item : ?value:int -> string -> counter_item
-(** [counter_item ?value name] is one named counter item. *)
+val counter_item : ?reversed:bool -> ?value:int -> string -> counter_item
+(** [counter_item ?reversed ?value name] is one named counter item, written
+    [reversed(name)] when [reversed] is [true] (default [false]), which only
+    [counter-reset] takes. *)
 
 val counter_set : counter_item list -> counter_set
 (** [counter_set items] is a counter-reset/increment/set list. *)
@@ -2027,6 +2031,16 @@ val hyphens : hyphens -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens} hyphens}
     property. *)
 
+val webkit_touch_callout : webkit_touch_callout -> declaration
+(** [webkit_touch_callout callout] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-touch-callout}
+     -webkit-touch-callout} property. *)
+
+val text_rendering : text_rendering -> declaration
+(** [text_rendering rendering] is the
+    {{:https://svgwg.org/svg2-draft/painting.html#TextRenderingProperty}
+     text-rendering} property. *)
+
 val font_stretch : font_stretch -> declaration
 (** [font_stretch stretch] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-stretch}
@@ -2470,7 +2484,7 @@ val border_radius : border_radius -> declaration
 (** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property; takes a typed value with 1-4 horizontal radii and
-    optional 1-4 vertical radii separated by {!val-/}. *)
+    optional 1-4 vertical radii separated by [/]. *)
 
 val border_top_left_radius : length -> declaration
 (** [border_top_left_radius radius] is the
@@ -3150,7 +3164,7 @@ val container_type : container_type -> declaration
      container-type} property for container queries.
 
     The shorthand that sets this and the name together is
-    {!val-Declaration.container}, because {!val-container} at this level is the
+    {!Declaration.val-container}, because {!val-container} at this level is the
     at-rule builder. *)
 
 val contain_intrinsic_size : contain_intrinsic_size -> declaration
@@ -3975,7 +3989,7 @@ val custom_declaration_layer : declaration -> string option
 
     CSS output generation and performance optimization tools. *)
 
-(** {2:rendering Printing}
+(** {2:printing Printing}
 
     Functions for converting CSS structures to string output. *)
 
@@ -4076,19 +4090,8 @@ val stylesheet :
     written in a program. It discards the {!field-warnings}; with [~strict:true]
     any warning is an error.
 
-    @raise Invalid_argument
-      if [css] does not read. Use {!of_string} to deal with untrusted input. *)
-
-val of_string_exn :
-  ?strict:bool ->
-  ?filename:string ->
-  ?meta:Loc.meta_level ->
-  ?enforce_spec:bool ->
-  string ->
-  t
-[@@deprecated "use Css.stylesheet; removed in 1.4.0"]
-(** [of_string_exn css] is {!val-stylesheet}[ css], but raises
-    {!Error.Parse_error} where {!val-stylesheet} raises [Invalid_argument]. *)
+    It raises [Invalid_argument] if [css] does not read. Use {!of_string} to
+    deal with untrusted input. *)
 
 (** {2:optimization Optimization}
 
@@ -4183,7 +4186,9 @@ val optimize :
     graph. See {!Optimize.scope} for the details.
 
     [targets] defaults to {!Optimize.evergreen_targets} and owns compatibility
-    prefix generation. It is ignored when [enforce_spec] is [true].
+    prefix generation, which is ignored when [enforce_spec] is [true]. Its
+    versions are also the floors whose fallbacks deduplication keeps, in every
+    mode; see {!Optimize.stylesheet}.
 
     [judge], unset by default, names the browsers the sheet is judged for; see
     {!Optimize.stylesheet}.
@@ -4203,9 +4208,9 @@ val optimize :
     selector keeps its [&] prefix.
 
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
-    runs even when the preflight predicts low gain, and the top-level
-    statement-optimisation pipeline iterates until the AST reaches a structural
-    fixpoint (capped at a small bound).
+    runs even when the preflight predicts low gain. In every mode the top-level
+    statement-optimisation pipeline makes one pass, and optimising the result
+    again returns it.
 
     When [regroup] is [true] (the default), order-dependent adjacent rule runs
     may be regrouped by factoring shared declarations and synthesising nesting.
@@ -4220,18 +4225,19 @@ val optimize :
     the CSS you control). The default is safe for any page.
 
     [objective] (default [`Transfer]) is the size metric factoring is judged by:
-    under [`Transfer], a global factoring result that grows the estimated
-    DEFLATE (gzip) size of the output is discarded even when it shrinks raw
-    bytes, since repeated declaration text is nearly free once compressed. Pass
-    [`Raw] to keep every raw-byte win, the right objective when the output ships
-    uncompressed (inline HTML style attributes, email HTML).
+    under [`Transfer], it minimises output bytes, but merges rules with one body
+    only where they print within 128 rules of each other, because a compressor
+    encodes a repeated declaration in two or three bytes wherever it sits, but a
+    selector moved away from its neighbours stops compressing against them. Pass
+    [`Raw] to merge them at any distance, the right objective when the output
+    ships uncompressed (inline HTML style attributes, email HTML).
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a
     complete stylesheet with no out-of-band reader (another stylesheet, or
     [getComputedStyle]), the same closed-world assumption as {!inline_vars}.
 
-    [stats] records what this run did; read it back with {!Stats.snapshot}.
+    [stats] records what this run did; read it back with {!Stats.val-snapshot}.
     Without it the run counts into a recorder of its own that nobody reads. *)
 
 val minify :
@@ -4334,12 +4340,6 @@ val add_var_fallbacks : (string -> string option) -> t -> t
     the fallback for a custom property left at its guaranteed-invalid initial
     value, and a declared one still wins. Unlike {!resolve_theme}, no reference
     is inlined and no definition is emitted. *)
-
-val decode_import_url : string -> string
-(** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
-    quotes from an [@import] URL string as held in
-    {!Stylesheet.import_rule.url}. The parser preserves the verbatim source form
-    there for round-tripping; this helper recovers the bare URL. *)
 
 val inline_imports :
   ?query:Context.query -> ?layer_order:string list -> Context.loader -> t -> t

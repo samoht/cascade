@@ -346,7 +346,7 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
   let percent2 : percentage option =
     match percent2 with Some p -> Some (Pct p) | None -> None
   in
-  Mix { in_space; hue; color1; percent1; color2; percent2 }
+  Mix { in_space; hue; color1; percent1; rest = [ (color2, percent2) ] }
 
 let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
   let percent1 : percentage option =
@@ -361,7 +361,7 @@ let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
            runtime = false;
          })
   in
-  Mix { in_space; hue; color1; percent1; color2; percent2 = None }
+  Mix { in_space; hue; color1; percent1; rest = [ (color2, None) ] }
 
 let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
     color1 color2 =
@@ -377,4 +377,4 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
            runtime = false;
          })
   in
-  Mix { in_space; hue; color1; percent1; color2; percent2 = None }
+  Mix { in_space; hue; color1; percent1; rest = [ (color2, None) ] }

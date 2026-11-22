@@ -102,10 +102,14 @@ let check_container_name =
   check_value_cursor "container_name" read_container_name pp_container_name
 
 let check_counter_item =
-  check_value_cursor "counter_item" read_counter_item pp_counter_item
+  check_value_cursor "counter_item"
+    (read_counter_item ~reversed:true)
+    pp_counter_item
 
 let check_counter_set =
-  check_value_cursor "counter_set" read_counter_set pp_counter_set
+  check_value_cursor "counter_set"
+    (read_counter_set ~reversed:true)
+    pp_counter_set
 
 let check_dominant_baseline =
   check_value_cursor "dominant_baseline" read_dominant_baseline
@@ -532,6 +536,22 @@ let check_view_transition_name =
 
 (* Length-percentage tests for width/height using the value reader/printer *)
 
+(* CSS Scroll Animations 1 (ED) sec. 6.2, [animation-range]: an omitted end is
+   the start's range name at [100%] when the start names one, and [normal]
+   otherwise. So [entry 10% normal] ends at [normal], and dropping the [normal]
+   ends it at [entry 100%]: Chromium 153 computes [animation-range-end] as
+   [normal] for the first and [entry] for the second. Where the start names no
+   range, or the end restates the default, the end goes. *)
+let animation_range_end () =
+  decl_optimizes ~prop:"animation-range" ~into:"entry 10%normal"
+    "entry 10% normal";
+  decl_optimizes ~prop:"animation-range" ~into:"cover normal" "cover normal";
+  decl_optimizes ~prop:"animation-range" ~into:"50%" "50% normal";
+  decl_optimizes ~prop:"animation-range" ~into:"normal" "normal normal";
+  decl_optimizes ~prop:"animation-range" ~into:"exit 20%" "exit 20% exit";
+  decl_optimizes ~prop:"animation-range" ~into:"exit 20%" "exit 20% exit 100%";
+  decl_optimizes ~prop:"animation-range" ~into:"cover 0%" "cover 0% cover 100%"
+
 (* ignore-test: grouped generated-surface vectors. Each row is still a real
    positive/negative spec assertion; the grouping keeps this file navigable. *)
 let spec_generated_animation_font_edges () =
@@ -558,7 +578,9 @@ let spec_generated_animation_font_edges () =
   check_animation_range_item "cover 20%";
   check_animation_range_item "entry";
   check_animation_range_name "entry-crossing";
-  check_animation_timeline ~expected:"scroll(root)" "scroll(root block)";
+  check_animation_timeline "scroll(root block)";
+  decl_optimizes ~prop:"animation-timeline" ~held:"scroll(root block)"
+    ~into:"scroll(root)" "scroll(root block)";
   check_font_kerning "normal";
   check_font_language_override "\"TRK\"";
   check_font_optical_sizing "auto";
@@ -703,14 +725,12 @@ let spec_generated_box_layout_edges () =
      so a value outside the range still reads. *)
   check_shape_image_threshold "-1";
   check_shape_image_threshold "2";
-  check_value_cursor "shape_image_threshold" read_shape_image_threshold
-    pp_shape_image_threshold ~expected:".5" "50%";
+  check_shape_image_threshold "50%";
   (* CSS Values 4 sec. 10.1 puts a math function wherever its type is, and
      [opacity] reads the same [<opacity-value>] that way already. Chrome 153
      takes each of these. *)
   check_shape_image_threshold "calc(.2 + .3)";
-  check_value_cursor "shape_image_threshold" read_shape_image_threshold
-    pp_shape_image_threshold ~expected:"calc(.5 + .25)" "calc(50% + 25%)";
+  check_shape_image_threshold "calc(50% + 25%)";
   check_shape_image_threshold ~expected:".2" "min(.2,.8)";
   neg_cursor read_shape_image_threshold "2px";
   check_tab_size "4";
@@ -730,8 +750,10 @@ let spec_generated_box_layout_edges () =
   neg_cursor read_contain_intrinsic_longhand "auto";
   neg_cursor read_contain_intrinsic_size "auto";
   neg_cursor read_contain_intrinsic_size_item "auto";
-  neg_cursor read_counter_item "1section";
-  neg_cursor ~allow_partial:true read_counter_set "none section";
+  neg_cursor (read_counter_item ~reversed:true) "1section";
+  neg_cursor ~allow_partial:true
+    (read_counter_set ~reversed:true)
+    "none section";
   neg_cursor read_dominant_baseline "baseline baseline";
   neg_cursor read_flex_factor "-1";
   neg_cursor ~allow_partial:true read_flex_flow "row row";
@@ -814,22 +836,31 @@ let spec_generated_position_interaction_edges () =
   check_position_area "x-start center";
   check_position_area "span-left center";
   check_position_area "center top";
-  check_position_area ~expected:"center" "center center";
-  check_position_area ~expected:"span-all" "span-all span-all";
+  check_position_area "center center";
+  decl_optimizes ~prop:"position-area" ~held:"center center" ~into:"center"
+    "center center";
+  check_position_area "span-all span-all";
+  decl_optimizes ~prop:"position-area" ~held:"span-all span-all"
+    ~into:"span-all" "span-all span-all";
   (* css-anchor-position-1 sec. 3.1.2 has two {1,2} branches over the plain
      logical keywords, [start] [end] [span-start] [span-end] [span-all], and
      over their [self-] equivalents. The spec calls every start/end keyword that
      names neither the block nor the inline axis ambiguous, so a lone one
      repeats itself instead of standing for [X span-all]: [start start] folds to
-     [start], while [start end] and [end start] name distinct areas and survive
-     minification unchanged. *)
+     [start] in the normal form, while [start end] and [end start] name distinct
+     areas and survive minification unchanged. The printer writes the pair it is
+     given. *)
   check_position_area "start";
-  check_position_area ~expected:"start" "start start";
+  check_position_area "start start";
+  decl_optimizes ~prop:"position-area" ~held:"start start" ~into:"start"
+    "start start";
   check_position_area "start end";
   check_position_area "end start";
   check_position_area "start span-end";
   check_position_area "span-start end";
-  check_position_area ~expected:"self-start" "self-start self-start";
+  check_position_area "self-start self-start";
+  decl_optimizes ~prop:"position-area" ~held:"self-start self-start"
+    ~into:"self-start" "self-start self-start";
   check_position_area "self-start span-self-end";
   check_position_area "span-self-start self-end";
   (* Section 3.1.2 also spells out [self-x-start]/[self-x-end] and
@@ -1093,6 +1124,7 @@ let suite =
     [
       test_case "spec generated animation/font edges" `Quick
         spec_generated_animation_font_edges;
+      test_case "animation-range end" `Quick animation_range_end;
       test_case "spec generated box/layout edges" `Quick
         spec_generated_box_layout_edges;
       test_case "spec generated position/interaction edges" `Quick
