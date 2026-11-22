@@ -23,39 +23,64 @@ the public API has to update:
   $ cat reachable
   Apply
   Aria
+  Baseline
+  Block
   Color_space
+  Common
+  Commute
   Component
+  Conflict_index
   Container
   Context
+  Cover
   Css
+  Ctx
   Cursor
   Declaration
+  Edge
   Error
+  Factor
+  Flatten
   Font_face
+  Gzip_size
   Keyframe
   Lexer
+  Line_col
   Loc
   Media
+  Merge
   Nest
   Optimize
   Parser
   Pp
+  Preflight
   Properties
   Prune
   Reader
   Resolve
+  Rule
+  Rule_candidate
+  Rule_graph
+  Rule_index
+  Rule_order
+  Rule_rewrite
+  Rule_scheduler
   Selector
   Selector_summary
+  Shorthand
+  Size
   Sort
   Source_index
   Stats
   Stylesheet
+  Subsets
   Support
   Supports
   Syntax
   Token
   Values
   Variables
+  Webkit_fallback
 
 Every module lib/dune lists under private_modules is an implementation detail,
 and none of them is reachable:

@@ -248,6 +248,12 @@
 
 ### Library
 
+- **The optimizer's building blocks are public modules.** `Rule_graph`,
+  `Rule_candidate`, `Rule_rewrite`, `Rule_scheduler`, `Ctx`, `Factor`, `Size`
+  and twenty other modules the tests and benches drive were private, and a
+  build could compile those clients before the modules they name, failing
+  with "is an alias for module Cascade__Rule_candidate, which is missing".
+  They are now part of `Cascade`'s public interface (#1543).
 - `Css.Context.resolve_url` resolves `1:/x` against the base as a relative path,
   as WHATWG URL does, since a digit cannot open a scheme (#1291).
 - `Reader` exposes `origin` and `original_offset`, which map a position in the

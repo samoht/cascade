@@ -6,26 +6,21 @@
  ; hold the property families [Properties] includes; the *_intf modules share
  ; types between implementations and public interfaces; the rest are parser
  ; and optimizer implementation details behind the supported modules.
+ ; A module a test, bench or fuzzer names is not listed: dune orders a
+ ; client's compilation after the library's public interfaces only, so a
+ ; private one it names can be missing when the client compiles.
  (private_modules
-  baseline
-  block
-  common
-  commute
   custom_property_name
   declaration_intf
   declaration_core
   declaration_value
   declaration_reader
-  factor
-  flatten
   inline
   inline_scope
   inline_subst
   inline_dead
   inline_layer
   inline_import
-  line_col
-  merge
   properties_intf
   properties_layout_intf
   properties_text_intf
@@ -43,15 +38,11 @@
   properties_custom
   properties_normalize
   properties_printer
-  rule
-  rule_index
-  rule_order
   selector_intf
   selector_make
   selector_pseudo
   selector_reader
   selector_printer
-  shorthand
   shorthand_border
   shorthand_box
   shorthand_common
@@ -63,8 +54,6 @@
   shorthand_pair
   shorthand_text
   shorthand_timing
-  size
-  subsets
   stylesheet_intf
   stylesheet_cascade
   stylesheet_equal
@@ -105,17 +94,6 @@
   variables_motion
   variables_layout
   variables_property
-  rule_graph
-  conflict_index
-  rule_scheduler
-  preflight
-  ctx
-  cover
-  edge
-  rule_candidate
-  rule_rewrite
-  webkit_fallback
-  gzip_size
   prop_common
   prop_svg
   prop_multicol
