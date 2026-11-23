@@ -1213,6 +1213,23 @@ let spec_math_opacity_value_unfolded () =
         | Error e -> Error.to_string e))
     [ ("opacity", "min(1px,1em)"); ("zoom", "max(1px,1em)") ]
 
+(* CSS Values 4 sec. 10.1 reads a math function wherever [calc()] around it
+   reads, as the same calculation, so an unfolded call needs no wrapper.
+   Chromium 157 serialises each input here as written, without one. *)
+let spec_math_root_prints_bare () =
+  List.iter
+    (fun (prop, input) -> decl_optimizes ~prop ~into:input input)
+    [
+      ("flex-grow", "sign(1em)");
+      ("scale", "sign(1em)");
+      ("z-index", "sign(1em)");
+      ("z-index", "max(1,sign(1em))");
+      ("line-height", "sign(1em)");
+      ("line-height", "min(1,sign(1em))");
+      ("font-weight", "max(400,sign(1em))");
+      ("animation-iteration-count", "sign(1em)");
+    ]
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1336,6 +1353,7 @@ let suite =
       test_case "spec math integer slots" `Quick spec_math_integer_slots;
       test_case "spec math sign and round at an integer slot" `Quick
         spec_math_integer_sign_and_round;
+      test_case "spec math root prints bare" `Quick spec_math_root_prints_bare;
       test_case "spec math opacity value unfolded" `Quick
         spec_math_opacity_value_unfolded;
       test_case "spec math inverse trig is an angle" `Quick
