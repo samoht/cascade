@@ -166,6 +166,10 @@ let rec carries_style_only = function
    position a block may not cross, a statement the cascade does not read in
    source order or one whose leaves refuse.
 
+   A block that cannot rise to its partner may still meet it the other way: the
+   partner sinks to the block when nothing kept between them meets what the
+   partner writes, and the block's position is then the partner's.
+
    A block that merged nothing keeps its node; a partner that took blocks in is
    rebuilt over [optimize_merged_block] of its joined body. *)
 type 'k partner = {
@@ -180,6 +184,7 @@ type 'k kept =
   | Plain of statement
   | Block of statement * 'k * statement list
   | Partner of 'k partner
+  | Sunk  (** where a partner stood before it sank *)
 
 type 'k pass = {
   build : 'k -> statement list -> statement;
@@ -214,21 +219,27 @@ let read_kept pass =
   for at = pass.unread to Dynarray.length pass.kept - 1 do
     let stmt, into =
       match Dynarray.get pass.kept at with
-      | Plain stmt -> (stmt, pass.index)
-      | Block (stmt, _, _) -> (stmt, pass.index)
-      | Partner p -> (pass.build p.key (body p), p.leaves)
+      | Plain stmt -> (Option.Some stmt, pass.index)
+      | Block (stmt, _, _) -> (Option.Some stmt, pass.index)
+      | Partner p -> (Option.Some (pass.build p.key (body p)), p.leaves)
+      | Sunk -> (Option.None, pass.index)
     in
-    match crossed_facts pass stmt with
-    | Option.Some rules when crossable_by_distant_merge stmt ->
-        List.iter (Rule_graph.index_facts into ~at) rules
-    | Option.Some _ | Option.None -> pass.blocked <- at
+    match stmt with
+    | Option.None -> ()
+    | Option.Some stmt -> (
+        match crossed_facts pass stmt with
+        | Option.Some rules when crossable_by_distant_merge stmt ->
+            List.iter (Rule_graph.index_facts into ~at) rules
+        | Option.Some _ | Option.None -> pass.blocked <- at)
   done;
   pass.unread <- Dynarray.length pass.kept
 
-let crosses pass ~after h =
+let crosses ?except pass ~after h =
   Rule_graph.conflicts_after pass.index ~after h
   || List.exists
-       (fun q -> Rule_graph.conflicts_after q.leaves ~after h)
+       (fun q ->
+         (match except with Option.Some p -> q != p | Option.None -> true)
+         && Rule_graph.conflicts_after q.leaves ~after h)
        pass.partners
 
 (* Merge [block], under [key], into its partner [p] when nothing kept after [p]
@@ -245,6 +256,35 @@ let merge pass p key block =
         List.iter (Rule_graph.index_facts p.leaves ~at:p.at) hoisted;
         p.key <- key;
         p.chunks <- block :: p.chunks;
+        true
+      end
+
+(* Sink partner [p] to [block], written under [stmt] after everything kept, when
+   nothing kept after [p] meets what [p] writes: [block] then stands where [p]
+   did, and [p]'s body joins it there. *)
+let sink pass ~hoistable p stmt key block =
+  read_kept pass;
+  let moved = body p in
+  pass.blocked < p.at && hoistable moved
+  && List.for_all carries_style_only moved
+  &&
+  match facts pass moved with
+  | Option.None -> false
+  | Option.Some sunk ->
+      (not (List.exists (crosses ~except:p pass ~after:p.at) sunk))
+      && begin
+        let p' =
+          {
+            at = Dynarray.length pass.kept;
+            first = stmt;
+            key;
+            chunks = block :: p.chunks;
+            leaves = Rule_graph.facts_index ();
+          }
+        in
+        Dynarray.set pass.kept p.at Sunk;
+        pass.partners <- p' :: List.filter (fun q -> q != p) pass.partners;
+        Dynarray.add_last pass.kept (Partner p');
         true
       end
 
@@ -267,10 +307,11 @@ let keep_block pass ~equal_prelude ~hoistable stmt key block =
       false
   | Option.Some p ->
       if
-        not
-          (hoistable block
-          && List.for_all carries_style_only block
-          && merge pass p key block)
+        (not
+           (hoistable block
+           && List.for_all carries_style_only block
+           && merge pass p key block))
+        && not (sink pass ~hoistable p stmt key block)
       then Dynarray.add_last pass.kept (Block (stmt, key, block));
       true
 
@@ -302,10 +343,11 @@ let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
   if not partnered then stmts
   else
     Dynarray.to_list pass.kept
-    |> List.map (function
-      | Plain stmt | Block (stmt, _, _) -> stmt
-      | Partner { first; chunks = [ _ ]; _ } -> first
-      | Partner p -> build p.key (optimize_merged_block (body p)))
+    |> List.filter_map (function
+      | Plain stmt | Block (stmt, _, _) -> Option.Some stmt
+      | Partner { first; chunks = [ _ ]; _ } -> Option.Some first
+      | Partner p -> Option.Some (build p.key (optimize_merged_block (body p)))
+      | Sunk -> Option.None)
     |> List.preserve stmts
 
 let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
@@ -314,6 +356,17 @@ let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
     ~equal_prelude:Media.equal
     ~build:(fun cond block -> Media (cond, block))
     ~hoistable:(fun block -> not (has_nested_preference_media block))
+    ?owner ~optimize_merged_block stmts
+
+(* CSS Conditional Rules 3 sec. 2: a later [@supports] block joins an earlier
+   one of the same condition on the terms [merge_distant] argues for. *)
+let merge_distant_supports ?owner ?(optimize_merged_block = Fun.id) stmts =
+  merge_distant
+    ~prelude:(function
+      | Supports (cond, block) -> Some (cond, block) | _ -> None)
+    ~equal_prelude:Supports.equal
+    ~build:(fun cond block -> Supports (cond, block))
+    ~hoistable:(fun _ -> true)
     ?owner ~optimize_merged_block stmts
 
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]

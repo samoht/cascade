@@ -894,6 +894,9 @@ differently. They are the reason to minify again.
   (#1399, #1422, #1423, #1425).
 - rules holding only nested rules merge** under targets that read nesting
   (#1575).
+- `@supports` blocks of one condition merge,** and a distant `@media` or
+  `@container` merge moves the earlier block down to the later one when the
+  later cannot rise (#1577).
 
 #### Smaller output
 
