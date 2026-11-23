@@ -605,6 +605,17 @@ let test_keep_var_border_spaces () =
     "a{border:var(--bw) var(--bs) var(--bc)}"
     (minify_str "a{border:var(--bw) var(--bs) var(--bc)}")
 
+(* CSS Syntax 3 sec. 9.1 needs no whitespace beside a string: its quotes end and
+   open it, so no neighbour merges into it. Chromium 157 computes
+   [content:var(--x)] as ["ab"] with [--x:"a""b"] as with [--x:"a" "b"]. *)
+let test_custom_value_string_whitespace () =
+  Alcotest.(check string)
+    "two strings" "a{--x:\"a\"\"b\"}"
+    (minify_str "a{--x:\"a\" \"b\"}");
+  Alcotest.(check string)
+    "a number and a string" "a{--x:2\"a\",1\"b\"}"
+    (minify_str "a{--x:2 \"a\", 1 \"b\"}")
+
 let test_custom_value_close_paren_whitespace () =
   (* A [)] closing a non-substitution function or a block is a hard token
      boundary that no neighbour can merge across, so the whitespace after it is
@@ -1293,6 +1304,9 @@ let suite =
       ( "custom value folds whitespace after a hard close-paren",
         `Quick,
         test_custom_value_close_paren_whitespace );
+      ( "custom value string whitespace",
+        `Quick,
+        test_custom_value_string_whitespace );
       ("distant @media merge when safe", `Quick, test_distant_media_merge);
       ( "distant @container merge when safe",
         `Quick,
