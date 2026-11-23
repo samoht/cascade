@@ -120,6 +120,11 @@ type moz_gradient_direction =
       (** [To_direction d] is a [to <side-or-corner>] direction with the meaning
           it has in [linear-gradient()]. *)
 
+(** Whether a [-webkit-radial-gradient()] writes the comma between its shape and
+    size and its stops. Chromium reads the gradient either way, and Firefox only
+    with the comma. *)
+type webkit_radial_comma = Shape_comma | No_shape_comma
+
 (** Shape of a radial gradient *)
 type radial_shape = Circle | Ellipse | Var of radial_shape var
 
@@ -310,9 +315,10 @@ type background_image =
       (** [repeating-{linear,radial,conic}-gradient()] CSS Images 4 sec. 3. *)
   | Webkit_linear_gradient of gradient_direction * gradient_stop list
   | Webkit_repeating_linear_gradient of gradient_direction * gradient_stop list
-  | Webkit_radial_gradient of radial_gradient_config * gradient_stop list
+  | Webkit_radial_gradient of
+      radial_gradient_config * webkit_radial_comma * gradient_stop list
   | Webkit_repeating_radial_gradient of
-      radial_gradient_config * gradient_stop list
+      radial_gradient_config * webkit_radial_comma * gradient_stop list
   | Moz_linear_gradient of moz_gradient_direction * gradient_stop list
   | Moz_repeating_linear_gradient of moz_gradient_direction * gradient_stop list
   | Moz_radial_gradient of radial_gradient_config * gradient_stop list

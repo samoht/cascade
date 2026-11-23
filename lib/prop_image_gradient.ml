@@ -439,7 +439,8 @@ let pp_legacy_radial_size : radial_size Pp.t =
       pp_length_percentage ctx b
   | size -> pp_radial_size ctx size
 
-let pp_legacy_radial_gradient_named name ctx (config, stops) =
+let pp_legacy_radial_gradient_named ?(comma = Shape_comma) name ctx
+    (config, stops) =
   Pp.call name
     (fun ctx ((config : radial_gradient_config), stops) ->
       (* Sec. 5.2.1 reads a lone argument that is a position or a size as a
@@ -472,7 +473,12 @@ let pp_legacy_radial_gradient_named name ctx (config, stops) =
           if prelude then Pp.space ctx ();
           pp_color_interpolation ctx interp)
         config.interpolation;
-      if prelude || Option.is_some config.interpolation then Pp.comma ctx ();
+      (match comma with
+      | No_shape_comma
+        when Option.is_some config.shape || Option.is_some config.size ->
+          Pp.space ctx ()
+      | Shape_comma | No_shape_comma ->
+          if prelude || Option.is_some config.interpolation then Pp.comma ctx ());
       Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
     ctx (config, stops)
 
@@ -1277,49 +1283,18 @@ let read_linear_gradient_body t =
   | Some v -> Linear_gradient_var v
   | None -> read_linear_gradient_body_stops t
 
-let read_webkit_linear_gradient_body t =
-  Cursor.ws t;
-  let direction =
-    Cursor.option
-      (fun t ->
-        Cursor.one_of
-          [ Gradient_direction.read_legacy; Gradient_direction.read_angle ]
-          t)
-      t
-  in
-  if direction <> None then (
-    Cursor.ws t;
-    if not (Cursor.comma_opt t) then
-      Cursor.err_expected t "',' after -webkit-linear-gradient direction");
-  let stops = read_gradient_stops t in
-  if stops = [] then
-    Cursor.err_expected t "at least one color stop in -webkit-linear-gradient()";
-  Webkit_linear_gradient
-    (Option.value ~default:Default_direction direction, stops)
-
-(* Firefox reads the [-moz-linear-gradient()] prelude as a colour interpolation
-   method (CSS Images 4 sec. 3.1) before or after the direction, which is an
-   angle, a 2011 side or corner, or a [to <side-or-corner>] that reads the
-   gradient with the unprefixed grammar. *)
-let read_moz_linear_gradient_body t =
+(* The prelude of a prefixed linear gradient, [read_direction] then the comma
+   before the stops. [interpolation] also takes a colour interpolation method
+   (CSS Images 4 sec. 3.1) before or after the direction, as Chromium and
+   Firefox do for [-webkit-] and Firefox for [-moz-]. [name] is for errors. *)
+let read_legacy_linear_gradient_body ~name ~interpolation read_direction t =
   let read_interpolation t =
     Cursor.ws t;
-    Cursor.option read_color_interpolation t
+    if interpolation then Cursor.option read_color_interpolation t else None
   in
   let interp = read_interpolation t in
   Cursor.ws t;
-  let direction =
-    Cursor.option
-      (fun t ->
-        Cursor.one_of
-          [
-            (fun t -> To_direction (Gradient_direction.read_to_direction t));
-            (fun t -> Legacy_direction (Gradient_direction.read_legacy t));
-            (fun t -> Legacy_direction (Gradient_direction.read_angle t));
-          ]
-          t)
-      t
-  in
+  let direction = Cursor.option read_direction t in
   let interp =
     match interp with
     | None when Option.is_some direction -> read_interpolation t
@@ -1328,12 +1303,45 @@ let read_moz_linear_gradient_body t =
   if Option.is_some direction || Option.is_some interp then (
     Cursor.ws t;
     if not (Cursor.comma_opt t) then
-      Cursor.err_expected t "',' after -moz-linear-gradient direction");
+      Cursor.err_expected t
+        (String.concat "" [ "',' after "; name; " direction" ]));
   let stops = read_gradient_stops t in
   if stops = [] then
-    Cursor.err_expected t "at least one color stop in -moz-linear-gradient()";
+    Cursor.err_expected t
+      (String.concat "" [ "at least one color stop in "; name; "()" ]);
   let with_interp d =
     match interp with None -> d | Some i -> With_interpolation (d, i)
+  in
+  (direction, with_interp, stops)
+
+let read_legacy_direction t =
+  Cursor.one_of
+    [ Gradient_direction.read_legacy; Gradient_direction.read_angle ]
+    t
+
+let read_webkit_linear_gradient_body ~interpolation t =
+  let direction, with_interp, stops =
+    read_legacy_linear_gradient_body ~name:"-webkit-linear-gradient"
+      ~interpolation read_legacy_direction t
+  in
+  Webkit_linear_gradient
+    (with_interp (Option.value ~default:Default_direction direction), stops)
+
+(* Firefox reads the [-moz-linear-gradient()] direction as an angle, a 2011 side
+   or corner, or a [to <side-or-corner>] that reads the gradient with the
+   unprefixed grammar. *)
+let read_moz_linear_gradient_body t =
+  let direction, with_interp, stops =
+    read_legacy_linear_gradient_body ~name:"-moz-linear-gradient"
+      ~interpolation:true
+      (fun t ->
+        Cursor.one_of
+          [
+            (fun t -> To_direction (Gradient_direction.read_to_direction t));
+            (fun t -> Legacy_direction (read_legacy_direction t));
+          ]
+          t)
+      t
   in
   let direction =
     match direction with
@@ -1464,23 +1472,33 @@ let read_legacy_radial_prelude ~optional_comma ~hints ~interpolation t =
     | interp -> interp
   in
   Cursor.ws t;
-  if shape_size && optional_comma then ignore (Cursor.comma_opt t)
-  else if shape_size || Option.is_some position || Option.is_some interp then
-    Cursor.comma t;
+  let comma : webkit_radial_comma =
+    if shape_size && optional_comma && Option.is_none interp then
+      if Cursor.comma_opt t then Shape_comma else No_shape_comma
+    else (
+      if shape_size || Option.is_some position || Option.is_some interp then
+        Cursor.comma t;
+      Shape_comma)
+  in
   let stops = read_gradient_stops t in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in a legacy radial gradient";
+  (* The comma is Chromium's laxity, the hints Firefox's: no engine takes
+     both. *)
+  let hints =
+    match comma with Shape_comma -> hints | No_shape_comma -> false
+  in
   check_legacy_hints ~hints t stops;
-  Radial_gradient ({ shape; size; position; interpolation = interp }, stops)
+  ({ shape; size; position; interpolation = interp }, comma, stops)
 
 (* A lone [var()] may stand for the whole body (CSS Variables 1 sec. 3), which
    the prelude would otherwise read as a position. *)
 let read_legacy_radial_gradient_body ~optional_comma ~hints ~interpolation t =
   match read_gradient_var_only t with
   | Some v ->
-      Radial_gradient
-        ( { shape = None; size = None; position = None; interpolation = None },
-          [ Var v ] )
+      ( { shape = None; size = None; position = None; interpolation = None },
+        Shape_comma,
+        [ (Var v : gradient_stop) ] )
   | None -> read_legacy_radial_prelude ~optional_comma ~hints ~interpolation t
 
 let read_radial_gradient_body t =
@@ -1639,26 +1657,10 @@ let read_repeating_conic_gradient t =
 let read_webkit_repeating_linear_gradient t =
   match
     Cursor.call "-webkit-repeating-linear-gradient" t
-      read_webkit_linear_gradient_body
+      (read_webkit_linear_gradient_body ~interpolation:true)
   with
   | Webkit_linear_gradient (d, stops) ->
       Webkit_repeating_linear_gradient (d, stops)
-  | other -> other
-
-let webkit_radial_gradient_of_radial = function
-  | Radial_gradient (c, stops) -> Webkit_radial_gradient (c, stops)
-  | other -> other
-
-let webkit_repeat_radial_of_radial = function
-  | Radial_gradient (c, stops) -> Webkit_repeating_radial_gradient (c, stops)
-  | other -> other
-
-let moz_radial_gradient_of_radial = function
-  | Radial_gradient (c, stops) -> Moz_radial_gradient (c, stops)
-  | other -> other
-
-let moz_repeat_radial_of_radial = function
-  | Radial_gradient (c, stops) -> Moz_repeating_radial_gradient (c, stops)
   | other -> other
 
 let o_linear_gradient_of_webkit = function
@@ -1667,14 +1669,6 @@ let o_linear_gradient_of_webkit = function
 
 let o_repeat_linear_of_webkit = function
   | Webkit_linear_gradient (d, stops) -> O_repeating_linear_gradient (d, stops)
-  | other -> other
-
-let o_radial_gradient_of_radial = function
-  | Radial_gradient (c, stops) -> O_radial_gradient (c, stops)
-  | other -> other
-
-let o_repeat_radial_of_radial = function
-  | Radial_gradient (c, stops) -> O_repeating_radial_gradient (c, stops)
   | other -> other
 
 let minify_gradient_stop : gradient_stop -> gradient_stop = function

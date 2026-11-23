@@ -45,6 +45,7 @@ let ignored_types =
     "background_position_axis";
     "angular_position";
     "moz_gradient_direction";
+    "webkit_radial_comma";
     (* Slots of the value that owns them: the [font-variant] record and one of
        its alternate components, the axis and edge a [<position>] writes, the
        place of a conic gradient stop, and the prelude of a

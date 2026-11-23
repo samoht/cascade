@@ -875,6 +875,11 @@ differently. They are the reason to minify again.
   direction keeps the unprefixed meaning Firefox gives it.
   `-webkit-radial-gradient(10px 20px red,blue)`, which no browser reads, is no
   longer rewritten into one they paint (#1605).
+- gradients only one engine reads are kept**: Firefox's interpolation hints
+  and methods in `-webkit-radial-gradient()`, Chromium's missing comma after a
+  radial shape and size (kept missing, so Firefox still drops it), and
+  `-webkit-linear-gradient()` with an interpolation method, which both paint
+  (#1606).
 
 #### Stable output
 
