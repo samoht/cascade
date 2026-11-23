@@ -191,10 +191,11 @@ let child_positions () =
   check_overlap "odd and even nth child are disjoint" false ":nth-child(odd)"
     ":nth-child(even)";
   (* One parity against itself is one set of elements, not two, however the two
-     sides spell it. Selectors 4 sec. 9.3 reads [odd] as [2n+1] and [even] as
-     [2n], so proving these disjoint would let a rewrite cross a dependency the
-     DOM really has: every element either side matches, the other matches
-     too. *)
+     sides spell it. [:nth-child()] (Selectors 4 sec. 13.3.1) takes the An+B
+     notation, and CSS Syntax 3 sec. 6 gives [even] and [odd] "the same meaning
+     as 2n and 2n+1, respectively", so proving these disjoint would let a
+     rewrite cross a dependency the DOM really has: every element either side
+     matches, the other matches too. *)
   check_overlap "one parity spelled two ways may overlap" true ":nth-child(odd)"
     ":nth-child(2n+1)";
   check_overlap "one parity spelled two ways may overlap, even" true
