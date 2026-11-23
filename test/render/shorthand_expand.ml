@@ -175,13 +175,11 @@ let jobs () =
 
 (* ===== Driver protocol ===== *)
 
-(* One longhand of an expansion. [specified] is what the browser's declaration
-   block holds; [substituted] differs only where that is the keyword [initial],
-   and then carries the computed value of the longhand on an untouched element.
-   The two are the same declaration written two ways, and the check accepts
-   either, so a comparator that does not fold [initial] into a property's
-   initial value is not counted as a shorthand gap. *)
-type longhand = { name : string; specified : string; substituted : string }
+(* One longhand of an expansion, as the browser's declaration block holds it. A
+   reset is spelt [initial] there, and the comparator folds that keyword into
+   the longhand's initial value (CSS Cascade 5 sec. 7.3.1), so a fold it lacks
+   is reported as a gap of the shorthand. *)
+type longhand = { name : string; value : string }
 
 type expansion = {
   count : int;  (** longhands reported, 0 when the browser rejected the value *)
@@ -200,13 +198,10 @@ let parse_driver_output lines =
       match String.split_on_char '\t' line with
       | [ "n"; id; n ] ->
           Hashtbl.replace table id { (get id) with count = int_of n }
-      | [ "l"; id; name; specified; substituted ] ->
+      | [ "l"; id; name; value ] ->
           let e = get id in
           Hashtbl.replace table id
-            {
-              e with
-              longhands = e.longhands @ [ { name; specified; substituted } ];
-            }
+            { e with longhands = e.longhands @ [ { name; value } ] }
       | "x" :: id :: rest ->
           Hashtbl.replace table id
             { (get id) with error = Some (String.concat "\t" rest) }
@@ -222,9 +217,9 @@ let run_driver ~node ~chrome ~script ~jobs ~work =
 
 let wrap decls = String.concat "" [ ".a{"; decls; "}" ]
 
-let declarations pick longhands =
+let declarations longhands =
   String.concat ";"
-    (List.map (fun l -> String.concat ":" [ l.name; pick l ]) longhands)
+    (List.map (fun l -> String.concat ":" [ l.name; l.value ]) longhands)
 
 (* A parse warning means that side lost a declaration, so its canonical form
    stands for less than its text does and no verdict about it is worth having.
@@ -270,11 +265,11 @@ type outcome =
 (* The shorthand equated with an expansion that keeps every longhand but one is
    the false negative. It is looked for only once the full expansion is equated,
    which is the only state it can hide in. *)
-let conflation shorthand pick longhands =
+let conflation shorthand longhands =
   let short =
     List.filteri
       (fun i _ ->
-        verdict shorthand (declarations pick (without i longhands)) = Equal)
+        verdict shorthand (declarations (without i longhands)) = Equal)
       longhands
   in
   match short with
@@ -295,19 +290,14 @@ let outcome job expansion =
       | [ l ] when l.name = job.property ->
           Excluded "the browser does not expand this property"
       | longhands -> (
-          let specified l = l.specified and substituted l = l.substituted in
-          let judge pick = verdict shorthand (declarations pick longhands) in
-          match (judge specified, judge substituted) with
-          | Dropped why, _ | _, Dropped why -> Dropped_by_cascade why
-          | Differs, Differs -> Gap (declarations specified longhands)
-          | Equal, _ | _, Equal ->
+          let decls = declarations longhands in
+          match verdict shorthand decls with
+          | Dropped why -> Dropped_by_cascade why
+          | Differs -> Gap decls
+          | Equal ->
               if verdict shorthand "" = Equal then
                 Excluded "both sides canonicalize to an empty rule"
-              else
-                let pick =
-                  if judge specified = Equal then specified else substituted
-                in
-                conflation shorthand pick longhands))
+              else conflation shorthand longhands))
 
 (* ===== Reporting ===== *)
 

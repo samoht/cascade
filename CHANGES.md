@@ -1144,6 +1144,10 @@ differently. They are the reason to minify again.
   `@media` blocks read as the conjunction of their queries. `@media
   print{@media screen{...}}` and a negated query still compare different
   (#1537).
+- equates `list-style-image: initial` with `none` and `list-style-position:
+  initial` with `outside` (CSS Lists 3 secs. 3.3 and 3.5), so `list-style:
+  none` matches the longhands a browser expands it to, and `--minify` writes
+  `list-style-image: initial` as `none` (#1593).
 
 #### `cascade diff` without `--diff`
 

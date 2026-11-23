@@ -10,14 +10,9 @@
 //
 // Output is TSV on stdout, one record per line:
 //   n <job> <number of longhands>
-//   l <job> <longhand> <specified value> <initial-substituted value>
+//   l <job> <longhand> <value>
 //   x <job> <error>
 // A tab never appears in a CSSOM value, so the fields are unambiguous.
-//
-// The two value columns differ only where the browser spells a reset [initial]:
-// the second column then carries the computed value of that longhand on an
-// untouched element, which is the same declaration written the other way. Both
-// come from the browser, so neither is a hand-written expansion.
 //
 // All the jobs of one chunk share a single browser launch. No layout, style
 // recalculation or waiting is involved: the inline style block is filled in by
@@ -36,7 +31,7 @@ const frameJs = fs.readFileSync(path.join(__dirname, 'frame.js'), 'utf8');
 
 // Runs inside the page.
 const HARNESS = `
-function shJob(doc, pristine, job, out) {
+function shJob(doc, job, out) {
   rdAssertStandards(doc, 'the page');
   var el = doc.createElement('div');
   try { el.style.setProperty(job.property, job.value); }
@@ -48,20 +43,13 @@ function shJob(doc, pristine, job, out) {
   out.push(['n', job.id, n].join('\\t'));
   for (var i = 0; i < n; i++) {
     var name = st.item(i);
-    var v = st.getPropertyValue(name), sub = v;
-    if (v === 'initial') {
-      var c = doc.defaultView.getComputedStyle(pristine).getPropertyValue(name);
-      if (c !== '') sub = c;
-    }
-    out.push(['l', job.id, name, v, sub].join('\\t'));
+    out.push(['l', job.id, name, st.getPropertyValue(name)].join('\\t'));
   }
 }
 function shMain(jobs) {
   var out = [];
-  var pristine = document.createElement('div');
-  document.body.appendChild(pristine);
   jobs.forEach(function (job) {
-    try { shJob(document, pristine, job, out); }
+    try { shJob(document, job, out); }
     catch (e) { out.push(['x', job.id, String((e && e.message) || e)].join('\\t')); }
   });
   var text = out.join('\\n');
