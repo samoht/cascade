@@ -431,7 +431,8 @@ let rec pp_zoom : zoom Pp.t =
       (* CSS Values 4 sec. 10.13 keeps the call valid where the [0,inf] range is
          exceeded and clamps at used-value time, so [zoom: calc(-50%)] computes
          and a bare [-50%] is dropped. *)
-      pp_calc ~unwrap_num:false
+      Values_calc.pp_calc_with ~unwrap_num:false ~bare_call:true
+        ~bare_number_call:true
         ~unwrap:(fun v ->
           match (v : zoom) with Num f | Pct f -> f >= 0. | _ -> true)
         pp_zoom ctx c
@@ -448,7 +449,9 @@ let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
   | Opacity_percentage f -> Pp.pct ctx f
-  | Calc c -> pp_calc pp_opacity ctx c
+  | Calc c ->
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true pp_opacity
+        ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -484,8 +487,18 @@ let rec read_opacity_dim_only t : opacity =
 
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
+  (* CSS Values 4 sec. 10.1: a call that does not fold stands too, as the
+     calculation [calc()] around it would read. *)
   let read_numeric_math t : opacity =
-    Opacity_number (Values.read_number_percentage_expression t)
+    Cursor.one_of
+      [
+        (fun t -> Opacity_number (Values.read_number_percentage_expression t));
+        (fun t ->
+          Calc
+            (Values.read_calc ~result_type:`Number_or_percentage
+               read_opacity_dim_only t));
+      ]
+      t
   in
   let read_number_or_percentage t =
     let n, unit = Cursor.number_with_unit t in
@@ -517,7 +530,9 @@ let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
  fun ctx -> function
   | Number n -> Pp.float ctx n
   | Percentage n -> Pp.pct ctx n
-  | Calc c -> pp_calc pp_shape_image_threshold ctx c
+  | Calc c ->
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
+        pp_shape_image_threshold ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -550,7 +565,16 @@ let rec read_shape_image_threshold t : shape_image_threshold =
     Var (read_var read_shape_image_threshold t)
   in
   let read_numeric_math t : shape_image_threshold =
-    Number (Values.read_number_percentage_expression t)
+    Cursor.one_of
+      [
+        (fun t : shape_image_threshold ->
+          Number (Values.read_number_percentage_expression t));
+        (fun t ->
+          Calc
+            (Values.read_calc ~result_type:`Number_or_percentage
+               read_threshold_dim_only t));
+      ]
+      t
   in
   (* CSS Shapes 1 sec. 6.2 takes an [<opacity-value>], which CSS Color 4 spells
      [<number> | <percentage>], and computes it "clamped to the range [0,1]":
@@ -1187,6 +1211,22 @@ let rec read_zoom_dim_only t : zoom =
     ]
     t
 
+(* The folded math function keeps its wrapper below the range, where the bare
+   literal would be dropped; one that does not fold reads as the calculation
+   [calc()] around it reads. *)
+let read_zoom_math t : zoom =
+  Cursor.one_of
+    [
+      (fun t : zoom ->
+        let n = Values.read_number_percentage_expression t in
+        if n < 0. then Calc (Val (Num n)) else Num n);
+      (fun t ->
+        Calc
+          (Values.read_calc ~result_type:`Number_or_percentage
+             read_zoom_dim_only t));
+    ]
+    t
+
 let rec read_zoom (t : Cursor.t) : zoom =
   (* CSS Viewport 1 sec. 3 spells [zoom] as [normal | reset | <number [0,inf]> |
      <percentage [0,inf]>], so a negative zoom is no zoom. CSS Values 4 sec.
@@ -1203,12 +1243,6 @@ let rec read_zoom (t : Cursor.t) : zoom =
         | Some n -> Num (non_negative n)
         | None ->
             Cursor.err_invalid t "expected a number or percentage for zoom")
-  in
-  (* The folded math function keeps its wrapper below the range, where the bare
-     literal would be dropped. *)
-  let read_numeric_math t : zoom =
-    let n = Values.read_number_percentage_expression t in
-    if n < 0. then Calc (Val (Num n)) else Num n
   in
   Cursor.enum_or_calls "zoom"
     [
@@ -1227,7 +1261,7 @@ let rec read_zoom (t : Cursor.t) : zoom =
              Calc
                (Values.read_calc ~result_type:`Number_or_percentage
                   read_zoom_dim_only t) )
-      :: Values.math_function_calls read_numeric_math)
+      :: Values.math_function_calls read_zoom_math)
     ~default:read_value t
 
 let read_object_view_box_inset t =

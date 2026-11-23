@@ -820,6 +820,9 @@ differently. They are the reason to minify again.
   sec. 7.3.6). Both are now kept, `clamp()` with a `none` bound is never
   folded, and a rule holding `revert-rule` is never merged, split, or let
   shadow an earlier rule (#1569).
+- math function that cannot fold was deleted at `opacity`.**
+  `opacity:sign(1em)`, `shape-image-threshold:sign(1em)` and `zoom:sign(1em)`
+  were dropped, though Chromium computes each as 1; they are now kept (#1571).
 
 #### Stable output
 

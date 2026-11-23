@@ -139,12 +139,15 @@ val pp_calc_with :
   ?unwrap:('a -> bool) ->
   ?pp_unwrapped:'a Pp.t ->
   ?bare_call:bool ->
+  ?bare_number_call:bool ->
   'a Pp.t ->
   'a calc Pp.t
-(** [pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped ?bare_call pp] is {!pp_calc}
-    on its own arguments. [bare_call] writes a call answering its arguments'
-    type ([min()], [abs()], ...) that did not fold without the [calc()] around
-    it, for a slot whose reader reads that back to the same node. *)
+(** [pp_calc_with ?unwrap_num ?unwrap ?pp_unwrapped ?bare_call ?bare_number_call
+     pp] is {!pp_calc} on its own arguments. [bare_call] writes a call answering
+    its arguments' type ([min()], [abs()], ...) that did not fold without the
+    [calc()] around it, for a slot whose reader reads that back to the same
+    node. [bare_number_call] does the same for a call answering a [<number>]
+    ([sign()], [sin()], ...), at a slot that reads it back so. *)
 
 val pp_calc :
   ?unwrap_num:bool ->

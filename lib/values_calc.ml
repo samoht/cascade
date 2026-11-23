@@ -1075,15 +1075,23 @@ let is_typed_math_fn = function
       true
   | _ -> false
 
+(* The math functions answering a [<number>] whatever their arguments (CSS
+   Values 4 secs. 10.4 to 10.6); the inverse trigonometric ones answer an
+   [<angle>] and are not among them. *)
+let is_number_math_fn : math_fn -> bool = function
+  | Sin _ | Cos _ | Tan _ | Sqrt _ | Exp _ | Log _ | Pow _ | Sign_n _ -> true
+  | _ -> false
+
 let pp_calc_with : type a.
     ?unwrap_num:bool ->
     ?unwrap:(a -> bool) ->
     ?pp_unwrapped:a Pp.t ->
     ?bare_call:bool ->
+    ?bare_number_call:bool ->
     a Pp.t ->
     a calc Pp.t =
  fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) ?pp_unwrapped
-     ?(bare_call = false) pp_value ctx calc ->
+     ?(bare_call = false) ?(bare_number_call = false) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1109,7 +1117,13 @@ let pp_calc_with : type a.
      [calc()] around it reads, as the same calculation, so at a slot whose
      reader reads the bare call back to this node one that did not fold is
      written bare, the way the typed length nodes print. *)
-  | Math_fn fn when bare_call && is_typed_math_fn fn -> pp_math_fn ctx fn
+  (* Such a slot folds a static call to the literal it computes, so only one
+     that does not fold reads back bare to this node. *)
+  | Math_fn fn
+    when bare_call
+         && (is_typed_math_fn fn || (bare_number_call && is_number_math_fn fn))
+         && not (bare_number_call && Option.is_some (math_fn_result fn)) ->
+      pp_math_fn ctx fn
   | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =
