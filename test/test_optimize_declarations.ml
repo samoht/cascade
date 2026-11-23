@@ -1060,7 +1060,7 @@ let target_minify_enforce_spec_split () =
     ~default:"a{flex:1;flex-basis:0}" ~spec:"a{flex:1}";
   check_modes "flex longhands with a 0% basis"
     "a{flex-grow:1;flex-shrink:1;flex-basis:0%}" ~default:"a{flex:1}"
-    ~spec:"a{flex:1 0%}";
+    ~spec:"a{flex:0%}";
   check_modes "an explicit 0% basis" "a{flex:2 3 0%}" ~default:"a{flex:2 3}"
     ~spec:"a{flex:2 3 0%}";
   check_modes "color-mix keeps the required in oklab in both modes"

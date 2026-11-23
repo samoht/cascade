@@ -1191,6 +1191,11 @@ differently. They are the reason to minify again.
   `border-width:1px;border-style:solid;border-color:currentcolor;border-image:none`:
   `--diff=tree` exits 0 and the default mode says only that the text differs
   (#1596).
+- basis `flex:1` omits reads by the mode.** By default it is `0%`, as Chrome
+  computes, so `flex:1` against `flex-grow:1;flex-shrink:1;flex-basis:0%` is
+  no structural change; under `--enforce-spec` it is Flexbox 1 sec. 7.1's `0`,
+  so `flex:1 1 0` minifies to `flex:1` and a `0%` basis is kept as `flex:1 0%`
+  (#1601).
 
 ### Warnings, errors and help
 
