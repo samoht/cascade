@@ -45,10 +45,6 @@ val same_importance : Declaration.declaration list -> bool
 (** [same_importance decls] is [true] when every declaration of [decls] has the
     same importance. *)
 
-val strip_vendor_prefix : string -> string option
-(** [strip_vendor_prefix name] is [name] without its [-webkit-], [-moz-], [-ms-]
-    or [-o-] prefix, or [None] when it carries none. *)
-
 val resets_held :
   ctx:Ctx.t ->
   Rule_index.t ->

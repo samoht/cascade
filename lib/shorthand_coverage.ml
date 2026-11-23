@@ -1251,19 +1251,6 @@ let is_known_footprint_key k =
   done;
   !found
 
-(* The typed property an untyped prefixed name spells. An engine that reads
-   [-moz-transform-origin] reads it as [transform-origin] (Firefox's
-   longhands.toml gives that property the [moz] and [webkit] prefixes, and
-   Chromium and WebKit alias their [-webkit-] names), and one that does not
-   reads nothing, so such a name writes that property's slots at most. *)
-let prefixed_spelling name =
-  match Shorthand_common.strip_vendor_prefix name with
-  | None -> None
-  | Some unprefixed -> (
-      match Properties.of_name unprefixed with
-      | Properties.Prop (Unknown_property _) -> None
-      | spelled -> Some spelled)
-
 (* Whether one name is the other with a further hyphenated component, the shape
    a longhand takes under its shorthand. Two placeable names of that shape write
    a common slot even though neither footprint mentions the other. *)
@@ -1304,14 +1291,21 @@ let rec declaration_overlap_keys decl =
   match decl with
   | Theme_guarded { decl; _ } -> declaration_overlap_keys decl
   | Declaration
-      { property = Unknown_property { written = name; _ } as property; _ } -> (
-      match prefixed_spelling name with
-      | Some (Properties.Prop property) ->
-          sorted_keys (property_footprint property)
-      | None ->
-          if is_known_footprint_key (key name) then
-            sorted_keys (property_footprint property)
-          else [ broad_overlap_key ])
+      {
+        property = Unknown_property { spells = Some (Properties.Prop p); _ };
+        _;
+      } ->
+      (* An engine that reads [-moz-transform-origin] reads it as
+         [transform-origin] (Firefox's longhands.toml gives that property the
+         [moz] and [webkit] prefixes, and Chromium and WebKit alias their
+         [-webkit-] names), and one that does not reads nothing, so a prefixed
+         spelling of a typed property writes that property's slots at most. *)
+      sorted_keys (property_footprint p)
+  | Declaration
+      { property = Unknown_property { written = name; _ } as property; _ } ->
+      if is_known_footprint_key (key name) then
+        sorted_keys (property_footprint property)
+      else [ broad_overlap_key ]
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
 (* The slots a typed property writes wherever it is read. [all], a custom

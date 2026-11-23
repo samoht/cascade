@@ -218,11 +218,10 @@ let compose_font_via_index ~ctx idx =
 (* The property a declaration writes. A typed value reader that rejects its
    input leaves the declaration as [Unknown_property] under the property's own
    name ([font-kerning:var(--a) var(--b)] reads that way), and it still names
-   that property, so the name is read back into its constructor. *)
+   that property, which its classification records. *)
 let named_property decl =
   match unwrap_theme_guard decl with
-  | Declaration { property = Unknown_property { written = name; _ }; _ } ->
-      property_of_name name
+  | Declaration { property = Unknown_property { own; _ }; _ } -> own
   | Declaration { property; _ } -> Some (Properties.Prop property)
   | _ -> None
 
