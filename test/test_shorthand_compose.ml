@@ -616,8 +616,7 @@ let test_grid_composes () =
     ".x{grid-template-rows:none;grid-template-columns:1fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:2em;grid-auto-rows:3em}";
   sheet_optimizes_to
     ~into:
-      ".x{grid-template:\"a\" \
-       1fr/1fr;grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}"
+      ".x{grid-template:\"a\"1fr/1fr;grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}"
     ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\";grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}";
   sheet_optimizes_to
     ~into:
@@ -633,10 +632,10 @@ let test_grid_template_composes () =
     ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none}";
   sheet_optimizes_to ~into:".x{grid-template:none}"
     ".x{grid-template-rows:none;grid-template-columns:none;grid-template-areas:none}";
-  sheet_optimizes_to ~into:".x{grid-template:\"a b\" 1fr/1fr 1fr}"
+  sheet_optimizes_to ~into:".x{grid-template:\"a b\"1fr/1fr 1fr}"
     ".x{grid-template-rows:1fr;grid-template-columns:1fr \
      1fr;grid-template-areas:\"a b\"}";
-  sheet_optimizes_to ~into:".x{grid-template:\"a\" 1fr \"b\" 2fr/1fr}"
+  sheet_optimizes_to ~into:".x{grid-template:\"a\"1fr\"b\"2fr/1fr}"
     ".x{grid-template-rows:1fr \
      2fr;grid-template-columns:1fr;grid-template-areas:\"a\" \"b\"}";
   (* The areas form writes one size per row, so a row count the tracks do not

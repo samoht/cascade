@@ -811,7 +811,7 @@ let test_grid_template () =
   neg_cursor read_grid_template "repeat(2, 1px [auto])";
   (* sec. 7.4: the [<string>] form of grid-template keeps its value as raw text,
      and its bracketed positions are [<line-names>] just the same. *)
-  check_grid_template ~expected:"[a]\"x\" 1px" "[a] \"x\" 1px";
+  check_grid_template ~expected:"[a]\"x\"1px" "[a] \"x\" 1px";
   neg_cursor read_grid_template "[span] \"x\" 1px";
   neg_cursor read_grid_template "\"x\" 1px [auto]";
   (* CSS Grid 2 (ED) sec. 7.2: [<track-list> = [ <line-names>? [ <track-size> |

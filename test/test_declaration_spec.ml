@@ -446,12 +446,12 @@ let grid_shorthand_names_both_axes () =
   check_declaration ~expected:"grid-template:10px/20px"
     "grid-template: 10px / 20px";
   check_declaration ~expected:"grid-template:none" "grid-template: none";
-  check_declaration ~expected:"grid-template:\"a\" 10px"
+  check_declaration ~expected:"grid-template:\"a\"10px"
     "grid-template: \"a\" 10px";
   (* CSS Grid 2 sec. 7.4 spells the areas form as [ <line-names>? <string>
      <track-size>? <line-names>? ]+ [ / <explicit-track-list> ]?, and sec. 7.2
      leaves repeat() out of an explicit track list. *)
-  check_declaration ~expected:"grid-template:[x]\"a\" 1fr[y]"
+  check_declaration ~expected:"grid-template:[x]\"a\"1fr[y]"
     "grid-template: [x] \"a\" 1fr [y]";
   neg_cursor read_declaration "grid-template: #next \"sidebar\"";
   neg_cursor read_declaration "grid-template: 45deg, \"-\"";
@@ -1110,7 +1110,7 @@ let spec_platform_property_vectors () =
         "font:italic small-caps 650 condensed 16px/1.5 Brand,serif" );
       ("display: block flex", "display:block flex");
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
-        "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );
+        "grid-template:\"head head\"auto\"nav main\"1fr/12rem 1fr" );
       ( "transition: opacity 1s ease-in .2s allow-discrete",
         "transition:opacity 1s ease-in .2s allow-discrete" );
       ("animation-range: exit entry", "animation-range:exit entry");

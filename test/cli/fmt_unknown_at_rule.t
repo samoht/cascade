@@ -76,7 +76,7 @@ inside the body goes with it: the optimizer writes the body back as the
 token stream it read, keeping only the separators the tokens need.
 
   $ printf '@o x{ a "i' | cascade fmt --minify - 2> /dev/null
-  @o x{a "i"}
+  @o x{a"i"}
   $ printf '@o x{ a url(i' | cascade fmt --minify - 2> /dev/null
   @o x{a url(i)}
   $ printf '@o x{ a f(i' | cascade fmt --minify - 2> /dev/null
@@ -97,4 +97,4 @@ output is a second statement, not more of the at-rule.
   $ printf '@o x{ a "i' | cascade fmt --minify - 2> /dev/null > cut.css
   $ printf '.z{color:red}' >> cut.css
   $ cascade fmt --minify cut.css 2> /dev/null
-  @o x{a "i"}.z{color:red}
+  @o x{a"i"}.z{color:red}

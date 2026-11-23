@@ -483,20 +483,20 @@ let counter_symbol_is_one_image () =
 (* CSS Syntax 3 sec. 9.1 needs whitespace only between two tokens that would
    otherwise merge, so a minified descriptor drops the space after a comma and
    the second of two spaces. Chromium 157 reads additive-symbols: 2 "a",1 "b"
-   and range: 1 2,4 5 as the spaced forms. The space beside a string stays, as
-   it does in every opaque stream. *)
+   and range: 1 2,4 5 as the spaced forms, and a string needs no space beside
+   it: Chromium reads 2"a",1"b" as 2 "a", 1 "b". *)
 let counter_descriptor_whitespace () =
   let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
   Alcotest.(check string)
     "additive-symbols"
-    "@counter-style c{system:additive;additive-symbols:2 \"a\",1 \"b\"}"
+    "@counter-style c{system:additive;additive-symbols:2\"a\",1\"b\"}"
     (minify
        "@counter-style c { system: additive; additive-symbols: 2 \"a\", 1 \
         \"b\" }");
   Alcotest.(check string)
     "range, pad and speak-as"
-    "@counter-style c{system:cyclic;symbols:a;range:1 2,4 5;pad:2 \
-     \"0\";speak-as:bullets}"
+    "@counter-style c{system:cyclic;symbols:a;range:1 2,4 \
+     5;pad:2\"0\";speak-as:bullets}"
     (minify
        "@counter-style c { system: cyclic; symbols: a; range: 1 2 , 4  5; pad: \
         2  \"0\"; speak-as: bullets }")
