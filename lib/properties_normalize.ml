@@ -91,6 +91,10 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
      zero, so folding to [0] would let a flex item shrink below its content. *)
   | Min_inline_size, Length Initial -> Length Auto
   | Min_block_size, Length Initial -> Length Auto
+  (* CSS Lists 3 secs. 3.3 and 3.5: the initial values are [none] and
+     [outside]. *)
+  | List_style_image, Initial -> None
+  | List_style_position, Initial -> Outside
   (* Keep this fallback exhaustive: a new property must make this match fail to
      compile until its initial-value fold has been considered. *)
   | Custom_property _, value -> value
