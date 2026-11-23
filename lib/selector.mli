@@ -191,6 +191,16 @@ val pp_attr_name : attr_name Pp.t
 val read_attr_name : Cursor.t -> attr_name
 (** [read_attr_name t] parses an [attr_name] from [t]. *)
 
+val html_attr_name : attr_name -> string
+(** [html_attr_name name] is [name] as HTML sec. 4.16.2 compares it to an
+    attribute of an HTML element: ASCII lowercased. *)
+
+val html_case_insensitive_value : attr_name -> bool
+(** [html_case_insensitive_value name] is [true] when HTML sec. 4.16.2 lists
+    [name] among the attributes whose value an unflagged attribute selector
+    compares ASCII case-insensitively on an HTML element, such as [type]. Any
+    other unflagged value is compared as written. *)
+
 val attr_value_needs_quoting : string -> bool
 (** [attr_value_needs_quoting value] is [true] when [value] is not one CSS ident
     ({!Syntax.is_ident}), so it must print as a string: Selectors 4 sec. 6.1

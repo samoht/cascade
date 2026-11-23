@@ -900,6 +900,8 @@ differently. They are the reason to minify again.
 - box shorthand and a side of the same value no longer order each other:**
   `padding:1px` and `padding-top:1px`, likewise `margin` and `inset`, in the
   minifier and in `cascade diff --diff=canonical` (#1578).
+- and `[x=A]` are disjoint** unless HTML compares `x` without case (HTML sec.
+  4.16.2), so rules on them merge past each other (#1579).
 
 #### Smaller output
 
