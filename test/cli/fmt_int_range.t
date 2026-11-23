@@ -188,3 +188,12 @@ as an `<integer>`: it keeps the first and drops the other two.
   a{widows:2.0}
   a{counter-set:c -99999999999999999999}
   a{math-depth:99999999999999999999}
+
+A math function that folds at an `<integer>` slot is rounded to an
+integer (CSS Values 4 sec. 10.9), and the folded value is written as an
+integer token or kept in its `calc()`: CSS Syntax 3 sec. 4.3.13 gives
+`1e20` the number type, which `<integer>` does not take.
+
+  $ for d in 'counter-reset:c calc(1e20)' 'font-feature-settings:"liga" calc(1e20)'; do printf 'a{%s}' "$d" | cascade fmt --minify - 2>&1; done
+  a{counter-reset:c calc(1e20)}
+  a{font-feature-settings:"liga" calc(1e20)}
