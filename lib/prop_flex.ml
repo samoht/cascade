@@ -845,6 +845,11 @@ and read_flex_basis_with ?(keywords = true) t : flex_basis =
         ( "calc",
           fun t ->
             Calc (read_calc ~result_type:`Value read_flex_basis_in_math t) );
+        (* CSS Sizing 4 (ED) sec. 7 takes for the basis any sizing keyword the
+           context allows, and [flex-basis] allows [content]. *)
+        ( "calc-size",
+          fun t ->
+            flex_basis_of_length t (Values.read_calc_size ~content:true t) );
       ]
       (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], so it takes
          the intrinsic sizes the box sizes take. *)
@@ -869,8 +874,18 @@ module Flex = struct
   (* Helper functions for flex parsing *)
   (* [flex: auto] is [1 1 auto], which the flex value spells [Auto] rather than
      as a basis of its own. *)
+  (* Sec. 7.1 gives [flex] the [<'flex-basis'>] grammar, but Chromium 153 drops
+     [flex:1 calc-size(auto,size)] and [flex:calc-size(content,size)] where it
+     reads the same [flex-basis], and web-features records [calc-size()] for
+     Chrome from 129, so a shorthand kept with one would let the fallback before
+     it go. The shorthand's basis reads every other [flex-basis]. *)
+  let read_shorthand_basis t : flex_basis =
+    match read_flex_basis t with
+    | Calc_size _ -> Cursor.err_invalid t "calc-size() as a flex basis"
+    | basis -> basis
+
   let read_basis_only t =
-    match (read_flex_basis t : flex_basis) with
+    match (read_shorthand_basis t : flex_basis) with
     | Auto -> (Auto : flex)
     | basis -> Basis basis
 
@@ -899,7 +914,7 @@ module Flex = struct
       Cursor.option
         (fun t ->
           Cursor.ws t;
-          read_flex_basis t)
+          read_shorthand_basis t)
         t
     in
     match (shrink, basis) with
@@ -910,7 +925,7 @@ module Flex = struct
   (* Sec. 7.1.1 joins the factor group and the basis with a [||], so the basis
      may lead. An omitted shrink is 1. *)
   let read_basis_grow_shrink t =
-    let basis = read_flex_basis t in
+    let basis = read_shorthand_basis t in
     Cursor.ws t;
     let grow = read_factor t in
     let shrink =

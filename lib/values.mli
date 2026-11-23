@@ -557,6 +557,12 @@ val read_length :
     to a [<length>] as such; it defaults to [false], so a reader whose property
     takes them asks. *)
 
+val read_calc_size : content:bool -> Cursor.t -> length
+(** [read_calc_size ~content t] reads a [calc-size()] call (CSS Sizing 4 (ED)
+    sec. 7). Its [<size-keyword>] basis is any sizing keyword the context
+    allows, so [content] adds the [content] keyword a [flex-basis] takes (CSS
+    Flexbox 1 sec. 7.2). *)
+
 val read_non_negative_length :
   ?with_keywords:bool -> ?length_only:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be

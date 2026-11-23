@@ -179,7 +179,8 @@ and length_function_readers ~size ~allow_negative ~length_only ~with_keywords =
       ( "fit-content",
         read_fit_content_length ~allow_negative ~length_only ~with_keywords );
       ( "calc-size",
-        read_calc_size_length ~allow_negative ~length_only ~with_keywords );
+        read_calc_size_length ~content:false ~allow_negative ~length_only
+          ~with_keywords );
     ]
   in
   (if with_keywords then sizing_functions else [])
@@ -340,12 +341,16 @@ and read_abs_length ~size ~allow_negative ~length_only inner =
    basis at any depth and is a syntax error after [any]. A size keyword basis
    covers the sizing functions of its context, [fit-content()] in [width], and
    sec. 3.2 keeps [none] out of [calc-size()]. *)
-and read_calc_size_length ~allow_negative ~length_only ~with_keywords inner =
+and read_calc_size_length ?(content = false) ~allow_negative ~length_only
+    ~with_keywords inner =
   let basis =
     match Cursor.peek_keyword inner with
     | Some "any" ->
         Cursor.skip inner;
         Option.None
+    | Some "content" when content ->
+        Cursor.skip inner;
+        Option.Some (Content : length)
     | Some ("none" | "normal" | "size") ->
         Cursor.err_invalid inner "not a calc-size() basis"
     | _ -> (
@@ -435,6 +440,11 @@ and read_attr_length_fallback ~allow_negative ~length_only ~with_keywords inner
 
 let read_length ?allow_negative ?with_keywords ?sizing ?length_only t =
   read_length_in ?allow_negative ?with_keywords ?sizing ?length_only t
+
+let read_calc_size ~content t =
+  Cursor.call "calc-size" t
+    (read_calc_size_length ~content ~allow_negative:false ~length_only:false
+       ~with_keywords:true)
 
 let read_non_negative_length ?(with_keywords = true) ?(length_only = false) t :
     length =
