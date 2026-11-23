@@ -839,6 +839,30 @@ let canonical_order_reads_shared_longhands () =
     "no rule is reported moved" false
     (Astring.String.is_infix ~affix:"moved" r)
 
+(* CSS Box 4 sec. 3.2 and 4.2 and CSS Position 3 sec. 3.1: a box shorthand of
+   one to four values gives top, right, bottom and left, a missing side copying
+   the opposite one, so [padding:1px] writes [1px] to [padding-top] and
+   [inset:1px] writes it to [top]. Either order of the pair computes the same
+   values. [padding:1px 2px] writes [2px] to [padding-left], so there the order
+   decides. *)
+let canonical_order_reads_box_sides () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "padding and an agreeing side commute" true
+    (equal ".i{padding:1px}.d{padding-top:1px}"
+       ".d{padding-top:1px}.i{padding:1px}");
+  Alcotest.(check bool)
+    "margin and an agreeing side commute" true
+    (equal ".i{margin:1px 2px}.d{margin-left:2px}"
+       ".d{margin-left:2px}.i{margin:1px 2px}");
+  Alcotest.(check bool)
+    "inset and an agreeing side commute" true
+    (equal ".i{inset:1px}.d{top:1px}" ".d{top:1px}.i{inset:1px}");
+  Alcotest.(check bool)
+    "a side the shorthand sets otherwise does not" false
+    (equal ".i{padding:1px 2px}.d{padding-left:1px}"
+       ".d{padding-left:1px}.i{padding:1px 2px}")
+
 (* [-moz-transform] and [-webkit-transform] write one slot: Firefox reads both
    as [transform], Chromium and WebKit the second alone. Two rules whose every
    write to it carries [rotate(180deg)] leave it at that value in each engine,
@@ -1749,6 +1773,8 @@ let suite =
         canonical_composes_gathered_longhands;
       Alcotest.test_case "canonical order reads shared longhands" `Quick
         canonical_order_reads_shared_longhands;
+      Alcotest.test_case "canonical order reads box sides" `Quick
+        canonical_order_reads_box_sides;
       Alcotest.test_case "alias writes of one value agree" `Quick
         canonical_alias_writes_agree;
       Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
