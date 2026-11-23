@@ -1208,6 +1208,58 @@ let webkit_gradient_engines () =
       ("-webkit-repeating-linear-gradient", linear_rejected);
     ]
 
+(* CSS Images 4 (ED) sec. 3.5.1 Color Stop Lists: [<color-stop-list> =
+   <linear-color-stop> , [ <linear-color-hint>? , <linear-color-stop> ]#?], and
+   [<angular-color-stop-list>] the same with angles, so a hint sits between two
+   colour stops: never first, never last, never next to another hint. Chromium
+   157 and Firefox 160 drop every gradient that places one elsewhere, prefixed
+   ones included. A [var()] may stand for a stop or a hint, so it places
+   nothing. *)
+let gradient_hint_placement () =
+  let misplaced =
+    [
+      ("linear-gradient", "(to top, 10px, red, blue)");
+      ("linear-gradient", "(10px, red, blue)");
+      ("linear-gradient", "(red, blue, 10px)");
+      ("linear-gradient", "(red, 10px)");
+      ("linear-gradient", "(red, 10px, 20px, blue)");
+      ("linear-gradient", "(red, 50%, blue, 20%)");
+      ("repeating-linear-gradient", "(red, blue, 10px)");
+      ("radial-gradient", "(circle, red, blue, 10px)");
+      ("radial-gradient", "(red, 10%, 20%, blue)");
+      ("repeating-radial-gradient", "(red, 10%, 20%, blue)");
+      ("conic-gradient", "(red, blue, 10deg)");
+      ("conic-gradient", "(red, 10deg, 20deg, blue)");
+      ("conic-gradient", "(red, blue, 10%)");
+      ("repeating-conic-gradient", "(red, blue, 10deg)");
+      ("-webkit-linear-gradient", "(red, blue, 30%)");
+      ("-webkit-linear-gradient", "(30%, red, blue)");
+      ("-webkit-linear-gradient", "(red, 10%, 20%, blue)");
+      ("-webkit-repeating-linear-gradient", "(red, blue, 30%)");
+      ("-moz-linear-gradient", "(red, blue, 30%)");
+      ("-moz-linear-gradient", "(red, 10%, 20%, blue)");
+      ("-moz-linear-gradient", "(to right, 10px, red, blue)");
+    ]
+  in
+  List.iter
+    (fun (name, args) ->
+      neg_cursor read_declaration
+        (String.concat "" [ "background-image: "; name; args ]))
+    misplaced;
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"background-image" ~into input)
+    [
+      ("linear-gradient(red, 10px, blue)", "linear-gradient(red,10px,#00f)");
+      ("radial-gradient(red, 10%, blue)", "radial-gradient(red,10%,#00f)");
+      ("conic-gradient(red, 10deg, blue)", "conic-gradient(red,10deg,#00f)");
+      ( "linear-gradient(red, var(--x), blue)",
+        "linear-gradient(red,var(--x),#00f)" );
+      ( "linear-gradient(var(--a), 10px, blue)",
+        "linear-gradient(var(--a),10px,#00f)" );
+      ( "linear-gradient(red, 10px, var(--b))",
+        "linear-gradient(red,10px,var(--b))" );
+    ]
+
 (* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
    [<angle-percentage> | <zero>]: [<angular-color-stop> = <color>
    <color-stop-angle>?], [<color-stop-angle> = [ <angle-percentage> | <zero>
@@ -1365,6 +1417,7 @@ let suite =
         legacy_moz_o_radial_gradients;
       test_case "moz gradient interpolation" `Quick moz_gradient_interpolation;
       test_case "webkit gradient engines" `Quick webkit_gradient_engines;
+      test_case "gradient hint placement" `Quick gradient_hint_placement;
       test_case "conic angular stops" `Quick conic_angular_stops;
       test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)
