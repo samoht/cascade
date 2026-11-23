@@ -1185,6 +1185,34 @@ let spec_math_integer_sign_and_round () =
       ("opacity", "round(.4)", "0");
     ]
 
+(* CSS Values 4 sec. 10.1 puts a math function wherever its resolved type
+   stands, folded or not, and sec. 10.6 makes [sign(1em)] a [<number>] whose
+   value waits for the font size. Chromium 157 computes [opacity:sign(1em)],
+   [shape-image-threshold:sign(1em)] and [zoom:sign(1em)] as [1]; cascade
+   dropped each, as it dropped [min(.5,sign(1em))], and the call reads back bare
+   as the node [calc()] around it reads. A length still stands nowhere here. *)
+let spec_math_opacity_value_unfolded () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("opacity", "sign(1em)", "sign(1em)");
+      ("opacity", "calc(sign(1em))", "sign(1em)");
+      ("opacity", "min(.5,sign(1em))", "min(.5,sign(1em))");
+      ("shape-image-threshold", "sign(1em)", "sign(1em)");
+      ("zoom", "sign(1em)", "sign(1em)");
+    ];
+  List.iter
+    (fun (prop, value) ->
+      Alcotest.(check string)
+        (Fmt.str "%s:%s is refused" prop value)
+        ""
+        (match
+           Fmt.kstr (Css.of_string ~strict:false) ".x{%s:%s}" prop value
+         with
+        | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
+        | Error e -> Error.to_string e))
+    [ ("opacity", "min(1px,1em)"); ("zoom", "max(1px,1em)") ]
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1308,6 +1336,8 @@ let suite =
       test_case "spec math integer slots" `Quick spec_math_integer_slots;
       test_case "spec math sign and round at an integer slot" `Quick
         spec_math_integer_sign_and_round;
+      test_case "spec math opacity value unfolded" `Quick
+        spec_math_opacity_value_unfolded;
       test_case "spec math inverse trig is an angle" `Quick
         spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick
