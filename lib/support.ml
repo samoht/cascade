@@ -762,9 +762,8 @@ let measured =
           safari_ios = None;
         };
       why =
-        "SVG 2 sec. 8.13: none | [ non-scaling-stroke | non-scaling-size | \
-         non-rotation | fixed-position ]+ [ viewport | screen ]?; Chrome has \
-         only non-scaling-stroke";
+        "SVG 2 sec. 8.13: none | non-scaling-stroke | non-scaling-size | \
+         non-rotation | fixed-position; Chrome has only non-scaling-stroke";
       measured = "Chrome 153";
     };
     {
@@ -789,30 +788,6 @@ let measured =
           safari_ios = None;
         };
       why = "SVG 2 sec. 8.13 lists fixed-position";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.vector-effect.non_scaling_stroke_screen";
-      support =
-        {
-          Baseline.chrome = None;
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why = "SVG 2 sec. 8.13: the effect list is followed by viewport | screen";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.vector-effect.non_scaling_stroke_fixed_position";
-      support =
-        {
-          Baseline.chrome = None;
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why = "SVG 2 sec. 8.13: the effects themselves repeat with +";
       measured = "Chrome 153";
     };
     {

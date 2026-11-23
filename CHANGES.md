@@ -967,6 +967,10 @@ differently. They are the reason to minify again.
   non-ASCII page name, which browsers keep, and kept `@page 1`, which they
   drop. The page name is now read as an ident token and printed escaped
   (#1636).
+- `vector-effect` list is dropped**: `non-scaling-stroke non-scaling-stroke`
+  and `non-scaling-stroke screen` were kept and `non-scaling-stroke viewport`
+  rewritten, though SVG 2 sec. 8.13 takes one keyword and browsers drop each.
+  Each now goes with a warning (#1637).
 
 #### Stable output
 
