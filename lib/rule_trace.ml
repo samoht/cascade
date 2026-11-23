@@ -1004,16 +1004,25 @@ let dedup_twin ~ctx ex ey before =
   && not
        (List.memq ey.decl
           (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false
-             (before @ [ ey.decl ])))
+             (Lazy.force before @ [ ey.decl ])))
 
-(* The live declarations of [x]'s group from [x] up to, not including, [y]. *)
+(* The live declarations of [x]'s group from [x] up to, not including, [y].
+   [members] lists the group in run order, so the walk starts at [x]. *)
 let group_from o members x y =
-  List.filter_map
-    (fun p ->
-      if p >= x && p < y && not o.entries.(p).dead then
-        Option.Some o.entries.(p).decl
-      else Option.None)
-    (Array.to_list members.(o.entries.(x).group))
+  let m = members.(o.entries.(x).group) in
+  let rec first lo hi =
+    if lo >= hi then lo
+    else
+      let mid = (lo + hi) / 2 in
+      if m.(mid) < x then first (mid + 1) hi else first lo mid
+  in
+  let rec collect k acc =
+    if k >= Array.length m || m.(k) >= y then List.rev acc
+    else
+      let e = o.entries.(m.(k)) in
+      collect (k + 1) (if e.dead then acc else e.decl :: acc)
+  in
+  collect (first 0 (Array.length m)) []
 
 (* Whether [y] orders some other live entry [p] of its group, other than [x],
    that it meets, by a fact {!depends} reads off [y]: [y] rewrites slots of [p]
@@ -1078,7 +1087,7 @@ let repeats ~ctx o members holders graph seen x y =
   &&
   if Int.equal ex.group ey.group then
     x < y
-    && dedup_twin ~ctx ex ey (group_from o members x y)
+    && dedup_twin ~ctx ex ey (lazy (group_from o members x y))
     && (not (supports o members holders x y))
     && not
          (between
@@ -1086,7 +1095,8 @@ let repeats ~ctx o members holders graph seen x y =
             (fst (Lazy.force graph))
             seen x y)
   else
-    (Int.equal ex.text_id ey.text_id || dedup_twin ~ctx ex ey [ ex.decl ])
+    (Int.equal ex.text_id ey.text_id
+    || dedup_twin ~ctx ex ey (Lazy.from_val [ ex.decl ]))
     && (not (supports o members holders x y))
     && (x > y
        || not

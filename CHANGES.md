@@ -1182,6 +1182,10 @@ The new form of a diagnostic is under [Breaking](#command-line).
   with the time spent reading, optimising and printing, names its columns in
   words and prints one row per factoring run. It counts `nested-merge probes`,
   also read as `Stats.counters.nested_merge_probes` (#1301, #1336, #1372).
+- diff --diff=canonical` is faster on large sheets.** Instagram's SatCSS
+  sheets project in 0.11 s instead of 0.48 s and Tailwind's full build in 0.29
+  s instead of 0.74 s, with the same canonical output on all 504 SatCSS sheets
+  (#1554).
 
 ### Library
 
