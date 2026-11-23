@@ -522,7 +522,12 @@ let counter_range_bounds_are_ordered () =
       Alcotest.(check string)
         range (with_range range)
         (minify (with_range range)))
-    [ "2 4"; "2 2"; "infinite 2"; "2 infinite"; "infinite infinite"; "-3 -1" ]
+    [ "2 4"; "2 2"; "infinite 2"; "2 infinite"; "infinite infinite" ];
+  (* CSS Syntax 3 sec. 4.3.3 ends a number before a sign, so [-3-1] is the two
+     bounds; Chromium 157 reads it as [-3 -1]. *)
+  Alcotest.(check string)
+    "-3 -1" (with_range "-3-1")
+    (minify (with_range "-3 -1"))
 
 let suite =
   ( "stylesheet_statement",
