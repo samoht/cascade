@@ -77,13 +77,15 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
 
 let is_math_function = Parser.is_math_function
 
-(* A math function is unconditionally a math expression whose type is fixed by
-   its operands' units, so when it reduces to a single constant it has that
-   value in every [var()] substitution site - fold it inside an opaque
-   custom-property stream like a complete colour. [<number>] and the
-   unit-unambiguous dimensions ([<angle>] / [<time>]) qualify; [<percentage>] is
-   ambiguous (length vs number percentage) so it stays verbatim, as does a
-   function that still references a [var()] (it does not reduce to a leaf). *)
+(* A math function's type is fixed by its operands' units, but its result stands
+   for the call only where no slot tells them apart. CSS Values 4 sec. 10.9
+   rounds a call at an [<integer>] and sec. 10.12 clamps one past a range, where
+   the bare result is invalid ([z-index:var(--v)] with [calc(2.5)] is [3], with
+   [2.5] invalid), and [calc(0)] is no [<length>] where [0] is one. So a
+   [<number>] never folds, a [<time>] folds only when it is not negative (the
+   [[0,inf]] slots), and an [<angle>], which no property bounds, always does.
+   [<percentage>] is ambiguous (length vs number percentage) so it stays
+   verbatim, as does a function that still references a [var()]. *)
 let fold_custom_calc (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   (* Parse the whole token as one typed value and fold only when it reduces to a
@@ -109,18 +111,17 @@ let fold_custom_calc (c : Component.t) ~fallback =
         else None
     | _ -> None
   in
-  let number_reduced = function (Num _ : number) -> true | _ -> false in
   let angle_reduced = function
     | (Deg _ | Rad _ | Turn _ | Grad _ : angle) -> true
     | _ -> false
   in
-  let time_reduced = function (S _ | Ms _ : duration) -> true | _ -> false in
+  let time_reduced = function
+    | (S v | Ms v : duration) -> not (Float.sign_bit v)
+    | _ -> false
+  in
   match
     List.find_map Fun.id
       [
-        try_typed read_number
-          (fun n -> normalize_number n)
-          pp_number number_reduced;
         try_typed read_angle_unit_required
           (fun a -> normalize_angle a)
           pp_angle angle_reduced;

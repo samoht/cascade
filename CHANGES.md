@@ -803,6 +803,12 @@ differently. They are the reason to minify again.
   `@media (min-width:50%)` as `(width>=50%)`, though Media Queries 4 grants no
   percentage there and Chromium never matches it. It is now kept as written
   (#1566).
+- math function in a custom property was folded to its number.**
+  `--lh:calc(2.25/1.875)` became `--lh:1.2`, but Chromium computes
+  `z-index:var(--lh)` as `1` under the first and `auto` under the second,
+  since an unregistered custom property substitutes its tokens. A number
+  result is now kept as written, and a time folds only when it is not negative
+  (#1567).
 
 #### Stable output
 
