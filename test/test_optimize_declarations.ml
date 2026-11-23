@@ -989,11 +989,6 @@ let floor_fallbacks_survive () =
     "a{background-image:url(x.png);background-image:-webkit-cross-fade(url(a.png),url(b.png),.5)}";
   (* web-features records the variadic color-mix() in Firefox 150 alone, so
      every other floor drops the later declaration and paints red. *)
-  (* One item is the variadic grammar too: Firefox reads it from 150, behind
-     the pref that reads three, and Chromium 153 drops it. *)
-  check_modes "a color-mix() of one item"
-    "a{color:red;color:color-mix(in srgb,blue)}"
-    "a{color:red;color:color-mix(in srgb,#00f)}";
   check_modes "a variadic color-mix()"
     "a{color:red;color:color-mix(in srgb,red,blue,green)}"
     "a{color:red;color:color-mix(in srgb,red,#00f,green)}";
@@ -1055,6 +1050,30 @@ let target_minify_enforce_spec_split () =
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
     ~spec:"a{color:color-mix(in oklab,var(--a),var(--b))}";
+  (* CSS Color 5 (ED) sec. 3 lets the list of a color-mix() hold one item, and
+     sec. 3.3 makes that item's colour, converted to the interpolation space,
+     the result, its alpha multiplied by what its percentage leaves over (CSS
+     Values 5 (ED) sec. 6.1). Firefox reads it from 150, behind the pref that
+     reads three; Chrome 157 drops it, so the default targets keep it as written
+     with the declaration before it as the fallback. Every conforming
+     implementation reads it, so --enforce-spec folds it to that colour, which
+     Chrome computes for the same mix written as two halves of one colour. *)
+  check_modes "a color-mix() of one item"
+    "a{color:red;color:color-mix(in srgb,blue)}"
+    ~default:"a{color:red;color:color-mix(in srgb,#00f)}"
+    ~spec:"a{color:red;color:color(srgb 0 0 1)}";
+  check_modes "a color-mix() of one item under 100%"
+    "a{color:color-mix(in srgb,blue 40%)}"
+    ~default:"a{color:color-mix(in srgb,#00f 40%)}"
+    ~spec:"a{color:color(srgb 0 0 1/.4)}";
+  check_modes "a color-mix() of one item in another space"
+    "a{color:color-mix(in srgb-linear,red)}"
+    ~default:"a{color:color-mix(in srgb-linear,red)}"
+    ~spec:"a{color:color(srgb-linear 1 0 0)}";
+  check_modes "a color-mix() of one item inside a shadow"
+    "a{box-shadow:0 0 1px color-mix(in srgb,blue)}"
+    ~default:"a{box-shadow:0 0 1px color-mix(in srgb,#00f)}"
+    ~spec:"a{box-shadow:0 0 1px color(srgb 0 0 1)}";
   check_modes "computed oklch lightness keeps its numeric form"
     "a { color: color-mix(in oklch, red 50%, blue 50%) }"
     ~default:"a{color:oklch(.54 .285 326.643)}"

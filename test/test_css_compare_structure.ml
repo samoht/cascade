@@ -1104,6 +1104,22 @@ let canonical_layer_declaration_forms_converge () =
    features queried, which its negation shares, so both ask one container. Their
    order decides nothing, whatever they write. A condition that merely differs,
    or a negation aimed at another container, keeps the order. *)
+(* CSS Color 5 (ED) sec. 3.3: a color-mix() of one item is that item's colour
+   converted to the interpolation space. Chrome 157 drops it, so under the
+   default targets it paints the declaration before it and differs from the
+   colour; every conforming implementation reads it, so under --enforce-spec the
+   two are one value. *)
+let canonical_one_item_color_mix () =
+  let one = "a{color:red;color:color-mix(in srgb,blue)}" in
+  let colour = "a{color:red;color:color(srgb 0 0 1)}" in
+  Alcotest.(check bool)
+    "the default targets drop a one-item mix" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical one colour);
+  Alcotest.(check bool)
+    "under --enforce-spec it is the colour" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true one
+       colour)
+
 let canonical_ignores_order_under_exclusive_conditions () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   let swapped a b = equal (a ^ b) (b ^ a) in
@@ -1789,4 +1805,6 @@ let suite =
         canonical_layer_declaration_forms_converge;
       Alcotest.test_case "canonical ignores order under exclusive conditions"
         `Quick canonical_ignores_order_under_exclusive_conditions;
+      Alcotest.test_case "canonical one-item color-mix" `Quick
+        canonical_one_item_color_mix;
     ] )
