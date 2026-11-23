@@ -1348,6 +1348,10 @@ let source ~seed =
 let nested_group r =
   pick r [| "@media (min-width: 400px)"; "@supports (display: grid)" |]
 
+(* A bare [&] rule beside a declarations run is the pair the optimizer reads as
+   one run under a one-selector parent (CSS Nesting 1 sec. 4 and 5). *)
+let nested_selectors = Array.append nest_suffixes [| "&" |]
+
 let nested_declarations_shape r =
   let f = pick r families_array in
   let sel = pick r selectors in
@@ -1355,7 +1359,7 @@ let nested_declarations_shape r =
   let some () = if chance r 2 then slot () else single r in
   let parts =
     [
-      rule (pick r nest_suffixes) [ some () ];
+      rule (pick r nested_selectors) [ some () ];
       Decls [ some () ];
       At { prelude = nested_group r; body = [ Decls [ some () ] ] };
       Decls [ some (); some () ];
