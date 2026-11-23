@@ -50,7 +50,6 @@ let covers_longhand : type a b.
   | Inset, Bottom -> true
   | Inset, Left -> true
   | Background, Background_attachment -> true
-  | Background, Background_blend_mode -> true
   | Background, Background_clip -> true
   | Background, Background_color -> true
   | Background, Background_image -> true
@@ -504,7 +503,6 @@ let rec property_slots : type a. a Properties.property -> overlap_key list =
   | Background ->
       [
         key "background-attachment";
-        key "background-blend-mode";
         key "background-clip";
         key "background-color";
         key "background-image";
@@ -1107,8 +1105,19 @@ let add_logical_aliases slots =
   | [] -> slots
   | groups -> List.concat (slots :: groups)
 
+(* Compositing and Blending 1 sec. 3.4.3 has [background] reset
+   [background-blend-mode], but Chrome 157 and WebKit 26.5 keep it, so the
+   shorthand may write that slot and does not in every engine: it is in the
+   footprint, which orders declarations, and not in the slots, which kill
+   them. *)
+let spec_only_slots : type a. a Properties.property -> overlap_key list =
+  function
+  | Background -> [ key "background-blend-mode" ]
+  | _ -> []
+
 let property_footprint : type a. a Properties.property -> overlap_key list =
- fun property -> add_logical_aliases (property_slots property)
+ fun property ->
+  add_logical_aliases (spec_only_slots property @ property_slots property)
 
 (* Key lists are sorted ascending, so a membership test stops at the first key
    past the one asked for and two lists merge-walk in step: linear in their
@@ -1348,7 +1357,7 @@ let reset_slots shorthand run =
              (fun d -> declaration_slot_keys (unwrap_theme_guard d))
              run)
       in
-      sorted_keys (written_slots property @ hidden)
+      sorted_keys (spec_only_slots property @ written_slots property @ hidden)
       |> List.filter (fun k -> not (overlap_key_in k written))
   | Theme_guarded _ -> []
 

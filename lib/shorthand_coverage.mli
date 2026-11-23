@@ -71,9 +71,10 @@ val property_slot_keys : 'a Properties.property -> overlap_key list
 val reset_slots :
   Declaration.declaration -> Declaration.declaration list -> overlap_key list
 (** [reset_slots shorthand run] is the slots [shorthand] writes, the
-    [border-image] a [border] resets and the [mask-border] a [mask] resets
-    included, that no declaration of [run] writes: the slots a shorthand
-    composed from [run] sets to their initial value. *)
+    [border-image] a [border] resets, the [mask-border] a [mask] resets and the
+    [background-blend-mode] a [background] may reset included, that no
+    declaration of [run] writes: the slots a shorthand composed from [run] sets
+    to their initial value. *)
 
 val footprint_family : Declaration.declaration -> int option
 (** [footprint_family d] is the rank of the first shorthand family whose

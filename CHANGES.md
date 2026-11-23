@@ -859,6 +859,10 @@ differently. They are the reason to minify again.
   calc(400*sign(1em))` and `rotate:1 sign(1em) 0 45deg` were dropped, though
   Chromium keeps each; they are now kept, and a call that folds still becomes
   its number (#1584).
+- `background-blend-mode` followed by `background` is kept.** Compositing 1
+  sec. 3.4.3 has the shorthand reset it, but Chrome and WebKit keep it, so
+  dropping it stopped the layers blending; `--diff=canonical` no longer calls
+  the two equal (#1599).
 
 #### Stable output
 
@@ -1025,6 +1029,10 @@ differently. They are the reason to minify again.
 - longhand restating a shorthand's omitted initial is dropped**, as in
   `background:0 0;background-image:none` (1975 bytes over 62 of 504 SatCSS
   sheets) (#1596).
+- 1 <basis>` is written as the lone basis** (`flex:1 10px` is `flex:10px`,
+  Flexbox 1 sec. 7.1), and a background colour that is transparent black in
+  any spelling (`#0000`, `rgb(0 0 0/0)`) is dropped: 208 bytes over 47 of 504
+  SatCSS sheets (#1599).
 
 ### Formatted output
 
