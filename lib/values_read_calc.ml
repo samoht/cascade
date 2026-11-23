@@ -657,11 +657,11 @@ and read_comparison_clamp : type a. Cursor.t -> a calc =
         let hi = read_clamp_bound inner in
         Cursor.ws inner;
         Cursor.expect_eof inner;
-        [ lo; Option.Some v; hi ])
+        [ lo; Some v; hi ])
   in
   match args with
-  | [ lo; Option.Some v; hi ] ->
-      let bound = function Option.Some arg -> [ arg ] | Option.None -> [] in
+  | [ lo; Some v; hi ] ->
+      let bound = function Some arg -> [ arg ] | None -> [] in
       comparison_of_args t (Clamp_n (lo, v, hi)) (bound lo @ (v :: bound hi))
   | _ -> Cursor.err_invalid t "clamp() takes three arguments"
 
@@ -1169,19 +1169,19 @@ let read_attr_length_type inner =
 
 let read_plain_attr_type_hint inner : attr_type option =
   match Cursor.ident_opt inner with
-  | Some "raw-string" -> Option.Some Raw_string
-  | Some "number" -> Option.Some Number_type
-  | Some unit_ -> Option.Some (Unit unit_)
+  | Some "raw-string" -> Some Raw_string
+  | Some "number" -> Some Number_type
+  | Some unit_ -> Some (Unit unit_)
   | None when Cursor.peek_delim inner = Some '%' ->
       Cursor.expect '%' inner;
-      Option.Some (Unit "%")
+      Some (Unit "%")
   | None -> Cursor.err_expected inner "attr() type"
 
 let read_attr_type_hint inner : attr_type option =
   Cursor.ws inner;
-  if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
+  if Cursor.is_done inner || Cursor.peek_comma inner then None
   else if Cursor.looking_at_func "type" inner then
-    Option.Some (Cursor.call "type" inner read_attr_length_type)
+    Some (Cursor.call "type" inner read_attr_length_type)
   else read_plain_attr_type_hint inner
 
 (** Read calc_op *)

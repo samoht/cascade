@@ -78,7 +78,7 @@ let merge_adjacent ~prelude ~same ~build ~optimize_merged_block stmts =
 let merge_consecutive_layers ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
     ~prelude:(function
-      | Layer (Some name, block) -> Option.Some (name, block) | _ -> Option.None)
+      | Layer (Some name, block) -> Some (name, block) | _ -> None)
     ~same:equal_layer_name
     ~build:(fun name block -> Layer (Some name, block))
     ~optimize_merged_block stmts
@@ -91,8 +91,7 @@ let merge_consecutive_layers ?(optimize_merged_block = Fun.id) stmts =
    intervening statement, and it keeps its own gate. *)
 let merge_consecutive_media ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
-    ~prelude:(function
-      | Media (cond, block) -> Option.Some (cond, block) | _ -> Option.None)
+    ~prelude:(function Media (cond, block) -> Some (cond, block) | _ -> None)
     ~same:Media.equal
     ~build:(fun cond block -> Media (cond, block))
     ~optimize_merged_block stmts
@@ -221,18 +220,18 @@ let read_kept pass =
   for at = pass.unread to Dynarray.length pass.kept - 1 do
     let stmt, into =
       match Dynarray.get pass.kept at with
-      | Plain stmt -> (Option.Some stmt, pass.index)
-      | Block (stmt, _, _) -> (Option.Some stmt, pass.index)
-      | Partner p -> (Option.Some (pass.build p.key (body p)), p.leaves)
-      | Sunk -> (Option.None, pass.index)
+      | Plain stmt -> (Some stmt, pass.index)
+      | Block (stmt, _, _) -> (Some stmt, pass.index)
+      | Partner p -> (Some (pass.build p.key (body p)), p.leaves)
+      | Sunk -> (None, pass.index)
     in
     match stmt with
-    | Option.None -> ()
-    | Option.Some stmt -> (
+    | None -> ()
+    | Some stmt -> (
         match crossed_facts pass stmt with
-        | Option.Some rules when crossable_by_distant_merge stmt ->
+        | Some rules when crossable_by_distant_merge stmt ->
             List.iter (Rule_graph.index_facts into ~at) rules
-        | Option.Some _ | Option.None -> pass.blocked <- at)
+        | Some _ | None -> pass.blocked <- at)
   done;
   pass.unread <- Dynarray.length pass.kept
 
@@ -240,7 +239,7 @@ let crosses ?except pass ~after h =
   Rule_graph.conflicts_after pass.index ~after h
   || List.exists
        (fun q ->
-         (match except with Option.Some p -> q != p | Option.None -> true)
+         (match except with Some p -> q != p | None -> true)
          && Rule_graph.conflicts_after q.leaves ~after h)
        pass.partners
 
@@ -251,8 +250,8 @@ let merge pass p key block =
   pass.blocked <= p.at
   &&
   match facts pass block with
-  | Option.None -> false
-  | Option.Some hoisted ->
+  | None -> false
+  | Some hoisted ->
       (not (List.exists (crosses pass ~after:p.at) hoisted))
       && begin
         List.iter (Rule_graph.index_facts p.leaves ~at:p.at) hoisted;
@@ -271,8 +270,8 @@ let sink pass ~hoistable p stmt key block =
   && List.for_all carries_style_only moved
   &&
   match facts pass moved with
-  | Option.None -> false
-  | Option.Some sunk ->
+  | None -> false
+  | Some sunk ->
       (not (List.exists (crosses ~except:p pass ~after:p.at) sunk))
       && begin
         let p' =
@@ -294,7 +293,7 @@ let sink pass ~hoistable p stmt key block =
    one. *)
 let keep_block pass ~equal_prelude ~hoistable stmt key block =
   match List.find_opt (fun p -> equal_prelude p.key key) pass.partners with
-  | Option.None ->
+  | None ->
       let p =
         {
           at = Dynarray.length pass.kept;
@@ -307,7 +306,7 @@ let keep_block pass ~equal_prelude ~hoistable stmt key block =
       pass.partners <- p :: pass.partners;
       Dynarray.add_last pass.kept (Partner p);
       false
-  | Option.Some p ->
+  | Some p ->
       if
         (not
            (hoistable block
@@ -377,7 +376,7 @@ let merge_distant_supports ?owner ?(optimize_merged_block = Fun.id) stmts =
 let merge_consecutive_supports ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
     ~prelude:(function
-      | Supports (cond, block) -> Option.Some (cond, block) | _ -> Option.None)
+      | Supports (cond, block) -> Some (cond, block) | _ -> None)
     ~same:Supports.equal
     ~build:(fun cond block -> Supports (cond, block))
     ~optimize_merged_block stmts
@@ -395,8 +394,7 @@ let same_container (prev_name, prev_cond) (name, cond) =
 let merge_consecutive_containers ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
     ~prelude:(function
-      | Container (name, cond, block) -> Option.Some ((name, cond), block)
-      | _ -> Option.None)
+      | Container (name, cond, block) -> Some ((name, cond), block) | _ -> None)
     ~same:same_container
     ~build:(fun (name, cond) block -> Container (name, cond, block))
     ~optimize_merged_block stmts
@@ -423,8 +421,7 @@ let merge_distant_containers ?owner ?(optimize_merged_block = Fun.id) stmts =
    passes above compare a condition this rule does not have. *)
 let merge_consecutive_starting_style ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
-    ~prelude:(function
-      | Starting_style block -> Option.Some ((), block) | _ -> Option.None)
+    ~prelude:(function Starting_style block -> Some ((), block) | _ -> None)
     ~same:(fun () () -> true)
     ~build:(fun () block -> Starting_style block)
     ~optimize_merged_block stmts

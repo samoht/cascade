@@ -428,8 +428,8 @@ let var_with_fallback name answer =
     when String.lowercase_ascii fn = "var" -> (
       match parse_var_components arguments with
       | Some (_, Some _) -> Some var
-      | Some (_, Option.None) | Option.None -> Option.None)
-  | _ | (exception Cursor.Parse_error _) -> Option.None
+      | Some (_, None) | None -> None)
+  | _ | (exception Cursor.Parse_error _) -> None
 
 let rec fallback_components ~lookup components =
   List.map
@@ -480,7 +480,7 @@ let declaration_with_fallbacks ~lookup decl =
   let original =
     match custom_value_components decl with
     | Some components -> components
-    | Option.None ->
+    | None ->
         Cursor.remaining
           (Cursor.of_string (Declaration.string_of_value ~minify:false decl))
   in
@@ -609,7 +609,7 @@ let simplify_font_variation_settings_descriptor visible =
 
 let simplify_font_variant_descriptor visible =
   simplify_typed_var visible ~read:read_font_variant_descriptor
-    ~as_var:(function Var v -> Some v | _ -> Option.None)
+    ~as_var:(function Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Var v : font_variant_descriptor))
 
 (* One resolver covers [ascent-override], [descent-override] and
@@ -617,13 +617,12 @@ let simplify_font_variant_descriptor visible =
    grammar. *)
 let simplify_metric_override_descriptor visible =
   simplify_typed_var visible ~read:Font_face.read_metric_override
-    ~as_var:(function Font_face.Var v -> Some v | _ -> Option.None)
+    ~as_var:(function Font_face.Var v -> Some v | _ -> None)
     ~of_var:(fun v -> (Font_face.Var v : Font_face.metric_override))
 
 let simplify_size_adjust_descriptor visible =
   simplify_typed_var visible ~read:Font_face.read_size_adjust
-    ~as_var:(function
-      | Font_face.Var v -> Some v | Font_face.Pct _ -> Option.None)
+    ~as_var:(function Font_face.Var v -> Some v | Font_face.Pct _ -> None)
     ~of_var:(fun v -> (Font_face.Var v : Font_face.size_adjust))
 
 (* [resolve_font_face_var] names the descriptors whose var() survives the parse
@@ -649,7 +648,7 @@ let simplify_font_face_descriptor visible descriptor =
       descriptor
   with
   | Some resolved -> resolved
-  | Option.None -> descriptor
+  | None -> descriptor
 
 let map_keyframe_decls f frames =
   List.map

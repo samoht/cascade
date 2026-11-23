@@ -834,10 +834,7 @@ let read_font_variant_emoji_component t : font_variant_emoji =
     t
 
 let font_variant_component acc t =
-  let once what = function
-    | Option.Some _ -> Cursor.err_invalid t what
-    | Option.None -> ()
-  in
+  let once what = function Some _ -> Cursor.err_invalid t what | None -> () in
   Cursor.one_of
     [
       (fun t ->
@@ -886,7 +883,7 @@ let read_font_variant_components t : font_variant =
     else
       match Cursor.option (font_variant_component acc) t with
       | Some acc -> loop acc
-      | Option.None -> acc
+      | None -> acc
   in
   let value = loop empty_font_variant_shorthand in
   if font_variant_is_empty value then

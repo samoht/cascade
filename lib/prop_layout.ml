@@ -248,7 +248,7 @@ let rec pp_position_area : position_area Pp.t =
 let normalize_position_area (value : position_area) : position_area =
   match value with
   | Area (first, Some second) when equal_position_area_keyword first second ->
-      Area (first, Option.None)
+      Area (first, None)
   | _ -> value
 
 let pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t =
@@ -673,7 +673,7 @@ let rec read_container_shorthand (t : Cursor.t) : container_shorthand =
         Cursor.ws t;
         (Shorthand { name; ctype = Some (read_container_type t) }
           : container_shorthand))
-      else Shorthand { name; ctype = Option.None })
+      else Shorthand { name; ctype = None })
     t
 
 let rec read_contain t : contain =
@@ -758,8 +758,8 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
      cleanly at whatever follows the value (the declaration's [;], a block
      close, ...). *)
   match Cursor.option read_single t with
-  | Option.None -> first
-  | Option.Some second ->
+  | None -> first
+  | Some second ->
       (match first with
       | Inherit | Initial | Unset | Revert | Revert_layer ->
           Cursor.err_invalid t "scroll-snap-align CSS-wide value in pair"

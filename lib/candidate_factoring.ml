@@ -88,12 +88,12 @@ let share shared ~members ~decls ~props grouped =
   in
   let known =
     match Ids_table.find_opt shared.by_members members with
-    | Option.Some known -> known
-    | Option.None -> []
+    | Some known -> known
+    | None -> []
   in
   match List.find_opt same known with
-  | Option.Some group -> group
-  | Option.None ->
+  | Some group -> group
+  | None ->
       let group =
         {
           uid = shared.next_group;
@@ -106,11 +106,11 @@ let share shared ~members ~decls ~props grouped =
           (* settled by the first scan *)
           lo = Rule_graph.Node_id.of_int_exn 0;
           hi = Rule_graph.Node_id.of_int_exn 0;
-          witness = Option.None;
+          witness = None;
           scanned = -1;
           clear = [];
-          made = Option.None;
-          group_offer = Option.None;
+          made = None;
+          group_offer = None;
         }
       in
       shared.next_group <- shared.next_group + 1;
@@ -141,7 +141,7 @@ type link = {
 let no_facts = Lazy.from_val []
 
 let leftover_rule member declarations =
-  { member.rule with declarations; nested = []; merge_key = Option.None }
+  { member.rule with declarations; nested = []; merge_key = None }
 
 let link ~finalize member leftover ~lifts_over ~kept_facts =
   {
@@ -152,12 +152,10 @@ let link ~finalize member leftover ~lifts_over ~kept_facts =
     finalized =
       lazy
         (match leftover with
-        | [] -> Option.None
+        | [] -> None
         | declarations -> (
             let (rule : rule) = finalize (leftover_rule member declarations) in
-            match rule.declarations with
-            | [] -> Option.None
-            | _ -> Option.Some rule));
+            match rule.declarations with [] -> None | _ -> Some rule));
     paired =
       lazy
         (match Webkit_fallback.pairs member.rule.declarations with
@@ -208,8 +206,8 @@ let extend g chain ~refuses ~crosses link =
       lazy
         (let size, rules = Lazy.force produced in
          match Lazy.force link.finalized with
-         | Option.None -> (size, rules)
-         | Option.Some rule ->
+         | None -> (size, rules)
+         | Some rule ->
              ( size + Size.rule (Rule_graph.size_print (graph g)) rule,
                rule :: rules ));
   }
@@ -332,7 +330,7 @@ let common_property_keys members =
       |> List.filter (fun key ->
           List.for_all
             (fun member ->
-              Property_key.single key member.rule.declarations <> Option.None)
+              Property_key.single key member.rule.declarations <> None)
             members)
       |> List.rev
 
@@ -340,8 +338,8 @@ let default_entries first keys =
   List.filter_map
     (fun key ->
       match Property_key.single key first.rule.declarations with
-      | Option.None -> Option.None
-      | Option.Some default_decl -> Option.Some { key; default_decl })
+      | None -> None
+      | Some default_decl -> Some { key; default_decl })
     keys
 
 let member_declaration entry member =
@@ -351,21 +349,20 @@ let override_declarations entries member =
   List.filter_map
     (fun entry ->
       match member_declaration entry member with
-      | Option.None -> Option.None
-      | Option.Some decl ->
-          if same_decl decl entry.default_decl then Option.None
-          else Option.Some decl)
+      | None -> None
+      | Some decl ->
+          if same_decl decl entry.default_decl then None else Some decl)
     entries
 
 let member_has_default entry member =
   match member_declaration entry member with
-  | Option.None -> false
-  | Option.Some decl -> same_decl decl entry.default_decl
+  | None -> false
+  | Some decl -> same_decl decl entry.default_decl
 
 let member_overrides_default entry member =
   match member_declaration entry member with
-  | Option.None -> false
-  | Option.Some decl -> not (same_decl decl entry.default_decl)
+  | None -> false
+  | Some decl -> not (same_decl decl entry.default_decl)
 
 (* A default entry places the provider's value at the group position and every
    differing member's value as a later leftover override. For an element that
@@ -412,11 +409,10 @@ let removed_default_declarations entries member =
   List.filter_map
     (fun entry ->
       match member_declaration entry member with
-      | Option.None -> Option.None
-      | Option.Some decl ->
-          if same_decl decl entry.default_decl then
-            Option.Some entry.default_decl
-          else Option.None)
+      | None -> None
+      | Some decl ->
+          if same_decl decl entry.default_decl then Some entry.default_decl
+          else None)
     entries
 
 (* What a default group lifts: the declarations every member holds, past the
@@ -509,8 +505,8 @@ let default_step g ~finalize chain member =
         match
           List.find_opt (fun e -> Property_key.has e.key decl) p.entries
         with
-        | Option.None -> true
-        | Option.Some entry ->
+        | None -> true
+        | Some entry ->
             (not (same_decl decl entry.default_decl))
             || List.memq entry reasserting)
       unlifted
@@ -593,17 +589,16 @@ type recent = {
   mutable chain : (member list * default chain) option;
 }
 
-let recent () =
-  { exact = Option.None; known = Option.None; chain = Option.None }
+let recent () = { exact = None; known = None; chain = None }
 
 (* The one element [window] lacks of [items], when [items] is [window] followed
    by it. *)
 let rec extension key window items =
   match (window, items) with
-  | [], [ item ] -> Option.Some item
+  | [], [ item ] -> Some item
   | prior :: window, item :: items when same_id (key prior) (key item) ->
       extension key window items
-  | _ -> Option.None
+  | _ -> None
 
 let new_id prior ids = extension Fun.id prior ids
 let new_member prior members = extension (fun member -> member.id) prior members
@@ -693,14 +688,14 @@ let extended_known g known ~first members member =
         (List.filter_map
            (fun (entry, overriders) ->
              match member_declaration entry member with
-             | Option.None -> Option.None
-             | Option.Some _ ->
+             | None -> None
+             | Some _ ->
                  if
                    needs_default_reassertion g entry ~prior:known.members member
-                 then Option.None
+                 then None
                  else if member_overrides_default entry member then
-                   Option.Some (entry, member.id :: overriders)
-                 else Option.Some (entry, overriders))
+                   Some (entry, member.id :: overriders)
+                 else Some (entry, overriders))
            (Lazy.force known.entries));
     groups = [];
   }
@@ -710,7 +705,7 @@ let default_members g ~recent ids =
     ordered_ids g ids
     |> List.filter_map (fun id ->
         let rule = node_rule g id in
-        if rule_eligible rule then Option.Some { id; rule } else Option.None)
+        if rule_eligible rule then Some { id; rule } else None)
   in
   match members with
   | [] | [ _ ] -> No_default_group
@@ -722,11 +717,10 @@ let default_members g ~recent ids =
                 (fun member -> (known, member))
                 (new_member known.members members))
         with
-        | Option.Some (known, member) ->
-            extended_known g known ~first members member
-        | Option.None -> fresh_known g ~first ~rest members
+        | Some (known, member) -> extended_known g known ~first members member
+        | None -> fresh_known g ~first ~rest members
       in
-      recent.known <- Option.Some known;
+      recent.known <- Some known;
       Default_members known
 
 (* The pruned members, the keys and the group body decide the candidate: the
@@ -736,19 +730,19 @@ let default_group ~objective ~shared ~finalize ~recent g known entries =
   let params = default_params ~common:(Lazy.force known.common) entries in
   let extended =
     match recent.chain with
-    | Option.Some (window, chain) when same_default chain.params params ->
+    | Some (window, chain) when same_default chain.params params ->
         Option.map
           (fun member -> (chain, member))
           (new_member window known.members)
-    | Option.Some _ | Option.None -> Option.None
+    | Some _ | None -> None
   in
   let chain =
     match extended with
-    | Option.Some (chain, member) -> default_step g ~finalize chain member
-    | Option.None ->
+    | Some (chain, member) -> default_step g ~finalize chain member
+    | None ->
         List.fold_left (default_step g ~finalize) (start params) known.members
   in
-  recent.chain <- Option.Some (known.members, chain);
+  recent.chain <- Some (known.members, chain);
   share shared
     ~members:(List.rev_map (fun member -> member.id) chain.members)
     ~decls:params.group_decls ~props:params.keys
@@ -943,8 +937,8 @@ let remove core family id =
   List.iter
     (fun (key, _) ->
       match bucket_for family key with
-      | Option.None -> ()
-      | Option.Some bucket ->
+      | None -> ()
+      | Some bucket ->
           bucket.fmembers <-
             List.filter
               (fun (other, _) -> not (same_id id other))
@@ -960,8 +954,8 @@ let add core family id =
     (fun (key, position) ->
       let bucket =
         match bucket_for family key with
-        | Option.Some bucket -> bucket
-        | Option.None ->
+        | Some bucket -> bucket
+        | None ->
             let bucket =
               {
                 fkey = key;
@@ -1009,8 +1003,8 @@ let refresh_bucket family bucket =
 
 let subset_of core family ids =
   match Ids_table.find_opt family.known ids with
-  | Option.Some subset -> subset
-  | Option.None ->
+  | Some subset -> subset
+  | None ->
       let g = view core in
       let finalize = finalize core and shared = family.shared in
       let recent = family.recent in
@@ -1030,7 +1024,7 @@ let subset_of core family ids =
           answer;
           taken_by = 0;
           resolved = -1;
-          reached = Option.None;
+          reached = None;
           unordered = [];
         }
       in
@@ -1149,8 +1143,8 @@ let scan core shared (group : group) =
 let offer_group core (group : group) =
   let made =
     match (group.witness, Lazy.force group.grouped) with
-    | Option.None, Option.Some (_, scored) -> Lazy.force scored
-    | Option.Some _, _ | _, Option.None -> Option.None
+    | None, Some (_, scored) -> Lazy.force scored
+    | Some _, _ | _, None -> None
   in
   if not (Option.equal ( == ) made group.made) then begin
     withdraw_option group.group_offer;
@@ -1160,8 +1154,8 @@ let offer_group core (group : group) =
 
 let forget_group family (group : group) =
   match Ids_table.find_opt family.shared.by_members group.members with
-  | Option.None -> ()
-  | Option.Some groups -> (
+  | None -> ()
+  | Some groups -> (
       match List.filter (fun other -> other != group) groups with
       | [] -> Ids_table.remove family.shared.by_members group.members
       | groups ->
@@ -1179,8 +1173,8 @@ let unreach core family (group : group) =
   group.refs <- group.refs - 1;
   if group.refs = 0 then begin
     withdraw_option group.group_offer;
-    group.group_offer <- Option.None;
-    group.made <- Option.None;
+    group.group_offer <- None;
+    group.made <- None;
     group.scanned <- -1;
     group.clear <- [];
     Int_table.remove family.live_groups group.uid;
@@ -1200,11 +1194,11 @@ let recheck_group core shared ~consumed ~produced ~moved ~is_moved
       offer_group core group
     in
     match (Lazy.force group.grouped, group.witness) with
-    | Option.None, _ -> ()
-    | Option.Some _, _ when List.exists is_moved group.members -> rescan ()
-    | Option.Some _, Option.Some witness ->
+    | None, _ -> ()
+    | Some _, _ when List.exists is_moved group.members -> rescan ()
+    | Some _, Some witness ->
         if id_mem witness consumed || is_moved witness then rescan ()
-    | Option.Some (grouped, _), Option.None -> (
+    | Some (grouped, _), None -> (
         let branches =
           lazy
             (Rule_graph.selector_branches (graph (view core)) grouped.selector)
@@ -1212,9 +1206,9 @@ let recheck_group core shared ~consumed ~produced ~moved ~is_moved
         match
           List.find_opt (crosses core group branches grouped) (produced @ moved)
         with
-        | Option.None -> ()
-        | Option.Some id ->
-            group.witness <- Option.Some id;
+        | None -> ()
+        | Some id ->
+            group.witness <- Some id;
             offer_group core group)
   end
 
@@ -1257,7 +1251,7 @@ let release core family subset =
   subset.taken_by <- subset.taken_by - 1;
   if subset.taken_by = 0 then begin
     Option.iter (unreach core family) subset.reached;
-    subset.reached <- Option.None;
+    subset.reached <- None;
     Int_table.remove family.watched subset.uid;
     if not (all_live core subset.ids) then
       Ids_table.remove family.known subset.ids
@@ -1283,12 +1277,12 @@ let retake core family ~activated ~released bucket n =
    asked again; an exhaustive one leaves every bucket all of its subsets. *)
 let wanted core family dirty =
   match Subsets.shared family.budget with
-  | Option.None ->
+  | None ->
       List.iter
         (fun bucket -> bucket.want <- Subsets.count bucket.subsets)
         dirty;
       dirty
-  | Option.Some max_candidates ->
+  | Some max_candidates ->
       let previous = family.takers in
       List.iter (fun bucket -> bucket.want <- 0) previous;
       List.iter (fun bucket -> bucket.want <- 0) dirty;
@@ -1374,7 +1368,7 @@ let reorder core family moved =
       List.iter
         (fun (key, _) ->
           match bucket_for family key with
-          | Option.Some bucket when not (List.memq bucket !buckets) ->
+          | Some bucket when not (List.memq bucket !buckets) ->
               buckets := bucket :: !buckets
           | _ -> ())
         (factoring_keys family.factoring (node_rule (view core) id)))
@@ -1397,7 +1391,5 @@ let reorder core family moved =
 let offers family acc =
   Int_table.fold
     (fun _ group acc ->
-      match group.group_offer with
-      | Option.None -> acc
-      | Option.Some offer -> offer :: acc)
+      match group.group_offer with None -> acc | Some offer -> offer :: acc)
     family.live_groups acc

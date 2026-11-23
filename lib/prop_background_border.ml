@@ -891,11 +891,11 @@ let read_border_shorthand t : border_shorthand =
       else if Cursor.looking_at_func "var" t then (
         let a = !acc in
         acc :=
-          if a.width = Option.None then
+          if a.width = None then
             { a with width = Some (Var (read_var read_border_width t)) }
-          else if a.style = Option.None then
+          else if a.style = None then
             { a with style = Some (Var (read_var read_border_style t)) }
-          else if a.color = Option.None then
+          else if a.color = None then
             { a with color = Some (Var (read_var read_color t)) }
           else Cursor.err_invalid t "too many border components";
         true)
@@ -904,7 +904,7 @@ let read_border_shorthand t : border_shorthand =
         | Some c ->
             acc := Border.merge t !acc c;
             true
-        | Option.None -> false
+        | None -> false
   done;
   let acc = !acc in
   if
@@ -1165,11 +1165,11 @@ let normalize_logical_border_style :
    out declares, and the shorter spelling wins. *)
 let drop_initial_line_width (width : border_width option) : border_width option
     =
-  match width with Some Medium -> Option.None | width -> width
+  match width with Some Medium -> None | width -> width
 
 let drop_initial_line_style (style : border_style option) : border_style option
     =
-  match style with Some (None : border_style) -> Option.None | style -> style
+  match style with Some (None : border_style) -> None | style -> style
 
 (* CSS Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 give
    column-rule and the logical borders the same initial colour, and they read
@@ -1177,7 +1177,7 @@ let drop_initial_line_style (style : border_style option) : border_style option
    [auto], which [currentColor] does not name, so [normalize_outline] has no
    colour drop. *)
 let drop_initial_line_color (color : color option) : color option =
-  match color with Some (Current : color) -> Option.None | color -> color
+  match color with Some (Current : color) -> None | color -> color
 
 (* The width slot of the border shorthands is a [<'border-width'>], so it takes
    the same fold as the longhand; the style slot is a [<line-style>] and the

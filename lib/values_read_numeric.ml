@@ -361,7 +361,7 @@ and read_anchor_size_length ~allow_negative ~length_only ~with_keywords inner =
   let name, size = read_anchor_name_and read_anchor_size inner in
   let fallback : length option =
     match (name, size) with
-    | Option.None, Option.None ->
+    | None, None ->
         if Cursor.is_done inner then Option.none
         else Option.some (read_fallback inner)
     | _ ->

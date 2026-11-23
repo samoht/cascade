@@ -47,7 +47,7 @@ let strip_evaluated_guards ~(query : Context.query option) (rule : import_rule)
     : import_rule =
   match query with
   | None -> rule
-  | Some _ -> { rule with media = Option.None; supports = Option.None }
+  | Some _ -> { rule with media = None; supports = None }
 
 let parse_import_content content =
   let cursor = Cursor.of_string content in

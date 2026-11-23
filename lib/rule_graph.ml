@@ -247,8 +247,8 @@ let selector_list = function
    its parent-qualified form so the conflict model uses the real subject. *)
 let selector_under (parent : Selector.t option) selector =
   match parent with
-  | Option.None -> selector
-  | Option.Some parent ->
+  | None -> selector
+  | Some parent ->
       let parents = Edge.selectors parent in
       let children = Edge.selectors selector in
       List.concat_map
@@ -276,8 +276,8 @@ let cascade_conflict ~closed_world keys_a decls_a selectors_a summaries_a
 (* Conflict between two nodes of a graph by their stored summaries/branches. *)
 let asserted_exclusive t i j =
   match t.exclusive with
-  | Option.None -> false
-  | Option.Some exclusive ->
+  | None -> false
+  | Some exclusive ->
       i < t.exclusive_count && j < t.exclusive_count && exclusive i j
 
 (* [x] and [y] write one value to the same slots at one importance, as
@@ -376,12 +376,12 @@ let nodes_cascade_conflict t i j =
 
 let nodes_conflict_reason t i j =
   if t.pin_shared_branches && share_branch t.branches.(i) t.branches.(j) then
-    Option.Some Shared_branch_pin
-  else if asserted_exclusive t i j then Option.None
-  else if nodes_cascade_conflict t i j then Option.Some Cascade_conflict
-  else Option.None
+    Some Shared_branch_pin
+  else if asserted_exclusive t i j then None
+  else if nodes_cascade_conflict t i j then Some Cascade_conflict
+  else None
 
-let nodes_conflict t i j = nodes_conflict_reason t i j <> Option.None
+let nodes_conflict t i j = nodes_conflict_reason t i j <> None
 
 let declaration_overlap decl =
   { decl; footprint = Shorthand.declaration_overlap_keys decl }
@@ -520,8 +520,8 @@ let selector_facts selector (declarations : Declaration.declaration list) =
    them by. *)
 let nested_leaves selector nested =
   match Nest.leaves ~parent:selector nested with
-  | Option.Some leaves -> leaves
-  | Option.None ->
+  | Some leaves -> leaves
+  | None ->
       invalid_arg "Rule_graph: a nested rule with no selector to weigh it by"
 
 let weighable ?parent (rule : rule) =
@@ -637,8 +637,8 @@ let link_candidates t succ anc ~reduce ~relays j candidates =
     List.iter
       (fun i ->
         match nodes_conflict_reason t i j with
-        | Option.None -> ()
-        | Option.Some reason -> link i reason)
+        | None -> ()
+        | Some reason -> link i reason)
       candidates
   else begin
     let covered = anc.(j) in
@@ -646,8 +646,8 @@ let link_candidates t succ anc ~reduce ~relays j candidates =
       (fun i ->
         if not (Reach.mem covered i) then
           match nodes_conflict_reason t i j with
-          | Option.None -> ()
-          | Option.Some reason ->
+          | None -> ()
+          | Some reason ->
               link i reason;
               if relays i then Reach.union ~into:covered anc.(i);
               Reach.add covered i)
@@ -975,17 +975,17 @@ let close_cone t sets source =
 
 let reach_sets t =
   match t.reach with
-  | Held sets -> Option.Some sets
-  | Walked -> Option.None
+  | Held sets -> Some sets
+  | Walked -> None
   | Unbuilt ->
       if t.count > closure_node_limit then begin
         t.reach <- Walked;
-        Option.None
+        None
       end
       else begin
         let sets = Reach.table t.count in
         t.reach <- Held sets;
-        Option.Some sets
+        Some sets
       end
 
 let reachable_set t source =
@@ -1003,8 +1003,8 @@ let path_exists t source target =
   source <> target
   &&
   match reachable_set t source with
-  | Option.Some set -> Reach.mem set target
-  | Option.None -> walk_to t source target
+  | Some set -> Reach.mem set target
+  | None -> walk_to t source target
 
 let precedes t i j = is_live t i && is_live t j && path_exists t i j
 
@@ -1013,7 +1013,7 @@ let precedes t i j = is_live t i && is_live t j && path_exists t i j
    into the lineage's row, else one walk from all of them. *)
 let reached_from t sources =
   match reach_sets t with
-  | Option.Some sets
+  | Some sets
     when List.for_all (fun b -> Option.is_some (reachable_set t b)) sources ->
       let lineage = t.lineage in
       let width = Array.length sets / 8 in
@@ -1035,7 +1035,7 @@ let reached_from t sources =
 
 let successors t i =
   List.filter_map
-    (fun (j, _) -> if j < t.count then Option.Some j else Option.None)
+    (fun (j, _) -> if j < t.count then Some j else None)
     t.succ.(i)
 
 let reachability_expansions t = t.expansions
@@ -1104,11 +1104,11 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
     if pred.(i) = 0 then queue := Topo_queue.add i (topo_priority rank i) !queue
   done;
   let rec loop queue processed o =
-    if processed = t.count then Option.Some out
+    if processed = t.count then Some out
     else
       match Topo_queue.pop queue with
-      | Option.None -> Option.None
-      | Option.Some ((e, _), queue) ->
+      | None -> None
+      | Some ((e, _), queue) ->
           emitted.(e) <- true;
           let o =
             if alive t e then begin
@@ -1136,8 +1136,8 @@ let topo_order_by t (rank : node_id -> int) : node_id array option =
 
 let canonical_order_by t (rank : node_id -> int) : node_id array =
   match topo_order_by t rank with
-  | Option.Some order -> order
-  | Option.None -> invalid_arg "Rule_graph.canonical_order: cyclic live graph"
+  | Some order -> order
+  | None -> invalid_arg "Rule_graph.canonical_order: cyclic live graph"
 
 (* The lineage's order, keeping [t]'s live nodes. *)
 let canonical_order t : node_id array =
@@ -1179,11 +1179,11 @@ let validate_consume t consume =
       let consumed = Array.of_list consume in
       Array.sort Int.compare consumed;
       match first_duplicate consumed 1 with
-      | Option.Some i -> Error (Duplicate_node i)
-      | Option.None -> (
+      | Some i -> Error (Duplicate_node i)
+      | None -> (
           match first_unusable t consume with
-          | Option.Some e -> Error e
-          | Option.None -> Ok consumed))
+          | Some e -> Error e
+          | None -> Ok consumed))
 
 let rec mem_sorted (ids : node_id array) (x : node_id) lo hi =
   lo < hi
@@ -1306,12 +1306,12 @@ let declaration_source_refs graph nodes produced_decl ~matches =
       indexed_declarations graph.rules.(node)
       |> List.filter_map (fun (index, source_decl) ->
           if matches produced_decl source_decl then
-            Option.Some { node; decl = Option.Some index }
-          else Option.None))
+            Some { node; decl = Some index }
+          else None))
     nodes
 
 let fallback_source_refs nodes =
-  List.map (fun node -> { node; decl = Option.None }) nodes
+  List.map (fun node -> { node; decl = None }) nodes
 
 let refs_cover_nodes nodes refs =
   List.for_all
@@ -1372,8 +1372,8 @@ let fresh_path t a b =
 let source_ref_orientation ~path left right =
   if left.node = right.node then
     match (left.decl, right.decl) with
-    | Option.Some l, Option.Some r when l < r -> Before
-    | Option.Some l, Option.Some r when l > r -> After
+    | Some l, Some r when l < r -> Before
+    | Some l, Some r when l > r -> After
     | _ -> New_conflict
   else
     match (path left.node right.node, path right.node left.node) with
@@ -1411,7 +1411,7 @@ let produced_external_orientation ~path graph consume produced external_ =
         let sources =
           produced_declaration_sources graph consume produced produced_decl.decl
         in
-        let external_source = { node = external_; decl = Option.None } in
+        let external_source = { node = external_; decl = None } in
         merge_orientation orientation
           (source_sets_orientation ~path sources [ external_source ])
       else orientation)
@@ -1548,8 +1548,8 @@ let add_external_edges ~path t ~consume ~consumed graph entering =
         | [] -> Ok ()
         | k :: rest -> (
             match nodes_conflict_reason graph p k with
-            | Option.None -> loop_candidates rest
-            | Option.Some reason -> (
+            | None -> loop_candidates rest
+            | Some reason -> (
                 match
                   add_inherited_edge ~path t graph consume entering p k reason
                 with
@@ -1628,8 +1628,8 @@ let add_produced_edges ~path t ~consume graph =
             loop (right + 1)
         | left :: rest -> (
             match nodes_conflict_reason graph left right with
-            | Option.None -> add_edges rest
-            | Option.Some reason -> (
+            | None -> add_edges rest
+            | Some reason -> (
                 match
                   add_produced_edge ~path graph consume left right reason
                 with
@@ -1718,8 +1718,8 @@ let entering_frontier sets entering =
   List.filter_map
     (fun (k, _) ->
       if Reach.is_set sets.(k) && not (Reach.meets sets.(k) pointing) then
-        Option.Some k
-      else Option.None)
+        Some k
+      else None)
     entering
 
 (* What a node reaching frontier node [k] gains: what [p] reaches beyond what
@@ -1734,8 +1734,8 @@ let rec gain set a = function
 let add_gain set p reached gained =
   Reach.add set p;
   match gained with
-  | Option.Some nodes -> List.iter (Reach.add set) nodes
-  | Option.None -> Reach.union ~into:set reached
+  | Some nodes -> List.iter (Reach.add set) nodes
+  | None -> Reach.union ~into:set reached
 
 (* Settle produced node [p] and add it, with all it reaches, to every settled
    node that reaches one of [entering], the nodes pointing at it. A node that
@@ -1754,8 +1754,8 @@ let settle_produced graph sets ~total entering p =
           let set = sets.(a) in
           if Reach.is_set set then
             match gain set a frontier with
-            | Option.None -> ()
-            | Option.Some gained ->
+            | None -> ()
+            | Some gained ->
                 add_gain set p reached gained;
                 graph.expansions <- graph.expansions + 1
         done);
@@ -1899,11 +1899,11 @@ type closing = Acyclic of node_id list | Live_cycle | Through_relays
 
 let closing t graph entering =
   match produced_order ~reached:(reached_from t) t graph entering with
-  | Option.Some finished -> Acyclic finished
-  | Option.None -> (
+  | Some finished -> Acyclic finished
+  | None -> (
       match produced_order ~reached:(live_reached t) t graph entering with
-      | Option.None -> Live_cycle
-      | Option.Some _ -> Through_relays)
+      | None -> Live_cycle
+      | Some _ -> Through_relays)
 
 let rewrite t ~consume ~produce : (t, rewrite_error) result =
   match orient t ~consume ~produce with
@@ -1939,5 +1939,5 @@ let rebuild t =
 
 let try_rewrite t ~consume ~produce : t option =
   match rewrite t ~consume ~produce with
-  | Ok graph -> Option.Some graph
-  | Error _ -> Option.None
+  | Ok graph -> Some graph
+  | Error _ -> None

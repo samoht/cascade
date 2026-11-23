@@ -642,7 +642,7 @@ let normalize_text_decoration ?(lossless = false) :
           (option_map_preserve (normalize_color ~lossless) s.color)
       in
       match (s.lines, style, color, s.thickness) with
-      | [], Option.None, Option.None, Option.None -> (None : text_decoration)
+      | [], None, None, None -> (None : text_decoration)
       | _ ->
           if
             option_is_phys_same style s.style
@@ -949,11 +949,11 @@ let read_shadow_lengths t =
             read_length ~allow_negative ~with_keywords:false ~length_only:true t)
           t
       with
-      | Option.Some l ->
+      | Some l ->
           lengths_rev := l :: !lengths_rev;
           Cursor.ws t;
           loop (n + 1)
-      | Option.None -> ()
+      | None -> ()
   in
   loop 0;
   List.rev !lengths_rev
@@ -973,16 +973,16 @@ let rec read_text_shadow t : text_shadow =
     ~default:(fun t ->
       (* CSS Text Decoration 3 sec. 5: [<color>? && <length>{2,3}]. The && puts
          the colour on either side of the length run but never inside it. *)
-      let color : color option ref = ref (Option.None : color option) in
+      let color : color option ref = ref (None : color option) in
       let try_color () =
         match !color with
-        | Option.Some _ -> ()
-        | Option.None -> (
+        | Some _ -> ()
+        | None -> (
             match Cursor.option (fun t -> read_color t) t with
-            | Option.Some c ->
-                color := Option.Some c;
+            | Some c ->
+                color := Some c;
                 Cursor.ws t
-            | Option.None -> ())
+            | None -> ())
       in
       try_color ();
       let lengths = read_shadow_lengths t in
@@ -990,9 +990,7 @@ let rec read_text_shadow t : text_shadow =
       let lengths, color = take_trailing_color_var lengths !color in
       match lengths with
       | h :: v :: rest ->
-          let blur =
-            match rest with b :: _ -> Option.Some b | _ -> Option.None
-          in
+          let blur = match rest with b :: _ -> Some b | _ -> None in
           (Text_shadow { h_offset = h; v_offset = v; blur; color }
             : text_shadow)
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")

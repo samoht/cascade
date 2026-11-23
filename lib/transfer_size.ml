@@ -48,18 +48,18 @@ let group walk ~match_cost ~match_byte tokens =
          let earlier = Seen.find_opt walk.seen token in
          Seen.replace walk.seen token rank;
          match earlier with
-         | Option.Some earlier ->
+         | Some earlier ->
              let start =
                match previous with
-               | Option.Some previous when earlier = previous + 1 -> 0
-               | Option.Some _ | Option.None -> match_cost
+               | Some previous when earlier = previous + 1 -> 0
+               | Some _ | None -> match_cost
              in
              walk.cost <- walk.cost + start + (match_byte * bytes);
-             Option.Some earlier
-         | Option.None ->
+             Some earlier
+         | None ->
              walk.cost <- walk.cost + novel + (novel_byte * bytes);
-             Option.None)
-       Option.None tokens)
+             None)
+       None tokens)
 
 let rules print (rules : Stylesheet.rule list) =
   let walk = { seen = Seen.create 16; next = 0; cost = 0 } in

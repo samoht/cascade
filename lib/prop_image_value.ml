@@ -176,8 +176,8 @@ let rec normalize_background_image ?(lossless = false) :
         if leads_with_substitution s then (d, s)
         else
           match drop_to_top_direction d s with
-          | Option.Some (d, s) -> (d, s)
-          | Option.None -> (d, s)
+          | Some (d, s) -> (d, s)
+          | None -> (d, s)
       in
       preserve_if_equal value (Linear_gradient (d, s))
   | Radial_gradient (c, s) ->

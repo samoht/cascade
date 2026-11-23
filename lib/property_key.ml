@@ -38,12 +38,10 @@ let single key decls =
     | [] -> found
     | decl :: rest ->
         if has key decl then
-          match found with
-          | Option.None -> loop (Option.Some decl) rest
-          | Option.Some _ -> Option.None
+          match found with None -> loop (Some decl) rest | Some _ -> None
         else loop found rest
   in
-  loop Option.None decls
+  loop None decls
 
 let of_declarations decls =
   List.fold_left

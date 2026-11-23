@@ -85,15 +85,15 @@ let rec read_text_transform t : text_transform =
         match Cursor.peek_keyword t with
         | Some "uppercase" when Option.is_none !case ->
             Cursor.skip t;
-            case := Option.Some Uppercase;
+            case := Some Uppercase;
             consumed := true
         | Some "lowercase" when Option.is_none !case ->
             Cursor.skip t;
-            case := Option.Some Lowercase;
+            case := Some Lowercase;
             consumed := true
         | Some "capitalize" when Option.is_none !case ->
             Cursor.skip t;
-            case := Option.Some Capitalize;
+            case := Some Capitalize;
             consumed := true
         | Some "full-width" when not !full_width ->
             Cursor.skip t;

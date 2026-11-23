@@ -31,13 +31,13 @@ let drop_initial_boxes (origin : background_box option)
   let o = Option.value origin ~default:(Padding_box : background_box) in
   let c =
     match (clip, origin) with
-    | Option.Some c, _ -> c
-    | Option.None, Option.Some o -> o
-    | Option.None, Option.None -> (Border_box : background_box)
+    | Some c, _ -> c
+    | None, Some o -> o
+    | None, None -> (Border_box : background_box)
   in
-  if o = Padding_box && c = Border_box then (Option.None, Option.None)
-  else if equal_background_box o c then (Option.Some o, Option.None)
-  else (Option.Some o, Option.Some c)
+  if o = Padding_box && c = Border_box then (None, None)
+  else if equal_background_box o c then (Some o, None)
+  else (Some o, Some c)
 
 (* A layer that fills no slot declares what [background: none] declares, and
    sec. 2.6's initial position is the shortest spelling of it, so that is where
@@ -540,8 +540,8 @@ let read_background_position_axis ~label ~start_edge ~end_edge =
             | Some e ->
                 ignore (Cursor.ident_opt t);
                 after_edge e t
-            | Option.None -> Cursor.err_expected t label)
-        | Option.None -> Offset (Values.read_length_percentage t))
+            | None -> Cursor.err_expected t label)
+        | None -> Offset (Values.read_length_percentage t))
       t
   in
   read

@@ -197,7 +197,7 @@ let drop_nesting_prefix (stmt : statement) : statement =
 (* CSS Cascade 6 sec. 2.5.2: an [@scope] body's rules and declarations stand for
    the scoping root, which [&] names there, not for the enclosing rule. *)
 let scope_owner =
-  Option.Some
+  Some
     {
       selector = Selector.Nesting;
       declarations = [];

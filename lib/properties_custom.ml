@@ -578,9 +578,8 @@ let rec canonicalize_time_components comps =
       | Component.Preserved
           ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
           match canonical_time_token number unit_ with
-          | Option.Some kind ->
-              Component.Preserved { token with kind; repr = Option.None }
-          | Option.None -> c)
+          | Some kind -> Component.Preserved { token with kind; repr = None }
+          | None -> c)
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let arguments = canonicalize_time_components func.arguments in
@@ -629,9 +628,8 @@ let rec canonicalize_angle_components comps =
       | Component.Preserved
           ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
           match canonical_angle_token number unit_ with
-          | Option.Some kind ->
-              Component.Preserved { token with kind; repr = Option.None }
-          | Option.None -> c)
+          | Some kind -> Component.Preserved { token with kind; repr = None }
+          | None -> c)
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let arguments = canonicalize_angle_components func.arguments in

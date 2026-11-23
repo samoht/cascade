@@ -393,8 +393,8 @@ let rec drop_inert_font_faces stmts =
   Common.List.filter_map_preserve
     (function
       | Font_face descriptors when not (font_face_participates descriptors) ->
-          Option.None
-      | stmt -> Option.Some (map_statement_children drop_inert_font_faces stmt))
+          None
+      | stmt -> Some (map_statement_children drop_inert_font_faces stmt))
     stmts
 
 (* CSS Syntax 3 (ED) sec. 8.3: [@charset] is a byte pattern read before

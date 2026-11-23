@@ -45,8 +45,8 @@ let rec var_refs_in_components acc (components : Component.t list) =
           let acc =
             if String.lowercase_ascii name = "var" then
               match first_var_ref_ident (Component.shallow arguments) with
-              | Option.Some n -> n :: acc
-              | Option.None -> acc
+              | Some n -> n :: acc
+              | None -> acc
             else acc
           in
           var_refs_in_components acc arguments
@@ -80,7 +80,7 @@ let rec substitution_fn_in_components (components : Component.t list) =
     (fun (c : Component.t) ->
       match c with
       | Component.Func { node = { name; arguments; _ }; _ } ->
-          if Component.is_substitution_function name then Option.Some name
+          if Component.is_substitution_function name then Some name
           else substitution_fn_in_components arguments
       | Component.Block { node = { value; _ }; _ } ->
           substitution_fn_in_components value
@@ -90,10 +90,10 @@ let rec substitution_fn_in_components (components : Component.t list) =
               match tok.kind with
               | Token.Function name when Component.is_substitution_function name
                 ->
-                  Option.Some name
-              | _ -> Option.None)
+                  Some name
+              | _ -> None)
             node
-      | Component.Preserved _ -> Option.None)
+      | Component.Preserved _ -> None)
     components
 
 let substitution_fn_in_value_string value =
@@ -108,8 +108,8 @@ let rec element_relative_in_components (components : Component.t list) =
       match c with
       | Component.Preserved { Token.kind = Token.Dimension { unit_; _ }; _ }
         when Values.is_element_relative_unit unit_ ->
-          Option.Some unit_
-      | Component.Preserved _ -> Option.None
+          Some unit_
+      | Component.Preserved _ -> None
       | Component.Func { node = { arguments; _ }; _ } ->
           element_relative_in_components arguments
       | Component.Block { node = { value; _ }; _ } ->
@@ -120,8 +120,8 @@ let rec element_relative_in_components (components : Component.t list) =
               match tok.kind with
               | Token.Dimension { unit_; _ }
                 when Values.is_element_relative_unit unit_ ->
-                  Option.Some unit_
-              | _ -> Option.None)
+                  Some unit_
+              | _ -> None)
             node)
     components
 

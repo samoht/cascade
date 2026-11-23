@@ -1487,7 +1487,7 @@ let starts_offset_path t =
     (fun t ->
       match Cursor.option read_offset_path t with
       | Some (None | Url _ | Path _ | Ray _ | Shape _ : offset_path) -> true
-      | Some _ | Option.None -> false)
+      | Some _ | None -> false)
     t
 
 (* A [var()] in the leading group could substitute into any of its four slots,
@@ -1522,10 +1522,10 @@ let read_offset_path_tail t =
     else (
       Cursor.ws t;
       match Cursor.option reader t with
-      | Option.Some value ->
-          slot := Option.Some value;
+      | Some value ->
+          slot := Some value;
           true
-      | Option.None -> false)
+      | None -> false)
   in
   let rec loop () =
     if
@@ -1560,8 +1560,8 @@ let read_offset_body t : offset =
   let anchor =
     if Cursor.slash_opt t then (
       Cursor.ws t;
-      Option.Some (read_offset_anchor t))
-    else Option.None
+      Some (read_offset_anchor t))
+    else None
   in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -1606,7 +1606,7 @@ let offset_distance_is_initial : length_percentage -> bool = function
 
 let drop_offset_initial_slot (type a) ~(is_initial : a -> bool)
     (slot : a option) : a option =
-  match slot with Option.Some v when is_initial v -> Option.None | _ -> slot
+  match slot with Some v when is_initial v -> None | _ -> slot
 
 let normalize_offset_anchor_slot anchor =
   option_map_preserve normalize_offset_anchor anchor
@@ -1631,10 +1631,10 @@ let normalize_offset_target ~ctx (target : offset_target) : offset_target =
       | (Normal : offset_position) ->
           With_path
             {
-              position = Option.None;
+              position = None;
               path = (None : offset_path);
-              distance = Option.None;
-              rotate = Option.None;
+              distance = None;
+              rotate = None;
             }
       | position -> Position_only position)
   | With_path group -> (
@@ -1658,7 +1658,7 @@ let normalize_offset_target ~ctx (target : offset_target) : offset_target =
           | _ -> false)
       in
       match (position, path, distance, rotate) with
-      | Option.Some position, (None : offset_path), Option.None, Option.None ->
+      | Some position, (None : offset_path), None, None ->
           Position_only position
       | _ ->
           if

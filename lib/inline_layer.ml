@@ -263,7 +263,7 @@ let annotate_every_layer entries =
       Option.bind acc (fun acc ->
           Option.bind fl (fun l ->
               Option.map (fun a -> a :: acc) (annotate_layer l d))))
-    (Option.Some []) entries
+    (Some []) entries
 
 (* Names whose every definition is unconditional, on one selector, and spread
    over two or more layers, mapped to the resolved cascade winner ([`Unset] when
@@ -310,8 +310,8 @@ let layer_decided_customs ~keep stylesheet =
           in
           if unconditional && one_selector && distinct_layers >= 2 then
             match annotate_every_layer entries with
-            | Option.None -> ()
-            | Option.Some annotated -> (
+            | None -> ()
+            | Some annotated -> (
                 match
                   Context.winning_custom_declaration ~layer_order annotated
                 with

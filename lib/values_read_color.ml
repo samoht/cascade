@@ -12,7 +12,7 @@ open Values_read_calc
 let read_percentage_float t : percentage option =
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
-    Option.None)
+    None)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
@@ -297,7 +297,7 @@ let read_ok_lightness t : percentage option =
   Cursor.ws t;
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
-    Option.None)
+    None)
   else
     let n, unit = Cursor.number_with_unit t in
     (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather than
@@ -361,7 +361,7 @@ let read_lab t : color =
   let l : percentage option =
     if Cursor.looking_at t "none" then (
       Cursor.expect_string "none" t;
-      Option.None)
+      None)
     else
       let n, unit = Cursor.number_with_unit t in
       Some
@@ -384,7 +384,7 @@ let read_lch t : color =
   let read_l_axis t : percentage option =
     if Cursor.looking_at t "none" then (
       Cursor.expect_string "none" t;
-      Option.None)
+      None)
     else
       (* CSS Color 4 sec. 9.3 lch(): the L channel is [<percentage> | <number>],
          distinguish so [lch(54.321 ...)] doesn't round-trip as [lch(54.321%
@@ -577,19 +577,19 @@ let folded_srgb_color origin (alpha : alpha) : color option =
     | Some (r, g, b, a) ->
         let unit byte = Float.of_int byte /. 255. in
         Some ((unit r, unit g, unit b), unit a)
-    | Option.None ->
+    | None ->
         Option.map
           (fun (linear, a) -> (Color_space.rgb_of_linear_rgb linear, a))
           (static_color_to_linear_srgb origin)
   in
   match channels with
-  | None -> Option.None
+  | None -> None
   | Some ((r, g, b), origin_alpha) ->
       let round6 v = Float.round (v *. 1e6) /. 1e6 in
       let alpha : alpha =
         match alpha with None -> alpha_of_unit_float origin_alpha | a -> a
       in
-      Option.Some
+      Some
         (Color
            {
              space = Srgb;
@@ -688,23 +688,23 @@ let try_fold_color_function_static origin t : color option =
         true
     | _ -> false
   in
-  if not (read_keyword "srgb") then Option.None
+  if not (read_keyword "srgb") then None
   else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
-    Option.None
+    None
   else
     (* The fold is best effort, so an alpha it cannot read is not an error: sec.
        4.1 puts the origin's [alpha] keyword, and math over it, in that slot,
        and the caller keeps the call as written when this answers [None]. *)
     match Cursor.option read_optional_alpha t with
-    | Option.None -> Option.None
-    | Option.Some alpha ->
+    | None -> None
+    | Some alpha ->
         Cursor.ws t;
-        if Cursor.is_done t then folded_srgb_color origin alpha else Option.None
+        if Cursor.is_done t then folded_srgb_color origin alpha else None
 
 let try_fold_relative_color_static name origin t : color option =
   match name with
   | "color" -> try_fold_color_function_static origin t
-  | _ -> Option.None
+  | _ -> None
 
 (* {1 Undecidable channels}
 

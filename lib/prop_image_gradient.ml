@@ -750,18 +750,14 @@ let normalize_conic_config ?(keep_defaults = false) (c : conic_gradient_config)
    canonicalised them, so [red] and [#f00] still fold together. *)
 let rec fold_double_position_stops stops =
   match stops with
-  | Color_percentage (c1, Option.Some p1, Option.None)
-    :: Color_percentage (c2, Option.Some p2, Option.None)
+  | Color_percentage (c1, Some p1, None)
+    :: Color_percentage (c2, Some p2, None)
     :: rest
     when single_stop_color c1 && Values.equal_color c1 c2 ->
-      Color_percentage (c1, Option.Some p1, Option.Some p2)
-      :: fold_double_position_stops rest
-  | Color_length (c1, Option.Some l1, Option.None)
-    :: Color_length (c2, Option.Some l2, Option.None)
-    :: rest
+      Color_percentage (c1, Some p1, Some p2) :: fold_double_position_stops rest
+  | Color_length (c1, Some l1, None) :: Color_length (c2, Some l2, None) :: rest
     when single_stop_color c1 && Values.equal_color c1 c2 ->
-      Color_length (c1, Option.Some l1, Option.Some l2)
-      :: fold_double_position_stops rest
+      Color_length (c1, Some l1, Some l2) :: fold_double_position_stops rest
   | stop :: rest ->
       let rest' = fold_double_position_stops rest in
       if rest' == rest then stops else stop :: rest'
@@ -780,8 +776,7 @@ let reversible_unpositioned_stops (stops : gradient_stop list) =
   && List.for_all
        (fun stop ->
          match stop with
-         | Color_percentage (c, Option.None, Option.None)
-         | Color_length (c, Option.None, Option.None) ->
+         | Color_percentage (c, None, None) | Color_length (c, None, None) ->
              single_stop_color c
          | _ -> false)
        stops
@@ -790,10 +785,10 @@ let drop_to_top_direction (direction : gradient_direction)
     (stops : gradient_stop list) =
   match direction with
   | Angle a
-    when Values.angle_degrees_opt a = Option.Some 0.
+    when Values.angle_degrees_opt a = Some 0.
          && reversible_unpositioned_stops stops ->
-      Option.Some (Default_direction, List.rev stops)
-  | _ -> Option.None
+      Some (Default_direction, List.rev stops)
+  | _ -> None
 
 module Gradient_direction = struct
   type keyword = Top | Bottom | Left | Right
@@ -1043,13 +1038,13 @@ module Radial_config = struct
     let interpolation : color_interpolation option ref = ref Option.None in
     let try_slot : 'a. 'a option ref -> (Cursor.t -> 'a) -> bool =
      fun slot reader ->
-      if !slot <> Option.None then false
+      if !slot <> None then false
       else
         match Cursor.option reader t with
-        | Option.Some v ->
-            slot := Option.Some v;
+        | Some v ->
+            slot := Some v;
             true
-        | Option.None -> false
+        | None -> false
     in
     let rec loop () =
       Cursor.ws t;
@@ -1106,13 +1101,13 @@ let read_conic_gradient_config t : conic_gradient_config =
   in
   let try_slot : 'a. 'a option ref -> (Cursor.t -> 'a) -> bool =
    fun slot reader ->
-    if !slot <> Option.None then false
+    if !slot <> None then false
     else
       match Cursor.option reader t with
-      | Option.Some v ->
-          slot := Option.Some v;
+      | Some v ->
+          slot := Some v;
           true
-      | Option.None -> false
+      | None -> false
   in
   let rec loop () =
     Cursor.ws t;
@@ -1122,10 +1117,8 @@ let read_conic_gradient_config t : conic_gradient_config =
     then loop ()
   in
   loop ();
-  if
-    !angle = Option.None && !position = Option.None
-    && !interpolation = Option.None
-  then Cursor.err_invalid t "conic-gradient config";
+  if !angle = None && !position = None && !interpolation = None then
+    Cursor.err_invalid t "conic-gradient config";
   { angle = !angle; position = !position; interpolation = !interpolation }
 
 (* CSS Images 4 sec. 3.1 [linear-gradient] prelude: [ <angle> | to
@@ -1136,22 +1129,22 @@ let read_linear_prelude_opt t : gradient_direction option =
   let direction : gradient_direction option ref = ref Option.None in
   let interpolation : color_interpolation option ref = ref Option.None in
   let try_direction () =
-    if !direction <> Option.None then false
+    if !direction <> None then false
     else
       match Cursor.option read_gradient_direction t with
       | Some d ->
-          direction := Option.Some d;
+          direction := Some d;
           true
-      | Option.None -> false
+      | None -> false
   in
   let try_interpolation () =
-    if !interpolation <> Option.None then false
+    if !interpolation <> None then false
     else
       match Cursor.option read_color_interpolation t with
       | Some i ->
-          interpolation := Option.Some i;
+          interpolation := Some i;
           true
-      | Option.None -> false
+      | None -> false
   in
   let rec loop () =
     Cursor.ws t;
@@ -1159,10 +1152,10 @@ let read_linear_prelude_opt t : gradient_direction option =
   in
   loop ();
   match (!direction, !interpolation) with
-  | Some d, Some i -> Option.Some (With_interpolation (d, i))
-  | Some d, None -> Option.Some d
-  | None, Some i -> Option.Some (With_interpolation (Default_direction, i))
-  | None, None -> Option.None
+  | Some d, Some i -> Some (With_interpolation (d, i))
+  | Some d, None -> Some d
+  | None, Some i -> Some (With_interpolation (Default_direction, i))
+  | None, None -> None
 
 (* Direction plus the optional [in <interpolation>] tail ([45deg in oklab]). *)
 let read_gradient_prelude t : gradient_direction =
@@ -1188,9 +1181,9 @@ let rec read_gradient_position t : gradient_position =
             [
               (fun t ->
                 match read_linear_prelude_opt t with
-                | Option.Some direction ->
+                | Some direction ->
                     (Linear_position direction : gradient_position)
-                | Option.None -> Cursor.err_expected t "gradient position");
+                | None -> Cursor.err_expected t "gradient position");
               (fun t -> Radial_position (read_radial_gradient_config t));
             ]
             t)
@@ -1199,9 +1192,9 @@ let read_linear_gradient_body_stops t =
   (* After the prelude the comma separating it from the colour-stop list is
      required if and only if the prelude consumed any tokens. *)
   let prelude = read_linear_prelude_opt t in
-  let prelude_consumed = prelude <> Option.None in
+  let prelude_consumed = prelude <> None in
   let direction =
-    match prelude with Option.Some d -> d | Option.None -> Default_direction
+    match prelude with Some d -> d | None -> Default_direction
   in
   if prelude_consumed then (
     Cursor.ws t;

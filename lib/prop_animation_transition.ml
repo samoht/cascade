@@ -75,7 +75,7 @@ let rec normalize_timing_function : timing_function -> timing_function =
   | Cubic_bezier (0.0, 0.0, 0.58, 1.0) -> Ease_out
   | Cubic_bezier (0.42, 0.0, 0.58, 1.0) -> Ease_in_out
   | Cubic_bezier (0.0, 0.0, 1.0, 1.0) -> Linear
-  | Steps (1, (Option.None | Some (Jump_end | End))) -> Step_end
+  | Steps (1, (None | Some (Jump_end | End))) -> Step_end
   | Steps (1, Some (Jump_start | Start)) -> Step_start
   | Timing_functions timings ->
       let normalized = map_preserve normalize_timing_function timings in
@@ -445,7 +445,7 @@ let read_transition_property_part parts t =
     false
   else
     read_transition_part t read_transition_property_value (fun v ->
-        parts.property <- Option.Some v)
+        parts.property <- Some v)
 
 let read_transition_var_property_part parts t =
   if Option.is_some parts.property || not (Cursor.looking_at_func "var" t) then
@@ -456,13 +456,13 @@ let read_transition_timing_part parts t =
   if Option.is_some parts.timing then false
   else
     read_transition_part t read_timing_function (fun v ->
-        parts.timing <- Option.Some v)
+        parts.timing <- Some v)
 
 let read_transition_behavior_part parts t =
   if Option.is_some parts.behavior then false
   else
     read_transition_part t read_transition_behavior (fun v ->
-        parts.behavior <- Option.Some v)
+        parts.behavior <- Some v)
 
 (* CSS Transitions 1 (ED) sec. 2.5 assigns the first <time> of a
    <single-transition> to transition-duration and the second to
@@ -491,18 +491,11 @@ let read_transition_next_part parts t =
   || read_transition_property_part parts t
 
 let transition_property_or_all = function
-  | Option.Some property -> property
-  | Option.None -> (All : transition_property_value)
+  | Some property -> property
+  | None -> (All : transition_property_value)
 
 let read_transition_shorthand t : transition_shorthand =
-  let parts =
-    {
-      property = Option.None;
-      times = [];
-      timing = Option.None;
-      behavior = Option.None;
-    }
-  in
+  let parts = { property = None; times = []; timing = None; behavior = None } in
   let consumed = ref true in
   while !consumed do
     Cursor.ws t;

@@ -486,8 +486,8 @@ let has_missing_component (c : color) =
   | Rgb (Channels { r; g; b }) | Rgba { rgb = Channels { r; g; b }; _ } ->
       channel r || channel g || channel b
   | Hsl { h = Hue_none; _ } | Hwb { h = Hue_none; _ } -> true
-  | Hsl { s = Option.None; _ } | Hsl { l = Option.None; _ } -> true
-  | Hwb { w = Option.None; _ } | Hwb { b = Option.None; _ } -> true
+  | Hsl { s = None; _ } | Hsl { l = None; _ } -> true
+  | Hwb { w = None; _ } | Hwb { b = None; _ } -> true
   | _ -> false
 
 (* A fold computes coefficients that can print longer than the call it replaces,

@@ -50,7 +50,7 @@ module Int_table = Common.Table.Make (struct
 end)
 
 let rule_eligible (r : rule) =
-  r.nested = [] && r.merge_key = Option.None && listable r.selector
+  r.nested = [] && r.merge_key = None && listable r.selector
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
 (* Any identical-body rules can group into a selector list: a list of disjoint
@@ -95,17 +95,17 @@ let decls_inline_cost g decls =
 
 let grouped_rule (rules : rule list) : rule option =
   match rules with
-  | [] -> Option.None
+  | [] -> None
   | first :: _ ->
       let selectors = List.map (fun (r : rule) -> r.selector) rules in
-      if not (can_group_selectors selectors) then Option.None
+      if not (can_group_selectors selectors) then None
       else
-        Option.Some
+        Some
           {
             first with
             selector = merge_selector_list selectors;
             nested = [];
-            merge_key = Option.None;
+            merge_key = None;
           }
 
 (* [ids] once each, in the order the graph prints them: a bucket's windows are

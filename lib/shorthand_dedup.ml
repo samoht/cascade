@@ -676,11 +676,11 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
        same. *)
     let target_needs decl other =
       match Ctx.judge ctx with
-      | Option.None -> false
-      | Option.Some targets -> (
+      | None -> false
+      | Some targets -> (
           match Webkit_fallback.of_declaration targets other with
-          | Option.Some needed -> Declaration.same_property needed decl
-          | Option.None -> false)
+          | Some needed -> Declaration.same_property needed decl
+          | None -> false)
     in
     let has_dead_prefix (_, decl) =
       List.exists
@@ -824,7 +824,7 @@ let implied_longhand covering covered : Declaration.declaration option =
         | _ -> Option.none
       in
       match timeline with
-      | Option.None -> None
+      | None -> None
       | Some timeline -> (
           match unwrap_theme_guard covered with
           | Declaration { property = Properties.Animation_timeline; _ } ->

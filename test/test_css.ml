@@ -456,16 +456,10 @@ let constructed_custom_property_reparses () =
       ("oklch-percentage-chroma", Css.oklch 50. 0.304 120.);
       ( "oklch-none-chroma",
         Css.Values.Oklch
-          {
-            l = Some (Pct 50.);
-            c = Option.None;
-            h = Unitless 120.;
-            alpha = None;
-          } );
+          { l = Some (Pct 50.); c = None; h = Unitless 120.; alpha = None } );
       ( "oklab-none-axis",
         Css.Values.Oklab
-          { l = Some (Pct 50.); a = Option.None; b = Some 0.12; alpha = None }
-      );
+          { l = Some (Pct 50.); a = None; b = Some 0.12; alpha = None } );
       ( "rgb-var-channel",
         Css.Values.Rgb
           (Channels

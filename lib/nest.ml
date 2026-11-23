@@ -115,8 +115,8 @@ let substitute_elements ~leftmost ~parent sel =
 
 let substitute ?(leftmost = true) ~parent sel =
   match element_branches parent with
-  | Option.Some parent -> substitute_elements ~leftmost ~parent sel
-  | Option.None ->
+  | Some parent -> substitute_elements ~leftmost ~parent sel
+  | None ->
       let parent = names_nothing parent in
       Selector.map
         (function Selector.Nesting -> parent | node -> Selector.reshape node)
@@ -126,9 +126,9 @@ let substitute ?(leftmost = true) ~parent sel =
    of a combinator, so it needs the same wrapper. *)
 let grouped parent =
   match element_branches parent with
-  | Option.None -> names_nothing parent
-  | Option.Some parent when is_list parent -> Selector.Is [ parent ]
-  | Option.Some parent -> parent
+  | None -> names_nothing parent
+  | Some parent when is_list parent -> Selector.Is [ parent ]
+  | Some parent -> parent
 
 (* CSS Nesting 1 sec. 3: a nested selector list is relative to the parent branch
    by branch, so [.p { a, b { ... } }] is [.p a, .p b]. Combining the parent
@@ -198,8 +198,8 @@ let rec merge_lone ?(in_scope = false) (rule : rule) =
     when (not (is_list rule.selector))
          && ((not in_scope) || parent_first child.selector) -> (
       match keep_readable_branches (combine rule.selector child.selector) with
-      | Option.Some selector -> merge_lone ~in_scope { child with selector }
-      | Option.None -> { rule with nested = [] })
+      | Some selector -> merge_lone ~in_scope { child with selector }
+      | None -> { rule with nested = [] })
   | _ -> rule
 
 (* The same question, asked of a rule that stays nested: what has to be readable
@@ -212,11 +212,11 @@ let live_branches parent (selector : Selector.t) =
   match selector with
   | Selector.List branches -> (
       match Common.List.filter_preserve (live_under parent) branches with
-      | kept when kept == branches -> Option.Some selector
-      | [] -> Option.None
-      | [ branch ] -> Option.Some branch
-      | kept -> Option.Some (Selector.List kept))
-  | sel -> if live_under parent sel then Option.Some sel else Option.None
+      | kept when kept == branches -> Some selector
+      | [] -> None
+      | [ branch ] -> Some branch
+      | kept -> Some (Selector.List kept))
+  | sel -> if live_under parent sel then Some sel else None
 
 (* Only a pseudo-element the parent carries can bar what nests under it, and
    every rule is walked with its own selector as parent, so a parent without one
@@ -235,13 +235,12 @@ and live_statement parent (stmt : statement) =
   match stmt with
   | Rule child -> (
       match live_branches parent child.selector with
-      | Option.None -> Option.None
-      | Option.Some selector ->
+      | None -> None
+      | Some selector ->
           let nested = live_statements (combine parent selector) child.nested in
-          if selector == child.selector && nested == child.nested then
-            Option.Some stmt
-          else Option.Some (Rule { child with selector; nested }))
-  | stmt -> Option.Some (map_statement_children (live_statements parent) stmt)
+          if selector == child.selector && nested == child.nested then Some stmt
+          else Some (Rule { child with selector; nested }))
+  | stmt -> Some (map_statement_children (live_statements parent) stmt)
 
 let drop_dead_nested (rule : rule) =
   match rule.nested with
@@ -551,5 +550,4 @@ let rec leaf_rules ?parent acc stmt =
           List.fold_left (leaf_rules ?parent) acc (statement_children stmt))
 
 let leaves ?parent stmts =
-  List.fold_left (leaf_rules ?parent) (Option.Some []) stmts
-  |> Option.map List.rev
+  List.fold_left (leaf_rules ?parent) (Some []) stmts |> Option.map List.rev

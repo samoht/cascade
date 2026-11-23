@@ -971,8 +971,8 @@ let line_height_of_math_fn fn : line_height option =
       | "em" -> Some (Em v)
       | "rem" -> Some (Rem v)
       | "%" -> Some (Pct v)
-      | _ -> Option.None)
-  | _ -> Option.None
+      | _ -> None)
+  | _ -> None
 
 let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
   match lh with

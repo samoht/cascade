@@ -139,9 +139,8 @@ let refusal : Rule_graph.rewrite_error -> refusal = function
 
 let still_refused pool refused o =
   match Hashtbl.find_opt refused (Rule_candidate.key o) with
-  | Option.None | Option.Some Retry -> false
-  | Option.Some (Stands rules) ->
-      List.for_all (Rule_candidate.is_live pool) rules
+  | None | Some Retry -> false
+  | Some (Stands rules) -> List.for_all (Rule_candidate.is_live pool) rules
 
 (* The candidates of one graph lineage and the refusals made on it. *)
 type search = { pool : Rule_candidate.t; refused : (int, refusal) Hashtbl.t }

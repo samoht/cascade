@@ -683,12 +683,12 @@ let word_need ~release property (kind : Token.kind) =
             of_property name;
           ]
       with
-      | Option.Some _ as need -> need
-      | Option.None -> (
+      | Some _ as need -> need
+      | None -> (
           match List.filter_map release (type_keys name) with
-          | [] -> Option.None
-          | releases -> Option.Some (earliest releases)))
-  | _ -> Option.None
+          | [] -> None
+          | releases -> Some (earliest releases)))
+  | _ -> None
 
 let value_tokens decl =
   let lexer = Lexer.of_string (string_of_value ~minify:true decl) in

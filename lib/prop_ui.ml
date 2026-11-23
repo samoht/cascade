@@ -323,7 +323,7 @@ let rec read_nav t : nav =
 (* CSS UI 4 (ED) sec. 3.3 gives outline-style the initial value [none]. *)
 let drop_initial_outline_style (style : outline_style option) :
     outline_style option =
-  match style with Some (None : outline_style) -> Option.None | style -> style
+  match style with Some (None : outline_style) -> None | style -> style
 
 (* CSS UI 4 (ED) sec. 3.2 gives outline-width the values and meaning of
    border-width, so the width slot takes the longhand's fold and its initial
@@ -1389,10 +1389,10 @@ let read_outline_part ~width ~style ~color t =
     match
       if Option.is_none !width then
         Cursor.option Prop_background.read_border_width t
-      else Option.None
+      else None
     with
     | Some w -> width := Some w
-    | Option.None ->
+    | None ->
         if Option.is_none !color then color := Some (read_auto_color t)
         else Cursor.err_expected t "outline"
 
@@ -1445,5 +1445,5 @@ let read_outline_shorthand t : outline_shorthand =
   match read_outline t with
   | Shorthand s -> s
   | Inherit | Initial | Unset | Revert | Revert_layer | None ->
-      { width = Option.None; style = Option.None; color = Option.None }
+      { width = None; style = None; color = None }
   | Var _ -> Cursor.err_invalid t "outline var shorthand"

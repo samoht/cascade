@@ -113,12 +113,12 @@ let rec read_shadow_single t : shadow =
         | Some (Component.Func { node = { name; _ }; _ })
           when String.lowercase_ascii_preserve name = "var" ->
             Some (Inset (Var (read_var read_shadow_single t)))
-        | _ -> Option.None)
-    | _ -> Option.None
+        | _ -> None)
+    | _ -> None
   in
   match inset_var with
   | Some shadow -> shadow
-  | Option.None ->
+  | None ->
       Cursor.restore t snap;
       Cursor.enum_or_calls "shadow"
         [

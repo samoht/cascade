@@ -622,7 +622,7 @@ module Animation = struct
      [0s] is a value of its own and has to print. The delay's initial is still
      [0s], which is what [is_duration] answers for. *)
   let is_animation_duration : duration option -> bool = function
-    | Option.None | Some Auto -> false
+    | None | Some Auto -> false
     | Some _ -> true
 
   let is_default_timing = function Ease -> true | _ -> false
@@ -700,7 +700,7 @@ module Animation = struct
     | Some Timeline -> is_timeline anim.timeline
 
   let duration (anim : animation_shorthand) : duration option =
-    if is_animation_duration anim.duration then anim.duration else Option.None
+    if is_animation_duration anim.duration then anim.duration else None
 
   let timing ?(quote_name = false) (anim : animation_shorthand) :
       timing_function option =
@@ -807,9 +807,9 @@ let pp_animation_initial_none ctx (anim : animation_shorthand)
     ~name_is_default_none ~has_any_non_default =
   match (anim.name, name_is_default_none, has_any_non_default) with
   | _, _, true -> ()
-  | Option.None, _, false -> Pp.string ctx "none"
-  | Option.Some _, true, false -> Pp.string ctx "none"
-  | Option.Some _, false, false -> ()
+  | None, _, false -> Pp.string ctx "none"
+  | Some _, true, false -> Pp.string ctx "none"
+  | Some _, false, false -> ()
 
 let pp_animation_name_slot ctx state ~quote_ambiguous_name
     (anim : animation_shorthand) =
@@ -928,8 +928,8 @@ let animation_is_all_initial (a : animation_shorthand) =
   (not (Animation.has_non_defaults a))
   &&
   match a.name with
-  | Option.None | Option.Some (None : animation_name) -> true
-  | Option.Some _ -> false
+  | None | Some (None : animation_name) -> true
+  | Some _ -> false
 
 let normalize_animation ~ctx : animation -> animation = function
   | Shorthand a as value ->

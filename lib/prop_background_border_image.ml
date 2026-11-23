@@ -248,7 +248,7 @@ let normalize_mask_border (value : border_image) : border_image =
         (value.source, value.slice, value.width, value.outset, value.repeat)
       with
       | None, None, None, None, None -> drained_mask_border
-      | _ -> { value with mode = Option.None })
+      | _ -> { value with mode = None })
   | _ -> value
 
 let read_border_image_repeat_keyword t : border_image_repeat_keyword =
@@ -538,23 +538,23 @@ let read_border_image_shorthand ~mask_mode t : border_image =
     Cursor.ws t;
     let filled =
       fill ~filled:(Option.is_some !source) read_border_image_source (fun v ->
-          source := Option.Some v)
+          source := Some v)
       || fill ~filled:(Option.is_some !slice) read_border_image_slice_group
            (fun (s, w, o) ->
-             slice := Option.Some s;
+             slice := Some s;
              width := w;
              outset := o)
       || fill ~filled:(Option.is_some !repeat) read_border_image_repeat_keywords
-           (fun v -> repeat := Option.Some v)
+           (fun v -> repeat := Some v)
       || mask_mode
          && fill ~filled:(Option.is_some !mode) read_mask_border_mode (fun v ->
-             mode := Option.Some v)
+             mode := Some v)
     in
     if filled then loop ()
   in
   loop ();
   (match (!source, !slice, !repeat, !mode) with
-  | Option.None, Option.None, Option.None, Option.None ->
+  | None, None, None, None ->
       Cursor.err_expected t
         (if mask_mode then "mask-border source, slice, repeat, or mode"
          else "border-image source, slice, or repeat")

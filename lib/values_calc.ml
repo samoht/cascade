@@ -399,25 +399,25 @@ let same_quantity a b =
    combined. Each maps to that unit and the factor to it. *)
 let canonical_unit unit =
   match String.lowercase_ascii unit with
-  | "px" -> Option.Some ("px", 1.)
-  | "in" -> Option.Some ("px", 96.)
-  | "cm" -> Option.Some ("px", 96. /. 2.54)
-  | "mm" -> Option.Some ("px", 96. /. 25.4)
-  | "q" -> Option.Some ("px", 96. /. 101.6)
-  | "pt" -> Option.Some ("px", 4. /. 3.)
-  | "pc" -> Option.Some ("px", 16.)
-  | "s" -> Option.Some ("s", 1.)
-  | "ms" -> Option.Some ("s", 0.001)
-  | "deg" -> Option.Some ("deg", 1.)
-  | "grad" -> Option.Some ("deg", 0.9)
-  | "rad" -> Option.Some ("deg", 180. /. Float.pi)
-  | "turn" -> Option.Some ("deg", 360.)
-  | "hz" -> Option.Some ("hz", 1.)
-  | "khz" -> Option.Some ("hz", 1000.)
-  | "dppx" | "x" -> Option.Some ("dppx", 1.)
-  | "dpi" -> Option.Some ("dppx", 1. /. 96.)
-  | "dpcm" -> Option.Some ("dppx", 2.54 /. 96.)
-  | _ -> Option.None
+  | "px" -> Some ("px", 1.)
+  | "in" -> Some ("px", 96.)
+  | "cm" -> Some ("px", 96. /. 2.54)
+  | "mm" -> Some ("px", 96. /. 25.4)
+  | "q" -> Some ("px", 96. /. 101.6)
+  | "pt" -> Some ("px", 4. /. 3.)
+  | "pc" -> Some ("px", 16.)
+  | "s" -> Some ("s", 1.)
+  | "ms" -> Some ("s", 0.001)
+  | "deg" -> Some ("deg", 1.)
+  | "grad" -> Some ("deg", 0.9)
+  | "rad" -> Some ("deg", 180. /. Float.pi)
+  | "turn" -> Some ("deg", 360.)
+  | "hz" -> Some ("hz", 1.)
+  | "khz" -> Some ("hz", 1000.)
+  | "dppx" | "x" -> Some ("dppx", 1.)
+  | "dpi" -> Some ("dppx", 1. /. 96.)
+  | "dpcm" -> Some ("dppx", 2.54 /. 96.)
+  | _ -> None
 
 (* The values of results that share a type, in one unit, and how to rebuild a
    result in that unit: their own when they all carry it, the canonical one when
@@ -463,13 +463,13 @@ let compared_results f results =
   else
     let results = List.filter_map Fun.id results in
     match shared_unit_values results with
-    | Option.Some ((v0 :: rest as values), _) ->
+    | Some ((v0 :: rest as values), _) ->
         let picked = List.fold_left f v0 rest in
         List.find_map
           (fun (r, v) ->
             if same_quantity v picked || (Float.is_nan v && Float.is_nan picked)
-            then Option.Some r
-            else Option.None)
+            then Some r
+            else None)
           (List.combine results values)
     | _ -> Option.none
 
@@ -498,8 +498,7 @@ and math_fn_result (fn : math_fn) : math_result option =
          so [hypot()] folds over one unit only. *)
       let results = List.filter_map math_arg_result args in
       match shared_unit_values ~convert:false results with
-      | Option.Some (values, rebuild) when List.compare_lengths results args = 0
-        ->
+      | Some (values, rebuild) when List.compare_lengths results args = 0 ->
           let square acc v = acc +. (v *. v) in
           Option.some (rebuild (Float.sqrt (List.fold_left square 0. values)))
       | _ -> Option.none)
@@ -546,10 +545,8 @@ and compared_result f args = compared_results f (List.map math_arg_result args)
    with that type, so two units have to match and the result keeps theirs. *)
 and stepped_result f a b =
   match (math_arg_result a, math_arg_result b) with
-  | Option.Some (Scalar a), Option.Some (Scalar b) ->
-      Option.some (Scalar (f a b))
-  | Option.Some (United (a, u)), Option.Some (United (b, v))
-    when String.equal u v ->
+  | Some (Scalar a), Some (Scalar b) -> Option.some (Scalar (f a b))
+  | Some (United (a, u)), Some (United (b, v)) when String.equal u v ->
       Option.some (United (f a b, u))
   | _ -> Option.none
 

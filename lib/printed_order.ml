@@ -24,8 +24,7 @@ let live nodes k = nodes.death.(k) > nodes.generation
 
 let successors nodes k =
   List.filter_map
-    (fun (j, _) ->
-      if Order_maintenance.mem nodes.order j then Option.Some j else Option.None)
+    (fun (j, _) -> if Order_maintenance.mem nodes.order j then Some j else None)
     nodes.succ.(k)
 
 (* A fresh visit set: [true] the first time it is asked about a node. *)
@@ -50,18 +49,18 @@ module Rank_set = Set.Make (struct
 end)
 
 let earliest order = function
-  | [] -> Option.None
+  | [] -> None
   | first :: rest ->
-      Option.Some
+      Some
         (List.fold_left
            (fun first k ->
              if Order_maintenance.compare order k first < 0 then k else first)
            first rest)
 
 let latest order = function
-  | [] -> Option.None
+  | [] -> None
   | first :: rest ->
-      Option.Some
+      Some
         (List.fold_left
            (fun last k ->
              if Order_maintenance.compare order k last > 0 then k else last)
@@ -71,8 +70,8 @@ let latest order = function
    until past [until] and up to the first node it leaves unchanged. *)
 let reslot nodes ~moved ~from ~until =
   let rec loop running passed = function
-    | Option.None -> ()
-    | Option.Some k ->
+    | None -> ()
+    | Some k ->
         let slot = Int.max running nodes.origin.(k) in
         let passed = passed || k = until in
         let next = Order_maintenance.next nodes.order k in
@@ -84,14 +83,13 @@ let reslot nodes ~moved ~from ~until =
         else if not passed then loop slot passed next
   in
   match from with
-  | Option.None -> loop min_int false (Order_maintenance.first nodes.order)
-  | Option.Some k ->
-      loop nodes.slot.(k) false (Order_maintenance.next nodes.order k)
+  | None -> loop min_int false (Order_maintenance.first nodes.order)
+  | Some k -> loop nodes.slot.(k) false (Order_maintenance.next nodes.order k)
 
 let place nodes prev k =
   match prev with
-  | Option.Some prev -> Order_maintenance.insert_after nodes.order prev k
-  | Option.None -> Order_maintenance.insert_first nodes.order k
+  | Some prev -> Order_maintenance.insert_after nodes.order prev k
+  | None -> Order_maintenance.insert_first nodes.order k
 
 (* [p]'s descendants Kahn reached before [a]. *)
 let waiting nodes p a =
@@ -113,11 +111,10 @@ let alone nodes p ~after next =
   let unmarked = fresh_visit () in
   List.iter (fun j -> ignore (unmarked j)) (successors nodes p);
   let rec find prev = function
-    | Option.Some y when rank_less nodes y p ->
-        if unmarked y then
-          find (Option.Some y) (Order_maintenance.next nodes.order y)
-        else Option.None
-    | _ -> Option.Some prev
+    | Some y when rank_less nodes y p ->
+        if unmarked y then find (Some y) (Order_maintenance.next nodes.order y)
+        else None
+    | _ -> Some prev
   in
   find after next
 
@@ -127,8 +124,8 @@ let merge_successors nodes deferred k =
   List.filter_map
     (fun (j, _) ->
       if Order_maintenance.mem nodes.order j || Int_table.mem deferred j then
-        Option.Some j
-      else Option.None)
+        Some j
+      else None)
     nodes.succ.(k)
 
 (* The merge: [pending] counts each node's predecessors still waiting, and
@@ -162,46 +159,44 @@ let merge nodes ~moved ~waiting p ~after next =
   in
   let rec loop prev next free =
     match Rank_set.min_elt_opt free with
-    | Option.None -> prev
-    | Option.Some ((_, m) as least) -> (
+    | None -> prev
+    | Some ((_, m) as least) -> (
         match next with
-        | Option.Some y when count y > 0 ->
+        | Some y when count y > 0 ->
             let after = Order_maintenance.next nodes.order y in
             take_out y;
             wait y;
             loop prev after free
-        | Option.Some y when rank_less nodes y m ->
-            loop (Option.Some y) (Order_maintenance.next nodes.order y) free
+        | Some y when rank_less nodes y m ->
+            loop (Some y) (Order_maintenance.next nodes.order y) free
         | _ ->
             place nodes prev m;
-            loop (Option.Some m) next (release (Rank_set.remove least free) m))
+            loop (Some m) next (release (Rank_set.remove least free) m))
   in
   loop after next (Rank_set.singleton (nodes.origin.(p), p))
 
 let add nodes ~preds ~moved p =
   let order = nodes.order in
   let last = latest order preds in
-  let waiting =
-    match last with Option.None -> [] | Option.Some a -> waiting nodes p a
-  in
+  let waiting = match last with None -> [] | Some a -> waiting nodes p a in
   let from =
     match earliest order waiting with
-    | Option.None -> last
-    | Option.Some first -> Order_maintenance.prev order first
+    | None -> last
+    | Some first -> Order_maintenance.prev order first
   in
   let next =
     match last with
-    | Option.Some a -> Order_maintenance.next order a
-    | Option.None -> Order_maintenance.first order
+    | Some a -> Order_maintenance.next order a
+    | None -> Order_maintenance.first order
   in
   let until =
     match waiting with
     | [] -> (
         match alone nodes p ~after:last next with
-        | Option.Some prev ->
+        | Some prev ->
             place nodes prev p;
-            Option.Some p
-        | Option.None -> merge nodes ~moved ~waiting p ~after:last next)
+            Some p
+        | None -> merge nodes ~moved ~waiting p ~after:last next)
     | _ :: _ -> merge nodes ~moved ~waiting p ~after:last next
   in
   Option.iter (fun until -> reslot nodes ~moved ~from ~until) until

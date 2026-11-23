@@ -22,23 +22,23 @@ let is_font_longhand : declaration -> bool = function
    emit, so the composer doesn't normalise here. *)
 let font_style_of : declaration -> Properties.font_style option = function
   | Declaration { property = Font_style; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let font_weight_of : declaration -> Properties.font_weight option = function
   | Declaration { property = Font_weight; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let line_height_of : declaration -> Properties.line_height option = function
   | Declaration { property = Line_height; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let font_size_of : declaration -> Properties.font_size option = function
   | Declaration { property = Font_size; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let font_family_of : declaration -> Properties.font_family option = function
   | Declaration { property = Font_family; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 (* CSS Fonts 4 (ED) sec. 5.3 splits the [font] sub-properties in two. The seven
    in the Set Explicitly group are the shorthand's own components; the thirteen
@@ -122,9 +122,9 @@ let font_caps_component : declaration -> Properties.font_variant_css21 option =
 let font_stretch_component : declaration -> Properties.font_stretch option =
   function
   | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
-      Option.None
+      None
   | Declaration { property = Font_stretch; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let font_stretch_has_slot : declaration -> bool = function
   | Declaration { property = Font_stretch; value = Normal | Pct 100.; _ } ->
@@ -169,7 +169,7 @@ let render_font_run decls : Properties.font option =
              line_height = pick line_height_of;
              family;
            })
-  | _ -> Option.None
+  | _ -> None
 
 let try_compose_font_at ~allow_partial idx i =
   let raw_decls, len = font_run_at idx i in
@@ -303,17 +303,17 @@ let is_list_style_longhand : declaration -> bool = function
 let list_style_type_of : declaration -> Properties.list_style_type option =
   function
   | Declaration { property = List_style_type; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let list_style_position_of :
     declaration -> Properties.list_style_position option = function
   | Declaration { property = List_style_position; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let list_style_image_of : declaration -> Properties.list_style_image option =
   function
   | Declaration { property = List_style_image; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let render_list_style decls : Properties.list_style =
   let pick f = List.find_map f decls in
@@ -394,7 +394,7 @@ let td_color_of : declaration -> Values.color option = function
 let td_thickness_of : declaration -> Values.length option = function
   | Declaration { property = Text_decoration_thickness; value = Auto; _ }
   | Declaration { property = Text_decoration_thickness; value = Initial; _ } ->
-      Option.None
+      None
   | Declaration { property = Text_decoration_thickness; value; _ } -> Some value
   | _ -> None
 
@@ -423,7 +423,7 @@ let synthesis_part_of : declaration -> (synthesis_part * bool) option = function
 let font_synthesis_of_run parts : Properties.font_synthesis option =
   let slot = function Weight -> 0 | Style -> 1 | Small_caps -> 2 in
   let keys = List.sort_uniq compare (List.map (fun (p, _) -> slot p) parts) in
-  if List.length keys <> 3 then Option.None
+  if List.length keys <> 3 then None
   else
     let feature : synthesis_part -> Properties.font_synthesis_feature = function
       | Weight -> Weight
@@ -432,7 +432,7 @@ let font_synthesis_of_run parts : Properties.font_synthesis option =
     in
     let on =
       List.filter_map
-        (fun (p, auto) -> if auto then Some (feature p) else Option.None)
+        (fun (p, auto) -> if auto then Some (feature p) else None)
         (List.sort (fun (a, _) (b, _) -> compare (slot a) (slot b)) parts)
     in
     Some (if on = [] then None else Features on)
@@ -480,7 +480,7 @@ let text_decoration_of_run raw k : Properties.text_decoration option =
     not
       (List.for_all Option.is_some kinds
       && List.length (List.sort_uniq compare kinds) = k)
-  then Option.None
+  then None
   else
     let lines = List.find_map td_line_of raw in
     let style = List.find_map td_style_of raw in
@@ -489,7 +489,7 @@ let text_decoration_of_run raw k : Properties.text_decoration option =
     match (lines, style, color) with
     | Some lines, Some _, Some _ ->
         Some (Shorthand { lines; style; color; thickness })
-    | _ -> Option.None
+    | _ -> None
 
 let try_compose_text_decoration_run ~held idx i k =
   let n = Rule_index.length idx in
@@ -543,7 +543,7 @@ let fv_alternates_of : declaration -> _ list option = function
 
 let fv_caps_of : declaration -> Properties.font_variant_caps option option =
   function
-  | Declaration { property = Caps; value = Normal; _ } -> Some Option.None
+  | Declaration { property = Caps; value = Normal; _ } -> Some None
   | Declaration
       {
         property = Caps;
@@ -591,7 +591,7 @@ let fv_east_asian_of : declaration -> _ list option = function
 let fv_position_of :
     declaration -> Properties.font_variant_position option option = function
   | Declaration { property = Font_variant_position; value = Normal; _ } ->
-      Some Option.None
+      Some None
   | Declaration
       { property = Font_variant_position; value = (Sub | Super) as p; _ } ->
       Some (Some p)
@@ -600,7 +600,7 @@ let fv_position_of :
 let fv_emoji_of : declaration -> Properties.font_variant_emoji option option =
   function
   | Declaration { property = Font_variant_emoji; value = Normal; _ } ->
-      Some Option.None
+      Some None
   | Declaration
       {
         property = Font_variant_emoji;
@@ -632,7 +632,7 @@ let font_variant_of_run raw : Properties.font_variant option =
       in
       match ligatures with
       | `None when others_empty -> Some (None : Properties.font_variant)
-      | `None -> Option.None
+      | `None -> None
       | `Slot ligatures ->
           if ligatures = [] && others_empty then Some Normal
           else
@@ -647,7 +647,7 @@ let font_variant_of_run raw : Properties.font_variant option =
                    position;
                    emoji;
                  }))
-  | _ -> Option.None
+  | _ -> None
 
 let try_compose_font_variant_at idx i =
   let n = Rule_index.length idx in

@@ -237,7 +237,7 @@ let composed_declarations ~ctx decls =
 
 (* The body of a conditional block. *)
 let conditional_body : statement -> statement list option = function
-  | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Option.Some b
+  | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Some b
   | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
   | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
   | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
@@ -245,7 +245,7 @@ let conditional_body : statement -> statement list option = function
   | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
   | Unknown_at_rule _ ->
-      Option.None
+      None
 
 let with_conditional_body stmt body =
   match stmt with

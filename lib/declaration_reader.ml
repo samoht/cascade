@@ -1248,7 +1248,7 @@ let rec read_declarations_loop ~refuse t acc =
 
 let read_declarations t =
   Cursor.with_context t "declarations" @@ fun () ->
-  read_declarations_loop ~refuse:(fun _ -> Option.None) t []
+  read_declarations_loop ~refuse:(fun _ -> None) t []
 
 (* CSS Animations 1 sec. 3: in a keyframe "properties qualified with !important
    are invalid and ignored", and "the properties defined by this specification
@@ -1256,14 +1256,14 @@ let read_declarations t =
    The name is read off the declaration, so one kept as an unknown property (a
    [var()] value) is refused as well. *)
 let keyframe_refusal decl =
-  if is_important decl then Option.Some "!important in a keyframe"
+  if is_important decl then Some "!important in a keyframe"
   else
     match property_name decl with
     | ( "animation" | "animation-name" | "animation-duration"
       | "animation-delay" | "animation-iteration-count" | "animation-direction"
       | "animation-fill-mode" | "animation-play-state" ) as name ->
-        Option.Some (String.concat "" [ name; " in a keyframe" ])
-    | _ -> Option.None
+        Some (String.concat "" [ name; " in a keyframe" ])
+    | _ -> None
 
 let read_keyframe_declarations t =
   Cursor.with_context t "declarations" @@ fun () ->

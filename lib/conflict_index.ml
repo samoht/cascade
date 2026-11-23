@@ -121,16 +121,16 @@ let found_in_specs ~after test stamp table specs =
   List.exists
     (fun spec ->
       match Spec_table.find_opt table spec with
-      | Option.None -> false
-      | Option.Some entries -> found_in ~after test stamp entries)
+      | None -> false
+      | Some entries -> found_in ~after test stamp entries)
     specs
 
 let found_in_slots ~after test stamp table key specs =
   List.exists
     (fun spec ->
       match Slot_table.find_opt table { key; spec } with
-      | Option.None -> false
-      | Option.Some entries -> found_in ~after test stamp entries)
+      | None -> false
+      | Some entries -> found_in ~after test stamp entries)
     specs
 
 (* A rule whose footprint is broad overlaps every key, so it reads every value
@@ -166,8 +166,8 @@ let rec collect_specs bucket specs stamp seen acc =
   | spec :: rest ->
       let acc =
         match Spec_table.find_opt bucket spec with
-        | Option.None -> acc
-        | Option.Some ids -> add_candidates stamp seen acc ids
+        | None -> acc
+        | Some ids -> add_candidates stamp seen acc ids
       in
       collect_specs bucket rest stamp seen acc
 
@@ -177,8 +177,8 @@ let rec collect_bucket bucket key specs stamp seen acc =
   | spec :: rest ->
       let acc =
         match Slot_table.find_opt bucket { key; spec } with
-        | Option.None -> acc
-        | Option.Some ids -> add_candidates stamp seen acc ids
+        | None -> acc
+        | Some ids -> add_candidates stamp seen acc ids
       in
       collect_bucket bucket key rest stamp seen acc
 
@@ -230,9 +230,9 @@ type selector_decl_groups = {
 
 let empty_decl_groups () =
   {
-    opaque = Option.None;
-    newest = Option.None;
-    previous = Option.None;
+    opaque = None;
+    newest = None;
+    previous = None;
     all_nodes = [];
     all_scanned = -1;
   }
@@ -241,16 +241,16 @@ let empty_importance_decl_groups () =
   { normal = empty_decl_groups (); important = empty_decl_groups () }
 
 let empty_id_decl_groups () =
-  { no_id = empty_importance_decl_groups (); by_id = Option.None }
+  { no_id = empty_importance_decl_groups (); by_id = None }
 
 let empty_selector_decl_groups () =
-  { no_element = empty_id_decl_groups (); by_element = Option.None }
+  { no_element = empty_id_decl_groups (); by_element = None }
 
 let slot_decl_groups bucket key spec : selector_decl_groups =
   let slot = { key; spec } in
   match Slot_table.find_opt bucket slot with
-  | Option.Some index -> index
-  | Option.None ->
+  | Some index -> index
+  | None ->
       let index = empty_selector_decl_groups () in
       Slot_table.replace bucket slot index;
       index
@@ -259,29 +259,29 @@ let slot_decl_groups bucket key spec : selector_decl_groups =
 let named_entry table set empty name =
   let table =
     match table with
-    | Option.Some table -> table
-    | Option.None ->
+    | Some table -> table
+    | None ->
         let table = String_table.create 4 in
         set table;
         table
   in
   match String_table.find_opt table name with
-  | Option.Some entry -> entry
-  | Option.None ->
+  | Some entry -> entry
+  | None ->
       let entry = empty () in
       String_table.replace table name entry;
       entry
 
 let element_decl_groups index = function
-  | Option.None -> index.no_element
-  | Option.Some element ->
+  | None -> index.no_element
+  | Some element ->
       named_entry index.by_element
-        (fun table -> index.by_element <- Option.Some table)
+        (fun table -> index.by_element <- Some table)
         empty_id_decl_groups element
 
 let named_decl_groups groups name =
   named_entry groups.by_id
-    (fun table -> groups.by_id <- Option.Some table)
+    (fun table -> groups.by_id <- Some table)
     empty_importance_decl_groups name
 
 let importance_decl_groups groups decl =
@@ -290,10 +290,10 @@ let importance_decl_groups groups decl =
 let push_decl groups decl value =
   let table =
     match groups.opaque with
-    | Option.Some table -> table
-    | Option.None ->
+    | Some table -> table
+    | None ->
         let table = Decl_tbl.create 4 in
-        groups.opaque <- Option.Some table;
+        groups.opaque <- Some table;
         table
   in
   Decl_tbl.replace table decl
@@ -304,11 +304,11 @@ let add_decl ~compact groups decl value =
   groups.all_nodes <- value :: groups.all_nodes;
   if compact then (
     match groups.newest with
-    | Option.Some run when Declaration.same_minified run.decl decl ->
+    | Some run when Declaration.same_minified run.decl decl ->
         run.members <- value :: run.members
     | newest ->
         groups.previous <- newest;
-        groups.newest <- Option.Some { decl; members = [ value ] })
+        groups.newest <- Some { decl; members = [ value ] })
   else push_decl groups decl value
 
 (* What a branch requires of its subject, read once per node: the element name
@@ -331,8 +331,8 @@ let add_decl_bucket ~compact bucket key spec subject decl value =
 
 let collect_decl_table decl groups stamp seen acc =
   match groups.opaque with
-  | Option.None -> acc
-  | Option.Some table ->
+  | None -> acc
+  | Some table ->
       Decl_tbl.fold
         (fun decl' ids acc ->
           if Declaration.same_minified decl decl' then acc
@@ -341,9 +341,9 @@ let collect_decl_table decl groups stamp seen acc =
 
 let collect_writers decl run stamp seen acc =
   match run with
-  | Option.Some run when not (Declaration.same_minified decl run.decl) ->
+  | Some run when not (Declaration.same_minified decl run.decl) ->
       add_candidates stamp seen acc run.members
-  | Option.Some _ | Option.None -> acc
+  | Some _ | None -> acc
 
 (* The whole group as candidates, once per query. A node writing the same
    declaration is among them: the conflict test refuses it, and a candidate the
@@ -371,14 +371,13 @@ let collect_all_decls groups stamp seen acc =
 
 let fold_named table f acc =
   match table with
-  | Option.None -> acc
-  | Option.Some table ->
-      String_table.fold (fun _ entry acc -> f entry acc) table acc
+  | None -> acc
+  | Some table -> String_table.fold (fun _ entry acc -> f entry acc) table acc
 
 let named table name =
   match table with
-  | Option.None -> Option.None
-  | Option.Some table -> String_table.find_opt table name
+  | None -> None
+  | Some table -> String_table.find_opt table name
 
 let collect_id_groups collect groups ids stamp seen acc =
   let acc = collect groups.no_id stamp seen acc in
@@ -391,28 +390,27 @@ let collect_id_groups collect groups ids stamp seen acc =
       List.fold_left
         (fun acc id ->
           match named groups.by_id id with
-          | Option.None -> acc
-          | Option.Some decls -> collect decls stamp seen acc)
+          | None -> acc
+          | Some decls -> collect decls stamp seen acc)
         acc ids
 
 let collect_selector_groups collect index subject stamp seen acc =
   let ids = subject.ids in
   let acc = collect_id_groups collect index.no_element ids stamp seen acc in
   match subject.element with
-  | Option.None ->
+  | None ->
       fold_named index.by_element
         (fun groups acc -> collect_id_groups collect groups ids stamp seen acc)
         acc
-  | Option.Some element -> (
+  | Some element -> (
       match named index.by_element element with
-      | Option.None -> acc
-      | Option.Some groups ->
-          collect_id_groups collect groups ids stamp seen acc)
+      | None -> acc
+      | Some groups -> collect_id_groups collect groups ids stamp seen acc)
 
 let collect_decl_bucket ~compact bucket key spec subject decl stamp seen acc =
   match Slot_table.find_opt bucket { key; spec } with
-  | Option.None -> acc
-  | Option.Some index ->
+  | None -> acc
+  | Some index ->
       collect_selector_groups
         (collect_distinct_decls ~compact decl)
         index subject stamp seen acc
@@ -423,8 +421,8 @@ let collect_broad_bucket bucket spec subject stamp seen acc =
   match
     Slot_table.find_opt bucket { key = Shorthand.broad_overlap_key; spec }
   with
-  | Option.None -> acc
-  | Option.Some index ->
+  | None -> acc
+  | Some index ->
       collect_selector_groups collect_all_decls index subject stamp seen acc
 
 let rec collect_decl_keys ~compact bucket spec subject decl stamp seen acc =

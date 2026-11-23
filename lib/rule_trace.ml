@@ -15,13 +15,13 @@ type condition =
 (* Media Queries 4 sec. 3.4: [not] negates the query it prefixes, all of it.
    [only] is not a negation and a query list has no single one. *)
 let negated_media : Media.t -> Media.t option = function
-  | Cond (Not c) -> Option.Some (Cond c)
-  | Cond c -> Option.Some (Cond (Not c))
-  | Type ({ prefix = Option.None; _ } as q) ->
-      Option.Some (Type { q with prefix = Option.Some Media.Not })
-  | Type ({ prefix = Option.Some Media.Not; _ } as q) ->
-      Option.Some (Type { q with prefix = Option.None })
-  | Type { prefix = Option.Some Media.Only; _ } | List _ -> Option.None
+  | Cond (Not c) -> Some (Cond c)
+  | Cond c -> Some (Cond (Not c))
+  | Type ({ prefix = None; _ } as q) ->
+      Some (Type { q with prefix = Some Media.Not })
+  | Type ({ prefix = Some Media.Not; _ } as q) ->
+      Some (Type { q with prefix = None })
+  | Type { prefix = Some Media.Only; _ } | List _ -> None
 
 (* Whether two conditions cannot both hold for one element. Only a condition and
    its exact negation are read: Media Queries 4 sec. 3.4 and CSS Conditional 3
@@ -33,7 +33,7 @@ let negated_media : Media.t -> Media.t option = function
    container. *)
 let excludes a b =
   let negates negate equal x y =
-    match negate y with Option.Some ny -> equal x ny | Option.None -> false
+    match negate y with Some ny -> equal x ny | None -> false
   in
   match (a, b) with
   | Media_condition x, Media_condition y ->
@@ -56,10 +56,9 @@ type block_prelude =
    holds. *)
 let block_of (stmt : statement) =
   match stmt with
-  | Media (m, body) -> Option.Some (Media_query m, body)
-  | Supports (c, body) -> Option.Some (Feature_query c, body)
-  | Container (name, cond, body) ->
-      Option.Some (Container_query (name, cond), body)
+  | Media (m, body) -> Some (Media_query m, body)
+  | Supports (c, body) -> Some (Feature_query c, body)
+  | Container (name, cond, body) -> Some (Container_query (name, cond), body)
   | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
   | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
   | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
@@ -67,18 +66,17 @@ let block_of (stmt : statement) =
   | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
   | Unknown_at_rule _ ->
-      Option.None
+      None
 
 (* The condition a block prelude puts its rules under, a container's name read
    out of its query. A container query without a condition has none. *)
 let prelude_condition = function
-  | Media_query q -> Option.Some (Media_condition q)
-  | Feature_query c -> Option.Some (Supports_condition c)
-  | Container_query (Option.None, Option.Some (Container.Named (name, c))) ->
-      Option.Some (Container_condition (Option.Some name, c))
-  | Container_query (name, Option.Some c) ->
-      Option.Some (Container_condition (name, c))
-  | Container_query (_, Option.None) -> Option.None
+  | Media_query q -> Some (Media_condition q)
+  | Feature_query c -> Some (Supports_condition c)
+  | Container_query (None, Some (Container.Named (name, c))) ->
+      Some (Container_condition (Some name, c))
+  | Container_query (name, Some c) -> Some (Container_condition (name, c))
+  | Container_query (_, None) -> None
 
 let block_statement prelude body =
   match prelude with
@@ -219,10 +217,10 @@ let rec element_chains acc stmt f =
   | Rule r -> f (Array.of_list (List.rev acc)) r
   | _ -> (
       match block_of stmt with
-      | Option.Some (prelude, body) ->
+      | Some (prelude, body) ->
           let acc = (prelude, Prelude_key.v prelude) :: acc in
           List.iter (fun stmt -> element_chains acc stmt f) body
-      | Option.None -> ())
+      | None -> ())
 
 (* What reading a run accumulates: its groups, by name, and its entries, newest
    first; [ids] numbers texts and property names. *)
@@ -241,21 +239,21 @@ type reader = {
 let property_id r decl =
   let key =
     match Declaration.property_key decl with
-    | Declaration.Key (Unknown_property { own = Option.Some (Prop own); _ }) ->
+    | Declaration.Key (Unknown_property { own = Some (Prop own); _ }) ->
         Declaration.Key own
     | key -> key
   in
   match Property_table.find_opt r.properties key with
-  | Option.Some id -> id
-  | Option.None ->
+  | Some id -> id
+  | None ->
       let id = Property_table.length r.properties in
       Property_table.replace r.properties key id;
       id
 
 let text_id r text =
   match Hashtbl.find_opt r.ids text with
-  | Option.Some id -> id
-  | Option.None ->
+  | Some id -> id
+  | None ->
       let id = Hashtbl.length r.ids in
       Hashtbl.replace r.ids text id;
       id
@@ -267,8 +265,8 @@ let group_of r chain (rule : rule) =
       (fun (g, _) -> same_group g chain rule name)
       (Hashtbl.find_all r.by_name name)
   with
-  | Option.Some (_, id) -> id
-  | Option.None ->
+  | Some (_, id) -> id
+  | None ->
       let g =
         {
           chain;
@@ -310,7 +308,7 @@ let entry r ~group decl =
       || Shorthand.is_all_declaration (unguarded decl);
     broad = Shorthand.overlap_keys_broad keys;
     important = Declaration.is_important decl;
-    live = Option.None;
+    live = None;
     dead = false;
   }
 
@@ -422,12 +420,12 @@ let kill_entry ~ctx entries members p =
   | _ when x.dead || not (narrowable x.decl) -> ()
   | rewritten -> (
       let rewritten = List.sort_uniq Shorthand.overlap_key_compare rewritten in
-      if x.broad then x.live <- Option.Some (Broad_except rewritten)
+      if x.broad then x.live <- Some (Broad_except rewritten)
       else
         match keys_minus x.keys rewritten with
         | [] -> x.dead <- true
         | rest when List.compare_lengths rest x.keys = 0 -> ()
-        | rest -> x.live <- Option.Some (Spelled rest))
+        | rest -> x.live <- Some (Spelled rest))
 
 (* Both facts {!kill_entry} reads hold in every sequence of the trace: [x] and a
    write that overrides it at its own importance depend on each other
@@ -440,14 +438,14 @@ let kill ~ctx entries members =
 
 let footprint e =
   match e.live with
-  | Option.Some f -> f
-  | Option.None -> if e.broad then Broad_except [] else Spelled e.keys
+  | Some f -> f
+  | None -> if e.broad then Broad_except [] else Spelled e.keys
 
 (* Whether two entries the overlap test pairs still meet once each has lost the
    slots its own group rewrites. *)
 let live_meet x y =
   match (x.live, y.live) with
-  | Option.None, Option.None -> true
+  | None, None -> true
   | _ -> (
       match (footprint x, footprint y) with
       | Spelled a, Spelled b -> Shorthand.overlap_keys_intersect a b
@@ -578,8 +576,8 @@ let overlap o x y =
     in
     let pair = (a lsl 31) lor b in
     match Int_table.find_opt o.unknown_meet pair with
-    | Option.Some meet -> meet
-    | Option.None ->
+    | Some meet -> meet
+    | None ->
         let meet =
           Shorthand.declarations_overlap_with_keys x.decl x.keys y.decl y.keys
         in
@@ -669,8 +667,8 @@ let specificity_code ({ ids; classes; elements } : Selector.specificity) =
 
 let bucket buckets key =
   match Bucket.find_opt buckets key with
-  | Option.Some b -> b
-  | Option.None ->
+  | Some b -> b
+  | None ->
       let b = { items = [||]; size = 0 } in
       Bucket.replace buckets key b;
       b
@@ -919,8 +917,8 @@ let take s i =
 let piece s g from =
   let rec go acc =
     match Int_set.min_elt_opt from.(g) with
-    | Option.None -> List.rev acc
-    | Option.Some r ->
+    | None -> List.rev acc
+    | Some r ->
         let i = s.by_text.(r) in
         take s i;
         go (s.o.entries.(i).decl :: acc)
@@ -943,18 +941,18 @@ let emit o graph =
   let rec go pieces =
     let next =
       match Int_set.min_elt_opt s.free with
-      | Option.Some r -> Option.Some (s.by_name.(r), s.ready)
-      | Option.None ->
+      | Some r -> Some (s.by_name.(r), s.ready)
+      | None ->
           Option.map
             (fun r -> (s.by_name.(r), s.ready_leading))
             (Int_set.min_elt_opt s.leading)
     in
     match next with
-    | Option.None ->
+    | None ->
         if Array.exists (fun left -> left > 0) s.remaining then
           invalid_arg "Rule_trace.emit: an entry left with none to take"
         else List.rev pieces
-    | Option.Some (g, from) -> (
+    | Some (g, from) -> (
         let decls = piece s g from in
         match pieces with
         | (h, before) :: rest when Int.equal h g ->
@@ -1153,8 +1151,8 @@ let drop_repeats ~ctx o graph members unconditional =
         if Array.length o.groups.(g).chain = 0 then members.(g)
         else
           match Hashtbl.find_opt unconditional o.groups.(g).selector_key with
-          | Option.Some h -> Array.append members.(h) members.(g)
-          | Option.None -> members.(g)
+          | Some h -> Array.append members.(h) members.(g)
+          | None -> members.(g)
       in
       let decide important y =
         if

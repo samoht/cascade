@@ -279,8 +279,8 @@ let color_of_syntax_fallback (v : length var) : color option =
         color
       with
       | color -> Some color
-      | exception Cursor.Parse_error _ -> Option.None)
-  | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> Option.None
+      | exception Cursor.Parse_error _ -> None)
+  | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> None
 
 (* A shadow grammar puts its colour on either side of the length run and never
    inside it: CSS Backgrounds 3 sec. 6.2 writes [inset? && <length>{2,4} &&
@@ -296,21 +296,21 @@ let color_of_syntax_fallback (v : length var) : color option =
 let take_trailing_color_var (lengths : length list) (color : color option) :
     length list * color option =
   match (color, List.rev lengths) with
-  | Option.None, Var v :: (_ :: _ :: _ as before) -> (
+  | None, Var v :: (_ :: _ :: _ as before) -> (
       match color_of_syntax_fallback v with
       | Some fallback ->
           let var : color var =
             {
               name = v.name;
               fallback = Fallback fallback;
-              default = Option.None;
+              default = None;
               layer = v.layer;
               meta = v.meta;
               runtime = v.runtime;
             }
           in
           (List.rev before, Some (Var var : color))
-      | Option.None -> (lengths, color))
+      | None -> (lengths, color))
   | _ -> (lengths, color)
 
 (* Drop a shorthand component that equals its longhand initial: a shorthand

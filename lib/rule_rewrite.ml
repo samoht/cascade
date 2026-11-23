@@ -41,18 +41,18 @@ let finalize_produce (finalize : Stylesheet.rule -> Stylesheet.rule)
   List.filter_map
     (fun rule ->
       let rule = finalize rule in
-      if rule.Stylesheet.declarations = [] && rule.nested = [] then Option.None
-      else Option.Some rule)
+      if rule.Stylesheet.declarations = [] && rule.nested = [] then None
+      else Some rule)
     produce
 
 let of_finalized ~objective ~kind graph ~consume ~produce ~size =
   match produce with
-  | [] -> Option.None
+  | [] -> None
   | _ ->
       let saving = saving objective graph ~consume ~produce ~size in
-      if saving <= 0 then Option.None
+      if saving <= 0 then None
       else
-        Option.Some
+        Some
           {
             generation = Rule_graph.generation graph;
             kind;

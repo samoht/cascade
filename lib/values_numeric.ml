@@ -607,7 +607,7 @@ let angle_combine op (a : angle) (b : angle) : angle option =
         | _ -> Float.nan
       in
       match f (deg a) (deg b) with
-      | Option.Some r when not (Float.is_nan r) -> Option.some (Deg r)
+      | Some r when not (Float.is_nan r) -> Option.some (Deg r)
       | _ -> Option.none)
   | _ -> Option.none
 

@@ -145,8 +145,7 @@ module Var_residual = struct
             Option.bind
               (lookup_custom_property ?layer ?layer_order cascade name)
               (fun decl ->
-                if is_css_wide_binding decl then Option.None
-                else read_custom decl)
+                if is_css_wide_binding decl then None else read_custom decl)
           in
           Hashtbl.add parsed_custom name value;
           value

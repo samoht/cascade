@@ -130,7 +130,7 @@ let read_counter_style_arg inner =
     let style = Prop_list.read_counter_style inner in
     Cursor.ws inner;
     Some style)
-  else Option.None
+  else None
 
 let read_content_counter t =
   Cursor.call "counter" t (fun inner ->
@@ -166,8 +166,8 @@ let rec read_content_attr t =
       let name = Cursor.ident ~keep_case:true inner in
       let type_ : Values.attr_type option =
         Cursor.ws inner;
-        if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
-        else Option.Some (Values.read_attr_type inner)
+        if Cursor.is_done inner || Cursor.peek_comma inner then None
+        else Some (Values.read_attr_type inner)
       in
       Cursor.ws inner;
       let fallback : content Values.attr_fallback =
@@ -266,12 +266,12 @@ let read_counter_item ~reversed t =
           Cursor.ws t;
           name)
         t
-    else Option.None
+    else None
   in
   let name, reversed =
     match reversed_name with
-    | Option.Some name -> (name, true)
-    | Option.None -> (read_counter_name t, false)
+    | Some name -> (name, true)
+    | None -> (read_counter_name t, false)
   in
   Cursor.ws t;
   let value = Cursor.option Values.read_integer_slot t in

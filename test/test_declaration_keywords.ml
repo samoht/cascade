@@ -385,7 +385,7 @@ let animation_keyword_names () =
        form says which slot differs when they do not. *)
     let without_name v =
       Css.Pp.to_string ~minify:true pp_animation
-        (Shorthand { v with name = Option.None })
+        (Shorthand { v with name = None })
     in
     Alcotest.(check string)
       (input ^ " keeps non-name slots")

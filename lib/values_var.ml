@@ -106,7 +106,7 @@ let pp_inline_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   match v.default with
   | Some value -> pp_value ctx value
-  | Option.None -> (
+  | None -> (
       match v.fallback with
       | Fallback value -> pp_value ctx value
       | Var_fallback _ -> pp_var_ref ctx v.name
@@ -150,7 +150,7 @@ let pp_env : type a. a Pp.t -> a env Pp.t =
   | Some fallback ->
       Pp.comma ctx ();
       pp_value ctx fallback
-  | Option.None -> ());
+  | None -> ());
   Pp.char ctx ')'
 
 (* CSS Custom Properties 1 (ED) sec. 4.1 forbids normalizing the whitespace of
@@ -272,7 +272,7 @@ let read_body : type a. (Cursor.t -> a) -> Cursor.t -> a env =
     Cursor.ws t;
     match Cursor.integer_opt t with
     | Some i -> indices (i :: acc)
-    | Option.None -> List.rev acc
+    | None -> List.rev acc
   in
   let indices = indices [] in
   Cursor.ws t;
@@ -280,7 +280,7 @@ let read_body : type a. (Cursor.t -> a) -> Cursor.t -> a env =
     if Cursor.comma_opt t then (
       Cursor.ws t;
       if Cursor.is_done t then Option.None else Some (read_value t))
-    else Option.None
+    else None
   in
   Cursor.ws t;
   Cursor.expect_eof t;

@@ -20,8 +20,8 @@ let shape decl =
   if Shorthand.declaration_is_broad decl then Broad
   else
     match Shorthand.custom_property_name decl with
-    | Option.Some name -> Custom name
-    | Option.None -> Slots
+    | Some name -> Custom name
+    | None -> Slots
 
 let fact decl =
   {
