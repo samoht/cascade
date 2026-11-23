@@ -655,10 +655,10 @@ let unprefixed_is_widely_available twin =
   let key =
     match Declaration.property_key twin with
     (* CSS Syntax 3 (ED) sec. 8.1: property names are case-insensitive. *)
-    | Key (Unknown_property { written; _ }) ->
+    | Key (Unknown_property u) ->
         Key
           (Properties.Unknown_property
-             (Properties.untyped (String.lowercase_ascii_preserve written)))
+             { u with written = String.lowercase_ascii_preserve u.written })
     | key -> key
   in
   not (Key_set.mem key greenfield_keys)

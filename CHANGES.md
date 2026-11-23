@@ -264,6 +264,11 @@ where it is called. Each entry says what to write there.
   `float`), and `rotate_value`'s `Axis` carries three `number`s (were
   `float`s); match `Num n` for a literal. `Css.counter_item ?value` still
   takes an `int` (#1584).
+- carries an `untyped_name` record** (`written`, `vendor`, `unprefixed`,
+  `spells`, `own`) instead of a string: build one with `Properties.untyped
+  name` and read the name from `written`. `Properties.vendor` gives a
+  property's vendor prefix, and the optimizer reads these fields rather than
+  the name (#1588).
 
 ### Minified output
 
