@@ -183,18 +183,32 @@ let test_nesting_follows_the_floors () =
 (* CSS Nesting 1 sec. 3.4 and 5 keep a declaration written after a nested rule
    in place, as a nested declarations rule, where Chrome 120 to 129, Firefox 117
    to 131 and Safari 17.2 to 18.1 moved it ahead of every nested rule. So
-   [.a{&{color:red}color:blue}] is blue in one and red in the other, and the
-   compatibility data cascade ships names no release that reads it in place. A
-   rule holding one is flattened under any floors, into the order the
-   specification gives. *)
-let test_nested_declarations_are_flattened () =
+   [.a{&{color:red}color:blue}] is blue in one and red in the other. BCD's
+   [api.CSSNestedDeclarations] dates the in-place reading to Chrome 130, Firefox
+   132 and Safari 18.2: under floors from there, the nesting targets here, a
+   rule holding one stays nested, and an [&] rule beside it is a declarations
+   run too (sec. 4 and 5), so the dead red goes. Below them it is flattened,
+   into the order the specification gives. Chromium 157 paints each pair
+   alike. *)
+let test_nested_declarations_follow_the_floors () =
   let minify = minify_for in
   Alcotest.(check string)
     "a declaration after a nested rule" ".a{color:#00f}"
     (minify nesting_targets ".a{&{color:red}color:blue}");
   Alcotest.(check string)
-    "a declaration in a nested @media" "@media print{.a{color:#00f}}"
+    "a declaration in a nested @media" ".a{@media print{color:#00f}}"
     (minify nesting_targets ".a{@media print{color:blue}}");
+  let floors_before =
+    {
+      Css.Optimize.chrome = (129, 0);
+      firefox = (132, 0);
+      safari = (18, 2);
+      ios_safari = (18, 2);
+    }
+  in
+  Alcotest.(check string)
+    "below the floors it is flattened" "@media print{.a{color:#00f}}"
+    (minify floors_before ".a{@media print{color:blue}}");
   (* Control: a rule with no nested declarations stays nested. *)
   Alcotest.(check string)
     "nested rules alone stay" ".a{color:red;&:hover{color:#00f}}"
@@ -373,8 +387,8 @@ let suite =
         test_same_selector_nested_only;
       Alcotest.test_case "nesting follows the floors" `Quick
         test_nesting_follows_the_floors;
-      Alcotest.test_case "nested declarations are flattened" `Quick
-        test_nested_declarations_are_flattened;
+      Alcotest.test_case "nested declarations follow the floors" `Quick
+        test_nested_declarations_follow_the_floors;
       Alcotest.test_case "nesting selector is not re-parented" `Quick
         test_nesting_selector_is_not_reparented;
       Alcotest.test_case "merge_lone pseudo-element parent" `Quick

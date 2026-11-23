@@ -543,7 +543,7 @@ let test_layer_keeps_nested_only_rule () =
         "@layer a{.w,.x{.y{color:red}}}" );
       ( "a rule nesting an at-rule",
         "@layer a{.x{@media print{color:red}}}",
-        "@layer a{@media print{.x{color:red}}}" );
+        "@layer a{.x{@media print{color:red}}}" );
     ]
   in
   List.iter
