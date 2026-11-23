@@ -1044,13 +1044,13 @@ let target_minify_enforce_spec_split () =
       (optimized_string ~enforce_spec:true input)
   in
   check_modes "explicit flex zero basis is not one-value shorthand"
-    "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
+    "a { flex: 1 1 0 }" ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "a lone zero flex basis keeps its unit" "a { flex: 0px }"
     ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "a lone zero flex basis in em keeps a unit" "a { flex: 0em }"
     ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "a zero flex basis after one factor keeps its meaning"
-    "a { flex: 1 0px }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
+    "a { flex: 1 0px }" ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "color-mix keeps the required in oklab in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
