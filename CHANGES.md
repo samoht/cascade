@@ -832,6 +832,10 @@ differently. They are the reason to minify again.
   as `calc(1/0)` and `z-index:calc(1/sign(-0))` as `calc(1/sign(0))`, which
   flips the infinity: Chromium computes `-2147483648` against `2147483647`. A
   zero keeps its sign now (#1582).
+- number math function other than `calc()` was deleted at a number slot.**
+  `aspect-ratio:cos(0)`, which Chromium computes as `1 / 1`, was dropped, as
+  were `tan()`, `exp()`, `log()` and `sin()` of a number there; they are now
+  read (#1583).
 
 #### Stable output
 

@@ -798,8 +798,23 @@ and read_math_number_function t name =
       match List.assoc_opt name number_unary_functions with
       | Some make -> Some (read_unary_number_function name make t)
       | None -> (
+          (* CSS Values 4 secs. 10.4 and 10.5: the other number-answering calls
+             ([cos()], [exp()], [sin()] of radians, ...) read as the calculation
+             [calc()] around them would, which refuses one answering an
+             angle. *)
+          let as_calc t : number =
+            Calc
+              (read_calc ~result_type:`Number
+                 (fun t -> Cursor.err t "expected numeric factor")
+                 t)
+          in
           match List.assoc_opt name angle_number_functions with
-          | Some make -> Some (read_angle_number_function name make t)
+          | Some make ->
+              Some
+                (Cursor.one_of
+                   [ read_angle_number_function name make; as_calc ]
+                   t)
+          | None when looking_at_math_function t -> Some (as_calc t)
           | None -> None))
 
 and read_round_number t =
