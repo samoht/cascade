@@ -99,6 +99,20 @@ let filter_reads_the_families () =
     "a prefixed property of no family" false
     (holds [ "-webkit-appearance:none" ])
 
+(* A standard value the reader keeps untyped, since a [var()] can fill one slot
+   of CSS Masking 1's [<position>] or two, takes a prefixed twin under
+   [-webkit-mask-position], whose [background-position] grammar (CSS Backgrounds
+   3 sec. 3.6) reads it typed. The twin is written as that grammar reads it,
+   [center] as the shorter [50%], so minifying the output again returns it. *)
+let test_untyped_twin_settles () =
+  let input = "a{mask-position:center, left top var(--x)}" in
+  let expected =
+    "a{-webkit-mask-position:50%,left top var(--x);mask-position:center,left \
+     top var(--x)}"
+  in
+  emits input expected;
+  emits expected expected
+
 let suite =
   ( "webkit_fallback",
     [
@@ -114,4 +128,6 @@ let suite =
         pairs_are_one_family_one_value;
       Alcotest.test_case "the filter reads the families" `Quick
         filter_reads_the_families;
+      Alcotest.test_case "an untyped twin settles" `Quick
+        test_untyped_twin_settles;
     ] )
