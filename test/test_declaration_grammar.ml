@@ -803,10 +803,8 @@ let shape_outside_grammar () =
       (* <basic-shape> *)
       "shape-outside:circle(50%)";
       "shape-outside:circle()";
-      "shape-outside:circle(50% at 20% 30%)";
       "shape-outside:ellipse(closest-side farthest-side at 10px 20px)";
       "shape-outside:inset(10px round 2px)";
-      "shape-outside:polygon(0 0,100% 0,100% 100%)";
       "shape-outside:xywh(0 0 100% 100%)";
       (* <shape-box> on its own, and either order in the [||] pair *)
       "shape-outside:margin-box";
@@ -817,6 +815,12 @@ let shape_outside_grammar () =
       "shape-outside:url(shape.png)";
       "shape-outside:linear-gradient(red,blue)";
     ];
+  (* A percentage ends its own token, so the minified shape needs no space after
+     one, as in [clip-path]. *)
+  check_declaration ~expected:"shape-outside:circle(50% at 20%30%)"
+    "shape-outside:circle(50% at 20% 30%)";
+  check_declaration ~expected:"shape-outside:polygon(0 0,100%0,100%100%)"
+    "shape-outside:polygon(0 0,100% 0,100% 100%)";
   (* Controls: an unknown keyword is no part of the grammar, [none] and a box
      are alternatives rather than a [||] pair, the box appears once, and
      [<shape-box>] excludes the three SVG boxes [<geometry-box>] adds. *)
