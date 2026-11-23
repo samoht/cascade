@@ -346,19 +346,19 @@ end)
 let written_for_key later_by_key key =
   Key_table.find_opt later_by_key key |> Option.value ~default:Cover.empty
 
-let shadowed_by_later ~floors ~later_by_key ~keys decl =
+let shadowed_by_later ~floors ~written decl =
   (not (is_intentionally_duplicated decl))
   && List.for_all
-       (fun key ->
-         Cover.covered ~floors (written_for_key later_by_key key) decl)
-       keys
+       (fun (_, written) -> Cover.covered ~floors written decl)
+       written
 
-let record_for_keys later_by_key keys decls =
+(* A rule's keys are hashed once to fetch what is written later under each, and
+   once to store it back, rather than once per declaration. *)
+let record_for_keys later_by_key written decls =
   List.iter
-    (fun key ->
-      let written = written_for_key later_by_key key in
+    (fun (key, written) ->
       Key_table.replace later_by_key key (Cover.add written decls))
-    keys
+    written
 
 let drop_shadowed_declarations ~floors (rules : rule list) : rule list =
   let later_by_key = Key_table.create 16 in
@@ -367,10 +367,14 @@ let drop_shadowed_declarations ~floors (rules : rule list) : rule list =
   let changed = ref false in
   for i = len - 1 downto 0 do
     let rule = rules_arr.(i) in
-    let keys = selector_keys rule in
+    let written =
+      List.map
+        (fun key -> (key, written_for_key later_by_key key))
+        (selector_keys rule)
+    in
     let kept =
       list_filter_preserve
-        (fun d -> not (shadowed_by_later ~floors ~later_by_key ~keys d))
+        (fun d -> not (shadowed_by_later ~floors ~written d))
         rule.declarations
     in
     let rule' = with_declarations rule kept in
@@ -378,7 +382,7 @@ let drop_shadowed_declarations ~floors (rules : rule list) : rule list =
       changed := true;
       rules_arr.(i) <- rule'
     end;
-    record_for_keys later_by_key keys rule.declarations
+    record_for_keys later_by_key written rule.declarations
   done;
   if !changed then Array.to_list rules_arr else rules
 
