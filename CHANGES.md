@@ -823,6 +823,11 @@ differently. They are the reason to minify again.
 - math function that cannot fold was deleted at `opacity`.**
   `opacity:sign(1em)`, `shape-image-threshold:sign(1em)` and `zoom:sign(1em)`
   were dropped, though Chromium computes each as 1; they are now kept (#1571).
+- distant `@media` merge changed which `@keyframes` ran.** Joining two `@media
+  print` blocks across a `@keyframes k` moved the later `@keyframes k` above
+  it, so the earlier one won; `@font-face` too. A merged block now carries
+  style rules only, and a distant merge may cross comments, `@keyframes`,
+  `@font-face`, `@property` and a top-level `@scope` block (#1576).
 
 #### Stable output
 

@@ -97,17 +97,44 @@ let merge_consecutive_media ?(optimize_merged_block = Fun.id) stmts =
     ~build:(fun cond block -> Media (cond, block))
     ~optimize_merged_block stmts
 
-(* Only cross statements whose cascade is pure source order: plain rules and
-   conditional groups. Layers, origins, scopes, imports, etc. establish
+(* Cross statements whose cascade is pure source order, plain rules and
+   conditional groups, and statements that take no part in the order of style
+   rules: a comment, and a [@keyframes], [@font-face] or [@property] definition,
+   which a block of style rules alone may move past ({!carries_style_only}). A
+   scope body is crossed too: CSS Cascade 6 sec. 3.1 decides a scoped
+   declaration against an unscoped one by specificity or scope proximity, never
+   by order of appearance. Layers, origins, imports, etc. establish
    ordering/context that hoisting past would change. *)
 let crossable_by_distant_merge = function
   | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
-  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
-  | Layer_decl _ | Layer _ | Moz_document _ | Starting_style _ | When _ | Else _
-  | Supports_condition _ | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _
-  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
-  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+  | Bang_comment _ | Property _ | Keyframes _ | Webkit_keyframes _
+  | Moz_keyframes _ | Font_face _ | Scope _ ->
+      true
+  | Charset _ | Import _ | Namespace _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
+      false
+
+(* A hoisted block moves its statements above the ones it crosses. Style rules
+   and the groups of them move by what they write, which the hoist checks; a
+   definition moves past another of its name, and the last [@keyframes] of a
+   name is the one that runs, so a block holding anything else stays. *)
+let rec carries_style_only = function
+  | Rule r -> List.for_all carries_style_only r.nested
+  | Declarations _ | Bang_comment _ -> true
+  | Media (_, block)
+  | Supports (_, block)
+  | Container (_, _, block)
+  | Starting_style block ->
+      List.for_all carries_style_only block
+  | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _ | Layer _
+  | Moz_document _ | When _ | Else _ | Supports_condition _ | Origin _ | Scope _
+  | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
       false
 
 (* CSS Conditional Rules 5 sec. 2: a conditional group rule applies its contents
@@ -171,6 +198,18 @@ let facts pass stmts =
     (List.map (fun r -> Rule_graph.facts r))
     (Nest.leaves ?parent:pass.parent stmts)
 
+(* The statements of a crossed [stmt] an unscoped hoisted declaration can meet
+   in order of appearance: a scope body's, at the top of a sheet, are none (CSS
+   Cascade 6 sec. 3.1). Under a parent the hoisted rules may be scoped
+   themselves, so the body is read, which refuses. *)
+let rec unscoped_parts pass = function
+  | Scope _ when Option.is_none pass.parent -> []
+  | Media (_, block) | Supports (_, block) | Container (_, _, block) ->
+      List.concat_map (unscoped_parts pass) block
+  | stmt -> [ stmt ]
+
+let crossed_facts pass stmt = facts pass (unscoped_parts pass stmt)
+
 let read_kept pass =
   for at = pass.unread to Dynarray.length pass.kept - 1 do
     let stmt, into =
@@ -179,7 +218,7 @@ let read_kept pass =
       | Block (stmt, _, _) -> (stmt, pass.index)
       | Partner p -> (pass.build p.key (body p), p.leaves)
     in
-    match facts pass [ stmt ] with
+    match crossed_facts pass stmt with
     | Option.Some rules when crossable_by_distant_merge stmt ->
         List.iter (Rule_graph.index_facts into ~at) rules
     | Option.Some _ | Option.None -> pass.blocked <- at
@@ -227,8 +266,12 @@ let keep_block pass ~equal_prelude ~hoistable stmt key block =
       Dynarray.add_last pass.kept (Partner p);
       false
   | Option.Some p ->
-      if not (hoistable block && merge pass p key block) then
-        Dynarray.add_last pass.kept (Block (stmt, key, block));
+      if
+        not
+          (hoistable block
+          && List.for_all carries_style_only block
+          && merge pass p key block)
+      then Dynarray.add_last pass.kept (Block (stmt, key, block));
       true
 
 let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
