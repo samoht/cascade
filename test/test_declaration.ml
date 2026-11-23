@@ -863,6 +863,105 @@ let legacy_webkit_images () =
       "-webkit-cross-fade(url(a.png), url(b.png), 1px)";
     ]
 
+(* [-moz-radial-gradient()] and [-moz-repeating-radial-gradient()] date from the
+   same 2011 draft, CSS Image Values 3 (W3C Working Draft, 17 February 2011)
+   sec. 5.2.1, that the Compatibility Standard sec. 3.3.2 gives the [-webkit-]
+   ones, and Firefox 160 reads them with it: the position first, [contain] and
+   [cover], two radii, no [at] and no single radius. Firefox reads them exactly
+   as it reads [-webkit-radial-gradient()]. It takes an interpolation hint
+   between two colour stops, which the draft has not, and requires the comma
+   after the shape and size, which Chromium skips in [-webkit-]. Chromium 157
+   reads neither prefix. No browser reads [-o-radial-gradient()] or
+   [-o-repeating-radial-gradient()] any more, so they read the 2011 grammar
+   alone. *)
+let legacy_moz_o_radial_gradients () =
+  let fn name args = String.concat "" [ name; args ] in
+  let both =
+    [
+      ( "(center, ellipse cover, red, blue)",
+        "(center,ellipse cover,red,blue)",
+        "(red,#00f)" );
+      ( "(center, circle, red, blue)",
+        "(center,circle,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(center, circle contain, red, blue)",
+        "(center,circle contain,red,blue)",
+        "(circle contain,red,#00f)" );
+      ( "(center, closest-side, red, blue)",
+        "(center,contain,red,blue)",
+        "(contain,red,#00f)" );
+      ( "(center, farthest-corner circle, red, blue)",
+        "(center,circle cover,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(10px 20px, 30px 40px, red, blue)",
+        "(10px 20px,30px 40px,red,blue)",
+        "(10px 20px,30px 40px,red,#00f)" );
+      ("(10px, red, blue)", "(10px,red,blue)", "(10px,red,#00f)");
+      ( "(center, 0 20px, red, blue)",
+        "(center,0 20px,red,blue)",
+        "(center,0 20px,red,#00f)" );
+      ( "(center, cover, red, blue 10%)",
+        "(center,cover,red,blue 10%)",
+        "(red,#00f 10%)" );
+    ]
+  in
+  let hinted =
+    [
+      ( "(center, circle, red, 30%, blue)",
+        "(center,circle,red,30%,blue)",
+        "(circle,red,30%,#00f)" );
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun (input, held, into) ->
+          decl_optimizes ~prop:"background-image" ~held:(fn name held)
+            ~into:(fn name into) (fn name input))
+        cases)
+    [
+      ("-moz-radial-gradient", both @ hinted);
+      ("-moz-repeating-radial-gradient", both @ hinted);
+      ("-o-radial-gradient", both);
+      ("-o-repeating-radial-gradient", both);
+    ];
+  let rejected =
+    [
+      "(circle at center, red, blue)";
+      "(at center, red, blue)";
+      "(circle 10px, red, blue)";
+      "(center, circle 10px, red, blue)";
+      "(center, ellipse 10px 20px, red, blue)";
+      "(center, -10px 20px, red, blue)";
+      "(left 10px top, circle, red, blue)";
+      "(top 10px, circle, red, blue)";
+      "(center circle, red, blue)";
+      "(center red, blue)";
+      "(circle red, blue)";
+      "(center, circle red, blue)";
+      "(center 45deg, circle, red, blue)";
+      "(10px 20px 30px, red, blue)";
+      "(red, blue, 10px)";
+      "(red, 10px, 20px, blue)";
+      (* Firefox takes this hint before the first stop, then serialises it as
+         [(10px, red, blue)], which it reads with [10px] as the position. *)
+      "(center, 10px, red, blue)";
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun args ->
+          neg_cursor read_declaration
+            (String.concat "" [ "background-image: "; fn name args ]))
+        cases)
+    [
+      ("-moz-radial-gradient", rejected);
+      ("-moz-repeating-radial-gradient", rejected);
+      ("-o-radial-gradient", "(center, red, 30%, blue)" :: rejected);
+      ("-o-repeating-radial-gradient", "(center, red, 30%, blue)" :: rejected);
+    ]
+
 (* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
    [<angle-percentage> | <zero>]: [<angular-color-stop> = <color>
    <color-stop-angle>?], [<color-stop-angle> = [ <angle-percentage> | <zero>
@@ -1016,6 +1115,8 @@ let suite =
       test_case "custom properties basic" `Quick custom_properties_basic;
       test_case "vendor prefixes" `Quick vendor_prefixes;
       test_case "legacy webkit images" `Quick legacy_webkit_images;
+      test_case "legacy moz and o radial gradients" `Quick
+        legacy_moz_o_radial_gradients;
       test_case "conic angular stops" `Quick conic_angular_stops;
       test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)
