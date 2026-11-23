@@ -1041,6 +1041,10 @@ differently. They are the reason to minify again.
   Compositing 1 sec. 3.4.3 says, so a blend mode a later `background` makes
   dead is dropped and `--diff=canonical --enforce-spec` calls the two equal;
   the default mode keeps it for Chrome and WebKit (#1602).
+- legacy alias restating what a shorthand set is dropped**:
+  `-webkit-flex-basis:0%` or `-webkit-flex-grow:1` after `flex:1` goes like
+  its unprefixed spelling (Compatibility sec. 3.4.1, Cascade 5 sec. 3.1), 162
+  bytes over 7 of 504 SatCSS sheets (#1603).
 
 ### Formatted output
 

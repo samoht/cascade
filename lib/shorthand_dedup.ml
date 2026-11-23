@@ -986,7 +986,11 @@ let declarations_conflict_with_keys a a_keys b b_keys =
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
    the initial), so a later longhand in the same rule that writes the same value
    at the same importance is redundant and dropped. Guard on equal value, so
-   [background:red;background-size:cover] keeps the override. *)
+   [background:red;background-size:cover] keeps the override. A legacy name
+   alias typed under its property's grammar alone ([types_only_as_alias]) is
+   that property (CSS Cascade 5 sec. 3.1), so it is read as the property, as
+   [-webkit-flex-basis:0%] after [flex:1] is [flex-basis:0%]; --enforce-spec
+   keeps every vendor prefix, as {!drop_vendor_aliases} does. *)
 let drop_longhands_after_covering_shorthand ~enforce_spec props =
   let arr = Array.of_list props in
   let dropped = Array.make (Array.length arr) false in
@@ -994,8 +998,16 @@ let drop_longhands_after_covering_shorthand ~enforce_spec props =
     Bool.equal (is_important arr.(j)) (is_important li)
     && implies ~enforce_spec:(Some enforce_spec) arr.(j) li
   in
+  let as_longhand decl =
+    match decl with
+    | Declaration { property; _ }
+      when (not enforce_spec) && types_only_as_alias property ->
+        as_aliased_property decl
+    | _ -> decl
+  in
   Array.iteri
     (fun i li ->
+      let li = as_longhand li in
       let rec nearest j =
         if j < 0 then ()
         else if dropped.(j) then nearest (j - 1)
