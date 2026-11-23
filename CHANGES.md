@@ -887,6 +887,8 @@ differently. They are the reason to minify again.
   sheets shrink by more than 1% raw. About twenty grow by more than 1% under
   gzip, at most by about 3%, and 27 under brotli, one cnn sheet by about 7%
   (#1399, #1422, #1423, #1425).
+- rules holding only nested rules merge** under targets that read nesting
+  (#1575).
 
 #### Smaller output
 
