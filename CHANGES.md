@@ -927,6 +927,11 @@ differently. They are the reason to minify again.
   minifier and in `cascade diff --diff=canonical` (#1578).
 - and `[x=A]` are disjoint** unless HTML compares `x` without case (HTML sec.
   4.16.2), so rules on them merge past each other (#1579).
+- merges cross the remaining definition rules:** `@counter-style`, `@page`,
+  `@font-palette-values`, `@font-feature-values`, `@position-try` and
+  `@view-transition`, none of which takes part in the order of style rules. A
+  block holding one never moves, so a later definition of a name is never
+  hoisted above an earlier one (#1590).
 
 #### Smaller output
 

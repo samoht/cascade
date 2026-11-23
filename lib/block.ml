@@ -99,22 +99,24 @@ let merge_consecutive_media ?(optimize_merged_block = Fun.id) stmts =
 
 (* Cross statements whose cascade is pure source order, plain rules and
    conditional groups, and statements that take no part in the order of style
-   rules: a comment, and a [@keyframes], [@font-face] or [@property] definition,
-   which a block of style rules alone may move past ({!carries_style_only}). A
-   scope body is crossed too: CSS Cascade 6 sec. 3.1 decides a scoped
-   declaration against an unscoped one by specificity or scope proximity, never
-   by order of appearance. Layers, origins, imports, etc. establish
-   ordering/context that hoisting past would change. *)
+   rules: a comment, a [@page] rule, and a definition of a name ([@keyframes],
+   [@font-face], [@property], [@counter-style], [@font-palette-values],
+   [@font-feature-values], [@position-try], [@view-transition]), which a block
+   of style rules alone may move past ({!carries_style_only}). A scope body is
+   crossed too: CSS Cascade 6 sec. 3.1 decides a scoped declaration against an
+   unscoped one by specificity or scope proximity, never by order of appearance.
+   Layers, origins, imports, etc. establish ordering/context that hoisting past
+   would change. *)
 let crossable_by_distant_merge = function
   | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
   | Bang_comment _ | Property _ | Keyframes _ | Webkit_keyframes _
-  | Moz_keyframes _ | Font_face _ | Scope _ ->
+  | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
+  | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
+  | View_transition _ | Position_try _ | Scope _ ->
       true
   | Charset _ | Import _ | Namespace _ | Layer_decl _ | Layer _ | Moz_document _
   | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
-  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
-  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
-  | Unknown_at_rule _ ->
+  | Viewport _ | Unknown_at_rule _ ->
       false
 
 (* A hoisted block moves its statements above the ones it crosses. Style rules
