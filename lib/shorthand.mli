@@ -111,11 +111,13 @@ val same_value : Declaration.declaration -> Declaration.declaration -> bool
 val implied_longhands :
   Declaration.declaration -> Declaration.declaration list option
 (** [implied_longhands sh] is every longhand the shorthand [sh] writes, each
-    with the value [sh] assigns it, reset-only ones included, at the importance
-    of [sh]. It is [None] unless every such value can be proven:
-    [border:1px solid red] gives [border-width:1px], [border-style:solid],
-    [border-color:red] and [border-image:none], while [border:solid] and any
-    other shorthand give [None]. *)
+    with the value [sh] assigns it, the initial value for a slot [sh] omits and
+    reset-only ones included, at the importance of [sh]. It reads [border], a
+    single-layer [background], [flex] and a single [transition]:
+    [border:1px solid] gives [border-width:1px], [border-style:solid],
+    [border-color:currentcolor] and [border-image:none]. It is [None] for any
+    other shorthand and wherever a value cannot be proven: an omitted slot of a
+    shorthand holding a [var()], or the basis [flex:1] omits. *)
 
 val declarations_commute :
   Declaration.declaration list -> Declaration.declaration list -> bool

@@ -702,17 +702,116 @@ let drained_border_image : Properties.border_image =
     mode = None;
   }
 
-(* The slots [border] writes, each [None] where the shorthand leaves it at an
-   initial value no slot spells: its initials (medium / none / currentcolor) are
-   rarely written back. CSS Backgrounds 3 sec. 4.4 also resets [border-image],
-   so the shorthand says what an all-initial [border-image] says. *)
-let border_slots (s : Properties.border_shorthand) =
+(* A slot the shorthand fills is its value; one it omits is the longhand's
+   initial, unless the shorthand holds a [var()]: a substitution can stand for
+   several components, so which ones it omits is only known once it is
+   substituted. *)
+let slot ~substituted f value ~initial =
+  match value with
+  | Some v -> Some (f v)
+  | None -> if substituted then None else Some (f initial)
+
+(* CSS Backgrounds 3 sec. 3.4: [border] sets [border-width], [border-style] and
+   [border-color], each one it omits to its initial: [medium] (sec. 3.3), [none]
+   (sec. 3.2) and [currentcolor] (sec. 3.1). It also resets [border-image], so
+   the shorthand says what an all-initial [border-image] says. *)
+let border_slots ~substituted (s : Properties.border_shorthand) =
   [
-    Option.map border_width s.width;
-    Option.map border_style s.style;
-    Option.map border_color s.color;
+    slot ~substituted border_width s.width ~initial:Medium;
+    slot ~substituted border_style s.style
+      ~initial:(None : Properties.border_style);
+    slot ~substituted border_color s.color ~initial:Values.Current;
     Some (Declaration.v Border_image drained_border_image);
   ]
+
+(* CSS Backgrounds 3 sec. 2.10: a single-layer [background] sets each component
+   it omits to its initial: [transparent] (sec. 2.2), [none] (sec. 2.3), [0% 0%]
+   (sec. 2.6), [auto] (sec. 2.9), [repeat] (sec. 2.4), [scroll] (sec. 2.5),
+   [padding-box] (sec. 2.8) and [border-box] (sec. 2.7). One [<box>] sets both
+   [background-origin] and [background-clip], a pair origin then clip. *)
+let background_slots ~substituted (s : Properties.background_shorthand) =
+  let clip = match s.clip with Some _ -> s.clip | None -> s.origin in
+  [
+    slot ~substituted background_color s.color ~initial:Values.Transparent;
+    slot ~substituted background_image s.image
+      ~initial:(None : Properties.background_image);
+    slot ~substituted
+      (fun p -> background_position [ p ])
+      s.position
+      ~initial:(XY (Pct 0., Pct 0.) : Properties.position_value);
+    slot ~substituted background_size s.size ~initial:Properties.Auto;
+    slot ~substituted background_repeat s.repeat ~initial:Properties.Repeat;
+    slot ~substituted background_attachment s.attachment
+      ~initial:Properties.Scroll;
+    slot ~substituted background_origin s.origin ~initial:Properties.Padding_box;
+    slot ~substituted background_clip clip ~initial:Properties.Border_box;
+  ]
+
+(* CSS Flexible Box 1 sec. 7.1: [flex: initial] is [0 1 auto], [auto] is [1 1
+   auto] and [none] is [0 0 auto], and a grow or shrink factor the shorthand
+   omits is [1]. An omitted basis is left unknown: the Editor's Draft makes it
+   [0] where shipping browsers write [0%], and the two size an item in an
+   indefinite container differently. *)
+let flex_slots ~substituted (value : Properties.flex) =
+  let grow_shrink_basis g s b =
+    [
+      Some (Declaration.v Flex_grow g);
+      Some (Declaration.v Flex_shrink s);
+      Option.map (Declaration.v Flex_basis) b;
+    ]
+  in
+  let one : Properties.flex_factor = Number 1. in
+  match value with
+  | _ when substituted -> [ None ]
+  | Initial -> grow_shrink_basis (Number 0.) one (Some Auto)
+  | Auto -> grow_shrink_basis one one (Some Auto)
+  | None -> grow_shrink_basis (Number 0.) (Number 0.) (Some Auto)
+  | Basis b -> grow_shrink_basis one one (Some b)
+  | Grow g -> grow_shrink_basis g one Option.none
+  | Grow_shrink (g, s) -> grow_shrink_basis g s Option.none
+  | Full (g, s, b) -> grow_shrink_basis g s (Some b)
+  | Inherit | Unset | Revert | Revert_layer | Var _ -> [ None ]
+
+(* CSS Transitions 1 sec. 2.5 and CSS Transitions 2 sec. 2.6: a single
+   [transition] sets each component it omits to its initial: [0s] (sec. 2.2),
+   [ease] (sec. 2.3), [0s] (sec. 2.4) and, in Transitions 2 sec. 2.5,
+   [normal]. *)
+let transition_slots ~substituted (s : Properties.transition_shorthand) =
+  [
+    Some (transition_property [ s.property ]);
+    slot ~substituted transition_duration s.duration ~initial:(Values.S 0.);
+    slot ~substituted transition_timing_function s.timing_function
+      ~initial:Properties.Ease;
+    slot ~substituted transition_delay s.delay ~initial:(Values.S 0.);
+    slot ~substituted transition_behavior s.behavior ~initial:Properties.Normal;
+  ]
+
+(* The slots of the shorthand [covering] writes, each [None] where its value
+   cannot be proven; [[None]] for a shorthand none of these read. A comma list
+   of layers or transitions assigns per-item values, so only one item is
+   read. *)
+let shorthand_slots covering =
+  let substituted = has_runtime_substitution covering in
+  match unwrap_theme_guard covering with
+  | Declaration { property = Properties.Border; value = Shorthand s; _ } ->
+      border_slots ~substituted s
+  | Declaration { property = Properties.Background; value = [ Shorthand s ]; _ }
+    ->
+      background_slots ~substituted s
+  | Declaration { property = Properties.Flex; value; _ } ->
+      flex_slots ~substituted value
+  | Declaration { property = Properties.Transition; value = [ Shorthand s ]; _ }
+    ->
+      transition_slots ~substituted s
+  | _ -> [ None ]
+
+let slot_for_longhand covering covered =
+  let covered = unwrap_theme_guard covered in
+  List.find_map
+    (function
+      | Some slot when Declaration.same_property slot covered -> Some slot
+      | _ -> None)
+    (shorthand_slots covering)
 
 (* CSS Box 4 sec. 3.2 and 4.2 and CSS Position 3 sec. 3.1: a box shorthand of
    one to four values gives top, right, bottom and left, a missing right copying
@@ -732,82 +831,17 @@ let box_side (values : Values.length list) (side : Shorthand_box.box_side) =
 (* The longhand declaration a shorthand assigns to a slot it covers: the slot
    value if set, else that longhand's initial. A later longhand equal to this is
    a redundant no-op. [None] when the shorthand does not cover the longhand or
-   the value cannot be proven. Extend per shorthand; background first. *)
+   the value cannot be proven. *)
 let implied_longhand covering covered : Declaration.declaration option =
   match unwrap_theme_guard covering with
-  | Declaration { property = Properties.Background; value; _ } -> (
-      (* Single-layer only; a multi-layer background assigns per-layer values a
-         single longhand rarely matches, so leave those conservative. *)
-      match (value : Properties.background list) with
-      | [ Properties.Shorthand s ] -> (
-          match unwrap_theme_guard covered with
-          | Declaration { property = Properties.Background_size; _ } ->
-              Some
-                (background_size (Option.value s.size ~default:Properties.Auto))
-          | Declaration { property = Properties.Background_repeat; _ } ->
-              Some
-                (background_repeat
-                   (Option.value s.repeat ~default:Properties.Repeat))
-          | Declaration { property = Properties.Background_attachment; _ } ->
-              Some
-                (background_attachment
-                   (Option.value s.attachment ~default:Properties.Scroll))
-          | _ -> None)
-      | _ -> None)
-  | Declaration { property = Properties.Flex; value; _ } -> (
-      (* [flex] always sets grow/shrink/basis; expand the keyword and numeric
-         forms of grow and shrink. The basis is not expanded. *)
-      let grow_shrink =
-        match (value : Properties.flex) with
-        | Initial -> Some (0., 1.)
-        | Auto -> Some (1., 1.)
-        | None -> Some (0., 0.)
-        | Grow (Number g) -> Some (g, 1.)
-        | Basis _ -> Some (1., 1.)
-        | Grow_shrink (Number g, Number s) -> Some (g, s)
-        | Full (Number g, Number s, _) -> Some (g, s)
-        | _ -> Option.none
-      in
-      match (unwrap_theme_guard covered, grow_shrink) with
-      | Declaration { property = Properties.Flex_grow; _ }, Some (g, _) ->
-          Some (flex_grow g)
-      | Declaration { property = Properties.Flex_shrink; _ }, Some (_, s) ->
-          Some (flex_shrink s)
-      | _ -> None)
-  | Declaration { property = Properties.Transition; value; _ } -> (
-      (* Single transition only; a comma list assigns per-item values. *)
-      match (value : Properties.transition list) with
-      | [ Properties.Shorthand s ] -> (
-          match unwrap_theme_guard covered with
-          | Declaration { property = Properties.Transition_duration; _ } ->
-              Some
-                (transition_duration
-                   (Option.value s.duration ~default:(Values.S 0.)))
-          | Declaration { property = Properties.Transition_delay; _ } ->
-              Some
-                (transition_delay (Option.value s.delay ~default:(Values.S 0.)))
-          | Declaration { property = Properties.Transition_timing_function; _ }
-            ->
-              Some
-                (transition_timing_function
-                   (Option.value s.timing_function ~default:Properties.Ease))
-          | Declaration { property = Properties.Transition_behavior; _ } ->
-              Some
-                (transition_behavior
-                   (Option.value s.behavior ~default:Properties.Normal))
-          | _ -> None)
-      | _ -> None)
-  | Declaration { property = Properties.Border; value; _ } -> (
-      match (value : Properties.border) with
-      | Properties.Shorthand s ->
-          let covered = unwrap_theme_guard covered in
-          List.find_map
-            (function
-              | Some slot when Declaration.same_property slot covered ->
-                  Some slot
-              | _ -> None)
-            (border_slots s)
-      | _ -> None)
+  | Declaration
+      {
+        property =
+          ( Properties.Border | Properties.Background | Properties.Flex
+          | Properties.Transition );
+        _;
+      } ->
+      slot_for_longhand covering covered
   | Declaration { property = Properties.Animation; value; _ } -> (
       (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
          make the timeline and the two range ends reset-only sub-properties: the
@@ -898,15 +932,8 @@ let implied_longhand covering covered : Declaration.declaration option =
   | _ -> None
 
 let implied_longhands covering =
-  let slots =
-    match unwrap_theme_guard covering with
-    | Declaration
-        { property = Properties.Border; value = Properties.Shorthand s; _ } ->
-        border_slots s
-    | _ -> [ None ]
-  in
-  let all_known = List.for_all Option.is_some slots in
-  if not all_known then None
+  let slots = shorthand_slots covering in
+  if not (List.for_all Option.is_some slots) then None
   else
     let slots = List.filter_map Fun.id slots in
     Some

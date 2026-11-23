@@ -1022,6 +1022,9 @@ differently. They are the reason to minify again.
   0)` prints `inset(0)`, a `margin-box` beside a shape is dropped as the
   default (CSS Shapes 1 sec. 6.1), and an image gradient's colours are
   shortened (#1591).
+- longhand restating a shorthand's omitted initial is dropped**, as in
+  `background:0 0;background-image:none` (1975 bytes over 62 of 504 SatCSS
+  sheets) (#1596).
 
 ### Formatted output
 
@@ -1169,6 +1172,13 @@ differently. They are the reason to minify again.
   `.a{border-color:blue;border-style:solid;border-width:2px}` printed `-
   border` and three `+` lines; it now prints `- border-image: none`, `*
   border-color: red -> blue` and `* border-width: 1px -> 2px` (#1555).
+- shorthand against the longhands it expands to is no change.** A slot the
+  shorthand omits reads as its spec initial value for `border`, a single-layer
+  `background`, `flex` and a single `transition`, so `border:1px solid`
+  matches
+  `border-width:1px;border-style:solid;border-color:currentcolor;border-image:none`:
+  `--diff=tree` exits 0 and the default mode says only that the text differs
+  (#1596).
 
 ### Warnings, errors and help
 
