@@ -1162,6 +1162,9 @@ The new form of a diagnostic is under [Breaking](#command-line).
   looked a UNC path up under the importing file's directory. It inlines them
   and checks them against `--import-root`. `cascade diff --browser` starts node
   without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).
+- browser checks find Chrome on Windows:** under `USERPROFILE` when `HOME` is
+  unset, in playwright's `LOCALAPPDATA` cache, and installed under
+  `PROGRAMFILES` or `LOCALAPPDATA` (#1557).
 
 ### Speed
 
