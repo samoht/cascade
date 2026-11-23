@@ -261,6 +261,11 @@ val pp_duration_preserve_ms : duration Pp.t
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
 
+val pp_integer_slot : number Pp.t
+(** [pp_integer_slot] is {!pp_number} at an [<integer>] slot: an integral value
+    is written as an integer token, and one past the native integer range as the
+    shorter of that range's end and its value in a [calc()]. *)
+
 val pp_transition_behavior : transition_behavior Pp.t
 (** [pp_transition_behavior] pretty-prints {!transition_behavior} values. *)
 

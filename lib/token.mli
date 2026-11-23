@@ -94,8 +94,10 @@ val authored_value : number -> float
     It differs from [n.value] only past eight decimals. *)
 
 val integer_opt : number -> int option
-(** [integer_opt n] is the exact integer represented by [n], when [n] is an
-    integer token within the native integer range. *)
+(** [integer_opt n] is the integer [n] represents when [n] is an integer token:
+    its exact value within the native integer range, and [max_int] or [min_int]
+    past it (CSS Values 4 sec. 5.2 clamps a value to the supported range, and
+    every target clamps far below 2^62). *)
 
 val equal_bracket : bracket -> bracket -> bool
 (** [equal_bracket a b] tests bracket kinds for equality. *)

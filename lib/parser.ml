@@ -392,15 +392,30 @@ let is_signed_number_repr repr =
    its meaning. Use the typed printer's compact spelling when it is shorter and
    reparses to the same float; the equality guard keeps high-precision authored
    values exact when the printer's decimal bound would round them. *)
-let minified_number_repr ?(preserve_sign = false)
-    ({ repr; _ } as number : Token.number) =
+let minified_number_repr ?(preserve_sign = false) ?(keep_type = false)
+    ({ repr; number_flag; _ } as number : Token.number) =
   (* The token's value stops at the printer's eight decimals; the stream keeps
      the authored number, so the spelling and its guard read the
      representation. *)
   let exact = Token.authored_value number in
   let compact = Pp.string_of_float_exact exact in
+  (* CSS Syntax 3 sec. 4.3.13 types a number by its spelling: a point or an
+     exponent makes it a number, digits alone an integer. A grammar reads a
+     <number-token>'s type ([<integer>] takes only the integer one), so its
+     candidate keeps the token's. A dimension's type is read only by the An+B
+     microsyntax, which no value holds. *)
+  let integer_spelling s =
+    not (String.exists (function '.' | 'e' | 'E' -> true | _ -> false) s)
+  in
+  let same_type candidate =
+    (not keep_type)
+    || Bool.equal
+         (integer_spelling candidate)
+         (match number_flag with Token.Integer -> true | Number -> false)
+  in
   let shorter candidate =
     String.length candidate < String.length repr
+    && same_type candidate
     &&
     match float_of_string_opt candidate with
     | Some parsed -> Float.equal exact parsed
@@ -424,7 +439,8 @@ let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
     Token.kind -> unit = function
   | Token.Number_tok number ->
       Buffer.add_string buf
-        (minified_number_repr ~preserve_sign:preserve_numeric_sign number)
+        (minified_number_repr ~preserve_sign:preserve_numeric_sign
+           ~keep_type:true number)
   | Token.Percentage number ->
       Buffer.add_string buf
         (minified_number_repr ~preserve_sign:preserve_numeric_sign number);

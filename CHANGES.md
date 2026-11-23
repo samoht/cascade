@@ -907,6 +907,13 @@ differently. They are the reason to minify again.
   (`1.0`), signs (`1px+2px`), ident case (`Red`), url quotes or colours inside
   them, nor joins `#fff url(a.png)` into one hash, and `--diff=canonical`
   keeps such spellings apart (#1618).
+- integer past the native int range is kept at the end of the range** instead
+  of dropping the declaration (CSS Values 4 sec. 5.2):
+  `z-index:99999999999999999999`, counters, grid lines, `:nth-child()` and
+  `@counter-style` `fixed`. A value folded at an integer slot prints as an
+  integer token, so `counter-reset:c calc(1e20)` no longer becomes `c 1e20`,
+  and an untyped value's number token keeps its type (`widows:2.0` stays as
+  written) (#1619).
 
 #### Stable output
 
