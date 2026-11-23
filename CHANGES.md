@@ -984,6 +984,9 @@ differently. They are the reason to minify again.
   would undo is no longer taken. The SatCSS sheets come out 0.12% smaller
   under gzip and 0.14% under brotli, 0.26% larger raw; `--objective=raw`
   output is unchanged (#1581).
+- conic gradient drops its default prelude:** `conic-gradient(from 0deg at
+  center,blue,red)` prints `conic-gradient(blue,red)`, and `from 45deg at 50%`
+  prints `from 45deg`. Both stay when a `var()` leads the stops (#1585).
 
 ### Formatted output
 

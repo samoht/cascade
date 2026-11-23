@@ -716,10 +716,28 @@ let normalize_radial_config (c : radial_gradient_config) =
   if shape == c.shape && size == c.size && position == c.position then c
   else { shape; size; position; interpolation = c.interpolation }
 
-let normalize_conic_config (c : conic_gradient_config) =
+(* CSS Images 4 sec. 3.3: the angle defaults to [0deg] and the position to
+   [center], so naming either says what omitting it says. [keep_defaults] is for
+   a stop list a substitution leads, which could be read as the prelude once the
+   named one is gone. *)
+let normalize_conic_config ?(keep_defaults = false) (c : conic_gradient_config)
+    =
   let angle = option_map_preserve Values.normalize_angle c.angle in
+  let angle =
+    match angle with
+    | Some a
+      when (not keep_defaults)
+           && Option.equal Float.equal
+                (Values.angle_degrees_opt a)
+                (Option.Some 0.) ->
+        Option.None
+    | a -> a
+  in
   let position =
     option_map_preserve (normalize_position_value ~strip:false) c.position
+  in
+  let position =
+    if keep_defaults then position else radial_position_kept position
   in
   if angle == c.angle && position == c.position then c
   else { c with angle; position }

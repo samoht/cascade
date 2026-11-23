@@ -90,8 +90,11 @@ val normalize_webkit_gradient :
 val normalize_radial_config : radial_gradient_config -> radial_gradient_config
 (** [normalize_radial_config v] is [v] in its canonical spelling. *)
 
-val normalize_conic_config : conic_gradient_config -> conic_gradient_config
-(** [normalize_conic_config v] is [v] in its canonical spelling. *)
+val normalize_conic_config :
+  ?keep_defaults:bool -> conic_gradient_config -> conic_gradient_config
+(** [normalize_conic_config ?keep_defaults v] is [v] in its canonical spelling,
+    without a [0deg] angle or a [center] position unless [keep_defaults]
+    (default [false]) says a substitution leads the stops. *)
 
 val fold_double_position_stops : gradient_stop list -> gradient_stop list
 (** [fold_double_position_stops stops] merges each pair of adjacent

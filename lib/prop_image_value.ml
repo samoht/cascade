@@ -185,7 +185,9 @@ let rec normalize_background_image ?(lossless = false) :
         (Radial_gradient (normalize_radial_config c, stops s))
   | Conic_gradient (c, s) ->
       preserve_if_equal value
-        (Conic_gradient (normalize_conic_config c, stops s))
+        (Conic_gradient
+           ( normalize_conic_config ~keep_defaults:(leads_with_substitution s) c,
+             stops s ))
   | Repeating_linear_gradient (d, s) ->
       preserve_if_equal value
         (Repeating_linear_gradient (linear_direction d s, stops s))
@@ -194,7 +196,9 @@ let rec normalize_background_image ?(lossless = false) :
         (Repeating_radial_gradient (normalize_radial_config c, stops s))
   | Repeating_conic_gradient (c, s) ->
       preserve_if_equal value
-        (Repeating_conic_gradient (normalize_conic_config c, stops s))
+        (Repeating_conic_gradient
+           ( normalize_conic_config ~keep_defaults:(leads_with_substitution s) c,
+             stops s ))
   | Webkit_linear_gradient (d, s) ->
       preserve_if_equal value
         (Webkit_linear_gradient (normalize_legacy_gradient_direction d, stops s))
