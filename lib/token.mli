@@ -103,6 +103,12 @@ val equal_bracket : bracket -> bracket -> bool
 val compare_bracket : bracket -> bracket -> int
 (** [compare_bracket a b] totally orders the bracket characters. *)
 
+val opening_char : bracket -> char
+(** [opening_char b] is the character that opens a [b] block, such as ['{']. *)
+
+val closing_char : bracket -> char
+(** [closing_char b] is the character that closes a [b] block, such as ['}']. *)
+
 val equal_kind : kind -> kind -> bool
 (** [equal_kind a b] tests token payloads for structural equality. *)
 
