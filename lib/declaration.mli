@@ -1234,7 +1234,7 @@ val shape_image_threshold : shape_image_threshold -> declaration
 val shape_margin : length_percentage -> declaration
 (** [shape_margin v] is the [shape-margin] property. *)
 
-val shape_outside : string -> declaration
+val shape_outside : Properties.shape_outside -> declaration
 (** [shape_outside v] is the [shape-outside] property. *)
 
 val overflow_clip_margin : overflow_clip_margin -> declaration

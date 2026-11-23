@@ -269,6 +269,9 @@ where it is called. Each entry says what to write there.
   name` and read the name from `written`. `Properties.vendor` gives a
   property's vendor prefix, and the optimizer reads these fields rather than
   the name (#1588).
+- holds a typed value.** Its value is the new `Properties.shape_outside`
+  (`Shape`, `Image` or `Var`) instead of a string, and `Css.shape_outside`
+  takes one (#1591).
 
 ### Minified output
 
@@ -1012,6 +1015,10 @@ differently. They are the reason to minify again.
   `&{...}` rule under a single selector becomes declarations:
   `.a{b{color:red}color:#00f}` rather than `.a b{color:red}.a{color:#00f}`
   (#1589).
+- is normalised** as `clip-path` and `background-image` are: `inset(0 round
+  0)` prints `inset(0)`, a `margin-box` beside a shape is dropped as the
+  default (CSS Shapes 1 sec. 6.1), and an image gradient's colours are
+  shortened (#1591).
 
 ### Formatted output
 

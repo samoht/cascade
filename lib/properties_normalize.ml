@@ -329,7 +329,6 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Position_try, value -> value
   | Position_visibility, value -> value
   | Position_area, value -> value
-  | Shape_outside, value -> value
   | Shape_image_threshold, value -> value
   | Overflow_clip_margin, value -> value
   | Overflow_anchor, value -> value
@@ -412,6 +411,7 @@ let canonical_initial_for_minify : type a. a property -> a -> a =
   | Transform_box, value -> value
   | Text_shadow, value -> value
   | Clip_path, value -> value
+  | Shape_outside, value -> value
   | Mask, value -> value
   | Content_visibility, value -> value
   | Background_image, value -> value
@@ -569,6 +569,7 @@ let normalize_property_value : type a.
   | Border_spacing -> normalize_border_spacing value
   | Mask -> normalize_mask ~lossless value
   | Clip_path -> normalize_clip_path value
+  | Shape_outside -> normalize_shape_outside ~lossless value
   | Object_view_box -> normalize_object_view_box value
   | Object_position -> normalize_position_value ~signed_basis:true value
   | Perspective_origin -> normalize_position_value value

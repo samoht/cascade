@@ -398,7 +398,7 @@ type 'a property =
   | Position_try : position_try property
   | Position_visibility : position_visibility property
   | Position_area : position_area property
-  | Shape_outside : string property
+  | Shape_outside : shape_outside property
   | Shape_margin : length_percentage property
   | Shape_image_threshold : shape_image_threshold property
   | Overflow_clip_margin : overflow_clip_margin property

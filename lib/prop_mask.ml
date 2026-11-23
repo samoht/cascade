@@ -165,6 +165,21 @@ let rec normalize_clip_path : clip_path -> clip_path =
       if shape == r.shape then value else Clip_path_with_box { r with shape }
   | other -> other
 
+(* CSS Shapes 1 sec. 6.1: the shape normalises as a [clip-path] shape and the
+   image as a [background-image] one, and a [margin-box] beside a shape is the
+   box an omitted one defaults to. *)
+let normalize_shape_outside ?(lossless = false) (value : shape_outside) =
+  match value with
+  | Shape (Clip_path_with_box { shape; box = Margin_box; _ }) ->
+      (Shape (normalize_clip_path shape) : shape_outside)
+  | Shape c ->
+      let c' = normalize_clip_path c in
+      if c' == c then value else (Shape c' : shape_outside)
+  | Image i ->
+      let i' = normalize_background_image ~lossless i in
+      if i' == i then value else (Image i' : shape_outside)
+  | Var _ -> value
+
 (* CSS Masking 1 sec. 7.9: a component the shorthand leaves out takes its
    longhand's initial - [none] for the image (sec. 7.1), [0% 0%] for the
    position (sec. 7.4), [auto] for the size (sec. 7.5), [repeat] for the repeat
@@ -1226,3 +1241,78 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
             match read_clip_geometry_box_opt t with
             | Some box -> Clip_path_with_box { shape; box; box_first = false }
             | None -> shape))
+
+let pp_shape_outside : shape_outside Pp.t =
+ fun ctx -> function
+  | Shape c -> pp_clip_path ctx c
+  | Image i -> pp_background_image ctx i
+  | Var v -> pp_var Pp.string ctx v
+
+(* CSS Shapes 1 sec. 5: [<shape-box>] is [<visual-box> | margin-box], so the
+   three SVG boxes [<geometry-box>] adds are not valid here. *)
+let check_shape_box t (box : clip_geometry_box) =
+  match box with
+  | Margin_box | Border_box | Padding_box | Content_box -> ()
+  | Fill_box | Stroke_box | View_box ->
+      Cursor.err_invalid t "shape-outside takes a <shape-box>"
+
+(* [read_clip_path] reads [<basic-shape> || <geometry-box>], the same double-bar
+   pair shape-outside uses, along with [none], [url()] and the CSS-wide
+   keywords. Shapes 1 sec. 6.1 differs on two points, checked here: the box is a
+   [<shape-box>], and everything outside [<basic-shape>] is an alternative to
+   the pair rather than a member of it. *)
+let check_shape_outside_shape t =
+  let is_basic_shape (shape : clip_path) =
+    match shape with
+    | Clip_path_inset _ | Clip_path_circle _ | Clip_path_ellipse _
+    | Clip_path_polygon _ | Clip_path_path _ | Clip_path_shape _
+    | Clip_path_xywh _ | Clip_path_rect _ ->
+        true
+    (* A shape the [clip_path] reader kept verbatim as spec-invalid: the raw
+       text survives here too rather than costing the whole declaration. *)
+    | Invalid _ -> true
+    | _ -> false
+  in
+  let shape = read_clip_path t in
+  (match shape with
+  | Clip_path_box box -> check_shape_box t box
+  | Clip_path_with_box { shape; box; _ } when is_basic_shape shape ->
+      check_shape_box t box
+  | Clip_path_with_box _ ->
+      Cursor.err_invalid t "shape-outside pairs a <shape-box> with a shape"
+  | _ -> ());
+  shape
+
+(* CSS Shapes 1 sec. 6.1: [shape-outside] is [none | [<basic-shape> ||
+   <shape-box>] | <image>]. A [var()] is held as its text, since it may stand
+   for either branch. *)
+let read_shape_outside t : shape_outside =
+  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  let value =
+    match Cursor.peek t with
+    | Some
+        (Component.Func
+           { node = { name; terminated = true; arguments = []; _ }; _ })
+      when String.lowercase_ascii_preserve name = "var" ->
+        Cursor.err_invalid t "empty var()"
+    | Some (Component.Func { node = { name; terminated = true; _ }; _ })
+      when String.lowercase_ascii_preserve name = "var" ->
+        let v =
+          Values.read_var
+            (fun inner -> Cursor.consume_remaining_as_string ~trim:true inner)
+            t
+        in
+        (Var v : shape_outside)
+    | _ ->
+        Cursor.one_of
+          [
+            (fun t : shape_outside -> Shape (check_shape_outside_shape t));
+            (fun t : shape_outside -> Image (read_background_image t));
+            (fun t ->
+              Cursor.err_invalid t
+                (String.concat "" [ "invalid shape-outside: "; raw ]));
+          ]
+          t
+  in
+  Cursor.expect_eof t;
+  value

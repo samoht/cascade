@@ -635,6 +635,16 @@ type clip_path =
           [Optimize.drop_invalid] pass removes the declaration on every
           serialisation. *)
 
+(** CSS Shapes 1 sec. 6.1 [shape-outside]:
+    [none | [<basic-shape> || <shape-box>] | <image>]. The shape branch reuses
+    {!type-clip_path}, whose reader also gives [none] and the CSS-wide keywords,
+    and the image branch {!Properties_background_intf.type-background_image}. *)
+type shape_outside =
+  | Shape of clip_path
+  | Image of background_image
+  | Var of string var
+      (** A [var()] is held as its text: it may stand for either branch. *)
+
 (** Sec. 2.1 [offset-path]: [none | <offset-path> || <coord-box>], where the
     shape branch reuses {!type-clip_path}. *)
 type offset_path =

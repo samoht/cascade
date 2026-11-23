@@ -2811,6 +2811,17 @@ val pp_clip_path : clip_path Pp.t
 val read_clip_path : Cursor.t -> clip_path
 (** [read_clip_path t] is the [clip_path] parsed from [t]. *)
 
+val pp_shape_outside : shape_outside Pp.t
+(** [pp_shape_outside] is the pretty-printer for [shape_outside]. *)
+
+val read_shape_outside : Cursor.t -> shape_outside
+(** [read_shape_outside t] is the [shape_outside] parsed from [t]: [none], a
+    [<basic-shape>] and [<shape-box>] pair or either alone, an [<image>], a
+    CSS-wide keyword or a [var()] (CSS Shapes 1 sec. 6.1). *)
+
+val normalize_shape_outside : ?lossless:bool -> shape_outside -> shape_outside
+(** [normalize_shape_outside ?lossless v] is [v] in canonical form. *)
+
 val pp_clip_geometry_box : clip_geometry_box Pp.t
 (** [pp_clip_geometry_box] pretty-prints a clip geometry box. *)
 
