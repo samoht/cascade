@@ -892,10 +892,9 @@ let prefixed_fallback_before_a_parsed_value () =
     ]
 
 (* The compatibility data has no key for a vendor-prefixed or legacy keyword, so
-   it cannot say that every browser in B reading one value also reads the other
-   (docs/invariants.md, declaration layer). Inside one rule both values stay, in
-   either order, and across two rules an earlier value stays before a later one
-   using such a keyword. *)
+   it cannot say that every browser in B reading an earlier value also reads a
+   later one using such a keyword (docs/invariants.md, declaration layer). The
+   earlier value stays before it, inside one rule and across two. *)
 let legacy_keyword_fallbacks_survive () =
   List.iter
     (fun (input, expected) ->
@@ -903,8 +902,8 @@ let legacy_keyword_fallbacks_survive () =
     [
       ( "a{cursor:grab;cursor:-webkit-grab}",
         "a{cursor:grab;cursor:-webkit-grab}" );
-      ( "a{cursor:-webkit-grab;cursor:grab}",
-        "a{cursor:-webkit-grab;cursor:grab}" );
+      (* Every floor parses [cursor:grab], so the prefix before it is dead. *)
+      ("a{cursor:-webkit-grab;cursor:grab}", "a{cursor:grab}");
       ( ".a{cursor:grab}.a{cursor:-webkit-grab}",
         ".a{cursor:grab;cursor:-webkit-grab}" );
       ( ".a{cursor:grab}.b{color:red}.a{cursor:-webkit-grab}",

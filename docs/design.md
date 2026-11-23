@@ -214,6 +214,9 @@ release drops, a `clamp()` bound of `none` and a CSS-wide keyword the dataset
 does not name (`revert-rule`): their first release is `Support.Unrecorded`, so
 a fallback before them stays and a guard over them is undecided.
 `Merge.compatible` lists two selectors only when every engine
+rather than count the key as read; it compares the prefixed words of the two
+values. A prefixed value before one every floor parses (`display:flex`) is
+dead in B and goes, inside one rule as across two. `Merge.compatible` lists two selectors only when every engine
 ships them in the same release. The projection splits a selector list into
 one rule per branch only when `Merge.listable` says every release reads its
 branches alike (`Rule_order.expand_lists`); any other list stays one rule.

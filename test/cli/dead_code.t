@@ -457,15 +457,16 @@ merge cannot change which value wins.
   $ cascade --minify cross.css
   .btn{color:red;padding:10px}.btn:hover{color:#00f}
 
-Different-value duplicates of the same property in the same rule are
-preserved when the earlier value is a different format the cascade
-might fall back on (legacy syntax pattern).
+A different-value duplicate of the same property in the same rule is
+preserved when some target drops the later value and reads the earlier
+one. A prefixed value before one every target reads is dead.
 
   $ cat > legacy.css <<EOF
   > .x { display: -webkit-box; display: flex }
+  > .y { width: -webkit-fill-available; width: stretch }
   > EOF
   $ cascade --minify legacy.css
-  .x{display:-webkit-box;display:flex}
+  .x{display:flex}.y{width:-webkit-fill-available;width:stretch}
 
 Name-defining and descriptor at-rules are not dead just because this
 stylesheet has no visible rule that references them. They affect font
