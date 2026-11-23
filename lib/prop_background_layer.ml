@@ -87,10 +87,16 @@ let background_layer_slots_shared (a : background_shorthand)
 
 let normalize_background_shorthand ?(lossless = false)
     (b : background_shorthand) =
+  (* Sec. 2.2's initial [transparent] is transparent black (CSS Color 4 sec.
+     6.1), so a colour that normalises to [#0000] is that initial too. *)
   let color =
-    option_map_preserve
-      (normalize_color ~lossless)
-      (drop_initial_slot (Transparent : color) b.color)
+    match
+      option_map_preserve
+        (normalize_color ~lossless)
+        (drop_initial_slot (Transparent : color) b.color)
+    with
+    | Some (Hex { r = 0; g = 0; b = 0; a = 0 }) -> (None : color option)
+    | color -> color
   in
   let image =
     option_map_preserve
