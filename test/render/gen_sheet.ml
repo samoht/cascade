@@ -1142,6 +1142,10 @@ let nest_suffixes =
 type node =
   | Rule of { selector : string; decls : string list; nested : node list }
   | At of { prelude : string; body : node list }
+  | Decls of string list
+      (** Declarations written in a rule's body after a nested statement, or
+          directly in a nested group: a nested declarations rule (CSS Nesting 1
+          sec. 3.4). *)
 
 let rule ?(nested = []) selector decls = Rule { selector; decls; nested }
 
@@ -1169,6 +1173,13 @@ let rec emit buf node =
           Buffer.add_string buf " {\n";
           List.iter (emit buf) body;
           Buffer.add_string buf "}\n")
+  | Decls decls ->
+      List.iter
+        (fun d ->
+          Buffer.add_string buf "  ";
+          Buffer.add_string buf d;
+          Buffer.add_string buf ";\n")
+        decls
 
 (* ===== Shapes ===== *)
 
@@ -1326,6 +1337,70 @@ let source ~seed =
   let buf = Buffer.create 4096 in
   List.iter (emit buf) nodes;
   Buffer.contents buf
+
+(* ===== Nested declarations ===== *)
+
+(* A rule whose body writes declarations after a nested rule and directly in a
+   nested group, beside a later rule of the same selector and one between, so
+   the merges, the factoring and the commutes all meet nested declarations
+   rules. The slots come from one family and the common properties, so the
+   declarations compete. *)
+let nested_group r =
+  pick r [| "@media (min-width: 400px)"; "@supports (display: grid)" |]
+
+let nested_declarations_shape r =
+  let f = pick r families_array in
+  let sel = pick r selectors in
+  let slot () = importance r (decl r (pick_list r f.slots)) in
+  let some () = if chance r 2 then slot () else single r in
+  let parts =
+    [
+      rule (pick r nest_suffixes) [ some () ];
+      Decls [ some () ];
+      At { prelude = nested_group r; body = [ Decls [ some () ] ] };
+      Decls [ some (); some () ];
+    ]
+  in
+  let parts = List.filter (fun _ -> not (chance r 4)) parts in
+  let parts = if chance r 2 then parts else List.rev parts in
+  let first = rule sel [ importance r (decl r f.shorthand) ] ~nested:parts in
+  let later =
+    rule sel
+      [ some () ]
+      ~nested:(if chance r 2 then [ Decls [ some () ] ] else [])
+  in
+  let between = rule (pick r selectors) [ some () ] in
+  match int r 3 with
+  | 0 -> [ first; later ]
+  | 1 -> [ first; between; later ]
+  | _ -> [ between; first ]
+
+let nested_source ~seed =
+  let r = rng seed in
+  let n = 2 + int r 3 in
+  let nodes =
+    List.concat_map
+      (fun _ -> decorate r (nested_declarations_shape r))
+      (List.init n Fun.id)
+  in
+  let buf = Buffer.create 2048 in
+  List.iter (emit buf) nodes;
+  Buffer.contents buf
+
+let parse_seed ~seed source =
+  match Css.of_string ~strict:false source with
+  | Ok { stylesheet; _ } -> stylesheet
+  | Error e ->
+      failwith
+        (String.concat ""
+           [
+             "gen_sheet: seed ";
+             string_of_int seed;
+             " does not parse: ";
+             Error.to_string e;
+           ])
+
+let nested_declarations ~seed = parse_seed ~seed (nested_source ~seed)
 
 let stylesheet ~seed =
   match Css.of_string ~strict:false (source ~seed) with

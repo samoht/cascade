@@ -16,10 +16,12 @@
    [cascade diff --browser --html].
 
    A pair costs a browser launch, a second or two, so the default run is a
-   sample: the hand-written inputs, 24 corpus sheets, the two examples and 16
-   seeds, about a hundred pairs in two to three minutes. [--full] renders every
-   corpus sheet and 128 seeds, a thousand pairs in some twenty minutes;
-   [--corpus N], [--seeds N] and [--only SUBSTRING] size the run by hand.
+   sample: the hand-written inputs, 24 corpus sheets, the two examples, 16 seeds
+   and 8 nested-declarations seeds, whose transforms also run under targets that
+   keep nesting, about a hundred and fifty pairs in three minutes. [--full]
+   renders every corpus sheet, 128 seeds and 64 nested ones, some twenty-five
+   minutes; [--corpus N], [--seeds N], [--nested-seeds N] and [--only SUBSTRING]
+   size the run by hand.
 
    Skips cleanly, with status 0, when node or a headless Chromium is missing.
    CASCADE_NO_BROWSER fails instead: see [Browser.suppressed]. *)
@@ -162,6 +164,9 @@ type input = {
       (* the sheets rendered, the first against each other; [None] for the
          transforms of [source] *)
   expect : expectation;
+  nesting : bool;
+      (* the transforms run under targets that read nesting and nested
+         declarations rules in place as well *)
 }
 
 (* Pairs the sweep is known to fail, as [(input, variant, reason)]. Each is a
@@ -180,10 +185,11 @@ let known =
     ("corpus-colors-0056", "optimize", lossy_colour);
   ]
 
-let sheet id source = { id; source; sheets = None; expect = Same }
+let sheet ?(nesting = false) id source =
+  { id; source; sheets = None; expect = Same; nesting }
 
 let pair id ~source ~expect first second =
-  { id; source; sheets = Some [ first; second ]; expect }
+  { id; source; sheets = Some [ first; second ]; expect; nesting = false }
 
 let hand_written =
   [
@@ -283,12 +289,14 @@ let sample n l =
 
 let full = ref false
 let seeds = ref None
+let nested_seeds = ref None
 let corpus = ref None
 let only = ref None
 
 let usage () =
   Fmt.pr
-    "usage: render_diff [--full] [--seeds N] [--corpus N] [--only SUBSTRING]@.";
+    "usage: render_diff [--full] [--seeds N] [--nested-seeds N] [--corpus N] \
+     [--only SUBSTRING]@.";
   Fmt.pr "a corpus budget of 0 takes every sheet@.";
   exit 0
 
@@ -301,6 +309,7 @@ let parse_args () =
       (match Sys.argv.(i) with
       | "--full" -> full := true
       | "--seeds" -> seeds := int_of_string_opt (arg "")
+      | "--nested-seeds" -> nested_seeds := int_of_string_opt (arg "")
       | "--corpus" -> corpus := int_of_string_opt (arg "")
       | "--only" -> only := Some (arg "")
       | "-h" | "--help" -> usage ()
@@ -323,6 +332,16 @@ let inputs () =
         sheet
           (String.concat "-" [ "seed"; string_of_int i ])
           (Css.to_string (Gen_sheet.stylesheet ~seed:i)))
+  in
+  let n_nested =
+    match !nested_seeds with Some n -> n | None -> if !full then 64 else 8
+  in
+  let generated =
+    generated
+    @ List.init n_nested (fun i ->
+        sheet ~nesting:true
+          (String.concat "-" [ "nested-seed"; string_of_int i ])
+          (Css.to_string (Gen_sheet.nested_declarations ~seed:i)))
   in
   let all =
     hand_written
@@ -350,8 +369,29 @@ let exact sheet = Css.to_string ~minify:true ~lossless:true sheet
    printed exactly, so a difference under one is that transform's and not the
    printer's. [prune] is judged over the derived page itself, the page the
    pruned sheet must still render. *)
-let variants ~roots sheet =
+(* Floors from which every engine reads nesting and a nested declarations rule
+   in place (BCD [api.CSSNestedDeclarations]), so the optimizer keeps both. *)
+let nesting_targets =
+  {
+    Css.Optimize.chrome = (130, 0);
+    firefox = (132, 0);
+    safari = (18, 2);
+    ios_safari = (18, 2);
+  }
+
+let variants ~nesting ~roots sheet =
   let optimized = minified (Css.optimize sheet) in
+  let nested =
+    if not nesting then []
+    else
+      let optimized = minified (Css.optimize ~targets:nesting_targets sheet) in
+      [
+        ("optimize-nesting", optimized);
+        ( "lossless-nesting",
+          exact (Css.optimize ~lossless:true ~targets:nesting_targets sheet) );
+        ("reparsed-nesting", reparsed optimized);
+      ]
+  in
   [
     ("original", Css.to_string sheet);
     ("optimize", optimized);
@@ -360,6 +400,7 @@ let variants ~roots sheet =
     ("inline-vars", exact (Css.inline_vars sheet));
     ("prune", exact (Prune.analyse ~sheet roots).sheet);
   ]
+  @ nested
 
 (* ===== Probes ===== *)
 
@@ -560,7 +601,7 @@ let check_input st ~root input =
       let sheets =
         match input.sheets with
         | Some sheets -> sheets
-        | None -> variants ~roots stylesheet
+        | None -> variants ~nesting:input.nesting ~roots stylesheet
       in
       check_pairs st ~root ~html input sheets
 
