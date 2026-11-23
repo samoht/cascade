@@ -929,10 +929,66 @@ let rec zip_occurrences name (modified, added, removed) values1 values2 =
   | [], (_, shown) :: rest2 ->
       zip_occurrences name (modified, (name, shown) :: added, removed) [] rest2
 
+let writes_name name decls =
+  List.exists (fun d -> String.equal (Css.declaration_name d) name) decls
+
+(* What [sh] writes, in the terms [other] uses: the longhands of [sh] that
+   [other] writes, in [other]'s order, then the ones only [sh] resets. [None]
+   when the report cannot read [sh] that way: [other] writes [sh] itself, a
+   longhand of [sh] at a finer grain than {!Shorthand.implied_longhands} proves,
+   or none of them, or [sh]'s own side writes one of them as well. *)
+let slot_for slots d =
+  List.find_opt (fun slot -> Declaration.same_property slot d) slots
+
+(* The [slots] of a shorthand that answer [covered], each once, in [covered]'s
+   order, then the rest. *)
+let slots_in_order slots covered =
+  let answered =
+    List.fold_left
+      (fun acc d ->
+        match slot_for slots d with
+        | Some slot when not (List.memq slot acc) -> slot :: acc
+        | _ -> acc)
+      [] covered
+    |> List.rev
+  in
+  answered @ List.filter (fun slot -> not (List.memq slot answered)) slots
+
+let shorthand_answered ~own ~other sh =
+  let covers d = Shorthand.declaration_covers sh d in
+  let covered = List.filter covers other in
+  if
+    writes_name (Css.declaration_name sh) other
+    || covered = []
+    || List.exists (fun d -> d != sh && covers d) own
+  then None
+  else
+    match Shorthand.implied_longhands sh with
+    | Some slots
+      when List.for_all (fun d -> Option.is_some (slot_for slots d)) covered ->
+        Some (slots_in_order slots covered)
+    | _ -> None
+
+(* A shorthand one side writes where the other writes its longhands. Compared by
+   name, the report reads one removal and an addition per longhand; read through
+   the longhands it writes, it names each slot the two sides set differently and
+   the resets only the shorthand's side makes. *)
+let answer_shorthands ~other own =
+  List.concat_map
+    (fun d ->
+      match shorthand_answered ~own ~other d with
+      | Some longhands -> longhands
+      | None -> [ d ])
+    own
+
 (* Helper function to compute property diffs between two declaration lists,
    including added and removed properties *)
 let properties_diff decls1 decls2 :
     declaration list * (string * string) list * (string * string) list =
+  let decls1, decls2 =
+    ( answer_shorthands ~other:decls2 decls1,
+      answer_shorthands ~other:decls1 decls2 )
+  in
   let props1 = List.map decl_to_reported_value decls1 in
   let props2 = List.map decl_to_reported_value decls2 in
   (* Names the expected side writes first, then the ones only the actual side

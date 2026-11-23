@@ -108,6 +108,15 @@ val custom_property_name : Declaration.declaration -> string option
 val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** Same declaration value ignoring importance. *)
 
+val implied_longhands :
+  Declaration.declaration -> Declaration.declaration list option
+(** [implied_longhands sh] is every longhand the shorthand [sh] writes, each
+    with the value [sh] assigns it, reset-only ones included, at the importance
+    of [sh]. It is [None] unless every such value can be proven:
+    [border:1px solid red] gives [border-width:1px], [border-style:solid],
+    [border-color:red] and [border-image:none], while [border:solid] and any
+    other shorthand give [None]. *)
+
 val declarations_commute :
   Declaration.declaration list -> Declaration.declaration list -> bool
 (** [declarations_commute a b] is [true] when running [a] before [b] and [b]

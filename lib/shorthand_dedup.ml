@@ -703,6 +703,18 @@ let drained_border_image : Properties.border_image =
     mode = None;
   }
 
+(* The slots [border] writes, each [None] where the shorthand leaves it at an
+   initial value no slot spells: its initials (medium / none / currentcolor) are
+   rarely written back. CSS Backgrounds 3 sec. 4.4 also resets [border-image],
+   so the shorthand says what an all-initial [border-image] says. *)
+let border_slots (s : Properties.border_shorthand) =
+  [
+    Option.map border_width s.width;
+    Option.map border_style s.style;
+    Option.map border_color s.color;
+    Some (Declaration.v Border_image drained_border_image);
+  ]
+
 (* The longhand declaration a shorthand assigns to a slot it covers: the slot
    value if set, else that longhand's initial. A later longhand equal to this is
    a redundant no-op. [None] when the shorthand does not cover the longhand or
@@ -772,22 +784,15 @@ let implied_longhand covering covered : Declaration.declaration option =
           | _ -> None)
       | _ -> None)
   | Declaration { property = Properties.Border; value; _ } -> (
-      (* Only the slots [border] sets explicitly; its initials (medium / none /
-         currentcolor) are rarely written back, so leave those. *)
       match (value : Properties.border) with
-      | Properties.Shorthand s -> (
-          match unwrap_theme_guard covered with
-          | Declaration { property = Properties.Border_color; _ } ->
-              Option.map border_color s.color
-          | Declaration { property = Properties.Border_width; _ } ->
-              Option.map border_width s.width
-          | Declaration { property = Properties.Border_style; _ } ->
-              Option.map border_style s.style
-          (* sec. 3.4 also resets [border-image], so the shorthand says what an
-             all-initial [border-image] says. *)
-          | Declaration { property = Properties.Border_image; _ } ->
-              Some (Declaration.v Border_image drained_border_image)
-          | _ -> None)
+      | Properties.Shorthand s ->
+          let covered = unwrap_theme_guard covered in
+          List.find_map
+            (function
+              | Some slot when Declaration.same_property slot covered ->
+                  Some slot
+              | _ -> None)
+            (border_slots s)
       | _ -> None)
   | Declaration { property = Properties.Animation; value; _ } -> (
       (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
@@ -840,6 +845,22 @@ let implied_longhand covering covered : Declaration.declaration option =
           | _ -> None)
       | _ -> None)
   | _ -> None
+
+let implied_longhands covering =
+  let slots =
+    match unwrap_theme_guard covering with
+    | Declaration
+        { property = Properties.Border; value = Properties.Shorthand s; _ } ->
+        border_slots s
+    | _ -> [ None ]
+  in
+  let all_known = List.for_all Option.is_some slots in
+  if not all_known then None
+  else
+    let slots = List.filter_map Fun.id slots in
+    Some
+      (if is_important covering then List.map Declaration.important slots
+       else slots)
 
 (* Whether [covering] sets every slot [covered] writes to the value [covered]
    writes there, so the two agree on every longhand they share and either order

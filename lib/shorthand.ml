@@ -37,6 +37,7 @@ let declaration_is_broad = Shorthand_coverage.declaration_is_broad
 let custom_property_name = Shorthand_coverage.custom_property_name
 let same_value = Shorthand_dedup.same_value
 let declarations_commute = Shorthand_dedup.declarations_commute
+let implied_longhands = Shorthand_dedup.implied_longhands
 
 let drop_redundant_decoration_color_aliases =
   Shorthand_dedup.drop_redundant_decoration_color_aliases

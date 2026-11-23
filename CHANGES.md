@@ -1045,6 +1045,11 @@ differently. They are the reason to minify again.
 - **A changed rule could go unreported.** When the other file held two
   identical copies of its counterpart, pairing one copy claimed both and the
   change was dropped. It is reported (#1297).
+- shorthand against its longhands is reported per longhand.** `.a{border:1px
+  solid red}` against
+  `.a{border-color:blue;border-style:solid;border-width:2px}` printed `-
+  border` and three `+` lines; it now prints `- border-image: none`, `*
+  border-color: red -> blue` and `* border-width: 1px -> 2px` (#1555).
 
 ### Warnings, errors and help
 
