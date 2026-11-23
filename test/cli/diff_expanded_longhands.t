@@ -42,3 +42,14 @@ A longhand that writes another value there is still a difference.
   [1]
   $ cascade diff --diff=canonical a.css b.css > /dev/null
   [1]
+
+CSS Flexible Box 1 sec. 7.1: a factor [flex] leaves out is 1, so a lone
+basis is [1 1 <basis>], and [flex:1 10px] is [flex:10px]. --minify writes
+the shorter one.
+
+  $ printf '.a{flex:10px}' > a.css
+  $ printf '.a{flex:1 10px}' > b.css
+  $ cascade diff --diff=canonical a.css b.css
+  CSS files are identical
+  $ cascade --minify b.css
+  .a{flex:10px}

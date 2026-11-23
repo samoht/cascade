@@ -588,6 +588,21 @@ let test_flex () =
   check_flex ~expected:"2 10px" "10px 2";
   check_flex ~expected:"1 auto" "auto 1";
   check_flex ~expected:"1 content" "content 1";
+  (* CSS Flexbox 1 sec. 7.1: a grow or shrink factor left out of [flex] is 1, so
+     a lone [<'flex-basis'>] means [1 1 <basis>], and that one-word spelling is
+     the shortest. Chrome 157 and WebKit 26.5 compute [flex:10px], [flex:1 10px]
+     and [flex:content] to [1 1 10px] and [1 1 content]. *)
+  decl_optimizes ~prop:"flex" ~held:"1 10px" ~into:"10px" "1 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 10px" ~into:"10px" "1 1 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 10px" ~into:"10px" "10px 1";
+  decl_optimizes ~prop:"flex" ~held:"1 content" ~into:"content" "1 1 content";
+  decl_optimizes ~prop:"flex" ~held:"1 50%" ~into:"50%" "1 1 50%";
+  (* Controls: a factor other than 1 stays, and so does a [var()] basis, which
+     may substitute factors of its own (CSS Variables 1 sec. 3). *)
+  decl_optimizes ~prop:"flex" ~held:"2 10px" ~into:"2 10px" "2 1 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 0 10px" ~into:"1 0 10px" "1 0 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 1 var(--b)" ~into:"1 1 var(--b)"
+    "1 1 var(--b)";
   (* The basis sits on one side of the [||] or the other, never between the two
      factors, and [none] is the whole value on its own. *)
   neg_cursor ~allow_partial:true read_flex "1 50% 2";
