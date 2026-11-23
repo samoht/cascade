@@ -1260,6 +1260,27 @@ let spec_math_number_functions_at_a_ratio () =
     | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
     | Error e -> Error.to_string e)
 
+(* CSS Values 4 sec. 10.1 puts a math function wherever its type stands, folded
+   or not; sec. 10.9 rounds one at an [<integer>] once it resolves. Chromium 157
+   keeps each input here as written and computes it once the font size is known:
+   [counter-increment:a sign(1em)] as [a 1], [font-feature-settings] ["liga"
+   sign(1em)] as ["liga"], [font-variation-settings:"wght" calc(400*sign(1em))]
+   as ["wght" 400] and [rotate:1 sign(1em) 0 45deg] as [1 1 0 45deg]. Cascade
+   dropped each. *)
+let spec_math_integer_slots_unfolded () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("counter-increment", "a sign(1em)", "a sign(1em)");
+      ("counter-reset", "a calc(2*sign(1em)) b", "a calc(2*sign(1em)) b");
+      ("counter-set", "a sign(1em)", "a sign(1em)");
+      ("font-feature-settings", "\"liga\" sign(1em)", "\"liga\" sign(1em)");
+      ( "font-variation-settings",
+        "\"wght\" calc(400*sign(1em))",
+        "\"wght\" calc(400*sign(1em))" );
+      ("rotate", "1 sign(1em) 0 45deg", "45deg 1 sign(1em) 0");
+    ]
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1389,6 +1410,8 @@ let suite =
       test_case "spec math negative zero" `Quick spec_math_negative_zero;
       test_case "spec math number functions at a ratio" `Quick
         spec_math_number_functions_at_a_ratio;
+      test_case "spec math integer slots unfolded" `Quick
+        spec_math_integer_slots_unfolded;
       test_case "spec math inverse trig is an angle" `Quick
         spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick
