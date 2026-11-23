@@ -24,7 +24,10 @@ let flex_shrink_of : declaration -> Properties.flex_factor option = function
       Some v
   | _ -> None
 
+(* Chromium 153 reads [flex-basis:calc-size(auto,size)] and drops [flex:1
+   calc-size(auto,size)], so a [calc-size()] basis stays a longhand. *)
 let flex_basis_of : declaration -> Properties.flex_basis option = function
+  | Declaration { property = Flex_basis; value = Calc_size _; _ } -> None
   | Declaration { property = Flex_basis; value; _ } -> Some value
   | _ -> None
 

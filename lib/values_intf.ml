@@ -279,7 +279,9 @@ type length =
   | Rem_fn of length * length  (** CSS [rem()] math function *)
   | Hypot of length list  (** CSS [hypot()] math function *)
   | Abs of length  (** CSS [abs()] math function *)
-  | Calc_size of length * length calc  (** CSS [calc-size()] function *)
+  | Calc_size of length option * length calc
+      (** CSS [calc-size()] function, CSS Sizing 4 (ED) sec. 7. A basis of
+          [None] is [any]. *)
   | Anchor_size of string option * anchor_size option * length option
       (** CSS [anchor-size()] function, from
           {{:https://www.w3.org/TR/css-anchor-position-1/} CSS Anchor

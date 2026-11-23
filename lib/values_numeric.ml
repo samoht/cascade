@@ -236,7 +236,7 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
     | Abs v -> ( match nf v with Px x -> Px (Float.abs x) | v -> Abs v)
     | Fit_content_arg arg -> Fit_content_arg (nf arg)
     | Calc_size (basis, calc) -> (
-        let basis = nf basis in
+        let basis = Option.map nf basis in
         match
           calc |> eval_length_calc ~ctx |> linear_length_calc
           |> eval_length_calc ~ctx

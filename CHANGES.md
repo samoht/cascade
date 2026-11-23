@@ -917,6 +917,10 @@ differently. They are the reason to minify again.
 - `calc()` as the argument of another math function is read**
   (`opacity:min(calc(1 + 2), 1)`) instead of dropping the declaration (CSS
   Values 4 sec. 10.1) (#1621).
+- reads as CSS Sizing 4 sec. 7**: an `any` basis, `size` inside the
+  calculation's math functions (`calc-size(auto, round(size, 10px))`), a
+  sizing function such as `fit-content(10px)` as the basis, and refusals of
+  `size` after `any`, a `none` basis and a keyword in the calculation (#1622).
 
 #### Stable output
 

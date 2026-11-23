@@ -72,26 +72,38 @@ let read_anchor_name_and keyword t =
   Cursor.ws t;
   (name, keyword)
 
-let rec read_length ?(allow_negative = true) ?(with_keywords = true)
-    ?(sizing = false) ?(length_only = false) t : length =
+(* CSS Sizing 4 (ED) sec. 7: inside the calculation of a [calc-size()] whose
+   basis is not [any], [size] stands for the basis, at any depth of the math
+   functions it holds. *)
+let read_size_keyword t : length =
+  match Cursor.peek_keyword t with
+  | Some "size" ->
+      Cursor.skip t;
+      Size
+  | _ -> Cursor.err t "expected size"
+
+let rec read_length_in ?(allow_negative = true) ?(with_keywords = true)
+    ?(sizing = false) ?(length_only = false) ?(size = false) t : length =
   Cursor.ws t;
   let parsers =
     [
       read_var_length ~allow_negative ~length_only ~with_keywords;
-      read_calc_length ~length_only;
+      read_calc_length ~size ~length_only;
       read_env_length ~allow_negative ~length_only ~with_keywords;
-      read_function_length ~allow_negative ~length_only ~with_keywords;
+      read_function_length ~size ~allow_negative ~length_only ~with_keywords;
       read_length_unit ~allow_negative ~length_only;
     ]
   in
   let parsers =
     if with_keywords then read_length_keyword ~sizing :: parsers else parsers
   in
+  let parsers = if size then read_size_keyword :: parsers else parsers in
   Cursor.one_of parsers t
 
 and read_var_length ~allow_negative ~length_only ~with_keywords t : length =
   if Cursor.looking_at t "var(" then
-    Var (read_var (read_length ~allow_negative ~length_only ~with_keywords) t)
+    Var
+      (read_var (read_length_in ~allow_negative ~length_only ~with_keywords) t)
   else Cursor.err t "expected var"
 
 (* CSS Values 4 sec. 10.8: a [<calc-value>] is a number, a dimension, a
@@ -100,36 +112,38 @@ and read_var_length ~allow_negative ~length_only ~with_keywords t : length =
    and the sizing functions are none of those, and sec. 10.9 makes the
    calculation's type failure for anything else, so a math operand reads a
    length with the keyword grammar off. *)
-and read_math_operand_length ~allow_negative ~length_only t : length =
-  read_length ~allow_negative ~length_only ~with_keywords:false t
+and read_math_operand_length ~size ~allow_negative ~length_only t : length =
+  read_length_in ~allow_negative ~length_only ~with_keywords:false ~size t
 
-and read_calc_length ~length_only t : length =
+and read_calc_length ~size ~length_only t : length =
   if Cursor.looking_at_calc t then
     (* Same exception as [read_length_percentage]: inside [calc()] the
        non-negative constraint applies to the resolved value. *)
     Calc
       (read_calc ~result_type:`Value
-         (read_math_operand_length ~allow_negative:true ~length_only)
+         (read_math_operand_length ~size ~allow_negative:true ~length_only)
          t)
   else Cursor.err t "expected calc"
 
 and read_env_length ~allow_negative ~length_only ~with_keywords t : length =
   if Cursor.looking_at t "env(" then
-    Env (read_env (read_length ~allow_negative ~length_only ~with_keywords) t)
+    Env
+      (read_env (read_length_in ~allow_negative ~length_only ~with_keywords) t)
   else Cursor.err t "expected env"
 
-and read_function_length ~allow_negative ~length_only ~with_keywords t : length
-    =
+and read_function_length ~size ~allow_negative ~length_only ~with_keywords t :
+    length =
   match
     Cursor.any_function_call
-      (read_length_function_body ~allow_negative ~length_only ~with_keywords t)
+      (read_length_function_body ~size ~allow_negative ~length_only
+         ~with_keywords t)
       t
   with
   | Some length -> length
   | None -> Cursor.err_expected t "function call"
 
-and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
-    inner =
+and read_length_function_body ~size ~allow_negative ~length_only ~with_keywords
+    t name inner =
   let name = String.lowercase_ascii name in
   if
     length_only
@@ -148,12 +162,12 @@ and read_length_function_body ~allow_negative ~length_only ~with_keywords t name
   in
   match
     List.assoc_opt name
-      (length_function_readers ~allow_negative ~length_only ~with_keywords)
+      (length_function_readers ~size ~allow_negative ~length_only ~with_keywords)
   with
   | Some read -> read inner
   | None -> Cursor.err t (String.concat "" [ "unknown function "; name ])
 
-and length_function_readers ~allow_negative ~length_only ~with_keywords =
+and length_function_readers ~size ~allow_negative ~length_only ~with_keywords =
   (* CSS Sizing 4 sec. 3.2 puts [fit-content()] and [calc-size()] in
      [<box-size>] and CSS Grid 2 sec. 7.2.1 puts [minmax()] in [<track-size>],
      so a caller reading a plain [<length>] takes none of the three. The math
@@ -170,14 +184,14 @@ and length_function_readers ~allow_negative ~length_only ~with_keywords =
   in
   (if with_keywords then sizing_functions else [])
   @ [
-      ("clamp", read_clamp_length ~length_only);
-      ("min", read_min_length ~length_only);
-      ("max", read_max_length ~length_only);
-      ("round", read_round_length ~allow_negative ~length_only);
-      ("mod", read_mod_length ~allow_negative ~length_only);
-      ("rem", read_rem_length ~allow_negative ~length_only);
-      ("hypot", read_hypot_length ~allow_negative ~length_only);
-      ("abs", read_abs_length ~allow_negative ~length_only);
+      ("clamp", read_clamp_length ~size ~length_only);
+      ("min", read_min_length ~size ~length_only);
+      ("max", read_max_length ~size ~length_only);
+      ("round", read_round_length ~size ~allow_negative ~length_only);
+      ("mod", read_mod_length ~size ~allow_negative ~length_only);
+      ("rem", read_rem_length ~size ~allow_negative ~length_only);
+      ("hypot", read_hypot_length ~size ~allow_negative ~length_only);
+      ("abs", read_abs_length ~size ~allow_negative ~length_only);
       ( "anchor-size",
         read_anchor_size_length ~allow_negative ~length_only ~with_keywords );
       ("anchor", read_anchor_length ~allow_negative ~length_only ~with_keywords);
@@ -192,10 +206,10 @@ and length_function_readers ~allow_negative ~length_only ~with_keywords =
    consistent type or else the function is invalid", so every one of them is
    checked against the length the surrounding property reads: [min(0, 1px)]
    mixes a [<number>] with a [<length>] and browsers drop it. *)
-and read_implicit_calc_length ~length_only inner =
+and read_implicit_calc_length ~size ~length_only inner =
   let expr =
     read_calc_expr
-      (read_math_operand_length ~allow_negative:true ~length_only)
+      (read_math_operand_length ~size ~allow_negative:true ~length_only)
       inner
   in
   validate_calc_type inner `Value expr;
@@ -203,57 +217,57 @@ and read_implicit_calc_length ~length_only inner =
 
 (* CSS Values 4 (ED) sec. 10.2 takes [none] for either bound of [clamp()], to
    clamp from the other side only. *)
-and read_clamp_bound ~length_only inner =
+and read_clamp_bound ~size ~length_only inner =
   match Cursor.peek_keyword inner with
   | Some "none" ->
       Cursor.skip inner;
       (None : length)
-  | _ -> read_implicit_calc_length ~length_only inner
+  | _ -> read_implicit_calc_length ~size ~length_only inner
 
-and read_clamp_length ?(length_only = false) inner =
+and read_clamp_length ~size ?(length_only = false) inner =
   Cursor.ws inner;
-  let min = read_clamp_bound ~length_only inner in
-  Cursor.ws inner;
-  Cursor.comma inner;
-  Cursor.ws inner;
-  let value = read_implicit_calc_length ~length_only inner in
+  let min = read_clamp_bound ~size ~length_only inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_clamp_bound ~length_only inner in
+  let value = read_implicit_calc_length ~size ~length_only inner in
+  Cursor.ws inner;
+  Cursor.comma inner;
+  Cursor.ws inner;
+  let max = read_clamp_bound ~size ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Clamp (min, value, max)
 
 and read_minmax_length ?(length_only = false) inner =
   Cursor.ws inner;
-  let min = read_implicit_calc_length ~length_only inner in
+  let min = read_implicit_calc_length ~size:false ~length_only inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_implicit_calc_length ~length_only inner in
+  let max = read_implicit_calc_length ~size:false ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Minmax (min, max)
 
-and read_min_length ?(length_only = false) inner =
+and read_min_length ~size ?(length_only = false) inner =
   let xs =
     Cursor.list ~at_least:1 ~sep:Cursor.comma
       (fun t ->
         Cursor.ws t;
-        read_implicit_calc_length ~length_only t)
+        read_implicit_calc_length ~size ~length_only t)
       inner
   in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Min xs
 
-and read_max_length ?(length_only = false) inner =
+and read_max_length ~size ?(length_only = false) inner =
   let xs =
     Cursor.list ~at_least:1 ~sep:Cursor.comma
       (fun t ->
         Cursor.ws t;
-        read_implicit_calc_length ~length_only t)
+        read_implicit_calc_length ~size ~length_only t)
       inner
   in
   Cursor.ws inner;
@@ -262,14 +276,14 @@ and read_max_length ?(length_only = false) inner =
 
 and read_fit_content_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.ws inner;
-  let arg = read_length ~allow_negative ~length_only ~with_keywords inner in
+  let arg = read_length_in ~allow_negative ~length_only ~with_keywords inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Fit_content_arg arg
 
-and read_round_length ~allow_negative ~length_only inner =
+and read_round_length ~size ~allow_negative ~length_only inner =
   let strategy = read_round_strategy inner in
-  let read = read_math_operand_length ~allow_negative ~length_only in
+  let read = read_math_operand_length ~size ~allow_negative ~length_only in
   let value = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
@@ -278,8 +292,8 @@ and read_round_length ~allow_negative ~length_only inner =
   Cursor.expect_eof inner;
   Round (strategy, value, step)
 
-and read_binary_length ~allow_negative ~length_only make inner =
-  let read = read_math_operand_length ~allow_negative ~length_only in
+and read_binary_length ~size ~allow_negative ~length_only make inner =
+  let read = read_math_operand_length ~size ~allow_negative ~length_only in
   let a = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
@@ -288,53 +302,72 @@ and read_binary_length ~allow_negative ~length_only make inner =
   Cursor.expect_eof inner;
   make a b
 
-and read_mod_length ~allow_negative ~length_only inner =
-  read_binary_length ~allow_negative ~length_only
+and read_mod_length ~size ~allow_negative ~length_only inner =
+  read_binary_length ~size ~allow_negative ~length_only
     (fun (a : length) (b : length) -> (Mod (a, b) : length))
     inner
 
-and read_rem_length ~allow_negative ~length_only inner =
-  read_binary_length ~allow_negative ~length_only
+and read_rem_length ~size ~allow_negative ~length_only inner =
+  read_binary_length ~size ~allow_negative ~length_only
     (fun (a : length) (b : length) -> (Rem_fn (a, b) : length))
     inner
 
-and read_hypot_length ~allow_negative ~length_only inner =
+and read_hypot_length ~size ~allow_negative ~length_only inner =
   let values =
     Cursor.list ~sep:Cursor.comma
-      (read_math_operand_length ~allow_negative ~length_only)
+      (read_math_operand_length ~size ~allow_negative ~length_only)
       inner
   in
   Cursor.expect_eof inner;
   Hypot values
 
-and read_unary_length ~allow_negative ~length_only make inner =
-  let value = read_math_operand_length ~allow_negative ~length_only inner in
+and read_unary_length ~size ~allow_negative ~length_only make inner =
+  let value =
+    read_math_operand_length ~size ~allow_negative ~length_only inner
+  in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   make value
 
-and read_abs_length ~allow_negative ~length_only inner =
-  read_unary_length ~allow_negative ~length_only
+and read_abs_length ~size ~allow_negative ~length_only inner =
+  read_unary_length ~size ~allow_negative ~length_only
     (fun (value : length) -> (Abs value : length))
     inner
 
-(* CSS Values 5 (ED) sec. 12: [calc-size()] takes a sizing basis and then a
-   calculation over [size], so both halves read the intrinsic sizes whatever
-   property the function sits in. *)
+(* CSS Sizing 4 (ED) sec. 7: [calc-size( <calc-size-basis>, <calc-sum> )], the
+   basis a size keyword, a [<calc-sum>], a nested [calc-size()] or [any]. The
+   calculation is lengths and percentages over [size], which stands for the
+   basis at any depth and is a syntax error after [any]. A size keyword basis
+   covers the sizing functions of its context, [fit-content()] in [width], and
+   sec. 3.2 keeps [none] out of [calc-size()]. *)
 and read_calc_size_length ~allow_negative ~length_only ~with_keywords inner =
-  let read t =
-    read_length ~allow_negative ~length_only ~with_keywords ~sizing:true t
+  let basis =
+    match Cursor.peek_keyword inner with
+    | Some "any" ->
+        Cursor.skip inner;
+        Option.None
+    | Some ("none" | "normal" | "size") ->
+        Cursor.err_invalid inner "not a calc-size() basis"
+    | _ -> (
+        match
+          read_length_in ~allow_negative ~length_only ~with_keywords
+            ~sizing:true inner
+        with
+        | Minmax _ -> Cursor.err_invalid inner "not a calc-size() basis"
+        | basis -> Option.Some basis)
   in
-  let basis = read inner in
   Cursor.ws inner;
   Cursor.comma inner;
-  let calc = read_calc_expr read inner in
+  let size = Option.is_some basis in
+  let calc =
+    read_calc_expr
+      (read_math_operand_length ~size ~allow_negative:true ~length_only)
+      inner
+  in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Calc_size (basis, calc)
 
-(* CSS Anchor Positioning 1 (ED) sec. 3.2: [anchor( <anchor-name>? &&
-   <anchor-side>, <length-percentage>? )]. *)
 and read_anchor_length ~allow_negative ~length_only ~with_keywords inner =
   match read_anchor_name_and read_anchor_side inner with
   | _, None -> Cursor.err_expected inner "anchor side"
@@ -374,7 +407,7 @@ and read_anchor_size_length ~allow_negative ~length_only ~with_keywords inner =
 
 and read_anchor_fallback ~allow_negative ~length_only ~with_keywords inner =
   Cursor.ws inner;
-  read_length ~allow_negative ~length_only ~with_keywords inner
+  read_length_in ~allow_negative ~length_only ~with_keywords inner
 
 and read_attr_length ~allow_negative ~length_only ~with_keywords inner =
   Cursor.ws inner;
@@ -395,10 +428,14 @@ and read_attr_length_fallback ~allow_negative ~length_only ~with_keywords inner
     if Cursor.is_done inner then Empty_fallback
     else
       Attr_fallback
-        (read_length ~allow_negative ~length_only ~with_keywords inner))
+        (read_length_in ~allow_negative ~length_only ~with_keywords inner))
   else No_fallback
 
 (** Read a non-negative length value (for padding properties) *)
+
+let read_length ?allow_negative ?with_keywords ?sizing ?length_only t =
+  read_length_in ?allow_negative ?with_keywords ?sizing ?length_only t
+
 let read_non_negative_length ?(with_keywords = true) ?(length_only = false) t :
     length =
   read_length ~allow_negative:false ~with_keywords ~length_only t

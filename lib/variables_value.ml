@@ -25,7 +25,8 @@ let rec vars_of_length (value : Values.length) : any_var list =
   | Mod (a, b) | Rem_fn (a, b) -> vars_of_length a @ vars_of_length b
   | Hypot values -> List.concat_map vars_of_length values
   | Abs value -> vars_of_length value
-  | Calc_size (basis, calc) -> vars_of_length basis @ vars_of_calc calc
+  | Calc_size (basis, calc) ->
+      Option.fold ~none:[] ~some:vars_of_length basis @ vars_of_calc calc
   | Anchor (_, side, fallback) ->
       let side =
         match side with Percentage_side p -> vars_of_percentage p | _ -> []

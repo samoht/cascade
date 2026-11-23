@@ -231,7 +231,7 @@ let basis_stands_alone : flex_basis -> bool = function
       true
   | Auto | Num _ | Zero | Inherit | Initial | Unset | Revert | Revert_layer
   | Clamp _ | Min _ | Max _ | Round _ | Mod _ | Rem_fn _ | Hypot _ | Abs _
-  | Calc _ | Var _ ->
+  | Calc _ | Calc_size _ | Var _ ->
       false
 
 (* The [flex-basis] a [flex] of one or two factors omits. CSS Flexible Box 1
@@ -459,6 +459,7 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   (* Math functions mirror [length]; reuse its printer. *)
   | Clamp (a, b, c) -> pp_length ctx (Clamp (a, b, c))
+  | Calc_size (basis, calc) -> pp_length ctx (Calc_size (basis, calc))
   | Min xs -> pp_length ctx (Min xs)
   | Max xs -> pp_length ctx (Max xs)
   | Round (s, a, b) -> pp_length ctx (Round (s, a, b))
@@ -803,6 +804,7 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Rem_fn (a, b) -> Rem_fn (a, b)
   | Hypot xs -> Hypot xs
   | Abs a -> Abs a
+  | Calc_size (basis, calc) -> Calc_size (basis, calc)
   (* Every other authored spelling reaches [length] as a [Dimension] carrying
      its own text, [1e3px] and [10.0px] among them, and sec. 7.2 takes each of
      them as a [<length-percentage>]. *)

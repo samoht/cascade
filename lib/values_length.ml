@@ -1007,7 +1007,9 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Calc_size (basis, calc) ->
       Pp.call "calc-size"
         (fun ctx (basis, calc) ->
-          pp_length ~always ctx basis;
+          (match basis with
+          | Option.Some basis -> pp_length ~always ctx basis
+          | Option.None -> Pp.string ctx "any");
           Pp.comma ctx ();
           pp_calc_contents (pp_length ~always) ctx calc)
         ctx (basis, calc)
