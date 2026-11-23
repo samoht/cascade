@@ -306,7 +306,24 @@ let c41_declared_values () =
     (List.map declared_value color_declared);
   Alcotest.(check (list bool))
     "declared values preserve importance for cascade sorting" [ false; true ]
-    (List.map declared_important color_declared)
+    (List.map declared_important color_declared);
+  (* CSS Cascade 5 sec. 3.1 Property Aliasing: a legacy name alias declares the
+     property it aliases, whichever of the two spellings is asked for. *)
+  let aliased =
+    List.map
+      (fun s -> Css_test_helpers.ok (Css.Declaration.of_string s))
+      [ "-webkit-transform: scale(2)"; "transform: none"; "color: red" ]
+  in
+  Alcotest.(check (list string))
+    "declared values of a property include its legacy alias"
+    [ "scale(2)"; "none" ]
+    (List.map declared_value
+       (Css.Stylesheet.declared_values ~property:"transform" aliased));
+  Alcotest.(check (list string))
+    "declared values of a legacy alias include its property"
+    [ "scale(2)"; "none" ]
+    (List.map declared_value
+       (Css.Stylesheet.declared_values ~property:"-webkit-transform" aliased))
 
 (* Not a roundtrip test *)
 let c42_cascaded_values () =

@@ -605,6 +605,46 @@ let tw_layer_order_contract () =
     ~layer_order ~layer:"components" ~expected:"blue"
     "color: var(--color-brand)"
 
+(* CSS Cascade 5 sec. 3.1 Property Aliasing: a legacy name alias is aliased
+   "with an operation on par with case-mapping", so a [-webkit-transform]
+   declaration is a declaration of [transform]. A CSS-wide keyword on one
+   spelling reads the value the context holds under the other. *)
+let legacy_alias_contract () =
+  let decl s = Css_test_helpers.ok (Css.Declaration.of_string s) in
+  let layer_order = [ "base"; "theme" ] in
+  let rule ~source_order ~layer s : Css.Context.cascade_rule =
+    let declaration = decl s in
+    {
+      property_name = Css.Declaration.property_name declaration;
+      important = false;
+      layer = Some layer;
+      source_order;
+      declaration;
+    }
+  in
+  let ctx =
+    Css.Context.v
+      ~inherited_values:[ decl "-webkit-transform: scale(2)" ]
+      ~cascade_rules:
+        [
+          rule ~source_order:0 ~layer:"base" "-webkit-transform: scale(3)";
+          rule ~source_order:1 ~layer:"base" "box-shadow: 0 0 1px red";
+        ]
+      ()
+  in
+  check_layered_eval_value "revert-layer rolls back to the alias spelling" ~ctx
+    ~layer_order ~layer:"theme" ~expected:"scale(3)" "transform: revert-layer";
+  check_layered_eval_value "revert-layer rolls back to the aliased property"
+    ~ctx ~layer_order ~layer:"theme" ~expected:"0 0 1px red"
+    "-webkit-box-shadow: revert-layer";
+  check_layered_eval_value "inherit reads the alias spelling" ~ctx ~layer_order
+    ~expected:"scale(2)" "transform: inherit";
+  Alcotest.(check (option string))
+    "inherited_value finds the alias spelling" (Some "scale(2)")
+    (Option.map
+       (Css.Declaration.string_of_value ~minify:true)
+       (Css.Context.inherited_value "transform" ctx))
+
 let cascade_rule_resolver_contract () =
   let layer_order = [ "reset"; "theme"; "components"; "utilities" ] in
   let value_ctx =
@@ -783,4 +823,5 @@ let suite =
         tw_layer_order_contract;
       Alcotest.test_case "cascade rule resolver contract" `Quick
         cascade_rule_resolver_contract;
+      Alcotest.test_case "legacy alias contract" `Quick legacy_alias_contract;
     ] )
