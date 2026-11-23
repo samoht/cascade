@@ -863,6 +863,12 @@ differently. They are the reason to minify again.
   sec. 3.4.3 has the shorthand reset it, but Chrome and WebKit keep it, so
   dropping it stopped the layers blending; `--diff=canonical` no longer calls
   the two equal (#1599).
+- `-moz-` radial gradients were deleted or rewritten.** `--minify` deleted
+  `-moz-radial-gradient(center, ellipse cover, red, blue)`, which Firefox 160
+  paints, and kept `-moz-radial-gradient(circle at center, red, blue)`, which
+  it drops; the `-moz-` and `-o-` radial gradients now read the 2011 syntax
+  (CSS Image Values 3 WD sec. 5.2.1) as the `-webkit-` ones do, with Firefox's
+  interpolation hints for `-moz-` (#1604).
 
 #### Stable output
 

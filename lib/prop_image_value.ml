@@ -76,9 +76,9 @@ let rec pp_background_image : background_image Pp.t =
       pp_webkit_linear_gradient_named "-moz-repeating-linear-gradient" ctx
         (dir, stops)
   | Moz_radial_gradient (config, stops) ->
-      pp_radial_gradient_named "-moz-radial-gradient" ctx (config, stops)
+      pp_legacy_radial_gradient_named "-moz-radial-gradient" ctx (config, stops)
   | Moz_repeating_radial_gradient (config, stops) ->
-      pp_radial_gradient_named "-moz-repeating-radial-gradient" ctx
+      pp_legacy_radial_gradient_named "-moz-repeating-radial-gradient" ctx
         (config, stops)
   | O_linear_gradient (dir, stops) ->
       pp_webkit_linear_gradient_named "-o-linear-gradient" ctx (dir, stops)
@@ -86,9 +86,10 @@ let rec pp_background_image : background_image Pp.t =
       pp_webkit_linear_gradient_named "-o-repeating-linear-gradient" ctx
         (dir, stops)
   | O_radial_gradient (config, stops) ->
-      pp_radial_gradient_named "-o-radial-gradient" ctx (config, stops)
+      pp_legacy_radial_gradient_named "-o-radial-gradient" ctx (config, stops)
   | O_repeating_radial_gradient (config, stops) ->
-      pp_radial_gradient_named "-o-repeating-radial-gradient" ctx (config, stops)
+      pp_legacy_radial_gradient_named "-o-repeating-radial-gradient" ctx
+        (config, stops)
   | Image_set options ->
       Pp.call "image-set"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
@@ -547,6 +548,18 @@ let read_bg_image_standard_calls =
     ("repeating-conic-gradient", read_repeating_conic_gradient);
   ]
 
+(* The prefixed radial gradients read the legacy syntax of the Compatibility
+   Standard sec. 3.3.2, each with the laxities of the one browser that still
+   reads it: Chromium for [-webkit-], Firefox for [-moz-], none for [-o-]. *)
+let webkit_radial_body =
+  read_legacy_radial_gradient_body ~optional_comma:true ~hints:false
+
+let moz_radial_body =
+  read_legacy_radial_gradient_body ~optional_comma:false ~hints:true
+
+let o_radial_body =
+  read_legacy_radial_gradient_body ~optional_comma:false ~hints:false
+
 let webkit_bg_image_calls =
   [
     ( "-webkit-linear-gradient",
@@ -556,12 +569,11 @@ let webkit_bg_image_calls =
     ("-webkit-repeating-linear-gradient", read_webkit_repeating_linear_gradient);
     ( "-webkit-radial-gradient",
       fun t ->
-        Cursor.call "-webkit-radial-gradient" t read_legacy_radial_gradient_body
+        Cursor.call "-webkit-radial-gradient" t webkit_radial_body
         |> webkit_radial_gradient_of_radial );
     ( "-webkit-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-webkit-repeating-radial-gradient" t
-          read_legacy_radial_gradient_body
+        Cursor.call "-webkit-repeating-radial-gradient" t webkit_radial_body
         |> webkit_repeat_radial_of_radial );
   ]
 
@@ -578,12 +590,11 @@ let legacy_bg_image_calls =
         |> moz_repeat_linear_of_webkit );
     ( "-moz-radial-gradient",
       fun t ->
-        Cursor.call "-moz-radial-gradient" t read_radial_gradient_body_stops
+        Cursor.call "-moz-radial-gradient" t moz_radial_body
         |> moz_radial_gradient_of_radial );
     ( "-moz-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-moz-repeating-radial-gradient" t
-          read_radial_gradient_body_stops
+        Cursor.call "-moz-repeating-radial-gradient" t moz_radial_body
         |> moz_repeat_radial_of_radial );
     ( "-o-linear-gradient",
       fun t ->
@@ -596,12 +607,11 @@ let legacy_bg_image_calls =
         |> o_repeat_linear_of_webkit );
     ( "-o-radial-gradient",
       fun t ->
-        Cursor.call "-o-radial-gradient" t read_radial_gradient_body_stops
+        Cursor.call "-o-radial-gradient" t o_radial_body
         |> o_radial_gradient_of_radial );
     ( "-o-repeating-radial-gradient",
       fun t ->
-        Cursor.call "-o-repeating-radial-gradient" t
-          read_radial_gradient_body_stops
+        Cursor.call "-o-repeating-radial-gradient" t o_radial_body
         |> o_repeat_radial_of_radial );
   ]
 

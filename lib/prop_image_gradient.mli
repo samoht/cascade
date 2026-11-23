@@ -149,13 +149,13 @@ val read_linear_gradient_body : Cursor.t -> background_image
 val read_webkit_linear_gradient_body : Cursor.t -> background_image
 (** [read_webkit_linear_gradient_body t] reads a [background_image] from [t]. *)
 
-val read_radial_gradient_body_stops : Cursor.t -> background_image
-(** [read_radial_gradient_body_stops t] reads a [background_image] from [t]. *)
-
-val read_legacy_radial_gradient_body : Cursor.t -> background_image
-(** [read_legacy_radial_gradient_body t] reads the arguments of a legacy
-    prefixed radial gradient, in the syntax {!pp_legacy_radial_gradient_named}
-    prints. *)
+val read_legacy_radial_gradient_body :
+  optional_comma:bool -> hints:bool -> Cursor.t -> background_image
+(** [read_legacy_radial_gradient_body ~optional_comma ~hints t] reads the
+    arguments of a legacy prefixed radial gradient, in the syntax
+    {!pp_legacy_radial_gradient_named} prints. [optional_comma] also takes the
+    shape and size with no comma before the stops, and [hints] takes an
+    interpolation hint between two stops. *)
 
 val read_radial_gradient_body : Cursor.t -> background_image
 (** [read_radial_gradient_body t] reads a [background_image] from [t]. *)

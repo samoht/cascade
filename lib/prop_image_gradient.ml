@@ -1292,12 +1292,13 @@ let read_radial_gradient_body_stops t =
     Cursor.err_expected t "at least one color stop in radial-gradient()";
   Radial_gradient (config, stops)
 
-(* The legacy prelude of [pp_legacy_radial_gradient_named], as Chromium reads
-   it. The position is CSS 2.1's one- or two-value one. A radius is
-   non-negative, as Chromium takes a zero one. An argument that reads as a
-   position or a size is a position (sec. 5.2.1). Chromium also takes the comma
-   after the shape and size as optional. The stops are colour stops only, with
-   no interpolation hint and no colour space. *)
+(* The legacy prelude of [pp_legacy_radial_gradient_named]. The position is CSS
+   2.1's one- or two-value one. A radius is non-negative, as Chromium and
+   Firefox take a zero one. An argument that reads as a position or a size is a
+   position (sec. 5.2.1). The stops are colour stops with no colour space.
+   [optional_comma] takes the comma after the shape and size as optional, as
+   Chromium does for [-webkit-]; [hints] takes an interpolation hint between
+   stops, as Firefox does for [-moz-]. *)
 let read_legacy_radial_size_keyword t : radial_size =
   Cursor.enum "radial-size"
     [
@@ -1310,7 +1311,7 @@ let read_legacy_radial_size_keyword t : radial_size =
     ]
     t
 
-let read_legacy_radial_gradient_body t =
+let read_legacy_radial_gradient_body ~optional_comma ~hints t =
   let read_position t =
     let position = read_legacy_position_value t in
     Cursor.ws t;
@@ -1346,16 +1347,28 @@ let read_legacy_radial_gradient_body t =
   in
   if Option.is_some shape || Option.is_some size then (
     Cursor.ws t;
-    ignore (Cursor.comma_opt t));
+    if optional_comma then ignore (Cursor.comma_opt t) else Cursor.comma t);
   let stops = read_gradient_stops t in
   if stops = [] then
-    Cursor.err_expected t "at least one color stop in -webkit-radial-gradient()";
-  List.iter
-    (function
-      | (Length _ | Percentage _ : gradient_stop) ->
-          Cursor.err_invalid t "an interpolation hint in a legacy gradient"
-      | _ -> ())
-    stops;
+    Cursor.err_expected t "at least one color stop in a legacy radial gradient";
+  let is_hint = function
+    | (Length _ | Percentage _ : gradient_stop) -> true
+    | _ -> false
+  in
+  (* CSS Images 4 sec. 3.5.1: a hint sits between two colour stops. *)
+  let rec between_stops = function
+    | a :: (b :: _ as rest) ->
+        (not (is_hint a && is_hint b)) && between_stops rest
+    | [ last ] -> not (is_hint last)
+    | [] -> true
+  in
+  if not hints then (
+    if List.exists is_hint stops then
+      Cursor.err_invalid t "an interpolation hint in a legacy gradient")
+  else if
+    (match stops with first :: _ -> is_hint first | [] -> false)
+    || not (between_stops stops)
+  then Cursor.err_invalid t "an interpolation hint outside two colour stops";
   Radial_gradient ({ shape; size; position; interpolation = None }, stops)
 
 let read_radial_gradient_body t =
