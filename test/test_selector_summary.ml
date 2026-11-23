@@ -103,7 +103,18 @@ let attributes () =
   check_overlap "case-insensitive exact attributes can prove disjoint" false
     "[type=\"button\" i]" "[type=text]";
   check_overlap "different attributes stay conservative" true "[type=button]"
-    "[role=textbox]"
+    "[role=textbox]";
+  (* HTML sec. 4.16.2 compares an unflagged value ASCII case-insensitively only
+     for the attributes it lists, [type] among them and no [data-*]; any other
+     value matches as written (Selectors 4 sec. 6.3). An attribute name matches
+     in any case on an HTML element. *)
+  check_overlap "an unlisted attribute's values are case-sensitive" false
+    "[data-x=a]" "[data-x=A]";
+  check_overlap "a listed attribute's values are not" true "[TYPE=a]" "[TYPE=A]";
+  check_overlap "an s value stays disjoint from another case" false
+    {|[data-x="a" s]|} "[data-x=A]";
+  check_overlap "an i value meets every case" true {|[data-x="a" i]|}
+    "[data-x=A]"
 
 let child_context () =
   check_overlap "different immediate parent ids are disjoint" false "#a > .item"
