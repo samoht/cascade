@@ -933,6 +933,10 @@ differently. They are the reason to minify again.
   `--lossless`; default output is unchanged (#1477).
 - descriptors drop needless whitespace:** `additive-symbols:2 "a",1 "b"` and
   `range:1 2,4 5` (#1570).
+- unfolded math function at a number slot prints without `calc()`:**
+  `z-index:calc(sign(1em))` is now `z-index:sign(1em)`, and so at
+  `line-height`, `font-weight`, `order`, flex factors, `column-count` and
+  `scale` (#1572).
 
 ### Formatted output
 

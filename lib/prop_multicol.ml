@@ -278,7 +278,7 @@ let rec pp_column_count : column_count Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Count n -> Pp.int ctx n
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:
           (match c with
           | Num _ -> Option.is_some (Prop_common.positive_integer_of_calc c)

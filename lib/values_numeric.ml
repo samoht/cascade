@@ -766,7 +766,9 @@ let rec pp_number_percentage : number_percentage Pp.t =
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_number_percentage ctx v
-  | Calc c -> pp_calc_with ~bare_call:true pp_number_percentage ctx c
+  | Calc c ->
+      pp_calc_with ~bare_call:true ~bare_number_call:true pp_number_percentage
+        ctx c
 
 (* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
    12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and
@@ -919,7 +921,7 @@ let rec pp_number : number Pp.t =
      on a leaf that reads back differently without it. [normalize_number] has
      already unwrapped the rest, where the property is in hand. *)
   | Calc c ->
-      pp_calc_with
+      pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_number v))
         pp_number ctx c

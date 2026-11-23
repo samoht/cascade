@@ -383,7 +383,7 @@ let rec pp_line_height : line_height Pp.t =
         (Pp.list ~sep:Pp.comma pp_line_height_comparison_arg)
         ctx [ low; value; high ]
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_line_height v))
         pp_line_height ctx c
@@ -407,7 +407,7 @@ let rec pp_font_weight : font_weight Pp.t =
      the wrapper comes off only when what is inside is a value on its own. *)
   | Calc c ->
       let in_range n = n >= 1. && n <= 1000. in
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num n -> in_range n | _ -> true)
         ~unwrap:(fun (v : font_weight) ->
           match v with Weight n -> in_range n | _ -> true)

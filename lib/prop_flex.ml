@@ -263,7 +263,9 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
 let rec pp_order : order Pp.t =
  fun ctx -> function
   | Int i -> Pp.int ctx i
-  | Calc c -> pp_calc ~unwrap_num:false pp_order ctx c
+  | Calc c ->
+      Values_calc.pp_calc_with ~unwrap_num:false ~bare_call:true
+        ~bare_number_call:true pp_order ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -344,7 +346,7 @@ let rec pp_flex_factor : flex_factor Pp.t =
   (* Sec. 7.2 refuses a negative factor written on its own, so the wrapper comes
      off only around a leaf that is a factor by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun (v : flex_factor) ->
           match v with Number f -> f >= 0. | _ -> true)
