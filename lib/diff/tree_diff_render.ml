@@ -50,19 +50,19 @@ let tree_prefix ~style ~is_last ~parent_prefix =
     let connector =
       if is_last then "\u{2514}\u{2500} " else "\u{251c}\u{2500} "
     in
-    parent_prefix ^ connector
+    String.concat "" [ parent_prefix; connector ]
 
 (* Get the continuation prefix for children *)
 let tree_continuation ~style ~is_last ~parent_prefix =
   if not style.use_tree then parent_prefix
   else
     let continuation = if is_last then "   " else "\u{2502}  " in
-    parent_prefix ^ continuation
+    String.concat "" [ parent_prefix; continuation ]
 
 (* Leaf lines (declarations, block listings) hang off the continuation prefix
    without a connector of their own. *)
 let child_indent ~style ~parent_prefix =
-  if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
+  String.concat "" [ parent_prefix; (if style.use_tree then "   " else "    ") ]
 
 let count_lines buf =
   let n = ref 0 in
@@ -95,9 +95,7 @@ let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
     | _ -> action (* fallback for other actions like "declarations" *)
   in
   (* Properties don't get tree connectors - just indentation continuation *)
-  let indent =
-    if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
-  in
+  let indent = child_indent ~style ~parent_prefix in
   List.iter
     (fun decl ->
       let shown =
@@ -114,9 +112,7 @@ let pp_declarations ?(style = default_style) ?(parent_prefix = "") buf action
 
 let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
     { property_name; expected_value; actual_value } =
-  let indent =
-    if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
-  in
+  let indent = child_indent ~style ~parent_prefix in
   match String_diff.first_diff_pos expected_value actual_value with
   | None ->
       (* Shouldn't happen but handle gracefully *)
@@ -150,14 +146,16 @@ let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
           [
             indent;
             "  ";
-            ansi_red ~color:style.color ("- " ^ exp_truncated);
+            ansi_red ~color:style.color
+              (String.concat "" [ "- "; exp_truncated ]);
             "\n";
           ];
         add_strings buf
           [
             indent;
             "  ";
-            ansi_green ~color:style.color ("+ " ^ act_truncated);
+            ansi_green ~color:style.color
+              (String.concat "" [ "+ "; act_truncated ]);
             "\n";
           ]
 
@@ -232,9 +230,7 @@ let pp_same_property_reorder buf indent prop_names1 prop_names2 =
 
 let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
     =
-  let indent =
-    if style.use_tree then parent_prefix ^ "   " else parent_prefix ^ "    "
-  in
+  let indent = child_indent ~style ~parent_prefix in
   let prop_names1 = List.map Css.declaration_name decls1 in
   let prop_names2 = List.map Css.declaration_name decls2 in
   let same_props =
@@ -544,48 +540,23 @@ let rec pp_container_rules ~style ~parent_prefix ~label buf rules =
     rules
 
 let count_rule_changes (rule_changes : rule_diff list) =
-  let count pred = List.length (List.filter pred rule_changes) in
-  let parts =
-    List.filter_map Fun.id
-      [
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Added _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " added") else None);
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Removed _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " removed") else None);
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Content_changed _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " modified") else None);
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Reordered _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " reordered") else None);
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Rearranged _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " rearranged") else None);
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Selector_changed _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " selector changed") else None);
-        (let n =
-           count (fun (diff : rule_diff) ->
-               match diff with Regrouped _ -> true | _ -> false)
-         in
-         if n > 0 then Some (string_of_int n ^ " regrouped") else None);
-      ]
+  let part label pred =
+    match List.length (List.filter pred rule_changes) with
+    | 0 -> None
+    | n -> Some (String.concat "" [ string_of_int n; " "; label ])
   in
-  parts
+  List.filter_map Fun.id
+    [
+      part "added" (function Added _ -> true | _ -> false);
+      part "removed" (function Removed _ -> true | _ -> false);
+      part "modified" (function Content_changed _ -> true | _ -> false);
+      part "reordered" (function Reordered _ -> true | _ -> false);
+      part "rearranged" (function Rearranged _ -> true | _ -> false);
+      part "selector changed" (function
+        | Selector_changed _ -> true
+        | _ -> false);
+      part "regrouped" (function Regrouped _ -> true | _ -> false);
+    ]
 
 let selectors_of_rules rules =
   List.filter_map
