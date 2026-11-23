@@ -257,20 +257,21 @@ and resolve_css_wide_keyword : type b.
     css_wide_keyword ->
     Declaration.declaration option =
  fun ~layer_order ctx ~important ~property keyword ->
-  let property_name = property_name property in
-  let eval_source ctx decl = eval_typed ~layer_order ctx decl in
-  let inherit_source () =
-    match inherited_value property_name ctx with
-    | Some decl -> Some decl
-    | None -> initial_value property_name ctx
+  let eval_source ctx decl =
+    eval_typed ~layer_order ctx (Declaration.as_property property decl)
   in
-  let initial_source () = initial_value property_name ctx in
+  let inherit_source () =
+    match inherited_property property ctx with
+    | Some decl -> Some decl
+    | None -> initial_property property ctx
+  in
+  let initial_source () = initial_property property ctx in
   let unset_source () =
     if Properties.property_is_inherited property then inherit_source ()
     else initial_source ()
   in
   let cascade_source () =
-    match cascade_rule_chain ctx ~property_name ~important with
+    match cascade_rule_chain ctx ~property ~important with
     | None -> None
     | Some chain -> (
         match chain with

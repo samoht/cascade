@@ -1225,6 +1225,12 @@ The new form of a diagnostic is under [Breaking](#command-line).
 - **`Values.read_constant_number` and `Values.read_constant_integer`** read a
   literal number, or a math function that folds to a constant, rounded at an
   integer: `calc(1.5)` is `2` (#1515).
+- legacy name alias is its property during evaluation.**
+  `transform:revert-layer` now rolls back to a `-webkit-transform` in a lower
+  layer, `transform:inherit` reads an inherited `-webkit-transform`, and
+  `Context.inherited_value`, `Context.initial_value` and
+  `Stylesheet.declared_values` find either spelling (CSS Cascade 5 sec. 3.1).
+  Property names are read in any ASCII case (#1561).
 
 ## 1.2.1
 

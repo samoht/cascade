@@ -112,8 +112,20 @@ let by_name name decls =
   List.find_opt (fun d -> Declaration.property_name d = name) decls
 
 let custom_property name ctx = by_name name ctx.custom_properties
-let inherited_value property ctx = by_name property ctx.inherited_values
-let initial_value property ctx = by_name property ctx.initial_values
+
+let of_property property decls =
+  List.find_opt (Declaration.declares property) decls
+
+let inherited_property property ctx = of_property property ctx.inherited_values
+let initial_property property ctx = of_property property ctx.initial_values
+
+let inherited_value name ctx =
+  let (Properties.Prop p) = Properties.of_name name in
+  inherited_property p ctx
+
+let initial_value name ctx =
+  let (Properties.Prop p) = Properties.of_name name in
+  initial_property p ctx
 
 let index_of name items =
   let rec find i = function
@@ -134,7 +146,7 @@ let cascade_layer_precedence_rank ~layer_order ~important layer =
       let i = Option.value ~default:layer_count (index_of name layer_order) in
       layer_count - i
 
-let cascade_rule_chain ctx ~property_name ~important =
+let cascade_rule_chain ctx ~property ~important =
   match ctx.cascade_rules with
   | None when ctx.layer_order = [] && Option.is_none ctx.layer -> None
   | None -> Some []
@@ -145,7 +157,7 @@ let cascade_rule_chain ctx ~property_name ~important =
       in
       rules
       |> List.filter (fun (rule : cascade_rule) ->
-          String.equal rule.property_name property_name
+          Declaration.declares property rule.declaration
           && Bool.equal rule.important important
           && cascade_layer_precedence_rank ~layer_order:ctx.layer_order
                ~important rule.layer

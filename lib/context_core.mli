@@ -106,20 +106,34 @@ val custom_property : string -> t -> Declaration.declaration option
 (** [custom_property name ctx] is the first custom-property declaration of [ctx]
     named [name]. *)
 
+val inherited_property :
+  'a Properties.property -> t -> Declaration.declaration option
+(** [inherited_property property ctx] is the inherited declaration of [property]
+    in [ctx], under either spelling of a legacy name alias
+    ({!Declaration.declares}). *)
+
+val initial_property :
+  'a Properties.property -> t -> Declaration.declaration option
+(** [initial_property property ctx] is the initial declaration of [property] in
+    [ctx], under either spelling of a legacy name alias. *)
+
 val inherited_value : string -> t -> Declaration.declaration option
-(** [inherited_value property ctx] is the inherited declaration of [property] in
-    [ctx]. *)
+(** [inherited_value name ctx] is {!inherited_property} for the property [name]
+    spells. *)
 
 val initial_value : string -> t -> Declaration.declaration option
-(** [initial_value property ctx] is the initial declaration of [property] in
-    [ctx]. *)
+(** [initial_value name ctx] is {!initial_property} for the property [name]
+    spells. *)
 
 val cascade_rule_chain :
-  t -> property_name:string -> important:bool -> cascade_rule list option
-(** [cascade_rule_chain ctx ~property_name ~important] is the rules for
-    [property_name] that [revert-layer] can roll back to from the current layer,
-    strongest first. [None] when [ctx] has no cascade table and no layer scope.
-*)
+  t ->
+  property:'a Properties.property ->
+  important:bool ->
+  cascade_rule list option
+(** [cascade_rule_chain ctx ~property ~important] is the rules declaring
+    [property] ({!Declaration.declares}) that [revert-layer] can roll back to
+    from the current layer, strongest first. [None] when [ctx] has no cascade
+    table and no layer scope. *)
 
 val remove_cascade_rule : cascade_rule -> cascade_rule list -> cascade_rule list
 (** [remove_cascade_rule rule rules] is [rules] without the rule at the source

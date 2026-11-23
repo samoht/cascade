@@ -283,6 +283,17 @@ val same_property : declaration -> declaration -> bool
 (** [same_property d1 d2] is [property_key d1 = property_key d2]: the two
     declarations target the same property name. *)
 
+val declares : 'a Properties.property -> declaration -> bool
+(** [declares property decl] is whether [decl] declares [property], reading a
+    legacy name alias as the property it aliases (CSS Cascade 5 sec. 3.1), so a
+    [-webkit-transform] declaration declares the transform property and the
+    converse. *)
+
+val as_property : 'a Properties.property -> declaration -> declaration
+(** [as_property property decl] is [decl] written under [property], with its
+    value and importance, or [decl] itself when it already is, is theme-guarded,
+    or [property] refuses its value. *)
+
 val with_value : declaration -> string -> (declaration, Error.t) result
 (** [with_value decl value] is [decl] carrying [value], read as a value of the
     property [decl] already holds and re-typed where that property accepts it.

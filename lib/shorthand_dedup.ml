@@ -547,15 +547,7 @@ let as_aliased_property decl =
   | Declaration.Declaration { property; _ } -> (
       match Properties.legacy_alias property with
       | None -> decl
-      | Some (Prop unprefixed) -> (
-          match
-            Declaration.parse_declaration
-              (Pp.to_string ~minify:false Properties.pp_property unprefixed)
-              (Declaration.string_of_value ~minify:true decl)
-          with
-          | Some d when Declaration.is_important decl -> Declaration.important d
-          | Some d -> d
-          | None -> decl))
+      | Some (Prop unprefixed) -> Declaration.as_property unprefixed decl)
 
 (* [-webkit-text-decoration-color] is not on the sec. 3.4.1 list, so
    {!as_aliased_property} leaves it as written, but every engine that ships the

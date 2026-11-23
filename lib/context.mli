@@ -241,11 +241,13 @@ val winning_custom_declaration :
 
 val inherited_value : string -> t -> Declaration.declaration option
 (** [inherited_value property ctx] is the inherited declaration for [property]
-    in [ctx], if any. *)
+    in [ctx], if any. A legacy name alias and the property it aliases are one
+    property here (CSS Cascade 5 sec. 3.1), so [inherited_value "transform"]
+    finds a [-webkit-transform] declaration. *)
 
 val initial_value : string -> t -> Declaration.declaration option
 (** [initial_value property ctx] is the initial declaration for [property] in
-    [ctx], if any. *)
+    [ctx], if any, reading a legacy name alias as {!inherited_value} does. *)
 
 val media_feature : string -> query -> Media.value option
 (** [media_feature name ctx] is the plain media feature value named [name] in

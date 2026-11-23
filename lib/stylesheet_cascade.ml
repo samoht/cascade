@@ -112,20 +112,25 @@ let cascade_revert_origin_candidates ~important ~current_origin
     candidates
 
 let declared_values ?property declarations =
+  let declares =
+    match property with
+    | None -> fun _ -> true
+    | Some name ->
+        let (Properties.Prop p) = Properties.of_name name in
+        Declaration.declares p
+  in
   declarations
-  |> List.mapi (fun source_order declaration ->
-      let declaration_property = Declaration.property_name declaration in
-      let value = Declaration.string_of_value ~minify:true declaration in
-      {
-        property = declaration_property;
-        value;
-        important = Declaration.is_important declaration;
-        source_order;
-      })
-  |> List.filter (fun declared ->
-      match property with
-      | None -> true
-      | Some property -> declared.property = property)
+  |> List.mapi (fun source_order declaration -> (source_order, declaration))
+  |> List.filter_map (fun (source_order, declaration) ->
+      if not (declares declaration) then None
+      else
+        Some
+          {
+            property = Declaration.property_name declaration;
+            value = Declaration.string_of_value ~minify:true declaration;
+            important = Declaration.is_important declaration;
+            source_order;
+          })
 
 let cascaded_value candidates =
   winning_cascade_origin_candidate candidates

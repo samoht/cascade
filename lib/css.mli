@@ -385,7 +385,8 @@ val cascade_revert_origin_candidates :
 val declared_values :
   ?property:string -> declaration list -> Stylesheet.declared_value list
 (** [declared_values ?property declarations] returns declared values in source
-    order, optionally filtered to one property. *)
+    order, optionally filtered to one property, which a legacy name alias
+    declares as well (CSS Cascade 5 sec. 3.1). *)
 
 val cascaded_value : Stylesheet.cascade_origin_candidate list -> string option
 (** [cascaded_value candidates] returns the winning cascaded value payload, or

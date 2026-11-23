@@ -226,7 +226,8 @@ val declared_values :
   ?property:string -> Declaration.declaration list -> declared_value list
 (** [declared_values ?property declarations] returns the declared values
     contributed by [declarations], preserving declaration source order. When
-    [property] is supplied, only declarations for that property are returned. *)
+    [property] is supplied, only declarations for that property are returned,
+    under either spelling of a legacy name alias (CSS Cascade 5 sec. 3.1). *)
 
 val cascaded_value : cascade_origin_candidate list -> string option
 (** [cascaded_value candidates] returns the winning cascaded value payload, or
