@@ -220,6 +220,7 @@ let columns_width width = (Width width : columns_value)
 let columns_both width count = (Both (width, count) : columns_value)
 
 let counter_item ?(reversed = false) ?value name : counter_item =
+  let value = Option.map (fun n -> (Num (Float.of_int n) : number)) value in
   { name; reversed; value }
 
 let counter_set items = (Counters items : counter_set)

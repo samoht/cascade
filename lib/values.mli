@@ -704,6 +704,16 @@ val read_constant_integer : Cursor.t -> int
     folds to a constant number, rounded to the nearest integer and towards
     positive infinity on a tie (CSS Values 4 sec. 10.9). *)
 
+val read_number_slot : Cursor.t -> number
+(** [read_number_slot t] reads a literal number, or a math function as the
+    number it folds to or, when it does not fold, as its calculation (CSS Values
+    4 sec. 10.1). *)
+
+val read_integer_slot : Cursor.t -> number
+(** [read_integer_slot t] is {!read_number_slot} at an [<integer>]: a literal is
+    an integer token and a call that folds is rounded to the nearest integer,
+    towards positive infinity on a tie (CSS Values 4 sec. 10.9). *)
+
 val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] parses a CSS transition-behavior value. *)
 

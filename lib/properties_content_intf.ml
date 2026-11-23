@@ -52,7 +52,7 @@ type counter_item = {
   reversed : bool;
       (** Written [reversed(name)]: CSS Lists 3 sec. 4.1 lets [counter-reset]
           instantiate a reversed counter. *)
-  value : int option;
+  value : number option;
 }
 
 type counter_set =

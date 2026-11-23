@@ -258,6 +258,12 @@ where it is called. Each entry says what to write there.
   escaping it, so a quote or a backslash inside ended the string or started an
   escape. Use `Pp.quoted_string`, which escapes what CSSOM 1 sec. 2.1 escapes
   and takes an optional `~quote` (#1460).
+- and number slots may hold a calculation.** `counter_item.value` is a `number
+  option` (was `int option`), `font_feature_value`'s `Index` carries a
+  `number` (was `int`), `font_variation_setting.value` is a `number` (was
+  `float`), and `rotate_value`'s `Axis` carries three `number`s (were
+  `float`s); match `Num n` for a literal. `Css.counter_item ?value` still
+  takes an `int` (#1584).
 
 ### Minified output
 
@@ -836,6 +842,12 @@ differently. They are the reason to minify again.
   `aspect-ratio:cos(0)`, which Chromium computes as `1 / 1`, was dropped, as
   were `tan()`, `exp()`, `log()` and `sin()` of a number there; they are now
   read (#1583).
+- math function that cannot fold was deleted at a counter, font setting or
+  rotate axis.** `counter-increment:a sign(1em)`,
+  `font-feature-settings:"liga" sign(1em)`, `font-variation-settings:"wght"
+  calc(400*sign(1em))` and `rotate:1 sign(1em) 0 45deg` were dropped, though
+  Chromium keeps each; they are now kept, and a call that folds still becomes
+  its number (#1584).
 
 #### Stable output
 

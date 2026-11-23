@@ -88,7 +88,7 @@ let pp_counter_item ctx { name; reversed; value } =
   | None -> ()
   | Some n ->
       Pp.space ctx ();
-      Pp.int ctx n
+      Values.pp_number ctx n
 
 let rec pp_counter_set : counter_set Pp.t =
  fun ctx -> function
@@ -274,7 +274,7 @@ let read_counter_item ~reversed t =
     | Option.None -> (read_counter_name t, false)
   in
   Cursor.ws t;
-  let value = Cursor.option Values.read_constant_integer t in
+  let value = Cursor.option Values.read_integer_slot t in
   { name; reversed; value }
 
 let rec read_counter_set ~reversed t : counter_set =

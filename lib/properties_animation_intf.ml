@@ -109,7 +109,7 @@ type rotate_value =
   | X of angle  (** x-axis rotation *)
   | Y of angle  (** y-axis rotation *)
   | Z of angle  (** z-axis rotation (explicit) *)
-  | Axis of float * float * float * angle  (** custom axis rotation *)
+  | Axis of number * number * number * angle  (** custom axis rotation *)
   | None
   | Inherit
   | Initial

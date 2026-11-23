@@ -265,9 +265,9 @@ let normalize_rotate ?(ctx = Values.default_calc_ctx) :
     | Z a -> preserve_if_equal value (Z (na a))
     (* CSS Transforms 2 sec. 5, [rotate]: [x], [y] and [z] name the unit vectors
        [1 0 0], [0 1 0] and [0 0 1]. *)
-    | Axis (1., 0., 0., a) -> X (na a)
-    | Axis (0., 1., 0., a) -> Y (na a)
-    | Axis (0., 0., 1., a) -> Z (na a)
+    | Axis (Num 1., Num 0., Num 0., a) -> X (na a)
+    | Axis (Num 0., Num 1., Num 0., a) -> Y (na a)
+    | Axis (Num 0., Num 0., Num 1., a) -> Z (na a)
     | Axis (x, y, z, a) -> preserve_if_equal value (Axis (x, y, z, na a))
     | other -> other
 
@@ -980,16 +980,18 @@ let rec pp_rotate_value : rotate_value Pp.t =
          angle is [token_sp]'s to judge: an angle ending in its unit is an ident
          sequence a [-] continues, so [0deg-1] would be the one dimension
          [0deg-1], while one ending in [)] delimits itself. *)
-      let pp_sep ctx (next : float) =
-        if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
+      let pp_sep ctx (next : Values.number) =
+        match next with
+        | Num n when Pp.minified ctx && n < 0. -> ()
+        | _ -> Pp.space ctx ()
       in
       pp_required_unit_angle ctx a;
       Pp.token_sp ctx ();
-      Pp.float ctx x;
+      Values.pp_number ctx x;
       pp_sep ctx y;
-      Pp.float ctx y;
+      Values.pp_number ctx y;
       pp_sep ctx z;
-      Pp.float ctx z
+      Values.pp_number ctx z
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -1014,11 +1016,11 @@ let read_rotate_z t : rotate_value =
 
 (* Read custom axis: x y z angle. *)
 let read_rotate_axis_angle t : rotate_value =
-  let first = Values.read_constant_number t in
+  let first = Values.read_number_slot t in
   Cursor.ws t;
-  let second = Values.read_constant_number t in
+  let second = Values.read_number_slot t in
   Cursor.ws t;
-  let third = Values.read_constant_number t in
+  let third = Values.read_number_slot t in
   Cursor.ws t;
   let angle = read_angle t in
   Axis (first, second, third, angle)
@@ -1035,11 +1037,11 @@ let read_rotate_angle_axis_tail angle t =
       Cursor.skip t;
       (Z angle : rotate_value)
   | _ ->
-      let first = Values.read_constant_number t in
+      let first = Values.read_number_slot t in
       Cursor.ws t;
-      let second = Values.read_constant_number t in
+      let second = Values.read_number_slot t in
       Cursor.ws t;
-      let third = Values.read_constant_number t in
+      let third = Values.read_number_slot t in
       (Axis (first, second, third, angle) : rotate_value)
 
 (* CSS Transforms 2 sec. 5 [rotate] also accepts angle then axis: [<angle>
