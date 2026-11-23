@@ -218,6 +218,22 @@ let rec normalize_flex_basis ?(ctx = default_calc_ctx) (value : flex_basis) :
       | None -> value)
   | _ -> value
 
+(* Whether a basis written alone in [flex] reads back as that basis. A bare
+   number reads as the grow factor (sec. 7.2), a CSS-wide keyword names the
+   whole value, and a [var()], or a math function that may hold one, may
+   substitute factors or a number of its own (CSS Variables 1 sec. 3). *)
+let basis_stands_alone : flex_basis -> bool = function
+  | Content | Fit_content | Fit_content_arg _ | Max_content | Min_content | Px _
+  | Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _ | Rem _ | Em _ | Ex _ | Cap _ | Ic _
+  | Ric _ | Rlh _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Vi _ | Vb _ | Dvh _
+  | Dvw _ | Dvmin _ | Dvmax _ | Lvh _ | Lvw _ | Lvmin _ | Lvmax _ | Svh _
+  | Svw _ | Svmin _ | Svmax _ | Ch _ | Lh _ | Dimension _ ->
+      true
+  | Auto | Num _ | Zero | Inherit | Initial | Unset | Revert | Revert_layer
+  | Clamp _ | Min _ | Max _ | Round _ | Mod _ | Rem_fn _ | Hypot _ | Abs _
+  | Calc _ | Var _ ->
+      false
+
 let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
   match value with
   | Grow f ->
@@ -257,6 +273,10 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
          another computed value, and stays. *)
       | _, Number 1., Pct 0. -> Grow g'
       | _, _, Pct 0. -> Grow_shrink (g', s')
+      (* Sec. 7.1: an omitted grow factor is 1 as well, so a lone basis is [1 1
+         <basis>]. *)
+      | Number 1., Number 1., Zero -> Basis (Px 0.)
+      | Number 1., Number 1., b' when basis_stands_alone b' -> Basis b'
       | _ -> if g' == g && s' == s && b' == b then value else Full (g', s', b'))
   | _ -> value
 
