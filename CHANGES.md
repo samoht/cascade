@@ -1021,6 +1021,11 @@ differently. They are the reason to minify again.
   `var()` inside a border colour (#1614).
 - are written in lowercase hex**: U+000E printed as `\E `; CSSOM sec. 2.1
   writes `\e `, and so does cascade now, at the same length (#1634).
+- prefixed twin of an untyped value settles in one pass**:
+  `mask-position:center, left top var(--x)` gained
+  `-webkit-mask-position:center,left top var(--x)`, which the next minify
+  rewrote to `50%`. The twin is now written as its own grammar reads it
+  (#1638).
 
 #### Which rules merge
 

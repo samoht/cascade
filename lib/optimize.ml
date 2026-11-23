@@ -790,7 +790,7 @@ let flatten_nesting = Flatten.block
 (* Once an author supplied a prefix for a property, that spelling is theirs:
    synthesising another value could change what WebKit sees. Otherwise mirror
    every standard declaration so source-order fallback semantics stay intact. *)
-let synthesise_declaration_prefixes ~targets decls =
+let synthesise_declaration_prefixes ~normalize ~targets decls =
   let author_owns kind = List.exists (Webkit_fallback.is_prefixed kind) decls in
   let rec loop changed acc = function
     | [] -> if changed then List.rev acc else decls
@@ -798,7 +798,8 @@ let synthesise_declaration_prefixes ~targets decls =
         match Webkit_fallback.kind_of decl with
         | Some kind when not (author_owns kind) -> (
             match Webkit_fallback.of_declaration targets decl with
-            | Some prefixed -> loop true (decl :: prefixed :: acc) rest
+            | Some prefixed ->
+                loop true (decl :: normalize prefixed :: acc) rest
             | None -> loop changed (decl :: acc) rest)
         | Some _ | None -> loop changed (decl :: acc) rest)
   in
@@ -812,8 +813,8 @@ let synthesise_declaration_prefixes ~targets decls =
    settles on: the twins the drop leaves, written again where no prefixed
    declaration of their property is left. The synthesis never runs under
    [enforce_spec], the one setting the drop reads. *)
-let add_declaration_prefixes ~targets decls =
-  let written = synthesise_declaration_prefixes ~targets decls in
+let add_declaration_prefixes ~normalize ~targets decls =
+  let written = synthesise_declaration_prefixes ~normalize ~targets decls in
   if written == decls then decls
   else
     let kept =
@@ -821,7 +822,7 @@ let add_declaration_prefixes ~targets decls =
         (List.mapi (fun i decl -> (i, decl)) written)
     in
     if List.compare_lengths kept written = 0 then written
-    else synthesise_declaration_prefixes ~targets (List.map snd kept)
+    else synthesise_declaration_prefixes ~normalize ~targets (List.map snd kept)
 
 let rec condition_has_webkit kind = function
   | Supports.Property (Supports.Declaration (_, decl)) ->
@@ -917,7 +918,9 @@ let drop_shadowed_in_prefixed_runs ~floors ~before after =
   in
   walk [] [] false before after
 
-let add_compatibility_prefixes ~targets stylesheet =
+(* [normalize] is the pass's own normalisation, so a twin is written as the next
+   pass would hold it. *)
+let add_prefixes ~normalize ~targets stylesheet =
   let rewrite original =
     let stmt =
       match original with
@@ -947,7 +950,9 @@ let add_compatibility_prefixes ~targets stylesheet =
           original
     in
     if at_declaration_site compatibility_declaration_sites stmt then
-      map_statement_declarations (add_declaration_prefixes ~targets) stmt
+      map_statement_declarations
+        (add_declaration_prefixes ~normalize ~targets)
+        stmt
     else stmt
   in
   let rec block stmts =
@@ -960,6 +965,9 @@ let add_compatibility_prefixes ~targets stylesheet =
     else drop_shadowed_in_prefixed_runs ~floors:targets ~before:stmts stmts'
   in
   block stylesheet
+
+let add_compatibility_prefixes ~targets stylesheet =
+  add_prefixes ~normalize:Declaration.normalize ~targets stylesheet
 
 (** [drop_invalid] walks every declaration list in the stylesheet (rules, bare
     nesting blocks, [@keyframes] frames, [@page] and its margin boxes,
@@ -1367,14 +1375,14 @@ let sanitize_block ~ctx ~lossless ~enforce_spec (b : statement list) :
    blocks it leaves adjacent, a dead nested rule takes the blocks it empties,
    and the prefixes are the ones the next pass would settle on. A pass that
    changes nothing hands back its input. *)
-let run_pipeline ~ctx ~targets ~enforce_spec stylesheet =
+let run_pipeline ~ctx ~normalize ~targets ~enforce_spec stylesheet =
   let factor_cache = Factor.cache () in
   (* The prefixes come last: the vendor-alias drop reads {!Baseline} where the
      synthesis reads [targets], and the two disagree wherever a target trails
      Baseline, so a twin synthesised before the rule-local passes would be
      dropped there as dead. *)
   let prefixes stmts =
-    if enforce_spec then stmts else add_compatibility_prefixes ~targets stmts
+    if enforce_spec then stmts else add_prefixes ~normalize ~targets stmts
   in
   let result =
     prefixes (statements_top_level ~factor_cache ~ctx ~enforce_spec stylesheet)
@@ -1429,6 +1437,14 @@ let drop_unused_custom_props (stmts : statement list) : statement list =
   in
   List.map_preserve prune stmts
 
+(* A nested form stays only where every target parses it; flattening is exact
+   (CSS Nesting 1 sec. 4 and 5), so the rest is flattened first. *)
+let flatten_unparsed_nesting ~flatten_nesting ctx stylesheet =
+  if flatten_nesting || not (Ctx.parses_nesting ctx) then
+    Flatten.block stylesheet
+  else if Ctx.parses_nested_declarations ctx then stylesheet
+  else Flatten.rules_with_nested_declarations stylesheet
+
 let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     ?(flatten_nesting = false) ?(lossless = false) ?(enforce_spec = false)
     ?(aggressive = false) ?(regroup = true) ?(closed_world = false)
@@ -1438,6 +1454,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let registry = known_registrations ~scope stylesheet in
   let ctx = single_valued_calc_ctx registry in
   let stylesheet = sanitize_block ~ctx ~lossless ~enforce_spec stylesheet in
+  let normalize = Declaration.normalize ~ctx ~lossless ~enforce_spec in
   let stylesheet = Stylesheet.drop_inert_at_rules stylesheet in
   (* Under [lossless] the raw body stands as authored: nothing types it, so
      nothing proves the layout inside it carries no meaning to its reader. *)
@@ -1460,18 +1477,11 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
       ~targets ?judge ~registered ~resets_held ?stats scope
   in
-  (* A nested form stays only where every target parses it; flattening is exact
-     (CSS Nesting 1 sec. 4 and 5), so the rest is flattened first. *)
-  let stylesheet =
-    if flatten_nesting || not (Ctx.parses_nesting ctx) then
-      Flatten.block stylesheet
-    else if Ctx.parses_nested_declarations ctx then stylesheet
-    else Flatten.rules_with_nested_declarations stylesheet
-  in
+  let stylesheet = flatten_unparsed_nesting ~flatten_nesting ctx stylesheet in
   let result =
     run_pipeline
       ~ctx:(Ctx.with_extend_lists true ctx)
-      ~targets ~enforce_spec stylesheet
+      ~normalize ~targets ~enforce_spec stylesheet
   in
   let result =
     if prune_unused_custom_props then drop_unused_custom_props result
