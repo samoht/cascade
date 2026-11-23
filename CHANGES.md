@@ -869,6 +869,12 @@ differently. They are the reason to minify again.
   it drops; the `-moz-` and `-o-` radial gradients now read the 2011 syntax
   (CSS Image Values 3 WD sec. 5.2.1) as the `-webkit-` ones do, with Firefox's
   interpolation hints for `-moz-` (#1604).
+- gradients with an interpolation method or a `to` direction are kept**:
+  `--minify` deleted `-moz-radial-gradient(in oklab,red,blue)` and
+  `-moz-linear-gradient(to bottom,...)`, which Firefox paints; a `to`
+  direction keeps the unprefixed meaning Firefox gives it.
+  `-webkit-radial-gradient(10px 20px red,blue)`, which no browser reads, is no
+  longer rewritten into one they paint (#1605).
 
 #### Stable output
 

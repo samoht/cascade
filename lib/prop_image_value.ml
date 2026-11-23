@@ -71,9 +71,9 @@ let rec pp_background_image : background_image Pp.t =
       pp_legacy_radial_gradient_named "-webkit-repeating-radial-gradient" ctx
         (config, stops)
   | Moz_linear_gradient (dir, stops) ->
-      pp_webkit_linear_gradient_named "-moz-linear-gradient" ctx (dir, stops)
+      pp_moz_linear_gradient_named "-moz-linear-gradient" ctx (dir, stops)
   | Moz_repeating_linear_gradient (dir, stops) ->
-      pp_webkit_linear_gradient_named "-moz-repeating-linear-gradient" ctx
+      pp_moz_linear_gradient_named "-moz-repeating-linear-gradient" ctx
         (dir, stops)
   | Moz_radial_gradient (config, stops) ->
       pp_legacy_radial_gradient_named "-moz-radial-gradient" ctx (config, stops)
@@ -215,11 +215,11 @@ let rec normalize_background_image ?(lossless = false) ~enforce_spec :
         (Webkit_repeating_radial_gradient (normalize_radial_config c, stops s))
   | Moz_linear_gradient (d, s) ->
       preserve_if_equal value
-        (Moz_linear_gradient (normalize_legacy_gradient_direction d, stops s))
+        (Moz_linear_gradient (normalize_moz_gradient_direction d, stops s))
   | Moz_repeating_linear_gradient (d, s) ->
       preserve_if_equal value
         (Moz_repeating_linear_gradient
-           (normalize_legacy_gradient_direction d, stops s))
+           (normalize_moz_gradient_direction d, stops s))
   | Moz_radial_gradient (c, s) ->
       preserve_if_equal value
         (Moz_radial_gradient (normalize_radial_config c, stops s))
@@ -553,12 +553,15 @@ let read_bg_image_standard_calls =
    reads it: Chromium for [-webkit-], Firefox for [-moz-], none for [-o-]. *)
 let webkit_radial_body =
   read_legacy_radial_gradient_body ~optional_comma:true ~hints:false
+    ~interpolation:false
 
 let moz_radial_body =
   read_legacy_radial_gradient_body ~optional_comma:false ~hints:true
+    ~interpolation:true
 
 let o_radial_body =
   read_legacy_radial_gradient_body ~optional_comma:false ~hints:false
+    ~interpolation:false
 
 let webkit_bg_image_calls =
   [
@@ -581,13 +584,17 @@ let legacy_bg_image_calls =
   [
     ( "-moz-linear-gradient",
       fun t ->
-        Cursor.call "-moz-linear-gradient" t read_webkit_linear_gradient_body
-        |> moz_linear_gradient_of_webkit );
+        let dir, stops =
+          Cursor.call "-moz-linear-gradient" t read_moz_linear_gradient_body
+        in
+        Moz_linear_gradient (dir, stops) );
     ( "-moz-repeating-linear-gradient",
       fun t ->
-        Cursor.call "-moz-repeating-linear-gradient" t
-          read_webkit_linear_gradient_body
-        |> moz_repeat_linear_of_webkit );
+        let dir, stops =
+          Cursor.call "-moz-repeating-linear-gradient" t
+            read_moz_linear_gradient_body
+        in
+        Moz_repeating_linear_gradient (dir, stops) );
     ( "-moz-radial-gradient",
       fun t ->
         Cursor.call "-moz-radial-gradient" t moz_radial_body

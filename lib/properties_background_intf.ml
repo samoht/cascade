@@ -107,6 +107,19 @@ type gradient_direction =
   | With_interpolation of gradient_direction * color_interpolation
   | Var of gradient_direction var
 
+(** The direction of a [-moz-linear-gradient()]. Firefox reads the legacy one of
+    CSS Image Values 3 (W3C Working Draft, 17 February 2011) sec. 5.1.1, where a
+    side names where the gradient starts, and reads the whole gradient with the
+    unprefixed grammar of CSS Images 4 sec. 3.1 once the direction starts with
+    [to]. *)
+type moz_gradient_direction =
+  | Legacy_direction of gradient_direction
+      (** [Legacy_direction d] is a 2011 direction, its sides kept in the [To_]
+          constructor of the same name: [top] is [To_top]. *)
+  | To_direction of gradient_direction
+      (** [To_direction d] is a [to <side-or-corner>] direction with the meaning
+          it has in [linear-gradient()]. *)
+
 (** Shape of a radial gradient *)
 type radial_shape = Circle | Ellipse | Var of radial_shape var
 
@@ -300,8 +313,8 @@ type background_image =
   | Webkit_radial_gradient of radial_gradient_config * gradient_stop list
   | Webkit_repeating_radial_gradient of
       radial_gradient_config * gradient_stop list
-  | Moz_linear_gradient of gradient_direction * gradient_stop list
-  | Moz_repeating_linear_gradient of gradient_direction * gradient_stop list
+  | Moz_linear_gradient of moz_gradient_direction * gradient_stop list
+  | Moz_repeating_linear_gradient of moz_gradient_direction * gradient_stop list
   | Moz_radial_gradient of radial_gradient_config * gradient_stop list
   | Moz_repeating_radial_gradient of radial_gradient_config * gradient_stop list
   | O_linear_gradient of gradient_direction * gradient_stop list

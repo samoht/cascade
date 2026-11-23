@@ -57,6 +57,12 @@ val pp_webkit_linear_gradient_named :
 (** [pp_webkit_linear_gradient_named name ctx (dir, stops)] prints a prefixed
     linear gradient as the function [name], [dir] in the legacy syntax. *)
 
+val pp_moz_linear_gradient_named :
+  string -> Pp.ctx -> moz_gradient_direction * gradient_stop list -> unit
+(** [pp_moz_linear_gradient_named name ctx (dir, stops)] prints a
+    [-moz-linear-gradient()] as the function [name], [dir] in the syntax it was
+    read in. *)
+
 val pp_radial_gradient_named :
   string -> Pp.ctx -> radial_gradient_config * gradient_stop list -> unit
 (** [pp_radial_gradient_named name ctx (config, stops)] prints a radial gradient
@@ -67,7 +73,7 @@ val pp_legacy_radial_gradient_named :
 (** [pp_legacy_radial_gradient_named name ctx (config, stops)] prints a radial
     gradient as the function [name] in the legacy syntax of CSS Image Values 3
     (Working Draft, 17 February 2011) sec. 5.2.1: the position first, with no
-    [at], then the shape and size. *)
+    [at], then the shape and size, then the colour interpolation method. *)
 
 val normalize_gradient_direction : gradient_direction -> gradient_direction
 (** [normalize_gradient_direction v] is [v] in its canonical spelling. *)
@@ -77,6 +83,12 @@ val normalize_legacy_gradient_direction :
 (** [normalize_legacy_gradient_direction v] is the direction [v] of a prefixed
     linear gradient in its canonical spelling, read in the legacy syntax, where
     a side keyword names where the gradient starts and [top] is the default. *)
+
+val normalize_moz_gradient_direction :
+  moz_gradient_direction -> moz_gradient_direction
+(** [normalize_moz_gradient_direction d] is [d] in its canonical spelling: a
+    legacy direction as {!normalize_legacy_gradient_direction} gives it, and a
+    [to] direction as written. *)
 
 val normalize_gradient_stop :
   ?lossless:bool -> enforce_spec:bool -> gradient_stop -> gradient_stop
@@ -149,13 +161,24 @@ val read_linear_gradient_body : Cursor.t -> background_image
 val read_webkit_linear_gradient_body : Cursor.t -> background_image
 (** [read_webkit_linear_gradient_body t] reads a [background_image] from [t]. *)
 
+val read_moz_linear_gradient_body :
+  Cursor.t -> moz_gradient_direction * gradient_stop list
+(** [read_moz_linear_gradient_body t] reads the arguments of a
+    [-moz-linear-gradient()], in the syntax {!pp_moz_linear_gradient_named}
+    prints. *)
+
 val read_legacy_radial_gradient_body :
-  optional_comma:bool -> hints:bool -> Cursor.t -> background_image
-(** [read_legacy_radial_gradient_body ~optional_comma ~hints t] reads the
-    arguments of a legacy prefixed radial gradient, in the syntax
+  optional_comma:bool ->
+  hints:bool ->
+  interpolation:bool ->
+  Cursor.t ->
+  background_image
+(** [read_legacy_radial_gradient_body ~optional_comma ~hints ~interpolation t]
+    reads the arguments of a legacy prefixed radial gradient, in the syntax
     {!pp_legacy_radial_gradient_named} prints. [optional_comma] also takes the
-    shape and size with no comma before the stops, and [hints] takes an
-    interpolation hint between two stops. *)
+    shape and size with no comma before the stops, [hints] takes an
+    interpolation hint between two stops, and [interpolation] a colour
+    interpolation method. *)
 
 val read_radial_gradient_body : Cursor.t -> background_image
 (** [read_radial_gradient_body t] reads a [background_image] from [t]. *)
@@ -187,15 +210,6 @@ val webkit_repeat_radial_of_radial : background_image -> background_image
 (** [webkit_repeat_radial_of_radial i] is [i] respelt as
     [-webkit-repeating-radial-gradient()] when it is a [radial-gradient()], else
     [i]. *)
-
-val moz_linear_gradient_of_webkit : background_image -> background_image
-(** [moz_linear_gradient_of_webkit i] is [i] respelt as [-moz-linear-gradient()]
-    when it is a [-webkit-linear-gradient()], else [i]. *)
-
-val moz_repeat_linear_of_webkit : background_image -> background_image
-(** [moz_repeat_linear_of_webkit i] is [i] respelt as
-    [-moz-repeating-linear-gradient()] when it is a [-webkit-linear-gradient()],
-    else [i]. *)
 
 val moz_radial_gradient_of_radial : background_image -> background_image
 (** [moz_radial_gradient_of_radial i] is [i] respelt as [-moz-radial-gradient()]
