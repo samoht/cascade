@@ -1039,12 +1039,40 @@ let read_angular_gradient_stop t : gradient_stop =
     ]
     t
 
-let read_gradient_stops ?(angular = false) t =
+let is_hint : gradient_stop -> bool = function
+  | Length _ | Percentage _ | Angle_hint _ -> true
+  | Color_percentage _ | Color_length _ | Color_angle _ | Channel _ | List _
+  | Position _ | Direction _ | Var _ ->
+      false
+
+(* CSS Images 4 sec. 3.5.1 Color Stop Lists: [<linear-color-stop> , [
+   <linear-color-hint>? , <linear-color-stop> ]#?], so a hint sits between two
+   colour stops. Whatever a [var()] beside it stands for, a hint that comes
+   first, last or next to another hint is not between two stops. *)
+let check_hint_placement ~open_start t stops =
+  let rec placed = function
+    | a :: (b :: _ as rest) -> (not (is_hint a && is_hint b)) && placed rest
+    | [ last ] -> not (is_hint last)
+    | [] -> true
+  in
+  let first_ok =
+    match stops with
+    | first :: _ -> open_start || not (is_hint first)
+    | [] -> true
+  in
+  if not (first_ok && placed stops) then
+    Cursor.err_invalid t "an interpolation hint outside two colour stops"
+
+(* [open_start] is for a list after a [var()] direction, which may stand for the
+   stops before it. *)
+let read_gradient_stops ?(angular = false) ?(open_start = false) t =
   let stop =
     if angular then read_angular_gradient_stop else read_gradient_stop
   in
   match Cursor.option (Cursor.list ~at_least:1 ~sep:Cursor.comma stop) t with
-  | Some stops -> stops
+  | Some stops ->
+      check_hint_placement ~open_start t stops;
+      stops
   | None -> []
 
 module Radial_config = struct
@@ -1239,6 +1267,13 @@ let rec read_gradient_position t : gradient_position =
             ]
             t)
 
+let rec substituted_direction : gradient_direction -> bool = function
+  | Var _ | Angle (Var _) -> true
+  | With_interpolation (d, _) -> substituted_direction d
+  | Default_direction | To_top | To_top_right | To_right | To_bottom_right
+  | To_bottom | To_bottom_left | To_left | To_top_left | Angle _ ->
+      false
+
 let read_linear_gradient_body_stops t =
   (* After the prelude the comma separating it from the colour-stop list is
      required if and only if the prelude consumed any tokens. *)
@@ -1251,7 +1286,9 @@ let read_linear_gradient_body_stops t =
     Cursor.ws t;
     if not (Cursor.comma_opt t) then
       Cursor.err_expected t "',' after linear-gradient direction");
-  let stops = read_gradient_stops t in
+  let stops =
+    read_gradient_stops ~open_start:(substituted_direction direction) t
+  in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in linear-gradient()";
   Linear_gradient (direction, stops)
@@ -1287,7 +1324,8 @@ let read_linear_gradient_body t =
    before the stops. [interpolation] also takes a colour interpolation method
    (CSS Images 4 sec. 3.1) before or after the direction, as Chromium and
    Firefox do for [-webkit-] and Firefox for [-moz-]. [name] is for errors. *)
-let read_legacy_linear_gradient_body ~name ~interpolation read_direction t =
+let read_legacy_linear_gradient_body ~name ~interpolation ~substituted
+    read_direction t =
   let read_interpolation t =
     Cursor.ws t;
     if interpolation then Cursor.option read_color_interpolation t else None
@@ -1305,7 +1343,8 @@ let read_legacy_linear_gradient_body ~name ~interpolation read_direction t =
     if not (Cursor.comma_opt t) then
       Cursor.err_expected t
         (String.concat "" [ "',' after "; name; " direction" ]));
-  let stops = read_gradient_stops t in
+  let open_start = Option.fold ~none:false ~some:substituted direction in
+  let stops = read_gradient_stops ~open_start t in
   if stops = [] then
     Cursor.err_expected t
       (String.concat "" [ "at least one color stop in "; name; "()" ]);
@@ -1322,7 +1361,7 @@ let read_legacy_direction t =
 let read_webkit_linear_gradient_body ~interpolation t =
   let direction, with_interp, stops =
     read_legacy_linear_gradient_body ~name:"-webkit-linear-gradient"
-      ~interpolation read_legacy_direction t
+      ~interpolation ~substituted:substituted_direction read_legacy_direction t
   in
   Webkit_linear_gradient
     (with_interp (Option.value ~default:Default_direction direction), stops)
@@ -1334,6 +1373,8 @@ let read_moz_linear_gradient_body t =
   let direction, with_interp, stops =
     read_legacy_linear_gradient_body ~name:"-moz-linear-gradient"
       ~interpolation:true
+      ~substituted:(function
+        | Legacy_direction d | To_direction d -> substituted_direction d)
       (fun t ->
         Cursor.one_of
           [
@@ -1425,26 +1466,10 @@ let read_legacy_radial_shape_size t =
       ((None : radial_shape option), Some (Ellipse_radii (a, b) : radial_size))
   | shape_size -> shape_size
 
-(* CSS Images 4 sec. 3.5.1: a hint sits between two colour stops. [hints] false
-   takes none. *)
+(* [hints] false takes no interpolation hint, which the 2011 draft has not. *)
 let check_legacy_hints ~hints t stops =
-  let is_hint = function
-    | (Length _ | Percentage _ : gradient_stop) -> true
-    | _ -> false
-  in
-  let rec between_stops = function
-    | a :: (b :: _ as rest) ->
-        (not (is_hint a && is_hint b)) && between_stops rest
-    | [ last ] -> not (is_hint last)
-    | [] -> true
-  in
-  if not hints then (
-    if List.exists is_hint stops then
-      Cursor.err_invalid t "an interpolation hint in a legacy gradient")
-  else if
-    (match stops with first :: _ -> is_hint first | [] -> false)
-    || not (between_stops stops)
-  then Cursor.err_invalid t "an interpolation hint outside two colour stops"
+  if (not hints) && List.exists is_hint stops then
+    Cursor.err_invalid t "an interpolation hint in a legacy gradient"
 
 let read_legacy_radial_prelude ~optional_comma ~hints ~interpolation t =
   let read_interpolation t =

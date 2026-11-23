@@ -880,6 +880,9 @@ differently. They are the reason to minify again.
   radial shape and size (kept missing, so Firefox still drops it), and
   `-webkit-linear-gradient()` with an interpolation method, which both paint
   (#1606).
+- gradient whose interpolation hint is not between two colour stops is
+  invalid**, as CSS Images 4 sec. 3.5.1, Chromium and Firefox say, so
+  `--minify` drops it instead of keeping it (#1607).
 
 #### Stable output
 
