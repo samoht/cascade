@@ -120,6 +120,16 @@ let test_merge_lone_in_scope () =
     "a child starting with its parent merges" "@scope(.c){.a .b{color:red}}"
     (minify_for nesting_targets "@scope (.c){.a{.b{color:red}}}")
 
+(* Two rules of one selector that hold only nested rules are one rule over both
+   bodies, in order (CSS Nesting 1 sec. 3): each nested rule writes under [&],
+   which is the same selector in both. *)
+let test_same_selector_nested_only () =
+  Alcotest.(check string)
+    "nested-only rules of one selector merge"
+    ".card-component{&:hover{color:red}&:active{color:green}&:focus{color:#00f}&:visited{color:pink}}"
+    (minify_for nesting_targets
+       ".card-component{&:hover{color:red}&:active{color:green}}.card-component{&:focus{color:blue}&:visited{color:pink}}")
+
 (* A form is emitted only if every browser the run serves parses it. MDN's
    browser-compat-data records CSS Nesting ([css.selectors.nesting]) in full
    from Chrome 120, Firefox 117 and Safari 17.2; Chrome 111 and Safari 16.4, the
@@ -359,6 +369,8 @@ let suite =
         test_merged_selector_nests_on_first_pass;
       Alcotest.test_case "merge_lone wrapper" `Quick test_merge_lone_wrapper;
       Alcotest.test_case "merge_lone in scope" `Quick test_merge_lone_in_scope;
+      Alcotest.test_case "same selector nested only" `Quick
+        test_same_selector_nested_only;
       Alcotest.test_case "nesting follows the floors" `Quick
         test_nesting_follows_the_floors;
       Alcotest.test_case "nested declarations are flattened" `Quick
