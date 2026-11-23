@@ -649,6 +649,11 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     else rule_with_nested live (drop_emptied_blocks live.nested)
   in
   let rule =
+    if Ctx.parses_nested_declarations ctx then
+      Nest.nesting_rules_as_declarations rule
+    else rule
+  in
+  let rule =
     let hoisted = Nest.hoist_declaration_runs rule in
     if hoisted == rule then rule
     else
@@ -1453,6 +1458,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let stylesheet =
     if flatten_nesting || not (Ctx.parses_nesting ctx) then
       Flatten.block stylesheet
+    else if Ctx.parses_nested_declarations ctx then stylesheet
     else Flatten.rules_with_nested_declarations stylesheet
   in
   let result =

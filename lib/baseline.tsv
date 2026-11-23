@@ -162,6 +162,7 @@ greenfield	white-space-collapse
 greenfield	widows
 greenfield	window-drag
 greenfield	zoom
+support	api.CSSNestedDeclarations	130.0	132.0	18.2	18.2
 support	css.at-rules.charset	2.0	1.5	4.0	4.0
 support	css.at-rules.container	105.0	110.0	16.0	16.0
 support	css.at-rules.container.anchor_position_queries	143.0	-	-	-

@@ -409,6 +409,32 @@ open Common
 
 let preserve = List.preserve
 
+(* CSS Nesting 1 sec. 5: a nested declarations rule matches the parent's
+   elements and pseudo-elements at the parent's own weight, and a nested [&]
+   rule what [:is()] of the parent matches, at the weight of its most specific
+   branch (sec. 4). For a parent of one selector naming no pseudo-element the
+   two are one, so an [&] rule holding only declarations is a declarations run
+   in its place. *)
+let nesting_rules_as_declarations (rule : rule) =
+  if is_list rule.selector || Selector.has_pseudo_element rule.selector then
+    rule
+  else
+    let nested =
+      List.map_preserve
+        (function
+          | Rule
+              {
+                selector = Selector.Nesting;
+                declarations;
+                nested = [];
+                merge_key = None;
+              } ->
+              Declarations declarations
+          | stmt -> stmt)
+        rule.nested
+    in
+    if nested == rule.nested then rule else { rule with nested }
+
 let rules (rules : rule list) =
   let arr : rule array = Array.of_list rules in
   let n = Array.length arr in

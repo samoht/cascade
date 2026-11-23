@@ -1000,6 +1000,13 @@ differently. They are the reason to minify again.
   `linear-gradient()` keep only the standard value when every target browser
   parses it. A prefix some target still needs, such as
   `width:-webkit-fill-available` before `stretch`, stays (#1587).
+- declarations stay nested where every target reads them.** Under targets from
+  Chrome 130, Firefox 132 and Safari 18.2 (`api.CSSNestedDeclarations`), a
+  declaration after a nested rule or directly in a nested group rule is kept
+  in place instead of being flattened into a copy of its parent, and a bare
+  `&{...}` rule under a single selector becomes declarations:
+  `.a{b{color:red}color:#00f}` rather than `.a b{color:red}.a{color:#00f}`
+  (#1589).
 
 ### Formatted output
 

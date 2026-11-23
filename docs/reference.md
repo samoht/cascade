@@ -277,8 +277,9 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
   selector loses its `&` prefix (`& div` to `div`), and adjacent rules may
   nest. A rule holding a declaration after a nested rule, or one directly in a
   nested group rule (a nested declarations rule, CSS Nesting 1 sec. 3.4 and
-  5), is flattened under any targets, since releases before nested
-  declarations rules read it in another order.
+  5), stays from Chrome 130, Firefox 132 and Safari 18.2
+  (`api.CSSNestedDeclarations`) and is flattened under older targets, since
+  releases before nested declarations rules read it in another order.
 - An `oklab` or `oklch` axis takes the percentage spelling where it is
   shorter, `oklch(.7 .304 20)` to `oklch(.7 76% 20)`.
 - A rule whose selector holds, outside `:is()` and `:where()`, a pseudo-class

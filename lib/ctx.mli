@@ -153,6 +153,14 @@ val parses_nesting : t -> bool
     with an identifier. Always [false] under {!val-enforce_spec}, whose
     conforming implementations include one that predates CSS Nesting. *)
 
+val parses_nested_declarations : t -> bool
+(** [parses_nested_declarations t] is whether every browser the run serves reads
+    a nested declarations rule (CSS Nesting 1 sec. 3.4) in place: it
+    {!parses_nesting} and every engine of {!floors} is at or past the release
+    browser-compat-data gives for [api.CSSNestedDeclarations] (Chrome 130,
+    Firefox 132, Safari 18.2). Earlier releases that parse nesting move a
+    declaration written after a nested rule ahead of every nested rule. *)
+
 val stats : t -> Stats.t
 (** Profiling recorder for the run this context belongs to. *)
 

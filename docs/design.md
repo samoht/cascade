@@ -271,9 +271,10 @@ when an earlier overlapping rule writes a different value. Whether nesting may
 stay is `Ctx.parses_nesting`: every engine of the floors at or past
 `css.selectors.nesting` in the compat data, and never under `--enforce-spec`.
 Otherwise `Optimize.stylesheet` runs `Flatten.block` before the pipeline;
-when it holds, `Flatten.rules_with_nested_declarations` still flattens each
-rule holding a nested declarations rule, which the compat data has no key
-for. The `&` relaxation and synthesis run only when it holds. Nesting synthesis
+when it holds but `Ctx.parses_nested_declarations` does not (every engine of
+the floors at or past `api.CSSNestedDeclarations`),
+`Flatten.rules_with_nested_declarations` still flattens each rule holding a
+nested declarations rule. The `&` relaxation and synthesis run only when it holds. Nesting synthesis
 is adjacent-only, within one cascade context, with an exact selector extension
 under a non-list parent that carries no pseudo-element, leaving no `&` in what
 remains of the child, since sec. 4 has that `&` name `:scope` or the enclosing
