@@ -1167,6 +1167,24 @@ let spec_math_integer_slots () =
         (String.trim (Css.to_string ~minify:true p.stylesheet))
   | Error e -> Alcotest.failf "%s" (Error.to_string e)
 
+(* CSS Values 4 sec. 10.6 makes [sign(A)] the [<number>] -1, 0 or +1, and sec.
+   10.3 lets [round()] omit its step when A is a [<number>], defaulting it to 1.
+   Both stand at an [<integer>] as any math function does. Chromium 157 computes
+   [counter-increment:a sign(1)] as [a 1], [a sign(-1)] as [a -1], [a
+   round(1.5)] as [a 2] and [z-index:round(1.5)] as [2]; cascade dropped
+   each. *)
+let spec_math_integer_sign_and_round () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("counter-increment", "a sign(1)", "a 1");
+      ("counter-increment", "a sign(-1)", "a -1");
+      ("counter-reset", "a sign(2)", "a 1");
+      ("counter-increment", "a round(1.5)", "a 2");
+      ("z-index", "round(1.5)", "2");
+      ("opacity", "round(.4)", "0");
+    ]
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1288,6 +1306,8 @@ let suite =
       test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
       test_case "spec math infinite range" `Quick spec_math_infinite_range;
       test_case "spec math integer slots" `Quick spec_math_integer_slots;
+      test_case "spec math sign and round at an integer slot" `Quick
+        spec_math_integer_sign_and_round;
       test_case "spec math inverse trig is an angle" `Quick
         spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick
