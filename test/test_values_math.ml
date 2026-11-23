@@ -1244,6 +1244,22 @@ let spec_math_negative_zero () =
       ("margin-left", "calc(1px/-0)");
     ]
 
+(* CSS Values 4 secs. 10.4 and 10.5: [cos()], [tan()], [exp()] and [log()]
+   answer a [<number>], so each stands at a [<ratio>] term. Chromium 157
+   computes [aspect-ratio:cos(0)/2] as [1 / 2] and [exp(0)] as [1 / 1], and
+   drops [asin(1)], an angle; cascade dropped them all. *)
+let spec_math_number_functions_at_a_ratio () =
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"aspect-ratio" ~into input)
+    [
+      ("cos(0)", "1"); ("cos(0)/2", "1/2"); ("exp(0)", "1"); ("tan(0deg)", "0");
+    ];
+  Alcotest.(check string)
+    "aspect-ratio:asin(1) is refused" ""
+    (match Css.of_string ~strict:false ".x{aspect-ratio:asin(1)}" with
+    | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
+    | Error e -> Error.to_string e)
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1371,6 +1387,8 @@ let suite =
       test_case "spec math opacity value unfolded" `Quick
         spec_math_opacity_value_unfolded;
       test_case "spec math negative zero" `Quick spec_math_negative_zero;
+      test_case "spec math number functions at a ratio" `Quick
+        spec_math_number_functions_at_a_ratio;
       test_case "spec math inverse trig is an angle" `Quick
         spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick
