@@ -799,6 +799,10 @@ differently. They are the reason to minify again.
   `:is(:-moz-focusring)` and `:not(:not(...))`, and `cascade diff
   --diff=canonical` called the two spellings equal. An argument some target
   browser does not read now keeps its `:is()` (#1552).
+- percentage media feature was read as a width bound.** `--minify` respelled
+  `@media (min-width:50%)` as `(width>=50%)`, though Media Queries 4 grants no
+  percentage there and Chromium never matches it. It is now kept as written
+  (#1566).
 
 #### Stable output
 
