@@ -629,6 +629,41 @@ let calc_zero_product_registered_number () =
     "@property \
      --n{syntax:\"<length>\";inherits:false;initial-value:0}.a{rotate:calc(var(--n)*0)}"
 
+(* A [<length>] registration substitutes one finite length (CSS Properties and
+   Values API 1 sec. 2.4; CSS Values 4 sec. 10.12 censors an infinite one), so
+   its product with the number [0] is a zero length wherever the calculation
+   needs a length. Elsewhere the product is a type error the browser finds only
+   at computed-value time, and the zero would be one it finds at parse time:
+   Chromium 157 computes [width:calc(10px * (var(--l) * 0 + 1))] to [auto], not
+   to the [50px] of an earlier declaration. *)
+let calc_zero_product_registered_length () =
+  let length =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  let length' =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0}"
+  in
+  let check label body expected =
+    let input =
+      Css.Stylesheet.read (Cursor.of_string (String.concat "" [ length; body ]))
+    in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
+    Alcotest.(check string)
+      label
+      (String.concat "" [ length'; expected ])
+      (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
+  in
+  check "a <length> registration folds at a length slot"
+    ".a{width:calc(var(--l) * 0)}" ".a{width:0}";
+  check "and in a sum of lengths" ".a{width:calc(0 * var(--l) + 10px)}"
+    ".a{width:10px}";
+  check "and beside a number factor" ".a{width:calc(2 * (var(--l) * 0))}"
+    ".a{width:0}";
+  check "a number slot keeps it" ".a{width:calc(10px * (var(--l) * 0 + 1))}"
+    ".a{width:calc(10px*(var(--l)*0 + 1))}";
+  check "a length factor keeps it" ".a{width:calc(var(--l) * 0px)}"
+    ".a{width:calc(var(--l)*0px)}"
+
 (* A registration types a custom property only where it is the one every browser
    applies. CSS Properties and Values API 1 sec. 2.1 takes a
    [CSS.registerProperty()] record over any [@property], and the last
@@ -1090,6 +1125,9 @@ let suite =
       ( "calc zero product over a registered number",
         `Quick,
         calc_zero_product_registered_number );
+      ( "calc zero product over a registered length",
+        `Quick,
+        calc_zero_product_registered_length );
       ( "preserve independent custom-property rule position",
         `Quick,
         preserve_independent_custom_prop_position );
