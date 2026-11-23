@@ -590,12 +590,12 @@ let canonical_custom_calc_percentage () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_calc_constant_fold () =
-  (* A math function whose operands are all constants reduces to the same number
-     in every substitution site, so [calc(2.25/1.875)] and [1.2] compare equal
-     inside a custom property. A calc that carries units or a var() does not
-     reduce and stays opaque. *)
+  (* A constant [calc()] is not its result in every substitution site: CSS
+     Values 4 sec. 10.9 rounds [calc(2.25/1.875)] at an [<integer>] slot, where
+     a bare [1.2] is invalid, so Chromium 157 computes [z-index:var(--lh)] as
+     [1] under the first and [auto] under the second. *)
   Alcotest.(check bool)
-    "constant number calc folds in a custom property" true
+    "constant number calc stays a call in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a { --lh: calc(2.25 / 1.875) }" ".a { --lh: 1.2 }");
   Alcotest.(check bool)
