@@ -928,6 +928,8 @@ differently. They are the reason to minify again.
   writes a percentage. It now weighs the bytes the run prints, which changes 21
   of the 505 SatCSS and Tailwind sheets under `--enforce-spec` and none under
   `--lossless`; default output is unchanged (#1477).
+- descriptors drop needless whitespace:** `additive-symbols:2 "a",1 "b"` and
+  `range:1 2,4 5` (#1570).
 
 ### Formatted output
 

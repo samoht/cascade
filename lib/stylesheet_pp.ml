@@ -479,6 +479,15 @@ let pp_counter_symbols ctx symbols =
          Some symbol)
        Option.None symbols)
 
+(* A validated descriptor keeps its authored text. Minified, it keeps only the
+   whitespace CSS Syntax 3 sec. 9.1 needs between two tokens that would merge,
+   which reads back as the same tokens. *)
+let pp_descriptor_text ctx text =
+  if Pp.minified ctx then
+    Pp.string ctx
+      (Parser.to_string_minified (Cursor.remaining (Cursor.of_string text)))
+  else Pp.string ctx text
+
 let pp_counter_style_descriptor ctx =
   let pp_descriptor name pp_value value =
     Pp.string ctx name;
@@ -491,12 +500,13 @@ let pp_counter_style_descriptor ctx =
   | Symbols symbols -> pp_descriptor "symbols" pp_counter_symbols symbols
   | Suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
   | Prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
-  | Fallback value -> pp_descriptor "fallback" Pp.string value
-  | Range value -> pp_descriptor "range" Pp.string value
-  | Pad value -> pp_descriptor "pad" Pp.string value
-  | Negative value -> pp_descriptor "negative" Pp.string value
-  | Additive_symbols value -> pp_descriptor "additive-symbols" Pp.string value
-  | Speak_as value -> pp_descriptor "speak-as" Pp.string value
+  | Fallback value -> pp_descriptor "fallback" pp_descriptor_text value
+  | Range value -> pp_descriptor "range" pp_descriptor_text value
+  | Pad value -> pp_descriptor "pad" pp_descriptor_text value
+  | Negative value -> pp_descriptor "negative" pp_descriptor_text value
+  | Additive_symbols value ->
+      pp_descriptor "additive-symbols" pp_descriptor_text value
+  | Speak_as value -> pp_descriptor "speak-as" pp_descriptor_text value
 
 let pp_font_palette_base ctx = function
   | Light -> Pp.string ctx "light"
