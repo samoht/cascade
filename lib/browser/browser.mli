@@ -37,6 +37,19 @@ val run :
 
     It raises [Unix.Unix_error] when [prog] cannot be started. *)
 
+val drive :
+  node:string ->
+  chrome:string ->
+  stderr:string ->
+  string ->
+  string list ->
+  (string list, string) result
+(** [drive ~node ~chrome ~stderr script args] runs the node script [script] with
+    [args], handing it [chrome] in [CHROME], and is the lines it writes on
+    standard output. Its standard error goes to the file [stderr]. It is [Error]
+    with a message when node cannot be started, and with that file's text when
+    the script exits other than 0. *)
+
 val chrome_version : string -> (int * int) option
 (** [chrome_version chrome] is the [(major, minor)] the binary reports. The
     support dataset is keyed by version, so a harness that looks a production up

@@ -14,23 +14,12 @@ let skip reason = Browser.skip "browser_cli" reason
 let write file contents =
   Out_channel.with_open_bin file (fun oc -> output_string oc contents)
 
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  loop []
-
-(* The command's stdout and exit status; stderr goes to the file named. *)
-let run ~env cmd ~stderr =
-  let ic =
-    Unix.open_process_in
-      (String.concat " " [ env; cmd; "2>"; Filename.quote stderr ])
-  in
-  let lines = read_lines ic in
+(* The command's stdout and exit status, run with no shell between; stderr goes
+   to the file named. *)
+let run ~env prog args ~stderr =
+  let lines, status = Browser.run ~env ~stderr prog args in
   let status =
-    match Unix.close_process_in ic with
+    match status with
     | Unix.WEXITED n -> n
     | Unix.WSIGNALED _ | Unix.WSTOPPED _ -> -1
   in
@@ -79,19 +68,12 @@ let () =
   in
   write a ("p::after{all:unset}" ^ content);
   write b (content ^ "p::after{all:unset}");
-  let env =
-    String.concat " "
-      [
-        "CHROME=" ^ Filename.quote chrome;
-        "NODE=" ^ Filename.quote node;
-        "CASCADE_COLOR=never";
-      ]
+  let env browser =
+    [ ("CHROME", browser); ("NODE", node); ("CASCADE_COLOR", "never") ]
   in
   let diff args =
-    run ~env
-      (String.concat " "
-         ([ Filename.quote cascade; "diff"; "--browser"; "--html" ]
-         @ List.map Filename.quote (doc :: args)))
+    run ~env:(env chrome) cascade
+      ([ "diff"; "--browser"; "--html"; doc ] @ args)
       ~stderr:(work // "stderr.txt")
   in
   (* The reset crossing the content is what the browser has to see. *)
@@ -123,31 +105,28 @@ let () =
   (* A browser that answers nothing is a failure, never an equivalence: a
      stand-in that exits without a page is what a broken or missing browser
      looks like to the driver. *)
-  let broken = work // "broken-browser" in
-  write broken "#!/bin/sh\nexit 1\n";
-  Unix.chmod broken 0o755;
+  let broken =
+    if Sys.win32 then (
+      let broken = work // "broken-browser.cmd" in
+      write broken "@exit /b 1\r\n";
+      broken)
+    else
+      let broken = work // "broken-browser" in
+      write broken "#!/bin/sh\nexit 1\n";
+      Unix.chmod broken 0o755;
+      broken
+  in
   let _, status =
-    run
-      ~env:
-        (String.concat " "
-           [
-             "CHROME=" ^ Filename.quote broken;
-             "NODE=" ^ Filename.quote node;
-             "CASCADE_COLOR=never";
-           ])
-      (String.concat " "
-         ([ Filename.quote cascade; "diff"; "--browser"; "--html" ]
-         @ List.map Filename.quote [ doc; a; b ]))
+    run ~env:(env broken) cascade
+      [ "diff"; "--browser"; "--html"; doc; a; b ]
       ~stderr:(work // "stderr.txt")
   in
   check "a browser that answers nothing exits 2" (status = 2);
   (* The document is required, and the CLI says so rather than comparing the
      CSS. *)
   let _, status =
-    run ~env
-      (String.concat " "
-         ([ Filename.quote cascade; "diff"; "--browser" ]
-         @ List.map Filename.quote [ a; b ]))
+    run ~env:(env chrome) cascade
+      [ "diff"; "--browser"; a; b ]
       ~stderr:(work // "stderr.txt")
   in
   check "--browser without --html is a usage error" (status = 124);

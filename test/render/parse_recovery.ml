@@ -708,36 +708,10 @@ let cascade css =
 
 (* ===== The browser's answers ===== *)
 
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  loop []
-
 let run_driver ~node ~chrome ~script ~jobs ~work =
-  let errors = work // "parse-recovery.err" in
-  let cmd =
-    String.concat " "
-      [
-        String.concat "" [ "CHROME="; Filename.quote chrome ];
-        Filename.quote node;
-        Filename.quote script;
-        Filename.quote jobs;
-        Filename.quote work;
-        String.concat "" [ "2>"; Filename.quote errors ];
-      ]
-  in
-  let ic = Unix.open_process_in cmd in
-  let lines = read_lines ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> Ok lines
-  | Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
-      let ic = open_in errors in
-      let text = read_lines ic in
-      close_in ic;
-      Error (String.concat "\n" text)
+  Browser.drive ~node ~chrome
+    ~stderr:(work // "parse-recovery.err")
+    script [ jobs; work ]
 
 type answer = { input_facts : string list; output_facts : string list }
 
@@ -760,7 +734,7 @@ let ask ~node ~chrome ~script ~work jobs =
   output_string oc (Json.to_string payload);
   close_out oc;
   match run_driver ~node ~chrome ~script ~jobs:file ~work with
-  | Error err -> fail (String.concat "" [ "the browser driver failed:\n"; err ])
+  | Error err -> fail err
   | Ok lines ->
       let table = Hashtbl.create (List.length jobs * 2) in
       let broke = ref [] in

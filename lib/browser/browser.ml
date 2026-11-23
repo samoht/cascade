@@ -216,6 +216,21 @@ let run ?(env = []) ?stderr prog args =
       let _, status = Unix.waitpid [] pid in
       (lines, status)
 
+let drive ~node ~chrome ~stderr script args =
+  match run ~env:[ ("CHROME", chrome) ] ~stderr node (script :: args) with
+  | exception Unix.Unix_error (e, _, _) ->
+      Error
+        (String.concat ""
+           [ "the browser driver did not start: "; Unix.error_message e ])
+  | lines, Unix.WEXITED 0 -> Ok lines
+  | _, (Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _) ->
+      let text =
+        try In_channel.with_open_bin stderr In_channel.input_all
+        with Sys_error _ -> ""
+      in
+      Error
+        (String.concat "" [ "the browser driver failed:\n"; String.trim text ])
+
 let chrome_version chrome =
   (* A binary that cannot be started prints no banner. *)
   let lines =

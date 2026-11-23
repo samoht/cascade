@@ -149,36 +149,9 @@ let cascade_accepts ~property ~value =
 
 type verdict = { set_property : bool; supports : bool; error : string option }
 
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  loop []
-
 let run_driver ~node ~chrome ~script ~jobs ~work =
-  let errors = work // "accept-set.err" in
-  let cmd =
-    String.concat " "
-      [
-        String.concat "" [ "CHROME="; Filename.quote chrome ];
-        Filename.quote node;
-        Filename.quote script;
-        Filename.quote jobs;
-        Filename.quote work;
-        String.concat "" [ "2>"; Filename.quote errors ];
-      ]
-  in
-  let ic = Unix.open_process_in cmd in
-  let lines = read_lines ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> Ok lines
-  | Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _ ->
-      let ic = open_in errors in
-      let text = read_lines ic in
-      close_in ic;
-      Error (String.concat "\n" text)
+  Browser.drive ~node ~chrome ~stderr:(work // "accept-set.err") script
+    [ jobs; work ]
 
 let parse_driver_output lines =
   let table = Hashtbl.create 65536 in
@@ -672,8 +645,7 @@ let () =
     with
     | Ok lines -> lines
     | Error err ->
-        prerr_endline
-          (String.concat "" [ "accept_set: the browser driver failed:\n"; err ]);
+        prerr_endline (String.concat "" [ "accept_set: "; err ]);
         exit 1
   in
   let elapsed = Unix.gettimeofday () -. started in

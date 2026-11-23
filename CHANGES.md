@@ -1165,6 +1165,8 @@ The new form of a diagnostic is under [Breaking](#command-line).
 - browser checks find Chrome on Windows:** under `USERPROFILE` when `HOME` is
   unset, in playwright's `LOCALAPPDATA` cache, and installed under
   `PROGRAMFILES` or `LOCALAPPDATA` (#1557).
+- browser harnesses start node without a shell,** so they run under `cmd.exe`
+  (#1558).
 
 ### Speed
 
