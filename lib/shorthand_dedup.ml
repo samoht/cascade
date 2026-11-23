@@ -569,13 +569,16 @@ let drop_redundant_decoration_color_aliases declarations =
    and MDN's compatibility data records [font-smooth] only under the prefixed
    names the reader types. *)
 let read_by_no_target decl =
-  let name = String.lowercase_ascii (Declaration.property_name decl) in
-  let has p =
-    String.length name > String.length p
-    && String.equal (String.sub name 0 (String.length p)) p
-  in
-  has "-ms-" || has "-o-" || has "-khtml-"
-  || match name with "font-smooth" | "font-smoothing" -> true | _ -> false
+  let (Key property) = Declaration.property_key decl in
+  match (Properties.vendor property, property) with
+  | Some (Properties.Ms | O | Khtml), _ -> true
+  | Some (Properties.Webkit | Moz | Other_vendor), _ -> false
+  | None, Unknown_property { written; _ } -> (
+      (* Neither name has a constructor, so its spelling is all it has. *)
+      match String.lowercase_ascii written with
+      | "font-smooth" | "font-smoothing" -> true
+      | _ -> false)
+  | None, _ -> false
 
 (* Structural vendor-alias drop for an [Unknown_property] [vendor]: we drop
    [vendor] when stripping its vendor prefix yields [twin]'s name and the two
@@ -588,36 +591,20 @@ let read_by_no_target decl =
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
-        {
-          property = Unknown_property { written = vname; _ };
-          value = vv;
-          important = vi;
-          _;
-        },
+        { property = Unknown_property v; value = vv; important = vi; _ },
       Declaration
-        {
-          property = Unknown_property { written = tname; _ };
-          value = tv;
-          important = ti;
-          _;
-        } )
+        { property = Unknown_property t; value = tv; important = ti; _ } )
     when Bool.equal vi ti -> (
-      match strip_vendor_prefix vname with
-      | Some modern -> String.equal tname modern && vv = tv
+      match v.unprefixed with
+      | Some modern -> String.equal t.written modern && vv = tv
       | None -> false)
-  | ( Declaration
-        {
-          property = Unknown_property { written = vname; _ };
-          important = vi;
-          _;
-        },
+  | ( Declaration { property = Unknown_property v; important = vi; _ },
       Declaration { important = ti; _ } )
     when Bool.equal vi ti -> (
-      match strip_vendor_prefix vname with
-      | Some modern
-        when String.equal
-               (String.lowercase_ascii modern)
-               (Declaration.property_name twin) -> (
+      match v.spells with
+      | Some (Prop modern)
+        when Declaration.equal_prop_key (Key modern)
+               (Declaration.property_key twin) -> (
           match
             Declaration.with_value twin
               (Declaration.string_of_value ~minify:true vendor)
