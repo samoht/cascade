@@ -85,13 +85,16 @@ let normalize_shape_rounding (rounded : border_radius option) =
       Option.None
   | rounded -> rounded
 
-let normalize_logical_border_color ?(lossless = false) :
+let normalize_logical_border_color ?(lossless = false) ~enforce_spec :
     logical_border_color -> logical_border_color =
  fun value ->
   match value with
-  | Single c -> preserve_if_equal value (Single (normalize_color ~lossless c))
+  | Single c ->
+      preserve_if_equal value
+        (Single (normalize_color ~lossless ~enforce_spec c))
   | Pair (a, b) ->
-      let a = normalize_color ~lossless a and b = normalize_color ~lossless b in
+      let a = normalize_color ~lossless ~enforce_spec a
+      and b = normalize_color ~lossless ~enforce_spec b in
       if
         (not (is_color_substitution a))
         && (not (is_color_substitution b))
@@ -1184,7 +1187,7 @@ let drop_initial_line_color (color : color option) : color option =
    colour slot a [<color>]. Drained of every slot the shorthand declares nothing
    but initial values, which is what [none] declares, and [none] is the node the
    keyword parses to - so the two spellings meet there. *)
-let normalize_border ?(lossless = false) : border -> border =
+let normalize_border ?(lossless = false) ~enforce_spec : border -> border =
  fun value ->
   match value with
   | Shorthand s ->
@@ -1195,7 +1198,9 @@ let normalize_border ?(lossless = false) : border -> border =
       let style = drop_initial_line_style s.style in
       let color =
         drop_initial_line_color
-          (option_map_preserve (normalize_color ~lossless) s.color)
+          (option_map_preserve
+             (normalize_color ~lossless ~enforce_spec)
+             s.color)
       in
       if width == s.width && style == s.style && color == s.color then value
       else if

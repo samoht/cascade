@@ -1033,6 +1033,10 @@ differently. They are the reason to minify again.
   Flexbox 1 sec. 7.1), and a background colour that is transparent black in
   any spelling (`#0000`, `rgb(0 0 0/0)`) is dropped: 208 bytes over 47 of 504
   SatCSS sheets (#1599).
+- folds a `color-mix()` of one colour**: CSS Color 5 sec. 3.3 makes
+  `color-mix(in srgb,blue 40%)` the colour with its alpha scaled, `color(srgb
+  0 0 1/.4)`. The default targets keep it as written, since Chrome drops it;
+  `--diff=canonical --enforce-spec` reads the two as one value (#1600).
 
 ### Formatted output
 

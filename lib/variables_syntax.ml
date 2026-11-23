@@ -379,20 +379,23 @@ open Common
 
 let list_map_preserve = List.map_preserve
 
-let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
- fun ?(lossless = false) syntax value ->
+let rec normalize_value : type a.
+    ?lossless:bool -> ?enforce_spec:bool -> a syntax -> a -> a =
+ fun ?(lossless = false) ?(enforce_spec = false) syntax value ->
   match syntax with
-  | Color -> Values.normalize_color ~lossless value
+  | Color -> Values.normalize_color ~lossless ~enforce_spec value
   | Or (left, right) -> (
       match value with
       | Either.Left v ->
-          let v' = normalize_value ~lossless left v in
+          let v' = normalize_value ~lossless ~enforce_spec left v in
           if v' == v then value else Either.Left v'
       | Either.Right v ->
-          let v' = normalize_value ~lossless right v in
+          let v' = normalize_value ~lossless ~enforce_spec right v in
           if v' == v then value else Either.Right v')
-  | Plus syntax -> list_map_preserve (normalize_value ~lossless syntax) value
-  | Hash syntax -> list_map_preserve (normalize_value ~lossless syntax) value
+  | Plus syntax ->
+      list_map_preserve (normalize_value ~lossless ~enforce_spec syntax) value
+  | Hash syntax ->
+      list_map_preserve (normalize_value ~lossless ~enforce_spec syntax) value
   (* A registered [<length>] or [<length-percentage>] reads a unitless zero as
      the length it names, as a declaration of that type does, so it takes the
      shorter [0] a declaration's zero takes; a zero [<percentage>] keeps its

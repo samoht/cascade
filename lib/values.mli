@@ -387,15 +387,17 @@ val normalize_duration :
     property refuses a negative literal, so a call folding to one keeps its
     wrapper rather than becoming CSS the reader drops. *)
 
-val normalize_color : ?lossless:bool -> color -> color
-(** [normalize_color ?lossless c] canonicalises a colour to its shortest
-    spelling within its interpolation class (CSS Color 4 sec. 13.3): a legacy
-    sRGB colour folds to hex or named, hex shortens and named<->hex picks the
-    shorter, while any other colour stays in its own notation with its
-    coefficients rounded as far as its sRGB bytes hold, and a [color-mix()]
-    folds to a colour in its interpolation space. A [none] component is never
-    dropped. [lossless] disables the rounding and the [color-mix()] folds while
-    preserving exact named/hex and byte-exact rgb folds. *)
+val normalize_color : ?lossless:bool -> ?enforce_spec:bool -> color -> color
+(** [normalize_color ?lossless ?enforce_spec c] canonicalises a colour to its
+    shortest spelling within its interpolation class (CSS Color 4 sec. 13.3): a
+    legacy sRGB colour folds to hex or named, hex shortens and named<->hex picks
+    the shorter, while any other colour stays in its own notation with its
+    coefficients rounded as far as its sRGB bytes hold, and a [color-mix()] of
+    two items folds to a colour in its interpolation space. A [none] component
+    is never dropped. [lossless] disables the rounding and the [color-mix()]
+    folds while preserving exact named/hex and byte-exact rgb folds.
+    [enforce_spec] (default [false]) also folds a [color-mix()] of one item,
+    which CSS Color 5 (ED) sec. 3.3 grants and a target may drop. *)
 
 val pp_number_percentage : number_percentage Pp.t
 (** [pp_number_percentage] pretty-prints {!number_percentage} values. A number

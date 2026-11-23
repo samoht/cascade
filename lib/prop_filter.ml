@@ -170,7 +170,7 @@ let rec pp_filter : filter Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_filter ctx v
 
-let rec normalize_filter ?(lossless = false) : filter -> filter =
+let rec normalize_filter ?(lossless = false) ~enforce_spec : filter -> filter =
  fun value ->
   let amount fn make n =
     match Values.normalize_number_percentage n with
@@ -184,7 +184,8 @@ let rec normalize_filter ?(lossless = false) : filter -> filter =
       in
       if omitted then Omitted Blur_function else value
   | Drop_shadow s ->
-      preserve_if_equal value (Drop_shadow (normalize_shadow ~lossless s))
+      preserve_if_equal value
+        (Drop_shadow (normalize_shadow ~lossless ~enforce_spec s))
   | Hue_rotate a ->
       let a = Values.normalize_angle a in
       if match a with Deg 0. -> true | _ -> false then
@@ -199,7 +200,7 @@ let rec normalize_filter ?(lossless = false) : filter -> filter =
   | Sepia x -> amount Sepia_function (fun n -> Sepia n) x
   | List filters ->
       preserve_if_equal value
-        (List (map_preserve (normalize_filter ~lossless) filters))
+        (List (map_preserve (normalize_filter ~lossless ~enforce_spec) filters))
   | other -> other
 
 module Filter = struct

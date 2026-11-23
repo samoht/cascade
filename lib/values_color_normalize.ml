@@ -494,9 +494,12 @@ let has_missing_component (c : color) =
    and the two are one colour, so the shorter is kept. *)
 let printed_length c = Pp.size ~minify:true pp_color c
 
-let rec normalize_color ?(lossless = false) (c : color) : color =
+let rec normalize_color ?(lossless = false) ?(enforce_spec = false) (c : color)
+    : color =
   let c = canonical_color_spelling c in
-  let normalize_color ?(lossless = lossless) = normalize_color ~lossless in
+  let normalize_color ?(lossless = lossless) =
+    normalize_color ~lossless ~enforce_spec
+  in
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
   let in_own_space round =
     verdict_preserving round ~lossless (drop_full_alpha ~lossless c)
@@ -521,24 +524,34 @@ let rec normalize_color ?(lossless = false) (c : color) : color =
       | Option.None ->
           canonical_hsl_hue_in_color ~lossless (drop_full_alpha ~lossless c))
   | Mix { in_space; hue; color1; percent1; rest = [ (color2, percent2) ] } ->
-      normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
-        ~percent2
-  | Mix ({ color1; rest; _ } as mix) ->
+      normalize_mix_color ~lossless ~enforce_spec ~in_space ~hue ~color1
+        ~percent1 ~color2 ~percent2
+  | Mix ({ color1; rest; _ } as mix) -> (
       (* CSS Color 5 (ED) sec. 3.3 takes one item into the interpolation space
          with its alpha scaled by what its percentage leaves over, and mixes
          three or more one into the result of the others, in order, after
          normalising all their percentages together. The fold reads two, so any
          other mix keeps its items and the percentages they were written with: a
-         browser that drops it paints the declaration before it, so a fold into
-         a colour every browser reads would change what that browser paints. *)
+         target that drops it paints the declaration before it, so a fold into a
+         colour every target reads would change what that target paints. Every
+         conforming implementation reads one item, so under [enforce_spec] it
+         folds. *)
       let hue = match mix.hue with Shorter -> Default | h -> h in
-      Mix
-        {
-          mix with
-          hue;
-          color1 = normalize_color ~lossless color1;
-          rest = List.map (fun (c, p) -> (normalize_color ~lossless c, p)) rest;
-        }
+      let kept =
+        Mix
+          {
+            mix with
+            hue;
+            color1 = normalize_color ~lossless color1;
+            rest =
+              List.map (fun (c, p) -> (normalize_color ~lossless c, p)) rest;
+          }
+      in
+      match rest with
+      | [] when enforce_spec && not lossless ->
+          one_item_mix ~enforce_spec ~in_space:mix.in_space ~color1
+            ~percent1:mix.percent1 kept
+      | _ -> kept)
   | Light_dark (l, d) ->
       Light_dark (normalize_color ~lossless l, normalize_color ~lossless d)
   | Contrast_color inner -> Contrast_color (normalize_color ~lossless inner)
@@ -556,7 +569,9 @@ let rec normalize_color ?(lossless = false) (c : color) : color =
       | Option.Some color when printed_length color <= printed_length kept ->
           color
       | _ -> (
-          match light_dark_relative ~lossless name origin tail with
+          match
+            light_dark_relative ~lossless ~enforce_spec name origin tail
+          with
           | Option.Some color -> color
           | Option.None -> kept))
   | Var v ->
@@ -579,8 +594,8 @@ let rec normalize_color ?(lossless = false) (c : color) : color =
         }
   | _ -> c
 
-and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
-    ~percent2 =
+and normalize_mix_color ~lossless ~enforce_spec ~in_space ~hue ~color1 ~percent1
+    ~color2 ~percent2 =
   (* CSS Color 4, hue interpolation: [shorter] is the default, so the fold below
      reads a written one as the default. *)
   let hue = match hue with Shorter -> Default | h -> h in
@@ -605,9 +620,9 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
       {
         in_space;
         hue;
-        color1 = normalize_color ~lossless color1;
+        color1 = normalize_color ~lossless ~enforce_spec color1;
         percent1;
-        rest = [ (normalize_color ~lossless color2, percent2) ];
+        rest = [ (normalize_color ~lossless ~enforce_spec color2, percent2) ];
       }
   in
   let folded : color option =
@@ -633,18 +648,45 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
       | _ -> None
   in
   let kept = lazy (keep ()) in
-  match Option.map (normalize_color ~lossless) folded with
+  match Option.map (normalize_color ~lossless ~enforce_spec) folded with
   | Some color when printed_length color <= printed_length (Lazy.force kept) ->
       color
   | _ -> (
       (* A mix over a [light-dark()] operand is the [light-dark()] of the mix
          over each branch. *)
       match
-        light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
-          ~percent2
+        light_dark_mix ~lossless ~enforce_spec ~in_space ~hue ~color1 ~percent1
+          ~color2 ~percent2
       with
       | Some color -> color
       | None -> Lazy.force kept)
+
+(* CSS Color 5 (ED) sec. 3.3: one item is its colour converted to the
+   interpolation space, its alpha multiplied by [1 - leftover], and CSS Values 5
+   (ED) sec. 6.1 leaves [100% - p] over from an item at [p]. Two halves of the
+   colour at [p / 2] each leave the same over and interpolate to the colour
+   itself under any hue method but [longer], so the two-item fold computes it at
+   [shorter]. A percentage of [0%] or one the fold cannot read keeps [kept], as
+   does a fold that prints longer. *)
+and one_item_mix ~enforce_spec ~in_space ~color1 ~percent1 kept =
+  let half : percentage option option =
+    match percent1 with
+    | Option.None -> Some (Some (Pct 50.))
+    | Some _ -> (
+        match color_mix_percentages percent1 Option.None with
+        | Some (f, _) when f > 0. -> Some (Some (Pct (f /. 2.)))
+        | _ -> Option.None)
+  in
+  match half with
+  | Option.None -> kept
+  | Some half -> (
+      match
+        normalize_mix_color ~lossless:false ~enforce_spec ~in_space ~hue:Default
+          ~color1 ~percent1:half ~color2:color1 ~percent2:half
+      with
+      | Mix _ -> kept
+      | folded when printed_length folded <= printed_length kept -> folded
+      | _ -> kept)
 
 (* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
    element's used colour scheme, so a mix over a [light-dark()] argument is the
@@ -652,13 +694,13 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
    at once. Exact only where each branch folds to a colour: a mix a branch keeps
    stays as written, so the two spellings of it still report. A value fold like
    the mix itself, so [lossless] holds it off. *)
-and light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2 ~percent2
-    =
+and light_dark_mix ~lossless ~enforce_spec ~in_space ~hue ~color1 ~percent1
+    ~color2 ~percent2 =
   let branches c =
     match c with Light_dark (l, d) -> Some (l, d) | _ -> None
   in
-  let c1 = normalize_color ~lossless color1 in
-  let c2 = normalize_color ~lossless color2 in
+  let c1 = normalize_color ~lossless ~enforce_spec color1 in
+  let c2 = normalize_color ~lossless ~enforce_spec color2 in
   match (branches c1, branches c2) with
   | _ when lossless -> None
   | None, None -> None
@@ -666,8 +708,8 @@ and light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2 ~percent2
       let l1, d1 = Option.value b1 ~default:(c1, c1) in
       let l2, d2 = Option.value b2 ~default:(c2, c2) in
       let mix color1 color2 =
-        normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
-          ~percent2
+        normalize_mix_color ~lossless ~enforce_spec ~in_space ~hue ~color1
+          ~percent1 ~color2 ~percent2
       in
       match (mix l1 l2, mix d1 d2) with
       | Mix _, _ | _, Mix _ -> None
@@ -676,11 +718,12 @@ and light_dark_mix ~lossless ~in_space ~hue ~color1 ~percent1 ~color2 ~percent2
 (* The same reading for a relative colour: [oklab(from light-dark(a, b) ...)] is
    the [light-dark()] of the call over each branch, kept where a branch keeps
    its call. *)
-and light_dark_relative ~lossless name origin tail =
+and light_dark_relative ~lossless ~enforce_spec name origin tail =
   match origin with
   | Light_dark (l, d) when not lossless -> (
       let over origin =
-        normalize_color ~lossless (Relative_color (name, origin, tail))
+        normalize_color ~lossless ~enforce_spec
+          (Relative_color (name, origin, tail))
       in
       match (over l, over d) with
       | Relative_color _, _ | _, Relative_color _ -> None

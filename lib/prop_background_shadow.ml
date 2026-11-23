@@ -202,14 +202,17 @@ let rec pp_shadow : shadow Pp.t =
   | Var v -> pp_var pp_shadow ctx v
   | List shadows -> Pp.list ~sep:Pp.comma pp_shadow ctx shadows
 
-let normalize_shadow_body ~lossless (s : shadow_body) : shadow_body =
+let normalize_shadow_body ~lossless ~enforce_spec (s : shadow_body) :
+    shadow_body =
   (* The blur is the one slot with a floor, so unwrapping a math function there
      could turn a value browsers take into one they drop. *)
   let blur =
     option_map_preserve (Values.normalize_length ~non_negative:true) s.blur
   in
   let spread = option_map_preserve Values.normalize_length s.spread in
-  let color = option_map_preserve (normalize_color ~lossless) s.color in
+  let color =
+    option_map_preserve (normalize_color ~lossless ~enforce_spec) s.color
+  in
   (* A [var()] colour could resolve to a length, so dropping a zero length
      before it lets the shortened form re-bind the colour as that length: [0 3px
      0 var(--c)] is blur [0] + colour, but [0 3px var(--c)] parses [var(--c)] as
@@ -245,9 +248,9 @@ let normalize_shadow_body ~lossless (s : shadow_body) : shadow_body =
     color;
   }
 
-let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
+let rec normalize_shadow ?(lossless = false) ~enforce_spec : shadow -> shadow =
  fun value ->
-  let normalize_body = normalize_shadow_body ~lossless in
+  let normalize_body = normalize_shadow_body ~lossless ~enforce_spec in
   match value with
   | Shadow s -> preserve_if_equal value (Shadow (normalize_body s))
   | Inset (Body s) ->
@@ -265,7 +268,7 @@ let rec normalize_shadow ?(lossless = false) : shadow -> shadow =
           : shadow)
   | List shadows ->
       preserve_if_equal value
-        (List (map_preserve (normalize_shadow ~lossless) shadows))
+        (List (map_preserve (normalize_shadow ~lossless ~enforce_spec) shadows))
   | other -> other
 
 let shadow ?(inset = false) ?(inset_var : string option)

@@ -625,7 +625,7 @@ let text_decoration_slot_is_var (s : text_decoration_shorthand) =
   || (match s.color with Some (Values.Var _) -> true | _ -> false)
   || match s.thickness with Some (Values.Var _) -> true | _ -> false
 
-let normalize_text_decoration ?(lossless = false) :
+let normalize_text_decoration ?(lossless = false) ~enforce_spec :
     text_decoration -> text_decoration =
  fun value ->
   match value with
@@ -639,7 +639,9 @@ let normalize_text_decoration ?(lossless = false) :
       let color =
         drop_default
           ~is_default:(fun (c : Values.color) -> c = Values.Current)
-          (option_map_preserve (normalize_color ~lossless) s.color)
+          (option_map_preserve
+             (normalize_color ~lossless ~enforce_spec)
+             s.color)
       in
       match (s.lines, style, color, s.thickness) with
       | [], None, None, None -> (None : text_decoration)
@@ -651,8 +653,8 @@ let normalize_text_decoration ?(lossless = false) :
           else Shorthand { s with style; color })
   | other -> other
 
-let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
-    =
+let normalize_text_emphasis ?(lossless = false) ~enforce_spec :
+    text_emphasis -> text_emphasis =
  fun value ->
   match value with
   | Emphasis (style, color) ->
@@ -660,7 +662,9 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
          longhand's initial - [none] for the style (sec. 3.1) and [currentColor]
          for the colour (sec. 3.3) - so writing one out names what leaving it
          out names. Both cannot go: the value would say nothing. *)
-      let color = option_map_preserve (normalize_color ~lossless) color in
+      let color =
+        option_map_preserve (normalize_color ~lossless ~enforce_spec) color
+      in
       let dropped_style =
         match style with
         | Some (None : text_emphasis_style) -> Option.None
@@ -681,7 +685,8 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
    box-shadow", and CSS Backgrounds 3 (ED) sec. 6.1 says "Omitted lengths are
    0". The blur is the last length a text shadow carries, so a zero blur is the
    spelled-out form of leaving it off. *)
-let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
+let normalize_text_shadow ?(lossless = false) ~enforce_spec :
+    text_shadow -> text_shadow =
  fun value ->
   match value with
   | Text_shadow s ->
@@ -703,7 +708,10 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
                 match s.color with
                 | Some (Var _) -> blur
                 | _ -> drop_default ~is_default:is_zero_length blur);
-             color = option_map_preserve (normalize_color ~lossless) s.color;
+             color =
+               option_map_preserve
+                 (normalize_color ~lossless ~enforce_spec)
+                 s.color;
            })
   | other -> other
 

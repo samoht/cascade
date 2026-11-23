@@ -50,9 +50,10 @@ val read_syntax : Cursor.t -> Variables_intf.any_syntax
 val read_value : Cursor.t -> 'a Variables_intf.syntax -> 'a
 (** [read_value t syntax] reads a value of [syntax] from [t]. *)
 
-val normalize_value : ?lossless:bool -> 'a Variables_intf.syntax -> 'a -> 'a
-(** [normalize_value ?lossless syntax v] is [v] in canonical form for [syntax].
-*)
+val normalize_value :
+  ?lossless:bool -> ?enforce_spec:bool -> 'a Variables_intf.syntax -> 'a -> 'a
+(** [normalize_value ?lossless ?enforce_spec syntax v] is [v] in canonical form
+    for [syntax]. *)
 
 val meta : unit -> ('t -> Values.meta) * (Values.meta -> 't option)
 (** [meta ()] is a fresh injection and projection pair for values of type ['t]

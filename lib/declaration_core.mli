@@ -63,11 +63,16 @@ val value_components : declaration -> Component.t list
 (** [value_components d] is the pretty print of [d]'s value, as components. *)
 
 val normalize :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
-(** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
-    the optimizer holds a canonical declaration and the pretty-printer stays a
-    pure serialiser. [lossless] disables bounded colour and numeric
-    approximation. *)
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?ctx:Values.calc_ctx ->
+  declaration ->
+  declaration
+(** [normalize ?lossless ?enforce_spec d] applies AST-level semantic value
+    canonicalisation so the optimizer holds a canonical declaration and the
+    pretty-printer stays a pure serialiser. [lossless] disables bounded colour
+    and numeric approximation. [enforce_spec] (default [false]) also takes the
+    folds only a target may refuse, such as a [color-mix()] of one item. *)
 
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)

@@ -59,7 +59,7 @@ let is_color_function name =
 (* [c] is one component whose syntax fixes it as a colour; fold it to the
    shortest non-keyword spelling, falling back to [fallback ()] when it does not
    actually parse as a complete colour. *)
-let fold_custom_color ~lossless (c : Component.t) ~fallback =
+let fold_custom_color ~lossless ~enforce_spec (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   let cur = Cursor.of_string text in
   match
@@ -68,7 +68,8 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
   | Some col when Cursor.is_done cur -> (
       let canon =
         Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color (Values.normalize_color ~lossless col))
+          (Values.nonkeyword_color
+             (Values.normalize_color ~lossless ~enforce_spec col))
       in
       match read_custom_property_value (Cursor.of_string canon) with
       | Tokens cs -> cs
@@ -153,11 +154,14 @@ let drop_function_arguments wrapped =
   Component.Func
     { wrapped with node = { wrapped.Component.node with arguments = [] } }
 
-let rec normalize_shadow_colors ~lossless (shadow : shadow) =
+let rec normalize_shadow_colors ~lossless ~enforce_spec (shadow : shadow) =
   let normalize_body (body : shadow_body) : shadow_body =
     {
       body with
-      color = option_map_preserve (Values.normalize_color ~lossless) body.color;
+      color =
+        option_map_preserve
+          (Values.normalize_color ~lossless ~enforce_spec)
+          body.color;
     }
   in
   match shadow with
@@ -171,7 +175,10 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
         (Inset (Toggle { toggle with body = normalize_body body }) : shadow)
   | List shadows ->
       preserve_if_equal shadow
-        (List (map_preserve (normalize_shadow_colors ~lossless) shadows))
+        (List
+           (map_preserve
+              (normalize_shadow_colors ~lossless ~enforce_spec)
+              shadows))
   | other -> other
 
 (* A complete shadow token stream is self-typing: its length sequence and
@@ -180,20 +187,22 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
    only that typed colour while preserving the authored shadow shape; applying
    the full shadow optimiser here would also drop explicit default lengths from
    an otherwise opaque custom-property token stream. *)
-let canonicalize_custom_shadow_components ~lossless components =
+let canonicalize_custom_shadow_components ~lossless ~enforce_spec components =
   let t = Cursor.of_string (Parser.string_of_components components) in
   match try Some (read_shadow t) with Cursor.Parse_error _ -> None with
   | Some shadow when Cursor.is_done t -> (
-      let shadow = normalize_shadow_colors ~lossless shadow in
+      let shadow = normalize_shadow_colors ~lossless ~enforce_spec shadow in
       let canonical = Pp.to_string ~minify:true pp_shadow shadow in
       match read_custom_property_value (Cursor.of_string canonical) with
       | Tokens components -> components
       | Typed _ -> components)
   | _ -> components
 
-let rec canonicalize_custom_colors_components ~lossless comps =
-  let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
-  let inner = canonicalize_custom_colors_components ~lossless in
+let rec canonicalize_custom_colors_components ~lossless ~enforce_spec comps =
+  let fold_color c ~fallback =
+    fold_custom_color ~lossless ~enforce_spec c ~fallback
+  in
+  let inner = canonicalize_custom_colors_components ~lossless ~enforce_spec in
   List.concat_map
     (fun (c : Component.t) ->
       match c with
@@ -641,13 +650,17 @@ let rec canonicalize_angle_components comps =
       | Component.Preserved _ | Component.Flat _ -> c)
     comps
 
-let normalize_custom_property_value ?(lossless = false)
+let normalize_custom_property_value ?(lossless = false) ?(enforce_spec = false)
     ?(ctx = Values.default_calc_ctx) :
     custom_property_value -> custom_property_value = function
   | Typed { kind = Length; value } ->
       Typed { kind = Length; value = Values.normalize_length ~ctx value }
   | Typed { kind = Color; value } ->
-      Typed { kind = Color; value = Values.normalize_color ~lossless value }
+      Typed
+        {
+          kind = Color;
+          value = Values.normalize_color ~lossless ~enforce_spec value;
+        }
   | Typed { kind = Number; value } ->
       Typed { kind = Number; value = Values.normalize_number ~ctx value }
   | Typed { kind = Percentage; value } ->
@@ -672,6 +685,7 @@ let normalize_custom_property_value ?(lossless = false)
   | Tokens components ->
       Tokens
         (canonicalize_math_whitespace_components
-           (canonicalize_custom_colors_components ~lossless
-              (canonicalize_custom_shadow_components ~lossless components)))
+           (canonicalize_custom_colors_components ~lossless ~enforce_spec
+              (canonicalize_custom_shadow_components ~lossless ~enforce_spec
+                 components)))
   | Typed _ as other -> other

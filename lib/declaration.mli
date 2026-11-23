@@ -52,11 +52,16 @@ val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
 val normalize :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
-(** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
-    the optimizer holds a canonical declaration and the pretty-printer stays a
-    pure serialiser. [lossless] disables bounded colour and numeric
-    approximation. *)
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?ctx:Values.calc_ctx ->
+  declaration ->
+  declaration
+(** [normalize ?lossless ?enforce_spec d] applies AST-level semantic value
+    canonicalisation so the optimizer holds a canonical declaration and the
+    pretty-printer stays a pure serialiser. [lossless] disables bounded colour
+    and numeric approximation. [enforce_spec] (default [false]) also takes the
+    folds only a target may refuse, such as a [color-mix()] of one item. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)

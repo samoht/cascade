@@ -21,18 +21,19 @@ val pp_list_style_shorthand : list_style_shorthand Pp.t
 (** [pp_list_style_shorthand] is the pretty-printer for [list_style_shorthand].
 *)
 
-val normalize_list_style : lossless:bool -> list_style -> list_style
-(** [normalize_list_style ~lossless v] is [v] with its shorthand components
-    normalised. *)
+val normalize_list_style :
+  lossless:bool -> enforce_spec:bool -> list_style -> list_style
+(** [normalize_list_style ~lossless ~enforce_spec v] is [v] with its shorthand
+    components normalised. *)
 
 val normalize_list_style_type : list_style_type -> list_style_type
 (** [normalize_list_style_type v] is [v] without a [symbols()] type that names
     the default, [symbolic]. *)
 
 val normalize_list_style_image :
-  lossless:bool -> list_style_image -> list_style_image
-(** [normalize_list_style_image ~lossless v] is [v] with its image in its normal
-    form. *)
+  lossless:bool -> enforce_spec:bool -> list_style_image -> list_style_image
+(** [normalize_list_style_image ~lossless ~enforce_spec v] is [v] with its image
+    in its normal form. *)
 
 val pp_list_style : list_style Pp.t
 (** [pp_list_style] is the pretty-printer for [list_style]. *)

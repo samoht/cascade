@@ -21,6 +21,7 @@ val normalize_shape_rounding :
 
 val normalize_logical_border_color :
   ?lossless:bool ->
+  enforce_spec:bool ->
   Properties_intf.logical_border_color ->
   Properties_intf.logical_border_color
 (** [normalize_logical_border_color ?lossless v] is [v] in canonical form. *)
@@ -120,7 +121,10 @@ val drop_initial_line_width :
     width, and [w] otherwise. *)
 
 val normalize_border :
-  ?lossless:bool -> Properties_intf.border -> Properties_intf.border
+  ?lossless:bool ->
+  enforce_spec:bool ->
+  Properties_intf.border ->
+  Properties_intf.border
 (** [normalize_border ?lossless v] is [v] in canonical form. *)
 
 val read_border_spacing : Cursor.t -> Properties_intf.border_spacing

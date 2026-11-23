@@ -112,15 +112,17 @@ val read_text_underline_position : Cursor.t -> text_underline_position
 *)
 
 val normalize_text_decoration :
-  ?lossless:bool -> text_decoration -> text_decoration
+  ?lossless:bool -> enforce_spec:bool -> text_decoration -> text_decoration
 (** [normalize_text_decoration ?lossless v] is [v] in its canonical spelling;
     [lossless] keeps colour channels unrounded. *)
 
-val normalize_text_emphasis : ?lossless:bool -> text_emphasis -> text_emphasis
+val normalize_text_emphasis :
+  ?lossless:bool -> enforce_spec:bool -> text_emphasis -> text_emphasis
 (** [normalize_text_emphasis ?lossless v] is [v] in its canonical spelling;
     [lossless] keeps colour channels unrounded. *)
 
-val normalize_text_shadow : ?lossless:bool -> text_shadow -> text_shadow
+val normalize_text_shadow :
+  ?lossless:bool -> enforce_spec:bool -> text_shadow -> text_shadow
 (** [normalize_text_shadow ?lossless v] is [v] in its canonical spelling;
     [lossless] keeps colour channels unrounded. *)
 

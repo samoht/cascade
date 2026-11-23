@@ -62,7 +62,7 @@ let rec pp_content : content Pp.t =
    output. Fold onto [String] once that round-trip is gone, or [content:'x'] and
    [content:"x"] reach one minified text through two nodes, which anything keyed
    on the node reads as two values. *)
-let rec normalize_content ~lossless (c : content) : content =
+let rec normalize_content ~lossless ~enforce_spec (c : content) : content =
   match c with
   | Quoted { value; _ } -> String value
   (* CSS Lists 3 sec. 4.6: an omitted counter style is [decimal]. *)
@@ -70,14 +70,14 @@ let rec normalize_content ~lossless (c : content) : content =
   | Counters { name; separator; style = Some Decimal } ->
       Counters { name; separator; style = None }
   | Image i ->
-      let i' = normalize_background_image ~lossless i in
+      let i' = normalize_background_image ~lossless ~enforce_spec i in
       if i' == i then c else Image i'
   | Content_list items ->
-      let items' = List.map (normalize_content ~lossless) items in
+      let items' = List.map (normalize_content ~lossless ~enforce_spec) items in
       if List.equal ( == ) items items' then c else Content_list items'
   | With_alt { content; alt } ->
-      let content' = normalize_content ~lossless content in
-      let alt' = List.map (normalize_content ~lossless) alt in
+      let content' = normalize_content ~lossless ~enforce_spec content in
+      let alt' = List.map (normalize_content ~lossless ~enforce_spec) alt in
       if content' == content && List.equal ( == ) alt alt' then c
       else With_alt { content = content'; alt = alt' }
   | _ -> c

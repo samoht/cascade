@@ -88,21 +88,29 @@ val pp_property_value : ('a property * 'a) Pp.t
     value. *)
 
 val normalize_property_value :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> 'a property -> 'a -> 'a
-(** [normalize_property_value ?lossless prop value] applies semantic
-    (equivalence) canonicalisation to [value] so the optimizer holds a canonical
-    AST and the pretty-printer stays a pure serialiser. [lossless] disables
-    bounded colour and numeric approximation while keeping exact
-    canonicalisation. *)
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?ctx:Values.calc_ctx ->
+  'a property ->
+  'a ->
+  'a
+(** [normalize_property_value ?lossless ?enforce_spec prop value] applies
+    semantic (equivalence) canonicalisation to [value] so the optimizer holds a
+    canonical AST and the pretty-printer stays a pure serialiser. [lossless]
+    disables bounded colour and numeric approximation while keeping exact
+    canonicalisation. [enforce_spec] (default [false]) also takes the colour
+    folds a target may refuse ({!Values.normalize_color}). *)
 
 val normalize_custom_property_value :
   ?lossless:bool ->
+  ?enforce_spec:bool ->
   ?ctx:Values.calc_ctx ->
   custom_property_value ->
   custom_property_value
-(** [normalize_custom_property_value v] canonicalises the typed value of a
-    registered custom property (currently the [<color>] syntax) so a promoted
-    custom-property value folds the same way a typed colour property would. *)
+(** [normalize_custom_property_value ?lossless ?enforce_spec v] canonicalises
+    the typed value of a registered custom property (currently the [<color>]
+    syntax) so a promoted custom-property value folds the same way a typed
+    colour property would, under the same [lossless] and [enforce_spec]. *)
 
 val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
@@ -2869,8 +2877,10 @@ val read_shape_outside : Cursor.t -> shape_outside
     [<basic-shape>] and [<shape-box>] pair or either alone, an [<image>], a
     CSS-wide keyword or a [var()] (CSS Shapes 1 sec. 6.1). *)
 
-val normalize_shape_outside : ?lossless:bool -> shape_outside -> shape_outside
-(** [normalize_shape_outside ?lossless v] is [v] in canonical form. *)
+val normalize_shape_outside :
+  ?lossless:bool -> ?enforce_spec:bool -> shape_outside -> shape_outside
+(** [normalize_shape_outside ?lossless ?enforce_spec v] is [v] in canonical
+    form. *)
 
 val pp_clip_geometry_box : clip_geometry_box Pp.t
 (** [pp_clip_geometry_box] pretty-prints a clip geometry box. *)

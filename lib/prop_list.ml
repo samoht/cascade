@@ -204,16 +204,16 @@ let normalize_list_style_type (value : list_style_type) : list_style_type =
   | Symbols (Some Symbolic, symbols) -> Symbols (None, symbols)
   | _ -> value
 
-let normalize_list_style_image ~lossless (value : list_style_image) :
-    list_style_image =
+let normalize_list_style_image ~lossless ~enforce_spec
+    (value : list_style_image) : list_style_image =
   match value with
   | Image i ->
-      let i' = normalize_background_image ~lossless i in
+      let i' = normalize_background_image ~lossless ~enforce_spec i in
       if i' == i then value else Image i'
   | _ -> value
 
-let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
-    list_style_shorthand =
+let normalize_list_style_shorthand ~lossless ~enforce_spec
+    (s : list_style_shorthand) : list_style_shorthand =
   if list_style_slot_is_var s then s
   else
     let type_ =
@@ -227,7 +227,8 @@ let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
     in
     let image =
       drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
-      |> option_map_preserve (normalize_list_style_image ~lossless)
+      |> option_map_preserve
+           (normalize_list_style_image ~lossless ~enforce_spec)
     in
     if
       option_is_phys_same type_ s.type_
@@ -236,9 +237,10 @@ let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
     then s
     else { type_; position; image }
 
-let normalize_list_style ~lossless : list_style -> list_style = function
+let normalize_list_style ~lossless ~enforce_spec : list_style -> list_style =
+  function
   | Shorthand s as value ->
-      let s' = normalize_list_style_shorthand ~lossless s in
+      let s' = normalize_list_style_shorthand ~lossless ~enforce_spec s in
       if s' == s then value else Shorthand s'
   | value -> value
 

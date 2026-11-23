@@ -129,13 +129,20 @@ let rec normalize_stroke_miterlimit (value : stroke_miterlimit) :
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
 
-let rec normalize_svg_paint ?(lossless = false) : svg_paint -> svg_paint =
+let rec normalize_svg_paint ?(lossless = false) ~enforce_spec :
+    svg_paint -> svg_paint =
  fun value ->
   match value with
-  | Color c -> preserve_if_equal value (Color (normalize_color ~lossless c))
+  | Color c ->
+      preserve_if_equal value
+        (Color (normalize_color ~lossless ~enforce_spec c))
   | Url (u, fallback) ->
       preserve_if_equal value
-        (Url (u, option_map_preserve (normalize_svg_paint ~lossless) fallback))
+        (Url
+           ( u,
+             option_map_preserve
+               (normalize_svg_paint ~lossless ~enforce_spec)
+               fallback ))
   | other -> other
 
 let pp_vector_effect_keyword : vector_effect_keyword Pp.t =

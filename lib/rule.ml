@@ -62,7 +62,8 @@ let sort_commuting ?selector decls =
 let single ~ctx (rule : rule) : rule =
   let declarations =
     list_map_preserve
-      (Declaration.normalize ~lossless:(Ctx.lossless ctx))
+      (Declaration.normalize ~lossless:(Ctx.lossless ctx)
+         ~enforce_spec:(Ctx.enforce_spec ctx))
       rule.declarations
     |> deduplicate_declarations_with ~ctx ~merge_box:false
     |> sort_commuting ~selector:rule.selector
@@ -245,7 +246,10 @@ let synthesize_position_try decls =
    later wins exactly as it does in a rule. The selector-dependent steps are
    left out, since neither form carries a selector. *)
 let declaration_run ~ctx decls =
-  list_map_preserve (Declaration.normalize ~lossless:(Ctx.lossless ctx)) decls
+  list_map_preserve
+    (Declaration.normalize ~lossless:(Ctx.lossless ctx)
+       ~enforce_spec:(Ctx.enforce_spec ctx))
+    decls
   |> deduplicate_declarations_with ~ctx
   |> synthesize_columns |> synthesize_position_try |> preserve_list decls
 
@@ -253,7 +257,9 @@ let declaration_run ~ctx decls =
 let finalize_with ~dedup ~canonicalize_selector ~ctx (rule : rule) : rule =
   let normalize_synthesized decl =
     if List.memq decl rule.declarations then decl
-    else Declaration.normalize ~lossless:(Ctx.lossless ctx) decl
+    else
+      Declaration.normalize ~lossless:(Ctx.lossless ctx)
+        ~enforce_spec:(Ctx.enforce_spec ctx) decl
   in
   let declarations =
     dedup rule.declarations |> synthesize_columns |> synthesize_position_try

@@ -655,8 +655,8 @@ let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
    declaration of a prefix no target reads ({!Shorthand.read_by_no_target}):
    every target ignores it, and one the reader cannot type would otherwise touch
    every other declaration. *)
-let canonical_vendor_aliases ~lossless ~judged ~floors (stmts : statement list)
-    : statement list =
+let canonical_vendor_aliases ~lossless ~enforce_spec ~judged ~floors
+    (stmts : statement list) : statement list =
   let as_property d =
     let aliased = Shorthand.as_aliased_property d in
     if
@@ -664,7 +664,7 @@ let canonical_vendor_aliases ~lossless ~judged ~floors (stmts : statement list)
       || Declaration.fallback_for ~floors ~later:aliased d
       || Declaration.fallback_for ~floors ~later:d aliased
     then d
-    else Declaration.normalize ~lossless aliased
+    else Declaration.normalize ~lossless ~enforce_spec aliased
   in
   let unread decls =
     if judged then
@@ -909,7 +909,7 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
            @@ sort_property_runs
                 (canonical_values ~lossless
                    (normalize_custom_values ~lossless
-                      (canonical_vendor_aliases ~lossless
+                      (canonical_vendor_aliases ~lossless ~enforce_spec
                          ~judged:(Option.is_some judge) ~floors:(Ctx.floors ctx)
                          (drop_unparsed_rules ~judged:(Option.is_some judge)
                             (drop_unanswerable_supports stmts)))))))

@@ -512,9 +512,15 @@ let normalize_opaque_components components =
   else Cursor.remaining (Cursor.of_string minified)
 
 let normalize_property_value : type a.
-    ?lossless:bool -> ?ctx:Values.calc_ctx -> a property -> a -> a =
- fun ?(lossless = false) ?(ctx = Values.default_calc_ctx) property value ->
-  let normalize_color = Values.normalize_color ~lossless in
+    ?lossless:bool ->
+    ?enforce_spec:bool ->
+    ?ctx:Values.calc_ctx ->
+    a property ->
+    a ->
+    a =
+ fun ?(lossless = false) ?(enforce_spec = false)
+     ?(ctx = Values.default_calc_ctx) property value ->
+  let normalize_color = Values.normalize_color ~lossless ~enforce_spec in
   (* [initial] -> shortest spec-equivalent (e.g. min-width:initial -> auto) is a
      semantic rewrite, so it belongs here, not in pp. *)
   let value = canonical_initial_for_minify property value in
@@ -523,8 +529,8 @@ let normalize_property_value : type a.
   | Webkit_transform -> map_preserve (normalize_transform ~ctx) value
   | Webkit_border_radius -> normalize_border_radius value
   | Moz_border_radius -> normalize_border_radius value
-  | Webkit_box_shadow -> normalize_shadow ~lossless value
-  | Moz_box_shadow -> normalize_shadow ~lossless value
+  | Webkit_box_shadow -> normalize_shadow ~lossless ~enforce_spec value
+  | Moz_box_shadow -> normalize_shadow ~lossless ~enforce_spec value
   | Rotate -> normalize_rotate ~ctx value
   | Scale -> normalize_scale value
   | Translate -> normalize_translate_value value
@@ -563,17 +569,20 @@ let normalize_property_value : type a.
   | Offset_distance -> Values.normalize_length_percentage ~ctx value
   | Border_radius -> normalize_border_radius value
   | Background_image ->
-      map_preserve (normalize_background_image ~lossless) value
-  | Mask_image -> normalize_background_image ~lossless value
-  | Webkit_mask_image -> normalize_background_image ~lossless value
-  | Border_image_source -> normalize_background_image ~lossless value
-  | Background -> map_preserve (normalize_background ~lossless) value
+      map_preserve (normalize_background_image ~lossless ~enforce_spec) value
+  | Mask_image -> normalize_background_image ~lossless ~enforce_spec value
+  | Webkit_mask_image ->
+      normalize_background_image ~lossless ~enforce_spec value
+  | Border_image_source ->
+      normalize_background_image ~lossless ~enforce_spec value
+  | Background ->
+      map_preserve (normalize_background ~lossless ~enforce_spec) value
   | Background_repeat -> normalize_background_repeat value
   | Mask_border -> normalize_mask_border value
   | Border_spacing -> normalize_border_spacing value
-  | Mask -> normalize_mask ~lossless value
+  | Mask -> normalize_mask ~lossless ~enforce_spec value
   | Clip_path -> normalize_clip_path value
-  | Shape_outside -> normalize_shape_outside ~lossless value
+  | Shape_outside -> normalize_shape_outside ~lossless ~enforce_spec value
   | Object_view_box -> normalize_object_view_box value
   | Object_position -> normalize_position_value ~signed_basis:true value
   | Perspective_origin -> normalize_position_value value
@@ -619,8 +628,10 @@ let normalize_property_value : type a.
   | Border_inline_end_color -> normalize_color value
   | Border_block_start_color -> normalize_color value
   | Border_block_end_color -> normalize_color value
-  | Border_inline_color -> normalize_logical_border_color ~lossless value
-  | Border_block_color -> normalize_logical_border_color ~lossless value
+  | Border_inline_color ->
+      normalize_logical_border_color ~lossless ~enforce_spec value
+  | Border_block_color ->
+      normalize_logical_border_color ~lossless ~enforce_spec value
   | Text_decoration_color -> normalize_color value
   | Webkit_text_decoration_color -> normalize_color value
   | Webkit_text_fill_color -> normalize_color value
@@ -636,37 +647,39 @@ let normalize_property_value : type a.
   | Stop_color -> normalize_color value
   | Flood_color -> normalize_color value
   | Lighting_color -> normalize_color value
-  | Border -> normalize_border ~lossless value
-  | Border_block -> normalize_border ~lossless value
-  | Border_block_start -> normalize_border ~lossless value
-  | Border_block_end -> normalize_border ~lossless value
-  | Border_inline -> normalize_border ~lossless value
-  | Border_inline_start -> normalize_border ~lossless value
-  | Border_inline_end -> normalize_border ~lossless value
-  | Border_top -> normalize_border ~lossless value
-  | Border_right -> normalize_border ~lossless value
-  | Border_bottom -> normalize_border ~lossless value
-  | Border_left -> normalize_border ~lossless value
-  | Column_rule -> List.map (normalize_border ~lossless) value
-  | Outline -> normalize_outline ~lossless value
-  | Box_shadow -> normalize_shadow ~lossless value
-  | Text_shadow -> map_preserve (normalize_text_shadow ~lossless) value
-  | Text_decoration -> normalize_text_decoration ~lossless value
-  | Webkit_text_decoration -> normalize_text_decoration ~lossless value
-  | Text_emphasis -> normalize_text_emphasis ~lossless value
+  | Border -> normalize_border ~lossless ~enforce_spec value
+  | Border_block -> normalize_border ~lossless ~enforce_spec value
+  | Border_block_start -> normalize_border ~lossless ~enforce_spec value
+  | Border_block_end -> normalize_border ~lossless ~enforce_spec value
+  | Border_inline -> normalize_border ~lossless ~enforce_spec value
+  | Border_inline_start -> normalize_border ~lossless ~enforce_spec value
+  | Border_inline_end -> normalize_border ~lossless ~enforce_spec value
+  | Border_top -> normalize_border ~lossless ~enforce_spec value
+  | Border_right -> normalize_border ~lossless ~enforce_spec value
+  | Border_bottom -> normalize_border ~lossless ~enforce_spec value
+  | Border_left -> normalize_border ~lossless ~enforce_spec value
+  | Column_rule -> List.map (normalize_border ~lossless ~enforce_spec) value
+  | Outline -> normalize_outline ~lossless ~enforce_spec value
+  | Box_shadow -> normalize_shadow ~lossless ~enforce_spec value
+  | Text_shadow ->
+      map_preserve (normalize_text_shadow ~lossless ~enforce_spec) value
+  | Text_decoration -> normalize_text_decoration ~lossless ~enforce_spec value
+  | Webkit_text_decoration ->
+      normalize_text_decoration ~lossless ~enforce_spec value
+  | Text_emphasis -> normalize_text_emphasis ~lossless ~enforce_spec value
   | Flex_flow -> normalize_flex_flow value
-  | Caret -> normalize_caret ~lossless value
+  | Caret -> normalize_caret ~lossless ~enforce_spec value
   | Interest_delay -> normalize_interest_delay value
   | Interest_delay_start -> normalize_interest_delay value
   | Interest_delay_end -> normalize_interest_delay value
-  | Fill -> normalize_svg_paint ~lossless value
-  | Stroke -> normalize_svg_paint ~lossless value
-  | Scrollbar_color -> normalize_scrollbar_color ~lossless value
-  | Filter -> normalize_filter ~lossless value
-  | Webkit_filter -> normalize_filter ~lossless value
-  | Ms_filter -> normalize_filter ~lossless value
-  | Backdrop_filter -> normalize_filter ~lossless value
-  | Webkit_backdrop_filter -> normalize_filter ~lossless value
+  | Fill -> normalize_svg_paint ~lossless ~enforce_spec value
+  | Stroke -> normalize_svg_paint ~lossless ~enforce_spec value
+  | Scrollbar_color -> normalize_scrollbar_color ~lossless ~enforce_spec value
+  | Filter -> normalize_filter ~lossless ~enforce_spec value
+  | Webkit_filter -> normalize_filter ~lossless ~enforce_spec value
+  | Ms_filter -> normalize_filter ~lossless ~enforce_spec value
+  | Backdrop_filter -> normalize_filter ~lossless ~enforce_spec value
+  | Webkit_backdrop_filter -> normalize_filter ~lossless ~enforce_spec value
   | Flex_grow -> normalize_flex_factor value
   | Webkit_flex_grow -> normalize_flex_factor value
   | Stroke_miterlimit -> normalize_stroke_miterlimit value
@@ -717,9 +730,9 @@ let normalize_property_value : type a.
   | Webkit_transition -> map_preserve normalize_transition value
   | Moz_transition -> map_preserve normalize_transition value
   | O_transition -> map_preserve normalize_transition value
-  | List_style -> normalize_list_style ~lossless value
+  | List_style -> normalize_list_style ~lossless ~enforce_spec value
   | List_style_type -> normalize_list_style_type value
-  | List_style_image -> normalize_list_style_image ~lossless value
+  | List_style_image -> normalize_list_style_image ~lossless ~enforce_spec value
   | Transition_timing_function -> normalize_timing_function value
   | Animation -> map_preserve (normalize_animation ~ctx) value
   | Webkit_animation -> map_preserve (normalize_animation ~ctx) value
@@ -825,8 +838,8 @@ let normalize_property_value : type a.
       | Custom_value ({ value = Tokens components; _ } as r) ->
           let components' =
             components
-            |> canonicalize_custom_shadow_components ~lossless
-            |> canonicalize_custom_colors_components ~lossless
+            |> canonicalize_custom_shadow_components ~lossless ~enforce_spec
+            |> canonicalize_custom_colors_components ~lossless ~enforce_spec
             |> canonicalize_math_whitespace_components
           in
           if components' == components then value
@@ -842,7 +855,7 @@ let normalize_property_value : type a.
   | Border_image -> normalize_border_image value
   | Border_image_slice -> normalize_border_image_slice value
   | Columns -> normalize_columns_value value
-  | Content -> normalize_content ~lossless value
+  | Content -> normalize_content ~lossless ~enforce_spec value
   | Column_width -> normalize_column_width value
   | Page_size -> normalize_page_size value
   | Initial_letter_wrap -> normalize_initial_letter_wrap value

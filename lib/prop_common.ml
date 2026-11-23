@@ -198,7 +198,9 @@ let collapse_box_shorthand vs =
 let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 
 (* Canonicalise a colour to its shortest spelling. *)
-let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
+let normalize_color ?(lossless = false) ~enforce_spec =
+  Values.normalize_color ~lossless ~enforce_spec
+
 let preserve_if_equal before after = if after == before then before else after
 let map_preserve = List.map_preserve
 

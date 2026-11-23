@@ -85,14 +85,14 @@ let background_layer_slots_shared (a : background_shorthand)
   && a.attachment == b.attachment
   && a.clip == b.clip && a.origin == b.origin
 
-let normalize_background_shorthand ?(lossless = false)
+let normalize_background_shorthand ?(lossless = false) ~enforce_spec
     (b : background_shorthand) =
   (* Sec. 2.2's initial [transparent] is transparent black (CSS Color 4 sec.
      6.1), so a colour that normalises to [#0000] is that initial too. *)
   let color =
     match
       option_map_preserve
-        (normalize_color ~lossless)
+        (normalize_color ~lossless ~enforce_spec)
         (drop_initial_slot (Transparent : color) b.color)
     with
     | Some (Hex { r = 0; g = 0; b = 0; a = 0 }) -> (None : color option)
@@ -100,7 +100,7 @@ let normalize_background_shorthand ?(lossless = false)
   in
   let image =
     option_map_preserve
-      (normalize_background_image ~lossless)
+      (normalize_background_image ~lossless ~enforce_spec)
       (drop_initial_slot (None : background_image) b.image)
   in
   let repeat =
@@ -129,11 +129,12 @@ let normalize_background_shorthand ?(lossless = false)
   else if background_layer_slots_shared b b' then b
   else b'
 
-let normalize_background ?(lossless = false) : background -> background =
+let normalize_background ?(lossless = false) ~enforce_spec :
+    background -> background =
  fun value ->
   match value with
   | Shorthand s ->
-      let s' = normalize_background_shorthand ~lossless s in
+      let s' = normalize_background_shorthand ~lossless ~enforce_spec s in
       if s' == s then value else Shorthand s'
   | None -> Shorthand drained_background_layer
   | other -> other

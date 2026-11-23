@@ -1062,7 +1062,7 @@ let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
   | Variables.Time -> Properties.try_read_custom_time components
   | _ -> None
 
-let promote_registered_custom_decl ~lossless registry decl =
+let promote_registered_custom_decl ~lossless ~enforce_spec registry decl =
   match decl with
   | Declaration
       {
@@ -1081,7 +1081,7 @@ let promote_registered_custom_decl ~lossless registry decl =
                    {
                      value =
                        Properties.normalize_custom_property_value ~lossless
-                         typed;
+                         ~enforce_spec typed;
                      layer;
                      meta;
                    })
@@ -1092,10 +1092,11 @@ let promote_registered_custom_decl ~lossless registry decl =
    (CSS Properties and Values API 1 sec. 2), and Tailwind emits its [@property]
    rules after the [@layer] that uses them, so the registry is read whole before
    any declaration is promoted. *)
-let promote_registered_custom_properties ~lossless registry
+let promote_registered_custom_properties ~lossless ~enforce_spec registry
     (stmts : statement list) =
   let promote_decls =
-    List.map_preserve (promote_registered_custom_decl ~lossless registry)
+    List.map_preserve
+      (promote_registered_custom_decl ~lossless ~enforce_spec registry)
   in
   (* A registration is document-global, so every declaration of that name is
      typed wherever it is written: through the declaration walker rather than a
@@ -1315,10 +1316,10 @@ let single_valued_calc_ctx registry : Values.calc_ctx =
     budget = false;
   }
 
-let normalize_live_declarations ~ctx ~lossless decls =
+let normalize_live_declarations ~ctx ~lossless ~enforce_spec decls =
   List.edit_preserve
     (fun decl ->
-      let decl' = Declaration.normalize ~ctx ~lossless decl in
+      let decl' = Declaration.normalize ~ctx ~lossless ~enforce_spec decl in
       if Declaration.is_invalid decl' then List.Drop
       else if decl' == decl then List.Keep
       else List.Replace decl')
@@ -1330,7 +1331,8 @@ let normalize_live_declarations ~ctx ~lossless decls =
    carries an unknown at-rule's body as opaque source text, which has no grammar
    to normalise against, or has its declarations normalised wherever that walk
    finds them. *)
-let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
+let sanitize_statement ~ctx ~lossless ~enforce_spec (s : statement) :
+    statement edit =
   match s with
   | Unknown_at_rule _ -> Keep
   | Property r ->
@@ -1338,7 +1340,9 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
         match r.initial_value with
         | None -> r.initial_value
         | Some value ->
-            let value' = Variables.normalize_value ~lossless r.syntax value in
+            let value' =
+              Variables.normalize_value ~lossless ~enforce_spec r.syntax value
+            in
             if value' == value then r.initial_value else Some value'
       in
       if initial_value == r.initial_value then Keep
@@ -1346,13 +1350,14 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
   | _ ->
       let s' =
         map_statement_declarations
-          (normalize_live_declarations ~ctx ~lossless)
+          (normalize_live_declarations ~ctx ~lossless ~enforce_spec)
           s
       in
       if s' == s then Keep else Replace s'
 
-let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
-  edit_statements (sanitize_statement ~ctx ~lossless) b
+let sanitize_block ~ctx ~lossless ~enforce_spec (b : statement list) :
+    statement list =
+  edit_statements (sanitize_statement ~ctx ~lossless ~enforce_spec) b
 
 (* One pass, and optimizing its output again returns it. Each rule run is
    factored once, its candidates and their acceptance reading the rules it
@@ -1431,7 +1436,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let scope = Option.value scope ~default:`Fragment in
   let registry = known_registrations ~scope stylesheet in
   let ctx = single_valued_calc_ctx registry in
-  let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
+  let stylesheet = sanitize_block ~ctx ~lossless ~enforce_spec stylesheet in
   let stylesheet = Stylesheet.drop_inert_at_rules stylesheet in
   (* Under [lossless] the raw body stands as authored: nothing types it, so
      nothing proves the layout inside it carries no meaning to its reader. *)
@@ -1439,7 +1444,8 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     if lossless then stylesheet else compact_unknown_at_rule_bodies stylesheet
   in
   let stylesheet =
-    promote_registered_custom_properties ~lossless registry stylesheet
+    promote_registered_custom_properties ~lossless ~enforce_spec registry
+      stylesheet
   in
   let stylesheet = Stylesheet.normalize_shadow_color_vars stylesheet in
   let registered = registered_foldable registry in

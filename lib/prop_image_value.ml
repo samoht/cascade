@@ -160,13 +160,13 @@ let linear_direction d stops =
   | Default_direction when leads_with_substitution stops -> d
   | _ -> d'
 
-let rec normalize_background_image ?(lossless = false) :
+let rec normalize_background_image ?(lossless = false) ~enforce_spec :
     background_image -> background_image =
  fun value ->
   let stops s =
     drop_default_stop_positions
       (fold_double_position_stops
-         (map_preserve (normalize_gradient_stop ~lossless) s))
+         (map_preserve (normalize_gradient_stop ~lossless ~enforce_spec) s))
   in
   match value with
   | Linear_gradient (d, s) ->
@@ -240,22 +240,27 @@ let rec normalize_background_image ?(lossless = false) :
         (O_repeating_radial_gradient (normalize_radial_config c, stops s))
   | Webkit_gradient g ->
       preserve_if_equal value
-        (Webkit_gradient (normalize_webkit_gradient ~lossless g))
+        (Webkit_gradient (normalize_webkit_gradient ~lossless ~enforce_spec g))
   | Cross_fade opts ->
       let normalize_opt (o : cross_fade_option) =
-        let image = normalize_background_image ~lossless o.image in
+        let image =
+          normalize_background_image ~lossless ~enforce_spec o.image
+        in
         if image == o.image then o else { o with image }
       in
       preserve_if_equal value (Cross_fade (map_preserve normalize_opt opts))
   | Webkit_cross_fade (first, second, weight) ->
       preserve_if_equal value
         (Webkit_cross_fade
-           ( normalize_background_image ~lossless first,
-             normalize_background_image ~lossless second,
+           ( normalize_background_image ~lossless ~enforce_spec first,
+             normalize_background_image ~lossless ~enforce_spec second,
              Values.normalize_number_percentage weight ))
   | List imgs ->
       preserve_if_equal value
-        (List (map_preserve (normalize_background_image ~lossless) imgs))
+        (List
+           (map_preserve
+              (normalize_background_image ~lossless ~enforce_spec)
+              imgs))
   | Url _ | Quoted _ -> normalize_url_image value
   | Linear_gradient_var v ->
       Linear_gradient_var (Values.normalize_syntax_fallback v)

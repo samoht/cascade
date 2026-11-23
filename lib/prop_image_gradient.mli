@@ -78,12 +78,13 @@ val normalize_legacy_gradient_direction :
     linear gradient in its canonical spelling, read in the legacy syntax, where
     a side keyword names where the gradient starts and [top] is the default. *)
 
-val normalize_gradient_stop : ?lossless:bool -> gradient_stop -> gradient_stop
+val normalize_gradient_stop :
+  ?lossless:bool -> enforce_spec:bool -> gradient_stop -> gradient_stop
 (** [normalize_gradient_stop ?lossless s] is [s] with its colour and positions
     in canonical spelling; [lossless] keeps colour channels unrounded. *)
 
 val normalize_webkit_gradient :
-  ?lossless:bool -> Webkit_gradient.t -> Webkit_gradient.t
+  ?lossless:bool -> enforce_spec:bool -> Webkit_gradient.t -> Webkit_gradient.t
 (** [normalize_webkit_gradient ?lossless g] is [g] with its stop colours in
     canonical spelling; [lossless] keeps colour channels unrounded. *)
 

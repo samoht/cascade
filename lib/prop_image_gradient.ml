@@ -599,14 +599,14 @@ let percentage_stop c p1 p2 : gradient_stop option =
   | Some a, Some (Some b) -> Some (Color_percentage (c, Some a, Some b))
   | _ -> None
 
-let rec normalize_gradient_stop ?(lossless = false) :
+let rec normalize_gradient_stop ?(lossless = false) ~enforce_spec :
     gradient_stop -> gradient_stop =
  fun value ->
   match value with
   | Color_percentage (c, p1, p2) ->
       preserve_if_equal value
         (Color_percentage
-           ( normalize_color ~lossless c,
+           ( normalize_color ~lossless ~enforce_spec c,
              option_map_preserve
                (Values.normalize_length_percentage ~strip:false)
                p1,
@@ -616,11 +616,11 @@ let rec normalize_gradient_stop ?(lossless = false) :
   | Color_length (c, l1, l2) ->
       preserve_if_equal value
         (Color_length
-           ( normalize_color ~lossless c,
+           ( normalize_color ~lossless ~enforce_spec c,
              option_map_preserve (Values.normalize_length ~strip:false) l1,
              option_map_preserve (Values.normalize_length ~strip:false) l2 ))
   | Color_angle (c0, p1_0, p2_0) -> (
-      let c = normalize_color ~lossless c0 in
+      let c = normalize_color ~lossless ~enforce_spec c0 in
       let p1 = normalize_angular_position p1_0 in
       let p2 = option_map_preserve normalize_angular_position p2_0 in
       match (p1, p2, p1_0) with
@@ -644,7 +644,10 @@ let rec normalize_gradient_stop ?(lossless = false) :
       preserve_if_equal value (Direction (normalize_gradient_direction dir))
   | List stops ->
       preserve_if_equal value
-        (List (map_preserve (normalize_gradient_stop ~lossless) stops))
+        (List
+           (map_preserve
+              (normalize_gradient_stop ~lossless ~enforce_spec)
+              stops))
   | other -> other
 
 (* The legacy WebKit gradient takes a point as numbers and percentages as well
@@ -660,13 +663,18 @@ let normalize_webkit_gradient_point (point : Webkit_gradient.point) :
   | Position _ -> point
 
 let normalize_webkit_gradient_stop :
-    ?lossless:bool -> Webkit_gradient.stop -> Webkit_gradient.stop =
- fun ?(lossless = false) value ->
+    ?lossless:bool ->
+    enforce_spec:bool ->
+    Webkit_gradient.stop ->
+    Webkit_gradient.stop =
+ fun ?(lossless = false) ~enforce_spec value ->
   match value with
-  | From c -> preserve_if_equal value (From (normalize_color ~lossless c))
-  | To c -> preserve_if_equal value (To (normalize_color ~lossless c))
+  | From c ->
+      preserve_if_equal value (From (normalize_color ~lossless ~enforce_spec c))
+  | To c ->
+      preserve_if_equal value (To (normalize_color ~lossless ~enforce_spec c))
   | Color_stop (p, c) -> (
-      let c = normalize_color ~lossless c in
+      let c = normalize_color ~lossless ~enforce_spec c in
       let p : percentage =
         match p with Pct f -> Num (Pp.printed (f /. 100.)) | p -> p
       in
@@ -676,11 +684,13 @@ let normalize_webkit_gradient_stop :
       | p, Color_stop (p0, c0) when p == p0 && c == c0 -> value
       | p, _ -> Color_stop (p, c))
 
-let normalize_webkit_gradient ?(lossless = false) :
+let normalize_webkit_gradient ?(lossless = false) ~enforce_spec :
     Webkit_gradient.t -> Webkit_gradient.t =
  fun value ->
   let point = normalize_webkit_gradient_point in
-  let stops = map_preserve (normalize_webkit_gradient_stop ~lossless) in
+  let stops =
+    map_preserve (normalize_webkit_gradient_stop ~lossless ~enforce_spec)
+  in
   match value with
   | Linear r ->
       let start = point r.start

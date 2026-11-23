@@ -168,7 +168,8 @@ let rec normalize_clip_path : clip_path -> clip_path =
 (* CSS Shapes 1 sec. 6.1: the shape normalises as a [clip-path] shape and the
    image as a [background-image] one, and a [margin-box] beside a shape is the
    box an omitted one defaults to. *)
-let normalize_shape_outside ?(lossless = false) (value : shape_outside) =
+let normalize_shape_outside ?(lossless = false) ?(enforce_spec = false)
+    (value : shape_outside) =
   match value with
   | Shape (Clip_path_with_box { shape; box = Margin_box; _ }) ->
       (Shape (normalize_clip_path shape) : shape_outside)
@@ -176,7 +177,7 @@ let normalize_shape_outside ?(lossless = false) (value : shape_outside) =
       let c' = normalize_clip_path c in
       if c' == c then value else (Shape c' : shape_outside)
   | Image i ->
-      let i' = normalize_background_image ~lossless i in
+      let i' = normalize_background_image ~lossless ~enforce_spec i in
       if i' == i then value else (Image i' : shape_outside)
   | Var _ -> value
 
@@ -221,10 +222,10 @@ let mask_layer_slots_shared (a : mask_layer) (b : mask_layer) =
   && a.repeat == b.repeat && a.origin == b.origin && a.clip == b.clip
   && a.mode == b.mode && a.composite == b.composite
 
-let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
+let normalize_mask_layer ?(lossless = false) ~enforce_spec (l : mask_layer) =
   let image =
     option_map_preserve
-      (normalize_background_image ~lossless)
+      (normalize_background_image ~lossless ~enforce_spec)
       (drop_initial_slot (None : background_image) l.image)
   in
   let position =
@@ -247,14 +248,16 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
   let l' = { image; position; size; repeat; origin; clip; mode; composite } in
   if mask_layer_slots_shared l l' then l else l'
 
-let normalize_mask ?(lossless = false) : mask -> mask =
+let normalize_mask ?(lossless = false) ~enforce_spec : mask -> mask =
  fun value ->
   match value with
   | Layer l ->
-      let l' = normalize_mask_layer ~lossless l in
+      let l' = normalize_mask_layer ~lossless ~enforce_spec l in
       if l' == l then value else Layer l'
   | Layers ls ->
-      let ls' = map_preserve (normalize_mask_layer ~lossless) ls in
+      let ls' =
+        map_preserve (normalize_mask_layer ~lossless ~enforce_spec) ls
+      in
       if ls' == ls then value else Layers ls'
   | other -> other
 
