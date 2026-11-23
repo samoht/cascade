@@ -337,6 +337,11 @@ and font_face_descriptor =
       (** OpenType feature settings *)
   | Font_variation_settings of Properties.font_variation_settings
       (** Variable font settings *)
+  | Font_variation_settings_as_written of string
+      (** A list no specification grants that a browser in B reads, holding an
+          entry that is a bare <opentype-tag> with no number (CSS Fonts 4 sec.
+          6.6). It is kept as the author wrote it, as {!Font_family_as_written}.
+      *)
   | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
   | Ascent_override of Font_face.metric_override  (** Ascent metric override *)
   | Descent_override of Font_face.metric_override

@@ -284,70 +284,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.column-rule.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.column-rule-width.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.column-rule-style.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.column-rule-color.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.properties.border-block-start.comma";
       support =
         {
@@ -1046,49 +982,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.resize.auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS UI 4 sec. 4.1: none | both | horizontal | vertical | block | \
-         inline. Chrome accepts auto, no specification defines it";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.text-orientation.sideways_right";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Writing Modes 4 sec. 5.1: mixed | upright | sideways. \
-         sideways-right is a compatibility alias browsers may keep, not \
-         grammar";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.alignment-baseline.auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
-         auto. Chrome accepts it from the SVG 1.1 grammar";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.at-rules.font-face.font-family.serif";
       support =
         {
@@ -1276,22 +1169,6 @@ let measured =
         "CSS Fonts 4 sec. 4.5 writes the descriptor auto | \
          <font-stretch-css3>{1,2}, so a pair of endpoints is the range a \
          variable font is asked for. Chrome takes only one value";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.at-rules.font-face.font-variation-settings.string";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Fonts 4 sec. 6.6 writes each entry <opentype-tag> <number>, so a \
-         bare tag names an axis and sets it to nothing. Chrome takes the tag \
-         alone at the descriptor and gives it 1, where it refuses the same \
-         entry at the property";
       measured = "Chrome 153";
     };
   ]

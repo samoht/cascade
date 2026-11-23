@@ -943,6 +943,11 @@ differently. They are the reason to minify again.
 - `@font-face` family name two browsers read differently is kept as written**:
   `none default` and `inherit foo`, which Chromium and Safari read, and `serif
   Foo`, which Safari reads, were deleted (#1629).
+- forms only Chromium reads are kept as written**: `resize:auto`,
+  `text-orientation:sideways-right`, `alignment-baseline:auto`, a
+  `column-rule` list with a trailing comma, a repeated `historical-forms` and
+  a bare tag in the `@font-face` `font-variation-settings` descriptor were
+  deleted (#1630).
 
 #### Stable output
 

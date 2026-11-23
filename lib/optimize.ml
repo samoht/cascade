@@ -171,9 +171,9 @@ let normalize_font_face_descriptor (desc : font_face_descriptor) :
       else Font_stretch_range (low', high')
   | Font_family _ | Font_family_as_written _ | Src _ | Font_style _
   | Font_display _ | Unicode_range _ | Font_variant _ | Font_feature_settings _
-  | Font_variation_settings _ | Size_adjust _ | Ascent_override _
-  | Descent_override _ | Line_gap_override _ | Font_style_auto
-  | Font_weight_auto | Font_stretch_auto ->
+  | Font_variation_settings _ | Font_variation_settings_as_written _
+  | Size_adjust _ | Ascent_override _ | Descent_override _ | Line_gap_override _
+  | Font_style_auto | Font_weight_auto | Font_stretch_auto ->
       desc
 
 (* [stmt] is returned unchanged when no descriptor moved: the factoring fixpoint

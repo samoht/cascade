@@ -981,6 +981,61 @@ let engine_family_entry = function
       | None -> false)
   | [] -> false
 
+(* [raw_value] read by the typed reader of [prop] to its end. *)
+let typed_reads (type a) (prop : a property) raw_value =
+  let t = Cursor.of_string raw_value in
+  match read_value prop t with
+  | exception Cursor.Parse_error _ -> false
+  | _ ->
+      Cursor.ws t;
+      Cursor.is_done t
+
+(* [raw_value] is the lone keyword [word], in any case. *)
+let is_lone_keyword word raw_value =
+  match comma_entries raw_value with
+  | [ [ ident ] ] -> (
+      match lowercase_ident ident with
+      | Some w -> String.equal w word
+      | None -> false)
+  | _ -> false
+
+(* [raw_value] ends in a comma after a list the typed reader of [prop] takes. *)
+let reads_before_trailing_comma prop raw_value =
+  let components =
+    List.filter
+      (fun c -> not (Component.is_whitespace c))
+      (Cursor.remaining (Cursor.of_string raw_value))
+  in
+  match List.rev components with
+  | Component.Preserved { kind = Token.Comma; _ } :: (_ :: _ as rest) ->
+      typed_reads prop (Parser.string_of_components (List.rev rest))
+  | _ -> false
+
+(* [raw_value] holds [historical-forms] more than once, and reads once the
+   repeats are left out. *)
+let reads_without_repeated_historical_forms raw_value =
+  let components =
+    List.filter
+      (fun c -> not (Component.is_whitespace c))
+      (Cursor.remaining (Cursor.of_string raw_value))
+  in
+  let is_historical c =
+    match lowercase_ident c with
+    | Some w -> String.equal w "historical-forms"
+    | None -> false
+  in
+  let _, kept =
+    List.fold_left
+      (fun (seen, kept) c ->
+        if is_historical c then if seen then (true, kept) else (true, c :: kept)
+        else (seen, c :: kept))
+      (false, []) components
+  in
+  List.length (List.filter is_historical components) > 1
+  && typed_reads Font_variant_alternates
+       (String.concat " "
+          (List.rev_map (fun c -> Parser.string_of_components [ c ]) kept))
+
 (* A form no specification grants and a browser in B parses. The typed reader
    refuses it and the declaration keeps the text the author wrote: rewritten
    into a granted form it would apply in the engines that drop it, and dropped
@@ -1034,6 +1089,21 @@ let browser_reads_ungranted (Prop prop : any_property) raw_value =
      Chromium and WebKit read it with [background-position]'s three-value
      grammar ({!Properties.mask_reads_with_bg_position}). *)
   | Mask -> Properties.mask_reads_with_bg_position raw_value
+  (* CSS UI 4 sec. 4.1, CSS Writing Modes 4 sec. 5.1 and CSS Inline 3 sec. 4.2.2
+     grant none of these keywords. Chromium 153 reads each, WebKit 26.5 drops
+     it. *)
+  | Resize -> is_lone_keyword "auto" raw_value
+  | Text_orientation -> is_lone_keyword "sideways-right" raw_value
+  | Alignment_baseline -> is_lone_keyword "auto" raw_value
+  (* CSS Gaps 1 sec. 4.4 gives a rule list no empty entry. Chromium 153 reads a
+     trailing comma after the list as its end; WebKit 26.5 drops it. *)
+  | Column_rule -> reads_before_trailing_comma prop raw_value
+  | Column_rule_width -> reads_before_trailing_comma prop raw_value
+  | Column_rule_style -> reads_before_trailing_comma prop raw_value
+  | Column_rule_color -> reads_before_trailing_comma prop raw_value
+  (* CSS Fonts 4 takes [historical-forms] once. Chromium 153 reads it repeated,
+     anywhere in the value; WebKit 26.5 drops it. *)
+  | Font_variant_alternates -> reads_without_repeated_historical_forms raw_value
   | _ -> false
 
 let allows_unknown_fallback prop name raw_value =

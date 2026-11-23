@@ -8,7 +8,7 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
   | Font_family values -> Some (Font_family (font_family values))
-  | Font_family_as_written _ -> None
+  | Font_family_as_written _ | Font_variation_settings_as_written _ -> None
   | Font_style value -> Some (Font_style (font_style value))
   | Font_weight value -> Some (Font_weight (font_weight value))
   | Font_weight_range (low, high) ->
@@ -235,6 +235,50 @@ let read_font_family_descriptor r =
           else raise exn)
     Fun.id r
 
+(* CSS Fonts 4 sec. 6.6 writes each entry <opentype-tag> <number>. Chromium 153
+   reads an entry that is a bare tag at the @font-face descriptor and gives the
+   axis 1; WebKit 26.5 drops the descriptor. A list that reads once each bare
+   tag is given that 1 is kept as written. *)
+let bare_tags_read raw =
+  let rec entries acc entry = function
+    | [] -> List.rev (List.rev entry :: acc)
+    | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+        entries (List.rev entry :: acc) [] rest
+    | c :: rest when Component.is_whitespace c -> entries acc entry rest
+    | c :: rest -> entries acc (c :: entry) rest
+  in
+  let entries = entries [] [] (Cursor.remaining (Cursor.of_string raw)) in
+  let is_bare = function
+    | [ Component.Preserved { kind = Token.String _; _ } ] -> true
+    | _ -> false
+  in
+  List.exists is_bare entries
+  &&
+  let entry e =
+    let text = Parser.string_of_components e in
+    if is_bare e then String.concat " " [ text; "1" ] else text
+  in
+  let t = Cursor.of_string (String.concat "," (List.map entry entries)) in
+  match Properties.read_font_variation_settings t with
+  | exception Cursor.Parse_error _ -> false
+  | _ ->
+      Cursor.ws t;
+      Cursor.is_done t
+
+let read_font_variation_settings_descriptor r =
+  read_descriptor_value
+    (fun r ->
+      let start = Cursor.save r in
+      match Properties.read_font_variation_settings r with
+      | value -> Font_variation_settings value
+      | exception (Cursor.Parse_error _ as exn) ->
+          Cursor.restore r start;
+          let raw = Declaration.read_property_value r in
+          if bare_tags_read raw then
+            Font_variation_settings_as_written (String.trim raw)
+          else raise exn)
+    Fun.id r
+
 let read_font_stretch_descriptor r =
   read_descriptor_text
     (fun value ->
@@ -420,10 +464,7 @@ let read_font_face_desc name r =
       read_descriptor_value Properties.read_font_feature_settings
         (fun v -> Font_feature_settings v)
         r
-  | "font-variation-settings" ->
-      read_descriptor_value Properties.read_font_variation_settings
-        (fun v -> Font_variation_settings v)
-        r
+  | "font-variation-settings" -> read_font_variation_settings_descriptor r
   | "size-adjust" ->
       read_descriptor_value Font_face.read_size_adjust
         (fun v -> Size_adjust v)
