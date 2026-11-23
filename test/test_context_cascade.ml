@@ -614,13 +614,7 @@ let legacy_alias_contract () =
   let layer_order = [ "base"; "theme" ] in
   let rule ~source_order ~layer s : Css.Context.cascade_rule =
     let declaration = decl s in
-    {
-      property_name = Css.Declaration.property_name declaration;
-      important = false;
-      layer = Some layer;
-      source_order;
-      declaration;
-    }
+    { important = false; layer = Some layer; source_order; declaration }
   in
   let ctx =
     Css.Context.v

@@ -90,7 +90,6 @@ let collect_cascade_rules ~layer_order stylesheet =
   let add layer decl acc =
     let rule : Context.cascade_rule =
       {
-        property_name = Declaration.property_name decl;
         important = Declaration.is_important decl;
         layer;
         source_order = !source_order;

@@ -6,7 +6,6 @@
     {!v} (all fields optional) or start from {!empty}. *)
 
 type cascade_rule = {
-  property_name : string;
   important : bool;
   layer : string option;
   source_order : int;

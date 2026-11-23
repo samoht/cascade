@@ -272,6 +272,9 @@ where it is called. Each entry says what to write there.
 - holds a typed value.** Its value is the new `Properties.shape_outside`
   (`Shape`, `Image` or `Var`) instead of a string, and `Css.shape_outside`
   takes one (#1591).
+- loses its `property_name` field.** `revert-layer` already matches a rule by
+  its typed `declaration`, so the name was a redundant copy; read it with
+  `Declaration.property_name rule.declaration` (#1594).
 
 ### Minified output
 
