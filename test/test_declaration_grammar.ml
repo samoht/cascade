@@ -1057,6 +1057,26 @@ let shape_zero_rounding () =
   decl_optimizes_to ~into:"clip-path:inset(0 round 1px)"
     "clip-path:inset(0 round 1px)"
 
+(* CSS Shapes 1 sec. 6.1 spells [shape-outside] [none | [<basic-shape> ||
+   <shape-box>] | <image>], the box defaulting to [margin-box], so the shape and
+   the image normalise as they do in [clip-path] and [background-image].
+   Chromium 157 serialises [inset(0px round 0) margin-box] as [inset(0px)] and
+   keeps [circle(10px) content-box]. *)
+let shape_outside_normalises () =
+  List.iter
+    (fun (input, into) -> decl_optimizes_to ~into input)
+    [
+      ("shape-outside:inset(0 round 0)", "shape-outside:inset(0)");
+      ("shape-outside:inset(0px round 0) margin-box", "shape-outside:inset(0)");
+      ("shape-outside:margin-box circle(10px)", "shape-outside:circle(10px)");
+      ( "shape-outside:circle(10px) content-box",
+        "shape-outside:circle(10px) content-box" );
+      ("shape-outside:margin-box", "shape-outside:margin-box");
+      ( "shape-outside:linear-gradient(red,blue)",
+        "shape-outside:linear-gradient(red,#00f)" );
+      ("shape-outside:var(--s)", "shape-outside:var(--s)");
+    ]
+
 let border_radius_keyword_radii () =
   List.iter
     (fun radius ->
@@ -1223,6 +1243,7 @@ let suite =
       test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
       test_case "a zero shape rounding is no rounding" `Quick
         shape_zero_rounding;
+      test_case "shape-outside normalises" `Quick shape_outside_normalises;
       test_case "border-radius CSS-wide keywords" `Quick
         border_radius_css_wide_keywords;
     ] )
