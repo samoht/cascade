@@ -415,3 +415,10 @@ let equal_contain_intrinsic_size_item (a : contain_intrinsic_size_item) b =
   a = b
 
 let equal_border_style (a : border_style) b = a = b
+
+(* A shorthand resets every longhand it covers before setting the ones written,
+   so a slot holding the longhand's initial value declares what leaving it out
+   declares, and the shorter spelling leaves it out. *)
+let drop_initial_slot : 'a. 'a -> 'a option -> 'a option =
+ fun initial opt ->
+  match opt with Some x when x = initial -> (None : _ option) | _ -> opt

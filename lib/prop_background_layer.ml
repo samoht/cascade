@@ -5,11 +5,8 @@ open Prop_common
 open Prop_image
 
 (* CSS Backgrounds 3 (ED) sec. 2.10: the shorthand resets every longhand it
-   covers before setting the ones written, so a slot holding its own initial
-   value declares what leaving it out declares and the shorter spelling wins. *)
-let drop_initial_slot : 'a. 'a -> 'a option -> 'a option =
- fun initial opt ->
-  match opt with Some x when x = initial -> (None : _ option) | _ -> opt
+   covers before setting the ones written, so {!drop_initial_slot} drops a slot
+   holding its own initial value. *)
 
 (* sec. 2.6 gives background-position the initial value [0% 0%] and reads a lone
    value as the horizontal offset with [center] vertically, so a [Single] names

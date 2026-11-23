@@ -176,10 +176,8 @@ let rec normalize_clip_path : clip_path -> clip_path =
    position (sec. 7.4), [auto] for the size (sec. 7.5), [repeat] for the repeat
    (sec. 7.3), [border-box] for the origin and the clip (sec. 7.6 and 7.7),
    [match-source] for the mode (sec. 7.2) and [add] for the composite (sec. 7.8)
-   - so writing one out names what leaving it out names. *)
-let drop_mask_initial : 'a. 'a -> 'a option -> 'a option =
- fun initial opt ->
-  match opt with Some x when x = initial -> (None : _ option) | _ -> opt
+   - so writing one out names what leaving it out names, and
+   {!drop_initial_slot} drops it. *)
 
 (* CSS Masking 1 sec. 7.9: in a layer one [<geometry-box>] sets both
    [mask-origin] and [mask-clip], two set them in that order, and [no-clip] sets
@@ -218,12 +216,12 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
   let image =
     option_map_preserve
       (normalize_background_image ~lossless)
-      (drop_mask_initial (None : background_image) l.image)
+      (drop_initial_slot (None : background_image) l.image)
   in
   let position =
     option_map_preserve (normalize_position_value ~signed_basis:true) l.position
   in
-  let size = drop_mask_initial (Auto : background_size) l.size in
+  let size = drop_initial_slot (Auto : background_size) l.size in
   (* The size follows the position and a [/], so the position can only go once
      the size has. *)
   let position =
@@ -233,10 +231,10 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
         (None : position_value option)
     | _ -> position
   in
-  let repeat = drop_mask_initial (Repeat : background_repeat) l.repeat in
+  let repeat = drop_initial_slot (Repeat : background_repeat) l.repeat in
   let origin, clip = normalize_mask_boxes l.origin l.clip in
-  let mode = drop_mask_initial (Match_source : mask_mode) l.mode in
-  let composite = drop_mask_initial (Add : mask_composite) l.composite in
+  let mode = drop_initial_slot (Match_source : mask_mode) l.mode in
+  let composite = drop_initial_slot (Add : mask_composite) l.composite in
   let l' = { image; position; size; repeat; origin; clip; mode; composite } in
   if mask_layer_slots_shared l l' then l else l'
 
