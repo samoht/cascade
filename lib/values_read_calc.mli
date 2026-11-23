@@ -27,9 +27,14 @@ val read_round_strategy : Cursor.t -> string
     default. *)
 
 val read_round_call :
-  (string -> 'a -> 'a -> 'b) -> (Cursor.t -> 'a) -> Cursor.t -> 'b
-(** [read_round_call make read t] parses a [round()] call over [read] and builds
-    it with [make]. *)
+  ?default_step:'a ->
+  (string -> 'a -> 'a -> 'b) ->
+  (Cursor.t -> 'a) ->
+  Cursor.t ->
+  'b
+(** [read_round_call ?default_step make read t] parses a [round()] call over
+    [read] and builds it with [make]. A call without a step takes
+    [default_step], and is refused when there is none. *)
 
 val read_binary_call :
   string -> ('a -> 'a -> 'b) -> (Cursor.t -> 'a) -> Cursor.t -> 'b

@@ -809,6 +809,10 @@ differently. They are the reason to minify again.
   since an unregistered custom property substitutes its tokens. A number
   result is now kept as written, and a time folds only when it is not negative
   (#1567).
+- and a one-argument `round()` at an integer were deleted.**
+  `counter-increment:a sign(1)` and `z-index:round(1.5)` are now read as
+  Chromium reads them (CSS Values 4 sec. 10.3 lets `round()` omit its step)
+  (#1568).
 
 #### Stable output
 

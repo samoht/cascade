@@ -362,7 +362,13 @@ let rec normalize_number ?(ctx = default_calc_ctx) ?(non_negative = false)
     | Sqrt v -> (
         match nf v with Num a when a >= 0. -> Num (Float.sqrt a) | v -> Sqrt v)
     | Abs v -> ( match nf v with Num a -> Num (Float.abs a) | v -> Abs v)
-    | Sign v -> Sign (nf v)
+    (* Sec. 10.6: -1 below zero, +1 above, and a zero keeps its sign. *)
+    | Sign v -> (
+        match nf v with
+        | Num a when a > 0. -> Num 1.
+        | Num a when a < 0. -> Num (-1.)
+        | Num a when Float.equal a 0. -> Num a
+        | v -> Sign v)
     | Sin _ | Num _ | Var _ -> n
   in
   (* Sec. 10.12 clamps a math function past the property's range at

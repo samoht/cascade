@@ -794,7 +794,10 @@ and read_math_number_function t name =
           | None -> None))
 
 and read_round_number t =
-  read_round_call (fun s v step -> (Round (s, v, step) : number)) read_number t
+  read_round_call
+    ~default_step:(Num 1. : number)
+    (fun s v step -> (Round (s, v, step) : number))
+    read_number t
 
 and read_binary_number_function name make t =
   read_binary_call name make read_number t

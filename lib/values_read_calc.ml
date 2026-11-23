@@ -204,15 +204,23 @@ let read_round_strategy inner =
       Cursor.restore inner snap;
       "nearest"
 
-(* [round(<strategy>?, value, step)] over any argument reader. *)
-let read_round_call make read_x t =
+(* [round(<strategy>?, value, step?)] over any argument reader. Sec. 10.3 lets
+   the step go only over a [<number>], where it is 1: that reader passes
+   [default_step]. *)
+let read_round_call ?default_step make read_x t =
   Cursor.call "round" t (fun inner ->
       let strategy = read_round_strategy inner in
       let value = read_x inner in
       Cursor.ws inner;
-      Cursor.comma inner;
-      let step = read_x inner in
-      Cursor.ws inner;
+      let step =
+        match default_step with
+        | Some step when Cursor.is_done inner -> step
+        | _ ->
+            Cursor.comma inner;
+            let step = read_x inner in
+            Cursor.ws inner;
+            step
+      in
       Cursor.expect_eof inner;
       make strategy value step)
 
@@ -601,7 +609,7 @@ and read_math_arg_ws t =
 and read_stepped_round : type a. Cursor.t -> a calc =
  fun t ->
   checked_stepped_call t
-    (read_round_call
+    (read_round_call ~default_step:(Lit 1.)
        (fun strategy value step -> (Round_n (strategy, value, step) : math_fn))
        read_math_arg_ws t)
 
