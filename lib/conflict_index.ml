@@ -26,7 +26,7 @@ module Spec_table = Common.Table.Make (struct
   type t = int
 
   let equal = Int.equal
-  let hash = Hashtbl.hash
+  let hash = Int.hash
 end)
 
 (* An overlap key at a packed specificity: what two rules have to share for a
