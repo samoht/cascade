@@ -703,10 +703,17 @@ let rec next_candidate read cursor stamp j =
 
 (* The edges of the order, one per dependent pair unless a path already holds
    it: each entry reads the earlier entries filed where it would be, nearest
-   first, and skips one that depends on an entry it already linked to, which
-   then reaches it through that one. A few of those are asked, so a long run of
-   writers that do not depend on each other costs a test per writer rather than
-   one per pair of them. *)
+   first, and skips one that already reaches it through an entry it linked to.
+   Only reachability reaches the output: {!emit} and {!between} read whether a
+   path joins two entries, never which edges carry it.
+
+   Up to [closure_limit] entries, each entry holds the set of its ancestors, so
+   the skip is a bit test and the walk asks {!depends} once per candidate that
+   is not already an ancestor. A dense run, where most writers of a slot meet,
+   then costs a test per edge kept rather than several per candidate. Past the
+   limit the sets would not fit, and a candidate is skipped when it depends on
+   one of the last few entries linked, which then reaches it. *)
+let closure_limit = 16384
 let covered_limit = 8
 
 let rec covered o i k = function
@@ -718,22 +725,45 @@ let order_graph o =
   let n = Array.length o.entries in
   let succ = Array.make n [] and preds = Array.make n 0 in
   let buckets = Bucket.create 64 and stamp = Array.make n (-1) in
+  let ancestors =
+    if n <= closure_limit then Array.make n Bytes.empty else [||]
+  in
   Array.iteri
     (fun j e ->
       if not e.dead then begin
         let read, filed = buckets_of o buckets e in
         let cursor = Array.map (fun b -> b.size - 1) read in
-        let rec walk linked =
-          let i = next_candidate read cursor stamp j in
-          if i >= 0 then
-            if (not (covered o i covered_limit linked)) && depends o i j then begin
-              succ.(i) <- j :: succ.(i);
-              preds.(j) <- preds.(j) + 1;
-              walk (i :: linked)
-            end
-            else walk linked
+        let link i =
+          succ.(i) <- j :: succ.(i);
+          preds.(j) <- preds.(j) + 1
         in
-        walk [];
+        (if Array.length ancestors > 0 then begin
+           let reach = Reach.v n in
+           ancestors.(j) <- reach;
+           let rec walk () =
+             let i = next_candidate read cursor stamp j in
+             if i >= 0 then begin
+               if (not (Reach.mem reach i)) && depends o i j then begin
+                 link i;
+                 Reach.union ~into:reach ancestors.(i);
+                 Reach.add reach i
+               end;
+               walk ()
+             end
+           in
+           walk ()
+         end
+         else
+           let rec walk linked =
+             let i = next_candidate read cursor stamp j in
+             if i >= 0 then
+               if (not (covered o i covered_limit linked)) && depends o i j then begin
+                 link i;
+                 walk (i :: linked)
+               end
+               else walk linked
+           in
+           walk []);
         List.iter (fun b -> push b j) filed
       end)
     o.entries;
