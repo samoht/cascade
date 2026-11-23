@@ -1010,6 +1010,8 @@ differently. They are the reason to minify again.
   `oklch(.7 76%20)` in a border, a gradient stop and `override-colors` where
   `color` kept `.304`, and `Css.minify ~rename_custom_property` now renames a
   `var()` inside a border colour (#1614).
+- are written in lowercase hex**: U+000E printed as `\E `; CSSOM sec. 2.1
+  writes `\e `, and so does cascade now, at the same length (#1634).
 
 #### Which rules merge
 

@@ -164,12 +164,16 @@ let hex_digit n =
   if n < 10 then Char.chr (n + Char.code '0')
   else Char.chr (n - 10 + Char.code 'A')
 
-(* Hex-escape a control byte as "\HH " per CSS Syntax 3 (ED) sec. 9. *)
+(* CSSOM 1 sec. 2.1 writes the code point of an escape "as hexadecimal in the
+   range 0-9 a-f". *)
+let escape_digit n = "0123456789abcdef".[n]
+
+(* Hex-escape a control byte as "\hh " per CSS Syntax 3 (ED) sec. 9. *)
 let add_hex_escape buf c =
   let code = Char.code c in
   Buffer.add_char buf '\\';
-  if code >= 0x10 then Buffer.add_char buf (hex_digit (code lsr 4));
-  Buffer.add_char buf (hex_digit (code land 0xF));
+  if code >= 0x10 then Buffer.add_char buf (escape_digit (code lsr 4));
+  Buffer.add_char buf (escape_digit (code land 0xF));
   Buffer.add_char buf ' '
 
 let add_hex_escape_cp buf cp =
@@ -177,7 +181,7 @@ let add_hex_escape_cp buf cp =
   let rec emit n acc =
     if n = 0 && acc = [] then Buffer.add_char buf '0'
     else if n = 0 then List.iter (Buffer.add_char buf) acc
-    else emit (n / 16) (hex_digit (n mod 16) :: acc)
+    else emit (n / 16) (escape_digit (n mod 16) :: acc)
   in
   emit cp [];
   Buffer.add_char buf ' '
