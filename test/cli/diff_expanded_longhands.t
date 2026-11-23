@@ -53,3 +53,18 @@ the shorter one.
   CSS files are identical
   $ cascade --minify b.css
   .a{flex:10px}
+
+CSS Backgrounds 3 sec. 2.10: [background] sets [background-color] to the
+initial value sec. 2.2 gives it, [transparent], when it names no colour, so
+the longhands written out in full say what the shorthand says.
+
+  $ cat > a.css <<'EOF2'
+  > .a{background:url(a.png) no-repeat content-box}
+  > EOF2
+  $ cat > b.css <<'EOF2'
+  > .a{background-image:url(a.png);background-position:0% 0%;background-size:auto;background-repeat:no-repeat;background-attachment:scroll;background-origin:content-box;background-clip:content-box;background-color:transparent}
+  > EOF2
+  $ cascade diff --diff=canonical a.css b.css
+  CSS files are identical
+  $ cascade --minify b.css
+  .a{background:url(a.png)no-repeat content-box}
