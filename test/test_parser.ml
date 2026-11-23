@@ -1626,6 +1626,17 @@ let spec_escape_ident_dash_digit () =
      point, so nothing is escaped there. *)
   check_escape_ident_retokenizes "inner dash digit" "a-4"
 
+(* CSSOM 1 sec. 2.1 escapes a character as code point with "the code point as
+   hexadecimal in the range 0-9 a-f": lowercase, the same length as upper. *)
+let cssom_escape_hex_lowercase () =
+  let check name expected s =
+    Alcotest.(check string) name expected (Parser.escape_ident s)
+  in
+  check "U+000E" "\\e " "\x0e";
+  check "U+001F" "a\\1f b" "a\x1fb";
+  check "U+007F" "\\7f " "\x7f";
+  check "malformed byte" "a\\ff " "a\xff"
+
 let spec_escape_ident_leading_dash () =
   (* Sec. 4.3.9: [--] and [-] followed by an ident-start code point do open an
      ident, so the custom-property spelling stays unescaped. *)
@@ -1865,6 +1876,8 @@ let suite =
         spec_escape_ident_dash_digit;
       Alcotest.test_case "spec section 4.3.9 escape_ident leading dash" `Quick
         spec_escape_ident_leading_dash;
+      Alcotest.test_case "cssom 2.1 escape hex is lowercase" `Quick
+        cssom_escape_hex_lowercase;
       Alcotest.test_case "spec section 4.3.9 escape_ident leading digit" `Quick
         spec_escape_ident_leading_digit;
       Alcotest.test_case "spec section 4.2 escaped ident survives minify" `Quick
