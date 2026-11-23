@@ -828,6 +828,10 @@ differently. They are the reason to minify again.
   it, so the earlier one won; `@font-face` too. A merged block now carries
   style rules only, and a distant merge may cross comments, `@keyframes`,
   `@font-face`, `@property` and a top-level `@scope` block (#1576).
+- negative zero in a calculation lost its sign.** `opacity:calc(1/-0)` printed
+  as `calc(1/0)` and `z-index:calc(1/sign(-0))` as `calc(1/sign(0))`, which
+  flips the infinity: Chromium computes `-2147483648` against `2147483647`. A
+  zero keeps its sign now (#1582).
 
 #### Stable output
 

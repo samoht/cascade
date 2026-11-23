@@ -30,7 +30,11 @@ let pp_math_const ctx = function
    10.7.2), so an operand spells a NaN with it; the [calc()] wrapper
    {!Pp.nan_value} adds is for the positions outside one. *)
 let pp_calc_number ctx f =
-  if Float.is_nan f then pp_math_const ctx Nan else Pp.float ctx f
+  if Float.is_nan f then pp_math_const ctx Nan
+    (* Sec. 10.9 keeps a zero's sign through the calculation, where it decides
+       [1/-0] and [sign(-0)]. *)
+  else if Float.equal f 0. && Float.sign_bit f then Pp.string ctx "-0"
+  else Pp.float ctx f
 
 let read_math_const t =
   match Cursor.ident_opt t with

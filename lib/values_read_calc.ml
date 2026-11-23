@@ -153,10 +153,11 @@ let calc_factor_is_dimension : type a. a calc -> bool = function
 
 let read_calc_zero : type a. Cursor.t -> a calc =
  fun t ->
-  (* A zero in calc is a plain Number_tok with value 0, not a dimension. *)
+  (* A zero in calc is a plain Number_tok with value 0, not a dimension, and
+     keeps its sign (CSS Values 4 sec. 10.9). *)
   let snap = Cursor.save t in
   match Cursor.number_opt t with
-  | Some 0. -> Num 0.
+  | Some z when Float.equal z 0. -> Num z
   | _ ->
       Cursor.restore t snap;
       Cursor.err t "expected zero"
