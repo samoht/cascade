@@ -1037,6 +1037,10 @@ differently. They are the reason to minify again.
   `color-mix(in srgb,blue 40%)` the colour with its alpha scaled, `color(srgb
   0 0 1/.4)`. The default targets keep it as written, since Chrome drops it;
   `--diff=canonical --enforce-spec` reads the two as one value (#1600).
+- `--enforce-spec`, `background` resets `background-blend-mode`** as
+  Compositing 1 sec. 3.4.3 says, so a blend mode a later `background` makes
+  dead is dropped and `--diff=canonical --enforce-spec` calls the two equal;
+  the default mode keeps it for Chrome and WebKit (#1602).
 
 ### Formatted output
 

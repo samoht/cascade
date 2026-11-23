@@ -3,12 +3,12 @@ open Common
 open Shorthand_common
 open Shorthand_coverage
 
-let property_covered_by_important kept decl =
+let property_covered_by_important ~enforce_spec kept decl =
   List.exists
     (fun (_, existing) ->
       (not (is_intentionally_duplicated existing))
       && is_important existing
-      && declaration_covers existing decl)
+      && declaration_covers ~enforce_spec existing decl)
     kept
 
 (* Rebuilt through the smart constructors: they recompute the cached
@@ -82,9 +82,9 @@ let same_property_value_declaration new_decl existing =
   && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
-let covered_by_new_declaration ~floors ~judged new_decl existing =
+let covered_by_new_declaration ~enforce_spec ~floors ~judged new_decl existing =
   (not (is_intentionally_duplicated existing))
-  && declaration_covers new_decl existing
+  && declaration_covers ~enforce_spec new_decl existing
   && (is_important new_decl || not (is_important existing))
   && (not (floor_fallback ~floors new_decl existing))
   && (not (legacy_color_fallback ~judged new_decl existing))
@@ -137,7 +137,7 @@ let under_important_content kept decl =
        (fun (_, old) -> is_important old && superseding_content old decl)
        kept
 
-let deduplicate_step ~floors ~judged kept (idx, decl) =
+let deduplicate_step ~enforce_spec ~floors ~judged kept (idx, decl) =
   if under_important_content kept decl then kept
   else if is_intentionally_duplicated decl then
     let kept =
@@ -149,13 +149,16 @@ let deduplicate_step ~floors ~judged kept (idx, decl) =
         kept
     in
     (idx, decl) :: kept
-  else if (not (is_important decl)) && property_covered_by_important kept decl
+  else if
+    (not (is_important decl))
+    && property_covered_by_important ~enforce_spec kept decl
   then kept
   else
     let kept =
       filter_preserve
         (fun (_, old) ->
-          not (covered_by_new_declaration ~floors ~judged decl old))
+          not
+            (covered_by_new_declaration ~enforce_spec ~floors ~judged decl old))
         kept
     in
     if is_all_declaration decl then add_all_declaration_rev idx decl kept
@@ -951,7 +954,9 @@ let implied_longhands ~enforce_spec covering =
    computes the same values. Only what {!implied_longhand} can prove counts. *)
 let implies ~enforce_spec covering covered =
   (not (Declaration.same_property covering covered))
-  && declaration_covers covering covered
+  && declaration_covers
+       ~enforce_spec:(Option.value enforce_spec ~default:false)
+       covering covered
   &&
   match implied_longhand ~enforce_spec covering covered with
   | Some implied ->
@@ -994,7 +999,7 @@ let drop_longhands_after_covering_shorthand ~enforce_spec props =
       let rec nearest j =
         if j < 0 then ()
         else if dropped.(j) then nearest (j - 1)
-        else if declaration_covers arr.(j) li then
+        else if declaration_covers ~enforce_spec arr.(j) li then
           if redundant_via j li then dropped.(i) <- true else ()
         else nearest (j - 1)
       in

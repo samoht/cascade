@@ -164,7 +164,8 @@ let compose_reduced ~held ~ctx ~merge_box props kept =
             let deduplicated =
               List.rev
                 (List.fold_left
-                   (deduplicate_step ~floors:(Ctx.floors ctx)
+                   (deduplicate_step ~enforce_spec:(Ctx.enforce_spec ctx)
+                      ~floors:(Ctx.floors ctx)
                       ~judged:(Option.is_some (Ctx.judge ctx)))
                    [] composed)
             in
@@ -200,7 +201,8 @@ let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
   let kept =
     List.rev
       (List.fold_left
-         (deduplicate_step ~floors:(Ctx.floors ctx)
+         (deduplicate_step ~enforce_spec:(Ctx.enforce_spec ctx)
+            ~floors:(Ctx.floors ctx)
             ~judged:(Option.is_some (Ctx.judge ctx)))
          [] indexed_props)
   in

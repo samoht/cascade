@@ -20,16 +20,19 @@ let unindexed decls = List.map snd decls
 let test_declaration_covers_reset_boundaries () =
   Alcotest.(check bool)
     "all covers ordinary property" true
-    (Shorthand.declaration_covers (decl "all:initial") (decl "color:red"));
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "all:initial")
+       (decl "color:red"));
   Alcotest.(check bool)
     "all does not cover direction" false
-    (Shorthand.declaration_covers (decl "all:initial") (decl "direction:ltr"));
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "all:initial")
+       (decl "direction:ltr"));
   Alcotest.(check bool)
     "all does not cover custom properties" false
-    (Shorthand.declaration_covers (decl "all:initial") (decl "--brand:red"));
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "all:initial")
+       (decl "--brand:red"));
   Alcotest.(check bool)
     "border covers side width" true
-    (Shorthand.declaration_covers
+    (Shorthand.declaration_covers ~enforce_spec:false
        (decl "border:1px solid red")
        (decl "border-top-width:2px"))
 
@@ -695,12 +698,12 @@ let test_same_value_ignores_importance () =
 let test_page_break_alias_shadowing () =
   Alcotest.(check bool)
     "the legacy spelling covers the modern one" true
-    (Shorthand.declaration_covers
+    (Shorthand.declaration_covers ~enforce_spec:false
        (decl "page-break-before:always")
        (decl "break-before:page"));
   Alcotest.(check bool)
     "the modern spelling covers the legacy one" true
-    (Shorthand.declaration_covers (decl "break-before:page")
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "break-before:page")
        (decl "page-break-before:always"));
   Alcotest.(check bool)
     "the pair writes one slot" true

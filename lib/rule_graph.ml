@@ -1318,6 +1318,9 @@ let refs_cover_nodes nodes refs =
     (fun node -> List.exists (fun ref_ -> ref_.node = node) refs)
     nodes
 
+(* The sources a produced declaration is ordered by, read through the coverage
+   every engine has: ordering is the same under [enforce_spec], and a source
+   left unmatched falls back to its whole rule. *)
 let produced_declaration_sources graph consume produced produced_decl =
   let nodes = produced_branch_sources graph consume produced in
   match
@@ -1331,7 +1334,7 @@ let produced_declaration_sources graph consume produced produced_decl =
         declaration_source_refs graph nodes produced_decl
           ~matches:(fun produced source ->
             Declaration.is_important produced = Declaration.is_important source
-            && Shorthand.declaration_covers produced source)
+            && Shorthand.declaration_covers ~enforce_spec:false produced source)
       with
       | _ :: _ as covered when refs_cover_nodes nodes covered -> covered
       | _ :: _ -> fallback_source_refs nodes

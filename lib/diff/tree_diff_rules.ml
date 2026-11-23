@@ -121,8 +121,11 @@ let slots_in_order slots covered =
   in
   answered @ List.filter (fun slot -> not (List.memq slot answered)) slots
 
+(* The tree diff judges for the default targets
+   ({!Cascade_diff.Css_compare.diff} reads [enforce_spec] in the canonical mode
+   alone). *)
 let shorthand_answered ~own ~other sh =
-  let covers d = Shorthand.declaration_covers sh d in
+  let covers d = Shorthand.declaration_covers ~enforce_spec:false sh d in
   let covered = List.filter covers other in
   if
     writes_name (Css.declaration_name sh) other
@@ -130,9 +133,6 @@ let shorthand_answered ~own ~other sh =
     || List.exists (fun d -> d != sh && covers d) own
   then None
   else
-    (* The tree diff judges for the default targets
-       ({!Cascade_diff.Css_compare.diff} reads [enforce_spec] in the canonical
-       mode alone). *)
     match Shorthand.implied_longhands ~enforce_spec:false sh with
     | Some slots
       when List.for_all (fun d -> Option.is_some (slot_for slots d)) covered ->

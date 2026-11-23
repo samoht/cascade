@@ -413,7 +413,10 @@ let kill_entry ~ctx entries members p =
         then x.dead <- true
         else if Shorthand.overlap_keys_intersect x.keys y.keys then
           rewritten :=
-            List.rev_append (Shorthand.declaration_slot_keys y.decl) !rewritten)
+            List.rev_append
+              (Shorthand.declaration_slot_keys
+                 ~enforce_spec:(Ctx.enforce_spec ctx) y.decl)
+              !rewritten)
     members;
   match !rewritten with
   | [] -> ()
@@ -1022,7 +1025,9 @@ let dedup_twin ~ctx ex ey before =
   List.equal Shorthand.overlap_key_equal ex.keys ey.keys
   && (not (Int.equal ex.property ey.property))
   && String.equal (Lazy.force ex.value) (Lazy.force ey.value)
-  && List.is_empty (Shorthand.declaration_slot_keys ey.decl)
+  && List.is_empty
+       (Shorthand.declaration_slot_keys ~enforce_spec:(Ctx.enforce_spec ctx)
+          ey.decl)
   && not
        (List.memq ey.decl
           (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false
@@ -1054,10 +1059,13 @@ let group_from o members x y =
    can match with [y]'s ({!twin}) when it comes after [p] at [p]'s importance.
    Without [y] the order between [p] and the rest would then be another one.
    [holders] gives the groups that hold each text. *)
-let supports o members holders x y =
+let supports ~ctx o members holders x y =
   let ey = o.entries.(y) in
   let names_a_slot =
-    not (List.is_empty (Shorthand.declaration_slot_keys ey.decl))
+    not
+      (List.is_empty
+         (Shorthand.declaration_slot_keys ~enforce_spec:(Ctx.enforce_spec ctx)
+            ey.decl))
   in
   let twinned =
     lazy
@@ -1110,7 +1118,7 @@ let repeats ~ctx o members holders graph seen x y =
   if Int.equal ex.group ey.group then
     x < y
     && dedup_twin ~ctx ex ey (lazy (group_from o members x y))
-    && (not (supports o members holders x y))
+    && (not (supports ~ctx o members holders x y))
     && not
          (between
             ~counts:(fun z -> not (Int.equal o.entries.(z).group ey.group))
@@ -1119,7 +1127,7 @@ let repeats ~ctx o members holders graph seen x y =
   else
     (Int.equal ex.text_id ey.text_id
     || dedup_twin ~ctx ex ey (Lazy.from_val [ ex.decl ]))
-    && (not (supports o members holders x y))
+    && (not (supports ~ctx o members holders x y))
     && (x > y
        || not
             (between ~counts:(fun _ -> true) (fst (Lazy.force graph)) seen x y)

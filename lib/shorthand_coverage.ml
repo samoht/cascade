@@ -28,6 +28,17 @@ let is_intentionally_duplicated decl =
       | _ -> false)
   | Declaration { property; _ } -> is_intentionally_duplicated_typed property
 
+(* Compositing and Blending 1 (ED) sec. 3.4.3 has [background] reset
+   [background-blend-mode], but Chrome 157 and WebKit 26.5 keep it. Only an
+   engine that follows the specification is sure to reset these, so they are
+   kept out of [covers_longhand]. *)
+let spec_covers_longhand : type a b.
+    a Properties.property -> b Properties.property -> bool =
+ fun sh lh ->
+  match (sh, lh) with Background, Background_blend_mode -> true | _ -> false
+
+let spec_resets = Properties.[ Prop Background_blend_mode ]
+
 (* Typed shorthand -> longhand coverage relation. Each arm is a reachable
    [(shorthand, longhand)] pair, transitive cases included ([border] covers
    [border-top-width] directly and via [border-width] / [border-top]). Unlisted
@@ -269,8 +280,10 @@ let all_preserved_reorder_declaration decl =
    exempt from the [all] reset. Two opaque unknown-property values do not cover
    one another: either value may belong to a browser grammar the other does not,
    so both are compatibility fallbacks. Structurally identical streams are the
-   one case where either declaration can safely cover the other. *)
-let declaration_covers covering covered =
+   one case where either declaration can safely cover the other. Under
+   [enforce_spec] a shorthand also covers what [spec_covers_longhand] says it
+   resets. *)
+let declaration_covers ~enforce_spec covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
     ->
@@ -289,6 +302,7 @@ let declaration_covers covering covered =
       Declaration { property = covered_p; _ } ) ->
       Declaration.same_property covering covered
       || covers_longhand covering_p covered_p
+      || (enforce_spec && spec_covers_longhand covering_p covered_p)
       || aliases_page_break covering_p covered_p
   | _ -> false
 
@@ -1105,15 +1119,16 @@ let add_logical_aliases slots =
   | [] -> slots
   | groups -> List.concat (slots :: groups)
 
-(* Compositing and Blending 1 sec. 3.4.3 has [background] reset
-   [background-blend-mode], but Chrome 157 and WebKit 26.5 keep it, so the
-   shorthand may write that slot and does not in every engine: it is in the
-   footprint, which orders declarations, and not in the slots, which kill
-   them. *)
+(* The slots a shorthand resets in an engine that follows the specification and
+   not in every current one ([spec_covers_longhand]): they are in the footprint,
+   which orders declarations in both modes, and in the slots, which kill them,
+   only under [enforce_spec]. *)
 let spec_only_slots : type a. a Properties.property -> overlap_key list =
-  function
-  | Background -> [ key "background-blend-mode" ]
-  | _ -> []
+ fun property ->
+  List.concat_map
+    (fun (Properties.Prop h) ->
+      if spec_covers_longhand property h then property_slots h else [])
+    spec_resets
 
 let property_footprint : type a. a Properties.property -> overlap_key list =
  fun property ->
@@ -1335,11 +1350,13 @@ let property_slot_keys : type a. a Properties.property -> overlap_key list =
    to the coverage relation. *)
 let hidden_resets = Properties.[ Prop Border_image; Prop Mask_border ]
 
-let declaration_slot_keys decl =
+let declaration_slot_keys ~enforce_spec decl =
   match decl with
   | Theme_guarded _ -> []
   | Declaration { property; _ } ->
       if Properties.is_vendor_prefixed property then []
+      else if enforce_spec then
+        sorted_keys (spec_only_slots property @ written_slots property)
       else sorted_keys (written_slots property)
 
 let reset_slots shorthand run =
@@ -1351,10 +1368,13 @@ let reset_slots shorthand run =
             if covers_longhand property h then written_slots h else [])
           hidden_resets
       in
+      (* What [run] writes in every engine: a slot only the specification has it
+         write stays among those the shorthand resets. *)
       let written =
         sorted_keys
           (List.concat_map
-             (fun d -> declaration_slot_keys (unwrap_theme_guard d))
+             (fun d ->
+               declaration_slot_keys ~enforce_spec:false (unwrap_theme_guard d))
              run)
       in
       sorted_keys (spec_only_slots property @ written_slots property @ hidden)
