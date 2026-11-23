@@ -120,7 +120,7 @@ let pp_page_pseudo ctx p =
     | Blank -> "blank")
 
 let pp_page_selector_one ctx ({ name; pseudos } : page_selector) =
-  Option.iter (Pp.string ctx) name;
+  Option.iter (fun name -> Pp.string ctx (Parser.escape_ident name)) name;
   List.iter (pp_page_pseudo ctx) pseudos
 
 let pp_page_selector ctx (selectors : page_selector list) =

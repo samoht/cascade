@@ -868,26 +868,6 @@ let read_counter_style (r : Cursor.t) : statement =
 let page_selector_error r s =
   Cursor.err_invalid r (String.concat "" [ "invalid @page selector: "; s ])
 
-let page_selector_is_ident_char c =
-  (c >= 'a' && c <= 'z')
-  || (c >= 'A' && c <= 'Z')
-  || (c >= '0' && c <= '9')
-  || c = '-' || c = '_'
-
-let page_selector_is_ws = function
-  | ' ' | '\t' | '\n' | '\r' -> true
-  | _ -> false
-
-let rec page_selector_consume_ident s len i =
-  if i < len && page_selector_is_ident_char s.[i] then
-    page_selector_consume_ident s len (i + 1)
-  else i
-
-let rec page_selector_skip_ws s len i =
-  if i < len && page_selector_is_ws s.[i] then
-    page_selector_skip_ws s len (i + 1)
-  else i
-
 (* CSS Paged Media 3 section 4.3: [<page-selector-list> = <page-selector>#],
    [<page-selector> = <ident-token>? <pseudo-page>*], with each pseudo-page from
    the closed set [first | left | right | blank], so [@page invoice:blank:first]
@@ -902,53 +882,53 @@ let page_pseudo_of_name r s name =
   | "blank" -> Blank
   | _ -> page_selector_error r s
 
-let parse_page_selectors r selector =
-  let s = String.trim selector in
-  let len = String.length s in
-  let consume_ident = page_selector_consume_ident s len in
-  let skip_ws = page_selector_skip_ws s len in
-  let pseudo_of_name = page_pseudo_of_name r s in
-  let consume_pseudo_page i : (page_pseudo * int) option =
-    if i >= len || s.[i] <> ':' then None
-    else
-      let start = i + 1 in
-      let stop = consume_ident start in
-      if stop = start then page_selector_error r s;
-      Some (pseudo_of_name (String.sub s start (stop - start)), stop)
+let page_selector_is_ws = function
+  | Component.Preserved { kind = Token.Whitespace _; _ } -> true
+  | _ -> false
+
+let page_selector_drop_ws = Common.List.drop_while page_selector_is_ws
+
+(* The page name is an <ident-token>, read through its escapes (CSS Syntax 3
+   sec. 4.3.7), and each pseudo-page a [:] then an ident with nothing between
+   them. *)
+let parse_page_selectors r components =
+  let s = Cursor.string_of_components_verbatim ~trim:true components in
+  let rec consume_pseudo_pages acc = function
+    | Component.Preserved { kind = Token.Colon; _ }
+      :: Component.Preserved { kind = Token.Ident name; _ }
+      :: rest ->
+        consume_pseudo_pages (page_pseudo_of_name r s name :: acc) rest
+    | Component.Preserved { kind = Token.Colon; _ } :: _ ->
+        page_selector_error r s
+    | rest -> (List.rev acc, rest)
   in
-  let rec consume_pseudo_pages acc i =
-    match consume_pseudo_page i with
-    | None -> (List.rev acc, i)
-    | Some (p, stop) -> consume_pseudo_pages (p :: acc) stop
-  in
-  let rec consume_selectors acc i =
-    let i = skip_ws i in
+  let rec consume_selectors acc items =
+    match page_selector_drop_ws items with
     (* Reaching the end here is the tail of a [,]: the list is
        [<page-selector>#] and has no empty item, so a trailing comma is no more
        a selector list than a lone one. *)
-    if i >= len then (
-      if acc <> [] then page_selector_error r s;
-      List.rev acc)
-    else
-      let after_ident = consume_ident i in
-      let name =
-        if after_ident = i then Option.None
-        else Some (String.sub s i (after_ident - i))
-      in
-      let pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
-      (* sec. 4.2 writes a page selector as a name, one or more pseudo-pages, or
-         both, so an item with neither is no selector: [@page ,] names two of
-         them and Chrome 151 drops the rule. The prelude may be absent
-         altogether, which the caller answers before reaching here. *)
-      if Option.is_none name && pseudos = [] then page_selector_error r s;
-      let sel = { name; pseudos } in
-      let after_pseudo = skip_ws after_pseudo in
-      if after_pseudo >= len then List.rev (sel :: acc)
-      else if s.[after_pseudo] = ',' then
-        consume_selectors (sel :: acc) (after_pseudo + 1)
-      else page_selector_error r s
+    | [] -> if acc <> [] then page_selector_error r s else List.rev acc
+    | items -> (
+        let name, items =
+          match items with
+          | Component.Preserved { kind = Token.Ident name; _ } :: rest ->
+              (Some name, rest)
+          | _ -> (Option.None, items)
+        in
+        let pseudos, rest = consume_pseudo_pages [] items in
+        (* sec. 4.2 writes a page selector as a name, one or more pseudo-pages,
+           or both, so an item with neither is no selector: [@page ,] names two
+           of them and Chrome 151 drops the rule. The prelude may be absent
+           altogether, which the caller answers before reaching here. *)
+        if Option.is_none name && pseudos = [] then page_selector_error r s;
+        let sel = { name; pseudos } in
+        match page_selector_drop_ws rest with
+        | [] -> List.rev (sel :: acc)
+        | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+            consume_selectors (sel :: acc) rest
+        | _ -> page_selector_error r s)
   in
-  consume_selectors [] 0
+  consume_selectors [] components
 
 let allowed_page_margin_names =
   [
@@ -1016,8 +996,9 @@ let read_page (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "page" r;
   Cursor.ws r;
   let selector =
-    let s = Cursor.drain_until_block_as_string ~trim:true r in
-    if s = "" then [] else parse_page_selectors r s
+    match page_selector_drop_ws (Cursor.drain_until_block r) with
+    | [] -> []
+    | components -> parse_page_selectors r components
   in
   let descriptors, margins = Cursor.braces read_page_body r in
   Page_with_margins (selector, descriptors, margins)

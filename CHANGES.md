@@ -963,6 +963,10 @@ differently. They are the reason to minify again.
   included, but the flattened `:is(.c,[x=a s]):hover` kept `.c:hover` in
   Chromium. Such a branch is now listed again beside the flattened selector,
   matching nothing (#1635).
+- `@page` names are kept**: `--minify` deleted `@page \1 `, `@page a\:b` and a
+  non-ASCII page name, which browsers keep, and kept `@page 1`, which they
+  drop. The page name is now read as an ident token and printed escaped
+  (#1636).
 
 #### Stable output
 
