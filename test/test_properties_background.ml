@@ -498,10 +498,10 @@ let test_background_image () =
     ~into:"conic-gradient(in hsl longer hue,red,#00f)"
     "conic-gradient(in hsl longer hue, red, blue)";
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(in hsl longer hue from 45deg at 50%,red,#00f)"
+    ~into:"conic-gradient(in hsl longer hue from 45deg,red,#00f)"
     "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(in hsl longer hue from 45deg at 50%,red,#00f)"
+    ~into:"conic-gradient(in hsl longer hue from 45deg,red,#00f)"
     "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
   check_background_image ~minify:false
     ~expected:"radial-gradient(in oklab, red, blue)"
