@@ -52,18 +52,11 @@ val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
 val normalize :
-  ?lossless:bool ->
-  ?exact_srgb:bool ->
-  ?resolve_missing:bool ->
-  ?ctx:Values.calc_ctx ->
-  declaration ->
-  declaration
+  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
 (** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
     the optimizer holds a canonical declaration and the pretty-printer stays a
     pure serialiser. [lossless] disables bounded colour and numeric
-    approximation. [exact_srgb] and [resolve_missing] are
-    {!Properties.normalize_property_value}'s flags of the same names, for the
-    canonical diff projection only. *)
+    approximation. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)

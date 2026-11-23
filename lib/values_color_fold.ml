@@ -397,14 +397,14 @@ let static_color_to_srgb_channels :
       match (channel_srgb_slot r, channel_srgb_slot g, channel_srgb_slot b) with
       | Some r, Some g, Some b -> Some (r, g, b, alpha_value_byte a)
       | _ -> Option.None)
-  | Hsl { h; s; l; a } -> (
+  | Hsl { h; s = Some s; l = Some l; a } -> (
       match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
       | Some hue, Some saturation, Some lightness ->
           let hue = normalize_hue hue in
           let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
           Some (Some r, Some g, Some b, alpha_value_byte a)
       | _ -> Option.None)
-  | Hwb { h; w; b; a } -> (
+  | Hwb { h; w = Some w; b = Some b; a } -> (
       match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
       | Some hue, Some whiteness, Some blackness ->
           let hue = normalize_hue hue in
@@ -466,28 +466,6 @@ let exact_rgb_to_srgb_bytes c : (int * int * int * int) option =
   | Transparent -> Some (0, 0, 0, 0)
   | _ -> None
 
-(* CSS Color 4 sec. 10.2: [color(srgb r g b)] is [rgb()] with its channels
-   scaled to [0..1], so the two functions spell one colour exactly when every
-   channel lands on a whole byte. No other [color()] space converts to sRGB
-   without a transfer function or a matrix, so nothing else here is exact; a
-   channel outside the gamut, a [none] and a [var()] are all left alone. *)
-let exact_srgb_function_channels c : (int * int * int * alpha) option =
-  let byte : component -> int option = function
-    | Num f when f >= 0. && f <= 1. ->
-        let b = f *. 255. in
-        if Float.is_integer b then Some (Float.to_int b) else None
-    | Pct f when f >= 0. && f <= 100. ->
-        let b = f *. 255. /. 100. in
-        if Float.is_integer b then Some (Float.to_int b) else None
-    | _ -> None
-  in
-  match c with
-  | Color { space = Srgb; components = [ r; g; b ]; alpha } -> (
-      match (byte r, byte g, byte b) with
-      | Some r, Some g, Some b -> Some (r, g, b, alpha)
-      | _ -> None)
-  | _ -> None
-
 (* CSS Color 5 5: combine two [color-mix] percentages into the final
    per-component weights and an [alpha] multiplier. [p1] / [p2] are in [0..100];
    missing values are normalised by the caller. *)
@@ -499,72 +477,6 @@ let mix_weights p1 p2 : (float * float * float) option =
     let w2 = p2 /. sum in
     let alpha_mult = if sum >= 100. then 1. else sum /. 100. in
     Some (w1, w2, alpha_mult)
-
-(* Linearly interpolate two byte channels to a byte. *)
-let lerp_byte b1 b2 w1 w2 =
-  Float.to_int
-    (Float.round ((Float.of_int b1 *. w1) +. (Float.of_int b2 *. w2)))
-
-(* Mix two static colours in sRGB per CSS Color 5 sec. 3. [None] if either
-   operand can't fold statically ([Var] / [Calc]) or the weights reduce to zero.
-   CSS Color 4 sec. 4.4 [none] sentinel: a [none] channel inherits the other
-   operand's channel rather than averaging in a zero; both [none] yields [none]
-   (returned as zero, since the caller routes through [Hex] and [#000000] is the
-   shortest fully-[none] spelling). *)
-let mix_srgb_bytes c1 c2 ~p1 ~p2 =
-  match
-    (static_color_to_srgb_channels c1, static_color_to_srgb_channels c2)
-  with
-  | Some (r1, g1, b1, a1), Some (r2, g2, b2, a2) -> (
-      match mix_weights p1 p2 with
-      | None -> Option.None
-      | Some (w1, w2, alpha_mult) ->
-          (* CSS Color 4 sec. 13.3: colours with alpha interpolate
-             premultiplied, then un-premultiply by the result alpha - otherwise
-             a transparent operand ([#0000]) bleeds its zero channels in and
-             darkens the result. A [none] (or absent) alpha contributes as fully
-             opaque to its own channels. *)
-          let alpha_f = function
-            | Some a -> Float.of_int a /. 255.
-            | None -> 1.
-          in
-          let af1 = alpha_f a1 and af2 = alpha_f a2 in
-          (* Un-premultiply by the interpolated alpha only; the [alpha_mult]
-             (<100%-sum) scaling applies to the final alpha, not the
-             channels. *)
-          let interp_alpha = (af1 *. w1) +. (af2 *. w2) in
-          let mix_channel x y =
-            match (x, y) with
-            | Some bx, Some by ->
-                let pre =
-                  (Float.of_int bx *. af1 *. w1)
-                  +. (Float.of_int by *. af2 *. w2)
-                in
-                let v =
-                  if interp_alpha <= 0. then 0. else pre /. interp_alpha
-                in
-                Some (Float.to_int (Float.round v))
-            | Some b, None | None, Some b -> Some b
-            | None, None -> None
-          in
-          let r = mix_channel r1 r2 in
-          let g = mix_channel g1 g2 in
-          let b = mix_channel b1 b2 in
-          let a =
-            match (a1, a2) with
-            | Some av1, Some av2 ->
-                let alpha_pre = lerp_byte av1 av2 w1 w2 in
-                Some
-                  (Float.to_int
-                     (Float.round (Float.of_int alpha_pre *. alpha_mult)))
-            | Some av, None | None, Some av ->
-                Some
-                  (Float.to_int (Float.round (Float.of_int av *. alpha_mult)))
-            | None, None -> None
-          in
-          let unwrap = function Some v -> v | None -> 0 in
-          Some (unwrap r, unwrap g, unwrap b, unwrap a))
-  | _ -> Option.None
 
 let static_alpha_value = function
   | (None : alpha) -> Some 1.
@@ -848,6 +760,151 @@ let static_color_to_linear_srgb (c : color) :
           Some (lin, f255 a)
       | None -> None)
 
+(* The gamma-encoded sRGB channels and the alpha of a static colour written in a
+   channel function, before any byte rounding; [None] when one is known only at
+   used-value time. *)
+let static_srgb_floats (c : color) : ((float * float * float) * float) option =
+  let alpha : alpha -> float option = function
+    | None -> Some 1.
+    | Num f -> Some f
+    | Pct f -> Some (f /. 100.)
+    | _ -> Option.None
+  in
+  let channel : channel -> float option = function
+    | Int i -> Some (Float.of_int i /. 255.)
+    | Num f -> Some (f /. 255.)
+    | Pct f -> Some (f /. 100.)
+    | None -> Some 0.
+    | Var _ -> Option.None
+  in
+  let channels r g b a =
+    match (channel r, channel g, channel b, alpha a) with
+    | Some r, Some g, Some b, Some a -> Some ((r, g, b), a)
+    | _ -> Option.None
+  in
+  let hsl h s l a =
+    match
+      (deg_of_hue h, float_of_percentage s, float_of_percentage l, alpha a)
+    with
+    | Some hue, Some saturation, Some lightness, Some a ->
+        let hue = normalize_hue hue in
+        Some (hsl_to_rgb_float ~hue ~saturation ~lightness, a)
+    | _ -> Option.None
+  in
+  let hwb h w bl a =
+    match
+      (deg_of_hue h, float_of_percentage w, float_of_percentage bl, alpha a)
+    with
+    | Some hue, Some w, Some bl, Some a ->
+        let w = w /. 100. and bl = bl /. 100. in
+        if w +. bl >= 1. then
+          let g = w /. (w +. bl) in
+          Some ((g, g, g), a)
+        else
+          let hue = normalize_hue hue in
+          let r, g, b = hsl_to_rgb_float ~hue ~saturation:100. ~lightness:50. in
+          let scale c = (c *. (1. -. w -. bl)) +. w in
+          Some ((scale r, scale g, scale b), a)
+    | _ -> Option.None
+  in
+  match c with
+  | Rgb (Channels { r; g; b }) -> channels r g b None
+  | Rgba { rgb = Channels { r; g; b }; a } -> channels r g b a
+  | Hsl { h; s = Some s; l = Some l; a } -> hsl h s l a
+  | Hwb { h; w = Some w; b = Some b; a } -> hwb h w b a
+  | Color { space = Srgb; components = [ c1; c2; c3 ]; alpha = a } -> (
+      let component : component -> float option = function
+        | Num f -> Some f
+        | Pct f -> Some (f /. 100.)
+        | Component_none -> Some 0.
+        | _ -> Option.None
+      in
+      match (component c1, component c2, component c3, alpha a) with
+      | Some r, Some g, Some b, Some a -> Some ((r, g, b), a)
+      | _ -> Option.None)
+  | _ -> (
+      match static_color_to_linear_srgb c with
+      | Some ((r, g, b), a) ->
+          let encode = Color_space.srgb_of_linear in
+          Some ((encode r, encode g, encode b), a)
+      | Option.None -> Option.None)
+
+let single_of_float f = Int32.float_of_bits (Int32.bits_of_float f)
+
+(* The bytes a static colour paints at: in 32-bit arithmetic for a reading of
+   its numbers as 32-bit floats, which is how Chromium 153 paints [.7] at 179 in
+   every syntax. *)
+let srgb_bytes ~single ((r, g, b), a) =
+  let byte v =
+    let v = Float.max 0. (Float.min 1. v) in
+    let product =
+      if single then single_of_float (single_of_float v *. 255.) else v *. 255.
+    in
+    Float.to_int (Float.round product)
+  in
+  (byte r, byte g, byte b, byte a)
+
+(* A colour whose bytes cascade does not compute (a substitution, a math
+   function, [none], a relative origin) is printed with its numbers at eight
+   decimals, which a browser reads as the double it wrote whatever its path, and
+   respelled from comma to space syntax, which moves an alpha from the double
+   path to the 32-bit one. So its numbers are compared as printed and as
+   doubles, and the bytes of its alpha and rgb channels under the 32-bit reading
+   too. [direct_bytes] is those bytes. *)
+let direct_bytes ~single (c : color) =
+  let byte f = Some (Float.to_int (Float.round f)) in
+  let unit_byte f =
+    let f = Float.max 0. (Float.min 1. f) in
+    byte
+      (if single then single_of_float (single_of_float f *. 255.) else f *. 255.)
+  in
+  let alpha : alpha -> int option = function
+    | Num f -> unit_byte f
+    | Pct f -> unit_byte (f /. 100.)
+    | _ -> Option.None
+  in
+  let channel : channel -> int option = function
+    | Int i -> Some i
+    | Num f -> byte (if single then single_of_float f else f)
+    | Pct f -> unit_byte (f /. 100.)
+    | _ -> Option.None
+  in
+  let rgb : rgb -> int option list = function
+    | Channels { r; g; b } -> [ channel r; channel g; channel b ]
+    | Var _ -> []
+  in
+  match c with
+  | Rgb v -> rgb v
+  | Rgba { rgb = v; a } -> alpha a :: rgb v
+  | Hsl { a; _ } | Hwb { a; _ } -> [ alpha a ]
+  | Color { alpha = a; _ }
+  | Lab { alpha = a; _ }
+  | Oklab { alpha = a; _ }
+  | Lch { alpha = a; _ }
+  | Oklch { alpha = a; _ } ->
+      [ alpha a ]
+  | _ -> []
+
+let decidable_channels ~printed ~double ~single =
+  match
+    ( static_srgb_floats printed,
+      static_srgb_floats double,
+      static_srgb_floats single )
+  with
+  | Some p, Some d, Some s ->
+      let equal (r, g, b, a) (r', g', b', a') =
+        Int.equal r r' && Int.equal g g' && Int.equal b b' && Int.equal a a'
+      in
+      let bytes = srgb_bytes ~single:false p in
+      equal bytes (srgb_bytes ~single:false d)
+      && equal bytes (srgb_bytes ~single:true s)
+  | _ ->
+      let equal (a : color) b = a = b in
+      equal printed double
+      && List.equal (Option.equal Int.equal)
+           (direct_bytes ~single:false printed)
+           (direct_bytes ~single:true single)
+
 (* CSS Color 4 sec. 14.2: the sRGB colour a display renders for a static colour,
    gamut mapping the ones sRGB cannot hold. This always answers, so it serves a
    caller that has to write an sRGB colour; the optimizer must not use it, as
@@ -884,7 +941,7 @@ let alpha_of_unit_float a : alpha =
    multiplied by its operand alpha before mixing and the sum divided by the
    interpolated alpha, so a [transparent] operand contributes only alpha and not
    its zero coordinates. The [alpha_mult] (<100%-sum) scaling lands on the final
-   alpha, never the coordinates - matching [mix_srgb_bytes]. *)
+   alpha, never the coordinates. *)
 let premult_mix3 ~w1 ~w2 ~a1 ~a2 (x1, y1, z1) (x2, y2, z2) =
   let interp_alpha = (a1 *. w1) +. (a2 *. w2) in
   let axis c1 c2 =
@@ -1161,6 +1218,8 @@ let rec with_alpha (c : color) (a : alpha) : color =
   in
   match c with
   | Hex { r; g; b; _ } | Authored_hex { r; g; b; _ } -> srgb r g b
+  (* The new alpha is the caller's, so the colour is built from its reading. *)
+  | Authored_color { color; _ } -> with_alpha color a
   | Transparent -> srgb 0 0 0
   | Named n -> (
       match rgba_of_hex (snd (color_name_hex n)) with

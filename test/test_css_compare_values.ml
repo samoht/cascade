@@ -11,6 +11,27 @@ let equal_canonical_custom_signed_leading_zero () =
        ".a{--t:calc(var(--s)*-.5);translate:var(--t)}"
        ".a{--t:calc(var(--s)*-0.5);translate:var(--t)}")
 
+(* A colour channel whose double, 32-bit float and eight-decimal readings round
+   to different bytes paints by the engine and the syntax: Chromium 153 paints
+   [rgba(0,0,0,0.09999999999999998)] at alpha 25 and [rgba(0,0,0,.1)] at 26.
+   Such a colour equals only its own spelling. *)
+let equal_canonical_undecidable_channel () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "an alpha past the half is not the half" false
+    (equal ".a{color:rgba(0,0,0,0.09999999999999998)}"
+       ".a{color:rgba(0,0,0,.1)}");
+  Alcotest.(check bool)
+    "nor the byte below it" false
+    (equal ".a{color:rgba(0,0,0,0.09999999999999998)}" ".a{color:#00000019}");
+  Alcotest.(check bool)
+    "its own spelling is itself" true
+    (equal ".a{color:rgba(0,0,0,0.09999999999999998)}"
+       ".a{color:rgba(0, 0, 0, .09999999999999998)}");
+  Alcotest.(check bool)
+    "a decidable alpha keeps the six-figure bound" true
+    (equal ".a{color:rgba(0,0,0,.7)}" ".a{color:rgba(0,0,0,.7000001)}")
+
 (* SVG 2 sec. 13.5.3: [stroke-width] takes a [<number>] in user units, and a CSS
    pixel is one user unit, so [1] and [1px] draw the same stroke. Tailwind
    writes [stroke-1] unitless and tw writes [1px]. *)
@@ -120,67 +141,78 @@ let equal_canonical_angle_units () =
     (lossless ".a{--r:1.5rad}" ".a{--r:85.9437deg}")
 
 (* CSS Color 5 sec. 4.1: a relative colour whose channels are the origin's own
-   keywords is the origin in that space, with the alpha the call names. Tailwind
-   writes a shadow colour as [oklab(from rgb(0 0 0 / .1) l a b / 20%)] and
-   lightningcss folds it to the black it is; the projection has to read the two
-   as one colour, in a colour longhand and in a [var()] fallback of a shadow
-   stream alike. A channel the call rewrites is a different colour. *)
+   keywords is the origin converted to that space, with the alpha the call
+   names: Chromium 153 computes [oklab(from #0000001a l a b/.2)] as [oklab(0 0 0
+   / 0.2)]. The result is an OKLab colour, which CSS Color 4 sec. 13.3
+   interpolates in Oklab where the hex it paints like interpolates in sRGB, so
+   the two stay apart. A channel the call rewrites is a different colour. *)
 let equal_canonical_relative_color_pass_through () =
   let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
   Alcotest.(check bool)
-    "pass-through channels over a hex origin are the origin" true
-    (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.2)}");
+    "pass-through channels over a hex origin are the converted origin" true
+    (equal ".a{color:oklab(0 0 0/.2)}"
+       ".a{color:oklab(from #0000001a l a b/.2)}");
   Alcotest.(check bool)
     "over an rgb() origin with a percentage alpha too" true
-    (equal ".a{color:#0003}" ".a{color:oklab(from rgb(0 0 0/.1) l a b/20%)}");
-  Alcotest.(check bool)
-    "the origin's alpha carries through an omitted slot" true
-    (equal ".a{color:#0000001a}" ".a{color:oklab(from #0000001a l a b)}");
+    (equal ".a{color:oklab(0 0 0/.2)}"
+       ".a{color:oklab(from rgb(0 0 0/.1) l a b/20%)}");
   Alcotest.(check bool)
     "in a shadow's var() fallback" true
-    (equal ".a{box-shadow:0 1px 2px var(--c,#0003)}"
+    (equal ".a{box-shadow:0 1px 2px var(--c,oklab(0 0 0/.2))}"
        ".a{box-shadow:0 1px 2px var(--c,oklab(from rgb(0 0 0/.1) l a b/20%))}");
   Alcotest.(check bool)
+    "the hex it paints like is another interpolation class" false
+    (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.2)}");
+  Alcotest.(check bool)
     "a rewritten channel is another colour" false
-    (equal ".a{color:#0003}"
+    (equal ".a{color:oklab(0 0 0/.2)}"
        ".a{color:oklab(from #0000001a calc(l + .5) a b/.2)}");
   Alcotest.(check bool)
     "a different alpha still differs" false
-    (equal ".a{color:#0003}" ".a{color:oklab(from #0000001a l a b/.5)}")
+    (equal ".a{color:oklab(0 0 0/.2)}"
+       ".a{color:oklab(from #0000001a l a b/.5)}")
 
 (* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
    element's used colour scheme, so a [color-mix()] or a relative colour over a
    [light-dark()] argument is the [light-dark()] of that operation over each
-   branch, and each branch folds as the plain colour it is. Tailwind writes a
-   scheme-aware colour at half alpha as the mix and lightningcss as the
-   [light-dark()] of the two hexes. A mix a branch cannot fold stays as written,
-   so the two spellings of it still report. *)
+   branch, and each branch folds as the plain colour it is: an OKLab mix is an
+   OKLab colour (Chromium 153 computes [color-mix(in oklab,red 50%,#0000)] as
+   [oklab(0.627966 0.22488 0.125859 / 0.5)]). The [light-dark()] of the two
+   hexes lightningcss writes for it interpolates in sRGB (CSS Color 4 sec.
+   13.3), so it stays apart. A mix a branch cannot fold stays as written, so the
+   two spellings of it still report. *)
 let equal_canonical_light_dark_mix () =
   let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  let pair =
+    ".a{background-color:light-dark(oklab(.62795536 .22486306 \
+     .1258463/.5),oklab(.45201372 -.03245698 -.31152815/.5))}"
+  in
   Alcotest.(check bool)
-    "a mix over a light-dark() is the light-dark() of the mixes" true
+    "the light-dark() of two hexes is another interpolation class" false
     (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
        ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
   Alcotest.(check bool)
+    "a mix over a light-dark() is the light-dark() of the mixes" true
+    (equal pair
+       ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
+  Alcotest.(check bool)
     "in the second argument too" true
-    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+    (equal pair
        ".a{background-color:color-mix(in oklab,#0000 50%,light-dark(red,#00f))}");
   Alcotest.(check bool)
     "and in both" true
-    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+    (equal pair
        ".a{background-color:color-mix(in oklab,light-dark(red,#00f) \
         50%,light-dark(#0000,#fff0))}");
   Alcotest.(check bool)
-    "a relative colour over a light-dark() origin" true
-    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
-       ".a{background-color:oklab(from light-dark(red,#00f) l a b/.5)}");
-  Alcotest.(check bool)
     "in a custom stream too" true
-    (equal ".a{--c:light-dark(#ff000080,#0000ff80)}"
+    (equal
+       ".a{--c:light-dark(oklab(.62795536 .22486306 \
+        .1258463/.5),oklab(.45201372 -.03245698 -.31152815/.5))}"
        ".a{--c:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}");
   Alcotest.(check bool)
     "a different proportion is another pair of colours" false
-    (equal ".a{background-color:light-dark(#ff000080,#0000ff80)}"
+    (equal pair
        ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 25%,#0000)}");
   Alcotest.(check bool)
     "a mix no branch can fold stays as written" false
@@ -198,50 +230,25 @@ let equal_canonical_light_dark_mix () =
        ".a{background-color:color-mix(in oklab,light-dark(red,#00f) 50%,#0000)}")
 
 (* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
-   [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour in two spellings.
-   [--lossless] keeps a modern colour function on output, which leaves the
-   projection reading the spelling as a difference. The fold is exact-only: a
-   channel that does not land on a whole byte, and a colour in another gamut,
-   stay distinct. *)
+   [color(srgb 1 0 0)] paints [rgb(255 0 0)]. Sec. 13.3 interpolates the first
+   in Oklab and the second in sRGB, so they stay apart under [--lossless] as in
+   the default mode; only a respelling of the one function is one value. *)
 let equal_canonical_lossless_exact_srgb () =
   let equal a b =
     Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true a b
   in
   Alcotest.(check bool)
-    "color(srgb 1 0 0) is rgb(255 0 0)" true
+    "color(srgb 1 0 0) is not rgb(255 0 0)" false
     (equal ".a{color:color(srgb 1 0 0)}" ".a{color:rgb(255,0,0)}");
   Alcotest.(check bool)
-    "color(srgb 1 0 0) is #f00" true
+    "nor #f00" false
     (equal ".a{color:color(srgb 1 0 0)}" ".a{color:#f00}");
   Alcotest.(check bool)
-    "color(srgb .2 .4 .6) is rgb(51 102 153)" true
-    (equal ".a{color:color(srgb .2 .4 .6)}" ".a{color:rgb(51,102,153)}");
+    "a percentage channel is its number" true
+    (equal ".a{color:color(srgb 1 0 0)}" ".a{color:color(srgb 100% 0% 0%)}");
   Alcotest.(check bool)
-    "the alpha scales exactly too" true
-    (equal ".a{color:color(srgb 1 0 0/.5)}" ".a{color:rgba(255,0,0,.5)}");
-  (* The spelling folds wherever the declaration sits: an at-rule that groups
-     rules holds the same declarations a caller could have written at the top
-     level. *)
-  Alcotest.(check bool)
-    "the fold reaches inside @starting-style" true
-    (equal "@starting-style{.a{color:color(srgb 1 0 0)}}"
-       "@starting-style{.a{color:#f00}}");
-  Alcotest.(check bool)
-    "the fold reaches inside @scope" true
-    (equal "@scope (.p){.a{color:color(srgb 1 0 0)}}"
-       "@scope (.p){.a{color:#f00}}");
-  (* display-p3 red is a different colour, not a different spelling. *)
-  Alcotest.(check bool)
-    "color(display-p3 1 0 0) still differs from rgb(255 0 0)" false
-    (equal ".a{color:color(display-p3 1 0 0)}" ".a{color:rgb(255,0,0)}");
-  (* One byte off is a difference, and .501 does not scale to a whole byte, so
-     neither folds onto the other. *)
-  Alcotest.(check bool)
-    "color(srgb 1 0 0) still differs from rgb(254 0 0)" false
-    (equal ".a{color:color(srgb 1 0 0)}" ".a{color:rgb(254,0,0)}");
-  Alcotest.(check bool)
-    "an off-grid channel keeps its function" false
-    (equal ".a{color:color(srgb .501 0 0)}" ".a{color:maroon}")
+    "color(display-p3 1 0 0) differs from rgb(255 0 0)" false
+    (equal ".a{color:color(display-p3 1 0 0)}" ".a{color:rgb(255,0,0)}")
 
 (* Canonical comparison applies the optimizer's precision mode symmetrically to
    both inputs. The default six-significant-figure budget therefore equates the
@@ -417,6 +424,12 @@ let canonical_relative_color_origin () =
        ".a { --s: 0 0 8px oklab(from red l a b / var(--x)) }"
        ".a { --s: 0 0 8px oklab(from #f00 l a b / var(--x)) }")
 
+(* CSS Color 4 sec. 13.4: a [none] component takes the other colour's in an
+   interpolation, and any colour value can be one end of a transition another
+   sheet declares. Chromium 153 transitions [oklab(0% none none/0)] to blue
+   through [oklab(.452 -.032 -.312/.5)] and [transparent] through
+   [rgba(0,0,255,.5)], so the two stay apart in a longhand and in a custom
+   stream alike. *)
 let canonical_fully_transparent_missing_oklab () =
   let equivalent property =
     Cascade_diff.Css_compare.equal ~mode:`Canonical
@@ -424,14 +437,12 @@ let canonical_fully_transparent_missing_oklab () =
       (Fmt.str ".a { %s: #0000 }" property)
   in
   Alcotest.(check bool)
-    "fully transparent missing-component oklab equals #0000 in a colour \
+    "fully transparent missing-component oklab is not #0000 in a colour \
      property"
-    true
+    false
     (equivalent "background-color");
   Alcotest.(check bool)
-    "fully transparent missing-component oklab equals #0000 in a custom \
-     property"
-    true
+    "nor in a custom property" false
     (equivalent "--tw-gradient-via");
   Alcotest.(check bool)
     "non-transparent missing-component oklab stays distinct from #0000" false
@@ -439,63 +450,48 @@ let canonical_fully_transparent_missing_oklab () =
        ".a { background-color: oklab(0% none none / .5) }"
        ".a { background-color: #0000 }")
 
-(* CSS Color 4 sec. 4.4: outside the situations that combine two colours, "a
-   missing component behaves as a zero value, in the appropriate unit for that
-   component", and that explicitly covers rendering the colour and converting it
-   to another space. So an achromatic OKLab written with [none] chroma axes -
-   what lightningcss emits for a colour it produced by conversion - is the same
-   colour as the hex Cascade folds it to, and the projection has to say so.
-
-   Sec. 13.3 is the carve-out: where two colours are interpolated, a missing
-   component takes the other colour's analogous component instead of a zero, so
-   the two spellings are two different ramps. The fold therefore fires only on a
-   colour standing as a whole colour-longhand value, never on one the value
-   itself feeds to an interpolation. *)
+(* CSS Color 4 sec. 4.4 reads a missing component as zero to render the colour
+   at rest, and sec. 13.4 gives it the other colour's component in an
+   interpolation. Every colour value can be interpolated: a transition or an
+   animation any sheet declares, an implicit keyframe, a [color-mix()] reading
+   it through [currentcolor]. WebKit 26 transitions [oklab(50% none none)] to
+   [red] through [oklab(.564 .225 .126)] and [oklab(50% 0 0)] through
+   [oklab(.564 .112 .063)]. So a missing component is never a zero to the
+   projection, and an OKLab is never the hex it paints like (sec. 13.3). *)
 let canonical_missing_color_components_as_zero () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   Alcotest.(check bool)
-    "missing OKLab axes read as zero against the hex" true
+    "missing OKLab axes are not the hex" false
     (equal ".x{outline-color:oklab(0% none none / .5)}"
        ".x{outline-color:#00000080}");
   Alcotest.(check bool)
-    "the zero-spelled axes still read as that hex" true
+    "zero-spelled axes are not the hex either" false
     (equal ".x{outline-color:oklab(0% 0 0 / .5)}" ".x{outline-color:#00000080}");
   Alcotest.(check bool)
-    "the two spellings agree with each other" true
+    "missing axes are not zero axes" false
     (equal ".x{outline-color:oklab(0% none none / .5)}"
        ".x{outline-color:oklab(0% 0 0 / .5)}");
-  (* Nothing about the fold is specific to black: a missing axis is a zero at
-     any lightness. *)
   Alcotest.(check bool)
-    "a missing axis reads as zero away from black" true
+    "away from black either" false
     (equal ".x{outline-color:oklab(50% none none)}"
        ".x{outline-color:oklab(50% 0 0)}");
-  (* Sec. 4.4.1: the hue of a zero-chroma OKLCh is powerless, so the two
-     spellings are one colour there as well. *)
+  (* A missing hue carries the other colour's hue in an OKLCh interpolation,
+     where a zero hue interpolates from zero. *)
   Alcotest.(check bool)
-    "a missing powerless hue reads as zero" true
+    "a missing powerless hue is not a zero hue" false
     (equal ".x{outline-color:oklch(50% 0 none)}"
        ".x{outline-color:oklch(50% 0 0)}");
-  (* A different colour stays a different colour: the resolved axes do not move
-     the lightness or the alpha. *)
   Alcotest.(check bool)
-    "the resolved colour keeps its alpha" false
+    "one spelling of a missing axis is one value" true
     (equal ".x{outline-color:oklab(0% none none / .5)}"
-       ".x{outline-color:#00000040}");
-  (* Resolving the sentinel is a respelling inside the colour, so it applies
-     under [--lossless] too, and stops where that mode stops: the OKLab does not
-     cross into sRGB. *)
+       ".x{outline-color:oklab(0 none none/50%)}");
   let lossless a b =
     Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless:true a b
   in
   Alcotest.(check bool)
-    "lossless resolves the axes" true
+    "lossless keeps the axes apart too" false
     (lossless ".x{outline-color:oklab(0% none none / .5)}"
-       ".x{outline-color:oklab(0% 0 0 / .5)}");
-  Alcotest.(check bool)
-    "lossless keeps the OKLab out of sRGB" false
-    (lossless ".x{outline-color:oklab(0% none none / .5)}"
-       ".x{outline-color:#00000080}")
+       ".x{outline-color:oklab(0% 0 0 / .5)}")
 
 (* The sec. 13.3 side of the line. At each of these positions the stylesheet
    itself pairs the colour with another one, so [none] and [0] name two
@@ -528,87 +524,41 @@ let canonical_missing_components_survive_interpolation () =
        ".x{color:color-mix(in oklab,oklab(0% none none) 50%,oklab(100% .2 .1))}"
        ".x{color:color-mix(in oklab,#000 50%,oklab(100% .2 .1))}")
 
-(* A rule that transitions the property it also sets makes that declaration one
-   endpoint of an interpolation, which is the sec. 13.3 carve-out again: the
-   [none] axes take the other endpoint's, the zeros stay zero, and the browser
-   walks two different ramps. The property list is what decides, not the
-   duration: a fragment is compared without the rest of the page's cascade, so
-   another sheet can supply the duration this one leaves at its initial. *)
+(* A transition on the rule is one way the colour is interpolated, not the only
+   one: another rule, another sheet or an animation's implicit keyframe can
+   interpolate it too, so the axes stay apart whatever this rule transitions. *)
 let canonical_missing_components_under_transition () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   Alcotest.(check bool)
     "the shorthand naming the property keeps the axes apart" false
     (equal ".x{color:oklab(0% none none/.5);transition:color 1s}"
-       ".x{color:#00000080;transition:color 1s}");
+       ".x{color:oklab(0% 0 0/.5);transition:color 1s}");
   Alcotest.(check bool)
-    "the longhand naming the property keeps the axes apart" false
-    (equal ".x{color:oklab(0% none none/.5);transition-property:color}"
-       ".x{color:#00000080;transition-property:color}");
-  Alcotest.(check bool)
-    "all names every property, this one included" false
-    (equal ".x{color:oklab(0% none none/.5);transition-property:all}"
-       ".x{color:#00000080;transition-property:all}");
-  (* A shorthand in [transition-property] transitions the longhands it covers,
-     so [background] reaches [background-color]. *)
-  Alcotest.(check bool)
-    "a transitioned shorthand reaches its colour longhand" false
-    (equal
-       ".x{background-color:oklab(0% none none/.5);transition:background 1s}"
-       ".x{background-color:#00000080;transition:background 1s}");
-  (* Nothing interpolates the colour here, so sec. 4.4 reads the missing axes as
-     zero and the two spellings are one colour again. *)
-  Alcotest.(check bool)
-    "a transition on another property leaves the fold alone" true
+    "a transition on another property does too" false
     (equal ".x{color:oklab(0% none none/.5);transition:opacity 1s}"
-       ".x{color:#00000080;transition:opacity 1s}");
+       ".x{color:oklab(0% 0 0/.5);transition:opacity 1s}");
   Alcotest.(check bool)
-    "none transitions nothing" true
+    "none transitions nothing here, and another rule can" false
     (equal ".x{color:oklab(0% none none/.5);transition-property:none}"
-       ".x{color:#00000080;transition-property:none}");
-  (* The static case the fold exists for. *)
+       ".x{color:oklab(0% 0 0/.5);transition-property:none}");
   Alcotest.(check bool)
-    "a rule with no transition still folds" true
-    (equal ".x{color:oklab(0% none none/.5)}" ".x{color:#00000080}");
-  (* The blocks that exist to be an interpolation endpoint are skipped whole,
-     transition or no transition. *)
-  Alcotest.(check bool)
-    "a keyframe keeps its missing axes" false
-    (equal "@keyframes k{from{color:oklab(0% none none)}to{color:#fff}}"
-       "@keyframes k{from{color:#000}to{color:#fff}}");
-  Alcotest.(check bool)
-    "a @starting-style value keeps its missing axes" false
-    (equal "@starting-style{.x{color:oklab(0% none none)}}"
-       "@starting-style{.x{color:#000}}")
+    "a rule with no transition does too" false
+    (equal ".x{color:oklab(0% none none/.5)}" ".x{color:oklab(0% 0 0/.5)}")
 
-(* The same sec. 4.4 reading in a custom property: a colour function in the
-   stream is a colour wherever the stream substitutes, so its missing axes are
-   the zeros the longhand's are. lightningcss writes Tailwind's [color-mix(in
-   srgb, rgb(0 0 0) 50%, transparent)] as an OKLab with [none] chroma axes where
-   tw writes the hex. The carve-outs hold as for a longhand: a rule
-   transitioning the property, a keyframe and a [@starting-style] block keep the
-   axes as written. *)
+(* The same in a custom property: a colour function in the stream is a colour
+   wherever the stream substitutes, which may be a transitioned property. *)
 let canonical_custom_missing_color_components_as_zero () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   Alcotest.(check bool)
-    "missing OKLab axes in a custom stream read as zero against the hex" true
+    "missing OKLab axes in a custom stream are not the hex" false
     (equal ".a{--tw-mask-top-from-color:oklab(0% none none/.5)}"
        ".a{--tw-mask-top-from-color:#00000080}");
   Alcotest.(check bool)
-    "a missing OKLCh chroma and hue too" true
+    "nor zero axes" false
+    (equal ".a{--c:oklab(0% none none/.5)}" ".a{--c:oklab(0% 0 0/.5)}");
+  Alcotest.(check bool)
+    "a missing OKLCh chroma and hue neither" false
     (equal ".a{--c:oklch(0% none none/.5)}" ".a{--c:#00000080}");
-  Alcotest.(check bool)
-    "a missing Lab axis too" true
-    (equal ".a{--c:lab(0% none none/.5)}" ".a{--c:#00000080}");
-  Alcotest.(check bool)
-    "a missing LCh chroma and hue too" true
-    (equal ".a{--c:lch(0% none none/.5)}" ".a{--c:#00000080}");
-  Alcotest.(check bool)
-    "the resolved colour keeps its alpha" false
-    (equal ".a{--c:oklab(0% none none/.5)}" ".a{--c:#00000040}");
-  Alcotest.(check bool)
-    "a rule transitioning the property keeps the axes apart" false
-    (equal ".a{--c:oklab(0% none none/.5);transition:--c 1s}"
-       ".a{--c:#00000080;transition:--c 1s}");
   Alcotest.(check bool)
     "a keyframe keeps its missing axes" false
     (equal "@keyframes k{from{--c:oklab(0% none none)}to{--c:#fff}}"
@@ -1100,9 +1050,57 @@ let canonical_percentage_beside_var () =
     "a constant percentage is its number" true
     (equal ".a{opacity:50%}" ".a{opacity:.5}")
 
+(* The comparator reads both sides through the minifier's colour folds, so it
+   tells apart what those folds keep apart. CSS Color 4 sec. 13.3 interpolates
+   [color(srgb 1 0 0)] in Oklab and [red] in sRGB: Chromium 153 animates either
+   to [blue] through two different midpoints. Sec. 13.4 gives a [none] axis the
+   other colour's: WebKit 26 transitions [oklab(50% none none)] to [red] through
+   [oklab(.564 .225 .126)] and [oklab(50% 0 0)] through [oklab(.564 .112 .063)],
+   whichever rule declares the transition, and an animation's implicit [from]
+   keyframe carries the [none] as well. Chromium 153 mixes [currentcolor] from
+   [oklab(50% none none)] into [oklab(.5 .2 .2)] and from [oklab(50% 0 0)] into
+   [oklab(.5 .1 .1)]. *)
+let interpolation_class_is_a_difference () =
+  let differ ?(lossless = false) name a b =
+    Alcotest.(check bool)
+      name false
+      (Cascade_diff.Css_compare.equal ~mode:`Canonical ~lossless a b)
+  in
+  differ "a color(srgb) is not its legacy spelling"
+    ".a{color:color(srgb 1 0 0)}" ".a{color:red}";
+  differ ~lossless:true "nor under lossless" ".a{color:color(srgb 1 0 0)}"
+    ".a{color:red}";
+  differ "an oklch is not the hex it paints"
+    ".a{color:oklch(62.8% .2577 29.23)}" ".a{color:red}";
+  differ "an sRGB mix is not a legacy colour"
+    ".a{color:color-mix(in srgb,red,blue)}" ".a{color:purple}";
+  differ "a gradient keeps its stops' class"
+    ".a{background:linear-gradient(color(srgb 1 0 0),color(srgb 0 0 1))}"
+    ".a{background:linear-gradient(red,#00f)}";
+  differ "a transition another rule declares"
+    "*{transition:all 1s}a{color:oklab(50% none none)}"
+    "*{transition:all 1s}a{color:oklab(50% 0 0)}";
+  differ "an implicit from keyframe"
+    "a{color:oklab(50% none none);animation:k 1s}@keyframes k{to{color:red}}"
+    "a{color:oklab(50% 0 0);animation:k 1s}@keyframes k{to{color:red}}";
+  differ "currentcolor inherited into a mix"
+    "a{color:oklab(50% none none)}a b{background:color-mix(in \
+     oklab,currentColor,oklab(50% .2 .2))}"
+    "a{color:oklab(50% 0 0)}a b{background:color-mix(in \
+     oklab,currentColor,oklab(50% .2 .2))}";
+  differ "a lone missing axis" ".x{outline-color:oklab(50% none none)}"
+    ".x{outline-color:oklab(50% 0 0)}";
+  differ ~lossless:true "nor under lossless"
+    ".x{outline-color:oklab(50% none none)}" ".x{outline-color:oklab(50% 0 0)}";
+  differ "a missing legacy channel" ".a{color:rgb(none 0 0)}" ".a{color:#000}";
+  differ "a missing-axis OKLab at zero alpha is not transparent"
+    ".a{color:oklab(0% none none/0)}" ".a{color:#0000}"
+
 let suite =
   ( "css_compare_values",
     [
+      Alcotest.test_case "interpolation class is a difference" `Quick
+        interpolation_class_is_a_difference;
       Alcotest.test_case "semantically equivalent color-mix values" `Quick
         semantically_equivalent_color_mix_values;
       Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
@@ -1221,4 +1219,6 @@ let suite =
         `Quick equal_canonical_lossless_exact_srgb;
       Alcotest.test_case "canonical numeric precision modes" `Quick
         canonical_numeric_division_follows_precision_mode;
+      Alcotest.test_case "canonical undecidable colour channel" `Quick
+        equal_canonical_undecidable_channel;
     ] )

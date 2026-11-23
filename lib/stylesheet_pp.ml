@@ -356,7 +356,7 @@ let pp_namespace_statement ctx prefix uri =
   Pp.string ctx "@namespace ";
   (match prefix with
   | Some p ->
-      Pp.string ctx p;
+      Pp.string ctx (Parser.escape_ident p);
       Pp.sp ctx ()
   | None -> ());
   pp_namespace_uri ctx uri;

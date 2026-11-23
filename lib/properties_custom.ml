@@ -58,11 +58,8 @@ let is_color_function name =
    never can. *)
 (* [c] is one component whose syntax fixes it as a colour; fold it to the
    shortest non-keyword spelling, falling back to [fallback ()] when it does not
-   actually parse as a complete colour. [resolve_missing] is
-   {!Values.normalize_color}'s flag: a missing axis reads as the zero CSS Color
-   4 sec. 4.4 makes it, which holds wherever the stream substitutes as it holds
-   for a longhand, and the caller decides where the stream is interpolated. *)
-let fold_custom_color ~lossless ~resolve_missing (c : Component.t) ~fallback =
+   actually parse as a complete colour. *)
+let fold_custom_color ~lossless (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   let cur = Cursor.of_string text in
   match
@@ -71,8 +68,7 @@ let fold_custom_color ~lossless ~resolve_missing (c : Component.t) ~fallback =
   | Some col when Cursor.is_done cur -> (
       let canon =
         Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color
-             (Values.normalize_color ~lossless ~resolve_missing col))
+          (Values.nonkeyword_color (Values.normalize_color ~lossless col))
       in
       match read_custom_property_value (Cursor.of_string canon) with
       | Tokens cs -> cs
@@ -194,14 +190,9 @@ let canonicalize_custom_shadow_components ~lossless components =
       | Typed _ -> components)
   | _ -> components
 
-let rec canonicalize_custom_colors_components ~lossless
-    ?(resolve_missing = false) comps =
-  let fold_color c ~fallback =
-    fold_custom_color ~lossless ~resolve_missing c ~fallback
-  in
-  let inner =
-    canonicalize_custom_colors_components ~lossless ~resolve_missing
-  in
+let rec canonicalize_custom_colors_components ~lossless comps =
+  let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
+  let inner = canonicalize_custom_colors_components ~lossless in
   List.concat_map
     (fun (c : Component.t) ->
       match c with

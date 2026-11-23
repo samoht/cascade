@@ -77,6 +77,36 @@ let rec search_tree root names depth acc =
             else acc)
           acc entries
 
+(* A browser installed for the machine or the user rather than cached by a test
+   tool: Chrome and Chromium on Windows, then the macOS bundle. *)
+let installed_chrome () =
+  let windows =
+    List.concat_map
+      (fun var ->
+        match getenv var with
+        | None -> []
+        | Some root ->
+            [
+              root // "Google" // "Chrome" // "Application";
+              root // "Chromium" // "Application";
+            ])
+      [ "PROGRAMFILES"; "PROGRAMFILES(X86)"; "LOCALAPPDATA" ]
+  in
+  match
+    List.find_map
+      (fun dir ->
+        match search_tree dir [ "chrome" ] 1 [] with
+        | [] -> None
+        | c :: _ -> Some c)
+      windows
+  with
+  | Some c -> Some c
+  | None ->
+      let app =
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      in
+      if executable app then Some app else None
+
 let chrome_binary () =
   match getenv "CHROME" with
   | Some c when executable c -> Some c
@@ -92,13 +122,24 @@ let chrome_binary () =
       match List.find_map on_path names with
       | Some c -> Some c
       | None -> (
-          let home = Option.value ~default:"" (getenv "HOME") in
+          (* Windows has no HOME: puppeteer's cache is under USERPROFILE and
+             playwright's under LOCALAPPDATA. *)
+          let home =
+            match getenv "HOME" with
+            | Some h -> Some h
+            | None -> getenv "USERPROFILE"
+          in
+          let under var path =
+            Option.map (fun root -> List.fold_left ( // ) root path) var
+          in
           let caches =
-            [
-              home // ".cache" // "puppeteer";
-              home // "Library" // "Caches" // "ms-playwright";
-              home // ".cache" // "ms-playwright";
-            ]
+            List.filter_map Fun.id
+              [
+                under home [ ".cache"; "puppeteer" ];
+                under home [ "Library"; "Caches"; "ms-playwright" ];
+                under home [ ".cache"; "ms-playwright" ];
+                under (getenv "LOCALAPPDATA") [ "ms-playwright" ];
+              ]
           in
           let binaries =
             [
@@ -112,11 +153,7 @@ let chrome_binary () =
             List.concat_map (fun c -> search_tree c binaries 6 []) caches
           in
           match List.sort compare found with
-          | [] ->
-              let app =
-                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-              in
-              if executable app then Some app else None
+          | [] -> installed_chrome ()
           | l -> Some (List.nth l (List.length l - 1))))
 
 let node_binary () =

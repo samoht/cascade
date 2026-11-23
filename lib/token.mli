@@ -11,8 +11,8 @@ type hash_flag = Id | Unrestricted
 type number_flag = Integer | Number
 
 type number = { value : float; repr : string; number_flag : number_flag }
-(** The parsed numeric value, its original textual representation, and the
-    integer-vs-number flag. *)
+(** The value the printer's eight decimals read back as, the original textual
+    representation, and the integer-vs-number flag. *)
 
 (** The three kinds of balanced bracket character used in CSS blocks. *)
 type bracket =
@@ -88,6 +88,10 @@ val equal_hash_flag : hash_flag -> hash_flag -> bool
 
 val equal_number_flag : number_flag -> number_flag -> bool
 (** [equal_number_flag a b] tests number token flags for equality. *)
+
+val authored_value : number -> float
+(** [authored_value n] is the value of every digit [n]'s representation holds.
+    It differs from [n.value] only past eight decimals. *)
 
 val integer_opt : number -> int option
 (** [integer_opt n] is the exact integer represented by [n], when [n] is an

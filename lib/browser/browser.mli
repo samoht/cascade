@@ -12,9 +12,12 @@ val executable : string -> bool
 
 val chrome_binary : unit -> string option
 (** [chrome_binary ()] is a headless-capable Chromium: [CHROME] when that names
-    an executable, then [PATH], then the puppeteer and playwright caches, then
-    the macOS application bundle. Each cache keeps one directory per version, so
-    the largest path is the newest build. *)
+    an executable, then [PATH], then the puppeteer and playwright caches (under
+    [HOME], or [USERPROFILE] where [HOME] is unset, and under [LOCALAPPDATA]),
+    then an installed Chrome or Chromium (under [PROGRAMFILES],
+    [PROGRAMFILES(X86)] and [LOCALAPPDATA], then the macOS application bundle).
+    Each cache keeps one directory per version, so the largest path is the
+    newest build. *)
 
 val node_binary : unit -> string option
 (** [node_binary ()] is node: [NODE] when that names an executable, [PATH]

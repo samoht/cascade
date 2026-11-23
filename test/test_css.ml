@@ -276,8 +276,9 @@ let minify_flag () =
    more: it optimizes, then prints. Selectors 4 defines [:first-child] as
    [:nth-child(1)]; an [@font-face] without [font-family] or [src] defines no
    face (CSS Fonts 4 sec. 4.1); two rules writing one declaration share it.
-   [oklch(62.8% .2577 29.23)] is within the README's 0.002 Oklab rounding of
-   [red], which [~lossless:true] turns off. *)
+   [oklch(62.8123% .12345 29.23)] rounds to three decimals within the README's
+   0.002 Oklab budget and stays an [oklch()], since CSS Color 4 sec. 13.3
+   interpolates it in Oklab; [~lossless:true] turns the rounding off. *)
 let minify_optimizes_and_prints () =
   let check name want css =
     Alcotest.(check string) name want (Css.minify (Css.stylesheet css))
@@ -286,11 +287,11 @@ let minify_optimizes_and_prints () =
   check "inert font-face" ".a{color:red}"
     "@font-face{font-display:swap}.a{color:red}";
   check "shared declaration" ".a,.b{color:red}" ".a{color:red}.b{color:red}";
-  let red = ".a{color:oklch(62.8% .2577 29.23)}" in
-  check "rounds a colour" ".a{color:red}" red;
+  let colour = ".a{color:oklch(62.8123% .12345 29.23)}" in
+  check "rounds a colour" ".a{color:oklch(.628 .123 29.23)}" colour;
   Alcotest.(check string)
-    "lossless keeps the colour exact" ".a{color:oklch(.628 .2577 29.23)}"
-    (Css.minify ~lossless:true (Css.stylesheet red));
+    "lossless keeps the colour exact" ".a{color:oklch(.628123 .12345 29.23)}"
+    (Css.minify ~lossless:true (Css.stylesheet colour));
   Alcotest.(check string)
     "renames custom properties" ".a{--tw-x:1px;width:var(--tw-x)}"
     (Css.minify
@@ -306,7 +307,13 @@ let pure_minify_value_fallbacks () =
             Css.Variables.typed_custom_property "--tw-duration" Time (Ms 200.);
             transition_duration (Ms 200.);
             color
-              (Hsl { h = Angle (Deg 120.); s = Pct 50.; l = Pct 50.; a = None });
+              (Hsl
+                 {
+                   h = Angle (Deg 120.);
+                   s = Some (Pct 50.);
+                   l = Some (Pct 50.);
+                   a = None;
+                 });
           ];
       ]
   in
@@ -469,8 +476,8 @@ let constructed_custom_property_reparses () =
         Css.Values.Hsl
           {
             h = Unitless 120.;
-            s = Var (Css.Values.var_ref "s");
-            l = Pct 50.;
+            s = Some (Var (Css.Values.var_ref "s"));
+            l = Some (Pct 50.);
             a = None;
           } );
     ];

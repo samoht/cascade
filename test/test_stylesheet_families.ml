@@ -232,6 +232,37 @@ let s4370_at_rule_prelude_name_escapes () =
         "@counter-style \xc3\xa9x{system:cyclic;symbols:\"x\";suffix:\" \"}" );
     ]
 
+(* CSSOM 1 sec. 2.1 (serialize an identifier) writes a control character as a
+   code point escape. Raw, U+0001 is a delim token (CSS Syntax 3 sec. 4.3.1) and
+   Chrome drops the rule or declaration around it; it keeps each input below. A
+   name in a selector, a prelude or a value is written escaped. *)
+let cssom21_control_characters_in_names () =
+  check_escape_roundtrips
+    [
+      ("[\\1 ]{color:red}", "[\\1 ]{color:red}");
+      ("[data-\\1 ]{color:red}", "[data-\\1 ]{color:red}");
+      ("a::part(\\1 ){color:red}", "a::part(\\1 ){color:red}");
+      ("a:state(\\1 ){color:red}", "a:state(\\1 ){color:red}");
+      ( "@supports selector([\\1 ]){.a{color:red}}",
+        "@supports selector([\\1 ]){.a{color:red}}" );
+      ( "@namespace \\1  url(x);[\\1 |a]{color:red}",
+        "@namespace \\1 \"x\";[\\1 |a]{color:red}" );
+      (".a{content:attr(\\1 )}", ".a{content:attr(\\1 )}");
+      (".a{width:attr(\\1  px)}", ".a{width:attr(\\1  px)}");
+      (".a{width:env(\\1 )}", ".a{width:env(\\1 )}");
+      (".a{margin:env(\\1 ) 1px}", ".a{margin:env(\\1 )1px}");
+      ( "@supports env(\\1 ){.a{color:red}}",
+        "@supports env(\\1 ){.a{color:red}}" );
+      (".a{top:anchor(--\\1  top)}", ".a{top:anchor(--\\1  top)}");
+      ( ".a{color:attr(\\1  type(<color>),red)}",
+        ".a{color:attr(\\1  type(<color>),red)}" );
+      ( "@supports at-rule(@\\1 ){.a{color:red}}",
+        "@supports at-rule(@\\1 ){.a{color:red}}" );
+      ( "@supports named-feature(\\1 ){.a{color:red}}",
+        "@supports named-feature(\\1 ){.a{color:red}}" );
+      ("@supports \\1 (x){.a{color:red}}", "@supports \\1 (x){.a{color:red}}");
+    ]
+
 (* The same rule for a name a declaration's value carries: printed raw it ends
    its own declaration, so it is written with the escapes CSS Syntax 3 sec.
    4.3.7 reads back as the same name. *)
@@ -376,10 +407,11 @@ let fidelity_string_escape_preserved () =
 
 (* {2 Color function spaces (CSS Color L4)} *)
 
-(* CSS Color Module Level 4, sections 10-13 (Color spaces): static in-gamut
-   colors may fold to the shortest sRGB spelling under minify. Forms Cascade
-   cannot reduce without losing information, such as out-of-gamut colors or
-   missing components, stay in functional notation. *)
+(* CSS Color Module Level 4, sections 10-13 (Color spaces): a static colour
+   rounds in its own notation under minify, since sec. 13.3 interpolates a
+   [lab()] in Oklab where the sRGB hex it paints like interpolates in sRGB.
+   Forms Cascade cannot reduce without losing information, such as out-of-gamut
+   colors or missing components, stay as written. *)
 let color4_10_color_space_preserved () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -387,7 +419,7 @@ let color4_10_color_space_preserved () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
-    "static lab folds to shortest sRGB form" ".x{color:red}"
+    "static lab rounds in its own space" ".x{color:lab(54.3 80.8 69.9)}"
     (normalize ".x { color: lab(54.29 80.81 69.89) }");
   Alcotest.(check bool)
     "out-of-gamut oklch preserved" true
@@ -740,6 +772,9 @@ let suite =
       ( "spec syntax 3 4.3.7 property value name escapes",
         `Quick,
         s4370_property_value_name_escapes );
+      ( "spec cssom 1 2.1 control characters in names",
+        `Quick,
+        cssom21_control_characters_in_names );
       ( "spec conditional 3 2.2 supports property name escapes",
         `Quick,
         s4370_supports_property_name_escapes );

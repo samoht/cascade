@@ -341,12 +341,11 @@ let rec value_components = function
 (* Apply AST-level value normalisation so the optimizer holds a canonical AST.
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
-let rec normalize ?(lossless = false) ?(exact_srgb = false)
-    ?(resolve_missing = false) ?(ctx = Values.default_calc_ctx) = function
+let rec normalize ?(lossless = false) ?(ctx = Values.default_calc_ctx) =
+  function
   | Declaration { property; value; important; _ } as decl ->
       let value' =
-        Properties.normalize_property_value ~lossless ~exact_srgb
-          ~resolve_missing ~ctx property value
+        Properties.normalize_property_value ~lossless ~ctx property value
       in
       if value' == value then decl
       else
@@ -358,7 +357,7 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
         then decl
         else v ~important property value'
   | Theme_guarded g as themed ->
-      let decl = normalize ~lossless ~exact_srgb ~resolve_missing ~ctx g.decl in
+      let decl = normalize ~lossless ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
 (** Check if a declaration is marked as important *)

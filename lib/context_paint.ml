@@ -194,10 +194,20 @@ let simplify_rgb_color component percentage alpha_value rgb hue
       Values.Rgba { rgb = rgb value; a = alpha_value a }
   | Values.Hsl { h; s; l; a } ->
       Values.Hsl
-        { h = hue h; s = percentage s; l = percentage l; a = alpha_value a }
+        {
+          h = hue h;
+          s = Option.map percentage s;
+          l = Option.map percentage l;
+          a = alpha_value a;
+        }
   | Values.Hwb { h; w; b; a } ->
       Values.Hwb
-        { h = hue h; w = percentage w; b = percentage b; a = alpha_value a }
+        {
+          h = hue h;
+          w = Option.map percentage w;
+          b = Option.map percentage b;
+          a = alpha_value a;
+        }
   | Values.Color { space; components; alpha } ->
       Values.Color
         {
@@ -221,6 +231,67 @@ let simplify_lab_color percentage alpha_value hue (value : Values.color) =
   | Values.Lch { l; c; h; alpha = value } ->
       Values.Lch
         { l = Option.map percentage l; c; h = hue h; alpha = alpha_value value }
+  | value -> value
+
+(* A colour kept as written holds a number whose readings paint different bytes,
+   so its [var()] references are substituted in its tokens and the result read
+   again, which keeps it as written where the substitution leaves it
+   undecidable. A reference with no value and no fallback, a runtime one and a
+   cycle stay as they are. *)
+let rec substitute_authored ?layer_order ?layer ctx ~visited components =
+  List.concat_map
+    (fun (c : Component.t) ->
+      match c with
+      | Func { node = { name; arguments; _ }; _ }
+        when String.equal (String.lowercase_ascii name) "var" -> (
+          match Context_residual.var_components arguments with
+          | Some (n, fallback)
+            when not (List.mem n ctx.runtime_vars || List.mem n visited) -> (
+              let value =
+                match
+                  Context_core.lookup_custom_property ?layer ?layer_order ctx n
+                with
+                | Some
+                    (Declaration.Declaration
+                       {
+                         property = Properties.Custom_property _;
+                         value = Properties.Custom_value { value; _ };
+                         _;
+                       }) ->
+                    Some (Properties.components_of_custom_property_value value)
+                | _ -> None
+              in
+              match (value, fallback) with
+              | Some value, _ ->
+                  substitute_authored ?layer_order ?layer ctx
+                    ~visited:(n :: visited) value
+              | None, Some fallback ->
+                  substitute_authored ?layer_order ?layer ctx ~visited fallback
+              | None, None -> [ c ])
+          | _ -> [ c ])
+      | Func fn ->
+          let arguments =
+            substitute_authored ?layer_order ?layer ctx ~visited
+              fn.node.arguments
+          in
+          [ Func { fn with node = { fn.node with arguments } } ]
+      | c -> [ c ])
+    components
+
+let resolve_authored ?layer_order ?layer ctx simplify ~authored ~visited
+    (value : Values.color) =
+  match value with
+  | Values.Authored_color { minified; _ } -> (
+      let components = Cursor.remaining (Cursor.of_string minified) in
+      let substituted =
+        substitute_authored ?layer_order ?layer ctx ~visited:[] components
+      in
+      if List.equal Component.equal substituted components then value
+      else
+        match Values.read_color (Cursor.of_components substituted) with
+        | Values.Authored_color _ as kept -> kept
+        | color -> simplify ~authored ~visited color
+        | exception Cursor.Parse_error _ -> value)
   | value -> value
 
 let simplify_nested_color ctx percentage simplify ~authored ~visited
@@ -258,11 +329,16 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
   let alpha_value = simplify_alpha ~layer_order ?layer ctx in
   let rgb = simplify_rgb ~layer_order ?layer ctx in
   let hue = simplify_hue ~layer_order ?layer ctx in
-  let simplify_leaf simplify ~authored ~visited value =
-    value
-    |> simplify_rgb_color component percentage alpha_value rgb hue
-    |> simplify_lab_color percentage alpha_value hue
-    |> simplify_nested_color ctx percentage simplify ~authored ~visited
+  let simplify_leaf simplify ~authored ~visited (value : Values.color) =
+    match value with
+    | Values.Authored_color _ ->
+        resolve_authored ~layer_order ?layer ctx simplify ~authored ~visited
+          value
+    | value ->
+        value
+        |> simplify_rgb_color component percentage alpha_value rgb hue
+        |> simplify_lab_color percentage alpha_value hue
+        |> simplify_nested_color ctx percentage simplify ~authored ~visited
   in
   let ops : Values.color Var_residual.ops =
     {

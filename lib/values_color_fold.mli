@@ -61,6 +61,19 @@ val static_color_to_srgb_bytes : color -> (int * int * int * int) option
 (** [static_color_to_srgb_bytes c] is the [(r, g, b, a)] sRGB bytes of the
     static colour [c]. *)
 
+val single_of_float : float -> float
+(** [single_of_float f] is the 32-bit float nearest to [f], as a double. *)
+
+val decidable_channels : printed:color -> double:color -> single:color -> bool
+(** [decidable_channels ~printed ~double ~single] is whether three readings of
+    one static colour paint the same bytes: its numbers at the printer's eight
+    decimals, as doubles, and as their nearest 32-bit floats in 32-bit
+    arithmetic. When they do not, a channel sits at the edge of a byte's half
+    and which byte it paints is the engine's. A colour whose bytes wait on a
+    substitution or a construct cascade does not compute is decidable when its
+    numbers print as the doubles written and its alpha and rgb channels paint
+    the same bytes as 32-bit floats. *)
+
 val nonkeyword_color : color -> color
 (** [nonkeyword_color c] re-spells a colour written as a bare keyword (a named
     colour, or transparent) as its hex form, leaving every other colour
@@ -70,18 +83,9 @@ val exact_rgb_to_srgb_bytes : color -> (int * int * int * int) option
 (** [exact_rgb_to_srgb_bytes c] is the sRGB bytes of the [rgb()] colour [c] when
     every channel lands on a whole byte. *)
 
-val exact_srgb_function_channels : color -> (int * int * int * alpha) option
-(** [exact_srgb_function_channels c] is the bytes and alpha of the
-    [color(srgb ...)] colour [c] when every channel lands on a whole byte. *)
-
 val mix_weights : float -> float -> (float * float * float) option
 (** [mix_weights p1 p2] is the two [color-mix()] component weights and the alpha
     multiplier for the percentages [p1] and [p2]. *)
-
-val mix_srgb_bytes :
-  color -> color -> p1:float -> p2:float -> (int * int * int * int) option
-(** [mix_srgb_bytes c1 c2 ~p1 ~p2] is the sRGB bytes of [c1] and [c2] mixed in
-    sRGB. *)
 
 val mix_lab_family :
   color_space option -> color -> color -> p1:float -> p2:float -> color option

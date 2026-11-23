@@ -37,6 +37,7 @@ let declaration_is_broad = Shorthand_coverage.declaration_is_broad
 let custom_property_name = Shorthand_coverage.custom_property_name
 let same_value = Shorthand_dedup.same_value
 let declarations_commute = Shorthand_dedup.declarations_commute
+let implied_longhands = Shorthand_dedup.implied_longhands
 
 let drop_redundant_decoration_color_aliases =
   Shorthand_dedup.drop_redundant_decoration_color_aliases
@@ -44,7 +45,6 @@ let drop_redundant_decoration_color_aliases =
 let as_aliased_property = Shorthand_dedup.as_aliased_property
 let read_by_no_target = Shorthand_dedup.read_by_no_target
 let is_all_declaration = Shorthand_dedup.is_all_declaration
-let transitioned_in_rule = Shorthand_timing.transitioned_in_rule
 let merge_box_shorthand_longhands = Shorthand_box.merge_box_shorthand_longhands
 let merge_overflow_longhands = Shorthand_box.merge_overflow_longhands
 

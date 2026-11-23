@@ -1082,8 +1082,10 @@ let test_var_color_functions_preserved () =
   Alcotest.(check string)
     "static rgb still folds to a keyword" ".x{color:red}"
     (opt ".x{color:rgb(255 0 0)}");
+  (* CSS Color 4 sec. 13.4: in an interpolation a [none] channel takes the other
+     colour's, so it is not the zero it renders as at rest. *)
   Alcotest.(check string)
-    "a none channel still folds (none computes to 0)" ".x{color:#000}"
+    "a none channel stays" ".x{color:rgb(none 0 0)}"
     (opt ".x{color:rgb(none 0 0)}")
 
 (* [0], [0px], [0%] and the [left]/[top] keywords all name the same origin, so

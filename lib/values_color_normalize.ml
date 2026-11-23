@@ -4,7 +4,6 @@ open Values_intf
 open Values_color_name
 open Values_calc
 open Values_color_fold
-open Values_numeric
 open Values_color_pp
 open Values_read_color
 
@@ -64,15 +63,33 @@ let round_color_axis ~lossless ~decimals f =
     let m = 10. ** float_of_int decimals in
     Float.round (f *. m) /. m
 
-(* An alpha coefficient at 3 decimals: alpha reaches the screen as one of 256
-   steps (CSS Color 4 sec. 4.2), 1/255 ~ 0.004 apart, so 3 decimals keep the
-   byte. A [calc()] keeps its operands at that precision. *)
+(* The byte an alpha paints at read as a double and as a 32-bit float in 32-bit
+   arithmetic. *)
+let alpha_bytes f =
+  let f = Float.max 0. (Float.min 1. f) in
+  let byte f = Float.to_int (Float.round f) in
+  (byte (f *. 255.), byte (single_of_float (single_of_float f *. 255.)))
+
+(* An alpha coefficient at the fewest decimals, from 3, that paint its byte
+   under both readings. Alpha reaches the screen as one of 256 steps, 1/255 ~
+   0.004 apart, so 3 decimals keep the byte except near a step's half, where
+   [.0996] (25) at [.1] would paint 26. A [calc()] operand reaches the byte only
+   through the result, so it keeps its digits. *)
 let rec round_alpha ~lossless (a : alpha) : alpha =
   match a with
   | Num f ->
-      let r = round_color_axis ~lossless ~decimals:3 f in
-      if Float.equal r f then a else Num r
-  | Calc c -> Calc (map_calc (round_alpha ~lossless) c)
+      let target = alpha_bytes f in
+      let same (b, s) (b', s') = Int.equal b b' && Int.equal s s' in
+      let rec go decimals =
+        if decimals > 8 then a
+        else
+          let r = round_color_axis ~lossless ~decimals f in
+          if Float.equal r f then a
+          else if same (alpha_bytes r) target then Num r
+          else go (decimals + 1)
+      in
+      go 3
+  | Calc _ -> a
   | Var ({ fallback = Fallback f; _ } as v) ->
       let f' = round_alpha ~lossless f in
       if f' == f then a else Var { v with fallback = Fallback f' }
@@ -109,8 +126,8 @@ let drop_full_alpha ~lossless (c : color) : color =
 (* Round an oklch/lch hue to 3 decimals for the canonical (optimize) form and
    collapse every concrete angle unit to canonical bare degrees. A [var()] /
    [calc()] / [none] hue is left opaque. *)
-let round_hue ~lossless (h : hue) : hue =
-  let r f = round_color_axis ~lossless ~decimals:3 f in
+let round_hue ?(extra = 0) ~lossless (h : hue) : hue =
+  let r f = round_color_axis ~lossless ~decimals:(3 + extra) f in
   match h with
   | Unitless f -> Unitless (r f)
   | Angle (Deg f) -> Unitless (r f)
@@ -171,52 +188,6 @@ let canonical_color_lightness ~lossless ~pct_scale ~axis_max_decimals
       else Some (num f)
   | other -> other
 
-let normalize_static_modern_color ~exact_srgb ~lossless c =
-  let hex_of_bytes r g b (a : alpha) =
-    match alpha_value_byte a with
-    | Some ab -> canonical_color_of_hex r g b ab
-    | Option.None -> c
-  in
-  if lossless then
-    match
-      if exact_srgb then exact_srgb_function_channels c else Option.None
-    with
-    | Some (r, g, b, alpha) -> (
-        match exact_alpha_value_byte alpha with
-        | Some a -> canonical_color_of_hex r g b a
-        | Option.None ->
-            (* The channels are exact but the alpha is not a whole byte, so
-               [rgb()] is as far as the fold goes: it is the same spelling the
-               lossless path leaves an authored [rgb()] in. *)
-            drop_full_alpha ~lossless
-              (Rgba
-                 {
-                   rgb = Channels { r = Int r; g = Int g; b = Int b };
-                   a = alpha;
-                 }))
-    | Option.None -> drop_full_alpha ~lossless c
-  else
-    match static_color_to_linear_srgb c with
-    | Some (linear, alpha_f) -> (
-        match
-          Color_space.srgb_bytes_of_linear
-            ~error:(conversion_error_of_color c)
-            linear
-        with
-        | Some (r, g, b) ->
-            let clamp01 v = Float.max 0.0 (Float.min 1.0 v) in
-            let alpha_byte =
-              Float.to_int (Float.round (clamp01 alpha_f *. 255.0))
-            in
-            let a : alpha =
-              if alpha_byte = 255 then None
-              else if alpha_byte = 0 then Num 0.0
-              else Num (Float.of_int alpha_byte /. 255.0)
-            in
-            hex_of_bytes r g b a
-        | None -> drop_full_alpha ~lossless c)
-    | None -> drop_full_alpha ~lossless c
-
 (* [canonical_color_of_hex] answers a name or the same bytes back, so a [Hex]
    that reaches its own canonical form is shared rather than rebuilt. *)
 let normalize_hex_color c r g b a =
@@ -235,57 +206,56 @@ let normalize_named_color c orig_name =
       canonical_color_of_hex r g b a
   | _ -> if name == orig_name then c else Named name
 
+(* CSS Color 5 sec. 3: the mix is a colour in the interpolation space, so an
+   sRGB mix is a [color(srgb ...)], which CSS Color 4 sec. 13.3 interpolates in
+   Oklab where a hex would interpolate in sRGB. Sec. 13.4: a [none] channel
+   takes the other operand's before premultiplying, and stays [none] when both
+   miss it. *)
 let normalize_srgb_mix color1 color2 ~p1 ~p2 =
   let srgb_operand color =
     match static_color_to_srgb_channels color with
-    | Some (Some r, Some g, Some b, Some a) ->
-        let unit byte = Float.of_int byte /. 255. in
-        Some ((unit r, unit g, unit b), unit a)
-    | Some _ -> None
-    | None ->
+    | Some (r, g, b, Some a) ->
+        let unit = Option.map (fun byte -> Float.of_int byte /. 255.) in
+        Some ((unit r, unit g, unit b), Float.of_int a /. 255.)
+    | Some (_, _, _, Option.None) -> Option.None
+    | Option.None ->
         Option.map
-          (fun (linear, alpha) -> (Color_space.rgb_of_linear_rgb linear, alpha))
+          (fun (linear, alpha) ->
+            let r, g, b = Color_space.rgb_of_linear_rgb linear in
+            ((Some r, Some g, Some b), alpha))
           (static_color_to_linear_srgb color)
   in
+  let carried x y =
+    match (x, y) with
+    | Some x, Some y -> (x, y)
+    | Some v, Option.None | Option.None, Some v -> (v, v)
+    | Option.None, Option.None -> (0., 0.)
+  in
   match (srgb_operand color1, srgb_operand color2, mix_weights p1 p2) with
-  | Some (rgb1, alpha1), Some (rgb2, alpha2), Some (w1, w2, alpha_mult) -> (
+  | ( Some ((r1, g1, b1), alpha1),
+      Some ((r2, g2, b2), alpha2),
+      Some (w1, w2, alpha_mult) ) ->
+      let r1', r2' = carried r1 r2 in
+      let g1', g2' = carried g1 g2 in
+      let b1', b2' = carried b1 b2 in
       let (r, g, b), interp_alpha =
-        premult_mix3 ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 rgb1 rgb2
+        premult_mix3 ~w1 ~w2 ~a1:alpha1 ~a2:alpha2 (r1', g1', b1')
+          (r2', g2', b2')
       in
-      let alpha = interp_alpha *. alpha_mult in
-      let linear = Color_space.linear_rgb_of_rgb (r, g, b) in
-      (* An operand written in sRGB terms mixes by exact arithmetic every engine
-         performs alike; an operand converted from another space carries that
-         conversion's error into the result. *)
-      let mix_error =
-        if
-          static_color_to_srgb_channels color1 <> None
-          && static_color_to_srgb_channels color2 <> None
-        then 0.
-        else Color_space.conversion_error
+      let component x y v : component =
+        match (x, y) with
+        | Option.None, Option.None -> Component_none
+        | _ -> Num (Float.round (v *. 1e6) /. 1e6)
       in
-      match Color_space.srgb_bytes_of_linear ~error:mix_error linear with
-      | Some (r, g, b) ->
-          let clamp01 v = Float.max 0. (Float.min 1. v) in
-          let a = Float.to_int (Float.round (clamp01 alpha *. 255.)) in
-          Some (canonical_color_of_hex r g b a)
-      | None ->
-          (* CSS Color 4 sec. 10.1 leaves out-of-gamut sRGB coordinates
-             unclamped, so retain them in [color()] notation. *)
-          let round6 v = Float.round (v *. 1e6) /. 1e6 in
-          Some
-            (Color
-               {
-                 space = Srgb;
-                 components = [ Num (round6 r); Num (round6 g); Num (round6 b) ];
-                 alpha = alpha_of_unit_float alpha;
-               }))
-  | _ -> (
-      (* The floating-point converter declines sRGB [none] channels. Keep the
-         channel carry-over behaviour in the byte mixer for that case. *)
-      match mix_srgb_bytes color1 color2 ~p1 ~p2 with
-      | Some (r, g, b, a) -> Some (canonical_color_of_hex r g b a)
-      | Option.None -> None)
+      Some
+        (Color
+           {
+             space = Srgb;
+             components =
+               [ component r1 r2 r; component g1 g2 g; component b1 b2 b ];
+             alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
+           })
+  | _ -> None
 
 let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
   match mix_lab_family effective color1 color2 ~p1 ~p2 with
@@ -298,25 +268,24 @@ let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
       | Some Oklch -> mix_in_oklch_space color1 color2 ~p1 ~p2 Default
       | _ -> None)
 
-(* Round the surviving coefficients of a lab-family colour to its canonical
-   decimal budget. Applied only after the sRGB fold has run, so a colour that
-   already collapsed to hex / named keeps its full-precision projection and only
-   one that stayed in its own space (out of gamut) gets rounded for display. *)
-let round_lab_family_axes ~lossless (c : color) : color =
-  let r3 = Option.map (round_color_axis ~lossless ~decimals:3) in
-  let r1 = Option.map (round_color_axis ~lossless ~decimals:1) in
+(* Round the coefficients of a lab-family colour to its canonical decimal
+   budget, [extra] decimals finer. *)
+let round_lab_family_axes ~extra ~lossless (c : color) : color =
+  let r3 = Option.map (round_color_axis ~lossless ~decimals:(3 + extra)) in
+  let r1 = Option.map (round_color_axis ~lossless ~decimals:(1 + extra)) in
   let ok_l =
-    canonical_color_lightness ~lossless ~pct_scale:0.01 ~axis_max_decimals:3
+    canonical_color_lightness ~lossless ~pct_scale:0.01
+      ~axis_max_decimals:(3 + extra)
   in
   let lab_l =
-    canonical_color_lightness ~lossless ~pct_scale:1.0 ~axis_max_decimals:1
+    canonical_color_lightness ~lossless ~pct_scale:1.0
+      ~axis_max_decimals:(1 + extra)
   in
+  let hue = round_hue ~extra ~lossless in
   match c with
-  | Oklch r ->
-      Oklch { r with l = ok_l r.l; c = r3 r.c; h = round_hue ~lossless r.h }
+  | Oklch r -> Oklch { r with l = ok_l r.l; c = r3 r.c; h = hue r.h }
   | Oklab r -> Oklab { r with l = ok_l r.l; a = r3 r.a; b = r3 r.b }
-  | Lch r ->
-      Lch { r with l = lab_l r.l; c = r1 r.c; h = round_hue ~lossless r.h }
+  | Lch r -> Lch { r with l = lab_l r.l; c = r1 r.c; h = hue r.h }
   | Lab r -> Lab { r with l = lab_l r.l; a = r1 r.a; b = r1 r.b }
   | other -> other
 
@@ -330,25 +299,30 @@ let srgb_verdict_of_color (c : color) : Color_space.srgb_fold =
         linear
   | None -> Color_space.Out_of_gamut
 
-(* Reduce the coefficients of a colour that did not fold, but only as far as the
-   fold verdict stays the same. An in-gamut colour whose byte is ambiguous must
-   keep the precision that fixes which side of the half-integer it is on, and an
-   out-of-gamut colour must keep the precision the engine gamut maps, so a
-   shorter spelling that changes either is not emitted. Where the canonical
-   rounding is safe it is taken, so the minified output stays as short as it was
-   and repeats: the rounded value yields the same verdict. *)
-let verdict_preserving (rounded : color) (exact : color) : color =
-  if
-    Color_space.equal_srgb_fold
-      (srgb_verdict_of_color rounded)
-      (srgb_verdict_of_color exact)
-  then rounded
-  else exact
+(* Reduce a colour's coefficients to the fewest decimals [round] offers whose
+   fold verdict is the exact colour's. An in-gamut colour whose byte is
+   ambiguous must keep the precision that fixes which side of the half-integer
+   it is on, and an out-of-gamut colour the precision the engine gamut maps, so
+   a shorter spelling that changes either is not emitted. Five decimals past the
+   canonical budget reach the printer's eight; past them the exact colour
+   stays. *)
+let verdict_preserving round ~lossless (c : color) : color =
+  let exact = round ~extra:0 ~lossless:true c in
+  let verdict = srgb_verdict_of_color exact in
+  let rec finer extra =
+    if extra > 5 then exact
+    else
+      let rounded = round ~extra ~lossless c in
+      if Color_space.equal_srgb_fold (srgb_verdict_of_color rounded) verdict
+      then rounded
+      else finer (extra + 1)
+  in
+  finer 0
 
 (* The [color()] components at their canonical precision, in the AST, so the
    emitted text and the fold decision agree and minify is a fixed point. The
    printer serialises the node faithfully. *)
-let round_modern_color_axes ~lossless (c : color) : color =
+let round_modern_color_axes ~extra ~lossless (c : color) : color =
   let round_component decimals (component : component) : component =
     match component with
     | Num f -> Num (round_color_axis ~lossless ~decimals f)
@@ -358,37 +332,11 @@ let round_modern_color_axes ~lossless (c : color) : color =
   match c with
   | Color r ->
       let decimals =
-        color_channel_decimals r.space (color_numeric_channels r.components)
+        extra
+        + color_channel_decimals r.space (color_numeric_channels r.components)
       in
       Color
         { r with components = List.map (round_component decimals) r.components }
-  | other -> other
-
-(* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
-   appropriate unit for that component", and the spec names rendering the colour
-   and converting it to another space among the purposes that holds for. The
-   sRGB family already resolves its own [none] channels that way on the path
-   through [static_color_to_srgb_bytes]; the Lab family reaches no fold at all
-   while a channel is missing, so a converted achromatic OKLab and the hex it
-   stands for never meet. This is that half, written as its own step so the
-   folds below read one shape of colour.
-
-   Sec. 13.3 is why it is not unconditional: interpolation gives a missing
-   component the other colour's analogous component instead of a zero, so the
-   two spellings are two different ramps there. *)
-let zero_missing_components (c : color) : color =
-  let lightness (l : percentage option) : percentage option =
-    match l with Option.None -> Some (Pct 0.) | l -> l
-  in
-  let axis (a : float option) =
-    match a with Option.None -> Some 0. | a -> a
-  in
-  let hue (h : hue) : hue = match h with Hue_none -> Unitless 0. | h -> h in
-  match c with
-  | Lab r -> Lab { r with l = lightness r.l; a = axis r.a; b = axis r.b }
-  | Oklab r -> Oklab { r with l = lightness r.l; a = axis r.a; b = axis r.b }
-  | Lch r -> Lch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
-  | Oklch r -> Oklch { r with l = lightness r.l; c = axis r.c; h = hue r.h }
   | other -> other
 
 (* CSS Color 5 sec. 4.1: a relative colour whose channel slots are the
@@ -524,31 +472,38 @@ let canonical_color_spelling (c : color) : color =
       if space' == space then c else Mix { mix with in_space = Some space' }
   | c -> c
 
-let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
-    ?(resolve_missing = false) (c : color) : color =
-  let c = if resolve_missing then zero_missing_components c else c in
+(* CSS Color 4 sec. 13.3 interpolates two legacy sRGB colours (hex, named,
+   [rgb()], [hsl()], [hwb()]) in sRGB and any other pair in Oklab, and sec. 13.4
+   gives a [none] component the other colour's analogous one. Any colour value
+   can be interpolated: a gradient, a transition or animation another sheet
+   declares, a [color-mix()] reading it through [currentcolor]. So a fold keeps
+   the colour's class and its [none] components: a legacy colour respells as
+   another legacy one, and any other colour stays in its own notation, its
+   coefficients rounded only as far as the sRGB bytes it paints hold. *)
+let has_missing_component (c : color) =
+  let channel (k : channel) = match k with None -> true | _ -> false in
+  match c with
+  | Rgb (Channels { r; g; b }) | Rgba { rgb = Channels { r; g; b }; _ } ->
+      channel r || channel g || channel b
+  | Hsl { h = Hue_none; _ } | Hwb { h = Hue_none; _ } -> true
+  | Hsl { s = Option.None; _ } | Hsl { l = Option.None; _ } -> true
+  | Hwb { w = Option.None; _ } | Hwb { b = Option.None; _ } -> true
+  | _ -> false
+
+(* A fold computes coefficients that can print longer than the call it replaces,
+   and the two are one colour, so the shorter is kept. *)
+let printed_length c = Pp.size ~minify:true pp_color c
+
+let rec normalize_color ?(lossless = false) (c : color) : color =
   let c = canonical_color_spelling c in
-  let normalize_color ?(lossless = lossless) =
-    normalize_color ~lossless ~exact_srgb
-  in
+  let normalize_color ?(lossless = lossless) = normalize_color ~lossless in
   let hex_of_byte_quad r g b ab = canonical_color_of_hex r g b ab in
-  let static_fold () =
-    let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
-    verdict_preserving (round_lab_family_axes ~lossless folded) folded
+  let in_own_space round =
+    verdict_preserving round ~lossless (drop_full_alpha ~lossless c)
   in
   match c with
-  | Oklab { l = Some l; a = None; b = None; alpha }
-    when pct_is_zero l && alpha_is_zero alpha ->
-      Transparent
-  | Oklch { l = Some _; c = Some _; _ } -> static_fold ()
-  | Oklab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
-  | Lch { l = Some _; c = Some _; _ } -> static_fold ()
-  | Lab { l = Some _; a = Some _; b = Some _; _ } -> static_fold ()
-  (* A missing component keeps the colour out of every fold but its alpha's. *)
-  | Oklch _ | Oklab _ | Lch _ | Lab _ -> drop_full_alpha ~lossless c
-  | Color _ ->
-      let folded = normalize_static_modern_color ~exact_srgb ~lossless c in
-      verdict_preserving (round_modern_color_axes ~lossless folded) folded
+  | Oklch _ | Oklab _ | Lch _ | Lab _ -> in_own_space round_lab_family_axes
+  | Color _ -> in_own_space round_modern_color_axes
   | Hex { r; g; b; a } -> normalize_hex_color c r g b a
   (* The authored spelling is a pretty-printing detail the printer reads, not
      part of the colour, so the fold drops it: two spellings of one colour have
@@ -557,7 +512,8 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
   | Named orig_name -> normalize_named_color c orig_name
   | Rgb _ | Rgba _ | Hsl _ | Hwb _ | Transparent -> (
       let bytes =
-        if lossless then exact_rgb_to_srgb_bytes c
+        if has_missing_component c then Option.None
+        else if lossless then exact_rgb_to_srgb_bytes c
         else static_color_to_srgb_bytes c
       in
       match bytes with
@@ -594,12 +550,15 @@ let rec normalize_color ?(lossless = false) ?(exact_srgb = false)
         if lossless then Option.None
         else fold_relative_color_static_origin name origin tail
       in
+      let folded = Option.map (normalize_color ~lossless) folded in
+      let kept = Relative_color (name, origin, tail) in
       match folded with
-      | Option.Some color -> normalize_color ~lossless color
-      | Option.None -> (
+      | Option.Some color when printed_length color <= printed_length kept ->
+          color
+      | _ -> (
           match light_dark_relative ~lossless name origin tail with
           | Option.Some color -> color
-          | Option.None -> Relative_color (name, origin, tail)))
+          | Option.None -> kept))
   | Var v ->
       (* A typed [var()] fallback / default is a colour, so canonicalise it the
          same way it would be if it stood alone. The opaque [Syntax_fallback] /
@@ -673,9 +632,11 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
           normalize_lab_family_mix effective color1 color2 ~p1 ~p2
       | _ -> None
   in
-  match folded with
-  | Some color -> normalize_color ~lossless color
-  | None -> (
+  let kept = lazy (keep ()) in
+  match Option.map (normalize_color ~lossless) folded with
+  | Some color when printed_length color <= printed_length (Lazy.force kept) ->
+      color
+  | _ -> (
       (* A mix over a [light-dark()] operand is the [light-dark()] of the mix
          over each branch. *)
       match
@@ -683,7 +644,7 @@ and normalize_mix_color ~lossless ~in_space ~hue ~color1 ~percent1 ~color2
           ~percent2
       with
       | Some color -> color
-      | None -> keep ())
+      | None -> Lazy.force kept)
 
 (* CSS Color 5 sec. 6: [light-dark()] computes to one of its two colours by the
    element's used colour scheme, so a mix over a [light-dark()] argument is the

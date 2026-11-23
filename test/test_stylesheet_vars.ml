@@ -375,12 +375,13 @@ let customprops13_registered_numeric_calc () =
 let customprops13_registered_oklch_chroma () =
   Alcotest.(check string)
     "unregistered OKLCH custom property folds the colour function"
-    ".x{--color-zinc-500:#71717b}"
+    ".x{--color-zinc-500:oklch(.552 4%285.938)}"
     (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }");
   Alcotest.(check string)
     "registered OKLCH custom property uses typed color minification"
     "@property \
-     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:#71717b}"
+     --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:oklch(.552 \
+     4%285.938)}"
     (normalize_closed
        "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
@@ -391,7 +392,7 @@ let customprops13_registered_oklch_chroma () =
      and colour-canonicalised. *)
   Alcotest.(check string)
     "registration applies to a prior usage nested in a layer"
-    "@layer utilities{.x{--color-zinc-500:#71717b}}@property \
+    "@layer utilities{.x{--color-zinc-500:oklch(.552 4%285.938)}}@property \
      --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}"
     (normalize_closed
        "@layer utilities { .x { --color-zinc-500: oklch(55.2% .016 285.938) } \
@@ -514,18 +515,18 @@ let customprops13_hex_color_folds () =
 let customprops13_shortest_oklab_sign_boundaries () =
   Alcotest.(check string)
     "unregistered OKLab custom property folds the colour function"
-    ".prose{--tw-prose-kbd-shadows:#1118281a}"
+    ".prose{--tw-prose-kbd-shadows:oklab(21%-.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003 -.034 / .1) }");
   Alcotest.(check string)
     "unregistered OKLab custom property folds regardless of source sign spacing"
-    ".prose{--tw-prose-kbd-shadows:#1118281a}"
+    ".prose{--tw-prose-kbd-shadows:oklab(21%-.003-.034/.1)}"
     (normalize_minified
        ".prose { --tw-prose-kbd-shadows: oklab(21% -.003-.034 / .1) }");
   Alcotest.(check string)
     "registered OKLab custom property uses typed color minification"
     "@property \
-     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:#000}.prose{--tw-prose-kbd-shadows:#1118281a}"
+     --tw-prose-kbd-shadows{syntax:\"<color>\";inherits:true;initial-value:#000}.prose{--tw-prose-kbd-shadows:oklab(21%-.003-.034/.1)}"
     (normalize_closed
        "@property --tw-prose-kbd-shadows { syntax: \"<color>\"; inherits: \
         true; initial-value: black } .prose { --tw-prose-kbd-shadows: \
@@ -993,7 +994,8 @@ let theme_chain_resolution () =
     ".x{color:color(srgb 1 0 0)}"
     (render ".x { color: var(--accent) }");
   Alcotest.(check string)
-    "resolved color function optimizes to the shortest color" ".x{color:red}"
+    "resolved color function keeps its interpolation class"
+    ".x{color:color(srgb 1 0 0)}"
     (render_optimized ".x { color: var(--accent) }");
   Alcotest.(check string)
     "var replacement chains resolve to calc, then reduce" ".x{width:3px}"
@@ -1023,7 +1025,7 @@ let theme_chain_resolution () =
     (render ".x { text-shadow: 0 0 2px var(--shadow-color) }");
   Alcotest.(check string)
     "nested color replacement optimizes after resolution"
-    ".x{text-shadow:0 0 2px red}"
+    ".x{text-shadow:0 0 2px color(srgb 1 0 0)}"
     (render_optimized ".x { text-shadow: 0 0 2px var(--shadow-color) }")
 
 (* CSS Custom Properties L1 section 3: a real per-element dependency cycle makes

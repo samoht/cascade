@@ -2,8 +2,8 @@
 
 open Values_intf
 
-val normalize_color :
-  ?lossless:bool -> ?exact_srgb:bool -> ?resolve_missing:bool -> color -> color
-(** [normalize_color ?lossless c] canonicalises a color to its shortest
-    spelling: a static colour in any space folds through sRGB to hex/named, hex
-    shortens, and named<->hex picks the shorter. *)
+val normalize_color : ?lossless:bool -> color -> color
+(** [normalize_color ?lossless c] canonicalises a colour to its shortest
+    spelling within its interpolation class: a legacy sRGB colour folds to
+    hex/named, any other colour stays in its own notation, and a [none]
+    component stays. *)

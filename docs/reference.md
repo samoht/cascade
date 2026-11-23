@@ -52,9 +52,14 @@ whitespace.
 Value-level rewrites:
 
 - **Colours:** hex when no longer than the name (`black` -> `#000`,
-  `blue` -> `#00f`; `red` stays a name). Modern colour functions
-  (`lab`/`lch`/`oklab`/`oklch`/`color()`) fold to shorter sRGB only within the
-  ΔE<sub>OK</sub> budget below.
+  `blue` -> `#00f`; `red` stays a name). A legacy sRGB colour (hex, named,
+  `rgb()`, `hsl()`, `hwb()`) folds to hex or a name, and any other colour
+  (`lab`/`lch`/`oklab`/`oklch`/`color()`) keeps its notation, its coefficients
+  rounded within the ΔE<sub>OK</sub> budget below: CSS Color 4 sec. 13.3
+  interpolates the two kinds in different spaces, so `color(srgb 1 0 0)` is not
+  `red` in a gradient or a transition. A static `color-mix()` folds to a colour
+  in its interpolation space (`color-mix(in srgb,red,blue)` ->
+  `color(srgb .5 0 .5)`), and a `none` component is kept.
 - **Numbers and lengths:** drop leading and trailing zeros (`0.5` -> `.5`);
   convert compatible units only when shorter (`12pt` stays `12pt`).
 - **Math:** `calc()`, `hypot()` and the rest fold constant subexpressions only
@@ -395,9 +400,9 @@ keeps that rule on both sides, so a sheet that lost it differs and the exit is
 1. A pseudo-class cascade does not know at all is not on that list, and a rule
 lost to it still withholds the verdict.
 
-A declaration cascade cannot read is handled differently. The reader accepts
-a declaration exactly when the target browsers do, so one it refuses is one
-every target drops, and the verdict rests on that. It is dropped on that side,
+A declaration cascade cannot read is handled differently. The verdict takes
+one the reader refuses as one every target drops; a refused declaration that
+a target keeps is a reader bug, which the harnesses below look for. It is dropped on that side,
 a parse warning is printed, and the verdict is taken over what remains. The
 report and the `--json` document count the unreadable declarations and rules
 on each side.

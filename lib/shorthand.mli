@@ -108,6 +108,15 @@ val custom_property_name : Declaration.declaration -> string option
 val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** Same declaration value ignoring importance. *)
 
+val implied_longhands :
+  Declaration.declaration -> Declaration.declaration list option
+(** [implied_longhands sh] is every longhand the shorthand [sh] writes, each
+    with the value [sh] assigns it, reset-only ones included, at the importance
+    of [sh]. It is [None] unless every such value can be proven:
+    [border:1px solid red] gives [border-width:1px], [border-style:solid],
+    [border-color:red] and [border-image:none], while [border:solid] and any
+    other shorthand give [None]. *)
+
 val declarations_commute :
   Declaration.declaration list -> Declaration.declaration list -> bool
 (** [declarations_commute a b] is [true] when running [a] before [b] and [b]
@@ -135,16 +144,6 @@ val read_by_no_target : Declaration.declaration -> bool
 
 val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
-
-val transitioned_in_rule :
-  Declaration.declaration list -> Declaration.declaration -> bool
-(** [transitioned_in_rule decls d] is [true] when one of [decls] declares a
-    transition reaching the property [d] writes. [transition],
-    [transition-property] and their vendor spellings are read: an entry naming
-    that property or a shorthand covering it reaches it, and so do [all], the
-    [all] shorthand and any value that does not resolve to a property list. Only
-    [decls] are read, so a transition another rule declares for the same element
-    reads as [false]. *)
 
 val merge_box_shorthand_longhands :
   (int * Declaration.declaration) list ->

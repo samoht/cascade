@@ -90,6 +90,72 @@ let env_names_the_binary () =
                  has none"
                 None (Browser.node_binary ()))))
 
+let rec mkdir_p dir =
+  if not (Sys.file_exists dir) then (
+    mkdir_p (Filename.dirname dir);
+    try Unix.mkdir dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ())
+
+(* The variables the search reads, cleared so the machine's own browsers are not
+   found first, and [vars] set over them. *)
+let with_search_env dir vars f =
+  let cleared =
+    [
+      ("CHROME", "");
+      ("PATH", dir);
+      ("HOME", "");
+      ("USERPROFILE", "");
+      ("LOCALAPPDATA", "");
+      ("PROGRAMFILES", "");
+      ("PROGRAMFILES(X86)", "");
+    ]
+  in
+  let env =
+    List.map
+      (fun (name, v) ->
+        (name, Option.value ~default:v (List.assoc_opt name vars)))
+      cleared
+  in
+  List.fold_left (fun f (name, v) () -> with_env name v f) f env ()
+
+(* Windows has no HOME: the caches sit under USERPROFILE and LOCALAPPDATA, and
+   an installed browser under LOCALAPPDATA or PROGRAMFILES. *)
+let chrome_found_without_home () =
+  with_dir (fun dir ->
+      let profile = dir // "profile" in
+      let cache =
+        profile // ".cache" // "puppeteer" // "chrome-headless-shell" // "v1"
+      in
+      mkdir_p cache;
+      let shell = program cache "chrome-headless-shell" in
+      with_search_env dir
+        [ ("USERPROFILE", profile) ]
+        (fun () ->
+          Alcotest.(check (option string))
+            "the puppeteer cache under USERPROFILE" (Some shell)
+            (Browser.chrome_binary ()));
+      let local = dir // "local" in
+      let playwright =
+        local // "ms-playwright" // "chromium_headless_shell-1" // "chrome-win"
+      in
+      mkdir_p playwright;
+      let headless = program playwright "headless_shell" in
+      with_search_env dir
+        [ ("LOCALAPPDATA", local) ]
+        (fun () ->
+          Alcotest.(check (option string))
+            "the playwright cache under LOCALAPPDATA" (Some headless)
+            (Browser.chrome_binary ()));
+      let programs = dir // "programs" in
+      let install = programs // "Google" // "Chrome" // "Application" in
+      mkdir_p install;
+      let installed = program install "chrome" in
+      with_search_env dir
+        [ ("PROGRAMFILES", programs) ]
+        (fun () ->
+          Alcotest.(check (option string))
+            "a browser installed under PROGRAMFILES" (Some installed)
+            (Browser.chrome_binary ())))
+
 (* The version is read off the banner the binary prints, whatever precedes the
    number; a binary that prints nothing has no version. *)
 let version_from_the_banner () =
@@ -123,6 +189,8 @@ let suite =
         executable_is_a_runnable_file;
       Alcotest.test_case "CHROME and NODE name the binary" `Quick
         env_names_the_binary;
+      Alcotest.test_case "Chrome is found without HOME" `Quick
+        chrome_found_without_home;
       Alcotest.test_case "the version is read off the banner" `Quick
         version_from_the_banner;
     ] )

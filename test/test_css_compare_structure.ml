@@ -1355,6 +1355,23 @@ let canonical_where_permutation_equal () =
     ":where(...) body permutations canonicalize equal" true
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
+(* Sec. 4.2 drops an argument a browser does not parse from the forgiving
+   [:is()] alone, and sec. 3.9 drops a whole list over it: Chromium 153 colours
+   [.c] under [.c,:is([x=a s])] and not under [.c,[x=a s]], and the same for
+   [:-moz-focusring]. Canonical comparison keeps the two apart. *)
+let canonical_is_keeps_argument_some_target_drops () =
+  List.iter
+    (fun (a, b) ->
+      Alcotest.(check bool)
+        (Fmt.str "%s differs from %s" a b)
+        false
+        (Cascade_diff.Css_compare.equal ~mode:`Canonical a b))
+    [
+      (".c,:is([x=a s]){color:red}", ".c,[x=a s]{color:red}");
+      (".c,:is(:-moz-focusring){color:red}", ".c,:-moz-focusring{color:red}");
+      (".c,:not(:not([x=a s])){color:red}", ".c,:is([x=a s]){color:red}");
+    ]
+
 let canonical_is_permutation_equal () =
   let expected = ".x :is(.a,.b){color:red}" in
   let actual = ".x :is(.b,.a){color:red}" in
@@ -1629,6 +1646,8 @@ let suite =
         canonical_where_permutation_equal;
       Alcotest.test_case "canonical :is(...) permutation" `Quick
         canonical_is_permutation_equal;
+      Alcotest.test_case "canonical :is() keeps an argument some target drops"
+        `Quick canonical_is_keeps_argument_some_target_drops;
       Alcotest.test_case "canonical :not(...) permutation" `Quick
         canonical_not_permutation_equal;
       Alcotest.test_case "canonical :has(...) permutation" `Quick

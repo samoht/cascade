@@ -157,45 +157,32 @@ let read_printed p =
   in
   (neg, canonical (if digits = "" then "0" else digits) (exp - frac))
 
-(* A decimal integer string against [2^62]. *)
-let reaches_2_62 s =
-  let limit = "4611686018427387904" in
-  String.length s > String.length limit
-  || (String.length s = String.length limit && s >= limit)
-
 (* The value [Pp.string_of_float ~max_decimals:d] documents for [x]: decimal
-   places round the shortest decimal with a half going away from zero, and the
-   12 significant digits round the exact value with ties to even. *)
+   places round the shortest decimal with a half going away from zero, a
+   magnitude that rounds to zero keeps [d] significant digits, and an integral
+   magnitude prints every digit below [2^62] and its shortest decimal from
+   there. *)
 let expected d x =
   if x = 0.0 then (false, ("", 0))
   else
     let neg = x < 0.0 in
     let a = Float.abs x in
-    let significant n =
-      let m, b = binary a in
-      let s, scale = exact_of m b in
-      let point = String.length s - 1 - scale in
-      let keep = n - 1 - point in
-      canonical (round_ref ~away:false s (scale - keep)) (-keep)
-    in
     let value =
       if Float.is_integer a then
-        if a < 0x1p62 then
-          let m, b = binary a in
-          let s, scale = exact_of m b in
-          canonical s (-scale)
-        else significant 12
+        let s, scale =
+          if a < 0x1p62 then
+            let m, b = binary a in
+            exact_of m b
+          else shortest a
+        in
+        canonical s (-scale)
       else
         let s, scale = shortest a in
         let at keep =
-          let r = round_ref ~away:true s (scale - keep) in
-          if reaches_2_62 r then significant 12 else canonical r (-keep)
+          canonical (round_ref ~away:true s (scale - keep)) (-keep)
         in
         if round_ref ~away:true s (scale - d) <> "0" then at d
-        else
-          let leading_zeros = scale - String.length s in
-          if leading_zeros > 24 then significant 12
-          else at (max 1 d + leading_zeros)
+        else at (max 1 d + (scale - String.length s))
     in
     (neg, value)
 

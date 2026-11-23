@@ -566,119 +566,32 @@ let normalize_custom_values ~lossless (stmts : statement list) : statement list
     (Common.List.map_preserve (normalize_custom_declaration ~lossless ~queried))
     stmts
 
-(* CSS Color 4 sec. 10.2: [color(srgb r g b)] scales each channel by 255, so
-   [color(srgb 1 0 0)] and [rgb(255 0 0)] are one colour written two ways. Under
-   [--lossless] the optimizer keeps whichever function the author used, which
-   leaves the projection reading the spelling as a difference. Fold the
-   exactly-representable ones so it does not.
-
-   Projection only, and only when the fold fires: the declaration is compared
-   against the same normalisation without the flag, and kept as written unless
-   the colour actually moved. So no other value fold rides along, and the
-   emitted form is untouched - the two spellings are not interchangeable on
-   output, since [color()] needs a browser that parses it. *)
-let canonical_color_spelling ~plain decl =
-  let folded = Declaration.normalize ~lossless:true ~exact_srgb:true decl in
-  if folded == decl then decl
-  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
-  else folded
-
 (* A non-terminating quotient the minifier keeps as the author's [calc()]
    renders within the six-significant-figure budget of the number it folds to,
    and Tailwind writes [w-1/3] as [calc(1/3 * 100%)] where lightningcss writes
    [33.3333%]. The projection spends the budget on every typed quotient, as it
    is spent on a number's already, so the two spellings meet; [lossless] keeps
    the quotient and the two apart. *)
-let canonical_quotient ~plain decl =
+let canonical_quotient decl =
   let ctx = { Values.default_calc_ctx with budget = true } in
   let folded = Declaration.normalize ~lossless:true ~ctx decl in
   if folded == decl then decl
-  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
+  else if
+    Declaration.equal_declaration folded
+      (Declaration.normalize ~lossless:true decl)
+  then decl
   else folded
-
-(* CSS Color 4 sec. 4.4: "a missing component behaves as a zero value, in the
-   appropriate unit for that component", for every purpose but the ones that
-   combine two colours. A minifier that reaches an achromatic colour by
-   conversion writes those channels as [none] where Cascade writes the hex the
-   colour folds to, and the projection has to read the two as one colour.
-
-   Sec. 13.3 draws the other edge: interpolation gives a missing component the
-   other colour's analogous component rather than a zero, so at a position that
-   interpolates the value the two spellings name two different results.
-   {!Declaration.normalize} resolves the sentinel only for a colour standing as
-   a whole colour-longhand value or as a colour function of a custom-property
-   token stream, which leaves a gradient stop, a [color-mix()] operand and a
-   shadow colour reading their [none] as written. The stream's colour is a
-   colour wherever the stream substitutes, and the site it lands at is as
-   invisible to the projection as it is to the hex fold the stream already
-   takes. A declaration the sheet interpolates from elsewhere is held back too:
-   [@keyframes] and [@starting-style] are the two blocks that exist to be one
-   endpoint of that, so the pass does not descend into them, and a colour whose
-   own rule transitions the property it writes keeps its [none], a custom
-   property named by its own name included. That guard reads one rule. A
-   transition one rule declares for a colour another rule sets still folds,
-   since seeing it would mean deciding that two selectors match one element,
-   which the projection does not do.
-
-   Guarded like [canonical_color_spelling]: the flagged normalisation is kept
-   only where it moves the colour, so no other value fold rides along. *)
-let canonical_missing_components ~lossless ~plain decl =
-  let folded = Declaration.normalize ~lossless ~resolve_missing:true decl in
-  if folded == decl then decl
-  else if Declaration.equal_declaration folded (Lazy.force plain) then decl
-  else folded
-
-(* The three folds above each compare the declaration they fold against its
-   normalisation without their flag, and two of them, and all three under
-   [lossless], compare against one normalisation of one declaration. So a
-   declaration goes through the three in turn and each normalisation it is
-   compared against is worked out once, when a fold first needs it. *)
-let lossless_plain decl = lazy (Declaration.normalize ~lossless:true decl)
 
 let canonical_value ~lossless decl =
-  let plain = lossless_plain decl in
-  let quotient = if lossless then decl else canonical_quotient ~plain decl in
-  let plain = if quotient == decl then plain else lossless_plain quotient in
-  let color = canonical_color_spelling ~plain quotient in
-  (color, if color == quotient then plain else lossless_plain color)
+  if lossless then decl else canonical_quotient decl
 
-let canonical_missing ~lossless decls (decl, plain) =
-  let plain =
-    if lossless then plain else lazy (Declaration.normalize ~lossless decl)
-  in
-  let folded = canonical_missing_components ~lossless ~plain decl in
-  if folded == decl || not (Shorthand.transitioned_in_rule decls decl) then
-    folded
-  else decl
-
-let canonical_declaration_values ~lossless ~missing decls =
-  let values = List.map (canonical_value ~lossless) decls in
-  let folded =
-    if List.for_all2 (fun d (v, _) -> d == v) decls values then decls
-    else List.map fst values
-  in
-  if not missing then folded
-  else
-    let missed = List.map (canonical_missing ~lossless folded) values in
-    if List.for_all2 ( == ) folded missed then folded else missed
-
-let rec canonical_values ~lossless ~missing (stmts : statement list) :
-    statement list =
+let rec canonical_values ~lossless (stmts : statement list) : statement list =
   Common.List.map_preserve
     (fun stmt ->
-      let missing =
-        missing
-        &&
-        match stmt with
-        | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Starting_style _
-          ->
-            false
-        | _ -> true
-      in
       stmt
       |> Stylesheet.map_statement_declarations
-           (canonical_declaration_values ~lossless ~missing)
-      |> Stylesheet.map_statement_children (canonical_values ~lossless ~missing))
+           (Common.List.map_preserve (canonical_value ~lossless))
+      |> Stylesheet.map_statement_children (canonical_values ~lossless))
     stmts
 
 (* CSS Conditional 3 sec. 6.1 makes a [<general-enclosed>] term false, so an
@@ -985,7 +898,7 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
       @@ canonical_query_preludes
            (canonical_keyframe_declarations
            @@ sort_property_runs
-                (canonical_values ~lossless ~missing:true
+                (canonical_values ~lossless
                    (normalize_custom_values ~lossless
                       (canonical_vendor_aliases ~lossless
                          ~judged:(Option.is_some judge) ~floors:(Ctx.floors ctx)

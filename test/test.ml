@@ -123,6 +123,7 @@ let () =
       Test_container.suite;
       Test_string_diff.suite;
       Test_tree_diff.suite;
+      Test_tree_diff_longhands.suite;
       Test_css_compare.suite;
       Test_css_compare_structure.suite;
       Test_css_compare_values.suite;

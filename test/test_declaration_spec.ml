@@ -1130,7 +1130,8 @@ let spec_platform_property_vectors () =
   check_declaration ~expected:"width:hypot(3px,4px)" ~optimized:"width:5px"
     "width: hypot(3px, 4px)";
   check_declaration ~expected:"color:color-mix(in oklab,red 40%,blue)"
-    ~optimized:"color:#7551b6" "color: color-mix(in oklab, red 40%, blue)";
+    ~optimized:"color:oklab(.522 .07-.137)"
+    "color: color-mix(in oklab, red 40%, blue)";
   check_declaration ~expected:"color:light-dark(canvastext,white)"
     ~optimized:"color:light-dark(canvastext,#fff)"
     "color: light-dark(CanvasText, white)";
@@ -1312,10 +1313,10 @@ let spec_values_l45_edges () =
     ];
   (* optimize+minify owns the folds pp holds above: Named->hex, rgb()->hex,
      turn->shortest angle, and the position-keyword canonicalization. *)
-  check_declaration ~expected:"color:lab(50%20 30)" ~optimized:"color:#a16945"
-    "color: lab(50% 20 30)";
-  check_declaration ~expected:"color:lch(50%30 40)" ~optimized:"color:#a26757"
-    "color: lch(50% 30 40)";
+  check_declaration ~expected:"color:lab(50%20 30)"
+    ~optimized:"color:lab(50 20 30)" "color: lab(50% 20 30)";
+  check_declaration ~expected:"color:lch(50%30 40)"
+    ~optimized:"color:lch(50 30 40)" "color: lch(50% 30 40)";
   decl_optimizes ~prop:"background" ~into:"conic-gradient(from 45deg,red,#00f)"
     "conic-gradient(from 45deg, red, blue)";
   decl_optimizes ~prop:"filter" ~into:"drop-shadow(0 0 2px #0006)"

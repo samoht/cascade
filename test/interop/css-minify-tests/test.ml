@@ -191,6 +191,68 @@ let normalize_expected ~category ~id expected =
   let upstream = expected in
   let expected = normalize_expected_tokens expected in
   match (category, id) with
+  | "colors", "0018" ->
+      (* CSS Color 4 sec. 13.3 interpolates a legacy sRGB colour (hex, named,
+         [rgb()], [hsl()], [hwb()]) in sRGB and any other colour in Oklab, and
+         CSS Color 5 sec. 3 makes a mix a colour in its interpolation space:
+         Chromium 153 computes [color-mix(in srgb,red,blue)] as [color(srgb 0.5
+         0 0.5)] and transitions it to [lime] through [oklab(.643 -.035 .039)],
+         where [purple] goes through [rgb(64,128,64)]. The imported oracle folds
+         the mix to a legacy spelling; the Cascade oracle keeps its class. The
+         same holds for colors/0019, 0024, 0028, 0036, 0037, 0041, 0042 and
+         0043, for [color(from red srgb r g b)] in colors/0020 and for an
+         [oklab()] in colors/0055. *)
+      fixture ~category ~id ~upstream:"a{color:purple}"
+        ~cascade:"a{color:color(srgb .5 0 .5)}" upstream
+  | "colors", "0019" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:purple}"
+        ~cascade:"a{color:color(srgb .5 0 .5)}" upstream
+  | "colors", "0020" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:#ff000080}"
+        ~cascade:"a{color:color(srgb 1 0 0/.5)}" upstream
+  | "colors", "0021" ->
+      (* CSS Color 4 sec. 13.4: in an interpolation a [none] channel takes the
+         other colour's, so [rgb(none 128 0)] transitions to [red] through
+         [rgb(255,64,0)] in WebKit 26 where [green] goes through
+         [rgb(128,64,0)]. It is not the zero it renders as at rest. *)
+      fixture ~category ~id ~upstream:"a{color:green}"
+        ~cascade:"a{color:rgb(none 128 0)}" upstream
+  | "colors", "0024" ->
+      (* Sec. 13.4: the [none] red channel takes the other operand's 200 before
+         mixing, so the mix is [color(srgb .784 0 0)], an sRGB colour of the
+         non-legacy class (see colors/0018). *)
+      fixture ~category ~id ~upstream:"a{color:#c80000}"
+        ~cascade:"a{color:color(srgb .784 0 0)}" upstream
+  | "colors", "0028" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:red}"
+        ~cascade:"a{color:color(srgb 1 0 0)}" upstream
+  | "colors", "0036" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:red}"
+        ~cascade:"a{color:color(srgb 1 0 0)}" upstream
+  | "colors", "0037" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:#00f}"
+        ~cascade:"a{color:color(srgb 0 0 1)}" upstream
+  | "colors", "0041" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:red}"
+        ~cascade:"a{color:color(srgb 1 0 0)}" upstream
+  | "colors", "0042" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:#80008099}"
+        ~cascade:"a{color:color(srgb .5 0 .5/.6)}" upstream
+  | "colors", "0043" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:#a05}"
+        ~cascade:"a{color:color(srgb .667 0 .333)}" upstream
+  | "colors", "0055" ->
+      (* Interpolation class, as colors/0018. *)
+      fixture ~category ~id ~upstream:"a{color:#3c740a}"
+        ~cascade:"a{color:oklab(.5-.1 .1)}" upstream
   | "colors", "0029" ->
       (* color-mix(in oklch, red, blue) folds to a static oklch(). cascade keeps
          3 hue decimals (326.643) where the keithamus oracle rounds to 1

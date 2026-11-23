@@ -6,6 +6,11 @@ arm64, 0 on x86_64). Every place that turns a CSS number into an `int`
 answers for that range: it prints the number as a float, keeps the math
 function that produced it, or leaves the text as written.
 
+A number at or past 2^62, or a fraction whose digits, scaled to the
+eight decimal places, reach it, prints the shortest digits that read
+back as its double: twelve digits would move `4611686018427387904px` by
+2,612,096px and `46116860184.27387904px` by 0.03px.
+
 A length or a number printed by the minifier.
 
   $ printf 'a{width:4611686018427387904px}' | cascade fmt - 2>&1
@@ -13,13 +18,13 @@ A length or a number printed by the minifier.
     width: 4611686018427387904px;
   }
   $ printf 'a{width:4611686018427387904px}' | cascade fmt --minify - 2>&1
-  a{width:4.61168601843e18px}
+  a{width:4.611686018427388e18px}
   $ printf 'a{opacity:4611686018427387904}' | cascade fmt - 2>&1
   a {
-    opacity: 4.61168601843e18;
+    opacity: 4.611686018427388e18;
   }
   $ printf 'a{opacity:4611686018427387904}' | cascade fmt --minify - 2>&1
-  a{opacity:4.61168601843e18}
+  a{opacity:4.611686018427388e18}
 
 A fraction whose digits, scaled to the printed precision, reach 2^62.
 
@@ -28,7 +33,7 @@ A fraction whose digits, scaled to the printed precision, reach 2^62.
     width: 46116860184.27387904px;
   }
   $ printf 'a{width:46116860184.27387904px}' | cascade fmt --minify - 2>&1
-  a{width:46116860184.3px}
+  a{width:46116860184.27388px}
 
 A media feature length, and a resolution. A number past the `int`
 range prints in exponent notation as `1e30`, never `1e+30`: CSS Syntax
@@ -37,13 +42,13 @@ value and the shorter is the minifier's. This is a minified stylesheet,
 not CSSOM sec. 6.7.2 serialisation, which never uses an exponent.
 
   $ printf '@media (min-width:4611686018427387904px){a{color:red}}' | cascade fmt - 2>&1
-  @media (min-width: 4.61168601843e18px) {
+  @media (min-width: 4.611686018427388e18px) {
     a {
       color: red;
     }
   }
   $ printf '@media (min-width:4611686018427387904px){a{color:red}}' | cascade fmt --minify - 2>&1
-  @media(width>=4.61168601843e18px){a{color:red}}
+  @media(width>=4.611686018427388e18px){a{color:red}}
   $ printf '@media (min-resolution:1e30dpi){a{color:red}}' | cascade fmt - 2>&1
   @media (min-resolution: 1e30dpi) {
     a {

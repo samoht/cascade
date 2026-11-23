@@ -330,10 +330,17 @@ let rgb ?alpha r g b =
   | Some a ->
       Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a = Num a }
 
-let hsl h s l = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = None }
-let hsla h s l a = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = Num a }
-let hwb h w b = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = None }
-let hwba h w b a = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = Num a }
+let hsl h s l =
+  Hsl { h = Unitless h; s = Some (Pct s); l = Some (Pct l); a = None }
+
+let hsla h s l a =
+  Hsl { h = Unitless h; s = Some (Pct s); l = Some (Pct l); a = Num a }
+
+let hwb h w b =
+  Hwb { h = Unitless h; w = Some (Pct w); b = Some (Pct b); a = None }
+
+let hwba h w b a =
+  Hwb { h = Unitless h; w = Some (Pct w); b = Some (Pct b); a = Num a }
 
 let oklch l c h =
   Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }

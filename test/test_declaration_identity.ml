@@ -476,6 +476,19 @@ let number_spellings_have_one_node () =
   Alcotest.(check string)
     "an exponent merges in one pass" ".a,.b{width:1000px}"
     (minified ".a{width:1e3px}.b{width:1000px}");
+  (* The printer writes a number to eight decimals, so a number written past
+     them prints as the eight-decimal one does and has to be that node: Chromium
+     153 computes [33.33333333333333%] and [33.33333333%] of 300px as [100px],
+     and [.7250000000000001s] and [.725s] as [0.725s]. *)
+  same_text_same_hash "33.33333333333333% vs 33.33333333%"
+    (sole_declaration ".a{width:33.33333333333333%}")
+    (sole_declaration ".b{width:33.33333333%}");
+  same_text_same_hash ".7250000000000001s vs .725s"
+    (sole_declaration ".a{transition-delay:.7250000000000001s}")
+    (sole_declaration ".b{transition-delay:.725s}");
+  Alcotest.(check string)
+    "eight decimals merge in one pass" ".a,.b{width:33.33333333%}"
+    (minified ".a{width:33.33333333333333%}.b{width:33.33333333%}");
   (* The same node feeds the box contraction: a side spelled differently held
      the shorthand open until a second pass re-read it. *)
   Alcotest.(check string)
@@ -508,6 +521,86 @@ let number_spellings_keep_their_value () =
   Alcotest.(check bool)
     "a custom property is not folded" false
     (Css.Declaration.equal_declaration custom custom')
+
+(* A colour channel is decidable when the three readings an engine or cascade's
+   printer can take of its number quantise to one 8-bit value: the double, the
+   nearest 32-bit float, and the eight-decimal print. Chromium 153 paints
+   [rgba(0,0,0,0.09999999999999998)] at alpha 25 (the double) and [rgb(0 0
+   0/0.09999999999999998)] or [hsl(0 0% 0%/0.09999999999999998)] at 26 (the
+   32-bit float), [rgb(127.49999999999999,0,0)] at red 128 and [rgb(127.49999 0
+   0)] at 127, and [.7] at 179 in every syntax. A colour with an undecidable
+   channel is kept as written; a decidable one folds. *)
+let undecidable_colour_channels_stay () =
+  let check name want css = Alcotest.(check string) name want (minified css) in
+  check "a comma alpha past the half stays"
+    ".a{color:rgba(0,0,0,.09999999999999998)}"
+    ".a{color:rgba(0,0,0,0.09999999999999998)}";
+  check "a space alpha past the half stays"
+    ".a{color:rgb(0 0 0/.09999999999999998)}"
+    ".a{color:rgb(0 0 0/0.09999999999999998)}";
+  check "an hsl() alpha past the half stays"
+    ".a{color:hsl(0 0%0%/.09999999999999998)}"
+    ".a{color:hsl(0 0% 0%/0.09999999999999998)}";
+  check "a channel past the half stays" ".a{color:rgb(127.49999999999999,0,0)}"
+    ".a{color:rgb(127.49999999999999,0,0)}";
+  check "a shadow keeps such a colour"
+    ".a{box-shadow:0 0 0 1px rgba(0,0,0,.09999999999999998)}"
+    ".a{box-shadow:0 0 0 1px rgba(0,0,0,0.09999999999999998)}";
+  check "the half itself folds" ".a{color:#0000001a}" ".a{color:rgba(0,0,0,.1)}";
+  check "so does its other spelling" ".a{color:#0000001a}"
+    ".a{color:rgb(0 0 0/0.1)}";
+  check "an alpha every reading rounds alike folds" ".a{color:#000000b3}"
+    ".a{color:rgb(0 0 0/.7)}";
+  check "a channel every reading rounds alike folds" ".a{color:#7f0000}"
+    ".a{color:rgb(127.49999 0 0)}";
+  check "the two are two colours"
+    ".a{color:rgba(0,0,0,.09999999999999998)}.b{color:#0000001a}"
+    ".a{color:rgba(0,0,0,0.09999999999999998)}.b{color:rgba(0,0,0,.1)}";
+  Alcotest.(check string)
+    "a pretty print keeps its tokens"
+    ".a {\n  color: rgba(0,0,0,.09999999999999998);\n}"
+    (Css.to_string
+       (Css.stylesheet ".a{color:rgba(0, 0, 0, 0.09999999999999998)}"))
+
+(* A [var()] beside a channel leaves the channel's number to be quantised once
+   substituted, so the rule holds there too. With [--b:0], Chromium 153 paints
+   [rgba(0,0,var(--b),0.09999999999999998)] at alpha 25 and [rgb(0 0
+   var(--b)/.1)] at 26, and [rgb(0 0 var(--b)/.0996)] at 25: rounding [.0996] to
+   [.1] crosses the byte under every reading. *)
+let colour_channels_beside_var () =
+  let check name want css = Alcotest.(check string) name want (minified css) in
+  check "an alpha past the half beside a var() stays"
+    ".a{color:rgba(0,0,var(--b),.09999999999999998)}"
+    ".a{color:rgba(0,0,var(--b),0.09999999999999998)}";
+  check "an alpha keeps the digits that hold its byte"
+    ".a{color:rgb(0 0 var(--b)/.0996)}" ".a{color:rgb(0 0 var(--b)/.0996)}";
+  check "an alpha rounds where its byte holds"
+    ".a{color:rgb(0 0 var(--b)/.123)}" ".a{color:rgb(0 0 var(--b)/.12345)}";
+  Alcotest.(check string)
+    "inlining the var() keeps the colour as written"
+    ".a{color:rgba(0,0,0,.09999999999999998)}"
+    (Css.to_string ~minify:true
+       (Css.inline_vars
+          (Css.stylesheet
+             ":root{--b:0}.a{color:rgba(0,0,var(--b),0.09999999999999998)}")));
+  let eval custom css =
+    let ctx =
+      Css.Context.v
+        ~custom_properties:[ ok (Css.Declaration.of_string custom) ]
+        ()
+    in
+    Css.Declaration.to_string ~minify:true
+      (Css.eval_declaration ctx (ok (Css.Declaration.of_string css)))
+  in
+  Alcotest.(check string)
+    "evaluating substitutes into the colour as written"
+    "color:rgba(0,0,0,.09999999999999998)"
+    (eval "--b:0" "color:rgba(0,0,var(--b),0.09999999999999998)");
+  Alcotest.(check string)
+    "evaluating resolves one the value makes decidable"
+    (Css.Declaration.to_string ~minify:true
+       (ok (Css.Declaration.of_string "color:hsl(0 50% 50%)")))
+    (eval "--h:0" "color:hsl(var(--h) 50% 50.0000000001%)")
 
 (* Cascade keeps no raw-token sidecar, so a printed declaration is rebuilt from
    its typed values alone: reading the print back has to land on the node that
@@ -825,6 +918,10 @@ let suite =
         number_spellings_have_one_node;
       test_case "number spellings keep their value" `Quick
         number_spellings_keep_their_value;
+      test_case "undecidable colour channels stay" `Quick
+        undecidable_colour_channels_stay;
+      test_case "colour channels beside a var()" `Quick
+        colour_channels_beside_var;
       test_case "multi-value grammars" `Quick multi_value_grammars;
       test_case "dimension before a signed number" `Quick
         dimension_before_signed_number;

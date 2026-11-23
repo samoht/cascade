@@ -666,8 +666,8 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
    It applies to a coefficient Cascade computed itself - an irrational folded
    out of [pi] or [sqrt()], a conversion between absolute units - which carries
    digits that will never be printed. An authored coefficient is the author's
-   own digits and keeps every one of them: at a [14px] font [.4285714em] is
-   [6px] and [.428571em] is not.
+   own digits and keeps every one the reader holds, to eight decimals: at a
+   [14px] font [.4285714em] is [6px] and [.428571em] is not.
 
    The budget buys a fractional tail, and six significant figures reach one only
    while the magnitude stays under [10^6]. Wider than that the only digits left

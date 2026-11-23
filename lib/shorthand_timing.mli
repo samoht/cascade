@@ -1,10 +1,5 @@
-(** Timing shorthands: which properties a rule's [transition] reaches, and
-    composing [transition], [animation] and [view-timeline]. *)
-
-val transitioned_in_rule :
-  Declaration.declaration list -> Declaration.declaration -> bool
-(** [transitioned_in_rule decls d] is [true] when one of [decls] declares a
-    transition reaching the property [d] writes. *)
+(** Timing shorthands: composing [transition], [animation] and [view-timeline].
+*)
 
 val compose_view_timeline_via_index : Rule_index.t -> unit
 (** [compose_view_timeline_via_index idx] absorbs every [view-timeline-*] run of

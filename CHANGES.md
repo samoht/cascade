@@ -761,6 +761,44 @@ differently. They are the reason to minify again.
   repeats its resolution, so browsers drop the declaration, and `--minify`
   printed `image-set(url(a.png)1x)`, which they read. The repeat now makes
   the declaration invalid, as a repeated `type()` does (#1540).
+- **A colour changed the way it blends.** `--minify` turned
+  `linear-gradient(color(srgb 1 0 0),color(srgb 0 0 1))` into
+  `linear-gradient(red,#00f)`, and Chromium paints the middle of the first
+  (139,83,162) and of the second (127,0,128): CSS Color 4 interpolates a hex,
+  a name, `rgb()`, `hsl()` and `hwb()` in sRGB and every other colour in
+  Oklab. The same fold to hex changed transitions, animations and
+  `color-mix()` over `currentcolor`, and reading `none` as zero changed them
+  too, since an interpolation gives a missing component the other colour's.
+  An `oklch()`, `lab()` or `color()` colour now stays in its notation,
+  rounded within the same budget, a static `color-mix()` folds to a colour of
+  its interpolation space (`color(srgb .5 0 .5)` for `color-mix(in
+  srgb,red,blue)`), and `none` is kept, in `hsl()` and `hwb()` too.
+  `cascade diff --diff=canonical` no longer calls those spellings identical.
+  The SatCSS sheets minify as before; Tailwind's output keeps its `oklch()`
+  palette, about 3 KB larger raw and 0.7 KB under gzip (#1549).
+- **Huge numbers lost digits.** `--minify` printed a number from 2^62 up, or
+  a fraction from about 4.6e10 up, with 12 significant digits:
+  `46116860184.27387904px` became `46116860184.3px` and `123456789012.5px`
+  became `123456789012px`. A browser clamps such a length, but it adds a
+  `calc()`'s operands first, so `calc(123456789012.5px - var(--b))` with
+  `--b:123456789012px` rendered 0px wide instead of half a pixel. Such a
+  number now prints the shortest digits that read back as its value (#1550).
+- **Names with a control character broke their rule.** A control character
+  written as an escape (`\1 `) in an attribute name, in `::part()`,
+  `:state()`, `:dir()`, `::highlight()` or the view transition selectors, in
+  an `@namespace` prefix or `@supports` function, or in the name `attr()`,
+  `env()` or `anchor()` reads, was printed back raw. A browser reads the raw
+  character as punctuation and drops the rule or declaration (Chromium drops
+  `[\x01]{}` and keeps `[\1 ]{}`). Every name is now written as CSSOM sec.
+  2.1 serialises an identifier, selectors included, so a class holding a
+  letter from U+0080 up also prints the letter instead of a hex escape (#1551).
+- **Unwrapping `:is()` took other selectors down.** `--minify` printed
+  `.c,:is([x=a s])` as `.c,[x=a s]`. `:is()` drops an argument a browser
+  cannot read on its own, but a plain list is dropped whole, and Chromium
+  reads no `s` flag, so `.c` lost its colour there. The same happened to
+  `:is(:-moz-focusring)` and `:not(:not(...))`, and `cascade diff
+  --diff=canonical` called the two spellings equal. An argument some target
+  browser does not read now keeps its `:is()` (#1552).
 
 #### Stable output
 
@@ -790,6 +828,21 @@ differently. They are the reason to minify again.
   spells its twin's value another way, such as `-ms-flex:0 0 auto` beside
   `flex:none`, now goes as one spelled alike does, which takes about 28 kB off
   the SatCSS output (#1469, #1527, #1528).
+- **A number past eight decimals merged only on a second run.**
+  `a{width:33.33333333333333%}b{width:33.33333333%}` minified to two rules
+  printed alike, and minifying that again merged them. The printer writes a
+  number to eight decimals while the reader kept every digit. A number read
+  past eight decimals is now the eight-decimal value, so one run merges them;
+  the SatCSS sheets held 252 such declarations. A colour channel that the
+  digits past eight decimals move across a byte's half is kept as written
+  instead: `rgba(0,0,0,0.09999999999999998)` paints alpha 25 in Chromium, its
+  space-syntax spelling 26, and 1.2.1 folded both to `#00000019` and printed
+  `rgb(0 0 0/.1)` under `--lossless`; beside a `var()`, and through
+  `--inline-vars`, the same alpha became `.1`. An alpha the fold rounds now
+  keeps the byte it paints, so `rgb(0 0 var(--b)/.0996)` no longer becomes
+  `/.1`. For the library, `Values.color` gains `Authored_color { color;
+  minified }`, the colour kept as written; a match over `Values.color` needs
+  the arm (#1548).
 - **Output shifted for unrelated reasons.** Merges that save the same number of
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by
@@ -992,6 +1045,11 @@ differently. They are the reason to minify again.
 - **A changed rule could go unreported.** When the other file held two
   identical copies of its counterpart, pairing one copy claimed both and the
   change was dropped. It is reported (#1297).
+- shorthand against its longhands is reported per longhand.** `.a{border:1px
+  solid red}` against
+  `.a{border-color:blue;border-style:solid;border-width:2px}` printed `-
+  border` and three `+` lines; it now prints `- border-image: none`, `*
+  border-color: red -> blue` and `* border-width: 1px -> 2px` (#1555).
 
 ### Warnings, errors and help
 
@@ -1104,6 +1162,9 @@ The new form of a diagnostic is under [Breaking](#command-line).
   looked a UNC path up under the importing file's directory. It inlines them
   and checks them against `--import-root`. `cascade diff --browser` starts node
   without a POSIX shell and finds it on `PATH` under `PATHEXT` (#1291).
+- browser checks find Chrome on Windows:** under `USERPROFILE` when `HOME` is
+  unset, in playwright's `LOCALAPPDATA` cache, and installed under
+  `PROGRAMFILES` or `LOCALAPPDATA` (#1557).
 
 ### Speed
 
@@ -1129,6 +1190,10 @@ The new form of a diagnostic is under [Breaking](#command-line).
   with the time spent reading, optimising and printing, names its columns in
   words and prints one row per factoring run. It counts `nested-merge probes`,
   also read as `Stats.counters.nested_merge_probes` (#1301, #1336, #1372).
+- diff --diff=canonical` is faster on large sheets.** Instagram's SatCSS
+  sheets project in 0.11 s instead of 0.48 s and Tailwind's full build in 0.29
+  s instead of 0.74 s, with the same canonical output on all 504 SatCSS sheets
+  (#1554).
 
 ### Library
 

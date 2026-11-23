@@ -417,6 +417,20 @@ let skip_exponent r is_int =
     skip_number_sign r;
     skip_number_digits r)
 
+(* Whether [repr] can name a value the eight-decimal print does not reach: more
+   than eight fraction digits, or an exponent that moves them. *)
+let rec past_printed_precision_from repr i fraction =
+  if i >= String.length repr then fraction > 8
+  else
+    match String.unsafe_get repr i with
+    | 'e' | 'E' -> true
+    | '.' -> past_printed_precision_from repr (i + 1) 0
+    | '0' .. '9' when fraction >= 0 ->
+        past_printed_precision_from repr (i + 1) (fraction + 1)
+    | _ -> past_printed_precision_from repr (i + 1) fraction
+
+let past_printed_precision repr = past_printed_precision_from repr 0 (-1)
+
 (* 4.3.14 Consume a number. Its representation is the run of source it spans,
    which no escape can enter. *)
 let consume_number r =
@@ -428,6 +442,15 @@ let consume_number r =
   skip_exponent r is_int;
   let repr = String.sub (Reader.source r) start (Reader.position r - start) in
   let value = try float_of_string repr with Failure _ -> 0.0 in
+  (* The printer writes a number to eight decimals, so a value read past them is
+     the one that print reads back as: the node one text names. The
+     representation keeps every authored digit for a stream that is printed as
+     written. *)
+  let value =
+    if (not (Float.is_integer value)) && past_printed_precision repr then
+      Pp.printed value
+    else value
+  in
   let number_flag = if !is_int then Integer else Number in
   { value; repr; number_flag }
 

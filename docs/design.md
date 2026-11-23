@@ -16,6 +16,30 @@ factoring buckets on. `Css.of_string ~preserve_source:true` keeps the
 byte-exact input in a separate `source` snapshot, which optimising and the
 other transforms leave untouched.
 
+A number's value stops where its print does. The printer writes a number to
+eight decimals, so the lexer reads a representation running past them, or
+carrying an exponent, as the value that print reads back as (`Pp.printed`):
+`33.33333333333333%` is the node `33.33333333%` is. The representation keeps
+every authored digit, and the minifier of an opaque stream guards on it, so a
+stream printed as written loses none.
+
+A colour function (rgb, hsl, hwb, lab, lch, oklab, oklch, color, but not a
+relative one) with a number whose readings differ, a `var()` fallback's or a
+math function's included, is read twice more, once with every number as its
+double (`Token.authored_value`) and once as its nearest 32-bit float.
+`Values_color_fold.decidable_channels` compares the bytes the three paint, the
+32-bit reading in 32-bit arithmetic. A colour whose bytes wait on a
+substitution or on a construct cascade does not compute is compared by its
+numbers as printed against the doubles, and by its alpha and rgb channel bytes
+under the 32-bit reading. When they differ the reader returns
+`Authored_color`, the source with its whitespace minified, which no fold
+rewrites and the printer writes back as it is. `Variables` collects the
+references of its reading, `Css.inline_vars` substitutes into its printed
+tokens and reads the result again, and `Context.eval` does the same through
+`Context_paint`. The alpha rounding of a colour the fold leaves a function
+takes the fewest decimals from three whose byte is the authored one under
+both readings.
+
 ## Math functions over several units
 
 A comparison over units with a fixed ratio (`Values_calc.compared_results`)
@@ -60,6 +84,18 @@ reads it as the size either way. `Context.eval` substitutes the
 references a context binds into such a stream and reads the result again, so a
 value that types once substituted evaluates as any other.
 
+## Colour folds
+
+`Values.normalize_color` keeps a colour in its interpolation class: a legacy
+sRGB colour folds to hex or a name through its sRGB bytes, and a Lab-family or
+`color()` colour stays in its own notation, its coefficients rounded to the
+canonical budget and up to five decimals finer where the coarser rounding
+would change the sRGB fold verdict (`verdict_preserving`). A static
+`color-mix()` or relative colour folds to the colour it computes to, a
+`color(srgb ...)` for an sRGB mix, and the fold is kept only when it prints no
+longer than the call. A `none` component is never resolved, so the canonical
+projection adds no colour normalisation of its own.
+
 ## Interning and physical identity
 
 `Declaration.v` and `Declaration.theme_guarded` intern each declaration in a
@@ -93,13 +129,8 @@ make:
   sequence where a bare generic family proves a font stack, a time (`500ms`
   against `.5s`) and, bar `--lossless`, an angle; emission keeps the tokens as
   written;
-- `oklab(0% none none/.5)` against `oklab(0% 0 0/.5)` for a colour standing as
-  a whole colour value outside `@keyframes`, `@starting-style` and a rule that
-  transitions it (CSS Color 4 sec. 4.4 and 13.4);
 - a repeating quotient against its six-figure value (`calc(1/3*100%)` against
   `33.3333%`), bar `--lossless`, the bound M6 sets;
-- under `--lossless`, `color(srgb ...)` on whole bytes against its `rgb()`,
-  hex or named spelling;
 - a run of `@property` rules sorted by name, keeping the last registration of
   each (CSS Properties and Values API 1 sec. 3), which is the last valid one
   since the reader keeps no other as an `@property` (under `--enforce-spec`
@@ -202,7 +233,14 @@ counts nested content" check it.
 
 ## Typed property decisions
 
-The optimizer decides on the property, never on its name.
+The optimizer decides on the property, with two exceptions that read its
+name. `Shorthand.read_by_no_target` matches a `-ms-`, `-o-` or `-khtml-`
+prefix and the names `font-smooth` and `font-smoothing`, typed properties
+such as `-ms-transform` included, and the projection drops such a declaration
+when it judges for targets (`Rule_order.canonical_vendor_aliases`). The
+vendor-twin drop of an untyped prefixed declaration (`text_vendor_alias_twin`
+in `lib/shorthand_dedup.ml`) strips the prefix from its name and compares the
+rest with the twin's name.
 `Properties.is_vendor_prefixed` and `Properties.legacy_alias` match the
 property GADT with no wildcard, so a new constructor fails the build until it
 is classified. Each legacy name alias of the WHATWG Compatibility Standard

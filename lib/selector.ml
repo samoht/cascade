@@ -236,15 +236,18 @@ let canonical_compound components =
    [List] makes [:is()] a grouping boundary that cannot be spliced into the
    surrounding compound. A type or universal selector cannot be spliced either:
    this rewrite is node-local and cannot see whether the [:is()] heads its
-   compound, and only there may such a selector stand
-   ([carries_type_selector]). *)
+   compound, and only there may such a selector stand ([carries_type_selector]).
+   Sec. 4.2 drops an argument a browser does not parse from the forgiving
+   [:is()] alone, where a list or a compound holding [s] bare is dropped whole,
+   so [s] leaves the wrapper only when every target parses it. *)
 let canonicalize_is node selectors =
   let sorted = canonicalize_unordered_list selectors in
   match sorted with
   | [ single ]
-    when match single with
-         | Combined _ | Relative _ | List _ -> false
-         | _ -> not (carries_type_selector single) ->
+    when (match single with
+           | Combined _ | Relative _ | List _ -> false
+           | _ -> not (carries_type_selector single))
+         && Selector_targets.read_by_every_target single ->
       single
   (* Sec. 8.1 defines [:any-link] as [:is(:link, :visited)], at the same
      specificity. *)
@@ -258,8 +261,11 @@ let canonicalize_is node selectors =
 let canonicalize_not ~enforce_spec node selectors =
   match selectors with
   (* Sec. 4.3: [:not(:not(s1, ...))] matches what [:is(s1, ...)] matches, and
-     both weigh their most specific argument. *)
-  | [ Not inner ] -> canonicalize_is (Is inner) inner
+     both weigh their most specific argument. [:not()] is not forgiving, so the
+     two agree only where every target parses every argument. *)
+  | [ Not inner ] when List.for_all Selector_targets.read_by_every_target inner
+    ->
+      canonicalize_is (Is inner) inner
   | [ Dir "ltr" ] when not enforce_spec -> Dir "rtl"
   | [ Dir "rtl" ] when not enforce_spec -> Dir "ltr"
   | _ ->
@@ -451,11 +457,17 @@ let rec specificity = function
    already agree on one specificity. The arguments also have to be structurally
    simple: [&] is out because [specificity] reads [Nesting] as zero while CSS
    Nesting 1 sec. 3 weighs it as the most specific selector in the parent rule,
-   so the equality below would pass on a weight it never measured. *)
-let rec is_unwrap_safe_is_arg : t -> bool = function
+   so the equality below would pass on a weight it never measured. And every
+   target has to parse it: one that does not drops it from the forgiving [:is()]
+   alone (sec. 4.2) and the whole list it would join (sec. 3.9), as Chrome drops
+   [[x=a s]]. *)
+let rec is_simple_is_arg : t -> bool = function
   | Element _ | Class _ | Id _ | Universal _ | Attribute _ -> true
-  | Compound parts -> List.for_all is_unwrap_safe_is_arg parts
+  | Compound parts -> List.for_all is_simple_is_arg parts
   | _ -> false
+
+let is_unwrap_safe_is_arg sel =
+  is_simple_is_arg sel && Selector_targets.read_by_every_target sel
 
 let is_unwrap_safe selectors =
   List.for_all is_unwrap_safe_is_arg selectors
