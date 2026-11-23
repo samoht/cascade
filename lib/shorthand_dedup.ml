@@ -707,6 +707,21 @@ let border_slots (s : Properties.border_shorthand) =
     Some (Declaration.v Border_image drained_border_image);
   ]
 
+(* CSS Box 4 sec. 3.2 and 4.2 and CSS Position 3 sec. 3.1: a box shorthand of
+   one to four values gives top, right, bottom and left, a missing right copying
+   top, a missing bottom top and a missing left right. A [var()] can stand for
+   several values, so a list holding one gives no side. *)
+let box_side (values : Values.length list) (side : Shorthand_box.box_side) =
+  if List.exists Values.length_has_runtime_subst values then None
+  else
+    match (values, side) with
+    | [ v ], _ -> Some v
+    | ([ v; _ ] | [ v; _; _ ] | [ v; _; _; _ ]), Top -> Some v
+    | ([ _; v ] | [ _; v; _ ] | [ _; v; _; _ ]), Right -> Some v
+    | [ v; _ ], Bottom | [ _; _; v ], Bottom | [ _; _; v; _ ], Bottom -> Some v
+    | ([ _; v ] | [ _; v; _ ]), Left | [ _; _; _; v ], Left -> Some v
+    | _ -> None
+
 (* The longhand declaration a shorthand assigns to a slot it covers: the slot
    value if set, else that longhand's initial. A later longhand equal to this is
    a redundant no-op. [None] when the shorthand does not cover the longhand or
@@ -820,6 +835,43 @@ let implied_longhand covering covered : Declaration.declaration option =
                 (Declaration.v Animation_range
                    (Range (Normal, None) : Properties.animation_range))
           | _ -> None))
+  | Declaration { property = Properties.Padding; value; _ } -> (
+      let side s = Option.map (fun v -> Declaration.v s v) in
+      match unwrap_theme_guard covered with
+      | Declaration { property = Properties.Padding_top; _ } ->
+          side Padding_top (box_side value Top)
+      | Declaration { property = Properties.Padding_right; _ } ->
+          side Padding_right (box_side value Right)
+      | Declaration { property = Properties.Padding_bottom; _ } ->
+          side Padding_bottom (box_side value Bottom)
+      | Declaration { property = Properties.Padding_left; _ } ->
+          side Padding_left (box_side value Left)
+      | _ -> None)
+  | Declaration { property = Properties.Margin; value; _ } -> (
+      let side s = Option.map (fun v -> Declaration.v s v) in
+      match unwrap_theme_guard covered with
+      | Declaration { property = Properties.Margin_top; _ } ->
+          side Margin_top (box_side value Top)
+      | Declaration { property = Properties.Margin_right; _ } ->
+          side Margin_right (box_side value Right)
+      | Declaration { property = Properties.Margin_bottom; _ } ->
+          side Margin_bottom (box_side value Bottom)
+      | Declaration { property = Properties.Margin_left; _ } ->
+          side Margin_left (box_side value Left)
+      | _ -> None)
+  | Declaration { property = Properties.Inset; value; _ } -> (
+      (* The physical longhands hold their one length in a list. *)
+      let side s = Option.map (fun v -> Declaration.v s [ v ]) in
+      match unwrap_theme_guard covered with
+      | Declaration { property = Properties.Top; _ } ->
+          side Properties.Top (box_side value Top)
+      | Declaration { property = Properties.Right; _ } ->
+          side Properties.Right (box_side value Right)
+      | Declaration { property = Properties.Bottom; _ } ->
+          side Properties.Bottom (box_side value Bottom)
+      | Declaration { property = Properties.Left; _ } ->
+          side Properties.Left (box_side value Left)
+      | _ -> None)
   | Declaration { property = Properties.Font; value; _ } -> (
       (* [font] resets style/weight/stretch/line-height to [normal] unless set;
          font-variant uses a narrower type in the shorthand, so leave it. *)

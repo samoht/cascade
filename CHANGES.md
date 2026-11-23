@@ -897,6 +897,9 @@ differently. They are the reason to minify again.
 - `@supports` blocks of one condition merge,** and a distant `@media` or
   `@container` merge moves the earlier block down to the later one when the
   later cannot rise (#1577).
+- box shorthand and a side of the same value no longer order each other:**
+  `padding:1px` and `padding-top:1px`, likewise `margin` and `inset`, in the
+  minifier and in `cascade diff --diff=canonical` (#1578).
 
 #### Smaller output
 
