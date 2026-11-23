@@ -16,6 +16,50 @@ factoring buckets on. `Css.of_string ~preserve_source:true` keeps the
 byte-exact input in a separate `source` snapshot, which optimising and the
 other transforms leave untouched.
 
+## Math functions over several units
+
+A comparison over units with a fixed ratio (`Values_calc.compared_results`)
+compares their values in the type's canonical unit and answers the argument
+it picks, as written, so no converted coefficient reaches the print; two
+values a conversion leaves a hair apart (`1cm`, `10mm`) are one
+(`same_quantity`). A sum converts a time through `ms` and an angle through
+`deg`, where whole values stay whole and the folded leaf reads back to the
+same float. `rad` has an irrational ratio, so a sum holding one stays, and
+`hypot()`, `round()`, `mod()` and `rem()` fold over one unit only, since
+their result is a coefficient no literal spells exactly. A call that does not
+fold prints bare only where the printer passes `~bare_call` to
+`pp_calc_with`: a time, a percentage, `font-stretch`, `font-size-adjust`,
+`text-size-adjust` and `border-image-slice` read the bare call back as the
+same calculation node, while a length slot reads a bare `min()` into its own
+typed node, so a length calculation keeps its `calc()`.
+
+## Substitutions beside components
+
+A typed reader gives a `var()` beside other components one slot of the
+property's grammar and decides defaults, elisions and order around it. The
+declaration reader keeps such a reading only when its pretty print passes
+`Declaration_core.slots_kept` against the source: every substitution call as
+written, among the same separators and inside the same functions, with no
+component added, dropped or moved. Otherwise it keeps the value as an
+`Unknown_property` token stream under the property's name.
+`Declaration.normalize` applies the same test to each fold of such a value and
+keeps the value when a fold fails it. A substitution may supply commas, so a
+comma list is compared run by run: a segment holding a substitution keeps its
+slots, and a run of segments holding none stays on each side where it was,
+free to fold inside. The normalisers keep what the test would refuse whole: a
+`box-shadow` keeps an `inset` written after a body holding a `var()`
+(`Trailing`), a gradient keeps a direction written before a `var()` first
+stop and never merges two `var()` stops, and `flex` keeps the unit of a zero
+basis after a `var()` factor: the factor may supply nothing, and a bare `0`
+after one factor is the shrink. That is the one respelling in place found to
+move a component to another slot. A zero length loses its unit only where no
+`<number>` can stand, and beside a `var()` that slot may shift, which matters
+only where a neighbouring slot takes a number: `flex` does; `font` does not,
+since a `0` there cannot be a weight (its range starts at 1) and Chromium 153
+reads it as the size either way. `Context.eval` substitutes the
+references a context binds into such a stream and reads the result again, so a
+value that types once substituted evaluates as any other.
+
 ## Interning and physical identity
 
 `Declaration.v` and `Declaration.theme_guarded` intern each declaration in a
@@ -64,8 +108,24 @@ make:
   name the following blocks already declare in that order (CSS Cascade 5 sec.
   6.4.3);
 - a legacy name alias (CSS Cascade 5 sec. 3.1, WHATWG Compatibility sec.
-  3.4.1) read as its property, nested `@media` conditions sorted and
-  deduplicated, and a keyframe's declarations sorted as a rule's are.
+  3.4.1) read as its property where every release from the floors that parses
+  one spelling of its value parses the other (`Declaration.fallback_for`, both
+  ways), and a keyframe's declarations sorted as a rule's are;
+- nested `@media` blocks read as the conjunction of their queries (CSS
+  Conditional 3 sec. 2): each query splits into the conjuncts it is the `and`
+  of, a media type alone and `all` and `only` dropping out (Media Queries 4
+  sec. 2.2 and 2.3), and the sorted, deduplicated conjuncts nest one block
+  each, while a negated query, a list and an `or` stay whole;
+- `@keyframes` and `@font-face` rules gathered after the other statements of
+  the stretch of their block that no statement holding one splits, by name,
+  keeping the order of one keyframes name or font family.
+
+The projection also reads every rule selector through
+`Selector.sort_compounds`, which puts the simple selectors of a compound
+between its type selector and its first pseudo-element in one order
+(Selectors 4 sec. 3.1), so `.a.b` and `.b.a` compare as one selector.
+Emission keeps the author's order, which nesting synthesis reads as a
+prefix.
 
 Beyond the optimizer's own deduplication, the projection deletes an
 `@supports` guard false in every release of B, as one over a
@@ -112,7 +172,12 @@ data paints it. It is asked of the same floors (`Ctx.floors`) by in-rule
 deduplication (`Shorthand_dedup.deduplicate_step`), by same-selector
 shadowing across rules (`Cover.covered`, `Rule.drop_shadowed`) and by the
 projection (`Rule_order`), so whatever the minifier deletes the judge also
-counts dead. `Merge.compatible` lists two selectors only when every engine
+counts dead. The data has no key for a vendor-prefixed or legacy keyword
+(`-webkit-box`, `-webkit-sticky`), so `fallback_for` keeps an earlier value of
+the property before a later one using such a keyword the earlier does not,
+rather than count the key as read; in-rule deduplication also keeps the pair
+in the other order (`Declaration.legacy_pair`). Both compare the prefixed
+words of the two values. `Merge.compatible` lists two selectors only when every engine
 ships them in the same release. The projection splits a selector list into
 one rule per branch only when `Merge.listable` says every release reads its
 branches alike (`Rule_order.expand_lists`); any other list stays one rule.
@@ -140,16 +205,40 @@ counts nested content" check it.
 The optimizer decides on the property, never on its name.
 `Properties.is_vendor_prefixed` and `Properties.legacy_alias` match the
 property GADT with no wildcard, so a new constructor fails the build until it
-is classified; a property cascade does not type answers by the name the reader
-kept for it. `properties` "vendor prefix and aliases are property facts" checks
-both against the WHATWG Compatibility Standard sec. 3.4.1 list.
+is classified. Each legacy name alias of the WHATWG Compatibility Standard
+sec. 3.4.1 is a constructor typed under its unprefixed property's grammar,
+which the reader picks once, so `legacy_alias` maps a typed case to a typed
+case and an unknown property is no alias. A listed name is left out when some
+target engine does not read it as its property under that grammar: the
+`-webkit-mask-box-image` set, since no Chromium or Firefox release reads
+`mask-border`; `-webkit-perspective` and `-webkit-background-origin`, whose
+values Chromium reads past the unprefixed grammar (`5`, `padding`); and
+`-webkit-mask`, which WebKit parses as a shorthand of its own.
+`properties` "vendor prefix and aliases are property facts" checks the list,
+and `css_compare_structure` "the mask-box-image set is no alias" the
+comparison.
 
 ## Rewrites that move rules
 
 Factoring a default value into a shared block keeps a rule's own declaration
-when an earlier overlapping rule writes a different value. Nesting synthesis
+when an earlier overlapping rule writes a different value. Whether nesting may
+stay is `Ctx.parses_nesting`: every engine of the floors at or past
+`css.selectors.nesting` in the compat data, and never under `--enforce-spec`.
+Otherwise `Optimize.stylesheet` runs `Flatten.block` before the pipeline;
+when it holds, `Flatten.rules_with_nested_declarations` still flattens each
+rule holding a nested declarations rule, which the compat data has no key
+for. The `&` relaxation and synthesis run only when it holds. Nesting synthesis
 is adjacent-only, within one cascade context, with an exact selector extension
-under a non-list parent, and only when it shortens the output.
+under a non-list parent that carries no pseudo-element, leaving no `&` in what
+remains of the child, since sec. 4 has that `&` name `:scope` or the enclosing
+rule, and only when it shortens the output. Every composition goes through `Nest.substitute`, which
+splices in for `&` only the parent branches without a pseudo-element and
+stands `:is()` of the parent for an `&` left with none, a selector
+`Nest.keep_readable_branches` then drops.
+In an `@scope` block `Flatten` composes under the parent with the implied
+root spelled out (`& <parent>`, which sec. 3.5.1 weighs at zero) and prints
+the bare composition when the nested selector starts with its parent
+(`Nest.parent_first`); `Nest.merge_lone` merges there only in that case.
 
 The rule graph (`lib/rule_graph.ml`) that factoring and merging reorder over
 reads a rule with nested content as parts: its own declarations under its
@@ -185,4 +274,7 @@ slot at other than its initial value, less the composing rule's own, and from
 the slots the user-agent sheet holds: `font-weight`, `font-style`,
 `font-size`, `font-family`, `background-color` and `background-image`.
 `Shorthand_common.guard_reset` applies it to every composer that builds a
-shorthand from part of its family.
+shorthand from part of its family. The default scope builds none: the border
+composers, which leave out the `border-image` that `border` resets, compose
+there only where the rule writes every `border-image` slot again after the
+run (`Shorthand_held.bi_rewritten_after`).

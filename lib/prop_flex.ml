@@ -2,9 +2,8 @@
    flex-wrap, flex-flow, the flex shorthand and its grow/shrink/basis longhands,
    and order.
 
-   The -webkit- aliases (-webkit-flex-direction, -webkit-flex-wrap,
-   -webkit-flex-flow) reuse these printers and readers verbatim; only their
-   dispatch arms live in properties.ml.
+   The -webkit- aliases of each of these reuse these printers and readers
+   verbatim; only their dispatch arms live in properties.ml.
 
    This module has no .mli and is private to the library; [Properties] includes
    it, so every name here stays visible under [Css.Properties] exactly as when
@@ -240,7 +239,14 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
   | Full (g, s, b) -> (
       let g' = normalize_flex_factor g in
       let s' = normalize_flex_factor s in
-      let b' = normalize_flex_basis ~ctx b in
+      (* A [var()] factor may supply no factor at all (CSS Variables 1 sec. 3),
+         and a bare [0] after one factor is the shrink (sec. 7.2), so the zero
+         basis keeps the unit it was written with. *)
+      let b' =
+        match (normalize_flex_basis ~ctx b, g', s') with
+        | Zero, (Var _ : flex_factor), _ | Zero, _, Var _ -> b
+        | b', _, _ -> b'
+      in
       (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
          of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
       match (g', s', b') with
@@ -752,7 +758,14 @@ let flex_basis_of_length t (length : length) : flex_basis =
      its own text, [1e3px] and [10.0px] among them, and sec. 7.2 takes each of
      them as a [<length-percentage>]. *)
   | Dimension { value; unit; repr } -> Dimension { value; unit; repr }
-  | _ -> Cursor.err_invalid t "unsupported flex-basis value"
+  (* A length in a unit no constructor above names, a container unit of CSS
+     Values 4 sec. 6.1.4 among them, is a [<length-percentage>] all the same and
+     keeps its unit as a dimension. *)
+  | length -> (
+      match calc_length_unit length with
+      | Some (unit, value) ->
+          Dimension { value; unit; repr = Pp.string_of_float value }
+      | None -> Cursor.err_invalid t "unsupported flex-basis value")
 
 (* CSS Values 4 sec. 10.8 gives an operand no keyword: [auto], [content], the
    intrinsic sizes and the CSS-wide keywords are not [<calc-value>]s, so

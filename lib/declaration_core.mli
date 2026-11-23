@@ -39,6 +39,29 @@ val unknown_property : ?important:bool -> string -> string -> declaration
 val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
+val is_substitution_call : string -> Component.t list -> bool
+(** [is_substitution_call name arguments] is whether a function [name] with
+    [arguments] is an arbitrary substitution call that substitutes a token
+    stream ({!Component.is_substitution_function}): one with no argument
+    substitutes nothing, bar a [<dashed-function>]. *)
+
+val substitution_takes_a_slot : Component.t list -> bool
+(** [substitution_takes_a_slot cvs] is whether the value [cvs] holds a
+    substitution that stands in a slot of the property's grammar, beside other
+    components or inside a function other than a math function. Such a call may
+    supply any number of components (CSS Variables 1 sec. 3). A substitution
+    that is the whole value, with a fallback that takes no slot either, or that
+    is an operand of a math function takes none. *)
+
+val slots_kept : Component.t list -> Component.t list -> bool
+(** [slots_kept source print] is whether [print] writes every substitution call
+    of [source] as written, in its place among the same separators and inside
+    the same functions, with no component added, dropped or moved. A component
+    holding no substitution may be respelled where it stands. *)
+
+val value_components : declaration -> Component.t list
+(** [value_components d] is the pretty print of [d]'s value, as components. *)
+
 val normalize :
   ?lossless:bool ->
   ?exact_srgb:bool ->
@@ -150,8 +173,18 @@ val fallback_for :
     engine [floors] names, from its floor to the newest the web-features dataset
     records, parses [earlier] and drops [later] at parse time, so paints
     [earlier] where [later] covers it. Which release parses a declaration is
-    {!first_release}. [false] means every such release that parses [earlier]
+    {!first_release}. A vendor-prefixed or legacy keyword the dataset does not
+    model, such as [-webkit-box], counts as dropped by some release: an earlier
+    value of the property is a fallback for a later one using such keywords the
+    earlier does not. [false] means every such release that parses [earlier]
     parses [later], so [earlier] is dead wherever [later] covers it. *)
+
+val legacy_pair : declaration -> declaration -> bool
+(** [legacy_pair later earlier] is [true] when [later] and [earlier] set one
+    property and differ in which vendor-prefixed or legacy keywords they use,
+    one of them using some, such as [display:-webkit-box] and [display:flex].
+    Deduplication inside one rule keeps both, in either order, for a browser
+    older than the floors that reads only the prefixed one. *)
 
 val map_custom_value : (string -> string) -> declaration -> declaration
 (** [map_custom_value f d] is [d] with its custom-property value replaced by

@@ -117,6 +117,8 @@ let rec pp_alignment_baseline : alignment_baseline Pp.t =
 let rec pp_baseline_shift : baseline_shift Pp.t =
  fun ctx -> function
   | Shift value -> pp_length_percentage ~always:true ctx value
+  | Unitless n -> Pp.float ctx n
+  | Baseline -> Pp.string ctx "baseline"
   | Sub -> Pp.string ctx "sub"
   | Super -> Pp.string ctx "super"
   | Top -> Pp.string ctx "top"
@@ -139,6 +141,7 @@ let rec pp_dominant_baseline : dominant_baseline Pp.t =
   | Middle -> Pp.string ctx "middle"
   | Text_top -> Pp.string ctx "text-top"
   | Text_bottom -> Pp.string ctx "text-bottom"
+  | Hanging -> Pp.string ctx "hanging"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -166,6 +169,9 @@ let rec pp_unicode_bidi : unicode_bidi Pp.t =
   | Bidi_override -> Pp.string ctx "bidi-override"
   | Isolate_override -> Pp.string ctx "isolate-override"
   | Plaintext -> Pp.string ctx "plaintext"
+  | Webkit_isolate -> Pp.string ctx "-webkit-isolate"
+  | Webkit_isolate_override -> Pp.string ctx "-webkit-isolate-override"
+  | Webkit_plaintext -> Pp.string ctx "-webkit-plaintext"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -180,6 +186,12 @@ let rec pp_writing_mode : writing_mode Pp.t =
   | Vertical_lr -> Pp.string ctx "vertical-lr"
   | Sideways_lr -> Pp.string ctx "sideways-lr"
   | Sideways_rl -> Pp.string ctx "sideways-rl"
+  | Lr -> Pp.string ctx "lr"
+  | Lr_tb -> Pp.string ctx "lr-tb"
+  | Rl -> Pp.string ctx "rl"
+  | Rl_tb -> Pp.string ctx "rl-tb"
+  | Tb -> Pp.string ctx "tb"
+  | Tb_rl -> Pp.string ctx "tb-rl"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -238,29 +250,45 @@ let rec read_alignment_baseline t : alignment_baseline =
     ~var:(fun t -> Var (Values.read_var read_alignment_baseline t))
     t
 
+(* CSS Values 4 sec. 10.1 puts a math function wherever the shift stands, and
+   SVG 2 sec. 11.3 reads a bare coefficient here as a length in user units, so
+   the call answers on either type: [sqrt(4)] is a shift where a length-typed
+   [abs(-1px)] is one too. Sec. 10.8 gives an operand no keyword. *)
+let read_baseline_shift_math t : baseline_shift =
+  Cursor.one_of
+    [
+      (fun t ->
+        (Shift (Values.read_length_percentage ~with_keywords:false t)
+          : baseline_shift));
+      (fun t ->
+        Shift
+          (Calc
+             (Values.read_calc ~result_type:`Number
+                (Values.read_length_percentage ~with_keywords:false)
+                t)));
+    ]
+    t
+
+(* Chromium also reads a bare number, as px, and SVG 1.1's [baseline]; both are
+   kept as written, never respelled into a value the specification grants. *)
+let read_baseline_shift_literal t : baseline_shift =
+  Cursor.one_of
+    [
+      (fun t ->
+        (Shift (Values.read_length_percentage ~with_keywords:false t)
+          : baseline_shift));
+      (fun t ->
+        match Cursor.number_opt t with
+        | Some n -> Unitless n
+        | None -> Cursor.err_expected t "a length, a percentage or a number");
+    ]
+    t
+
 let rec read_baseline_shift t : baseline_shift =
-  (* CSS Values 4 sec. 10.1 puts a math function wherever the shift stands, and
-     SVG 2 sec. 11.3 reads a bare coefficient here as a length in user units, so
-     the call answers on either type: [sqrt(4)] is a shift where a length-typed
-     [abs(-1px)] is one too. Sec. 10.8 gives an operand no keyword. *)
-  let read_math t : baseline_shift =
-    Cursor.one_of
-      [
-        (fun t ->
-          (Shift (Values.read_length_percentage ~with_keywords:false t)
-            : baseline_shift));
-        (fun t ->
-          Shift
-            (Calc
-               (Values.read_calc ~result_type:`Number
-                  (Values.read_length_percentage ~with_keywords:false)
-                  t)));
-      ]
-      t
-  in
   Cursor.enum_or_calls "baseline-shift"
     [
-      ("sub", (Sub : baseline_shift));
+      ("baseline", (Baseline : baseline_shift));
+      ("sub", Sub);
       ("super", Super);
       ("top", Top);
       ("center", Center);
@@ -273,11 +301,9 @@ let rec read_baseline_shift t : baseline_shift =
     ]
     ~calls:
       (("var", fun t -> Var (Values.read_var read_baseline_shift t))
-      :: ("calc", read_math)
-      :: Values.math_function_calls read_math)
-    ~default:(fun t ->
-      Shift (Values.read_length_percentage ~with_keywords:false t))
-    t
+      :: ("calc", read_baseline_shift_math)
+      :: Values.math_function_calls read_baseline_shift_math)
+    ~default:read_baseline_shift_literal t
 
 let rec read_direction t : direction =
   Cursor.enum_or_var "direction"
@@ -302,6 +328,10 @@ let rec read_unicode_bidi t : unicode_bidi =
       ("bidi-override", Bidi_override);
       ("isolate-override", Isolate_override);
       ("plaintext", Plaintext);
+      (* The prefixed spellings Blink and WebKit still read. *)
+      ("-webkit-isolate", Webkit_isolate);
+      ("-webkit-isolate-override", Webkit_isolate_override);
+      ("-webkit-plaintext", Webkit_plaintext);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -319,6 +349,14 @@ let rec read_writing_mode t : writing_mode =
       ("vertical-lr", Vertical_lr);
       ("sideways-lr", Sideways_lr);
       ("sideways-rl", Sideways_rl);
+      (* CSS Writing Modes 4 sec. 3.1.1: the SVG 1.1 values, which compute to
+         [horizontal-tb] and [vertical-rl]. *)
+      ("lr", Lr);
+      ("lr-tb", Lr_tb);
+      ("rl", Rl);
+      ("rl-tb", Rl_tb);
+      ("tb", Tb);
+      ("tb-rl", Tb_rl);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -366,6 +404,7 @@ let rec read_dominant_baseline t : dominant_baseline =
       ("middle", Middle);
       ("text-top", Text_top);
       ("text-bottom", Text_bottom);
+      ("hanging", Hanging);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);

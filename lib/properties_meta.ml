@@ -552,6 +552,23 @@ let pp_property : type a. a property Pp.t =
   | Webkit_animation_fill_mode -> Pp.string ctx "-webkit-animation-fill-mode"
   | Webkit_animation_play_state -> Pp.string ctx "-webkit-animation-play-state"
   | Webkit_flex_direction -> Pp.string ctx "-webkit-flex-direction"
+  | Webkit_backface_visibility -> Pp.string ctx "-webkit-backface-visibility"
+  | Webkit_border_top_left_radius ->
+      Pp.string ctx "-webkit-border-top-left-radius"
+  | Webkit_border_top_right_radius ->
+      Pp.string ctx "-webkit-border-top-right-radius"
+  | Webkit_border_bottom_right_radius ->
+      Pp.string ctx "-webkit-border-bottom-right-radius"
+  | Webkit_border_bottom_left_radius ->
+      Pp.string ctx "-webkit-border-bottom-left-radius"
+  | Webkit_flex -> Pp.string ctx "-webkit-flex"
+  | Webkit_flex_grow -> Pp.string ctx "-webkit-flex-grow"
+  | Webkit_flex_shrink -> Pp.string ctx "-webkit-flex-shrink"
+  | Webkit_flex_basis -> Pp.string ctx "-webkit-flex-basis"
+  | Webkit_order -> Pp.string ctx "-webkit-order"
+  | Webkit_perspective_origin -> Pp.string ctx "-webkit-perspective-origin"
+  | Webkit_transform_origin -> Pp.string ctx "-webkit-transform-origin"
+  | Webkit_transform_style -> Pp.string ctx "-webkit-transform-style"
   | Webkit_flex_wrap -> Pp.string ctx "-webkit-flex-wrap"
   | Webkit_flex_flow -> Pp.string ctx "-webkit-flex-flow"
   | Webkit_justify_content -> Pp.string ctx "-webkit-justify-content"
@@ -764,21 +781,25 @@ let property_class : type a. a property -> a property_class = function
   | Text_decoration_line | Text_decoration_style | Text_decoration_color
   | Text_decoration_skip_self | Display | Position | Baseline_source
   | Alignment_baseline | Baseline_shift | Flex_direction | Flex_wrap | Flex_flow
-  | Flex | Flex_grow | Flex_shrink | Flex_basis | Order | Align_items
-  | Justify_content | Justify_items | Justify_self | Align_content | Align_self
-  | Place_content | Place_items | Place_self | Grid_template_columns
-  | Grid_template_rows | Grid_template_areas | Grid_template | Grid | Grid_area
-  | Grid_auto_flow | Grid_auto_columns | Grid_auto_rows | Grid_column | Grid_row
-  | Grid_column_start | Grid_column_end | Grid_row_start | Grid_row_end
-  | Border_width | Border_top_width | Border_right_width | Border_bottom_width
+  | Flex | Webkit_flex | Flex_grow | Webkit_flex_grow | Flex_shrink
+  | Webkit_flex_shrink | Flex_basis | Webkit_flex_basis | Order | Webkit_order
+  | Align_items | Justify_content | Justify_items | Justify_self | Align_content
+  | Align_self | Place_content | Place_items | Place_self
+  | Grid_template_columns | Grid_template_rows | Grid_template_areas
+  | Grid_template | Grid | Grid_area | Grid_auto_flow | Grid_auto_columns
+  | Grid_auto_rows | Grid_column | Grid_row | Grid_column_start
+  | Grid_column_end | Grid_row_start | Grid_row_end | Border_width
+  | Border_top_width | Border_right_width | Border_bottom_width
   | Border_left_width | Border_inline_start_width | Border_inline_end_width
   | Border_block_start_width | Border_block_end_width | Border_inline_width
   | Border_block_width | Border_image | Border_image_source | Border_image_slice
   | Border_image_repeat | Border_image_width | Border_image_outset
-  | Border_radius | Border_top_left_radius | Border_top_right_radius
-  | Border_bottom_left_radius | Border_bottom_right_radius | Border_top_color
-  | Border_right_color | Border_bottom_color | Border_left_color
-  | Border_inline_start_color | Border_inline_end_color
+  | Border_radius | Border_top_left_radius | Webkit_border_top_left_radius
+  | Border_top_right_radius | Webkit_border_top_right_radius
+  | Border_bottom_left_radius | Webkit_border_bottom_left_radius
+  | Border_bottom_right_radius | Webkit_border_bottom_right_radius
+  | Border_top_color | Border_right_color | Border_bottom_color
+  | Border_left_color | Border_inline_start_color | Border_inline_end_color
   | Border_block_start_color | Border_block_end_color | Border_inline_color
   | Border_block_color | Border_inline_style | Border_block_style
   | Border_start_start_radius | Border_start_end_radius
@@ -824,22 +845,24 @@ let property_class : type a. a property -> a property_class = function
   | Contain_intrinsic_inline_size | Margin_trim | Offset_path | Offset_rotate
   | Initial_letter | View_timeline_name | View_timeline_axis
   | View_timeline_inset | View_timeline | Timeline_scope | Perspective
-  | Perspective_origin | Transform_style | Backface_visibility | Object_position
-  | Transition_duration | Transition_timing_function | Transition_delay
-  | Transition_property | Transition_behavior | Overlay | Will_change | Contain
-  | Isolation | Break_before | Break_after | Break_inside | Page_break_before
-  | Page_break_after | Page_break_inside | Page_size | Columns | Column_width
-  | Column_height | Column_wrap | Column_count | Column_rule | Column_rule_color
-  | Column_rule_width | Column_rule_style | Column_span | Background_attachment
-  | Border_top | Border_right | Border_bottom | Border_left | Transform_origin
-  | Transform_box | Mask | Mask_border | Content_visibility | Filter
-  | Background_image | Background_origin | Background_clip
-  | Webkit_background_clip | Animation | Aspect_ratio | Overflow_x | Overflow_y
-  | Overflow_block | Overflow_inline | Vertical_align | Background_position
-  | Background_position_x | Background_position_y | Webkit_mask_position_x
-  | Webkit_mask_position_y | Background_repeat | Background_size
-  | Webkit_line_clamp | Webkit_box_orient | Moz_orient | Text_overflow
-  | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
+  | Perspective_origin | Webkit_perspective_origin | Transform_style
+  | Webkit_transform_style | Backface_visibility | Webkit_backface_visibility
+  | Object_position | Transition_duration | Transition_timing_function
+  | Transition_delay | Transition_property | Transition_behavior | Overlay
+  | Will_change | Contain | Isolation | Break_before | Break_after
+  | Break_inside | Page_break_before | Page_break_after | Page_break_inside
+  | Page_size | Columns | Column_width | Column_height | Column_wrap
+  | Column_count | Column_rule | Column_rule_color | Column_rule_width
+  | Column_rule_style | Column_span | Background_attachment | Border_top
+  | Border_right | Border_bottom | Border_left | Transform_origin
+  | Webkit_transform_origin | Transform_box | Mask | Mask_border
+  | Content_visibility | Filter | Background_image | Background_origin
+  | Background_clip | Webkit_background_clip | Animation | Aspect_ratio
+  | Overflow_x | Overflow_y | Overflow_block | Overflow_inline | Vertical_align
+  | Background_position | Background_position_x | Background_position_y
+  | Webkit_mask_position_x | Webkit_mask_position_y | Background_repeat
+  | Background_size | Webkit_line_clamp | Webkit_box_orient | Moz_orient
+  | Text_overflow | Backdrop_filter | Webkit_backdrop_filter | Webkit_mask_image
   | Webkit_mask_composite | Webkit_mask_source_type | Webkit_mask_size
   | Webkit_mask_position | Webkit_mask_repeat | Webkit_mask_clip
   | Webkit_mask_origin | Mask_image | Mask_composite | Mask_mode | Mask_size
@@ -916,6 +939,11 @@ let is_vendor_prefixed : type a. a property -> bool = function
   | Webkit_animation_name | Webkit_animation_timing_function
   | Webkit_animation_fill_mode | Webkit_animation_play_state
   | Webkit_flex_direction | Webkit_flex_wrap | Webkit_flex_flow
+  | Webkit_backface_visibility | Webkit_border_top_left_radius
+  | Webkit_border_top_right_radius | Webkit_border_bottom_right_radius
+  | Webkit_border_bottom_left_radius | Webkit_flex | Webkit_flex_grow
+  | Webkit_flex_shrink | Webkit_flex_basis | Webkit_order
+  | Webkit_perspective_origin | Webkit_transform_origin | Webkit_transform_style
   | Webkit_justify_content | Webkit_align_items | Webkit_align_content
   | Webkit_align_self | Webkit_border_radius | Webkit_box_sizing
   | Moz_box_sizing | Webkit_box_shadow | Webkit_background_size | Webkit_filter
@@ -1078,42 +1106,32 @@ let is_vendor_prefixed : type a. a property -> bool = function
    are legacy name aliases of an unprefixed property, and CSS Cascade 5 sec. 3.1
    makes such an alias the same property under a second name. A prefix the list
    does not name is a property of its own: the [-moz-] spellings and
-   [-webkit-user-select] among them. An alias cascade types none of is read as
-   an unknown property, so its name decides. *)
-let legacy_alias_of_unknown = function
-  | "-webkit-backface-visibility" -> Some (Prop Backface_visibility)
-  | "-webkit-background-origin" -> Some (Prop Background_origin)
-  | "-webkit-border-bottom-left-radius" -> Some (Prop Border_bottom_left_radius)
-  | "-webkit-border-bottom-right-radius" ->
-      Some (Prop Border_bottom_right_radius)
-  | "-webkit-border-top-left-radius" -> Some (Prop Border_top_left_radius)
-  | "-webkit-border-top-right-radius" -> Some (Prop Border_top_right_radius)
-  | "-webkit-flex" -> Some (Prop Flex)
-  | "-webkit-flex-basis" -> Some (Prop Flex_basis)
-  | "-webkit-flex-grow" -> Some (Prop Flex_grow)
-  | "-webkit-flex-shrink" -> Some (Prop Flex_shrink)
-  | "-webkit-mask" -> Some (Prop Mask)
-  | "-webkit-mask-box-image" -> Some (Prop Mask_border)
-  | "-webkit-mask-box-image-outset" ->
-      Some (Prop (Unknown_property "mask-border-outset"))
-  | "-webkit-mask-box-image-repeat" ->
-      Some (Prop (Unknown_property "mask-border-repeat"))
-  | "-webkit-mask-box-image-slice" ->
-      Some (Prop (Unknown_property "mask-border-slice"))
-  | "-webkit-mask-box-image-source" ->
-      Some (Prop (Unknown_property "mask-border-source"))
-  | "-webkit-mask-box-image-width" ->
-      Some (Prop (Unknown_property "mask-border-width"))
-  | "-webkit-order" -> Some (Prop Order)
-  | "-webkit-perspective" -> Some (Prop Perspective)
-  | "-webkit-perspective-origin" -> Some (Prop Perspective_origin)
-  | "-webkit-transform-origin" -> Some (Prop Transform_origin)
-  | "-webkit-transform-style" -> Some (Prop Transform_style)
-  | _ -> None
-
+   [-webkit-user-select] among them. The list's [-webkit-mask-box-image] set is
+   left out: no Chromium or Firefox release reads [mask-border], so across the
+   targets each of those is a property of its own. Every other listed alias is
+   typed under its property's grammar and answers here by its constructor,
+   except three no target engine reads under that grammar alone. Chromium reads
+   [-webkit-perspective:5] and [-webkit-background-origin:padding], which the
+   unprefixed grammar refuses, and WebKit gives [-webkit-mask] a shorthand of
+   its own, with [-webkit-mask-source-type] and [-webkit-mask-clip] for
+   longhands and no [mask-composite]. Cascade types none of the three, and an
+   unknown property is no alias. *)
 let legacy_alias : type a. a property -> any_property option = function
   | Custom_property _ -> None
-  | Unknown_property name -> legacy_alias_of_unknown name
+  | Unknown_property _ -> None
+  | Webkit_backface_visibility -> Some (Prop Backface_visibility)
+  | Webkit_border_top_left_radius -> Some (Prop Border_top_left_radius)
+  | Webkit_border_top_right_radius -> Some (Prop Border_top_right_radius)
+  | Webkit_border_bottom_right_radius -> Some (Prop Border_bottom_right_radius)
+  | Webkit_border_bottom_left_radius -> Some (Prop Border_bottom_left_radius)
+  | Webkit_flex -> Some (Prop Flex)
+  | Webkit_flex_grow -> Some (Prop Flex_grow)
+  | Webkit_flex_shrink -> Some (Prop Flex_shrink)
+  | Webkit_flex_basis -> Some (Prop Flex_basis)
+  | Webkit_order -> Some (Prop Order)
+  | Webkit_perspective_origin -> Some (Prop Perspective_origin)
+  | Webkit_transform_origin -> Some (Prop Transform_origin)
+  | Webkit_transform_style -> Some (Prop Transform_style)
   | Webkit_align_content -> Some (Prop Align_content)
   | Webkit_align_items -> Some (Prop Align_items)
   | Webkit_align_self -> Some (Prop Align_self)
@@ -1362,9 +1380,13 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Text_underline_offset -> Some Length
   | Letter_spacing -> Some Length
   | Border_top_left_radius -> Some Lengths
+  | Webkit_border_top_left_radius -> Some Lengths
   | Border_top_right_radius -> Some Lengths
+  | Webkit_border_top_right_radius -> Some Lengths
   | Border_bottom_left_radius -> Some Lengths
+  | Webkit_border_bottom_left_radius -> Some Lengths
   | Border_bottom_right_radius -> Some Lengths
+  | Webkit_border_bottom_right_radius -> Some Lengths
   | Border_start_start_radius -> Some Lengths
   | Border_start_end_radius -> Some Lengths
   | Border_end_start_radius -> Some Lengths

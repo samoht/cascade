@@ -150,13 +150,6 @@ val read_number_percentage_expression : Cursor.t -> float
     [<number> | <percentage>] slot, where a percentage resolves against the
     number it denotes. *)
 
-val read_anchor_size_length : Cursor.t -> length
-(** [read_anchor_size_length t] parses the arguments of [anchor-size()]. *)
-
-val read_anchor_name_side : Cursor.t -> string -> string option * string
-(** [read_anchor_name_side t first] parses the anchor name and side of
-    [anchor()], [first] being the ident already read. *)
-
 val read_attr_type_hint : Cursor.t -> attr_type option
 (** [read_attr_type_hint t] parses the optional type hint of a length [attr()].
 *)

@@ -157,6 +157,187 @@ let rec important = function
   | Declaration { property; value; _ } -> v ~important:true property value
   | Theme_guarded g -> theme_guarded ~var_name:g.var_name (important g.decl)
 
+(* CSS Values 5 (ED) sec. 11 groups [var()], [env()], [attr()] and [if()] as
+   arbitrary substitution functions, and CSS Mixins 1 sec. 2 adds the
+   [<dashed-function>]: each carries an unknown token stream into the value, so
+   a declaration holding one is valid at parse time and only decided once
+   substitution has run. Bar a [<dashed-function>], a call with an empty
+   argument list matches no substitution grammar and so defers nothing. *)
+let is_substitution_call name arguments =
+  Component.is_substitution_function name
+  && (Custom_property_name.is_valid name
+     || List.exists
+          (fun component -> not (Component.is_whitespace component))
+          arguments)
+
+(* The fallback of a substitution call's [arguments], after the first comma. *)
+let rec substitution_fallback = function
+  | [] -> []
+  | Component.Preserved { kind = Token.Comma; _ } :: fallback -> fallback
+  | _ :: rest -> substitution_fallback rest
+
+let rec slotted_substitution = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      is_substitution_call name arguments
+      || List.exists
+           (if Parser.is_math_function name then math_operand_slot
+            else slotted_substitution)
+           arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists slotted_substitution value
+  | Component.Flat { node; _ } -> Component.flat_substitutes node
+  | Component.Preserved _ -> false
+
+and math_operand_slot = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      (not (is_substitution_call name arguments))
+      && List.exists
+           (if Parser.is_math_function name then math_operand_slot
+            else slotted_substitution)
+           arguments
+  | Component.Block { node = { value; _ }; _ } ->
+      List.exists math_operand_slot value
+  | (Component.Flat _ | Component.Preserved _) as c -> slotted_substitution c
+
+(* CSS Variables 1 sec. 3 checks a declaration holding a substitution against
+   its property's grammar only after substitution, and the call may supply any
+   number of components, commas and slashes included. A typed reader gives the
+   call one slot, so that slot and every default, elision or reordering decided
+   around it is a guess: [flex: var(--g) 0px] read as grow, shrink 1 and basis
+   0px prints [var(--g) 1 0], which [--g: 1 0] makes invalid. A substitution
+   takes no slot only as the whole value, whose fallback is a whole value in
+   turn, or as an operand of a math function, which yields one value whatever it
+   substitutes. *)
+let rec substitution_takes_a_slot components =
+  match List.filter (Fun.negate Component.is_whitespace) components with
+  | [ Component.Func { node = { name; arguments; _ }; _ } ]
+    when is_substitution_call name arguments ->
+      substitution_takes_a_slot (substitution_fallback arguments)
+  | components -> List.exists slotted_substitution components
+
+let rec substitution_name = function
+  | [] | Component.Preserved { kind = Token.Comma; _ } :: _ -> []
+  | c :: rest -> c :: substitution_name rest
+
+let is_substitution = function
+  | Component.Func { node = { name; arguments; _ }; _ } ->
+      is_substitution_call name arguments
+  | _ -> false
+
+let significant = List.filter (Fun.negate Component.is_whitespace)
+
+let rec same_tokens a b = List.equal same_token (significant a) (significant b)
+
+and same_token a b =
+  match (a, b) with
+  | Component.Func { node = f; _ }, Component.Func { node = g; _ } ->
+      String.equal
+        (String.lowercase_ascii_preserve f.name)
+        (String.lowercase_ascii_preserve g.name)
+      && same_tokens f.arguments g.arguments
+  | Component.Block { node = x; _ }, Component.Block { node = y; _ } ->
+      Token.equal_bracket x.opening y.opening && same_tokens x.value y.value
+  | _ ->
+      String.equal
+        (Parser.string_of_components [ a ])
+        (Parser.string_of_components [ b ])
+
+(* A separator or operator token places the components around it, so it is part
+   of the slot structure rather than a value in a slot. *)
+let is_structural = function
+  | Component.Preserved
+      { kind = Token.Comma | Token.Delim _ | Token.Colon | Token.Semicolon; _ }
+    ->
+      true
+  | _ -> false
+
+(* CSS Color 4 sec. 5.1 and 7 give [rgba()] and [hsla()] the grammar and
+   behaviour of [rgb()] and [hsl()], so either name is the same function. *)
+let function_identity name =
+  match String.lowercase_ascii_preserve name with
+  | "rgba" -> "rgb"
+  | "hsla" -> "hsl"
+  | name -> name
+
+(* A comma list read as runs: each segment holding a substitution on its own,
+   and each maximal run of segments holding none as one [Plain]. *)
+type run = Plain | Holding of Component.t list
+
+let rec comma_segments acc segment = function
+  | [] -> List.rev (List.rev segment :: acc)
+  | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+      comma_segments (List.rev segment :: acc) [] rest
+  | c :: rest -> comma_segments acc (c :: segment) rest
+
+let holds_substitution =
+  List.exists (fun c -> is_substitution c || slotted_substitution c)
+
+let runs components =
+  comma_segments [] [] (significant components)
+  |> List.fold_left
+       (fun acc segment ->
+         match (holds_substitution segment, acc) with
+         | false, Plain :: _ -> acc
+         | false, _ -> Plain :: acc
+         | true, _ -> Holding segment :: acc)
+       []
+  |> List.rev
+
+(* [slots_kept source print] is whether [print] keeps every slot of [source]
+   that a substitution may move. A substitution may supply commas, so a comma
+   list is compared run by run: each segment holding a substitution keeps each
+   call as written, in the same place among the same separators, inside the same
+   functions, and a component with no substitution in it may be respelled in its
+   place ([0px] as [0], [#ff0000] as [red]) but not added, dropped or moved. A
+   run of segments holding none stays on each side of such a segment where it
+   was, so what precedes and follows the substitution is still a segment of the
+   same kind, and inside it the folds apply: [linear-gradient(to bottom, red,
+   var(--x))] may drop its direction, [linear-gradient(to bottom, var(--x))] may
+   not, since [--x: to left, red] gives it a second one. *)
+let rec slots_kept source print = List.equal run_kept (runs source) (runs print)
+
+and run_kept a b =
+  match (a, b) with
+  | Plain, Plain -> true
+  | Holding a, Holding b -> List.equal slot_kept a b
+  | Plain, Holding _ | Holding _, Plain -> false
+
+and slot_kept a b =
+  match (a, b) with
+  | Component.Func { node = f; _ }, Component.Func { node = g; _ }
+    when is_substitution a && is_substitution b ->
+      (* The name stays as written; the fallback is a value in the slot. *)
+      String.equal
+        (String.lowercase_ascii_preserve f.name)
+        (String.lowercase_ascii_preserve g.name)
+      && same_tokens
+           (substitution_name f.arguments)
+           (substitution_name g.arguments)
+      && slots_kept
+           (substitution_fallback f.arguments)
+           (substitution_fallback g.arguments)
+  | _ when is_substitution a || is_substitution b -> false
+  | Component.Func { node = f; _ }, Component.Func { node = g; _ }
+    when slotted_substitution a ->
+      String.equal (function_identity f.name) (function_identity g.name)
+      && slots_kept f.arguments g.arguments
+  | Component.Block { node = x; _ }, Component.Block { node = y; _ }
+    when slotted_substitution a ->
+      Token.equal_bracket x.opening y.opening && slots_kept x.value y.value
+  | _ when slotted_substitution a || slotted_substitution b -> false
+  | _ when is_structural a || is_structural b -> same_token a b
+  | _ -> true
+
+let value_components_of : type a. a property -> a -> Component.t list =
+ fun property value ->
+  let buf = Buffer.create 32 in
+  Properties.pp_property_value (Pp.ctx buf) (property, value);
+  Cursor.remaining (Cursor.of_string (Buffer.contents buf))
+
+let rec value_components = function
+  | Declaration { property; value; _ } -> value_components_of property value
+  | Theme_guarded { decl; _ } -> value_components decl
+
 (* Apply AST-level value normalisation so the optimizer holds a canonical AST.
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
@@ -167,7 +348,15 @@ let rec normalize ?(lossless = false) ?(exact_srgb = false)
         Properties.normalize_property_value ~lossless ~exact_srgb
           ~resolve_missing ~ctx property value
       in
-      if value' == value then decl else v ~important property value'
+      if value' == value then decl
+      else
+        (* A fold may not move what a substitution can supply. *)
+        let source = value_components_of property value in
+        if
+          substitution_takes_a_slot source
+          && not (slots_kept source (value_components_of property value'))
+        then decl
+        else v ~important property value'
   | Theme_guarded g as themed ->
       let decl = normalize ~lossless ~exact_srgb ~resolve_missing ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
@@ -232,9 +421,13 @@ let logical_color_uses p : Properties.logical_border_color -> bool = function
   | _ -> false
 
 let rec gradient_stop_uses_color p : Properties.gradient_stop -> bool = function
-  | Color_percentage (c, _, _) | Color_length (c, _, _) -> p c
+  | Color_percentage (c, _, _) | Color_length (c, _, _) | Color_angle (c, _, _)
+    ->
+      p c
   | List stops -> List.exists (gradient_stop_uses_color p) stops
-  | _ -> false
+  | Length _ | Angle_hint _ | Channel _ | Percentage _ | Position _
+  | Direction _ | Var _ ->
+      false
 
 let rec background_image_uses_color p : Properties.background_image -> bool =
   function
@@ -258,6 +451,9 @@ let rec background_image_uses_color p : Properties.background_image -> bool =
   | Repeating_conic_gradient (_, stops) ->
       List.exists (gradient_stop_uses_color p) stops
   | List imgs -> List.exists (background_image_uses_color p) imgs
+  | Webkit_cross_fade (first, second, _) ->
+      background_image_uses_color p first
+      || background_image_uses_color p second
   | _ -> false
 
 let rec filter_uses_color p : Properties.filter -> bool = function
@@ -336,9 +532,13 @@ let property_value_uses_runtime_subst (type a)
   | Padding_bottom -> Values.length_has_runtime_subst value
   | Padding_left -> Values.length_has_runtime_subst value
   | Border_top_left_radius -> length_list_has_runtime_subst value
+  | Webkit_border_top_left_radius -> length_list_has_runtime_subst value
   | Border_top_right_radius -> length_list_has_runtime_subst value
+  | Webkit_border_top_right_radius -> length_list_has_runtime_subst value
   | Border_bottom_left_radius -> length_list_has_runtime_subst value
+  | Webkit_border_bottom_left_radius -> length_list_has_runtime_subst value
   | Border_bottom_right_radius -> length_list_has_runtime_subst value
+  | Webkit_border_bottom_right_radius -> length_list_has_runtime_subst value
   | Outline_width -> Properties.border_width_has_runtime_subst value
   | Margin -> length_list_has_runtime_subst value
   | Padding -> length_list_has_runtime_subst value
@@ -498,6 +698,17 @@ let is_var : Token.kind -> bool = function
   | Function name -> String.equal (String.lowercase_ascii name) "var"
   | _ -> false
 
+(* The productions a value uses that no word of it names, by the key each is
+   filed under: the [/ <'column-height'>] of [columns] (CSS Multicol 2 sec. 4.5)
+   is the [column-height] longhand's production. Each key names its production
+   exactly, so the measured supplement answers for it as well. *)
+let rec structure_keys decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> structure_keys decl
+  | Declaration { property = Columns; value = With_height _; _ } ->
+      [ "css.properties.column-height" ]
+  | Declaration _ -> []
+
 (* CSS 2.1 sec. 4.2 has a browser ignore a declaration whose value it does not
    parse. Which productions a declaration uses is read off its property, its
    colours and the words of its value, and a release parses the declaration once
@@ -511,6 +722,11 @@ let first_release_with ~tokens ~floor engine decl =
   let acc =
     combine (Option.Some floor)
       (release (String.concat "" [ "css.properties."; property ]))
+  in
+  let acc =
+    List.fold_left
+      (fun acc key -> combine acc (Support.engine_shipped engine key))
+      acc (structure_keys decl)
   in
   let tokens = Lazy.force tokens in
   if List.exists is_var tokens then acc
@@ -536,6 +752,172 @@ let rec first_release ~floor engine decl =
   | Declaration _ ->
       first_release_with ~tokens:(lazy (value_tokens decl)) ~floor engine decl
 
+let display_value_is_vendor : Properties.display -> bool = function
+  | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box
+  | Webkit_inline_box | Moz_box | Moz_inline_box ->
+      true
+  | _ -> false
+
+let rec cursor_is_legacy : Properties.cursor -> bool = function
+  | Webkit_grab | Webkit_grabbing | Webkit_zoom_in | Webkit_zoom_out -> true
+  | Url (_, _, fallback) -> cursor_is_legacy fallback
+  | _ -> false
+
+let rec overflow_is_legacy : Properties.overflow -> bool = function
+  | Overlay -> true
+  | Overflow_pair (x, y) -> overflow_is_legacy x || overflow_is_legacy y
+  | _ -> false
+
+let background_image_is_vendor : Properties.background_image -> bool = function
+  | Webkit_linear_gradient _ | Webkit_repeating_linear_gradient _
+  | Webkit_radial_gradient _ | Webkit_repeating_radial_gradient _
+  | Moz_linear_gradient _ | Moz_repeating_linear_gradient _
+  | Moz_radial_gradient _ | Moz_repeating_radial_gradient _
+  | O_linear_gradient _ | O_repeating_linear_gradient _ | O_radial_gradient _
+  | O_repeating_radial_gradient _ | Webkit_image_set _ | Webkit_gradient _ ->
+      true
+  | _ -> false
+
+(* A shorthand carries the same image the longhand does, so the prefixed
+   spelling is the same fallback whichever property writes it. [background] and
+   [mask] carry one image per layer; [border-image] and [mask-border] carry a
+   single source. *)
+let background_layer_is_vendor (layer : Properties.background) =
+  match layer with
+  | Shorthand { image = Some image; _ } -> background_image_is_vendor image
+  | _ -> false
+
+let mask_layer_is_vendor (layer : Properties.mask_layer) =
+  match layer.image with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
+let mask_value_is_vendor (value : Properties.mask) =
+  match value with
+  | Layer layer -> mask_layer_is_vendor layer
+  | Layers layers -> List.exists mask_layer_is_vendor layers
+  | _ -> false
+
+let border_image_source_is_vendor (value : Properties.border_image) =
+  match value.source with
+  | Some image -> background_image_is_vendor image
+  | _ -> false
+
+(* A value whose rendering begins with a vendor prefix (-webkit-, -moz-, -ms-,
+   -o-). Preserves legacy fallbacks like [display:-webkit-box;display:flex]: old
+   browsers understand only the prefixed spelling, so dropping the earlier
+   declaration removes a real compat fallback. *)
+(* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
+   or-pattern does not refine the value type, so each constructor is matched on
+   its own; everything else is not a sizing fallback. *)
+let sizing_value_is_vendor_prefixed : type a. a Properties.property -> a -> bool
+    =
+ fun property value ->
+  let pfx = Values.length_percentage_is_vendor_prefixed in
+  match property with
+  | Width -> pfx value
+  | Height -> pfx value
+  | Min_width -> pfx value
+  | Min_height -> pfx value
+  | Max_width -> pfx value
+  | Max_height -> pfx value
+  | Block_size -> pfx value
+  | Inline_size -> pfx value
+  | Min_block_size -> pfx value
+  | Min_inline_size -> pfx value
+  | Max_block_size -> pfx value
+  | Max_inline_size -> pfx value
+  | _ -> false
+
+let rec value_is_vendor_prefixed decl =
+  match decl with
+  | Theme_guarded { decl; _ } -> value_is_vendor_prefixed decl
+  | Declaration { property = Display; value; _ } ->
+      display_value_is_vendor value
+  | Declaration { property = Background_image; value; _ } ->
+      List.exists background_image_is_vendor value
+  | Declaration { property = Webkit_mask_image; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Mask_image; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Border_image_source; value; _ } ->
+      background_image_is_vendor value
+  | Declaration { property = Background; value; _ } ->
+      List.exists background_layer_is_vendor value
+  | Declaration { property = Mask; value; _ } -> mask_value_is_vendor value
+  | Declaration { property = Border_image; value; _ } ->
+      border_image_source_is_vendor value
+  | Declaration { property = Mask_border; value; _ } ->
+      border_image_source_is_vendor value
+  (* [position:-webkit-sticky;position:sticky] and the [text-align] equivalent
+     are the same browser-compat pattern: old Safari only understands the
+     prefixed keyword, so the earlier declaration is a real fallback. *)
+  | Declaration { property = Position; value = Webkit_sticky; _ } -> true
+  | Declaration
+      {
+        property = Text_align;
+        value = Webkit_match_parent | Webkit_left | Webkit_right | Webkit_center;
+        _;
+      } ->
+      true
+  (* The other prefixed or legacy keywords a browser in B reads beside, or in
+     place of, the standard one. *)
+  | Declaration { property = Cursor; value; _ } -> cursor_is_legacy value
+  | Declaration { property = Unicode_bidi; value; _ } -> (
+      match value with
+      | Webkit_isolate | Webkit_isolate_override | Webkit_plaintext -> true
+      | _ -> false)
+  | Declaration
+      { property = Image_rendering; value = Webkit_optimize_contrast; _ } ->
+      true
+  | Declaration { property = Writing_mode; value; _ } -> (
+      match value with
+      | Lr | Lr_tb | Rl | Rl_tb | Tb | Tb_rl -> true
+      | _ -> false)
+  | Declaration { property = Overflow; value; _ } -> overflow_is_legacy value
+  | Declaration { property = Overflow_x; value; _ } -> overflow_is_legacy value
+  | Declaration { property = Overflow_y; value; _ } -> overflow_is_legacy value
+  (* [width:-webkit-max-content;width:max-content] and the other intrinsic
+     sizing properties: the prefixed keyword is a fallback for old Safari /
+     Firefox, so the earlier declaration must survive minify dedup. *)
+  | Declaration { property; value; _ } ->
+      sizing_value_is_vendor_prefixed property value
+
+(* The dataset gives a vendor-prefixed or legacy keyword no key, so it cannot
+   say which engine reads one. A declaration using one is marked by the prefixed
+   words of its value, or by its whole value for an unprefixed legacy keyword
+   such as [overflow:overlay]. Two values of one property with different marks
+   may each be what some browser in B reads alone; two with the same marks, such
+   as two [-webkit-linear-gradient()]s, are read by the same browsers, and the
+   data decides as for any other pair. *)
+let legacy_marks decl =
+  if not (value_is_vendor_prefixed decl) then []
+  else
+    let prefixed : Token.kind -> string option = function
+      | (Ident w | Function w) when String.starts_with ~prefix:"-" w ->
+          Some (String.lowercase_ascii w)
+      | _ -> None
+    in
+    match List.filter_map prefixed (value_tokens decl) with
+    | [] -> [ string_of_value ~minify:true decl ]
+    | words -> List.sort_uniq String.compare words
+
+let marks_differ later earlier =
+  same_property later earlier
+  && not (List.equal String.equal (legacy_marks later) (legacy_marks earlier))
+
+(* [earlier] is what a browser paints where it reads [earlier] and drops
+   [later]. A later value with no such keyword is one the data answers for. *)
+let legacy_vendor_fallback ~later earlier =
+  value_is_vendor_prefixed later && marks_differ later earlier
+
+(* Inside one rule a prefixed or legacy keyword also stays before a later
+   standard value, for a browser older than the floors that reads only the
+   prefixed one. *)
+let legacy_pair later earlier =
+  (value_is_vendor_prefixed earlier || value_is_vendor_prefixed later)
+  && marks_differ later earlier
+
 (* The browsers judged for are each engine from its floor to the newest release
    the data records, and a shipped production stays. [earlier] is what a browser
    paints in place of [later] only where it parses [earlier] and drops [later]:
@@ -544,16 +926,17 @@ let rec first_release ~floor engine decl =
    Safari does [user-select:auto] and [user-select:none], paints neither, and
    one parsing both paints [later]. *)
 let fallback_for ~floors ~later earlier =
-  List.exists
-    (fun (engine, floor) ->
-      match first_release ~floor engine earlier with
-      | Option.None -> false
-      | Option.Some reads_earlier -> (
-          match first_release ~floor engine later with
-          | Option.None -> true
-          | Option.Some reads_later ->
-              Support.compare_version reads_later reads_earlier > 0))
-    (Support.floors floors)
+  legacy_vendor_fallback ~later earlier
+  || List.exists
+       (fun (engine, floor) ->
+         match first_release ~floor engine earlier with
+         | Option.None -> false
+         | Option.Some reads_earlier -> (
+             match first_release ~floor engine later with
+             | Option.None -> true
+             | Option.Some reads_later ->
+                 Support.compare_version reads_later reads_earlier > 0))
+       (Support.floors floors)
 
 (* Rewrite the value of a custom declaration through [f], which sees its
    minified serialisation. Everything else the declaration carries - its

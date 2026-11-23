@@ -152,6 +152,8 @@ let pp_position_try_fallback : position_try_fallback Pp.t =
   | Flip_block -> Pp.string ctx "flip-block"
   | Flip_inline -> Pp.string ctx "flip-inline"
   | Flip_start -> Pp.string ctx "flip-start"
+  | Flip_x -> Pp.string ctx "flip-x"
+  | Flip_y -> Pp.string ctx "flip-y"
   | Name name -> pp_ident ctx name
 
 let pp_position_try_fallback_entry : position_try_fallback_entry Pp.t =
@@ -280,14 +282,21 @@ let rec pp_contain_intrinsic_size : contain_intrinsic_size Pp.t =
 (* The same fold as everywhere else a length carries its authored spelling: the
    reader keeps it for the unminified round-trip and the printer drops it under
    [--minify], so it has to go before anything keyed on the node compares two
-   spellings of one size. *)
+   spellings of one size. A calculation folds first (CSS Values 4 sec. 10.10),
+   so [calc(1e2px)] is the [100px] that [100E0px] spells; sec. 10.12 keeps the
+   call around a result below the [0,inf] range. The unit of a zero stays, as it
+   did. *)
+let normalize_contain_intrinsic_length length =
+  Values.canonical_dimension
+    (Values.normalize_length ~strip:false ~non_negative:true length)
+
 let normalize_contain_intrinsic_size_item :
     contain_intrinsic_size_item -> contain_intrinsic_size_item = function
   | Length length as value ->
-      let length' = Values.canonical_dimension length in
+      let length' = normalize_contain_intrinsic_length length in
       if length' == length then value else Length length'
   | Auto length as value ->
-      let length' = Values.canonical_dimension length in
+      let length' = normalize_contain_intrinsic_length length in
       if length' == length then value else Auto length'
   | value -> value
 
@@ -760,12 +769,16 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
 let read_position_try_fallback t =
   Cursor.ws t;
   match Cursor.peek_keyword t with
-  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) -> (
+  | Some
+      (("flip-block" | "flip-inline" | "flip-start" | "flip-x" | "flip-y") as
+       keyword) -> (
       let _ = Cursor.ident t in
       match keyword with
       | "flip-block" -> (Flip_block : position_try_fallback)
       | "flip-inline" -> Flip_inline
       | "flip-start" -> Flip_start
+      | "flip-x" -> Flip_x
+      | "flip-y" -> Flip_y
       | _ -> assert false)
   | _ -> Name (read_dashed_ident t)
 
@@ -898,27 +911,34 @@ let read_position_area_pair t =
       (first, Option.Some second)
   | _ -> Cursor.err_expected t "position-area"
 
-(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free and takes each
-   component at most once, so the group reads in any order and is held
-   name-first with the tactics in block, inline, start order. *)
+(* One [<dashed-ident> || <try-tactic>] entry. [||] is order-free, so the name
+   stands before or after the tactics and is held first; the tactics compose in
+   the order written (CSS Anchor Positioning 1 sec. 6.1), so they keep it, and
+   stand together. *)
 let read_position_try_fallback_tactics t =
   let components =
     Cursor.list ~sep:Cursor.ws ~at_least:1 read_position_try_fallback t
   in
-  let pick p = List.filter p components in
-  let name =
-    pick (function (Name _ : position_try_fallback) -> true | _ -> false)
+  let is_name : position_try_fallback -> bool = function
+    | Name _ -> true
+    | Flip_block | Flip_inline | Flip_start | Flip_x | Flip_y -> false
   in
-  let block = pick (function Flip_block -> true | _ -> false) in
-  let inline = pick (function Flip_inline -> true | _ -> false) in
-  let start = pick (function Flip_start -> true | _ -> false) in
-  if
-    List.length name > 1
-    || List.length block > 1
-    || List.length inline > 1
-    || List.length start > 1
-  then Cursor.err_invalid t "position-try-fallbacks repeats a component";
-  name @ block @ inline @ start
+  let name, tactics =
+    match components with
+    | first :: rest when is_name first -> ([ first ], rest)
+    | _ -> (
+        match List.rev components with
+        | last :: rest when is_name last -> ([ last ], List.rev rest)
+        | _ -> ([], components))
+  in
+  let rec repeats = function
+    | [] -> false
+    | x :: rest -> List.mem x rest || repeats rest
+  in
+  if List.exists is_name tactics || repeats tactics then
+    Cursor.err_invalid t
+      "position-try-fallbacks splits or repeats its try-tactic";
+  name @ tactics
 
 let read_position_try_fallback_entry t : position_try_fallback_entry =
   Cursor.one_of

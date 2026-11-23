@@ -610,7 +610,8 @@ let nesting_synthesis_can_be_disabled () =
        *)):where(.dark,.dark *){color:blue;font-size:2rem}"
   in
   let out ?regroup () =
-    Css.to_string ~minify:true (Css.optimize ?regroup sheet)
+    Css.to_string ~minify:true
+      (Css.optimize ?regroup ~targets:Optimize_helpers.nesting_targets sheet)
   in
   Alcotest.(check bool)
     "regrouping on nests the second rule" true
@@ -717,10 +718,11 @@ let unknown_at_rule_body_is_compacted () =
    hazard bit for this: sharing one makes a rule holding the slice answer for a
    neighbour holding the source. *)
 let test_border_keeps_longhands_beside_a_border_image () =
-  let minify_str css =
+  let minify_str ?(scope = `Stylesheet) css =
     match Css.of_string ~strict:false css with
     | Ok p ->
-        Css.to_string ~minify:true (Css.optimize p.stylesheet) |> String.trim
+        Css.to_string ~minify:true (Css.optimize ~scope p.stylesheet)
+        |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
   (* A NEIGHBOUR holding one is the hazard, and each longhand needs its OWN bit
@@ -731,11 +733,57 @@ let test_border_keeps_longhands_beside_a_border_image () =
     "c,f{border-width:1px;border-style:solid;border-color:red}a,f{border-image-slice:2}b,c{border-image-source:url(x.png)}"
     (minify_str
        "a{border-image-slice:2}c{border-image-source:url(x.png);border-width:1px;border-style:solid;border-color:red}b{border-image-source:url(x.png)}f{border-image-slice:2;border-width:1px;border-style:solid;border-color:red}");
-  (* With no border-image longhand anywhere there is nothing to reset, so the
-     contraction is the shorter spelling of the same cascade. *)
+  (* With no border-image longhand anywhere in the whole sheet there is nothing
+     to reset, so the contraction is the shorter spelling of the same cascade.
+     In the default scope another sheet may hold one, so the longhands stay. *)
   Alcotest.(check string)
     "and contracts with none of them present" "a{border:1px solid red}"
-    (minify_str "a{border-width:1px;border-style:solid;border-color:red}")
+    (minify_str "a{border-width:1px;border-style:solid;border-color:red}");
+  Alcotest.(check string)
+    "but not where another sheet may hold one"
+    "a{border-width:1px;border-style:solid;border-color:red}"
+    (minify_str ~scope:`Fragment
+       "a{border-width:1px;border-style:solid;border-color:red}")
+
+(* Under [--scope=stylesheet] the neighbour holding a [border-image] value may
+   sit in another block: a rule inside [@media] reaches the same elements as one
+   outside it, so the [border] reset would drop its value there too. Four side
+   shorthands holding one line value are [border] less that reset (CSS
+   Backgrounds 3 sec. 4.4), so they contract under the same condition. *)
+let test_border_reset_reads_every_block () =
+  let minify_str css =
+    match Css.of_string ~strict:false css with
+    | Ok p ->
+        Css.to_string ~minify:true
+          (Css.optimize ~scope:`Stylesheet p.stylesheet)
+        |> String.trim
+    | Error _ -> Alcotest.fail "parse"
+  in
+  let image = "@media print{.x{border-image:url(a.png) 30}}" in
+  let sides =
+    "border-top:1px solid red;border-right:1px solid red;border-bottom:1px \
+     solid red;border-left:1px solid red"
+  in
+  Alcotest.(check string)
+    "the longhands stay beside a conditional border-image"
+    "@media \
+     print{.x{border-image:url(a.png)30}}.y{border-width:1px;border-style:solid;border-color:red}"
+    (minify_str
+       (image ^ ".y{border-width:1px;border-style:solid;border-color:red}"));
+  Alcotest.(check string)
+    "and so do the sides"
+    ("@media print{.x{border-image:url(a.png)30}}.y{" ^ sides ^ "}")
+    (minify_str (image ^ ".y{" ^ sides ^ "}"));
+  Alcotest.(check string)
+    "the sides contract with no border-image anywhere" "a{border:1px solid red}"
+    (minify_str ("a{" ^ sides ^ "}"));
+  Alcotest.(check string)
+    "but not over different values"
+    ".y{border-top:1px solid red;border-right:1px solid red;border-bottom:1px \
+     solid red;border-left:2px solid red}"
+    (minify_str
+       ".y{border-top:1px solid red;border-right:1px solid \
+        red;border-bottom:1px solid red;border-left:2px solid red}")
 
 let test_shorthand_drops_the_longhand_it_resets () =
   let minify_str css =
@@ -769,7 +817,10 @@ let test_shorthand_drops_the_longhand_it_resets () =
    the next [;] or to the block's [}], so a declaration followed by a nested
    at-rule or nested rule owes it a separator; without one the declaration runs
    on into the next sibling and the reader drops the rule. [Css.of_string
-   ~strict:true] is the gate: it turns any recovery warning into an error. *)
+   ~strict:true] is the gate: it turns any recovery warning into an error. A
+   declaration directly in a nested at-rule is a nested declarations rule (CSS
+   Nesting 1 sec. 5), which the optimizer flattens under any targets, so each
+   block comes out as a rule of its own. *)
 let nested_block_separator () =
   let check name input expected =
     let output = optimized_string input in
@@ -782,20 +833,96 @@ let nested_block_separator () =
   in
   check "adjacent same-condition blocks merge"
     ".a{@supports (color:red){color:red}@supports (color:red){top:0}}"
-    ".a{@supports(color:red){color:red;top:0}}";
+    "@supports(color:red){.a{color:red;top:0}}";
   check "three blocks in a row"
     ".a{@supports (color:red){color:red}@supports (color:red){top:0}@supports \
      (color:red){left:0}}"
-    ".a{@supports(color:red){color:red;top:0;left:0}}";
+    "@supports(color:red){.a{color:red;left:0;top:0}}";
   check "nested at-rule before a nested rule"
     ".a{@supports (color:red){color:red}.b{top:0}}"
-    ".a{@supports(color:red){color:red}.b{top:0}}";
+    "@supports(color:red){.a{color:red}}.a .b{top:0}";
   check "two nested at-rules"
     ".a{@supports (color:red){color:red}@media print{top:0}}"
-    ".a{@supports(color:red){color:red}@media print{top:0}}";
+    "@supports(color:red){.a{color:red}}@media print{.a{top:0}}";
   check "declaration then nested at-rule then nested rule"
     ".a{top:0;@supports (color:red){color:red}.b{left:0}}"
-    ".a{top:0;@supports(color:red){color:red}.b{left:0}}"
+    ".a{top:0}@supports(color:red){.a{color:red}}.a .b{left:0}"
+
+(* A later value using a prefixed or legacy keyword the earlier does not use is
+   one the data cannot say every browser reading the earlier reads, so the
+   earlier stays as its fallback across rules too. Two values with the same
+   prefixed words are read by the same browsers, and a later value with none is
+   one the data answers for. *)
+let prefixed_fallbacks_across_rules () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( ".a{position:sticky}.a{position:-webkit-sticky}",
+        ".a{position:sticky;position:-webkit-sticky}" );
+      ( ".a{display:flex}.b{color:red}.a{display:-webkit-box}",
+        ".a{display:flex;display:-webkit-box}.b{color:red}" );
+      ( ".x{width:-webkit-max-content;width:max-content}.x{width:250px}",
+        ".x{width:250px}" );
+      ( "a{background-image:-webkit-linear-gradient(red,blue);background-image:-webkit-linear-gradient(red,green)}",
+        "a{background-image:-webkit-linear-gradient(red,green)}" );
+      ( "a{display:-webkit-box;display:-moz-box}",
+        "a{display:-webkit-box;display:-moz-box}" );
+    ]
+
+(* The compatibility data has no key for a vendor-prefixed or legacy keyword, so
+   it cannot say that every browser in B reading one value also reads the other
+   (docs/invariants.md, declaration layer). Inside one rule both values stay, in
+   either order, and across two rules an earlier value stays before a later one
+   using such a keyword. *)
+let legacy_keyword_fallbacks_survive () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( "a{cursor:grab;cursor:-webkit-grab}",
+        "a{cursor:grab;cursor:-webkit-grab}" );
+      ( "a{cursor:-webkit-grab;cursor:grab}",
+        "a{cursor:-webkit-grab;cursor:grab}" );
+      ( ".a{cursor:grab}.a{cursor:-webkit-grab}",
+        ".a{cursor:grab;cursor:-webkit-grab}" );
+      ( ".a{cursor:grab}.b{color:red}.a{cursor:-webkit-grab}",
+        ".a{cursor:grab;cursor:-webkit-grab}.b{color:red}" );
+      ("a{overflow:auto;overflow:overlay}", "a{overflow:auto;overflow:overlay}");
+      ( "a{text-align:center;text-align:-webkit-center}",
+        "a{text-align:center;text-align:-webkit-center}" );
+      ( "a{display:inline-flex;display:-webkit-inline-box}",
+        "a{display:inline-flex;display:-webkit-inline-box}" );
+      ( "a{writing-mode:vertical-rl;writing-mode:tb-rl}",
+        "a{writing-mode:vertical-rl;writing-mode:tb-rl}" );
+      ( "a{unicode-bidi:isolate;unicode-bidi:-webkit-isolate}",
+        "a{unicode-bidi:isolate;unicode-bidi:-webkit-isolate}" );
+      ( "a{image-rendering:pixelated;image-rendering:-webkit-optimize-contrast}",
+        "a{image-rendering:pixelated;image-rendering:-webkit-optimize-contrast}"
+      );
+      ( "a{min-height:100vh;min-height:-webkit-fill-available}",
+        "a{min-height:100vh;min-height:-webkit-fill-available}" );
+      (* One value written twice is no fallback. *)
+      ("a{cursor:-webkit-grab;cursor:-webkit-grab}", "a{cursor:-webkit-grab}");
+    ]
+
+(* A [mask] whose layer position has three values is read by Chromium and WebKit
+   and dropped by Gecko, so [--minify] keeps it as written, with no two-value
+   respelling, which Gecko would read. The [-webkit-mask] twin the targets ask
+   for carries the same value, which each of those engines reads or drops as it
+   does [mask]. *)
+let mask_three_value_position_kept_as_written () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( "a{mask:url(a.png) left 10px top}",
+        "a{-webkit-mask:url(a.png) left 10px top;mask:url(a.png) left 10px top}"
+      );
+      ( "a{mask:url(a.png);mask:url(b.png) left 10px top}",
+        "a{-webkit-mask:url(a.png);mask:url(a.png);-webkit-mask:url(b.png) \
+         left 10px top;mask:url(b.png) left 10px top}" );
+    ]
 
 (* An earlier declaration of a property is a fallback for a browser that drops
    the later one at parse time, and the default targets are floors: Chrome 111,
@@ -826,9 +953,20 @@ let floor_fallbacks_survive () =
     "a{top:0;top:anchor(bottom)}";
   check_modes "stretch" "a{width:1px;width:stretch}"
     "a{width:1px;width:stretch}";
+  (* Chrome 153 reads the [/ <'column-height'>] of [columns] (CSS Multicol 2
+     sec. 4.5); Firefox and Safari drop that declaration and paint the one
+     before it. *)
+  check_modes "a column height" "a{columns:10px 2;columns:10px 2/5px}"
+    "a{columns:10px 2;columns:10px 2/5px}";
   check_modes "image-set()"
     "a{background:url(a.png);background:image-set(url(a.png) 1x)}"
     "a{background:url(a.png);background:image-set(url(a.png)1x)}";
+  (* MDN's compatibility data records -webkit-cross-fade() as the prefixed form
+     of cross-fade() in Chrome and Safari and never in Firefox, so Firefox
+     paints the image before it. *)
+  check_modes "-webkit-cross-fade()"
+    "a{background-image:url(x.png);background-image:-webkit-cross-fade(url(a.png),url(b.png),.5)}"
+    "a{background-image:url(x.png);background-image:-webkit-cross-fade(url(a.png),url(b.png),.5)}";
   (* web-features records the variadic color-mix() in Firefox 150 alone, so
      every other floor drops the later declaration and paints red. *)
   (* One item is the variadic grammar too: Firefox reads it from 150, behind
@@ -1143,6 +1281,9 @@ let suite =
       ( "border keeps longhands beside a border-image",
         `Quick,
         test_border_keeps_longhands_beside_a_border_image );
+      ( "border reset reads every block",
+        `Quick,
+        test_border_reset_reads_every_block );
       ( "lossless keeps shorthand longhand order",
         `Quick,
         test_lossless_keeps_shorthand_longhand_order );
@@ -1159,6 +1300,15 @@ let suite =
         `Quick,
         target_minify_enforce_spec_split );
       ("floor fallbacks survive", `Quick, floor_fallbacks_survive);
+      ( "prefixed fallbacks across rules",
+        `Quick,
+        prefixed_fallbacks_across_rules );
+      ( "legacy keyword fallbacks survive",
+        `Quick,
+        legacy_keyword_fallbacks_survive );
+      ( "mask three-value position kept as written",
+        `Quick,
+        mask_three_value_position_kept_as_written );
       ( "target evergreen compatibility prefixes",
         `Quick,
         target_evergreen_compatibility_prefixes );

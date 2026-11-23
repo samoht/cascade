@@ -49,7 +49,15 @@ let position_compare a b =
   | _ -> Float.compare (percent_of_position a) (percent_of_position b)
 
 let timeline_range_names =
-  [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
+  [
+    "cover";
+    "contain";
+    "entry";
+    "exit";
+    "entry-crossing";
+    "exit-crossing";
+    "scroll";
+  ]
 
 let parse_percent s =
   if String.length s > 0 && s.[String.length s - 1] = '%' then

@@ -18,6 +18,11 @@ val color_name_of_hex : string -> color_name option
 (** [color_name_of_hex hex] is the named colour whose name is the shortest
     spelling of [hex], if any. *)
 
+val system_color_of_string : string -> system_color option
+(** [system_color_of_string s] is the system colour [s] names, ASCII
+    case-insensitively, including the deprecated ones of CSS Color 4 Appendix A.
+*)
+
 val read_color_keyword_of_string : string -> color option
 (** [read_color_keyword_of_string s] is the color keyword named by the
     lower-case ident [s]: a named color, {!val-transparent}, [currentcolor],

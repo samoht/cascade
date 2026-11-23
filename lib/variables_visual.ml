@@ -111,6 +111,14 @@ let vars_of_gradient_position (value : Properties.gradient_position) :
   | Conic_position config -> vars_of_conic_gradient_config config
   | Var v -> [ V v ]
 
+let vars_of_angular_position (value : Properties.angular_position) :
+    any_var list =
+  match value with
+  | Angle angle -> vars_of_angle angle
+  | Percentage percentage -> vars_of_percentage percentage
+  | Zero -> []
+  | Calc calc -> vars_of_calc calc
+
 let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
     =
   match value with
@@ -126,14 +134,27 @@ let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
   | Length length -> vars_of_length length
   | Channel channel -> vars_of_channel channel
   | Percentage percentage -> vars_of_percentage percentage
+  | Color_angle (color, first, second) ->
+      vars_of_color color
+      @ vars_of_angular_position first
+      @ Option.fold ~none:[] ~some:vars_of_angular_position second
+  | Angle_hint angle -> vars_of_angle angle
   | List stops -> List.concat_map vars_of_gradient_stop stops
   | Position position -> vars_of_gradient_position position
   | Direction direction -> vars_of_gradient_direction direction
 
-let vars_of_background_image (value : Properties.background_image) :
+let rec vars_of_background_image (value : Properties.background_image) :
     any_var list =
   match value with
   | Var v -> [ V v ]
+  | Webkit_cross_fade (first, second, weight) ->
+      let weight =
+        match weight with
+        | Var v -> [ V v ]
+        | Calc calc -> vars_of_calc calc
+        | Num _ | Pct _ -> []
+      in
+      vars_of_background_image first @ vars_of_background_image second @ weight
   | Linear_gradient (direction, stops)
   | Repeating_linear_gradient (direction, stops)
   | Webkit_linear_gradient (direction, stops)
@@ -390,11 +411,12 @@ let vars_of_clip (value : Properties.clip) =
 let vars_of_object_view_box (value : Properties.object_view_box) =
   match value with
   | Var v -> [ V v ]
-  | Inset (a, b, c, d) ->
+  | Inset (a, b, c, d, r) ->
       vars_of_length a
       @ Option.value ~default:[] (Option.map vars_of_length b)
       @ Option.value ~default:[] (Option.map vars_of_length c)
       @ Option.value ~default:[] (Option.map vars_of_length d)
+      @ Option.value ~default:[] (Option.map vars_of_border_radius r)
   | Xywh { x; y; width; height; rounded }
   | Rect { top = x; right = y; bottom = width; left = height; rounded } ->
       vars_of_length_percentage x

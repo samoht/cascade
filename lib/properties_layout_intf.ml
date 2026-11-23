@@ -106,6 +106,7 @@ type display =
   | Webkit_inline_flex
   | Ms_flexbox
   | Webkit_box
+  | Webkit_inline_box
   | Moz_box
   | Moz_inline_box
   | Inherit
@@ -186,6 +187,13 @@ type alignment_baseline =
     [<length-percentage> | sub | super | top | center | bottom]. *)
 type baseline_shift =
   | Shift of length_percentage
+  | Unitless of float
+      (** A bare number, which no specification grants in a style sheet (SVG 2
+          sec. 4.2 keeps it to presentation attributes) and Chromium reads as a
+          length in px. *)
+  | Baseline
+      (** The SVG 1.1 sec. 10.9.2 keyword, which CSS Inline 3 dropped and
+          Chromium reads. *)
   | Sub
   | Super
   | Top
@@ -282,6 +290,9 @@ type overflow =
   | Scroll
   | Auto
   | Clip
+  | Overlay
+      (** [overlay], which CSS Overflow 3 sec. 3.1 makes a legacy alias of
+          [auto]. *)
   | Initial
   | Inherit
   | Unset

@@ -21,6 +21,8 @@ type content =
   | Normal
   | Open_quote
   | Close_quote
+  | No_open_quote
+  | No_close_quote
   | Attr of content attr_call
   | Counter of {
       name : string;
@@ -199,6 +201,8 @@ type position_try_fallback =
   | Flip_block
   | Flip_inline
   | Flip_start
+  | Flip_x  (** Sec. 6.1 [flip-x], the horizontal axis. *)
+  | Flip_y  (** Sec. 6.1 [flip-y], the vertical axis. *)
   | Name of string
 
 (** CSS Anchor Positioning 1 sec. 6.1: each comma-separated entry is
@@ -361,6 +365,7 @@ type animation_range_name =
   | Exit
   | Entry_crossing
   | Exit_crossing
+  | Scroll  (** Scroll-driven Animations 1 sec. 3.1 [scroll]. *)
 
 (** Sec. 6.2: one end of [animation-range]. *)
 type animation_range_item =
@@ -435,6 +440,7 @@ type image_rendering =
   | High_quality
   | Crisp_edges
   | Pixelated
+  | Webkit_optimize_contrast
   | Initial
   | Inherit
   | Unset

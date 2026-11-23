@@ -274,6 +274,17 @@ let test_timeline_range_composes () =
     ".x{animation-range-start:normal;animation-range-end:normal}";
   sheet_optimizes_to ~into:".x{animation-range:entry 10%exit 90%}"
     ".x{animation-range-start:entry 10%;animation-range-end:exit 90%}";
+  (* The shorthand pairs the i-th start with the i-th end (CSS Animations 2 sec.
+     6.3), so two lists compose range by range, and lists of different lengths,
+     which repeat against [animation-name], have no spelling in it. *)
+  sheet_optimizes_to ~into:".x{animation-range:cover exit,entry contain}"
+    ".x{animation-range-start:cover,entry;animation-range-end:exit,contain}";
+  sheet_optimizes_to
+    ~into:".x{animation-range-start:exit 100%;animation-range-end:cover,entry}"
+    ".x{animation-range-start:exit 100%;animation-range-end:cover,entry}";
+  sheet_optimizes_to
+    ~into:".x{animation-range-start:cover,entry;animation-range-end:exit}"
+    ".x{animation-range-start:cover,entry;animation-range-end:exit}";
   (* [block] is the axis's initial, so the composed value names it by leaving
      the component out. *)
   sheet_optimizes_to ~into:".x{scroll-timeline:--t}"
@@ -730,8 +741,9 @@ let test_columns_composes () =
   (* [auto] is the width's initial, so the count alone names the same pair. *)
   sheet_optimizes_to ~into:".x{columns:3}"
     ".x{column-width:auto;column-count:3;column-height:auto;column-wrap:auto}";
-  (* The shorthand has no spelling for a height of its own, so that run keeps
-     its longhands. *)
+  (* [columns:10em 2/5em] spells this run, but a browser in B that predates the
+     height drops that whole declaration while it reads the width and count
+     longhands, so the run keeps them. *)
   sheet_optimizes_to
     ~into:
       ".x{column-width:10em;column-count:2;column-height:5em;column-wrap:auto}"
@@ -783,6 +795,81 @@ let test_mask_full_run_composes () =
       ".x{-webkit-mask-image:url(a.png);mask-image:url(a.png);-webkit-mask-size:cover;mask-size:cover}"
     ".x{mask-image:url(a.png);mask-size:cover}"
 
+(* A layer shorthand holds one value per slot per layer. A longhand list is
+   repeated to the number of images (CSS Backgrounds 3 sec. 2.2, CSS Masking 1
+   sec. 7.9), so two images beside one [no-repeat] repeat neither, and a second
+   repeat beside one image is dropped; one shorthand layer spells neither. A
+   [var()] may substitute tokens another slot reads, so it stays in its
+   longhand. *)
+let test_layer_run_is_one_plain_layer () =
+  let keeps_longhands ~shorthand input =
+    match Css.of_string input with
+    | Ok { stylesheet; _ } ->
+        let out =
+          String.trim (Css.to_string ~minify:true (Css.optimize stylesheet))
+        in
+        let n = String.length out and m = String.length shorthand in
+        let rec mentions i =
+          i + m <= n
+          && (String.equal (String.sub out i m) shorthand || mentions (i + 1))
+        in
+        if mentions 0 then Alcotest.failf "%s composed into %s" input out
+    | Error e -> Alcotest.failf "parse failed: %s" (Error.to_string e)
+  in
+  let mask rest =
+    String.concat ""
+      [
+        ".x{";
+        rest;
+        ";mask-position:0 \
+         0;mask-size:auto;mask-origin:border-box;mask-clip:border-box;mask-composite:add;mask-mode:match-source}";
+      ]
+  in
+  keeps_longhands ~shorthand:"mask:"
+    (mask "mask-image:url(a.png),url(b.png);mask-repeat:no-repeat");
+  keeps_longhands ~shorthand:"mask:"
+    (mask "mask-image:url(a.png);mask-repeat:no-repeat,repeat");
+  keeps_longhands ~shorthand:"mask:"
+    (mask "mask-image:url(a.png);mask-repeat:var(--r)");
+  let background rest =
+    String.concat ""
+      [
+        ".x{";
+        rest;
+        ";background-position:0 \
+         0;background-size:auto;background-origin:padding-box;background-clip:border-box;background-attachment:scroll;background-color:red}";
+      ]
+  in
+  keeps_longhands ~shorthand:"background:"
+    (background "background-image:url(a.png);background-repeat:no-repeat,repeat");
+  keeps_longhands ~shorthand:"background:"
+    (background "background-image:url(a.png);background-repeat:var(--r)");
+  (* Control: one plain layer still composes. *)
+  sheet_optimizes_to
+    ~into:".x{-webkit-mask:url(a.png)no-repeat;mask:url(a.png)no-repeat}"
+    (mask "mask-image:url(a.png);mask-repeat:no-repeat")
+
+(* Composing two longhands writes the later one where the earlier stands, so a
+   declaration between them that writes its slot, here the [position-try]
+   shorthand (CSS Anchor Positioning 1 sec. 6.3), would decide it instead. *)
+let test_position_try_composes_past_nothing_it_meets () =
+  sheet_optimizes_to
+    ~into:
+      ".x{position-try-order:most-height;position-try:flip-inline;position-try-fallbacks:top}"
+    ".x{position-try-order:most-height;position-try:flip-inline;position-try-fallbacks:top}";
+  (* Control: a declaration of another property lets them compose. *)
+  sheet_optimizes_to ~into:".x{position-try:most-height top;color:red}"
+    ".x{position-try-order:most-height;color:red;position-try-fallbacks:top}"
+
+(* The same holds for [columns]: Chromium 153 reads [-webkit-columns] as
+   [columns], so it resets [column-count] between the two longhands. *)
+let test_columns_composes_past_nothing_it_meets () =
+  sheet_optimizes_to
+    ~into:".x{column-width:10px;-webkit-columns:auto 3;column-count:2}"
+    ".x{column-width:10px;-webkit-columns:auto 3;column-count:2}";
+  sheet_optimizes_to ~into:".x{columns:10px 2;color:red}"
+    ".x{column-width:10px;color:red;column-count:2}"
+
 (* CSS Backgrounds 3 sec. 3.4: [border] resets the whole [border-image] family,
    so contracting a width/style/colour run over a rule that holds one of those
    longhands would drop it. *)
@@ -791,8 +878,14 @@ let test_border_contraction_covers_border_image () =
     ~into:
       ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}"
     ".x{border-image-source:url(b.png);color:red;border-width:4px;border-style:solid;border-color:red}";
-  (* Nothing holds the family, so the run contracts. *)
-  sheet_optimizes_to ~into:".x{color:red;border:4px solid red}"
+  (* Nothing in the sheet holds the family, so under [`Stylesheet] the run
+     contracts. In the default scope another sheet may hold a border-image,
+     which [border] would reset (docs/invariants.md, declaration layer). *)
+  sheet_optimizes_to ~scope:`Stylesheet
+    ~into:".x{color:red;border:4px solid red}"
+    ".x{color:red;border-width:4px;border-style:solid;border-color:red}";
+  sheet_optimizes_to
+    ~into:".x{color:red;border-width:4px;border-style:solid;border-color:red}"
     ".x{color:red;border-width:4px;border-style:solid;border-color:red}"
 
 (* CSS Animations 2 sec. 4.11: [animation] resets every longhand it names,
@@ -938,16 +1031,17 @@ let test_transition_contraction_covers_other_rules () =
    answering for the two together let the source through. Chrome 146 computes
    the image on both sides of each pair below. *)
 let test_border_image_held_across_rules () =
-  (* The run holds the slice and the repeat itself; the source next door is the
-     one the contraction would reset, so the shorthand goes in front of the
-     whole family and the reset is overridden. *)
+  (* In the default scope another sheet may hold a border-image slot the run
+     does not write again, and [border] would reset it, so the run stays
+     expanded (docs/invariants.md, declaration layer). *)
   sheet_optimizes_to
     ~into:
-      ".x{border:4px \
-       solid#0000;border-image-source:url(b.png);border-image-slice:30;border-image-repeat:round}"
+      ".x{border-width:4px;border-style:solid;border-color:#0000;border-image-source:url(b.png);border-image-slice:30;border-image-repeat:round}"
     ".x{border-image-source:url(b.png)}.x{border-image-slice:30;border-image-repeat:round;border-width:4px;border-style:solid;border-color:transparent}";
-  (* The same run with nothing of its own to hold. *)
-  sheet_optimizes_to
+  (* Under [`Stylesheet] the source next door is the one slot the contraction
+     would reset, so the shorthand goes in front of it and the reset is
+     overridden. *)
+  sheet_optimizes_to ~scope:`Stylesheet
     ~into:".x{border:4px solid#0000;border-image-source:url(b.png)}"
     ".x{border-image-source:url(b.png)}.x{border-width:4px;border-style:solid;border-color:transparent}";
   (* A neighbour that cannot be reordered into place keeps the run expanded. *)
@@ -1154,6 +1248,12 @@ let suite =
         test_webkit_mask_position_axes;
       Alcotest.test_case "mask full run composes" `Quick
         test_mask_full_run_composes;
+      Alcotest.test_case "layer run is one plain layer" `Quick
+        test_layer_run_is_one_plain_layer;
+      Alcotest.test_case "position-try composes past nothing it meets" `Quick
+        test_position_try_composes_past_nothing_it_meets;
+      Alcotest.test_case "columns composes past nothing it meets" `Quick
+        test_columns_composes_past_nothing_it_meets;
       Alcotest.test_case "border contraction covers border-image" `Quick
         test_border_contraction_covers_border_image;
       Alcotest.test_case "border-image held across rules" `Quick

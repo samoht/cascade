@@ -124,11 +124,34 @@ let transition_duration_is_zero : duration -> bool = function
   | S 0. | Ms 0. -> true
   | _ -> false
 
+(* Whether [property] names an [<easing-function>] keyword. CSS Transitions 1
+   sec. 2.5 puts both in one [||] group, and Chromium reads the first such
+   keyword as the easing and a second as the property. *)
+let transition_property_is_easing_keyword : transition_property_value -> bool =
+  function
+  | Property name -> (
+      match String.lowercase_ascii name with
+      | "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out"
+      | "step-start" | "step-end" ->
+          true
+      | _ -> false)
+  | All | None | Initial | Inherit | Unset | Revert | Revert_layer | Var _ ->
+      false
+
 let pp_transition_shorthand : transition_shorthand Pp.t =
  fun ctx { property; duration; timing_function; delay; behavior } ->
   let slot pp v =
     Pp.space ctx ();
     pp ctx v
+  in
+  (* A property named like an easing keyword reads as one only after the easing,
+     so the easing goes first, written out even at its initial. *)
+  let timing_function =
+    if transition_property_is_easing_keyword property then (
+      pp_timing_function ctx (Option.value timing_function ~default:Ease);
+      Pp.space ctx ();
+      Option.None)
+    else timing_function
   in
   pp_transition_property_value ctx property;
   (* CSS Transitions 1 (ED) sec. 2.5: "the first value that can be parsed as a
@@ -171,7 +194,9 @@ let normalize_transition_shorthand (s : transition_shorthand) :
   in
   let timing_function =
     match option_map_preserve normalize_timing_function s.timing_function with
-    | Option.Some Ease -> Option.None
+    | Option.Some Ease
+      when not (transition_property_is_easing_keyword s.property) ->
+        Option.None
     | tf -> tf
   in
   let behavior =

@@ -29,7 +29,7 @@ let background_position_singleton :
 let bg_color_part : declaration -> Values.color option = function
   | Declaration { property = Background_color; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
       | Initial -> Some (Transparent : Values.color)
       | v -> Some v)
   | _ -> None
@@ -43,7 +43,7 @@ let bg_repeat_part : declaration -> Properties.background_repeat option =
   function
   | Declaration { property = Background_repeat; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Repeat : Properties.background_repeat)
       | v -> Some v)
   | _ -> None
@@ -57,7 +57,7 @@ let bg_position_part : declaration -> Properties.position_value option =
 let bg_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Background_size; value; _ } -> (
       match value with
-      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | _ -> None
@@ -66,7 +66,7 @@ let bg_attachment_part : declaration -> Properties.background_attachment option
     = function
   | Declaration { property = Background_attachment; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Scroll : Properties.background_attachment)
       | v -> Some v)
   | _ -> None
@@ -74,7 +74,7 @@ let bg_attachment_part : declaration -> Properties.background_attachment option
 let bg_origin_part : declaration -> Properties.background_box option = function
   | Declaration { property = Background_origin; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Padding_box : Properties.background_box)
       | v -> Some v)
   | _ -> None
@@ -82,7 +82,7 @@ let bg_origin_part : declaration -> Properties.background_box option = function
 let bg_clip_part : declaration -> Properties.background_box option = function
   | Declaration { property = Background_clip; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Border_box : Properties.background_box)
       | v -> Some v)
   | _ -> None
@@ -189,7 +189,10 @@ let try_compose_background_at ~ctx idx i =
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
-    if not (same_importance raw_decls) then None
+    if
+      (not (same_importance raw_decls))
+      || List.exists has_runtime_substitution raw_decls
+    then None
     else
       let layer =
         List.fold_left (fun acc (_, f) -> f acc) empty_bg_shorthand parts
@@ -237,12 +240,12 @@ let mask_image_part : declaration -> Properties.background_image option =
   function
   | Declaration { property = Mask_image; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | List _ -> None
       | Initial -> Some (None : Properties.background_image)
       | v -> Some v)
   | Declaration { property = Webkit_mask_image; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | List _ -> None
       | Initial -> Some (None : Properties.background_image)
       | v -> Some v)
   | _ -> None
@@ -251,12 +254,12 @@ let mask_repeat_part : declaration -> Properties.background_repeat option =
   function
   | Declaration { property = Mask_repeat; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Repeat : Properties.background_repeat)
       | v -> Some v)
   | Declaration { property = Webkit_mask_repeat; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Repeat : Properties.background_repeat)
       | v -> Some v)
   | _ -> None
@@ -264,12 +267,12 @@ let mask_repeat_part : declaration -> Properties.background_repeat option =
 let mask_size_part : declaration -> Properties.background_size option = function
   | Declaration { property = Mask_size; value; _ } -> (
       match value with
-      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | Declaration { property = Webkit_mask_size; value; _ } -> (
       match value with
-      | Inherit | Unset | Revert | Revert_layer | Var _ -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Auto : Properties.background_size)
       | v -> Some v)
   | _ -> None
@@ -299,7 +302,7 @@ let mask_box_of_webkit :
 let mask_origin_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_origin; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Border_box : Properties.mask_box)
       | v -> Some v)
   | Declaration { property = Webkit_mask_origin; value; _ } -> (
@@ -312,7 +315,7 @@ let mask_origin_part : declaration -> Properties.mask_box option = function
 let mask_clip_part : declaration -> Properties.mask_box option = function
   | Declaration { property = Mask_clip; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Layers _ -> None
       | Initial -> Some (Border_box : Properties.mask_box)
       | v -> Some v)
   | Declaration { property = Webkit_mask_clip; value; _ } -> (
@@ -325,7 +328,7 @@ let mask_clip_part : declaration -> Properties.mask_box option = function
 let mask_mode_part : declaration -> Properties.mask_mode option = function
   | Declaration { property = Mask_mode; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Modes _ -> None
       | Initial -> Some (Match_source : Properties.mask_mode)
       | v -> Some v)
   | _ -> None
@@ -334,7 +337,7 @@ let mask_composite_part : declaration -> Properties.mask_composite option =
   function
   | Declaration { property = Mask_composite; value; _ } -> (
       match value with
-      | Inherit | Unset -> None
+      | Inherit | Unset | Revert | Revert_layer | Var _ | Composites _ -> None
       | Initial -> Some (Add : Properties.mask_composite)
       | v -> Some v)
   | _ -> None
@@ -394,7 +397,10 @@ let try_compose_mask_at ~ctx idx i =
   if List.length parts < 2 then None
   else
     let raw_decls = List.map fst parts in
-    if not (same_importance raw_decls) then None
+    if
+      (not (same_importance raw_decls))
+      || List.exists has_runtime_substitution raw_decls
+    then None
     else
       let layer =
         List.fold_left (fun acc (_, f) -> f acc) empty_mask_layer parts

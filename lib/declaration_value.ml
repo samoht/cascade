@@ -214,6 +214,12 @@ let read_normal_or_length name t =
     ~default:(Values.read_length ~with_keywords:false)
     t
 
+(* CSS Masking 1 sec. 7.4: [mask-position] is [<position>#], which CSS Values 4
+   sec. 8.3 gives no three-value form. [background-position] and
+   [-webkit-mask-position] keep the legacy [<bg-position>] that has one. *)
+let read_mask_position t : background_position =
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_position_value t
+
 (* CSS Transforms 2 sec. 3: [perspective] is [none | <length [0,inf]>]; the
    keyword is its initial value, so it has to read. *)
 let read_perspective_value t =
@@ -490,12 +496,20 @@ let read_radius_gap_value : type a. a property -> Cursor.t -> declaration option
   | Border_radius -> Some (v Border_radius (read_border_radius t))
   | Border_top_left_radius ->
       Some (v Border_top_left_radius (read_corner_radius t))
+  | Webkit_border_top_left_radius ->
+      Some (v Webkit_border_top_left_radius (read_corner_radius t))
   | Border_top_right_radius ->
       Some (v Border_top_right_radius (read_corner_radius t))
+  | Webkit_border_top_right_radius ->
+      Some (v Webkit_border_top_right_radius (read_corner_radius t))
   | Border_bottom_left_radius ->
       Some (v Border_bottom_left_radius (read_corner_radius t))
+  | Webkit_border_bottom_left_radius ->
+      Some (v Webkit_border_bottom_left_radius (read_corner_radius t))
   | Border_bottom_right_radius ->
       Some (v Border_bottom_right_radius (read_corner_radius t))
+  | Webkit_border_bottom_right_radius ->
+      Some (v Webkit_border_bottom_right_radius (read_corner_radius t))
   | Border_start_start_radius ->
       Some (v Border_start_start_radius (read_corner_radius t))
   | Border_start_end_radius ->
@@ -614,6 +628,8 @@ let read_type_value : type a. a property -> Cursor.t -> declaration option =
   | Text_orientation -> Some (v Text_orientation (read_text_orientation t))
   | Letter_spacing -> Some (v Letter_spacing (read_letter_spacing t))
   | Transform_origin -> Some (v Transform_origin (read_transform_origin t))
+  | Webkit_transform_origin ->
+      Some (v Webkit_transform_origin (read_transform_origin t))
   | Transform_box -> Some (v Transform_box (read_transform_box t))
   | _ -> None
 
@@ -625,9 +641,15 @@ let read_flex_effect_value : type a.
   | Flex_wrap -> Some (v Flex_wrap (read_flex_wrap t))
   | Flex_flow -> Some (v Flex_flow (read_flex_flow t))
   | Flex -> Some (v Flex (read_flex t))
+  | Webkit_flex -> Some (v Webkit_flex (read_flex t))
   | Flex_grow -> Some (v Flex_grow (Properties.read_flex_factor t))
+  | Webkit_flex_grow ->
+      Some (v Webkit_flex_grow (Properties.read_flex_factor t))
   | Flex_shrink -> Some (v Flex_shrink (Properties.read_flex_factor t))
+  | Webkit_flex_shrink ->
+      Some (v Webkit_flex_shrink (Properties.read_flex_factor t))
   | Flex_basis -> Some (v Flex_basis (read_flex_basis t))
+  | Webkit_flex_basis -> Some (v Webkit_flex_basis (read_flex_basis t))
   | Align_items -> Some (v Align_items (read_align_items t))
   | Justify_content -> Some (v Justify_content (read_justify_content t))
   | Transform -> Some (read_transform_value t)
@@ -891,6 +913,7 @@ let read_list_align_value : type a. a property -> Cursor.t -> declaration option
   | List_style_image -> Some (v List_style_image (read_list_style_image t))
   | List_style -> Some (v List_style (Properties.read_list_style t))
   | Order -> Some (v Order (Properties.read_order t))
+  | Webkit_order -> Some (v Webkit_order (Properties.read_order t))
   | Justify_items -> Some (v Justify_items (read_justify_items t))
   | Justify_self -> Some (v Justify_self (read_justify_self t))
   | Align_content -> Some (v Align_content (read_align_content t))
@@ -1115,9 +1138,15 @@ let read_motion_value : type a. a property -> Cursor.t -> declaration option =
   | Timeline_scope -> Some (v Timeline_scope (read_timeline_scope t))
   | Perspective_origin ->
       Some (v Perspective_origin (read_perspective_origin t))
+  | Webkit_perspective_origin ->
+      Some (v Webkit_perspective_origin (read_perspective_origin t))
   | Transform_style -> Some (v Transform_style (read_transform_style t))
+  | Webkit_transform_style ->
+      Some (v Webkit_transform_style (read_transform_style t))
   | Backface_visibility ->
       Some (v Backface_visibility (read_backface_visibility t))
+  | Webkit_backface_visibility ->
+      Some (v Webkit_backface_visibility (read_backface_visibility t))
   | Rotate -> Some (v Rotate (read_rotate_value t))
   | Scale -> Some (v Scale (read_scale t))
   | _ -> None
@@ -1392,7 +1421,7 @@ let read_mask_value : type a. a property -> Cursor.t -> declaration option =
   | Mask_mode -> Some (v Mask_mode (read_mask_mode t))
   | Mask_border -> Some (v Mask_border (read_mask_border t))
   | Mask_size -> Some (v Mask_size (read_background_size_list t))
-  | Mask_position -> Some (v Mask_position (read_background_position t))
+  | Mask_position -> Some (v Mask_position (read_mask_position t))
   | Mask_repeat -> Some (v Mask_repeat (read_background_repeat_list t))
   | Mask_clip -> Some (v Mask_clip (read_mask_box_list ~clip:true t))
   | Mask_origin -> Some (v Mask_origin (read_mask_box_list t))

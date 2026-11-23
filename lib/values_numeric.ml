@@ -56,14 +56,6 @@ let rec pp_angle : angle Pp.t =
         (if Pp.minified ctx then Parser.to_string_minified tokens
          else Parser.string_of_components tokens)
 
-(** Pretty printer for percentage types *)
-let rec pp_percentage ?(always = false) : percentage Pp.t =
- fun ctx -> function
-  | Pct f -> Pp.pct ctx f
-  | Num f -> Pp.float ctx f
-  | Var v -> pp_var (pp_percentage ~always) ctx v
-  | Calc c -> pp_calc (pp_percentage ~always) ctx c
-
 (* Evaluate the static CSS math functions on a [<length>], so the printer stays
    a pure serialiser. min / max / clamp reduce to one dimension when the
    operands share a unit; round / mod / rem / hypot / abs fold on [px] operands;
@@ -105,6 +97,71 @@ let rec infinite_length (c : length calc) : length option =
   | Expr (Val v, Mul, k) | Expr (k, Mul, Val v) -> (
       match sign k with Some s -> fold s v | None -> None)
   | _ -> None
+
+(* A comparison, [abs()], [sign()], [hypot()] or a stepped function over a
+   percentage: its value depends on the sign of the basis the percentage
+   resolves against, not only on the percentages, unlike a sum or a product. *)
+let rec math_arg_has_pct : math_arg -> bool = function
+  | Dim (_, unit) -> String.equal unit "%"
+  | Op (l, _, r) -> math_arg_has_pct l || math_arg_has_pct r
+  | Parens_arg a -> math_arg_has_pct a
+  | Math_call fn -> math_fn_has_pct fn
+  | Lit _ | Const _ | Var_arg _ -> false
+
+and math_fn_has_pct = function
+  | Min_n args | Max_n args | Hypot args -> List.exists math_arg_has_pct args
+  | Clamp_n (a, b, c) ->
+      math_arg_has_pct a || math_arg_has_pct b || math_arg_has_pct c
+  | Abs_n a | Sign_n a -> math_arg_has_pct a
+  | Round_n (_, a, b) | Mod_n (a, b) | Rem_n (a, b) ->
+      math_arg_has_pct a || math_arg_has_pct b
+  | _ -> false
+
+let rec length_has_pct : length -> bool = function
+  | Pct _ -> true
+  | Dimension { unit; _ } -> String.equal unit "%"
+  | Min xs | Max xs | Hypot xs -> List.exists length_has_pct xs
+  | Clamp (a, b, c) -> length_has_pct a || length_has_pct b || length_has_pct c
+  | Round (_, a, b) | Mod (a, b) | Rem_fn (a, b) ->
+      length_has_pct a || length_has_pct b
+  | Abs a -> length_has_pct a
+  | Calc c -> calc_has (fun l -> length_has_pct l) c
+  | _ -> false
+
+and calc_has : type a. (a -> bool) -> a calc -> bool =
+ fun leaf c ->
+  match c with
+  | Val v -> leaf v
+  | Math_fn fn -> math_fn_has_pct fn
+  | Nested i | Parens i -> calc_has leaf i
+  | Expr (l, _, r) -> calc_has leaf l || calc_has leaf r
+  | _ -> false
+
+let rec length_sign_dependent : length -> bool = function
+  | (Min _ | Max _ | Hypot _ | Clamp _ | Round _ | Mod _ | Rem_fn _ | Abs _) as
+    l ->
+      length_has_pct l
+  | Calc c -> calc_sign_dependent length_sign_dependent c
+  | _ -> false
+
+and calc_sign_dependent : type a. (a -> bool) -> a calc -> bool =
+ fun leaf c ->
+  match c with
+  | Val v -> leaf v
+  | Math_fn fn -> math_fn_has_pct fn
+  | Nested i | Parens i -> calc_sign_dependent leaf i
+  | Expr (l, _, r) -> calc_sign_dependent leaf l || calc_sign_dependent leaf r
+  | _ -> false
+
+let length_percentage_sign_dependent : length_percentage -> bool = function
+  | Length l -> length_sign_dependent l
+  | Calc c ->
+      calc_sign_dependent
+        (function
+          | (Length l : length_percentage) -> length_sign_dependent l
+          | _ -> false)
+        c
+  | _ -> false
 
 let rec normalize_length ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (l : length) : length =
@@ -234,20 +291,25 @@ let rec normalize_length_percentage ?(strip = true) ?(non_negative = false)
     ?(ctx = default_calc_ctx) (lp : length_percentage) : length_percentage =
   match lp with
   | Calc c -> (
-      match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
+      let folded =
+        match c |> eval_lp_calc ~ctx |> linear_lp_calc |> eval_lp_calc ~ctx with
+        | Val _ as folded -> folded
+        | folded -> (
+            match infinite_length_percentage folded with
+            | Some v -> Val v
+            | None -> folded)
+      in
+      match folded with
       (* Sec. 10.12 clamps a call past the property's range at computed-value
          time and keeps the declaration, so folding one to a literal the reader
          then refuses would drop it: the arithmetic still folds, and the call
-         stays around the result. This is what [normalize_number] does for the
-         number and time families. *)
+         stays around the result, an infinite one included. This is what
+         [normalize_number] does for the number and time families. *)
       | Val (Length v) when non_negative && negative_length v ->
           Calc (Val (Length v))
       | Val (Pct p) when non_negative && p < 0. -> Calc (Val (Pct p))
       | Val v -> normalize_length_percentage ~strip ~non_negative ~ctx v
-      | folded -> (
-          match infinite_length_percentage folded with
-          | Some v -> v
-          | None -> Calc (map_calc canonical_lp_leaf folded)))
+      | folded -> Calc (map_calc canonical_lp_leaf folded))
   | Length l -> (
       match normalize_length ~strip ~non_negative ~ctx l with
       (* A [<length>] calculation in a [<length-percentage>] slot reads back as
@@ -388,6 +450,10 @@ let time_combine op (a : duration) (b : duration) : duration option =
   match (a, b) with
   | S x, S y -> Option.map (fun r -> S r) (f x y)
   | Ms x, Ms y -> Option.map (fun r -> Ms r) (f x y)
+  (* CSS Values 4 sec. 10.7 sums two units of one type in one of them, here
+     [ms], where whole times stay whole and the fold reads back exactly. *)
+  | S x, Ms y -> Option.map (fun r -> Ms r) (f (x *. 1000.) y)
+  | Ms x, S y -> Option.map (fun r -> Ms r) (f x (y *. 1000.))
   | _ -> Option.none
 
 let time_is_zero : duration -> bool = function
@@ -517,6 +583,18 @@ let angle_combine op (a : angle) (b : angle) : angle option =
   | Rad x, Rad y -> Option.map (fun r -> Rad r) (f x y)
   | Turn x, Turn y -> Option.map (fun r -> Turn r) (f x y)
   | Grad x, Grad y -> Option.map (fun r -> Grad r) (f x y)
+  (* CSS Values 4 sec. 10.7 sums two units of one type in its canonical one.
+     [rad] has no exact ratio to [deg], so a sum holding one stays. *)
+  | (Deg _ | Turn _ | Grad _), (Deg _ | Turn _ | Grad _) -> (
+      let deg : angle -> float = function
+        | Deg v -> v
+        | Turn v -> v *. 360.
+        | Grad v -> v *. 9. /. 10.
+        | _ -> Float.nan
+      in
+      match f (deg a) (deg b) with
+      | Option.Some r when not (Float.is_nan r) -> Option.some (Deg r)
+      | _ -> Option.none)
   | _ -> Option.none
 
 let angle_round : angle -> angle = function
@@ -674,7 +752,7 @@ let rec pp_number_percentage : number_percentage Pp.t =
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_number_percentage ctx v
-  | Calc c -> pp_calc pp_number_percentage ctx c
+  | Calc c -> pp_calc_with ~bare_call:true pp_number_percentage ctx c
 
 (* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
    12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and
@@ -807,7 +885,7 @@ let rec pp_duration_with ~shorten_ms : duration Pp.t =
      and which properties those are is not knowable here, so the wrapper stays
      on a leaf that reads back differently without it. *)
   | Calc c ->
-      pp_calc_with ~unwrap_num:false
+      pp_calc_with ~unwrap_num:false ~bare_call:true
         ~unwrap:(fun d -> not (negative_duration d))
         ~pp_unwrapped:(pp_duration_with ~shorten_ms)
         (pp_duration_with ~shorten_ms:false)

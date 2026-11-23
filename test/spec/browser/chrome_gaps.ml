@@ -137,8 +137,12 @@ let keys_for ?(prefix = "css.properties") ~property ~value () =
   let arity =
     match words with [ _; _ ] -> prop "two_value_syntax" | _ -> []
   in
+  (* An entry of a comma-separated list is a slot as much as a word of a
+     multi-slot value is, so the words are taken entry by entry: the comma
+     belongs to neither. *)
+  let slot_words = List.concat_map split_ws (String.split_on_char ',' value) in
   let per_word =
-    match words with
+    match slot_words with
     | [] | [ _ ] -> []
     | ws -> List.concat_map (fun w -> prop w @ prop (underscored w)) ws
   in
@@ -183,10 +187,15 @@ let keys_for ?(prefix = "css.properties") ~property ~value () =
   in
   (* A function is filed under the property BCD happened to pick, and named the
      same way wherever that is, so the whole dataset is searched by name. *)
+  (* A call that fills one slot of several names its arm as a whole-value call
+     does: [auto url(a.png)] holds the <image> arm in its second slot. *)
+  let call_names =
+    List.sort_uniq String.compare
+      (List.filter_map call_name (value :: slot_words))
+  in
   let calls =
-    match call_name value with
-    | None -> []
-    | Some name ->
+    List.concat_map
+      (fun name ->
         (* An arm a grammar spells as a value TYPE is named after the type, not
            the function that wrote it: [url(a.png)] and [linear-gradient(...)]
            are both the <image> arm. *)
@@ -199,7 +208,8 @@ let keys_for ?(prefix = "css.properties") ~property ~value () =
           ]
         @ Cascade.Support.keys_named (String.concat "" [ name; "_function" ])
         @ Cascade.Support.keys_named
-            (String.concat "" [ underscored name; "_function" ])
+            (String.concat "" [ underscored name; "_function" ]))
+      call_names
   in
   (* BCD names a slot the shorthand accepts [<longhand>_included], and which
      slot a value fills is grammar this harness does not have, so every slot the

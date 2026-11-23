@@ -33,9 +33,10 @@ let spec_lenient_recovery_stylesheets () =
    at-rule's body is <block-contents> just like a style rule's (CSS Nesting 1
    sec. 3.3), so the same recovery applies inside it: Blink 146 drops the one
    declaration and keeps every neighbour, the enclosing group rule and the rest
-   of the sheet. *)
+   of the sheet. The default targets read no nesting, so the recovered sheet is
+   printed flattened. *)
 let spec_lenient_recovery_nested_at_rule_declarations () =
-  let recovered = ".a{@media screen{color:red;background:#00f}}" in
+  let recovered = "@media screen{.a{color:red;background:#00f}}" in
   lenient_recover "bad declaration first in a nested at-rule"
     ".a { @media screen { width: 10; color: red; background: blue } }" recovered
     1;
@@ -52,20 +53,20 @@ let spec_lenient_recovery_nested_at_rule_declarations () =
     1;
   lenient_recover "bad declaration in a style rule under a nested at-rule"
     ".a { @media screen { & b { color: red; width: 10; margin: 0 } } }"
-    ".a{@media screen{& b{color:red;margin:0}}}" 1;
+    "@media screen{.a b{color:red;margin:0}}" 1;
   lenient_recover "bad declaration in a doubly nested at-rule"
     ".a { @media screen { @container (width > 0px) { color: red; width: 10; \
      background: blue } } }"
-    ".a{@media screen{@container(width>0px){color:red;background:#00f}}}" 1;
+    "@media screen{@container(width>0px){.a{color:red;background:#00f}}}" 1;
   lenient_recover "nested at-rule keeps recovery in @layer"
     ".a { @layer x { color: red; width: 10; background: blue } }"
-    ".a{@layer x{color:red;background:#00f}}" 1;
+    "@layer x{.a{color:red;background:#00f}}" 1;
   lenient_recover "nested at-rule keeps recovery in @scope"
     ".a { @scope (.b) { color: red; width: 10; background: blue } }"
-    ".a{@scope(.b){color:red;background:#00f}}" 1;
+    "@scope(.a .b){color:red;background:#00f}" 1;
   lenient_recover "nested at-rule keeps recovery in @starting-style"
     ".a { @starting-style { color: red; width: 10; background: blue } }"
-    ".a{@starting-style{color:red;background:#00f}}" 1;
+    "@starting-style{.a{color:red;background:#00f}}" 1;
   (* A [{}] in the dropped value is consumed with it; the run resumes at the [;]
      after it. An unclosed function has no such [;] - the tokenizer closes it at
      the end of the block, so it swallows the rest, as Blink does. *)
@@ -74,7 +75,7 @@ let spec_lenient_recovery_nested_at_rule_declarations () =
     recovered 1;
   lenient_recover "unclosed function swallows the rest of the block"
     ".a { @media screen { color: red; width: calc(1px; background: blue } }"
-    ".a{@media screen{color:red}}" 1;
+    "@media screen{.a{color:red}}" 1;
   lenient_recover "a run of stray tokens is dropped like a bad declaration"
     ".a { @media screen { color: red; !!!; background: blue } }" recovered 1
 
@@ -83,18 +84,18 @@ let spec_lenient_recovery_nested_at_rule_declarations () =
 let spec_lenient_recovery_nested_declaration_run () =
   lenient_recover "bad declaration immediately before a nested rule"
     ".a { @media screen { width: 10; & b { color: red } } }"
-    ".a{@media screen{& b{color:red}}}" 1;
+    "@media screen{.a b{color:red}}" 1;
   lenient_recover "bad declaration immediately after a nested rule"
     ".a { @media screen { & b { color: red } width: 10; background: blue } }"
-    ".a{@media screen{& b{color:red}background:#00f}}" 1;
+    "@media screen{.a b{color:red}.a{background:#00f}}" 1;
   lenient_recover "dropped declaration does not seal the run before a rule"
     ".a { @media screen { color: red; width: 10; background: blue; & b { \
      margin: 0 } } }"
-    ".a{@media screen{color:red;background:#00f;& b{margin:0}}}" 1;
+    "@media screen{.a{color:red;background:#00f}.a b{margin:0}}" 1;
   lenient_recover "dropped declaration does not seal the run it opened"
     ".a { @media screen { width: 10; color: red; & b { margin: 0 } background: \
      blue } }"
-    ".a{@media screen{color:red;& b{margin:0}background:#00f}}" 1
+    "@media screen{.a{background:#00f;color:red}.a b{margin:0}}" 1
 
 (* [css] reports exactly [expected] warnings leniently, and [~strict:true]
    rejects it exactly when the lenient parse warned. *)

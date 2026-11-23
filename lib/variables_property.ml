@@ -171,13 +171,18 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Border radius *)
   | Border_radius, value -> vars_of_border_radius value
   | Border_top_left_radius, value -> vars_of_length_list value
+  | Webkit_border_top_left_radius, value -> vars_of_length_list value
   | Border_top_right_radius, value -> vars_of_length_list value
+  | Webkit_border_top_right_radius, value -> vars_of_length_list value
   | Border_bottom_left_radius, value -> vars_of_length_list value
+  | Webkit_border_bottom_left_radius, value -> vars_of_length_list value
   | Border_bottom_right_radius, value -> vars_of_length_list value
+  | Webkit_border_bottom_right_radius, value -> vars_of_length_list value
   | Border_image, value -> vars_of_border_image value
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
   | Flex_basis, value -> vars_of_flex_basis value
+  | Webkit_flex_basis, value -> vars_of_flex_basis value
   (* Text and font properties *)
   | Text_indent, value -> vars_of_text_indent_value value
   | Text_decoration_thickness, value -> vars_of_length value
@@ -353,6 +358,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_shadow, value -> vars_of_text_shadow_list value
   (* Transform origin *)
   | Transform_origin, value -> vars_of_transform_origin value
+  | Webkit_transform_origin, value -> vars_of_transform_origin value
   (* Vertical align *)
   | Vertical_align, value -> vars_of_vertical_align value
   (* Will change *)
@@ -376,6 +382,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
       match value with Var v -> [ V v ] | _ -> [])
   | Appearance, value -> vars_of_appearance value
   | Backface_visibility, value -> vars_of_backface_visibility value
+  | Webkit_backface_visibility, value -> vars_of_backface_visibility value
   | Background_attachment, value -> vars_of_background_attachment value
   | Background_clip, value -> vars_of_background_box value
   | Background_origin, value -> vars_of_background_box value
@@ -456,11 +463,14 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value
+  | Webkit_flex, value -> vars_of_flex value
   | Flex_direction, value -> vars_of_flex_direction value
   | Flex_wrap, value -> vars_of_flex_wrap value
   | Flex_flow, value -> vars_of_flex_flow value
   | Flex_grow, value -> vars_of_flex_factor value
+  | Webkit_flex_grow, value -> vars_of_flex_factor value
   | Flex_shrink, value -> vars_of_flex_factor value
+  | Webkit_flex_shrink, value -> vars_of_flex_factor value
   | Float, value -> vars_of_float_side value
   | Font_style, value -> vars_of_font_style value
   | Forced_color_adjust, value -> vars_of_forced_color_adjust value
@@ -485,6 +495,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Object_fit, value -> vars_of_object_fit value
   | Object_view_box, value -> vars_of_object_view_box value
   | Order, value -> vars_of_order value
+  | Webkit_order, value -> vars_of_order value
   | Outline, value -> vars_of_outline value
   | Overflow, value -> vars_of_overflow value
   | Overflow_wrap, value -> vars_of_overflow_wrap value
@@ -501,6 +512,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Overscroll_behavior_inline, value -> vars_of_overscroll_behavior value
   | Page_size, value -> vars_of_page_size value
   | Perspective_origin, value -> vars_of_perspective_origin value
+  | Webkit_perspective_origin, value -> vars_of_perspective_origin value
   | Place_content, value -> vars_of_place_content value
   | Place_items, value -> vars_of_place_items value
   | Pointer_events, value -> vars_of_pointer_events value
@@ -560,6 +572,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Touch_action, value -> vars_of_touch_action value
   | Transform_box, value -> vars_of_transform_box value
   | Transform_style, value -> vars_of_transform_style value
+  | Webkit_transform_style, value -> vars_of_transform_style value
   | Transition_behavior, value -> vars_of_transition_behavior value
   | Overlay, value -> vars_of_overlay value
   | Unicode_bidi, value -> vars_of_unicode_bidi value

@@ -183,7 +183,14 @@ module Transform = struct
   let read_perspective t : transform =
     Cursor.call "perspective" t (fun inner ->
         Cursor.ws inner;
-        let len = read_length inner in
+        (* CSS Transforms 2 sec. 13.1: [perspective( [ <length [0,inf]> | none ]
+           )]. *)
+        let len =
+          if Cursor.looking_at inner "none" then (
+            Cursor.expect_string "none" inner;
+            (None : length))
+          else read_length inner
+        in
         Cursor.ws inner;
         Cursor.expect_eof inner;
         (Perspective len : transform))
@@ -1007,11 +1014,11 @@ let read_rotate_z t : rotate_value =
 
 (* Read custom axis: x y z angle. *)
 let read_rotate_axis_angle t : rotate_value =
-  let first = Cursor.number t in
+  let first = Values.read_constant_number t in
   Cursor.ws t;
-  let second = Cursor.number t in
+  let second = Values.read_constant_number t in
   Cursor.ws t;
-  let third = Cursor.number t in
+  let third = Values.read_constant_number t in
   Cursor.ws t;
   let angle = read_angle t in
   Axis (first, second, third, angle)
@@ -1028,11 +1035,11 @@ let read_rotate_angle_axis_tail angle t =
       Cursor.skip t;
       (Z angle : rotate_value)
   | _ ->
-      let first = Cursor.number t in
+      let first = Values.read_constant_number t in
       Cursor.ws t;
-      let second = Cursor.number t in
+      let second = Values.read_constant_number t in
       Cursor.ws t;
-      let third = Cursor.number t in
+      let third = Values.read_constant_number t in
       (Axis (first, second, third, angle) : rotate_value)
 
 (* CSS Transforms 2 sec. 5 [rotate] also accepts angle then axis: [<angle>
@@ -1155,6 +1162,10 @@ module Transform_origin = struct
      intrinsic-sizing ones a bare length would accept are out. *)
   let read_slot t = read_length ~with_keywords:false t
 
+  (* Sec. 4: "A third value always represents the Z position (or offset) and
+     must be of type <length>", so it takes no percentage. *)
+  let read_z t = read_length ~with_keywords:false ~length_only:true t
+
   let read_position t : transform_origin =
     let position =
       match read_position_value t with
@@ -1163,7 +1174,7 @@ module Transform_origin = struct
       | position -> position
     in
     Cursor.ws t;
-    match Cursor.option read_slot t with
+    match Cursor.option read_z t with
     | Some z -> (
         match position with
         | XY (x, y) -> XYZ (x, y, z)
@@ -1185,7 +1196,7 @@ module Transform_origin = struct
       match Cursor.option read_slot t with
       | Some y -> (
           Cursor.ws t;
-          match Cursor.option read_slot t with
+          match Cursor.option read_z t with
           | Some z -> XYZ (x, y, z)
           | None -> XY (x, y))
       (* CSS Transforms 1 sec. 4: a single <length-percentage> sets the X origin

@@ -444,7 +444,7 @@ A combination produces cascading elimination across all levels.
 
 
 Cross-rule shadowing is NOT removed: every declaration survives. The
-two [.btn] rules merge and [.btn:hover] nests, but no value is dropped -
+two [.btn] rules merge, but no value is dropped -
 [.btn:hover] (0,2,0) outranks [.btn] (0,1,0) by specificity, so the
 merge cannot change which value wins.
 
@@ -454,7 +454,7 @@ merge cannot change which value wins.
   > .btn { padding: 10px }
   > EOF
   $ cascade --minify cross.css
-  .btn{color:red;padding:10px;&:hover{color:#00f}}
+  .btn{color:red;padding:10px}.btn:hover{color:#00f}
 
 Different-value duplicates of the same property in the same rule are
 preserved when the earlier value is a different format the cascade
@@ -508,7 +508,8 @@ font loading, and future stylesheet APIs.
   $ cascade --minify opaque-at-rules.css
   .theme{color:red}@font-face{font-family:Brand;src:url(brand.woff2)}.theme{display:flex}@keyframes fade{0%{opacity:0}to{opacity:1}}.theme{padding:1rem}@property --gap{syntax:"<length>";inherits:false;initial-value:1px}.theme{margin:1rem}
 
-Nested rules must not merge across a nested @scope boundary either.
+Nested rules must not merge across a nested @scope boundary either, and stay
+apart once the default targets, which read no nesting, have them flattened.
 
   $ cat > nested-scope-boundary.css <<EOF
   > .card {
@@ -518,4 +519,4 @@ Nested rules must not merge across a nested @scope boundary either.
   > }
   > EOF
   $ cascade --minify nested-scope-boundary.css
-  .card{.title{color:red}@scope(&)to (.boundary){& .title{display:block}}.title{padding:1rem}}
+  .card .title{color:red}@scope(.card)to (.boundary){& .title{display:block}}.card .title{padding:1rem}

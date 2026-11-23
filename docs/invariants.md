@@ -49,10 +49,17 @@ implementation keeps them.
 ## Master guarantees
 
 - **M1.** `--minify` output is observationally equal over B to its input, in
-  every context, for every objective.
+  every context, for every objective, with one intended rendering change: a
+  vendor-prefixed declaration a browser in B needs is added beside its
+  unprefixed twin ([Target layer](#target-layer)), so that browser applies
+  what the other browsers in B apply.
 - **M2.** `cascade diff --diff=canonical` exits 0 only when the two inputs are
-  observationally equal over B. A reported difference may paint nothing;
-  over-reporting is allowed and each case is a defect to reduce.
+  observationally equal over B, modulo the prefixes the targets need: such a
+  prefix is written on both sides, the comparator's side of M1's exception.
+  So `.a{user-select:none}` and `.a{-webkit-user-select:none;user-select:none}`
+  compare equal on purpose, although Safari, which reads the property only
+  prefixed, applies it under the second alone. A reported difference may paint
+  nothing; over-reporting is allowed and each case is a defect to reduce.
 - **M3.** The canonical form of a sheet equals the canonical form of its
   `--minify` output. This checks that minifier and comparator agree, not that
   either is right; the browser is the oracle for both.
@@ -76,7 +83,9 @@ implementation keeps them.
   The pretty printer writes back the spelling the author wrote where the node
   keeps it (`0.90rem`, `#0000FF`).
 - **Token boundaries are safe.** Elided whitespace never joins two tokens into
-  one or splits one into two.
+  one or splits one into two. Inside a math function the whitespace around
+  `+` and `-` is kept (CSS Values 4 sec. 10.8), and so is the whitespace
+  beside a `var()`, `env()` or `attr()` that may substitute one.
 - **Strings, URLs and idents read back as the value they name.** Each is
   written escaped as CSSOM 1 sec. 2.1 serialises a string, a URL and an
   identifier, whatever characters it holds.
@@ -91,7 +100,8 @@ implementation keeps them.
   one normal form, so the first `--minify` merges what a second would.
 - **A zero loses its unit only where the grammar reads it as a length.** A
   bare `0` replaces a zero length only at a whole `<length>` slot with no
-  `<number>` or `<percentage>` alternative. CSS Flexbox 1 sec. 7.1 reads a
+  `<number>` or `<percentage>` alternative, never inside a math function,
+  where CSS Values 4 sec. 10.9 types it as a `<number>`. CSS Flexbox 1 sec. 7.1 reads a
   unitless zero in `flex` as a flex factor, so `flex:0px` keeps its unit.
 - **A number and a percentage swap only at a slot whose type is known.** A
   math function takes its type from its operands (CSS Values 4 sec. 10.9),
@@ -102,10 +112,24 @@ implementation keeps them.
   written as a gradient stop's colour can supply its position or several
   stops. No rewrite reverses a stop list holding one, drops that stop's
   position or folds it with a neighbour.
+- **A math function stands only where its type does.** An inverse
+  trigonometric function answers an `<angle>` (CSS Values 4 sec. 10.4), so it
+  is refused at a slot that takes no angle and is an angle inside `sin()`.
 - **A property's range binds only a literal.** CSS Values 4 sec. 10.12 clamps
   a math function past the range at computed-value time, so a math function
   of either sign is kept, and a fold keeps the wrapper around a result the
   bare literal could not spell.
+- **A percentage folds through a non-linear function only over a basis that
+  cannot be negative.** A comparison, `abs()`, `sign()`, `hypot()` or a
+  stepped function over a percentage turns on the sign of the basis it
+  resolves against; in `background-position`, `mask-position` and
+  `object-position` that basis is the box less the image (CSS Backgrounds 3
+  sec. 3.6), so such a call stays as written there.
+- **A math function folds over units with a fixed ratio.** CSS Values 4 sec.
+  10.7 converts `s` and `ms`, `deg`, `grad` and `turn`, and the absolute
+  lengths before it compares or sums them, so `min(1s,1000ms)` is `1s`. A call
+  that still cannot fold is one value, and it prints bare wherever the slot
+  reads the bare call back to the same node.
 - **A custom property is single-valued only by `@property` registration.** A
   `calc()` identity that drops an operand (`x * 0`) folds only over an operand
   with no `var()` or over a `<number>` or `<integer>` registration.
@@ -128,6 +152,15 @@ implementation keeps them.
   parses the declaration after it.** An earlier declaration that a later one
   of the same element and stratum covers is what a browser paints when it
   parses the earlier and drops the later.
+- **A substitution keeps its place.** A `var()`, `env()` or `attr()` beside
+  other components may supply any number of them, commas included (CSS
+  Variables 1 sec. 3), so no component is added, dropped, merged or moved
+  around one; a component holding none may be respelled where it stands. A
+  substitution that is the whole value, or an operand of a math function,
+  yields one value and leaves the rest of the declaration free to fold.
+- **A declaration holding a substitution is never invalid.** CSS Variables 1
+  sec. 3 takes it as valid at parse time, so no check of its operands' types
+  deletes it before substitution.
 - **A shorthand covers what it resets.** A shorthand covers an earlier
   longhand only if it writes that longhand, reset-only sub-properties
   included.
@@ -138,6 +171,9 @@ implementation keeps them.
   only when no other rule of the sheet, in any block, and no user-agent rule
   or presentational hint of the HTML rendering section (sec. 15) sets one of
   them. Without the flag it is not built.
+  So `border-width`, `border-style` and `border-color`, or the four side
+  shorthands, become `border` only under `--scope=stylesheet`, since `border`
+  also resets `border-image` (CSS Backgrounds 3 sec. 4.4).
 - **`!important` moves a declaration to another stratum.** Deduplication and
   shorthand composition never combine a normal and an important declaration.
 - **Logical and physical pairs keep their order.** A flow-relative property
@@ -146,6 +182,12 @@ implementation keeps them.
 - **Composition moves no declaration past one it meets.** Folding longhands
   into a shorthand writes them where the shorthand stands, so it happens only
   past declarations of the same stratum that write none of their slots.
+- **List longhands compose entry by entry.** A shorthand over comma lists
+  (`background`, `mask`, `animation-range`) writes each layer or range whole,
+  while a short longhand list repeats to the length of the image or name list.
+  Longhands fold into one only when their lists have one length, none holds a
+  `var()` (which can stand for another slot or several entries) and none is a
+  CSS-wide keyword.
 
 ## Rule layer
 
@@ -165,12 +207,28 @@ implementation keeps them.
   applies nowhere.
 - **Nesting is emitted only where every browser in B parses it.** Nesting is
   neither synthesised nor relaxed into a form an older member of B misreads.
+  Chrome 111 and Safari 16.4 read no nested rule, so under the default floors
+  and under `--enforce-spec` an author's nesting is flattened, which sec. 4
+  and 5 of CSS Nesting 1 make exact. A nested declarations rule (sec. 3.4 and
+  5), which releases that parse nesting read in another order until Chrome
+  130, Firefox 132 and Safari 18.2, is flattened under any floors.
+- **A nested selector means what CSS Nesting 1 makes it mean.** `&` matches
+  what `:is()` of the parent matches (sec. 4), so a parent branch carrying a
+  pseudo-element gives it nothing to match, and a nested declarations rule
+  matches the parent's elements and pseudo-elements at the parent's own weight
+  (sec. 5). In an `@scope` block a selector holding neither `&` nor
+  `:scope` has the scoping root implied at its start (CSS Cascade 6
+  sec. 3.5.3), so a composed selector keeps that root where the parent had it.
+  Flattening, merging a wrapper into its child and synthesis compose selectors
+  under this reading.
 - **At-rules keep their identity.** Of two `@keyframes` of one name in one
   layer the last wins, so dropping the earlier is safe and merging them is
   not. Every `@font-face` adds a face, so none is dropped for another.
-  `@import` rules keep their order and position. A layer declared inside a
-  conditional group rule contributes its order only when the condition holds
-  (CSS Cascade 5 sec. 6.4.3).
+  `@import` rules keep their order and position. A `@keyframes` or
+  `@font-face` rule takes no part in the order of style rules, so it may move
+  past any of them, but not past another definition of its name or family. A
+  layer declared inside a conditional group rule contributes its order only
+  when the condition holds (CSS Cascade 5 sec. 6.4.3).
 
 ## Target layer
 
@@ -185,7 +243,9 @@ implementation keeps them.
   it**, and one a browser in B needs is added beside its unprefixed twin.
 - **Nothing untyped is dropped.** What cascade cannot type is never assumed
   dropped by a browser in B. A declaration the reader refuses and some browser
-  in B parses is a reader bug.
+  in B parses is a reader bug. A form no specification grants and a browser
+  in B parses is kept as the author wrote it, never rewritten into a granted
+  form, which would apply where that browser alone applied it.
 
 ## Modes
 
@@ -214,6 +274,8 @@ Each row names the tests that check a statement. A browser harness under
 |---|---|
 | M1 | `test/render` "render_diff" (each transform paints the source's page in Chromium); the [release criterion](reference.md#release-criteria) |
 | M2 | `test/render` "canonical_agree" (a pair called identical paints one page); `test/test_css_compare_structure.ml` |
+| M1's prefix exception | `test/test_webkit_fallback.ml` "synthesis writes the pair", "an authored prefix is left alone" |
+| M2's prefix exception | `test/test_css_compare_structure.ml` "canonical legacy name alias" ("a prefix a target needs is written on both sides"), "canonical judges for the targets" ("a prefix a target needs is on both sides", "a prefix a target needs survives a merge", "a mask composite's prefixed vocabulary too", "a supports guard a target reads prefixed too") |
 | M3 | The release criterion, over 504 SatCSS sheets and Tailwind's output under both objectives |
 | M4 | `test/fixpoint` (its `spellings` corpus holds the second pass still); `optimize_factor` "pp minify is idempotent"; `test/test_optimize.ml` "optimize preserves physical identity on a fixed point" |
 | M5 | The release criterion, run under both objectives |
@@ -226,21 +288,30 @@ Each row names the tests that check a statement. A browser harness under
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
 | `var()` components | `declaration` "complex values"; `properties_background` "background-image" |
-| Range | `values_math` "spec math range every family" |
+| Range | `values_math` "spec math range every family", "spec math infinite range" |
+| Math result types | `values_math` "spec math inverse trig is an angle" |
 | Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
+| Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
+| Zero operands | `values_math` "spec math zero operands" |
+| Signed percentage basis | `values_math` "spec math signed percentage basis" |
+| Whitespace beside a substitution | `values_math` "spec math var whitespace" |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
-| Fallbacks | `floor_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
+| Substitution never invalid | `values_math` "spec math substitution never invalid" |
+| Fallbacks | `floor_fallbacks_survive`, `prefixed_fallbacks_across_rules` and `legacy_keyword_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
-| Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run" |
+| Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run"; `optimize_declarations` "border keeps longhands beside a border-image", "border reset reads every block"; `test/test_css_compare_structure.ml` "canonical border sides" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
 | Logical and physical | `optimize_declarations` "lossless keeps logical physical order" |
-| Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
+| Composition order | `optimize_declarations` "a box longhand folds past nothing it meets"; `shorthand_compose` "position-try composes past nothing it meets", "columns composes past nothing it meets"; `rule_order` "composition reads the order"; `fuzz/fuzz_rule_order.ml` "run projection is idempotent" |
+| List composition | `shorthand_compose` "layer run is one plain layer"; `shorthand_compose` "timeline and range compose"; `declaration_shorthand` "mask boxes" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |
-| Nesting | `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis"; no test against the floors yet |
-| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point" |
+| Nesting | `test_nesting_follows_the_floors`, `test_nested_declarations_are_flattened` in `test/test_nest.ml`; `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis" |
+| Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml`; `test_scope_keeps_the_implied_root`, `test_nested_scope_roots_under_the_parent` in `test/test_flatten.ml`; `test_merge_lone_in_scope`, `test_nesting_selector_is_not_reparented` in `test/test_nest.ml` |
+| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point"; `test/test_css_compare_structure.ml` "canonical name-defining rules move" |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
-| Nothing untyped dropped | `test/spec/browser/accept_set`; `test/render/parse_recovery` |
+| Nothing untyped dropped | `test/spec/browser/accept_set` (every CSS length unit, `if()` and dashed functions among its values); `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots"; `declaration_spec` "contain-intrinsic-size keeps a trailing auto"; `test/test_declaration_spec.ml` "a substitution function defers the property", "a value a browser keeps reads"; `test/test_declaration_spec.ml` "mask shorthand keeps a three-value position"; `mask_three_value_position_kept_as_written` in `test/test_optimize_declarations.ml` |
 | Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print" |
 | Assumptions | Convention only: no test exercises a page that breaks a hypothesis |

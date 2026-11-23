@@ -131,6 +131,8 @@ let length_sizing_keywords : (string * length) list =
     ("-webkit-max-content", Webkit_max_content);
     ("-webkit-min-content", Webkit_min_content);
     ("-webkit-fit-content", Webkit_fit_content);
+    ("-webkit-fill-available", Webkit_fill_available);
+    ("-moz-available", Moz_available);
     ("-moz-max-content", Moz_max_content);
     ("-moz-min-content", Moz_min_content);
     ("-moz-fit-content", Moz_fit_content);
@@ -707,6 +709,57 @@ let check_math_family t family (calc : _ calc) =
       | _ -> ())
   | _ -> ()
 
+(* A unit of [family], for asking a slot's leaf reader whether it takes that
+   type. *)
+let family_unit = function
+  | Number -> Option.none
+  | Length -> Option.some "px"
+  | Percent -> Option.some "%"
+  | Time -> Option.some "s"
+  | Angle -> Option.some "deg"
+  | Frequency -> Option.some "hz"
+  | Resolution -> Option.some "dppx"
+  | Flex -> Option.some "fr"
+
+(* The unit a call answering its arguments' type carries, folded or not. *)
+let math_fn_unit fn =
+  match math_fn_result fn with
+  | Some (United (_, unit)) -> Option.some unit
+  | Some (Scalar _) -> Option.none
+  | None -> Option.bind (math_fn_family fn) family_unit
+
+(* CSS Values 4 (ED) sec. 10.1 lets a calculation stand only where its type
+   does, and sec. 10.9 types it from its operands. A [<length>] or a [<time>]
+   leaf comes through the slot's own reader, which vouches for its type; a
+   comparison, a stepped-value call, [abs()] or [hypot()] reads its arguments
+   with any unit, so its type is checked here against the same reader: the call
+   stands only where a literal of its unit would. [calc(min(1s, 2s))] is no
+   [<length>], and [calc(min(10px, 1px))] no [<alpha-value>]. *)
+let check_operand_types : type a. (Cursor.t -> a) -> Cursor.t -> a calc -> unit
+    =
+ fun read_a t calc ->
+  let slot_takes unit =
+    let probe = Cursor.of_string (String.concat "" [ "1"; unit ]) in
+    match read_a probe with
+    | _ ->
+        Cursor.ws probe;
+        Cursor.is_done probe
+    | exception Cursor.Parse_error _ -> false
+  in
+  let rec check : a calc -> unit = function
+    | Math_fn fn -> (
+        match math_fn_unit fn with
+        | Some unit when not (slot_takes unit) ->
+            Cursor.err_invalid t "incompatible calc types"
+        | Some _ | None -> ())
+    | Nested inner | Parens inner -> check inner
+    | Expr (left, _, right) ->
+        check left;
+        check right
+    | Num _ | Math_const _ | Val _ | Var _ | Sibling_index | Sibling_count -> ()
+  in
+  check calc
+
 type inferred_calc_type =
   | Dimension of int
     (* Exponent 0 is a number, 1 is the contextual numeric value, and
@@ -735,7 +788,7 @@ let read_num_expr t : float =
   | None -> Cursor.err_invalid t "non-numeric calc expression"
 
 let math_fn_scalar_type = function
-  | Asin _ | Acos _ | Atan _ | Atan2 _ -> Deferred
+  | Asin _ | Acos _ | Atan _ | Atan2 _ -> Result_unit "deg"
   | Sin _ | Cos _ | Tan _ | Sqrt _ | Exp _ | Log _ | Pow _ | Hypot _ | Sign_n _
   | Abs_n _ | Round_n _ | Mod_n _ | Rem_n _ | Min_n _ | Max_n _ | Clamp_n _ ->
       Dimension 0
@@ -965,6 +1018,7 @@ let read_calc : type a.
         Option.iter
           (fun result_type -> validate_calc_type inner result_type result)
           result_type;
+        check_operand_types read_a inner result;
         result)
   in
   if Cursor.looking_at_func "calc" t then read "calc"
@@ -981,6 +1035,7 @@ let read_calc : type a.
     Option.iter
       (fun result_type -> validate_calc_type t result_type result)
       result_type;
+    check_operand_types read_a t result;
     result)
   else Cursor.err t "calc() or var()"
 
@@ -1054,17 +1109,6 @@ let read_number_percentage_expression t =
 (* The typed [clamp / minmax / min / max] length readers are part of the
    [read_length] mutual-recursion group (see below); the function-call
    dispatcher in [length_function_readers] references them. *)
-
-let read_anchor_size_length inner =
-  let size = Cursor.consume_remaining_as_string ~trim:true inner in
-  if size = "" then Cursor.err_expected inner "anchor-size argument";
-  Anchor_size size
-
-let read_anchor_name_side inner first =
-  if Custom_property_name.is_valid first then
-    let side = Cursor.ident inner in
-    (Some first, side)
-  else (None, first)
 
 let read_attr_length_type inner =
   Cursor.ws inner;

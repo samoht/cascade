@@ -71,8 +71,10 @@ module Length = struct
         viewport_v (fun w h -> f *. Float.min w h /. 100.)
     | Vmax f | Lvmax f | Svmax f | Dvmax f ->
         viewport_v (fun w h -> f *. Float.max w h /. 100.)
-    | Vi f -> Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
-    | Vb f -> Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
+    | Vi f | Svi f | Lvi f | Dvi f ->
+        Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
+    | Vb f | Svb f | Lvb f | Dvb f ->
+        Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
     | Cqw f | Cqi f -> Option.map (fun w -> f *. w /. 100.) ctx.container_width
     | Cqh f | Cqb f -> Option.map (fun h -> f *. h /. 100.) ctx.container_height
     | Cqmin f -> container_v (fun w h -> f *. Float.min w h /. 100.)
@@ -225,6 +227,9 @@ module Length = struct
           Values.Calc_size (simplify ~visited basis, simplify_calc ~visited calc)
       | Values.Anchor (name, side, fallback) ->
           Values.Anchor (name, side, Option.map (simplify ~visited) fallback)
+      | Values.Anchor_size (name, size, fallback) ->
+          Values.Anchor_size
+            (name, size, Option.map (simplify ~visited) fallback)
       | value -> value
     in
     let ops : Values.length Calc_residual.ops =

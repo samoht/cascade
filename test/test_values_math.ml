@@ -190,8 +190,12 @@ let spec_values_l45_math_color () =
   check_length ~expected:"calc-size(auto,size + 1rem)"
     "calc-size(auto, size + 1rem)";
   check_length ~expected:"anchor-size(width)" "anchor-size(width)";
-  check_length ~expected:"anchor(--tooltip width,10px)"
-    "anchor(--tooltip width, 10px)";
+  (* CSS Anchor Positioning 1 (ED) sec. 3.2 spells [<anchor-side>] without the
+     [<anchor-size>] keywords, and sec. 5.1 makes every argument of
+     [anchor-size()] optional. *)
+  check_length ~expected:"anchor(--tooltip top,10px)"
+    "anchor(--tooltip top, 10px)";
+  check_length "anchor-size()";
   check_number ~expected:"calc(1 + sibling-index())" "calc(1 + sibling-index())";
   check_number ~expected:"calc(sibling-count() - 1)" "calc(sibling-count() - 1)";
   check_percentage ~expected:"calc(50% + 10%)" "calc(50% + 10%)";
@@ -220,10 +224,15 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in oklab,var(--a) var(--b),blue)"
     ~optimized:"color-mix(in oklab,var(--a) var(--b),#00f)"
     "color-mix(in oklab, var(--a) var(--b), blue)";
-  (* A [var()] followed by a concrete colour can only be the percentage, so it
-     is read percentage-first and re-emitted colour-first. *)
-  check_color ~expected:"color-mix(in oklab,red var(--p),blue)"
-    ~optimized:"color-mix(in oklab,red var(--p),#00f)"
+  (* Read as a colour, a [var()] followed by a concrete colour is the
+     percentage, so it is re-emitted colour-first. A declaration keeps the
+     tokens as written, since there it may substitute more than the percentage
+     (CSS Variables 1 sec. 3). *)
+  check_value_cursor "color" read_color pp_color
+    ~expected:"color-mix(in oklab,red var(--p),blue)"
+    "color-mix(in oklab, var(--p) red, blue)";
+  decl_optimizes ~prop:"color" ~held:"color-mix(in oklab,var(--p) red,blue)"
+    ~into:"color-mix(in oklab,var(--p) red,blue)"
     "color-mix(in oklab, var(--p) red, blue)";
   check_color ~expected:"hsl(0 50%50%)" ~optimized:"#bf4040" "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/50%)"
@@ -232,7 +241,7 @@ let spec_values_l45_math_color () =
     "color(display-p3 none 0.5 1)";
   neg_cursor read_length "calc-size()";
   neg_cursor read_length "anchor()";
-  neg_cursor read_length "anchor-size()";
+  neg_cursor read_length "anchor(--tooltip width, 10px)";
   neg_cursor read_number "sibling-index(1)";
   neg_cursor read_color "color-mix(in oklab)";
   neg_cursor read_color "color-mix(in oklab, red calc(50%) calc(20%), blue)";
@@ -435,8 +444,8 @@ let spec_math_result_type () =
   decl_optimizes ~prop:"width" ~into:"5px" "hypot(3px,4px)";
   (* [line-height] is <number> | <length-percentage>, so the length the call
      answers is one of its types and the call stands, where the same call at an
-     <opacity-value> does not. *)
-  decl_optimizes ~prop:"line-height" ~into:"calc(abs(-1px))" "abs(-1px)";
+     <opacity-value> does not; it folds to the length it resolves to. *)
+  decl_optimizes ~prop:"line-height" ~into:"1px" "abs(-1px)";
   decl_optimizes ~prop:"line-height" ~into:"2" "abs(-2)";
   (* Sec. 10.1 puts [calc()] among the math functions rather than above them, so
      the wrapped spelling answers the same type and lands the same way. *)
@@ -652,9 +661,9 @@ let spec_math_type_at_the_number_percentage_readers () =
   decl_optimizes ~prop:"scale" ~into:"2" "calc(2)";
   decl_optimizes ~prop:"scale" ~into:"1%" "abs(-1%)";
   decl_optimizes ~prop:"font-stretch" ~into:"50%" "calc(50%)";
-  decl_optimizes ~prop:"font-stretch" ~into:"calc(abs(-1%))" "abs(-1%)";
+  decl_optimizes ~prop:"font-stretch" ~into:"1%" "abs(-1%)";
   decl_optimizes ~prop:"text-size-adjust" ~into:"50%" "calc(50%)";
-  decl_optimizes ~prop:"text-size-adjust" ~into:"calc(abs(-1%))" "abs(-1%)";
+  decl_optimizes ~prop:"text-size-adjust" ~into:"1%" "abs(-1%)";
   neg_cursor P.read_font_stretch "calc(2)";
   neg_cursor P.read_text_size_adjust "calc(2)"
 
@@ -975,6 +984,272 @@ let spec_math_function_every_type () =
   neg_cursor Css.Properties.read_opacity "calc(min(50%, 1px) + max(1px, 2px))";
   neg_cursor read_duration "min(1s, 2px)"
 
+(* CSS Values 4 sec. 10.7 (simplification) converts the units of one type with a
+   fixed ratio between them before it compares or sums, so a call over [s] and
+   [ms], or [deg] and [turn], or [in] and [px], folds like one over a single
+   unit. A call that still cannot fold is one math function and prints bare, the
+   way the length printers write it: sec. 10.1 reads [min(...)] where it reads
+   [calc(min(...))]. Chrome 153 computes each row alike. *)
+let spec_math_fixed_ratio_units () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("transition-duration", "min(1s,1000ms)", "1s");
+      ("transition-duration", "max(1s,500ms)", "1s");
+      ("transition-delay", "clamp(1s,500ms,2s)", "1s");
+      ("transition-duration", "calc(1s + 500ms)", "1.5s");
+      ("rotate", "min(1turn,10deg)", "10deg");
+      ("rotate", "calc(1turn + 10deg)", "370deg");
+      ("width", "min(1in,100px)", "1in");
+      ("width", "max(1cm,10mm)", "1cm");
+      ("transition-duration", "min(1s,var(--x))", "min(1s,var(--x))");
+      ("transition-duration", "abs(var(--x))", "abs(var(--x))");
+      ("animation-delay", "max(1s,var(--x))", "max(1s,var(--x))");
+      ("rotate", "min(10deg,var(--a))", "min(10deg,var(--a))");
+      ("border-image-slice", "min(10%,var(--x))", "min(10%,var(--x))");
+    ]
+
+(* A zero inside a math function keeps its unit: CSS Values 4 sec. 10.9 types a
+   unitless [0] there as a <number>, so [max(0,var(--v))] at a <line-width>
+   mixes a number with a length and is invalid at computed-value time. And sec.
+   10.9 gives [round(A, 0)], [mod(A, 0)] and [rem(A, 0)] the value NaN, which
+   Chrome 153 computes to [0px] at a line width, not to [A]. *)
+let spec_math_zero_operands () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("outline-width", "max(0px,var(--v))", "max(0px,var(--v))");
+      ("border-width", "min(0px,var(--v))", "min(0px,var(--v))");
+      ("border-top-width", "max(var(--v),0px)", "max(var(--v),0px)");
+      ("column-rule-width", "clamp(0px,var(--v),2px)", "clamp(0px,var(--v),2px)");
+      ("-webkit-text-stroke-width", "max(0px,var(--v))", "max(0px,var(--v))");
+      ("outline-width", "round(1px,0px)", "round(1px,0px)");
+      ("border-top-width", "mod(1px,0px)", "mod(1px,0px)");
+      ("width", "rem(1px,0px)", "rem(1px,0px)");
+      ("opacity", "round(1,0)", "calc(NaN)");
+    ]
+
+(* A percentage in a position resolves against the box less the image (CSS
+   Backgrounds 3 sec. 3.6, CSS Images 3 sec. 5.5), which is negative when the
+   image is the larger. A comparison, [abs()] or a stepped function over such a
+   percentage depends on that sign, so [min(10%,20%)] is [20%] of the basis
+   there, not [10%]: the call is kept. A percentage whose basis cannot be
+   negative, as in [transform-origin], still folds. *)
+let spec_math_signed_percentage_basis () =
+  let optimized prop value =
+    let css = String.concat "" [ ".x{"; prop; ":"; value; "}" ] in
+    match Css.of_string ~strict:false css with
+    | Ok p -> Css.to_string ~minify:true (Css.optimize p.stylesheet)
+    | Error _ -> Alcotest.failf "parse failed: %s" css
+  in
+  let keeps prop value call =
+    let out = optimized prop value in
+    Alcotest.(check bool)
+      (Fmt.str "%s:%s keeps %s in %s" prop value call out)
+      true
+      (Astring.String.is_infix ~affix:call out)
+  in
+  keeps "background-position" "min(10%,20%) 0" "min(10%,20%)";
+  keeps "background-position-x" "max(10%,20%)" "max(10%,20%)";
+  keeps "background-position" "calc(min(10%,20%) + 1px) 0" "min(10%,20%)";
+  keeps "object-position" "min(10%,20%) 0" "min(10%,20%)";
+  keeps "mask-position" "clamp(10%,15%,20%) 0" "clamp(10%,15%,20%)";
+  keeps "background" "url(a.png) min(10%,20%) 0" "min(10%,20%)";
+  keeps "mask" "url(a.png) min(10%,20%) 0" "min(10%,20%)";
+  keeps "background-position" "abs(-10%) 0" "abs(-10%)";
+  decl_optimizes ~prop:"transform-origin" ~into:"10% 0" "min(10%,20%) 0";
+  decl_optimizes ~prop:"background-position-x" ~into:"10px" "min(10px,20px)"
+
+(* A [var()] inside a math function may substitute an operator, and CSS Values 4
+   sec. 10.1 requires whitespace on both sides of [+] and [-], so the whitespace
+   beside a [var()] there is part of the value: with [--op: -], [calc(100%
+   var(--op) 10px)] is [100% - 10px], and [calc(100%var(--op) 10px)] is invalid.
+   Chrome 153 computes 490px for the first and 500px for the second in a 500px
+   box. *)
+let spec_math_var_whitespace () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("width", "calc(100% var(--op) 10px)", "calc(100% var(--op) 10px)");
+      ("width", "calc(1px var(--op) var(--b))", "calc(1px var(--op) var(--b))");
+      ("width", "min(100% var(--op) 10px,2px)", "min(100% var(--op) 10px,2px)");
+      ("--x", "calc(100% var(--op) 10px)", "calc(100% var(--op) 10px)");
+    ]
+
+(* CSS Values 4 sec. 10.7.1 lets [-infinity] reach a length, and sec. 10.12
+   clamps the result to the property's range at computed-value time, so
+   [calc(-infinity*1px)] is [0px] in a sizing property, where the folded literal
+   [-3.40282e38px] is refused: Chromium 153 computes [min-height] [0px] against
+   [auto] and [max-width] [0px] against [none]. The fold keeps the call around
+   the result, as for any other negative one. *)
+let spec_math_infinite_range () =
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (input, into) -> decl_optimizes ~prop ~held:input ~into input)
+        [
+          ("calc(-infinity*1px)", "calc(-3.40282e38px)");
+          ("calc(infinity*-1px)", "calc(-3.40282e38px)");
+          ("calc(-infinity*1%)", "calc(-3.40282e38%)");
+          ("calc(infinity*1px)", "3.40282e38px");
+        ])
+    [
+      "width";
+      "height";
+      "min-width";
+      "min-height";
+      "max-width";
+      "max-height";
+      "inline-size";
+      "block-size";
+      "min-inline-size";
+      "min-block-size";
+      "max-inline-size";
+      "max-block-size";
+    ];
+  (* Control: a property that takes a negative length takes the literal. *)
+  decl_optimizes ~prop:"margin-left" ~held:"calc(-infinity*1px)"
+    ~into:"-3.40282e38px" "calc(-infinity*1px)"
+
+(* CSS Variables 1 sec. 3 takes a declaration holding a [var()] as valid at
+   parse time, so no type check on the call's operands can refuse it before
+   substitution. Cascade deleted these as invalid; Chromium 153 computes
+   [rotate:atan2(var(--y),var(--x))] as [45deg] with both at [1],
+   [rotate:acos(var(--v))] as [90deg] and [rotate:x acos(var(--v))] as [x 90deg]
+   with [--v:0], and [clip-path:circle(var(--v) 0% 0%)] as [circle(10px at 0%
+   0%)] with [--v:10px at]. The print of [calc(atan2(...))] is one of them, so a
+   second pass kept deleting what the first printed. *)
+let spec_math_substitution_never_invalid () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~held:input ~into input)
+    [
+      ("rotate", "atan2(var(--y),var(--x))", "atan2(var(--y),var(--x))");
+      ("rotate", "acos(var(--v))", "acos(var(--v))");
+      ("rotate", "asin(var(--v))", "asin(var(--v))");
+      ("rotate", "atan(var(--v))", "atan(var(--v))");
+      ("rotate", "atan2(1px,var(--x))", "atan2(1px,var(--x))");
+      ("rotate", "x acos(var(--v))", "x acos(var(--v))");
+    ];
+  decl_optimizes ~prop:"rotate" ~held:"atan2(var(--y),var(--x))"
+    ~into:"atan2(var(--y),var(--x))" "calc(atan2(var(--y),var(--x)))";
+  decl_optimizes ~prop:"clip-path" ~held:"circle(var(--v) 0%0%)"
+    ~into:"circle(var(--v) 0%0%)" "circle(var(--v) 0% 0%)"
+
+(* CSS Values 4 sec. 10.1 puts a math function wherever its resolved type
+   stands, and sec. 10.9 rounds one standing at an [<integer>]. Cascade deleted
+   these, which Chromium 153 accepts ([CSS.supports] is true for each): the
+   counter values, the feature and variation settings and the rotation axis. A
+   call that folds to a constant reads as that number, rounded at an [<integer>]
+   to the nearest, towards positive infinity on a tie. *)
+let spec_math_integer_slots () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~held:into ~into input)
+    [
+      ("counter-increment", "a calc(1)", "a 1");
+      ("counter-increment", "a calc(1.5)", "a 2");
+      ("counter-reset", "a calc(2*3)", "a 6");
+      ("font-feature-settings", "\"liga\" calc(2)", "\"liga\" 2");
+      ("font-variation-settings", "\"wght\" calc(400)", "\"wght\" 400");
+      ("rotate", "1 calc(1) 0 45deg", "45deg 1 1 0");
+    ];
+  (* An [@property] initial value is a math function at a [<number>] syntax,
+     computationally independent, so the rule stands and the value folds. *)
+  let css =
+    "@property --x{syntax:\"<number>\";inherits:false;initial-value:calc(1.5)}"
+  in
+  match Css.of_string ~strict:false css with
+  | Ok p ->
+      Alcotest.(check string)
+        "@property initial-value calc(1.5)"
+        "@property --x{syntax:\"<number>\";inherits:false;initial-value:1.5}"
+        (String.trim (Css.to_string ~minify:true p.stylesheet))
+  | Error e -> Alcotest.failf "%s" (Error.to_string e)
+
+(* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
+   [<angle>], so one standing where an angle cannot is invalid. Cascade typed
+   the result as a bare degree count and folded [opacity:asin(0)] to
+   [opacity:0]; Chromium 153 refuses every source here ([CSS.supports] is false)
+   and keeps [rotate:asin(1)] and [opacity:sin(asin(.5))]. *)
+let spec_math_inverse_trig_is_an_angle () =
+  List.iter
+    (fun (prop, value) ->
+      Alcotest.(check string)
+        (String.concat "" [ prop; ":"; value; " is refused" ])
+        ""
+        (match
+           Css.of_string ~strict:false
+             (String.concat "" [ ".x{"; prop; ":"; value; "}" ])
+         with
+        | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
+        | Error e -> Error.to_string e))
+    [
+      ("opacity", "asin(0)");
+      ("opacity", "calc(asin(0))");
+      ("opacity", "acos(1)");
+      ("opacity", "atan2(0,1)");
+      ("z-index", "asin(0)");
+      ("line-height", "atan(0)");
+      ("flex-grow", "acos(1)");
+      ("scale", "asin(0)");
+      ("width", "calc(asin(0)*1px)");
+    ];
+  decl_optimizes ~prop:"rotate" ~held:"90deg" ~into:"90deg" "asin(1)";
+  (* [sin()] of that angle takes it in degrees: [sin(asin(.5))] is [.5]. *)
+  decl_optimizes ~prop:"opacity" ~held:".5" ~into:".5" "sin(asin(.5))"
+
+(* docs/invariants.md, "Normalisation preserves observational equality and is
+   idempotent": two spellings of one value reach one normal form, so the first
+   --minify merges what a second would, and the printer folds nothing ("The
+   printer round-trips"). calc(2 * 16/9) and calc(16/9 * 2) are one
+   aspect-ratio, CSS Values 4 sec. 10.10 simplifies arithmetic over numbers to
+   one number, and M6 bounds a number at six significant figures, as line-height
+   does. *)
+let aspect_ratio_folds_in_normalisation () =
+  decl_optimizes ~prop:"aspect-ratio" ~held:"calc(16/9)" ~into:"1.77778"
+    "calc(16 / 9)";
+  decl_optimizes ~prop:"aspect-ratio" ~held:"calc(2*16/9)" ~into:"3.55556"
+    "calc(2 * 16/9)";
+  decl_optimizes ~prop:"aspect-ratio" ~held:"auto calc(16/9)"
+    ~into:"auto 1.77778" "auto calc(16 / 9)";
+  decl_lossless ~prop:"aspect-ratio" ~into:"calc(16/9)" "calc(16 / 9)";
+  let once =
+    Css.minify
+      (Css.stylesheet
+         "a{aspect-ratio:calc(2 * 16/9)}b{aspect-ratio:calc(16/9 * 2)}")
+  in
+  Alcotest.(check string)
+    "two spellings of one ratio merge in one pass" "a,b{aspect-ratio:3.55556}"
+    once;
+  Alcotest.(check string)
+    "the merged ratio is a fixed point" once
+    (Css.minify (Css.stylesheet once))
+
+(* The same invariant at contain-intrinsic-*: CSS Values 4 sec. 10.10 simplifies
+   calc(1e2px) to the dimension 100px, which 100E0px also spells, so the two
+   reach one normal form and the first --minify merges them. *)
+let contain_intrinsic_size_folds_in_normalisation () =
+  List.iter
+    (fun prop ->
+      decl_optimizes ~prop ~into:"100px" "calc(1e2px)";
+      let src =
+        String.concat "" [ "a{"; prop; ":100E0px}b{"; prop; ":calc(1e2px)}" ]
+      in
+      let once = Css.minify (Css.stylesheet src) in
+      Alcotest.(check string)
+        (prop ^ ": two spellings merge in one pass")
+        (String.concat "" [ "a,b{"; prop; ":100px}" ])
+        once;
+      Alcotest.(check string)
+        (prop ^ ": a fixed point") once
+        (Css.minify (Css.stylesheet once)))
+    [
+      "contain-intrinsic-width";
+      "contain-intrinsic-inline-size";
+      "contain-intrinsic-size";
+    ];
+  decl_optimizes ~prop:"contain-intrinsic-width" ~into:"auto 100px"
+    "auto calc(1e2px)"
+
 let suite =
   ( "values_math",
     [
@@ -1004,6 +1279,17 @@ let suite =
         spec_math_range_every_family;
       test_case "spec math function every type" `Quick
         spec_math_function_every_type;
+      test_case "spec math fixed-ratio units" `Quick spec_math_fixed_ratio_units;
+      test_case "spec math zero operands" `Quick spec_math_zero_operands;
+      test_case "spec math signed percentage basis" `Quick
+        spec_math_signed_percentage_basis;
+      test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
+      test_case "spec math infinite range" `Quick spec_math_infinite_range;
+      test_case "spec math integer slots" `Quick spec_math_integer_slots;
+      test_case "spec math inverse trig is an angle" `Quick
+        spec_math_inverse_trig_is_an_angle;
+      test_case "spec math substitution never invalid" `Quick
+        spec_math_substitution_never_invalid;
       test_case "spec bare math functions" `Quick spec_bare_math_functions;
       test_case "spec math result type" `Quick spec_math_result_type;
       test_case "spec math sum type check" `Quick spec_math_sum_type_check;
@@ -1015,4 +1301,8 @@ let suite =
         spec_math_type_at_the_number_percentage_readers;
       test_case "spec math range keeps the call" `Quick
         spec_math_range_keeps_the_call;
+      test_case "aspect-ratio folds in normalisation" `Quick
+        aspect_ratio_folds_in_normalisation;
+      test_case "contain-intrinsic-size folds in normalisation" `Quick
+        contain_intrinsic_size_folds_in_normalisation;
     ] )

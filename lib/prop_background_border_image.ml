@@ -11,7 +11,7 @@ let rec pp_border_image_slice_item ctx (value : border_image_slice_item) =
   | Calc c ->
       (* CSS Values 4 sec. 10.13 keeps the call valid where the [0,inf] range is
          exceeded, so [calc(-10%)] computes and a bare [-10%] is dropped. *)
-      Values.pp_calc ~unwrap_num:false
+      Values_calc.pp_calc_with ~unwrap_num:false ~bare_call:true
         ~unwrap:(fun v ->
           match (v : border_image_slice_item) with
           | Pct f -> f >= 0.
@@ -147,9 +147,8 @@ let normalize_border_image_slots : border_image -> border_image =
         | _ -> false)
       value.outset
   in
-  (* The printer writes one [/] per slot, so a dropped width with a kept outset
-     would put the outset in the width's place. The width only goes when the
-     outset does. *)
+  (* A width at its initial stays beside a kept outset: [//] is the newer
+     spelling, and [/1/] the one every browser reads. *)
   let width =
     if Option.is_some outset then value.width
     else
@@ -210,6 +209,7 @@ let pp_border_image : border_image Pp.t =
   | None -> ()
   | Some outset ->
       first := false;
+      if Option.is_none width then Pp.char ctx '/';
       Pp.char ctx '/';
       Pp.list ~sep:Pp.space pp_border_image_outset_item ctx outset);
   pp_bg_prop maybe_space
@@ -490,10 +490,17 @@ let read_border_image_slice_group t =
   let slice = read_border_image_slice_offsets t in
   Cursor.ws t;
   if Cursor.slash_opt t then (
+    Cursor.ws t;
+    (* CSS Backgrounds 3 sec. 6.7: [<'border-image-slice'> [ /
+       <'border-image-width'> | / <'border-image-width'>? /
+       <'border-image-outset'> ]?], so [//] leaves the width out. *)
     let width =
-      Some
-        (read_border_image_box_values ~what:"width" read_border_image_width_item
-           t)
+      match Cursor.peek_delim t with
+      | Some '/' -> Option.None
+      | _ ->
+          Option.Some
+            (read_border_image_box_values ~what:"width"
+               read_border_image_width_item t)
     in
     Cursor.ws t;
     if Cursor.slash_opt t then
@@ -502,6 +509,8 @@ let read_border_image_slice_group t =
         Some
           (read_border_image_box_values ~what:"outset"
              read_border_image_outset_item t) )
+    else if Option.is_none width then
+      Cursor.err_invalid t "border-image width left out without an outset"
     else (slice, width, None))
   else (slice, None, None)
 

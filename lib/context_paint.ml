@@ -294,6 +294,9 @@ let simplify_shadow_leaf length color simplify ~authored ~visited
   | Properties.Inset (Properties.Body body) ->
       (Properties.Inset (Properties.Body (simplify_body body))
         : Properties.shadow)
+  | Properties.Inset (Properties.Trailing body) ->
+      (Properties.Inset (Properties.Trailing (simplify_body body))
+        : Properties.shadow)
   | Properties.Inset (Properties.Toggle { name; no_fallback; body }) ->
       (Properties.Inset
          (Properties.Toggle { name; no_fallback; body = simplify_body body })
@@ -404,6 +407,15 @@ let simplify_gradient_stop_leaf ~layer_order ?layer ctx length length_percentage
       (Properties.Color_length
          (color color_value, Option.map length first, Option.map length second)
         : Properties.gradient_stop)
+  | Properties.Color_angle (color_value, first, second) ->
+      let position : Properties.angular_position -> Properties.angular_position
+          = function
+        | Percentage p -> Percentage (percentage p)
+        | (Angle _ | Zero | Calc _) as p -> p
+      in
+      (Properties.Color_angle
+         (color color_value, position first, Option.map position second)
+        : Properties.gradient_stop)
   | Properties.Length value ->
       (Properties.Length (length value) : Properties.gradient_stop)
   | Properties.Channel value ->
@@ -507,6 +519,11 @@ let simplify_background_image_leaf ctx
                  simplify ~authored ~visited option.Properties.image;
              })
            options)
+  | Properties.Webkit_cross_fade (first, second, weight) ->
+      Properties.Webkit_cross_fade
+        ( simplify ~authored ~visited first,
+          simplify ~authored ~visited second,
+          weight )
   | Properties.List images ->
       Properties.List (List.map (simplify ~authored ~visited) images)
   | value -> value

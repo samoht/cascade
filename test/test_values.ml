@@ -148,6 +148,10 @@ let test_length () =
   check_length "2cap";
   check_length "2ic";
   check_length "2rlh";
+  (* CSS Values 4 sec. 6.1.1: each font-relative unit has a root twin. *)
+  check_length "2rex";
+  check_length "2rcap";
+  check_length "2rch";
 
   (* Viewport units *)
   check_length "10vmin";
@@ -168,6 +172,13 @@ let test_length () =
   check_length "10svw";
   check_length "10svmin";
   check_length "10svmax";
+  (* CSS Values 4 sec. 6.1.2.1: the logical axes take every viewport size. *)
+  check_length "10svi";
+  check_length "10svb";
+  check_length "10lvi";
+  check_length "10lvb";
+  check_length "10dvi";
+  check_length "10dvb";
 
   (* Zero length keeps its unit in pp; dropping it (0cm -> 0) is optimize. *)
   check_length "0cm";
@@ -416,6 +427,48 @@ let test_percentage () =
   neg_cursor read_percentage "";
   neg_cursor read_percentage "50px"
 
+(* CSS Anchor Positioning 1 (ED) sec. 3.2: [<anchor-side> = inside | outside |
+   top | left | right | bottom | start | end | self-start | self-end |
+   <percentage> | center]. A keyword is case-insensitive (CSS Values 4 sec.
+   4.1). A [var()] could substitute either a keyword or a percentage, so it is
+   no side. *)
+let test_anchor_side () =
+  List.iter check_anchor_side
+    [
+      "inside";
+      "outside";
+      "top";
+      "left";
+      "right";
+      "bottom";
+      "start";
+      "end";
+      "self-start";
+      "self-end";
+      "center";
+      "50%";
+      "-10%";
+      "150%";
+    ];
+  check_anchor_side ~expected:"self-end" "SELF-END";
+  check_anchor_side ~expected:"50%" "calc(50%)";
+  neg_cursor read_anchor_side "width";
+  neg_cursor read_anchor_side "--a";
+  neg_cursor read_anchor_side "50px";
+  neg_cursor read_anchor_side "0";
+  neg_cursor read_anchor_side "calc(50% + 1px)";
+  neg_cursor read_anchor_side "var(--s)"
+
+(* Sec. 5.1: [<anchor-size> = width | height | block | inline | self-block |
+   self-inline]. *)
+let test_anchor_size () =
+  List.iter check_anchor_size
+    [ "width"; "height"; "block"; "inline"; "self-block"; "self-inline" ];
+  check_anchor_size ~expected:"width" "WIDTH";
+  neg_cursor read_anchor_size "top";
+  neg_cursor read_anchor_size "--a";
+  neg_cursor read_anchor_size "50%"
+
 (* Not a roundtrip test *)
 let test_minified_value_formatting () =
   (* Leading zero drop in minified output for values *)
@@ -578,6 +631,8 @@ let suite =
       test_case "angle" `Quick test_angle;
       test_case "duration" `Quick test_duration;
       test_case "percentage" `Quick test_percentage;
+      test_case "anchor side" `Quick test_anchor_side;
+      test_case "anchor size" `Quick test_anchor_size;
       test_case "minified value formatting" `Quick
         test_minified_value_formatting;
       test_case "regular value formatting" `Quick test_regular_value_formatting;

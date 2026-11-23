@@ -248,6 +248,191 @@ where it is called. Each entry says what to write there.
 Each entry here is a sheet that 1.2.1 minified into one a browser renders
 differently. They are the reason to minify again.
 
+- **An inverse trigonometric function counted as a number.** `--minify`
+  turned `opacity:asin(0)` into `opacity:0`, and did the same at `z-index`,
+  `line-height`, `flex-grow`, `scale` and inside `calc(asin(0)*1px)`, though
+  `asin()`, `acos()`, `atan()` and `atan2()` answer an angle (CSS Values 4
+  sec. 10.4) and browsers drop those declarations. It also folded
+  `sin(asin(.5))` to `-.98803162`, reading the angle's degrees as radians.
+  Such a declaration is now dropped, and `sin(asin(.5))` is `.5` (#1516).
+- **`&` under a pseudo-element styled the pseudo-element.** CSS Nesting 1
+  sec. 4 says `&` cannot represent a pseudo-element, so
+  `p::before{&{color:blue}}` styles nothing, and Chromium leaves the
+  `::before` alone. `--minify` printed it as `p:before{color:#00f}`,
+  `--flatten-nesting` turned `.x &` under `p::before` into `.x p:before` and
+  `&:hover` under `::part(p)` into `::part(p):hover`, and `cascade diff
+  --diff=canonical` called `p::before{color:red;&{color:blue}}` equal to
+  `p::before{color:blue}`. Such a rule now matches nothing and goes, a list
+  parent's pseudo-element branch gives `&` nothing, and no rule is nested
+  under a pseudo-element (#1503).
+- **Nesting inside `@scope` lost the scoping root.** A rule in an `@scope`
+  block is relative to the scoping root (CSS Cascade 6 sec. 3.5.3).
+  `--minify` merged `@scope (.c){.a{.x &{...}}}` into `.x .a` and
+  `--flatten-nesting` turned `@scope (.c){:is(.a,.b){.a &{...}}}` into
+  `.a :is(.a,.b)`, so an `.x` or `.a` outside the scope stopped counting.
+  Flattening also turned `.a{@scope (.b){color:red}}` into
+  `@scope(.b){.a{color:red}}`, which styles an `.a` inside a `.b` rather than
+  a `.b` inside an `.a`. Flattening now spells the root as `&` where a
+  selector no longer starts with its parent, `--minify` keeps such a rule
+  nested, and a nested `@scope` roots under its parent (#1504).
+- **Nesting the default targets do not read.** `--minify` turned
+  `.a{color:red}.a .b{color:blue}` into `.a{color:red;.b{color:#00f}}`, kept
+  an author's nesting, and turned `& div` into `div`. Chrome 111 and Safari
+  16.4 read no nested rule, and Chrome 112 to 119 and Safari 16.5 to 17.1
+  refuse one that starts with an identifier, so those releases lost the rule.
+  For the default targets and under `--enforce-spec` nesting is now flattened
+  and none is synthesised, which makes the output larger on sheets that
+  nested. Library callers whose targets parse nesting keep it, apart from a
+  rule holding a declaration after a nested rule or in a nested `@media`
+  (CSS Nesting 1 sec. 5), which is flattened under any targets (#1505).
+- **Nesting gave `&` another parent.** Where nesting was synthesised,
+  `.c{.a{color:red}.a &{color:blue}}` became `.c .a{color:red;&{color:#00f}}`
+  and `div{X}div>&{Y}` became `div{X;>&{Y}}`, so `&` named the new parent
+  rather than the old one. A rule whose selector holds `&` past its parent's
+  prefix now stays where it is (#1506).
+- **A math function at a counter, feature or axis number was deleted.**
+  `--minify` deleted `counter-increment:a calc(1)`, `counter-reset:a
+  calc(2*3)`, `font-feature-settings:"liga" calc(1)`,
+  `font-variation-settings:"wght" calc(400)` and `rotate:1 calc(1) 0 45deg`,
+  and an `@property` rule whose `<number>` initial value was `calc(1.5)`.
+  CSS Values 4 sec. 10.1 puts a math function at any slot of its type, and
+  sec. 10.9 rounds one at an integer. A call that folds to a constant is now
+  read as that number, rounded at an integer (`calc(1.5)` is `2`). In the
+  library, `Values.read_constant_number` and `Values.read_constant_integer`
+  read such a value (#1515).
+- **An animation with a negative delay was deleted.** `--minify` refused
+  `animation:foo 1s -1s`, though it printed that form itself from
+  `calc(-1s)`. CSS Animations 1 sec. 3.6 lets the delay, the second time, be
+  negative; only the duration must not be. The declaration is now kept (#1514).
+- **A math function over a `var()` could delete its declaration.**
+  `--minify` deleted `rotate:atan2(var(--y),var(--x))`, the same over
+  `acos()`, `asin()` and `atan()`, `rotate:x acos(var(--v))` and
+  `clip-path:circle(var(--v) 0% 0%)` as invalid, and printed the first from
+  `rotate:calc(atan2(...))`, so a second pass deleted what the first kept. A
+  declaration holding a `var()` is valid until substitution (CSS Variables 1
+  sec. 3), and such a value is now kept as written (#1513).
+- **An infinite negative size became an invalid literal.** `--minify` turned
+  `min-height:calc(-infinity*1px)` into `-3.40282e38px`, which the twelve
+  sizing properties refuse, so the declaration was dropped where the source
+  clamps to `0px` (CSS Values 4 sec. 10.12). The call now stays around the
+  folded value, as for any other negative result (#1512).
+- **A value moved or dropped components around a `var()`.** `--minify`
+  treated a `var()` beside other components as one of the property's slots,
+  then filled in, dropped, merged or reordered the slots around it:
+  `flex:var(--g) 0px` became `var(--g) 1 0`, `flex:1 1 var(--b)` became
+  `1 var(--b)`, `gap:var(--a) var(--a)` became `var(--a)`,
+  `list-style:var(--a) none` became `none var(--a) none`,
+  `grid-area:var(--a) / auto / auto`, `border:var(--a) none` and
+  `transition:var(--a) 0s` lost their trailing slots,
+  `transform:translate(var(--a),0px)` lost its second argument,
+  `background:red var(--x)` moved the colour last, and
+  `rgb(var(--r),var(--g),var(--b))` lost its commas, and
+  `flex:var(--g) 1 0px` became `var(--g) 1 0`. A `var()` may supply
+  any number of components, commas included (CSS Variables 1 sec. 3), and
+  Chromium renders each pair differently for some value of the custom
+  property. Such a value is now written back with every component in place,
+  each still respelled where it stands; a `var()` that is the whole value or
+  sits inside a math function is unchanged. `cascade diff --diff=canonical`
+  no longer calls such a pair equal. In the library, `Properties.inset` gains
+  a `Trailing` case for an `inset` written after a body holding a `var()`, so
+  a match on it is no longer exhaustive: treat `Trailing body` as `Body body`
+  with the keyword printed last (#1511).
+- **The space beside a `var()` in a math function was dropped.**
+  `--minify` turned `calc(100% var(--op) 10px)` into
+  `calc(100%var(--op) 10px)`, in a typed declaration and in a custom property.
+  The `var()` may substitute a `+` or `-`, which CSS Values 4 sec. 10.8 needs
+  whitespace around, so with `--op: -` the first is `100% - 10px` and the
+  second is invalid. The whitespace beside a `var()`, `env()` or `attr()` in a
+  math function now stays, except next to `*`, `/` or a comma (#1510).
+- **A comparison over a position percentage was folded.**
+  `background-position:min(10%,20%) 0` became `10% 0`, and
+  `calc(min(10%,20%) + 1px)` became `calc(10% + 1px)`. A percentage in
+  `background-position`, `mask-position` or `object-position` resolves against
+  the box less the image, negative when the image is the larger, so
+  `min(10%,20%)` there is `20%` of it. A comparison, `abs()` or a stepped
+  function over such a percentage is now kept as written; one whose basis
+  cannot be negative, as in `transform-origin`, still folds (#1509).
+- **A zero lost its unit inside a line-width comparison.** `--minify` turned
+  `outline-width:max(0px,var(--v))` into `max(0,var(--v))`, which mixes a
+  number with a length and is invalid at computed-value time, across the 27
+  line-width properties; it folded `round(1px,0px)` to `1px` and
+  `mod(1px,0px)` to `1px`, where CSS Values 4 sec. 10.9 makes both NaN and
+  Chromium computes `0px`. A zero operand now keeps its unit, and a zero step
+  or divisor keeps the call (#1508).
+- **`border` reset a `border-image` set elsewhere, and three respellings
+  read as differences.** `--minify` contracted `border-width`,
+  `border-style` and `border-color` into `border`, which also resets
+  `border-image` (CSS Backgrounds 3 sec. 4.4). Where another sheet of the
+  page, or a rule of the same sheet inside `@media`, set a `border-image` on
+  the element, Chromium drew none. The three now stay longhands. Under
+  `--scope=stylesheet` they contract when no rule of the sheet, in any
+  block, holds a `border-image` value, and so do the four sides
+  `border-top`, `-right`, `-bottom` and `-left` holding one value. `cascade
+  diff --diff=canonical` called the two spellings identical, and now calls
+  them different. It also exited 1 on `.a.b{color:red}` against
+  `.b.a{color:red}`, on an `@keyframes` or `@font-face` rule moved among
+  style rules, and on `@media screen{@media (min-width:1px){...}}` against
+  `@media screen and (min-width:1px){...}`, though Chromium renders both
+  sides alike. Each now compares equal: a compound's simple selectors print
+  in one order, a name-defining rule moves freely among style rules while
+  two of one name keep their order, and nested `@media` blocks read as the
+  conjunction of their queries. `@media print{@media screen{...}}` and a
+  negated query still compare different (#1537).
+- **Declarations in newer CSS were deleted.** `--minify` dropped, with a
+  warning, a length in a root font unit (`rex`, `rcap`, `rch`) or a logical
+  viewport unit (`svi`, `lvb`, `dvi` and the rest), a container unit in
+  `flex-basis` or `flex`, and any value holding `if()` (CSS Values 5 sec. 8.3)
+  or a custom function call such as `--f()` (CSS Mixins 1). Chromium 153 reads
+  each, so `font-size:1rcap` or `width:if(media(print):1px;else:2px)` lost its
+  effect. Each length is now read with its unit, and a value holding `if()` or
+  `--f()` is kept as written, as one holding `var()` is, when the call matches
+  its own grammar.
+  In the library, `Css.length` gains `Rex`, `Rcap`, `Rch`, `Svi`, `Svb`,
+  `Lvi`, `Lvb`, `Dvi` and `Dvb`, so an exhaustive match over it needs the
+  nine cases (#1536).
+- **A fallback before a prefixed value was deleted across rules.**
+  `.a{position:sticky}` before `.a{position:-webkit-sticky}` lost
+  `position:sticky`, and `display:flex` before `display:-webkit-box` lost
+  `flex`, though a browser that reads only the unprefixed value then paints
+  neither. The compatibility data says nothing of which browser reads a
+  prefixed keyword, so an earlier value of the property now stays before one
+  that uses such a keyword, across rules as it did inside one. Two values
+  with the same prefixed words, such as two `-webkit-linear-gradient()`s, are
+  read by the same browsers, and the earlier one now goes inside one rule
+  too (#1538).
+- **Prefixed, legacy and newer keywords were deleted.** `--minify` dropped,
+  with a warning, values Chromium 153 reads: `cursor:-webkit-grab`,
+  `display:-webkit-inline-box`, `width:-webkit-fill-available`,
+  `overflow:overlay`, `writing-mode:tb-rl`, the deprecated system colours
+  such as `Window` and `ThreeDFace`, `place-content:flex-start`,
+  `content:no-open-quote`, `font:oblique 10deg 12px a`,
+  `image-set("a.png")`, a grid area named `1a`, `perspective(none)`,
+  `white-space:preserve` and `border-image:url(a.png) 30 // 5px`, among
+  others. Each is now read, and a prefixed or legacy keyword keeps an earlier
+  value of its property as its fallback, as `-webkit-box` does.
+  In the library, `Css.white_space` spells the longhand pair as
+  `Longhands (collapse, mode)`, which replaces `Collapse` and
+  `Preserve_nowrap`: a match on either moves to `Longhands (Some Collapse,
+  None)` or `Longhands (Some Preserve, Some No_wrap)`. `system_color`,
+  `cursor`, `display`, `overflow`, `text_align`, `unicode_bidi`,
+  `writing_mode`, `image_rendering`, `appearance`, `dominant_baseline`,
+  `content` and `length` gain the new keywords, so an exhaustive match over
+  any of them needs the new cases (#1539).
+- **An invalid `mask-position` came out valid, and a mask some browsers
+  read was deleted.** `mask-position:left 10px top` uses the three-value
+  form only `background-position` has, so Chromium, Firefox and Safari drop
+  it, and `--minify` printed `mask-position:10px 0`, which they read.
+  `mask-position` now reads the `<position>` of CSS Values 4, while
+  `-webkit-mask-position` keeps the legacy form browsers read there. The
+  same position in the `mask` shorthand, `mask:url(a.png) left 10px top`,
+  is read by Chromium and Safari and not by Firefox, and `--minify` dropped
+  it. It is now kept as written, so each browser reads or drops it as it
+  did (#1542).
+- **An invalid `image-set()` came out valid.** `image-set(url(a.png) 1x 2x)`
+  repeats its resolution, so browsers drop the declaration, and `--minify`
+  printed `image-set(url(a.png)1x)`, which they read. The repeat now makes
+  the declaration invalid, as a repeated `type()` does (#1540).
+
 - **Prefixed gradients changed direction.** `--minify` read
   `-webkit-linear-gradient(top,...)` as the unprefixed `to top`, and took an
   omitted direction for `bottom`, so it printed
@@ -500,6 +685,119 @@ differently. They are the reason to minify again.
   longer reversed or stripped of a position. A radial prelude the reader
   cannot finish now keeps the whole value as written, since the comma after a
   prelude is omitted only with the prelude (CSS Values 4 sec. 2.6) (#1490).
+- **Conic gradients placed by angles were deleted.**
+  `conic-gradient(red 0deg,blue 360deg)`, `conic-gradient(red 0,blue 1turn)`
+  and the same after `from 90deg at 0 0` were refused as a bad value, so
+  `--minify` dropped the declaration where Chromium paints the gradient. A
+  conic stop is placed by one or two angles or percentages, and a conic hint
+  by one (CSS Images 4 sec. 3.3.2). Both are now read, and a first stop at
+  `0deg` and a last at `360deg` lose the position they take by default (#1491).
+- **`mask` boxes moved, and layer longhands merged into the wrong layers.**
+  One box in a `mask` layer sets both `mask-origin` and `mask-clip`, and two
+  set them in order (CSS Masking 1 sec. 7.9), but `--minify` dropped each
+  `border-box` on its own. So `mask:url(a.png) border-box content-box` became
+  `mask:url(a.png)content-box`, which moves the origin, and `padding-box
+  border-box` became `padding-box`, which moves the clip. `mask:url(a.png)
+  no-clip` was refused and deleted. Mask longhands with two images and one
+  `mask-repeat:no-repeat` became `mask:url(a.png),url(b.png)no-repeat`,
+  which repeats the first image, and `background` did the same with one image
+  and two repeats, or with a `var()` in a longhand, which can stand for
+  another slot. Two boxes now print as one only when they are one box,
+  `no-clip` is read, and longhands merge into a shorthand only when they spell
+  one layer with no `var()` (#1492).
+- **An `ellipse()` lost a radius.** `clip-path:ellipse(10px closest-side)`
+  was minified to `ellipse(10px)`, which Chromium rejects, so the clip
+  disappeared, and `ellipse(closest-side farthest-side)` and
+  `ellipse(var(--v) closest-side)` broke the same way. An omitted size is
+  `closest-side` on both axes (CSS Shapes 1 sec. 3.1), so the radii now drop
+  only as that pair (#1493).
+- **Anchor fallback tactics were reordered.**
+  `position-try-fallbacks:flip-start flip-block` was minified to
+  `flip-block flip-start`, which places the box elsewhere, since the tactics
+  compose in the order written (CSS Anchor Positioning 1 sec. 6.1). A name
+  between two tactics, which Chromium rejects, was moved out to make the entry
+  valid. The tactics now keep their order and a split entry is refused (#1494).
+- **Two longhands composed past a shorthand that resets one.**
+  `position-try-order:most-height;position-try:flip-inline;position-try-fallbacks:top`
+  was minified to `position-try:most-height top;position-try:flip-inline`,
+  which moves the fallbacks before the shorthand that resets them, so the box
+  falls back to `flip-inline` instead of `top`. `columns` did the same past
+  `-webkit-columns`. Two longhands now compose only past declarations that do
+  not write the later one (#1495).
+- **`animation-range` lists were merged side by side.**
+  `animation-range-start:exit 100%;animation-range-end:cover,entry` was
+  minified to `animation-range:exit 100%cover,entry`, which gives the second
+  animation another start, and `cover,entry` beside `exit,contain` became
+  three ranges. The shorthand pairs each start with its end (CSS Animations 2
+  sec. 6.3), so lists of one length now compose range by range and lists of
+  different lengths stay longhands (#1496).
+- **A transition of a property named like an easing keyword changed.**
+  `transition:ease ease 1s` transitions a property named `ease`, and was
+  minified to `transition:ease 1s`, which transitions `all`;
+  `ease-in linear 1s` became `linear 1s ease-in`, which swaps the easing and
+  the property. A browser reads the first easing keyword as the easing and a
+  second as the property, so such a property now prints after its easing,
+  `ease` included (#1497).
+- **`flip-x` and `flip-y` anchor fallbacks were deleted.**
+  `position-try:flip-x` and `position-try-fallbacks:flip-y flip-block` were
+  refused as a bad value, so `--minify` dropped a declaration Chromium reads.
+  The physical tactics are now read beside the logical ones (CSS Anchor
+  Positioning 1 sec. 6.1) (#1498).
+- **`columns` with a column height was deleted.** `columns:10px 2/5px` and
+  `columns:0/0` were refused as a bad value, so `--minify` dropped a
+  declaration Chromium reads. The `/ <'column-height'>` part is now read (CSS
+  Multicol 2 sec. 4.5), and a `columns` before one stays as the fallback
+  Firefox and Safari paint (#1499).
+- **The `scroll` timeline range was deleted.** `animation-range:scroll`,
+  `animation-range-start:scroll 10%` and a `scroll 50%` keyframe were refused,
+  so `--minify` dropped what Chromium reads. `scroll` is now read beside the
+  other named ranges (Scroll-driven Animations 1 sec. 3.1) (#1500).
+- **`scrollbar-gutter` and `offset` written in another order were deleted.**
+  `scrollbar-gutter:both-edges stable` and `offset:content-box auto` were
+  refused as a bad value, so `--minify` dropped declarations Chromium and
+  Safari read. Both orders CSS Overflow 3 sec. 5.2 grants are now read, and a
+  reference box with no shape before an offset distance or rotation (CSS
+  Motion Path 1 sec. 2.1 and 2.6) (#1521).
+- **`contain-intrinsic-size` with a trailing `auto` was deleted.**
+  `contain-intrinsic-size:0 auto` was refused as a bad value, so `--minify`
+  dropped a declaration Chromium reads as `0`. No specification grants the
+  form and Safari drops it, so it is now kept as written, and a declaration
+  before it stays as Safari's fallback (#1522).
+- **A `line-height` comparison over a sum was deleted.**
+  `line-height:min(calc(1em + 2px),1px)` and `max(1em + 2px,1px)` were refused
+  as a bad value, so `--minify` dropped declarations Chromium and Safari read.
+  Each argument of `min()`, `max()` and `clamp()` is now read as the sum CSS
+  Values 4 sec. 10.2 grants, and arguments of two types are still refused
+  (#1523).
+- **Anchor-positioned boxes lost their position.** `--minify` deleted
+  `top:anchor(50%)`, `top:anchor(top --a)`, `width:anchor-size()` and every
+  other `anchor()` or `anchor-size()` with a percentage side, the name after
+  the keyword, or no argument, though Chromium places the box by each (CSS
+  Anchor Positioning 1 sec. 3.2 and 5.1). It kept `anchor(width)` and
+  `anchor-size(top)`, which Chromium drops. Both functions now read the
+  grammar the specification gives, and print the name first (#1532).
+- **Legacy `-webkit-` images were deleted or rewritten.** `--minify` deleted
+  `-webkit-radial-gradient(center, ellipse cover, red, blue)`, the prefixed
+  syntax with its position first, and every `-webkit-cross-fade(a, b, 50%)`,
+  in each property that takes an image. Chromium paints both. It also read
+  `-webkit-radial-gradient(circle at center, red, blue)`, which Chromium
+  drops, as the unprefixed syntax, and printed a gradient Chromium paints. The
+  prefixed radial gradients now read the syntax the Compatibility Standard
+  gives them (sec. 3.3.2), and `-webkit-cross-fade()` reads as Chromium reads
+  it (#1533).
+- **Conic stops at a mixed angle or a length were mishandled.** `--minify`
+  deleted `conic-gradient(red calc(10deg + 5%),blue)`, though Chromium paints
+  it, and kept `conic-gradient(red 10px,blue)`, which Chromium drops. A conic
+  stop is now placed by an angle, a percentage, `0` or a math function of
+  both, never by a length (CSS Images 4 sec. 3.5.1), and an angle that is a
+  whole percentage of the turn takes the shorter spelling: `90deg` prints as
+  `25%` (#1534).
+- **Some SVG and replaced-element values were deleted.** `--minify` deleted
+  `stroke-dasharray:1 2 calc(3%)` and every dash pattern with a math function
+  after its first dash, `object-view-box:inset(0 round 4px)` and every
+  rounded `inset()`, and `baseline-shift:1` and `baseline-shift:baseline`,
+  which Chromium reads (the number as px), so an earlier `baseline-shift`
+  won. Each is now kept (#1535).
 
 #### Stable output
 
@@ -531,6 +829,17 @@ differently. They are the reason to minify again.
   bytes were ordered by hash, so a change inside cascade could move the output
   of a sheet nobody touched. A tie now breaks by the shortest result, then by
   source order (#1355).
+- **Two spellings of one `aspect-ratio` merged only on a second run.**
+  `a{aspect-ratio:calc(2*16/9)}b{aspect-ratio:calc(16/9*2)}` minified into two
+  rules printing `3.55555556`, which a second run merged. The printer folded
+  the calculation and the optimiser did not; the optimiser now folds it, to
+  six significant figures as `line-height` does, and `--lossless` keeps it
+  (#1527).
+- **A `contain-intrinsic-size` calculation merged only on a second run.**
+  `a{contain-intrinsic-inline-size:100E0px}b{contain-intrinsic-inline-size:calc(1e2px)}`
+  minified into two rules printing `100px`, which a second run merged. The
+  optimiser now folds the calculation in every `contain-intrinsic-*` property
+  (#1528).
 
 #### Which rules merge
 
@@ -557,6 +866,13 @@ differently. They are the reason to minify again.
 
 #### Smaller output
 
+- **Math functions over two units of one type fold.** `min(1s,1000ms)`,
+  `calc(1s + 500ms)`, `min(1turn,10deg)` and `max(1cm,10mm)` were kept as
+  written, since the fold compared and summed only equal units. Units with a
+  fixed ratio now convert first (CSS Values 4 sec. 10.7), so they fold to `1s`,
+  `1.5s`, `10deg` and `1cm`, and `line-height:abs(-1px)` folds to `1px`. A
+  call that still cannot fold, such as `min(1s,var(--x))`, prints bare rather
+  than inside `calc()` (#1507).
 - **Prefixed copies of widely available properties go.** `--minify` dropped
   `-webkit-animation-delay:1s` beside `animation-delay:1s`, but kept
   `-webkit-flex-grow:1` beside `flex-grow:1`, because it compared the two only
@@ -564,6 +880,21 @@ differently. They are the reason to minify again.
   unprefixed property's grammar and dropped when the values agree, which
   shrinks the SatCSS output by about 0.7% raw and 0.3% under gzip.
   `--enforce-spec` keeps every copy (#1439).
+- **Thirteen more prefixed aliases are typed.** `--minify` printed
+  `-webkit-flex:0 0 auto` and `-webkit-transform-origin:top left` as written,
+  and kept `-webkit-flex:0 1 main-size`, which no target browser parses, since
+  cascade had no type for these WHATWG Compatibility legacy aliases.
+  `-webkit-flex` and its three longhands, `-webkit-order`, the four
+  `-webkit-border-*-radius` corners, `-webkit-transform-origin`,
+  `-webkit-transform-style`, `-webkit-perspective-origin` and
+  `-webkit-backface-visibility` now read under their unprefixed property's
+  grammar, which every target engine parses them with. They print as
+  `flex:none` and `transform-origin:0 0` do, and a value that grammar refuses
+  is dropped with a warning. A few SatCSS sheets shrink, most of them under
+  `--enforce-spec`, which keeps every prefixed copy. In the library,
+  `Properties.property` gains a constructor for each, `Webkit_flex` and
+  `Webkit_transform_origin` among them, carrying its unprefixed property's
+  value type (#1518).
 - **An overridden `content` goes.** `--minify` kept both declarations of
   `.a{content:"a";content:"b"}`, since a later `content` can be a value some
   browser rejects and the earlier its fallback. After a string, a quote
@@ -627,6 +958,30 @@ differently. They are the reason to minify again.
   rule whole and leaves `a` uncoloured. A list whose selectors some target
   release reads apart now compares as one rule, and one no target parses,
   such as a list holding a `-ms-` pseudo-element, as no rule (#1487).
+- **A prefixed property was taken for one no browser reads.** The WHATWG
+  Compatibility Standard lists `-webkit-mask-box-image` and its longhands as
+  aliases of `mask-border` and its longhands, and the comparison read every
+  listed alias as its property, so it called
+  `.a{-webkit-mask-box-image-width:1px}` identical to
+  `.a{mask-border-width:1px}`. No Chromium or Firefox release reads
+  `mask-border`, and Chromium leaves the prefixed width at `auto` under the
+  second sheet. The set is now a property of its own, and the pair compares
+  different, as it did in 1.2.1 (#1517).
+- **A prefixed value was taken for one a browser reads later.** The
+  comparison read every legacy alias as its property whatever the value, so it
+  called `.a{-webkit-background-clip:text}` identical to
+  `.a{background-clip:text}`. Chrome 111 to 119 parse `text` only under the
+  prefixed name and paint the second sheet's box. An alias now reads as its
+  property only where every target release that parses one spelling of the
+  value parses the other, so the pair compares different; `-webkit-mask-image`
+  against `mask-image`, which Chrome reads unprefixed from 120, does too
+  (#1519).
+- **The prefix carve-out is documented.** The reference and the invariants
+  now state that `--minify` adds a prefix a target needs beside its unprefixed
+  twin and that `cascade diff --diff=canonical` compares modulo those
+  prefixes, so `.a{user-select:none}` and
+  `.a{-webkit-user-select:none;user-select:none}` compare equal on purpose
+  (#1520).
 - **A guard was decided by its property alone.**
   `@supports (break-before:always){a{color:red}}` compared identical to
   `a{color:red}`, though Chromium 153 drops `break-before:always` and leaves
@@ -651,9 +1006,7 @@ differently. They are the reason to minify again.
     declaration at a time and orders two only where swapping them could change
     a value.
   - Longhands against their shorthand. `top`, `right`, `bottom` and `left`
-    compare equal to `inset` also when another declaration sits between them,
-    and so do `border-width`, `border-style` and `border-color` against
-    `border`.
+    compare equal to `inset` also when another declaration sits between them.
   - An order no element can observe. Two rules that write the same declarations
     compare equal in either order. So do a normal and an important declaration
     of one rule (CSS Cascade 5 sec. 6.1), and two rules that write one value
@@ -745,6 +1098,31 @@ The new form of a diagnostic is under [Breaking](#command-line).
   outside `auto | optimizeSpeed | optimizeLegibility | geometricPrecision` was
   printed back. Each now goes with a warning, as browsers drop it (#1292,
   #1294, #1440).
+- **A math function of the wrong type inside `calc()` was kept.**
+  `opacity:calc(min(10px,1px) + max(1px,2px))` and the same length comparison
+  at a time, a percentage or an angle were kept, and
+  `width:calc(min(1s,2s) + max(1s,2s))` was printed as `width:3s`; browsers
+  drop each one. A comparison, `abs()`, `hypot()` or a stepped-value call in a
+  calculation now has to carry a unit the property takes (CSS Values 4 sec.
+  10.1 and 10.9), and the declaration goes with a warning otherwise (#1524).
+- **A percentage Z offset in `transform-origin` was kept.**
+  `transform-origin:50% center 50%` was kept and minified into `50% 50% 50%`,
+  though CSS Transforms 1 sec. 4 makes the third value a `<length>` and
+  browsers drop it. It now goes with a warning (#1525).
+- **A list of images in a counter-style symbol was kept.**
+  `@counter-style` read `prefix:url(a.png),none` as a `background-image` list
+  and kept it, though a `<symbol>` is one image (CSS Counter Styles 3 sec.
+  3.1.7) and browsers drop it; the same reading dropped
+  `additive-symbols:2 url(a.png),1 url(b.png)`. A symbol is now one image
+  (#1526).
+- **A reference box beside `none` was kept.** `clip-path:content-box none`
+  and `offset-path:content-box none` were kept, though a box pairs only with a
+  shape (CSS Masking 1 sec. 5.1, CSS Motion Path 1 sec. 2.1) and browsers drop
+  both. Each now goes with a warning (#1529).
+- **A counter-style range with its bounds reversed was kept.**
+  `@counter-style` kept `range:4 2`, though CSS Counter Styles 3 sec. 3.5
+  makes a range whose lower bound is above its upper one invalid and browsers
+  drop the descriptor. It now goes with a warning (#1530).
 - **`@charset` is read as browsers read it.** It warns and goes unless the
   sheet opens with exactly `@charset "UTF-8";`, so not after whitespace, a
   comment or an `@layer` statement (#1294).

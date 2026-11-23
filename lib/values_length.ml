@@ -11,13 +11,14 @@ open Values_calc
 let length_is_zero = function
   | Zero -> true
   | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
-  | Em f | Rem f | Ex f | Cap f | Ic f | Ric f | Rlh f -> f = 0.
-  | Ch f | Lh f -> f = 0.
+  | Em f | Rem f | Ex f | Rex f | Cap f | Rcap f | Ic f | Ric f | Rlh f ->
+      f = 0.
+  | Ch f | Rch f | Lh f -> f = 0.
   | Pct f -> f = 0.
   | Vw f | Vh f | Vmin f | Vmax f | Vi f | Vb f -> f = 0.
-  | Dvh f | Dvw f | Dvmin f | Dvmax f -> f = 0.
-  | Lvh f | Lvw f | Lvmin f | Lvmax f -> f = 0.
-  | Svh f | Svw f | Svmin f | Svmax f -> f = 0.
+  | Dvh f | Dvw f | Dvi f | Dvb f | Dvmin f | Dvmax f -> f = 0.
+  | Lvh f | Lvw f | Lvi f | Lvb f | Lvmin f | Lvmax f -> f = 0.
+  | Svh f | Svw f | Svi f | Svb f | Svmin f | Svmax f -> f = 0.
   | Cqw f | Cqh f | Cqi f | Cqb f | Cqmin f | Cqmax f -> f = 0.
   | Dimension { value; _ } -> value = 0.
   | _ -> false
@@ -34,11 +35,14 @@ let calc_length_unit = function
   | Rem n -> Some ("rem", n)
   | Em n -> Some ("em", n)
   | Ex n -> Some ("ex", n)
+  | Rex n -> Some ("rex", n)
   | Cap n -> Some ("cap", n)
+  | Rcap n -> Some ("rcap", n)
   | Ic n -> Some ("ic", n)
   | Ric n -> Some ("ric", n)
   | Rlh n -> Some ("rlh", n)
   | Ch n -> Some ("ch", n)
+  | Rch n -> Some ("rch", n)
   | Lh n -> Some ("lh", n)
   | Pct n -> Some ("%", n)
   | Vw n -> Some ("vw", n)
@@ -49,14 +53,20 @@ let calc_length_unit = function
   | Vb n -> Some ("vb", n)
   | Dvh n -> Some ("dvh", n)
   | Dvw n -> Some ("dvw", n)
+  | Dvi n -> Some ("dvi", n)
+  | Dvb n -> Some ("dvb", n)
   | Dvmin n -> Some ("dvmin", n)
   | Dvmax n -> Some ("dvmax", n)
   | Lvh n -> Some ("lvh", n)
   | Lvw n -> Some ("lvw", n)
+  | Lvi n -> Some ("lvi", n)
+  | Lvb n -> Some ("lvb", n)
   | Lvmin n -> Some ("lvmin", n)
   | Lvmax n -> Some ("lvmax", n)
   | Svh n -> Some ("svh", n)
   | Svw n -> Some ("svw", n)
+  | Svi n -> Some ("svi", n)
+  | Svb n -> Some ("svb", n)
   | Svmin n -> Some ("svmin", n)
   | Svmax n -> Some ("svmax", n)
   | Cqw n -> Some ("cqw", n)
@@ -186,7 +196,8 @@ let length_scale ?(exact = true) op v n =
    width:max-content]). *)
 let length_is_vendor_prefixed_sizing : length -> bool = function
   | Webkit_max_content | Webkit_min_content | Webkit_fit_content
-  | Moz_max_content | Moz_min_content | Moz_fit_content ->
+  | Moz_max_content | Moz_min_content | Moz_fit_content | Webkit_fill_available
+  | Moz_available ->
       true
   | _ -> false
 
@@ -253,11 +264,14 @@ type length_unit =
   | Rem
   | Em
   | Ex
+  | Rex
   | Cap
+  | Rcap
   | Ic
   | Ric
   | Rlh
   | Ch
+  | Rch
   | Lh
   | Pct
   | Vw
@@ -268,14 +282,20 @@ type length_unit =
   | Vb
   | Dvh
   | Dvw
+  | Dvi
+  | Dvb
   | Dvmin
   | Dvmax
   | Lvh
   | Lvw
+  | Lvi
+  | Lvb
   | Lvmin
   | Lvmax
   | Svh
   | Svw
+  | Svi
+  | Svb
   | Svmin
   | Svmax
   | Cqw
@@ -298,11 +318,14 @@ let unit_of_string = function
   | "rem" -> Some Rem
   | "em" -> Some Em
   | "ex" -> Some Ex
+  | "rex" -> Some Rex
   | "cap" -> Some Cap
+  | "rcap" -> Some Rcap
   | "ic" -> Some Ic
   | "ric" -> Some Ric
   | "rlh" -> Some Rlh
   | "ch" -> Some Ch
+  | "rch" -> Some Rch
   | "lh" -> Some Lh
   | "%" -> Some Pct
   | "vw" -> Some Vw
@@ -313,14 +336,20 @@ let unit_of_string = function
   | "vb" -> Some Vb
   | "dvh" -> Some Dvh
   | "dvw" -> Some Dvw
+  | "dvi" -> Some Dvi
+  | "dvb" -> Some Dvb
   | "dvmin" -> Some Dvmin
   | "dvmax" -> Some Dvmax
   | "lvh" -> Some Lvh
   | "lvw" -> Some Lvw
+  | "lvi" -> Some Lvi
+  | "lvb" -> Some Lvb
   | "lvmin" -> Some Lvmin
   | "lvmax" -> Some Lvmax
   | "svh" -> Some Svh
   | "svw" -> Some Svw
+  | "svi" -> Some Svi
+  | "svb" -> Some Svb
   | "svmin" -> Some Svmin
   | "svmax" -> Some Svmax
   | "cqw" -> Some Cqw
@@ -346,11 +375,14 @@ let unit_of_length = function
   | Rem n -> Some (Rem, n)
   | Em n -> Some (Em, n)
   | Ex n -> Some (Ex, n)
+  | Rex n -> Some (Rex, n)
   | Cap n -> Some (Cap, n)
+  | Rcap n -> Some (Rcap, n)
   | Ic n -> Some (Ic, n)
   | Ric n -> Some (Ric, n)
   | Rlh n -> Some (Rlh, n)
   | Ch n -> Some (Ch, n)
+  | Rch n -> Some (Rch, n)
   | Lh n -> Some (Lh, n)
   | Pct n -> Some (Pct, n)
   | Vw n -> Some (Vw, n)
@@ -361,14 +393,20 @@ let unit_of_length = function
   | Vb n -> Some (Vb, n)
   | Dvh n -> Some (Dvh, n)
   | Dvw n -> Some (Dvw, n)
+  | Dvi n -> Some (Dvi, n)
+  | Dvb n -> Some (Dvb, n)
   | Dvmin n -> Some (Dvmin, n)
   | Dvmax n -> Some (Dvmax, n)
   | Lvh n -> Some (Lvh, n)
   | Lvw n -> Some (Lvw, n)
+  | Lvi n -> Some (Lvi, n)
+  | Lvb n -> Some (Lvb, n)
   | Lvmin n -> Some (Lvmin, n)
   | Lvmax n -> Some (Lvmax, n)
   | Svh n -> Some (Svh, n)
   | Svw n -> Some (Svw, n)
+  | Svi n -> Some (Svi, n)
+  | Svb n -> Some (Svb, n)
   | Svmin n -> Some (Svmin, n)
   | Svmax n -> Some (Svmax, n)
   | Cqw n -> Some (Cqw, n)
@@ -395,11 +433,14 @@ let length_of_unit unit n =
   | Rem -> Rem n
   | Em -> Em n
   | Ex -> Ex n
+  | Rex -> Rex n
   | Cap -> Cap n
+  | Rcap -> Rcap n
   | Ic -> Ic n
   | Ric -> Ric n
   | Rlh -> Rlh n
   | Ch -> Ch n
+  | Rch -> Rch n
   | Lh -> Lh n
   | Pct -> Pct n
   | Vw -> Vw n
@@ -410,14 +451,20 @@ let length_of_unit unit n =
   | Vb -> Vb n
   | Dvh -> Dvh n
   | Dvw -> Dvw n
+  | Dvi -> Dvi n
+  | Dvb -> Dvb n
   | Dvmin -> Dvmin n
   | Dvmax -> Dvmax n
   | Lvh -> Lvh n
   | Lvw -> Lvw n
+  | Lvi -> Lvi n
+  | Lvb -> Lvb n
   | Lvmin -> Lvmin n
   | Lvmax -> Lvmax n
   | Svh -> Svh n
   | Svw -> Svw n
+  | Svi -> Svi n
+  | Svb -> Svb n
   | Svmin -> Svmin n
   | Svmax -> Svmax n
   | Cqw -> Cqw n
@@ -700,7 +747,9 @@ let length_simple_dimension : length -> (float * length) option = function
   | Em f -> Some (f, Em 0.)
   | Rem f -> Some (f, Rem 0.)
   | Ex f -> Some (f, Ex 0.)
+  | Rex f -> Some (f, Rex 0.)
   | Cap f -> Some (f, Cap 0.)
+  | Rcap f -> Some (f, Rcap 0.)
   | Ic f -> Some (f, Ic 0.)
   | Ric f -> Some (f, Ric 0.)
   | Rlh f -> Some (f, Rlh 0.)
@@ -711,6 +760,7 @@ let length_simple_dimension : length -> (float * length) option = function
   | Vi f -> Some (f, Vi 0.)
   | Vb f -> Some (f, Vb 0.)
   | Ch f -> Some (f, Ch 0.)
+  | Rch f -> Some (f, Rch 0.)
   | Lh f -> Some (f, Lh 0.)
   | Pct f -> Some (f, Pct 0.)
   | _ -> None
@@ -727,7 +777,9 @@ let with_length_value l v : length =
   | Em _ -> Em v
   | Rem _ -> Rem v
   | Ex _ -> Ex v
+  | Rex _ -> Rex v
   | Cap _ -> Cap v
+  | Rcap _ -> Rcap v
   | Ic _ -> Ic v
   | Ric _ -> Ric v
   | Rlh _ -> Rlh v
@@ -738,9 +790,21 @@ let with_length_value l v : length =
   | Vi _ -> Vi v
   | Vb _ -> Vb v
   | Ch _ -> Ch v
+  | Rch _ -> Rch v
   | Lh _ -> Lh v
   | Pct _ -> Pct v
   | _ -> Px v
+
+(* CSS Values 4 sec. 5.2: an absolute length in [px]. *)
+let absolute_px : length -> float option = function
+  | Px f -> Some f
+  | In f -> Some (f *. 96.)
+  | Cm f -> Some (f *. 96. /. 2.54)
+  | Mm f -> Some (f *. 96. /. 25.4)
+  | Q f -> Some (f *. 96. /. 101.6)
+  | Pt f -> Some (f *. 4. /. 3.)
+  | Pc f -> Some (f *. 16.)
+  | _ -> None
 
 let rec reduce_length_min_max : length -> length = function
   | Min xs as orig -> (
@@ -768,7 +832,23 @@ and reduce_typed_min_max_simple (xs : length list) reduce : length option =
         let values = List.map fst pairs in
         let reduced = List.fold_left reduce (List.hd values) (List.tl values) in
         Some (with_length_value sample reduced)
-    | _ -> None
+    | _ -> (
+        (* CSS Values 4 sec. 10.7: absolute lengths have a fixed ratio to [px],
+           so a comparison over several of them compares their pixels and
+           answers the argument it picks, as written. *)
+        match List.map absolute_px xs with
+        | Some v0 :: rest as all when List.for_all Option.is_some rest ->
+            let values = List.filter_map Fun.id all in
+            let picked = List.fold_left reduce v0 values in
+            List.find_map
+              (fun (x, v) ->
+                if
+                  same_quantity v picked
+                  || (Float.is_nan v && Float.is_nan picked)
+                then Some x
+                else None)
+              (List.combine xs values)
+        | _ -> None)
 
 let try_reduce_typed_min_max xs reduce =
   let xs = List.map reduce_length_min_max xs in
@@ -781,6 +861,39 @@ let px_values values =
       | Px f, Some values -> Some (f :: values)
       | _ -> None)
     values (Some [])
+
+let rec pp_percentage ?(always = false) : percentage Pp.t =
+ fun ctx -> function
+  | Pct f -> Pp.pct ctx f
+  | Num f -> Pp.float ctx f
+  | Var v -> pp_var (pp_percentage ~always) ctx v
+  | Calc c -> pp_calc (pp_percentage ~always) ctx c
+
+let pp_anchor_side : anchor_side Pp.t =
+ fun ctx -> function
+  | Inside -> Pp.string ctx "inside"
+  | Outside -> Pp.string ctx "outside"
+  | Top -> Pp.string ctx "top"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Bottom -> Pp.string ctx "bottom"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Center -> Pp.string ctx "center"
+  | Percentage_side p -> pp_percentage ctx p
+
+let pp_anchor_size : anchor_size Pp.t =
+ fun ctx size ->
+  Pp.string ctx
+    (match size with
+    | Width -> "width"
+    | Height -> "height"
+    | Block -> "block"
+    | Inline -> "inline"
+    | Self_block -> "self-block"
+    | Self_inline -> "self-inline")
 
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
@@ -797,7 +910,9 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Rem f -> pp_unit_fn f "rem"
   | Em f -> pp_unit_fn f "em"
   | Ex f -> pp_unit_fn f "ex"
+  | Rex f -> pp_unit_fn f "rex"
   | Cap f -> pp_unit_fn f "cap"
+  | Rcap f -> pp_unit_fn f "rcap"
   | Ic f -> pp_unit_fn f "ic"
   | Ric f -> pp_unit_fn f "ric"
   | Rlh f -> pp_unit_fn f "rlh"
@@ -813,14 +928,20 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Vb f -> pp_unit_fn f "vb"
   | Dvh f -> pp_unit_fn f "dvh"
   | Dvw f -> pp_unit_fn f "dvw"
+  | Dvi f -> pp_unit_fn f "dvi"
+  | Dvb f -> pp_unit_fn f "dvb"
   | Dvmin f -> pp_unit_fn f "dvmin"
   | Dvmax f -> pp_unit_fn f "dvmax"
   | Lvh f -> pp_unit_fn f "lvh"
   | Lvw f -> pp_unit_fn f "lvw"
+  | Lvi f -> pp_unit_fn f "lvi"
+  | Lvb f -> pp_unit_fn f "lvb"
   | Lvmin f -> pp_unit_fn f "lvmin"
   | Lvmax f -> pp_unit_fn f "lvmax"
   | Svh f -> pp_unit_fn f "svh"
   | Svw f -> pp_unit_fn f "svw"
+  | Svi f -> pp_unit_fn f "svi"
+  | Svb f -> pp_unit_fn f "svb"
   | Svmin f -> pp_unit_fn f "svmin"
   | Svmax f -> pp_unit_fn f "svmax"
   | Cqw f -> pp_unit_fn f "cqw"
@@ -830,6 +951,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Cqmin f -> pp_unit_fn f "cqmin"
   | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
+  | Rch f -> pp_unit_fn f "rch"
   | Lh f -> pp_unit_fn f "lh"
   | Dimension { value; unit; repr } ->
       (* CSS Values 4 sec. 6.7.2 serialises a dimension's unit in lowercase, and
@@ -860,6 +982,8 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Webkit_max_content -> Pp.string ctx "-webkit-max-content"
   | Webkit_min_content -> Pp.string ctx "-webkit-min-content"
   | Webkit_fit_content -> Pp.string ctx "-webkit-fit-content"
+  | Webkit_fill_available -> Pp.string ctx "-webkit-fill-available"
+  | Moz_available -> Pp.string ctx "-moz-available"
   | Moz_max_content -> Pp.string ctx "-moz-max-content"
   | Moz_min_content -> Pp.string ctx "-moz-min-content"
   | Moz_fit_content -> Pp.string ctx "-moz-fit-content"
@@ -888,8 +1012,8 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_calc_contents (pp_length ~always) ctx calc)
         ctx (basis, calc)
-  | Anchor_size size ->
-      Pp.call "anchor-size" (fun ctx size -> Pp.string ctx size) ctx size
+  | Anchor_size (name, size, fallback) ->
+      pp_anchor_size_length ~always ctx name size fallback
   | Anchor (name, side, fallback) ->
       pp_anchor_length ~always ctx name side fallback
   | Attr attr -> Pp.call "attr" (pp_attr_call (pp_length ~always)) ctx attr
@@ -916,6 +1040,9 @@ and pp_length_math_arg ~always ctx (length : length) =
   | Calc cv -> pp_calc_contents (pp_length ~always) ctx cv
   | _ -> pp_length ~always ctx length
 
+(* CSS Anchor Positioning 1 (ED) sec. 3.2 and 5.1 take the name and the keyword
+   in either order; the name is written first. CSS Values 4 (ED) sec. 2.1 omits
+   the comma before the fallback when nothing precedes it. *)
 and pp_anchor_length ~always ctx name side fallback =
   Pp.call "anchor"
     (fun ctx (name, side, fallback) ->
@@ -924,13 +1051,29 @@ and pp_anchor_length ~always ctx name side fallback =
           Pp.string ctx name;
           Pp.space ctx ())
         name;
-      Pp.string ctx side;
-      Option.iter
-        (fun fallback ->
-          Pp.comma ctx ();
-          pp_length ~always ctx fallback)
-        fallback)
+      pp_anchor_side ctx side;
+      pp_anchor_fallback ~always ctx fallback)
     ctx (name, side, fallback)
+
+and pp_anchor_size_length ~always ctx name size fallback =
+  Pp.call "anchor-size"
+    (fun ctx (name, size, fallback) ->
+      Option.iter (Pp.string ctx) name;
+      Option.iter
+        (fun size ->
+          if Option.is_some name then Pp.space ctx ();
+          pp_anchor_size ctx size)
+        size;
+      match (name, size, fallback) with
+      | None, None, Some fallback -> pp_length ~always ctx fallback
+      | _ -> pp_anchor_fallback ~always ctx fallback)
+    ctx (name, size, fallback)
+
+and pp_anchor_fallback ~always ctx = function
+  | None -> ()
+  | Some fallback ->
+      Pp.comma ctx ();
+      pp_length ~always ctx fallback
 
 and pp_round_length ~always ctx strategy value step =
   Pp.call "round"

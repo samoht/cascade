@@ -261,17 +261,17 @@ let background_initial_slots () =
     ~optimized:"background:url(a.png)red" "background: url(a.png) red"
 
 (* CSS Backgrounds 3 (ED) sec. 2.1 orders a layer's slots, not the author's
-   words, so pp writes the image before the colour whichever way round they were
-   read. [background: red var(--x)] therefore prints [var(--x)red], and that
-   emission is only readable as the layer it came from if a leading [var()] with
-   more behind it fills the image slot rather than standing for the whole
-   value. *)
+   words, but a [var()] beside them may substitute a comma (CSS Variables 1 sec.
+   3), and only the final layer takes a colour: with [--x: url(a.png),
+   url(b.png)], [background: red var(--x)] is invalid and [var(--x) red] paints
+   red, as Chromium 153 computes. A value holding one is written back in the
+   order it was read. *)
 let background_leading_var_slot () =
-  check_declaration ~expected:"background:var(--x)red"
+  check_declaration ~expected:"background:red var(--x)"
     "background: red var(--x)";
   check_declaration ~expected:"background:var(--x)red"
     "background: var(--x) red";
-  check_declaration ~expected:"background:var(--x)no-repeat"
+  check_declaration ~expected:"background:no-repeat var(--x)"
     "background: no-repeat var(--x)";
   check_declaration ~expected:"background:var(--x)no-repeat"
     "background: var(--x) no-repeat";
@@ -641,6 +641,30 @@ let mask_drained_layer () =
     ~optimized:"-webkit-mask:url(a.png),none;mask:url(a.png),none"
     "mask: url(a.png), none"
 
+(* CSS Masking 1 sec. 7.9: in a [mask] layer one [<geometry-box>] sets both
+   [mask-origin] and [mask-clip], two set them in that order, and [no-clip] sets
+   the clip alone. Two boxes print once only when they are one box. *)
+let mask_boxes () =
+  let both css = String.concat "" [ "-webkit-mask:"; css; ";mask:"; css ] in
+  check_declaration ~expected:"mask:url(a.png)border-box content-box"
+    ~optimized:(both "url(a.png)border-box content-box")
+    "mask: url(a.png) border-box content-box";
+  check_declaration ~expected:"mask:url(a.png)padding-box border-box"
+    ~optimized:(both "url(a.png)padding-box border-box")
+    "mask: url(a.png) padding-box border-box";
+  check_declaration ~expected:"mask:url(a.png)content-box content-box"
+    ~optimized:(both "url(a.png)content-box")
+    "mask: url(a.png) content-box content-box";
+  check_declaration ~expected:"mask:url(a.png)border-box border-box"
+    ~optimized:(both "url(a.png)") "mask: url(a.png) border-box border-box";
+  check_declaration ~expected:"mask:url(a.png)content-box"
+    ~optimized:(both "url(a.png)content-box")
+    "mask: url(a.png) content-box";
+  check_declaration ~expected:"mask:url(a.png)no-clip"
+    "mask: url(a.png) no-clip";
+  check_declaration ~expected:"mask:url(a.png)content-box no-clip"
+    "mask: url(a.png) content-box no-clip"
+
 (* CSS Masking 1 (ED) sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1
    puts [none] in the [<mask-reference>] of one layer, so it names the whole
    value only where no layer follows it and no slot of its own layer does. *)
@@ -950,6 +974,96 @@ let logical_border_shorthands () =
       "border-block-end: 1px solid red 2px";
     ]
 
+(* CSS Variables 1 sec. 3 checks a declaration holding a substitution against
+   its property's grammar only after substitution, and the call may supply any
+   number of components, commas included. A declaration whose substitution
+   stands beside other components is therefore written back as its tokens: no
+   slot is filled in, dropped, merged or moved around it. Chromium 153, with the
+   custom property shown, computes the source and the old output differently:
+   [flex:var(--g) 0px] against [var(--g) 1 0] ([--g:1 0], basis [0px] against
+   [auto]), [gap:var(--a) var(--a)] against [var(--a)] ([--a:1px 2px]),
+   [list-style:var(--a) none] against [none var(--a) none] ([--a:square]),
+   [grid-area:var(--a) / auto / auto] against [var(--a)] ([--a:a / b]),
+   [border:var(--a) none] against [var(--a)] ([--a:1px solid]),
+   [transition:var(--a) 0s] against [var(--a)] ([--a:opacity 1s 2s]),
+   [transform:translate(var(--a),0px)] against [translate(var(--a))]
+   ([--a:1px,2px]) and [background:red var(--x)] against [var(--x)red]
+   ([--x:url(a.png), url(b.png)]). *)
+let substitution_takes_no_slot () =
+  let concat = String.concat "" in
+  List.iter
+    (fun (property, value, held) ->
+      check_declaration
+        ~expected:(concat [ property; ":"; held ])
+        ~optimized:(concat [ property; ":"; held ])
+        (concat [ property; ": "; value ]))
+    [
+      ("flex", "var(--g) 0px", "var(--g) 0px");
+      ("flex", "var(--g) 1", "var(--g) 1");
+      ("flex", "1 1 var(--b)", "1 1 var(--b)");
+      (* A [var()] factor may supply none, so the zero basis keeps its unit:
+         with [--g: ;] Chromium 153 computes [flex:var(--g) 1 0px] as grow 1,
+         shrink 1, basis [0px], and [var(--g) 1 0] as shrink 0, basis [0%]. *)
+      ("flex", "var(--g) 1 0px", "var(--g) 1 0px");
+      ("flex", "1 var(--g) 0px", "1 var(--g) 0px");
+      ("-webkit-flex", "var(--g) 0px", "var(--g) 0px");
+      ("gap", "var(--a) var(--a)", "var(--a) var(--a)");
+      ("overflow", "var(--a) var(--a)", "var(--a) var(--a)");
+      ("list-style", "var(--a) none", "var(--a) none");
+      ("grid-area", "var(--a) / auto / auto", "var(--a)/auto/auto");
+      ("border", "var(--a) none", "var(--a) none");
+      ("outline", "var(--a) none", "var(--a) none");
+      ("transition", "var(--a) 0s", "var(--a) 0s");
+      ("border-image", "var(--a) 100%", "var(--a)100%");
+      ("transform", "translate(var(--a),0px)", "translate(var(--a),0px)");
+      ("background", "red var(--x)", "red var(--x)");
+      ( "color",
+        "color-mix(in oklab, var(--p) red, blue)",
+        "color-mix(in oklab,var(--p) red,blue)" );
+      ("color", "rgb(var(--r),0,0)", "rgb(var(--r),0,0)");
+    ];
+  (* Controls: a substitution that is the whole value, and one that is an
+     operand of a math function, give one value whatever they substitute, so the
+     declaration is typed and folds around them. *)
+  check_declaration ~expected:"flex:var(--g)" ~optimized:"flex:var(--g)"
+    "flex: var(--g)";
+  check_declaration ~expected:"flex:var(--g,1 0%)"
+    ~optimized:"flex:var(--g,1 0%)" "flex: var(--g, 1 1 0%)";
+  check_declaration ~expected:"margin:calc(var(--a)*2)0px"
+    ~optimized:"margin:calc(var(--a)*2)0" "margin: calc(var(--a) * 2) 0px";
+  (* A component beside a substitution may be respelled where it stands. *)
+  check_declaration ~expected:"margin:env(safe-area-inset-top)0px 0px"
+    ~optimized:"margin:env(safe-area-inset-top)0 0"
+    "margin: env(safe-area-inset-top) 0px 0px";
+  (* An [inset] written after a body holding a [var()] stays where it was
+     written, so the shadow stays typed and its other folds apply. *)
+  check_declaration ~expected:"box-shadow:1px 1px 0px var(--c) inset"
+    ~optimized:"box-shadow:1px 1px 0 var(--c) inset"
+    "box-shadow: 1px 1px 0px var(--c) inset";
+  (* A comma list keeps each segment holding a substitution as written and a run
+     of segments holding none on each side where it had one; inside such a run
+     the folds still apply. So the colours and the end positions of a gradient
+     fold around its [var()] stops, and so does the default direction when a
+     plain stop follows it. With the [var()] first, [to bottom] stays: Chromium
+     153 paints [linear-gradient(to left, red, blue)] for the shorter form with
+     [--x: to left, red], and nothing for the source. *)
+  check_declaration
+    ~expected:
+      "background-image:linear-gradient(to bottom,transparent 0%,var(--g) \
+       9.27%,var(--g) 90.7%,transparent 100%)"
+    ~optimized:
+      "background-image:linear-gradient(#0000,var(--g) 9.27%,var(--g) \
+       90.7%,#0000)"
+    "background-image: linear-gradient(to bottom, transparent 0%, var(--g) \
+     9.27%, var(--g) 90.7%, transparent 100%)";
+  check_declaration
+    ~expected:"background-image:linear-gradient(to bottom,var(--x),blue)"
+    ~optimized:"background-image:linear-gradient(to bottom,var(--x),#00f)"
+    "background-image: linear-gradient(to bottom, var(--x), blue)";
+  (* A fallback is the whole value in turn. *)
+  check_declaration ~expected:"flex:var(--x,var(--g) 0px)"
+    ~optimized:"flex:var(--x,var(--g) 0px)" "flex: var(--x, var(--g) 0px)"
+
 let suite =
   ( "declaration_shorthand",
     [
@@ -972,6 +1086,7 @@ let suite =
       test_case "negative calc keeps the call" `Quick
         negative_calc_keeps_the_call;
       test_case "mask drained layer" `Quick mask_drained_layer;
+      test_case "mask boxes" `Quick mask_boxes;
       test_case "mask none is a layer reference" `Quick
         mask_none_is_a_layer_reference;
       test_case "background drained layer" `Quick background_drained_layer;
@@ -980,4 +1095,6 @@ let suite =
       test_case "all-initial shorthand prints none" `Quick
         all_initial_shorthand_prints_none;
       test_case "logical border shorthands" `Quick logical_border_shorthands;
+      test_case "spec variables 3 substitution takes no slot" `Quick
+        substitution_takes_no_slot;
     ] )

@@ -78,6 +78,7 @@ let read_display_legacy t : display =
       ("-webkit-inline-flex", Webkit_inline_flex);
       ("-ms-flexbox", Ms_flexbox);
       ("-webkit-box", Webkit_box);
+      ("-webkit-inline-box", Webkit_inline_box);
       ("-moz-box", Moz_box);
       ("-moz-inline-box", Moz_inline_box);
       ("inherit", Inherit);
@@ -178,6 +179,7 @@ let rec read_overflow_single (t : Cursor.t) : overflow =
       ("scroll", Scroll);
       ("auto", Auto);
       ("clip", Clip);
+      ("overlay", Overlay);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
@@ -204,15 +206,20 @@ let read_overflow t : overflow =
    6.1.1). *)
 let normalize_object_view_box (value : object_view_box) : object_view_box =
   match value with
-  | Inset (top, right, bottom, left) ->
+  | Inset (top, right, bottom, left, rounded) ->
       let nl = Values.normalize_length ~strip:true in
       let top' = nl top in
       let right' = option_map_preserve nl right in
       let bottom' = option_map_preserve nl bottom in
       let left' = option_map_preserve nl left in
-      if top' == top && right' == right && bottom' == bottom && left' == left
+      let rounded' =
+        option_map_preserve (normalize_border_radius ~strip:true) rounded
+      in
+      if
+        top' == top && right' == right && bottom' == bottom && left' == left
+        && rounded' == rounded
       then value
-      else Inset (top', right', bottom', left')
+      else Inset (top', right', bottom', left', rounded')
   | Xywh r ->
       let lp = Values.normalize_length_percentage ~strip:true in
       let x = lp r.x in
@@ -253,9 +260,22 @@ let aspect_ratio_of_numbers ~auto (a : number) (b : number) : aspect_ratio =
 (* CSS Sizing 4 sec. 5 spells the value [<ratio>], whose CSS Values 4 sec. 6.5
    numbers carry a [0,inf] range, so a call folding below it keeps its wrapper:
    the literal underneath is one [read_aspect_ratio_number] refuses. *)
-let normalize_aspect_ratio : aspect_ratio -> aspect_ratio =
+(* CSS Values 4 sec. 10.10 simplifies arithmetic over numbers to one number,
+   so [calc(2 * 16/9)] and [calc(16/9 * 2)] are one ratio; a quotient the exact
+   fold keeps is written at the six-significant-figure budget of M6, as
+   line-height writes one, so both spellings reach one normal form. Lossless
+   mode keeps the call. *)
+let normalize_aspect_ratio ?(lossless = false) : aspect_ratio -> aspect_ratio =
  fun value ->
-  let number = Values.normalize_number ~non_negative:true in
+  let number n =
+    match Values.normalize_number ~non_negative:true n with
+    | Num _ as n -> n
+    | n when lossless -> n
+    | n -> (
+        match eval_number_value n with
+        | Some f when f >= 0. && Float.is_finite f -> Num (Pp.round_sig 6 f)
+        | Some _ | None -> n)
+  in
   match value with
   | Auto_ratio_calc (a, b) ->
       aspect_ratio_of_numbers ~auto:true (number a) (number b)
@@ -299,6 +319,7 @@ let rec pp_display : display Pp.t =
   | Webkit_inline_flex -> Pp.string ctx "-webkit-inline-flex"
   | Ms_flexbox -> Pp.string ctx "-ms-flexbox"
   | Webkit_box -> Pp.string ctx "-webkit-box"
+  | Webkit_inline_box -> Pp.string ctx "-webkit-inline-box"
   | Moz_box -> Pp.string ctx "-moz-box"
   | Moz_inline_box -> Pp.string ctx "-moz-inline-box"
   | Inherit -> Pp.string ctx "inherit"
@@ -569,6 +590,7 @@ let rec pp_overflow : overflow Pp.t =
   | Scroll -> Pp.string ctx "scroll"
   | Auto -> Pp.string ctx "auto"
   | Clip -> Pp.string ctx "clip"
+  | Overlay -> Pp.string ctx "overlay"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -744,21 +766,16 @@ let rec pp_table_layout : table_layout Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-(* Sec. 6.5 refuses a negative ratio number written on its own, so the fold
-   comes off only where its result is a ratio number by itself. *)
-let pp_aspect_ratio_number ctx value =
-  match (Pp.minified ctx, eval_number_value value) with
-  | true, Some value when value >= 0. -> Pp.float ctx value
-  | _ -> pp_number ctx value
-
+(* CSS Values 4 sec. 6.5 reads a lone [<number>] as [<number> / 1], so a literal
+   [1] after the slash is a spelling the printer may drop; a calculation folds
+   in [normalize_aspect_ratio], never here. *)
 let pp_aspect_ratio_pair ctx a b =
-  let b_value = eval_number_value b in
-  if Pp.minified ctx && b_value = Some 1. then pp_aspect_ratio_number ctx a
-  else (
-    pp_aspect_ratio_number ctx a;
-    if b_value <> Some 1. then (
+  pp_number ctx a;
+  match (b : number) with
+  | Num 1. -> ()
+  | _ ->
       Pp.op_char ctx '/';
-      pp_aspect_ratio_number ctx b))
+      pp_number ctx b
 
 let rec pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
@@ -853,10 +870,11 @@ let rec pp_object_view_box : object_view_box Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_object_view_box ctx v
   | None -> Pp.string ctx "none"
-  | Inset (top, right, bottom, left) ->
+  | Inset (top, right, bottom, left, rounded) ->
       Pp.string ctx "inset(";
       pp_length ctx top;
       pp_optional_inset_sides pp_length ctx right bottom left;
+      pp_clip_path_round ctx rounded;
       Pp.char ctx ')'
   | Xywh { x; y; width; height; rounded } ->
       Pp.string ctx "xywh(";
@@ -1218,14 +1236,15 @@ let read_object_view_box_inset t =
       let top = read_length t in
       Cursor.ws t;
       let read_opt () : length option =
-        if Cursor.is_done t then None else Some (read_length t)
+        let side = Cursor.option read_length t in
+        Cursor.ws t;
+        side
       in
       let right = read_opt () in
-      Cursor.ws t;
       let bottom = if Option.is_some right then read_opt () else None in
-      Cursor.ws t;
       let left = if Option.is_some bottom then read_opt () else None in
-      (Inset (top, right, bottom, left) : object_view_box))
+      let rounded = read_clip_path_round t in
+      (Inset (top, right, bottom, left, rounded) : object_view_box))
 
 let read_object_view_box_xywh t =
   Cursor.call "xywh" t (fun inner ->

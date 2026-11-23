@@ -213,7 +213,7 @@ let rec pp_font_stretch : font_stretch Pp.t =
   (* Sec. 2.3 refuses a negative width written on its own, so the wrapper comes
      off only around a leaf that is a width by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true
         ~unwrap:(fun (v : font_stretch) ->
           match v with Pct f -> f >= 0. | _ -> true)
         pp_font_stretch ctx c
@@ -247,7 +247,7 @@ let rec pp_font_size_adjust : font_size_adjust Pp.t =
   (* CSS Fonts 5 sec. 2.5 refuses a negative aspect value written on its own, so
      the wrapper comes off only around a leaf that is one by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true
         ~unwrap_num:(match c with Num n -> n >= 0. | _ -> true)
         pp_font_size_adjust ctx c
   | From_font -> Pp.string ctx "from-font"
@@ -370,17 +370,30 @@ let rec pp_line_height : line_height Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_line_height ctx v
-  | Min args -> Pp.call "min" (Pp.list ~sep:Pp.comma pp_line_height) ctx args
-  | Max args -> Pp.call "max" (Pp.list ~sep:Pp.comma pp_line_height) ctx args
+  | Min args ->
+      Pp.call "min"
+        (Pp.list ~sep:Pp.comma pp_line_height_comparison_arg)
+        ctx args
+  | Max args ->
+      Pp.call "max"
+        (Pp.list ~sep:Pp.comma pp_line_height_comparison_arg)
+        ctx args
   | Clamp (low, value, high) ->
       Pp.call "clamp"
-        (Pp.list ~sep:Pp.comma pp_line_height)
+        (Pp.list ~sep:Pp.comma pp_line_height_comparison_arg)
         ctx [ low; value; high ]
   | Calc c ->
       pp_calc
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_line_height v))
         pp_line_height ctx c
+
+(* CSS Values 4 sec. 10.2 spells a comparison argument a [<calc-sum>], so a sum
+   needs no [calc()] around it there and reads back as the same calculation. *)
+and pp_line_height_comparison_arg ctx = function
+  | Calc ((Expr _ | Math_fn _ | Var _) as c) ->
+      Values_calc.pp_calc_contents pp_line_height ctx c
+  | value -> pp_line_height ctx value
 
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
@@ -507,18 +520,81 @@ let read_bare_math read t : line_height =
    <length-percentage>]. Over numbers the calc path folds the call to the
    coefficient it answers; over a length there is no coefficient to fold to,
    since a percentage resolves only at used-value time, so the call stands the
-   way it does at a [<length>] slot.
+   way it does at a [<length>] slot. *)
 
-   Sec. 10.2 also requires the arguments to have a consistent type. The number
-   path answers for a comparison of numbers, so an argument here carries a unit
-   and a bare number beside one is a mix of the two types. *)
-let read_line_height_comparison_arg t : line_height =
-  match read_line_height_length ~allow_negative:true t with
-  | Num _ | Number { unit = Option.None; _ } ->
-      Cursor.err_expected t "length or percentage"
-  | value -> value
+(* A [calc()] read as an operand is a leaf of the sum around it, and its type is
+   that of what it holds, which [validate_calc_type] reads through a nested call
+   but not through a leaf. *)
+let rec line_height_calc_type_tree : line_height calc -> line_height calc =
+  function
+  | Val (Calc inner) -> Nested (line_height_calc_type_tree inner)
+  | Nested inner -> Nested (line_height_calc_type_tree inner)
+  | Parens inner -> Parens (line_height_calc_type_tree inner)
+  | Expr (left, op, right) ->
+      Expr
+        (line_height_calc_type_tree left, op, line_height_calc_type_tree right)
+  | leaf -> leaf
 
-let read_line_height_list_call name mk t : line_height =
+(* The power of the unit a math argument carries, as sec. 10.9 types a
+   calculation: [0] for a number, [1] for the slot's own dimension. A [var()]
+   has no type before substitution. The comparison, stepped-value, [abs()] and
+   [hypot()] calls answer their arguments' type; every other call answers a
+   number. *)
+let rec math_arg_power : math_arg -> int option = function
+  | Dim _ -> Some 1
+  | Lit _ | Const _ -> Some 0
+  | Var_arg _ -> None
+  | Parens_arg a -> math_arg_power a
+  | Op (a, op, b) -> (
+      match (math_arg_power a, op, math_arg_power b) with
+      | Some x, (Add | Sub), Some y -> if x = y then Some x else None
+      | Some x, Mul, Some y -> Some (x + y)
+      | Some x, Div, Some y -> Some (x - y)
+      | (Some _ as x), (Add | Sub), None | None, (Add | Sub), (Some _ as x) -> x
+      | _, (Add | Sub | Mul | Div), _ -> None)
+  | Math_call fn -> math_fn_power fn
+
+and math_fn_power : math_fn -> int option = function
+  | Min_n args | Max_n args | Hypot args -> List.find_map math_arg_power args
+  | Clamp_n (a, b, c) -> List.find_map math_arg_power [ a; b; c ]
+  | Abs_n a | Round_n (_, a, _) | Mod_n (a, _) | Rem_n (a, _) ->
+      math_arg_power a
+  | Sin _ | Cos _ | Tan _ | Asin _ | Acos _ | Atan _ | Atan2 _ | Sqrt _ | Exp _
+  | Log _ | Pow _ | Sign_n _ ->
+      Some 0
+
+(* A comparison the number path read is one of numbers when every argument is:
+   [max(1em + 2px)] is a length the calc parser holds in the same tree, and a
+   [var()] leaves the type to the list readers, which keep the call as one of
+   lengths or refuse it. *)
+let comparison_of_numbers fn =
+  let args =
+    match fn with
+    | Min_n args | Max_n args -> args
+    | Clamp_n (a, b, c) -> [ a; b; c ]
+    | _ -> []
+  in
+  List.for_all
+    (fun a ->
+      match math_arg_power a with Some 0 -> true | Some _ | None -> false)
+    args
+
+(* Sec. 10.2 spells each argument a [<calc-sum>], a literal, a nested call or a
+   bare sum, and requires the arguments to have a consistent type. The number
+   path answers for a comparison of numbers, so an argument here has a length or
+   a percentage type, and a bare number beside one is a mix of the two. *)
+let rec read_line_height_comparison_arg t : line_height =
+  Cursor.ws t;
+  let expr =
+    read_calc_expr read_line_height_in_math t |> numeric_line_height_calc_leaves
+  in
+  validate_calc_type t `Value (line_height_calc_type_tree expr);
+  match expr with
+  | Val value -> value
+  (* A [calc()] around the whole argument says nothing a bare sum does not. *)
+  | Nested expr | expr -> Calc expr
+
+and read_line_height_list_call name mk t : line_height =
   Cursor.call name t (fun inner ->
       let args =
         Cursor.list ~sep:Cursor.comma ~at_least:1
@@ -528,7 +604,7 @@ let read_line_height_list_call name mk t : line_height =
       Cursor.expect_eof inner;
       mk args)
 
-let read_line_height_clamp t : line_height =
+and read_line_height_clamp t : line_height =
   Cursor.call "clamp" t (fun inner ->
       let low = read_line_height_comparison_arg inner in
       Cursor.ws inner;
@@ -543,12 +619,13 @@ let read_line_height_clamp t : line_height =
 
 (* The number path first, so a comparison whose arguments are all numbers keeps
    folding to the coefficient it always did. *)
-let line_height_math_calls number =
+and line_height_math_calls number =
   (* The number path takes a comparison of numbers only: one over lengths or
      percentages is the typed [Min]/[Max]/[Clamp] the list readers build. *)
   let number t : line_height =
     match number t with
-    | (Calc (Math_fn (Min_n _ | Max_n _ | Clamp_n _)) : line_height) ->
+    | (Calc (Math_fn ((Min_n _ | Max_n _ | Clamp_n _) as fn)) : line_height)
+      when not (comparison_of_numbers fn) ->
         Cursor.err_invalid t "a comparison of lengths"
     | value -> value
   in
@@ -565,7 +642,7 @@ let line_height_math_calls number =
   :: ("clamp", fun t -> Cursor.one_of [ number; read_line_height_clamp ] t)
   :: Values.math_function_calls_beside_comparisons number
 
-let rec read_line_height_in_math t : line_height =
+and read_line_height_in_math t : line_height =
   let read_var t : line_height = Var (read_var read_line_height_in_math t) in
   let read_calc t : line_height =
     Calc
@@ -669,6 +746,18 @@ let try_numeric_font_weight r (weight : font_weight option ref) =
       Cursor.restore r before;
       false
 
+(* CSS Fonts 4 sec. 2.4: the [font] shorthand takes [<'font-style'>], whose
+   [oblique] may carry one angle. A following number or length is the weight or
+   the size, so an angle is only taken when one reads. *)
+let read_shorthand_oblique r : font_style =
+  Cursor.ws r;
+  let before = Cursor.save r in
+  match read_angle_unit_required r with
+  | angle -> Oblique_angle angle
+  | exception Cursor.Parse_error _ ->
+      Cursor.restore r before;
+      Oblique
+
 let read_optional_line_height r =
   Cursor.ws r;
   match Cursor.peek_delim r with
@@ -691,7 +780,9 @@ let read_font_shorthand r : font_shorthand =
     Cursor.ws r;
     if Cursor.is_done r then ()
     else if font_shorthand_prefix_ident (Cursor.peek_keyword r) then (
-      assign (font_prefix_slot_of (Cursor.ident ~keep_case:false r));
+      (match font_prefix_slot_of (Cursor.ident ~keep_case:false r) with
+      | Style Oblique -> assign (Style (read_shorthand_oblique r))
+      | slot -> assign slot);
       consume_prefix ())
     else if try_numeric_font_weight r weight then consume_prefix ()
   in
@@ -866,8 +957,23 @@ let rec calc_has_computed_input : line_height calc -> bool = function
    browser to evaluate, while [eval_calc] still performs exact folds. Math
    constants and functions retain the existing computed-value path, which owns
    their precision provenance separately. *)
+(* A call answering a length or a percentage CSS Values 4 sec. 10.7 resolves
+   folds to the leaf that spells it, as a number call already does. *)
+let line_height_of_math_fn fn : line_height option =
+  match Values_calc.math_fn_result fn with
+  | Some (United (v, unit)) when v >= 0. -> (
+      match unit with
+      | "px" -> Some (Px v)
+      | "em" -> Some (Em v)
+      | "rem" -> Some (Rem v)
+      | "%" -> Some (Pct v)
+      | _ -> Option.None)
+  | _ -> Option.None
+
 let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
   match lh with
+  | Calc (Math_fn fn) when Option.is_some (line_height_of_math_fn fn) ->
+      Option.get (line_height_of_math_fn fn)
   | Calc c -> (
       match
         if lossless || calc_has_computed_input c then Option.None
@@ -961,6 +1067,11 @@ let rec normalize_font_stretch (value : font_stretch) : font_stretch =
   | Calc c -> (
       match eval_calc c with
       | Val (Pct p as leaf) when p >= 0. -> normalize_font_stretch leaf
+      (* A call answering a percentage folds to the leaf that spells it. *)
+      | Math_fn fn -> (
+          match Values_calc.math_fn_result fn with
+          | Some (United (p, "%")) when p >= 0. -> Pct p
+          | _ -> if Math_fn fn == c then value else Calc (Math_fn fn))
       | folded -> if folded == c then value else Calc folded)
   | value -> (
       match font_stretch_pct value with Some pct -> Pct pct | None -> value)

@@ -32,10 +32,10 @@ val element_relative_in_value_string : string -> string option
 
 val substitution_fn_in_value_string : string -> string option
 (** [substitution_fn_in_value_string value] is the name of the first arbitrary
-    substitution function ([var()], [attr()] or [env()]) anywhere in [value],
-    including nested in another one's fallback. It parses [value] to components
-    and walks them, so a [var(] inside a string or [url()] is data rather than a
-    call. *)
+    substitution function ([var()], [attr()], [env()], [if()] or a
+    [<dashed-function>]) anywhere in [value], including nested in another one's
+    fallback. It parses [value] to components and walks them, so a [var(] inside
+    a string or [url()] is data rather than a call. *)
 
 val pp_syntax : 'a syntax Pp.t
 (** [pp_syntax] pretty-prints a syntax descriptor to a CSS syntax string. *)

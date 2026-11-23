@@ -171,6 +171,58 @@ let rewrap_pseudo_compound components =
   if List.exists is_pseudo_element components then loop None components
   else components
 
+(* Selectors 4 sec. 3.1: a compound matches an element every simple selector in
+   it matches, so the order of its simple selectors is no part of what it
+   matches, nor of its specificity. A type or universal selector comes first
+   (sec. 3.5), a pseudo-element ends the compound with the pseudo-classes that
+   follow it (sec. 16), and a nesting selector keeps its place, so only the runs
+   between those are put in printed order. *)
+let commutes = function
+  | Element _ | Universal _ | Nesting | Compound _ | Combined _ | Relative _
+  | List _ ->
+      false
+  | component -> not (is_pseudo_element component)
+
+(* Ids, then classes, by name, then every other simple selector by its printed
+   form: a total order that prints nothing for the common compound. *)
+let compare_simple a b =
+  match (a, b) with
+  | Id x, Id y | Class x, Class y -> String.compare x y
+  | Id _, _ -> -1
+  | _, Id _ -> 1
+  | Class _, _ -> -1
+  | _, Class _ -> 1
+  | a, b ->
+      String.compare
+        (Pp.to_string ~minify:true pp a)
+        (Pp.to_string ~minify:true pp b)
+
+let sort_commuting components =
+  let rec span run = function
+    | c :: rest when commutes c -> span (c :: run) rest
+    | rest -> (List.rev run, rest)
+  in
+  let rec go = function
+    | [] -> []
+    | component :: _ as rest when is_pseudo_element component -> rest
+    | component :: rest when not (commutes component) -> component :: go rest
+    | components ->
+        let run, rest = span [] components in
+        List.stable_sort compare_simple run @ go rest
+  in
+  (* Most compounds already stand in this order, so ask before rebuilding. *)
+  let rec ordered = function
+    | a :: (b :: _ as rest) ->
+        is_pseudo_element a
+        || ((not (commutes a && commutes b)) || compare_simple a b <= 0)
+           && ordered rest
+    | _ -> true
+  in
+  if ordered components then components
+  else
+    let sorted = go components in
+    if list_same sorted components then components else sorted
+
 (* A compound in canonical form: the universal a longer compound implies is gone
    (Selectors 4 sec. 3.5) and a pseudo-element keeps its own compound. *)
 let canonical_compound components =
@@ -564,3 +616,12 @@ let modifier_prefix sel =
 let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
 let ( || ) s1 s2 = combine s1 Column s2
 let compare (a : t) b = Stdlib.compare a b
+
+let sort_compounds sel =
+  map
+    (function
+      | Compound components as node ->
+          let sorted = sort_commuting components in
+          if sorted == components then node else Compound sorted
+      | node -> node)
+    sel

@@ -543,13 +543,14 @@ let test_layer_keeps_nested_only_rule () =
         "@layer a{.w,.x{.y{color:red}}}" );
       ( "a rule nesting an at-rule",
         "@layer a{.x{@media print{color:red}}}",
-        "@layer a{.x{@media print{color:red}}}" );
+        "@layer a{@media print{.x{color:red}}}" );
     ]
   in
   List.iter
     (fun (name, input, expected) ->
       let optimized =
-        Css.Optimize.stylesheet (Css.Stylesheet.read (Cursor.of_string input))
+        Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets
+          (Css.Stylesheet.read (Cursor.of_string input))
       in
       Alcotest.(check string)
         name expected
@@ -1064,9 +1065,13 @@ let test_var_color_functions_preserved () =
      [var(--x)] is a different value and renders black *)
   same ".x{color:rgb(var(--rgb))}";
   same ".x{color:rgb(var(--x,1 2 3))}";
+  (* A channel var may substitute a comma (CSS Variables 1 sec. 3), and the
+     legacy comma form and the space form read different counts: with [--r:
+     255,0] and [--g], [--b] at [0], Chromium 153 computes rgba(255, 0, 0, 0)
+     for the comma form and refuses the space form. *)
   Alcotest.(check string)
-    "distinct channel vars canonicalise to the space form, not black"
-    ".x{color:rgb(var(--r) var(--g) var(--b))}"
+    "distinct channel vars keep their commas, not black"
+    ".x{color:rgb(var(--r),var(--g),var(--b))}"
     (opt ".x{color:rgb(var(--r),var(--g),var(--b))}");
   (* a sub-byte fractional channel stays verbatim, not floored to black *)
   same ".x{color:rgb(.5 0 0)}";

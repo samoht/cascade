@@ -16,7 +16,8 @@ let same_selector_merge_past_nested () =
     | Error _ -> Alcotest.failf "could not parse %s" css
   in
   let canon css =
-    Css.Optimize.stylesheet (Css.statements (of_string css))
+    Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets
+      (Css.statements (of_string css))
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
   in
@@ -28,67 +29,35 @@ let same_selector_merge_past_nested () =
     "a nested child setting the same property keeps its place"
     ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}"
     (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}");
-  (* A nested conditional group sets properties just as a nested rule does:
-     hoisting [padding:1rem] ahead of it hands the conditional the win wherever
-     it applies, which is a different rendered padding. *)
-  Alcotest.(check string)
-    "a nested @media setting the same property blocks it"
-    ".a{color:red;@media(width>=1px){padding:2rem}}.a{padding:1rem}"
-    (canon ".a{color:red;@media (min-width:1px){padding:2rem}}.a{padding:1rem}");
-  Alcotest.(check string)
-    "a nested @container setting the same property blocks it"
-    ".a{color:red;@container(width>=1px){padding:2rem}}.a{padding:1rem}"
-    (canon
-       ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}");
-  (* The merged rule replays every declaration ahead of every nested block, so
-     no order of the rules rescues a merge a later declaration would have to
-     cross: [color:green] wins over the [@media] wherever it applies, and
-     merging hands the win back to the [@media]. *)
-  Alcotest.(check string)
-    "a later declaration overriding a nested @media blocks the merge"
-    ".a{padding:1rem;@media(width>=1px){color:#00f}}.a{color:green}"
-    (canon ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{color:green}");
-  (* Two nested blocks setting a common property race in the order the merged
-     rule replays them, which stays the order they were written in. *)
-  Alcotest.(check string)
-    "nested blocks setting a common property keep their order"
-    ".a{padding:1rem;margin:1rem;@media(width>=1px){color:#00f}@media(width>=2px){color:green}}"
-    (canon
-       ".a{padding:1rem;@media \
-        (min-width:1px){color:blue}}.a{margin:1rem;@media \
-        (min-width:2px){color:green}}");
-  (* A shorthand and a longhand of its family write a common cascade slot, so a
-     nested [margin] and a later [margin-top] compete: hoisting the longhand
-     ahead of the nested block hands [margin] the win, a different rendered
-     margin-top wherever the query applies. *)
-  Alcotest.(check string)
-    "a later longhand overriding a nested shorthand blocks the merge"
-    ".a{color:red;@media(width>=1px){margin:2rem}}.a{margin-top:1rem}"
-    (canon
-       ".a{color:red;@media (min-width:1px){margin:2rem}}.a{margin-top:1rem}");
-  (* The same slot written the other way round: a later shorthand resets the
-     longhand the nested block set. *)
-  Alcotest.(check string)
-    "a later shorthand overriding a nested longhand blocks the merge"
-    ".a{color:red;@media(width>=1px){margin-top:2rem}}.a{margin:1rem}"
-    (canon
-       ".a{color:red;@media (min-width:1px){margin-top:2rem}}.a{margin:1rem}");
-  (* Two properties of different families share no slot, so the merge stands:
-     the guard reads footprints, not the presence of a nested block. *)
-  Alcotest.(check string)
-    "a nested block of a disjoint family still merges"
-    ".a{color:red;padding:1rem;@media(width>=1px){margin:2rem}}"
-    (canon ".a{color:red;@media (min-width:1px){margin:2rem}}.a{padding:1rem}");
-  (* Nested blocks race in the order the merged rule replays them, and shorthand
-     against longhand is such a race: swapping these two blocks changes
-     margin-top wherever both queries apply. *)
-  Alcotest.(check string)
-    "nested blocks sharing a slot through a shorthand keep their order"
-    ".a{padding:1rem;color:red;@media(width>=1px){margin:2rem}@media(width>=2px){margin-top:3rem}}"
-    (canon
-       ".a{padding:1rem;@media \
-        (min-width:1px){margin:2rem}}.a{color:red;@media \
-        (min-width:2px){margin-top:3rem}}")
+  (* A declaration directly in a nested conditional group is a nested
+     declarations rule (CSS Nesting 1 sec. 5), which every target reads in place
+     only from Chrome 130, Firefox 132 and Safari 18.2. So it is flattened under
+     any targets, before any merge sees it, and each group keeps its place
+     between the two rules: hoisting a later declaration ahead of it would hand
+     the group the win wherever it applies. *)
+  let flat input expected =
+    Alcotest.(check string) input expected (canon input)
+  in
+  flat ".a{color:red;@media (min-width:1px){padding:2rem}}.a{padding:1rem}"
+    ".a{color:red}@media(width>=1px){.a{padding:2rem}}.a{padding:1rem}";
+  flat ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}"
+    ".a{color:red}@container(width>=1px){.a{padding:2rem}}.a{padding:1rem}";
+  flat ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{color:green}"
+    ".a{padding:1rem}@media(width>=1px){.a{color:#00f}}.a{color:green}";
+  flat
+    ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{margin:1rem;@media \
+     (min-width:2px){color:green}}"
+    ".a{padding:1rem}@media(width>=1px){.a{color:#00f}}.a{margin:1rem}@media(width>=2px){.a{color:green}}";
+  (* A shorthand and a longhand of its family write a common cascade slot, in
+     either order. *)
+  flat ".a{color:red;@media (min-width:1px){margin:2rem}}.a{margin-top:1rem}"
+    ".a{color:red}@media(width>=1px){.a{margin:2rem}}.a{margin-top:1rem}";
+  flat ".a{color:red;@media (min-width:1px){margin-top:2rem}}.a{margin:1rem}"
+    ".a{color:red}@media(width>=1px){.a{margin-top:2rem}}.a{margin:1rem}";
+  flat
+    ".a{padding:1rem;@media (min-width:1px){margin:2rem}}.a{color:red;@media \
+     (min-width:2px){margin-top:3rem}}"
+    ".a{padding:1rem}@media(width>=1px){.a{margin:2rem}}.a{color:red}@media(width>=2px){.a{margin-top:3rem}}"
 
 (* Whether a nested body and a later declaration block share a slot reads the
    same whichever of the two is asked about: a custom property overlaps the same
@@ -103,7 +72,8 @@ let nested_merge_reads_the_slot_from_either_side () =
     | Error _ -> Alcotest.failf "could not parse %s" css
   in
   let canon css =
-    Css.Optimize.stylesheet (Css.statements (of_string css))
+    Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets
+      (Css.statements (of_string css))
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
   in
@@ -145,21 +115,24 @@ let nested_declaration_run_dedupes () =
     | Error _ -> Alcotest.failf "could not parse %s" css
   in
   let canon css =
-    Css.Optimize.stylesheet (Css.statements (of_string css))
+    Css.Optimize.stylesheet ~targets:Optimize_helpers.nesting_targets
+      (Css.statements (of_string css))
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
   in
-  (* The run cannot move: [color] is what the nested rule sets too. *)
+  (* The run is a nested declarations rule (CSS Nesting 1 sec. 3.4 and 5),
+     flattened under any targets into a rule of its own behind the nested rule,
+     where the deduplication a rule body gets applies to it. *)
   Alcotest.(check string)
-    "a repeated declaration inside a run collapses" ".a{b{color:red}color:#00f}"
+    "a repeated declaration inside a run collapses"
+    ".a b{color:red}.a{color:#00f}"
     (canon ".a{& b{color:red}color:blue;color:blue}");
   Alcotest.(check string)
-    "a declaration the run itself overrides goes" ".a{b{color:red}color:green}"
+    "a declaration the run itself overrides goes"
+    ".a b{color:red}.a{color:green}"
     (canon ".a{& b{color:red}color:blue;color:green}");
-  (* The crossed shorthand pins every one of the four longhands, so they compose
-     where they stand. *)
   Alcotest.(check string)
-    "longhands inside a run compose" ".a{b{margin:9px}margin:1px}"
+    "longhands inside a run compose" ".a b{margin:9px}.a{margin:1px}"
     (canon
        ".a{& \
         b{margin:9px}margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}")

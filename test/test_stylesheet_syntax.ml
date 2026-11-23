@@ -145,7 +145,7 @@ let spec_s7_block_examples () =
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
   assert_minify_and_optimize ".card { color: red; & .title { color: blue; } }"
     ~minified:".card{color:red;& .title{color:blue}}"
-    ~optimized:".card{color:red;.title{color:#00f}}";
+    ~optimized:".card{color:red}.card .title{color:#00f}";
   expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
   check_stylesheet ~expected:"@keyframes slide{50%{opacity:1}}"
     "@keyframes slide { color: red; 50% { opacity: 1 } }";

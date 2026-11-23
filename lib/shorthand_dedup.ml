@@ -3,105 +3,6 @@ open Common
 open Shorthand_common
 open Shorthand_coverage
 
-let display_value_is_vendor : Properties.display -> bool = function
-  | Webkit_flex | Webkit_inline_flex | Ms_flexbox | Webkit_box | Moz_box
-  | Moz_inline_box ->
-      true
-  | _ -> false
-
-let background_image_is_vendor : Properties.background_image -> bool = function
-  | Webkit_linear_gradient _ | Webkit_repeating_linear_gradient _
-  | Webkit_radial_gradient _ | Webkit_repeating_radial_gradient _
-  | Moz_linear_gradient _ | Moz_repeating_linear_gradient _
-  | Moz_radial_gradient _ | Moz_repeating_radial_gradient _
-  | O_linear_gradient _ | O_repeating_linear_gradient _ | O_radial_gradient _
-  | O_repeating_radial_gradient _ | Webkit_image_set _ | Webkit_gradient _ ->
-      true
-  | _ -> false
-
-(* A shorthand carries the same image the longhand does, so the prefixed
-   spelling is the same fallback whichever property writes it. [background] and
-   [mask] carry one image per layer; [border-image] and [mask-border] carry a
-   single source. *)
-let background_layer_is_vendor (layer : Properties.background) =
-  match layer with
-  | Shorthand { image = Some image; _ } -> background_image_is_vendor image
-  | _ -> false
-
-let mask_layer_is_vendor (layer : Properties.mask_layer) =
-  match layer.image with
-  | Some image -> background_image_is_vendor image
-  | _ -> false
-
-let mask_value_is_vendor (value : Properties.mask) =
-  match value with
-  | Layer layer -> mask_layer_is_vendor layer
-  | Layers layers -> List.exists mask_layer_is_vendor layers
-  | _ -> false
-
-let border_image_source_is_vendor (value : Properties.border_image) =
-  match value.source with
-  | Some image -> background_image_is_vendor image
-  | _ -> false
-
-(* A value whose rendering begins with a vendor prefix (-webkit-, -moz-, -ms-,
-   -o-). Preserves legacy fallbacks like [display:-webkit-box;display:flex]: old
-   browsers understand only the prefixed spelling, so dropping the earlier
-   declaration removes a real compat fallback. *)
-(* All the intrinsic sizing properties carry a [length_percentage] value. A GADT
-   or-pattern does not refine the value type, so each constructor is matched on
-   its own; everything else is not a sizing fallback. *)
-let sizing_value_is_vendor_prefixed : type a. a Properties.property -> a -> bool
-    =
- fun property value ->
-  let pfx = Values.length_percentage_is_vendor_prefixed in
-  match property with
-  | Width -> pfx value
-  | Height -> pfx value
-  | Min_width -> pfx value
-  | Min_height -> pfx value
-  | Max_width -> pfx value
-  | Max_height -> pfx value
-  | Block_size -> pfx value
-  | Inline_size -> pfx value
-  | Min_block_size -> pfx value
-  | Min_inline_size -> pfx value
-  | Max_block_size -> pfx value
-  | Max_inline_size -> pfx value
-  | _ -> false
-
-let rec value_is_vendor_prefixed decl =
-  match decl with
-  | Theme_guarded { decl; _ } -> value_is_vendor_prefixed decl
-  | Declaration { property = Display; value; _ } ->
-      display_value_is_vendor value
-  | Declaration { property = Background_image; value; _ } ->
-      List.exists background_image_is_vendor value
-  | Declaration { property = Webkit_mask_image; value; _ } ->
-      background_image_is_vendor value
-  | Declaration { property = Mask_image; value; _ } ->
-      background_image_is_vendor value
-  | Declaration { property = Border_image_source; value; _ } ->
-      background_image_is_vendor value
-  | Declaration { property = Background; value; _ } ->
-      List.exists background_layer_is_vendor value
-  | Declaration { property = Mask; value; _ } -> mask_value_is_vendor value
-  | Declaration { property = Border_image; value; _ } ->
-      border_image_source_is_vendor value
-  | Declaration { property = Mask_border; value; _ } ->
-      border_image_source_is_vendor value
-  (* [position:-webkit-sticky;position:sticky] and the [text-align] equivalent
-     are the same browser-compat pattern: old Safari only understands the
-     prefixed keyword, so the earlier declaration is a real fallback. *)
-  | Declaration { property = Position; value = Webkit_sticky; _ } -> true
-  | Declaration { property = Text_align; value = Webkit_match_parent; _ } ->
-      true
-  (* [width:-webkit-max-content;width:max-content] and the other intrinsic
-     sizing properties: the prefixed keyword is a fallback for old Safari /
-     Firefox, so the earlier declaration must survive minify dedup. *)
-  | Declaration { property; value; _ } ->
-      sizing_value_is_vendor_prefixed property value
-
 let property_covered_by_important kept decl =
   List.exists
     (fun (_, existing) ->
@@ -142,13 +43,6 @@ let declarations_commute left right =
              declarations_conflict_with_keys a a_keys b b_keys)
            right)
        left)
-
-let legacy_vendor_fallback new_decl existing =
-  (* Different-value duplicates are kept when one value is vendor-prefixed: the
-     cascade may pick whichever the browser understands. *)
-  Declaration.same_property new_decl existing
-  && (not (same_value new_decl existing))
-  && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
 
 (* An earlier declaration the later one covers is a fallback for a browser that
    drops the later one at parse time and reads it. The floors stand for their
@@ -192,7 +86,7 @@ let covered_by_new_declaration ~floors ~judged new_decl existing =
   (not (is_intentionally_duplicated existing))
   && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
-  && (not (legacy_vendor_fallback new_decl existing))
+  && (not (Declaration.legacy_pair new_decl existing))
   && (not (floor_fallback ~floors new_decl existing))
   && (not (legacy_color_fallback ~judged new_decl existing))
   && not (legacy_runtime_subst_fallback ~judged new_decl existing)
@@ -217,8 +111,9 @@ let is_all_declaration = function
    fall back to. An image, [attr()], a [var()] or a list holding one of those
    may be what some browser rejects, and keeps the declarations before it. *)
 let rec plain_content : Properties.content -> bool = function
-  | String _ | Quoted _ | None | Normal | Open_quote | Close_quote | Inherit
-  | Initial | Unset | Revert | Revert_layer ->
+  | String _ | Quoted _ | None | Normal | Open_quote | Close_quote
+  | No_open_quote | No_close_quote | Inherit | Initial | Unset | Revert
+  | Revert_layer ->
       true
   (* Chrome 153 refuses a [symbols()] counter style. *)
   | Counter { style; _ } | Counters { style; _ } -> (
@@ -575,6 +470,32 @@ let same_value_text vendor twin =
     (Declaration.string_of_value ~minify:true vendor)
     (Declaration.string_of_value ~minify:true twin)
 
+(* The legacy name aliases cascade types under their unprefixed property's
+   grammar alone: beside that property with one value and importance, such an
+   alias says nothing the property does not. *)
+let types_only_as_alias : type a. a Properties.property -> bool = function
+  | Webkit_backface_visibility | Webkit_border_top_left_radius
+  | Webkit_border_top_right_radius | Webkit_border_bottom_right_radius
+  | Webkit_border_bottom_left_radius | Webkit_flex | Webkit_flex_grow
+  | Webkit_flex_shrink | Webkit_flex_basis | Webkit_order
+  | Webkit_perspective_origin | Webkit_transform_origin | Webkit_transform_style
+    ->
+      true
+  | _ -> false
+
+let legacy_alias_twin vendor twin =
+  match (vendor, twin) with
+  | ( Declaration { property = alias; important = i1; _ },
+      Declaration { property; important = i2; _ } )
+    when types_only_as_alias alias -> (
+      match Properties.legacy_alias alias with
+      | Some (Prop aliased) ->
+          Option.is_some (Properties.eq_property aliased property)
+          && same_value_text vendor twin
+          && Bool.equal i1 i2
+      | None -> false)
+  | _ -> false
+
 let vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration { property = Webkit_transform; important = i1; _ },
@@ -612,6 +533,7 @@ let vendor_alias_twin vendor twin =
       || vendor_alias_twin_transition vendor twin
       || vendor_alias_twin_flex vendor twin
       || vendor_alias_twin_visual vendor twin
+      || legacy_alias_twin vendor twin
 
 (* A legacy name alias is its property under a second name, so it reads as that
    property: its value under the property's grammar, its importance kept. Every
@@ -758,10 +680,7 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
       | Option.None -> false
       | Option.Some targets -> (
           match Webkit_fallback.of_declaration targets other with
-          | Option.Some needed ->
-              String.equal
-                (Declaration.property_name needed)
-                (String.lowercase_ascii (Declaration.property_name decl))
+          | Option.Some needed -> Declaration.same_property needed decl
           | Option.None -> false)
     in
     let has_dead_prefix (_, decl) =

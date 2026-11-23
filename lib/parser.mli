@@ -93,6 +93,15 @@ val is_plus_or_minus_delim : Component.t -> bool
     section 10.8 requires; a sign written as part of a number ([+2]) lexes as
     one numeric token and is not one of these. *)
 
+val math_whitespace_required : Component.t -> Component.t -> bool
+(** [math_whitespace_required prev next] is true when the whitespace between
+    [prev] and [next] inside a math function is part of the value: one of them
+    is a [+] or [-] operator, whose whitespace CSS Values 4 (ED) section 10.8
+    requires, or a [var()], [env()] or [attr()] call, which may substitute such
+    an operator, beside anything but [*], [/] or a comma. With [--op: -],
+    [calc(1px var(--op) 2px)] is [1px - 2px] and [calc(1px var(--op)2px)] is
+    invalid. *)
+
 val fold_value_ident : string -> string
 (** [fold_value_ident s] is the canonical lower-case spelling of [s] when [s]
     names a CSS-wide keyword, [currentcolor], or [transparent]; any other ident

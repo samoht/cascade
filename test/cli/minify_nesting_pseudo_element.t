@@ -17,15 +17,15 @@ refuses broke that round trip: the second pass dropped every rule.
 
   $ cascade --minify nested.css | cascade --minify -
 
-A branch that leaves the pseudo-element last stays, and reads back.
+A branch that leaves the pseudo-element last goes too: CSS Nesting 1 sec. 4
+makes [&] match what [:is()] of the parent matches, and [:is()] matches no
+pseudo-element, so [.c &] names nothing under [.a::before].
 
   $ cat > branches.css <<CSS
   > .a::before { .b, .c & { color: red } }
   > CSS
   $ cascade --minify branches.css
-  .c .a:before{color:red}
   $ cascade --minify branches.css | cascade --minify -
-  .c .a:before{color:red}
 
 The parent keeps its own declarations, and the dead nested rule goes with the
 one the lone-wrapper merge already took: it matches nothing either way.
@@ -49,16 +49,14 @@ wraps is as dead.
   $ cascade --minify media.css
   $ cascade --minify --flatten-nesting media.css
 
-The same at a remove: [&] names the pseudo-element parent, so a rule nested
-under it follows the pseudo-element too.
+The same at a remove: [&] cannot name the pseudo-element parent, so the rule
+written as [&] matches nothing, and neither does what nests under it.
 
   $ cat > deep.css <<CSS
   > .a::before { & { color: red; .b { color: blue } } }
   > CSS
   $ cascade --minify deep.css
-  .a:before{color:red}
   $ cascade --minify --flatten-nesting deep.css
-  .a:before{color:red}
 
 A parent with no pseudo-element still merges, and reads back the same way.
 
@@ -74,4 +72,4 @@ A parent with no pseudo-element still merges, and reads back the same way.
   > .a { color: red; .b { color: blue } }
   > CSS
   $ cascade --minify plain_nested.css
-  .a{color:red;.b{color:#00f}}
+  .a{color:red}.a .b{color:#00f}

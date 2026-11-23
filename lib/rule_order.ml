@@ -348,6 +348,67 @@ let drop_shadowed_declarations ~ctx stmts =
   in
   go stmts
 
+(* CSS Animations 1 sec. 3 and CSS Fonts 4 sec. 4.1: [@keyframes] and
+   [@font-face] define a name, and the cascade of style rules reads none of
+   their positions, so one may stand anywhere among them. What their order
+   decides is which definition of one name wins: the last [@keyframes] of a name
+   (the prefixed spellings included, which engines alias), and among
+   [@font-face] rules of one family the last to match. The key below names that;
+   a rule without a family shares one key with every other. *)
+let defined_name : statement -> string option = function
+  | Keyframes (name, _) | Webkit_keyframes (name, _) | Moz_keyframes (name, _)
+    ->
+      Some (String.concat "" [ "@keyframes "; name ])
+  | Font_face descriptors ->
+      let family =
+        List.find_map
+          (function
+            | (Font_family families : Stylesheet_intf.font_face_descriptor) ->
+                Some
+                  (String.concat ","
+                     (List.map
+                        (Pp.to_string ~minify:true Properties.pp_font_family)
+                        families))
+            | _ -> None)
+          descriptors
+      in
+      Some (String.concat "" [ "@font-face "; Option.value ~default:"" family ])
+  | _ -> None
+
+let holds_definition stmt =
+  Stylesheet.fold_statements
+    (fun held s -> held || Option.is_some (defined_name s))
+    false
+    (Stylesheet.statement_children stmt)
+
+(* Each stretch of a block between statements that hold such a definition inside
+   them prints its style rules and other statements first, in their order, then
+   its definitions by name, keeping the order of one name's. A statement holding
+   a definition stays where it is, since a definition of the same name inside it
+   may be the one that wins. *)
+let gather_definitions changed (stmts : statement list) : statement list =
+  (* [acc], [others] and [defs] are each in reverse order. *)
+  let flush others defs acc =
+    let defs =
+      List.stable_sort (fun (a, _) (b, _) -> String.compare a b) (List.rev defs)
+    in
+    List.rev_append (List.map snd defs) (others @ acc)
+  in
+  let rec go others defs acc = function
+    | [] -> List.rev (flush others defs acc)
+    | stmt :: rest -> (
+        match defined_name stmt with
+        | Some name -> go others ((name, stmt) :: defs) acc rest
+        | None when holds_definition stmt ->
+            go [] [] (stmt :: flush others defs acc) rest
+        | None -> go (stmt :: others) defs acc rest)
+  in
+  if List.exists (fun s -> Option.is_some (defined_name s)) stmts then (
+    let gathered = go [] [] [] stmts in
+    if not (List.equal ( == ) gathered stmts) then changed := true;
+    gathered)
+  else stmts
+
 (* Canonicalise every cascade context. At-rule block bodies inherit the current
    nesting [parent]; a style rule's nested body is canonicalised under the
    rule's own (expanded) selector as the new parent, so nested relative
@@ -399,7 +460,9 @@ and canonicalize_block ~ctx ~parent ?drops changed (stmts : statement list) :
     statement list =
   (* Canonicalise interiors first so run elements are ranked on their canonical
      serialized form, then undo grouping so equivalent factorings converge. *)
-  let stmts = List.map (recurse ~ctx ~parent changed) stmts in
+  let stmts =
+    gather_definitions changed (List.map (recurse ~ctx ~parent changed) stmts)
+  in
   let expanded =
     join_adjacent_lists ~ctx changed stmts
     |> List.concat_map expand_lists
@@ -656,8 +719,13 @@ let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
    policy, but the canonical optimizer runs spec-literally so it does not erase
    other compatibility content. Apply only the alias equivalence promised by
    canonical comparison, at every declaration site: a legacy name alias reads as
-   the property it names, which the specs make it whatever the targets, so the
-   passes after this see one property written twice. The optimizer hands the
+   the property it names, which the specs make it, so the passes after this see
+   one property written twice. A value's support is dated per name, though:
+   Chrome 111 to 119 parse [text] under [-webkit-background-clip] and not under
+   [background-clip]. So the alias reads as its property only where every
+   release from [floors] that parses one spelling parses the other
+   ({!Declaration.fallback_for}, both ways); elsewhere it stays a property of
+   its own, which the comparison may over-report. The optimizer hands the
    projection normalised declarations, so the one read under the property's
    grammar is normalised too: [0s] in a [transition] read afresh and the same
    [0s] after {!Declaration.normalize} print alike but are two values to the
@@ -665,11 +733,16 @@ let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
    declaration of a prefix no target reads ({!Shorthand.read_by_no_target}):
    every target ignores it, and one the reader cannot type would otherwise touch
    every other declaration. *)
-let canonical_vendor_aliases ~lossless ~judged (stmts : statement list) :
-    statement list =
+let canonical_vendor_aliases ~lossless ~judged ~floors (stmts : statement list)
+    : statement list =
   let as_property d =
     let aliased = Shorthand.as_aliased_property d in
-    if aliased == d then d else Declaration.normalize ~lossless aliased
+    if
+      aliased == d
+      || Declaration.fallback_for ~floors ~later:aliased d
+      || Declaration.fallback_for ~floors ~later:d aliased
+    then d
+    else Declaration.normalize ~lossless aliased
   in
   let unread decls =
     if judged then
@@ -797,11 +870,32 @@ let rec canonical_query_preludes (stmts : statement list) : statement list =
 let same_media_conditions a b =
   List.equal (fun x y -> Media.compare x y = 0) a b
 
+(* The conjuncts of a query, each a query of its own: nesting them is the query,
+   by the same sec. 2. A media type stands alone, [all] dropping out as the
+   identity (Media Queries 4 sec. 2.3), and [only] is no part of the result
+   (sec. 2.2). A negated query, a query list and an [or] stay whole, since none
+   is a conjunction. *)
+let rec media_conjuncts (q : Media.t) : Media.t list =
+  let rec condition acc : Media.condition -> Media.t list = function
+    | And (a, b) -> condition (condition acc b) a
+    | c -> Media.Cond c :: acc
+  in
+  match q with
+  | Cond c -> condition [] c
+  | Type { prefix = None | Some Only; type_; trailing } -> (
+      let rest = Option.fold ~none:[] ~some:(condition []) trailing in
+      match type_ with
+      | All -> rest
+      | type_ -> Type { prefix = None; type_; trailing = None } :: rest)
+  | List [ q ] -> media_conjuncts q
+  | Type { prefix = Some Not; _ } | List _ -> [ q ]
+
 let rec media_leaves conds acc (stmts : statement list) =
   List.fold_left
     (fun acc stmt ->
       match stmt with
-      | Media (q, inner) -> media_leaves (q :: conds) acc inner
+      | Media (q, inner) ->
+          media_leaves (List.rev_append (media_conjuncts q) conds) acc inner
       | stmt ->
           ( List.sort_uniq Media.compare conds,
             Stylesheet.map_statement_children canonical_media_nesting stmt )
@@ -821,6 +915,23 @@ and canonical_media_nesting (stmts : statement list) : statement list =
     List.fold_right (fun q body -> [ Media (q, body) ]) conds (List.rev run)
   in
   List.concat_map nest (runs [] (List.rev (media_leaves [] [] stmts)))
+
+(* Selectors 4 sec. 3.1: the order of a compound's simple selectors is no part
+   of what it matches or weighs, so every rule selector reads in the one order
+   {!Selector.sort_compounds} gives. Emission keeps the author's. *)
+let rec canonical_compounds (stmts : statement list) : statement list =
+  Common.List.map_preserve
+    (fun stmt ->
+      let stmt =
+        match stmt with
+        | Rule r ->
+            let selector = Selector.sort_compounds r.selector in
+            if Selector.equal selector r.selector then stmt
+            else Rule { r with selector }
+        | stmt -> stmt
+      in
+      Stylesheet.map_statement_children canonical_compounds stmt)
+    stmts
 
 (* CSS Animations 1 sec. 3: a keyframe block is a declaration block, so the
    declarations of one frame commute exactly as a style rule's do, and
@@ -870,14 +981,14 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
   let ctx = Ctx.of_scope ~enforce_spec ?judge None in
   let normalized =
     Rule_order_layer.fold_layer_pins
-      (canonical_media_nesting
+      (canonical_compounds @@ canonical_media_nesting
       @@ canonical_query_preludes
            (canonical_keyframe_declarations
            @@ sort_property_runs
                 (canonical_values ~lossless ~missing:true
                    (normalize_custom_values ~lossless
                       (canonical_vendor_aliases ~lossless
-                         ~judged:(Option.is_some judge)
+                         ~judged:(Option.is_some judge) ~floors:(Ctx.floors ctx)
                          (drop_unparsed_rules ~judged:(Option.is_some judge)
                             (drop_unanswerable_supports stmts)))))))
   in

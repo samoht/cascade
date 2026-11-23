@@ -953,7 +953,7 @@ let test_value_branch_positive buf =
 let negative_branch_vectors =
   [
     "background:red blue";
-    "background-image:image-set(url(a.png))";
+    "background-image:image-set()";
     "background-image:cross-fade(url(a.png),)";
     "border-image:linear-gradient(red,blue) fill fill";
     "mask-border:fill fill";

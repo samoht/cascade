@@ -225,6 +225,17 @@ type gradient_position =
   | Conic_position of conic_gradient_config
   | Var of gradient_position var
 
+(** A position on a conic gradient's circle, [<angle-percentage> | <zero>] (CSS
+    Images 4 sec. 3.3.2). *)
+type angular_position =
+  | Angle of angle
+  | Percentage of percentage
+  | Zero  (** A unitless [0]. *)
+  | Calc of angular_position calc
+      (** A math function over angles and percentages together, such as
+          [calc(10deg + 5%)]. One over angles alone is an [Angle], one over
+          percentages alone a [Percentage]. *)
+
 (** Gradient stop values *)
 type gradient_stop =
   | Color_percentage of
@@ -233,7 +244,11 @@ type gradient_stop =
   (* Color with optional length-percentage position *)
   | Color_length of color * length option * length option
       (** Color with optional length positions *)
+  | Color_angle of color * angular_position * angular_position option
+      (** A conic stop placed by one or two positions, at least one an angle,
+          e.g. "red 0 90deg". *)
   | Length of length  (** Interpolation hint with length, e.g., "50px" *)
+  | Angle_hint of angle  (** Conic interpolation hint, e.g., "90deg" *)
   | Channel of channel
       (** Residual numeric channel token from custom-property substitution. *)
   | List of gradient_stop list
@@ -299,6 +314,10 @@ type background_image =
       (** [-webkit-image-set(<source>#)] legacy spelling *)
   | Cross_fade of cross_fade_option list
       (** [cross-fade(<cf-mixing-image>#)] CSS Images 4 *)
+  | Webkit_cross_fade of background_image * background_image * number_percentage
+      (** [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)], the
+          legacy form no specification defines and Chromium reads, with the
+          weight of the second image. *)
   | Webkit_gradient of Webkit_gradient.t
   | List of background_image list
       (** Comma-separated list of background images *)

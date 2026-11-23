@@ -509,6 +509,41 @@ let test_background_image () =
   check_background_image ~minify:false
     ~expected:"conic-gradient(in hsl longer hue, red, blue)"
     "conic-gradient(in hsl longer hue, red, blue)";
+  (* CSS Images 4 sec. 3.3.2: a conic stop is placed by [<angle-percentage> |
+     <zero>]{1,2}, and a conic hint by [<angle-percentage> | <zero>]. *)
+  check_background_image ~expected:"conic-gradient(red 0deg,blue 360deg)"
+    "conic-gradient(red 0deg, blue 360deg)";
+  check_background_image ~expected:"conic-gradient(red 0,blue 1turn)"
+    "conic-gradient(red 0, blue 1turn)";
+  check_background_image ~expected:"conic-gradient(red 90deg,blue 0)"
+    "conic-gradient(red 90deg, blue 0)";
+  check_background_image
+    ~expected:"conic-gradient(from 90deg at 0 0,red 0deg,blue 1turn)"
+    "conic-gradient(from 90deg at 0 0, red 0deg, blue 1turn)";
+  check_background_image
+    ~expected:"repeating-conic-gradient(red 0deg 10deg,blue 10deg 20deg)"
+    "repeating-conic-gradient(red 0deg 10deg, blue 10deg 20deg)";
+  check_background_image ~expected:"conic-gradient(red 0 90deg,blue 25% 1turn)"
+    "conic-gradient(red 0 90deg, blue 25% 1turn)";
+  check_background_image ~expected:"conic-gradient(red,90deg,blue)"
+    "conic-gradient(red, 90deg, blue)";
+  (* The first stop's position defaults to the start of the circle and the
+     last's to its end (sec. 3.5.3), [0deg] and [360deg] in a conic gradient. *)
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,#00f)"
+    "conic-gradient(red 0deg, blue 360deg)";
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,#00f)"
+    "conic-gradient(red 0turn, blue 1turn)";
+  (* Sec. 3.3.2 measures a conic percentage against 360deg, so [90deg] is [25%],
+     the shorter spelling. *)
+  decl_optimizes ~prop:"background-image"
+    ~into:"conic-gradient(red 10% 25%,#00f)"
+    "conic-gradient(red 10% 90deg, blue)";
+  decl_optimizes ~prop:"background-image" ~into:"conic-gradient(red,25%,#00f)"
+    "conic-gradient(red, 90deg, blue)";
+  (* An angle places a stop on a circle only: a linear or radial stop takes a
+     length-percentage (sec. 3.5.1). *)
+  neg_cursor read_background_image "linear-gradient(red 10deg, blue)";
+  neg_cursor read_background_image "radial-gradient(red, 10deg, blue)";
   (* CSS Images 4 sec. 3.5.6 gives the color-stop-list a comma-separated list of
      stops and hints, so a trailing item outside that grammar is invalid (CSS
      Syntax 3 sec. 8.2). [Cursor.call] did not require [linear-gradient()] /
@@ -991,6 +1026,19 @@ let test_clip_path () =
   (* 4 values *)
   check_clip_path "circle(50px)";
   check_clip_path "ellipse(25px 50px)";
+  (* CSS Shapes 1 sec. 3.1: an omitted ellipse() size is [closest-side] on both
+     axes, and Chromium rejects a single radius, so the two radii drop only
+     together. *)
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse()"
+    "ellipse(closest-side closest-side)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(10px closest-side)"
+    "ellipse(10px closest-side)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(closest-side 10px)"
+    "ellipse(closest-side 10px)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(closest-side farthest-side)"
+    "ellipse(closest-side farthest-side)";
+  decl_optimizes ~prop:"clip-path" ~into:"ellipse(var(--v) closest-side)"
+    "ellipse(var(--v) closest-side)";
   check_clip_path "polygon(0px 0px,100px 0px,50px 100px)";
   decl_optimizes ~prop:"clip-path" ~held:"polygon(0px 0px,100px 0px,50px 100px)"
     ~into:"polygon(0 0,100px 0,50px 100px)"

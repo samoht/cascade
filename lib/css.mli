@@ -1518,9 +1518,14 @@ val radius : length -> border_radius
     [border-radius: 0.375rem]. *)
 
 val object_view_box_inset :
-  ?right:length -> ?bottom:length -> ?left:length -> length -> object_view_box
-(** [object_view_box_inset ?right ?bottom ?left top] is an [inset()] object view
-    box. *)
+  ?right:length ->
+  ?bottom:length ->
+  ?left:length ->
+  ?round:border_radius ->
+  length ->
+  object_view_box
+(** [object_view_box_inset ?right ?bottom ?left ?round top] is an [inset()]
+    object view box, rounded by [round]. *)
 
 val object_view_box : object_view_box -> declaration
 (** [object_view_box box] is the CSS [object-view-box] property. *)
@@ -4193,8 +4198,9 @@ val optimize :
     [judge], unset by default, names the browsers the sheet is judged for; see
     {!Optimize.stylesheet}.
 
-    When [flatten_nesting] is [true] (default [false]) the optimizer also
-    desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
+    Nesting is flattened unless every engine of the floors parses it, and always
+    when [flatten_nesting] is [true] (default [false]); see
+    {!Optimize.stylesheet}.
 
     When [lossless] is [true] (default [false]), bounded colour and numeric
     approximation is disabled while exact canonicalisation still runs.
@@ -4204,8 +4210,8 @@ val optimize :
     When [enforce_spec] is [true] (default [false]) the optimizer drops the
     evergreen-browser target facts: a vendor-prefixed declaration is kept beside
     its unprefixed twin, a media or container feature keeps its [min-]/[max-]
-    form rather than the shorter Media Queries 4 range grammar, and a nested
-    selector keeps its [&] prefix.
+    form rather than the shorter Media Queries 4 range grammar, and nesting is
+    flattened.
 
     When [aggressive] is [true] (default [false]) the global factoring fixpoint
     runs even when the preflight predicts low gain. In every mode the top-level

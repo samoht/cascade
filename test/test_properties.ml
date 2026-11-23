@@ -288,8 +288,9 @@ let canonical_math_block_context () =
 
 (* WHATWG Compatibility Standard sec. 3.4.1 lists the [-webkit-] properties that
    are legacy name aliases of an unprefixed property. The table below is that
-   list; a name off it, such as [-webkit-user-select] or any [-moz-] spelling,
-   is a property of its own. *)
+   list, less the [-webkit-mask-box-image] set and the three aliases a target
+   engine reads under a grammar of their own; a name off it, such as
+   [-webkit-user-select] or any [-moz-] spelling, is a property of its own. *)
 let whatwg_legacy_aliases =
   [
     ("-webkit-align-content", "align-content");
@@ -306,7 +307,6 @@ let whatwg_legacy_aliases =
     ("-webkit-animation-timing-function", "animation-timing-function");
     ("-webkit-backface-visibility", "backface-visibility");
     ("-webkit-background-clip", "background-clip");
-    ("-webkit-background-origin", "background-origin");
     ("-webkit-background-size", "background-size");
     ("-webkit-border-bottom-left-radius", "border-bottom-left-radius");
     ("-webkit-border-bottom-right-radius", "border-bottom-right-radius");
@@ -324,13 +324,6 @@ let whatwg_legacy_aliases =
     ("-webkit-flex-shrink", "flex-shrink");
     ("-webkit-flex-wrap", "flex-wrap");
     ("-webkit-justify-content", "justify-content");
-    ("-webkit-mask", "mask");
-    ("-webkit-mask-box-image", "mask-border");
-    ("-webkit-mask-box-image-outset", "mask-border-outset");
-    ("-webkit-mask-box-image-repeat", "mask-border-repeat");
-    ("-webkit-mask-box-image-slice", "mask-border-slice");
-    ("-webkit-mask-box-image-source", "mask-border-source");
-    ("-webkit-mask-box-image-width", "mask-border-width");
     ("-webkit-mask-clip", "mask-clip");
     ("-webkit-mask-composite", "mask-composite");
     ("-webkit-mask-image", "mask-image");
@@ -339,7 +332,6 @@ let whatwg_legacy_aliases =
     ("-webkit-mask-repeat", "mask-repeat");
     ("-webkit-mask-size", "mask-size");
     ("-webkit-order", "order");
-    ("-webkit-perspective", "perspective");
     ("-webkit-perspective-origin", "perspective-origin");
     ("-webkit-transform", "transform");
     ("-webkit-transform-origin", "transform-origin");
@@ -353,11 +345,19 @@ let whatwg_legacy_aliases =
 
 let name_of (Prop p) = Css.Pp.to_string ~minify:false pp_property p
 
+let is_typed : type a. a property -> bool = function
+  | Unknown_property _ -> false
+  | _ -> true
+
+(* CLAUDE.md: a longhand that parses as [Unknown_property] is typed first, so
+   every alias on the list reads as a typed property under the unprefixed
+   property's grammar, never as a name the optimizer has to look up. *)
 let vendor_prefix_and_aliases_are_property_facts () =
   List.iter
     (fun (alias, property) ->
       let (Prop a) = of_name alias in
       let (Prop p) = of_name property in
+      check bool (alias ^ " is typed") true (is_typed a);
       check bool (alias ^ " is vendor-prefixed") true (is_vendor_prefixed a);
       check bool (property ^ " is not") false (is_vendor_prefixed p);
       check (option string)
@@ -378,6 +378,31 @@ let vendor_prefix_and_aliases_are_property_facts () =
         (Option.map name_of (legacy_alias p)))
     [
       "-webkit-user-select";
+      (* Sec. 3.4.1 also lists the [-webkit-mask-box-image] set as aliases of
+         [mask-border], but no Chromium or Firefox release reads [mask-border]
+         (web-features: Safari 17.2 alone), so across the targets each is a
+         property of its own. Chromium 153: [CSS.supports] is true for
+         [-webkit-mask-box-image-width] and false for [mask-border-width], and
+         [mask-border-width:3px] leaves [-webkit-mask-box-image-width] at [auto]
+         where the prefixed spelling computes [3px]. *)
+      "-webkit-mask-box-image";
+      "-webkit-mask-box-image-outset";
+      "-webkit-mask-box-image-repeat";
+      "-webkit-mask-box-image-slice";
+      "-webkit-mask-box-image-source";
+      "-webkit-mask-box-image-width";
+      (* Chromium 153 reads [-webkit-perspective:5] as a perspective of [5px]
+         and [-webkit-background-origin:padding] as [padding-box], and refuses
+         both values under the unprefixed name, so neither alias takes its
+         property's grammar and cascade types neither under it. *)
+      "-webkit-perspective";
+      "-webkit-background-origin";
+      (* WebKit declares [-webkit-mask] as a shorthand of its own, not an alias
+         of [mask]: its longhands are [-webkit-mask-source-type] and
+         [-webkit-mask-clip] in place of [mask-mode] and [mask-clip], and it has
+         no [mask-composite] (Source/WebCore/css/CSSProperties.json, tag
+         WebKit-7615.1.26.11.23 of Safari 16.4 and main). *)
+      "-webkit-mask";
       "-moz-transform";
       "-moz-box-sizing";
       "-webkit-text-decoration-color";

@@ -17,6 +17,15 @@ let an_empty_value_is_no_declaration () =
   neg_cursor read_declaration "position-try: ";
   neg_cursor read_declaration "color: "
 
+(* CSS Anchor Positioning 1 sec. 6.1 reads a fallback entry as [<dashed-ident>
+   || <try-tactic>], so the tactics stand together on one side of the name, and
+   Chromium 153 rejects a name between two of them. *)
+let try_tactics_stand_together () =
+  neg_cursor read_declaration
+    "position-try-fallbacks: flip-block --a flip-start";
+  neg_cursor read_declaration "position-try-fallbacks: flip-block flip-block";
+  neg_cursor read_declaration "position-try-fallbacks: flip-x flip-x"
+
 (* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
    and nowhere else, and sec. 5.1 allows [anchor-size()] in the properties
    [@position-try] accepts: the inset, margin, sizing and self-alignment ones,
@@ -33,6 +42,400 @@ let anchor_query_where_the_property_takes_one () =
   neg_cursor read_declaration "padding-bottom: anchor-size(width)";
   neg_cursor read_declaration "translate: anchor-size(width)";
   neg_cursor read_declaration "scroll-margin: anchor-size(width)"
+
+(* CSS Overflow 3 (ED) sec. 5.2 spells [scrollbar-gutter] as [auto | stable &&
+   both-edges?], and [&&] takes its members in either order. Chromium 153 and
+   WebKit 26.5 keep [both-edges stable]. *)
+let scrollbar_gutter_takes_either_order () =
+  check_declaration ~expected:"scrollbar-gutter:stable both-edges"
+    "scrollbar-gutter: both-edges stable";
+  neg_cursor read_declaration "scrollbar-gutter: both-edges";
+  neg_cursor read_declaration "scrollbar-gutter: both-edges stable both-edges"
+
+(* CSS Motion Path 1 (ED) sec. 2.1 spells [offset-path] as [none | <offset-path>
+   || <coord-box>], so a box stands alone, and sec. 2.6 lets the [offset]
+   shorthand follow the path with [<'offset-distance'> || <'offset-rotate'>].
+   Chromium 153 and WebKit 26.5 keep [content-box auto] and [content-box 10px
+   auto]. CSS Masking 1 sec. 5.1 gives [clip-path] no such tail. *)
+let offset_path_box_takes_a_tail () =
+  check_declaration ~expected:"offset:content-box auto"
+    "offset: content-box auto";
+  check_declaration ~expected:"offset:content-box 10px auto"
+    "offset: content-box 10px auto";
+  neg_cursor read_declaration "clip-path: content-box 10px";
+  neg_cursor read_declaration "offset-path: content-box 10px"
+
+(* CSS Sizing 4 (ED) sec. 5.2 spells [contain-intrinsic-size] as [[ auto? [ none
+   | <length [0,inf]> ] ]{1,2}], so [auto] opens a slot and never ends one, and
+   no specification grants [0 auto]. Chromium 153 reads one slot followed by a
+   lone [auto] as that slot, and WebKit 26.5 drops it. A browser in B parses it,
+   so the declaration is kept as written: rewritten to [0] it would apply in
+   WebKit too, and dropped it would not apply in Chromium. A longer value, or
+   one that leaves anything after the [auto], both drop. *)
+let contain_intrinsic_size_keeps_a_trailing_auto () =
+  check_declaration ~expected:"contain-intrinsic-size:0 auto"
+    "contain-intrinsic-size: 0 auto";
+  check_declaration ~expected:"contain-intrinsic-size:2ch auto"
+    "contain-intrinsic-size: 2ch auto";
+  check_declaration ~expected:"contain-intrinsic-size:none auto"
+    "contain-intrinsic-size: none auto";
+  check_declaration ~expected:"contain-intrinsic-size:auto none auto"
+    "contain-intrinsic-size: auto none auto";
+  neg_cursor read_declaration "contain-intrinsic-size: 1px 2px auto";
+  neg_cursor read_declaration "contain-intrinsic-size: 0 auto auto";
+  neg_cursor read_declaration "contain-intrinsic-size: 0 auto red";
+  neg_cursor read_declaration "contain-intrinsic-size: -1px auto";
+  neg_cursor read_declaration "contain-intrinsic-width: 2ch auto";
+  (* WebKit paints the earlier declaration, so it is no dead fallback. *)
+  Alcotest.(check string)
+    "a trailing auto keeps its fallback"
+    ".a{contain-intrinsic-size:1px;contain-intrinsic-size:0 auto}"
+    (Css.minify
+       (Css.stylesheet
+          ".a { contain-intrinsic-size: 1px; contain-intrinsic-size: 0 auto }"))
+
+(* CSS Values 4 (ED) sec. 10.2 spells each argument of min(), max() and clamp()
+   as a [<calc-sum>], so a nested calc(), a product or a bare sum is an argument
+   as much as a literal is, and the arguments share one type. CSS Inline 3 sec.
+   5.1 gives line-height a [<number>] and a [<length-percentage>]. Chromium 153
+   and WebKit 26.5 keep each value below and drop each one mixing a number with
+   a length, or a product of two lengths. *)
+let line_height_comparison_takes_a_sum () =
+  let keeps value ~expected =
+    check_declaration ~roundtrip:true
+      ~expected:(String.concat "" [ "line-height:"; expected ])
+      (String.concat "" [ "line-height: "; value ])
+  in
+  keeps "min(calc(1em + 2px), 1px)" ~expected:"min(1em + 2px,1px)";
+  keeps "clamp(0px, calc(1em + 2px), 100px)"
+    ~expected:"clamp(0px,1em + 2px,100px)";
+  keeps "calc(min(calc(1em + 2px), 1px) + max(1px, 2px))"
+    ~expected:"calc(min(1em + 2px,1px) + max(1px,2px))";
+  keeps "max(1em + 2px, 1px)" ~expected:"max(1em + 2px,1px)";
+  keeps "min(calc(10% + 2px), 1px)" ~expected:"min(10% + 2px,1px)";
+  keeps "min(calc(1em * 2), 1px)" ~expected:"min(1em*2,1px)";
+  keeps "min(min(1px, 2em), 1px)" ~expected:"min(min(1px,2em),1px)";
+  keeps "max(calc(1em + 2px))" ~expected:"max(1em + 2px)";
+  keeps "min(var(--a), 1px)" ~expected:"min(var(--a),1px)";
+  neg_cursor read_declaration "line-height: min(calc(1 + 2), 1px)";
+  neg_cursor read_declaration "line-height: min(calc(1/3), 1px)";
+  neg_cursor read_declaration "line-height: min(1em, 1)";
+  neg_cursor read_declaration "line-height: min(calc(1px * 2px), 1px)";
+  neg_cursor read_declaration "line-height: min(1px + 1, 2px)"
+
+(* CSS Values 4 (ED) sec. 10.2 gives a comparison its arguments' type, and sec.
+   10.9 types a calculation from its operands, so a comparison over lengths
+   inside a calc() makes the calculation a length, and sec. 10.1 lets a
+   calculation stand only where its type does. Chromium 153 and WebKit 26.5 drop
+   each mismatch below, at a number, a percentage, a time, an angle and a length
+   slot, and keep each control. *)
+let math_operand_takes_the_slot_type () =
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "fill-opacity: calc(min(10px, 1px) + max(1px, 2px))";
+      "opacity: calc(min(10px, 1px) + max(1px, 2px))";
+      "transition-delay: calc(min(10px, 1px) + max(1px, 2px))";
+      "-webkit-transition-delay: calc(min(10px, 1px) + max(1px, 2px))";
+      "text-size-adjust: calc(min(1px, 1px) + max(1px, 2px))";
+      "offset-rotate: calc(min(45px, 1px) + max(1px, 2px))";
+      "rotate: calc(min(45px, 1px) + max(1px, 2px))";
+      "transform: rotate(calc(min(1px, 2px) + max(1px, 2px)))";
+      "line-height: calc(min(1s, 2s) + max(1s, 2s))";
+      "width: calc(min(1s, 2s) + max(1s, 2s))";
+      "width: calc(min(1s, 2s) + 1px)";
+      "width: calc(min(1s, 2s))";
+      "width: calc(abs(1s) + 1px)";
+      "width: calc(2 * min(1s, 2s))";
+    ];
+  List.iter
+    (fun decl ->
+      match Css.Declaration.of_string decl with
+      | Ok _ -> ()
+      | Error e -> Alcotest.failf "%s: %s" decl (Error.to_string e))
+    [
+      "fill-opacity: calc(min(10%, 1%) + max(1%, 2%))";
+      "transition-delay: calc(min(1s, 2s) + max(1s, 2s))";
+      "offset-rotate: calc(min(45deg, 1deg) + max(1deg, 2deg))";
+      "transform: rotate(calc(min(1deg, 2deg) + max(1deg, 2deg)))";
+      "width: calc(min(1px, 2px) + max(1px, 2px))";
+    ]
+
+(* CSS Transforms 1 (ED) sec. 4 spells the third value of [transform-origin]
+   [<length>?] and says it "must be of type <length>", so a percentage is no Z
+   offset. Chromium 153 and WebKit 26.5 drop each percentage below and keep each
+   length. *)
+let transform_origin_z_is_a_length () =
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "transform-origin: "; value ]))
+    [
+      "50% center 50%";
+      "10px 20px 30%";
+      "left top 10%";
+      "10px 20px calc(10% + 1px)";
+    ];
+  check_declaration ~expected:"transform-origin:10px 20px 30px"
+    "transform-origin: 10px 20px 30px";
+  check_declaration ~expected:"transform-origin:left top 10px"
+    "transform-origin: left top 10px"
+
+(* CSS Masking 1 sec. 5.1 spells [clip-path] as [<clip-source> | [ <basic-shape>
+   || <geometry-box> ] | none], and CSS Motion Path 1 (ED) sec. 2.1
+   [offset-path] as [none | <offset-path> || <coord-box>], so a reference box
+   pairs with a shape and with nothing else: [none] and a url stand alone.
+   Chromium 153 and WebKit 26.5 drop each value below. *)
+let reference_box_pairs_with_a_shape () =
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "clip-path: content-box none";
+      "clip-path: none content-box";
+      "clip-path: content-box inherit";
+      "offset-path: content-box none";
+      "offset-path: none content-box";
+    ];
+  check_declaration ~expected:"clip-path:content-box circle()"
+    "clip-path: content-box circle()";
+  check_declaration ~expected:"offset-path:circle() content-box"
+    "offset-path: circle() content-box"
+
+(* CSS Anchor Positioning 1 (ED) sec. 3.2 spells [anchor( <anchor-name>? &&
+   <anchor-side>, <length-percentage>? )], so the name and the side come in
+   either order and a [<percentage>] is a side. Sec. 5.1 spells [anchor-size( [
+   <anchor-name> || <anchor-size> ]? , <length-percentage>? )], and CSS Values 4
+   (ED) sec. 2.1 "Component Value Types" omits the comma when every item before
+   it is omitted, so [anchor-size()] and [anchor-size(10px)] are both values.
+   Each form is one node, printed name first. *)
+let anchor_query_forms () =
+  check_declaration ~expected:"top:anchor(50%)" "top: anchor(50%)";
+  check_declaration ~expected:"top:anchor(-10%)" "top: anchor(-10%)";
+  check_declaration ~expected:"top:anchor(--a 50%)" "top: anchor(--a 50%)";
+  check_declaration ~expected:"top:anchor(--a 50%)" "top: anchor(50% --a)";
+  check_declaration ~expected:"top:anchor(--a top)" "top: anchor(top --a)";
+  check_declaration ~expected:"top:anchor(top)" "top: anchor(TOP)";
+  check_declaration ~expected:"top:anchor(self-end,10px)"
+    "top: anchor(self-end, 10px)";
+  check_declaration ~expected:"top:anchor(50%)" "top: anchor(calc(50%))";
+  check_declaration ~expected:"inset:anchor(50%)" "inset: anchor(50%)";
+  check_declaration ~expected:"width:anchor-size()" "width: anchor-size()";
+  check_declaration ~expected:"top:anchor-size()" "top: anchor-size()";
+  check_declaration ~expected:"margin-top:anchor-size()"
+    "margin-top: anchor-size()";
+  check_declaration ~expected:"width:anchor-size(10px)"
+    "width: anchor-size(10px)";
+  check_declaration ~expected:"width:anchor-size(50%)" "width: anchor-size(50%)";
+  check_declaration ~expected:"width:anchor-size(--a)" "width: anchor-size(--a)";
+  check_declaration ~expected:"width:anchor-size(--a width)"
+    "width: anchor-size(width --a)";
+  check_declaration ~expected:"width:anchor-size(self-inline)"
+    "width: anchor-size(SELF-INLINE)";
+  check_declaration ~expected:"width:anchor-size(--a,10px)"
+    "width: anchor-size(--a, 10px)";
+  check_declaration ~expected:"width:calc(anchor-size()*2)"
+    "width: calc(anchor-size() * 2)";
+  neg_cursor read_declaration "top: anchor()";
+  neg_cursor read_declaration "top: anchor(--a)";
+  neg_cursor read_declaration "top: anchor(foo)";
+  neg_cursor read_declaration "top: anchor(width)";
+  neg_cursor read_declaration "top: anchor(50px)";
+  neg_cursor read_declaration "top: anchor(0)";
+  neg_cursor read_declaration "top: anchor(top top)";
+  neg_cursor read_declaration "top: anchor(--a --b top)";
+  neg_cursor read_declaration "top: anchor(top 10px)";
+  neg_cursor read_declaration "top: anchor(top,)";
+  neg_cursor read_declaration "top: anchor(calc(50% + 1px))";
+  neg_cursor read_declaration "width: anchor-size(foo)";
+  neg_cursor read_declaration "width: anchor-size(top)";
+  neg_cursor read_declaration "width: anchor-size(width height)";
+  neg_cursor read_declaration "width: anchor-size(--a --b)";
+  neg_cursor read_declaration "width: anchor-size(, 10px)"
+
+(* CSS Values 5 sec. 8.3 makes [if()] an arbitrary substitution function, and
+   CSS Mixins 1 sec. 2 makes a [<dashed-function>] one: a declaration holding
+   either is valid at parse time whatever the property, as one holding a [var()]
+   is, so long as the call matches its own grammar. Chrome 153 keeps each value
+   read here and drops each one refused. Chrome refuses an empty argument after
+   the first in a [<dashed-function>], which sec. 3 of CSS Mixins 1 allows;
+   cascade refuses it with the browser. *)
+let a_substitution_function_defers_the_property () =
+  check_declaration ~expected:"width:if(media(print):1px;else:2px)"
+    "width: if(media(print): 1px; else: 2px)";
+  check_declaration ~expected:"color:if(style(--x:1):red;else:blue)"
+    "color: if(style(--x: 1): red; else: blue)";
+  check_declaration ~expected:"width:if(media(print):1px;)"
+    "width: if(media(print):1px;)";
+  check_declaration ~expected:"width:if(else:)" "width: if(else:)";
+  check_declaration ~expected:"width:if(not media(print):1px)"
+    "width: if(not media(print):1px)";
+  check_declaration ~expected:"width:if(media(print) and (x):1px)"
+    "width: if(media(print) and (x):1px)";
+  check_declaration ~expected:"width:if(foo(x):1px)" "width: if(foo(x):1px)";
+  check_declaration ~expected:"margin:1px if(else:2px)"
+    "margin: 1px if(else:2px)";
+  check_declaration ~expected:"width:calc(if(else:1px) + 1px)"
+    "width: calc(if(else:1px) + 1px)";
+  check_declaration ~expected:"width:--f()" "width: --f()";
+  check_declaration ~expected:"width:--f(1px,2px)" "width: --f(1px, 2px)";
+  check_declaration ~expected:"display:--f({a,b})" "display: --f({a,b})";
+  check_declaration ~expected:"width:calc(--f()*2)" "width: calc(--f() * 2)";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "width: if()";
+      "width: if(foo)";
+      "width: if(media(print))";
+      "width: if(x:1px)";
+      "width: if(1px:1px)";
+      "width: if([a]:1px)";
+      "width: if(media(print):1px;;)";
+      "width: if(else and media(print):1px)";
+      "width: if(not not media(print):1px)";
+      "width: if(media(print) media(screen):1px)";
+      "width: if(media(print) and media(screen) or media(x):1px)";
+      "width: if(media(print):1px !important)";
+      "width: --f(1px;2px)";
+      "width: --f(!)";
+      "width: --f(1px,)";
+      "width: --f(1px,,2px)";
+      "width: -f()";
+    ]
+
+(* CSS 2.1 sec. 4.2 has a browser keep a declaration it parses, and a reader
+   that refuses one has [--minify] delete what that browser renders. Chrome 153
+   keeps every declaration read here (CSS.supports true). The prefixed and
+   legacy keywords are read in place of the standard ones by Blink, WebKit or
+   Gecko; the rest are grammar the specifications cited grant. *)
+let a_value_a_browser_keeps_reads () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("cursor: -webkit-grab", "cursor:-webkit-grab");
+      ("cursor: -webkit-grabbing", "cursor:-webkit-grabbing");
+      ("cursor: -webkit-zoom-in", "cursor:-webkit-zoom-in");
+      ("cursor: -webkit-zoom-out", "cursor:-webkit-zoom-out");
+      ( "image-rendering: -webkit-optimize-contrast",
+        "image-rendering:-webkit-optimize-contrast" );
+      ("display: -webkit-inline-box", "display:-webkit-inline-box");
+      ( "unicode-bidi: -webkit-isolate-override",
+        "unicode-bidi:-webkit-isolate-override" );
+      ("unicode-bidi: -webkit-isolate", "unicode-bidi:-webkit-isolate");
+      ("unicode-bidi: -webkit-plaintext", "unicode-bidi:-webkit-plaintext");
+      (* CSS Overflow 3 sec. 3.1: a legacy alias of [auto]. *)
+      ("overflow: overlay", "overflow:overlay");
+      ("overflow-y: overlay", "overflow-y:overlay");
+      ("width: -webkit-fill-available", "width:-webkit-fill-available");
+      ("min-height: -webkit-fill-available", "min-height:-webkit-fill-available");
+      ("text-align: -webkit-center", "text-align:-webkit-center");
+      ("text-align: -webkit-left", "text-align:-webkit-left");
+      ("text-align: -webkit-right", "text-align:-webkit-right");
+      (* CSS Writing Modes 4 sec. 3.1.1: the SVG 1.1 values. *)
+      ("writing-mode: tb", "writing-mode:tb");
+      ("writing-mode: tb-rl", "writing-mode:tb-rl");
+      ("writing-mode: lr", "writing-mode:lr");
+      ("writing-mode: lr-tb", "writing-mode:lr-tb");
+      ("writing-mode: rl", "writing-mode:rl");
+      ("writing-mode: rl-tb", "writing-mode:rl-tb");
+      (* CSS Color 4 Appendix A: the deprecated system colours, which CSS Color
+         4 sec. 15.5 serialises in lowercase. *)
+      ("color: Window", "color:window");
+      ("color: WindowText", "color:windowtext");
+      ("color: ThreeDFace", "color:threedface");
+      ("background-color: Menu", "background-color:menu");
+      ("color: InfoBackground", "color:infobackground");
+      ("border: 1px solid ButtonShadow", "border:1px solid buttonshadow");
+      (* CSS Align 3 sec. 7.2: a lone value sets both axes. *)
+      ("place-content: flex-start", "place-content:flex-start");
+      ("place-content: flex-end", "place-content:flex-end");
+      (* CSS Generated Content 3 sec. 1. *)
+      ("content: no-open-quote", "content:no-open-quote");
+      ("content: no-close-quote", "content:no-close-quote");
+      ("content: open-quote no-close-quote", "content:open-quote no-close-quote");
+      (* CSS Fonts 4 sec. 2.4: [oblique <angle>] is a font-style. *)
+      ("font: oblique 10deg 12px a", "font:oblique 10deg 12px a");
+      ("font: oblique 10deg bold 12px a", "font:oblique 10deg bold 12px a");
+      ("dominant-baseline: hanging", "dominant-baseline:hanging");
+      (* CSS UI 4 sec. 7.2. *)
+      ("appearance: checkbox", "appearance:checkbox");
+      ("appearance: radio", "appearance:radio");
+      ("appearance: menulist-button", "appearance:menulist-button");
+      (* CSS Images 4 sec. 2.2: the resolution of an option is optional. *)
+      ( "background-image: image-set(\"a.png\")",
+        "background-image:image-set(\"a.png\")" );
+      (* CSS Grid 2 sec. 7.3: a named cell token is a run of name code points,
+         so it may start with a digit or hold a non-ASCII one. *)
+      ("grid-template-areas: \"1a\"", "grid-template-areas:\"1a\"");
+      ("grid-template-areas: \"\u{e9}\"", "grid-template-areas:\"\u{e9}\"");
+      (* CSS Transforms 2 sec. 13.1. *)
+      ("transform: perspective(none)", "transform:perspective(none)");
+      (* CSS Text 4 sec. 3: the longhand pair, in grammar order. *)
+      ("white-space: preserve", "white-space:preserve");
+      ( "white-space: nowrap preserve-breaks",
+        "white-space:preserve-breaks nowrap" );
+      (* CSS Backgrounds 3 sec. 6.7: [//] leaves the width out. *)
+      ("border-image: url(a.png) 30 // 5px", "border-image:url(a.png)30//5px");
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "grid-template-areas: \"a$\"";
+      "white-space: nowrap nowrap";
+      "white-space: preserve collapse";
+      "border-image: url(a.png) 30 //";
+    ]
+
+(* CSS Images 4 sec. 2.2 gives an image-set option at most one [<resolution>]
+   and one [type()]. Chrome 153 refuses a repeat, and cascade read it as the
+   option without the repeat, which Chrome keeps, so [--minify] turned a dropped
+   declaration into a live one. *)
+let an_image_set_option_names_one_resolution () =
+  check_declaration ~expected:"background-image:image-set(url(a.png)2x)"
+    "background-image: image-set(url(a.png) 2x)";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "background-image: image-set(url(a.png) 1x 2x)";
+      "background-image: image-set(url(a.png) type(\"image/png\") \
+       type(\"image/avif\"))";
+    ]
+
+(* CSS Masking 1 sec. 7.4 gives [mask-position] [<position>#], and CSS Values 4
+   sec. 8.3 gives [<position>] no three-value form: only [background-position]
+   keeps one, through the legacy [<bg-position>] of CSS Backgrounds 3 sec. 3.6,
+   and [-webkit-mask-position] is read as it. Chrome 153 refuses
+   [mask-position:left 10px top] and keeps the other forms. *)
+let mask_position_takes_no_three_value_form () =
+  check_declaration ~expected:"mask-position:right 10px bottom 5px"
+    "mask-position: right 10px bottom 5px";
+  check_declaration ~expected:"-webkit-mask-position:left 10px top"
+    "-webkit-mask-position: left 10px top";
+  check_declaration ~expected:"background-position:left 10px top"
+    "background-position: left 10px top";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "mask-position: left 10px top";
+      "mask-position: left top 10px";
+      "mask-position: center top 10px";
+      "mask-position: left 10px top, center";
+    ]
+
+(* The [mask] shorthand takes [<position>] too (CSS Masking 1 sec. 7.9), but
+   Chromium and WebKit read its layer's position with [background-position]'s
+   three-value grammar, and Gecko does not. A declaration some browser in B
+   reads and another drops is kept as written: dropping it changes the first,
+   and rewriting it into a form every browser reads changes the second. *)
+let mask_shorthand_keeps_a_three_value_position () =
+  check_declaration ~expected:"mask:url(a.png) left 10px top"
+    "mask: url(a.png) left 10px top";
+  check_declaration ~expected:"mask:url(a.png) left top 10px,none"
+    "mask: url(a.png) left top 10px, none";
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "mask: url(a.png) left 10px top 5px 6px"; "mask: url(a.png) left 10px foo";
+    ]
 
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
@@ -838,7 +1241,6 @@ let spec_platform_property_vectors () =
       "width: mod(10px)";
       "opacity: abs()";
       "opacity: sign()";
-      "background-image: image-set(url(a.png))";
       "border-image: linear-gradient(red, blue) fill fill";
       "font: bold serif";
       "transition: allow-discrete allow-discrete allow-discrete";
@@ -942,7 +1344,7 @@ let spec_values_l45_edges () =
       "width: calc(* 1px)";
       "width: min()";
       "height: clamp(10px, 20px)";
-      "margin: anchor-size()";
+      "margin: anchor-size(top)";
       "top: anchor()";
       "color: lab(50% 20)";
       "color: oklch(60% .2)";
@@ -981,6 +1383,14 @@ let spec_remaining_prop_vectors () =
       ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
       ("scroll-padding: 1rem 2rem", "scroll-padding:1rem 2rem");
       ("columns: 12rem 3", "columns:12rem 3");
+      (* CSS Multicol 2 sec. 4.5: [[<'column-width'> || <'column-count'>] [/
+         <'column-height'>]?], the height a non-negative length, which Chromium
+         153 parses. *)
+      ("columns: 0/0", "columns:0/0");
+      ("columns: 10px 2 / 5px", "columns:10px 2/5px");
+      ("columns: 2 10px / 1em", "columns:10px 2/1em");
+      ("columns: auto / 10px", "columns:auto/10px");
+      ("columns: 3 / 2rem", "columns:3/2rem");
       ( "column-rule: 1px solid currentColor",
         "column-rule:1px solid currentColor" );
       ("column-span: all", "column-span:all");
@@ -1093,6 +1503,12 @@ let spec_remaining_prop_vectors () =
       ("animation-composition: add", "animation-composition:add");
       ("animation-range-start: entry 10%", "animation-range-start:entry 10%");
       ("animation-range-end: exit 90%", "animation-range-end:exit 90%");
+      (* Scroll-driven Animations 1 sec. 3.1 names [scroll], the full range of
+         the scroll container, among the timeline ranges. *)
+      ("animation-range: scroll", "animation-range:scroll");
+      ("animation-range: entry scroll", "animation-range:entry scroll");
+      ("animation-range-start: scroll 10%", "animation-range-start:scroll 10%");
+      ("animation-range-end: scroll 90%", "animation-range-end:scroll 90%");
       ("scroll-timeline-name: --scroller", "scroll-timeline-name:--scroller");
       ("scroll-timeline-axis: inline", "scroll-timeline-axis:inline");
       ("view-timeline-inset: auto 10%", "view-timeline-inset:auto 10%");
@@ -1116,16 +1532,25 @@ let spec_remaining_prop_vectors () =
       ("position-area: top span-left", "position-area:top span-left");
       ( "position-try-fallbacks: --below, flip-block",
         "position-try-fallbacks:--below,flip-block" );
-      (* CSS Anchor Positioning 1 sec. 6.1: [<dashed-ident> || <try-tactic>],
-         and <try-tactic> is itself [flip-block || flip-inline || flip-start].
-         || is order-free, so each component appears at most once in any order
-         and reads back name-first. *)
+      (* CSS Anchor Positioning 1 sec. 6.1: [<dashed-ident> || <try-tactic>], so
+         the name stands before or after the tactics and reads back first. The
+         tactics compose in the order written (Chromium 153 places [flip-start
+         flip-block] and [flip-block flip-start] apart), so they keep it. *)
       ( "position-try-fallbacks: flip-block --below",
         "position-try-fallbacks:--below flip-block" );
       ( "position-try-fallbacks: --below flip-block",
         "position-try-fallbacks:--below flip-block" );
       ( "position-try-fallbacks: flip-inline flip-block",
-        "position-try-fallbacks:flip-block flip-inline" );
+        "position-try-fallbacks:flip-inline flip-block" );
+      ( "position-try-fallbacks: flip-start flip-block",
+        "position-try-fallbacks:flip-start flip-block" );
+      ( "position-try-fallbacks: flip-start flip-block --a",
+        "position-try-fallbacks:--a flip-start flip-block" );
+      (* Sec. 6.1 also gives the physical tactics [flip-x] and [flip-y]. *)
+      ("position-try-fallbacks: flip-x", "position-try-fallbacks:flip-x");
+      ( "position-try-fallbacks: flip-y flip-block, --a flip-x",
+        "position-try-fallbacks:flip-y flip-block,--a flip-x" );
+      ("position-try: most-width flip-y", "position-try:most-width flip-y");
       ( "position-try-fallbacks: --a flip-start, flip-inline",
         "position-try-fallbacks:--a flip-start,flip-inline" );
       ("scrollbar-color: auto", "scrollbar-color:auto");
@@ -1169,6 +1594,10 @@ let spec_remaining_prop_vectors () =
       "scroll-snap-align: start center end";
       "scroll-snap-stop: normal always";
       "columns: 1 2 3";
+      "columns: /5px";
+      "columns: 2/50%";
+      "columns: 10px/-1px";
+      "columns: 10px / auto auto";
       "column-rule: solid solid";
       "column-span: all none";
       "break-before: page column";
@@ -1392,8 +1821,34 @@ let suite =
         color_takes_only_a_colour_function;
       test_case "a grid shorthand names both axes" `Quick
         grid_shorthand_names_both_axes;
+      test_case "a substitution function defers the property" `Quick
+        a_substitution_function_defers_the_property;
+      test_case "a value a browser keeps reads" `Quick
+        a_value_a_browser_keeps_reads;
+      test_case "an image-set option names one resolution" `Quick
+        an_image_set_option_names_one_resolution;
+      test_case "mask-position takes no three-value form" `Quick
+        mask_position_takes_no_three_value_form;
+      test_case "mask shorthand keeps a three-value position" `Quick
+        mask_shorthand_keeps_a_three_value_position;
       test_case "an anchor query where the property takes one" `Quick
         anchor_query_where_the_property_takes_one;
+      test_case "try tactics stand together" `Quick try_tactics_stand_together;
+      test_case "scrollbar-gutter takes either order" `Quick
+        scrollbar_gutter_takes_either_order;
+      test_case "an offset path box takes a tail" `Quick
+        offset_path_box_takes_a_tail;
+      test_case "contain-intrinsic-size keeps a trailing auto" `Quick
+        contain_intrinsic_size_keeps_a_trailing_auto;
+      test_case "a line-height comparison takes a sum" `Quick
+        line_height_comparison_takes_a_sum;
+      test_case "a math operand takes the slot type" `Quick
+        math_operand_takes_the_slot_type;
+      test_case "the transform-origin Z value is a length" `Quick
+        transform_origin_z_is_a_length;
+      test_case "a reference box pairs with a shape" `Quick
+        reference_box_pairs_with_a_shape;
+      test_case "anchor query forms" `Quick anchor_query_forms;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick

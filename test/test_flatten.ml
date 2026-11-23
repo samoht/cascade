@@ -65,12 +65,13 @@ let test_pseudo_element_parent_drops_invalid_nesting () =
   dropped "a plain parent still flattens" ".a{.b{color:red}}" ".a .b{color:red}"
 
 (* CSS Selectors 4 sec. 3.6.3 and sec. 3.6.4 bound what a compound may carry
-   after a pseudo-element, and nesting composes that compound out of a valid
-   parent and a valid child just as it composes a combinator. Chrome 146 drops
-   [a::before:hover], [a::selection:hover] and [a::before:focus] from cssRules
-   and keeps [a::file-selector-button:hover], [a::part(p):hover] and
-   [a::cue:hover]; cascade's reader draws the same line, so the flattener has to
-   draw it too. *)
+   after a pseudo-element, and CSS Nesting 1 sec. 4 says [&] cannot represent
+   one at all, as [:is()] cannot: [&:hover] under [a::part(p)] is
+   [:is(a::part(p)):hover], which matches nothing, not [a::part(p):hover].
+   Chromium 153 leaves [#h::part(p){&{...}}] and [p::before{&{...}}] unstyled,
+   while the flat [#h::part(p)] rule after it applies. So every composition
+   through [&] under a pseudo-element parent goes, whichever pseudo-class or
+   sub-pseudo-element the pseudo-element would take written flat. *)
 let test_pseudo_element_parent_drops_invalid_compound () =
   let check name css expected =
     Alcotest.(check string) name expected (render (Flatten.block (block css)))
@@ -82,17 +83,39 @@ let test_pseudo_element_parent_drops_invalid_compound () =
   check "a class after the pseudo-element goes" ".a::before{&.b{color:red}}" "";
   check "so does a sub-pseudo-element it does not define"
     ".a::before{&::after{color:red}}" "";
-  (* The pseudo-elements that do take a user action keep it. *)
-  check "::file-selector-button takes :hover"
-    ".a::file-selector-button{&:hover{color:red}}"
-    ".a::file-selector-button:hover{color:red}";
-  check "::part() takes :hover" ".a::part(p){&:hover{color:red}}"
-    ".a::part(p):hover{color:red}";
-  check "::cue takes :hover" ".a::cue{&:hover{color:red}}"
-    ".a::cue:hover{color:red}";
-  (* CSS Pseudo-Elements 4 sec. 4.2 defines the ::marker of a ::before. *)
-  check "::before takes ::marker" ".a::before{&::marker{color:red}}"
-    ".a:before::marker{color:red}"
+  check "[&] names no ::file-selector-button"
+    ".a::file-selector-button{&:hover{color:red}}" "";
+  check "[&] names no ::part()" ".a::part(p){&:hover{color:red}}" "";
+  check "[&] names no ::cue" ".a::cue{&:hover{color:red}}" "";
+  check "[&] names no ::before, even to reach its ::marker"
+    ".a::before{&::marker{color:red}}" ""
+
+(* CSS Nesting 1 sec. 4: [&] matches what [:is(<parent list>)] matches, and
+   [:is()] matches no pseudo-element, so [&] alone, or after a combinator, names
+   nothing under a pseudo-element parent. Chromium 153 leaves [p::before] red
+   under [p::before{color:red;&{color:blue}}] and under [.x &] with [.x] on the
+   body, and colours [.a] but not [.a::before] under [.a,.a::before{&{...}}].
+   CSS Nesting 1 sec. 5 makes a nested declarations rule the exception: it
+   matches the parent's pseudo-elements too, and Chromium 153 applies one. *)
+let test_nesting_selector_names_no_pseudo_element () =
+  let check name css expected =
+    Alcotest.(check string) name expected (render (Flatten.block (block css)))
+  in
+  check "[&] alone under a pseudo-element parent goes"
+    ".a::before{&{color:red}}" "";
+  check "the parent keeps its own declarations"
+    ".a::before{color:red;&{color:blue}}" ".a:before{color:red}";
+  check "[&] after a combinator goes too" ".a::before{.x &{color:red}}" "";
+  check "::part() is a pseudo-element like any other"
+    "#h::part(p){color:red;&{color:blue}}" "#h::part(p){color:red}";
+  check "a list parent's pseudo-element branch gives [&] nothing"
+    ".a,.a::before{&{color:red}}" ".a{color:red}";
+  check "nor in a compound" ".a,.a::before{&.x{color:red}}" ".a.x{color:red}";
+  check "nor before a descendant" ".a,.a::before{.b{color:red}}"
+    ".a .b{color:red}";
+  (* Control: a nested declarations rule is no [&] rule. *)
+  check "nested declarations reach the pseudo-element"
+    ".a::before{@media screen{color:red}}" "@media screen{.a:before{color:red}}"
 
 (* CSS Nesting 1 sec. 3 lets a nested rule start with an identifier, so its
    prelude is ambiguous with a declaration until the block appears:
@@ -230,6 +253,40 @@ let test_nested_group_rules_keep_parent () =
   check ".a{@layer n{@media screen{color:red}}}"
     "@layer n{@media screen{.a{color:red}}}"
 
+(* CSS Cascade 6 sec. 3.5.3: a style rule directly in an [@scope] block whose
+   selector holds neither [&] nor [:scope] is relative, with the scoping root
+   and a descendant combinator implied at its start, and sec. 3.5.1 makes [&]
+   there [:where(:scope)]. So the parent [&] stands for in a rule nested under
+   it is [& <parent>], and a flat selector that does not start with the parent
+   has to say so, or the implied root lands in front of what comes before it.
+   Chromium 153 styles an [.a4] inside [.c4] inside [.a4] under [@scope
+   (.c4){:is(.a4,.b4){.a4 &{...}}}], and the same element under [@scope
+   (.c6){.a6 :is(& :is(.k6)){...}}]. *)
+let test_scope_keeps_the_implied_root () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check "@scope (.c){:is(.a,.b){.a &{grid-row:3}}}"
+    "@scope(.c){.a :is(& :is(.a,.b)){grid-row:3}}";
+  check "@scope (.c){.a{.x &{color:red}}}" "@scope(.c){.x :is(& .a){color:red}}";
+  (* A selector that starts with its parent keeps the root implied. *)
+  check "@scope (.c){.a{.b{color:red}}}" "@scope(.c){.a .b{color:red}}";
+  check "@scope (.c){.a{&:hover{color:red}}}" "@scope(.c){.a:hover{color:red}}";
+  check "@scope (.c){.a{>.b{color:red}}}" "@scope(.c){.a>.b{color:red}}"
+
+(* Chromium 153 reads the prelude of an [@scope] nested in a style rule as a
+   nested selector: [.a{@scope (.b){...}}] roots at a [.b] inside an [.a], not
+   at an element that is both. Its block stays an [@scope] block: declarations
+   in it match the scoping root (CSS Cascade 6 sec. 3.5.6), and Chromium colours
+   that [.b], and its rules are relative to the root, not to [.a]. *)
+let test_nested_scope_roots_under_the_parent () =
+  let check src expected =
+    Alcotest.(check string) src expected (render (Flatten.block (block src)))
+  in
+  check ".a{@scope (.b){color:red}}" "@scope(.a .b){color:red}";
+  check ".a{@scope (.b){.x{color:red}}}" "@scope(.a .b){.x{color:red}}";
+  check ".a{@scope (& > .b){.x{color:red}}}" "@scope(.a>.b){.x{color:red}}"
+
 let suite =
   ( "flatten",
     [
@@ -243,6 +300,12 @@ let suite =
         test_pseudo_element_parent_drops_invalid_nesting;
       Alcotest.test_case "pseudo-element parent drops an invalid compound"
         `Quick test_pseudo_element_parent_drops_invalid_compound;
+      Alcotest.test_case "nesting selector names no pseudo-element" `Quick
+        test_nesting_selector_names_no_pseudo_element;
+      Alcotest.test_case "scope keeps the implied root" `Quick
+        test_scope_keeps_the_implied_root;
+      Alcotest.test_case "nested scope roots under the parent" `Quick
+        test_nested_scope_roots_under_the_parent;
       Alcotest.test_case "nested rule starting with an ident" `Quick
         test_nested_rule_starting_with_ident;
       Alcotest.test_case "bad declaration stays a declaration" `Quick

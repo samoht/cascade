@@ -743,6 +743,260 @@ let with_value_contract () =
   | Error _ -> ()
   | Ok d -> Alcotest.failf "center read as %s" (to_string d)
 
+(* The Compatibility Standard sec. 3.3.2 and 3.3.4 make
+   [-webkit-radial-gradient()] and [-webkit-repeating-radial-gradient()] aliases
+   of the radial gradients of CSS Image Values 3 (W3C Working Draft, 17 February
+   2011) sec. 5.2.1: [[<bg-position>,]? [[<shape> || <size>] | [<length> |
+   <percentage>]{2},]? <color-stop>[, <color-stop>]+], where [contain] is a
+   synonym for [closest-side], [cover] for [farthest-corner], the omitted shape
+   and size are [ellipse cover], the omitted position is [center], and an
+   argument that reads as a position or a size is a position. No [at], no single
+   radius, no colour space and no interpolation hint. Chromium 153 reads exactly
+   that, a zero radius and a missing comma after the shape included.
+   [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)] is in no
+   specification; Chromium 153 reads it in every [<image>] slot, [none] for
+   either image included, and serialises [50%] as [0.5]. *)
+let legacy_webkit_images () =
+  let radial = "-webkit-radial-gradient" in
+  let fn name args = String.concat "" [ name; args ] in
+  List.iter
+    (fun (input, held, into) ->
+      decl_optimizes ~prop:"background-image" ~held:(fn radial held)
+        ~into:(fn radial into) (fn radial input))
+    [
+      ( "(center, ellipse cover, red, blue)",
+        "(center,ellipse cover,red,blue)",
+        "(red,#00f)" );
+      ( "(center, circle, red, blue)",
+        "(center,circle,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(center, circle contain, red, blue)",
+        "(center,circle contain,red,blue)",
+        "(circle contain,red,#00f)" );
+      ( "(center, closest-side, red, blue)",
+        "(center,contain,red,blue)",
+        "(contain,red,#00f)" );
+      ( "(center, farthest-corner circle, red, blue)",
+        "(center,circle cover,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(10px 20px, 30px 40px, red, blue)",
+        "(10px 20px,30px 40px,red,blue)",
+        "(10px 20px,30px 40px,red,#00f)" );
+      ("(10px, red, blue)", "(10px,red,blue)", "(10px,red,#00f)");
+      ("(circle red, blue)", "(circle,red,blue)", "(circle,red,#00f)");
+      ( "(center, 0 20px, red, blue)",
+        "(center,0 20px,red,blue)",
+        "(center,0 20px,red,#00f)" );
+    ];
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-repeating-radial-gradient(center,cover,red,blue 10%)"
+    ~into:"-webkit-repeating-radial-gradient(red,#00f 10%)"
+    "-webkit-repeating-radial-gradient(center, cover, red, blue 10%)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-cross-fade(url(a.png),url(b.png),50%)"
+    ~into:"-webkit-cross-fade(url(a.png),url(b.png),.5)"
+    "-webkit-cross-fade(url(a.png), url(b.png), 50%)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-cross-fade(url(a.png),linear-gradient(red,blue),.5)"
+    ~into:"-webkit-cross-fade(url(a.png),linear-gradient(red,#00f),.5)"
+    "-WEBKIT-CROSS-FADE(url(a.png), linear-gradient(red, blue), 0.5)";
+  decl_optimizes ~prop:"background-image"
+    ~held:"-webkit-cross-fade(none,url(b.png),1)"
+    ~into:"-webkit-cross-fade(none,url(b.png),1)"
+    "-webkit-cross-fade(none, url(b.png), 1)";
+  (* Every [<image>] slot reads both. *)
+  List.iter
+    (fun prop ->
+      List.iter
+        (fun (input, held) ->
+          check_declaration
+            ~expected:(String.concat "" [ prop; ":"; held ])
+            (String.concat "" [ prop; ": "; input ]))
+        [
+          ( "-webkit-cross-fade(url(a.png), url(b.png), 50%)",
+            "-webkit-cross-fade(url(a.png),url(b.png),50%)" );
+          ( "-webkit-radial-gradient(center, ellipse cover, red, blue)",
+            "-webkit-radial-gradient(center,ellipse cover,red,blue)" );
+        ])
+    [
+      "background";
+      "list-style-image";
+      "list-style";
+      "border-image-source";
+      "mask-image";
+      "mask";
+      "content";
+    ];
+  (* [shape-outside] keeps an image as its source text. *)
+  List.iter
+    (fun value ->
+      let input = Fmt.str "shape-outside: %s" value in
+      match read_declaration (Cursor.of_string input) with
+      | Some _ -> ()
+      | None -> Alcotest.failf "%s was not read" input)
+    [
+      "-webkit-cross-fade(url(a.png), url(b.png), 50%)";
+      "-webkit-radial-gradient(center, ellipse cover, red, blue)";
+    ];
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "background-image: "; value ]))
+    [
+      "-webkit-radial-gradient(circle at center, red, blue)";
+      "-webkit-radial-gradient(at center, red, blue)";
+      "-webkit-radial-gradient(center, circle 10px, red, blue)";
+      "-webkit-radial-gradient(center, 10px, red, blue)";
+      "-webkit-radial-gradient(center, ellipse 10px 20px, red, blue)";
+      "-webkit-radial-gradient(center, circle ellipse, red, blue)";
+      "-webkit-radial-gradient(center, -10px 20px, red, blue)";
+      "-webkit-radial-gradient(in oklab, red, blue)";
+      "-webkit-radial-gradient(left 10px top, circle, red, blue)";
+      "-webkit-radial-gradient(top 10px, circle, red, blue)";
+      "-webkit-radial-gradient(center circle, red, blue)";
+      "-webkit-radial-gradient(center red, blue)";
+      "-webkit-radial-gradient(center, red, 30%, blue)";
+      "-webkit-cross-fade(url(a.png), url(b.png))";
+      "-webkit-cross-fade(url(a.png) 50%, url(b.png))";
+      "-webkit-cross-fade(url(a.png), url(b.png), 50%, 1)";
+      "-webkit-cross-fade(initial, url(b.png), 50%)";
+      "-webkit-cross-fade(url(a.png), url(b.png), 1px)";
+    ]
+
+(* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
+   [<angle-percentage> | <zero>]: [<angular-color-stop> = <color>
+   <color-stop-angle>?], [<color-stop-angle> = [ <angle-percentage> | <zero>
+   ]{1,2}], [<angular-color-hint> = <angle-percentage> | <zero>]. Sec. 3.3.2
+   measures a percentage against 360deg, so an angle that is a whole percentage
+   of the turn takes the shorter spelling, and the fixup of sec. 3.5.3 puts an
+   unplaced first and last stop at 0% and 100%. A length is no position of a
+   conic stop, and an angle no position of a linear or radial one. Chromium 153
+   agrees in every slot that takes an [<image>]. *)
+let conic_angular_stops () =
+  List.iter
+    (fun (input, held, into) ->
+      decl_optimizes ~prop:"background-image" ~held ~into input)
+    [
+      ( "conic-gradient(red 0deg, blue 360deg)",
+        "conic-gradient(red 0deg,blue 360deg)",
+        "conic-gradient(red,#00f)" );
+      ( "conic-gradient(red 90deg, blue 0)",
+        "conic-gradient(red 90deg,blue 0)",
+        "conic-gradient(red 25%,#00f 0)" );
+      ( "conic-gradient(red 10%, 90deg, blue)",
+        "conic-gradient(red 10%,90deg,blue)",
+        "conic-gradient(red 10%,25%,#00f)" );
+      ( "repeating-conic-gradient(from 45deg, red 0deg 10deg, blue 10deg 20deg)",
+        "repeating-conic-gradient(from 45deg,red 0deg 10deg,blue 10deg 20deg)",
+        "repeating-conic-gradient(from 45deg,red 0 10deg,#00f 10deg 20deg)" );
+      ( "conic-gradient(red calc(10deg + 5%), blue)",
+        "conic-gradient(red calc(10deg + 5%),blue)",
+        "conic-gradient(red calc(10deg + 5%),#00f)" );
+      ( "conic-gradient(red 0.5turn 1turn)",
+        "conic-gradient(red .5turn 1turn)",
+        "conic-gradient(red 50% 100%)" );
+      ( "conic-gradient(red 1rad, blue 200grad)",
+        "conic-gradient(red 1rad,blue 200grad)",
+        "conic-gradient(red 1rad,#00f 50%)" );
+    ];
+  check_declaration
+    ~expected:"background-image:conic-gradient(red 0,blue 1turn)"
+    "background-image: conic-gradient(red 0, blue 1turn)";
+  List.iter
+    (fun prop ->
+      check_declaration
+        ~expected:
+          (String.concat "" [ prop; ":conic-gradient(red 0deg,blue 360deg)" ])
+        (String.concat "" [ prop; ": conic-gradient(red 0deg, blue 360deg)" ]))
+    [
+      "background";
+      "list-style-image";
+      "list-style";
+      "border-image-source";
+      "mask-image";
+      "mask";
+      "content";
+    ];
+  List.iter
+    (fun input ->
+      match read_declaration (Cursor.of_string input) with
+      | Some _ -> ()
+      | None -> Alcotest.failf "%s was not read" input)
+    [
+      "border-image: conic-gradient(red 0deg, blue 360deg) 1";
+      "shape-outside: conic-gradient(red 0deg, blue 360deg)";
+    ];
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "background-image: "; value ]))
+    [
+      "conic-gradient(red 10px, blue)";
+      "conic-gradient(red 0px, blue)";
+      "conic-gradient(red, 10px, blue)";
+      "conic-gradient(red 0 10px, blue)";
+      "conic-gradient(red 10deg 20deg 30deg, blue)";
+      "conic-gradient(red calc(10deg + 5px), blue)";
+      "repeating-conic-gradient(red 10px, blue 20px)";
+      "linear-gradient(red 0deg, blue)";
+      "radial-gradient(red 0deg, blue)";
+    ]
+
+(* Three values Chromium 153 keeps and the reader dropped. SVG 2 sec. 13.5.6
+   spells [stroke-dasharray] as [[ <length-percentage> | <number> ]+]#, and CSS
+   Values 4 sec. 10.1 puts a math function in every one of those slots, the
+   first or a later one. CSS Images 5 (ED) sec. 3.1 takes [object-view-box: none
+   | <basic-shape-rect>], whose [inset()] carries a [round <'border-radius'>]
+   (CSS Shapes 1 sec. 3). [baseline-shift] is [<length-percentage> | sub | super
+   | top | center | bottom] in CSS Inline 3 (ED) sec. 4.2.3, and SVG 2 sec. 4.2
+   grants a unitless number in a presentation attribute only. Chromium also
+   takes a number in a style sheet, as a length in px, and the [baseline]
+   keyword of SVG 1.1 sec. 10.9.2, so both stay as written. *)
+let svg_and_box_values () =
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"stroke-dasharray" ~into input)
+    [
+      ("calc(50%) calc(25%)", "50% 25%");
+      ("1 2 calc(3%)", "1 2 3%");
+      ("1 calc(2)", "1 2");
+      ("calc(1px) calc(2px)", "1px 2px");
+    ];
+  List.iter
+    (fun (input, held) ->
+      check_declaration
+        ~expected:(String.concat "" [ "object-view-box:"; held ])
+        (String.concat "" [ "object-view-box: "; input ]))
+    [
+      ("inset(0 round 0)", "inset(0 round 0)");
+      ("inset(1px 2px round 3px)", "inset(1px 2px round 3px)");
+      ("inset(10% round 50%)", "inset(10% round 50%)");
+      ("inset(1px round 1px 2px / 3px)", "inset(1px round 1px 2px/3px)");
+    ];
+  List.iter
+    (fun (input, held) ->
+      check_declaration
+        ~expected:(String.concat "" [ "baseline-shift:"; held ])
+        (String.concat "" [ "baseline-shift: "; input ]))
+    [
+      ("1", "1");
+      ("+.5", ".5");
+      ("-1", "-1");
+      ("baseline", "baseline");
+      ("BASELINE", "baseline");
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "stroke-dasharray: 1 1 calc(10deg)";
+      "stroke-dasharray: 1 1 calc(1px + 1)";
+      "object-view-box: inset(0 round -1px)";
+      "object-view-box: inset(0 round)";
+      "object-view-box: inset(1px 2px 3px 4px 5px)";
+      "object-view-box: circle(10px)";
+      "baseline-shift: 1 2";
+      "baseline-shift: auto";
+    ]
+
 let suite =
   ( "declaration",
     [
@@ -761,6 +1015,9 @@ let suite =
       (* Custom properties and vendor prefixes *)
       test_case "custom properties basic" `Quick custom_properties_basic;
       test_case "vendor prefixes" `Quick vendor_prefixes;
+      test_case "legacy webkit images" `Quick legacy_webkit_images;
+      test_case "conic angular stops" `Quick conic_angular_stops;
+      test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)
       test_case "error missing colon" `Quick error_missing_colon;
       test_case "of_string has one failure mode" `Quick

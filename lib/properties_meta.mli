@@ -34,7 +34,12 @@ val is_vendor_prefixed : 'a property -> bool
 val legacy_alias : 'a property -> any_property option
 (** [legacy_alias property] is the property [property] is a legacy name alias of
     under WHATWG Compatibility Standard sec. 3.4.1, such as [transform] for
-    [-webkit-transform], and [None] for every other property. *)
+    [-webkit-transform], and [None] for every other property. The
+    [-webkit-mask-box-image] set is no alias: no Chromium or Firefox release
+    reads [mask-border]. An unknown property is no alias either, so
+    [-webkit-perspective], [-webkit-background-origin] and [-webkit-mask], which
+    a target engine reads under a grammar of their own that cascade does not
+    type, answer [None]. *)
 
 val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]

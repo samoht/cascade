@@ -129,6 +129,11 @@ val scope : ?layer_order:string list -> ?layer:string -> t -> t
 (** [scope ?layer_order ?layer ctx] is [ctx] with the given layer order and
     layer, when given. *)
 
+val is_css_wide_binding : Declaration.declaration -> bool
+(** [is_css_wide_binding d] is whether the custom property [d] binds a CSS-wide
+    keyword, which a resolver with no element cannot put in place of a [var()]
+    (CSS Variables 1 sec. 2.1). *)
+
 val lookup_custom_property :
   ?layer:string ->
   ?layer_order:string list ->

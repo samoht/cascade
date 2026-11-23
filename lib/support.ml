@@ -24,7 +24,10 @@ type measurement = {
 
 (* Measured by hand where web-features records no key. Each is a production a
    specification grants and a browser has not shipped, so cascade reading it is
-   right and the browser's answer says nothing about the value.
+   right and the browser's answer says nothing about the value; or, under
+   [css.types.], a legacy function a browser ships that the dataset files only
+   as the prefixed form of another key, which a function of a value is matched
+   to by its name.
 
    This is library knowledge rather than a test fixture: it is a fact about CSS
    in the world, which is what cascade models. A harness carrying it would be
@@ -37,6 +40,22 @@ type measurement = {
    left to drift. *)
 let measured =
   [
+    {
+      key = "css.types.image.-webkit-cross-fade";
+      support =
+        {
+          Baseline.chrome = Some (17, 0);
+          firefox = None;
+          safari = Some (5, 1);
+          safari_ios = Some (5, 0);
+        };
+      why =
+        "-webkit-cross-fade(<image>, <image>, <number> | <percentage>) is in \
+         no specification. MDN's compatibility data files it under \
+         css.types.image.cross-fade as the -webkit- prefixed form, from Chrome \
+         17 and Safari 5.1, and never in Firefox";
+      measured = "Chrome 153";
+    };
     {
       key = "css.properties.width.contain";
       support =
@@ -247,6 +266,21 @@ let measured =
         "CSS Inline 3 sec. 5.2: auto | <baseline-metric>, and sec. 5.1 gives \
          <baseline-metric> = text-bottom | alphabetic | ideographic | middle | \
          central | mathematical | hanging | text-top";
+      measured = "Chrome 153";
+    };
+    {
+      key = "css.properties.column-height";
+      support =
+        {
+          Baseline.chrome = Some (153, 0);
+          firefox = None;
+          safari = None;
+          safari_ios = None;
+        };
+      why =
+        "CSS Multicol 2 sec. 4.2 and 4.5 give column-height as a longhand and \
+         as the [/ <'column-height'>] of columns; web-features records \
+         neither, and Chrome parses both";
       measured = "Chrome 153";
     };
     {
@@ -708,37 +742,6 @@ let measured =
          <custom-ident> itself, so no word of a family sequence is one \
          wherever it stands. Chrome reads inherit as a family name once \
          another word stands beside it";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.contain-intrinsic-size.auto_none_auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Sizing 4 (ED) sec. 5.2 spells contain-intrinsic-size [ auto? [ \
-         none | <length [0,inf]> ] ]{1,2}, so auto none is one whole slot and \
-         the auto after it is no slot at all. Chrome takes the trailing bare \
-         auto";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.contain-intrinsic-size.none_auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "The same sec. 5.2 grammar puts auto before the none or length of its \
-         own slot and never after one, so none auto is a slot and a keyword \
-         with no slot to open. Chrome takes the trailing bare auto here too";
       measured = "Chrome 153";
     };
     {
@@ -1378,14 +1381,22 @@ let unimplemented_by targets key =
    parse: the 43 such keys are cursor keywords, [resize],
    [background-attachment: fixed], [display-mode], [:fullscreen] and
    [::selection]. So for parsing, iOS Safari answers as Safari at its version.
-   The measured supplement is left out: it names a grammar arm by a key of its
-   own ([font-family.inherit] is Chrome reading [inherit] beside another family
+   The measured supplement is read only for a [css.types.] key, a function a
+   word of a value names. Elsewhere it names a grammar arm by a key of its own
+   ([font-family.inherit] is Chrome reading [inherit] beside another family
    name), which a word of a value cannot be matched to. *)
 let compare_version (ma, na) (mb, nb) =
   match Int.compare ma mb with 0 -> Int.compare na nb | c -> c
 
 let parse_release engine key =
-  match Hashtbl.find_opt (Lazy.force table) key with
+  let support =
+    match Hashtbl.find_opt (Lazy.force table) key with
+    | Some _ as support -> support
+    | None when String.starts_with ~prefix:"css.types." key ->
+        Hashtbl.find_opt (Lazy.force measured_table) key
+    | None -> None
+  in
+  match support with
   | None -> None
   | Some (support : Baseline.support) ->
       Some

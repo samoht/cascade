@@ -136,7 +136,7 @@ let rec numeric_columns_calc_leaves : columns_value calc -> columns_value calc =
    [<integer>] slot and clamps it to the range at computed-value time: a call
    that folds to a count is that count, and one that does not keeps its wrapper
    rather than becoming CSS a browser drops. *)
-let normalize_columns_value : columns_value -> columns_value =
+let rec normalize_columns_value : columns_value -> columns_value =
  fun value ->
   match value with
   | Auto_count n -> Count n
@@ -154,6 +154,11 @@ let normalize_columns_value : columns_value -> columns_value =
   | Both (len, count) as value ->
       let len' = Values.canonical_dimension len in
       if len' == len then value else Both (len', count)
+  | With_height (base, height) as value ->
+      let base' = normalize_columns_value base in
+      let height' = Values.canonical_dimension height in
+      if base' == base && height' == height then value
+      else With_height (base', height')
   | other -> other
 
 (* [column-width] and [size] hold their length the way [columns] holds its own,
@@ -200,6 +205,10 @@ let rec pp_columns_value : columns_value Pp.t =
           | Num _ -> Option.is_some (Prop_common.positive_integer_of_calc c)
           | _ -> true)
         pp_columns_value ctx c
+  | With_height (base, height) ->
+      pp_columns_value ctx base;
+      Pp.slash ctx ();
+      pp_length ctx height
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -471,6 +480,21 @@ let read_columns_components t : columns_value =
   | Some second -> combine_columns_components t first second
   | None -> columns_value_of_component first
 
+(* CSS Multicol 2 sec. 4.5: [/ <'column-height'>] after the width and count,
+   where the height is [auto | <length [0,inf]>]. [auto] is the initial the
+   shorthand writes for an omitted height, so it leaves [base] as it is. *)
+let read_columns_height t base : columns_value =
+  Cursor.ws t;
+  if not (Cursor.slash_opt t) then base
+  else (
+    Cursor.ws t;
+    if Cursor.option (Cursor.expect_string "auto") t |> Option.is_some then base
+    else
+      With_height
+        ( base,
+          read_length ~length_only:true ~allow_negative:false
+            ~with_keywords:false t ))
+
 let rec read_columns_value t : columns_value =
   (* CSS Multicol 2 sec. 4.5: [<'column-width'> || <'column-count'>], where
      column-width is [auto | <length>] and column-count is [auto | <integer>].
@@ -491,6 +515,7 @@ let rec read_columns_value t : columns_value =
             : columns_value));
       ]
       t
+    |> read_columns_height t
   in
   Cursor.enum_or_calls "columns"
     [
@@ -504,7 +529,8 @@ let rec read_columns_value t : columns_value =
       (("var", fun t -> Var (Values.read_var read_columns_value t))
       :: ("calc", read_math)
       :: Values.math_function_calls read_math)
-    ~default:read_columns_components t
+    ~default:(fun t -> read_columns_height t (read_columns_components t))
+    t
 
 let rec read_column_width t : column_width =
   Cursor.enum_or_var "column-width"

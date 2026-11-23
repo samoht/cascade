@@ -276,6 +276,11 @@ val pp_mask_layer : mask_layer Pp.t
 val read_mask_layer : Cursor.t -> mask_layer
 (** [read_mask_layer t] parses one [mask] layer. *)
 
+val mask_reads_with_bg_position : string -> bool
+(** [mask_reads_with_bg_position raw] is whether [raw] is a [mask] value when a
+    layer's position takes [background-position]'s three-value form, as Chromium
+    and WebKit read it and CSS Masking 1 and Gecko do not. *)
+
 val pp_min_intrinsic_sizing_keyword : min_intrinsic_sizing_keyword Pp.t
 (** [pp_min_intrinsic_sizing_keyword] pretty-prints a [min-intrinsic-sizing]
     keyword. *)
@@ -2876,7 +2881,12 @@ val is_vendor_prefixed : 'a property -> bool
 val legacy_alias : 'a property -> any_property option
 (** [legacy_alias property] is the property [property] is a legacy name alias of
     under WHATWG Compatibility Standard sec. 3.4.1, such as [transform] for
-    [-webkit-transform], and [None] for every other property. *)
+    [-webkit-transform], and [None] for every other property. The
+    [-webkit-mask-box-image] set is no alias: no Chromium or Firefox release
+    reads [mask-border]. An unknown property is no alias either, so
+    [-webkit-perspective], [-webkit-background-origin] and [-webkit-mask], which
+    a target engine reads under a grammar of their own that cascade does not
+    type, answer [None]. *)
 
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)

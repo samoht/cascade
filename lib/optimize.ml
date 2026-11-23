@@ -166,7 +166,9 @@ let normalize_font_face stmt descriptors =
   if descriptors' == descriptors then stmt else Font_face descriptors'
 
 (* Nested rule selectors are implicitly relative to the parent [&], so drop a
-   redundant leading [& <combinator>] (CSS Nesting 1 sec. 3). *)
+   redundant leading [& <combinator>] (CSS Nesting 1 sec. 3), where every target
+   parses the relaxed form: Chrome 112 to 119 and Safari 16.5 to 17.1 refuse a
+   nested selector that starts with an identifier. *)
 let drop_nesting_prefix (stmt : statement) : statement =
   match stmt with
   | Rule nr ->
@@ -301,7 +303,9 @@ and rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports ~before merged
    already, and nested again. Nesting and factoring each shorten the run, so
    this ends. *)
 and nest ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts =
-  let nested = Nest.statements stmts in
+  let nested =
+    if Ctx.parses_nesting ctx then Nest.statements stmts else stmts
+  in
   if nested == stmts then stmts
   else
     let shallow = Ctx.with_recurse_blocks false ctx in
@@ -614,8 +618,9 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
             ~owner:(Option.Some (Lazy.force body_owner))
             ~supports nested
         in
-        if enforce_spec then nested
-        else List.map_preserve drop_nesting_prefix nested
+        if Ctx.parses_nesting ctx then
+          List.map_preserve drop_nesting_prefix nested
+        else nested
   in
   let rule =
     let rule = rule_with_nested rule nested in
@@ -636,7 +641,7 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     let selector = Selector.canonicalize ~enforce_spec rule.selector in
     if selector == rule.selector then rule else { rule with selector }
   in
-  Nest.merge_lone rule
+  Nest.merge_lone ~in_scope:(owner == scope_owner) rule
 
 and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     (rules : rule list) : rule list =
@@ -1404,9 +1409,6 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     if lossless then stylesheet else compact_unknown_at_rule_bodies stylesheet
   in
   let stylesheet =
-    if flatten_nesting then Flatten.block stylesheet else stylesheet
-  in
-  let stylesheet =
     promote_registered_custom_properties ~lossless registry stylesheet
   in
   let stylesheet = Stylesheet.normalize_shadow_color_vars stylesheet in
@@ -1420,6 +1422,13 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let ctx =
     Ctx.v ~lossless ~aggressive ~regroup ~closed_world ~objective ~enforce_spec
       ~targets ?judge ~registered ~resets_held ?stats scope
+  in
+  (* A nested form stays only where every target parses it; flattening is exact
+     (CSS Nesting 1 sec. 4 and 5), so the rest is flattened first. *)
+  let stylesheet =
+    if flatten_nesting || not (Ctx.parses_nesting ctx) then
+      Flatten.block stylesheet
+    else Flatten.rules_with_nested_declarations stylesheet
   in
   let result =
     run_pipeline

@@ -564,7 +564,8 @@ let read_counter_style_system_descriptor r =
     r
 
 (* CSS Counter Styles 3 (ED) sec. 3.1.7: <symbol> = <string> | <image> |
-   <custom-ident>, each kept as the kind it is. *)
+   <custom-ident>, each kept as the kind it is. The image is one image, not the
+   comma list a [background-image] takes. *)
 let read_counter_symbol r : counter_symbol =
   match Cursor.string_opt r with
   | Some symbol -> String symbol
@@ -572,7 +573,7 @@ let read_counter_symbol r : counter_symbol =
       match Cursor.peek r with
       | Some (Component.Func _)
       | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-          Image (Properties.read_background_image r)
+          Image (Prop_image_value.read_bg_image r)
       | Some _ | None -> Ident (Cursor.custom_ident "counter style symbol" r))
 
 let read_counter_symbols_descriptor r =
@@ -621,17 +622,26 @@ let read_counter_validated_descriptor ~what ~check constructor r =
       value)
     constructor r
 
-(* sec. 3.5: [[<integer> | infinite]{2}]# | auto. *)
+(* sec. 3.5: [[<integer> | infinite]{2}]# | auto, and "if the lower bound of any
+   range is higher than the upper bound, the entire descriptor is invalid".
+   [infinite] is negative infinity as a lower bound and positive infinity as an
+   upper one, so it orders every pair it stands in. *)
 let check_counter_range c =
   let bound c =
     match Cursor.peek_keyword c with
-    | Some "infinite" -> ignore (Cursor.ident c)
-    | Some _ | None -> ignore (Cursor.int c)
+    | Some "infinite" ->
+        ignore (Cursor.ident c);
+        Option.none
+    | Some _ | None -> Option.some (Cursor.int c)
   in
   let pair c =
-    bound c;
+    let lower = bound c in
     Cursor.ws c;
-    bound c
+    let upper = bound c in
+    match (lower, upper) with
+    | Some lower, Some upper when Int.compare lower upper > 0 ->
+        Cursor.err_invalid c "@counter-style range lower bound above its upper"
+    | _ -> ()
   in
   match Cursor.peek_keyword c with
   | Some "auto" -> ignore (Cursor.ident c)

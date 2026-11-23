@@ -142,6 +142,35 @@ type 'a attr_call = {
   fallback : 'a attr_fallback;
 }
 
+(** CSS percentage values *)
+type percentage =
+  | Pct of float
+  | Num of float
+  | Var of percentage var
+  | Calc of percentage calc
+
+(** CSS Anchor Positioning 1 (ED) sec. 3.2 [<anchor-side>]: the edge or point of
+    the anchor box that [anchor()] resolves to. *)
+type anchor_side =
+  | Inside
+  | Outside
+  | Top
+  | Left
+  | Right
+  | Bottom
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Center
+  | Percentage_side of percentage
+      (** A [<percentage>] along the axis, a literal or a math function of
+          percentage type. *)
+
+(** CSS Anchor Positioning 1 (ED) sec. 5.1 [<anchor-size>]: the dimension of the
+    anchor box that [anchor-size()] resolves to. *)
+type anchor_size = Width | Height | Block | Inline | Self_block | Self_inline
+
 (** CSS length values.
 
     Supports absolute, relative, viewport (including dynamic/large/small),
@@ -157,7 +186,9 @@ type length =
   | Rem of float
   | Em of float
   | Ex of float
+  | Rex of float
   | Cap of float
+  | Rcap of float
   | Ic of float
   | Ric of float
   | Rlh of float
@@ -170,14 +201,20 @@ type length =
   | Vb of float
   | Dvh of float
   | Dvw of float
+  | Dvi of float
+  | Dvb of float
   | Dvmin of float
   | Dvmax of float
   | Lvh of float
   | Lvw of float
+  | Lvi of float
+  | Lvb of float
   | Lvmin of float
   | Lvmax of float
   | Svh of float
   | Svw of float
+  | Svi of float
+  | Svb of float
   | Svmin of float
   | Svmax of float
   | Cqw of float  (** Container query width units *)
@@ -187,6 +224,7 @@ type length =
   | Cqmin of float  (** Smaller container query dimension units *)
   | Cqmax of float  (** Larger container query dimension units *)
   | Ch of float  (** Character units *)
+  | Rch of float  (** Root character units *)
   | Lh of float  (** Line height units *)
   | Dimension of { value : float; unit : string; repr : string }
       (** Dimension with authored numeric spelling preserved for pretty
@@ -221,6 +259,10 @@ type length =
   | Moz_max_content  (** -moz-max-content (legacy intrinsic sizing) *)
   | Moz_min_content  (** -moz-min-content (legacy intrinsic sizing) *)
   | Moz_fit_content  (** -moz-fit-content (legacy intrinsic sizing) *)
+  | Webkit_fill_available
+      (** -webkit-fill-available, the prefixed [stretch] Blink and WebKit read
+      *)
+  | Moz_available  (** -moz-available, the prefixed [stretch] Gecko reads *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
   | Hairline  (** hairline line-width keyword for text-decoration-thickness *)
   | Thin  (** thin line-width keyword for text-decoration-thickness *)
@@ -237,12 +279,14 @@ type length =
   | Hypot of length list  (** CSS [hypot()] math function *)
   | Abs of length  (** CSS [abs()] math function *)
   | Calc_size of length * length calc  (** CSS [calc-size()] function *)
-  | Anchor_size of string
+  | Anchor_size of string option * anchor_size option * length option
       (** CSS [anchor-size()] function, from
           {{:https://www.w3.org/TR/css-anchor-position-1/} CSS Anchor
-           Positioning Level 1}. *)
-  | Anchor of string option * string * length option
-      (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
+           Positioning Level 1} sec. 5.1: optional anchor name, optional size
+          keyword, and optional fallback. *)
+  | Anchor of string option * anchor_side * length option
+      (** CSS [anchor()] function, sec. 3.2: optional anchor name, side, and
+          fallback. *)
   | Attr of length attr_call
       (** CSS Values 5 sec. 8.7 [attr(<attr-name> <attr-type>?, <fallback>?)]
           for typed-value contexts. *)
@@ -473,13 +517,6 @@ type component =
   | Calc of component calc
   | Component_none
 
-(** CSS percentage values *)
-type percentage =
-  | Pct of float
-  | Num of float
-  | Var of percentage var
-  | Calc of percentage calc
-
 (** CSS length or percentage values. *)
 type length_percentage =
   | Length of length
@@ -536,6 +573,31 @@ type system_color =
   | Visited_text  (** Text of visited links *)
   (* WebKit-specific system colors *)
   | Webkit_focus_ring_color  (** WebKit-specific focus ring color *)
+  (* CSS Color 4 Appendix A: the deprecated system colours a user agent must
+     still support. *)
+  | Active_border
+  | Active_caption
+  | App_workspace
+  | Background
+  | Button_highlight
+  | Button_shadow
+  | Caption_text
+  | Inactive_border
+  | Inactive_caption
+  | Inactive_caption_text
+  | Info_background
+  | Info_text
+  | Menu
+  | Menu_text
+  | Scrollbar
+  | Three_d_dark_shadow
+  | Three_d_face
+  | Three_d_highlight
+  | Three_d_light_shadow
+  | Three_d_shadow
+  | Window
+  | Window_frame
+  | Window_text
 
 (** CSS color values. *)
 type color =

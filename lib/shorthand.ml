@@ -64,6 +64,18 @@ let compose_index_group_a ~ctx kept =
   compose_font_synthesis_via_index idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
+(* CSS Backgrounds 3 sec. 4.4: [border] resets [border-image], which no run of
+   its other longhands writes. In [`Fragment] scope a sheet cascade does not see
+   may hold it, so the reset is a hazard there unless the rule writes every
+   [border-image] slot again after the run; under [`Stylesheet]
+   {!Shorthand_common.resets_held} asks the sheet. *)
+let border_image_hazard ~ctx ~held idx i ~important =
+  (match scope ctx with
+    | `Stylesheet -> false
+    | `Fragment ->
+        not (bi_rewritten_after idx i ~missing:border_image_bit ~important))
+  || bi_reset_hazard idx i ~held ~missing:border_image_bit ~important
+
 (* Second index group runs after the font-reset reorder. Font + list-style +
    flex + text-decoration + border all share the same index. *)
 let compose_index_group_b ~ctx ~held kept =
@@ -78,10 +90,12 @@ let compose_index_group_b ~ctx ~held kept =
   compose_grid_via_index idx;
   compose_grid_template_via_index idx;
   compose_border_via_index ~ctx
-    ~bi_hazard:(fun i ~important ->
-      bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
+    ~bi_hazard:(border_image_hazard ~ctx ~held idx)
     idx;
   compose_line_via_index idx;
+  compose_border_sides_via_index ~ctx
+    ~bi_hazard:(border_image_hazard ~ctx ~held idx)
+    idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 (* Third index group runs at the very end: mask + transition + animation share
@@ -96,8 +110,7 @@ let compose_index_group_c ~ctx ~held kept =
 let compose_border_whole_step ~held ~ctx kept =
   let idx = Rule_index.build (List.map snd kept) in
   compose_border_whole_via_index
-    ~bi_hazard:(fun i ~important ->
-      bi_reset_hazard idx i ~held ~missing:border_image_bit ~important)
+    ~bi_hazard:(border_image_hazard ~ctx ~held idx)
     ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 

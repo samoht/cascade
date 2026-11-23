@@ -228,10 +228,16 @@ let validate_complete_declaration_value t =
   if not (List.for_all component_is_complete (value_components t)) then
     Cursor.err_invalid t "unterminated component value"
 
+(* CSS Values 5 sec. 3.1.1 lets a [{}] block wrap an argument of an arbitrary
+   substitution function, so the function's own grammar decides about a block in
+   its arguments. *)
 let rec component_has_curly_block = function
   | Component.Block { node = { opening = Token.Curly; _ }; _ } -> true
   | Component.Block { node = { value; _ }; _ } ->
       List.exists component_has_curly_block value
+  | Component.Func { node = { name; _ }; _ }
+    when Component.is_substitution_function name ->
+      false
   | Component.Func { node = { arguments; _ }; _ } ->
       List.exists component_has_curly_block arguments
   | Component.Flat { node; _ } ->
@@ -315,6 +321,113 @@ let invalid_var_arguments arguments =
       | _ -> true)
   | _ -> true
 
+let is_preserved pred = function
+  | Component.Preserved (tok : Token.t) -> pred tok.kind
+  | Component.Block _ | Component.Func _ | Component.Flat _ -> false
+
+let significant components =
+  List.filter
+    (fun component -> not (Component.is_whitespace component))
+    components
+
+(* The pieces of [components] between top-level separators, empty ones kept. *)
+let split_on is_separator components =
+  let close piece pieces = List.rev piece :: pieces in
+  let piece, pieces =
+    List.fold_left
+      (fun (piece, pieces) component ->
+        if is_separator component then ([], close piece pieces)
+        else (component :: piece, pieces))
+      ([], []) components
+  in
+  List.rev (close piece pieces)
+
+(* CSS Syntax 3 sec. 8.2: a [<declaration-value>] holds no top-level [;] or [!]
+   and no unmatched closer, and CSS Values 5 sec. 3.1.1 lets a [{}] block stand
+   in an argument only as the whole of it. *)
+let declaration_value_tokens_ok components =
+  match significant components with
+  | [ Component.Block { node = { opening = Token.Curly; _ }; _ } ] -> true
+  | _ ->
+      not
+        (List.exists
+           (function
+             | Component.Block { node = { opening = Token.Curly; _ }; _ } ->
+                 true
+             | component ->
+                 is_preserved
+                   (function
+                     | Token.Semicolon | Token.Delim "!" | Token.Close _ -> true
+                     | _ -> false)
+                   component)
+           components)
+
+let is_keyword keyword =
+  is_preserved (function
+    | Token.Ident name ->
+        String.equal (String.lowercase_ascii_preserve name) keyword
+    | _ -> false)
+
+(* CSS Values 5 sec. 8.3 reads an [<if-condition>] as [else] or a
+   [<boolean-expr[ <if-test> ]>]: [not] before one group, or groups joined all
+   by [and] or all by [or]. A group is a function or a parenthesised block,
+   which [<if-test>] or [<general-enclosed>] takes whatever it holds. *)
+let valid_if_condition components =
+  let group = function
+    | Component.Func _ -> true
+    | Component.Block { node = { opening = Token.Paren; _ }; _ } -> true
+    | _ -> false
+  in
+  let rec joined connective = function
+    | [] -> true
+    | c :: g :: rest when is_keyword connective c && group g ->
+        joined connective rest
+    | _ -> false
+  in
+  match significant components with
+  | [ c ] when is_keyword "else" c -> true
+  | [ n; g ] when is_keyword "not" n -> group g
+  | [ g ] -> group g
+  | g :: (c :: _ as rest) when group g ->
+      (is_keyword "and" c && joined "and" rest)
+      || (is_keyword "or" c && joined "or" rest)
+  | _ -> false
+
+(* CSS Values 5 sec. 8.3: [if( [ <if-branch> ; ]* <if-branch> ;? )], each branch
+   an [<if-condition> : <declaration-value>?]. *)
+let invalid_if_arguments arguments =
+  let branches =
+    split_on (is_preserved (Token.equal_kind Token.Semicolon)) arguments
+  in
+  let branches =
+    match List.rev branches with
+    | last :: (_ :: _ as rest) when significant last = [] -> List.rev rest
+    | _ -> branches
+  in
+  let valid_branch branch =
+    match split_on (is_preserved (Token.equal_kind Token.Colon)) branch with
+    | condition :: (_ :: _ as value) ->
+        valid_if_condition condition
+        && declaration_value_tokens_ok (List.concat value)
+    | _ -> false
+  in
+  not (List.for_all valid_branch branches)
+
+(* CSS Mixins 1 sec. 3 writes a [<dashed-function>]'s arguments as [[
+   <declaration-value>? ]#? ,?]. Chrome 153 takes an empty first argument and
+   refuses any other one, the trailing one included, so cascade does too. *)
+let invalid_dashed_arguments arguments =
+  match split_on (is_preserved (Token.equal_kind Token.Comma)) arguments with
+  | [ only ] when significant only = [] -> false
+  | first :: rest ->
+      (not (declaration_value_tokens_ok first))
+      || List.exists
+           (fun argument ->
+             significant argument = []
+             || not (declaration_value_tokens_ok argument))
+           rest
+  | [] -> false
+
 (* [component_has_invalid_substitution] over a {!Component.Flat} run, in one
    pass and with no recursion: each block and function the run opens is a frame
    on [frames], and a substitution call's frame tracks how far its arguments
@@ -359,7 +472,8 @@ let flat_has_invalid_substitution tokens =
           let substitution, state =
             match String.lowercase_ascii_preserve name with
             | "var" -> (true, Var_name)
-            | "env" | "attr" -> (true, Substitution_empty)
+            | "env" | "attr" | "if" -> (true, Substitution_empty)
+            | name when Component.is_substitution_function name -> (true, Free)
             | _ -> (false, Free)
           in
           Stack.push (Token.Paren, substitution, ref state) frames
@@ -382,12 +496,10 @@ and component_has_invalid_substitution = function
       let invalid_call =
         match String.lowercase_ascii_preserve name with
         | "var" -> (not terminated) || invalid_var_arguments arguments
-        | "env" | "attr" ->
-            (not terminated)
-            || not
-                 (List.exists
-                    (fun component -> not (Component.is_whitespace component))
-                    arguments)
+        | "env" | "attr" -> (not terminated) || significant arguments = []
+        | "if" -> (not terminated) || invalid_if_arguments arguments
+        | name when Component.is_substitution_function name ->
+            (not terminated) || invalid_dashed_arguments arguments
         | _ -> false
       in
       invalid_call || components_have_invalid_substitution arguments
@@ -407,19 +519,6 @@ and component_contains_var = function
   | Component.Flat { node; _ } -> Component.flat_calls [ "var" ] node
   | Component.Preserved _ -> false
 
-(* CSS Values 5 (ED) sec. 11 groups [var()], [env()] and [attr()] as arbitrary
-   substitution functions: each carries an unknown token stream into the value,
-   so a declaration holding one is valid at parse time and only decided once
-   substitution has run. A call with an empty argument list matches no
-   substitution grammar and so defers nothing. *)
-let is_substitution_call name arguments =
-  (match String.lowercase_ascii_preserve name with
-    | "var" | "env" | "attr" -> true
-    | _ -> false)
-  && List.exists
-       (fun component -> not (Component.is_whitespace component))
-       arguments
-
 let rec components_have_substitution components =
   List.exists component_has_substitution components
 
@@ -431,8 +530,7 @@ and component_has_substitution = function
       components_have_substitution value
   (* A call with no argument defers nothing, but it is also invalid, which
      {!flat_has_invalid_substitution} answers; this only has to see the call. *)
-  | Component.Flat { node; _ } ->
-      Component.flat_calls [ "var"; "env"; "attr" ] node
+  | Component.Flat { node; _ } -> Component.flat_substitutes node
   | Component.Preserved _ -> false
 
 let raw_value_has_invalid_substitution raw_value =
@@ -593,8 +691,7 @@ let components_are_lone_css_wide cvs =
   | [ Component.Preserved { kind = Token.Ident ident; _ } ] ->
       Properties.is_css_wide_keyword ident
   | [ Component.Func { node = { name; _ }; _ } ] ->
-      let n = String.lowercase_ascii_preserve name in
-      String.equal n "var" || String.equal n "env" || String.equal n "attr"
+      Component.is_substitution_function name
   | _ -> false
 
 (* CSS Anchor Positioning 1 sec. 3.2 allows [anchor()] in the inset properties
@@ -787,12 +884,41 @@ let is_unknown_property_name = is_decl_unknown_property_name
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
    declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
-let allows_unknown_fallback name raw_value =
+(* A form no specification grants and a browser in B parses. The typed reader
+   refuses it and the declaration keeps the text the author wrote: rewritten
+   into a granted form it would apply in the engines that drop it, and dropped
+   it would no longer apply in the engine that reads it. *)
+let browser_reads_ungranted (Prop prop : any_property) raw_value =
+  match prop with
+  (* CSS Sizing 4 (ED) sec. 5.2 lets [auto] open a slot and never end one.
+     Chromium 153 reads one slot followed by a lone [auto] as that slot: its
+     slot reader takes the [auto], finds no [none] or length and gives the slot
+     up without giving the [auto] back. WebKit drops it. *)
+  | Contain_intrinsic_size -> (
+      let t = Cursor.of_string raw_value in
+      match Properties.read_contain_intrinsic_size_item t with
+      | exception Cursor.Parse_error _ -> false
+      | _ -> (
+          Cursor.ws t;
+          match Cursor.peek_keyword t with
+          | Some "auto" ->
+              Cursor.skip t;
+              Cursor.ws t;
+              Cursor.is_done t
+          | Some _ | None -> false))
+  (* CSS Masking 1 sec. 7.9 gives a layer [<position>], which Gecko reads, and
+     Chromium and WebKit read it with [background-position]'s three-value
+     grammar ({!Properties.mask_reads_with_bg_position}). *)
+  | Mask -> Properties.mask_reads_with_bg_position raw_value
+  | _ -> false
+
+let allows_unknown_fallback prop name raw_value =
   (not (raw_value_has_invalid_substitution raw_value))
   && (is_unknown_property_name name
      || is_unsupported_color_fallback name raw_value
      || has_var_color_function raw_value
-     || raw_value_contains_substitution raw_value)
+     || raw_value_contains_substitution raw_value
+     || browser_reads_ungranted prop raw_value)
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
@@ -817,11 +943,36 @@ let read_unknown_property_declaration t name =
   | _ -> ());
   unknown_property ~important:is_important name raw_value
 
+(* The typed value of [prop_type] at [t], with [!important]. *)
+let read_typed_property_value : type a. a property -> Cursor.t -> declaration =
+ fun prop_type t ->
+  (* The typed value readers and [validate_no_extra_tokens] reject a right-hand
+     side without knowing which property they serve, so a [Bad_value] surfaces
+     with an empty property name ([bad value for :]). Stamp the property back on
+     so the warning names it ([bad value for background-image:]). *)
+  let read () =
+    let value = Cursor.declaration_value t in
+    let decl = read_value prop_type value in
+    validate_no_extra_tokens value;
+    let is_important = read_importance t in
+    validate_no_extra_tokens t;
+    (match Cursor.peek_delim t with
+    | Some '!' -> Cursor.err_invalid t "duplicate !important"
+    | _ -> ());
+    if is_important then important decl else decl
+  in
+  try read ()
+  with Cursor.Parse_error e ->
+    Error.fail (Error.with_property (canonical_prop_name prop_type) e)
+
 (* The declaration [prop_type] forms over the value at [t]. Takes the property
    rather than reading it, so a caller holding one does not have to spell it out
    for the parser to read back: [pp_property] under minify writes [page-break-*]
    as its CSS Fragmentation 3 sec. 3.4 [break-*] alias, which names a different
-   property. *)
+   property. A value holding a substitution is typed only if the typed value is
+   not marked invalid and, where the substitution takes a slot of the property's
+   grammar, prints back every slot as written; else it is kept as the token
+   stream it is until substitution. *)
 let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
     =
  fun prop_type t ->
@@ -830,26 +981,28 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
      tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
   | Unknown_property name -> read_unknown_property_declaration t name
-  | _ -> (
-      (* The typed value readers and [validate_no_extra_tokens] reject a
-         right-hand side without knowing which property they serve, so a
-         [Bad_value] surfaces with an empty property name ([bad value for :]).
-         Stamp the property back on so the warning names it ([bad value for
-         background-image:]). *)
-      let read () =
-        let value = Cursor.declaration_value t in
-        let decl = read_value prop_type value in
-        validate_no_extra_tokens value;
-        let is_important = read_importance t in
-        validate_no_extra_tokens t;
-        (match Cursor.peek_delim t with
-        | Some '!' -> Cursor.err_invalid t "duplicate !important"
-        | _ -> ());
-        if is_important then important decl else decl
-      in
-      try read ()
-      with Cursor.Parse_error e ->
-        Error.fail (Error.with_property (canonical_prop_name prop_type) e))
+  | Custom_property _ -> read_typed_property_value prop_type t
+  | _ ->
+      let components = Cursor.lookahead Cursor.drain_to_decl_end t in
+      if
+        (not (components_have_substitution components))
+        || components_have_invalid_substitution components
+      then read_typed_property_value prop_type t
+      else
+        let start = Cursor.save t in
+        let decl = read_typed_property_value prop_type t in
+        (* CSS Variables 1 sec. 3 takes the declaration as valid at parse time,
+           so a typed value the reader marks invalid is a guess too. *)
+        if
+          is_invalid decl
+          || substitution_takes_a_slot components
+             && not
+                  (slots_kept components
+                     (Declaration_core.value_components decl))
+        then (
+          Cursor.restore t start;
+          read_unknown_property_declaration t (canonical_prop_name prop_type))
+        else decl
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;
@@ -880,7 +1033,13 @@ let read_regular_property_declaration t : declaration =
          CSS this reader cannot represent, which is what
          [allows_unknown_fallback] names. *)
       let raw_value = String.trim (Parser.string_of_components components) in
-      if not (allows_unknown_fallback name raw_value) then raise exn;
+      Cursor.restore t start;
+      let prop =
+        match read_any_property t with
+        | prop -> prop
+        | exception Cursor.Parse_error _ -> Prop (Unknown_property name)
+      in
+      if not (allows_unknown_fallback prop name raw_value) then raise exn;
       Cursor.restore t start;
       let name = String.lowercase_ascii_preserve (read_property_name t) in
       Cursor.ws t;
@@ -906,7 +1065,8 @@ let read_regular_value_declaration : type a.
       try read_typed_value_declaration prop t
       with Cursor.Parse_error _ as exn ->
         let raw_value = String.trim (Parser.string_of_components components) in
-        if not (allows_unknown_fallback name raw_value) then raise exn;
+        if not (allows_unknown_fallback (Prop prop) name raw_value) then
+          raise exn;
         Cursor.restore t start;
         read_unknown_property_declaration t name)
 

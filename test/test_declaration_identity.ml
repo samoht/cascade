@@ -371,9 +371,11 @@ let nan_has_one_node () =
   Alcotest.(check string)
     "calc(0/0) merges" ".a,.b{opacity:calc(0/0)}"
     (minified ".a{opacity:calc(0/0)}.b{opacity:calc(0/0)}");
+  (* [asin()] answers an angle (CSS Values 4 sec. 10.4), so its NaN stands at an
+     angle slot. *)
   Alcotest.(check string)
-    "calc(asin(2)) merges" ".a,.b{opacity:calc(asin(2))}"
-    (minified ".a{opacity:calc(asin(2))}.b{opacity:calc(asin(2))}");
+    "calc(asin(2)) merges" ".a,.b{rotate:asin(2)}"
+    (minified ".a{rotate:calc(asin(2))}.b{rotate:calc(asin(2))}");
   Alcotest.(check string)
     "a NaN length merges" ".a,.b{width:calc(NaN*1px)}"
     (minified ".a{width:calc(NaN*1px)}.b{width:calc(NaN*1px)}");
@@ -672,11 +674,10 @@ let dimension_before_signed_number () =
     ~expected:"a{rotate:45deg 1-1-1}" "a { rotate: 1 -1 -1 45deg }";
   minify_reads_back "rotate axis with an unsigned first component"
     ~expected:"a{rotate:45deg 1 2-3}" "a { rotate: 1 2 -3 45deg }";
-  (* A [var()] angle ends on [)], which needs no separator after it. Only the
-     printed text is pinned: the reader takes the angle-first spelling of this
-     value as an opaque stream, so the emission does not carry the axis node
-     back either way. *)
-  check_declaration ~expected:"rotate:var(--a)1-1-1" "rotate:1 -1 -1 var(--a)";
+  (* A [var()] may substitute more than the angle (CSS Variables 1 sec. 3), so
+     it stays where it was written, and the axis before it still separates its
+     signed numbers. *)
+  check_declaration ~expected:"rotate:1-1-1 var(--a)" "rotate:1 -1 -1 var(--a)";
   minify_reads_back "scale number pair" ~expected:"a{scale:-1-2}"
     "a { scale: -1 -2 }";
   minify_reads_back "translate lengths" ~expected:"a{translate:1px -2px}"

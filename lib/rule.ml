@@ -129,6 +129,27 @@ let replace_column_longhands shorthand decls =
       | _ -> Some d)
     decls
 
+(* Whether a declaration between the two declarations [is_part] picks out, at
+   the second one's importance, writes a slot the second one writes. Composing
+   them writes the second where the first stands, past each of those, and such a
+   one would then decide that slot instead. *)
+let composition_meets ~is_part decls =
+  let rec skip = function
+    | [] -> []
+    | d :: rest -> if is_part d then rest else skip rest
+  in
+  let rec walk passed = function
+    | [] -> false
+    | d :: _ when is_part d ->
+        List.exists
+          (fun p ->
+            Bool.equal (Declaration.is_important p) (Declaration.is_important d)
+            && Shorthand.declarations_overlap p d)
+          passed
+    | p :: rest -> walk (p :: passed) rest
+  in
+  walk [] (skip decls)
+
 let synthesize_columns decls =
   let width_of d : (Properties.column_width * bool) option =
     match d with
@@ -145,10 +166,12 @@ let synthesize_columns decls =
   let uniq f =
     match List.filter_map f decls with [ x ] -> Some x | _ -> None
   in
+  let is_part d = Option.is_some (width_of d) || Option.is_some (count_of d) in
   if List.exists columns_holds_reset_slot decls then decls
   else
     match (uniq width_of, uniq count_of) with
-    | Some (w, wi), Some (c, ci) when wi = ci -> (
+    | Some (w, wi), Some (c, ci)
+      when wi = ci && not (composition_meets ~is_part decls) -> (
         match (columns_plain_width w, columns_plain_count c) with
         | Some w, Some c ->
             let shorthand =
@@ -159,9 +182,8 @@ let synthesize_columns decls =
         | _ -> decls)
     | _ -> decls
 
-(* CSS Anchor Positioning 1: [position-try] is [<order> || <fallbacks>]. No
-   typed [position-try] shorthand exists, so the synthesised value is re-parsed
-   into the round-tripping unknown property. *)
+(* CSS Anchor Positioning 1 sec. 6.3: [position-try] is [<'position-try-order'>?
+   <'position-try-fallbacks'>]. *)
 let synthesize_position_try decls =
   let order_of d : (Properties.position_try_order * bool) option =
     match d with
@@ -178,8 +200,12 @@ let synthesize_position_try decls =
   let uniq f =
     match List.filter_map f decls with [ x ] -> Some x | _ -> None
   in
+  let is_part d =
+    Option.is_some (order_of d) || Option.is_some (fallbacks_of d)
+  in
   match (uniq order_of, uniq fallbacks_of) with
-  | Some (order, oi), Some (fallbacks, fi) when oi = fi -> (
+  | Some (order, oi), Some (fallbacks, fi)
+    when oi = fi && not (composition_meets ~is_part decls) -> (
       (* Compose only plain values: a CSS-wide keyword or [var()] in one
          longhand cannot share a shorthand with a real value in the other. *)
       let plain_order : Properties.position_try_order -> bool = function

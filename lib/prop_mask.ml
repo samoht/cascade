@@ -111,13 +111,15 @@ let normalize_clip_path_circle value =
 let normalize_clip_path_ellipse value =
   match value with
   | Clip_path_ellipse r ->
-      let rx =
-        option_map_preserve normalize_clip_path_extent r.rx
-        |> drop_default_clip_path_extent
-      in
-      let ry =
-        option_map_preserve normalize_clip_path_extent r.ry
-        |> drop_default_clip_path_extent
+      (* ellipse() takes its two radii together or not at all (Chromium rejects
+         one), so only the pair of default [closest-side] drops. *)
+      let rx = option_map_preserve normalize_clip_path_extent r.rx in
+      let ry = option_map_preserve normalize_clip_path_extent r.ry in
+      let rx, ry =
+        match (rx, ry) with
+        | Option.Some Closest_side, Option.Some Closest_side ->
+            (Option.None, Option.None)
+        | _ -> (rx, ry)
       in
       let position =
         option_map_preserve (normalize_position_value ~strip:false) r.position
@@ -179,6 +181,34 @@ let drop_mask_initial : 'a. 'a -> 'a option -> 'a option =
  fun initial opt ->
   match opt with Some x when x = initial -> (None : _ option) | _ -> opt
 
+(* CSS Masking 1 sec. 7.9: in a layer one [<geometry-box>] sets both
+   [mask-origin] and [mask-clip], two set them in that order, and [no-clip] sets
+   the clip alone. The reader keeps a lone box in [origin] and [no-clip] in
+   [clip], so a layer names the pair (origin or [border-box], clip or else the
+   origin), and the shortest spelling of that pair is none, one box or both. A
+   box that is not a keyword ([var()], a list) keeps the slots as written. *)
+let normalize_mask_boxes (origin : mask_box option) (clip : mask_box option) =
+  let keyword : mask_box -> bool = function
+    | Border_box | Content_box | Fill_box | Padding_box | Stroke_box | View_box
+    | No_clip ->
+        true
+    | Layers _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
+        false
+  in
+  let keyword_opt = function Some b -> keyword b | None -> true in
+  if not (keyword_opt origin && keyword_opt clip) then (origin, clip)
+  else
+    let o = Option.value origin ~default:(Border_box : mask_box) in
+    let c = match clip with Some c -> c | None -> o in
+    let shortest : mask_box option * mask_box option =
+      match (o, c) with
+      | Border_box, Border_box -> (None, None)
+      | Border_box, No_clip -> (None, Some No_clip)
+      | _ when o = c -> (Some o, None)
+      | _ -> (Some o, Some c)
+    in
+    if shortest = (origin, clip) then (origin, clip) else shortest
+
 let mask_layer_slots_shared (a : mask_layer) (b : mask_layer) =
   a.image == b.image && a.position == b.position && a.size == b.size
   && a.repeat == b.repeat && a.origin == b.origin && a.clip == b.clip
@@ -190,7 +220,9 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
       (normalize_background_image ~lossless)
       (drop_mask_initial (None : background_image) l.image)
   in
-  let position = option_map_preserve normalize_position_value l.position in
+  let position =
+    option_map_preserve (normalize_position_value ~signed_basis:true) l.position
+  in
   let size = drop_mask_initial (Auto : background_size) l.size in
   (* The size follows the position and a [/], so the position can only go once
      the size has. *)
@@ -202,8 +234,7 @@ let normalize_mask_layer ?(lossless = false) (l : mask_layer) =
     | _ -> position
   in
   let repeat = drop_mask_initial (Repeat : background_repeat) l.repeat in
-  let origin = drop_mask_initial (Border_box : mask_box) l.origin in
-  let clip = drop_mask_initial (Border_box : mask_box) l.clip in
+  let origin, clip = normalize_mask_boxes l.origin l.clip in
   let mode = drop_mask_initial (Match_source : mask_mode) l.mode in
   let composite = drop_mask_initial (Add : mask_composite) l.composite in
   let l' = { image; position; size; repeat; origin; clip; mode; composite } in
@@ -774,8 +805,8 @@ module Mask_shorthand = struct
     fun (mask : mask_layer) ->
       if mask.image = None then { mask with image = Some image } else mask
 
-  let read_position_size_item t =
-    let position = read_position_value t in
+  let read_position_size_item ~position t =
+    let position = position t in
     Cursor.ws t;
     let size =
       if Cursor.slash_opt t then Some (read_background_size t) else None
@@ -793,12 +824,18 @@ module Mask_shorthand = struct
     fun (mask : mask_layer) ->
       if mask.repeat = None then { mask with repeat = Some repeat } else mask
 
+  (* Sec. 7.9 [<geometry-box> || [<geometry-box> | no-clip]]: the first box is
+     the origin, a second or [no-clip] the clip. *)
   let read_box_item t =
-    let box = read_mask_box t in
+    let box = read_mask_box ~clip:true t in
     fun (mask : mask_layer) ->
-      if mask.origin = None then { mask with origin = Some box }
-      else if mask.clip = None then { mask with clip = Some box }
-      else mask
+      match box with
+      | No_clip ->
+          if mask.clip = None then { mask with clip = Some box } else mask
+      | _ ->
+          if mask.origin = None then { mask with origin = Some box }
+          else if mask.clip = None then { mask with clip = Some box }
+          else mask
 
   let read_mode_item t =
     let mode = read_mask_mode t in
@@ -811,11 +848,11 @@ module Mask_shorthand = struct
       if mask.composite = None then { mask with composite = Some composite }
       else mask
 
-  let read_item t =
+  let read_item ~position t =
     Cursor.one_of
       [
         read_image_item;
-        read_position_size_item;
+        read_position_size_item ~position;
         read_repeat_item;
         read_box_item;
         read_mode_item;
@@ -824,7 +861,7 @@ module Mask_shorthand = struct
       t
 end
 
-let read_mask_layer t : mask_layer =
+let read_mask_layer_with ~position t : mask_layer =
   let apply acc upd =
     let next = upd acc in
     if equal_mask_layer next acc then
@@ -832,17 +869,38 @@ let read_mask_layer t : mask_layer =
     else next
   in
   let layer, _ =
-    Cursor.fold_many Mask_shorthand.read_item ~init:Mask_shorthand.init ~f:apply
-      t
+    Cursor.fold_many
+      (Mask_shorthand.read_item ~position)
+      ~init:Mask_shorthand.init ~f:apply t
   in
   if equal_mask_layer layer Mask_shorthand.init then
     Cursor.err_expected t "mask value";
   layer
 
-let read_mask_layers t : mask =
-  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_layer t with
+let read_mask_layer t = read_mask_layer_with ~position:read_position_value t
+
+let read_mask_layers_with ~position t : mask =
+  match
+    Cursor.list ~sep:Cursor.comma ~at_least:1 (read_mask_layer_with ~position) t
+  with
   | [ layer ] -> Layer layer
   | layers -> Layers layers
+
+let read_mask_layers t = read_mask_layers_with ~position:read_position_value t
+
+(* CSS Masking 1 sec. 7.9 gives a layer [<position>], which has no three-value
+   form, and Gecko reads it so. Chromium and WebKit read it with
+   [background-position]'s [<bg-position>], three values included, so a value
+   only that grammar reads is one some browser in B keeps and another drops. The
+   declaration reader keeps such a value as written rather than type it, since a
+   respelling every browser reads would change the browsers that drop it. *)
+let mask_reads_with_bg_position raw =
+  let t = Cursor.of_string raw in
+  match read_mask_layers_with ~position:read_background_position_value t with
+  | (_ : mask) ->
+      Cursor.ws t;
+      Cursor.is_done t
+  | exception Cursor.Parse_error _ -> false
 
 (* CSS Masking 1 sec. 8.7 spells [mask] as [<mask-layer>#] and sec. 8.1 puts
    [none] in the [<mask-reference>] of a layer, so it names the whole value only
@@ -1113,7 +1171,25 @@ let read_clip_geometry_box t =
 
 let rec read_clip_path (t : Cursor.t) : clip_path =
   Cursor.ws t;
-  let read_basic_shape t : clip_path =
+  let shape_calls =
+    [
+      ("inset", read_clip_path_inset);
+      ("circle", read_clip_path_circle);
+      ("ellipse", read_clip_path_ellipse);
+      ("polygon", read_clip_path_polygon);
+      ("path", read_clip_path_path);
+      ("xywh", read_clip_path_xywh);
+      ("rect", read_clip_path_rect);
+      ("shape", read_clip_path_shape);
+      ("var", fun t -> (Var (Values.read_var read_clip_path t) : clip_path));
+    ]
+  in
+  (* The half of [<basic-shape> || <geometry-box>] a box pairs with: a shape
+     function, or a [var()] that may stand for one. *)
+  let read_pair_shape t : clip_path =
+    Cursor.enum_or_calls "clip-path shape" [] ~calls:shape_calls t
+  in
+  let read_shape_or_alone t : clip_path =
     Cursor.one_of
       [
         (fun t -> Clip_path_url (Cursor.url t));
@@ -1127,38 +1203,34 @@ let rec read_clip_path (t : Cursor.t) : clip_path =
               ("revert", Revert);
               ("revert-layer", Revert_layer);
             ]
-            ~calls:
-              [
-                ("inset", read_clip_path_inset);
-                ("circle", read_clip_path_circle);
-                ("ellipse", read_clip_path_ellipse);
-                ("polygon", read_clip_path_polygon);
-                ("path", read_clip_path_path);
-                ("xywh", read_clip_path_xywh);
-                ("rect", read_clip_path_rect);
-                ("shape", read_clip_path_shape);
-                ( "var",
-                  fun t -> (Var (Values.read_var read_clip_path t) : clip_path)
-                );
-              ]
-            t);
+            ~calls:shape_calls t);
       ]
       t
   in
-  (* CSS Masking 1 sec. 5.1 [<basic-shape> || <geometry-box>]: a shape and a
-     reference box may appear in either order, or just a box on its own. *)
+  (* CSS Masking 1 sec. 5.1 [<clip-source> | [ <basic-shape> || <geometry-box> ]
+     | none]: a shape and a reference box may appear in either order, or just a
+     box on its own, and a url, [none] or a CSS-wide keyword stands alone. *)
   match read_clip_geometry_box_opt t with
-  | Some box ->
+  | Some box -> (
       Cursor.ws t;
-      if Cursor.is_done t then Clip_path_box box
-      else
-        let shape = read_basic_shape t in
-        Clip_path_with_box { shape; box; box_first = true }
+      (* What follows a lone box may belong to the caller: the [offset]
+         shorthand of CSS Motion Path 1 (ED) sec. 2.6 puts a distance or a
+         rotation after its path. *)
+      match Cursor.option read_pair_shape t with
+      | Some shape -> Clip_path_with_box { shape; box; box_first = true }
+      | None -> Clip_path_box box)
   | None -> (
-      let shape = read_basic_shape t in
+      let shape = read_shape_or_alone t in
       Cursor.ws t;
-      if Cursor.is_done t then shape
-      else
-        match read_clip_geometry_box_opt t with
-        | Some box -> Clip_path_with_box { shape; box; box_first = false }
-        | None -> shape)
+      match shape with
+      | Clip_path_url _ | Clip_path_none | Inherit | Initial | Unset | Revert
+      | Revert_layer | Clip_path_box _ | Clip_path_with_box _ | Invalid _ ->
+          shape
+      | Clip_path_inset _ | Clip_path_circle _ | Clip_path_ellipse _
+      | Clip_path_polygon _ | Clip_path_path _ | Clip_path_shape _
+      | Clip_path_xywh _ | Clip_path_rect _ | Var _ -> (
+          if Cursor.is_done t then shape
+          else
+            match read_clip_geometry_box_opt t with
+            | Some box -> Clip_path_with_box { shape; box; box_first = false }
+            | None -> shape))

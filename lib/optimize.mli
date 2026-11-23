@@ -268,11 +268,16 @@ val stylesheet :
     limited because the stylesheet structure separates rules from [@supports]
     blocks, losing their relative ordering.
 
-    When [flatten_nesting] is [true] (default [false]) nested rules are
-    desugared into flat rules: child selectors with [&] have the parent selector
-    substituted in, child selectors without [&] are joined to the parent with
-    the descendant combinator, and at-rules nested inside a rule are emitted at
-    the top level with the parent selector applied to their inner rules.
+    Nested rules are desugared into flat rules unless every engine of the floors
+    ([judge], else [targets]) parses CSS Nesting, which the default floors do
+    not and [enforce_spec] never assumes: child selectors with [&] have the
+    parent selector substituted in, child selectors without [&] are joined to
+    the parent with the descendant combinator, and at-rules nested inside a rule
+    are emitted at the top level with the parent selector applied to their inner
+    rules. Where the floors parse nesting it stays, and adjacent rules may nest,
+    but a rule holding a nested declarations rule (CSS Nesting 1 sec. 3.4 and 5)
+    is still flattened. When [flatten_nesting] is [true] (default [false]) every
+    nested rule is flattened whatever the floors.
 
     [targets] defaults to {!evergreen_targets} and owns compatibility-prefix
     generation, which is ignored when [enforce_spec] is [true]. Its versions are
@@ -304,8 +309,7 @@ val stylesheet :
     evergreen-browser target facts and applies only CSS-text-and-spec-provable
     rewrites: a vendor-prefixed declaration is kept beside its unprefixed twin,
     a media or container feature keeps its [min-]/[max-] form rather than the
-    shorter Media Queries 4 range grammar, and a nested selector keeps its [&]
-    prefix.
+    shorter Media Queries 4 range grammar, and nesting is flattened.
 
     When [aggressive] is [true] (default [false]), global factoring runs even
     when its preflight predicts low or no gain and candidate limits widen. In

@@ -9,9 +9,6 @@ val angle_degrees_opt : angle -> float option
 val pp_angle : angle Pp.t
 (** [pp_angle] pretty-prints {!Values_intf.angle} values. *)
 
-val pp_percentage : ?always:bool -> percentage Pp.t
-(** [pp_percentage ?always] pretty-prints {!Values_intf.percentage} values. *)
-
 val normalize_length :
   ?strip:bool ->
   ?non_negative:bool ->
@@ -101,3 +98,12 @@ val pp_number : number Pp.t
 val pp_transition_behavior : transition_behavior Pp.t
 (** [pp_transition_behavior] pretty-prints {!Values_intf.transition_behavior}
     values. *)
+
+val length_sign_dependent : length -> bool
+(** [length_sign_dependent l] is [true] when [l] holds a comparison, [abs()],
+    [sign()], [hypot()] or a stepped function over a percentage, whose value
+    turns on the sign of the basis the percentage resolves against. *)
+
+val length_percentage_sign_dependent : length_percentage -> bool
+(** [length_percentage_sign_dependent lp] is {!length_sign_dependent} for a
+    [<length-percentage>]. *)

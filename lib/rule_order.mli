@@ -27,11 +27,27 @@ val canonicalize :
     and custom-property rules are barriers: they keep their position and split
     runs.
 
-    A run of consecutive [@property] rules is the one at-rule exception: it
-    sorts by name, keeping the last registration of each. CSS Properties and
-    Values API 1 sec. 2 makes registrations for different names
-    order-independent and gives a name its last registration, so the emission
-    order carries no meaning. Every block body is its own run context.
+    A run of consecutive [@property] rules is one at-rule exception: it sorts by
+    name, keeping the last registration of each. CSS Properties and Values API 1
+    sec. 2 makes registrations for different names order-independent and gives a
+    name its last registration, so the emission order carries no meaning. Every
+    block body is its own run context.
+
+    [@keyframes] and [@font-face] are the other: they define a name no style
+    rule's order reads (CSS Animations 1 sec. 3, CSS Fonts 4 sec. 4.1), so each
+    stretch of a block between statements that hold one inside them prints its
+    other statements first and its definitions after, by name. Two definitions
+    of one keyframes name, prefixed spellings included, or of one font family
+    keep their order, since the last one wins.
+
+    Nested [@media] blocks read as the conjunction of their queries (CSS
+    Conditional 3 sec. 2): each query splits into the conjuncts it is the [and]
+    of, a media type standing alone and [all] and [only] dropping out (Media
+    Queries 4 sec. 2.2, 2.3), and the sorted conjuncts nest one block each. A
+    negated query, a query list and an [or] stay whole. So
+    [@media screen{@media (min-width:1px){...}}] and
+    [@media screen and (min-width:1px){...}] project alike, while
+    [@media print{@media screen{...}}] keeps both media types.
 
     A [@media] query of the Level 3 form [not all and (X)] is rewritten to the
     Level 4 [not (X)] it is equal to under Media Queries 4 sec. 2.3, since [all]

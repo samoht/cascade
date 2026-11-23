@@ -142,6 +142,16 @@ val floors : t -> Support.targets
     ({!Declaration.fallback_for}). They hold under {!val-enforce_spec} too,
     since they only ever keep a declaration. *)
 
+val parses_nesting : t -> bool
+(** [parses_nesting t] is whether every browser the run serves parses CSS
+    Nesting, so that a nested rule may be emitted: every engine of {!floors} is
+    at or past the release MDN's browser-compat-data gives for
+    [css.selectors.nesting] in full (Chrome 120, Firefox 117, Safari 17.2).
+    Chrome 111 and Safari 16.4, the default floors, read no nested rule, and
+    Chrome 112 to 119 and Safari 16.5 to 17.1 refuse one whose selector starts
+    with an identifier. Always [false] under {!val-enforce_spec}, whose
+    conforming implementations include one that predates CSS Nesting. *)
+
 val stats : t -> Stats.t
 (** Profiling recorder for the run this context belongs to. *)
 
