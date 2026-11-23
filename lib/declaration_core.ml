@@ -150,7 +150,7 @@ let theme_guarded ~var_name decl =
 
 let unknown_property ?(important = false) name value =
   let components = Cursor.remaining (Cursor.of_string value) in
-  v ~important (Unknown_property name) components
+  v ~important (Unknown_property (Properties.untyped name)) components
 
 (* Helper to mark a declaration as important *)
 let rec important = function
@@ -607,7 +607,8 @@ let rec property_key decl =
 let same_property d1 d2 =
   match (property_key d1, property_key d2) with
   | Key (Custom_property a), Key (Custom_property b) -> String.equal a b
-  | Key (Unknown_property a), Key (Unknown_property b) -> String.equal a b
+  | Key (Unknown_property a), Key (Unknown_property b) ->
+      String.equal a.written b.written
   | k1, k2 -> k1 == k2
 
 let pp_value = Properties.pp_value

@@ -284,7 +284,7 @@ let declaration_with_components decl components : Declaration.declaration option
     let is_font_family =
       match Declaration.property_key decl with
       | Declaration.Key Properties.Font_family -> true
-      | Declaration.Key (Properties.Unknown_property name) ->
+      | Declaration.Key (Properties.Unknown_property { written = name; _ }) ->
           String.equal name "font-family"
       | _ -> false
     in

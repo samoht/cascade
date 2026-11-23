@@ -588,14 +588,29 @@ let read_by_no_target decl =
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
-        { property = Unknown_property vname; value = vv; important = vi; _ },
+        {
+          property = Unknown_property { written = vname; _ };
+          value = vv;
+          important = vi;
+          _;
+        },
       Declaration
-        { property = Unknown_property tname; value = tv; important = ti; _ } )
+        {
+          property = Unknown_property { written = tname; _ };
+          value = tv;
+          important = ti;
+          _;
+        } )
     when Bool.equal vi ti -> (
       match strip_vendor_prefix vname with
       | Some modern -> String.equal tname modern && vv = tv
       | None -> false)
-  | ( Declaration { property = Unknown_property vname; important = vi; _ },
+  | ( Declaration
+        {
+          property = Unknown_property { written = vname; _ };
+          important = vi;
+          _;
+        },
       Declaration { important = ti; _ } )
     when Bool.equal vi ti -> (
       match strip_vendor_prefix vname with
@@ -633,7 +648,11 @@ end)
 let greenfield_keys =
   List.fold_left
     (fun keys name ->
-      let keys = Key_set.add (Key (Properties.Unknown_property name)) keys in
+      let keys =
+        Key_set.add
+          (Key (Properties.Unknown_property (Properties.untyped name)))
+          keys
+      in
       match property_of_name name with
       | Some (Properties.Prop property) -> Key_set.add (Key property) keys
       | None -> keys)
@@ -649,8 +668,10 @@ let unprefixed_is_widely_available twin =
   let key =
     match Declaration.property_key twin with
     (* CSS Syntax 3 (ED) sec. 8.1: property names are case-insensitive. *)
-    | Key (Unknown_property name) ->
-        Key (Properties.Unknown_property (String.lowercase_ascii_preserve name))
+    | Key (Unknown_property { written; _ }) ->
+        Key
+          (Properties.Unknown_property
+             (Properties.untyped (String.lowercase_ascii_preserve written)))
     | key -> key
   in
   not (Key_set.mem key greenfield_keys)

@@ -283,7 +283,7 @@ let declaration_covers covering covered =
   | _, Declaration { property = Custom_property _; _ } -> false
   | ( Declaration { property = Unknown_property a; value = av; _ },
       Declaration { property = Unknown_property b; value = bv; _ } ) ->
-      String.equal a b && Stdlib.compare av bv = 0
+      String.equal a.written b.written && Stdlib.compare av bv = 0
   | Declaration { property = Unknown_property _; _ }, _ -> false
   | _, Declaration { property = Unknown_property _; _ } -> false
   | ( Declaration { property = covering_p; _ },
@@ -312,7 +312,7 @@ let property_key : type a. a Properties.property -> overlap_key =
  fun property ->
   match property with
   | Custom_property name -> key (String.concat "" [ "--"; name ])
-  | Unknown_property name -> key name
+  | Unknown_property { written; _ } -> key written
   | property -> typed_key (Hashtbl.seeded_hash 0 property)
 
 let border_block_start_keys =
@@ -1006,7 +1006,7 @@ let rec property_slots : type a. a Properties.property -> overlap_key list =
   | Position_try_order -> [ key "position-try-order" ]
   | Position_try_fallbacks -> [ key "position-try-fallbacks" ]
   | Custom_property name -> [ key (String.concat "" [ "--"; name ]) ]
-  | Unknown_property name -> [ key name ]
+  | Unknown_property { written; _ } -> [ key written ]
   | property -> [ property_key property ]
 
 (* CSS Logical 1 sec. 2 and 4: a flow-relative longhand resolves to a physical
@@ -1303,13 +1303,14 @@ let sorted_keys keys =
 let rec declaration_overlap_keys decl =
   match decl with
   | Theme_guarded { decl; _ } -> declaration_overlap_keys decl
-  | Declaration { property = Unknown_property name; _ } -> (
+  | Declaration
+      { property = Unknown_property { written = name; _ } as property; _ } -> (
       match prefixed_spelling name with
       | Some (Properties.Prop property) ->
           sorted_keys (property_footprint property)
       | None ->
           if is_known_footprint_key (key name) then
-            sorted_keys (property_footprint (Unknown_property name))
+            sorted_keys (property_footprint property)
           else [ broad_overlap_key ])
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
@@ -1400,8 +1401,8 @@ let declarations_overlap_with_keys a a_keys b b_keys =
       not (is_excluded_from_all_reset property)
   (* An unknown name the model cannot place holds the broad key, which meets
      every key. *)
-  | ( Declaration { property = Unknown_property a; _ },
-      Declaration { property = Unknown_property b; _ } ) ->
+  | ( Declaration { property = Unknown_property { written = a; _ }; _ },
+      Declaration { property = Unknown_property { written = b; _ }; _ } ) ->
       String.equal a b || name_extends a b || name_extends b a
       || overlap_keys_intersect a_keys b_keys
   | Declaration _, Declaration _ -> overlap_keys_intersect a_keys b_keys

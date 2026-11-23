@@ -2865,6 +2865,11 @@ val shadow :
 val pp_any_property : any_property Pp.t
 (** [pp_any_property] pretty-prints any CSS property. *)
 
+val vendor : 'a property -> vendor option
+(** [vendor property] is the vendor prefix [property]'s name carries (CSS 2.1
+    sec. 4.1.2.1), read off its constructor, or for an untyped name off the
+    prefix {!field-vendor} records. *)
+
 val is_vendor_prefixed : 'a property -> bool
 (** [is_vendor_prefixed property] is [true] iff [property] is a vendor's own
     extension, a name starting with a single [-] (CSS 2.1 sec. 4.1.2.1). The
@@ -2883,6 +2888,12 @@ val legacy_alias : 'a property -> any_property option
 
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
+
+val untyped : string -> untyped_name
+(** [untyped name] is [name] classified as an untyped property name: its vendor
+    prefix, the name after it and the typed property that name spells. A typed
+    name is classified too, for a declaration whose value the typed reader
+    refused, and {!field-own} then names its property. *)
 
 val of_name : string -> any_property
 (** [of_name name] is the property [name] spells, in any case, or

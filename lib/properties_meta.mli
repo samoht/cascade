@@ -25,6 +25,11 @@ val minified_name_carries : 'a property -> 'a -> bool
 val pp_any_property : any_property Pp.t
 (** [pp_any_property] pretty-prints any CSS property. *)
 
+val vendor : 'a property -> vendor option
+(** [vendor property] is the vendor prefix [property]'s name carries (CSS 2.1
+    sec. 4.1.2.1), read off its constructor, or for an untyped name off the
+    prefix {!field-vendor} records. *)
+
 val is_vendor_prefixed : 'a property -> bool
 (** [is_vendor_prefixed property] is [true] iff [property] is a vendor's own
     extension, a name starting with a single [-] (CSS 2.1 sec. 4.1.2.1). The

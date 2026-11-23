@@ -183,7 +183,8 @@ type spelling = Typed of prop_key | Unknown of string | Guarded
 
 let spelling = function
   | Theme_guarded _ -> Guarded
-  | Declaration { property = Unknown_property name; _ } -> Unknown name
+  | Declaration { property = Unknown_property { written = name; _ }; _ } ->
+      Unknown name
   | Declaration _ as decl -> Typed (Declaration.property_key decl)
 
 (* A family's spelling: its typed property, if it has one, and its name. Only
@@ -313,23 +314,26 @@ let of_declaration targets decl : Declaration.declaration option =
   match decl with
   | Theme_guarded _ -> None
   | Declaration
-      { property = Unknown_property name; value = components; important; _ }
+      { property = Unknown_property untyped; value = components; important; _ }
     -> (
-      match fallback_spec_by_standard_name name with
+      match fallback_spec_by_standard_name untyped.written with
       | Some (Mask_fallback_spec { webkit_name; _ }) -> (
-          let source = Declaration.v (Unknown_property name) components in
+          let source = Declaration.v (Unknown_property untyped) components in
           let rendered = Declaration.string_of_value ~minify:false source in
           match Declaration.parse_declaration "mask" rendered with
           | Some (Declaration { property = Mask; value; _ }) ->
               let source = Declaration.v Mask (webkit_compatible_mask value) in
               opaque_fallback Mask_fallback webkit_name source important
           | Some _ | None ->
-              fallback Mask_fallback (Unknown_property webkit_name) components
-                important)
+              fallback Mask_fallback
+                (Unknown_property (Properties.untyped webkit_name))
+                components important)
       | Some spec when condition_holds spec ->
           let kind = fallback_spec_kind spec in
           let _, webkit_name = fallback_spec_names spec in
-          fallback kind (Unknown_property webkit_name) components important
+          fallback kind
+            (Unknown_property (Properties.untyped webkit_name))
+            components important
       | Some _ | None -> None)
   | Declaration _ -> (
       match spec_of_standard decl with

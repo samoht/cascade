@@ -221,7 +221,8 @@ let compose_font_via_index ~ctx idx =
    that property, so the name is read back into its constructor. *)
 let named_property decl =
   match unwrap_theme_guard decl with
-  | Declaration { property = Unknown_property name; _ } -> property_of_name name
+  | Declaration { property = Unknown_property { written = name; _ }; _ } ->
+      property_of_name name
   | Declaration { property; _ } -> Some (Properties.Prop property)
   | _ -> None
 

@@ -980,7 +980,8 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
      brackets and strings at EOF. Typed readers consume the spec-recovered
      tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
-  | Unknown_property name -> read_unknown_property_declaration t name
+  | Unknown_property { written = name; _ } ->
+      read_unknown_property_declaration t name
   | Custom_property _ -> read_typed_property_value prop_type t
   | _ ->
       let components = Cursor.lookahead Cursor.drain_to_decl_end t in
@@ -1054,7 +1055,8 @@ let read_regular_property_declaration t : declaration =
       let prop =
         match read_any_property t with
         | prop -> prop
-        | exception Cursor.Parse_error _ -> Prop (Unknown_property name)
+        | exception Cursor.Parse_error _ ->
+            Prop (Unknown_property (Properties.untyped name))
       in
       if not (allows_unknown_fallback prop name raw_value) then raise exn;
       read_opaque ()
@@ -1365,7 +1367,7 @@ let with_value decl value =
   | Key (Custom_property name) ->
       keep_custom_fields ~from:decl
         (read_custom_value_declaration (tail ()) name)
-  | Key (Unknown_property name) ->
+  | Key (Unknown_property { written = name; _ }) ->
       (* An unknown property is its name, and a substituted value may now be one
          a typed reader accepts, so read the pair back whole: that is the step
          that types [--x: 1px] once [width: var(--x)] has folded. *)
@@ -1376,6 +1378,8 @@ let with_opaque_value decl value =
   let (Key prop) = property_key decl in
   let opaque =
     let name = canonical_prop_name prop in
-    v (Unknown_property name) (Cursor.remaining (Cursor.of_string value))
+    v
+      (Unknown_property (Properties.untyped name))
+      (Cursor.remaining (Cursor.of_string value))
   in
   if is_important decl then important opaque else opaque

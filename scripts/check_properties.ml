@@ -256,8 +256,10 @@ let () =
     Array.of_list
       (Declaration.Key (Properties.Custom_property "--a")
      :: Declaration.Key (Properties.Custom_property "--b")
-     :: Declaration.Key (Properties.Unknown_property "-x-a")
-     :: Declaration.Key (Properties.Unknown_property "-x-b")
+      :: Declaration.Key
+           (Properties.Unknown_property (Properties.untyped "-x-a"))
+      :: Declaration.Key
+           (Properties.Unknown_property (Properties.untyped "-x-b"))
       :: List.map (fun (name, _) -> key_of_name name) name_table)
   in
   let disagreements = ref 0 in

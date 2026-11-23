@@ -151,7 +151,7 @@ let background_run_is_reset_closed (layer : Properties.background_shorthand) =
 let has_prior_family_write family idx i =
   let writes d =
     match Shorthand_coverage.unwrap_theme_guard d with
-    | Declaration { property = Unknown_property name; _ } -> (
+    | Declaration { property = Unknown_property { written = name; _ }; _ } -> (
         match property_of_name name with Some p -> family p | None -> false)
     | Declaration { property; _ } -> family (Properties.Prop property)
     | _ -> false

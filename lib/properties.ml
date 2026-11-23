@@ -26,9 +26,43 @@ include Properties_custom
 include Properties_normalize
 include Properties_printer
 
+(* The prefixes a vendor's name opens with (CSS 2.1 sec. 4.1.2.1), and whether
+   its engines alias the unprefixed property under it. *)
+let vendor_prefixes =
+  [
+    ("-webkit-", Webkit, true);
+    ("-moz-", Moz, true);
+    ("-ms-", Ms, true);
+    ("-o-", O, true);
+    ("-khtml-", Khtml, false);
+  ]
+
+(* A lower-case name's vendor prefix, and the name after it for a prefix whose
+   engines alias the unprefixed property. A prefix with nothing after it is no
+   vendor's. *)
+let vendor_split lower =
+  let n = String.length lower in
+  let rec find = function
+    | [] -> (Option.Some Other_vendor, Option.None)
+    | (prefix, vendor, aliases) :: rest ->
+        let pn = String.length prefix in
+        if n > pn && String.starts_with ~prefix lower then
+          ( Option.Some vendor,
+            if aliases then Option.Some (String.sub lower pn (n - pn))
+            else Option.None )
+        else find rest
+  in
+  if n = 0 || not (Char.equal lower.[0] '-') then (Option.None, Option.None)
+  else if n > 1 && Char.equal lower.[1] '-' then (Option.None, Option.None)
+  else find vendor_prefixes
+
+let typed_property = function
+  | Prop (Unknown_property _) -> Option.None
+  | property -> Option.Some property
+
 (* [prop_name] is lower case. A name the table does not type, custom or not,
    comes back as [Unknown_property]. *)
-let property_of_lowercase_name prop_name =
+let rec property_of_lowercase_name prop_name =
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
   | "all" -> Prop All
@@ -610,10 +644,35 @@ let property_of_lowercase_name prop_name =
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
-  | _ -> Prop (Unknown_property prop_name)
+  | _ -> Prop (Unknown_property (untyped_lowercase prop_name))
+
+(* [lower] is a lower-case name the table does not type, so only the name after
+   its prefix, which is shorter, can spell a typed property. *)
+and untyped_lowercase lower =
+  let vendor, unprefixed = vendor_split lower in
+  let spells =
+    match unprefixed with
+    | Option.None -> Option.None
+    | Option.Some name -> typed_property (property_of_lowercase_name name)
+  in
+  { written = lower; vendor; unprefixed; spells; own = Option.None }
 
 let of_name name =
   property_of_lowercase_name (String.lowercase_ascii_preserve name)
+
+let untyped name =
+  let lower = String.lowercase_ascii_preserve name in
+  match property_of_lowercase_name lower with
+  | Prop (Unknown_property u) -> { u with written = name }
+  | Prop _ as own ->
+      (* A typed name read untyped: its value defeated the typed reader. *)
+      let vendor, unprefixed = vendor_split lower in
+      let spells =
+        match unprefixed with
+        | Option.None -> Option.None
+        | Option.Some name -> typed_property (property_of_lowercase_name name)
+      in
+      { written = name; vendor; unprefixed; spells; own = Option.Some own }
 
 let read_any_property t =
   (* CSS property names are case-insensitive per CSS Syntax 3 (ED) sec. 8.1. *)

@@ -591,7 +591,7 @@ let compare_property : type a b. a property -> b property -> int =
  fun a b ->
   match (a, b) with
   | Custom_property x, Custom_property y -> String.compare x y
-  | Unknown_property x, Unknown_property y -> String.compare x y
+  | Unknown_property x, Unknown_property y -> String.compare x.written y.written
   | _ -> Int.compare (property_tag a) (property_tag b)
 
 (* A property identity carries the type its value has, so two identities that
@@ -609,7 +609,7 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Custom_property x, Custom_property y ->
       if String.equal x y then Some Equal else None
   | Unknown_property x, Unknown_property y ->
-      if String.equal x y then Some Equal else None
+      if String.equal x.written y.written then Some Equal else None
   | All, All -> Some Equal
   | Background_color, Background_color -> Some Equal
   | Color, Color -> Some Equal

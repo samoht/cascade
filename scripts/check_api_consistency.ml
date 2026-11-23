@@ -66,6 +66,10 @@ let ignored_types =
     "value_processing_stage";
     "namespace_url";
     (* Stylesheet analysis records/enums, not standalone CSS value parsers. *)
+    "vendor";
+    "untyped_name";
+    (* What the reader records about a property name it types no constructor
+       for, read off the name rather than parsed as a value. *)
   ]
 
 (* Interface files whose types are not CSS syntax, so no read_*/pp_* pair is

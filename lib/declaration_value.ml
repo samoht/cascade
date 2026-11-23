@@ -1478,7 +1478,7 @@ let read_value (type a) (prop : a property) t : declaration =
       Cursor.err_invalid t
         (String.concat ""
            [ "custom property read through regular property: "; name ])
-  | Unknown_property name ->
+  | Unknown_property { written = name; _ } ->
       Cursor.err_invalid t
         (String.concat ""
            [ "unknown property read through typed parser: "; name ])
