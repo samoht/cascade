@@ -32,6 +32,26 @@ let equal_canonical_undecidable_channel () =
     "a decidable alpha keeps the six-figure bound" true
     (equal ".a{color:rgba(0,0,0,.7)}" ".a{color:rgba(0,0,0,.7000001)}")
 
+(* CSS Cascade 5 sec. 7.3.1: [initial] sets a property to its initial value, and
+   CSS Lists 3 secs. 3.3 and 3.5 give [list-style-image] the initial value
+   [none] and [list-style-position] [outside]. So the keyword and the value are
+   one declaration, alone or as the resets of a [list-style] expansion. *)
+let equal_canonical_list_style_initial () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "list-style-image initial is none" true
+    (equal ".a{list-style-image:initial}" ".a{list-style-image:none}");
+  Alcotest.(check bool)
+    "list-style-position initial is outside" true
+    (equal ".a{list-style-position:initial}" ".a{list-style-position:outside}");
+  Alcotest.(check bool)
+    "list-style none is its expansion with initial resets" true
+    (equal ".a{list-style:none}"
+       ".a{list-style-position:initial;list-style-image:initial;list-style-type:none}");
+  Alcotest.(check bool)
+    "inside is not the initial position" false
+    (equal ".a{list-style-position:initial}" ".a{list-style-position:inside}")
+
 (* SVG 2 sec. 13.5.3: [stroke-width] takes a [<number>] in user units, and a CSS
    pixel is one user unit, so [1] and [1px] draw the same stroke. Tailwind
    writes [stroke-1] unitless and tw writes [1px]. *)
@@ -1221,4 +1241,6 @@ let suite =
         canonical_numeric_division_follows_precision_mode;
       Alcotest.test_case "canonical undecidable colour channel" `Quick
         equal_canonical_undecidable_channel;
+      Alcotest.test_case "spec lists 3 initial list-style longhands" `Quick
+        equal_canonical_list_style_initial;
     ] )
