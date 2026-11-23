@@ -661,7 +661,12 @@ val string_of_layer_name : layer_name -> string
 (** [string_of_layer_name name] is what {!pp_layer_name} prints. Two names never
     share their text, so it keys a layer. *)
 
+val equal_rule : rule -> rule -> bool
+(** [equal_rule a b] is whether [a] and [b] are the same rule, each part
+    compared through the equality its own module states: a declaration through
+    {!Declaration.equal_declaration}, which equates a NaN with itself. *)
+
 val rule_hash : rule -> int
 (** [rule_hash r] is a cheap hash that discriminates rules by their cached
     declaration hashes. Equal rules hash equally; unequal rules may collide, so
-    callers still confirm with structural equality. *)
+    callers still confirm with {!equal_rule}. *)
