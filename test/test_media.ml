@@ -729,7 +729,7 @@ let test_large_resolution () =
 
 (* Media Queries 4 sec. 2.4.3: an [<mf-value>] is one [<number>], [<dimension>],
    [<ident>] or [<ratio>]. Text that is none of them, or more than one, is an
-   [Error]. *)
+   [Error]; a [<percentage>] is none of them. *)
 let value_of_string_contract () =
   let accepts input =
     match value_of_string input with
@@ -747,7 +747,25 @@ let value_of_string_contract () =
   accepts "landscape";
   refuses "";
   refuses ")";
-  refuses "1px 2px"
+  refuses "1px 2px";
+  refuses "50%"
+
+(* Media Queries 4 sec. 2.4.3: [<mf-value>] admits no [<percentage>], so
+   [(min-width: 50%)] is [<general-enclosed>]. Chromium 157 keeps it as written
+   and never matches it; it is no width bound and has no range spelling. *)
+let percentage_is_general_enclosed () =
+  let minified css =
+    match Css.of_string css with
+    | Error error -> Alcotest.fail (Cascade.Error.to_string error)
+    | Ok parsed -> Css.optimize parsed.stylesheet |> Css.to_string ~minify:true
+  in
+  List.iter
+    (fun query ->
+      let css = Fmt.str "@media%s{a{color:red}}" query in
+      Alcotest.(check string) css css (minified css))
+    [ "(min-width:50%)"; "(max-width:50%)"; "(10%<width<50%)" ];
+  Alcotest.check kind_testable "(min-width: 50%) bounds no width" Other
+    (kind (of_string "(min-width: 50%)"))
 
 let suite =
   let open Alcotest in
@@ -756,6 +774,8 @@ let suite =
       test_case "to_string" `Quick test_string_output;
       test_case "large resolution" `Quick test_large_resolution;
       test_case "value_of_string contract" `Quick value_of_string_contract;
+      test_case "a percentage is general-enclosed" `Quick
+        percentage_is_general_enclosed;
       test_case "spec media query level 4/5 vectors" `Quick
         spec_media_l45_vectors;
       test_case "spec media query structural vectors" `Quick
