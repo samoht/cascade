@@ -315,23 +315,62 @@ let test_distant_media_crosses_a_more_specific_rule () =
        "@media (min-width:1px){.x{color:red}}#y{color:blue}@media \
         (min-width:1px){.b{color:green}}")
 
-(* A missed optimisation, not a cascade rule. CSS Cascade 6 sec. 3.1 (Cascade
-   Sorting Order) ranks scope proximity after specificity and before order of
-   appearance, and gives a rule without a scoping root infinite proximity. On an
-   element both [@scope (.s) { & .b }] and [.b] match, either specificity or the
-   scoped rule's finite proximity decides, so order never does and the later
-   block could move above the scope body. The pass reads no scoping root (sec.
-   3.5.1, Effects of @scope, makes [&] the root), so it refuses: a pass that
-   learns to weigh the pair may merge here. *)
-let test_distant_media_refuses_to_cross_a_scope_body () =
-  let css =
-    "@media (min-width:1px){.x{color:red}}@media print{@scope (.s){& \
-     .b{color:blue}}}@media (min-width:1px){.b{color:green}}"
+(* CSS Cascade 6 sec. 3.1 (Cascade Sorting Order) ranks scope proximity after
+   specificity and before order of appearance, and gives a rule without a
+   scoping root infinite proximity. On an element both [@scope (.s) { & .b }]
+   and [.b] match, either specificity or the scoped rule's finite proximity
+   decides, so order never does and the later block moves above the scope body.
+   Chromium 157 paints a scoped [.a] over an unscoped [.a] written after it. *)
+let test_distant_media_crosses_a_scope_body () =
+  Alcotest.(check string)
+    "the later block joins the first across the scope body"
+    (render
+       (block
+          "@media (min-width:1px){.x{color:red}.b{color:green}}@media \
+           print{@scope (.s){& .b{color:blue}}}"))
+    (merge_distant_media
+       "@media (min-width:1px){.x{color:red}}@media print{@scope (.s){& \
+        .b{color:blue}}}@media (min-width:1px){.b{color:green}}")
+
+(* A [@keyframes], [@font-face] or [@property] rule and a comment take no part
+   in the order of style rules (docs/invariants.md, At-rules keep their
+   identity), so a block of style rules moves past them. *)
+let test_distant_media_crosses_definitions () =
+  let between =
+    "@keyframes \
+     k{0%{opacity:0}}@font-face{font-family:f;src:url(a.woff)}@property \
+     --p{syntax:\"*\";inherits:false}/*! c */"
   in
   Alcotest.(check string)
-    "the pass does not yet move the later block over the scope body"
-    (render (block css))
-    (merge_distant_media css)
+    "the later block joins the first across the definitions"
+    (render
+       (block
+          (String.concat ""
+             [ "@media print{.x{color:red}.b{color:green}}"; between ])))
+    (merge_distant_media
+       (String.concat ""
+          [
+            "@media print{.x{color:red}}";
+            between;
+            "@media print{.b{color:green}}";
+          ]))
+
+(* Of two [@keyframes] of one name the last wins, so a block that holds one does
+   not move above another of its name: with [print] and [(min-width:1px)] both
+   true, Chromium 157 runs the later keyframes. A [@font-face] does not move
+   past another face of its family either (docs/invariants.md, At-rules keep
+   their identity). *)
+let test_distant_media_keeps_a_definition_in_place () =
+  let unchanged css =
+    Alcotest.(check string) css (render (block css)) (merge_distant_media css)
+  in
+  unchanged
+    "@media print{.x{color:red}}@media (min-width:1px){@keyframes \
+     k{0%{opacity:0}}}@media print{@keyframes k{0%{opacity:1}}}";
+  unchanged
+    "@media print{.x{color:red}}@media \
+     (min-width:1px){@font-face{font-family:f;src:url(a.woff)}}@media \
+     print{@font-face{font-family:f;src:url(b.woff)}}"
 
 (* CSS Nesting 1 sec. 4 (Nesting Selector) gives [&] the largest specificity of
    the enclosing rule's selector, here [.outer .card], (0,2,0), not [.card]
@@ -540,8 +579,12 @@ let suite =
         `Quick test_distant_media_keeps_order_across_a_pseudo_element_list;
       Alcotest.test_case "distant @media crosses a more specific rule" `Quick
         test_distant_media_crosses_a_more_specific_rule;
-      Alcotest.test_case "distant @media refuses to cross a scope body (missed)"
-        `Quick test_distant_media_refuses_to_cross_a_scope_body;
+      Alcotest.test_case "distant @media crosses a scope body" `Quick
+        test_distant_media_crosses_a_scope_body;
+      Alcotest.test_case "distant @media crosses definitions" `Quick
+        test_distant_media_crosses_definitions;
+      Alcotest.test_case "distant @media keeps a definition in place" `Quick
+        test_distant_media_keeps_a_definition_in_place;
       Alcotest.test_case "distant @media weighs a nested body by its ancestors"
         `Quick test_distant_media_weighs_a_nested_body_by_its_ancestors;
       Alcotest.test_case "merge distant @media is subquadratic" `Quick
