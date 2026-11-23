@@ -1327,6 +1327,9 @@ The new form of a diagnostic is under [Breaking](#command-line).
   sheets project in 0.11 s instead of 0.48 s and Tailwind's full build in 0.29
   s instead of 0.74 s, with the same canonical output on all 504 SatCSS sheets
   (#1554).
+- composes shorthands only where two declarations share a family**, skipping
+  63% of composition calls on the SatCSS corpus: about 2% less CPU and 2-5%
+  fewer minor words, with byte-identical output (#1598).
 
 ### Library
 

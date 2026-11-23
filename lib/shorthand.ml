@@ -127,20 +127,37 @@ let compose_shorthands ?(held = held_none) ~ctx kept =
   |> fun kept ->
   merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
 
+let rec composition_family = function
+  | Declaration.Declaration { property; _ } ->
+      Properties.composition_family property
+  | Theme_guarded { decl; _ } -> composition_family decl
+
+(* Whether two declarations of [kept] are of one composition family, [seen]
+   holding the families of those before. *)
+let rec shares_family seen = function
+  | [] -> false
+  | (_, decl) :: rest -> (
+      match composition_family decl with
+      | None -> shares_family seen rest
+      | Some family ->
+          let bit = 1 lsl Properties.family_rank family in
+          seen land bit <> 0 || shares_family (seen lor bit) rest)
+
 (* What follows the reduction of [kept]: composition, when [merge_box], then the
    vendor aliases and the longhands the shorthands now restate. *)
 let compose_reduced ~held ~ctx ~merge_box props kept =
   let kept =
-    (* Composition reads a family's declarations together, so one declaration on
-       its own composes to itself in either scope; the test of that asks every
-       value the grammar inventory models. *)
+    (* Composition reads a family's declarations together, so a body with at
+       most one declaration per family composes to itself in either scope, as
+       one declaration on its own does; the tests of that ask every value the
+       grammar inventory models, and every pair of families. *)
     (* A shorthand composition writes can override an earlier declaration of
        the same property whole, which only the deduplication sees; what that
        drops can let another composition through. Each round drops a
        declaration, so this ends. *)
     let rec compose kept =
       match kept with
-      | _ :: _ :: _ when merge_box ->
+      | _ :: _ :: _ when merge_box && shares_family 0 kept ->
           let composed = compose_shorthands ~held ~ctx kept in
           if List.equal (fun (_, a) (_, b) -> a == b) composed kept then kept
           else
