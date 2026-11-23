@@ -83,7 +83,7 @@ fi
   exit 2
 }
 
-TMP=$(mktemp -d)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/bench.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
 # User CPU seconds for one minify run, and the output written to $2. Prints

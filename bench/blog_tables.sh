@@ -29,7 +29,7 @@ RUNS="${RUNS:-5}"
 SITES=(github guardian youtube netflix amazon cnn)
 TARGETS="${TARGETS:->=0.25%}"  # no space: hyperfine --shell=none splits on whitespace
 ESTARGET="${ESTARGET:-chrome80,safari14,firefox78}"
-TMP="$(mktemp -d)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/bench.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 gz() { gzip -9 -c "$1" | wc -c | tr -d ' '; }

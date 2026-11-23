@@ -52,7 +52,7 @@ if [ ! -d "$CORPUS" ]; then
   exit 2
 fi
 
-TMP=$(mktemp -d)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/bench.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
 median() { printf '%s\n' "$@" | sort -n | awk -v c=$# 'NR==int((c+1)/2){print; exit}'; }
