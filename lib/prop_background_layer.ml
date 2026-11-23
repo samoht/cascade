@@ -205,11 +205,11 @@ let rec normalize_background_size : background_size -> background_size =
  fun value ->
   match value with
   | Length len ->
-      let len' = Values.canonical_dimension len in
+      let len' = Values.normalize_dimension ~non_negative:true len in
       if len' == len then value else Length len'
   | Size (a, b) ->
-      let a' = Values.canonical_dimension a in
-      let b' = Values.canonical_dimension b in
+      let a' = Values.normalize_dimension ~non_negative:true a in
+      let b' = Values.normalize_dimension ~non_negative:true b in
       if a' == a && b' == b then value else Size (a', b')
   | Layers layers ->
       let layers' = List.map normalize_background_size layers in

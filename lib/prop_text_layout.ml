@@ -213,7 +213,7 @@ let normalize_tab_size ~ctx : tab_size -> tab_size =
      as a count of spaces and a length as a distance, so the spelling folds but
      no zero strip may reach this. *)
   | Length len ->
-      let len' = Values.canonical_dimension len in
+      let len' = Values.normalize_dimension ~non_negative:true len in
       if len' == len then value else Length len'
   | other -> other
 

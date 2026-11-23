@@ -1008,6 +1008,10 @@ differently. They are the reason to minify again.
   `@view-transition`, none of which takes part in the order of style rules. A
   block holding one never moves, so a later definition of a name is never
   hoisted above an earlier one (#1590).
+- and `100px` reach one normal form** in `background-size`, `mask-size`,
+  `tab-size`, `column-width`, `columns`, `overflow-clip-margin`, grid tracks
+  and `initial-letter-wrap`, so the two rules merge in one `--minify` pass
+  (#1624).
 
 #### Smaller output
 

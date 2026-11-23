@@ -287,8 +287,7 @@ let rec pp_contain_intrinsic_size : contain_intrinsic_size Pp.t =
    call around a result below the [0,inf] range. The unit of a zero stays, as it
    did. *)
 let normalize_contain_intrinsic_length length =
-  Values.canonical_dimension
-    (Values.normalize_length ~strip:false ~non_negative:true length)
+  Values.normalize_dimension ~non_negative:true length
 
 let normalize_contain_intrinsic_size_item :
     contain_intrinsic_size_item -> contain_intrinsic_size_item = function

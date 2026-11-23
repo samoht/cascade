@@ -147,9 +147,12 @@ let rec pp_initial_letter_align : initial_letter_align Pp.t =
 let normalize_initial_letter_wrap : initial_letter_wrap -> initial_letter_wrap =
  fun value ->
   match value with
-  | Length (Length len) ->
-      let len' = Values.canonical_dimension len in
-      if len' == len then value else Length (Length len')
+  | Length lp -> (
+      match Values.normalize_length_percentage ~strip:false lp with
+      | Length len as lp' ->
+          let len' = Values.normalize_dimension len in
+          if len' == len && lp' == lp then value else Length (Length len')
+      | lp' -> if lp' == lp then value else Length lp')
   | _ -> value
 
 let rec pp_initial_letter_wrap : initial_letter_wrap Pp.t =

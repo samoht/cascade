@@ -149,14 +149,14 @@ let rec normalize_columns_value : columns_value -> columns_value =
      round-trip, and the printer drops it under [--minify]. Fold it, or two
      spellings of one width reach one minified text through two nodes. *)
   | Width len as value ->
-      let len' = Values.canonical_dimension len in
+      let len' = Values.normalize_dimension ~non_negative:true len in
       if len' == len then value else Width len'
   | Both (len, count) as value ->
-      let len' = Values.canonical_dimension len in
+      let len' = Values.normalize_dimension ~non_negative:true len in
       if len' == len then value else Both (len', count)
   | With_height (base, height) as value ->
       let base' = normalize_columns_value base in
-      let height' = Values.canonical_dimension height in
+      let height' = Values.normalize_dimension ~non_negative:true height in
       if base' == base && height' == height then value
       else With_height (base', height')
   | other -> other
@@ -169,7 +169,7 @@ let normalize_column_width : column_width -> column_width =
  fun value ->
   match value with
   | Width len ->
-      let len' = Values.canonical_dimension len in
+      let len' = Values.normalize_dimension ~non_negative:true len in
       if len' == len then value else Width len'
   | _ -> value
 
@@ -177,11 +177,11 @@ let normalize_page_size : page_size -> page_size =
  fun value ->
   match value with
   | Single len ->
-      let len' = Values.canonical_dimension len in
+      let len' = Values.normalize_dimension ~non_negative:true len in
       if len' == len then value else Single len'
   | Pair (a, b) ->
-      let a' = Values.canonical_dimension a in
-      let b' = Values.canonical_dimension b in
+      let a' = Values.normalize_dimension ~non_negative:true a in
+      let b' = Values.normalize_dimension ~non_negative:true b in
       if a' == a && b' == b then value else Pair (a', b')
   | _ -> value
 

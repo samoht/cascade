@@ -376,10 +376,10 @@ let rec normalize_grid_template (value : grid_template) : grid_template =
      is two steps rather than one: [Length] is where a breadth the eight
      unit-specific arms above cannot hold goes, so a spelling of one they CAN
      hold has to come back out of it, or [100.0px] settles at [Length (Px 100.)]
-     beside the [Px 100.] that [100px] reads as. [canonical_dimension] leaves a
+     beside the [Px 100.] that [100px] reads as. [normalize_dimension] leaves a
      zero alone, so nothing lands here that the [Zero] arms above want. *)
   | Length length -> (
-      match Values.canonical_dimension length with
+      match Values.normalize_dimension ~non_negative:true length with
       | Px f -> Px f
       | Rem f -> Rem f
       | Em f -> Em f

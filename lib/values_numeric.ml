@@ -972,3 +972,11 @@ let pp_transition_behavior : transition_behavior Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Allow_discrete -> Pp.string ctx "allow-discrete"
+
+(* A length held bare in a property value: the calculation folds (CSS Values 4
+   sec. 10.10), so [calc(1e2px)] is the [100px] that [100E0px] spells, and a
+   spelling of a value a constructor holds goes back onto it. The unit of a zero
+   stays. [non_negative] keeps the call around a result below a [0,inf] range
+   (sec. 10.12). *)
+let normalize_dimension ?(non_negative = false) (l : length) : length =
+  canonical_dimension (normalize_length ~strip:false ~non_negative l)
