@@ -21,7 +21,7 @@
   dune
   dune-build-info
   (alcotest (and (>= 1.7.0) :with-test))
-  (alcobar :with-test)
+  (alcobar (and (>= 0.5.0) :with-test))
   (astring :with-test)
   (bytesrw :with-test)
   (conf-zlib :with-test)

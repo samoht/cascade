@@ -1167,6 +1167,8 @@ The new form of a diagnostic is under [Breaking](#command-line).
   `PROGRAMFILES` or `LOCALAPPDATA` (#1557).
 - browser harnesses start node without a shell,** so they run under `cmd.exe`
   (#1558).
+- fuzz tests run on Windows:** they require alcobar 0.5.0, whose timeout no
+  longer needs `SIGALRM` (#1559).
 
 ### Speed
 
