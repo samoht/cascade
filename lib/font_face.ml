@@ -327,10 +327,9 @@ let rec read_src_entry t =
       read_src_url_modifiers t url
 
 (** Parse a src string into a list of typed entries. CSS Fonts 4 sec. 4.3 spells
-    [src] as a comma-separated list, but real-world input occasionally drops the
-    comma between entries ([src: local("") url(test.woff)]). Match cleancss /
-    lightningcss / esbuild and accept the whitespace-only form too, treating it
-    as if a comma were present. *)
+    [src] as a comma-separated list, and an item holding two sources with no
+    comma between them ([src: local("") url(test.woff)]) is one item that does
+    not parse: Chromium and WebKit drop it, so it is not read as two. *)
 (* sec. 4.3.1: an entry whose component value does not parse, or whose format or
    tech the agent does not support, is left out of the list rather than failing
    the descriptor, and only an empty list at the end is the parse error. The
@@ -346,20 +345,26 @@ and read_src t =
       Cursor.skip t;
       skip_item ())
   in
-  (* [kept] is the items that parsed; [item] the entries of the one being read,
-     which the whitespace form above can make several. *)
-  let rec loop kept item =
+  (* [kept] is the items that parsed. An item is one entry and then a comma or
+     the end; anything else after the entry makes it an item that does not
+     parse. *)
+  let rec loop kept =
     Cursor.ws t;
-    if at_end () then item @ kept
-    else if Cursor.comma_opt t then loop (item @ kept) []
+    if at_end () then kept
+    else if Cursor.comma_opt t then loop kept
     else
       match read_src_entry t with
-      | entry -> loop kept (entry :: item)
+      | entry ->
+          Cursor.ws t;
+          if at_end () || Cursor.comma_opt t then loop (entry :: kept)
+          else (
+            skip_item ();
+            loop kept)
       | exception Cursor.Parse_error _ ->
           skip_item ();
-          loop kept []
+          loop kept
   in
-  let entries = List.rev (loop [] []) in
+  let entries = List.rev (loop []) in
   if entries = [] then Cursor.err_invalid t "no readable font src";
   entries
 

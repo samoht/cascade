@@ -948,6 +948,10 @@ differently. They are the reason to minify again.
   `column-rule` list with a trailing comma, a repeated `historical-forms` and
   a bare tag in the `@font-face` `font-variation-settings` descriptor were
   deleted (#1630).
+- font sources without a comma no longer become a list**: `src:url(a.woff)
+  url(b.woff)` was minified into `url(a.woff),url(b.woff)`, which loads a font
+  Chromium and Safari never load. Such an item is now dropped (CSS Fonts 4
+  sec. 4.3) (#1631).
 
 #### Stable output
 
