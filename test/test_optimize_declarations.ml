@@ -1063,6 +1063,23 @@ let target_minify_enforce_spec_split () =
     ~spec:"a{flex:0%}";
   check_modes "an explicit 0% basis" "a{flex:2 3 0%}" ~default:"a{flex:2 3}"
     ~spec:"a{flex:2 3 0%}";
+  (* WHATWG Compatibility Standard sec. 3.4.1 makes [-webkit-flex-basis] and
+     [-webkit-flex-grow] legacy name aliases of [flex-basis] and [flex-grow],
+     which CSS Cascade 5 sec. 3.1 makes the same property under a second name:
+     after [flex:1] one restating what the shorthand set is a no-op, as the
+     unprefixed one is. --enforce-spec keeps every vendor prefix. *)
+  check_modes "a later -webkit-flex-basis of the omitted 0%"
+    "a{flex:1;-webkit-flex-basis:0%}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1;-webkit-flex-basis:0%}";
+  check_modes "a later prefixed and unprefixed basis of the omitted 0%"
+    "a{flex:1;-webkit-flex-basis:0%;flex-basis:0%}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1;-webkit-flex-basis:0%;flex-basis:0%}";
+  check_modes "a later -webkit-flex-grow of the grow flex sets"
+    "a{flex:1;-webkit-flex-grow:1}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1;-webkit-flex-grow:1}";
+  check_modes "a later -webkit-flex-basis of another basis"
+    "a{flex:1;-webkit-flex-basis:0}" ~default:"a{flex:1;-webkit-flex-basis:0}"
+    ~spec:"a{flex:1;-webkit-flex-basis:0}";
   check_modes "color-mix keeps the required in oklab in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
