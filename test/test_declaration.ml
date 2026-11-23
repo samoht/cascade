@@ -1105,6 +1105,109 @@ let moz_gradient_interpolation () =
         [ "(in oklab, red, blue)"; "(to bottom, red, blue)" ] );
     ]
 
+(* Chromium 157 and Firefox 160 both read the [-webkit-] gradients, each with
+   its own laxities. Chromium skips the comma after a radial shape and size.
+   Firefox takes an interpolation hint between two colour stops, in the linear
+   and the radial ones, and a colour interpolation method in the radial ones
+   where it takes it in [-moz-radial-gradient()]. Both take the method before or
+   after a linear direction, and both paint it. A form one engine reads is kept,
+   and kept with what the other drops: [(circle red, blue)] keeps its missing
+   comma, so Firefox still drops it. A form that mixes the laxities of both is
+   read by neither. *)
+let webkit_gradient_engines () =
+  let fn name args = String.concat "" [ name; args ] in
+  let radial =
+    [
+      ("(red, 30%, blue)", "(red,30%,blue)", "(red,30%,#00f)");
+      ( "(center, circle, red, 30%, blue)",
+        "(center,circle,red,30%,blue)",
+        "(circle,red,30%,#00f)" );
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(in oklab center, circle, red, blue)",
+        "(center,circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab, red, 30%, blue)",
+        "(in oklab,red,30%,blue)",
+        "(in oklab,red,30%,#00f)" );
+      ("(circle red, blue)", "(circle red,blue)", "(circle red,#00f)");
+      ( "(ellipse cover red, blue)",
+        "(ellipse cover red,blue)",
+        "(ellipse cover red,#00f)" );
+      ( "(center, circle closest-side red, blue)",
+        "(center,circle contain red,blue)",
+        "(center,circle contain red,#00f)" );
+      ( "(center, 10px 20px red, blue)",
+        "(center,10px 20px red,blue)",
+        "(center,10px 20px red,#00f)" );
+    ]
+  in
+  let linear =
+    [
+      ("(red, 30%, blue)", "(red,30%,blue)", "(red,30%,#00f)");
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(top in oklab, red, blue)",
+        "(top in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab left, red, blue)",
+        "(left in oklab,red,blue)",
+        "(left in oklab,red,#00f)" );
+      ( "(45deg in oklab, red, blue)",
+        "(45deg in oklab,red,blue)",
+        "(45deg in oklab,red,#00f)" );
+      ( "(in hsl longer hue, red, blue)",
+        "(in hsl longer hue,red,blue)",
+        "(in hsl longer hue,red,#00f)" );
+      ( "(in oklab, red, 30%, blue)",
+        "(in oklab,red,30%,blue)",
+        "(in oklab,red,30%,#00f)" );
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun (input, held, into) ->
+          decl_optimizes ~prop:"background-image" ~held:(fn name held)
+            ~into:(fn name into) (fn name input))
+        cases)
+    [
+      ("-webkit-radial-gradient", radial);
+      ("-webkit-repeating-radial-gradient", radial);
+      ("-webkit-linear-gradient", linear);
+      ("-webkit-repeating-linear-gradient", linear);
+    ];
+  let radial_rejected =
+    [
+      "(circle red, 30%, blue)";
+      "(circle in oklab red, blue)";
+      "(in oklab circle red, blue)";
+      "(center in oklab, circle, red, blue)";
+      "(red, blue, 30%)";
+      "(red, 10%, 20%, blue)";
+    ]
+  in
+  let linear_rejected =
+    [
+      "(to bottom, red, blue)";
+      "(to right in oklab, red, blue)";
+      "(top, in oklab, red, blue)";
+      "(in oklab in srgb, red, blue)";
+      "(left in oklab top, red, blue)";
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun args ->
+          neg_cursor read_declaration
+            (String.concat "" [ "background-image: "; fn name args ]))
+        cases)
+    [
+      ("-webkit-radial-gradient", radial_rejected);
+      ("-webkit-repeating-radial-gradient", radial_rejected);
+      ("-webkit-linear-gradient", linear_rejected);
+      ("-webkit-repeating-linear-gradient", linear_rejected);
+    ]
+
 (* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
    [<angle-percentage> | <zero>]: [<angular-color-stop> = <color>
    <color-stop-angle>?], [<color-stop-angle> = [ <angle-percentage> | <zero>
@@ -1261,6 +1364,7 @@ let suite =
       test_case "legacy moz and o radial gradients" `Quick
         legacy_moz_o_radial_gradients;
       test_case "moz gradient interpolation" `Quick moz_gradient_interpolation;
+      test_case "webkit gradient engines" `Quick webkit_gradient_engines;
       test_case "conic angular stops" `Quick conic_angular_stops;
       test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)
