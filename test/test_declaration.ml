@@ -855,6 +855,7 @@ let legacy_webkit_images () =
       "-webkit-radial-gradient(top 10px, circle, red, blue)";
       "-webkit-radial-gradient(center circle, red, blue)";
       "-webkit-radial-gradient(center red, blue)";
+      "-webkit-radial-gradient(10px 20px red, blue)";
       "-webkit-radial-gradient(center, red, 30%, blue)";
       "-webkit-cross-fade(url(a.png), url(b.png))";
       "-webkit-cross-fade(url(a.png) 50%, url(b.png))";
@@ -960,6 +961,148 @@ let legacy_moz_o_radial_gradients () =
       ("-moz-repeating-radial-gradient", rejected);
       ("-o-radial-gradient", "(center, red, 30%, blue)" :: rejected);
       ("-o-repeating-radial-gradient", "(center, red, 30%, blue)" :: rejected);
+    ]
+
+(* Firefox 160 reads a [<color-interpolation-method>] (CSS Images 4 sec. 3.1) in
+   its [-moz-] gradients, which the 2011 draft has not. In the radial ones it
+   comes first, or after the position or the shape and size it follows, and
+   Firefox serialises it last before the stops: [in oklab center] is [center in
+   oklab], [in oklab 10px 20px, circle] is [10px 20px, circle in oklab]. In the
+   linear ones it sits before or after the direction. A linear direction that
+   starts with [to] makes Firefox read the gradient with the unprefixed grammar,
+   [-moz-linear-gradient(to right, ...)] painting as [linear-gradient(to right,
+   ...)]. Chromium 157 reads none of them, and no browser reads the [-o-] forms,
+   which keep the 2011 grammar. *)
+let moz_gradient_interpolation () =
+  let fn name args = String.concat "" [ name; args ] in
+  let radial =
+    [
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(circle in oklab, red, blue)",
+        "(circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab circle, red, blue)",
+        "(circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab center, red, blue)",
+        "(center in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(center in oklab, red, blue)",
+        "(center in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(center, circle in oklab, red, blue)",
+        "(center,circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab center, circle, red, blue)",
+        "(center,circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(10px 20px in oklab, red, blue)",
+        "(10px 20px in oklab,red,blue)",
+        "(10px 20px in oklab,red,#00f)" );
+      ( "(in oklab 10px 20px, circle, red, blue)",
+        "(10px 20px,circle in oklab,red,blue)",
+        "(10px 20px,circle in oklab,red,#00f)" );
+      ( "(center, ellipse cover in oklab, red, blue)",
+        "(center,ellipse cover in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab contain, red, blue)",
+        "(contain in oklab,red,blue)",
+        "(contain in oklab,red,#00f)" );
+      ( "(in hsl longer hue, red, blue)",
+        "(in hsl longer hue,red,blue)",
+        "(in hsl longer hue,red,#00f)" );
+      ( "(in oklab, red, 30%, blue)",
+        "(in oklab,red,30%,blue)",
+        "(in oklab,red,30%,#00f)" );
+    ]
+  in
+  let linear =
+    [
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(top in oklab, red, blue)",
+        "(top in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab top, red, blue)",
+        "(top in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab left, red, blue)",
+        "(left in oklab,red,blue)",
+        "(left in oklab,red,#00f)" );
+      ( "(left top in oklab, red, blue)",
+        "(top left in oklab,red,blue)",
+        "(top left in oklab,red,#00f)" );
+      ( "(45deg in oklab, red, blue)",
+        "(45deg in oklab,red,blue)",
+        "(45deg in oklab,red,#00f)" );
+      ("(to bottom, red, blue)", "(to bottom,red,blue)", "(to bottom,red,#00f)");
+      ("(to right, red, blue)", "(to right,red,blue)", "(to right,red,#00f)");
+      ( "(to top left, red, blue)",
+        "(to top left,red,blue)",
+        "(to top left,red,#00f)" );
+      ( "(to right in oklab, red, blue)",
+        "(to right in oklab,red,blue)",
+        "(to right in oklab,red,#00f)" );
+      ( "(in oklab to right, red, blue)",
+        "(to right in oklab,red,blue)",
+        "(to right in oklab,red,#00f)" );
+      ( "(to left top in hsl longer hue, red, blue)",
+        "(to top left in hsl longer hue,red,blue)",
+        "(to top left in hsl longer hue,red,#00f)" );
+      ( "(to right, red, 30%, blue)",
+        "(to right,red,30%,blue)",
+        "(to right,red,30%,#00f)" );
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun (input, held, into) ->
+          decl_optimizes ~prop:"background-image" ~held:(fn name held)
+            ~into:(fn name into) (fn name input))
+        cases)
+    [
+      ("-moz-radial-gradient", radial);
+      ("-moz-repeating-radial-gradient", radial);
+      ("-moz-linear-gradient", linear);
+      ("-moz-repeating-linear-gradient", linear);
+    ];
+  let radial_rejected =
+    [
+      "(center, in oklab, red, blue)";
+      "(center, in oklab circle, red, blue)";
+      "(center, circle, in oklab, red, blue)";
+      "(in oklab, circle, red, blue)";
+      "(circle in oklab, center, red, blue)";
+      "(center, in oklab ellipse cover, red, blue)";
+      "(in oklab circle in oklab, red, blue)";
+      "(in oklab, 10px, red, blue)";
+    ]
+  in
+  let linear_rejected =
+    [
+      "(to right, in oklab, red, blue)";
+      "(top, in oklab, red, blue)";
+      "(in oklab in srgb, red, blue)";
+      "(left in oklab top, red, blue)";
+      "(to 90deg, red, blue)";
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun args ->
+          neg_cursor read_declaration
+            (String.concat "" [ "background-image: "; fn name args ]))
+        cases)
+    [
+      ("-moz-radial-gradient", radial_rejected);
+      ("-moz-repeating-radial-gradient", radial_rejected);
+      ("-moz-linear-gradient", linear_rejected);
+      ("-moz-repeating-linear-gradient", linear_rejected);
+      ( "-o-radial-gradient",
+        [ "(in oklab, red, blue)"; "(center, circle in oklab, red, blue)" ] );
+      ( "-o-linear-gradient",
+        [ "(in oklab, red, blue)"; "(to bottom, red, blue)" ] );
     ]
 
 (* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
@@ -1117,6 +1260,7 @@ let suite =
       test_case "legacy webkit images" `Quick legacy_webkit_images;
       test_case "legacy moz and o radial gradients" `Quick
         legacy_moz_o_radial_gradients;
+      test_case "moz gradient interpolation" `Quick moz_gradient_interpolation;
       test_case "conic angular stops" `Quick conic_angular_stops;
       test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)
