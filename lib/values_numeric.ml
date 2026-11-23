@@ -435,7 +435,7 @@ let eval_pct_calc ?(ctx = default_calc_ctx) (c : percentage calc) :
          in full in both modes, so there is no budget to apply here. *)
     ~combine:pct_combine ~round:Fun.id ~is_zero:pct_is_zero
     ~zero:(Val (Pct 0.) : percentage calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 let normalize_percentage ?(ctx = default_calc_ctx) (p : percentage) : percentage
     =
@@ -494,7 +494,7 @@ let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     ~scale:(fun ~exact op v n -> time_scale ~exact op v n)
     ~combine:time_combine ~round:time_round ~is_zero:time_is_zero
     ~zero:(Val (S 0.) : duration calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 (* The [<time>] counterpart of [negative_length]: a duration a property whose
    range starts at [0s] refuses when it is written as a literal. *)
@@ -641,7 +641,7 @@ let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
   eval_typed_calc ~math_fn:angle_calc_math_fn
     ~scale:(fun ~exact op v n -> angle_scale ~exact op v n)
     ~combine:angle_combine ~round:angle_round ~is_zero:angle_is_zero
-    ~zero:(Val (Deg 0.)) ~ctx c
+    ~zero:(Val (Deg 0.)) ~holds_length:false ~ctx c
 
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
@@ -813,7 +813,7 @@ let eval_np_calc ?(ctx = default_calc_ctx) (c : number_percentage calc) :
       (* A [<number>] / [<percentage>] coefficient prints in full. *)
     ~combine:np_combine ~round:Fun.id ~is_zero:np_is_zero
     ~zero:(Val (Num 0.) : number_percentage calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 let rec normalize_number_percentage ?(ctx = default_calc_ctx)
     (np : number_percentage) : number_percentage =

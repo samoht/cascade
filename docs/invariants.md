@@ -140,7 +140,9 @@ implementation keeps them.
   reads the bare call back to the same node.
 - **A custom property is single-valued only by `@property` registration.** A
   `calc()` identity that drops an operand (`x * 0`) folds only over an operand
-  with no `var()` or over a `<number>` or `<integer>` registration.
+  with no `var()`, over a `<number>` or `<integer>` registration, or over a
+  `<length>` registration at a position that needs a length (CSS Values 4
+  sec. 10.9), where the product is a zero length.
 - **A registration types its property only where every browser in B applies
   it.** CSS Properties and Values API 1 sec. 2.1 lets `CSS.registerProperty()`
   and a later `@property` replace a registration, so a custom property takes a
@@ -335,7 +337,7 @@ Each row names the tests that check a statement. A browser harness under
 | `var()` components | `declaration` "complex values"; `properties_background` "background-image" |
 | Range | `values_math` "spec math range every family", "spec math infinite range" |
 | Math result types | `values_math` "spec math inverse trig is an angle" |
-| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
+| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number`, `calc_zero_product_registered_length` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
 | Zero operands | `values_math` "spec math zero operands" |
 | Signed percentage basis | `values_math` "spec math signed percentage basis" |

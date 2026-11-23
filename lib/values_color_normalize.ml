@@ -48,7 +48,7 @@ let eval_alpha_calc ?(ctx = default_calc_ctx) (c : alpha calc) : alpha calc =
       (* An alpha coefficient prints in full through [Pp.float] / [Pp.pct]. *)
     ~combine:alpha_combine ~round:Fun.id ~is_zero:alpha_is_zero
     ~zero:(Val (Num 0.) : alpha calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 (* Round a lab/oklab/lch/oklch coefficient to its canonical decimal budget. The
    printer serialises faithfully, so this AST fold owns the value-changing

@@ -251,7 +251,7 @@ let eval_length_calc ?(ctx = default_calc_ctx) (c : length calc) : length calc =
   eval_typed_calc ~math_fn:length_calc_math_fn
     ~scale:(fun ~exact op v n -> length_scale ~exact op v n)
     ~combine:length_combine ~round:length_round ~is_zero:length_is_zero
-    ~zero:(Val Zero) ~ctx c
+    ~zero:(Val Zero) ~holds_length:true ~ctx c
 
 type length_unit =
   | Px
@@ -684,7 +684,7 @@ let eval_lp_calc ?(ctx = default_calc_ctx) (c : length_percentage calc) :
   eval_typed_calc ~math_fn:lp_calc_math_fn
     ~scale:(fun ~exact op v n -> lp_scale ~exact op v n)
     ~combine:lp_combine ~round:lp_round ~is_zero:lp_is_zero
-    ~zero:(Val (Length Zero)) ~ctx c
+    ~zero:(Val (Length Zero)) ~holds_length:true ~ctx c
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (Pct, n)

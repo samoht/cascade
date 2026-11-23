@@ -1300,6 +1300,11 @@ let single_valued_calc_ctx registry : Values.calc_ctx =
         match (syntax name : Variables.any_syntax option) with
         | Some (Variables.Syntax s) -> syntax_is_number s
         | None -> false);
+    var_is_length =
+      (fun name ->
+        match (syntax name : Variables.any_syntax option) with
+        | Some (Variables.Syntax Variables.Length) -> true
+        | Some (Variables.Syntax _) | None -> false);
     budget = false;
   }
 

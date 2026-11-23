@@ -939,6 +939,10 @@ differently. They are the reason to minify again.
   `scale` (#1572).
 - basic shape drops a zero `round`:** `inset(0 round 0)` prints `inset(0)` in
   `clip-path` and `object-view-box` (#1573).
+- registered length times zero folds under `--scope=stylesheet`:**
+  `calc(var(--l)*0)` becomes `0px` for a `<length>` registration where the
+  calculation needs a length, as it already did for `<number>` and `<integer>`
+  (#1574).
 
 ### Formatted output
 

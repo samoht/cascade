@@ -275,6 +275,7 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 type calc_ctx = {
   var_is_single_valued : string -> bool;
   var_is_number : string -> bool;
+  var_is_length : string -> bool;
   budget : bool;
 }
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
@@ -283,12 +284,14 @@ type calc_ctx = {
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
     may be unwrapped. [var_is_number n] reports a [<number>] or [<integer>]
     registration, whose [var()] substitutes one number, so a zero product over
-    it folds (see {!calc_identity}). [budget] folds a non-terminating quotient
-    to the six-significant-figure computed-value budget, as a number's fold
-    already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient
-    keeps the [calc()] the author wrote, which is what {!default_calc_ctx} and
-    the minifier do. The canonical comparison spends the budget, since the two
-    spellings render alike. *)
+    it folds (see {!calc_identity}). [var_is_length n] reports a [<length>]
+    registration, whose [var()] substitutes one length, so its product with [0]
+    folds where the calculation needs a length. [budget] folds a non-terminating
+    quotient to the six-significant-figure computed-value budget, as a number's
+    fold already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the
+    quotient keeps the [calc()] the author wrote, which is what
+    {!default_calc_ctx} and the minifier do. The canonical comparison spends the
+    budget, since the two spellings render alike. *)
 
 val length_from_calc_unit : string -> float -> length
 (** [length_from_calc_unit unit value] is the length {!val-calc_length_unit}

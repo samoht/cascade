@@ -762,11 +762,13 @@ let fold_zero_numeric_expr : type a.
    reports whether [--n] has a single-component [@property] syntax, so
    [calc(var(--n))] substitutes one term and its redundant grouping may be
    dropped. [var_is_number n] reports a [<number>] or [<integer>] registration,
-   whose [var()] substitutes one number. The default knows nothing, so every
-   such rewrite is a no-op. *)
+   whose [var()] substitutes one number, and [var_is_length n] a [<length>]
+   registration, whose [var()] substitutes one length. The default knows
+   nothing, so every such rewrite is a no-op. *)
 type calc_ctx = {
   var_is_single_valued : string -> bool;
   var_is_number : string -> bool;
+  var_is_length : string -> bool;
   budget : bool;
 }
 
@@ -774,6 +776,7 @@ let default_calc_ctx =
   {
     var_is_single_valued = (fun _ -> false);
     var_is_number = (fun _ -> false);
+    var_is_length = (fun _ -> false);
     budget = false;
   }
 
@@ -968,6 +971,38 @@ let fold_typed_expr : type a.
    differ and are passed in ([math_fn], [scale], [combine], [round], [zero] /
    [is_zero] for the identities). A shape with no [scale] / [combine] returns
    [None] and the [calc()] is kept verbatim. *)
+(* A calculation of type [<number>] whatever its [var()]s substitute: it holds
+   no dimension, no [var()] and no math function, whose type is its
+   arguments'. *)
+let rec number_typed : type a. a calc -> bool = function
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> true
+  | Nested inner | Parens inner -> number_typed inner
+  | Expr (left, _, right) -> number_typed left && number_typed right
+  | Val _ | Var _ | Math_fn _ -> false
+
+(* A [<length>] registration's [var()] times the number [0] is a zero length.
+   CSS Values 4 sec. 10.9 types a product as its non-number factor, so the
+   product stands for the calculation's own type only where that position needs
+   it: at the top, in a sum there, and beside a number factor. A product at
+   another position is a type error found at computed-value time, which the zero
+   would turn into one found at parse time. *)
+(* Which operands of [left op right], at a position [own] says needs the
+   calculation's own type, need it too. *)
+let operands_own ~own left op right =
+  match op with
+  | Add | Sub -> (own, own)
+  | Mul -> (own && number_typed right, own && number_typed left)
+  | Div -> (own, false)
+
+let zero_length_product ~ctx l r =
+  let length = function
+    | (Var v : _ calc) -> ctx.var_is_length v.name
+    | _ -> false
+  in
+  match (calc_operand_value l, calc_operand_value r) with
+  | x, Num 0. | Num 0., x -> length x
+  | _ -> false
+
 let eval_typed_calc : type a.
     math_fn:(math_fn -> a calc) ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
@@ -975,17 +1010,20 @@ let eval_typed_calc : type a.
     round:(a -> a) ->
     is_zero:(a -> bool) ->
     zero:a calc ->
+    holds_length:bool ->
     ctx:calc_ctx ->
     a calc ->
     a calc =
- fun ~math_fn ~scale ~combine ~round ~is_zero ~zero ~ctx calc ->
+ fun ~math_fn ~scale ~combine ~round ~is_zero ~zero ~holds_length ~ctx calc ->
   (* [reduce] pairs the reduced tree with a flag: its root is a typed value
      Cascade computed rather than one the author wrote. The budget is spent once
      nothing more will fold that root - at the top, or where it is embedded in a
      [calc()] that stays. Rounding an intermediate product instead feeds the
      shortened coefficient back into the next fold and compounds the error:
      [calc(100px * sqrt(2) * sqrt(2))] is still [200px]. *)
-  let rec reduce (calc : a calc) : a calc * bool =
+  (* [own] is set at a position that needs a value of the calculation's own
+     type, as opposed to a number factor's. *)
+  let rec reduce ~own (calc : a calc) : a calc * bool =
     match calc with
     | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf ->
         (leaf, false)
@@ -995,17 +1033,26 @@ let eval_typed_calc : type a.
         match math_fn fn with
         | Val _ as reduced -> (reduced, true)
         | reduced -> (reduced, false))
-    | Nested inner -> wrap (fun r -> Nested r) inner
-    | Parens inner -> wrap (fun r -> Parens r) inner
-    | Expr (left, op, right) ->
-        let computed = calc_is_computed left || calc_is_computed right in
-        fold_typed_expr ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed
-          (reduce left) op (reduce right)
-  and wrap rewrap inner =
-    let reduced, computed = reduce inner in
+    | Nested inner -> wrap ~own (fun r -> Nested r) inner
+    | Parens inner -> wrap ~own (fun r -> Parens r) inner
+    | Expr (left, op, right) -> (
+        let own_left, own_right = operands_own ~own left op right in
+        let lf = reduce ~own:own_left left in
+        let rf = reduce ~own:own_right right in
+        match op with
+        | Mul
+          when own && holds_length && zero_length_product ~ctx (fst lf) (fst rf)
+          ->
+            (zero, false)
+        | _ ->
+            let computed = calc_is_computed left || calc_is_computed right in
+            fold_typed_expr ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed
+              lf op rf)
+  and wrap ~own rewrap inner =
+    let reduced, computed = reduce ~own inner in
     (unwrap_grouping ~ctx ~rewrap reduced, computed)
   in
-  normalize_calc_parens (settle_computed round (reduce calc))
+  normalize_calc_parens (settle_computed round (reduce ~own:true calc))
 
 (* A dimension the author could not have written as a literal. CSS Values 4 sec.
    10.3 keeps a [calc()] valid wherever its range is exceeded and clamps at

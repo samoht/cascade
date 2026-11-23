@@ -10,6 +10,7 @@ type math_result = Scalar of float | United of float * string
 type calc_ctx = {
   var_is_single_valued : string -> bool;
   var_is_number : string -> bool;
+  var_is_length : string -> bool;
   budget : bool;
 }
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
@@ -18,12 +19,15 @@ type calc_ctx = {
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
     may be unwrapped. [var_is_number n] reports a [<number>] or [<integer>]
     registration, whose [var()] substitutes one number, so a zero product over
-    it folds (see {!calc_identity}). [budget] folds a non-terminating quotient
-    to the six-significant-figure computed-value budget, as a number's fold
-    already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient
-    keeps the [calc()] the author wrote, which is what {!default_calc_ctx} and
-    the minifier do. The canonical comparison spends the budget, since the two
-    spellings render alike. *)
+    it folds (see {!calc_identity}). [var_is_length n] reports a [<length>]
+    registration, whose [var()] substitutes one length, so its product with [0]
+    folds where the calculation needs a length (see {!eval_typed_calc}).
+    [budget] folds a non-terminating quotient to the six-significant-figure
+    computed-value budget, as a number's fold already does, so
+    [calc(1/3 * 100%)] is [33.3333%]; without it the quotient keeps the [calc()]
+    the author wrote, which is what {!default_calc_ctx} and the minifier do. The
+    canonical comparison spends the budget, since the two spellings render
+    alike. *)
 
 val pp_calc_op : calc_op Pp.t
 (** [pp_calc_op] pretty-prints {!Values_intf.calc_op} values. *)
@@ -124,12 +128,15 @@ val eval_typed_calc :
   round:('a -> 'a) ->
   is_zero:('a -> bool) ->
   zero:'a calc ->
+  holds_length:bool ->
   ctx:calc_ctx ->
   'a calc ->
   'a calc
-(** [eval_typed_calc ~math_fn ~scale ~combine ~round ~is_zero ~zero ~ctx c] is
-    the typed [calc()] reduction of CSS Values 4 sec. 10.10.1, with the leaf
-    operations of one type. *)
+(** [eval_typed_calc ~math_fn ~scale ~combine ~round ~is_zero ~zero
+     ~holds_length ~ctx c] is the typed [calc()] reduction of CSS Values 4 sec.
+    10.10.1, with the leaf operations of one type. [holds_length] says a length
+    is a value of that type, so a [<length>] registration ([ctx.var_is_length])
+    times [0] is [zero] wherever the calculation needs a value of its type. *)
 
 val negative_length : length -> bool
 (** [negative_length l] is [true] when [l] is a negative dimension. *)
