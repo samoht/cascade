@@ -752,10 +752,12 @@ let with_value_contract () =
    and size are [ellipse cover], the omitted position is [center], and an
    argument that reads as a position or a size is a position. No [at], no single
    radius, no colour space and no interpolation hint. Chromium 153 reads exactly
-   that, a zero radius and a missing comma after the shape included.
-   [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)] is in no
-   specification; Chromium 153 reads it in every [<image>] slot, [none] for
-   either image included, and serialises [50%] as [0.5]. *)
+   that, a zero radius and a missing comma after the shape included, and the
+   comma stays missing, as Firefox drops the gradient without it. Firefox's own
+   laxities are in [webkit_gradient_engines]. [-webkit-cross-fade(<image>,
+   <image>, <number> | <percentage>)] is in no specification; Chromium 153 reads
+   it in every [<image>] slot, [none] for either image included, and serialises
+   [50%] as [0.5]. *)
 let legacy_webkit_images () =
   let radial = "-webkit-radial-gradient" in
   let fn name args = String.concat "" [ name; args ] in
@@ -783,7 +785,7 @@ let legacy_webkit_images () =
         "(10px 20px,30px 40px,red,blue)",
         "(10px 20px,30px 40px,red,#00f)" );
       ("(10px, red, blue)", "(10px,red,blue)", "(10px,red,#00f)");
-      ("(circle red, blue)", "(circle,red,blue)", "(circle,red,#00f)");
+      ("(circle red, blue)", "(circle red,blue)", "(circle red,#00f)");
       ( "(center, 0 20px, red, blue)",
         "(center,0 20px,red,blue)",
         "(center,0 20px,red,#00f)" );
@@ -850,13 +852,11 @@ let legacy_webkit_images () =
       "-webkit-radial-gradient(center, ellipse 10px 20px, red, blue)";
       "-webkit-radial-gradient(center, circle ellipse, red, blue)";
       "-webkit-radial-gradient(center, -10px 20px, red, blue)";
-      "-webkit-radial-gradient(in oklab, red, blue)";
       "-webkit-radial-gradient(left 10px top, circle, red, blue)";
       "-webkit-radial-gradient(top 10px, circle, red, blue)";
       "-webkit-radial-gradient(center circle, red, blue)";
       "-webkit-radial-gradient(center red, blue)";
       "-webkit-radial-gradient(10px 20px red, blue)";
-      "-webkit-radial-gradient(center, red, 30%, blue)";
       "-webkit-cross-fade(url(a.png), url(b.png))";
       "-webkit-cross-fade(url(a.png) 50%, url(b.png))";
       "-webkit-cross-fade(url(a.png), url(b.png), 50%, 1)";
