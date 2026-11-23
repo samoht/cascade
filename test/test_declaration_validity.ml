@@ -916,12 +916,15 @@ let number_formats () =
 let integer_precision () =
   check_declaration "order:9007199254740993";
   check_declaration "grid-template-columns:repeat(9007199254740993,1px)";
-  List.iter
-    (neg_cursor read_declaration)
-    [
-      "order:999999999999999999999999999999999999";
-      "grid-template-columns:repeat(999999999999999999999999999999999999,1px)";
-    ]
+  (* CSS Values 4 sec. 5 converts an integer past the supported range to the
+     closest one supported. Every target clamps far below 2^62 (Chromium 153
+     computes order:99999999999999999999 to 2147483647), so the reader keeps the
+     declaration at the end of the [int] range. *)
+  check_declaration ~expected:"order:4611686018427387903"
+    "order:999999999999999999999999999999999999";
+  check_declaration
+    ~expected:"grid-template-columns:repeat(4611686018427387903,1px)"
+    "grid-template-columns:repeat(999999999999999999999999999999999999,1px)"
 
 let unterminated () =
   (* CSS Syntax 5.3.7 / 4.3.5 auto-close unterminated strings, brackets and

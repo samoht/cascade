@@ -487,11 +487,13 @@ let test_nth () =
      enforced. *)
   List.iter (neg_cursor read)
     [ ":nth-child(2 n)"; ":nth-child(3 n)"; ":nth-child(odd+1)" ];
-  List.iter (neg_cursor read_nth)
-    [
-      "999999999999999999999999999999999999";
-      "999999999999999999999999999999999999n+1";
-    ];
+  (* CSS Values 4 sec. 5 converts an integer past the supported range to the
+     closest one supported; every target clamps far below 2^62, and Chromium 153
+     reads :nth-child() over 99999999999999999999. *)
+  check_nth ~expected:"4611686018427387903"
+    "999999999999999999999999999999999999";
+  check_nth ~expected:"4611686018427387903n+1"
+    "999999999999999999999999999999999999n+1";
   ()
 
 let test_selector () =
