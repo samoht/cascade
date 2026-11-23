@@ -987,6 +987,9 @@ differently. They are the reason to minify again.
 - conic gradient drops its default prelude:** `conic-gradient(from 0deg at
   center,blue,red)` prints `conic-gradient(blue,red)`, and `from 45deg at 50%`
   prints `from 45deg`. Both stay when a `var()` leads the stops (#1585).
+- output drops the space beside a string:** `grid-template-areas:"a""b"`,
+  `"head head"auto`, `quotes:"a""b"`, which Chromium reads as the spaced forms
+  (CSS Syntax 3 sec. 9.1) (#1586).
 
 ### Formatted output
 

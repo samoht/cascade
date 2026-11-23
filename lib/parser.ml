@@ -657,6 +657,8 @@ let word_like_end : Component.t -> bool = function
         _;
       } ->
       false
+  (* A closed string ends on its quote, which nothing that follows extends. *)
+  | Preserved { kind = String { terminated = true; _ }; _ } -> false
   | Preserved _ -> true
   (* CSS Color 5 sec. 4.2 relative colour needs whitespace between a [var()] (or
      other function) [<color>] arg and the following channel ident: [oklab(from
@@ -682,6 +684,8 @@ let word_like_start : Component.t -> bool = function
       } ->
       false
   | Preserved { kind = Open Square | Open Curly; _ } -> false
+  (* A string opens on its quote, which no token before it takes in. *)
+  | Preserved { kind = String _; _ } -> false
   | Preserved { kind = Open Paren; _ } -> true
   | Preserved _ -> true
   | Func _ -> true
