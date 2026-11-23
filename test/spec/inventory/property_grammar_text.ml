@@ -162,7 +162,7 @@ let rows =
     {
       property = "text-orientation";
       positives = [ "mixed"; "upright"; "sideways" ];
-      negatives = [ "mixed upright"; "sideways-right" ];
+      negatives = [ "mixed upright"; "sideways-right upright" ];
     };
     {
       property = "text-combine-upright";
@@ -234,7 +234,7 @@ let rows =
     {
       property = "alignment-baseline";
       positives = [ "baseline"; "text-bottom"; "middle"; "central" ];
-      negatives = [ "baseline middle"; "auto" ];
+      negatives = [ "baseline middle"; "auto auto" ];
     };
     {
       property = "baseline-shift";

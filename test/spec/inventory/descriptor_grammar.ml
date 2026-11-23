@@ -76,10 +76,10 @@ let rows =
         "wght 650";
         "\"wght\" bold";
         "650 \"wght\"";
-        (* The pair is [<string> <number>]: a tag with no number is half a
-           value, and [on]/[off] belong to font-feature-settings. *)
-        "\"wght\"";
-        "\"text\"";
+        (* The pair is [<string> <number>], and [on]/[off] belong to
+           font-feature-settings. A tag with no number is half a value, but
+           Chromium reads it at the descriptor as the tag at 1, so it is kept as
+           written and is no refused form. *)
         "\"liga\" off";
       ];
     row "font-face" "size-adjust"

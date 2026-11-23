@@ -324,18 +324,19 @@ let check_classifier () =
 (* Three vectors put through the whole pipeline - generation, both browser
    oracles, the reader, the comparison - whose outcome the run asserts.
 
-   The two disagreements are citation-backed and permanent. No specification
-   grants [resize: auto], so a reader that rejects what Chrome takes there stays
-   right. [text-decoration-thickness] takes a <line-width>, so a reader that
-   accepts [thin] where Chrome does not stays right. Neither is a defect anybody
-   will fix out from under this check, which is what a calibration vector has to
-   be: a vector pinned to today's bug goes red the day the bug is fixed. *)
+   No specification grants [resize: auto], but Chrome reads it, so
+   docs/invariants.md, "Nothing untyped is dropped", has the reader keep it as
+   written and the two agree. [text-decoration-thickness] takes a <line-width>,
+   so a reader that accepts [thin] where Chrome does not stays right. Neither is
+   a defect anybody will fix out from under this check, which is what a
+   calibration vector has to be: a vector pinned to today's bug goes red the day
+   the bug is fixed. *)
 type calibration = { on : string; put : string; must_be : string }
 
 let calibration =
   [
     { on = "color"; put = "red"; must_be = "agree" };
-    { on = "resize"; put = "auto"; must_be = "rejects-valid (explained)" };
+    { on = "resize"; put = "auto"; must_be = "agree" };
     {
       on = "text-decoration-thickness";
       put = "thin";

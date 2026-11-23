@@ -437,7 +437,7 @@ let property_grammar_ui_vectors =
   [
     vector "resize" Css.Properties.read_resize Css.Properties.pp_resize
       [ "none"; "both"; "horizontal"; "block" ]
-      [ "horizontal vertical"; "auto" ];
+      [ "horizontal vertical"; "auto auto" ];
     vector "object-fit" Css.Properties.read_object_fit
       Css.Properties.pp_object_fit
       [ "fill"; "contain"; "cover"; "scale-down" ]

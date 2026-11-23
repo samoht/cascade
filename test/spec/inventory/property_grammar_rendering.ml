@@ -586,7 +586,7 @@ let rows =
     {
       property = "resize";
       positives = [ "none"; "both"; "horizontal"; "block" ];
-      negatives = [ "horizontal vertical"; "auto" ];
+      negatives = [ "horizontal vertical"; "auto auto" ];
     };
     {
       property = "object-fit";
