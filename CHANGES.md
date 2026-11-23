@@ -925,6 +925,9 @@ differently. They are the reason to minify again.
   `calc-size()` basis by default, since no shipping engine paints it, and
   keeps the `flex` before it; under `--enforce-spec` it reads it, as CSS
   Flexbox 1 sec. 7.1 gives `flex` the `<'flex-basis'>` grammar (#1623).
+- and the metric override descriptors keep a math function that folds below
+  zero** (`calc(-10%)`), which CSS Values 4 sec. 10.12 clamps at
+  computed-value time, instead of dropping it (#1625).
 
 #### Stable output
 

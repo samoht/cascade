@@ -7,6 +7,10 @@
 type metric_override =
   | Normal
   | Percent of float
+  | Percent_call of float
+      (** A math function folded to a percentage below the [0,inf] range. CSS
+          Values 4 sec. 10.12 clamps it at computed-value time where the bare
+          literal is invalid, so it prints back as [calc()]. *)
   | Var of metric_override Values.var
 
 val pp_metric_override : metric_override Pp.t
@@ -21,7 +25,12 @@ val string_of_metric_override : metric_override -> string
 (** CSS Fonts 5 sec. 4.4: a [<percentage [0,inf]>] glyph size multiplier. No
     descriptor grammar takes a [var()] (CSS Fonts 4 sec. 4.1), so [Var] parks a
     reference until the inline pass substitutes it. *)
-type size_adjust = Pct of float | Var of size_adjust Values.var
+type size_adjust =
+  | Pct of float
+  | Pct_call of float
+      (** A math function folded to a percentage below the [0,inf] range,
+          printed back as [calc()] (CSS Values 4 sec. 10.12). *)
+  | Var of size_adjust Values.var
 
 val pp_size_adjust : size_adjust Pp.t
 (** [pp_size_adjust] renders one [size-adjust] value. *)
