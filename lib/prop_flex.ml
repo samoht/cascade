@@ -234,7 +234,22 @@ let basis_stands_alone : flex_basis -> bool = function
   | Calc _ | Var _ ->
       false
 
-let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
+(* The [flex-basis] a [flex] of one or two factors omits. CSS Flexible Box 1
+   (ED) sec. 7.1 gives it the specified value [0], a length; Chrome 157 computes
+   it as [0%], which against an indefinite container sizes the item from its
+   content. The default targets read Chrome's, [enforce_spec] the Editor's
+   Draft's. *)
+let omitted_flex_basis ~enforce_spec : flex_basis =
+  if enforce_spec then Zero else Pct 0.
+
+let is_omitted_flex_basis ~enforce_spec (b : flex_basis) =
+  match b with
+  | Zero -> enforce_spec
+  | Pct p -> Float.equal p 0. && not enforce_spec
+  | _ -> false
+
+let normalize_flex ?(ctx = default_calc_ctx) ~enforce_spec (value : flex) : flex
+    =
   match value with
   | Grow f ->
       let f' = normalize_flex_factor f in
@@ -258,21 +273,33 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
       (* A [var()] factor may supply no factor at all (CSS Variables 1 sec. 3),
          and a bare [0] after one factor is the shrink (sec. 7.2), so the zero
          basis keeps the unit it was written with. *)
+      let substituted =
+        match (g', s') with
+        | (Var _ : flex_factor), _ | _, Var _ -> true
+        | _ -> false
+      in
       let b' =
-        match (normalize_flex_basis ~ctx b, g', s') with
-        | Zero, (Var _ : flex_factor), _ | Zero, _, Var _ -> b
-        | b', _, _ -> b'
+        match normalize_flex_basis ~ctx b with
+        | Zero when substituted -> b
+        | b' -> b'
+      in
+      (* For the same reason a zero length stays the basis a [var()] factor is
+         written beside. *)
+      let omitted b =
+        is_omitted_flex_basis ~enforce_spec b
+        && not (substituted && enforce_spec)
       in
       (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
          of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
       match (g', s', b') with
       | Number 0., Number 0., (Auto : flex_basis) -> None
       | Number 1., Number 1., Auto -> Auto
-      (* Sec. 7.1.1: an omitted basis is [0%] and an omitted shrink [1], so [g 1
-         0%] is [g] and [g s 0%] is [g s]. A [0] or [0px] basis is a length,
-         another computed value, and stays. *)
-      | _, Number 1., Pct 0. -> Grow g'
-      | _, _, Pct 0. -> Grow_shrink (g', s')
+      (* Sec. 7.1.1: an omitted shrink is [1], and the basis one or two factors
+         omit is {!omitted_flex_basis}, so [g 1 b] is [g] and [g s b] is [g s]
+         for that [b]. The other zero basis is another computed value, written
+         as a lone basis below. *)
+      | _, Number 1., b when omitted b -> Grow g'
+      | _, _, b when omitted b -> Grow_shrink (g', s')
       (* Sec. 7.1: an omitted grow factor is 1 as well, so a lone basis is [1 1
          <basis>]. *)
       | Number 1., Number 1., Zero -> Basis (Px 0.)

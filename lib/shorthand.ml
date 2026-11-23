@@ -179,7 +179,10 @@ let compose_reduced ~held ~ctx ~merge_box props kept =
   in
   (* Composition writes shorthands the input did not carry, so the longhands one
      of them now restates are only visible on a second pass. *)
-  let kept = drop_longhands_after_covering_shorthand kept in
+  let kept =
+    drop_longhands_after_covering_shorthand ~enforce_spec:(Ctx.enforce_spec ctx)
+      kept
+  in
   (* Each pipeline step keeps untouched declarations, so [preserve_list]
      restores the input list when every declaration is physically unchanged -
      callers detect a no-op by identity (the factoring fixpoint relies on
@@ -189,7 +192,10 @@ let compose_reduced ~held ~ctx ~merge_box props kept =
 let deduplicate_declarations_with ?(held = held_none) ~ctx ?(merge_box = true)
     props =
   let held = held_outside held props in
-  let props = drop_longhands_after_covering_shorthand props in
+  let props =
+    drop_longhands_after_covering_shorthand ~enforce_spec:(Ctx.enforce_spec ctx)
+      props
+  in
   let indexed_props = List.mapi (fun i decl -> (i, decl)) props in
   let kept =
     List.rev

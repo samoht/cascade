@@ -130,7 +130,10 @@ let shorthand_answered ~own ~other sh =
     || List.exists (fun d -> d != sh && covers d) own
   then None
   else
-    match Shorthand.implied_longhands sh with
+    (* The tree diff judges for the default targets
+       ({!Cascade_diff.Css_compare.diff} reads [enforce_spec] in the canonical
+       mode alone). *)
+    match Shorthand.implied_longhands ~enforce_spec:false sh with
     | Some slots
       when List.for_all (fun d -> Option.is_some (slot_for slots d)) covered ->
         Some (slots_in_order slots covered)

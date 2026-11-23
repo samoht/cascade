@@ -749,10 +749,15 @@ let background_slots ~substituted (s : Properties.background_shorthand) =
 
 (* CSS Flexible Box 1 sec. 7.1: [flex: initial] is [0 1 auto], [auto] is [1 1
    auto] and [none] is [0 0 auto], and a grow or shrink factor the shorthand
-   omits is [1]. An omitted basis is left unknown: the Editor's Draft makes it
-   [0] where shipping browsers write [0%], and the two size an item in an
-   indefinite container differently. *)
-let flex_slots ~substituted (value : Properties.flex) =
+   omits is [1]. The basis it omits depends on the mode
+   ({!Prop_flex.omitted_flex_basis}), so a caller that answers for both,
+   [enforce_spec = None], leaves it unknown. *)
+let flex_slots ~enforce_spec ~substituted (value : Properties.flex) =
+  let omitted =
+    Option.map
+      (fun enforce_spec -> Prop_flex.omitted_flex_basis ~enforce_spec)
+      enforce_spec
+  in
   let grow_shrink_basis g s b =
     [
       Some (Declaration.v Flex_grow g);
@@ -767,8 +772,8 @@ let flex_slots ~substituted (value : Properties.flex) =
   | Auto -> grow_shrink_basis one one (Some Auto)
   | None -> grow_shrink_basis (Number 0.) (Number 0.) (Some Auto)
   | Basis b -> grow_shrink_basis one one (Some b)
-  | Grow g -> grow_shrink_basis g one Option.none
-  | Grow_shrink (g, s) -> grow_shrink_basis g s Option.none
+  | Grow g -> grow_shrink_basis g one omitted
+  | Grow_shrink (g, s) -> grow_shrink_basis g s omitted
   | Full (g, s, b) -> grow_shrink_basis g s (Some b)
   | Inherit | Unset | Revert | Revert_layer | Var _ -> [ None ]
 
@@ -790,7 +795,7 @@ let transition_slots ~substituted (s : Properties.transition_shorthand) =
    cannot be proven; [[None]] for a shorthand none of these read. A comma list
    of layers or transitions assigns per-item values, so only one item is
    read. *)
-let shorthand_slots covering =
+let shorthand_slots ~enforce_spec covering =
   let substituted = has_runtime_substitution covering in
   match unwrap_theme_guard covering with
   | Declaration { property = Properties.Border; value = Shorthand s; _ } ->
@@ -799,19 +804,19 @@ let shorthand_slots covering =
     ->
       background_slots ~substituted s
   | Declaration { property = Properties.Flex; value; _ } ->
-      flex_slots ~substituted value
+      flex_slots ~enforce_spec ~substituted value
   | Declaration { property = Properties.Transition; value = [ Shorthand s ]; _ }
     ->
       transition_slots ~substituted s
   | _ -> [ None ]
 
-let slot_for_longhand covering covered =
+let slot_for_longhand ~enforce_spec covering covered =
   let covered = unwrap_theme_guard covered in
   List.find_map
     (function
       | Some slot when Declaration.same_property slot covered -> Some slot
       | _ -> None)
-    (shorthand_slots covering)
+    (shorthand_slots ~enforce_spec covering)
 
 (* CSS Box 4 sec. 3.2 and 4.2 and CSS Position 3 sec. 3.1: a box shorthand of
    one to four values gives top, right, bottom and left, a missing right copying
@@ -832,7 +837,8 @@ let box_side (values : Values.length list) (side : Shorthand_box.box_side) =
    value if set, else that longhand's initial. A later longhand equal to this is
    a redundant no-op. [None] when the shorthand does not cover the longhand or
    the value cannot be proven. *)
-let implied_longhand covering covered : Declaration.declaration option =
+let implied_longhand ~enforce_spec covering covered :
+    Declaration.declaration option =
   match unwrap_theme_guard covering with
   | Declaration
       {
@@ -841,7 +847,7 @@ let implied_longhand covering covered : Declaration.declaration option =
           | Properties.Transition );
         _;
       } ->
-      slot_for_longhand covering covered
+      slot_for_longhand ~enforce_spec covering covered
   | Declaration { property = Properties.Animation; value; _ } -> (
       (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
          make the timeline and the two range ends reset-only sub-properties: the
@@ -931,8 +937,8 @@ let implied_longhand covering covered : Declaration.declaration option =
       | _ -> None)
   | _ -> None
 
-let implied_longhands covering =
-  let slots = shorthand_slots covering in
+let implied_longhands ~enforce_spec covering =
+  let slots = shorthand_slots ~enforce_spec:(Some enforce_spec) covering in
   if not (List.for_all Option.is_some slots) then None
   else
     let slots = List.filter_map Fun.id slots in
@@ -943,11 +949,11 @@ let implied_longhands covering =
 (* Whether [covering] sets every slot [covered] writes to the value [covered]
    writes there, so the two agree on every longhand they share and either order
    computes the same values. Only what {!implied_longhand} can prove counts. *)
-let implies covering covered =
+let implies ~enforce_spec covering covered =
   (not (Declaration.same_property covering covered))
   && declaration_covers covering covered
   &&
-  match implied_longhand covering covered with
+  match implied_longhand ~enforce_spec covering covered with
   | Some implied ->
       (* [implied] is built here from the shorthand's slots and the initials it
          resets the rest to, so it has not been through the normalisation every
@@ -955,7 +961,10 @@ let implies covering covered =
          filled by an initial reads as different from the same value written
          out. *)
       String.equal
-        (string_of_value ~minify:true (Declaration.normalize implied))
+        (string_of_value ~minify:true
+           (Declaration.normalize
+              ~enforce_spec:(Option.value enforce_spec ~default:false)
+              implied))
         (string_of_value ~minify:true covered)
   | None -> false
 
@@ -963,20 +972,22 @@ let implies covering covered =
    shared longhand differently: [border:1px solid red] and [border-width:1px]
    agree on every [border-*-width] they share, so neither order wins anything.
    The footprint test alone reads them as a conflict because the two are spelt
-   differently. *)
+   differently. A conflict stands for both modes, so a slot the two read apart,
+   the basis [flex:1] omits, proves no agreement. *)
 let declarations_conflict_with_keys a a_keys b b_keys =
   Shorthand_coverage.declarations_conflict_with_keys a a_keys b b_keys
-  && not (implies a b || implies b a)
+  && not (implies ~enforce_spec:None a b || implies ~enforce_spec:None b a)
 
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
    the initial), so a later longhand in the same rule that writes the same value
    at the same importance is redundant and dropped. Guard on equal value, so
    [background:red;background-size:cover] keeps the override. *)
-let drop_longhands_after_covering_shorthand props =
+let drop_longhands_after_covering_shorthand ~enforce_spec props =
   let arr = Array.of_list props in
   let dropped = Array.make (Array.length arr) false in
   let redundant_via j li =
-    Bool.equal (is_important arr.(j)) (is_important li) && implies arr.(j) li
+    Bool.equal (is_important arr.(j)) (is_important li)
+    && implies ~enforce_spec:(Some enforce_spec) arr.(j) li
   in
   Array.iteri
     (fun i li ->

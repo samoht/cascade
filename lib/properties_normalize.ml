@@ -691,8 +691,8 @@ let normalize_property_value : type a.
   | Webkit_flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis ~ctx value
   | Webkit_flex_basis -> normalize_flex_basis ~ctx value
-  | Flex -> normalize_flex ~ctx value
-  | Webkit_flex -> normalize_flex ~ctx value
+  | Flex -> normalize_flex ~ctx ~enforce_spec value
+  | Webkit_flex -> normalize_flex ~ctx ~enforce_spec value
   | Place_content -> normalize_place_content value
   | Grid_row_start -> normalize_grid_line value
   | Grid_row_end -> normalize_grid_line value
