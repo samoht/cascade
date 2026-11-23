@@ -372,6 +372,30 @@ let test_distant_media_keeps_a_definition_in_place () =
      (min-width:1px){@font-face{font-family:f;src:url(a.woff)}}@media \
      print{@font-face{font-family:f;src:url(b.woff)}}"
 
+(* When the later block cannot rise past what it crosses, the earlier one may
+   sink to it: [.p{--b:1}] writes nothing the first block writes, so moving that
+   block below it changes no element's values (CSS Cascade 5 sec. 6.1), and the
+   two blocks are one (CSS Conditional Rules 3 sec. 2). *)
+let test_distant_media_sinks_the_earlier_block () =
+  Alcotest.(check string)
+    "the earlier block joins the later across a rule it does not meet"
+    (render (block ".p{--a:1}.p{--b:1}@media print{.p{--a:2}.p{--b:2}}"))
+    (merge_distant_media
+       ".p{--a:1}@media print{.p{--a:2}}.p{--b:1}@media print{.p{--b:2}}")
+
+(* Two [@supports] blocks of one condition apply together or not at all (CSS
+   Conditional Rules 3 sec. 2), so a later one joins the first across a rule it
+   does not meet, as a later [@media] block does. *)
+let test_distant_supports_merge () =
+  Alcotest.(check string)
+    "the later block joins the first"
+    "@supports(display:grid){.a{color:red}.c{color:#00f}}.b{margin:0}"
+    (render
+       (Css.optimize
+          (block
+             "@supports (display:grid){.a{color:red}}.b{margin:0}@supports \
+              (display:grid){.c{color:blue}}")))
+
 (* CSS Nesting 1 sec. 4 (Nesting Selector) gives [&] the largest specificity of
    the enclosing rule's selector, here [.outer .card], (0,2,0), not [.card]
    alone. So [&+&] weighs (0,4,0), as much as [.outer .card .y.z] (Selectors 4
@@ -581,6 +605,10 @@ let suite =
         test_distant_media_crosses_a_more_specific_rule;
       Alcotest.test_case "distant @media crosses a scope body" `Quick
         test_distant_media_crosses_a_scope_body;
+      Alcotest.test_case "distant @media sinks the earlier block" `Quick
+        test_distant_media_sinks_the_earlier_block;
+      Alcotest.test_case "distant @supports merge" `Quick
+        test_distant_supports_merge;
       Alcotest.test_case "distant @media crosses definitions" `Quick
         test_distant_media_crosses_definitions;
       Alcotest.test_case "distant @media keeps a definition in place" `Quick

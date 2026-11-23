@@ -268,9 +268,12 @@ let test_large_stylesheet_normalizes_vendor_aliases () =
 
 (* A declaration run written after a nested [@supports] block, and each
    declaration directly in one, is a nested declarations rule (CSS Nesting 1
-   sec. 3.4 and 5), flattened in place under any targets. The padding takes the
-   sheet past the size where the pipeline makes more than one pass, and the
-   flattened rules come out of the first one as they come out of the second. *)
+   sec. 3.4 and 5), flattened in place under any targets. The first [@supports]
+   block writes only [--a], which [.p{--b:1}] does not, so it moves down to the
+   second (CSS Conditional Rules 3 sec. 2) and the two [.p] rules it parted
+   join. The padding takes the sheet past the size where the pipeline makes more
+   than one pass, and the result comes out of the first one as it comes out of
+   the second. *)
 let test_large_stylesheet_hoist_rejoins_blocks () =
   let padding =
     List.init 129 (fun i -> Fmt.str ".hoist-padding-%d{order:%d}" i i)
@@ -283,12 +286,11 @@ let test_large_stylesheet_hoist_rejoins_blocks () =
   in
   let once = minify_str input in
   Alcotest.(check bool)
-    "the nested declarations flatten in place" true
+    "the nested declarations flatten into one block" true
     (Astring.String.is_prefix
        ~affix:
-         ".p{--a:1}@supports(color:color-mix(in \
-          lab,red,red)){.p{--a:2}}.p{--b:1}@supports(color:color-mix(in \
-          lab,red,red)){.p{--b:2}}"
+         ".p{--a:1;--b:1}@supports(color:color-mix(in \
+          lab,red,red)){.p{--a:2;--b:2}}"
        once);
   Alcotest.(check string)
     "flattening converges in one pass" once (minify_str once)
