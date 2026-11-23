@@ -233,7 +233,14 @@ counts nested content" check it.
 
 ## Typed property decisions
 
-The optimizer decides on the property, never on its name.
+The optimizer decides on the property, with two exceptions that read its
+name. `Shorthand.read_by_no_target` matches a `-ms-`, `-o-` or `-khtml-`
+prefix and the names `font-smooth` and `font-smoothing`, typed properties
+such as `-ms-transform` included, and the projection drops such a declaration
+when it judges for targets (`Rule_order.canonical_vendor_aliases`). The
+vendor-twin drop of an untyped prefixed declaration (`text_vendor_alias_twin`
+in `lib/shorthand_dedup.ml`) strips the prefix from its name and compares the
+rest with the twin's name.
 `Properties.is_vendor_prefixed` and `Properties.legacy_alias` match the
 property GADT with no wildcard, so a new constructor fails the build until it
 is classified. Each legacy name alias of the WHATWG Compatibility Standard

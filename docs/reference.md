@@ -400,9 +400,9 @@ keeps that rule on both sides, so a sheet that lost it differs and the exit is
 1. A pseudo-class cascade does not know at all is not on that list, and a rule
 lost to it still withholds the verdict.
 
-A declaration cascade cannot read is handled differently. The reader accepts
-a declaration exactly when the target browsers do, so one it refuses is one
-every target drops, and the verdict rests on that. It is dropped on that side,
+A declaration cascade cannot read is handled differently. The verdict takes
+one the reader refuses as one every target drops; a refused declaration that
+a target keeps is a reader bug, which the harnesses below look for. It is dropped on that side,
 a parse warning is printed, and the verdict is taken over what remains. The
 report and the `--json` document count the unreadable declarations and rules
 on each side.
