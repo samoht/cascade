@@ -56,6 +56,12 @@ let vendor_split lower =
   else if n > 1 && Char.equal lower.[1] '-' then (Option.None, Option.None)
   else find vendor_prefixes
 
+let equal_vendor a b =
+  match (a, b) with
+  | Webkit, Webkit | Moz, Moz | Ms, Ms | O, O | Khtml, Khtml -> true
+  | Other_vendor, Other_vendor -> true
+  | (Webkit | Moz | Ms | O | Khtml | Other_vendor), _ -> false
+
 let typed_property = function
   | Prop (Unknown_property _) -> Option.None
   | property -> Option.Some property

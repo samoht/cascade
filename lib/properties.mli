@@ -2889,6 +2889,9 @@ val legacy_alias : 'a property -> any_property option
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
 
+val equal_vendor : vendor -> vendor -> bool
+(** [equal_vendor a b] is whether [a] and [b] are the same vendor. *)
+
 val untyped : string -> untyped_name
 (** [untyped name] is [name] classified as an untyped property name: its vendor
     prefix, the name after it and the typed property that name spells. A typed
