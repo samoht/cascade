@@ -145,6 +145,13 @@ end
 module Int_set = Set.Make (Int)
 module Int_table = Hashtbl.Make (Int)
 
+module Property_table = Hashtbl.Make (struct
+  type t = Declaration.prop_key
+
+  let equal = Declaration.equal_prop_key
+  let hash = Declaration.hash_prop_key
+end)
+
 (* A run's (conditions, selector) pair. Every entry of the run sits under one,
    and the canonical form writes each as one or more rules. [name] is where it
    sorts: the block preludes it sits under, then its selector. *)
@@ -171,7 +178,7 @@ type entry = {
   text : string;
   text_id : int;  (** the same for two entries of one text *)
   value : string Lazy.t;
-  property : int;  (** the id of the property name *)
+  property : int;  (** the id of the property *)
   unknown : bool;  (** the model does not type the property *)
   special : bool;  (** a custom property or [all] *)
   broad : bool;  (** the footprint meets any key *)
@@ -225,8 +232,25 @@ type reader = {
   mutable groups : group list;
   mutable group_count : int;
   ids : (string, int) Hashtbl.t;
+  properties : int Property_table.t;
   mutable entries : entry list;
 }
+
+(* A declaration the typed reader refused still names the property it spells, so
+   it shares that property's id. *)
+let property_id r decl =
+  let key =
+    match Declaration.property_key decl with
+    | Declaration.Key (Unknown_property { own = Option.Some (Prop own); _ }) ->
+        Declaration.Key own
+    | key -> key
+  in
+  match Property_table.find_opt r.properties key with
+  | Option.Some id -> id
+  | Option.None ->
+      let id = Property_table.length r.properties in
+      Property_table.replace r.properties key id;
+      id
 
 let text_id r text =
   match Hashtbl.find_opt r.ids text with
@@ -279,7 +303,7 @@ let entry r ~group decl =
     text;
     text_id = text_id r text;
     value = lazy (Declaration.string_of_value ~minify:true decl);
-    property = text_id r (Declaration.property_name decl);
+    property = property_id r decl;
     unknown = is_unknown decl;
     special =
       Option.is_some (Shorthand.custom_property_name decl)
@@ -1158,6 +1182,7 @@ let read ~ctx ?parent stmts =
       groups = [];
       group_count = 0;
       ids = Hashtbl.create 256;
+      properties = Property_table.create 64;
       entries = [];
     }
   in
