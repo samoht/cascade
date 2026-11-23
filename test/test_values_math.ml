@@ -1230,6 +1230,20 @@ let spec_math_root_prints_bare () =
       ("animation-iteration-count", "sign(1em)");
     ]
 
+(* CSS Values 4 sec. 10.9 keeps the sign of a zero inside a calculation, so
+   dividing by [-0] gives [-infinity] and [sign(-0)] is [-0]. Chromium 157
+   computes [opacity:calc(1/-0)] as [0] and [calc(1/0)] as [1],
+   [z-index:calc(1/sign(-0))] as [-2147483648] and [margin-left:calc(1px/-0)] as
+   a negative length; cascade printed each zero unsigned. *)
+let spec_math_negative_zero () =
+  List.iter
+    (fun (prop, input) -> decl_optimizes ~prop ~into:input input)
+    [
+      ("opacity", "calc(1/-0)");
+      ("z-index", "calc(1/sign(-0))");
+      ("margin-left", "calc(1px/-0)");
+    ]
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1356,6 +1370,7 @@ let suite =
       test_case "spec math root prints bare" `Quick spec_math_root_prints_bare;
       test_case "spec math opacity value unfolded" `Quick
         spec_math_opacity_value_unfolded;
+      test_case "spec math negative zero" `Quick spec_math_negative_zero;
       test_case "spec math inverse trig is an angle" `Quick
         spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick
