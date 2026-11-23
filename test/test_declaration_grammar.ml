@@ -1034,6 +1034,29 @@ let radius_nested_sites radius =
       ("object-view-box:xywh(0 0 1px 1px round ", ")");
     ]
 
+(* CSS Shapes 1 sec. 3.1 makes the [round] clause of [inset()], [rect()] and
+   [xywh()] optional, its radii zero when it is left out, so a zero radius says
+   what omitting the clause says. Chromium 157 serialises [inset(0 round 0)] as
+   [inset(0px)] and [xywh(0 0 1px 1px round 0 0 / 0)] as [xywh(0px 0px 1px
+   1px)]. *)
+let shape_zero_rounding () =
+  List.iter
+    (fun (input, into) -> decl_optimizes_to ~into input)
+    [
+      ("clip-path:inset(0 round 0)", "clip-path:inset(0)");
+      ("clip-path:rect(0 1px 1px 0 round 0)", "clip-path:rect(0 1px 1px 0)");
+      ("clip-path:xywh(0 0 1px 1px round 0)", "clip-path:xywh(0 0 1px 1px)");
+      ("clip-path:inset(0 round 0% 0 / 0)", "clip-path:inset(0)");
+      ("object-view-box:inset(0 round 0)", "object-view-box:inset(0)");
+      ( "object-view-box:rect(0 1px 1px 0 round 0)",
+        "object-view-box:rect(0 1px 1px 0)" );
+      ( "object-view-box:xywh(0 0 1px 1px round 0)",
+        "object-view-box:xywh(0 0 1px 1px)" );
+    ];
+  (* Control: a radius that is not zero stays. *)
+  decl_optimizes_to ~into:"clip-path:inset(0 round 1px)"
+    "clip-path:inset(0 round 1px)"
+
 let border_radius_keyword_radii () =
   List.iter
     (fun radius ->
@@ -1198,6 +1221,8 @@ let suite =
       test_case "list rejects a trailing separator" `Quick
         list_trailing_separator_invalid;
       test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
+      test_case "a zero shape rounding is no rounding" `Quick
+        shape_zero_rounding;
       test_case "border-radius CSS-wide keywords" `Quick
         border_radius_css_wide_keywords;
     ] )
