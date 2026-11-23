@@ -447,7 +447,24 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
 
-and read_math_arg t : math_arg = read_math_arg_term t
+(* CSS Values 4 (ED) sec. 10.1: calc() is one math function among the rest, so
+   it stands as an argument too. Written as a whole argument, which is a
+   <calc-sum> already, it is the sum it holds; inside an expression it is the
+   parenthesised sum (sec. 10.10 simplifies one into the other). *)
+and read_math_arg t : math_arg =
+  Cursor.ws t;
+  let snap = Cursor.save t in
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.equal (String.lowercase_ascii name) "calc" -> (
+      let inner = read_math_call_arg "calc" t in
+      Cursor.ws t;
+      match Cursor.peek_head_shape t with
+      | `Eof | `Comma -> inner
+      | _ ->
+          Cursor.restore t snap;
+          read_math_arg_term t)
+  | _ -> read_math_arg_term t
 
 and read_math_arg_term t =
   let left = read_math_arg_factor t in
@@ -490,6 +507,7 @@ and read_math_arg_function t name =
   match String.lowercase_ascii name with
   | "var" ->
       Var_arg (read_var (fun inner -> read_math_arg inner) t : math_arg var)
+  | "calc" -> Parens_arg (read_math_call_arg "calc" t)
   | _ -> math_arg_of_numeric_calc t (read_calc_numeric_function t)
 
 and read_math_call_arg name t : math_arg =

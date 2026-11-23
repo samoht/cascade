@@ -914,6 +914,9 @@ differently. They are the reason to minify again.
   integer token, so `counter-reset:c calc(1e20)` no longer becomes `c 1e20`,
   and an untyped value's number token keeps its type (`widows:2.0` stays as
   written) (#1619).
+- `calc()` as the argument of another math function is read**
+  (`opacity:min(calc(1 + 2), 1)`) instead of dropping the declaration (CSS
+  Values 4 sec. 10.1) (#1621).
 
 #### Stable output
 
