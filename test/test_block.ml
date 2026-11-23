@@ -287,19 +287,30 @@ let test_merge_media_joins_two_spellings_of_one_bound () =
 let merge_distant_media css =
   render (Block.merge_distant_media ~optimize_merged_block:id (block css))
 
+(* Whether [first] and [then_] both occur in [out], in that order. *)
+let before out ~first ~then_ =
+  match
+    ( Astring.String.find_sub ~sub:first out,
+      Astring.String.find_sub ~sub:then_ out )
+  with
+  | Some i, Some j -> i < j
+  | _ -> false
+
 (* An element carrying both classes has one ::before box. With the query true it
    reads [blue] then [green] at one specificity, (0,1,1), and computes green;
    hoisting the later block above the list would hand it blue. The list meets
-   [.b::before] through its [.a::before] branch, so the merge stays refused. *)
+   [.b::before] through its [.a::before] branch, so [.b::before] stays behind
+   the list, whatever else the pass moves. *)
 let test_distant_media_keeps_order_across_a_pseudo_element_list () =
   let css =
     "@media (min-width:1px){.x{color:red}}.a:after,.a:before{color:blue}@media \
      (min-width:1px){.b:before{color:green}}"
   in
-  Alcotest.(check string)
-    "the later block stays behind the list"
-    (render (block css))
-    (merge_distant_media css)
+  let out = merge_distant_media css in
+  Alcotest.(check bool)
+    out true
+    (before out ~first:".a:after,.a:before{color:blue}"
+       ~then_:".b:before{color:green}")
 
 (* CSS Cascade 5 sec. 6.1 ranks specificity before order of appearance. On an
    element matching both, [#y] (1,0,0) beats [.b] (0,1,0) from either position,
@@ -361,16 +372,19 @@ let test_distant_media_crosses_definitions () =
    past another face of its family either (docs/invariants.md, At-rules keep
    their identity). *)
 let test_distant_media_keeps_a_definition_in_place () =
-  let unchanged css =
-    Alcotest.(check string) css (render (block css)) (merge_distant_media css)
+  let in_order css ~first ~then_ =
+    let out = merge_distant_media css in
+    Alcotest.(check bool) out true (before out ~first ~then_)
   in
-  unchanged
+  in_order
     "@media print{.x{color:red}}@media (min-width:1px){@keyframes \
-     k{0%{opacity:0}}}@media print{@keyframes k{0%{opacity:1}}}";
-  unchanged
+     k{0%{opacity:0}}}@media print{@keyframes k{0%{opacity:1}}}"
+    ~first:"k{0%{opacity:0}}" ~then_:"k{0%{opacity:1}}";
+  in_order
     "@media print{.x{color:red}}@media \
      (min-width:1px){@font-face{font-family:f;src:url(a.woff)}}@media \
      print{@font-face{font-family:f;src:url(b.woff)}}"
+    ~first:"url(a.woff)" ~then_:"url(b.woff)"
 
 (* When the later block cannot rise past what it crosses, the earlier one may
    sink to it: [.p{--b:1}] writes nothing the first block writes, so moving that
