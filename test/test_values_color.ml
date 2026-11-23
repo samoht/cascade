@@ -1160,6 +1160,7 @@ let math_in_colour_channel () =
       ("rgb(min(10%, 20%) 0 0)", "rgb(10% 0 0)");
       ("rgb(calc(min(10%, 20%)) 0 0)", "rgb(10% 0 0)");
       ("rgb(10% calc(50%) 0)", "rgb(10% 50% 0)");
+      ("rgb(calc(10.6) 0 0)", "rgb(10.6 0 0)");
       ("hsl(calc(10deg) 50% 50%)", "hsl(10deg 50% 50%)");
       ("hsl(calc(10) 50% 50%)", "hsl(10 50% 50%)");
       ("hsl(calc(min(10deg, 20deg)) 50% 50%)", "hsl(10deg 50% 50%)");
