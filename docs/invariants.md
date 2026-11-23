@@ -317,7 +317,11 @@ implementation keeps them.
 - **`--lossless`** sets every approximation bound to zero.
 - **`--scope=stylesheet`, `--closed-world` and `--inline-vars`** add the
   hypotheses under [Assumptions](#definitions) and keep B.
-- **`--flatten-nesting`** keeps B and removes nesting from the output.
+- **`--flatten-nesting`** keeps B and removes nesting from the output. A
+  flattened rule is dropped by every browser that dropped its parent rule:
+  a list parent some browser in B drops is listed again beside the forgiving
+  `:is()`, matching nothing (`test/test_flatten.ml` "list parent some target
+  drops").
 
 ## Non-goals
 

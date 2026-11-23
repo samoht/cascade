@@ -958,6 +958,11 @@ differently. They are the reason to minify again.
   `margin-top:clamp(none,1px,2px)` one `margin` Chrome 145 drops, and
   `text-wrap-mode` with `text-wrap-style:balance` a `text-wrap` Safari 17.4
   drops (#1633).
+- no longer revives rules a browser dropped**: a parent such as `.c,[x=a s]`
+  is dropped whole by a browser that cannot read one branch, nested rules
+  included, but the flattened `:is(.c,[x=a s]):hover` kept `.c:hover` in
+  Chromium. Such a branch is now listed again beside the flattened selector,
+  matching nothing (#1635).
 
 #### Stable output
 

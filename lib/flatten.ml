@@ -28,6 +28,28 @@ let names_scope sel =
   Nest.contains sel
   || Selector.any (function Selector.Scope -> true | _ -> false) sel
 
+(* Selectors 4 sec. 3.9 drops a list parent over one branch a browser does not
+   parse, and the rules nested in it with it; the [:is()] [Nest.combine] wraps
+   it in is forgiving (sec. 4.2) and would keep the other branches. Each branch
+   some target drops is listed again under [:not()] of the universal selector,
+   matching nothing, so the rule goes wherever its parent went. *)
+let guard_dropped_branches parent selector =
+  match parent with
+  | Selector.List branches -> (
+      match
+        List.filter
+          (fun b -> not (Selector_targets.read_by_every_target b))
+          branches
+      with
+      | [] -> selector
+      | dropped ->
+          let never b =
+            Selector.compound [ b; Selector.Not [ Selector.universal ] ]
+          in
+          let own = match selector with Selector.List xs -> xs | s -> [ s ] in
+          Selector.List (own @ List.map never dropped))
+  | _ -> selector
+
 let rec scoped (sel : Selector.t) =
   match sel with
   | Selector.List branches -> Selector.List (List.map scoped branches)
@@ -46,7 +68,8 @@ type parent = { selector : Selector.t; printed : Selector.t }
 let compose (parent : parent) child =
   match Nest.keep_readable_branches (Nest.combine parent.selector child) with
   | Option.None -> Option.None
-  | Option.Some selector ->
+  | Option.Some composed ->
+      let selector = guard_dropped_branches parent.selector composed in
       let printed =
         if parent.printed == parent.selector || not (Nest.parent_first child)
         then selector
@@ -55,8 +78,8 @@ let compose (parent : parent) child =
             Nest.keep_readable_branches (Nest.combine parent.printed child)
           with
           | Option.Some printed
-            when branch_count printed = branch_count selector ->
-              printed
+            when branch_count printed = branch_count composed ->
+              guard_dropped_branches parent.selector printed
           | _ -> selector
       in
       Option.Some { selector; printed }
