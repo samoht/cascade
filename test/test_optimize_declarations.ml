@@ -872,6 +872,25 @@ let prefixed_fallbacks_across_rules () =
         "a{display:-webkit-box;display:-moz-box}" );
     ]
 
+(* docs/invariants.md, declaration layer: a fallback is dead when every browser
+   in B that parses it parses the declaration after it. The data says every
+   floor parses [linear-gradient()], [display:flex] and [position:sticky], so a
+   prefixed value before one paints nowhere in B, whatever reads the prefix.
+   [width:stretch] is one Chrome 111 to 137 drops, so the prefix before it
+   stays. *)
+let prefixed_fallback_before_a_parsed_value () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( "a{background-image:-webkit-linear-gradient(red,blue);background-image:linear-gradient(red,blue)}",
+        "a{background-image:linear-gradient(red,#00f)}" );
+      ("a{display:-webkit-box;display:flex}", "a{display:flex}");
+      ("a{position:-webkit-sticky;position:sticky}", "a{position:sticky}");
+      ( "a{width:-webkit-fill-available;width:stretch}",
+        "a{width:-webkit-fill-available;width:stretch}" );
+    ]
+
 (* The compatibility data has no key for a vendor-prefixed or legacy keyword, so
    it cannot say that every browser in B reading one value also reads the other
    (docs/invariants.md, declaration layer). Inside one rule both values stay, in
@@ -1308,6 +1327,9 @@ let suite =
       ( "legacy keyword fallbacks survive",
         `Quick,
         legacy_keyword_fallbacks_survive );
+      ( "a prefixed fallback before a parsed value is dead",
+        `Quick,
+        prefixed_fallback_before_a_parsed_value );
       ( "mask three-value position kept as written",
         `Quick,
         mask_three_value_position_kept_as_written );
