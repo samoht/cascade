@@ -13,6 +13,12 @@ val normalize_border_radius :
 (** [normalize_border_radius ?strip v] is [v] in canonical form. [strip]
     (default [true]) is passed to [Values.normalize_length_percentage]. *)
 
+val normalize_shape_rounding :
+  Properties_intf.border_radius option -> Properties_intf.border_radius option
+(** [normalize_shape_rounding r] is the [round] clause [r] of a basic shape in
+    canonical form, [None] when every radius in it is zero (CSS Shapes 1 sec.
+    3.1). *)
+
 val normalize_logical_border_color :
   ?lossless:bool ->
   Properties_intf.logical_border_color ->

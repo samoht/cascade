@@ -937,6 +937,8 @@ differently. They are the reason to minify again.
   `z-index:calc(sign(1em))` is now `z-index:sign(1em)`, and so at
   `line-height`, `font-weight`, `order`, flex factors, `column-count` and
   `scale` (#1572).
+- basic shape drops a zero `round`:** `inset(0 round 0)` prints `inset(0)` in
+  `clip-path` and `object-view-box` (#1573).
 
 ### Formatted output
 

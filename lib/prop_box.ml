@@ -212,9 +212,7 @@ let normalize_object_view_box (value : object_view_box) : object_view_box =
       let right' = option_map_preserve nl right in
       let bottom' = option_map_preserve nl bottom in
       let left' = option_map_preserve nl left in
-      let rounded' =
-        option_map_preserve (normalize_border_radius ~strip:true) rounded
-      in
+      let rounded' = normalize_shape_rounding rounded in
       if
         top' == top && right' == right && bottom' == bottom && left' == left
         && rounded' == rounded
@@ -226,9 +224,7 @@ let normalize_object_view_box (value : object_view_box) : object_view_box =
       let y = lp r.y in
       let width = lp r.width in
       let height = lp r.height in
-      let rounded =
-        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
-      in
+      let rounded = normalize_shape_rounding r.rounded in
       if
         x == r.x && y == r.y && width == r.width && height == r.height
         && rounded == r.rounded
@@ -240,9 +236,7 @@ let normalize_object_view_box (value : object_view_box) : object_view_box =
       let right = lp r.right in
       let bottom = lp r.bottom in
       let left = lp r.left in
-      let rounded =
-        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
-      in
+      let rounded = normalize_shape_rounding r.rounded in
       if
         top == r.top && right == r.right && bottom == r.bottom && left == r.left
         && rounded == r.rounded

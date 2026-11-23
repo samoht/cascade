@@ -68,6 +68,23 @@ let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
       preserve_if_equal value (Radius { horizontal; vertical })
   | other -> other
 
+(* CSS Shapes 1 sec. 3.1 makes the [round] clause of a basic shape optional, its
+   radii zero when it is left out, so a clause whose every radius is zero says
+   what omitting it says. *)
+let normalize_shape_rounding (rounded : border_radius option) =
+  let zero (lp : length_percentage) =
+    match lp with
+    | Length l -> Values.length_is_zero l
+    | Pct f -> Float.equal f 0.
+    | _ -> false
+  in
+  match option_map_preserve (normalize_border_radius ~strip:true) rounded with
+  | Some (Radius { horizontal; vertical })
+    when List.for_all zero horizontal
+         && Option.fold ~none:true ~some:(List.for_all zero) vertical ->
+      Option.None
+  | rounded -> rounded
+
 let normalize_logical_border_color ?(lossless = false) :
     logical_border_color -> logical_border_color =
  fun value ->

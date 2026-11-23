@@ -40,9 +40,7 @@ let normalize_clip_path_inset value =
       let right = option_map_preserve lp r.right in
       let bottom = option_map_preserve lp r.bottom in
       let left = option_map_preserve lp r.left in
-      let rounded =
-        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
-      in
+      let rounded = normalize_shape_rounding r.rounded in
       if
         top == r.top && right == r.right && bottom == r.bottom && left == r.left
         && rounded == r.rounded
@@ -60,9 +58,7 @@ let normalize_clip_path_xywh value =
       let y = lp r.y in
       let width = lp r.width in
       let height = lp r.height in
-      let rounded =
-        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
-      in
+      let rounded = normalize_shape_rounding r.rounded in
       if
         x == r.x && y == r.y && width == r.width && height == r.height
         && rounded == r.rounded
@@ -80,9 +76,7 @@ let normalize_clip_path_rect value =
       let right = lp r.right in
       let bottom = lp r.bottom in
       let left = lp r.left in
-      let rounded =
-        option_map_preserve (normalize_border_radius ~strip:true) r.rounded
-      in
+      let rounded = normalize_shape_rounding r.rounded in
       if
         top == r.top && right == r.right && bottom == r.bottom && left == r.left
         && rounded == r.rounded
