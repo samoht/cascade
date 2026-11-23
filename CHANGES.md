@@ -940,6 +940,9 @@ differently. They are the reason to minify again.
   deleted. No specification grants them, so each is now kept, and a
   declaration before one stays as the fallback the other browser paints
   (#1628).
+- `@font-face` family name two browsers read differently is kept as written**:
+  `none default` and `inherit foo`, which Chromium and Safari read, and `serif
+  Foo`, which Safari reads, were deleted (#1629).
 
 #### Stable output
 

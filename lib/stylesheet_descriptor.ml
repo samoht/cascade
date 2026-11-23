@@ -8,6 +8,7 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
   | Font_family values -> Some (Font_family (font_family values))
+  | Font_family_as_written _ -> None
   | Font_style value -> Some (Font_style (font_style value))
   | Font_weight value -> Some (Font_weight (font_weight value))
   | Font_weight_range (low, high) ->
@@ -196,16 +197,43 @@ let validate_nonempty_descriptor r name value =
   if String.trim value = "" then
     Cursor.err_invalid r (String.concat "" [ "empty "; name; " descriptor" ])
 
+(* Chromium 153 and WebKit 26.5 read a CSS-wide keyword or [default] as one word
+   of an unquoted family of several, and WebKit a leading generic family too,
+   though CSS Values 4 sec. 4.2 keeps them out of the <custom-ident>+ of CSS
+   Fonts 4 sec. 4.2. Such a run of identifiers is kept as written. *)
+let engine_family_words r =
+  let words =
+    List.filter
+      (fun component -> not (Component.is_whitespace component))
+      (Cursor.remaining r)
+  in
+  match words with
+  | _ :: _ :: _ ->
+      List.for_all
+        (function
+          | Component.Preserved { kind = Token.Ident _; _ } -> true | _ -> false)
+        words
+  | [] | [ _ ] -> false
+
 let read_font_family_descriptor r =
   read_descriptor_value
     (fun r ->
-      let family = Properties.read_font_family_name r in
-      Cursor.ws r;
-      if not (Cursor.is_done r || Cursor.peek_semicolon r) then
-        Cursor.err_invalid r "trailing tokens after @font-face font-family";
-      [ family ])
-    (fun v -> Font_family v)
-    r
+      let start = Cursor.save r in
+      match
+        let family = Properties.read_font_family_name r in
+        Cursor.ws r;
+        if not (Cursor.is_done r || Cursor.peek_semicolon r) then
+          Cursor.err_invalid r "trailing tokens after @font-face font-family";
+        family
+      with
+      | family -> Font_family [ family ]
+      | exception (Cursor.Parse_error _ as exn) ->
+          Cursor.restore r start;
+          let raw = Declaration.read_property_value r in
+          if engine_family_words (Cursor.of_string raw) then
+            Font_family_as_written (String.trim raw)
+          else raise exn)
+    Fun.id r
 
 let read_font_stretch_descriptor r =
   read_descriptor_text

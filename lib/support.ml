@@ -1089,6 +1089,134 @@ let measured =
       measured = "Chrome 153";
     };
     {
+      key = "css.at-rules.font-face.font-family.serif";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads serif heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.sans-serif";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads sans-serif heading an unquoted name as the generic \
+         family. WebKit reads a name of several words headed by it, and Chrome \
+         drops it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.monospace";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads monospace heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.cursive";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads cursive heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.fantasy";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads fantasy heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.system-ui";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads system-ui heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.math";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads math heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.-webkit-body";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads -webkit-body heading an unquoted name as the generic \
+         family. WebKit reads a name of several words headed by it, and Chrome \
+         drops it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
       key = "css.at-rules.font-face.font-family.default";
       support =
         {

@@ -386,7 +386,9 @@ let vars_of_stylesheet (ss : stylesheet) : Variables.any_var list =
 (* CSS Fonts 4 sec. 4.1: an [@font-face] without a [font-family] or a [src]
    descriptor is invalid and ignored. *)
 let font_face_participates descriptors =
-  List.exists (function Font_family _ -> true | _ -> false) descriptors
+  List.exists
+    (function Font_family _ | Font_family_as_written _ -> true | _ -> false)
+    descriptors
   && List.exists (function Src _ -> true | _ -> false) descriptors
 
 let rec drop_inert_font_faces stmts =

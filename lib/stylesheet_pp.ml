@@ -393,6 +393,7 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx fams ->
           Pp.list ~sep:Pp.comma Properties.pp_font_family_name ctx fams)
         families
+  | Font_family_as_written words -> pp_descriptor "font-family" Pp.string words
   | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
