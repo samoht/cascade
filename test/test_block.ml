@@ -410,6 +410,53 @@ let test_distant_supports_merge () =
              "@supports (display:grid){.a{color:red}}.b{margin:0}@supports \
               (display:grid){.c{color:blue}}")))
 
+(* [@counter-style], [@page], [@font-palette-values], [@font-feature-values],
+   [@position-try] and [@view-transition] define names or page boxes, none of
+   which a style rule's place in the order bears on, so a block of style rules
+   moves past them as it does past a [@keyframes]. *)
+let test_distant_media_crosses_named_rules () =
+  let between =
+    "@counter-style \
+     c{system:cyclic;symbols:a}@page{margin:1cm}@font-palette-values \
+     --p{font-family:f}@font-feature-values f{@swash{s:1}}@position-try \
+     --t{top:0}@view-transition{navigation:auto}"
+  in
+  Alcotest.(check string)
+    "the later block joins the first across the named rules"
+    (render
+       (block
+          (String.concat ""
+             [ "@media print{.x{color:red}.b{color:green}}"; between ])))
+    (merge_distant_media
+       (String.concat ""
+          [
+            "@media print{.x{color:red}}";
+            between;
+            "@media print{.b{color:green}}";
+          ]))
+
+(* Of two [@position-try] or two [@font-palette-values] rules of one name the
+   later wins, as of two [@keyframes], so a block holding one stays behind
+   another of its name. *)
+let test_distant_media_keeps_a_named_rule_in_place () =
+  let in_order css ~first ~then_ =
+    let out = merge_distant_media css in
+    match
+      ( Astring.String.find_sub ~sub:first out,
+        Astring.String.find_sub ~sub:then_ out )
+    with
+    | Some i, Some j -> Alcotest.(check bool) out true (i < j)
+    | _ -> Alcotest.failf "both rules survive: %s" out
+  in
+  in_order
+    "@media print{.x{color:red}}@media (min-width:1px){@position-try \
+     --t{top:0}}@media print{@position-try --t{top:1px}}"
+    ~first:"top:0" ~then_:"top:1px";
+  in_order
+    "@media print{.x{color:red}}@media (min-width:1px){@font-palette-values \
+     --p{font-family:a}}@media print{@font-palette-values --p{font-family:b}}"
+    ~first:"font-family:a" ~then_:"font-family:b"
+
 (* CSS Nesting 1 sec. 4 (Nesting Selector) gives [&] the largest specificity of
    the enclosing rule's selector, here [.outer .card], (0,2,0), not [.card]
    alone. So [&+&] weighs (0,4,0), as much as [.outer .card .y.z] (Selectors 4
@@ -625,6 +672,10 @@ let suite =
         test_distant_supports_merge;
       Alcotest.test_case "distant @media crosses definitions" `Quick
         test_distant_media_crosses_definitions;
+      Alcotest.test_case "distant @media crosses named rules" `Quick
+        test_distant_media_crosses_named_rules;
+      Alcotest.test_case "distant @media keeps a named rule in place" `Quick
+        test_distant_media_keeps_a_named_rule_in_place;
       Alcotest.test_case "distant @media keeps a definition in place" `Quick
         test_distant_media_keeps_a_definition_in_place;
       Alcotest.test_case "distant @media weighs a nested body by its ancestors"
