@@ -64,12 +64,6 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-(* The names a [<custom-ident>] may not spell, so the string arm is the only one
-   that carries them and the quotes are part of the value. CSS Animations 1 sec.
-   3 adds [none] to what CSS Values 4 sec. 4.2 reserves. *)
-let keyframes_name_needs_quotes name =
-  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
-
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -83,7 +77,7 @@ let rec pp_animation_name : animation_name Pp.t =
       let ident = Parser.escape_ident name in
       if
         Pp.minified ctx
-        && (not (keyframes_name_needs_quotes name))
+        && (not (Cursor.is_reserved_keyframes_name name))
         && String.length ident <= String.length name + 2
       then Pp.string ctx ident
       else Pp.quoted_string ctx name

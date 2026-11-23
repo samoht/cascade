@@ -740,6 +740,9 @@ let is_reserved_custom_ident ?(reserved = []) name =
   let folded = String.lowercase_ascii_preserve name in
   mem_string folded custom_ident_reserved || mem_string folded reserved
 
+let is_reserved_keyframes_name name =
+  is_reserved_custom_ident ~reserved:[ "none" ] name
+
 let custom_ident ?reserved label t =
   let loc = position t in
   let name = ident ~keep_case:true t in

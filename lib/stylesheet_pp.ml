@@ -55,8 +55,6 @@ let pp_property_rule : 'a property_rule Pp.t =
    3 settles the arm on output: "the value is serialized as an <ident> unless
    it's a disallowed keyword, in which case it's serialized as a <string>". A
    name that is not a plain ASCII ident takes the string too. *)
-let keyframes_name_reserved name =
-  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
 
 let pp_keyframes_name ctx name =
   let len = String.length name in
@@ -80,7 +78,8 @@ let pp_keyframes_name ctx name =
     String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
     !ok
   in
-  if is_safe_ident && not (keyframes_name_reserved name) then Pp.string ctx name
+  if is_safe_ident && not (Cursor.is_reserved_keyframes_name name) then
+    Pp.string ctx name
   else Pp.quoted_string ctx name
 
 let pp_keyframe_position : Keyframe.position Pp.t =
