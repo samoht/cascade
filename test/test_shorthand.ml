@@ -428,7 +428,8 @@ let test_intentionally_duplicated_properties () =
 let test_merge_overflow_longhands () =
   let merged =
     ".a{overflow-x:hidden;color:red;overflow-y:auto}" |> decls |> indexed
-    |> Shorthand.merge_overflow_longhands |> unindexed
+    |> Shorthand.merge_overflow_longhands ~floors:Support.evergreen
+    |> unindexed
   in
   Alcotest.(check (list string))
     "x and y become overflow without disturbing middle declarations"
@@ -436,7 +437,8 @@ let test_merge_overflow_longhands () =
     (decl_strings merged);
   let blocked =
     ".a{overflow-x:hidden;overflow:auto;overflow-y:hidden}" |> decls |> indexed
-    |> Shorthand.merge_overflow_longhands |> unindexed
+    |> Shorthand.merge_overflow_longhands ~floors:Support.evergreen
+    |> unindexed
   in
   Alcotest.(check (list string))
     "existing overflow blocks composition"

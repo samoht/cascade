@@ -683,6 +683,6 @@ let compose_border_image_via_index ~ctx idx =
     ~try_compose:(guard_reset ~ctx (try_compose_border_image_at ~allow_partial))
 
 let compose_border_image_shorthand ~ctx decls =
-  let idx = Rule_index.build (List.map snd decls) in
+  let idx = Rule_index.build ~floors:(Ctx.floors ctx) (List.map snd decls) in
   compose_border_image_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)

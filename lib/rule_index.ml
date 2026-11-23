@@ -7,12 +7,17 @@ open Declaration
    important-split that prepends a non-important shorthand and re-states an
    important side). *)
 type slot = Live | Absorbed | Shorthand of declaration list
-type t = { decls : declaration array; slots : slot array }
 
-let build decls =
+type t = {
+  decls : declaration array;
+  slots : slot array;
+  floors : Support.targets;
+}
+
+let build ~floors decls =
   let decls = Array.of_list decls in
   let slots = Array.make (Array.length decls) Live in
-  { decls; slots }
+  { decls; slots; floors }
 
 let length t = Array.length t.decls
 let decl_at t i = t.decls.(i)
@@ -21,7 +26,11 @@ let is_absorbed t i =
   match t.slots.(i) with Live | Shorthand _ -> false | Absorbed -> true
 
 let splice t ~at ~absorbed ~new_decls =
+  let parts = List.map (fun i -> t.decls.(i)) absorbed in
   if List.exists Declaration.value_has_css_wide_mix new_decls then false
+  else if
+    not (List.for_all (Declaration.composes ~floors:t.floors ~parts) new_decls)
+  then false
   else (
     List.iter
       (fun i ->

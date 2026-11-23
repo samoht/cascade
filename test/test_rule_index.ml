@@ -23,14 +23,14 @@ let commits name t ~at ~absorbed ~shorthand =
   Alcotest.(check bool) name true (Rule_index.absorb t ~at ~absorbed ~shorthand)
 
 let test_empty_index () =
-  let t = Rule_index.build [] in
+  let t = Rule_index.build ~floors:Support.evergreen [] in
   Alcotest.(check int) "empty index has length 0" 0 (Rule_index.length t);
   Alcotest.(check int)
     "to_list of empty is empty" 0
     (List.length (Rule_index.to_list t))
 
 let test_absorb_marks_positions () =
-  let t = Rule_index.build [ red; blue ] in
+  let t = Rule_index.build ~floors:Support.evergreen [ red; blue ] in
   Alcotest.(check bool)
     "position 0 not absorbed initially" false
     (Rule_index.is_absorbed t 0);
@@ -44,7 +44,8 @@ let test_absorb_marks_positions () =
 
 let test_to_list_emits_shorthand_in_place () =
   let t =
-    Rule_index.build [ red; solid_outline_width; solid_outline_style; blue ]
+    Rule_index.build ~floors:Support.evergreen
+      [ red; solid_outline_width; solid_outline_style; blue ]
   in
   commits "absorb commits" t ~at:1 ~absorbed:[ 1; 2 ] ~shorthand:stub_shorthand;
   let out = Rule_index.to_list t in
@@ -59,7 +60,7 @@ let test_to_list_emits_shorthand_in_place () =
   | _ -> Alcotest.fail "expected 3-element list"
 
 let test_absorb_double_consume_raises () =
-  let t = Rule_index.build [ red; blue ] in
+  let t = Rule_index.build ~floors:Support.evergreen [ red; blue ] in
   commits "absorb commits" t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:stub_shorthand;
   let raised =
     try
@@ -72,7 +73,7 @@ let test_absorb_double_consume_raises () =
   Alcotest.(check bool) "re-absorbing a slot fails" true raised
 
 let test_absorb_refuses_css_wide_mix () =
-  let t = Rule_index.build [ red; blue ] in
+  let t = Rule_index.build ~floors:Support.evergreen [ red; blue ] in
   Alcotest.(check bool)
     "a shorthand mixing a css-wide keyword is refused" false
     (Rule_index.absorb t ~at:0 ~absorbed:[ 0; 1 ] ~shorthand:mixed_shorthand);

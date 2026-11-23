@@ -214,6 +214,11 @@ implementation keeps them.
   So `border-width`, `border-style` and `border-color`, or the four side
   shorthands, become `border` only under `--scope=stylesheet`, since `border`
   also resets `border-image` (CSS Backgrounds 3 sec. 4.4).
+- **A shorthand replaces longhands only where every browser in B that reads
+  them reads it.** A browser that drops a shorthand at parse time drops every
+  slot it writes, where the longhands lost one each, so composition and the
+  fold of a longhand into an earlier shorthand happen only when no release in
+  B parses one of the parts and drops the result.
 - **`!important` moves a declaration to another stratum.** Deduplication and
   shorthand composition never combine a normal and an important declaration.
 - **Logical and physical pairs keep their order.** A flow-relative property
@@ -363,6 +368,7 @@ Each row names the tests that check a statement. A browser harness under
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
 | Fallbacks | `floor_fallbacks_survive`, `prefixed_fallbacks_across_rules` and `legacy_keyword_fallbacks_survive` in `test/test_optimize_declarations.ml`; `test/test_optimize_boundaries.ml` "spec values 10.2 clamp takes a none bound"; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Composition over B | `test/test_optimize_boundaries.ml` "composition reads over the floors" |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run"; `optimize_declarations` "border keeps longhands beside a border-image", "border reset reads every block"; `test/test_css_compare_structure.ml` "canonical border sides" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |

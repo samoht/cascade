@@ -56,7 +56,7 @@ let held_add = Shorthand_held.held_add
 (* Run every index-based composer against the same Rule_index so we pay one
    [build] + [to_list] per rule for the whole group. *)
 let compose_index_group_a ~ctx kept =
-  let idx = Rule_index.build (List.map snd kept) in
+  let idx = Rule_index.build ~floors:(Ctx.floors ctx) (List.map snd kept) in
   compose_box_via_index ~ctx idx;
   compose_pair_via_index ~ctx idx;
   compose_outline_via_index idx;
@@ -79,7 +79,7 @@ let border_image_hazard ~ctx ~held idx i ~important =
 (* Second index group runs after the font-reset reorder. Font + list-style +
    flex + text-decoration + border all share the same index. *)
 let compose_index_group_b ~ctx ~held kept =
-  let idx = Rule_index.build (List.map snd kept) in
+  let idx = Rule_index.build ~floors:(Ctx.floors ctx) (List.map snd kept) in
   compose_font_via_index ~ctx idx;
   compose_list_style_via_index idx;
   compose_flex_via_index idx;
@@ -101,14 +101,14 @@ let compose_index_group_b ~ctx ~held kept =
 (* Third index group runs at the very end: mask + transition + animation share
    one index. *)
 let compose_index_group_c ~ctx ~held kept =
-  let idx = Rule_index.build (List.map snd kept) in
+  let idx = Rule_index.build ~floors:(Ctx.floors ctx) (List.map snd kept) in
   compose_mask_via_index ~ctx idx;
   compose_transition_via_index ~ctx ~held idx;
   compose_animation_via_index ~ctx ~held idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 
 let compose_border_whole_step ~held ~ctx kept =
-  let idx = Rule_index.build (List.map snd kept) in
+  let idx = Rule_index.build ~floors:(Ctx.floors ctx) (List.map snd kept) in
   compose_border_whole_via_index
     ~bi_hazard:(border_image_hazard ~ctx ~held idx)
     ~ctx idx;
@@ -125,7 +125,9 @@ let compose_shorthands ?(held = held_none) ~ctx kept =
   |> reorder_mask_border_before_mask
   |> compose_index_group_c ~ctx ~held
   |> fun kept ->
-  merge_box_shorthand_longhands kept kept |> merge_overflow_longhands
+  let floors = Ctx.floors ctx in
+  merge_box_shorthand_longhands ~floors kept kept
+  |> merge_overflow_longhands ~floors
 
 let rec composition_family = function
   | Declaration.Declaration { property; _ } ->

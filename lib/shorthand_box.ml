@@ -149,7 +149,7 @@ let box_shorthand_had_prior_longhand source idx shorthand =
    10px]. *)
 (* Commit the merge only when every side ends up concrete; otherwise restore
    the original shorthand and leave its longhand tail in place. *)
-let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
+let try_merge_box_shorthand ~floors ~original ~property ~vs ~important ~absorb
     ~is_same_shorthand rest =
   match expand_box vs with
   | None -> (original, rest)
@@ -167,9 +167,19 @@ let try_merge_box_shorthand ~original ~property ~vs ~important ~absorb
                 (collapse_box_lengths [ top; right; bottom; left ])
             in
             let merged = Declaration.v ~important property value in
+            let parts =
+              original
+              :: List.filter_map
+                   (fun ((_, d) as item) ->
+                     if List.memq item rest' then None else Some d)
+                   rest
+            in
             (* Absorbing a side into [margin: inherit] leaves the other three
                holding the keyword beside a concrete one. *)
-            if Declaration.value_has_css_wide_mix merged then (original, rest)
+            if
+              Declaration.value_has_css_wide_mix merged
+              || not (Declaration.composes ~floors ~parts merged)
+            then (original, rest)
             else (merged, rest'))
 
 (* CSS Overflow 3 sec. 3.1: [overflow] is the [overflow-x overflow-y] shorthand.
@@ -211,7 +221,7 @@ let try_take_overflow_x ~important rest =
   in
   loop [] rest
 
-let merge_overflow_longhands decls =
+let merge_overflow_longhands ~floors decls =
   let rec go acc = function
     | [] -> List.rev acc
     | ((idx, Declaration { property = Overflow_x; value = v_x; important; _ })
@@ -223,8 +233,11 @@ let merge_overflow_longhands decls =
             let merged =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
-            if Declaration.value_has_css_wide_mix merged then
-              go (item :: acc) rest
+            let parts = [ snd item; Declaration.v ~important Overflow_y v_y ] in
+            if
+              Declaration.value_has_css_wide_mix merged
+              || not (Declaration.composes ~floors ~parts merged)
+            then go (item :: acc) rest
             else go ((idx, merged) :: acc) rest')
     | ((idx, Declaration { property = Overflow_y; value = v_y; important; _ })
        as item)
@@ -235,8 +248,11 @@ let merge_overflow_longhands decls =
             let merged =
               Declaration.v ~important Overflow (combined_overflow v_x v_y)
             in
-            if Declaration.value_has_css_wide_mix merged then
-              go (item :: acc) rest
+            let parts = [ snd item; Declaration.v ~important Overflow_x v_x ] in
+            if
+              Declaration.value_has_css_wide_mix merged
+              || not (Declaration.composes ~floors ~parts merged)
+            then go (item :: acc) rest
             else go ((idx, merged) :: acc) rest')
     | d :: rest -> go (d :: acc) rest
   in
@@ -684,7 +700,7 @@ let compose_box_via_index ~ctx idx =
       | None -> incr i
   done
 
-let merge_box_shorthand_longhands source decls =
+let merge_box_shorthand_longhands ~floors source decls =
   (* [try_merge_box_shorthand] returns the original declaration when it absorbs
      nothing, so keep the original tuple then ([==]) rather than re-pairing it
      with its index - the head stays physically shared on a no-op. *)
@@ -695,7 +711,8 @@ let merge_box_shorthand_longhands source decls =
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
-          try_merge_box_shorthand ~original:d ~property:Margin ~vs ~important
+          try_merge_box_shorthand ~floors ~original:d ~property:Margin ~vs
+            ~important
             ~absorb:(absorb_margin_corner ~important)
             ~is_same_shorthand:is_margin_shorthand rest
         in
@@ -706,7 +723,8 @@ let merge_box_shorthand_longhands source decls =
       :: rest
       when not (box_shorthand_had_prior_longhand source idx d) ->
         let merged, rest =
-          try_merge_box_shorthand ~original:d ~property:Padding ~vs ~important
+          try_merge_box_shorthand ~floors ~original:d ~property:Padding ~vs
+            ~important
             ~absorb:(absorb_padding_corner ~important)
             ~is_same_shorthand:is_padding_shorthand rest
         in

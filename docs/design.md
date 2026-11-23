@@ -216,7 +216,11 @@ counts dead. The data has no key for a vendor-prefixed or legacy keyword
 the property before a later one using such a keyword the earlier does not,
 rather than count the key as read; in-rule deduplication also keeps the pair
 in the other order (`Declaration.legacy_pair`). Both compare the prefixed
-words of the two values. Any other production the dataset names no key for
+words of the two values. `Declaration.composes` asks the same question of a
+shorthand against the declarations it replaces, and `Rule_index.splice`, the
+gate every indexed composer emits through, and the box and overflow folds of
+`Shorthand_box` refuse a composition it rejects. Any other production the
+dataset names no key for
 counts as parsed, except the ones `Declaration.first_release` knows a recorded
 release drops, a `clamp()` bound of `none` and a CSS-wide keyword the dataset
 does not name (`revert-rule`): their first release is `Support.Unrecorded`, so
