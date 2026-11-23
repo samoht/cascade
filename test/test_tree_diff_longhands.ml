@@ -153,6 +153,25 @@ let flex_expanded_to_longhands () =
     ~actual:".a{flex-grow:1;flex-shrink:2;flex-basis:3px}"
   |> check_no_difference
 
+(* The tree diff judges for the default targets, and Chrome 157 computes the
+   basis [flex:1] and [flex:1 2] omit as [0%] (CSS Flexible Box 1 (ED) sec.
+   7.1.1 makes it [0], a length, which sizes an item in an indefinite container
+   differently). *)
+let flex_omitted_basis_expanded () =
+  diff_of ~expected:".a{flex:1}"
+    ~actual:".a{flex-grow:1;flex-shrink:1;flex-basis:0%}"
+  |> check_no_difference;
+  diff_of ~expected:".a{flex:1 2}"
+    ~actual:".a{flex-grow:1;flex-shrink:2;flex-basis:0%}"
+  |> check_no_difference;
+  let d =
+    diff_of ~expected:".a{flex:1}"
+      ~actual:".a{flex-grow:1;flex-shrink:1;flex-basis:0}"
+  in
+  Alcotest.(check bool)
+    "a zero length basis is another value" true
+    (d.Cascade_diff.Tree_diff.rules <> [])
+
 (* CSS Transitions 1 sec. 2.5 and CSS Transitions 2 sec. 2.6: [transition] sets
    every omitted component to its initial value: [all], [0s], [ease], [0s] and
    [normal]. *)
@@ -171,6 +190,7 @@ let suite =
     [
       Alcotest.test_case "shorthand against longhands" `Quick
         shorthand_against_longhands;
+      Alcotest.test_case "flex omitted basis" `Quick flex_omitted_basis_expanded;
       Alcotest.test_case "shorthand agreeing with longhands" `Quick
         shorthand_agreeing_with_longhands;
       Alcotest.test_case "longhands against shorthand" `Quick

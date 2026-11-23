@@ -68,3 +68,32 @@ the longhands written out in full say what the shorthand says.
   CSS files are identical
   $ cascade --minify b.css
   .a{background:url(a.png)no-repeat content-box}
+
+CSS Flexible Box 1 (ED) sec. 7.1 makes the basis flex:1 omits 0, and
+Chrome 157 computes it as 0%. The tree and the default diff judge for the
+targets, so they read 0%: written out with that basis the longhands are
+the shorthand, and with 0 they are another value.
+
+  $ cat > a.css <<'EOF'
+  > .a{flex:1}
+  > EOF
+  $ cat > b.css <<'EOF'
+  > .a{flex-grow:1;flex-shrink:1;flex-basis:0%}
+  > EOF
+  $ cascade diff --diff=tree a.css b.css
+  CSS files are identical
+  $ cascade diff --diff=canonical a.css b.css
+  CSS files are identical
+  $ NO_COLOR=1 cascade diff a.css b.css | sed -n 2p
+  Changes: no structural change; the text differs
+  $ cascade diff --diff=canonical --enforce-spec a.css b.css > /dev/null
+  [1]
+  $ cat > b.css <<'EOF'
+  > .a{flex-grow:1;flex-shrink:1;flex-basis:0}
+  > EOF
+  $ cascade diff --diff=tree a.css b.css > /dev/null
+  [1]
+  $ cascade diff --diff=canonical a.css b.css > /dev/null
+  [1]
+  $ cascade diff --diff=canonical --enforce-spec a.css b.css
+  CSS files are identical

@@ -1120,6 +1120,33 @@ let canonical_one_item_color_mix () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true one
        colour)
 
+(* The basis [flex:1] and [flex:1 2] omit: Chrome 157 computes it as [0%], so
+   the default targets read it so; CSS Flexible Box 1 (ED) sec. 7.1 makes its
+   specified value [0], which --enforce-spec reads. [0%] against an indefinite
+   container sizes the item from its content where [0] does not, so each mode
+   tells the other's reading apart. *)
+let canonical_flex_omitted_basis () =
+  let default a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let spec a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true a b
+  in
+  let pct = "a{flex-grow:1;flex-shrink:1;flex-basis:0%}" in
+  let zero = "a{flex-grow:1;flex-shrink:1;flex-basis:0}" in
+  Alcotest.(check bool) "default reads 0%" true (default "a{flex:1}" pct);
+  Alcotest.(check bool) "default tells 0 apart" false (default "a{flex:1}" zero);
+  Alcotest.(check bool) "enforce-spec reads 0" true (spec "a{flex:1}" zero);
+  Alcotest.(check bool)
+    "enforce-spec tells 0% apart" false (spec "a{flex:1}" pct);
+  Alcotest.(check bool)
+    "enforce-spec reads 0 after two factors" true
+    (spec "a{flex:1 2}" "a{flex-grow:1;flex-shrink:2;flex-basis:0}");
+  Alcotest.(check bool)
+    "a later basis the shorthand implies, default" true
+    (default "a{flex:1;flex-basis:0%}" "a{flex:1}");
+  Alcotest.(check bool)
+    "a later basis the shorthand implies, enforce-spec" true
+    (spec "a{flex:1;flex-basis:0}" "a{flex:1}")
+
 let canonical_ignores_order_under_exclusive_conditions () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   let swapped a b = equal (a ^ b) (b ^ a) in
@@ -1807,4 +1834,6 @@ let suite =
         `Quick canonical_ignores_order_under_exclusive_conditions;
       Alcotest.test_case "canonical one-item color-mix" `Quick
         canonical_one_item_color_mix;
+      Alcotest.test_case "canonical flex omitted basis" `Quick
+        canonical_flex_omitted_basis;
     ] )

@@ -1050,6 +1050,19 @@ let target_minify_enforce_spec_split () =
     ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "a zero flex basis after one factor keeps its meaning"
     "a { flex: 1 0px }" ~default:"a{flex:0px}" ~spec:"a{flex:1}";
+  (* The basis [flex:1] omits is [0%] in Chrome 157, which the default targets
+     read, and [0] under CSS Flexible Box 1 (ED) sec. 7.1, which --enforce-spec
+     reads. A later [flex-basis] writing that basis again is a no-op; one
+     writing the other is not. *)
+  check_modes "a later flex-basis of the omitted 0%" "a{flex:1;flex-basis:0%}"
+    ~default:"a{flex:1}" ~spec:"a{flex:1;flex-basis:0%}";
+  check_modes "a later flex-basis of the omitted 0" "a{flex:1;flex-basis:0}"
+    ~default:"a{flex:1;flex-basis:0}" ~spec:"a{flex:1}";
+  check_modes "flex longhands with a 0% basis"
+    "a{flex-grow:1;flex-shrink:1;flex-basis:0%}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1 0%}";
+  check_modes "an explicit 0% basis" "a{flex:2 3 0%}" ~default:"a{flex:2 3}"
+    ~spec:"a{flex:2 3 0%}";
   check_modes "color-mix keeps the required in oklab in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
