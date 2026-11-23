@@ -183,6 +183,10 @@ let run ?(env = []) ?stderr prog args =
       (List.map (fun (name, v) -> String.concat "" [ name; "="; v ]) env
       @ inherited)
   in
+  (* Where the spawn forks before it execs (OpenBSD), a missing program is a
+     child exiting 127, not an error: settle that here, before any spawn. *)
+  if (not (String.equal (Filename.basename prog) prog)) && not (executable prog)
+  then raise (Unix.Unix_error (Unix.ENOENT, "create_process", prog));
   let null = Unix.openfile Filename.null [ Unix.O_RDWR; Unix.O_CLOEXEC ] 0 in
   let err =
     match stderr with
