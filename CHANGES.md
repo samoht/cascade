@@ -990,6 +990,11 @@ differently. They are the reason to minify again.
 - output drops the space beside a string:** `grid-template-areas:"a""b"`,
   `"head head"auto`, `quotes:"a""b"`, which Chromium reads as the spaced forms
   (CSS Syntax 3 sec. 9.1) (#1586).
+- vendor fallback every target outgrew is dropped:**
+  `display:-webkit-box;display:flex` and a `-webkit-linear-gradient()` before
+  `linear-gradient()` keep only the standard value when every target browser
+  parses it. A prefix some target still needs, such as
+  `width:-webkit-fill-available` before `stretch`, stays (#1587).
 
 ### Formatted output
 

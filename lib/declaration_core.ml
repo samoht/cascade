@@ -959,13 +959,6 @@ let marks_differ later earlier =
 let legacy_vendor_fallback ~later earlier =
   value_is_vendor_prefixed later && marks_differ later earlier
 
-(* Inside one rule a prefixed or legacy keyword also stays before a later
-   standard value, for a browser older than the floors that reads only the
-   prefixed one. *)
-let legacy_pair later earlier =
-  (value_is_vendor_prefixed earlier || value_is_vendor_prefixed later)
-  && marks_differ later earlier
-
 (* The browsers judged for are each engine from its floor to the newest release
    the data records, and a shipped production stays. [earlier] is what a browser
    paints in place of [later] only where it parses [earlier] and drops [later]:

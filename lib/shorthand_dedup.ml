@@ -86,7 +86,6 @@ let covered_by_new_declaration ~floors ~judged new_decl existing =
   (not (is_intentionally_duplicated existing))
   && declaration_covers new_decl existing
   && (is_important new_decl || not (is_important existing))
-  && (not (Declaration.legacy_pair new_decl existing))
   && (not (floor_fallback ~floors new_decl existing))
   && (not (legacy_color_fallback ~judged new_decl existing))
   && not (legacy_runtime_subst_fallback ~judged new_decl existing)

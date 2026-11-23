@@ -341,13 +341,6 @@ val fallback_for :
     earlier does not. [false] means every such release that parses [earlier]
     parses [later], so [earlier] is dead wherever [later] covers it. *)
 
-val legacy_pair : declaration -> declaration -> bool
-(** [legacy_pair later earlier] is [true] when [later] and [earlier] set one
-    property and differ in which vendor-prefixed or legacy keywords they use,
-    one of them using some, such as [display:-webkit-box] and [display:flex].
-    Deduplication inside one rule keeps both, in either order, for a browser
-    older than the floors that reads only the prefixed one. *)
-
 val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
 (** [value_size ?minify decl] is the byte length of
     [string_of_value ?minify decl], computed without allocating the string. *)
