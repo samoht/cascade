@@ -928,12 +928,92 @@ let is_unknown_property_name = is_decl_unknown_property_name
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
    declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
+(* The comma-separated entries of a value, each the components between two
+   commas with the whitespace left out. *)
+let comma_entries raw_value =
+  let rec split entries entry = function
+    | [] -> List.rev (List.rev entry :: entries)
+    | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+        split (List.rev entry :: entries) [] rest
+    | component :: rest when Component.is_whitespace component ->
+        split entries entry rest
+    | component :: rest -> split entries (component :: entry) rest
+  in
+  split [] [] (Cursor.remaining (Cursor.of_string raw_value))
+
+let lowercase_ident = function
+  | Component.Preserved { kind = Token.Ident word; _ } ->
+      Option.some (String.lowercase_ascii word)
+  | _ -> Option.none
+
+(* The generic families Chromium 153 and WebKit 26.5 read as the generic
+   wherever they head an entry, so a family of several words cannot start with
+   one. *)
+let generic_family_heads =
+  [
+    "serif";
+    "sans-serif";
+    "monospace";
+    "cursive";
+    "fantasy";
+    "system-ui";
+    "math";
+    "-webkit-body";
+  ]
+
+(* One entry of a font-family list as both engines read it: a string; one
+   identifier that is no CSS-wide keyword and no [default]; or several, any of
+   them reserved, unless the first is a generic family. *)
+let engine_family_entry = function
+  | [ Component.Preserved { kind = Token.String _; _ } ] -> true
+  | [ word ] -> (
+      match lowercase_ident word with
+      | Some word ->
+          not
+            (Properties.is_css_wide_keyword word || String.equal word "default")
+      | None -> false)
+  | first :: _ :: _ as words -> (
+      List.for_all (fun word -> Option.is_some (lowercase_ident word)) words
+      &&
+      match lowercase_ident first with
+      | Some first ->
+          not (List.exists (String.equal first) generic_family_heads)
+      | None -> false)
+  | [] -> false
+
 (* A form no specification grants and a browser in B parses. The typed reader
    refuses it and the declaration keeps the text the author wrote: rewritten
    into a granted form it would apply in the engines that drop it, and dropped
    it would no longer apply in the engine that reads it. *)
 let browser_reads_ungranted (Prop prop : any_property) raw_value =
   match prop with
+  (* CSS Values 4 sec. 4.2 keeps a CSS-wide keyword and [default] out of the
+     <custom-ident>+ of CSS Fonts 4 sec. 2.1.1; Chromium 153 and WebKit 26.5
+     read either inside a family of several words. *)
+  | Font_family -> List.for_all engine_family_entry (comma_entries raw_value)
+  (* CSS Backgrounds 3 sec. 4.5 builds these from a [||] with no comma. Chromium
+     153 reads a comma after a single component, a trailing one included, as the
+     space between them, so the value is that of the components joined; WebKit
+     drops it. *)
+  | Border | Border_block | Border_inline -> (
+      let single = function [ _ ] -> true | [] | _ :: _ :: _ -> false in
+      let entries =
+        match List.rev (comma_entries raw_value) with
+        | [] :: rest -> List.rev rest
+        | entries -> List.rev entries
+      in
+      match (comma_entries raw_value, entries) with
+      | _ :: _ :: _, _ :: _ when List.for_all single entries -> (
+          let t =
+            Cursor.of_string
+              (String.concat " " (List.map Parser.string_of_components entries))
+          in
+          match Properties.read_border t with
+          | exception Cursor.Parse_error _ -> false
+          | _ ->
+              Cursor.ws t;
+              Cursor.is_done t)
+      | _ -> false)
   (* CSS Sizing 4 (ED) sec. 5.2 lets [auto] open a slot and never end one.
      Chromium 153 reads one slot followed by a lone [auto] as that slot: its
      slot reader takes the [auto], finds no [none] or length and gives the slot

@@ -348,57 +348,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.border.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-block.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-inline.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.properties.border-block-start.comma";
       support =
         {
@@ -709,39 +658,6 @@ let measured =
         \         <image> | <custom-ident>, so a counter symbol may be an \
          image. Chrome \\\n\
         \         implements the string and ident arms and refuses every image";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.font-family.default";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Fonts 4 sec. 2.1.1 gives an unquoted family a <custom-ident>+ and \
-         excludes an identifier that could be misinterpreted as a pre-defined \
-         keyword or a CSS-wide keyword, and CSS Values 4 sec. 4.2 reserves \
-         default. Chrome applies the exclusion to a family of one identifier \
-         and reads a reserved word inside a longer name";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.font-family.inherit";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from \
-         <custom-ident> itself, so no word of a family sequence is one \
-         wherever it stands. Chrome reads inherit as a family name once \
-         another word stands beside it";
       measured = "Chrome 153";
     };
     {

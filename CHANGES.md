@@ -934,6 +934,12 @@ differently. They are the reason to minify again.
   empty `attr()` or `env()`, even inside a `var()` fallback or a custom
   property (`content:var(--x, attr())`), as CSS Variables 1 sec. 3 requires
   (#1627).
+- and `border` forms two browsers read differently are kept as written**:
+  `font-family:inherit foo`, `default foo` and `ui-serif Foo`, which Chromium
+  and Safari read, and `border:red,none`, which Chromium reads as `red`, were
+  deleted. No specification grants them, so each is now kept, and a
+  declaration before one stays as the fallback the other browser paints
+  (#1628).
 
 #### Stable output
 
