@@ -312,6 +312,14 @@ needs them in an exhaustive match.
   `Optimize.merge_overflow_longhands` take `~floors`,** the targets (#1633).
 - **`Pp.ctx` loses `in_function`.** It only chose how to case `currentcolor`;
   delete the field (#1648).
+- **`Properties.vector_effect` holds one keyword.** SVG 2 (ED) sec. 8.13
+  spells `vector-effect` as one keyword, and the reader takes one since #1637,
+  but the type carried a list of effects and a host space no value could hold.
+  `Effects` gives way to `Non_scaling_stroke`, `Non_scaling_size`,
+  `Non_rotation` and `Fixed_position`, and `vector_effect_keyword`,
+  `vector_effect_space` and their `pp_` and `read_` functions are gone. Write
+  `Css.vector_effect Non_scaling_stroke` where `Effects ([ Non_scaling_stroke
+  ], None)` stood (#1646).
 
 ### Minified output
 
