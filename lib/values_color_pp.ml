@@ -644,8 +644,7 @@ and pp_color_default : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_color_var ctx v
-  | Current ->
-      Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
+  | Current -> Pp.string ctx "currentcolor"
   | Transparent -> pp_transparent_color ctx
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"

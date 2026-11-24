@@ -31,9 +31,6 @@ type ctx = {
           even when not minifying. *)
   out : out;  (** Output sink *)
   inline : bool;  (** Whether to inline variables or not *)
-  in_function : bool;
-      (** Whether inside a CSS function (var fallback, color-mix). Affects
-          keyword casing: [currentColor] becomes [currentcolor]. *)
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)

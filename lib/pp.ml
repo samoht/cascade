@@ -16,7 +16,6 @@ type ctx = {
           even when not minifying. *)
   out : out;
   inline : bool;
-  in_function : bool;
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -78,7 +77,6 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
     indent = resolve_indent ~minify indent;
     out;
     inline;
-    in_function = false;
     in_style_rule = false;
     lossless;
     enforce_spec;
