@@ -1249,6 +1249,18 @@ let tree_counting_in_colour_channel () =
       "rgb(calc(sibling-index()*1deg) 0 0)";
     ]
 
+(* A colour that stays in its own notation takes the shortest in-gamut spelling,
+   at no more decimals per channel than the rounding keeps, that paints the
+   bytes it paints. Chromium 153 converts [lab(53.29 -12.26 -44.56)] to
+   [color(srgb -0.000930849 0.533398 0.800041)] and [lab(53.3 -12.3 -44.5)] to
+   [color(srgb -0.000366949 0.533557 0.799734)], both painting (0,136,204) on a
+   canvas. The nearest rounding [lab(53.3 -12.3 -44.6)] converts to a red of
+   -0.005644, outside the gamut, where CSS Color 4 sec. 14.2 leaves the colour
+   to the engine's gamut mapping. *)
+let shortest_spelling_painting_alike () =
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"lab(53.3-12.3-44.5/.5)" "lab(53.29 -12.26 -44.56/.5)"
+
 let suite =
   ( "values_color",
     [
@@ -1297,4 +1309,6 @@ let suite =
       test_case "math in a colour channel" `Quick math_in_colour_channel;
       test_case "tree-counting function in a colour channel" `Quick
         tree_counting_in_colour_channel;
+      test_case "shortest spelling painting alike" `Quick
+        shortest_spelling_painting_alike;
     ] )
