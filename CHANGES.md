@@ -921,6 +921,10 @@ differently. They are the reason to minify again.
   calculation's math functions (`calc-size(auto, round(size, 10px))`), a
   sizing function such as `fit-content(10px)` as the basis, and refusals of
   `size` after `any`, a `none` basis and a keyword in the calculation (#1622).
+- takes `calc-size(content, ...)`**. The `flex` shorthand refuses a
+  `calc-size()` basis by default, since no shipping engine paints it, and
+  keeps the `flex` before it; under `--enforce-spec` it reads it, as CSS
+  Flexbox 1 sec. 7.1 gives `flex` the `<'flex-basis'>` grammar (#1623).
 
 #### Stable output
 

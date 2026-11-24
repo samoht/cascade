@@ -876,12 +876,13 @@ module Flex = struct
      as a basis of its own. *)
   (* Sec. 7.1 gives [flex] the [<'flex-basis'>] grammar, but Chromium 153 drops
      [flex:1 calc-size(auto,size)] and [flex:calc-size(content,size)] where it
-     reads the same [flex-basis], and web-features records [calc-size()] for
-     Chrome from 129, so a shorthand kept with one would let the fallback before
-     it go. The shorthand's basis reads every other [flex-basis]. *)
+     reads the same [flex-basis], and no shipping engine paints either, so the
+     default mode refuses a [calc-size()] basis there and keeps the fallback
+     before it. [enforce_spec] relies on the specification alone and reads it. *)
   let read_shorthand_basis t : flex_basis =
     match read_flex_basis t with
-    | Calc_size _ -> Cursor.err_invalid t "calc-size() as a flex basis"
+    | Calc_size _ when not (Cursor.enforce_spec t) ->
+        Cursor.err_invalid t "calc-size() as a flex basis"
     | basis -> basis
 
   let read_basis_only t =
