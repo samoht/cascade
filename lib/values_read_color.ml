@@ -758,7 +758,7 @@ type reading = Double | Single
 
 let number_reading reading (n : Token.number) : Token.number =
   match reading with
-  | Double -> { n with value = Token.authored_value n }
+  | Double -> Token.authored n
   | Single -> { n with value = single_of_float (Token.authored_value n) }
 
 (* Whether the readings of [n] can differ at all. *)
@@ -766,58 +766,14 @@ let number_has_readings (n : Token.number) =
   let d = Token.authored_value n in
   (not (Float.equal n.value d)) || not (Float.equal (single_of_float d) d)
 
-let token_reading reading (tok : Token.t) : Token.t =
-  match tok.kind with
-  | Number_tok n -> { tok with kind = Number_tok (number_reading reading n) }
-  | Percentage n -> { tok with kind = Percentage (number_reading reading n) }
-  | Dimension { number; unit_ } ->
-      {
-        tok with
-        kind = Dimension { number = number_reading reading number; unit_ };
-      }
-  | _ -> tok
-
-let token_has_readings (tok : Token.t) =
-  match tok.kind with
-  | Number_tok n | Percentage n | Dimension { number = n; _ } ->
-      number_has_readings n
-  | _ -> false
-
 (* Every number of a colour function counts, a [var()] fallback's and a math
    function's as much as a channel's: each is quantised once substituted. *)
-let rec component_has_readings : Component.t -> bool = function
-  | Preserved tok -> token_has_readings tok
-  | Func { node = { arguments; _ }; _ } ->
-      List.exists component_has_readings arguments
-  | Block { node = { value; _ }; _ } -> List.exists component_has_readings value
-  | Flat { node; _ } -> List.exists token_has_readings node
-
-let rec component_reading reading : Component.t -> Component.t = function
-  | Preserved tok -> Preserved (token_reading reading tok)
-  | Func fn ->
-      Func
-        {
-          fn with
-          node =
-            {
-              fn.node with
-              arguments = List.map (component_reading reading) fn.node.arguments;
-            };
-        }
-  | Block b ->
-      Block
-        {
-          b with
-          node =
-            {
-              b.node with
-              value = List.map (component_reading reading) b.node.value;
-            };
-        }
-  | Flat f -> Flat { f with node = List.map (token_reading reading) f.node }
+let component_has_readings = Component.exists_number number_has_readings
 
 let with_reading reading (fn : Component.func Component.node) =
-  match component_reading reading (Func fn) with Func fn -> fn | _ -> fn
+  match Component.map_numbers (number_reading reading) (Func fn) with
+  | Func fn -> fn
+  | _ -> fn
 
 (* The colour functions whose channels a fold quantises. *)
 let channel_functions =

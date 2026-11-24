@@ -259,6 +259,50 @@ let rec has_var components =
       | Preserved _ -> false)
     components
 
+let token_number (tok : Token.t) =
+  match tok.kind with
+  | Number_tok n | Percentage n | Dimension { number = n; _ } -> Some n
+  | _ -> None
+
+let map_token_number f (tok : Token.t) : Token.t =
+  match tok.kind with
+  | Number_tok n -> { tok with kind = Number_tok (f n) }
+  | Percentage n -> { tok with kind = Percentage (f n) }
+  | Dimension { number; unit_ } ->
+      { tok with kind = Dimension { number = f number; unit_ } }
+  | _ -> tok
+
+let rec exists_number p = function
+  | Preserved tok -> (
+      match token_number tok with Some n -> p n | None -> false)
+  | Func { node = { arguments; _ }; _ } ->
+      List.exists (exists_number p) arguments
+  | Block { node = { value; _ }; _ } -> List.exists (exists_number p) value
+  | Flat { node; _ } ->
+      List.exists
+        (fun tok -> match token_number tok with Some n -> p n | None -> false)
+        node
+
+let rec map_numbers f = function
+  | Preserved tok -> Preserved (map_token_number f tok)
+  | Func fn ->
+      Func
+        {
+          fn with
+          node =
+            {
+              fn.node with
+              arguments = List.map (map_numbers f) fn.node.arguments;
+            };
+        }
+  | Block b ->
+      Block
+        {
+          b with
+          node = { b.node with value = List.map (map_numbers f) b.node.value };
+        }
+  | Flat fl -> Flat { fl with node = List.map (map_token_number f) fl.node }
+
 (* A debug dump, not source text: every node shows its own location and the CSS
    Syntax 3 (ED) sec. 5.5.9 and 5.5.10 flags [compare] separates values on.
    [Pp.space] rather than [Pp.sp] because a dump has no minified form, and

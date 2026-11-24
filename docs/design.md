@@ -20,8 +20,29 @@ A number's value stops where its print does. The printer writes a number to
 eight decimals, so the lexer reads a representation running past them, or
 carrying an exponent, as the value that print reads back as (`Pp.printed`):
 `33.33333333333333%` is the node `33.33333333%` is. The representation keeps
-every authored digit, and the minifier of an opaque stream guards on it, so a
-stream printed as written loses none.
+every authored digit (`Token.authored_value`), and the minifier of an opaque
+stream guards on it, so a stream printed as written loses none.
+
+A number an unknown factor can scale is the exception. CSS Values 4 sec. 5.3
+(Real Numbers: the `<number>` type) makes a `<number>` a real number, and
+Chromium keeps the double: with `--k:100000000` it computes
+`calc(.123456789px*var(--k) - 12345678px)` as .890625px and the eight-decimal
+`.12345679px` spelling as 1px. So wherever a factor of a `*` or `/` has an
+other factor that is not a number known at minify time (a `var()`,
+`sibling-index()`, an `attr()`, a typed leaf, or a math function holding one,
+`Values_calc.static_number`), that factor keeps the double of all its digits
+and prints the shortest digits of it. The calc reader reads such a product
+again over the components with every number at its authored value and takes
+the scaled factors from that reading (`Values_calc.with_scaled_factors`); the
+printer sets `Pp.exact` on the same factors. Reader and printer decide on one
+predicate over one tree, so a scaled number prints the digits that read back
+as its node and every other number prints the eight decimals that do: two
+spellings that print alike are still one node, and the output settles in one
+pass. The optimizer folds such a factor without rounding it, and leaves a sum
+of two typed leaves there unfolded, since that fold rounds. A quotient Cascade
+computes keeps its six-figure budget beside a typed leaf, which is most often
+the literal it reads as (`calc(1/3*100%)`), and loses it beside a
+substitution. A sum and a product of known numbers keep the budget.
 
 A colour function (rgb, hsl, hwb, lab, lch, oklab, oklch, color, but not a
 relative one) with a number whose readings differ, a `var()` fallback's or a

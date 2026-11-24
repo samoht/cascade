@@ -90,6 +90,16 @@ implementation keeps them.
   shortest decimal itself, which reads back as the same double: a browser
   adds a `calc()`'s operands in double precision before it clamps a length,
   so a coarser print moves the sum.
+- **A number scaled by an unknown factor keeps its double.** CSS Values 4
+  sec. 5.3 (Real Numbers: the `<number>` type) makes a number a real number,
+  and the budget above holds only where nothing multiplies the rounding. A
+  factor of a product or quotient whose other factor is unresolved at minify
+  time (a `var()`, `sibling-index()`, an `attr()`, a typed leaf, or a math
+  function holding one) keeps and prints the shortest digits of its double:
+  with `--k:100000000`, Chromium 158 computes
+  `calc(.123456789px*var(--k) - 12345678px)` as .890625px and
+  `calc(.12345679px*var(--k) - 12345678px)` as 1px. Every other number keeps
+  the budget, a term added to such a product among them.
 - **Token boundaries are safe.** Elided whitespace never joins two tokens into
   one or splits one into two. Inside a math function the whitespace around
   `+` and `-` is kept (CSS Values 4 sec. 10.8), and so is the whitespace
@@ -349,6 +359,7 @@ Each row names the tests that check a statement. A browser harness under
 | M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; `test/test_declaration_identity.ml` "colour channels beside a var()" (the alpha rounding); the css-minify-tests colour fixtures |
 | Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
 | Number budget | `pp` "float int boundary", "float large decimal reparses", "float large decimal in stylesheet"; fuzz `pp` "string_of_float rounds by its stated rule" |
+| Scaled numbers | `stylesheet_calc` "calc product keeps its digits" |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges"; `test/test_declaration_identity.ml` "custom property tokens stay" (a hash before a url) |
 | Integer range | `test/cli/fmt_int_range.t`; `cursor` "integer precision"; `declaration_validity` "integer precision" |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |

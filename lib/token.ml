@@ -50,6 +50,11 @@ let authored_value (number : number) =
   | Some v -> v
   | None -> number.value
 
+let authored (number : number) = { number with value = authored_value number }
+
+let snapped (number : number) =
+  not (Float.equal number.value (authored_value number))
+
 (* CSS Values 4 sec. 5.2 converts a value past the supported range to the
    closest one supported. Every target clamps an integer far below 2^62, so one
    past the [int] range is read at its end, which each of them clamps alike. *)

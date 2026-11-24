@@ -93,6 +93,12 @@ val authored_value : number -> float
 (** [authored_value n] is the value of every digit [n]'s representation holds.
     It differs from [n.value] only past eight decimals. *)
 
+val authored : number -> number
+(** [authored n] is [n] valued at {!authored_value}. *)
+
+val snapped : number -> bool
+(** [snapped n] is whether [n]'s value stops short of its {!authored_value}. *)
+
 val integer_opt : number -> int option
 (** [integer_opt n] is the integer [n] represents when [n] is an integer token:
     its exact value within the native integer range, and [max_int] or [min_int]

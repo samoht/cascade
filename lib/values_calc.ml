@@ -636,6 +636,37 @@ let rec normalize_calc_parens : type a. a calc -> a calc =
       if fn' == fn then calc else Math_fn fn'
   | Val _ | Var _ | Num _ | Math_const _ | Sibling_index | Sibling_count -> calc
 
+let rec static_number : type a. a calc -> bool = function
+  | Num _ | Math_const _ -> true
+  | Expr (l, _, r) -> static_number l && static_number r
+  | Nested inner | Parens inner -> static_number inner
+  | Math_fn fn -> not (math_fn_contains_var fn)
+  | Val _ | Var _ | Sibling_index | Sibling_count -> false
+
+(* A factor prints its numbers at the shortest digits of their doubles unless
+   the other factor is a number known at minify time, as the reader reads them
+   ([Values_read_calc]). *)
+let factor_ctx ctx ~other = if static_number other then ctx else Pp.exact ctx
+
+let rec with_scaled_factors : type a. scaled:bool -> a calc -> a calc -> a calc
+    =
+ fun ~scaled read exact ->
+  if scaled then exact
+  else
+    let factors op l r l' r' =
+      Expr
+        ( with_scaled_factors ~scaled:(not (static_number r)) l l',
+          op,
+          with_scaled_factors ~scaled:(not (static_number l)) r r' )
+    in
+    match (read, exact) with
+    | Expr (l, Mul, r), Expr (l', Mul, r') -> factors Mul l r l' r'
+    | Expr (l, Div, r), Expr (l', Div, r') -> factors Div l r l' r'
+    | _ -> read
+
+let with_scaled_factors read ~exact =
+  with_scaled_factors ~scaled:false read exact
+
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
@@ -669,12 +700,19 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
           op_prec < parent_prec || (right_of_noncommut && op_prec <= parent_prec)
         in
         if needs_parens then Pp.char ctx '(';
-        pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:false ctx left;
+        let left_ctx, right_ctx =
+          match op with
+          | Mul | Div ->
+              (factor_ctx ctx ~other:right, factor_ctx ctx ~other:left)
+          | Add | Sub -> (ctx, ctx)
+        in
+        pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:false left_ctx
+          left;
         pp_calc_op ctx op;
         (* Right side of Sub/Div needs special handling *)
         let is_noncommut = match op with Sub | Div -> true | _ -> false in
-        pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:is_noncommut ctx
-          right;
+        pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:is_noncommut
+          right_ctx right;
         if needs_parens then Pp.char ctx ')'
   in
   pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
@@ -839,8 +877,60 @@ let unwrap_grouping : type a.
   | Var v as leaf when ctx.var_is_single_valued v.name -> leaf
   | reduced -> rewrap reduced
 
-let rec eval_calc_inner : type a. ctx:calc_ctx -> a calc -> a calc =
- fun ~ctx -> function
+(* What a factor of a product stands beside, which decides how its fold may
+   round. *)
+type scaling =
+  | Unscaled
+  | By_typed_leaf
+      (** A factor beside a typed leaf, which may hold an [attr()] or an [env()]
+          cascade cannot see, or may be the literal it reads as. *)
+  | By_substitution
+      (** A factor beside a [var()], [sibling-index()] or a math function
+          holding one. *)
+
+let rec substitutes : type a. a calc -> bool = function
+  | Var _ | Sibling_index | Sibling_count -> true
+  | Math_fn fn -> math_fn_contains_var fn
+  | Expr (l, _, r) -> substitutes l || substitutes r
+  | Nested inner | Parens inner -> substitutes inner
+  | Num _ | Math_const _ | Val _ -> false
+
+let scaling_by other =
+  if static_number other then Unscaled
+  else if substitutes other then By_substitution
+  else By_typed_leaf
+
+let max_scaling a b =
+  match (a, b) with
+  | By_substitution, _ | _, By_substitution -> By_substitution
+  | By_typed_leaf, _ | _, By_typed_leaf -> By_typed_leaf
+  | Unscaled, Unscaled -> Unscaled
+
+let is_scaled = function
+  | Unscaled -> false
+  | By_typed_leaf | By_substitution -> true
+
+(* A fold inside a scaled factor keeps the double it computes: the printer
+   writes that factor's numbers exactly ({!factor_ctx}). *)
+let folded_num : type a. scaling:scaling -> float -> a calc =
+ fun ~scaling f ->
+  if not (is_scaled scaling) then calc_num f
+  else if Float.is_nan f then Math_const Nan
+  else Num f
+
+(* How the operands of [left op right] are scaled, in a factor scaled by
+   [scaling]: a factor of a product whose other factor is not a number known at
+   minify time is, as {!with_scaled_factors} reads it. *)
+let operands_scaling ~scaling left op right =
+  match op with
+  | Mul | Div ->
+      ( max_scaling scaling (scaling_by right),
+        max_scaling scaling (scaling_by left) )
+  | Add | Sub -> (scaling, scaling)
+
+let rec eval_calc_inner : type a.
+    scaling:scaling -> ctx:calc_ctx -> a calc -> a calc =
+ fun ~scaling ~ctx -> function
   | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
   | Math_const _ as leaf -> leaf
   | Math_fn fn when math_fn_contains_var fn -> Math_fn fn
@@ -854,14 +944,16 @@ let rec eval_calc_inner : type a. ctx:calc_ctx -> a calc -> a calc =
   | Nested inner ->
       unwrap_grouping ~ctx
         ~rewrap:(fun r -> Nested r)
-        (eval_calc_inner ~ctx inner)
+        (eval_calc_inner ~scaling ~ctx inner)
   | Parens inner ->
       unwrap_grouping ~ctx
         ~rewrap:(fun r -> Parens r)
-        (eval_calc_inner ~ctx inner)
+        (eval_calc_inner ~scaling ~ctx inner)
   | Expr (l, op, r) -> (
-      let l = eval_calc_inner ~ctx l in
-      let r = eval_calc_inner ~ctx r in
+      let scaling_l, scaling_r = operands_scaling ~scaling l op r in
+      let l = eval_calc_inner ~scaling:scaling_l ~ctx l in
+      let r = eval_calc_inner ~scaling:scaling_r ~ctx r in
+      let calc_num f = folded_num ~scaling f in
       (* Match on the const-folded operands but keep [l] / [r] in the no-fold
          results, so an unreduced expression keeps the short [calc(.. pi ..)].
          Identity rules need a type-aware [Val] inspection (runtime subst?);
@@ -887,7 +979,7 @@ let rec eval_calc_inner : type a. ctx:calc_ctx -> a calc -> a calc =
               | None -> Expr (l, op, r))))
 
 let eval_calc ?(ctx = default_calc_ctx) calc =
-  normalize_calc_parens (eval_calc_inner ~ctx calc)
+  normalize_calc_parens (eval_calc_inner ~scaling:Unscaled ~ctx calc)
 
 (* A subtree Cascade has to evaluate to a float of its own: a math constant or a
    math function. A fold that consumes one lands a computed coefficient in the
@@ -917,17 +1009,39 @@ let fold_typed_expr : type a.
     is_zero:(a -> bool) ->
     zero:a calc ->
     computed:bool ->
+    scaling:scaling ->
     a calc * bool ->
     calc_op ->
     a calc * bool ->
     a calc * bool =
- fun ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed lf op rf ->
-  let budget = ctx.budget in
+ fun ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed ~scaling lf op rf ->
+  (* A factor beside an unresolved one keeps the double its fold computes: no
+     [round], and no [combine], which rounds its sum to the printed one. The
+     budget a quotient of Cascade's own spends stays beside a typed leaf, which
+     is most often the literal it reads as ([calc(1/3*100%)]), and goes beside a
+     substitution. *)
+  let scaled = is_scaled scaling in
+  let budget =
+    ctx.budget
+    &&
+    match scaling with
+    | By_substitution -> false
+    | Unscaled | By_typed_leaf -> true
+  in
+  let round = if scaled then Fun.id else round in
+  let combine op (a : a) (b : a) : a option =
+    if scaled then None else combine op a b
+  in
+  let calc_num f = folded_num ~scaling f in
   let l = fst lf and r = fst rf in
   let lc = calc_operand_value l in
   let rc = calc_operand_value r in
   let keep () =
-    (Expr (settle_computed round lf, op, settle_computed round rf), false)
+    let scaling_l, scaling_r = operands_scaling ~scaling l op r in
+    let settle scaling operand =
+      if is_scaled scaling then fst operand else settle_computed round operand
+    in
+    (Expr (settle scaling_l lf, op, settle scaling_r rf), false)
   in
   let value v = (Val v, computed) in
   let zero_fold = fold_zero_numeric_expr lc op rc in
@@ -1004,6 +1118,13 @@ let zero_length_product ~ctx l r =
   | x, Num 0. | Num 0., x -> length x
   | _ -> false
 
+(* Whether each operand of [left op right] needs the calculation's own type, and
+   how it is scaled. *)
+let operand_positions (own, scaling) left op right =
+  let own_l, own_r = operands_own ~own left op right in
+  let scaling_l, scaling_r = operands_scaling ~scaling left op right in
+  ((own_l, scaling_l), (own_r, scaling_r))
+
 let eval_typed_calc : type a.
     math_fn:(math_fn -> a calc) ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
@@ -1022,24 +1143,24 @@ let eval_typed_calc : type a.
      [calc()] that stays. Rounding an intermediate product instead feeds the
      shortened coefficient back into the next fold and compounds the error:
      [calc(100px * sqrt(2) * sqrt(2))] is still [200px]. *)
-  (* [own] is set at a position that needs a value of the calculation's own
-     type, as opposed to a number factor's. *)
-  let rec reduce ~own (calc : a calc) : a calc * bool =
+  (* [pos] is its [scaling] and [own], set where a value of the calculation's
+     own type is needed, as opposed to a number factor's. *)
+  let rec reduce ((own, scaling) as pos) (calc : a calc) : a calc * bool =
     match calc with
-    | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf ->
+    | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count | Math_const _) as
+      leaf ->
         (leaf, false)
-    | Math_const _ as leaf -> (leaf, false)
     | Math_fn fn when math_fn_contains_var fn -> (Math_fn fn, false)
     | Math_fn fn -> (
         match math_fn fn with
         | Val _ as reduced -> (reduced, true)
         | reduced -> (reduced, false))
-    | Nested inner -> wrap ~own (fun r -> Nested r) inner
-    | Parens inner -> wrap ~own (fun r -> Parens r) inner
+    | Nested inner -> wrap pos (fun r -> Nested r) inner
+    | Parens inner -> wrap pos (fun r -> Parens r) inner
     | Expr (left, op, right) -> (
-        let own_left, own_right = operands_own ~own left op right in
-        let lf = reduce ~own:own_left left in
-        let rf = reduce ~own:own_right right in
+        let pos_l, pos_r = operand_positions pos left op right in
+        let lf = reduce pos_l left in
+        let rf = reduce pos_r right in
         match op with
         | Mul
           when own && holds_length && zero_length_product ~ctx (fst lf) (fst rf)
@@ -1048,12 +1169,12 @@ let eval_typed_calc : type a.
         | _ ->
             let computed = calc_is_computed left || calc_is_computed right in
             fold_typed_expr ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed
-              lf op rf)
-  and wrap ~own rewrap inner =
-    let reduced, computed = reduce ~own inner in
+              ~scaling lf op rf)
+  and wrap pos rewrap inner =
+    let reduced, computed = reduce pos inner in
     (unwrap_grouping ~ctx ~rewrap reduced, computed)
   in
-  normalize_calc_parens (settle_computed round (reduce ~own:true calc))
+  normalize_calc_parens (settle_computed round (reduce (true, Unscaled) calc))
 
 (* A dimension the author could not have written as a literal. CSS Values 4 sec.
    10.3 keeps a [calc()] valid wherever its range is exceeded and clamps at
@@ -1191,7 +1312,9 @@ let pp_unit ?always:_ ctx f suffix =
      computes a coefficient, not to the printer that serialises one. *)
   if Float.is_nan f then Pp.nan_value ctx suffix
   else (
-    Pp.string ctx (Pp.string_of_float ~drop_leading_zero:true f);
+    Pp.string ctx
+      (if Pp.exact_numbers ctx then Pp.string_of_float_exact f
+       else Pp.string_of_float ~drop_leading_zero:true f);
     Pp.string ctx suffix)
 
 (** What a calc expression over static operands reduces to, keeping the unit CSS

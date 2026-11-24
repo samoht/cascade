@@ -46,6 +46,12 @@ type ctx = {
           serialisation without evergreen-target facts, so target-dependent
           shortenings (e.g. the oklch/lch chroma number -> percentage swap) are
           suppressed. *)
+  exact_numbers : bool;
+      (** Set while printing a factor of a product or quotient whose other
+          factor is unresolved at minify time ([var()], [sibling-index()]): a
+          number prints the shortest digits of its double instead of eight
+          decimal places, since the product multiplies any rounding. See
+          {!exact}. *)
   rename_custom_property : string -> string;
       (** Rewrites a custom property's name, without its leading [--], wherever
           one is written: the name a declaration declares and the name a [var()]
@@ -269,8 +275,16 @@ val nan_value : ctx -> string -> unit
     sec. 10.13. *)
 
 val float : float t
-(** [float] is {!string_of_float} with [drop_leading_zero], except that NaN is
+(** [float] is {!string_of_float} with [drop_leading_zero], or
+    {!string_of_float_exact} when the context is {!exact}, except that NaN is
     {!nan_value}'s [calc(NaN)]. *)
+
+val exact : ctx -> ctx
+(** [exact ctx] is [ctx] printing every number at the shortest digits of its
+    double ({!field-exact_numbers}). *)
+
+val exact_numbers : ctx -> bool
+(** [exact_numbers ctx] is whether [ctx] is {!exact}. *)
 
 val float_n : int -> float t
 (** [float_n n] is {!float} rounded half up to at most [n] decimal places, by

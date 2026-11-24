@@ -341,6 +341,14 @@ let restore t s =
   | No_stream | Holds _ -> ());
   t.cvs <- s
 
+let consumed t s =
+  let rec go acc = function
+    | l when l == t.cvs -> Some (List.rev acc)
+    | [] -> None
+    | hd :: tl -> go (hd :: acc) tl
+  in
+  go [] s
+
 let at_snapshot t s =
   fill t;
   t.cvs == s
