@@ -310,6 +310,8 @@ needs them in an exhaustive match.
   the argument (#1618).
 - **`Optimize.merge_box_shorthand_longhands` and
   `Optimize.merge_overflow_longhands` take `~floors`,** the targets (#1633).
+- **`Pp.ctx` loses `in_function`.** It only chose how to case `currentcolor`;
+  delete the field (#1648).
 
 ### Minified output
 
@@ -1150,6 +1152,9 @@ They are the reason to minify again, and are grouped by what they touch.
 - `lab()` and `oklab()` printed a percentage alpha as a number: `lab(50% 20 30
   / 40%)` came out as `lab(50% 20 30 / .4)`. It prints as written, as in the
   other colour functions (#1370).
+- **`currentcolor` prints in lowercase.** It printed as `currentColor` outside
+  a function. Both printers write `currentcolor`, as CSSOM serialises a keyword
+  and Chrome writes it back (#1648).
 
 ### Comparing stylesheets
 
