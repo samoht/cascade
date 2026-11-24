@@ -928,6 +928,8 @@ differently. They are the reason to minify again.
 - and the metric override descriptors keep a math function that folds below
   zero** (`calc(-10%)`), which CSS Values 4 sec. 10.12 clamps at
   computed-value time, instead of dropping it (#1625).
+- `offset` shorthand takes a negative distance** (`offset:none -1px`), as
+  `offset-distance` does (CSS Motion Path 1 sec. 2.2) (#1626).
 
 #### Stable output
 
