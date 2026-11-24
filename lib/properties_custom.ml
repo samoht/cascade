@@ -162,6 +162,7 @@ let string_of_channel : channel -> string = function
   | Num f -> Pp.string_of_float f
   | Pct p -> String.concat "" [ Pp.string_of_float p; "%" ]
   | Var _ -> "0"
+  | Calc _ as c -> Pp.to_string pp_channel c
   | None -> "none"
 
 let string_of_kind_value : type a. a kind -> a -> string =

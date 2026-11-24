@@ -262,7 +262,7 @@ let test_color_oklch_printing () =
     Oklch
       {
         l = Some (Var (var_ref "l"));
-        c = Some 0.237;
+        c = Some (Axis 0.237);
         h = Unitless 25.;
         alpha = None;
       }
@@ -711,7 +711,20 @@ let test_channel () =
   check_channel ~expected:"128" "127.6";
   check_channel ~expected:"128" "127.5";
   check_channel ~expected:"127" "126.5";
+  check_channel ~expected:"calc(sibling-index()*10)"
+    "calc(sibling-index() * 10)";
   neg_cursor read_channel ""
+
+let test_axis () =
+  check_axis "12.5";
+  check_axis ~expected:"-.5" "-0.5";
+  check_axis ~expected:"calc(sibling-index()*.01)"
+    "calc(sibling-index() * 0.01)";
+  check_axis ~expected:"calc(sibling-count()*1%)" "calc(sibling-count() * 1%)";
+  (* Only the colour function names the scale a percentage reads at. *)
+  neg_cursor read_axis "10%";
+  neg_cursor read_axis "1deg";
+  neg_cursor read_axis "calc(sibling-index() * 1deg)"
 
 let test_rgb () =
   (* RGB channel values *)
@@ -1259,6 +1272,7 @@ let suite =
       test_case "hue_interpolation" `Quick test_hue_interpolation;
       test_case "component" `Quick test_component;
       test_case "channel" `Quick test_channel;
+      test_case "axis" `Quick test_axis;
       test_case "rgb" `Quick test_rgb;
       test_case "spec values and color current-work" `Quick
         spec_values_color_current;

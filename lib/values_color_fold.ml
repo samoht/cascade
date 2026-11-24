@@ -152,8 +152,8 @@ let minify_relative_color_spaces body =
 
 let zero_percentage : percentage option = Some (Pct 0.)
 
-let zero_float_of_none (v : float option) : float option =
-  match v with None -> Some 0. | Some f -> Some f
+let zero_axis_of_none (v : axis option) : axis option =
+  match v with None -> Some (Axis 0.) | Some _ -> v
 
 let zero_hue_of_none = function Hue_none -> Unitless 0. | h -> h
 
@@ -164,8 +164,8 @@ let fold_relative_color_pass_through name origin tail =
         (Lab
            {
              l = (match l with None -> zero_percentage | Some _ -> l);
-             a = zero_float_of_none a;
-             b = zero_float_of_none b;
+             a = zero_axis_of_none a;
+             b = zero_axis_of_none b;
              alpha;
            })
   | "oklab", Oklab { l; a; b; alpha }, ("l a b" | "l a b/alpha") ->
@@ -173,8 +173,8 @@ let fold_relative_color_pass_through name origin tail =
         (Oklab
            {
              l = (match l with None -> zero_percentage | Some _ -> l);
-             a = zero_float_of_none a;
-             b = zero_float_of_none b;
+             a = zero_axis_of_none a;
+             b = zero_axis_of_none b;
              alpha;
            })
   | "lch", Lch { l; c; h; alpha }, ("l c h" | "l c h/alpha") ->
@@ -182,7 +182,7 @@ let fold_relative_color_pass_through name origin tail =
         (Lch
            {
              l = (match l with None -> zero_percentage | Some _ -> l);
-             c = zero_float_of_none c;
+             c = zero_axis_of_none c;
              h = zero_hue_of_none h;
              alpha;
            })
@@ -191,7 +191,7 @@ let fold_relative_color_pass_through name origin tail =
         (Oklch
            {
              l = (match l with None -> zero_percentage | Some _ -> l);
-             c = zero_float_of_none c;
+             c = zero_axis_of_none c;
              h = zero_hue_of_none h;
              alpha;
            })
@@ -486,11 +486,15 @@ let static_alpha_value = function
 
 let alpha_of_mixed_value f = if f >= 1. then (None : alpha) else Num f
 
-let mix_optional_float ~w1 ~w2 v1 v2 =
+(* A [none] axis carries the other operand's over; a calculation an element
+   resolves has no value to mix. *)
+let mix_axis ~w1 ~w2 (v1 : axis option) (v2 : axis option) =
   match (v1, v2) with
-  | Some f1, Some f2 -> Some ((f1 *. w1) +. (f2 *. w2))
-  | Some f, None | None, Some f -> Some f
-  | None, None -> None
+  | Some (Axis f1), Some (Axis f2) ->
+      Some (Some (Axis ((f1 *. w1) +. (f2 *. w2))))
+  | Some (Axis_calc _), _ | _, Some (Axis_calc _) -> None
+  | Some a, None | None, Some a -> Some (Some a)
+  | None, None -> Some None
 
 (* Mix the lightness channel of a lab-family colour. [l_num_max] is the L value
    that 100% denotes: 100. for lab/lch (a bare number is already on the 0-100
@@ -539,8 +543,8 @@ let mix_lab_like_result ~l_num_max ~p1 ~p2 build l1 a1 b1 alpha1 l2 a2 b2 alpha2
   | Some (w1, w2, alpha_mult) -> (
       match
         ( mix_lightness ~l_num_max ~w1 ~w2 l1 l2,
-          Some (mix_optional_float ~w1 ~w2 a1 a2),
-          Some (mix_optional_float ~w1 ~w2 b1 b2),
+          mix_axis ~w1 ~w2 a1 a2,
+          mix_axis ~w1 ~w2 b1 b2,
           mix_alpha ~w1 ~w2 ~alpha_mult alpha1 alpha2 )
       with
       | Some l, Some a, Some b, Some alpha -> Some (build l a b alpha)
@@ -553,7 +557,7 @@ let mix_lch_like_result ~l_num_max ~p1 ~p2 build l1 c1 h1 alpha1 l2 c2 h2 alpha2
   | Some (w1, w2, alpha_mult) -> (
       match
         ( mix_lightness ~l_num_max ~w1 ~w2 l1 l2,
-          Some (mix_optional_float ~w1 ~w2 c1 c2),
+          mix_axis ~w1 ~w2 c1 c2,
           mix_hue_shorter ~w2 h1 h2,
           mix_alpha ~w1 ~w2 ~alpha_mult alpha1 alpha2 )
       with
@@ -673,7 +677,7 @@ let static_color_to_linear_srgb (c : color) :
                   Some (Color_space.linear_srgb_of_xyz65 xyz_d65, alpha_f)
               | _ -> None))
       | _ -> None)
-  | Oklab { l = Some l; a = Some a; b = Some b; alpha } -> (
+  | Oklab { l = Some l; a = Some (Axis a); b = Some (Axis b); alpha } -> (
       let l =
         match l with
         | (Num f : percentage) -> Some f
@@ -691,7 +695,7 @@ let static_color_to_linear_srgb (c : color) :
       | Some l, Some alpha_f ->
           Some (Color_space.linear_srgb_of_oklab (l, a, b), alpha_f)
       | _ -> None)
-  | Oklch { l = Some l; c = Some c; h; alpha } -> (
+  | Oklch { l = Some l; c = Some (Axis c); h; alpha } -> (
       let l =
         match l with
         | (Num f : percentage) -> Some f
@@ -711,7 +715,7 @@ let static_color_to_linear_srgb (c : color) :
           let lab = Color_space.oklab_of_oklch (l, c, h) in
           Some (Color_space.linear_srgb_of_oklab lab, alpha_f)
       | _ -> None)
-  | Lab { l = Some l; a = Some a; b = Some b; alpha } -> (
+  | Lab { l = Some l; a = Some (Axis a); b = Some (Axis b); alpha } -> (
       let l =
         match l with
         | (Pct f : percentage) -> Some f
@@ -731,7 +735,7 @@ let static_color_to_linear_srgb (c : color) :
           let xyz_d65 = Color_space.d65_of_xyz50 xyz_d50 in
           Some (Color_space.linear_srgb_of_xyz65 xyz_d65, alpha_f)
       | _ -> None)
-  | Lch { l = Some l; c = Some c; h; alpha } -> (
+  | Lch { l = Some l; c = Some (Axis c); h; alpha } -> (
       let l =
         match l with
         | (Pct f : percentage) -> Some f
@@ -775,7 +779,7 @@ let static_srgb_floats (c : color) : ((float * float * float) * float) option =
     | Num f -> Some (f /. 255.)
     | Pct f -> Some (f /. 100.)
     | None -> Some 0.
-    | Var _ -> None
+    | Var _ | Calc _ -> None
   in
   let channels r g b a =
     match (channel r, channel g, channel b, alpha a) with
@@ -985,8 +989,8 @@ let mix_in_oklab_space c1 c2 ~p1 ~p2 : color option =
             (Oklab
                {
                  l = Some (Num l : percentage);
-                 a = Some a;
-                 b = Some b;
+                 a = Some (Axis a);
+                 b = Some (Axis b);
                  alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
   | _ -> None
@@ -1008,7 +1012,7 @@ let mix_in_oklch_space c1 c2 ~p1 ~p2 hue : color option =
             (Oklch
                {
                  l = Some (Num l : percentage);
-                 c = Some c;
+                 c = Some (Axis c);
                  h = Unitless h;
                  alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
@@ -1032,8 +1036,8 @@ let mix_in_lab_space c1 c2 ~p1 ~p2 : color option =
             (Lab
                {
                  l = Some (Num l : percentage);
-                 a = Some a;
-                 b = Some b;
+                 a = Some (Axis a);
+                 b = Some (Axis b);
                  alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))
   | _ -> None
@@ -1056,7 +1060,7 @@ let mix_in_lch_space c1 c2 ~p1 ~p2 hue : color option =
             (Lch
                {
                  l = Some (Num l : percentage);
-                 c = Some c;
+                 c = Some (Axis c);
                  h = Unitless h;
                  alpha = alpha_of_unit_float (interp_alpha *. alpha_mult);
                }))

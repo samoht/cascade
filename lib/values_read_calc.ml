@@ -910,6 +910,12 @@ and infer_calc_type : type a. a calc -> inferred_calc_type = function
       | Deferred, _ | _, Deferred -> Deferred
       | Dimension l, Dimension r -> Dimension (l - r))
 
+let calc_is_number calc =
+  match infer_calc_type calc with
+  | Dimension 0 -> Some true
+  | Dimension _ | Result_unit _ -> Some false
+  | Deferred | Invalid -> None
+
 let validate_calc_type t result_type calc =
   let inferred = infer_calc_type calc in
   let accepted =

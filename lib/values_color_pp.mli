@@ -11,6 +11,9 @@ val pp_channel : channel Pp.t
 val pp_hue : hue Pp.t
 (** [pp_hue] pretty-prints {!Values_intf.hue} values. *)
 
+val pp_axis : axis Pp.t
+(** [pp_axis] pretty-prints {!Values_intf.axis} values. *)
+
 val pp_alpha : alpha Pp.t
 (** [pp_alpha] pretty-prints {!Values_intf.alpha} values. *)
 

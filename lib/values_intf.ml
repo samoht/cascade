@@ -472,6 +472,10 @@ type channel =
   | Num of float
   | Pct of float
   | Var of channel var
+  | Calc of channel calc
+      (** A math function that resolves only on an element, such as one holding
+          [sibling-index()] (CSS Values 5 sec. 9). A static one is read as the
+          number it computes. *)
   | None
       (** CSS Color 4 sec. 4.4 [none] sentinel. Carries through to the
           serialised output as the [none] keyword and participates in
@@ -513,6 +517,15 @@ type alpha =
 
 (** CSS hue values (for HSL/HWB) *)
 type hue = Unitless of float | Angle of angle | Var of hue var | Hue_none
+
+(** A Lab-family [a], [b] or chroma coordinate (CSS Color 4 sec. 9). *)
+type axis =
+  | Axis of float
+      (** The coordinate, a percentage read as the number it scales to. *)
+  | Axis_calc of percentage calc
+      (** A math function that resolves only on an element, such as one holding
+          [sibling-index()] (CSS Values 5 sec. 9). A static one is read as the
+          number it computes. *)
 
 (** CSS color component values *)
 type component =
@@ -642,21 +655,21 @@ type color =
   | Attribute of string * color option
   | Lab of {
       l : percentage option;
-      a : float option;
-      b : float option;
+      a : axis option;
+      b : axis option;
       alpha : alpha;
     }  (** Lab color space. l, a and b can be [None] to represent CSS [none]. *)
-  | Oklch of { l : percentage option; c : float option; h : hue; alpha : alpha }
+  | Oklch of { l : percentage option; c : axis option; h : hue; alpha : alpha }
       (** OKLCH color space. l and c can be [None] to represent CSS [none]. *)
   | Oklab of {
       l : percentage option;
-      a : float option;
-      b : float option;
+      a : axis option;
+      b : axis option;
       alpha : alpha;
     }
       (** Oklab color space. l, a and b can be [None] to represent CSS 'none'
           keyword. *)
-  | Lch of { l : percentage option; c : float option; h : hue; alpha : alpha }
+  | Lch of { l : percentage option; c : axis option; h : hue; alpha : alpha }
       (** LCH color space. l and c can be [None] to represent CSS [none]. *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | System of system_color

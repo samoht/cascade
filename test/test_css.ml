@@ -519,7 +519,8 @@ let constructed_custom_property_reparses () =
           { l = Some (Pct 50.); c = None; h = Unitless 120.; alpha = None } );
       ( "oklab-none-axis",
         Css.Values.Oklab
-          { l = Some (Pct 50.); a = None; b = Some 0.12; alpha = None } );
+          { l = Some (Pct 50.); a = None; b = Some (Axis 0.12); alpha = None }
+      );
       ( "rgb-var-channel",
         Css.Values.Rgb
           (Channels

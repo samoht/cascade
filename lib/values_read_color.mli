@@ -20,6 +20,11 @@ val normalize_hue : float -> float
 val read_hue : Cursor.t -> hue
 (** [read_hue t] parses a CSS hue value. *)
 
+val read_axis : Cursor.t -> axis
+(** [read_axis t] parses a Lab-family axis written as a number or a math
+    function. A percentage is refused: only the colour function names the scale
+    that reads it. *)
+
 val conversion_error_of_color : color -> float
 (** [conversion_error_of_color c] is the conversion error a fold takes from the
     space [c] is written in. *)

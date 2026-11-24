@@ -271,8 +271,12 @@ let normalize_lab_family_mix effective color1 color2 ~p1 ~p2 =
 (* Round the coefficients of a lab-family colour to its canonical decimal
    budget, [extra] decimals finer. *)
 let round_lab_family_axes ~extra ~lossless (c : color) : color =
-  let r3 = Option.map (round_color_axis ~lossless ~decimals:(3 + extra)) in
-  let r1 = Option.map (round_color_axis ~lossless ~decimals:(1 + extra)) in
+  let round ~decimals : axis option -> axis option = function
+    | Some (Axis f) -> Some (Axis (round_color_axis ~lossless ~decimals f))
+    | (Some (Axis_calc _) | None) as a -> a
+  in
+  let r3 = round ~decimals:(3 + extra) in
+  let r1 = round ~decimals:(1 + extra) in
   let ok_l =
     canonical_color_lightness ~lossless ~pct_scale:0.01
       ~axis_max_decimals:(3 + extra)
@@ -396,8 +400,8 @@ let fold_relative_color_static_origin name origin tail : color option =
                   (Oklab
                      {
                        l = Some (Pct (l *. 100.));
-                       a = Some a;
-                       b = Some b;
+                       a = Some (Axis a);
+                       b = Some (Axis b);
                        alpha;
                      })
             | "oklch" ->
@@ -409,17 +413,30 @@ let fold_relative_color_static_origin name origin tail : color option =
                   (Oklch
                      {
                        l = Some (Pct (l *. 100.));
-                       c = Some c;
+                       c = Some (Axis c);
                        h = Unitless h;
                        alpha;
                      })
             | "lab" ->
                 let l, a, b = lab_d50 () in
-                Some (Lab { l = Some (Pct l); a = Some a; b = Some b; alpha })
+                Some
+                  (Lab
+                     {
+                       l = Some (Pct l);
+                       a = Some (Axis a);
+                       b = Some (Axis b);
+                       alpha;
+                     })
             | "lch" ->
                 let l, c, h = Color_space.lch_of_lab (lab_d50 ()) in
                 Some
-                  (Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha })
+                  (Lch
+                     {
+                       l = Some (Pct l);
+                       c = Some (Axis c);
+                       h = Unitless h;
+                       alpha;
+                     })
             | _ -> None))
 
 (* AST-level color canonicalisation: the value-changing colour folds live here,
