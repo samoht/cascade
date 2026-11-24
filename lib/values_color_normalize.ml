@@ -303,22 +303,254 @@ let srgb_verdict_of_color (c : color) : Color_space.srgb_fold =
         linear
   | None -> Color_space.Out_of_gamut
 
+(* A fold computes coefficients that can print longer than the call it replaces,
+   and the two are one colour, so the shorter is kept. *)
+let printed_length c = Pp.size ~minify:true pp_color c
+
+(* One coefficient of a rounded colour: the exact value in the unit the rounded
+   one prints in, the rounded value, and how to write another value in its
+   place. *)
+type slot = { exact : float; rounded : float; set : float -> color -> color }
+
+let digits f = String.length (Pp.string_of_float ~drop_leading_zero:true f)
+
+let decimals f =
+  let s = Pp.string_of_float f in
+  match String.index_opt s '.' with
+  | Some i -> String.length s - i - 1
+  | None -> 0
+
+let slot ~exact ~rounded set = Some { exact; rounded; set }
+
+(* A lightness [Pct p] is the number [p *. scale], so the exact value is read in
+   the unit the rounded lightness prints in. *)
+let lightness_slot ~scale (exact : percentage option)
+    (rounded : percentage option) set =
+  let number : percentage option -> float option = function
+    | Some (Num f) -> Some f
+    | Some (Pct f) -> Some (f *. scale)
+    | _ -> None
+  in
+  match (rounded, number exact) with
+  | Some (Num r), Some x ->
+      slot ~exact:x ~rounded:r (fun v -> set (Some (Num v : percentage)))
+  | Some (Pct r), Some x ->
+      slot ~exact:(x /. scale) ~rounded:r (fun v -> set (Some (Pct v)))
+  | _ -> None
+
+let axis_slot (exact : axis option) (rounded : axis option) set =
+  match (exact, rounded) with
+  | Some (Axis x), Some (Axis r) ->
+      slot ~exact:x ~rounded:r (fun v -> set (Some (Axis v)))
+  | _ -> None
+
+let hue_slot (exact : hue) (rounded : hue) set =
+  match (deg_of_hue exact, rounded) with
+  | Some x, Unitless r ->
+      (* A hue reads back modulo 360, so [360] is written [0]. *)
+      slot ~exact:x ~rounded:r (fun v -> set (Unitless (normalize_hue v)))
+  | _ -> None
+
+let rectangular_slots (exact : color) (rounded : color) =
+  match (exact, rounded) with
+  | Lab e, Lab r ->
+      let set_l l = function Lab c -> Lab { c with l } | c -> c in
+      let set_a a = function Lab c -> Lab { c with a } | c -> c in
+      let set_b b = function Lab c -> Lab { c with b } | c -> c in
+      [
+        lightness_slot ~scale:1. e.l r.l set_l;
+        axis_slot e.a r.a set_a;
+        axis_slot e.b r.b set_b;
+      ]
+  | Oklab e, Oklab r ->
+      let set_l l = function Oklab c -> Oklab { c with l } | c -> c in
+      let set_a a = function Oklab c -> Oklab { c with a } | c -> c in
+      let set_b b = function Oklab c -> Oklab { c with b } | c -> c in
+      [
+        lightness_slot ~scale:0.01 e.l r.l set_l;
+        axis_slot e.a r.a set_a;
+        axis_slot e.b r.b set_b;
+      ]
+  | _ -> []
+
+let polar_slots (exact : color) (rounded : color) =
+  match (exact, rounded) with
+  | Lch e, Lch r ->
+      let set_l l = function Lch c -> Lch { c with l } | c -> c in
+      let set_c chroma = function
+        | Lch c -> Lch { c with c = chroma }
+        | c -> c
+      in
+      let set_h h = function Lch c -> Lch { c with h } | c -> c in
+      [
+        lightness_slot ~scale:1. e.l r.l set_l;
+        axis_slot e.c r.c set_c;
+        hue_slot e.h r.h set_h;
+      ]
+  | Oklch e, Oklch r ->
+      let set_l l = function Oklch c -> Oklch { c with l } | c -> c in
+      let set_c chroma = function
+        | Oklch c -> Oklch { c with c = chroma }
+        | c -> c
+      in
+      let set_h h = function Oklch c -> Oklch { c with h } | c -> c in
+      [
+        lightness_slot ~scale:0.01 e.l r.l set_l;
+        axis_slot e.c r.c set_c;
+        hue_slot e.h r.h set_h;
+      ]
+  | _ -> []
+
+let component_slots (exact : color) (rounded : color) =
+  match (exact, rounded) with
+  | Color e, Color r when List.compare_lengths e.components r.components = 0 ->
+      let set i v = function
+        | Color c ->
+            Color
+              {
+                c with
+                components =
+                  List.mapi
+                    (fun j k -> if j = i then (Num v : component) else k)
+                    c.components;
+              }
+        | c -> c
+      in
+      List.combine e.components r.components
+      |> List.mapi (fun i -> function
+        | (Num x : component), (Num r : component) ->
+            slot ~exact:x ~rounded:r (set i)
+        | _ -> None)
+  | _ -> []
+
+(* The coefficients of [rounded] a search may respell, beside their exact values
+   in [exact]: a [none], a [var()] or a calculation has none. *)
+let slots exact rounded : slot list =
+  List.filter_map Fun.id
+    (rectangular_slots exact rounded
+    @ polar_slots exact rounded
+    @ component_slots exact rounded)
+
+(* The values a slot may take: the exact value rounded down and up at each
+   precision up to the one the rounding kept, so no channel prints more decimals
+   than it did. *)
+let candidates { exact; rounded; _ } =
+  let rec go d acc =
+    if d > decimals rounded then acc
+    else
+      let m = 10. ** float_of_int d in
+      let down = Pp.printed (Float.floor (exact *. m) /. m) in
+      let up = Pp.printed (Float.ceil (exact *. m) /. m) in
+      let add v acc =
+        if List.exists (fun (w, _) -> Float.equal v w) acc then acc
+        else (v, digits v) :: acc
+      in
+      go (d + 1) (add up (add down acc))
+  in
+  go 0 []
+
+let rec product = function
+  | [] -> [ [] ]
+  | xs :: rest ->
+      let tails = product rest in
+      List.concat_map (fun x -> List.map (fun t -> x :: t) tails) xs
+
+(* The fold budget of docs/invariants.md M6: 0.002 in OKLab. *)
+let fold_budget = 0.002
+
+(* Whether a colour lies within the fold budget of [exact]. *)
+let near exact =
+  let oklab c =
+    Option.map
+      (fun (linear, _) -> Color_space.oklab_of_linear_srgb linear)
+      (static_color_to_linear_srgb c)
+  in
+  let origin = oklab exact in
+  fun c ->
+    match (origin, oklab c) with
+    | Some o, Some p -> Color_space.oklab_distance o p <= fold_budget
+    | _ -> false
+
+(* Whether the values [value] written into [rounded]'s slots paint [bytes] when
+   an engine reads each number as a double and as its nearest 32-bit float, the
+   two readings [decidable_channels] weighs, within the fold budget. *)
+let paints ~bytes ~near rounded slots value =
+  let write read =
+    List.fold_left2 (fun c s v -> s.set (read v) c) rounded slots value
+  in
+  let alike c =
+    Color_space.equal_srgb_fold (srgb_verdict_of_color c)
+      (Color_space.Fold bytes)
+  in
+  let double = write Fun.id in
+  near double && alike double && alike (write single_of_float)
+
+(* The shortest respelling of [rounded] that paints the bytes [bytes] the exact
+   colour does. [rounded] paints them, so it is the answer when nothing shorter
+   does. *)
+let shortest_alike ~bytes ~exact rounded =
+  let slots = slots exact rounded in
+  let near = near exact in
+  (* A value whose own move, the other coefficients exact, leaves the budget
+     takes no part: the budget is a distance, and the others' moves add to it
+     along axes near enough orthogonal. *)
+  let at_exact = List.fold_left (fun c s -> s.set s.exact c) rounded slots in
+  let candidates =
+    List.map
+      (fun s ->
+        List.filter (fun (v, _) -> near (s.set v at_exact)) (candidates s))
+      slots
+  in
+  let paints = paints ~bytes ~near rounded slots in
+  (* Candidates go by the digits their numbers print, fewest first, which costs
+     an addition each; a separator the printer elides or a percentage it prefers
+     only moves the printed length, measured on the one that paints. *)
+  let total value = List.fold_left (fun n (_, d) -> n + d) 0 value in
+  let written = List.fold_left (fun n s -> n + digits s.rounded) 0 slots in
+  let length = printed_length rounded in
+  let respell value =
+    List.fold_left2 (fun c s (v, _) -> s.set v c) rounded slots value
+  in
+  product candidates
+  |> List.filter (fun value -> total value < written)
+  |> List.stable_sort (fun a b -> Int.compare (total a) (total b))
+  |> List.find_map (fun value ->
+      let c = respell value in
+      if paints (List.map fst value) && printed_length c < length then Some c
+      else None)
+  |> Option.value ~default:rounded
+
 (* Reduce a colour's coefficients to the fewest decimals [round] offers whose
    fold verdict is the exact colour's. An in-gamut colour whose byte is
    ambiguous must keep the precision that fixes which side of the half-integer
    it is on, and an out-of-gamut colour the precision the engine gamut maps, so
    a shorter spelling that changes either is not emitted. Five decimals past the
-   canonical budget reach the printer's eight; past them the exact colour
-   stays. *)
+   canonical budget reach the printer's eight; past them the exact colour stays.
+   Where the exact colour paints known bytes, the rounding is a bound: the
+   colour takes the shortest spelling within it that paints them.
+
+   That search moves a coefficient further than the rounding does, so it rests
+   on the verdict being the engine's, and it runs only where the conversion is
+   the Lab family's or none. The wide-gamut matrices drift from Chromium's past
+   their bound: CSS Color 4 computes [color-mix(in a98-rgb,red,blue)] to an sRGB
+   red of 128.518, which Chromium 153 paints as 128. *)
 let verdict_preserving round ~lossless (c : color) : color =
   let exact = round ~extra:0 ~lossless:true c in
   let verdict = srgb_verdict_of_color exact in
+  let searched =
+    (not lossless)
+    && conversion_error_of_color exact <= Color_space.lab_conversion_error
+  in
   let rec finer extra =
     if extra > 5 then exact
     else
       let rounded = round ~extra ~lossless c in
       if Color_space.equal_srgb_fold (srgb_verdict_of_color rounded) verdict
-      then rounded
+      then
+        match verdict with
+        | Color_space.Fold bytes when searched ->
+            shortest_alike ~bytes ~exact rounded
+        | Fold _ | Ambiguous | Out_of_gamut -> rounded
       else finer (extra + 1)
   in
   finer 0
@@ -510,10 +742,6 @@ let has_missing_component (c : color) =
   | Hwb { a = Alpha_none; _ } ->
       true
   | _ -> false
-
-(* A fold computes coefficients that can print longer than the call it replaces,
-   and the two are one colour, so the shorter is kept. *)
-let printed_length c = Pp.size ~minify:true pp_color c
 
 let rec normalize_color ?(lossless = false) ?(enforce_spec = false) (c : color)
     : color =

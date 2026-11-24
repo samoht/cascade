@@ -119,7 +119,15 @@ value that types once substituted evaluates as any other.
 sRGB colour folds to hex or a name through its sRGB bytes, and a Lab-family or
 `color()` colour stays in its own notation, its coefficients rounded to the
 canonical budget and up to five decimals finer where the coarser rounding
-would change the sRGB fold verdict (`verdict_preserving`). A static
+would change the sRGB fold verdict (`verdict_preserving`). When the verdict
+is known bytes and the colour converts through the Lab family or no matrix,
+that rounding is a bound rather than the answer: each coefficient may take the
+exact value rounded down or up at no more decimals than the rounding kept, and
+the colour takes the shortest such spelling that paints the same bytes as a
+double and as a 32-bit float and lies within the 0.002 OKLab budget. A value
+whose own move leaves the budget is dropped before the search. A wide-gamut
+matrix keeps the nearest rounding, since Chromium's arithmetic drifts from
+CSS Color 4's past the conversion bound there. A static
 `color-mix()` or relative colour folds to the colour it computes to, a
 `color(srgb ...)` for an sRGB mix, and the fold is kept only when it prints no
 longer than the call. A `none` component is never resolved, so the canonical
