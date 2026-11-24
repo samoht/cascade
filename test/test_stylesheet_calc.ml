@@ -887,6 +887,69 @@ let v4107_division_zero () =
    [calc(1 - var(--x))] is invalid at computed-value time (Chromium 153: opacity
    [1]). A registered [<percentage>] does not change that. A [var()] fallback
    keeps its authored spelling as well. *)
+(* CSS Values 4 sec. 5.3 (Real Numbers: the <number> type) makes a number a
+   real number, and sec. 5 assumes infinite precision within the
+   specifications. A print rounded to eight decimals is safe on its own, but a
+   factor beside a substitution multiplies the rounding: with [--k:100000000],
+   Chromium 158 computes [calc(.123456789px*var(--k) - 12345678px)] as
+   .890625px and the eight-decimal [.12345679px] spelling as 1px. So a literal
+   multiplied or divided by anything unresolved at minify time keeps the
+   shortest digits of its double, whichever side it stands on, and a term added
+   to one keeps the budget. *)
+let calc_product_keeps_digits () =
+  let minified css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let same css = Alcotest.(check string) css css (minified css) in
+  let stable css =
+    let once = minified css in
+    Alcotest.(check string) ("one pass: " ^ css) once (minified once)
+  in
+  same ".x{width:calc(.123456789px*var(--k) - 12345678px)}";
+  same ".x{width:calc(.123456789px*var(--k))}";
+  same ".x{width:calc(var(--k)*.123456789px)}";
+  same ".x{width:calc(var(--k)/.123456789)}";
+  same ".x{opacity:calc(.123456789*var(--k))}";
+  same ".x{rotate:calc(.123456789deg*var(--k))}";
+  same ".x{width:calc(.123456789px*sibling-index())}";
+  same ".x{width:calc(1px + (.123456789px + 1px)*var(--k))}";
+  Alcotest.(check string)
+    "a folded literal product keeps its digits"
+    ".x{width:calc(.246913578px*var(--k))}"
+    (minified ".x{width:calc(.123456789px*2*var(--k))}");
+  Alcotest.(check string)
+    "a term added to a substitution keeps the budget"
+    ".x{width:calc(.12345679px + var(--k))}"
+    (minified ".x{width:calc(.123456789px + var(--k))}");
+  Alcotest.(check string)
+    "a product of known factors keeps the budget" ".x{width:.24691358px}"
+    (minified ".x{width:calc(.123456789px*2)}");
+  Alcotest.(check string)
+    "two spellings of one double merge in one pass"
+    ".a,.b{width:calc(.123456789px*var(--k))}"
+    (minified
+       ".a{width:calc(.123456789px*var(--k))}.b{width:calc(.1234567890px*var(--k))}");
+  Alcotest.(check string)
+    "two spellings of one sum merge in one pass"
+    ".a,.b{width:calc(.12345679px + var(--k))}"
+    (minified
+       ".a{width:calc(.123456789px + var(--k))}.b{width:calc(.12345679px + \
+        var(--k))}");
+  Alcotest.(check string)
+    "two values of a product stay apart"
+    ".a{width:calc(.123456789px*var(--k))}.b{width:calc(.12345679px*var(--k))}"
+    (minified
+       ".a{width:calc(.123456789px*var(--k))}.b{width:calc(.12345679px*var(--k))}");
+  List.iter stable
+    [
+      ".x{width:calc(.1234567891234px*var(--k) - .1234567891234px)}";
+      ".x{width:calc(2*.1234567891234px*var(--k)/3)}";
+      ".x{width:calc((.1234567891234px - var(--a))*.1234567891234)}";
+      ".x{width:calc(.1234567891234px*.1234567891234*var(--k))}";
+    ]
+
 let v4109_percentage_beside_var () =
   let normalize css =
     match Css.of_string ~strict:false css with
@@ -1140,6 +1203,7 @@ let suite =
       ( "spec values 4 10.9 percentage beside a var() keeps its type",
         `Quick,
         v4109_percentage_beside_var );
+      ("calc product keeps its digits", `Quick, calc_product_keeps_digits);
       ( "spec values 4 10.10.1 zero product over a var() is kept",
         `Quick,
         v41011_zero_product_over_var );
