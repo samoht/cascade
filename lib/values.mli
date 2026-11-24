@@ -606,6 +606,14 @@ val pp_hue : hue Pp.t
 val read_hue : Cursor.t -> hue
 (** [read_hue t] parses a CSS hue value. *)
 
+val pp_axis : axis Pp.t
+(** [pp_axis] pretty-prints {!axis} values. *)
+
+val read_axis : Cursor.t -> axis
+(** [read_axis t] parses a Lab-family axis written as a number or a math
+    function. A percentage is refused: only the colour function names the scale
+    that reads it. *)
+
 val pp_alpha : alpha Pp.t
 (** [pp_alpha] pretty-prints {!alpha} values. *)
 

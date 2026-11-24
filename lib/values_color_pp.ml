@@ -63,6 +63,7 @@ let rec pp_channel : channel Pp.t =
       Pp.float ctx f;
       Pp.char ctx '%'
   | Var v -> pp_var pp_channel ctx v
+  | Calc c -> pp_calc pp_channel ctx c
   | None -> Pp.string ctx "none"
 
 (* A bare or [deg] hue prints in full precision. Minified output can omit an
@@ -330,18 +331,23 @@ let pp_color_lightness ctx (l : percentage option) : percentage option =
   | None -> Pp.string ctx "none");
   l
 
+let pp_axis : axis Pp.t =
+ fun ctx -> function
+  | Axis f -> pp_lab_float ctx f
+  | Axis_calc c -> pp_calc pp_percentage ctx c
+
+let string_of_axis ~pct_scale ctx : axis option -> string = function
+  | Some (Axis f) -> string_of_scaled_color_axis ~pct_scale ctx f
+  | Some (Axis_calc _ as a) -> Pp.render ctx pp_axis a
+  | None -> "none"
+
 let pp_pct_chroma_hue_alpha ~chroma_pct_scale :
-    (percentage option * float option * hue * alpha) Pp.t =
+    (percentage option * axis option * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
   let printed_l = pp_color_lightness ctx l in
-  (match c with
-  | Some c ->
-      let c = string_of_scaled_color_axis ~pct_scale:chroma_pct_scale ctx c in
-      space_after_color_percentage ctx printed_l ~next:(Some c);
-      Pp.string ctx c
-  | None ->
-      space_after_color_percentage ctx printed_l ~next:(Some "none");
-      Pp.string ctx "none");
+  let c = string_of_axis ~pct_scale:chroma_pct_scale ctx c in
+  space_after_color_percentage ctx printed_l ~next:(Some c);
+  Pp.string ctx c;
   Pp.pct_sp ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
@@ -365,19 +371,12 @@ let pp_hue_pct_pct_alpha :
 let pp_hsl = Pp.call "hsl" pp_hue_pct_pct_alpha
 let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
 
-let string_of_lab_axis ~pct_scale ctx f =
-  string_of_scaled_color_axis ~pct_scale ctx f
-
 let pp_lab_like_args ~axis_pct_scale :
-    (percentage option * float option * float option * alpha) Pp.t =
+    (percentage option * axis option * axis option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
   let printed_l = pp_color_lightness ctx l in
-  let string_of_axis = function
-    | Some f -> string_of_lab_axis ~pct_scale:axis_pct_scale ctx f
-    | None -> "none"
-  in
-  let a = string_of_axis a in
-  let b = string_of_axis b in
+  let a = string_of_axis ~pct_scale:axis_pct_scale ctx a in
+  let b = string_of_axis ~pct_scale:axis_pct_scale ctx b in
   space_after_color_percentage ctx printed_l ~next:(Some a);
   Pp.string ctx a;
   (* CSS Color 4 lab / oklab tokens parse the same with or without whitespace
@@ -644,8 +643,7 @@ and pp_color_default : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_color_var ctx v
-  | Current ->
-      Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
+  | Current -> Pp.string ctx "currentcolor"
   | Transparent -> pp_transparent_color ctx
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"

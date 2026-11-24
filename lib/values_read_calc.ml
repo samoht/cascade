@@ -370,7 +370,30 @@ let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  read_calc_term_tail read_a t (read_calc_factor read_a t)
+  let start = Cursor.save t in
+  let term = read_calc_term_tail read_a t (read_calc_factor read_a t) in
+  match term with
+  | Expr (_, (Mul | Div), _) when not (static_number term) ->
+      exact_scaled_factors read_a t start term
+  | _ -> term
+
+(* The lexer reads a number past eight decimals at its eight-decimal value,
+   which a substitution beside it multiplies. A product holding such a number
+   and an unresolved factor is read again with every number at its double, and
+   each factor the unresolved one scales takes that reading. *)
+and exact_scaled_factors : type a.
+    (Cursor.t -> a) -> Cursor.t -> Cursor.snapshot -> a calc -> a calc =
+ fun read_a t start term ->
+  match Cursor.consumed t start with
+  | Some cvs when List.exists (Component.exists_number Token.snapped) cvs -> (
+      let sub =
+        Cursor.sub t (List.map (Component.map_numbers Token.authored) cvs)
+      in
+      match read_calc_term_tail read_a sub (read_calc_factor read_a sub) with
+      | exact when Cursor.is_done sub -> with_scaled_factors term ~exact
+      | _ -> term
+      | exception Cursor.Parse_error _ -> term)
+  | _ -> term
 
 and read_calc_term_tail : type a.
     (Cursor.t -> a) -> Cursor.t -> a calc -> a calc =
@@ -886,6 +909,12 @@ and infer_calc_type : type a. a calc -> inferred_calc_type = function
       | Result_unit _, _ | _, Result_unit _ -> Invalid
       | Deferred, _ | _, Deferred -> Deferred
       | Dimension l, Dimension r -> Dimension (l - r))
+
+let calc_is_number calc =
+  match infer_calc_type calc with
+  | Dimension 0 -> Some true
+  | Dimension _ | Result_unit _ -> Some false
+  | Deferred | Invalid -> None
 
 let validate_calc_type t result_type calc =
   let inferred = infer_calc_type calc in

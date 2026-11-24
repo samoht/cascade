@@ -136,7 +136,7 @@ let test_color () =
   (* Special keywords. Per CSS Color 4 section 6.3 [transparent] canonicalizes
      to the shortest spec-equivalent spelling [#0000] under minify. *)
   check_color ~optimized:"#0000" "transparent";
-  check_color ~expected:"currentColor" "currentcolor";
+  check_color "currentcolor";
   check_color "inherit";
 
   (* Test var() parsing in color context *)
@@ -262,7 +262,7 @@ let test_color_oklch_printing () =
     Oklch
       {
         l = Some (Var (var_ref "l"));
-        c = Some 0.237;
+        c = Some (Axis 0.237);
         h = Unitless 25.;
         alpha = None;
       }
@@ -711,7 +711,20 @@ let test_channel () =
   check_channel ~expected:"128" "127.6";
   check_channel ~expected:"128" "127.5";
   check_channel ~expected:"127" "126.5";
+  check_channel ~expected:"calc(sibling-index()*10)"
+    "calc(sibling-index() * 10)";
   neg_cursor read_channel ""
+
+let test_axis () =
+  check_axis "12.5";
+  check_axis ~expected:"-.5" "-0.5";
+  check_axis ~expected:"calc(sibling-index()*.01)"
+    "calc(sibling-index() * 0.01)";
+  check_axis ~expected:"calc(sibling-count()*1%)" "calc(sibling-count() * 1%)";
+  (* Only the colour function names the scale a percentage reads at. *)
+  neg_cursor read_axis "10%";
+  neg_cursor read_axis "1deg";
+  neg_cursor read_axis "calc(sibling-index() * 1deg)"
 
 let test_rgb () =
   (* RGB channel values *)
@@ -823,37 +836,40 @@ let spec_color5_function_edges () =
   (* Sec. 13.3 premultiplication applies in every interpolation space, not just
      sRGB. Mixing #0088cc 50% with transparent must restore #0088cc at half
      alpha in oklab/oklch/lab/lch too, never bleed transparent's zero
-     coordinates in and darken the result. *)
+     coordinates in and darken the result. Each takes the shortest spelling that
+     paints the mix's bytes: Chromium 153 paints the mix and each spelling below
+     alike, as (0,135,203) at alpha 128 on a canvas. *)
   check_color ~expected:"color-mix(in oklab,#08c 50%,transparent)"
-    ~optimized:"oklab(.5998-.0673-.1241/.5)"
+    ~optimized:"oklab(.6-.0673-31%/.5)"
     "color-mix(in oklab, #0088cc 50%, transparent)";
   check_color ~expected:"color-mix(in oklch,#08c 50%,transparent)"
-    ~optimized:"oklch(.5998 .1412 241.555/.5)"
+    ~optimized:"oklch(.6 .141 241.5/.5)"
     "color-mix(in oklch, #0088cc 50%, transparent)";
   (* With the Editor's Draft D50 white the mix is lab(53.287 -12.256 -44.558),
-     sRGB red 0 on the gamut edge: one decimal (53.3 -12.3 -44.6) leaves the
-     gamut by a byte, and two decimals paint (0,136,204). *)
+     sRGB red 0 on the gamut edge: the nearest decimal (53.3 -12.3 -44.6) leaves
+     the gamut by a byte, and (53.3 -12.3 -44.5) paints (0,136,204). *)
   check_color ~expected:"color-mix(in lab,#08c 50%,transparent)"
-    ~optimized:"lab(53.29-12.26-44.56/.5)"
+    ~optimized:"lab(53.3-12.3-44.5/.5)"
     "color-mix(in lab, #0088cc 50%, transparent)";
   (* The hue is the one the D50 white of CSS Color 4 (Editor's Draft) sec. 2, x
-     0.3457 and y 0.3585, gives: 254.621. *)
+     0.3457 and y 0.3585, gives: 254.621, which paints as 254.6 does. *)
   check_color ~expected:"color-mix(in lch,#08c 50%,transparent)"
-    ~optimized:"lch(53.3 46.2 254.621/.5)"
+    ~optimized:"lch(53.3 46.2 254.6/.5)"
     "color-mix(in lch, #0088cc 50%, transparent)";
   (* No explicit percentage: the 50/50 default restores the colour the same
      way. *)
   check_color ~expected:"color-mix(in oklab,#08c,transparent)"
-    ~optimized:"oklab(.5998-.0673-.1241/.5)"
+    ~optimized:"oklab(.6-.0673-31%/.5)"
     "color-mix(in oklab, #0088cc, transparent)";
   (* A zero-chroma operand (transparent) has a powerless hue in the polar spaces
      (sec. 4.4.1): it carries the opaque operand's hue over instead of
      interpolating toward an undefined angle, so red at half alpha stays red.
      Red's chroma sits on the sRGB gamut edge, and [.258] would leave it, where
      CSS Color 4 sec. 14.2 gamut maps rather than clips, so the fourth decimal
-     stays. *)
+     stays. The hue takes two decimals: Chromium 153 paints the mix and
+     [oklch(.628 .2577 29.24/.5)] alike, as (255,0,0) at alpha 128. *)
   check_color ~expected:"color-mix(in oklch,red 50%,transparent)"
-    ~optimized:"oklch(.628 .2577 29.2339/.5)"
+    ~optimized:"oklch(.628 .2577 29.24/.5)"
     "color-mix(in oklch, red 50%, transparent)";
   (* Typed lab-family operands with partial alpha route through the
      premultiplied path too: mixing a colour 50% with a fully transparent one
@@ -866,9 +882,11 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in srgb,red 30%,blue 30%)"
     ~optimized:"color(srgb .5 0 .5/.6)" "color-mix(in srgb, red 30%, blue 30%)";
   (* A modern-space argument resolves and the mix folds in a single pass
-     (idempotent minify), not only once both operands are already hex. *)
+     (idempotent minify), not only once both operands are already hex. Chromium
+     153 paints the mix and [color(srgb .58 .295 .25/.5)] alike, as (147,76,64)
+     at alpha 128. *)
   check_color ~expected:"color-mix(in srgb,oklch(50%.1 30) 50%,transparent)"
-    ~optimized:"color(srgb .579 .294 .251/.5)"
+    ~optimized:"color(srgb .58 .295 .25/.5)"
     "color-mix(in srgb, oklch(50% 0.1 30) 50%, transparent)";
   check_color ~expected:"color-mix(in oklab,var(--a),var(--b))"
     ~optimized:"color-mix(in oklab,var(--a),var(--b))"
@@ -884,19 +902,23 @@ let spec_color5_function_edges () =
 
 let spec_color5_srgb_float_mix () =
   (* CSS Color 5 sec. 3: convert modern operands to floating-point sRGB,
-     interpolate there, and quantise only the result. *)
+     interpolate there, and quantise only the result. The mix is color(srgb
+     .209263 .222089 .257506), and Chromium 153 paints the shorter color(srgb
+     .209 .223 .26) as (53,57,66) as it does the mix. *)
   check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 20%)"
-    ~optimized:"color(srgb .209 .222 .258)"
+    ~optimized:"color(srgb .209 .223 .26)"
     "color-mix(in srgb, oklch(13% .028 261.692), white 20%)";
   (* A nearby result that does not cross a byte-rounding boundary. *)
   check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 90%)"
     ~optimized:"color(srgb .901 .903 .907)"
     "color-mix(in srgb, oklch(13% .028 261.692), white 90%)";
   (* Premultiplication restores the transparent operand's partner channels; the
-     40% percentage sum scales the resulting alpha to 10%. *)
+     40% percentage sum scales the resulting alpha to 10%. Chromium 153 paints
+     the mix and [color(srgb .01 .028 .07/.1)] alike, as (0,10,20) at alpha
+     26. *)
   check_color
     ~expected:"color-mix(in srgb,oklch(13%7%261.692/.5) 20%,transparent 20%)"
-    ~optimized:"color(srgb .012 .028 .072/.1)"
+    ~optimized:"color(srgb .01 .028 .07/.1)"
     "color-mix(in srgb, oklch(13% .028 261.692 / .5) 20%, transparent 20%)"
 
 (* CSS Color 5 sec. 3: the result of [color-mix()] is a colour in the named
@@ -1176,6 +1198,78 @@ let math_in_colour_channel () =
     (fun value -> Alcotest.(check string) value "" (minify (color value)))
     [ "rgb(calc(1px) 0 0)"; "hsl(calc(1px) 50% 50%)" ]
 
+(* CSS Values 5 sec. 9 tree-counting functions are known only on an element, so
+   a channel holding one is a math function no parse-time fold resolves.
+   Chromium 153 keeps every colour below, and drops the three whose calculation
+   has the wrong type for its channel. *)
+let tree_counting_in_colour_channel () =
+  let minify css = Css.minify (Css.stylesheet css) in
+  let color value = String.concat "" [ ".a{color:"; value; "}" ] in
+  List.iter
+    (fun (value, fn, math) ->
+      let out = minify (color value) in
+      let prefix = String.concat "" [ ".a{color:"; fn; "(" ] in
+      Alcotest.(check bool)
+        (Fmt.str "%s keeps %s in %s" value math out)
+        true
+        (String.starts_with ~prefix out
+        && Astring.String.is_infix ~affix:math out))
+    [
+      ( "hsl(calc(sibling-index()*10deg) 50% 50%)",
+        "hsl",
+        "calc(sibling-index()*10deg)" );
+      ( "hsl(calc(sibling-index()*10) 50% 50%)",
+        "hsl",
+        "calc(sibling-index()*10)" );
+      ("hsl(10 calc(sibling-index()*10%) 50%)", "hsl", "sibling-index()*10%");
+      ("hsl(10,calc(sibling-index()*10%),50%)", "hsl", "sibling-index()*10%");
+      ("rgb(calc(sibling-index()*10) 0 0)", "rgb", "calc(sibling-index()*10)");
+      ("rgb(calc(sibling-index()*10%) 0 0)", "rgb", "sibling-index()*10%");
+      ("rgb(calc(sibling-index()*10),0,0)", "rgb", "calc(sibling-index()*10)");
+      ( "rgba(calc(sibling-index()*10),0,0,.5)",
+        "rgb",
+        "calc(sibling-index()*10)" );
+      ( "hwb(calc(sibling-count()*10deg) 10% 10%)",
+        "hwb",
+        "calc(sibling-count()*10deg)" );
+      ("hwb(10 calc(sibling-count()*10%) 10%)", "hwb", "sibling-count()*10%");
+      ("lab(calc(sibling-index()*10) 0 0)", "lab", "calc(sibling-index()*10)");
+      ("lab(calc(sibling-index()*10%) 0 0)", "lab", "sibling-index()*10%");
+      ("lab(50 calc(sibling-index()*10) 0)", "lab", "calc(sibling-index()*10)");
+      ("lab(50 calc(sibling-index()*1%) 0)", "lab", "calc(sibling-index()*1%)");
+      ( "lch(50 30 calc(sibling-index()*10deg))",
+        "lch",
+        "calc(sibling-index()*10deg)" );
+      ("lch(50 calc(sibling-index()*3) 10)", "lch", "calc(sibling-index()*3)");
+      ("oklab(.5 calc(sibling-index()*.01) 0)", "oklab", "sibling-index()*.01");
+      ("oklab(calc(sibling-index()*.1) 0 0)", "oklab", "sibling-index()*.1");
+      ( "oklch(.5 .1 calc(sibling-index()*10deg))",
+        "oklch",
+        "calc(sibling-index()*10deg)" );
+      ("oklch(.5 calc(sibling-index()*.01) 10)", "oklch", "sibling-index()*.01");
+      ("color(srgb calc(sibling-index()*.1) 0 0)", "color", "sibling-index()*.1");
+      ("rgb(0 0 0/calc(sibling-index()*.1))", "rgb", "sibling-index()*.1");
+    ];
+  List.iter
+    (fun value -> Alcotest.(check string) value "" (minify (color value)))
+    [
+      "hsl(calc(sibling-index()*10px) 50% 50%)";
+      "lab(50 calc(sibling-index()*1deg) 0)";
+      "rgb(calc(sibling-index()*1deg) 0 0)";
+    ]
+
+(* A colour that stays in its own notation takes the shortest in-gamut spelling,
+   at no more decimals per channel than the rounding keeps, that paints the
+   bytes it paints. Chromium 153 converts [lab(53.29 -12.26 -44.56)] to
+   [color(srgb -0.000930849 0.533398 0.800041)] and [lab(53.3 -12.3 -44.5)] to
+   [color(srgb -0.000366949 0.533557 0.799734)], both painting (0,136,204) on a
+   canvas. The nearest rounding [lab(53.3 -12.3 -44.6)] converts to a red of
+   -0.005644, outside the gamut, where CSS Color 4 sec. 14.2 leaves the colour
+   to the engine's gamut mapping. *)
+let shortest_spelling_painting_alike () =
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"lab(53.3-12.3-44.5/.5)" "lab(53.29 -12.26 -44.56/.5)"
+
 let suite =
   ( "values_color",
     [
@@ -1199,6 +1293,7 @@ let suite =
       test_case "hue_interpolation" `Quick test_hue_interpolation;
       test_case "component" `Quick test_component;
       test_case "channel" `Quick test_channel;
+      test_case "axis" `Quick test_axis;
       test_case "rgb" `Quick test_rgb;
       test_case "spec values and color current-work" `Quick
         spec_values_color_current;
@@ -1221,4 +1316,8 @@ let suite =
       test_case "lab family uses the ED D50 white" `Quick
         lab_family_uses_the_ed_d50_white;
       test_case "math in a colour channel" `Quick math_in_colour_channel;
+      test_case "tree-counting function in a colour channel" `Quick
+        tree_counting_in_colour_channel;
+      test_case "shortest spelling painting alike" `Quick
+        shortest_spelling_painting_alike;
     ] )

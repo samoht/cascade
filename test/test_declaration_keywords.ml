@@ -106,15 +106,16 @@ let list_properties () =
      optimizer makes and the printer keeps the spelling. The result is a colour
      in that space (Chromium 153 computes [oklab(from #0000001a l a b / .2)] as
      [oklab(0 0 0 / 0.2)]), which CSS Color 4 sec. 13.3 interpolates in Oklab,
-     so it is not the origin's hex. *)
+     so it is not the origin's hex. Its coefficients take the shortest spelling
+     that paints the origin's bytes: Chromium 153 paints [oklch(.32 .073 251)]
+     as #123456. *)
   check_declaration ~expected:"color:oklab(from #0000001a l a b/.2)"
     ~optimized:"color:oklab(0 0 0/.2)" "color: oklab(from #0000001a l a b / .2)";
   check_declaration ~expected:"color:oklab(from rgb(0 0 0/.1) l a b/20%)"
     ~optimized:"color:oklab(0 0 0/.2)"
     "color: oklab(from rgb(0 0 0 / .1) l a b / 20%)";
   check_declaration ~expected:"color:oklch(from #123456 l c h)"
-    ~optimized:"color:oklch(.319 .072 251.168)"
-    "color: oklch(from #123456 l c h)";
+    ~optimized:"color:oklch(.32 .073 251)" "color: oklch(from #123456 l c h)";
   check_declaration ~expected:"color:lab(from #0000001a l a b)"
     ~optimized:"color:lab(0 0 0/.102)" "color: lab(from #0000001a l a b)";
   check_declaration ~expected:"color:oklab(from #0000001a calc(l + .5) a b)"

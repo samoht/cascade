@@ -194,6 +194,10 @@ val save : t -> snapshot
 val restore : t -> snapshot -> unit
 (** [restore t s] rewinds [t] to the position captured by [s]. *)
 
+val consumed : t -> snapshot -> Component.t list option
+(** [consumed t s] is the components [t] consumed since [s], whitespace
+    included, or [None] when they span chunks of a streamed block. *)
+
 val dropped_since :
   t -> snapshot -> Error.Recovery.construct -> Error.Recovery.t
 (** [dropped_since t s construct] is a dropped-[construct] recovery naming the

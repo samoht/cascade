@@ -380,10 +380,10 @@ let text_properties () =
      node change, so pp holds it and the optimizer folds. *)
   check_declaration ~expected:"text-decoration:underline solid"
     ~optimized:"text-decoration:underline" "text-decoration: underline solid";
-  check_declaration ~expected:"text-decoration:underline currentColor"
+  check_declaration ~expected:"text-decoration:underline currentcolor"
     ~optimized:"text-decoration:underline"
     "text-decoration: underline currentcolor";
-  check_declaration ~expected:"text-decoration:underline solid currentColor"
+  check_declaration ~expected:"text-decoration:underline solid currentcolor"
     ~optimized:"text-decoration:underline"
     "text-decoration: underline solid currentcolor";
   (* A non-initial style or colour stands. *)

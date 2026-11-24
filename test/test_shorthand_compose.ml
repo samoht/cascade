@@ -123,7 +123,7 @@ let test_border_axis_pair_composes () =
     ".x{border-inline-start-style:solid;border-inline-end-style:dashed}";
   sheet_optimizes_to ~into:".x{border-block-style:double}"
     ".x{border-block-start-style:double;border-block-end-style:double}";
-  sheet_optimizes_to ~into:".x{border-inline-color:red currentColor}"
+  sheet_optimizes_to ~into:".x{border-inline-color:red currentcolor}"
     ".x{border-inline-start-color:red;border-inline-end-color:currentcolor}";
   sheet_optimizes_to ~into:".x{border-block-color:#0f0}"
     ".x{border-block-start-color:#0f0;border-block-end-color:#0f0}";
@@ -443,7 +443,7 @@ let test_font_synthesis_composes () =
 let test_webkit_text_stroke_composes () =
   sheet_optimizes_to ~into:".x{-webkit-text-stroke:1px red}"
     ".x{-webkit-text-stroke-width:1px;-webkit-text-stroke-color:red}";
-  sheet_optimizes_to ~into:".x{-webkit-text-stroke:0 currentColor}"
+  sheet_optimizes_to ~into:".x{-webkit-text-stroke:0 currentcolor}"
     ".x{-webkit-text-stroke-width:0;-webkit-text-stroke-color:currentcolor}";
   (* Mixed importance is not one declaration. *)
   sheet_optimizes_to

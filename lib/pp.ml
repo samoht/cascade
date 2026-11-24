@@ -16,7 +16,6 @@ type ctx = {
           even when not minifying. *)
   out : out;
   inline : bool;
-  in_function : bool;
   in_style_rule : bool;
       (** Set while serialising a style rule's contents, where CSS nesting
           applies and a statement-form at-rule is not accepted. *)
@@ -25,6 +24,9 @@ type ctx = {
           other colour approximations while keeping exact serialisation
           shortenings. *)
   enforce_spec : bool;
+  exact_numbers : bool;
+      (** Set while printing a factor that an unresolved factor scales: a number
+          prints the shortest digits of its double. *)
   rename_custom_property : string -> string;
       (** Set under [--minify --enforce-spec]: emit the shortest spec-canonical
           serialisation but without evergreen-target facts, so target-dependent
@@ -75,10 +77,10 @@ let v ?(minify = false) ?indent ?(inline = false) ?(lossless = false)
     indent = resolve_indent ~minify indent;
     out;
     inline;
-    in_function = false;
     in_style_rule = false;
     lossless;
     enforce_spec;
+    exact_numbers = false;
     rename_custom_property;
   }
 
@@ -620,7 +622,15 @@ let float ctx f =
   else
     match Common.int_of_float_opt f with
     | Some i when Float.is_integer f -> int ctx i
-    | _ -> string ctx (string_of_float ~drop_leading_zero:true f)
+    | _ ->
+        string ctx
+          (if ctx.exact_numbers then string_of_float_exact f
+           else string_of_float ~drop_leading_zero:true f)
+
+let exact ctx =
+  if ctx.exact_numbers then ctx else { ctx with exact_numbers = true }
+
+let exact_numbers ctx = ctx.exact_numbers
 
 let float_n n ctx f =
   if Float.is_nan f then nan_value ctx ""

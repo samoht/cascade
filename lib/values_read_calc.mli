@@ -88,6 +88,11 @@ val validate_calc_type :
     [result_type], the check CSS Values 4 sec. 10.9 makes on a calculation's
     type. *)
 
+val calc_is_number : 'a calc -> bool option
+(** [calc_is_number calc] is [Some true] when [calc] resolves to a [<number>],
+    [Some false] when it resolves to a dimension or a percentage, and [None]
+    when a [var()] defers its type or it has none. *)
+
 val typed_math_function_names : string list
 (** [typed_math_function_names] is the math functions a [<length>] slot takes as
     readily as a [<number>] one. *)

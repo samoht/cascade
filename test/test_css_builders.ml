@@ -22,7 +22,7 @@ let svg_longhand_builders () =
     (Css.stroke_dasharray (Dashes [ Number (Num 4.); Number (Num 2.) ]));
   check "paint-order:stroke fill" (Css.paint_order (Order [ Stroke; Fill ]));
   check "vector-effect:non-scaling-stroke"
-    (Css.vector_effect (Effects ([ Non_scaling_stroke ], None)));
+    (Css.vector_effect Non_scaling_stroke);
   check "stop-color:red" (Css.stop_color (Named Red));
   check "stop-opacity:0" (Css.stop_opacity (Opacity_number 0.));
   check "flood-color:red" (Css.flood_color (Named Red));

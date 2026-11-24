@@ -33,4 +33,5 @@ let check_number = check_value_cursor "number" read_number pp_number
 let check_math_arg = check_value_cursor "math_arg" read_math_arg pp_math_arg
 let check_component = check_value_cursor "component" read_component pp_component
 let check_channel = check_value_cursor "channel" read_channel pp_channel
+let check_axis = check_value_cursor "axis" read_axis pp_axis
 let check_rgb = check_value_cursor "rgb" read_rgb pp_rgb

@@ -138,6 +138,14 @@ val has_var : t list -> bool
     inside a string or a [url()] is one atomic preserved token rather than a
     function, so it is data and does not count. *)
 
+val exists_number : (Token.number -> bool) -> t -> bool
+(** [exists_number p c] is whether the number of a number, percentage or
+    dimension token anywhere in [c] satisfies [p]. *)
+
+val map_numbers : (Token.number -> Token.number) -> t -> t
+(** [map_numbers f c] is [c] with [f] applied to the number of every number,
+    percentage and dimension token it holds. *)
+
 val pp : t Pp.t
 (** [pp] renders a component value as a located debug dump, the {!Token.pp} of a
     whole tree, e.g. [rgb(<number 1>@[4-5])@[0-6]]. Every node shows its own

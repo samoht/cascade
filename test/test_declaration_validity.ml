@@ -562,7 +562,7 @@ let spec_property_grammar_table_expansion () =
         | "scrollbar-color", "red blue" ->
             (Some "scrollbar-color:red blue", Some "scrollbar-color:red #00f")
         | "border", "1px solid currentColor" ->
-            (Some "border:1px solid currentColor", Some "border:1px solid")
+            (Some "border:1px solid currentcolor", Some "border:1px solid")
         | "background-position", "left 10px top 20px" ->
             ( Some "background-position:left 10px top 20px",
               Some "background-position:10px 20px" )

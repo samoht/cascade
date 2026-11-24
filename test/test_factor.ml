@@ -246,7 +246,7 @@ let test_initial_line_color_spellings_factor () =
     (optimize_str ".a{border-inline:solid currentcolor}.b{border-inline:solid}");
   Alcotest.(check string)
     "outline currentColor does not factor with the omitted colour"
-    ".a{outline:solid currentColor}.b{outline:solid}"
+    ".a{outline:solid currentcolor}.b{outline:solid}"
     (optimize_str ".a{outline:solid currentcolor}.b{outline:solid}")
 
 (* The [background] shorthand resets every longhand it covers (CSS Backgrounds 3

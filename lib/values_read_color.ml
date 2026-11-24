@@ -14,6 +14,28 @@ let number_with_unit t =
     read_folded_dimension t
   else Cursor.number_with_unit t
 
+(* A bare [<percentage>] leaf inside a channel's or a weight's math function.
+   Unlike the channel it is not range-checked: CSS Values 4 sec. 10 clamps the
+   math function's result, not its operands. [read_calc] handles the [var()] and
+   nested-[calc()] factors itself, so the leaf only sees a token. *)
+let read_calc_pct t : percentage = Pct (Cursor.pct t)
+
+(* A channel is the number and unit [number_with_unit] reads, which [value]
+   types. A math function no parse-time fold resolves, one over
+   [sibling-index()] or [sibling-count()] (CSS Values 5 sec. 9), stays the
+   calculation [calc] reads instead, since a browser computes it on the
+   element. *)
+let channel_value ~calc ~value t =
+  if Cursor.looking_at_calc t || looking_at_math_function t then
+    match Cursor.option read_folded_dimension t with
+    | Some v -> value v
+    | Option.None -> calc t
+  else value (Cursor.number_with_unit t)
+
+(* The calculation of a [<number> | <percentage>] channel. *)
+let read_number_or_pct_calc t : percentage calc =
+  read_calc ~result_type:`Number_or_value read_calc_pct t
+
 (** Read an [hsl()] or [hwb()] percentage, clamped to 0-100%, or [None] for the
     [none] keyword, which CSS Color 4 sec. 4.4 keeps missing: it is zero at rest
     and takes the other colour's component in an interpolation. [legacy] refuses
@@ -23,14 +45,21 @@ let read_percentage_float ?(legacy = false) t : percentage option =
     Cursor.expect_string "none" t;
     None)
   else
-    let n, unit = number_with_unit t in
-    match unit with
-    | Some "%" -> Some (Pct (max 0. (min 100. n)))
-    (* CSS Color 4 sec. 7.1: only the modern syntax takes a bare number. *)
-    | None when legacy -> Cursor.err_invalid t "number in legacy hsl() syntax"
-    | None -> Some (Pct (max 0. (min 100. n)))
-    | Some unit ->
-        Cursor.err_invalid t (String.concat "" [ "percentage unit: "; unit ])
+    channel_value
+      ~calc:(fun t ->
+        (* CSS Color 4 sec. 7.1: only the modern syntax takes a number. *)
+        let result_type = if legacy then `Percentage else `Number_or_value in
+        Some (Calc (read_calc ~result_type read_calc_pct t) : percentage))
+      ~value:(fun (n, unit) ->
+        match unit with
+        | Some "%" -> Some (Pct (max 0. (min 100. n)))
+        | None when legacy ->
+            Cursor.err_invalid t "number in legacy hsl() syntax"
+        | None -> Some (Pct (max 0. (min 100. n)))
+        | Some unit ->
+            Cursor.err_invalid t
+              (String.concat "" [ "percentage unit: "; unit ]))
+      t
 
 (** Read an alpha value *)
 let rec read_alpha t : alpha =
@@ -68,6 +97,23 @@ let read_optional_alpha t : alpha =
     read_alpha t)
   else None
 
+let channel_of_number t (n, unit) : channel =
+  match unit with
+  | Some "%" ->
+      (* Clamp percentage to 0-100 per CSS spec *)
+      Pct (max 0. (min 100. n))
+  | None ->
+      (* CSS Color 4 sec. 5.1 rounds a channel that cannot be kept at full
+         precision "towards +infinity". Sec. 16.5's worked example reads that as
+         nearest-with-ties-up, not as a ceiling: 0.964 serialises as 0.96 and
+         0.787 as 0.79. [Float.round] is exactly that for a non-negative
+         channel, so [rgb(127.6 ...)] is [128] and [rgb(127.2 ...)] is [127],
+         matching Chrome. Decimals in (0, 1) stay as [Num] so alpha helpers can
+         still see them as fractional. *)
+      if n <= 1.0 && n <> floor n then Num n
+      else Int (int_of_float (max 0. (min 255. (Float.round n))))
+  | Some _ -> Cursor.err_invalid t "channel value"
+
 (** Read a channel value (RGB) *)
 let rec read_channel t : channel =
   Cursor.ws t;
@@ -77,22 +123,13 @@ let rec read_channel t : channel =
     Cursor.expect_string "none" t;
     (None : channel))
   else
-    let n, unit = number_with_unit t in
-    match unit with
-    | Some "%" ->
-        (* Clamp percentage to 0-100 per CSS spec *)
-        Pct (max 0. (min 100. n))
-    | None ->
-        (* CSS Color 4 sec. 5.1 rounds a channel that cannot be kept at full
-           precision "towards +infinity". Sec. 16.5's worked example reads that
-           as nearest-with-ties-up, not as a ceiling: 0.964 serialises as 0.96
-           and 0.787 as 0.79. [Float.round] is exactly that for a non-negative
-           channel, so [rgb(127.6 ...)] is [128] and [rgb(127.2 ...)] is [127],
-           matching Chrome. Decimals in (0, 1) stay as [Num] so alpha helpers
-           can still see them as fractional. *)
-        if n <= 1.0 && n <> floor n then Num n
-        else Int (int_of_float (max 0. (min 255. (Float.round n))))
-    | Some _ -> Cursor.err_invalid t "channel value"
+    channel_value
+      ~calc:(fun t : channel ->
+        Calc
+          (read_calc ~result_type:`Number_or_value
+             (fun t : channel -> Pct (Cursor.pct t))
+             t))
+      ~value:(channel_of_number t) t
 
 let rec read_rgb_var t : rgb var =
   Cursor.ws t;
@@ -176,6 +213,7 @@ let read_rgb_comma_separated t : color =
     match c with
     | Pct _ -> Some true
     | Int _ | Num _ -> Some false
+    | Calc c -> Option.map not (calc_is_number c)
     | Var _ | None -> Option.None
   in
   (match (kind r, kind g, kind b) with
@@ -253,16 +291,26 @@ let rec read_hue t : hue =
     Hue_none)
   else if Cursor.looking_at t "var(" then Var (read_var read_hue t)
   else
-    let n, unit_raw = number_with_unit t in
-    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
-    match unit with
-    | "" ->
-        Unitless (normalize_hue n) (* Unitless number, defaults to degrees *)
-    | "deg" -> Angle (Deg (normalize_hue n))
-    | "rad" -> Angle (Rad n)
-    | "turn" -> Angle (Turn n)
-    | "grad" -> Angle (Grad n)
-    | _ -> Cursor.err_invalid t (String.concat "" [ "hue unit: "; unit ])
+    channel_value
+      ~calc:(fun t : hue ->
+        (* A hue is [<number> | <angle>]: its calculation is an angle's, over
+           angle leaves, or a number's. *)
+        Angle
+          (Calc
+             (read_calc ~result_type:`Number_or_value
+                Values_read_numeric.read_angle_unit_required t)))
+      ~value:(fun (n, unit_raw) ->
+        let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
+        match unit with
+        | "" ->
+            Unitless (normalize_hue n)
+            (* Unitless number, defaults to degrees *)
+        | "deg" -> Angle (Deg (normalize_hue n))
+        | "rad" -> Angle (Rad n)
+        | "turn" -> Angle (Turn n)
+        | "grad" -> Angle (Grad n)
+        | _ -> Cursor.err_invalid t (String.concat "" [ "hue unit: "; unit ]))
+      t
 
 let read_separated_values t p1 p2 =
   let v1 = p1 t in
@@ -332,39 +380,68 @@ let read_ok_lightness t : percentage option =
     Cursor.expect_string "none" t;
     None)
   else
-    let n, unit = number_with_unit t in
-    (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather than
-       invalidating the colour, matching lab/lch. 0% to 100% names the same 0 to
-       1 a bare number does, so both spellings clamp alike. *)
-    match unit with
-    | Some "%" -> Some (Pct (max 0. (min 100. n)) : percentage)
-    | None -> Some (Num (max 0. (min 1. n)) : percentage)
-    | Some u ->
-        Cursor.err_invalid t (String.concat "" [ "oklch() L unit: "; u ])
+    channel_value
+      ~calc:(fun t : percentage option ->
+        Some (Calc (read_number_or_pct_calc t)))
+      ~value:(fun (n, unit) ->
+        (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather
+           than invalidating the colour, matching lab/lch. 0% to 100% names the
+           same 0 to 1 a bare number does, so both spellings clamp alike. *)
+        match unit with
+        | Some "%" -> Some (Pct (max 0. (min 100. n)) : percentage)
+        | None -> Some (Num (max 0. (min 1. n)) : percentage)
+        | Some u ->
+            Cursor.err_invalid t (String.concat "" [ "oklch() L unit: "; u ]))
+      t
 
-let read_number_or_none ?pct_scale t : float option =
+(* CSS Color 4 sec. 9.3 lab() and lch(): L is [<percentage> | <number>], kept
+   distinct ([Pct] vs [Num]) so [lch(54.321 ...)] does not round-trip as
+   [lch(54.321% ...)]: the two drive different precisions, 1 decimal for the
+   number over [0, 100] and 4 for the percentage, which scales by 100. *)
+let read_lab_lightness name t : percentage option =
   Cursor.ws t;
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
     None)
   else
-    let n, unit = number_with_unit t in
-    match unit with
-    | Some "%" ->
-        Some
-          (n
-          *.
-          match pct_scale with
-          | Some scale -> scale
-          | None -> Cursor.err_invalid t "unexpected percentage")
-    | None -> Some n
-    | Some unit ->
-        Cursor.err_invalid t (String.concat "" [ "invalid unit: "; unit ])
+    channel_value
+      ~calc:(fun t : percentage option ->
+        Some (Calc (read_number_or_pct_calc t)))
+      ~value:(fun (n, unit) ->
+        match unit with
+        | Some "%" -> Some (Pct (max 0. (min 100. n)) : percentage)
+        | None -> Some (Num (max 0. (min 100. n)) : percentage)
+        | Some u ->
+            Cursor.err_invalid t (String.concat "" [ name; " L unit: "; u ]))
+      t
+
+(* A Lab-family [a], [b] or chroma axis: a percentage is read as the number it
+   scales to by [pct_scale], which only the function names. [clamp] applies to a
+   number, not to a calculation, which a browser clamps once it computes it. *)
+let read_scaled_axis ?(clamp = Fun.id) ?pct_scale t : axis =
+  channel_value
+    ~calc:(fun t -> Axis_calc (read_number_or_pct_calc t))
+    ~value:(fun (n, unit) ->
+      match (unit, pct_scale) with
+      | Some "%", Some scale -> Axis (clamp (n *. scale))
+      | None, _ -> Axis (clamp n)
+      | Some unit, _ ->
+          Cursor.err_invalid t (String.concat "" [ "invalid unit: "; unit ]))
+    t
+
+let read_axis t = read_scaled_axis t
+
+let read_axis_or_none ?clamp ~pct_scale t : axis option =
+  Cursor.ws t;
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    None)
+  else Some (read_scaled_axis ?clamp ~pct_scale t)
 
 (* CSS Color 4 sec. 9.3 and 9.4: a negative chroma clamps to zero at
    parsed-value time. *)
 let read_chroma ~pct_scale t =
-  Option.map (Float.max 0.) (read_number_or_none ~pct_scale t)
+  read_axis_or_none ~clamp:(Float.max 0.) ~pct_scale t
 
 let read_oklch t : color =
   Cursor.ws t;
@@ -383,35 +460,17 @@ let read_oklab t : color =
   Cursor.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec *)
   let l = read_ok_lightness t in
-  let a = read_number_or_none ~pct_scale:0.004 t in
-  let b = read_number_or_none ~pct_scale:0.004 t in
+  let a = read_axis_or_none ~pct_scale:0.004 t in
+  let b = read_axis_or_none ~pct_scale:0.004 t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
   Oklab { l; a; b; alpha }
 
 let read_lab t : color =
-  Cursor.ws t;
-  (* CSS Color 4 sec. 9.3: lab() L accepts [<percentage>] or [<number>]; keep
-     them distinct ([Pct] vs [Num]) so the printer can drive different precision
-     (1 decimal for [<number>] over [0, 100], 4 decimals for [<percentage>]
-     which scales by 100). *)
-  let l : percentage option =
-    if Cursor.looking_at t "none" then (
-      Cursor.expect_string "none" t;
-      None)
-    else
-      let n, unit = number_with_unit t in
-      Some
-        (match unit with
-         | Some "%" -> Pct (max 0. (min 100. n))
-         | None -> Num (max 0. (min 100. n))
-         | Some u ->
-             Cursor.err_invalid t (String.concat "" [ "lab L unit: "; u ])
-          : percentage)
-  in
-  let a = read_number_or_none ~pct_scale:1.25 t in
-  let b = read_number_or_none ~pct_scale:1.25 t in
+  let l = read_lab_lightness "lab" t in
+  let a = read_axis_or_none ~pct_scale:1.25 t in
+  let b = read_axis_or_none ~pct_scale:1.25 t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -419,26 +478,10 @@ let read_lab t : color =
 
 let read_lch t : color =
   Cursor.ws t;
-  let read_l_axis t : percentage option =
-    if Cursor.looking_at t "none" then (
-      Cursor.expect_string "none" t;
-      None)
-    else
-      (* CSS Color 4 sec. 9.3 lch(): the L channel is [<percentage> | <number>],
-         distinguish so [lch(54.321 ...)] doesn't round-trip as [lch(54.321%
-         ...)] - the [Pct] / [Num] variants drive different printers (the
-         [%]-typed one scales the precision by 100 and emits [%]). *)
-      let n, unit = number_with_unit t in
-      Some
-        (match unit with
-         | Some "%" -> Pct (max 0. (min 100. n))
-         | None -> Num (max 0. (min 100. n))
-         | Some u ->
-             Cursor.err_invalid t (String.concat "" [ "lch L unit: "; u ])
-          : percentage)
-  in
   let read_c = read_chroma ~pct_scale:1.5 in
-  let l, c, h = Cursor.triple ~sep:Cursor.ws read_l_axis read_c read_hue t in
+  let l, c, h =
+    Cursor.triple ~sep:Cursor.ws (read_lab_lightness "lch") read_c read_hue t
+  in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -454,12 +497,6 @@ let read_color_function t : color =
   let alpha = read_optional_alpha t in
   Color { space; components; alpha }
 
-(* A bare [<percentage>] leaf inside a color-mix weight [calc()]. Unlike the
-   top-level weight it is not range-checked: CSS Values 4 sec. 10 clamps the
-   math function's result, not its individual operands. [read_calc] handles the
-   [var()] and nested-[calc()] factors itself, so the leaf only sees a token. *)
-let read_color_mix_calc_pct t : percentage = Pct (Cursor.pct t)
-
 (** Forward declaration for percentage reader used in color-mix *)
 let rec read_percentage_in_color_mix t : percentage =
   Cursor.ws t;
@@ -469,7 +506,7 @@ let rec read_percentage_in_color_mix t : percentage =
     (* CSS Color 5 sec. 3: the weight may be a math function. We can't
        bound-check a [calc()] statically (it may carry a [var()]), so we keep it
        verbatim and let substitution-time clamping apply. *)
-    Calc (read_calc ~result_type:`Value read_color_mix_calc_pct t)
+    Calc (read_calc ~result_type:`Value read_calc_pct t)
   else
     let n = Cursor.pct t in
     if n < 0. || n > 100. then
@@ -486,7 +523,7 @@ let read_optional_percentage t : percentage option =
   if Cursor.looking_at t "var(" then
     Some (Var (read_var read_percentage_in_color_mix t))
   else if Cursor.looking_at_calc t then
-    Some (Calc (read_calc ~result_type:`Value read_color_mix_calc_pct t))
+    Some (Calc (read_calc ~result_type:`Value read_calc_pct t))
   else
     match Cursor.percentage_opt t with
     | Some n ->
@@ -758,7 +795,7 @@ type reading = Double | Single
 
 let number_reading reading (n : Token.number) : Token.number =
   match reading with
-  | Double -> { n with value = Token.authored_value n }
+  | Double -> Token.authored n
   | Single -> { n with value = single_of_float (Token.authored_value n) }
 
 (* Whether the readings of [n] can differ at all. *)
@@ -766,58 +803,14 @@ let number_has_readings (n : Token.number) =
   let d = Token.authored_value n in
   (not (Float.equal n.value d)) || not (Float.equal (single_of_float d) d)
 
-let token_reading reading (tok : Token.t) : Token.t =
-  match tok.kind with
-  | Number_tok n -> { tok with kind = Number_tok (number_reading reading n) }
-  | Percentage n -> { tok with kind = Percentage (number_reading reading n) }
-  | Dimension { number; unit_ } ->
-      {
-        tok with
-        kind = Dimension { number = number_reading reading number; unit_ };
-      }
-  | _ -> tok
-
-let token_has_readings (tok : Token.t) =
-  match tok.kind with
-  | Number_tok n | Percentage n | Dimension { number = n; _ } ->
-      number_has_readings n
-  | _ -> false
-
 (* Every number of a colour function counts, a [var()] fallback's and a math
    function's as much as a channel's: each is quantised once substituted. *)
-let rec component_has_readings : Component.t -> bool = function
-  | Preserved tok -> token_has_readings tok
-  | Func { node = { arguments; _ }; _ } ->
-      List.exists component_has_readings arguments
-  | Block { node = { value; _ }; _ } -> List.exists component_has_readings value
-  | Flat { node; _ } -> List.exists token_has_readings node
-
-let rec component_reading reading : Component.t -> Component.t = function
-  | Preserved tok -> Preserved (token_reading reading tok)
-  | Func fn ->
-      Func
-        {
-          fn with
-          node =
-            {
-              fn.node with
-              arguments = List.map (component_reading reading) fn.node.arguments;
-            };
-        }
-  | Block b ->
-      Block
-        {
-          b with
-          node =
-            {
-              b.node with
-              value = List.map (component_reading reading) b.node.value;
-            };
-        }
-  | Flat f -> Flat { f with node = List.map (token_reading reading) f.node }
+let component_has_readings = Component.exists_number number_has_readings
 
 let with_reading reading (fn : Component.func Component.node) =
-  match component_reading reading (Func fn) with Func fn -> fn | _ -> fn
+  match Component.map_numbers (number_reading reading) (Func fn) with
+  | Func fn -> fn
+  | _ -> fn
 
 (* The colour functions whose channels a fold quantises. *)
 let channel_functions =

@@ -46,5 +46,8 @@ val check_component : check
 val check_channel : check
 (** [check_channel] checks a colour channel. *)
 
+val check_axis : check
+(** [check_axis] checks a Lab-family axis. *)
+
 val check_rgb : check
 (** [check_rgb] checks an [rgb()] colour. *)

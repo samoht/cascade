@@ -160,6 +160,33 @@ let test_nested_container_recovers () =
   recovers
     {|.x { @container (width > 1px) and (height > 1px) or (width > 2px) { .y { color: red } } }|}
 
+(* ignore-test: keyword serialisation contract across printers. *)
+let test_currentcolor_lowercase () =
+  (* CSS Color 4 sec. 6.4 "The currentcolor keyword" names it [currentcolor],
+     CSS Values 4 sec. 3.1 "Pre-defined Keywords" makes keywords ASCII
+     case-insensitive, and CSSOM 1 sec. 6.7.2 "Serializing CSS Values" writes a
+     keyword in ASCII lowercase: Chrome 158 gives [currentcolor] for
+     [currentColor] in [cssText] and [getPropertyValue]. Both printers write the
+     keyword that way, at the top level as inside a function. *)
+  let check ~minify ~affix input =
+    match Css.of_string input with
+    | Ok { Css.stylesheet; _ } ->
+        let out = Css.to_string ~minify stylesheet in
+        Alcotest.(check bool)
+          (Fmt.str "%s (minify=%b) prints %s: %s" input minify affix out)
+          true
+          (Astring.String.is_infix ~affix out
+          && not (Astring.String.is_infix ~affix:"currentColor" out))
+    | Error e -> Alcotest.failf "parse %s: %s" input (Cascade.Error.to_string e)
+  in
+  check ~minify:true ~affix:"color:currentcolor" "a{color:currentColor}";
+  check ~minify:false ~affix:"color: currentcolor" "a{color:currentColor}";
+  check ~minify:true ~affix:"color:currentcolor" "a{color:CURRENTCOLOR}";
+  check ~minify:true ~affix:"-webkit-text-stroke:currentcolor"
+    "a{-webkit-text-stroke:currentColor}";
+  check ~minify:false ~affix:"-webkit-text-stroke: currentcolor"
+    "a{-webkit-text-stroke:currentColor}"
+
 (* ignore-test: error-recovery contract, not a per-statement constructor. *)
 let test_layer_rule_recovery () =
   (* CSS Syntax 3 sec. 5.4.1: an invalid rule inside an @layer / @media block is
@@ -1489,6 +1516,7 @@ let suite =
       ("container rule creation", `Quick, test_container_rule_creation);
       ("nested container recovers", `Quick, test_nested_container_recovers);
       ("invalid rule in a block recovers", `Quick, test_layer_rule_recovery);
+      ("currentcolor prints lowercase", `Quick, test_currentcolor_lowercase);
       ("supports rule creation", `Quick, test_supports_rule_creation);
       ("supports nested creation", `Quick, test_supports_nested_creation);
       ("property rule creation", `Quick, test_property_rule_creation);

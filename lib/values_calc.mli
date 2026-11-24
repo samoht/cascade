@@ -79,9 +79,20 @@ val math_fn_contains_var : math_fn -> bool
 val calc_contains_var : 'a calc -> bool
 (** [calc_contains_var c] is [true] when [c] holds a [var()]. *)
 
+val static_number : 'a calc -> bool
+(** [static_number c] is whether every leaf of [c] is a number known at minify
+    time. A typed leaf may hold a substitution of its own, so it is not one. *)
+
+val with_scaled_factors : 'a calc -> exact:'a calc -> 'a calc
+(** [with_scaled_factors c ~exact] is [c] with every factor of a product or
+    quotient whose other factor is not {!static_number} taken from [exact], the
+    same expression read with every number at the double of all its digits: a
+    substitution multiplies the rounding of such a factor by any amount. *)
+
 val pp_calc_contents : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc_contents pp] pretty-prints the body of a [calc()] using [pp] for
-    leaves. *)
+    leaves. A factor that {!with_scaled_factors} reads exactly prints the
+    shortest digits of its doubles ({!Pp.exact}). *)
 
 val round_computed : float -> float
 (** [round_computed f] is [f] at the six significant figures of a serialised

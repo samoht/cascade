@@ -506,8 +506,9 @@ let color_keywords () =
   (* Per CSS Color 4 section 6.3 the printer canonicalizes the fully-transparent
      color to the shortest equivalent spelling [#0000]. *)
   roundtrip ".x { color: transparent }" ".x{color:#0000}";
-  (* currentColor preserves its camelCase form *)
-  roundtrip ".x { color: currentColor }" ".x{color:currentColor}"
+  (* CSSOM 1 sec. 6.7.2 "Serializing CSS Values": a keyword is written in ASCII
+     lowercase. *)
+  roundtrip ".x { color: currentColor }" ".x{color:currentcolor}"
 
 (* {2 CSS Conditional Rules Level 3} https://www.w3.org/TR/css-conditional-3/ *)
 
@@ -875,7 +876,9 @@ let non_minified_preserves_color_forms () =
     ".x { --label: attr(data-label raw-string, var(--label, \"x y\")) }"
     [ "attr(data-label raw-string, var(--label, \"x y\"))" ];
   preserves_non_minified ".x { color: transparent }" [ "transparent" ];
-  preserves_non_minified ".x { color: currentColor }" [ "currentColor" ]
+  (* A keyword keeps no authored spelling: CSSOM 1 sec. 6.7.2 writes it in ASCII
+     lowercase. *)
+  preserves_non_minified ".x { color: currentColor }" [ "currentcolor" ]
 
 let fidelity_bad_css_wide_list () =
   (* Lenient recovery drops the invalid CSS-wide list decl; valid neighbors stay

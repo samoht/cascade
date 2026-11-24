@@ -799,26 +799,26 @@ let background_drained_layer () =
    UA-chosen colour that [currentColor] does not name, so the outline colour
    slot holds whatever it was written with. *)
 let border_line_color () =
-  check_declaration ~expected:"border:solid currentColor"
+  check_declaration ~expected:"border:solid currentcolor"
     ~optimized:"border:solid" "border: solid currentcolor";
-  check_declaration ~expected:"border:1px solid currentColor"
+  check_declaration ~expected:"border:1px solid currentcolor"
     ~optimized:"border:1px solid" "border: 1px solid currentColor";
-  check_declaration ~expected:"border:currentColor" ~optimized:"border:none"
+  check_declaration ~expected:"border:currentcolor" ~optimized:"border:none"
     "border: currentcolor";
-  check_declaration ~expected:"border-top:solid currentColor"
+  check_declaration ~expected:"border-top:solid currentcolor"
     ~optimized:"border-top:solid" "border-top: solid currentcolor";
-  check_declaration ~expected:"border-inline:solid currentColor"
+  check_declaration ~expected:"border-inline:solid currentcolor"
     ~optimized:"border-inline:solid" "border-inline: solid currentcolor";
-  check_declaration ~expected:"border-block-start:solid currentColor"
+  check_declaration ~expected:"border-block-start:solid currentcolor"
     ~optimized:"border-block-start:solid"
     "border-block-start: solid currentcolor";
-  check_declaration ~expected:"column-rule:solid currentColor"
+  check_declaration ~expected:"column-rule:solid currentcolor"
     ~optimized:"column-rule:solid" "column-rule: solid currentcolor";
   (* outline-color's initial value is [auto], so nothing drops here. *)
-  check_declaration ~expected:"outline:solid currentColor"
-    ~optimized:"outline:solid currentColor" "outline: solid currentcolor";
-  check_declaration ~expected:"outline:currentColor"
-    ~optimized:"outline:currentColor" "outline: currentcolor";
+  check_declaration ~expected:"outline:solid currentcolor"
+    ~optimized:"outline:solid currentcolor" "outline: solid currentcolor";
+  check_declaration ~expected:"outline:currentcolor"
+    ~optimized:"outline:currentcolor" "outline: currentcolor";
   (* Controls: a colour that is not the initial one stands. *)
   check_declaration ~expected:"border:solid red" ~optimized:"border:solid red"
     "border: solid red";

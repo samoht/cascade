@@ -453,9 +453,9 @@ let text_decoration_optional_line () =
 let text_decoration_drained_shorthand () =
   check_declaration ~expected:"text-decoration:solid"
     ~optimized:"text-decoration:none" "text-decoration: solid";
-  check_declaration ~expected:"text-decoration:currentColor"
+  check_declaration ~expected:"text-decoration:currentcolor"
     ~optimized:"text-decoration:none" "text-decoration: currentcolor";
-  check_declaration ~expected:"text-decoration:solid currentColor"
+  check_declaration ~expected:"text-decoration:solid currentcolor"
     ~optimized:"text-decoration:none" "text-decoration: solid currentcolor";
   check_sheet_roundtrip "text-decoration solid" "a{text-decoration:solid}";
   (* The drop still runs wherever a slot outlives it. *)
@@ -463,7 +463,7 @@ let text_decoration_drained_shorthand () =
     ~optimized:"text-decoration:red" "text-decoration: solid red";
   check_declaration ~expected:"text-decoration:underline solid"
     ~optimized:"text-decoration:underline" "text-decoration: underline solid";
-  check_declaration ~expected:"text-decoration:underline currentColor"
+  check_declaration ~expected:"text-decoration:underline currentcolor"
     ~optimized:"text-decoration:underline"
     "text-decoration: underline currentcolor";
   check_declaration ~expected:"text-decoration:solid 2px"

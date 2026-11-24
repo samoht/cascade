@@ -330,30 +330,37 @@ let hwba h w b a =
   Hwb { h = Unitless h; w = Some (Pct w); b = Some (Pct b); a = Num a }
 
 let oklch l c h =
-  Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+  Oklch { l = Some (Pct l); c = Some (Axis c); h = Unitless h; alpha = None }
 
 let oklcha l c h a =
-  Oklch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
+  Oklch { l = Some (Pct l); c = Some (Axis c); h = Unitless h; alpha = Num a }
 
 let oklch_none_hue l c =
-  Oklch { l = Some (Pct l); c = Some c; h = Hue_none; alpha = None }
+  Oklch { l = Some (Pct l); c = Some (Axis c); h = Hue_none; alpha = None }
 
 let oklab l a b =
-  Oklab { l = Some (Pct l); a = Some a; b = Some b; alpha = None }
+  Oklab { l = Some (Pct l); a = Some (Axis a); b = Some (Axis b); alpha = None }
 
 let oklaba l a b alpha =
-  Oklab { l = Some (Pct l); a = Some a; b = Some b; alpha = Num alpha }
+  Oklab
+    {
+      l = Some (Pct l);
+      a = Some (Axis a);
+      b = Some (Axis b);
+      alpha = Num alpha;
+    }
 
 let oklaba_none_zeros l a b alpha =
-  let a = if a = 0.0 then Stdlib.Option.None else Stdlib.Option.Some a in
-  let b = if b = 0.0 then Stdlib.Option.None else Stdlib.Option.Some b in
-  Oklab { l = Some (Pct l); a; b; alpha = Num alpha }
+  let axis f =
+    if f = 0.0 then Stdlib.Option.None else Stdlib.Option.Some (Axis f)
+  in
+  Oklab { l = Some (Pct l); a = axis a; b = axis b; alpha = Num alpha }
 
 let lch l c h =
-  Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = None }
+  Lch { l = Some (Pct l); c = Some (Axis c); h = Unitless h; alpha = None }
 
 let lcha l c h a =
-  Lch { l = Some (Pct l); c = Some c; h = Unitless h; alpha = Num a }
+  Lch { l = Some (Pct l); c = Some (Axis c); h = Unitless h; alpha = Num a }
 
 let color_name n = Named n
 let current_color = Current

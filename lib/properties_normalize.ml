@@ -686,7 +686,6 @@ let normalize_property_value : type a.
   | Stroke_dashoffset -> normalize_stroke_dashoffset ~ctx value
   | Stroke_dasharray -> normalize_stroke_dasharray ~ctx value
   | Paint_order -> normalize_paint_order value
-  | Vector_effect -> normalize_vector_effect value
   | Flex_shrink -> normalize_flex_factor value
   | Webkit_flex_shrink -> normalize_flex_factor value
   | Flex_basis -> normalize_flex_basis ~ctx value

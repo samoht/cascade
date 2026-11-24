@@ -897,7 +897,7 @@ let pp_webkit_text_stroke : webkit_text_stroke Pp.t =
       sep ();
       pp_color ctx c)
     s.color;
-  if not !wrote then Pp.string ctx "currentColor"
+  if not !wrote then Pp.string ctx "currentcolor"
 
 (* The property is a [||] of one width and one colour, and CSS Values 4 sec. 2.2
    takes each option of a [||] at most once, so a second width fills no slot

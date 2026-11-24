@@ -70,13 +70,13 @@ let pp_empty2_var ctx name =
 let pp_typed_var_fallback pp_value ctx name value =
   pp_var_open ctx name;
   Pp.comma ctx ();
-  pp_value { ctx with in_function = true } value;
+  pp_value ctx value;
   Pp.char ctx ')'
 
 let pp_syntax_var_fallback ctx name value =
   pp_var_open ctx name;
   Pp.comma ctx ();
-  pp_syntax_fallback { ctx with in_function = true } value;
+  pp_syntax_fallback ctx value;
   Pp.char ctx ')'
 
 let first_top_level_comma_segment s =
@@ -106,8 +106,7 @@ let pp_inline_var : type a. a Pp.t -> a var Pp.t =
       match v.fallback with
       | Fallback value -> pp_value ctx value
       | Var_fallback _ -> pp_var_ref ctx v.name
-      | Syntax_fallback value ->
-          pp_syntax_fallback { ctx with in_function = true } value
+      | Syntax_fallback value -> pp_syntax_fallback ctx value
       | Empty | Empty2 -> ()
       | None -> pp_var_ref ctx v.name)
 
