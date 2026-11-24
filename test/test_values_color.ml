@@ -836,37 +836,40 @@ let spec_color5_function_edges () =
   (* Sec. 13.3 premultiplication applies in every interpolation space, not just
      sRGB. Mixing #0088cc 50% with transparent must restore #0088cc at half
      alpha in oklab/oklch/lab/lch too, never bleed transparent's zero
-     coordinates in and darken the result. *)
+     coordinates in and darken the result. Each takes the shortest spelling that
+     paints the mix's bytes: Chromium 153 paints the mix and each spelling below
+     alike, as (0,135,203) at alpha 128 on a canvas. *)
   check_color ~expected:"color-mix(in oklab,#08c 50%,transparent)"
-    ~optimized:"oklab(.5998-.0673-.1241/.5)"
+    ~optimized:"oklab(.6-.0673-31%/.5)"
     "color-mix(in oklab, #0088cc 50%, transparent)";
   check_color ~expected:"color-mix(in oklch,#08c 50%,transparent)"
-    ~optimized:"oklch(.5998 .1412 241.555/.5)"
+    ~optimized:"oklch(.6 .141 241.5/.5)"
     "color-mix(in oklch, #0088cc 50%, transparent)";
   (* With the Editor's Draft D50 white the mix is lab(53.287 -12.256 -44.558),
-     sRGB red 0 on the gamut edge: one decimal (53.3 -12.3 -44.6) leaves the
-     gamut by a byte, and two decimals paint (0,136,204). *)
+     sRGB red 0 on the gamut edge: the nearest decimal (53.3 -12.3 -44.6) leaves
+     the gamut by a byte, and (53.3 -12.3 -44.5) paints (0,136,204). *)
   check_color ~expected:"color-mix(in lab,#08c 50%,transparent)"
-    ~optimized:"lab(53.29-12.26-44.56/.5)"
+    ~optimized:"lab(53.3-12.3-44.5/.5)"
     "color-mix(in lab, #0088cc 50%, transparent)";
   (* The hue is the one the D50 white of CSS Color 4 (Editor's Draft) sec. 2, x
-     0.3457 and y 0.3585, gives: 254.621. *)
+     0.3457 and y 0.3585, gives: 254.621, which paints as 254.6 does. *)
   check_color ~expected:"color-mix(in lch,#08c 50%,transparent)"
-    ~optimized:"lch(53.3 46.2 254.621/.5)"
+    ~optimized:"lch(53.3 46.2 254.6/.5)"
     "color-mix(in lch, #0088cc 50%, transparent)";
   (* No explicit percentage: the 50/50 default restores the colour the same
      way. *)
   check_color ~expected:"color-mix(in oklab,#08c,transparent)"
-    ~optimized:"oklab(.5998-.0673-.1241/.5)"
+    ~optimized:"oklab(.6-.0673-31%/.5)"
     "color-mix(in oklab, #0088cc, transparent)";
   (* A zero-chroma operand (transparent) has a powerless hue in the polar spaces
      (sec. 4.4.1): it carries the opaque operand's hue over instead of
      interpolating toward an undefined angle, so red at half alpha stays red.
      Red's chroma sits on the sRGB gamut edge, and [.258] would leave it, where
      CSS Color 4 sec. 14.2 gamut maps rather than clips, so the fourth decimal
-     stays. *)
+     stays. The hue takes two decimals: Chromium 153 paints the mix and
+     [oklch(.628 .2577 29.24/.5)] alike, as (255,0,0) at alpha 128. *)
   check_color ~expected:"color-mix(in oklch,red 50%,transparent)"
-    ~optimized:"oklch(.628 .2577 29.2339/.5)"
+    ~optimized:"oklch(.628 .2577 29.24/.5)"
     "color-mix(in oklch, red 50%, transparent)";
   (* Typed lab-family operands with partial alpha route through the
      premultiplied path too: mixing a colour 50% with a fully transparent one
@@ -879,9 +882,11 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in srgb,red 30%,blue 30%)"
     ~optimized:"color(srgb .5 0 .5/.6)" "color-mix(in srgb, red 30%, blue 30%)";
   (* A modern-space argument resolves and the mix folds in a single pass
-     (idempotent minify), not only once both operands are already hex. *)
+     (idempotent minify), not only once both operands are already hex. Chromium
+     153 paints the mix and [color(srgb .58 .295 .25/.5)] alike, as (147,76,64)
+     at alpha 128. *)
   check_color ~expected:"color-mix(in srgb,oklch(50%.1 30) 50%,transparent)"
-    ~optimized:"color(srgb .579 .294 .251/.5)"
+    ~optimized:"color(srgb .58 .295 .25/.5)"
     "color-mix(in srgb, oklch(50% 0.1 30) 50%, transparent)";
   check_color ~expected:"color-mix(in oklab,var(--a),var(--b))"
     ~optimized:"color-mix(in oklab,var(--a),var(--b))"
@@ -897,19 +902,23 @@ let spec_color5_function_edges () =
 
 let spec_color5_srgb_float_mix () =
   (* CSS Color 5 sec. 3: convert modern operands to floating-point sRGB,
-     interpolate there, and quantise only the result. *)
+     interpolate there, and quantise only the result. The mix is color(srgb
+     .209263 .222089 .257506), and Chromium 153 paints the shorter color(srgb
+     .209 .223 .26) as (53,57,66) as it does the mix. *)
   check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 20%)"
-    ~optimized:"color(srgb .209 .222 .258)"
+    ~optimized:"color(srgb .209 .223 .26)"
     "color-mix(in srgb, oklch(13% .028 261.692), white 20%)";
   (* A nearby result that does not cross a byte-rounding boundary. *)
   check_color ~expected:"color-mix(in srgb,oklch(13%7%261.692),white 90%)"
     ~optimized:"color(srgb .901 .903 .907)"
     "color-mix(in srgb, oklch(13% .028 261.692), white 90%)";
   (* Premultiplication restores the transparent operand's partner channels; the
-     40% percentage sum scales the resulting alpha to 10%. *)
+     40% percentage sum scales the resulting alpha to 10%. Chromium 153 paints
+     the mix and [color(srgb .01 .028 .07/.1)] alike, as (0,10,20) at alpha
+     26. *)
   check_color
     ~expected:"color-mix(in srgb,oklch(13%7%261.692/.5) 20%,transparent 20%)"
-    ~optimized:"color(srgb .012 .028 .072/.1)"
+    ~optimized:"color(srgb .01 .028 .07/.1)"
     "color-mix(in srgb, oklch(13% .028 261.692 / .5) 20%, transparent 20%)"
 
 (* CSS Color 5 sec. 3: the result of [color-mix()] is a colour in the named

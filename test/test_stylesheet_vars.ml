@@ -379,11 +379,13 @@ let customprops13_registered_oklch_chroma () =
     "unregistered OKLCH custom property keeps token stream"
     ".x{--color-zinc-500:oklch(55.2%.016 285.938)}"
     (normalize_minified ".x { --color-zinc-500: oklch(55.2% .016 285.938) }");
+  (* Chromium 153 paints oklch(.552 4% 286) as (113,113,123), as it does the
+     authored colour. *)
   Alcotest.(check string)
     "registered OKLCH custom property uses typed color minification"
     "@property \
      --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}.x{--color-zinc-500:oklch(.552 \
-     4%285.938)}"
+     4%286)}"
     (normalize_closed
        "@property --color-zinc-500 { syntax: \"<color>\"; inherits: true; \
         initial-value: black } .x { --color-zinc-500: oklch(55.2% .016 \
@@ -394,7 +396,7 @@ let customprops13_registered_oklch_chroma () =
      and colour-canonicalised. *)
   Alcotest.(check string)
     "registration applies to a prior usage nested in a layer"
-    "@layer utilities{.x{--color-zinc-500:oklch(.552 4%285.938)}}@property \
+    "@layer utilities{.x{--color-zinc-500:oklch(.552 4%286)}}@property \
      --color-zinc-500{syntax:\"<color>\";inherits:true;initial-value:#000}"
     (normalize_closed
        "@layer utilities { .x { --color-zinc-500: oklch(55.2% .016 285.938) } \

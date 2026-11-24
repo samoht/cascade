@@ -276,9 +276,11 @@ let minify_flag () =
    more: it optimizes, then prints. Selectors 4 defines [:first-child] as
    [:nth-child(1)]; an [@font-face] without [font-family] or [src] defines no
    face (CSS Fonts 4 sec. 4.1); two rules writing one declaration share it.
-   [oklch(62.8123% .12345 29.23)] rounds to three decimals within the README's
-   0.002 Oklab budget and stays an [oklch()], since CSS Color 4 sec. 13.3
-   interpolates it in Oklab; [~lossless:true] turns the rounding off. *)
+   [oklch(62.8123% .12345 29.23)] takes the shortest spelling, at three decimals
+   or fewer and within the README's 0.002 Oklab budget, that paints its bytes:
+   Chromium 153 paints [oklch(.628 31% 29)] as (200,105,92) as it does the
+   source. It stays an [oklch()], since CSS Color 4 sec. 13.3 interpolates it in
+   Oklab; [~lossless:true] turns the rounding off. *)
 let minify_optimizes_and_prints () =
   let check name want css =
     Alcotest.(check string) name want (Css.minify (Css.stylesheet css))
@@ -288,7 +290,7 @@ let minify_optimizes_and_prints () =
     "@font-face{font-display:swap}.a{color:red}";
   check "shared declaration" ".a,.b{color:red}" ".a{color:red}.b{color:red}";
   let colour = ".a{color:oklch(62.8123% .12345 29.23)}" in
-  check "rounds a colour" ".a{color:oklch(.628 .123 29.23)}" colour;
+  check "rounds a colour" ".a{color:oklch(.628 31%29)}" colour;
   Alcotest.(check string)
     "lossless keeps the colour exact" ".a{color:oklch(.628123 .12345 29.23)}"
     (Css.minify ~lossless:true (Css.stylesheet colour));
