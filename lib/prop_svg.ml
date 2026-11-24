@@ -32,13 +32,6 @@ let paint_order_normal : paint_order_keyword list = [ Fill; Stroke; Markers ]
 let paint_order_expand (written : paint_order_keyword list) =
   written @ List.filter (fun k -> not (List.mem k written)) paint_order_normal
 
-(* SVG 2 sec. 8.13: [viewport] is what an omitted space means, so writing it is
-   redundant. *)
-let normalize_vector_effect (value : vector_effect) : vector_effect =
-  match value with
-  | Effects (ks, Some Viewport) -> Effects (ks, None)
-  | _ -> value
-
 let normalize_paint_order (value : paint_order) : paint_order =
   match value with
   | Order written ->
@@ -145,29 +138,14 @@ let rec normalize_svg_paint ?(lossless = false) ~enforce_spec :
                fallback ))
   | other -> other
 
-let pp_vector_effect_keyword : vector_effect_keyword Pp.t =
- fun ctx -> function
-  | Non_scaling_stroke -> Pp.string ctx "non-scaling-stroke"
-  | Non_scaling_size -> Pp.string ctx "non-scaling-size"
-  | Non_rotation -> Pp.string ctx "non-rotation"
-  | Fixed_position -> Pp.string ctx "fixed-position"
-
-let pp_vector_effect_space : vector_effect_space Pp.t =
- fun ctx -> function
-  | Viewport -> Pp.string ctx "viewport"
-  | Screen -> Pp.string ctx "screen"
-
 let rec pp_vector_effect : vector_effect Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_vector_effect ctx v
   | None -> Pp.string ctx "none"
-  | Effects (ks, space) -> (
-      Pp.list ~sep:Pp.space pp_vector_effect_keyword ctx ks;
-      match space with
-      | Some s ->
-          Pp.space ctx ();
-          pp_vector_effect_space ctx s
-      | None -> ())
+  | Non_scaling_stroke -> Pp.string ctx "non-scaling-stroke"
+  | Non_scaling_size -> Pp.string ctx "non-scaling-size"
+  | Non_rotation -> Pp.string ctx "non-rotation"
+  | Fixed_position -> Pp.string ctx "fixed-position"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -344,32 +322,6 @@ let read_svg_paint t : svg_paint =
     ]
     t
 
-let vector_effect_keyword_of = function
-  | "non-scaling-stroke" -> Some (Non_scaling_stroke : vector_effect_keyword)
-  | "non-scaling-size" -> Some Non_scaling_size
-  | "non-rotation" -> Some Non_rotation
-  | "fixed-position" -> Some Fixed_position
-  | _ -> None
-
-let vector_effect_space_of = function
-  | "viewport" -> Some (Viewport : vector_effect_space)
-  | "screen" -> Some Screen
-  | _ -> None
-
-let read_vector_effect_keyword t : vector_effect_keyword =
-  let loc = Cursor.position t in
-  let name = Cursor.ident t in
-  match vector_effect_keyword_of (String.lowercase_ascii_preserve name) with
-  | Some k -> k
-  | None -> err_invalid_value ~loc t "vector-effect" name
-
-let read_vector_effect_space t : vector_effect_space =
-  let loc = Cursor.position t in
-  let name = Cursor.ident t in
-  match vector_effect_space_of (String.lowercase_ascii_preserve name) with
-  | Some s -> s
-  | None -> err_invalid_value ~loc t "vector-effect" name
-
 (* SVG 2 (ED) sec. 8.13: [none | non-scaling-stroke | non-scaling-size |
    non-rotation | fixed-position], one keyword. An earlier draft took several
    effects and a host space; Chromium 153 and WebKit 26.5 drop both. *)
@@ -377,6 +329,10 @@ let rec read_vector_effect t : vector_effect =
   Cursor.enum_or_calls "vector-effect"
     [
       ("none", (None : vector_effect));
+      ("non-scaling-stroke", Non_scaling_stroke);
+      ("non-scaling-size", Non_scaling_size);
+      ("non-rotation", Non_rotation);
+      ("fixed-position", Fixed_position);
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
@@ -384,8 +340,6 @@ let rec read_vector_effect t : vector_effect =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (Values.read_var read_vector_effect t)) ]
-    ~default:(fun t ->
-      (Effects ([ read_vector_effect_keyword t ], None) : vector_effect))
     t
 
 let paint_order_keyword_of = function

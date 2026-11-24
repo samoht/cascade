@@ -40,14 +40,6 @@ let check_stroke_miterlimit =
   check_value_cursor "stroke-miterlimit" read_stroke_miterlimit
     pp_stroke_miterlimit
 
-let check_vector_effect_keyword =
-  check_value_cursor "vector-effect-keyword" read_vector_effect_keyword
-    pp_vector_effect_keyword
-
-let check_vector_effect_space =
-  check_value_cursor "vector-effect-space" read_vector_effect_space
-    pp_vector_effect_space
-
 let check_vector_effect =
   check_value_cursor "vector-effect" read_vector_effect pp_vector_effect
 
@@ -455,23 +447,16 @@ let test_stroke_miterlimit () =
   neg_cursor read_stroke_miterlimit "-1";
   neg_cursor read_stroke_miterlimit "4px"
 
-let test_vector_effect_keyword () =
-  check_vector_effect_keyword "non-scaling-stroke";
-  check_vector_effect_keyword "non-scaling-size";
-  check_vector_effect_keyword "non-rotation";
-  check_vector_effect_keyword "fixed-position";
-  neg_cursor read_vector_effect_keyword "screen"
-
-let test_vector_effect_space () =
-  check_vector_effect_space "viewport";
-  check_vector_effect_space "screen";
-  neg_cursor read_vector_effect_space "non-scaling-stroke"
-
 let test_vector_effect () =
   check_vector_effect "none";
   check_vector_effect "non-scaling-stroke";
+  check_vector_effect "non-scaling-size";
+  check_vector_effect "non-rotation";
+  check_vector_effect "fixed-position";
   check_vector_effect "var(--v)";
   neg_cursor read_vector_effect "bogus";
+  neg_cursor read_vector_effect "screen";
+  neg_cursor read_vector_effect "viewport";
   neg_cursor ~allow_partial:true read_vector_effect "non-scaling-stroke screen";
   neg_cursor ~allow_partial:true read_vector_effect
     "non-scaling-stroke fixed-position"
@@ -666,8 +651,6 @@ let suite =
       test_case "stroke_linecap" `Quick test_stroke_linecap;
       test_case "stroke_linejoin" `Quick test_stroke_linejoin;
       test_case "stroke_miterlimit" `Quick test_stroke_miterlimit;
-      test_case "vector_effect_keyword" `Quick test_vector_effect_keyword;
-      test_case "vector_effect_space" `Quick test_vector_effect_space;
       test_case "vector_effect" `Quick test_vector_effect;
       test_case "paint_order_keyword" `Quick test_paint_order_keyword;
       test_case "paint_order" `Quick test_paint_order;
