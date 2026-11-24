@@ -1176,6 +1176,66 @@ let math_in_colour_channel () =
     (fun value -> Alcotest.(check string) value "" (minify (color value)))
     [ "rgb(calc(1px) 0 0)"; "hsl(calc(1px) 50% 50%)" ]
 
+(* CSS Values 5 sec. 9 tree-counting functions are known only on an element, so
+   a channel holding one is a math function no parse-time fold resolves.
+   Chromium 153 keeps every colour below, and drops the three whose calculation
+   has the wrong type for its channel. *)
+let tree_counting_in_colour_channel () =
+  let minify css = Css.minify (Css.stylesheet css) in
+  let color value = String.concat "" [ ".a{color:"; value; "}" ] in
+  List.iter
+    (fun (value, fn, math) ->
+      let out = minify (color value) in
+      let prefix = String.concat "" [ ".a{color:"; fn; "(" ] in
+      Alcotest.(check bool)
+        (Fmt.str "%s keeps %s in %s" value math out)
+        true
+        (String.starts_with ~prefix out
+        && Astring.String.is_infix ~affix:math out))
+    [
+      ( "hsl(calc(sibling-index()*10deg) 50% 50%)",
+        "hsl",
+        "calc(sibling-index()*10deg)" );
+      ( "hsl(calc(sibling-index()*10) 50% 50%)",
+        "hsl",
+        "calc(sibling-index()*10)" );
+      ("hsl(10 calc(sibling-index()*10%) 50%)", "hsl", "sibling-index()*10%");
+      ("hsl(10,calc(sibling-index()*10%),50%)", "hsl", "sibling-index()*10%");
+      ("rgb(calc(sibling-index()*10) 0 0)", "rgb", "calc(sibling-index()*10)");
+      ("rgb(calc(sibling-index()*10%) 0 0)", "rgb", "sibling-index()*10%");
+      ("rgb(calc(sibling-index()*10),0,0)", "rgb", "calc(sibling-index()*10)");
+      ( "rgba(calc(sibling-index()*10),0,0,.5)",
+        "rgb",
+        "calc(sibling-index()*10)" );
+      ( "hwb(calc(sibling-count()*10deg) 10% 10%)",
+        "hwb",
+        "calc(sibling-count()*10deg)" );
+      ("hwb(10 calc(sibling-count()*10%) 10%)", "hwb", "sibling-count()*10%");
+      ("lab(calc(sibling-index()*10) 0 0)", "lab", "calc(sibling-index()*10)");
+      ("lab(calc(sibling-index()*10%) 0 0)", "lab", "sibling-index()*10%");
+      ("lab(50 calc(sibling-index()*10) 0)", "lab", "calc(sibling-index()*10)");
+      ("lab(50 calc(sibling-index()*1%) 0)", "lab", "calc(sibling-index()*1%)");
+      ( "lch(50 30 calc(sibling-index()*10deg))",
+        "lch",
+        "calc(sibling-index()*10deg)" );
+      ("lch(50 calc(sibling-index()*3) 10)", "lch", "calc(sibling-index()*3)");
+      ("oklab(.5 calc(sibling-index()*.01) 0)", "oklab", "sibling-index()*.01");
+      ("oklab(calc(sibling-index()*.1) 0 0)", "oklab", "sibling-index()*.1");
+      ( "oklch(.5 .1 calc(sibling-index()*10deg))",
+        "oklch",
+        "calc(sibling-index()*10deg)" );
+      ("oklch(.5 calc(sibling-index()*.01) 10)", "oklch", "sibling-index()*.01");
+      ("color(srgb calc(sibling-index()*.1) 0 0)", "color", "sibling-index()*.1");
+      ("rgb(0 0 0/calc(sibling-index()*.1))", "rgb", "sibling-index()*.1");
+    ];
+  List.iter
+    (fun value -> Alcotest.(check string) value "" (minify (color value)))
+    [
+      "hsl(calc(sibling-index()*10px) 50% 50%)";
+      "lab(50 calc(sibling-index()*1deg) 0)";
+      "rgb(calc(sibling-index()*1deg) 0 0)";
+    ]
+
 let suite =
   ( "values_color",
     [
@@ -1221,4 +1281,6 @@ let suite =
       test_case "lab family uses the ED D50 white" `Quick
         lab_family_uses_the_ed_d50_white;
       test_case "math in a colour channel" `Quick math_in_colour_channel;
+      test_case "tree-counting function in a colour channel" `Quick
+        tree_counting_in_colour_channel;
     ] )
