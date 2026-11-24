@@ -232,19 +232,24 @@ let linear_srgb_of_oklab lab =
   matrix_mul m_lms_to_linear_srgb (l *. l *. l, m *. m *. m, s *. s *. s)
 
 (* Lab / LCH polar form. CSS Color 4 sec. 9.5: CIE Lab and OKLab share the same
-   polar transform. *)
+   polar transform, and a chroma at or below the space's epsilon (sec. 4.4.1)
+   has a missing hue, which reads as 0, and a chroma of 0. *)
 
-let lch_of_lab (l, a, b) =
+let polar_of_rect ~epsilon (l, a, b) =
   let c = Float.sqrt ((a *. a) +. (b *. b)) in
-  let h = Float.atan2 b a *. 180.0 /. Float.pi in
-  let h = if h < 0.0 then h +. 360.0 else h in
-  (l, c, h)
+  if c <= epsilon then (l, 0.0, 0.0)
+  else
+    let h = Float.atan2 b a *. 180.0 /. Float.pi in
+    let h = if h < 0.0 then h +. 360.0 else h in
+    (l, c, h)
+
+let lch_of_lab = polar_of_rect ~epsilon:0.0015
 
 let lab_of_lch (l, c, h) =
   let h_rad = h *. Float.pi /. 180.0 in
   (l, c *. Float.cos h_rad, c *. Float.sin h_rad)
 
-let oklch_of_oklab = lch_of_lab
+let oklch_of_oklab = polar_of_rect ~epsilon:0.000004
 let oklab_of_oklch = lab_of_lch
 
 (* CSS Color 4 perceptual difference: Euclidean distance in OKLab. *)
