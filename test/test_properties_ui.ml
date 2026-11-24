@@ -470,10 +470,11 @@ let test_vector_effect_space () =
 let test_vector_effect () =
   check_vector_effect "none";
   check_vector_effect "non-scaling-stroke";
-  check_vector_effect "non-scaling-stroke screen";
-  check_vector_effect "non-scaling-stroke fixed-position";
   check_vector_effect "var(--v)";
-  neg_cursor read_vector_effect "bogus"
+  neg_cursor read_vector_effect "bogus";
+  neg_cursor ~allow_partial:true read_vector_effect "non-scaling-stroke screen";
+  neg_cursor ~allow_partial:true read_vector_effect
+    "non-scaling-stroke fixed-position"
 
 let test_paint_order_keyword () =
   check_paint_order_keyword "fill";

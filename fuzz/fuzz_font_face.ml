@@ -61,6 +61,10 @@ let test_metric_override_non_negative buf =
   | Some (Css.Font_face.Percent p) ->
       if Float.compare p 0. < 0 then
         fail "metric override parsed a negative percentage"
+  (* A call held below the range is the only place a negative may stand. *)
+  | Some (Css.Font_face.Percent_call p) ->
+      if Float.compare p 0. >= 0 then
+        fail "metric override kept a call it could have folded"
 
 let test_size_adjust_non_negative buf =
   match parse_size_adjust buf with
@@ -68,6 +72,9 @@ let test_size_adjust_non_negative buf =
   | Some (Css.Font_face.Pct p) ->
       if Float.compare p 0. < 0 then
         fail "size-adjust parsed a negative percentage"
+  | Some (Css.Font_face.Pct_call p) ->
+      if Float.compare p 0. >= 0 then
+        fail "size-adjust kept a call it could have folded"
 
 let test_metric_override_serialization_idempotent buf =
   match parse_metric buf with

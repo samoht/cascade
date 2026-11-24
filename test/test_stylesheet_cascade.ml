@@ -296,7 +296,7 @@ let c41_declared_values () =
     (List.map declared_property declared);
   Alcotest.(check (list string))
     "declared values expose serialized values"
-    [ "#f00"; "1px"; "#00f"; "currentcolor" ]
+    [ "#f00"; "1px"; "#00f"; "currentColor" ]
     (List.map declared_value declared);
   Alcotest.(check (list int))
     "declared values preserve source order" [ 0; 1; 2; 3 ]

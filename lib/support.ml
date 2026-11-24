@@ -284,257 +284,6 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.column-rule.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.column-rule-width.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.column-rule-style.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.column-rule-color.trailing_comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Gaps 1 sec. 4 gives these a comma-separated list, one entry per \
-         rule line, so a comma between two entries is theirs to read. The list \
-         has no empty entry, and Chrome reads a trailing comma and drops it on \
-         serialising";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-block.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-inline.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-block-start.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-block-end.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-inline-start.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-inline-end.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-top.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-right.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-bottom.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.border-left.comma";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Backgrounds 3 sec. 4.5 and CSS Logical 1 sec. 4.6 build these \
-         from a [||] of a width, a style and a colour, and no arm of either is \
-         a comma. Chrome reads one between two components as the whitespace \
-         separating them, so the declaration sets what the same value without \
-         the comma sets";
-      measured = "Chrome 153";
-    };
-    {
       key = "css.properties.baseline-shift.number";
       support =
         {
@@ -566,36 +315,6 @@ let measured =
     };
     {
       key = "css.properties.-webkit-transition.negative";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
-         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
-         lone negative fills no slot. Chrome takes it";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.-moz-transition.negative";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Transitions 1 sec. 2.5's note assigns the first <time> that \
-         parses to transition-duration, which sec. 2.2 ranges [0s,inf], so a \
-         lone negative fills no slot. Chrome takes it";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.-o-transition.negative";
       support =
         {
           Baseline.chrome = Some (153, 0);
@@ -709,39 +428,6 @@ let measured =
         \         <image> | <custom-ident>, so a counter symbol may be an \
          image. Chrome \\\n\
         \         implements the string and ident arms and refuses every image";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.font-family.default";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Fonts 4 sec. 2.1.1 gives an unquoted family a <custom-ident>+ and \
-         excludes an identifier that could be misinterpreted as a pre-defined \
-         keyword or a CSS-wide keyword, and CSS Values 4 sec. 4.2 reserves \
-         default. Chrome applies the exclusion to a family of one identifier \
-         and reads a reserved word inside a longer name";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.font-family.inherit";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Values 4 sec. 4.2 excludes the CSS-wide keywords from \
-         <custom-ident> itself, so no word of a family sequence is one \
-         wherever it stands. Chrome reads inherit as a family name once \
-         another word stands beside it";
       measured = "Chrome 153";
     };
     {
@@ -1076,9 +762,8 @@ let measured =
           safari_ios = None;
         };
       why =
-        "SVG 2 sec. 8.13: none | [ non-scaling-stroke | non-scaling-size | \
-         non-rotation | fixed-position ]+ [ viewport | screen ]?; Chrome has \
-         only non-scaling-stroke";
+        "SVG 2 sec. 8.13: none | non-scaling-stroke | non-scaling-size | \
+         non-rotation | fixed-position; Chrome has only non-scaling-stroke";
       measured = "Chrome 153";
     };
     {
@@ -1106,71 +791,132 @@ let measured =
       measured = "Chrome 153";
     };
     {
-      key = "css.properties.vector-effect.non_scaling_stroke_screen";
+      key = "css.at-rules.font-face.font-family.serif";
       support =
         {
           Baseline.chrome = None;
           firefox = None;
-          safari = None;
+          safari = Some (26, 5);
           safari_ios = None;
         };
-      why = "SVG 2 sec. 8.13: the effect list is followed by viewport | screen";
-      measured = "Chrome 153";
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads serif heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
     };
     {
-      key = "css.properties.vector-effect.non_scaling_stroke_fixed_position";
+      key = "css.at-rules.font-face.font-family.sans-serif";
       support =
         {
           Baseline.chrome = None;
           firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why = "SVG 2 sec. 8.13: the effects themselves repeat with +";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.properties.resize.auto";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
+          safari = Some (26, 5);
           safari_ios = None;
         };
       why =
-        "CSS UI 4 sec. 4.1: none | both | horizontal | vertical | block | \
-         inline. Chrome accepts auto, no specification defines it";
-      measured = "Chrome 153";
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads sans-serif heading an unquoted name as the generic \
+         family. WebKit reads a name of several words headed by it, and Chrome \
+         drops it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
     };
     {
-      key = "css.properties.text-orientation.sideways_right";
+      key = "css.at-rules.font-face.font-family.monospace";
       support =
         {
-          Baseline.chrome = Some (153, 0);
+          Baseline.chrome = None;
           firefox = None;
-          safari = None;
+          safari = Some (26, 5);
           safari_ios = None;
         };
       why =
-        "CSS Writing Modes 4 sec. 5.1: mixed | upright | sideways. \
-         sideways-right is a compatibility alias browsers may keep, not \
-         grammar";
-      measured = "Chrome 153";
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads monospace heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
     };
     {
-      key = "css.properties.alignment-baseline.auto";
+      key = "css.at-rules.font-face.font-family.cursive";
       support =
         {
-          Baseline.chrome = Some (153, 0);
+          Baseline.chrome = None;
           firefox = None;
-          safari = None;
+          safari = Some (26, 5);
           safari_ios = None;
         };
       why =
-        "CSS Inline 3 sec. 4.2.2: baseline | <baseline-metric>, and no arm is \
-         auto. Chrome accepts it from the SVG 1.1 grammar";
-      measured = "Chrome 153";
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads cursive heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.fantasy";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads fantasy heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.system-ui";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads system-ui heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.math";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads math heading an unquoted name as the generic family. \
+         WebKit reads a name of several words headed by it, and Chrome drops \
+         it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
+    };
+    {
+      key = "css.at-rules.font-face.font-family.-webkit-body";
+      support =
+        {
+          Baseline.chrome = None;
+          firefox = None;
+          safari = Some (26, 5);
+          safari_ios = None;
+        };
+      why =
+        "CSS Fonts 4 sec. 4.2 writes the descriptor <family-name>, and sec. \
+         2.1.1 reads -webkit-body heading an unquoted name as the generic \
+         family. WebKit reads a name of several words headed by it, and Chrome \
+         drops it, so cascade keeps it as written";
+      measured = "Chrome 153, WebKit 26.5";
     };
     {
       key = "css.at-rules.font-face.font-family.default";
@@ -1216,7 +962,9 @@ let measured =
       why =
         "CSS Fonts 4 sec. 4.4 writes the descriptor auto | \
          <font-weight-absolute>{1,2}, so a pair of endpoints is the range a \
-         variable font is asked for. Chrome takes only one value";
+         variable font is asked for, a keyword endpoint included. Chrome takes \
+         a pair of numbers (100 900) and refuses a pair holding a keyword \
+         (bold 400); the key names the two-value form such a pair is";
       measured = "Chrome 153";
     };
     {
@@ -1231,23 +979,9 @@ let measured =
       why =
         "CSS Fonts 4 sec. 4.5 writes the descriptor auto | \
          <font-stretch-css3>{1,2}, so a pair of endpoints is the range a \
-         variable font is asked for. Chrome takes only one value";
-      measured = "Chrome 153";
-    };
-    {
-      key = "css.at-rules.font-face.font-variation-settings.string";
-      support =
-        {
-          Baseline.chrome = Some (153, 0);
-          firefox = None;
-          safari = None;
-          safari_ios = None;
-        };
-      why =
-        "CSS Fonts 4 sec. 6.6 writes each entry <opentype-tag> <number>, so a \
-         bare tag names an axis and sets it to nothing. Chrome takes the tag \
-         alone at the descriptor and gives it 1, where it refuses the same \
-         entry at the property";
+         variable font is asked for, a keyword endpoint included. Chrome takes \
+         a pair of percentages (50% 200%) and refuses a pair holding a keyword \
+         (75% condensed); the key names the two-value form such a pair is";
       measured = "Chrome 153";
     };
   ]

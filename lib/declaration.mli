@@ -346,6 +346,14 @@ val fallback_for :
     earlier does not. [false] means every such release that parses [earlier]
     parses [later], so [earlier] is dead wherever [later] covers it. *)
 
+val composes :
+  floors:Support.targets -> parts:declaration list -> declaration -> bool
+(** [composes ~floors ~parts composed] is [true] when every release of an engine
+    [floors] names that parses a declaration of [parts] also parses [composed],
+    so a shorthand [composed] may replace [parts]. A browser that drops a
+    shorthand at parse time drops every slot it writes, where the parts lost one
+    each ({!fallback_for}). Every shorthand composer asks it. *)
+
 val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
 (** [value_size ?minify decl] is the byte length of
     [string_of_value ?minify decl], computed without allocating the string. *)

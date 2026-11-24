@@ -370,8 +370,9 @@ let read_vector_effect_space t : vector_effect_space =
   | Some s -> s
   | None -> err_invalid_value ~loc t "vector-effect" name
 
-(* [ <effect> ]+ then an optional space keyword, so an ident that names a space
-   ends the effect run. *)
+(* SVG 2 (ED) sec. 8.13: [none | non-scaling-stroke | non-scaling-size |
+   non-rotation | fixed-position], one keyword. An earlier draft took several
+   effects and a host space; Chromium 153 and WebKit 26.5 drop both. *)
 let rec read_vector_effect t : vector_effect =
   Cursor.enum_or_calls "vector-effect"
     [
@@ -384,22 +385,7 @@ let rec read_vector_effect t : vector_effect =
     ]
     ~calls:[ ("var", fun t -> Var (Values.read_var read_vector_effect t)) ]
     ~default:(fun t ->
-      let rec go acc =
-        Cursor.ws t;
-        match Option.map vector_effect_keyword_of (Cursor.peek_keyword t) with
-        | Some (Some k) ->
-            let _ = Cursor.ident t in
-            go (k :: acc)
-        | _ -> List.rev acc
-      in
-      let effects = go [ read_vector_effect_keyword t ] in
-      Cursor.ws t;
-      let space =
-        match Option.map vector_effect_space_of (Cursor.peek_keyword t) with
-        | Some (Some _) -> Some (read_vector_effect_space t)
-        | _ -> None
-      in
-      (Effects (effects, space) : vector_effect))
+      (Effects ([ read_vector_effect_keyword t ], None) : vector_effect))
     t
 
 let paint_order_keyword_of = function

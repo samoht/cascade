@@ -1,7 +1,6 @@
 (** [var()], [env()] and [attr()] references, and preserved component values. *)
 
 open Values_intf
-open Values_color_name
 
 let var_ref ?fallback ?default ?layer ?meta ?(runtime = false) name =
   let fallback : _ fallback =
@@ -36,9 +35,7 @@ let pp_var_fallback ctx fallback_name =
    custom property's own value keeps that separator, and that stream never
    prints through here. *)
 let string_of_syntax_fallback ctx value =
-  if Pp.minified ctx then
-    Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
-      ~opaque:false value
+  if Pp.minified ctx then Parser.to_string_custom_minified ~opaque:false value
   else Parser.string_of_components value
 
 (* A syntax fallback's normal form is the token stream its minified print reads
@@ -49,8 +46,7 @@ let normalize_syntax_fallback (v : 'a var) : 'a var =
   match v.fallback with
   | Syntax_fallback components ->
       let minified =
-        Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
-          ~opaque:false components
+        Parser.to_string_custom_minified ~opaque:false components
       in
       { v with fallback = syntax_fallback minified }
   | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> v
@@ -157,9 +153,7 @@ let pp_env : type a. a Pp.t -> a env Pp.t =
    the streams this prints, so the runs come back as they were read. *)
 let pp_component_values ctx values =
   let value =
-    if Pp.minified ctx then
-      Parser.to_string_custom_minified ~fold_ident:fold_custom_value_ident
-        values
+    if Pp.minified ctx then Parser.to_string_custom_minified values
     else Parser.to_string_verbatim values
   in
   Pp.string ctx value

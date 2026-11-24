@@ -278,10 +278,8 @@ source positions and theme resolution.
   `apply` and `prune`, work from the HTML they are given.
 - Comments and source positions are not kept through formatting. Library
   callers who need them can parse with `~preserve_source:true`.
-- The values of custom properties are mostly left as written, since their
-  meaning depends on where they are used. Complete colour values, and
-  constant `calc()` expressions that reduce to an angle or a time, are still
-  shortened.
+- The values of custom properties are left as written, apart from
+  whitespace, since their meaning depends on where they are used.
 
 The CSS modules cascade supports are listed in
 [docs/reference.md](docs/reference.md#css-coverage).

@@ -691,6 +691,9 @@ type flex_basis =
   | Rem_fn of length * length
   | Hypot of length list
   | Abs of length
+  | Calc_size of length option * length calc
+      (** CSS Sizing 4 (ED) sec. 7 [calc-size()], which CSS Flexbox 1 sec. 7.2
+          takes through [<'width'>]. *)
   | Dimension of { value : float; unit : string; repr : string }
       (** A dimension whose authored spelling the typed constructors above do
           not carry, e.g. [1e3px] or [10.0px]. {!Values.type-length} holds one

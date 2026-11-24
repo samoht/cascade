@@ -270,6 +270,24 @@ let webkit_compatible_mask : Properties.mask -> Properties.mask =
   | Layers layers -> Layers (List.map strip_layer layers)
   | value -> value
 
+(* The twin of an untyped value is read under its own name, as the next pass
+   reads it: the prefixed grammar can type what the standard one leaves untyped,
+   as [-webkit-mask-position] reads with [background-position]'s. *)
+let untyped_fallback targets kind webkit_name components important =
+  if required_fallback kind targets then
+    let raw =
+      Declaration.v ~important
+        (Unknown_property (Properties.untyped webkit_name))
+        components
+    in
+    match
+      Declaration.parse_declaration webkit_name
+        (Declaration.string_of_value ~minify:false raw)
+    with
+    | Some twin -> Some (if important then Declaration.important twin else twin)
+    | None -> Some raw
+  else None
+
 let of_declaration targets decl : Declaration.declaration option =
   let fallback : type a.
       t -> a Properties.property -> a -> bool -> Declaration.declaration option
@@ -325,15 +343,12 @@ let of_declaration targets decl : Declaration.declaration option =
               let source = Declaration.v Mask (webkit_compatible_mask value) in
               opaque_fallback Mask_fallback webkit_name source important
           | Some _ | None ->
-              fallback Mask_fallback
-                (Unknown_property (Properties.untyped webkit_name))
-                components important)
+              untyped_fallback targets Mask_fallback webkit_name components
+                important)
       | Some spec when condition_holds spec ->
           let kind = fallback_spec_kind spec in
           let _, webkit_name = fallback_spec_names spec in
-          fallback kind
-            (Unknown_property (Properties.untyped webkit_name))
-            components important
+          untyped_fallback targets kind webkit_name components important
       | Some _ | None -> None)
   | Declaration _ -> (
       match spec_of_standard decl with

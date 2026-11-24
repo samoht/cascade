@@ -151,26 +151,28 @@ let m_linear_rec2020_of_xyz65 =
 let xyz65_of_linear_rec2020 rgb = matrix_mul m_xyz65_of_linear_rec2020 rgb
 let linear_rec2020_of_xyz65 xyz = matrix_mul m_linear_rec2020_of_xyz65 xyz
 
-(* XYZ chromatic adaptation, Bradford method. CSS Color 4 sec. 19. *)
+(* XYZ chromatic adaptation, Bradford method, between the D65 and D50 whites of
+   CSS Color 4 (Editor's Draft) sec. 2, as the sec. 19 sample code gives it. *)
 
 let m_d50_of_xyz65 =
-  ( (1.0479298208405488, 0.022946793341019088, -0.05019222954313557),
-    (0.029627815688159, 0.990434484573249, -0.01707382502938514),
-    (-0.009243058152591178, 0.015055144896577895, 0.7518742899580008) )
+  ( (1.0479297925449969, 0.022946870601609652, -0.05019226628920524),
+    (0.02962780877005599, 0.9904344267538799, -0.017073799063418826),
+    (-0.009243040646204504, 0.015055191490298152, 0.7518742814281371) )
 
 let m_d65_of_xyz50 =
-  ( (0.9554734527042182, -0.023098536874261423, 0.0632593086610217),
-    (-0.028369706963208136, 1.0099954580058226, 0.021041398966943008),
-    (0.012314001688319899, -0.020507696433477912, 1.3303659366080753) )
+  ( (0.955473421488075, -0.02309845494876471, 0.06325924320057072),
+    (-0.0283697093338637, 1.0099953980813041, 0.021041441191917323),
+    (0.012314014864481998, -0.020507649298898964, 1.330365926242124) )
 
 let d50_of_xyz65 xyz = matrix_mul m_d50_of_xyz65 xyz
 let d65_of_xyz50 xyz = matrix_mul m_d65_of_xyz50 xyz
 
-(* CIE Lab <-> XYZ-D50. CSS Color 4 sec. 19 with D50 white point. *)
+(* CIE Lab <-> XYZ-D50. CSS Color 4 sec. 19, with the D50 white sec. 2 defines
+   by its chromaticity (x 0.3457, y 0.3585) in the Editor's Draft. *)
 
 let lab_kappa = 24389.0 /. 27.0
 let lab_epsilon = 216.0 /. 24389.0
-let lab_d50_white = (0.96422, 1.0, 0.82521)
+let lab_d50_white = (0.3457 /. 0.3585, 1.0, (1.0 -. 0.3457 -. 0.3585) /. 0.3585)
 
 let f_lab v =
   if v > lab_epsilon then v ** (1.0 /. 3.0)
@@ -230,19 +232,24 @@ let linear_srgb_of_oklab lab =
   matrix_mul m_lms_to_linear_srgb (l *. l *. l, m *. m *. m, s *. s *. s)
 
 (* Lab / LCH polar form. CSS Color 4 sec. 9.5: CIE Lab and OKLab share the same
-   polar transform. *)
+   polar transform, and a chroma at or below the space's epsilon (sec. 4.4.1)
+   has a missing hue, which reads as 0, and a chroma of 0. *)
 
-let lch_of_lab (l, a, b) =
+let polar_of_rect ~epsilon (l, a, b) =
   let c = Float.sqrt ((a *. a) +. (b *. b)) in
-  let h = Float.atan2 b a *. 180.0 /. Float.pi in
-  let h = if h < 0.0 then h +. 360.0 else h in
-  (l, c, h)
+  if c <= epsilon then (l, 0.0, 0.0)
+  else
+    let h = Float.atan2 b a *. 180.0 /. Float.pi in
+    let h = if h < 0.0 then h +. 360.0 else h in
+    (l, c, h)
+
+let lch_of_lab = polar_of_rect ~epsilon:0.0015
 
 let lab_of_lch (l, c, h) =
   let h_rad = h *. Float.pi /. 180.0 in
   (l, c *. Float.cos h_rad, c *. Float.sin h_rad)
 
-let oklch_of_oklab = lch_of_lab
+let oklch_of_oklab = polar_of_rect ~epsilon:0.000004
 let oklab_of_oklch = lab_of_lch
 
 (* CSS Color 4 perceptual difference: Euclidean distance in OKLab. *)

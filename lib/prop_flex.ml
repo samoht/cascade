@@ -231,7 +231,7 @@ let basis_stands_alone : flex_basis -> bool = function
       true
   | Auto | Num _ | Zero | Inherit | Initial | Unset | Revert | Revert_layer
   | Clamp _ | Min _ | Max _ | Round _ | Mod _ | Rem_fn _ | Hypot _ | Abs _
-  | Calc _ | Var _ ->
+  | Calc _ | Calc_size _ | Var _ ->
       false
 
 (* The [flex-basis] a [flex] of one or two factors omits. CSS Flexible Box 1
@@ -459,6 +459,7 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   (* Math functions mirror [length]; reuse its printer. *)
   | Clamp (a, b, c) -> pp_length ctx (Clamp (a, b, c))
+  | Calc_size (basis, calc) -> pp_length ctx (Calc_size (basis, calc))
   | Min xs -> pp_length ctx (Min xs)
   | Max xs -> pp_length ctx (Max xs)
   | Round (s, a, b) -> pp_length ctx (Round (s, a, b))
@@ -803,6 +804,7 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Rem_fn (a, b) -> Rem_fn (a, b)
   | Hypot xs -> Hypot xs
   | Abs a -> Abs a
+  | Calc_size (basis, calc) -> Calc_size (basis, calc)
   (* Every other authored spelling reaches [length] as a [Dimension] carrying
      its own text, [1e3px] and [10.0px] among them, and sec. 7.2 takes each of
      them as a [<length-percentage>]. *)
@@ -843,6 +845,11 @@ and read_flex_basis_with ?(keywords = true) t : flex_basis =
         ( "calc",
           fun t ->
             Calc (read_calc ~result_type:`Value read_flex_basis_in_math t) );
+        (* CSS Sizing 4 (ED) sec. 7 takes for the basis any sizing keyword the
+           context allows, and [flex-basis] allows [content]. *)
+        ( "calc-size",
+          fun t ->
+            flex_basis_of_length t (Values.read_calc_size ~content:true t) );
       ]
       (* CSS Flexbox 1 sec. 7.2.3 reads the basis as a [<'width'>], so it takes
          the intrinsic sizes the box sizes take. *)
@@ -867,8 +874,19 @@ module Flex = struct
   (* Helper functions for flex parsing *)
   (* [flex: auto] is [1 1 auto], which the flex value spells [Auto] rather than
      as a basis of its own. *)
+  (* Sec. 7.1 gives [flex] the [<'flex-basis'>] grammar, but Chromium 153 drops
+     [flex:1 calc-size(auto,size)] and [flex:calc-size(content,size)] where it
+     reads the same [flex-basis], and no shipping engine paints either, so the
+     default mode refuses a [calc-size()] basis there and keeps the fallback
+     before it. [enforce_spec] relies on the specification alone and reads it. *)
+  let read_shorthand_basis t : flex_basis =
+    match read_flex_basis t with
+    | Calc_size _ when not (Cursor.enforce_spec t) ->
+        Cursor.err_invalid t "calc-size() as a flex basis"
+    | basis -> basis
+
   let read_basis_only t =
-    match (read_flex_basis t : flex_basis) with
+    match (read_shorthand_basis t : flex_basis) with
     | Auto -> (Auto : flex)
     | basis -> Basis basis
 
@@ -897,7 +915,7 @@ module Flex = struct
       Cursor.option
         (fun t ->
           Cursor.ws t;
-          read_flex_basis t)
+          read_shorthand_basis t)
         t
     in
     match (shrink, basis) with
@@ -908,7 +926,7 @@ module Flex = struct
   (* Sec. 7.1.1 joins the factor group and the basis with a [||], so the basis
      may lead. An omitted shrink is 1. *)
   let read_basis_grow_shrink t =
-    let basis = read_flex_basis t in
+    let basis = read_shorthand_basis t in
     Cursor.ws t;
     let grow = read_factor t in
     let shrink =

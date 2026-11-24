@@ -1551,8 +1551,7 @@ let token_printers =
   [
     ("string_of_components", Parser.string_of_components);
     ("to_string_minified", Parser.to_string_minified);
-    ( "to_string_custom_minified",
-      Parser.to_string_custom_minified ~fold_ident:Fun.id ~opaque:true );
+    ("to_string_custom_minified", Parser.to_string_custom_minified ~opaque:true);
   ]
 
 (* [hot] and [cold] serialise to the same byte count, so the output buffer, its
@@ -1626,6 +1625,17 @@ let spec_escape_ident_dash_digit () =
   (* Sec. 4.3.9 ident-start branch: a digit further in is an ident-continue code
      point, so nothing is escaped there. *)
   check_escape_ident_retokenizes "inner dash digit" "a-4"
+
+(* CSSOM 1 sec. 2.1 escapes a character as code point with "the code point as
+   hexadecimal in the range 0-9 a-f": lowercase, the same length as upper. *)
+let cssom_escape_hex_lowercase () =
+  let check name expected s =
+    Alcotest.(check string) name expected (Parser.escape_ident s)
+  in
+  check "U+000E" "\\e " "\x0e";
+  check "U+001F" "a\\1f b" "a\x1fb";
+  check "U+007F" "\\7f " "\x7f";
+  check "malformed byte" "a\\ff " "a\xff"
 
 let spec_escape_ident_leading_dash () =
   (* Sec. 4.3.9: [--] and [-] followed by an ident-start code point do open an
@@ -1701,23 +1711,22 @@ let custom_minified_opaque_separators () =
   check "var(--a) var(--b)" ~opaque:"var(--a) var(--b)"
     ~typed:"var(--a) var(--b)"
 
-(* A signed number keeps its sign where the stream needs it - after a [*] or a
-   [/] in a math function the [-] is the number's own - but the sign says
-   nothing about the digits that follow, so the leading zero drops as it does on
-   an unsigned number. lightningcss writes [calc(var(--s)*-.5)] for Tailwind's
-   [calc(var(--spacing) * -0.5)]. *)
+(* A signed number keeps its sign and its digits: a custom property's tokens are
+   the value a [var()] substitutes, kept as written apart from whitespace (CSS
+   Custom Properties 1 sec. 4.1), and a typed slot's fallback is a stream of the
+   same kind. Only the spaces around the [*] go. *)
 let custom_minified_signed_leading_zero () =
   let minify source =
     Parser.to_string_custom_minified ~opaque:false (parse_cvs source)
   in
   Alcotest.(check string)
-    "a negative factor" "calc(var(--s)*-.5)"
+    "a negative factor" "calc(var(--s)*-0.5)"
     (minify "calc(var(--s) * -0.5)");
   Alcotest.(check string)
-    "an explicit plus keeps its sign" "calc(var(--s)*+.5)"
+    "an explicit plus keeps its sign" "calc(var(--s)*+0.5)"
     (minify "calc(var(--s) * +0.5)");
   Alcotest.(check string)
-    "a signed dimension" "calc(2*-.5em)"
+    "a signed dimension" "calc(2*-0.5em)"
     (minify "calc(2 * -0.5em)")
 
 let suite =
@@ -1867,6 +1876,8 @@ let suite =
         spec_escape_ident_dash_digit;
       Alcotest.test_case "spec section 4.3.9 escape_ident leading dash" `Quick
         spec_escape_ident_leading_dash;
+      Alcotest.test_case "cssom 2.1 escape hex is lowercase" `Quick
+        cssom_escape_hex_lowercase;
       Alcotest.test_case "spec section 4.3.9 escape_ident leading digit" `Quick
         spec_escape_ident_leading_digit;
       Alcotest.test_case "spec section 4.2 escaped ident survives minify" `Quick

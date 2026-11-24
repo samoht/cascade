@@ -278,6 +278,23 @@ let conflation shorthand longhands =
       Conflated
         (String.concat "" [ "equated with the expansion without "; l.name ])
 
+(* The expansion is Chromium's. Another browser of the default targets can read
+   one of its longhands and drop the shorthand, as Safari 17.4 reads
+   [text-wrap-mode] and drops [text-wrap: balance] (web-features), and there the
+   two sheets differ; the comparator rightly keeps them apart. *)
+let read_apart job longhands =
+  match Css.parse_declaration job.property job.value with
+  | None -> false
+  | Some shorthand ->
+      let parts =
+        List.filter_map
+          (fun l -> Css.parse_declaration l.name l.value)
+          longhands
+      in
+      not
+        (Css.Declaration.composes ~floors:Css.Optimize.evergreen_targets ~parts
+           shorthand)
+
 let outcome job expansion =
   match expansion.error with
   | Some e -> Excluded (String.concat "" [ "the browser raised: "; e ])
@@ -293,7 +310,12 @@ let outcome job expansion =
           let decls = declarations longhands in
           match verdict shorthand decls with
           | Dropped why -> Dropped_by_cascade why
-          | Differs -> Gap decls
+          | Differs ->
+              if read_apart job longhands then
+                Excluded
+                  "a target reads a longhand of this expansion and drops the \
+                   shorthand, so the two differ there"
+              else Gap decls
           | Equal ->
               if verdict shorthand "" = Equal then
                 Excluded "both sides canonicalize to an empty rule"

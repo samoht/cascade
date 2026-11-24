@@ -59,3 +59,25 @@ let read_integer_slot t : number =
     | Num f when Float.is_finite f -> Num (Float.floor (f +. 0.5))
     | n -> n
   else Num (Float.of_int (Cursor.int t))
+
+(* CSS Syntax 3 sec. 4.3.13 types digits alone as an integer and an exponent as
+   a number, so a value at an [<integer>] is written in digits. Past the [int]
+   range the shorter of the range's end, which every target clamps alike, and
+   the value kept in its [calc()] stands for it. *)
+let pp_integer_slot ctx (n : number) =
+  match n with
+  | Num f when Float.is_integer f && Float.abs f < 0x1p62 ->
+      Pp.int ctx (int_of_float f)
+  | Num f when Float.is_integer f ->
+      let clamped = string_of_int (if f < 0. then min_int else max_int) in
+      let call =
+        String.concat ""
+          [
+            "calc(";
+            Pp.string_of_float ~drop_leading_zero:(Pp.minified ctx) f;
+            ")";
+          ]
+      in
+      Pp.string ctx
+        (if String.length call < String.length clamped then call else clamped)
+  | n -> pp_number ctx n

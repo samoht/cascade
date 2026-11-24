@@ -28,11 +28,6 @@ val read_color_keyword_of_string : string -> color option
     lower-case ident [s]: a named color, {!val-transparent}, [currentcolor],
     [auto], [inherit], or a system color. *)
 
-val fold_custom_value_ident : string -> string
-(** [fold_custom_value_ident s] is the canonical lower-case spelling of [s] when
-    [s] names a color keyword other than a system color, or one of the idents
-    {!Parser.fold_value_ident} folds; other idents keep their source case. *)
-
 val rgb : ?alpha:float -> int -> int -> int -> color
 (** [rgb ?alpha r g b] creates an RGB color with optional alpha. *)
 

@@ -13,3 +13,5 @@ Css.inset_ring_shadow
 Properties.inset_ring_shadow
 Pp.quoted
 Css.decode_import_url
+Parser.fold_value_ident
+Values.fold_custom_value_ident

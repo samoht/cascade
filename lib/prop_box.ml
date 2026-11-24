@@ -642,7 +642,7 @@ let pp_overflow_clip_box : overflow_clip_box Pp.t =
 let normalize_overflow_clip_margin :
     overflow_clip_margin -> overflow_clip_margin = function
   | Clip_margin (box, Some length) as value ->
-      let length' = Values.canonical_dimension length in
+      let length' = Values.normalize_dimension ~non_negative:true length in
       if length' == length then value else Clip_margin (box, Some length')
   | value -> value
 

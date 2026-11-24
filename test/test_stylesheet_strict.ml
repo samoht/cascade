@@ -69,10 +69,11 @@ let font_family_descriptor_grammar () =
      keyword rather than as a name, which is where the name starts. After the
      first word it is an ordinary <custom-ident>, so [Brand serif] is a name and
      [serif Brand] is not; the font-family property already reads them that way
-     and Chrome 153 reads both descriptors that way. *)
+     and Chrome 153 reads both descriptors that way. WebKit 26.5 reads [serif
+     Brand] as a descriptor too, so it is kept as written. *)
   strict_accept "generic word after the first in an unquoted @font-face family"
     "@font-face { font-family: Brand serif; src: url(brand.woff2) }";
-  strict_reject "generic word heading an unquoted @font-face family"
+  strict_accept "generic word heading an unquoted @font-face family"
     "@font-face { font-family: serif Brand; src: url(brand.woff2) }";
   strict_reject "CSS-wide @font-face family"
     "@font-face { font-family: inherit; src: url(brand.woff2) }";

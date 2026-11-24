@@ -528,7 +528,7 @@ let pp_font_feature_value ctx (value : font_feature_value) =
   match value with
   | On -> Pp.string ctx "on"
   | Off -> Pp.string ctx "off"
-  | Index value -> Values.pp_number ctx value
+  | Index value -> Values.pp_integer_slot ctx value
 
 let pp_font_feature_setting ctx ({ tag; value } : font_feature_setting) =
   Pp.quoted_string ctx tag;

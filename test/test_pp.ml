@@ -664,12 +664,13 @@ let string_printers_round_trip () =
     awkward_strings
 
 (* The same holds where the printer writes tokens rather than a typed node: a
-   custom property's [url("...")] drops its quotes only when the bare body can
-   hold the string, and two [quotes] values that differ print apart. *)
+   custom property's [url("...")] keeps its quotes, as its tokens are the value
+   a [var()] substitutes (CSS Custom Properties 1 sec. 4.1), and two [quotes]
+   values that differ print apart. *)
 let token_strings_round_trip () =
   check string "a tab keeps the url quoted" {|a{--x:url("a\9 b")}|}
     (printed {|a{--x:url("a\9 b")}|});
-  check string "a plain url drops its quotes" "a{--x:url(a.png)}"
+  check string "a plain url keeps its quotes" {|a{--x:url("a.png")}|}
     (printed {|a{--x:url("a.png")}|});
   let a = printed {|q{quotes:'"' '"'}|} and b = printed {|q{quotes:'""' ''}|} in
   check bool "two quotes values print apart" false (String.equal a b)

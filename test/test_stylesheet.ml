@@ -762,7 +762,7 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face{font-family:Sparse;src:local(Sparse),url(sparse.woff2)}"
-    "@font-face { ; font-family: Sparse; ; src: local(\"Sparse\") \
+    "@font-face { ; font-family: Sparse; ; src: local(\"Sparse\"), \
      url(\"sparse.woff2\"); ; }";
   check_stylesheet
     ~expected:
@@ -908,17 +908,18 @@ let spec_fontface_descriptors () =
      and [Cambria Math] are installed fonts and [serif Foo] is not. The
      [font-family] property reads them that way; the descriptor held every word
      of the sequence to the whole exclusion list, so it dropped a real font
-     name. Chrome 153 reads the first two at both and drops the third at
-     both. *)
+     name. Chrome 153 reads the first two at both and drops the third at both,
+     but WebKit 26.5 reads the third as a descriptor, so it is kept as
+     written. *)
   check_stylesheet
     ~expected:"@font-face{font-family:\"Cambria Math\";src:url(font.woff2)}"
     "@font-face { font-family: Cambria Math; src: url(font.woff2); }";
   check_stylesheet
     ~expected:"@font-face{font-family:\"Foo serif\";src:url(font.woff2)}"
     "@font-face { font-family: Foo serif; src: url(font.woff2); }";
-  assert_minify_and_optimize
-    "@font-face { font-family: serif Foo; src: url(font.woff2); }"
-    ~minified:"@font-face{src:url(font.woff2)}" ~optimized:"";
+  check_stylesheet
+    ~expected:"@font-face{font-family:serif Foo;src:url(font.woff2)}"
+    "@font-face { font-family: serif Foo; src: url(font.woff2); }";
   (* A family name that merely starts with one is a name, not a keyword: sec.
      2.1.1 asks only that a bare identifier not BE a CSS-wide keyword. *)
   check_stylesheet
@@ -1044,6 +1045,25 @@ let page_margin_edges () =
   neg_cursor read "@page { @unknown { content: none } }";
   neg_cursor read "@page { @top-left; }";
   neg_cursor read "@page { @top-left { color: notacolor } }"
+
+(* CSS Paged Media 3 sec. 4.3: [<page-selector> = [<ident-token>?
+   <pseudo-page>*]!], so the page name is an ident token, which CSS Syntax 3
+   sec. 4.3.7 reads through its escapes, and a number is none. Chromium 153
+   keeps [@page \1 ], [@page a\:b], [@page \31 a] and [@page \u00e9] and drops
+   [@page 1] and [@page -1]. The name prints back through the identifier
+   serialiser (CSSOM 1 sec. 2.1). *)
+let page_selector_idents () =
+  check_stylesheet ~expected:"@page \\1 {margin:0}" "@page \\1 { margin: 0 }";
+  check_stylesheet ~expected:"@page x\\1 {margin:0}" "@page x\\1 { margin: 0 }";
+  check_stylesheet ~expected:"@page a\\:b{margin:0}" "@page a\\:b { margin: 0 }";
+  check_stylesheet ~expected:"@page \\31 a{margin:0}"
+    "@page \\31 a { margin: 0 }";
+  check_stylesheet ~expected:"@page \xc3\xa9:first{margin:0}"
+    "@page \xc3\xa9:first { margin: 0 }";
+  check_stylesheet ~expected:"@page --a{margin:0}" "@page --a { margin: 0 }";
+  neg_cursor read "@page 1 { margin: 0 }";
+  neg_cursor read "@page -1 { margin: 0 }";
+  neg_cursor read "@page a :first { margin: 0 }"
 
 let property_rule_edges () =
   check_stylesheet
@@ -1513,6 +1533,7 @@ let suite =
         spec_keyframes_shadow_color_var );
       ("page", `Quick, page_case);
       ("page margin edges", `Quick, page_margin_edges);
+      ("page selector idents", `Quick, page_selector_idents);
       ( "spec page margin descriptor matrix",
         `Quick,
         spec_page_margin_descriptor_matrix );

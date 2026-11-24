@@ -17,6 +17,17 @@ let an_empty_value_is_no_declaration () =
   neg_cursor read_declaration "position-try: ";
   neg_cursor read_declaration "color: "
 
+(* CSS Values 5 (ED) sec. 8.7 gives attr() a type(<syntax>), and CSS Properties
+   and Values API 1 sec. 5.1 lists the syntax component names without saying
+   whether their case matters. Chromium 153 drops [type(<COLOR>)] and WebKit
+   26.5 reads it, so the declaration is kept as written, never respelled into
+   the [type(<color>)] Chromium would apply. *)
+let attr_type_name_keeps_its_case () =
+  check_declaration ~expected:"color:attr(data-color type(<COLOR>),red)"
+    "color: attr(data-color type(<COLOR>), red)";
+  check_declaration ~expected:"color:attr(data-color type(<color>),red)"
+    "color: attr(data-color type(<color>), red)"
+
 (* CSS Anchor Positioning 1 sec. 6.1 reads a fallback entry as [<dashed-ident>
    || <try-tactic>], so the tactics stand together on one side of the name, and
    Chromium 153 rejects a name between two of them. *)
@@ -436,6 +447,69 @@ let mask_shorthand_keeps_a_three_value_position () =
     [
       "mask: url(a.png) left 10px top 5px 6px"; "mask: url(a.png) left 10px foo";
     ]
+
+(* CSS Motion Path 1 (ED) sec. 2.2 spells [offset-distance] as a plain
+   [<length-percentage>], and sec. 2.6 puts that longhand in the [offset]
+   shorthand, so the shorthand takes the negative distance the longhand does.
+   Chromium 153 and WebKit 26.5 keep each value below. *)
+let offset_takes_a_negative_distance () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("offset: none -1px", "offset:none -1px");
+      ("offset: none -10%", "offset:none -10%");
+      ("offset: none -1px auto", "offset:none -1px auto");
+      ("offset: none 30deg -1px", "offset:none -1px 30deg");
+      ("offset-distance: -1px", "offset-distance:-1px");
+    ]
+
+(* CSS Values 5 (ED) sec. 8.7 spells attr() with an <attr-name> it cannot omit,
+   and CSS Environment Variables 1 sec. 3 env() with a name, so an empty call is
+   no substitution function; CSS Variables 1 sec. 3 makes a declaration holding
+   a syntactically invalid one invalid at parse time, whatever var() fallback it
+   stands in. Chromium 153 and WebKit 26.5 drop each of the first group, a
+   custom property included, and keep the second. *)
+let invalid_substitution_drops_the_declaration () =
+  List.iter
+    (fun decl -> neg_cursor read_declaration decl)
+    [
+      "content: var(--x, attr())";
+      "content: \"a\" var(--x, attr())";
+      "color: var(--x, attr())";
+      "width: var(--x, env())";
+      "width: calc(var(--x, attr()) + 1px)";
+      "--y: var(--x, attr())";
+      "--y: var(--x, var(--z, attr()))";
+      "--y: foo attr()";
+    ];
+  List.iter
+    (fun decl ->
+      match Css.Declaration.of_string decl with
+      | Ok _ -> ()
+      | Error e -> Alcotest.failf "%s: %s" decl (Error.to_string e))
+    [
+      "content: var(--x, attr(data-a))";
+      "color: var(--x, env(safe-area-inset-top))";
+    ]
+
+(* SVG 2 (ED) sec. 8.13 spells [vector-effect] as [none | non-scaling-stroke |
+   non-scaling-size | non-rotation | fixed-position], one keyword and no host
+   space. Chromium 153 and WebKit 26.5 drop each list below. *)
+let vector_effect_is_one_keyword () =
+  List.iter
+    (fun value ->
+      neg_cursor read_declaration
+        (String.concat "" [ "vector-effect: "; value ]))
+    [
+      "non-scaling-stroke non-scaling-stroke";
+      "non-scaling-stroke non-rotation";
+      "non-scaling-stroke viewport";
+      "non-scaling-stroke screen";
+    ];
+  check_declaration ~expected:"vector-effect:non-scaling-stroke"
+    "vector-effect: non-scaling-stroke";
+  check_declaration ~expected:"vector-effect:fixed-position"
+    "vector-effect: fixed-position"
 
 (* CSS Grid 2 sec. 7.4 spells [grid-template] as [none], a
    [<'grid-template-rows'> / <'grid-template-columns'>] pair, or a track list
@@ -1870,6 +1944,14 @@ let suite =
       test_case "a reference box pairs with a shape" `Quick
         reference_box_pairs_with_a_shape;
       test_case "anchor query forms" `Quick anchor_query_forms;
+      test_case "an attr() type name keeps its case" `Quick
+        attr_type_name_keeps_its_case;
+      test_case "offset takes a negative distance" `Quick
+        offset_takes_a_negative_distance;
+      test_case "an invalid substitution drops the declaration" `Quick
+        invalid_substitution_drops_the_declaration;
+      test_case "vector-effect is one keyword" `Quick
+        vector_effect_is_one_keyword;
       test_case "an empty value is no declaration" `Quick
         an_empty_value_is_no_declaration;
       test_case "custom_property refuses an escaping pair" `Quick

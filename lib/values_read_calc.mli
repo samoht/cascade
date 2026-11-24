@@ -118,6 +118,10 @@ val percentage_math_function_calls :
 (** [percentage_math_function_calls ~pct read] is {!math_function_calls} for a
     slot spelling a [<percentage>] and no [<number>] beside it. *)
 
+val read_folded_dimension : Cursor.t -> float * string option
+(** [read_folded_dimension t] reads one math function and is the number and unit
+    it computes, CSS Values 4 sec. 10.10; it refuses one that does not fold. *)
+
 val read_folded_percentage_math : Cursor.t -> float
 (** [read_folded_percentage_math t] reads a math function at a slot spelling a
     [<percentage>] and answers the percentage it resolves to. *)

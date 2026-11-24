@@ -287,6 +287,30 @@ let test_nested_scope_roots_under_the_parent () =
   check ".a{@scope (.b){.x{color:red}}}" "@scope(.a .b){.x{color:red}}";
   check ".a{@scope (& > .b){.x{color:red}}}" "@scope(.a>.b){.x{color:red}}"
 
+(* Selectors 4 sec. 3.9 drops a whole selector list over one branch a browser
+   does not parse, and with the parent rule go the rules nested in it. The
+   [:is()] that composes a nested selector (CSS Nesting 1 sec. 3) is forgiving
+   (Selectors 4 sec. 4.2): Chromium 153 drops [.c,[x=a s]{&:hover{..}}] whole,
+   and keeps [:is(.c,[x=a s]):hover] and colours [.c:hover]. So each branch some
+   target drops is listed again beside the nested selector, matching nothing
+   under a [:not()] of the universal selector: a browser that drops the branch
+   drops the rule, as it dropped its parent, and one that reads it reads the
+   [:is()] at its own weight. A parent every target reads takes no extra
+   branch. *)
+let test_list_parent_some_target_drops () =
+  let check name css expected =
+    Alcotest.(check string) name expected (render (Flatten.block (block css)))
+  in
+  check "a branch only Firefox reads"
+    ".c,[x=a s]{color:red;&:hover{color:blue}}"
+    ".c,[x=a s]{color:red}:is(.c,[x=a s]):hover,[x=a s]:not(*){color:blue}";
+  check "branches of different weights" "#a,[x=a s]{&:hover{color:blue}}"
+    ":is(#a,[x=a s]):hover,[x=a s]:not(*){color:blue}";
+  check "a descendant" ".c,:-moz-focusring{.d{color:blue}}"
+    ":is(.c,:-moz-focusring) .d,:-moz-focusring:not(*){color:blue}";
+  check "a parent every target reads" ".c,[x=a i]{&:hover{color:blue}}"
+    ":is(.c,[x=a i]):hover{color:blue}"
+
 let suite =
   ( "flatten",
     [
@@ -322,4 +346,6 @@ let suite =
         test_flattens_inside_moz_document;
       Alcotest.test_case "nested group rules keep the parent" `Quick
         test_nested_group_rules_keep_parent;
+      Alcotest.test_case "list parent some target drops" `Quick
+        test_list_parent_some_target_drops;
     ] )

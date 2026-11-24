@@ -261,6 +261,11 @@ val pp_duration_preserve_ms : duration Pp.t
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
 
+val pp_integer_slot : number Pp.t
+(** [pp_integer_slot] is {!pp_number} at an [<integer>] slot: an integral value
+    is written as an integer token, and one past the native integer range as the
+    shorter of that range's end and its value in a [calc()]. *)
+
 val pp_transition_behavior : transition_behavior Pp.t
 (** [pp_transition_behavior] pretty-prints {!transition_behavior} values. *)
 
@@ -330,6 +335,12 @@ val normalize_length_percentage :
     for CSS function operands. [non_negative] keeps the call when the fold lands
     below zero, which a property whose range starts there reads back and a
     literal of the same value does not (CSS Values 4 sec. 10.3). *)
+
+val normalize_dimension : ?non_negative:bool -> length -> length
+(** [normalize_dimension ?non_negative l] is [l] with its calculation folded and
+    its spelling canonical, as a property holding a bare length needs it so two
+    spellings of one value reach one node; the unit of a zero stays.
+    [non_negative] keeps the call around a result below zero. *)
 
 val normalize_length :
   ?strip:bool -> ?non_negative:bool -> ?ctx:calc_ctx -> length -> length
@@ -552,6 +563,12 @@ val read_length :
     to a [<length>] as such; it defaults to [false], so a reader whose property
     takes them asks. *)
 
+val read_calc_size : content:bool -> Cursor.t -> length
+(** [read_calc_size ~content t] reads a [calc-size()] call (CSS Sizing 4 (ED)
+    sec. 7). Its [<size-keyword>] basis is any sizing keyword the context
+    allows, so [content] adds the [content] keyword a [flex-basis] takes (CSS
+    Flexbox 1 sec. 7.2). *)
+
 val read_non_negative_length :
   ?with_keywords:bool -> ?length_only:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
@@ -582,12 +599,6 @@ val read_color_keyword_of_string : string -> color option
     lower-case ident [s]: a named color, {!val-transparent}, [currentcolor],
     [auto], [inherit], or a system color. [None] when [s] names no color
     keyword. *)
-
-val fold_custom_value_ident : string -> string
-(** [fold_custom_value_ident s] is the canonical lower-case spelling of [s] when
-    [s] names a color keyword other than a system color, or one of the idents
-    {!Parser.fold_value_ident} folds; other idents keep their source case. Pass
-    as [fold_ident] to {!Parser.to_string_custom_minified}. *)
 
 val pp_hue : hue Pp.t
 (** [pp_hue] pretty-prints {!hue} values. *)

@@ -9,9 +9,11 @@ type sides = Values.length * Values.length * Values.length * Values.length
 type box_side = Top | Right | Bottom | Left
 
 val merge_overflow_longhands :
-  (int * Declaration.declaration) list -> (int * Declaration.declaration) list
-(** [merge_overflow_longhands decls] folds [overflow-x]/[overflow-y] into
-    [overflow]. *)
+  floors:Support.targets ->
+  (int * Declaration.declaration) list ->
+  (int * Declaration.declaration) list
+(** [merge_overflow_longhands ~floors decls] folds [overflow-x]/[overflow-y]
+    into [overflow] where {!Declaration.composes} allows it. *)
 
 val border_width_of :
   Declaration.declaration -> (box_side * Properties.border_width * bool) option
@@ -61,9 +63,10 @@ val compose_box_via_index : ctx:Ctx.t -> Rule_index.t -> unit
     [idx] into its box shorthand. *)
 
 val merge_box_shorthand_longhands :
+  floors:Support.targets ->
   ('a * Declaration.declaration) list ->
   ('a * Declaration.declaration) list ->
   ('a * Declaration.declaration) list
-(** [merge_box_shorthand_longhands source decls] folds later [margin] and
-    [padding] longhands of [decls] into a preceding shorthand that [source]
-    shows no earlier longhand for. *)
+(** [merge_box_shorthand_longhands ~floors source decls] folds later [margin]
+    and [padding] longhands of [decls] into a preceding shorthand that [source]
+    shows no earlier longhand for, where {!Declaration.composes} allows it. *)

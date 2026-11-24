@@ -394,17 +394,23 @@ let test_white_space_composes () =
    <'text-wrap-style'>] over its two longhands, and a longhand at its initial
    names what leaving the component out names. *)
 let test_text_wrap_composes () =
-  sheet_optimizes_to ~into:".x{text-wrap:balance}"
-    ".x{text-wrap-mode:wrap;text-wrap-style:balance}";
   sheet_optimizes_to ~into:".x{text-wrap:wrap}"
     ".x{text-wrap-mode:wrap;text-wrap-style:auto}";
   sheet_optimizes_to ~into:".x{text-wrap:nowrap}"
     ".x{text-wrap-mode:nowrap;text-wrap-style:auto}";
-  sheet_optimizes_to ~into:".x{text-wrap:pretty}"
-    ".x{text-wrap-mode:wrap;text-wrap-style:pretty}";
-  (* Neither component at its initial needs both written out. *)
-  sheet_optimizes_to ~into:".x{text-wrap:nowrap balance}"
-    ".x{text-wrap-mode:nowrap;text-wrap-style:balance}";
+  (* web-features records [text-wrap-mode] from Safari 17.4 and [text-wrap:
+     balance] from 17.5, and [text-wrap:pretty] in no Firefox where
+     [text-wrap-mode] is from Firefox 124. A browser reading the mode and
+     dropping the shorthand keeps the mode under the longhands and loses it
+     under the shorthand, where an earlier rule's mode then shows, so these stay
+     apart. *)
+  List.iter
+    (fun input -> sheet_optimizes_to ~into:input input)
+    [
+      ".x{text-wrap-mode:wrap;text-wrap-style:balance}";
+      ".x{text-wrap-mode:wrap;text-wrap-style:pretty}";
+      ".x{text-wrap-mode:nowrap;text-wrap-style:balance}";
+    ];
   (* Mixed importance is not one declaration. *)
   sheet_optimizes_to
     ~into:".x{text-wrap-mode:wrap;text-wrap-style:balance!important}"

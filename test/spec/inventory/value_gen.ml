@@ -310,12 +310,31 @@ let escaped value =
 let quoted value =
   String.exists (fun c -> Char.equal c '"' || Char.equal c '\'') value
 
+(* Letter case is the grammar's to ignore, not the tokenizer's: a keyword or a
+   function name is ASCII case-insensitive, but CSS Properties and Values API 1
+   sec. 5.1 does not say so of a syntax component name such as the <color> of
+   attr()'s type(), and Chromium reads <COLOR> as no type. So a name between
+   angle brackets keeps its case. *)
+let uppercased value =
+  let inside = ref false in
+  String.map
+    (fun c ->
+      match c with
+      | '<' ->
+          inside := true;
+          c
+      | '>' ->
+          inside := false;
+          c
+      | c -> if !inside then c else Char.uppercase_ascii c)
+    value
+
 let respellings value =
   if quoted value then []
   else
     let forms =
       [
-        String.uppercase_ascii value;
+        uppercased value;
         commented value;
         padded value;
         widened value;

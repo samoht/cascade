@@ -986,6 +986,14 @@ let fallback_for ~floors ~later earlier =
          | Unrecorded, (Never | Unrecorded) -> true)
        (Support.floors floors)
 
+(* A shorthand replacing [parts] is what every browser of B that read one of
+   them now reads, and one dropping the shorthand at parse time drops every slot
+   it writes: so it may stand for them only where no release reads a part and
+   drops it, the question {!fallback_for} answers. *)
+let composes ~floors ~parts composed =
+  not
+    (List.exists (fun part -> fallback_for ~floors ~later:composed part) parts)
+
 (* Rewrite the value of a custom declaration through [f], which sees its
    minified serialisation. Everything else the declaration carries - its
    importance, its cascade layer, its metadata and any theme guard - belongs to

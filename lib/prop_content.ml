@@ -88,7 +88,7 @@ let pp_counter_item ctx { name; reversed; value } =
   | None -> ()
   | Some n ->
       Pp.space ctx ();
-      Values.pp_number ctx n
+      Values.pp_integer_slot ctx n
 
 let rec pp_counter_set : counter_set Pp.t =
  fun ctx -> function

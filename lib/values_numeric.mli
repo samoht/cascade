@@ -21,6 +21,12 @@ val normalize_length :
     the simplifier), recursing into nested calls; a non-static operand keeps the
     call. *)
 
+val normalize_dimension : ?non_negative:bool -> length -> length
+(** [normalize_dimension ?non_negative l] is [l] with its calculation folded and
+    its spelling canonical, as a property holding a bare length needs it so two
+    spellings of one value reach one node; the unit of a zero stays.
+    [non_negative] keeps the call around a result below zero. *)
+
 val normalize_length_percentage :
   ?strip:bool ->
   ?non_negative:bool ->

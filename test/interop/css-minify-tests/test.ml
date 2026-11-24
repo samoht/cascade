@@ -617,15 +617,12 @@ let normalize_expected ~category ~id expected =
       fixture ~category ~id ~upstream:"a{display:flex}b{color:red}"
         ~cascade:"@supports(display:flex){a{display:flex}b{color:red}}" upstream
   | "values", "0057" ->
-      (* The upstream oracle keeps [rgb(0 0 0)] verbatim to preserve the exact
-         token string a script reads back via [getPropertyValue]. A complete
-         colour function is unconditionally a colour in every [var()]
-         substitution site, so folding it to the shortest spelling preserves
-         every rendered result; the only loss is byte-exact CSSOM readback,
-         which is not an evergreen-rendering fact. [rgb(0 0 0)] is black, so
-         [#000] is the shortest spelling. *)
+      (* The upstream oracle keeps [rgb(0 0 0)] verbatim, as CSS Custom
+         Properties 1 sec. 4.1 serialises a custom property's tokens: they are
+         the value a [var()] substitutes. Only the space after the colon goes,
+         as in values/0058. *)
       fixture ~category ~id ~upstream:"a{--brand-color: rgb(0 0 0)}"
-        ~cascade:"a{--brand-color:#000}" upstream
+        ~cascade:"a{--brand-color:rgb(0 0 0)}" upstream
   | "values", "0058" ->
       (* The upstream oracle keeps the space after the colon, which every
          minifier in the corpus does. CSS Syntax 3 sec. 5.5.6 discards

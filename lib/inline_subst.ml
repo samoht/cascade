@@ -268,10 +268,7 @@ and keep_wrapper ~kept visible ~visited original fallback =
    property. *)
 let declaration_with_components decl components : Declaration.declaration option
     =
-  let value =
-    Parser.to_string_custom_minified ~fold_ident:Values.fold_custom_value_ident
-      components
-  in
+  let value = Parser.to_string_custom_minified components in
   if String.trim value = "" then None
   else
     let has_string =
@@ -622,7 +619,9 @@ let simplify_metric_override_descriptor visible =
 
 let simplify_size_adjust_descriptor visible =
   simplify_typed_var visible ~read:Font_face.read_size_adjust
-    ~as_var:(function Font_face.Var v -> Some v | Font_face.Pct _ -> None)
+    ~as_var:(function
+      | Font_face.Var v -> Some v
+      | Font_face.Pct _ | Font_face.Pct_call _ -> None)
     ~of_var:(fun v -> (Font_face.Var v : Font_face.size_adjust))
 
 (* [resolve_font_face_var] names the descriptors whose var() survives the parse

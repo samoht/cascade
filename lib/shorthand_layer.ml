@@ -220,7 +220,7 @@ let compose_background_via_index ~ctx idx =
     ~try_compose:(guard_reset ~ctx (try_compose_background_at ~ctx))
 
 let compose_background_shorthand ~ctx decls =
-  let idx = Rule_index.build (List.map snd decls) in
+  let idx = Rule_index.build ~floors:(Ctx.floors ctx) (List.map snd decls) in
   compose_background_via_index ~ctx idx;
   List.mapi (fun i d -> (i, d)) (Rule_index.to_list idx)
 

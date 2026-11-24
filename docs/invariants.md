@@ -111,6 +111,12 @@ implementation keeps them.
   `<number>` or `<percentage>` alternative, never inside a math function,
   where CSS Values 4 sec. 10.9 types it as a `<number>`. CSS Flexbox 1 sec. 7.1 reads a
   unitless zero in `flex` as a flex factor, so `flex:0px` keeps its unit.
+- **An integer past the `int` range reads as the end of it.** CSS Values 4
+  sec. 5 converts a value past the supported range to the closest one
+  supported, and every browser in B clamps an integer far below 2^62, so the
+  declaration is kept and every browser reads the printed integer as it read
+  the authored one. A `<number-token>` an untyped value holds keeps its type:
+  `orphans:2.0` stays `2.0` and `99999999999999999999` never becomes `1e20`.
 - **A number and a percentage swap only at a slot whose type is known.** A
   math function takes its type from its operands (CSS Values 4 sec. 10.9),
   and a `var()` supplies its type only at substitution, so a math function
@@ -208,6 +214,11 @@ implementation keeps them.
   So `border-width`, `border-style` and `border-color`, or the four side
   shorthands, become `border` only under `--scope=stylesheet`, since `border`
   also resets `border-image` (CSS Backgrounds 3 sec. 4.4).
+- **A shorthand replaces longhands only where every browser in B that reads
+  them reads it.** A browser that drops a shorthand at parse time drops every
+  slot it writes, where the longhands lost one each, so composition and the
+  fold of a longhand into an earlier shorthand happen only when no release in
+  B parses one of the parts and drops the result.
 - **`!important` moves a declaration to another stratum.** Deduplication and
   shorthand composition never combine a normal and an important declaration.
 - **Logical and physical pairs keep their order.** A flow-relative property
@@ -306,7 +317,11 @@ implementation keeps them.
 - **`--lossless`** sets every approximation bound to zero.
 - **`--scope=stylesheet`, `--closed-world` and `--inline-vars`** add the
   hypotheses under [Assumptions](#definitions) and keep B.
-- **`--flatten-nesting`** keeps B and removes nesting from the output.
+- **`--flatten-nesting`** keeps B and removes nesting from the output. A
+  flattened rule is dropped by every browser that dropped its parent rule:
+  a list parent some browser in B drops is listed again beside the forgiving
+  `:is()`, matching nothing (`test/test_flatten.ml` "list parent some target
+  drops").
 
 ## Non-goals
 
@@ -334,9 +349,11 @@ Each row names the tests that check a statement. A browser harness under
 | M6 | `test/test_css_compare_values.ml` "canonical numeric precision modes"; `test/test_declaration_identity.ml` "colour channels beside a var()" (the alpha rounding); the css-minify-tests colour fixtures |
 | Printer round trip | `test/fixpoint` "values"; `test/test_declaration_identity.ml` "hex spellings have one node", "number spellings have one node" |
 | Number budget | `pp` "float int boundary", "float large decimal reparses", "float large decimal in stylesheet"; fuzz `pp` "string_of_float rounds by its stated rule" |
+| Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges"; `test/test_declaration_identity.ml` "custom property tokens stay" (a hash before a url) |
+| Integer range | `test/cli/fmt_int_range.t`; `cursor` "integer precision"; `declaration_validity` "integer precision" |
 | Token boundaries | `fuzz/fuzz_parser.ml` "component-value token boundaries roundtrip"; `test/test_lexer.ml` "spec token boundary edges" |
 | Strings, URLs, idents | `pp` "string printers round-trip"; fuzz `pp` "string printers read back"; `selector` "identifiers escape control characters"; `stylesheet_families` "spec cssom 1 2.1 control characters in names" |
-| Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets" |
+| Custom-property tokens | `test/test_declaration_identity.ml` "custom declarations ignore offsets", "custom property tokens stay"; `test/test_css_compare_values.ml` "canonical custom color-mix tokens" and the other custom-stream cases; the `test/fixpoint` `spellings` corpus |
 | Normalisation | `test/fixpoint` "normal form" and its `spellings` corpus; `test/test_declaration_identity.ml` "number spellings have one node" |
 | Zero unit | `properties_layout` "flex"; `optimize_declarations` "target minify and enforce-spec split" |
 | Number and percentage | `v4109_percentage_beside_var` in `test/test_stylesheet_calc.ml` |
@@ -355,6 +372,7 @@ Each row names the tests that check a statement. A browser harness under
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
 | Fallbacks | `floor_fallbacks_survive`, `prefixed_fallbacks_across_rules` and `legacy_keyword_fallbacks_survive` in `test/test_optimize_declarations.ml`; `test/test_optimize_boundaries.ml` "spec values 10.2 clamp takes a none bound"; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Composition over B | `test/test_optimize_boundaries.ml` "composition reads over the floors" |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run"; `optimize_declarations` "border keeps longhands beside a border-image", "border reset reads every block"; `test/test_css_compare_structure.ml` "canonical border sides" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
@@ -371,6 +389,6 @@ Each row names the tests that check a statement. A browser harness under
 | Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml`; `test_scope_keeps_the_implied_root`, `test_nested_scope_roots_under_the_parent` in `test/test_flatten.ml`; `test_merge_lone_in_scope`, `test_nesting_selector_is_not_reparented` in `test/test_nest.ml` |
 | At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point"; `test/test_css_compare_structure.ml` "canonical name-defining rules move"; `test_distant_media_keeps_a_definition_in_place` in `test/test_block.ml` |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
-| Nothing untyped dropped | `test/spec/browser/accept_set` (every CSS length unit, `if()` and dashed functions among its values); `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots"; `declaration_spec` "contain-intrinsic-size keeps a trailing auto"; `test/test_declaration_spec.ml` "a substitution function defers the property", "a value a browser keeps reads"; `test/test_declaration_spec.ml` "mask shorthand keeps a three-value position"; `mask_three_value_position_kept_as_written` in `test/test_optimize_declarations.ml` |
+| Nothing untyped dropped | `test/spec/browser/accept_set` (every CSS length unit, `if()` and dashed functions among its values); `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots"; `declaration_spec` "contain-intrinsic-size keeps a trailing auto"; `declaration_engine_splits` "engine splits keep as written", "engine splits keep as written, second set"; `test/test_declaration_spec.ml` "a substitution function defers the property", "a value a browser keeps reads"; `test/test_declaration_spec.ml` "mask shorthand keeps a three-value position"; `mask_three_value_position_kept_as_written` in `test/test_optimize_declarations.ml` |
 | Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print"; `css` "nested colour follows print flags" |
 | Assumptions | Convention only: no test exercises a page that breaks a hypothesis |

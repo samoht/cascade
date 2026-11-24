@@ -832,12 +832,14 @@ let test_compose_identity buf =
 let test_merge_box_identity buf =
   let decls = indexed_decls buf in
   check_indexed_noop_identity "merge_box_shorthand_longhands" decls
-    (Css.Optimize.merge_box_shorthand_longhands decls decls)
+    (Css.Optimize.merge_box_shorthand_longhands
+       ~floors:Css.Optimize.evergreen_targets decls decls)
 
 let test_merge_overflow_identity buf =
   let decls = indexed_decls buf in
   check_indexed_noop_identity "merge_overflow_longhands" decls
-    (Css.Optimize.merge_overflow_longhands decls)
+    (Css.Optimize.merge_overflow_longhands
+       ~floors:Css.Optimize.evergreen_targets decls)
 
 (* Physical-identity invariants for the optimize passes (see the per-pass tests
    above): every AST-to-AST pass returns its input unchanged by identity when it

@@ -8,6 +8,7 @@ let resolve_font_face_var ~src ~unicode_range ~font_family ~font_style
   | Src value -> Some (Src (src value))
   | Unicode_range values -> Some (Unicode_range (unicode_range values))
   | Font_family values -> Some (Font_family (font_family values))
+  | Font_family_as_written _ | Font_variation_settings_as_written _ -> None
   | Font_style value -> Some (Font_style (font_style value))
   | Font_weight value -> Some (Font_weight (font_weight value))
   | Font_weight_range (low, high) ->
@@ -196,16 +197,87 @@ let validate_nonempty_descriptor r name value =
   if String.trim value = "" then
     Cursor.err_invalid r (String.concat "" [ "empty "; name; " descriptor" ])
 
+(* Chromium 153 and WebKit 26.5 read a CSS-wide keyword or [default] as one word
+   of an unquoted family of several, and WebKit a leading generic family too,
+   though CSS Values 4 sec. 4.2 keeps them out of the <custom-ident>+ of CSS
+   Fonts 4 sec. 4.2. Such a run of identifiers is kept as written. *)
+let engine_family_words r =
+  let words =
+    List.filter
+      (fun component -> not (Component.is_whitespace component))
+      (Cursor.remaining r)
+  in
+  match words with
+  | _ :: _ :: _ ->
+      List.for_all
+        (function
+          | Component.Preserved { kind = Token.Ident _; _ } -> true | _ -> false)
+        words
+  | [] | [ _ ] -> false
+
 let read_font_family_descriptor r =
   read_descriptor_value
     (fun r ->
-      let family = Properties.read_font_family_name r in
-      Cursor.ws r;
-      if not (Cursor.is_done r || Cursor.peek_semicolon r) then
-        Cursor.err_invalid r "trailing tokens after @font-face font-family";
-      [ family ])
-    (fun v -> Font_family v)
-    r
+      let start = Cursor.save r in
+      match
+        let family = Properties.read_font_family_name r in
+        Cursor.ws r;
+        if not (Cursor.is_done r || Cursor.peek_semicolon r) then
+          Cursor.err_invalid r "trailing tokens after @font-face font-family";
+        family
+      with
+      | family -> Font_family [ family ]
+      | exception (Cursor.Parse_error _ as exn) ->
+          Cursor.restore r start;
+          let raw = Declaration.read_property_value r in
+          if engine_family_words (Cursor.of_string raw) then
+            Font_family_as_written (String.trim raw)
+          else raise exn)
+    Fun.id r
+
+(* CSS Fonts 4 sec. 6.6 writes each entry <opentype-tag> <number>. Chromium 153
+   reads an entry that is a bare tag at the @font-face descriptor and gives the
+   axis 1; WebKit 26.5 drops the descriptor. A list that reads once each bare
+   tag is given that 1 is kept as written. *)
+let bare_tags_read raw =
+  let rec entries acc entry = function
+    | [] -> List.rev (List.rev entry :: acc)
+    | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+        entries (List.rev entry :: acc) [] rest
+    | c :: rest when Component.is_whitespace c -> entries acc entry rest
+    | c :: rest -> entries acc (c :: entry) rest
+  in
+  let entries = entries [] [] (Cursor.remaining (Cursor.of_string raw)) in
+  let is_bare = function
+    | [ Component.Preserved { kind = Token.String _; _ } ] -> true
+    | _ -> false
+  in
+  List.exists is_bare entries
+  &&
+  let entry e =
+    let text = Parser.string_of_components e in
+    if is_bare e then String.concat " " [ text; "1" ] else text
+  in
+  let t = Cursor.of_string (String.concat "," (List.map entry entries)) in
+  match Properties.read_font_variation_settings t with
+  | exception Cursor.Parse_error _ -> false
+  | _ ->
+      Cursor.ws t;
+      Cursor.is_done t
+
+let read_font_variation_settings_descriptor r =
+  read_descriptor_value
+    (fun r ->
+      let start = Cursor.save r in
+      match Properties.read_font_variation_settings r with
+      | value -> Font_variation_settings value
+      | exception (Cursor.Parse_error _ as exn) ->
+          Cursor.restore r start;
+          let raw = Declaration.read_property_value r in
+          if bare_tags_read raw then
+            Font_variation_settings_as_written (String.trim raw)
+          else raise exn)
+    Fun.id r
 
 let read_font_stretch_descriptor r =
   read_descriptor_text
@@ -392,10 +464,7 @@ let read_font_face_desc name r =
       read_descriptor_value Properties.read_font_feature_settings
         (fun v -> Font_feature_settings v)
         r
-  | "font-variation-settings" ->
-      read_descriptor_value Properties.read_font_variation_settings
-        (fun v -> Font_variation_settings v)
-        r
+  | "font-variation-settings" -> read_font_variation_settings_descriptor r
   | "size-adjust" ->
       read_descriptor_value Font_face.read_size_adjust
         (fun v -> Size_adjust v)
@@ -799,26 +868,6 @@ let read_counter_style (r : Cursor.t) : statement =
 let page_selector_error r s =
   Cursor.err_invalid r (String.concat "" [ "invalid @page selector: "; s ])
 
-let page_selector_is_ident_char c =
-  (c >= 'a' && c <= 'z')
-  || (c >= 'A' && c <= 'Z')
-  || (c >= '0' && c <= '9')
-  || c = '-' || c = '_'
-
-let page_selector_is_ws = function
-  | ' ' | '\t' | '\n' | '\r' -> true
-  | _ -> false
-
-let rec page_selector_consume_ident s len i =
-  if i < len && page_selector_is_ident_char s.[i] then
-    page_selector_consume_ident s len (i + 1)
-  else i
-
-let rec page_selector_skip_ws s len i =
-  if i < len && page_selector_is_ws s.[i] then
-    page_selector_skip_ws s len (i + 1)
-  else i
-
 (* CSS Paged Media 3 section 4.3: [<page-selector-list> = <page-selector>#],
    [<page-selector> = <ident-token>? <pseudo-page>*], with each pseudo-page from
    the closed set [first | left | right | blank], so [@page invoice:blank:first]
@@ -833,53 +882,53 @@ let page_pseudo_of_name r s name =
   | "blank" -> Blank
   | _ -> page_selector_error r s
 
-let parse_page_selectors r selector =
-  let s = String.trim selector in
-  let len = String.length s in
-  let consume_ident = page_selector_consume_ident s len in
-  let skip_ws = page_selector_skip_ws s len in
-  let pseudo_of_name = page_pseudo_of_name r s in
-  let consume_pseudo_page i : (page_pseudo * int) option =
-    if i >= len || s.[i] <> ':' then None
-    else
-      let start = i + 1 in
-      let stop = consume_ident start in
-      if stop = start then page_selector_error r s;
-      Some (pseudo_of_name (String.sub s start (stop - start)), stop)
+let page_selector_is_ws = function
+  | Component.Preserved { kind = Token.Whitespace _; _ } -> true
+  | _ -> false
+
+let page_selector_drop_ws = Common.List.drop_while page_selector_is_ws
+
+(* The page name is an <ident-token>, read through its escapes (CSS Syntax 3
+   sec. 4.3.7), and each pseudo-page a [:] then an ident with nothing between
+   them. *)
+let parse_page_selectors r components =
+  let s = Cursor.string_of_components_verbatim ~trim:true components in
+  let rec consume_pseudo_pages acc = function
+    | Component.Preserved { kind = Token.Colon; _ }
+      :: Component.Preserved { kind = Token.Ident name; _ }
+      :: rest ->
+        consume_pseudo_pages (page_pseudo_of_name r s name :: acc) rest
+    | Component.Preserved { kind = Token.Colon; _ } :: _ ->
+        page_selector_error r s
+    | rest -> (List.rev acc, rest)
   in
-  let rec consume_pseudo_pages acc i =
-    match consume_pseudo_page i with
-    | None -> (List.rev acc, i)
-    | Some (p, stop) -> consume_pseudo_pages (p :: acc) stop
-  in
-  let rec consume_selectors acc i =
-    let i = skip_ws i in
+  let rec consume_selectors acc items =
+    match page_selector_drop_ws items with
     (* Reaching the end here is the tail of a [,]: the list is
        [<page-selector>#] and has no empty item, so a trailing comma is no more
        a selector list than a lone one. *)
-    if i >= len then (
-      if acc <> [] then page_selector_error r s;
-      List.rev acc)
-    else
-      let after_ident = consume_ident i in
-      let name =
-        if after_ident = i then Option.None
-        else Some (String.sub s i (after_ident - i))
-      in
-      let pseudos, after_pseudo = consume_pseudo_pages [] after_ident in
-      (* sec. 4.2 writes a page selector as a name, one or more pseudo-pages, or
-         both, so an item with neither is no selector: [@page ,] names two of
-         them and Chrome 151 drops the rule. The prelude may be absent
-         altogether, which the caller answers before reaching here. *)
-      if Option.is_none name && pseudos = [] then page_selector_error r s;
-      let sel = { name; pseudos } in
-      let after_pseudo = skip_ws after_pseudo in
-      if after_pseudo >= len then List.rev (sel :: acc)
-      else if s.[after_pseudo] = ',' then
-        consume_selectors (sel :: acc) (after_pseudo + 1)
-      else page_selector_error r s
+    | [] -> if acc <> [] then page_selector_error r s else List.rev acc
+    | items -> (
+        let name, items =
+          match items with
+          | Component.Preserved { kind = Token.Ident name; _ } :: rest ->
+              (Some name, rest)
+          | _ -> (Option.None, items)
+        in
+        let pseudos, rest = consume_pseudo_pages [] items in
+        (* sec. 4.2 writes a page selector as a name, one or more pseudo-pages,
+           or both, so an item with neither is no selector: [@page ,] names two
+           of them and Chrome 151 drops the rule. The prelude may be absent
+           altogether, which the caller answers before reaching here. *)
+        if Option.is_none name && pseudos = [] then page_selector_error r s;
+        let sel = { name; pseudos } in
+        match page_selector_drop_ws rest with
+        | [] -> List.rev (sel :: acc)
+        | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+            consume_selectors (sel :: acc) rest
+        | _ -> page_selector_error r s)
   in
-  consume_selectors [] 0
+  consume_selectors [] components
 
 let allowed_page_margin_names =
   [
@@ -947,8 +996,9 @@ let read_page (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "page" r;
   Cursor.ws r;
   let selector =
-    let s = Cursor.drain_until_block_as_string ~trim:true r in
-    if s = "" then [] else parse_page_selectors r s
+    match page_selector_drop_ws (Cursor.drain_until_block r) with
+    | [] -> []
+    | components -> parse_page_selectors r components
   in
   let descriptors, margins = Cursor.braces read_page_body r in
   Page_with_margins (selector, descriptors, margins)

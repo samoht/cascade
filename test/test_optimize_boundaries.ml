@@ -1050,6 +1050,151 @@ let v4102_clamp_none_bound () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a{width:clamp(none,50px,80px)}" ".a{width:50px}")
 
+(* CSS Values 4 (ED) sec. 10.9, "Type Checking": a math function "can be used
+   anywhere a value of that type is allowed", so every numeric math function
+   stands in a [<number>] or [<integer>] slot, and sec. 10.3 lets [round()] omit
+   its step when the value is a [<number>], the step then being 1. Chromium 153
+   computes each source below as its output: [z-index:2], [columns] and
+   [column-count] 2, [aspect-ratio:.5], [tab-size:.841471]. Sec. 10.4 has
+   [asin()] and its siblings answer an [<angle>], and sec. 10.3 makes the step
+   of a [<length>] required, so those stay refused. *)
+let v4109_math_in_number_slots () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{z-index:round(1.5)}", ".a{z-index:2}");
+      (".a{columns:round(1.5)}", ".a{columns:2}");
+      (".a{column-count:round(1.5)}", ".a{column-count:2}");
+      (".a{opacity:round(.4)}", ".a{opacity:0}");
+      (".a{line-height:round(1.5)}", ".a{line-height:2}");
+      (".a{font-weight:round(down,450,100)}", ".a{font-weight:400}");
+      (".a{aspect-ratio:cos(60deg)}", ".a{aspect-ratio:.5}");
+      (".a{aspect-ratio:exp(0) / 2}", ".a{aspect-ratio:1/2}");
+      (".a{tab-size:sin(1)}", ".a{tab-size:.84147098}");
+      ( ".a{animation-iteration-count:log(100,10)}",
+        ".a{animation-iteration-count:2}" );
+      (".a{hyphenate-limit-chars:cos(0)}", ".a{hyphenate-limit-chars:1}");
+      (".a{stroke-dashoffset:exp(0)}", ".a{stroke-dashoffset:1}");
+      (".a{counter-increment:a sin(1)}", ".a{counter-increment:a 1}");
+    ];
+  (* Kept, though not folded: the value type keeps the call. *)
+  Alcotest.(check bool)
+    "border-image-outset keeps exp(1)" true
+    (Astring.String.is_infix ~affix:"exp(1)"
+       (optimized_string ".a{border-image-outset:exp(1)}"));
+  List.iter
+    (fun input ->
+      match Css.of_string ~strict:true input with
+      | Ok _ -> Alcotest.failf "%s should be refused" input
+      | Error _ -> ())
+    [
+      ".a{rotate:round(1.5)}";
+      ".a{width:round(1.5px)}";
+      ".a{tab-size:asin(0)}";
+      ".a{counter-increment:a acos(1)}";
+    ]
+
+(* CSS Sizing 4 (ED) sec. 7, "Calculating With Intrinsic Sizes": the basis of
+   [calc-size()] is a size keyword, a [<calc-sum>], a nested [calc-size()] or
+   [any], after which [size] is a syntax error; [size] stands for the basis
+   inside the math functions of the calculation too, as in the section's
+   [calc-size(auto, round(up, size, 20px))]. Sec. 3.2 adds it to [<box-size>],
+   which [flex-basis] takes through [<'width'>]. A [<size-keyword>] basis covers
+   "related sizing functions, like the fit-content() function in width", which
+   Chromium 153 drops and the spec keeps. Chromium 153 reads every other kept
+   form below, refuses every refused one, and drops [flex:1 calc-size(auto,
+   size)], so the three longhands stay apart. *)
+let sizing7_calc_size () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{width:calc-size(any, 10px)}", ".a{width:calc-size(any,10px)}");
+      ( ".a{width:calc-size(auto, round(size, 10px))}",
+        ".a{width:calc-size(auto,round(size,10px))}" );
+      ( ".a{min-height:calc-size(auto, round(size, 10px))}",
+        ".a{min-height:calc-size(auto,round(size,10px))}" );
+      (".a{max-width:calc-size(any, 10px)}", ".a{max-width:calc-size(any,10px)}");
+      ( ".a{flex-basis:calc-size(auto, size)}",
+        ".a{flex-basis:calc-size(auto,size)}" );
+      ( ".a{flex-basis:calc-size(any, 10px)}",
+        ".a{flex-basis:calc-size(any,10px)}" );
+      ( ".a{flex-basis:calc-size(min-content, 2 * size)}",
+        ".a{flex-basis:calc-size(min-content,2*size)}" );
+      ( ".a{flex-basis:calc-size(calc-size(auto, size), size)}",
+        ".a{flex-basis:calc-size(calc-size(auto,size),size)}" );
+      ( ".a{width:calc-size(fit-content(10px), size)}",
+        ".a{width:calc-size(fit-content(10px),size)}" );
+      ( ".a{flex-grow:1;flex-shrink:1;flex-basis:calc-size(auto,size)}",
+        ".a{flex-grow:1;flex-shrink:1;flex-basis:calc-size(auto,size)}" );
+    ];
+  List.iter
+    (fun input ->
+      match Css.of_string ~strict:true input with
+      | Ok _ -> Alcotest.failf "%s should be refused" input
+      | Error _ -> ())
+    [
+      ".a{width:calc-size(any, size)}";
+      ".a{max-width:calc-size(none, size)}";
+      ".a{width:calc-size(auto, max-content)}";
+      ".a{width:calc-size(auto, sin(size))}";
+    ]
+
+(* CSS Sizing 4 (ED) sec. 7: a [<size-keyword>] basis of [calc-size()] is "any
+   sizing keywords allowed in the context", and CSS Flexbox 1 sec. 7.2 gives
+   [flex-basis] the [content] keyword [width] lacks. Chromium 153 reads
+   [flex-basis:calc-size(content, size)] and refuses the same call in [width]
+   and in the [flex] shorthand, as it refuses any [calc-size()] basis there. *)
+let flex_basis_calc_size () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( ".a{flex-basis:calc-size(content, size)}",
+        ".a{flex-basis:calc-size(content,size)}" );
+      ( ".a{flex-basis:calc-size(content, size * 2)}",
+        ".a{flex-basis:calc-size(content,size*2)}" );
+      ( ".a{flex-basis:calc-size(content, 10px)}",
+        ".a{flex-basis:calc-size(content,10px)}" );
+    ];
+  List.iter
+    (fun input ->
+      match Css.of_string ~strict:true input with
+      | Ok _ -> Alcotest.failf "%s should be refused" input
+      | Error _ -> ())
+    [
+      ".a{width:calc-size(content, size)}";
+      ".a{flex:calc-size(content, size)}";
+      ".a{flex:1 calc-size(auto, size)}";
+    ]
+
+(* A shorthand replaces its longhands only where every browser of B that reads
+   each longhand reads the shorthand: a browser dropping the shorthand drops
+   every side it writes, where the longhands lost one. web-features records
+   [light-dark()] from Chrome 123 (floor 111), and Chromium 145 drops a
+   [clamp()] bound of [none] that Chromium 151 reads (CSS Values 4 (ED) sec.
+   10.2). Under the source such a browser keeps the three plain sides. Longhands
+   that all need the same release compose as before. *)
+let compose_over_floors () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( ".c{border-top-color:light-dark(red,blue);border-right-color:red;border-bottom-color:red;border-left-color:red}",
+        ".c{border-top-color:light-dark(red,#00f);border-right-color:red;border-bottom-color:red;border-left-color:red}"
+      );
+      ( ".a{margin-top:clamp(none,1px,2px);margin-right:5px;margin-bottom:5px;margin-left:5px}",
+        ".a{margin-top:clamp(none,1px,2px);margin-right:5px;margin-bottom:5px;margin-left:5px}"
+      );
+      ( ".a{margin:5px;margin-top:clamp(none,1px,2px)}",
+        ".a{margin:5px;margin-top:clamp(none,1px,2px)}" );
+      ( ".a{margin-top:1px;margin-right:5px;margin-bottom:5px;margin-left:5px}",
+        ".a{margin:1px 5px 5px}" );
+      ( ".c{border-top-color:light-dark(red,blue);border-right-color:light-dark(red,blue);border-bottom-color:light-dark(red,blue);border-left-color:light-dark(red,blue)}",
+        ".c{border-color:light-dark(red,#00f)}" );
+    ]
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -1149,4 +1294,10 @@ let suite =
       ( "spec values 10.2 clamp takes a none bound",
         `Quick,
         v4102_clamp_none_bound );
+      ( "spec values 10.9 math functions in number slots",
+        `Quick,
+        v4109_math_in_number_slots );
+      ("spec sizing 7 calc-size", `Quick, sizing7_calc_size);
+      ("flex-basis calc-size content", `Quick, flex_basis_calc_size);
+      ("composition reads over the floors", `Quick, compose_over_floors);
     ] )

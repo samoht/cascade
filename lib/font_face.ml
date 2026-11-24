@@ -7,6 +7,10 @@
 type metric_override =
   | Normal
   | Percent of float
+  | Percent_call of float
+      (** A math function folded to a percentage below the [0,inf] range. CSS
+          Values 4 sec. 10.12 clamps it at computed-value time where the bare
+          literal is invalid, so it prints back as [calc()]. *)
   | Var of metric_override Values.var
 
 let rec pp_metric_override ctx = function
@@ -14,6 +18,10 @@ let rec pp_metric_override ctx = function
   | Percent p ->
       Pp.string ctx (Pp.string_of_float p);
       Pp.char ctx '%'
+  | Percent_call p ->
+      Pp.string ctx "calc(";
+      Pp.string ctx (Pp.string_of_float p);
+      Pp.string ctx "%)"
   | Var var -> Values.pp_var pp_metric_override ctx var
 
 let string_of_metric_override = Pp.to_string ~minify:false pp_metric_override
@@ -23,12 +31,21 @@ let string_of_metric_override = Pp.to_string ~minify:false pp_metric_override
 (** CSS Fonts 5 sec. 4.4: a [<percentage [0,inf]>] glyph size multiplier. No
     descriptor grammar takes a [var()] (CSS Fonts 4 sec. 4.1), so [Var] parks a
     reference until the inline pass substitutes it. *)
-type size_adjust = Pct of float | Var of size_adjust Values.var
+type size_adjust =
+  | Pct of float
+  | Pct_call of float
+      (** A math function folded to a percentage below the [0,inf] range,
+          printed back as [calc()] (CSS Values 4 sec. 10.12). *)
+  | Var of size_adjust Values.var
 
 let rec pp_size_adjust ctx : size_adjust -> unit = function
   | Pct p ->
       Pp.string ctx (Pp.string_of_float p);
       Pp.char ctx '%'
+  | Pct_call p ->
+      Pp.string ctx "calc(";
+      Pp.string ctx (Pp.string_of_float p);
+      Pp.string ctx "%)"
   | Var var -> Values.pp_var pp_size_adjust ctx var
 
 let string_of_size_adjust = Pp.to_string ~minify:false pp_size_adjust
@@ -167,11 +184,13 @@ let rec read_metric_override t : metric_override =
       Var (Values.read_var read_metric_override t)
   (* Sec. 10.1 puts a math function wherever the [<percentage>] stands, so the
      descriptor takes one and answers with the percentage it resolves to: there
-     is no calculation node here to park an unresolved call in. Sec. 4.10's
-     [0,inf] range then reads that percentage the way it reads a literal. *)
+     is no calculation node here to park an unresolved call in. Sec. 10.12
+     clamps one past sec. 4.10's [0,inf] range at computed-value time, so a
+     result below it keeps the call. *)
   | Some (Component.Func _) when Values.looking_at_percentage_math t ->
       let value = Values.read_folded_percentage_math t in
       if valid_percentage value then Percent value
+      else if Float.is_finite value then Percent_call value
       else Cursor.err_invalid t "metric override"
   | Some _ | None -> Cursor.err_invalid t "metric override"
 
@@ -190,6 +209,7 @@ let rec read_size_adjust t : size_adjust =
   | Some (Component.Func _) when Values.looking_at_percentage_math t ->
       let value = Values.read_folded_percentage_math t in
       if valid_percentage value then Pct value
+      else if Float.is_finite value then Pct_call value
       else Cursor.err_invalid t "size-adjust"
   | Some _ | None -> Cursor.err_invalid t "size-adjust"
 
@@ -307,10 +327,9 @@ let rec read_src_entry t =
       read_src_url_modifiers t url
 
 (** Parse a src string into a list of typed entries. CSS Fonts 4 sec. 4.3 spells
-    [src] as a comma-separated list, but real-world input occasionally drops the
-    comma between entries ([src: local("") url(test.woff)]). Match cleancss /
-    lightningcss / esbuild and accept the whitespace-only form too, treating it
-    as if a comma were present. *)
+    [src] as a comma-separated list, and an item holding two sources with no
+    comma between them ([src: local("") url(test.woff)]) is one item that does
+    not parse: Chromium and WebKit drop it, so it is not read as two. *)
 (* sec. 4.3.1: an entry whose component value does not parse, or whose format or
    tech the agent does not support, is left out of the list rather than failing
    the descriptor, and only an empty list at the end is the parse error. The
@@ -326,20 +345,26 @@ and read_src t =
       Cursor.skip t;
       skip_item ())
   in
-  (* [kept] is the items that parsed; [item] the entries of the one being read,
-     which the whitespace form above can make several. *)
-  let rec loop kept item =
+  (* [kept] is the items that parsed. An item is one entry and then a comma or
+     the end; anything else after the entry makes it an item that does not
+     parse. *)
+  let rec loop kept =
     Cursor.ws t;
-    if at_end () then item @ kept
-    else if Cursor.comma_opt t then loop (item @ kept) []
+    if at_end () then kept
+    else if Cursor.comma_opt t then loop kept
     else
       match read_src_entry t with
-      | entry -> loop kept (entry :: item)
+      | entry ->
+          Cursor.ws t;
+          if at_end () || Cursor.comma_opt t then loop (entry :: kept)
+          else (
+            skip_item ();
+            loop kept)
       | exception Cursor.Parse_error _ ->
           skip_item ();
-          loop kept []
+          loop kept
   in
-  let entries = List.rev (loop [] []) in
+  let entries = List.rev (loop []) in
   if entries = [] then Cursor.err_invalid t "no readable font src";
   entries
 

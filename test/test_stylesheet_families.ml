@@ -371,9 +371,9 @@ let s4370_supports_property_name_escapes () =
       (* Both halves take their canonical spelling under minify, and each is
          independent of the other. *)
       ( "@supports (colo\\r:gre\\en){.a{color:red}}",
-        "@supports(color:gre\\E n){.a{color:red}}" );
+        "@supports(color:gre\\e n){.a{color:red}}" );
       ( "@supports (color:gre\\en){.a{color:red}}",
-        "@supports(color:gre\\E n){.a{color:red}}" );
+        "@supports(color:gre\\e n){.a{color:red}}" );
       (* A name needing no escape keeps its spelling. *)
       ( "@supports (--xy:red){.a{color:red}}",
         "@supports(--xy:red){.a{color:red}}" );

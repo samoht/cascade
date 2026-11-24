@@ -18,16 +18,7 @@ let rows =
     row "font-face" "font-family"
       "sec. 4.2 <font-family-name> = <string> | <custom-ident>+"
       [ "Brand"; "\"Brand Sans\""; "Brand Sans"; "'Brand'"; "B2" ]
-      [
-        "serif";
-        "default";
-        (* CSS Values 4 sec. 4.2 reserves [default], so no <custom-ident> of a
-           sequence may be one. *)
-        "none default";
-        "Brand!";
-        "Red/Black";
-        "\"Brand";
-      ];
+      [ "serif"; "default"; "Brand!"; "Red/Black"; "\"Brand" ];
     row "font-face" "src" "sec. 4.3.1 <font-src-list>"
       [
         "url(brand.woff2)";
@@ -85,10 +76,10 @@ let rows =
         "wght 650";
         "\"wght\" bold";
         "650 \"wght\"";
-        (* The pair is [<string> <number>]: a tag with no number is half a
-           value, and [on]/[off] belong to font-feature-settings. *)
-        "\"wght\"";
-        "\"text\"";
+        (* The pair is [<string> <number>], and [on]/[off] belong to
+           font-feature-settings. A tag with no number is half a value, but
+           Chromium reads it at the descriptor as the tag at 1, so it is kept as
+           written and is no refused form. *)
         "\"liga\" off";
       ];
     row "font-face" "size-adjust"

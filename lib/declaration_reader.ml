@@ -488,25 +488,62 @@ let flat_has_invalid_substitution tokens =
        (fun unterminated (_, substitution, _) -> unterminated || substitution)
        false frames
 
+(* Whether the arguments of the substitution call [name] break its grammar: CSS
+   Variables 1 sec. 3 for var(), CSS Values 5 sec. 8.7 for attr(), CSS
+   Environment Variables 1 sec. 3 for env(), CSS Values 5 sec. 8.3 for if() and
+   CSS Mixins 1 sec. 3 for a dashed function. *)
+let invalid_substitution_arguments name arguments =
+  match String.lowercase_ascii_preserve name with
+  | "var" -> invalid_var_arguments arguments
+  | "env" | "attr" -> significant arguments = []
+  | "if" -> invalid_if_arguments arguments
+  | name when Component.is_substitution_function name ->
+      invalid_dashed_arguments arguments
+  | _ -> false
+
 let rec components_have_invalid_substitution components =
   List.exists component_has_invalid_substitution components
 
 and component_has_invalid_substitution = function
   | Component.Func { node = { name; arguments; terminated; _ }; _ } ->
       let invalid_call =
-        match String.lowercase_ascii_preserve name with
-        | "var" -> (not terminated) || invalid_var_arguments arguments
-        | "env" | "attr" -> (not terminated) || significant arguments = []
-        | "if" -> (not terminated) || invalid_if_arguments arguments
-        | name when Component.is_substitution_function name ->
-            (not terminated) || invalid_dashed_arguments arguments
-        | _ -> false
+        Component.is_substitution_function name
+        && ((not terminated) || invalid_substitution_arguments name arguments)
       in
       invalid_call || components_have_invalid_substitution arguments
   | Component.Block { node = { value; _ }; _ } ->
       components_have_invalid_substitution value
   | Component.Flat { node; _ } -> flat_has_invalid_substitution node
   | Component.Preserved _ -> false
+
+(* The reason the first invalid substitution call among [components] gives, in
+   the words the typed readers use: [empty var()], [empty attr()]. A call the
+   input leaves open at its end is not one: CSS Syntax 3 (ED) sec. 4.3.5 closes
+   it there, and browsers read it. *)
+let rec invalid_substitution_reason components =
+  List.find_map invalid_substitution_reason_of components
+
+and invalid_substitution_reason_of = function
+  | Component.Func { node = { name; arguments; _ }; _ } -> (
+      match invalid_substitution_reason arguments with
+      | Some reason -> Some reason
+      | None ->
+          if
+            not
+              (Component.is_substitution_function name
+              && invalid_substitution_arguments name arguments)
+          then None
+          else
+            Some
+              (String.concat ""
+                 [
+                   (if significant arguments = [] then "empty " else "invalid ");
+                   String.lowercase_ascii_preserve name;
+                   "()";
+                 ]))
+  | Component.Block { node = { value; _ }; _ } ->
+      invalid_substitution_reason value
+  | Component.Flat _ | Component.Preserved _ -> None
 
 let rec components_contain_var components =
   List.exists component_contains_var components
@@ -649,6 +686,9 @@ let read_custom_value_declaration t name : declaration =
   in
   if not (components_stay_in_declaration tokens) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
+  (* CSS Variables 1 sec. 3: a syntactically invalid substitution function makes
+     the declaration invalid at parse time, a custom property's too. *)
+  Option.iter (Cursor.err_invalid t) (invalid_substitution_reason tokens);
   let custom_value = read_custom_property_value (Cursor.of_components tokens) in
   let decl =
     v (Custom_property name)
@@ -780,6 +820,10 @@ let validate_regular_property_components t name components =
      Variables 1 sec. 2). *)
   if List.for_all Component.is_whitespace components then
     Cursor.err_expected t "a value";
+  (* CSS Variables 1 sec. 3: a syntactically invalid substitution function, an
+     [attr()] or [env()] with no argument among them, makes the declaration
+     invalid at parse time, wherever it stands, a [var()] fallback included. *)
+  Option.iter (Cursor.err_invalid t) (invalid_substitution_reason components);
   validate_anchor_queries t name components;
   (* A substitution function makes the declaration's grammar a computed-value
      question. This includes [all]: the substitution result can be empty and
@@ -884,12 +928,147 @@ let is_unknown_property_name = is_decl_unknown_property_name
    detect ([Values.angle.Invalid] / [Properties.clip_path.Invalid]), so the
    declaration-level unknown fallback only needs to handle truly unknown
    properties or property-specific colour fallback edges. *)
+(* The comma-separated entries of a value, each the components between two
+   commas with the whitespace left out. *)
+let comma_entries raw_value =
+  let rec split entries entry = function
+    | [] -> List.rev (List.rev entry :: entries)
+    | Component.Preserved { kind = Token.Comma; _ } :: rest ->
+        split (List.rev entry :: entries) [] rest
+    | component :: rest when Component.is_whitespace component ->
+        split entries entry rest
+    | component :: rest -> split entries (component :: entry) rest
+  in
+  split [] [] (Cursor.remaining (Cursor.of_string raw_value))
+
+let lowercase_ident = function
+  | Component.Preserved { kind = Token.Ident word; _ } ->
+      Option.some (String.lowercase_ascii word)
+  | _ -> Option.none
+
+(* The generic families Chromium 153 and WebKit 26.5 read as the generic
+   wherever they head an entry, so a family of several words cannot start with
+   one. *)
+let generic_family_heads =
+  [
+    "serif";
+    "sans-serif";
+    "monospace";
+    "cursive";
+    "fantasy";
+    "system-ui";
+    "math";
+    "-webkit-body";
+  ]
+
+(* One entry of a font-family list as both engines read it: a string; one
+   identifier that is no CSS-wide keyword and no [default]; or several, any of
+   them reserved, unless the first is a generic family. *)
+let engine_family_entry = function
+  | [ Component.Preserved { kind = Token.String _; _ } ] -> true
+  | [ word ] -> (
+      match lowercase_ident word with
+      | Some word ->
+          not
+            (Properties.is_css_wide_keyword word || String.equal word "default")
+      | None -> false)
+  | first :: _ :: _ as words -> (
+      List.for_all (fun word -> Option.is_some (lowercase_ident word)) words
+      &&
+      match lowercase_ident first with
+      | Some first ->
+          not (List.exists (String.equal first) generic_family_heads)
+      | None -> false)
+  | [] -> false
+
+(* [raw_value] read by the typed reader of [prop] to its end. *)
+let typed_reads (type a) (prop : a property) raw_value =
+  let t = Cursor.of_string raw_value in
+  match read_value prop t with
+  | exception Cursor.Parse_error _ -> false
+  | _ ->
+      Cursor.ws t;
+      Cursor.is_done t
+
+(* [raw_value] is the lone keyword [word], in any case. *)
+let is_lone_keyword word raw_value =
+  match comma_entries raw_value with
+  | [ [ ident ] ] -> (
+      match lowercase_ident ident with
+      | Some w -> String.equal w word
+      | None -> false)
+  | _ -> false
+
+(* [raw_value] ends in a comma after a list the typed reader of [prop] takes. *)
+let reads_before_trailing_comma prop raw_value =
+  let components =
+    List.filter
+      (fun c -> not (Component.is_whitespace c))
+      (Cursor.remaining (Cursor.of_string raw_value))
+  in
+  match List.rev components with
+  | Component.Preserved { kind = Token.Comma; _ } :: (_ :: _ as rest) ->
+      typed_reads prop (Parser.string_of_components (List.rev rest))
+  | _ -> false
+
+(* [raw_value] holds [historical-forms] more than once, and reads once the
+   repeats are left out. *)
+let reads_without_repeated_historical_forms raw_value =
+  let components =
+    List.filter
+      (fun c -> not (Component.is_whitespace c))
+      (Cursor.remaining (Cursor.of_string raw_value))
+  in
+  let is_historical c =
+    match lowercase_ident c with
+    | Some w -> String.equal w "historical-forms"
+    | None -> false
+  in
+  let _, kept =
+    List.fold_left
+      (fun (seen, kept) c ->
+        if is_historical c then if seen then (true, kept) else (true, c :: kept)
+        else (seen, c :: kept))
+      (false, []) components
+  in
+  List.length (List.filter is_historical components) > 1
+  && typed_reads Font_variant_alternates
+       (String.concat " "
+          (List.rev_map (fun c -> Parser.string_of_components [ c ]) kept))
+
 (* A form no specification grants and a browser in B parses. The typed reader
    refuses it and the declaration keeps the text the author wrote: rewritten
    into a granted form it would apply in the engines that drop it, and dropped
    it would no longer apply in the engine that reads it. *)
 let browser_reads_ungranted (Prop prop : any_property) raw_value =
   match prop with
+  (* CSS Values 4 sec. 4.2 keeps a CSS-wide keyword and [default] out of the
+     <custom-ident>+ of CSS Fonts 4 sec. 2.1.1; Chromium 153 and WebKit 26.5
+     read either inside a family of several words. *)
+  | Font_family -> List.for_all engine_family_entry (comma_entries raw_value)
+  (* CSS Backgrounds 3 sec. 4.5 builds these from a [||] with no comma. Chromium
+     153 reads a comma after a single component, a trailing one included, as the
+     space between them, so the value is that of the components joined; WebKit
+     drops it. *)
+  | Border | Border_block | Border_inline -> (
+      let single = function [ _ ] -> true | [] | _ :: _ :: _ -> false in
+      let entries =
+        match List.rev (comma_entries raw_value) with
+        | [] :: rest -> List.rev rest
+        | entries -> List.rev entries
+      in
+      match (comma_entries raw_value, entries) with
+      | _ :: _ :: _, _ :: _ when List.for_all single entries -> (
+          let t =
+            Cursor.of_string
+              (String.concat " " (List.map Parser.string_of_components entries))
+          in
+          match Properties.read_border t with
+          | exception Cursor.Parse_error _ -> false
+          | _ ->
+              Cursor.ws t;
+              Cursor.is_done t)
+      | _ -> false)
   (* CSS Sizing 4 (ED) sec. 5.2 lets [auto] open a slot and never end one.
      Chromium 153 reads one slot followed by a lone [auto] as that slot: its
      slot reader takes the [auto], finds no [none] or length and gives the slot
@@ -910,6 +1089,21 @@ let browser_reads_ungranted (Prop prop : any_property) raw_value =
      Chromium and WebKit read it with [background-position]'s three-value
      grammar ({!Properties.mask_reads_with_bg_position}). *)
   | Mask -> Properties.mask_reads_with_bg_position raw_value
+  (* CSS UI 4 sec. 4.1, CSS Writing Modes 4 sec. 5.1 and CSS Inline 3 sec. 4.2.2
+     grant none of these keywords. Chromium 153 reads each, WebKit 26.5 drops
+     it. *)
+  | Resize -> is_lone_keyword "auto" raw_value
+  | Text_orientation -> is_lone_keyword "sideways-right" raw_value
+  | Alignment_baseline -> is_lone_keyword "auto" raw_value
+  (* CSS Gaps 1 sec. 4.4 gives a rule list no empty entry. Chromium 153 reads a
+     trailing comma after the list as its end; WebKit 26.5 drops it. *)
+  | Column_rule -> reads_before_trailing_comma prop raw_value
+  | Column_rule_width -> reads_before_trailing_comma prop raw_value
+  | Column_rule_style -> reads_before_trailing_comma prop raw_value
+  | Column_rule_color -> reads_before_trailing_comma prop raw_value
+  (* CSS Fonts 4 takes [historical-forms] once. Chromium 153 reads it repeated,
+     anywhere in the value; WebKit 26.5 drops it. *)
+  | Font_variant_alternates -> reads_without_repeated_historical_forms raw_value
   | _ -> false
 
 let allows_unknown_fallback prop name raw_value =

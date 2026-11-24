@@ -305,6 +305,12 @@ and page_margin_rule = {
 (** Font-face descriptors per CSS Fonts spec *)
 and font_face_descriptor =
   | Font_family of Properties.font_family list  (** Font family name *)
+  | Font_family_as_written of string
+      (** A family name no specification grants that a browser in B reads, an
+          unquoted run of identifiers holding a CSS-wide keyword, [default] or a
+          leading generic family (CSS Values 4 sec. 4.2). It is kept as the
+          author wrote it, since a rewrite into a granted spelling would apply
+          where that browser alone applied it. *)
   | Src of Font_face.src  (** Font source (url(), local(), etc.) *)
   | Font_style of Properties.font_style
       (** CSS Fonts 4 sec. 4.4 [normal | italic | oblique [<angle>{1,2}]?]. The
@@ -331,6 +337,11 @@ and font_face_descriptor =
       (** OpenType feature settings *)
   | Font_variation_settings of Properties.font_variation_settings
       (** Variable font settings *)
+  | Font_variation_settings_as_written of string
+      (** A list no specification grants that a browser in B reads, holding an
+          entry that is a bare <opentype-tag> with no number (CSS Fonts 4 sec.
+          6.6). It is kept as the author wrote it, as {!Font_family_as_written}.
+      *)
   | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
   | Ascent_override of Font_face.metric_override  (** Ascent metric override *)
   | Descent_override of Font_face.metric_override

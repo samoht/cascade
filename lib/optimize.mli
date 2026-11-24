@@ -97,18 +97,22 @@ val compose_shorthands :
     element with the input. *)
 
 val merge_box_shorthand_longhands :
+  floors:targets ->
   (int * declaration) list ->
   (int * declaration) list ->
   (int * declaration) list
-(** [merge_box_shorthand_longhands source decls] folds box-shorthand longhands
-    that follow a matching box shorthand back into it. A declaration that
-    absorbs nothing is returned unchanged by physical identity. *)
+(** [merge_box_shorthand_longhands ~floors source decls] folds box-shorthand
+    longhands that follow a matching box shorthand back into it, unless a
+    browser at or above [floors] reads one of them and drops the result. A
+    declaration that absorbs nothing is returned unchanged by physical identity.
+*)
 
 val merge_overflow_longhands :
-  (int * declaration) list -> (int * declaration) list
-(** [merge_overflow_longhands decls] folds [overflow-x] and [overflow-y] into
-    the [overflow] shorthand when both appear with matching importance. A
-    declaration left unmerged keeps its physical identity. *)
+  floors:targets -> (int * declaration) list -> (int * declaration) list
+(** [merge_overflow_longhands ~floors decls] folds [overflow-x] and [overflow-y]
+    into the [overflow] shorthand when both appear with matching importance,
+    unless a browser at or above [floors] reads one of them and drops the
+    result. A declaration left unmerged keeps its physical identity. *)
 
 val drop_invalid : t -> t
 (** [drop_invalid ss] removes every declaration whose typed value contains an

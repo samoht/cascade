@@ -24,20 +24,6 @@ val is_math_function : string -> bool
     sign-related ([abs()], [sign()]) families. [name] is matched case
     insensitively, as CSS function names are. *)
 
-val canonicalize_custom_shadow_components :
-  lossless:bool ->
-  enforce_spec:bool ->
-  Values.invalid_value ->
-  Values.invalid_value
-(** [canonicalize_custom_shadow_components ~lossless ~enforce_spec components]
-    is [components] with the colour of a complete shadow canonicalised, the
-    authored shadow shape otherwise kept. *)
-
-val canonicalize_custom_colors_components :
-  lossless:bool -> enforce_spec:bool -> Component.t list -> Component.t list
-(** [canonicalize_custom_colors_components ~lossless ~enforce_spec components]
-    is [components] with every colour it holds folded to its canonical form. *)
-
 val try_read_custom_color : custom_value -> custom_property_value option
 (** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning a
     typed payload when the stream matches. *)

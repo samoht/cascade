@@ -300,9 +300,6 @@ let spec_fontface_src_minify_edges () =
       ( "tech before format serializes in canonical modifier order",
         "url(\"color.woff2\") tech(color-COLRv1) format(\"woff2\")",
         "url(color.woff2)format(woff2)tech(color-COLRv1)" );
-      ( "whitespace-only source separator is accepted",
-        "local(\"Brand\") url(\"brand.woff2\")",
-        "local(Brand),url(brand.woff2)" );
       ( "var source fallback survives",
         "var(--font-src, url(\"fallback.woff2\") format(\"woff2\"))",
         "var(--font-src,url(fallback.woff2)format(woff2))" );
@@ -771,6 +768,55 @@ let spec_src_printer_routes () =
       Alcotest.failf "src printer routes disagree with the spec oracle:\n%s"
         (String.concat "\n" mismatches)
 
+(* CSS Values 4 (ED) sec. 10.12 clamps a math function past a property's range
+   at computed-value time instead of invalidating it, so the [<percentage
+   [0,inf]>] of size-adjust (CSS Fonts 5 sec. 4.4) and of the metric overrides
+   (CSS Fonts 4 sec. 4.10) takes calc(-10%), and only the literal -10% is out.
+   Chromium 153 keeps each call below, and WebKit 26.5 keeps the size-adjust
+   one; the call stays, since -10% alone would be dropped. *)
+let font_metric_math_below_range () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (Css_test_helpers.ok (size_adjust_of_string input)
+        |> string_of_size_adjust))
+    [ ("calc(-10%)", "calc(-10%)"); ("calc(10% - 20%)", "calc(-10%)") ];
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (Css_test_helpers.ok (metric_override_of_string input)
+        |> string_of_metric_override))
+    [ ("calc(-10%)", "calc(-10%)"); ("min(-10%, 5%)", "calc(-10%)") ];
+  List.iter
+    (fun input ->
+      match size_adjust_of_string input with
+      | Ok _ -> Alcotest.failf "size-adjust: %s read" input
+      | Error _ -> ())
+    [ "-10%" ]
+
+(* CSS Fonts 4 (ED) sec. 4.3 spells [src] as a comma-separated <font-src-list>,
+   and sec. 4.3.1 drops an item whose component value does not parse: two
+   sources with no comma between them are one item that does not parse. Chromium
+   153 and WebKit 26.5 drop src: url(a.woff) url(b.woff), and keep only
+   url(c.woff) after it. Read as two items, the declaration would load a font
+   both browsers never load. *)
+let font_src_items_need_commas () =
+  let minify css = Css.minify (Css.stylesheet css) in
+  let face src =
+    String.concat "" [ "@font-face{font-family:a;src:"; src; "}" ]
+  in
+  List.iter
+    (fun (src, expected) ->
+      Alcotest.(check string) src expected (minify (face src)))
+    [
+      ("url(a.woff) url(b.woff)", "");
+      ("local(\"\") url(test.woff)", "");
+      ( "url(a.woff) url(b.woff), url(c.woff)",
+        "@font-face{font-family:a;src:url(c.woff)}" );
+    ]
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -809,4 +855,7 @@ let suite =
       test_case "spec family name reserved words" `Quick
         spec_family_name_reserved_words;
       test_case "spec src printer routes" `Quick spec_src_printer_routes;
+      test_case "font metric math below range" `Quick
+        font_metric_math_below_range;
+      test_case "font src items need commas" `Quick font_src_items_need_commas;
     ] )

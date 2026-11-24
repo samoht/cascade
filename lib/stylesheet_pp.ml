@@ -120,7 +120,7 @@ let pp_page_pseudo ctx p =
     | Blank -> "blank")
 
 let pp_page_selector_one ctx ({ name; pseudos } : page_selector) =
-  Option.iter (Pp.string ctx) name;
+  Option.iter (fun name -> Pp.string ctx (Parser.escape_ident name)) name;
   List.iter (pp_page_pseudo ctx) pseudos
 
 let pp_page_selector ctx (selectors : page_selector list) =
@@ -393,6 +393,9 @@ let pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx fams ->
           Pp.list ~sep:Pp.comma Properties.pp_font_family_name ctx fams)
         families
+  | Font_family_as_written words -> pp_descriptor "font-family" Pp.string words
+  | Font_variation_settings_as_written list ->
+      pp_descriptor "font-variation-settings" Pp.string list
   | Src value -> pp_descriptor "src" Properties.pp_font_src value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style

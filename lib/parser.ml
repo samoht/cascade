@@ -164,12 +164,16 @@ let hex_digit n =
   if n < 10 then Char.chr (n + Char.code '0')
   else Char.chr (n - 10 + Char.code 'A')
 
-(* Hex-escape a control byte as "\HH " per CSS Syntax 3 (ED) sec. 9. *)
+(* CSSOM 1 sec. 2.1 writes the code point of an escape "as hexadecimal in the
+   range 0-9 a-f". *)
+let escape_digit n = "0123456789abcdef".[n]
+
+(* Hex-escape a control byte as "\hh " per CSS Syntax 3 (ED) sec. 9. *)
 let add_hex_escape buf c =
   let code = Char.code c in
   Buffer.add_char buf '\\';
-  if code >= 0x10 then Buffer.add_char buf (hex_digit (code lsr 4));
-  Buffer.add_char buf (hex_digit (code land 0xF));
+  if code >= 0x10 then Buffer.add_char buf (escape_digit (code lsr 4));
+  Buffer.add_char buf (escape_digit (code land 0xF));
   Buffer.add_char buf ' '
 
 let add_hex_escape_cp buf cp =
@@ -177,7 +181,7 @@ let add_hex_escape_cp buf cp =
   let rec emit n acc =
     if n = 0 && acc = [] then Buffer.add_char buf '0'
     else if n = 0 then List.iter (Buffer.add_char buf) acc
-    else emit (n / 16) (hex_digit (n mod 16) :: acc)
+    else emit (n / 16) (escape_digit (n mod 16) :: acc)
   in
   emit cp [];
   Buffer.add_char buf ' '
@@ -392,15 +396,30 @@ let is_signed_number_repr repr =
    its meaning. Use the typed printer's compact spelling when it is shorter and
    reparses to the same float; the equality guard keeps high-precision authored
    values exact when the printer's decimal bound would round them. *)
-let minified_number_repr ?(preserve_sign = false)
-    ({ repr; _ } as number : Token.number) =
+let minified_number_repr ?(preserve_sign = false) ?(keep_type = false)
+    ({ repr; number_flag; _ } as number : Token.number) =
   (* The token's value stops at the printer's eight decimals; the stream keeps
      the authored number, so the spelling and its guard read the
      representation. *)
   let exact = Token.authored_value number in
   let compact = Pp.string_of_float_exact exact in
+  (* CSS Syntax 3 sec. 4.3.13 types a number by its spelling: a point or an
+     exponent makes it a number, digits alone an integer. A grammar reads a
+     <number-token>'s type ([<integer>] takes only the integer one), so its
+     candidate keeps the token's. A dimension's type is read only by the An+B
+     microsyntax, which no value holds. *)
+  let integer_spelling s =
+    not (String.exists (function '.' | 'e' | 'E' -> true | _ -> false) s)
+  in
+  let same_type candidate =
+    (not keep_type)
+    || Bool.equal
+         (integer_spelling candidate)
+         (match number_flag with Token.Integer -> true | Number -> false)
+  in
   let shorter candidate =
     String.length candidate < String.length repr
+    && same_type candidate
     &&
     match float_of_string_opt candidate with
     | Some parsed -> Float.equal exact parsed
@@ -424,7 +443,8 @@ let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
     Token.kind -> unit = function
   | Token.Number_tok number ->
       Buffer.add_string buf
-        (minified_number_repr ~preserve_sign:preserve_numeric_sign number)
+        (minified_number_repr ~preserve_sign:preserve_numeric_sign
+           ~keep_type:true number)
   | Token.Percentage number ->
       Buffer.add_string buf
         (minified_number_repr ~preserve_sign:preserve_numeric_sign number);
@@ -649,8 +669,11 @@ let word_like_end : Component.t -> bool = function
           | Cdc | Bad_string | Bad_url | Eof
           (* Self-delimiting at the end: [%] closes its percentage token and
              these delims close themselves, so nothing that follows merges into
-             them. Same rule the typed printer applies as [Pp.token_sp]. *)
-          | Hash _ | Percentage _
+             them. Same rule the typed printer applies as [Pp.token_sp]. A hash
+             is not: CSS Syntax 3 (ED) sec. 4.3.1 runs its name over every name
+             code point, so [#fff url(a)] without the space is the hash
+             [fffurl]. *)
+          | Percentage _
           | Delim
               ( "!" | "*" | "/" | ">" | "?" | "|" | "&" | "^" | "$" | "=" | "%"
               | "~" | "(" | ")" | "[" | "]" | "{" | "}" ) );
@@ -921,17 +944,6 @@ let to_string_minified cvs = to_string_minified_with ~minify_numbers:false cvs
 let to_string_minified_numbers cvs =
   to_string_minified_with ~minify_numbers:true cvs
 
-(* If [args] is a single [<string-token>] argument we can fold it into the
-   bare-URL form [url(X)] when X has no special characters - per CSS Values L4
-   sec. 4.5 the two notations are equivalent and the bare form is shorter. *)
-let url_args_as_bare_string args =
-  let stripped = List.filter (Fun.negate is_whitespace) args in
-  match stripped with
-  | [ Component.Preserved { kind = Token.String { value; _ }; _ } ]
-    when not (Common.String.url_needs_quotes value) ->
-      Some value
-  | _ -> None
-
 let custom_min_is_math_delim = function
   | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
   | _ -> false
@@ -976,16 +988,12 @@ let custom_min_needs_separator ~in_math ~opaque prev next rest =
   match prev with
   | None -> false
   | Some p ->
-      let minify_numeric =
-        (not in_math)
-        || Option.is_none (numeric_leading_sign ~minify:false next)
-      in
       pair_forms_multichar_token p next
       || opaque
          && (custom_min_is_math_delim p || custom_min_is_math_delim next)
       || math_sign_boundary ~in_math p next
       || custom_min_bang_boundary prev next rest
-      || custom_min_word_boundary ~minify:minify_numeric p next
+      || custom_min_word_boundary ~minify:false p next
 
 let custom_min_ws_separator ~in_math ~opaque buf prev separated rest =
   match rest with
@@ -998,82 +1006,40 @@ let custom_min_ws_separator ~in_math ~opaque buf prev separated rest =
    writes them, are two tokens and no whitespace token: CSS Syntax 3 (ED) sec. 9
    separates them with an empty comment, which is nothing (sec. 4.3.2), where a
    space would add a whitespace token to the stream. *)
-let custom_min_item_separator ~preserve_numeric_sign ~after_whitespace buf prev
-    separated cv =
+let custom_min_item_separator ~after_whitespace buf prev separated cv =
   match prev with
   | Some p
-    when (not separated)
-         && (not preserve_numeric_sign)
-         && pair_needs_token_boundary ~minify_numeric:true p cv ->
+    when (not separated) && pair_needs_token_boundary ~minify_numeric:false p cv
+    ->
       if after_whitespace then Buffer.add_char buf ' '
       else Buffer.add_string buf "/**/"
   | _ -> ()
 
-(* Idents are ASCII-case-insensitive per CSS Values 4 sec. 4.1, but the parser
-   keeps source case so selectors stay case-sensitive. In a custom-property
-   value only these keywords have a canonical lower-case spelling, so fold them
-   ([--c:currentColor] == [--c:currentcolor]). Kept conservative: an
-   unrecognised ident (e.g. a tw class name in a var body) passes through
-   unchanged. *)
-let case_insensitive_value_idents =
-  let s = Hashtbl.create 16 in
-  List.iter
-    (fun k -> Hashtbl.add s k ())
-    [
-      "currentcolor";
-      "transparent";
-      "inherit";
-      "initial";
-      "unset";
-      "revert";
-      "revert-layer";
-    ];
-  s
-
-let fold_value_ident s =
-  let lower = String.lowercase_ascii s in
-  if Hashtbl.mem case_insensitive_value_idents lower then lower else s
-
-let add_custom_value_token ~fold_ident ~preserve_numeric_sign buf :
-    Token.kind -> unit = function
-  | Token.Ident s -> Buffer.add_string buf (escape_ident (fold_ident s))
-  | other -> add_minified_token_kind ~preserve_numeric_sign buf other
-
-let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
-    ~preserve_numeric_sign buf : Component.t -> unit = function
-  | Preserved t ->
-      add_custom_value_token ~fold_ident ~preserve_numeric_sign buf t.kind
+(* CSS Custom Properties 1 sec. 4.1: a custom property's value is serialised as
+   the author wrote it, numeric tokens included, and a [var()] substitutes those
+   tokens: [--z:1.0] is no [<integer>] where [--z:1] is one. Only the whitespace
+   between tokens is the minifier's. *)
+let rec cv_to_buffer_custom_min ~in_math ~opaque buf : Component.t -> unit =
+  function
+  | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (Token.opening_char opening);
-      cvs_to_buffer_min_custom ~fold_ident
+      cvs_to_buffer_min_custom
         ~in_math:(block_in_math ~in_math opening)
         ~opaque buf value;
       Buffer.add_char buf (Token.closing_char opening)
-  | Func { node = { name; arguments; _ }; _ }
-    when String.lowercase_ascii name = "url" -> (
-      match url_args_as_bare_string arguments with
-      | Some s ->
-          Buffer.add_string buf "url(";
-          Buffer.add_string buf s;
-          Buffer.add_char buf ')'
-      | None ->
-          Buffer.add_string buf (escape_ident name);
-          Buffer.add_char buf '(';
-          cvs_to_buffer_min_custom ~fold_ident ~in_math:false ~opaque buf
-            arguments;
-          Buffer.add_char buf ')')
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min_custom ~fold_ident ~in_math:(is_math_function name)
-        ~opaque buf arguments;
+      cvs_to_buffer_min_custom ~in_math:(is_math_function name) ~opaque buf
+        arguments;
       Buffer.add_char buf ')'
   | Flat _ as cv -> cv_to_buffer_verbatim buf cv
 
 (* Drops optional whitespace between sibling tokens (like [cvs_to_buffer_min])
    but routes children through [cv_to_buffer_custom_min] so nested function and
    block contents use the custom-property minifier recursively. *)
-and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
+and cvs_to_buffer_min_custom ~in_math ~opaque buf cvs =
   let rec loop prev separated after_whitespace = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
@@ -1083,14 +1049,8 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
         in
         loop prev separated' true rest'
     | cv :: rest ->
-        let preserve_numeric_sign =
-          preserve_minified_numeric_sign ~in_math ~keep_authored_whitespace:true
-            ~after_whitespace prev cv
-        in
-        custom_min_item_separator ~preserve_numeric_sign ~after_whitespace buf
-          prev separated cv;
-        cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
-          ~preserve_numeric_sign buf cv;
+        custom_min_item_separator ~after_whitespace buf prev separated cv;
+        cv_to_buffer_custom_min ~in_math ~opaque buf cv;
         loop (Some cv) false false rest
   in
   loop None false false cvs
@@ -1099,12 +1059,11 @@ and cvs_to_buffer_min_custom ~fold_ident ~in_math ~opaque buf cvs =
    [string_of_components] keeps every optional whitespace token. This minified
    rendering is for canonical output only: collapse optional whitespace in
    blocks and function args while preserving token boundaries. *)
-let to_string_custom_minified ?(fold_ident = fold_value_ident) ?(opaque = true)
-    cvs =
+let to_string_custom_minified ?(opaque = true) cvs =
   if cvs <> [] && List.for_all is_whitespace cvs then " "
   else
     let buf = Buffer.create 64 in
-    cvs_to_buffer_min_custom ~fold_ident ~in_math:false ~opaque buf cvs;
+    cvs_to_buffer_min_custom ~in_math:false ~opaque buf cvs;
     Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)

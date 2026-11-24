@@ -160,14 +160,19 @@ val is_all_declaration : Declaration.declaration -> bool
 (** Whether a declaration is the [all] shorthand. *)
 
 val merge_box_shorthand_longhands :
+  floors:Support.targets ->
   (int * Declaration.declaration) list ->
   (int * Declaration.declaration) list ->
   (int * Declaration.declaration) list
-(** Fold later box longhands into preceding box shorthands. *)
+(** Fold later box longhands into preceding box shorthands, where
+    {!Declaration.composes} allows it for [floors]. *)
 
 val merge_overflow_longhands :
-  (int * Declaration.declaration) list -> (int * Declaration.declaration) list
-(** Fold [overflow-x]/[overflow-y] into [overflow]. *)
+  floors:Support.targets ->
+  (int * Declaration.declaration) list ->
+  (int * Declaration.declaration) list
+(** Fold [overflow-x]/[overflow-y] into [overflow], where
+    {!Declaration.composes} allows it for [floors]. *)
 
 type held
 (** Shorthand slots a set of declarations leaves holding something other than

@@ -224,7 +224,8 @@ module Length = struct
           Values.Hypot (List.map (simplify ~visited) values)
       | Values.Abs value -> Values.Abs (simplify ~visited value)
       | Values.Calc_size (basis, calc) ->
-          Values.Calc_size (simplify ~visited basis, simplify_calc ~visited calc)
+          Values.Calc_size
+            (Option.map (simplify ~visited) basis, simplify_calc ~visited calc)
       | Values.Anchor (name, side, fallback) ->
           Values.Anchor (name, side, Option.map (simplify ~visited) fallback)
       | Values.Anchor_size (name, size, fallback) ->

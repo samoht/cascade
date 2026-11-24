@@ -14,9 +14,10 @@
 
 type t
 
-val build : Declaration.declaration list -> t
-(** [build decls] constructs an index over [decls]. Positions are dense
-    [0 .. List.length decls - 1] indices into the input. *)
+val build : floors:Support.targets -> Declaration.declaration list -> t
+(** [build ~floors decls] constructs an index over [decls]. Positions are dense
+    [0 .. List.length decls - 1] indices into the input. [floors] are the
+    browsers {!splice} judges a composition for. *)
 
 val length : t -> int
 (** [length t] is the number of decl positions in the index. *)
@@ -47,7 +48,9 @@ val splice :
     [false], with the index left untouched, when a declaration of [new_decls]
     mixes a CSS-wide keyword with other components: CSS Cascade 5 sec. 7.3 makes
     that invalid CSS whatever family built it, so the index is the one gate
-    every composer's emission passes through. The caller leaves the run as its
+    every composer's emission passes through. It is [false] too when a browser
+    at or above the floors reads an absorbed declaration and drops one of
+    [new_decls] ({!Declaration.composes}). The caller leaves the run as its
     longhands. *)
 
 val is_absorbed : t -> int -> bool

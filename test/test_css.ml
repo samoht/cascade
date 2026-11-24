@@ -333,6 +333,18 @@ let nested_colour_follows_print_flags () =
        ])
     (Css.minify ~enforce_spec:true (Css.stylesheet css))
 
+(* A colour folded inside a custom property's tokens is printed into them under
+   the sheet's flags too: [--enforce-spec] and [--lossless] keep the [oklch()]
+   chroma number a [color] value keeps. *)
+let custom_colour_follows_print_flags () =
+  let css = ".a{--x:oklch(.7 .304 20);--s:0 0 1px oklch(.7 .304 20)}" in
+  Alcotest.(check string)
+    "enforce-spec reaches a custom property's colour" css
+    (Css.minify ~enforce_spec:true (Css.stylesheet css));
+  Alcotest.(check string)
+    "lossless reaches a custom property's colour" css
+    (Css.minify ~lossless:true (Css.stylesheet css))
+
 (* A renamed custom property is renamed inside a gradient stop and a border
    colour, as everywhere else. *)
 let nested_colour_follows_renaming () =
@@ -751,6 +763,8 @@ let suite =
         nested_colour_follows_print_flags;
       Alcotest.test_case "nested colour follows renaming" `Quick
         nested_colour_follows_renaming;
+      Alcotest.test_case "custom colour follows print flags" `Quick
+        custom_colour_follows_print_flags;
       Alcotest.test_case "pure minify value fallbacks" `Quick
         pure_minify_value_fallbacks;
       Alcotest.test_case "constructed offset shorthand" `Quick

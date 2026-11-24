@@ -529,6 +529,47 @@ let counter_range_bounds_are_ordered () =
     "-3 -1" (with_range "-3-1")
     (minify (with_range "-3 -1"))
 
+(* CSS Fonts 4 (ED) sec. 4.2 spells the @font-face font-family descriptor
+   <family-name>, and CSS Values 4 sec. 4.2 keeps a CSS-wide keyword and
+   [default] out of its <custom-ident>+. Chromium 153 and WebKit 26.5 still read
+   [none default] and [inherit foo], and WebKit [serif Foo] too, so each is kept
+   as written; both drop [default], [serif], a list and [x "y"]. *)
+let font_face_family_keeps_engine_splits () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  let face family =
+    String.concat "" [ "@font-face{font-family:"; family; ";src:url(a.woff)}" ]
+  in
+  List.iter
+    (fun family ->
+      Alcotest.(check string) family (face family) (minify (face family)))
+    [ "none default"; "inherit foo"; "foo inherit"; "serif Foo" ];
+  List.iter
+    (fun family ->
+      Alcotest.(check string)
+        family "@font-face{src:url(a.woff)}"
+        (minify (face family)))
+    [ "default"; "serif"; "Brand,Other"; "x \"y\"" ]
+
+(* CSS Fonts 4 (ED) sec. 6.6 writes each font-variation-settings entry
+   <opentype-tag> <number>, so a bare tag is no entry. Chromium 153 reads one at
+   the @font-face descriptor and gives it 1; WebKit 26.5 drops it, so the
+   descriptor is kept as written. A list holding an entry neither reads still
+   goes. *)
+let font_face_variation_tag_kept_as_written () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  let face desc =
+    String.concat "" [ "@font-face{font-family:a;src:url(a.woff);"; desc; "}" ]
+  in
+  List.iter
+    (fun desc -> Alcotest.(check string) desc (face desc) (minify (face desc)))
+    [
+      "font-variation-settings:\"wght\"";
+      "font-variation-settings:\"wght\",\"wdth\" 2";
+    ];
+  Alcotest.(check string)
+    "an entry neither reads" "@font-face{font-family:a;src:url(a.woff)}"
+    (minify (face "font-variation-settings:\"wght\" x"))
+
 let suite =
   ( "stylesheet_statement",
     [
@@ -733,4 +774,10 @@ let suite =
       ( "counter range bounds are ordered",
         `Quick,
         counter_range_bounds_are_ordered );
+      ( "a font-face family keeps engine splits",
+        `Quick,
+        font_face_family_keeps_engine_splits );
+      ( "a font-face variation tag is kept as written",
+        `Quick,
+        font_face_variation_tag_kept_as_written );
     ] )

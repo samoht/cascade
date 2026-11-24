@@ -166,6 +166,7 @@ let normal_form_inputs () =
       {|a{max-height:54.599999999999994px}b{max-height:54.6px}|};
       {|a{animation-delay:.7250000000000001s}b{animation-delay:.725s}|};
       {|a{color:rgba(0,0,0,0.09999999999999998)}b{color:rgba(0,0,0,.1)}|};
+      {|a{--x:1.0px}b{--x:1px}|};
     ]
 
 (* An empty or shrunken corpus and a clean corpus look the same from outside, so
@@ -182,7 +183,7 @@ let corpora =
     { corpus_name = "lightning"; floor = 2500; load = lightning_inputs };
     { corpus_name = "examples"; floor = 2; load = example_inputs };
     { corpus_name = "property-grammar"; floor = 2000; load = grammar_inputs };
-    { corpus_name = "spellings"; floor = 25; load = normal_form_inputs };
+    { corpus_name = "spellings"; floor = 26; load = normal_form_inputs };
   ]
 
 (* {1 Modes} *)

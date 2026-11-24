@@ -103,7 +103,8 @@ val xyz50_of_lab : lab -> xyz
 (** Converts CIE Lab to XYZ-D50. *)
 
 val lch_of_lab : lab -> lch
-(** Converts CIE Lab to polar LCH. *)
+(** Converts CIE Lab to polar LCH. A chroma at or below 0.0015 gives a chroma
+    and hue of 0 (CSS Color 4 sec. 9.5). *)
 
 val lab_of_lch : lch -> lab
 (** Converts polar LCH to CIE Lab. *)
@@ -117,7 +118,8 @@ val linear_srgb_of_oklab : lab -> rgb
 (** Converts OKLab to linear sRGB. *)
 
 val oklch_of_oklab : lab -> lch
-(** Converts OKLab to OKLCH. *)
+(** Converts OKLab to OKLCH. A chroma at or below 0.000004 gives a chroma and
+    hue of 0 (CSS Color 4 sec. 9.5). *)
 
 val oklab_of_oklch : lch -> lab
 (** Converts OKLCH to OKLab. *)

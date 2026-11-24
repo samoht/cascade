@@ -1498,14 +1498,11 @@ let reject_var_slot t =
   if Cursor.looking_at_func "var" t then
     Cursor.err_invalid t "var() spans no single offset slot"
 
-(* Sec. 2.2 writes [offset-distance] as a plain [<length-percentage>], but
-   cascade's longhand reader is non-negative and an existing oracle
-   ([test_declaration.ml], "offset-distance: -10%") pins that. The slot takes
-   exactly what the longhand takes rather than splitting the model in two; the
-   range itself is one arbitration, not this change. *)
+(* Sec. 2.2 writes [offset-distance] as a plain [<length-percentage>], a
+   negative included, and the slot takes what the longhand takes. *)
 let read_offset_slot_distance t =
   reject_var_slot t;
-  Values.read_length_percentage ~allow_negative:false ~with_keywords:false t
+  Values.read_length_percentage ~allow_negative:true ~with_keywords:false t
 
 let read_offset_slot_rotate t =
   reject_var_slot t;

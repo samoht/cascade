@@ -50,20 +50,21 @@ let custom_properties () =
   neg_cursor read_declaration "color: color(from red srgb calc(r + 10%) g b)";
   check_declaration ~expected:"color:var(--x)" "color: var( --x )"
 
-(* A numeric token's source spelling is not part of its value. Opaque custom-
-   and unknown-property streams therefore use the same shortest numeric spelling
-   as typed values, while retaining separators when dropping a sign would
-   otherwise merge two tokens. *)
+(* A custom property's tokens are the value a [var()] substitutes, and CSS
+   Custom Properties 1 sec. 4.1 serialises them as written, so a number keeps
+   its spelling there ([--t:1.0] is no [<integer>] where [--t:1] is one) and
+   only the whitespace goes. An unknown property's stream is substituted
+   nowhere, so it takes the shortest numeric spelling a typed value takes. *)
 let opaque_numeric_tokens () =
-  check_declaration ~expected:"--t:1px" "--t: 1.0px";
-  check_declaration ~expected:"--t:.5px" "--t: 0.5px";
-  check_declaration ~expected:"--t:.5" "--t: .50";
-  check_declaration ~expected:"--t:1px" "--t: 01px";
-  check_declaration ~expected:"--t:1" "--t: +1";
+  check_declaration ~expected:"--t:1.0px" "--t: 1.0px";
+  check_declaration ~expected:"--t:0.5px" "--t: 0.5px";
+  check_declaration ~expected:"--t:.50" "--t: .50";
+  check_declaration ~expected:"--t:01px" "--t: 01px";
+  check_declaration ~expected:"--t:+1" "--t: +1";
   check_declaration ~expected:"-x-y:.5%" "-x-y: 0.50%";
-  check_declaration ~expected:"--t:x 1" "--t: x +1";
-  check_declaration ~expected:"--t:1 2px" "--t: 1 +2px";
-  check_declaration ~expected:"--t:- 1" "--t: - +1"
+  check_declaration ~expected:"--t:x +1" "--t: x +1";
+  check_declaration ~expected:"--t:1 +2px" "--t: 1 +2px";
+  check_declaration ~expected:"--t:- +1" "--t: - +1"
 
 (* CSS Values 4 (ED) sec. 10.8 "Syntax": inside a math function whitespace is
    required on both sides of the [+] and [-] operators, while [*] and [/] may be
@@ -249,12 +250,15 @@ let invalid () =
   neg "font-family: serif serif";
   neg "font-family: serif Foo";
   (* CSS Values 4 sec. 4.2 excludes a CSS-wide keyword and [default] from
-     [<custom-ident>] itself, so those are turned away at every word rather than
-     only at the first. Chrome takes [Foo inherit] as a name; the exclusion is
-     on the type, and cascade holds the strict side. *)
-  neg "font-family: inherit inherit";
-  neg "font-family: Foo inherit";
-  neg "font-family: Foo default";
+     [<custom-ident>] itself, but Chromium 153 and WebKit 26.5 read one inside a
+     family of several words, so docs/invariants.md keeps such a declaration as
+     written. One standing alone in a list is dropped by both. *)
+  check_declaration ~expected:"font-family:inherit inherit"
+    "font-family: inherit inherit";
+  check_declaration ~expected:"font-family:Foo inherit"
+    "font-family: Foo inherit";
+  check_declaration ~expected:"font-family:Foo default"
+    "font-family: Foo default";
   typed_invalid "font-family: Arial, inherit";
   typed_invalid "font-family: revert-layer, serif";
   neg "font-family: system-ui revert-layer, serif";
@@ -915,12 +919,15 @@ let number_formats () =
 let integer_precision () =
   check_declaration "order:9007199254740993";
   check_declaration "grid-template-columns:repeat(9007199254740993,1px)";
-  List.iter
-    (neg_cursor read_declaration)
-    [
-      "order:999999999999999999999999999999999999";
-      "grid-template-columns:repeat(999999999999999999999999999999999999,1px)";
-    ]
+  (* CSS Values 4 sec. 5 converts an integer past the supported range to the
+     closest one supported. Every target clamps far below 2^62 (Chromium 153
+     computes order:99999999999999999999 to 2147483647), so the reader keeps the
+     declaration at the end of the [int] range. *)
+  check_declaration ~expected:"order:4611686018427387903"
+    "order:999999999999999999999999999999999999";
+  check_declaration
+    ~expected:"grid-template-columns:repeat(4611686018427387903,1px)"
+    "grid-template-columns:repeat(999999999999999999999999999999999999,1px)"
 
 let unterminated () =
   (* CSS Syntax 5.3.7 / 4.3.5 auto-close unterminated strings, brackets and

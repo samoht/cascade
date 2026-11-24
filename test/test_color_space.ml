@@ -167,6 +167,24 @@ let test_lab_lch_roundtrip () =
     (let _, c, _ = lch2 in
      c)
 
+(* CSS Color 4 (ED) sec. 9.5, "Converting Lab or Oklab colors to LCH or OkLCh
+   colors": if C is not above epsilon, H is missing and C = 0, since a near-zero
+   chroma gives an essentially random hue angle. Sec. 4.4.1 sets epsilon to
+   0.0015 for LCH and 0.000004 for OkLCh; a missing hue reads as 0. *)
+let test_powerless_hue () =
+  let check name expected got = Alcotest.(check triplet) name expected got in
+  check "lab noise" (100.0, 0.0, 0.0)
+    (Color_space.lch_of_lab (100.0, 1e-15, -1e-15));
+  check "lab at epsilon" (50.0, 0.0, 0.0)
+    (Color_space.lch_of_lab (50.0, 0.0015, 0.0));
+  check "oklab noise" (1.0, 0.0, 0.0)
+    (Color_space.oklch_of_oklab (1.0, -1e-17, -1e-17));
+  check "oklab at epsilon" (0.5, 0.0, 0.0)
+    (Color_space.oklch_of_oklab (0.5, 0.0, 0.000004));
+  (* Just above epsilon the hue stands. *)
+  let _, _, h = Color_space.oklch_of_oklab (0.5, 0.0, 0.00001) in
+  Alcotest.(check approx_float) "oklab above epsilon" 90.0 h
+
 let test_display_p3_to_xyz () =
   (* Display-P3 with sRGB-identical gamma. linear (1, 1, 1) sums to a D65 white
      near (0.9505, 1.0, 1.0890) as well, since all wide-gamut RGB spaces share
@@ -366,6 +384,8 @@ let suite =
         test_xyz_d65_d50_roundtrip;
       Alcotest.test_case "Lab roundtrip" `Quick test_lab_roundtrip;
       Alcotest.test_case "Lab/LCH roundtrip" `Quick test_lab_lch_roundtrip;
+      Alcotest.test_case "a near-zero chroma has no hue" `Quick
+        test_powerless_hue;
       Alcotest.test_case "Display-P3 white -> XYZ-D65" `Quick
         test_display_p3_to_xyz;
       Alcotest.test_case "Display-P3 grey -> sRGB grey" `Quick

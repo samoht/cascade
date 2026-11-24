@@ -210,12 +210,6 @@ let complex_values () =
   decl_optimizes ~prop:"paint-order" ~into:"normal" "fill";
   (* Reordering the tail is load-bearing, so this one keeps both keywords. *)
   decl_optimizes ~prop:"paint-order" ~into:"markers stroke" "markers stroke";
-  (* SVG 2 sec. 8.13 makes [viewport] what an omitted host space means, so
-     writing it is redundant; [screen] is not. *)
-  decl_optimizes ~prop:"vector-effect" ~into:"non-scaling-stroke"
-    "non-scaling-stroke viewport";
-  decl_optimizes ~prop:"vector-effect" ~into:"non-scaling-stroke screen"
-    "non-scaling-stroke screen";
 
   (* Complex nested functions. Per CSS Values 4 section 10.10.1 the printer
      simplifies all-constant calc subexpressions, reducing same-unit additions

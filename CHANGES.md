@@ -892,6 +892,85 @@ differently. They are the reason to minify again.
   three numbers or three percentages, and `hsl()` takes percentages and a
   comma alpha, so `color:blue;color:rgb(255,0%,0)` no longer becomes
   `color:red` (#1613).
+- conversions use the Editor's Draft D50 white** (x 0.3457, y 0.3585) and its
+  Bradford matrices, so sRGB white is achromatic: `lch(from #fff l c h)` is
+  `lch(100 0 0)` (#1615).
+- math function at a colour channel is read and folded** (CSS Values 4 sec.
+  10.1 and 10.10): `rgb(calc(10%) 0 0)`, `hsl(calc(10deg) 50% 50%)` and
+  `lch(50% 30 calc(10deg))`, which browsers apply, are no longer deleted, and
+  a folded `rgb()` channel rounds as its literal does (#1616).
+- type(<COLOR>), red)` is kept as written** instead of respelled
+  `type(<color>)`, which Chromium applies though it drops the original
+  (#1617).
+- custom property's tokens are written as read**, apart from whitespace (CSS
+  Custom Properties 1 sec. 4.1): `--minify` no longer respells numbers
+  (`1.0`), signs (`1px+2px`), ident case (`Red`), url quotes or colours inside
+  them, nor joins `#fff url(a.png)` into one hash, and `--diff=canonical`
+  keeps such spellings apart (#1618).
+- integer past the native int range is kept at the end of the range** instead
+  of dropping the declaration (CSS Values 4 sec. 5.2):
+  `z-index:99999999999999999999`, counters, grid lines, `:nth-child()` and
+  `@counter-style` `fixed`. A value folded at an integer slot prints as an
+  integer token, so `counter-reset:c calc(1e20)` no longer becomes `c 1e20`,
+  and an untyped value's number token keeps its type (`widows:2.0` stays as
+  written) (#1619).
+- `calc()` as the argument of another math function is read**
+  (`opacity:min(calc(1 + 2), 1)`) instead of dropping the declaration (CSS
+  Values 4 sec. 10.1) (#1621).
+- reads as CSS Sizing 4 sec. 7**: an `any` basis, `size` inside the
+  calculation's math functions (`calc-size(auto, round(size, 10px))`), a
+  sizing function such as `fit-content(10px)` as the basis, and refusals of
+  `size` after `any`, a `none` basis and a keyword in the calculation (#1622).
+- takes `calc-size(content, ...)`**. The `flex` shorthand refuses a
+  `calc-size()` basis by default, since no shipping engine paints it, and
+  keeps the `flex` before it; under `--enforce-spec` it reads it, as CSS
+  Flexbox 1 sec. 7.1 gives `flex` the `<'flex-basis'>` grammar (#1623).
+- and the metric override descriptors keep a math function that folds below
+  zero** (`calc(-10%)`), which CSS Values 4 sec. 10.12 clamps at
+  computed-value time, instead of dropping it (#1625).
+- `offset` shorthand takes a negative distance** (`offset:none -1px`), as
+  `offset-distance` does (CSS Motion Path 1 sec. 2.2) (#1626).
+- declaration holding an invalid substitution call is dropped**, such as an
+  empty `attr()` or `env()`, even inside a `var()` fallback or a custom
+  property (`content:var(--x, attr())`), as CSS Variables 1 sec. 3 requires
+  (#1627).
+- and `border` forms two browsers read differently are kept as written**:
+  `font-family:inherit foo`, `default foo` and `ui-serif Foo`, which Chromium
+  and Safari read, and `border:red,none`, which Chromium reads as `red`, were
+  deleted. No specification grants them, so each is now kept, and a
+  declaration before one stays as the fallback the other browser paints
+  (#1628).
+- `@font-face` family name two browsers read differently is kept as written**:
+  `none default` and `inherit foo`, which Chromium and Safari read, and `serif
+  Foo`, which Safari reads, were deleted (#1629).
+- forms only Chromium reads are kept as written**: `resize:auto`,
+  `text-orientation:sideways-right`, `alignment-baseline:auto`, a
+  `column-rule` list with a trailing comma, a repeated `historical-forms` and
+  a bare tag in the `@font-face` `font-variation-settings` descriptor were
+  deleted (#1630).
+- font sources without a comma no longer become a list**: `src:url(a.woff)
+  url(b.woff)` was minified into `url(a.woff),url(b.woff)`, which loads a font
+  Chromium and Safari never load. Such an item is now dropped (CSS Fonts 4
+  sec. 4.3) (#1631).
+- shorthand replaces longhands only when every target browser that reads them
+  reads it**: `border-top-color:light-dark(red,blue)` and three plain sides
+  became one `border-color` Chrome 111 to 122 drop whole, `margin:5px` then
+  `margin-top:clamp(none,1px,2px)` one `margin` Chrome 145 drops, and
+  `text-wrap-mode` with `text-wrap-style:balance` a `text-wrap` Safari 17.4
+  drops (#1633).
+- no longer revives rules a browser dropped**: a parent such as `.c,[x=a s]`
+  is dropped whole by a browser that cannot read one branch, nested rules
+  included, but the flattened `:is(.c,[x=a s]):hover` kept `.c:hover` in
+  Chromium. Such a branch is now listed again beside the flattened selector,
+  matching nothing (#1635).
+- `@page` names are kept**: `--minify` deleted `@page \1 `, `@page a\:b` and a
+  non-ASCII page name, which browsers keep, and kept `@page 1`, which they
+  drop. The page name is now read as an ident token and printed escaped
+  (#1636).
+- `vector-effect` list is dropped**: `non-scaling-stroke non-scaling-stroke`
+  and `non-scaling-stroke screen` were kept and `non-scaling-stroke viewport`
+  rewritten, though SVG 2 sec. 8.13 takes one keyword and browsers drop each.
+  Each now goes with a warning (#1637).
 
 #### Stable output
 
@@ -944,6 +1023,13 @@ differently. They are the reason to minify again.
   `oklch(.7 76%20)` in a border, a gradient stop and `override-colors` where
   `color` kept `.304`, and `Css.minify ~rename_custom_property` now renames a
   `var()` inside a border colour (#1614).
+- are written in lowercase hex**: U+000E printed as `\E `; CSSOM sec. 2.1
+  writes `\e `, and so does cascade now, at the same length (#1634).
+- prefixed twin of an untyped value settles in one pass**:
+  `mask-position:center, left top var(--x)` gained
+  `-webkit-mask-position:center,left top var(--x)`, which the next minify
+  rewrote to `50%`. The twin is now written as its own grammar reads it
+  (#1638).
 
 #### Which rules merge
 
@@ -975,6 +1061,10 @@ differently. They are the reason to minify again.
   `@view-transition`, none of which takes part in the order of style rules. A
   block holding one never moves, so a later definition of a name is never
   hoisted above an earlier one (#1590).
+- and `100px` reach one normal form** in `background-size`, `mask-size`,
+  `tab-size`, `column-width`, `columns`, `overflow-clip-margin`, grid tracks
+  and `initial-letter-wrap`, so the two rules merge in one `--minify` pass
+  (#1624).
 
 #### Smaller output
 

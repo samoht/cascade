@@ -830,13 +830,16 @@ let spec_color5_function_edges () =
   check_color ~expected:"color-mix(in oklch,#08c 50%,transparent)"
     ~optimized:"oklch(.5998 .1412 241.555/.5)"
     "color-mix(in oklch, #0088cc 50%, transparent)";
+  (* With the Editor's Draft D50 white the mix is lab(53.287 -12.256 -44.558),
+     sRGB red 0 on the gamut edge: one decimal (53.3 -12.3 -44.6) leaves the
+     gamut by a byte, and two decimals paint (0,136,204). *)
   check_color ~expected:"color-mix(in lab,#08c 50%,transparent)"
-    ~optimized:"lab(53.3-12.2-44.6/.5)"
+    ~optimized:"lab(53.29-12.26-44.56/.5)"
     "color-mix(in lab, #0088cc 50%, transparent)";
-  (* The hue is the D50 white point's of CSS Color 4 sec. 9 in the TR, (0.96422,
-     1, 0.82521); the Editor's Draft's xy-derived white puts it at 254.621. *)
+  (* The hue is the one the D50 white of CSS Color 4 (Editor's Draft) sec. 2, x
+     0.3457 and y 0.3585, gives: 254.621. *)
   check_color ~expected:"color-mix(in lch,#08c 50%,transparent)"
-    ~optimized:"lch(53.3 46.2 254.628/.5)"
+    ~optimized:"lch(53.3 46.2 254.621/.5)"
     "color-mix(in lch, #0088cc 50%, transparent)";
   (* No explicit percentage: the 50/50 default restores the colour the same
      way. *)
@@ -1128,6 +1131,51 @@ let legacy_syntax_keeps_its_grammar () =
   optimizes ~into:"#bf404080" "hsl(0,50%,50%,.5)";
   optimizes ~into:"#bf4040" "hsl(0 50 50)"
 
+(* CSS Color 4 (Editor's Draft) sec. 2 defines the D50 white by its
+   chromaticity, x 0.345700 and y 0.358500, and sec. 19 takes its XYZ from those
+   figures, [D50 = [0.3457 / 0.3585, 1.00000, (1.0 - 0.3457 - 0.3585) /
+   0.3585]], with the Bradford matrices derived from the same whites. sRGB white
+   then adapts to that white exactly and is achromatic in Lab: LCh chroma 0 and
+   hue 0. The TR's rounded white (0.96422, 1, 0.82521) leaves it a chroma of
+   0.016 at hue 33.1. *)
+let lab_family_uses_the_ed_d50_white () =
+  decl_optimizes ~prop:"color" ~into:"lch(100 0 0)" "lch(from #fff l c h)"
+
+(* CSS Values 4 (ED) sec. 10.1 puts a math function wherever a number, a
+   dimension or a percentage stands, a colour channel included, and sec. 10.10
+   simplifies a static one to the value it computes. Chromium 153 and WebKit
+   26.5 keep each value below and compute it as the literal beside it; both drop
+   the two at the end. *)
+let math_in_colour_channel () =
+  let minify css = Css.minify (Css.stylesheet css) in
+  let color value = String.concat "" [ ".a{color:"; value; "}" ] in
+  List.iter
+    (fun (math, literal) ->
+      Alcotest.(check string)
+        math
+        (minify (color literal))
+        (minify (color math)))
+    [
+      ("rgb(calc(10%) 0 0)", "rgb(10% 0 0)");
+      ("rgb(min(10%, 20%) 0 0)", "rgb(10% 0 0)");
+      ("rgb(calc(min(10%, 20%)) 0 0)", "rgb(10% 0 0)");
+      ("rgb(10% calc(50%) 0)", "rgb(10% 50% 0)");
+      ("rgb(calc(10.6) 0 0)", "rgb(10.6 0 0)");
+      ("hsl(calc(10deg) 50% 50%)", "hsl(10deg 50% 50%)");
+      ("hsl(calc(10) 50% 50%)", "hsl(10 50% 50%)");
+      ("hsl(calc(min(10deg, 20deg)) 50% 50%)", "hsl(10deg 50% 50%)");
+      ("hsl(10 calc(50%) 50%)", "hsl(10 50% 50%)");
+      ("hsl(10deg 50% min(50%, 60%))", "hsl(10deg 50% 50%)");
+      ("hsl(calc(10deg), 50%, 50%)", "hsl(10deg, 50%, 50%)");
+      ("hwb(calc(10deg) 10% 10%)", "hwb(10deg 10% 10%)");
+      ("hwb(10 calc(10%) 10%)", "hwb(10 10% 10%)");
+      ("lch(50% 30 calc(10deg))", "lch(50% 30 10deg)");
+      ("oklch(50% 0.1 calc(10deg))", "oklch(50% 0.1 10deg)");
+    ];
+  List.iter
+    (fun value -> Alcotest.(check string) value "" (minify (color value)))
+    [ "rgb(calc(1px) 0 0)"; "hsl(calc(1px) 50% 50%)" ]
+
 let suite =
   ( "values_color",
     [
@@ -1170,4 +1218,7 @@ let suite =
       test_case "legacy syntax takes no none" `Quick legacy_syntax_takes_no_none;
       test_case "legacy syntax keeps its grammar" `Quick
         legacy_syntax_keeps_its_grammar;
+      test_case "lab family uses the ED D50 white" `Quick
+        lab_family_uses_the_ed_d50_white;
+      test_case "math in a colour channel" `Quick math_in_colour_channel;
     ] )
