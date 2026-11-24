@@ -320,6 +320,12 @@ needs them in an exhaustive match.
   `vector_effect_space` and their `pp_` and `read_` functions are gone. Write
   `Css.vector_effect Non_scaling_stroke` where `Effects ([ Non_scaling_stroke
   ], None)` stood (#1646).
+- **A colour channel may hold a calculation.** `Values.channel` gains `Calc`,
+  and the `a` and `b` of `Lab` and `Oklab` and the `c` of `Lch` and `Oklch` are
+  a `Values.axis option` (were `float option`): match `Axis f` for a number
+  and `Axis_calc` for a math function an element resolves. A hue holding one
+  is an `Angle (Calc _)`. `Values.oklab`, `Values.lch` and the other
+  constructors still take floats (#1644).
 
 ### Minified output
 
@@ -1340,6 +1346,13 @@ The new form of a diagnostic is under [Breaking](#command-line).
 
 ### Parsing
 
+- **A colour channel holding `sibling-index()` was dropped.**
+  `color:hsl(calc(sibling-index()*10deg) 50% 50%)` went with a warning, as did
+  any `rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()` or `oklch()`
+  channel calculating over `sibling-index()` or `sibling-count()`. CSS Values 5
+  sec. 9 resolves these on an element, so the value is not known when the
+  sheet is read, and Chromium 153 keeps every such colour. The channel holds
+  the calculation, and a colour holding one is not folded (#1644).
 - **A custom property's value could change on the way through.** It was printed
   and lexed again, so `--x:\!important` became a lone backslash marked
   important, and `--x:a/**/b` became `--x:a b`, another token sequence. The
