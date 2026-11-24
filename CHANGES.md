@@ -767,6 +767,12 @@ They are the reason to minify again, and are grouped by what they touch.
   integer token, so `counter-reset:c calc(1e20)` does not become `c 1e20`, and
   an untyped value's number token keeps its type (`widows:2.0` stays as
   written) (#1619).
+- **A number beside a substitution keeps its digits.** `--minify` printed
+  `calc(.123456789px*var(--k) - 12345678px)` with `.12345679px`, and with
+  `--k:100000000` Chromium computes the two as .890625px and 1px. A factor of
+  a product or quotient whose other factor is unresolved at minify time keeps
+  the shortest digits of its double (CSS Values 4 sec. 5.3); every other
+  number keeps the eight-decimal budget (#1645).
 
 ##### Colours
 
