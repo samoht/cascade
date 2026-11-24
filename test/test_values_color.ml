@@ -136,7 +136,7 @@ let test_color () =
   (* Special keywords. Per CSS Color 4 section 6.3 [transparent] canonicalizes
      to the shortest spec-equivalent spelling [#0000] under minify. *)
   check_color ~optimized:"#0000" "transparent";
-  check_color ~expected:"currentColor" "currentcolor";
+  check_color "currentcolor";
   check_color "inherit";
 
   (* Test var() parsing in color context *)

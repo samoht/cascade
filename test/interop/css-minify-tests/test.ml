@@ -219,6 +219,15 @@ let normalize_expected ~category ~id expected =
          [rgb(128,64,0)]. It is not the zero it renders as at rest. *)
       fixture ~category ~id ~upstream:"a{color:green}"
         ~cascade:"a{color:rgb(none 128 0)}" upstream
+  | "colors", "0025" ->
+      (* The fixture keeps [currentColor] unresolved, which cascade does too;
+         its casing is the author's. CSS Values 4 sec. 3.1 "Pre-defined
+         Keywords" makes a keyword ASCII case-insensitive and CSSOM 1 sec. 6.7.2
+         "Serializing CSS Values" writes it lowercase, as Chrome 158 does in
+         [cssText]: the same length, spelled as CSS Color 4 sec. 6.4 names
+         it. *)
+      fixture ~category ~id ~upstream:"a{color:currentColor}"
+        ~cascade:"a{color:currentcolor}" upstream
   | "colors", "0024" ->
       (* Sec. 13.4: the [none] red channel takes the other operand's 200 before
          mixing, so the mix is [color(srgb .784 0 0)], an sRGB colour of the

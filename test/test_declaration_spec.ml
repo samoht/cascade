@@ -1467,7 +1467,7 @@ let spec_remaining_prop_vectors () =
       ("columns: auto / 10px", "columns:auto/10px");
       ("columns: 3 / 2rem", "columns:3/2rem");
       ( "column-rule: 1px solid currentColor",
-        "column-rule:1px solid currentColor" );
+        "column-rule:1px solid currentcolor" );
       ("column-span: all", "column-span:all");
       ("break-before: page", "break-before:page");
       ("break-after: avoid-page", "break-after:avoid-page");
@@ -1493,7 +1493,7 @@ let spec_remaining_prop_vectors () =
         "text-decoration-skip-spaces:start end" );
       ("text-emphasis: filled dot red", "text-emphasis:filled dot red");
       ("text-emphasis-style: open sesame", "text-emphasis-style:open sesame");
-      ("text-emphasis-color: currentColor", "text-emphasis-color:currentColor");
+      ("text-emphasis-color: currentColor", "text-emphasis-color:currentcolor");
       ("text-emphasis-position: over right", "text-emphasis-position:over right");
       ( "text-emphasis-skip: punctuation symbols",
         "text-emphasis-skip:punctuation symbols" );
