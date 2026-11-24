@@ -930,6 +930,10 @@ differently. They are the reason to minify again.
   computed-value time, instead of dropping it (#1625).
 - `offset` shorthand takes a negative distance** (`offset:none -1px`), as
   `offset-distance` does (CSS Motion Path 1 sec. 2.2) (#1626).
+- declaration holding an invalid substitution call is dropped**, such as an
+  empty `attr()` or `env()`, even inside a `var()` fallback or a custom
+  property (`content:var(--x, attr())`), as CSS Variables 1 sec. 3 requires
+  (#1627).
 
 #### Stable output
 

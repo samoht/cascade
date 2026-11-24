@@ -488,25 +488,62 @@ let flat_has_invalid_substitution tokens =
        (fun unterminated (_, substitution, _) -> unterminated || substitution)
        false frames
 
+(* Whether the arguments of the substitution call [name] break its grammar: CSS
+   Variables 1 sec. 3 for var(), CSS Values 5 sec. 8.7 for attr(), CSS
+   Environment Variables 1 sec. 3 for env(), CSS Values 5 sec. 8.3 for if() and
+   CSS Mixins 1 sec. 3 for a dashed function. *)
+let invalid_substitution_arguments name arguments =
+  match String.lowercase_ascii_preserve name with
+  | "var" -> invalid_var_arguments arguments
+  | "env" | "attr" -> significant arguments = []
+  | "if" -> invalid_if_arguments arguments
+  | name when Component.is_substitution_function name ->
+      invalid_dashed_arguments arguments
+  | _ -> false
+
 let rec components_have_invalid_substitution components =
   List.exists component_has_invalid_substitution components
 
 and component_has_invalid_substitution = function
   | Component.Func { node = { name; arguments; terminated; _ }; _ } ->
       let invalid_call =
-        match String.lowercase_ascii_preserve name with
-        | "var" -> (not terminated) || invalid_var_arguments arguments
-        | "env" | "attr" -> (not terminated) || significant arguments = []
-        | "if" -> (not terminated) || invalid_if_arguments arguments
-        | name when Component.is_substitution_function name ->
-            (not terminated) || invalid_dashed_arguments arguments
-        | _ -> false
+        Component.is_substitution_function name
+        && ((not terminated) || invalid_substitution_arguments name arguments)
       in
       invalid_call || components_have_invalid_substitution arguments
   | Component.Block { node = { value; _ }; _ } ->
       components_have_invalid_substitution value
   | Component.Flat { node; _ } -> flat_has_invalid_substitution node
   | Component.Preserved _ -> false
+
+(* The reason the first invalid substitution call among [components] gives, in
+   the words the typed readers use: [empty var()], [empty attr()]. A call the
+   input leaves open at its end is not one: CSS Syntax 3 (ED) sec. 4.3.5 closes
+   it there, and browsers read it. *)
+let rec invalid_substitution_reason components =
+  List.find_map invalid_substitution_reason_of components
+
+and invalid_substitution_reason_of = function
+  | Component.Func { node = { name; arguments; _ }; _ } -> (
+      match invalid_substitution_reason arguments with
+      | Some reason -> Some reason
+      | None ->
+          if
+            not
+              (Component.is_substitution_function name
+              && invalid_substitution_arguments name arguments)
+          then None
+          else
+            Some
+              (String.concat ""
+                 [
+                   (if significant arguments = [] then "empty " else "invalid ");
+                   String.lowercase_ascii_preserve name;
+                   "()";
+                 ]))
+  | Component.Block { node = { value; _ }; _ } ->
+      invalid_substitution_reason value
+  | Component.Flat _ | Component.Preserved _ -> None
 
 let rec components_contain_var components =
   List.exists component_contains_var components
@@ -649,6 +686,9 @@ let read_custom_value_declaration t name : declaration =
   in
   if not (components_stay_in_declaration tokens) then
     Cursor.err_invalid t "custom property value is no <declaration-value>";
+  (* CSS Variables 1 sec. 3: a syntactically invalid substitution function makes
+     the declaration invalid at parse time, a custom property's too. *)
+  Option.iter (Cursor.err_invalid t) (invalid_substitution_reason tokens);
   let custom_value = read_custom_property_value (Cursor.of_components tokens) in
   let decl =
     v (Custom_property name)
@@ -780,6 +820,10 @@ let validate_regular_property_components t name components =
      Variables 1 sec. 2). *)
   if List.for_all Component.is_whitespace components then
     Cursor.err_expected t "a value";
+  (* CSS Variables 1 sec. 3: a syntactically invalid substitution function, an
+     [attr()] or [env()] with no argument among them, makes the declaration
+     invalid at parse time, wherever it stands, a [var()] fallback included. *)
+  Option.iter (Cursor.err_invalid t) (invalid_substitution_reason components);
   validate_anchor_queries t name components;
   (* A substitution function makes the declaration's grammar a computed-value
      question. This includes [all]: the substitution result can be empty and
