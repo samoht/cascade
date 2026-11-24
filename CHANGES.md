@@ -831,6 +831,15 @@ They are the reason to minify again, and are grouped by what they touch.
   channel rounds as its literal does. Conversions use the Editor's Draft D50
   white (x 0.3457, y 0.3585) and its Bradford matrices, so sRGB white is
   achromatic: `lch(from #fff l c h)` is `lch(100 0 0)` (#1613, #1615, #1616).
+- **A colour takes its shortest spelling that paints alike.** A `lab()`,
+  `lch()`, `oklab()`, `oklch()` or `color(srgb ...)` colour was rounded to the
+  nearest value at each precision, so `lab(53.29 -12.26 -44.56)` kept two
+  decimals: the nearest one decimal leaves the sRGB gamut. Each coefficient
+  may round down or up, at no more decimals than before, and the colour takes
+  the shortest spelling that paints the same bytes within the 0.002 OKLab
+  budget, here `lab(53.3 -12.3 -44.5)`. `oklch(62.8123% .12345 29.23)` prints
+  as `oklch(.628 31%29)`. A wide-gamut `color()` keeps the nearest rounding
+  (#1649).
 
 ##### Gradients and images
 
