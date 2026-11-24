@@ -356,7 +356,7 @@ let test_font_feature_settings () =
   let structured =
     Feature_list
       [
-        { tag = "a\"bc"; value = Some (Index 2) };
+        { tag = "a\"bc"; value = Some (Index (Num 2.)) };
         { tag = "kern"; value = Some On };
       ]
   in
@@ -377,7 +377,10 @@ let test_font_variation_settings () =
     "\"a\\22 bc\" 123.5";
   let structured =
     Axis_list
-      [ { tag = "a\"bc"; value = 123.5 }; { tag = "wght"; value = 650.25 } ]
+      [
+        { tag = "a\"bc"; value = Num 123.5 };
+        { tag = "wght"; value = Num 650.25 };
+      ]
   in
   check string "structured font variation settings"
     "\"a\\\"bc\" 123.5,\"wght\" 650.25"

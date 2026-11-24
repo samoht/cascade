@@ -41,6 +41,14 @@ val merge_lone : ?in_scope:bool -> Stylesheet.rule -> Stylesheet.rule
     parent ({!parent_first}) merges, since the block implies the scoping root in
     front of the merged selector (CSS Cascade 6 sec. 3.5.3). *)
 
+val nesting_rules_as_declarations : Stylesheet.rule -> Stylesheet.rule
+(** [nesting_rules_as_declarations rule] writes each nested [&] rule of [rule]
+    that holds only declarations as a nested declarations rule (CSS Nesting 1
+    sec. 3.4) in its place, when [rule]'s selector is one selector naming no
+    pseudo-element: there the two match the same elements at the same weight
+    (sec. 4 and 5). Only for targets that read a nested declarations rule in
+    place. Physically unchanged when there is none. *)
+
 val hoist_declaration_runs : Stylesheet.rule -> Stylesheet.rule
 (** [hoist_declaration_runs rule] moves each declaration written after a nested
     statement (CSS Nesting 1 sec. 3.4) back into the rule's own run, as far as

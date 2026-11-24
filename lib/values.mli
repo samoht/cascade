@@ -275,6 +275,7 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 type calc_ctx = {
   var_is_single_valued : string -> bool;
   var_is_number : string -> bool;
+  var_is_length : string -> bool;
   budget : bool;
 }
 (** Context threaded through the calc folds for stylesheet-dependent rewrites.
@@ -283,12 +284,14 @@ type calc_ctx = {
     calc term and a redundant [calc(var(--n))] nested inside another [calc()]
     may be unwrapped. [var_is_number n] reports a [<number>] or [<integer>]
     registration, whose [var()] substitutes one number, so a zero product over
-    it folds (see {!calc_identity}). [budget] folds a non-terminating quotient
-    to the six-significant-figure computed-value budget, as a number's fold
-    already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the quotient
-    keeps the [calc()] the author wrote, which is what {!default_calc_ctx} and
-    the minifier do. The canonical comparison spends the budget, since the two
-    spellings render alike. *)
+    it folds (see {!calc_identity}). [var_is_length n] reports a [<length>]
+    registration, whose [var()] substitutes one length, so its product with [0]
+    folds where the calculation needs a length. [budget] folds a non-terminating
+    quotient to the six-significant-figure computed-value budget, as a number's
+    fold already does, so [calc(1/3 * 100%)] is [33.3333%]; without it the
+    quotient keeps the [calc()] the author wrote, which is what
+    {!default_calc_ctx} and the minifier do. The canonical comparison spends the
+    budget, since the two spellings render alike. *)
 
 val length_from_calc_unit : string -> float -> length
 (** [length_from_calc_unit unit value] is the length {!val-calc_length_unit}
@@ -384,15 +387,17 @@ val normalize_duration :
     property refuses a negative literal, so a call folding to one keeps its
     wrapper rather than becoming CSS the reader drops. *)
 
-val normalize_color : ?lossless:bool -> color -> color
-(** [normalize_color ?lossless c] canonicalises a colour to its shortest
-    spelling within its interpolation class (CSS Color 4 sec. 13.3): a legacy
-    sRGB colour folds to hex or named, hex shortens and named<->hex picks the
-    shorter, while any other colour stays in its own notation with its
-    coefficients rounded as far as its sRGB bytes hold, and a [color-mix()]
-    folds to a colour in its interpolation space. A [none] component is never
-    dropped. [lossless] disables the rounding and the [color-mix()] folds while
-    preserving exact named/hex and byte-exact rgb folds. *)
+val normalize_color : ?lossless:bool -> ?enforce_spec:bool -> color -> color
+(** [normalize_color ?lossless ?enforce_spec c] canonicalises a colour to its
+    shortest spelling within its interpolation class (CSS Color 4 sec. 13.3): a
+    legacy sRGB colour folds to hex or named, hex shortens and named<->hex picks
+    the shorter, while any other colour stays in its own notation with its
+    coefficients rounded as far as its sRGB bytes hold, and a [color-mix()] of
+    two items folds to a colour in its interpolation space. A [none] component
+    is never dropped. [lossless] disables the rounding and the [color-mix()]
+    folds while preserving exact named/hex and byte-exact rgb folds.
+    [enforce_spec] (default [false]) also folds a [color-mix()] of one item,
+    which CSS Color 5 (ED) sec. 3.3 grants and a target may drop. *)
 
 val pp_number_percentage : number_percentage Pp.t
 (** [pp_number_percentage] pretty-prints {!number_percentage} values. A number
@@ -701,6 +706,16 @@ val read_constant_integer : Cursor.t -> int
     folds to a constant number, rounded to the nearest integer and towards
     positive infinity on a tie (CSS Values 4 sec. 10.9). *)
 
+val read_number_slot : Cursor.t -> number
+(** [read_number_slot t] reads a literal number, or a math function as the
+    number it folds to or, when it does not fold, as its calculation (CSS Values
+    4 sec. 10.1). *)
+
+val read_integer_slot : Cursor.t -> number
+(** [read_integer_slot t] is {!read_number_slot} at an [<integer>]: a literal is
+    an integer token and a call that folds is rounded to the nearest integer,
+    towards positive infinity on a tie (CSS Values 4 sec. 10.9). *)
+
 val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] parses a CSS transition-behavior value. *)
 
@@ -825,6 +840,11 @@ val read_integer : string -> Cursor.t -> int
 val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc_expr read t] parses a calc expression body -- the contents of a
     [calc(...)] form without the surrounding [calc(] and [)]. *)
+
+val read_none_bounded_clamp : Cursor.t -> 'a calc
+(** [read_none_bounded_clamp t] reads a [clamp()] call with a [none] bound (CSS
+    Values 4 (ED) sec. 10.2) as the generic comparison, for a slot whose own
+    [clamp()] reader has no such bound. It fails on any other call. *)
 
 val validate_calc_type :
   Cursor.t ->

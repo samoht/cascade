@@ -629,6 +629,41 @@ let calc_zero_product_registered_number () =
     "@property \
      --n{syntax:\"<length>\";inherits:false;initial-value:0}.a{rotate:calc(var(--n)*0)}"
 
+(* A [<length>] registration substitutes one finite length (CSS Properties and
+   Values API 1 sec. 2.4; CSS Values 4 sec. 10.12 censors an infinite one), so
+   its product with the number [0] is a zero length wherever the calculation
+   needs a length. Elsewhere the product is a type error the browser finds only
+   at computed-value time, and the zero would be one it finds at parse time:
+   Chromium 157 computes [width:calc(10px * (var(--l) * 0 + 1))] to [auto], not
+   to the [50px] of an earlier declaration. *)
+let calc_zero_product_registered_length () =
+  let length =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0px}"
+  in
+  let length' =
+    "@property --l{syntax:\"<length>\";inherits:false;initial-value:0}"
+  in
+  let check label body expected =
+    let input =
+      Css.Stylesheet.read (Cursor.of_string (String.concat "" [ length; body ]))
+    in
+    let optimized = Css.Optimize.stylesheet ~scope:`Stylesheet input in
+    Alcotest.(check string)
+      label
+      (String.concat "" [ length'; expected ])
+      (Css.Stylesheet.to_string ~minify:true optimized |> String.trim)
+  in
+  check "a <length> registration folds at a length slot"
+    ".a{width:calc(var(--l) * 0)}" ".a{width:0}";
+  check "and in a sum of lengths" ".a{width:calc(0 * var(--l) + 10px)}"
+    ".a{width:10px}";
+  check "and beside a number factor" ".a{width:calc(2 * (var(--l) * 0))}"
+    ".a{width:0}";
+  check "a number slot keeps it" ".a{width:calc(10px * (var(--l) * 0 + 1))}"
+    ".a{width:calc(10px*(var(--l)*0 + 1))}";
+  check "a length factor keeps it" ".a{width:calc(var(--l) * 0px)}"
+    ".a{width:calc(var(--l)*0px)}"
+
 (* A registration types a custom property only where it is the one every browser
    applies. CSS Properties and Values API 1 sec. 2.1 takes a
    [CSS.registerProperty()] record over any [@property], and the last
@@ -921,6 +956,100 @@ let c61_important_blocks_longhand () =
     "important shorthand keeps priority over later normal longhand"
     ".box{margin:2px!important}" output
 
+(* CSS Cascade 5 sec. 7.3.6 (Editor's Draft): [revert-rule] rolls the cascaded
+   value back as if the style rule holding it were absent, and every property
+   takes it (sec. 7.3). Chrome 153 reads [.a{color:red}.a{color:revert-rule}] as
+   red and the same two declarations in one rule as the inherited colour, so the
+   rule a declaration sits in is part of its meaning: no rewrite merges two such
+   rules, hoists the declaration into its parent, or lets it shadow a write of
+   another rule. A custom property rolls back the same way, and a [var()]
+   fallback reaches it too. Chrome 145 drops the declaration, so the one before
+   it in its rule stays. *)
+let c736_revert_rule_keeps_its_rule () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{width:revert-rule}", ".a{width:revert-rule}");
+      (".a{animation-name:revert-rule}", ".a{animation-name:revert-rule}");
+      (".a{all:revert-rule}", ".a{all:revert-rule}");
+      ( ".a{color:red}.a{color:revert-rule}",
+        ".a{color:red}.a{color:revert-rule}" );
+      (".a{color:red;color:revert-rule}", ".a{color:red;color:revert-rule}");
+      ( ".a{color:red;margin:0}.a{color:revert-rule}",
+        ".a{color:red;margin:0}.a{color:revert-rule}" );
+      ( ".a{color:red}.b{color:blue}.a{color:revert-rule}",
+        ".a{color:red}.b{color:#00f}.a{color:revert-rule}" );
+      (".a{--x:1}.a{--x:revert-rule}", ".a{--x:1}.a{--x:revert-rule}");
+      ( ".a{color:red}.a{color:var(--n,revert-rule)}",
+        ".a{color:red}.a{color:var(--n,revert-rule)}" );
+      ( ".a{color:red}.a{&{color:revert-rule}}",
+        ".a{color:red}.a{color:revert-rule}" );
+      ( "@supports (color:revert-rule){.a{color:blue}}",
+        "@supports(color:revert-rule){.a{color:#00f}}" );
+    ];
+  (* A declaration after a nested rule sits in a nested declarations rule of its
+     own (CSS Nesting 1 sec. 3.4), so it may be written nested or unnested after
+     its parent, but never in the parent's own run. *)
+  let output =
+    optimized_string ".n{color:red;& .k{margin:0}color:revert-rule}"
+  in
+  Alcotest.(check bool)
+    (Fmt.str "revert-rule stays out of its parent's run (got %s)" output)
+    false
+    (Astring.String.is_infix ~affix:"color:red;color:revert-rule" output);
+  Alcotest.(check bool)
+    "revert-rule is kept" true
+    (Astring.String.is_infix ~affix:"color:revert-rule" output)
+
+(* CSS Values 4 (ED) sec. 10.2, "Comparison Functions": either bound of
+   [clamp()] can be [none], for no clamp from that side. Chromium 151 and WebKit
+   read it and Chromium 145 drops it, so the call never folds into a value that
+   browser reads, the declaration before it stays, and a guard over it is
+   undecided. Chromium 153 computes [clamp(none,90px,80px)] as 80px. *)
+let v4102_clamp_none_bound () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      (".a{width:clamp(none,50px,80px)}", ".a{width:clamp(none,50px,80px)}");
+      (".a{width:clamp(10px,50px,none)}", ".a{width:clamp(10px,50px,none)}");
+      (".a{width:clamp(none,50px,none)}", ".a{width:clamp(none,50px,none)}");
+      (".a{width:clamp(none,90px,80px)}", ".a{width:clamp(none,90px,80px)}");
+      ( ".a{width:100px;width:clamp(none,50px,80px)}",
+        ".a{width:100px;width:clamp(none,50px,80px)}" );
+      ( ".a{width:calc(clamp(none,1px,2px) + 1px)}",
+        ".a{width:calc(clamp(none,1px,2px) + 1px)}" );
+      (".a{rotate:clamp(none,5deg,10deg)}", ".a{rotate:clamp(none,5deg,10deg)}");
+      ( ".a{animation-range:clamp(1px, 5px, none)}",
+        ".a{animation-range:clamp(1px,5px,none)}" );
+      ( ".a{animation-range-start:clamp(1px, 5px, none)}",
+        ".a{animation-range-start:clamp(1px,5px,none)}" );
+      (".a{columns:clamp(1px, 5px, none)}", ".a{columns:clamp(1px,5px,none)}");
+      ( "@supports (width:clamp(none,1px,2px)){.a{color:blue}}",
+        "@supports(width:clamp(none,1px,2px)){.a{color:#00f}}" );
+    ];
+  (* Each keeps its call; the shortest spelling is the bare call. *)
+  List.iter
+    (fun (input, call) ->
+      let output = optimized_string input in
+      Alcotest.(check bool)
+        (Fmt.str "%s keeps %s (got %s)" input call output)
+        true
+        (Astring.String.is_infix ~affix:call output))
+    [
+      (".a{border-width:clamp(none,1px,2px)}", "clamp(none,1px,2px)");
+      (".a{border:clamp(1px,5px,none) solid}", "clamp(1px,5px,none)");
+      (".a{line-height:clamp(none,1.5,2)}", "clamp(none,1.5,2)");
+      (".a{line-height:clamp(1px,5px,none)}", "clamp(1px,5px,none)");
+      (".a{transition-duration:clamp(none,1s,2s)}", "clamp(none,1s,2s)");
+      (".a{z-index:clamp(none,5,10)}", "clamp(none,5,10)");
+    ];
+  Alcotest.(check bool)
+    "a none bound is no fold" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical
+       ".a{width:clamp(none,50px,80px)}" ".a{width:50px}")
+
 let suite =
   ( "optimize_boundaries",
     [
@@ -996,6 +1125,9 @@ let suite =
       ( "calc zero product over a registered number",
         `Quick,
         calc_zero_product_registered_number );
+      ( "calc zero product over a registered length",
+        `Quick,
+        calc_zero_product_registered_length );
       ( "preserve independent custom-property rule position",
         `Quick,
         preserve_independent_custom_prop_position );
@@ -1011,4 +1143,10 @@ let suite =
       ( "spec cascade 6.1 important shorthand blocks normal longhand",
         `Quick,
         c61_important_blocks_longhand );
+      ( "spec cascade 7.3.6 revert-rule keeps its rule",
+        `Quick,
+        c736_revert_rule_keeps_its_rule );
+      ( "spec values 10.2 clamp takes a none bound",
+        `Quick,
+        v4102_clamp_none_bound );
     ] )

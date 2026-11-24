@@ -78,36 +78,33 @@ let offset_part_of : declaration -> offset_part option = function
 let offset_position_of : declaration -> Properties.offset_position option =
   function
   | Declaration { property = Offset_position; value = Normal | Initial; _ } ->
-      Option.None
+      None
   | Declaration { property = Offset_position; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let offset_path_of : declaration -> Properties.offset_path option = function
   | Declaration { property = Offset_path; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let offset_distance_of : declaration -> Values.length_percentage option =
   function
-  | Declaration { property = Offset_distance; value = Length Zero; _ } ->
-      Option.None
+  | Declaration { property = Offset_distance; value = Length Zero; _ } -> None
   | Declaration { property = Offset_distance; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let offset_rotate_of : declaration -> Properties.offset_rotate option = function
-  | Declaration { property = Offset_rotate; value = Auto | Initial; _ } ->
-      Option.None
+  | Declaration { property = Offset_rotate; value = Auto | Initial; _ } -> None
   | Declaration { property = Offset_rotate; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let offset_anchor_of : declaration -> Properties.offset_anchor option = function
-  | Declaration { property = Offset_anchor; value = Auto | Initial; _ } ->
-      Option.None
+  | Declaration { property = Offset_anchor; value = Auto | Initial; _ } -> None
   | Declaration { property = Offset_anchor; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let offset_of_run raw : Properties.offset option =
   let parts = List.filter_map offset_part_of raw in
-  if List.length (List.sort_uniq compare parts) <> 5 then Option.None
+  if List.length (List.sort_uniq compare parts) <> 5 then None
   else
     let position = List.find_map offset_position_of raw in
     let distance = List.find_map offset_distance_of raw in
@@ -118,7 +115,7 @@ let offset_of_run raw : Properties.offset option =
         Some
           (Shorthand
              { target = With_path { position; path; distance; rotate }; anchor })
-    | Option.None -> Option.None
+    | None -> None
 
 let try_compose_offset_at idx i =
   let n = Rule_index.length idx in
@@ -165,11 +162,11 @@ let columns_initial_tail : declaration -> bool = function
 
 let columns_width_of : declaration -> Properties.column_width option = function
   | Declaration { property = Column_width; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let columns_count_of : declaration -> Properties.column_count option = function
   | Declaration { property = Column_count; value; _ } -> Some value
-  | _ -> Option.None
+  | _ -> None
 
 let columns_of_run raw : Properties.columns_value option =
   let width = List.find_map columns_width_of raw in
@@ -179,7 +176,7 @@ let columns_of_run raw : Properties.columns_value option =
   | Some Auto, Some (Count n) -> Some (Auto_count n)
   | Some (Width w), Some Auto -> Some (Width w)
   | Some (Width w), Some (Count n) -> Some (Both (w, n))
-  | _ -> Option.None
+  | _ -> None
 
 let try_compose_columns_at idx i =
   let n = Rule_index.length idx in
@@ -242,10 +239,10 @@ let gt_track_text (track : Properties.grid_template) =
 let gt_area_rows text =
   let rec loop i acc =
     match String.index_from_opt text i '"' with
-    | Option.None -> List.rev acc
+    | None -> List.rev acc
     | Some start -> (
         match String.index_from_opt text (start + 1) '"' with
-        | Option.None -> List.rev acc
+        | None -> List.rev acc
         | Some stop ->
             loop (stop + 1) (String.sub text start (stop - start + 1) :: acc))
   in
@@ -278,7 +275,7 @@ let gt_shorthand_text ~rows ~columns ~areas =
          true)
     | Inherit | Initial | Unset | Revert | Revert_layer | Var _ -> false
   in
-  if not ok then Option.None
+  if not ok then None
   else (
     Buffer.add_char buf '/';
     List.iter
@@ -312,14 +309,14 @@ let grid_template_of_run raw : Properties.grid_template option =
       | None, None, No_areas -> Some (None : Properties.grid_template)
       | _ -> (
           match gt_shorthand_text ~rows ~columns ~areas with
-          | Option.None -> Option.None
+          | None -> None
           | Some text -> (
               let t = Cursor.of_string text in
               match Properties.read_grid_template t with
               | value when Cursor.is_done t -> Some value
-              | _ -> Option.None
-              | exception Cursor.Parse_error _ -> Option.None)))
-  | _ -> Option.None
+              | _ -> None
+              | exception Cursor.Parse_error _ -> None)))
+  | _ -> None
 
 let try_compose_grid_template_at idx i =
   let n = Rule_index.length idx in
@@ -391,7 +388,7 @@ let gd_flow_text (flow : Properties.grid_auto_flow) ~axis =
   | Row_dense | Column_dense | Dense -> Some "auto-flow dense"
   | Components _ | Inherit | Initial | Unset | Revert | Revert_layer | Var _ ->
       ignore axis;
-      Option.None
+      None
 
 let gd_flow_axis : Properties.grid_auto_flow -> [ `Row | `Column | `Other ] =
   function
@@ -404,7 +401,7 @@ let gd_flow_axis : Properties.grid_auto_flow -> [ `Row | `Column | `Other ] =
 
 let gd_auto_flow_rows_text ~flow ~auto_rows ~columns =
   match gd_flow_text flow ~axis:`Row with
-  | Option.None -> Option.None
+  | None -> None
   | Some flow_text ->
       let buf = Buffer.create 32 in
       Buffer.add_string buf flow_text;
@@ -418,7 +415,7 @@ let gd_auto_flow_rows_text ~flow ~auto_rows ~columns =
 
 let gd_auto_flow_columns_text ~rows ~flow ~auto_columns =
   match gd_flow_text flow ~axis:`Column with
-  | Option.None -> Option.None
+  | None -> None
   | Some flow_text ->
       let buf = Buffer.create 32 in
       Buffer.add_string buf
@@ -434,8 +431,8 @@ let gd_read_grid text =
   let t = Cursor.of_string text in
   match Properties.read_grid t with
   | value when Cursor.is_done t -> Some value
-  | _ -> Option.None
-  | exception Cursor.Parse_error _ -> Option.None
+  | _ -> None
+  | exception Cursor.Parse_error _ -> None
 
 let gd_is_none : Properties.grid_template -> bool = function
   | None -> true
@@ -448,7 +445,7 @@ let gd_template_form ~(rows : Properties.grid_template)
   | true, true, No_areas -> Some (Properties.None : Properties.grid_template)
   | _ -> (
       match gt_shorthand_text ~rows ~columns ~areas with
-      | Option.None -> Option.None
+      | None -> None
       | Some text -> gd_read_grid text)
 
 let grid_of_run raw : Properties.grid_template option =
@@ -481,8 +478,8 @@ let grid_of_run raw : Properties.grid_template option =
           Option.bind
             (gd_auto_flow_columns_text ~rows ~flow ~auto_columns)
             gd_read_grid
-      | (`Row | `Column | `Other), _ -> Option.None)
-  | _ -> Option.None
+      | (`Row | `Column | `Other), _ -> None)
+  | _ -> None
 
 let try_compose_grid_at idx i =
   let n = Rule_index.length idx in

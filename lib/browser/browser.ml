@@ -183,6 +183,10 @@ let run ?(env = []) ?stderr prog args =
       (List.map (fun (name, v) -> String.concat "" [ name; "="; v ]) env
       @ inherited)
   in
+  (* Where the spawn forks before it execs (OpenBSD), a missing program is a
+     child exiting 127, not an error: settle that here, before any spawn. *)
+  if (not (String.equal (Filename.basename prog) prog)) && not (executable prog)
+  then raise (Unix.Unix_error (Unix.ENOENT, "create_process", prog));
   let null = Unix.openfile Filename.null [ Unix.O_RDWR; Unix.O_CLOEXEC ] 0 in
   let err =
     match stderr with
@@ -215,6 +219,21 @@ let run ?(env = []) ?stderr prog args =
       in
       let _, status = Unix.waitpid [] pid in
       (lines, status)
+
+let drive ~node ~chrome ~stderr script args =
+  match run ~env:[ ("CHROME", chrome) ] ~stderr node (script :: args) with
+  | exception Unix.Unix_error (e, _, _) ->
+      Error
+        (String.concat ""
+           [ "the browser driver did not start: "; Unix.error_message e ])
+  | lines, Unix.WEXITED 0 -> Ok lines
+  | _, (Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _) ->
+      let text =
+        try In_channel.with_open_bin stderr In_channel.input_all
+        with Sys_error _ -> ""
+      in
+      Error
+        (String.concat "" [ "the browser driver failed:\n"; String.trim text ])
 
 let chrome_version chrome =
   (* A binary that cannot be started prints no banner. *)

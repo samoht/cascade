@@ -98,10 +98,14 @@ type css_wide =
   | Revert_layer
   | Var of css_wide var
 
+(** The vendor prefixes a property name can carry (CSS 2.1 sec. 4.1.2.1):
+    [Other_vendor] is any other name opening with a single [-]. *)
+type vendor = Webkit | Moz | Ms | O | Khtml | Other_vendor
+
 (* Property type definition *)
 type 'a property =
   | Custom_property : string -> custom_property property
-  | Unknown_property : string -> custom_value property
+  | Unknown_property : untyped_name -> custom_value property
   | All : css_wide property
   | Background_color : color property
   | Color : color property
@@ -394,7 +398,7 @@ type 'a property =
   | Position_try : position_try property
   | Position_visibility : position_visibility property
   | Position_area : position_area property
-  | Shape_outside : string property
+  | Shape_outside : shape_outside property
   | Shape_margin : length_percentage property
   | Shape_image_threshold : shape_image_threshold property
   | Overflow_clip_margin : overflow_clip_margin property
@@ -673,7 +677,22 @@ type 'a property =
   | Webkit_transform_origin : transform_origin property
   | Webkit_transform_style : transform_style property
 
-type any_property = Prop : 'a property -> any_property
+and untyped_name = {
+  written : string;  (** The name as written. *)
+  vendor : vendor option;  (** Its vendor prefix, if any. *)
+  unprefixed : string option;
+      (** The lower-case name after a [-webkit-], [-moz-], [-ms-] or [-o-]
+          prefix. *)
+  spells : any_property option;
+      (** The typed property {!field-unprefixed} names, if any. *)
+  own : any_property option;
+      (** The typed property the name itself names: [Some] only for a
+          declaration whose value the typed reader refused. *)
+}
+(** A property name the reader types no constructor for, classified once when it
+    is read. *)
+
+and any_property = Prop : 'a property -> any_property
 
 type _ property_value_kind =
   | Length : length property_value_kind

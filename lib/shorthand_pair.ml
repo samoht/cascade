@@ -358,9 +358,9 @@ let axis_contain_intrinsic idx i =
       | None, None -> Some None
       | Size a, Size b ->
           if Properties.equal_contain_intrinsic_size_item a b then
-            Some (Intrinsic (a, Option.None))
+            Some (Intrinsic (a, None))
           else Some (Intrinsic (a, Some b))
-      | _ -> Option.None
+      | _ -> None
     in
     Option.map (Declaration.v ~important Contain_intrinsic_size) value
   in
@@ -405,11 +405,11 @@ let extract_flex_flow_part :
   | Declaration { property = Flex_wrap; value = Var _; _ } ->
       None
   | Declaration { property = Flex_direction; value; important; _ } ->
-      let d = match value with Initial -> Option.None | v -> Some v in
-      Some (Start, (d, Option.None), important)
+      let d = match value with Initial -> None | v -> Some v in
+      Some (Start, (d, None), important)
   | Declaration { property = Flex_wrap; value; important; _ } ->
-      let w = match value with Initial -> Option.None | v -> Some v in
-      Some (End, (Option.None, w), important)
+      let w = match value with Initial -> None | v -> Some v in
+      Some (End, (None, w), important)
   | _ -> None
 
 let extract_text_emphasis_part :
@@ -422,11 +422,11 @@ let extract_text_emphasis_part :
   | Declaration { property = Text_emphasis_color; value = Var _; _ } ->
       None
   | Declaration { property = Text_emphasis_style; value; important; _ } ->
-      let st = match value with Initial -> Option.None | v -> Some v in
-      Some (Start, (st, Option.None), important)
+      let st = match value with Initial -> None | v -> Some v in
+      Some (Start, (st, None), important)
   | Declaration { property = Text_emphasis_color; value; important; _ } ->
-      let c = match value with Initial -> Option.None | v -> Some v in
-      Some (End, (Option.None, c), important)
+      let c = match value with Initial -> None | v -> Some v in
+      Some (End, (None, c), important)
   | _ -> None
 
 let duo_flex_flow idx i =
@@ -465,9 +465,9 @@ let extract_animation_range_part :
   | Declaration { property = Animation_range_end; value = Var _; _ } ->
       None
   | Declaration { property = Animation_range_start; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Animation_range_end; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let extract_scroll_timeline_part :
@@ -480,9 +480,9 @@ let extract_scroll_timeline_part :
   | Declaration { property = Scroll_timeline_axis; value = Var _; _ } ->
       None
   | Declaration { property = Scroll_timeline_name; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Scroll_timeline_axis; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 (* The shorthand pairs the i-th start with the i-th end, so two lists compose
@@ -500,7 +500,7 @@ let duo_animation_range idx i =
                (List.map2
                   (fun s e : Properties.animation_range -> Range (s, Some e))
                   starts ends))
-      | Some (Items _), _ | _, Some (Items _) | Option.None, _ -> Option.None
+      | Some (Items _), _ | _, Some (Items _) | None, _ -> None
       | Some range_start, range_end -> Some (Range (range_start, range_end))
     in
     Option.map (Declaration.v ~important Animation_range) value
@@ -517,13 +517,13 @@ let duo_scroll_timeline idx i =
     let name, _ = start and _, axis = end_ in
     let axis =
       match axis with
-      | Some (Block : Properties.timeline_axis) | Some Initial -> Option.None
+      | Some (Block : Properties.timeline_axis) | Some Initial -> None
       | axis -> axis
     in
     let value : Properties.timeline_shorthand option =
       match (name : Properties.timeline_name option) with
       | Some (Names [ n ]) -> Some (Timelines [ { name = n; axis } ])
-      | _ -> Option.None
+      | _ -> None
     in
     Option.map (Declaration.v ~important Scroll_timeline) value
   in
@@ -545,9 +545,9 @@ let extract_container_part :
   | Declaration { property = Container_type; value = Var _; _ } ->
       None
   | Declaration { property = Container_name; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Container_type; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let duo_container idx i =
@@ -555,13 +555,13 @@ let duo_container idx i =
     let name, _ = start and _, ctype = end_ in
     let ctype =
       match ctype with
-      | Some (Normal : Properties.container_type) | Some Initial -> Option.None
+      | Some (Normal : Properties.container_type) | Some Initial -> None
       | ctype -> ctype
     in
     let value : Properties.container_shorthand option =
       match (name : Properties.container_name option) with
       | Some ((None | Names _) as name) -> Some (Shorthand { name; ctype })
-      | _ -> Option.None
+      | _ -> None
     in
     Option.map (Declaration.v ~important Container) value
   in
@@ -584,9 +584,9 @@ let extract_webkit_mask_position_part :
   | Declaration { property = Webkit_mask_position_y; value = Var _; _ } ->
       None
   | Declaration { property = Webkit_mask_position_x; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Webkit_mask_position_y; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let extract_background_position_part :
@@ -600,9 +600,9 @@ let extract_background_position_part :
   | Declaration { property = Background_position_y; value = Var _; _ } ->
       None
   | Declaration { property = Background_position_x; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Background_position_y; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let position_of_axes (x : Properties.background_position_axis)
@@ -618,7 +618,7 @@ let position_of_axes (x : Properties.background_position_axis)
     | Edge Right | Edge Bottom -> Some (Pct 100.)
     | Offset (Length l) -> Some l
     | Offset (Pct p) -> Some (Pct p)
-    | _ -> Option.None
+    | _ -> None
   in
   let edge_name : Properties.position_axis_edge -> string = function
     | Left -> "left"
@@ -632,7 +632,7 @@ let position_of_axes (x : Properties.background_position_axis)
       match (x, y) with
       | Edge_offset (ex, ox), Edge_offset (ey, oy) ->
           Some (Edge_offset_edge_offset (edge_name ex, ox, edge_name ey, oy))
-      | _ -> Option.None)
+      | _ -> None)
 
 let duo_position_axes idx property extract i =
   let build ~important ~start ~end_ =
@@ -642,7 +642,7 @@ let duo_position_axes idx property extract i =
         Option.map
           (fun p -> Declaration.v ~important property [ p ])
           (position_of_axes x y)
-    | _ -> Option.None
+    | _ -> None
   in
   try_compose_axis_pair_at idx ~foldable:(fun _ -> true) ~extract ~build i
 
@@ -661,9 +661,9 @@ let extract_white_space_part :
   | Declaration { property = Text_wrap_mode; value = Var _; _ } ->
       None
   | Declaration { property = White_space_collapse; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Text_wrap_mode; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let white_space_of_pair (c : Properties.white_space_collapse)
@@ -675,7 +675,7 @@ let white_space_of_pair (c : Properties.white_space_collapse)
   | Preserve, No_wrap -> Some Pre
   | Preserve_breaks, Wrap -> Some Pre_line
   | Break_spaces, Wrap -> Some Break_spaces
-  | _ -> Option.None
+  | _ -> None
 
 let duo_white_space idx i =
   let build ~important ~start ~end_ =
@@ -685,7 +685,7 @@ let duo_white_space idx i =
         Option.map
           (Declaration.v ~important White_space)
           (white_space_of_pair c m)
-    | _ -> Option.None
+    | _ -> None
   in
   try_compose_axis_pair_at idx
     ~foldable:(fun _ -> true)
@@ -705,9 +705,9 @@ let extract_text_wrap_part :
   | Declaration { property = Text_wrap_style; value = Var _; _ } ->
       None
   | Declaration { property = Text_wrap_mode; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Text_wrap_style; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let text_wrap_of_pair (m : Properties.text_wrap_mode)
@@ -716,7 +716,7 @@ let text_wrap_of_pair (m : Properties.text_wrap_mode)
     match m with
     | Wrap | Initial -> Some `Wrap
     | No_wrap -> Some `No_wrap
-    | _ -> Option.None
+    | _ -> None
   in
   let style =
     match st with
@@ -724,7 +724,7 @@ let text_wrap_of_pair (m : Properties.text_wrap_mode)
     | Balance -> Some `Balance
     | Stable -> Some `Stable
     | Pretty -> Some `Pretty
-    | _ -> Option.None
+    | _ -> None
   in
   match (mode, style) with
   | Some `Wrap, Some `Auto -> Some (Wrap : Properties.text_wrap)
@@ -733,7 +733,7 @@ let text_wrap_of_pair (m : Properties.text_wrap_mode)
   | Some `Wrap, Some `Stable -> Some Stable
   | Some `Wrap, Some `Pretty -> Some Pretty
   | Some m, Some st -> Some (Mode_style (m, st))
-  | _ -> Option.None
+  | _ -> None
 
 let duo_text_wrap idx i =
   let build ~important ~start ~end_ =
@@ -741,7 +741,7 @@ let duo_text_wrap idx i =
     match (mode, style) with
     | Some m, Some st ->
         Option.map (Declaration.v ~important Text_wrap) (text_wrap_of_pair m st)
-    | _ -> Option.None
+    | _ -> None
   in
   try_compose_axis_pair_at idx
     ~foldable:(fun _ -> true)
@@ -757,9 +757,9 @@ let extract_webkit_stroke_part :
   | Declaration { property = Webkit_text_stroke_color; value = Var _; _ } ->
       None
   | Declaration { property = Webkit_text_stroke_width; value; important; _ } ->
-      Some (Start, (Some value, Option.None), important)
+      Some (Start, (Some value, None), important)
   | Declaration { property = Webkit_text_stroke_color; value; important; _ } ->
-      Some (End, (Option.None, Some value), important)
+      Some (End, (None, Some value), important)
   | _ -> None
 
 let duo_webkit_text_stroke idx i =

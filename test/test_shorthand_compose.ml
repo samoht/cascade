@@ -616,8 +616,7 @@ let test_grid_composes () =
     ".x{grid-template-rows:none;grid-template-columns:1fr;grid-template-areas:none;grid-auto-flow:row;grid-auto-columns:2em;grid-auto-rows:3em}";
   sheet_optimizes_to
     ~into:
-      ".x{grid-template:\"a\" \
-       1fr/1fr;grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}"
+      ".x{grid-template:\"a\"1fr/1fr;grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}"
     ".x{grid-template-rows:1fr;grid-template-columns:1fr;grid-template-areas:\"a\";grid-auto-flow:column;grid-auto-columns:auto;grid-auto-rows:auto}";
   sheet_optimizes_to
     ~into:
@@ -633,10 +632,10 @@ let test_grid_template_composes () =
     ".x{grid-template-rows:1fr;grid-template-columns:2fr;grid-template-areas:none}";
   sheet_optimizes_to ~into:".x{grid-template:none}"
     ".x{grid-template-rows:none;grid-template-columns:none;grid-template-areas:none}";
-  sheet_optimizes_to ~into:".x{grid-template:\"a b\" 1fr/1fr 1fr}"
+  sheet_optimizes_to ~into:".x{grid-template:\"a b\"1fr/1fr 1fr}"
     ".x{grid-template-rows:1fr;grid-template-columns:1fr \
      1fr;grid-template-areas:\"a b\"}";
-  sheet_optimizes_to ~into:".x{grid-template:\"a\" 1fr \"b\" 2fr/1fr}"
+  sheet_optimizes_to ~into:".x{grid-template:\"a\"1fr\"b\"2fr/1fr}"
     ".x{grid-template-rows:1fr \
      2fr;grid-template-columns:1fr;grid-template-areas:\"a\" \"b\"}";
   (* The areas form writes one size per row, so a row count the tracks do not
@@ -1152,6 +1151,72 @@ let test_a_single_declaration_composes_to_itself () =
         Cascade_spec_inventory.Property_grammar.rows)
     [ `Fragment; `Stylesheet ]
 
+(* One declaration per row of the grammar inventory, its first value the reader
+   types, under the property the row names. *)
+let inventory_declarations () =
+  List.filter_map
+    (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
+      List.find_map
+        (fun value ->
+          match Declaration.of_string (row.property ^ ":" ^ value) with
+          | Error _ -> None
+          | Ok decl -> Some decl)
+        row.positives)
+    Cascade_spec_inventory.Property_grammar.rows
+
+let family decl =
+  let (Declaration.Key p) = Declaration.property_key decl in
+  Option.map Properties.family_rank (Properties.composition_family p)
+
+(* What composition reads together is one family's declarations, so a body whose
+   declarations come from different families, or from none, composes to itself
+   as a single declaration does. Asked of every pair of inventory properties of
+   different families, in both orders and both scopes. *)
+let test_different_families_compose_to_themselves () =
+  let decls = inventory_declarations () in
+  let shared a b =
+    match (family a, family b) with
+    | Some x, Some y -> Int.equal x y
+    | _ -> false
+  in
+  List.iter
+    (fun scope ->
+      let ctx = Ctx.of_scope (Some scope) in
+      List.iter
+        (fun a ->
+          List.iter
+            (fun b ->
+              if not (shared a b) then
+                match Shorthand.compose_shorthands ~ctx [ (0, a); (1, b) ] with
+                | [ (0, a'); (1, b') ] when a' == a && b' == b -> ()
+                | _ ->
+                    Alcotest.failf "%s;%s composed"
+                      (Declaration.to_string ~minify:true a)
+                      (Declaration.to_string ~minify:true b))
+            decls)
+        decls)
+    [ `Fragment; `Stylesheet ]
+
+(* A shorthand and the longhands its footprint holds are one family: the model
+   of what a shorthand writes is the coarser reading of the two. *)
+let test_footprint_families_are_composition_families () =
+  let decls = inventory_declarations () in
+  List.iter
+    (fun a ->
+      List.iter
+        (fun b ->
+          match
+            (Shorthand.footprint_family a, Shorthand.footprint_family b)
+          with
+          | Some x, Some y when Int.equal x y ->
+              if not (Option.equal Int.equal (family a) (family b)) then
+                Alcotest.failf "%s and %s share a footprint, not a family"
+                  (Declaration.to_string ~minify:true a)
+                  (Declaration.to_string ~minify:true b)
+          | _ -> ())
+        decls)
+    decls
+
 (* The contraction writes [transition:opacity 2s] after the earlier
    [transition], which it then overrides whole; one optimization drops the
    earlier one too. The padding takes the sheet past the size where the pipeline
@@ -1183,6 +1248,10 @@ let suite =
     [
       Alcotest.test_case "a single declaration composes to itself" `Quick
         test_a_single_declaration_composes_to_itself;
+      Alcotest.test_case "different families compose to themselves" `Quick
+        test_different_families_compose_to_themselves;
+      Alcotest.test_case "footprint families are composition families" `Quick
+        test_footprint_families_are_composition_families;
       Alcotest.test_case "layer contraction keeps an earlier shorthand" `Quick
         test_layer_contraction_keeps_an_earlier_shorthand;
       Alcotest.test_case "font contraction keeps an earlier longhand" `Quick

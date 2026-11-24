@@ -105,6 +105,9 @@ let check_clip_path_fill_rule =
   check_value_cursor "clip_path_fill_rule" read_clip_path_fill_rule
     pp_clip_path_fill_rule
 
+let check_shape_outside =
+  check_value_cursor "shape_outside" read_shape_outside pp_shape_outside
+
 let check_clip = check_value_cursor "clip" read_clip pp_clip
 
 let check_webkit_mask_box =
@@ -498,10 +501,10 @@ let test_background_image () =
     ~into:"conic-gradient(in hsl longer hue,red,#00f)"
     "conic-gradient(in hsl longer hue, red, blue)";
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(in hsl longer hue from 45deg at 50%,red,#00f)"
+    ~into:"conic-gradient(in hsl longer hue from 45deg,red,#00f)"
     "conic-gradient(in hsl longer hue from 45deg at center, red, blue)";
   decl_optimizes ~prop:"background-image"
-    ~into:"conic-gradient(in hsl longer hue from 45deg at 50%,red,#00f)"
+    ~into:"conic-gradient(in hsl longer hue from 45deg,red,#00f)"
     "conic-gradient(from 45deg at center in hsl longer hue, red, blue)";
   check_background_image ~minify:false
     ~expected:"radial-gradient(in oklab, red, blue)"
@@ -911,6 +914,20 @@ let test_clip_geometry_box () =
   check_clip_geometry_box "view-box";
   neg_cursor read_clip_geometry_box "closest-side"
 
+(* CSS Shapes 1 sec. 6.1: a shape with its box in either order, a box, an image,
+   [none] and a [var()]; a box from [<geometry-box>] beyond [<shape-box>] is
+   none of them. *)
+let test_shape_outside () =
+  check_shape_outside "none";
+  check_shape_outside "circle(50%)";
+  check_shape_outside "margin-box";
+  check_shape_outside "padding-box circle(50%)";
+  check_shape_outside "url(a.png)";
+  check_shape_outside "linear-gradient(red,blue)";
+  check_shape_outside "var(--s)";
+  neg_cursor read_shape_outside "fill-box";
+  neg_cursor read_shape_outside "none margin-box"
+
 let test_clip_path_extent () =
   check_clip_path_extent "closest-side";
   check_clip_path_extent "farthest-side";
@@ -1069,6 +1086,7 @@ let suite =
       test_case "text_shadow" `Quick test_text_shadow;
       test_case "mask_border_mode" `Quick test_mask_border_mode;
       test_case "clip_geometry_box" `Quick test_clip_geometry_box;
+      test_case "shape_outside" `Quick test_shape_outside;
       test_case "clip_path_extent" `Quick test_clip_path_extent;
       test_case "clip_path_fill_rule" `Quick test_clip_path_fill_rule;
       test_case "background_shorthand" `Quick test_background_shorthand;

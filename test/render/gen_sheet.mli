@@ -12,3 +12,9 @@
 
 val stylesheet : seed:int -> Cascade.Css.t
 (** [stylesheet ~seed] is the sheet for [seed]. *)
+
+val nested_declarations : seed:int -> Cascade.Css.t
+(** [nested_declarations ~seed] is a sheet for [seed] whose rules write
+    declarations after a nested rule and directly in a nested [@media] or
+    [@supports] (CSS Nesting 1 sec. 3.4), beside later rules of the same
+    selector, for the targets that keep such rules nested. *)

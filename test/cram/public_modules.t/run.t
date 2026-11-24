@@ -80,6 +80,7 @@ the public API has to update:
   Supports
   Syntax
   Token
+  Transfer_size
   Values
   Variables
   Webkit_fallback

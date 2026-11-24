@@ -882,17 +882,17 @@ let spec_security_resource_exhaustion_regressions () =
   in
   (* No spec is involved: this guard is test infrastructure. A watchdog domain
      ends the run with exit 2, naming the vector, if [f] has not finished after
-     [wall_limit] seconds of wall time (works on every OS, unlike SIGALRM): a
-     hang is a question about time, and only a clock answers it. *)
-  let wall_limit = 10. in
+     [cpu_limit] seconds of this process's CPU time (works on every OS, unlike
+     SIGALRM). The parser does no I/O, so a hang spins and spends CPU, while a
+     loaded runner that leaves the test waiting for a core spends none: wall
+     time would charge the runner's load to the parser. *)
+  let cpu_limit = 10. in
   let completes name f =
     let finished = Atomic.make false in
     let watchdog =
       Domain.spawn (fun () ->
-          let deadline = Unix.gettimeofday () +. wall_limit in
-          while
-            (not (Atomic.get finished)) && Unix.gettimeofday () < deadline
-          do
+          let deadline = Sys.time () +. cpu_limit in
+          while (not (Atomic.get finished)) && Sys.time () < deadline do
             Unix.sleepf 0.05
           done;
           if not (Atomic.get finished) then (
@@ -902,8 +902,8 @@ let spec_security_resource_exhaustion_regressions () =
                    "parser hung on ";
                    name;
                    ": no result after ";
-                   string_of_float wall_limit;
-                   "s\n";
+                   string_of_float cpu_limit;
+                   "s of CPU time\n";
                  ]);
             exit 2))
     in

@@ -128,6 +128,13 @@ let parses_nesting t =
   | Some true -> true
   | Some false | None -> false
 
+let parses_nested_declarations t =
+  parses_nesting t
+  &&
+  match Support.implemented (floors t) "api.CSSNestedDeclarations" with
+  | Some true -> true
+  | Some false | None -> false
+
 let stats t = t.stats
 let with_extend_lists extend_lists t = { t with extend_lists }
 let with_recurse_blocks recurse_blocks t = { t with recurse_blocks }

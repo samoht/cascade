@@ -28,6 +28,17 @@ let is_intentionally_duplicated decl =
       | _ -> false)
   | Declaration { property; _ } -> is_intentionally_duplicated_typed property
 
+(* Compositing and Blending 1 (ED) sec. 3.4.3 has [background] reset
+   [background-blend-mode], but Chrome 157 and WebKit 26.5 keep it. Only an
+   engine that follows the specification is sure to reset these, so they are
+   kept out of [covers_longhand]. *)
+let spec_covers_longhand : type a b.
+    a Properties.property -> b Properties.property -> bool =
+ fun sh lh ->
+  match (sh, lh) with Background, Background_blend_mode -> true | _ -> false
+
+let spec_resets = Properties.[ Prop Background_blend_mode ]
+
 (* Typed shorthand -> longhand coverage relation. Each arm is a reachable
    [(shorthand, longhand)] pair, transitive cases included ([border] covers
    [border-top-width] directly and via [border-width] / [border-top]). Unlisted
@@ -50,7 +61,6 @@ let covers_longhand : type a b.
   | Inset, Bottom -> true
   | Inset, Left -> true
   | Background, Background_attachment -> true
-  | Background, Background_blend_mode -> true
   | Background, Background_clip -> true
   | Background, Background_color -> true
   | Background, Background_image -> true
@@ -270,8 +280,10 @@ let all_preserved_reorder_declaration decl =
    exempt from the [all] reset. Two opaque unknown-property values do not cover
    one another: either value may belong to a browser grammar the other does not,
    so both are compatibility fallbacks. Structurally identical streams are the
-   one case where either declaration can safely cover the other. *)
-let declaration_covers covering covered =
+   one case where either declaration can safely cover the other. Under
+   [enforce_spec] a shorthand also covers what [spec_covers_longhand] says it
+   resets. *)
+let declaration_covers ~enforce_spec covering covered =
   match (unwrap_theme_guard covering, unwrap_theme_guard covered) with
   | Declaration { property = All; _ }, Declaration { property = covered_p; _ }
     ->
@@ -283,13 +295,14 @@ let declaration_covers covering covered =
   | _, Declaration { property = Custom_property _; _ } -> false
   | ( Declaration { property = Unknown_property a; value = av; _ },
       Declaration { property = Unknown_property b; value = bv; _ } ) ->
-      String.equal a b && Stdlib.compare av bv = 0
+      String.equal a.written b.written && Stdlib.compare av bv = 0
   | Declaration { property = Unknown_property _; _ }, _ -> false
   | _, Declaration { property = Unknown_property _; _ } -> false
   | ( Declaration { property = covering_p; _ },
       Declaration { property = covered_p; _ } ) ->
       Declaration.same_property covering covered
       || covers_longhand covering_p covered_p
+      || (enforce_spec && spec_covers_longhand covering_p covered_p)
       || aliases_page_break covering_p covered_p
   | _ -> false
 
@@ -312,7 +325,7 @@ let property_key : type a. a Properties.property -> overlap_key =
  fun property ->
   match property with
   | Custom_property name -> key (String.concat "" [ "--"; name ])
-  | Unknown_property name -> key name
+  | Unknown_property { written; _ } -> key written
   | property -> typed_key (Hashtbl.seeded_hash 0 property)
 
 let border_block_start_keys =
@@ -504,7 +517,6 @@ let rec property_slots : type a. a Properties.property -> overlap_key list =
   | Background ->
       [
         key "background-attachment";
-        key "background-blend-mode";
         key "background-clip";
         key "background-color";
         key "background-image";
@@ -1006,7 +1018,7 @@ let rec property_slots : type a. a Properties.property -> overlap_key list =
   | Position_try_order -> [ key "position-try-order" ]
   | Position_try_fallbacks -> [ key "position-try-fallbacks" ]
   | Custom_property name -> [ key (String.concat "" [ "--"; name ]) ]
-  | Unknown_property name -> [ key name ]
+  | Unknown_property { written; _ } -> [ key written ]
   | property -> [ property_key property ]
 
 (* CSS Logical 1 sec. 2 and 4: a flow-relative longhand resolves to a physical
@@ -1107,8 +1119,20 @@ let add_logical_aliases slots =
   | [] -> slots
   | groups -> List.concat (slots :: groups)
 
+(* The slots a shorthand resets in an engine that follows the specification and
+   not in every current one ([spec_covers_longhand]): they are in the footprint,
+   which orders declarations in both modes, and in the slots, which kill them,
+   only under [enforce_spec]. *)
+let spec_only_slots : type a. a Properties.property -> overlap_key list =
+ fun property ->
+  List.concat_map
+    (fun (Properties.Prop h) ->
+      if spec_covers_longhand property h then property_slots h else [])
+    spec_resets
+
 let property_footprint : type a. a Properties.property -> overlap_key list =
- fun property -> add_logical_aliases (property_slots property)
+ fun property ->
+  add_logical_aliases (spec_only_slots property @ property_slots property)
 
 (* Key lists are sorted ascending, so a membership test stops at the first key
    past the one asked for and two lists merge-walk in step: linear in their
@@ -1251,19 +1275,6 @@ let is_known_footprint_key k =
   done;
   !found
 
-(* The typed property an untyped prefixed name spells. An engine that reads
-   [-moz-transform-origin] reads it as [transform-origin] (Firefox's
-   longhands.toml gives that property the [moz] and [webkit] prefixes, and
-   Chromium and WebKit alias their [-webkit-] names), and one that does not
-   reads nothing, so such a name writes that property's slots at most. *)
-let prefixed_spelling name =
-  match Shorthand_common.strip_vendor_prefix name with
-  | None -> None
-  | Some unprefixed -> (
-      match Properties.of_name unprefixed with
-      | Properties.Prop (Unknown_property _) -> None
-      | spelled -> Some spelled)
-
 (* Whether one name is the other with a further hyphenated component, the shape
    a longhand takes under its shorthand. Two placeable names of that shape write
    a common slot even though neither footprint mentions the other. *)
@@ -1303,14 +1314,22 @@ let sorted_keys keys =
 let rec declaration_overlap_keys decl =
   match decl with
   | Theme_guarded { decl; _ } -> declaration_overlap_keys decl
-  | Declaration { property = Unknown_property name; _ } -> (
-      match prefixed_spelling name with
-      | Some (Properties.Prop property) ->
-          sorted_keys (property_footprint property)
-      | None ->
-          if is_known_footprint_key (key name) then
-            sorted_keys (property_footprint (Unknown_property name))
-          else [ broad_overlap_key ])
+  | Declaration
+      {
+        property = Unknown_property { spells = Some (Properties.Prop p); _ };
+        _;
+      } ->
+      (* An engine that reads [-moz-transform-origin] reads it as
+         [transform-origin] (Firefox's longhands.toml gives that property the
+         [moz] and [webkit] prefixes, and Chromium and WebKit alias their
+         [-webkit-] names), and one that does not reads nothing, so a prefixed
+         spelling of a typed property writes that property's slots at most. *)
+      sorted_keys (property_footprint p)
+  | Declaration
+      { property = Unknown_property { written = name; _ } as property; _ } ->
+      if is_known_footprint_key (key name) then
+        sorted_keys (property_footprint property)
+      else [ broad_overlap_key ]
   | Declaration { property; _ } -> sorted_keys (property_footprint property)
 
 (* The slots a typed property writes wherever it is read. [all], a custom
@@ -1331,11 +1350,13 @@ let property_slot_keys : type a. a Properties.property -> overlap_key list =
    to the coverage relation. *)
 let hidden_resets = Properties.[ Prop Border_image; Prop Mask_border ]
 
-let declaration_slot_keys decl =
+let declaration_slot_keys ~enforce_spec decl =
   match decl with
   | Theme_guarded _ -> []
   | Declaration { property; _ } ->
       if Properties.is_vendor_prefixed property then []
+      else if enforce_spec then
+        sorted_keys (spec_only_slots property @ written_slots property)
       else sorted_keys (written_slots property)
 
 let reset_slots shorthand run =
@@ -1347,13 +1368,16 @@ let reset_slots shorthand run =
             if covers_longhand property h then written_slots h else [])
           hidden_resets
       in
+      (* What [run] writes in every engine: a slot only the specification has it
+         write stays among those the shorthand resets. *)
       let written =
         sorted_keys
           (List.concat_map
-             (fun d -> declaration_slot_keys (unwrap_theme_guard d))
+             (fun d ->
+               declaration_slot_keys ~enforce_spec:false (unwrap_theme_guard d))
              run)
       in
-      sorted_keys (written_slots property @ hidden)
+      sorted_keys (spec_only_slots property @ written_slots property @ hidden)
       |> List.filter (fun k -> not (overlap_key_in k written))
   | Theme_guarded _ -> []
 
@@ -1400,8 +1424,8 @@ let declarations_overlap_with_keys a a_keys b b_keys =
       not (is_excluded_from_all_reset property)
   (* An unknown name the model cannot place holds the broad key, which meets
      every key. *)
-  | ( Declaration { property = Unknown_property a; _ },
-      Declaration { property = Unknown_property b; _ } ) ->
+  | ( Declaration { property = Unknown_property { written = a; _ }; _ },
+      Declaration { property = Unknown_property { written = b; _ }; _ } ) ->
       String.equal a b || name_extends a b || name_extends b a
       || overlap_keys_intersect a_keys b_keys
   | Declaration _, Declaration _ -> overlap_keys_intersect a_keys b_keys

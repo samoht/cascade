@@ -87,11 +87,6 @@ let source_loc : t -> Loc.t = function
 
 let rule_loc : rule -> Loc.t = function Qualified r -> r.loc | At r -> r.loc
 
-let opening_char : Token.bracket -> char = function
-  | Curly -> '{'
-  | Paren -> '('
-  | Square -> '['
-
 (* One pass over a flat run. The blocks it opens are a byte each in [open_], so
    the scan takes no stack whatever the run nests. A closer is matched only by
    the innermost open block, as sec. 5.5.9 closes one; any other is a stray
@@ -113,14 +108,14 @@ let scan_flat tokens =
     match tok.kind with
     | Token.Bad_string | Token.Bad_url -> { acc with bad_token = true }
     | Token.Open b ->
-        Buffer.add_char open_ (opening_char b);
+        Buffer.add_char open_ (Token.opening_char b);
         acc
     | Token.Function _ ->
-        Buffer.add_char open_ (opening_char Paren);
+        Buffer.add_char open_ (Token.opening_char Paren);
         acc
     | Token.Close b ->
         let depth = Buffer.length open_ in
-        if depth > 0 && Buffer.nth open_ (depth - 1) = opening_char b then (
+        if depth > 0 && Buffer.nth open_ (depth - 1) = Token.opening_char b then (
           Buffer.truncate open_ (depth - 1);
           acc)
         else { acc with stray_closer = true }
@@ -264,11 +259,6 @@ let rec has_var components =
       | Preserved _ -> false)
     components
 
-let closing_char : Token.bracket -> char = function
-  | Curly -> '}'
-  | Paren -> ')'
-  | Square -> ']'
-
 (* A debug dump, not source text: every node shows its own location and the CSS
    Syntax 3 (ED) sec. 5.5.9 and 5.5.10 flags [compare] separates values on.
    [Pp.space] rather than [Pp.sp] because a dump has no minified form, and
@@ -278,9 +268,9 @@ let rec pp : t Pp.t =
   match cv with
   | Preserved tok -> Token.pp ctx tok
   | Block { node = { opening; value; closed }; loc } ->
-      Pp.char ctx (opening_char opening);
+      Pp.char ctx (Token.opening_char opening);
       Pp.list ~sep:Pp.space pp ctx value;
-      Pp.char ctx (closing_char opening);
+      Pp.char ctx (Token.closing_char opening);
       if not closed then Pp.string ctx "<unclosed>";
       Pp.char ctx '@';
       Loc.pp ctx loc

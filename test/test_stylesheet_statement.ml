@@ -480,6 +480,27 @@ let counter_symbol_is_one_image () =
        "@counter-style c{system:additive;additive-symbols:2 url(a.png),1 \
         url(b.png)}")
 
+(* CSS Syntax 3 sec. 9.1 needs whitespace only between two tokens that would
+   otherwise merge, so a minified descriptor drops the space after a comma and
+   the second of two spaces. Chromium 157 reads additive-symbols: 2 "a",1 "b"
+   and range: 1 2,4 5 as the spaced forms, and a string needs no space beside
+   it: Chromium reads 2"a",1"b" as 2 "a", 1 "b". *)
+let counter_descriptor_whitespace () =
+  let minify css = Css.to_string ~minify:true (Css.stylesheet css) in
+  Alcotest.(check string)
+    "additive-symbols"
+    "@counter-style c{system:additive;additive-symbols:2\"a\",1\"b\"}"
+    (minify
+       "@counter-style c { system: additive; additive-symbols: 2 \"a\", 1 \
+        \"b\" }");
+  Alcotest.(check string)
+    "range, pad and speak-as"
+    "@counter-style c{system:cyclic;symbols:a;range:1 2,4 \
+     5;pad:2\"0\";speak-as:bullets}"
+    (minify
+       "@counter-style c { system: cyclic; symbols: a; range: 1 2 , 4  5; pad: \
+        2  \"0\"; speak-as: bullets }")
+
 (* CSS Counter Styles 3 (ED) sec. 3.5: "If the lower bound of any range is
    higher than the upper bound, the entire descriptor is invalid and must be
    ignored." Chromium 153 and WebKit 26.5 drop range: 4 2 and range: 1 2, 4 3,
@@ -501,7 +522,12 @@ let counter_range_bounds_are_ordered () =
       Alcotest.(check string)
         range (with_range range)
         (minify (with_range range)))
-    [ "2 4"; "2 2"; "infinite 2"; "2 infinite"; "infinite infinite"; "-3 -1" ]
+    [ "2 4"; "2 2"; "infinite 2"; "2 infinite"; "infinite infinite" ];
+  (* CSS Syntax 3 sec. 4.3.3 ends a number before a sign, so [-3-1] is the two
+     bounds; Chromium 157 reads it as [-3 -1]. *)
+  Alcotest.(check string)
+    "-3 -1" (with_range "-3-1")
+    (minify (with_range "-3 -1"))
 
 let suite =
   ( "stylesheet_statement",
@@ -701,6 +727,9 @@ let suite =
         `Quick,
         counter_symbols_keep_their_kind );
       ("a counter symbol is one image", `Quick, counter_symbol_is_one_image);
+      ( "a counter descriptor drops needless whitespace",
+        `Quick,
+        counter_descriptor_whitespace );
       ( "counter range bounds are ordered",
         `Quick,
         counter_range_bounds_are_ordered );

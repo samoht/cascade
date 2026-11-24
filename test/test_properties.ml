@@ -69,7 +69,7 @@ let test_pp_property_value () =
   check string "content hello" "\"hello\""
     (to_s ppv (Content, (String "hello" : content)))
 
-let test_any_property () =
+let any_property_names () =
   check_any_property "display";
   check_any_property "position";
   check_any_property "color";
@@ -434,7 +434,7 @@ let suite =
         spec_mask_clip_property_edges;
       test_case "canonical math block context" `Quick
         canonical_math_block_context;
-      test_case "any_property" `Quick test_any_property;
+      test_case "any_property" `Quick any_property_names;
       test_case "math_function_at_integer_positions" `Quick
         math_function_at_integer_positions;
       test_case "css_wide" `Quick test_css_wide;

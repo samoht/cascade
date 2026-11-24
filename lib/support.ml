@@ -1385,6 +1385,8 @@ let unimplemented_by targets key =
    word of a value names. Elsewhere it names a grammar arm by a key of its own
    ([font-family.inherit] is Chrome reading [inherit] beside another family
    name), which a word of a value cannot be matched to. *)
+type release = From of version | Never | Unrecorded
+
 let compare_version (ma, na) (mb, nb) =
   match Int.compare ma mb with 0 -> Int.compare na nb | c -> c
 

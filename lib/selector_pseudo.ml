@@ -308,19 +308,17 @@ let untargeted_pseudo_class name =
 let rec untargeted = function
   | (Unknown_pseudo_class name | Unknown_pseudo_class_call (name, _))
     when untargeted_pseudo_class name ->
-      Option.Some name
+      Some name
   | Compound xs | List xs | Not xs | Has xs -> List.find_map untargeted xs
   | Combined (a, _, b) -> (
-      match untargeted a with
-      | Option.Some _ as n -> n
-      | Option.None -> untargeted b)
+      match untargeted a with Some _ as n -> n | None -> untargeted b)
   | Relative (_, b) -> untargeted b
   | Nth_child (_, Some xs)
   | Nth_last_child (_, Some xs)
   | Nth_of_type (_, Some xs)
   | Nth_last_of_type (_, Some xs) ->
       List.find_map untargeted xs
-  | _ -> Option.None
+  | _ -> None
 
 (* CSS Selectors 4 17.1: a forgiving [:is()] / [:where()] with no surviving
    valid argument matches nothing, and a compound or combined selector that

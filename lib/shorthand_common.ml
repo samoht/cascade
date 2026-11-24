@@ -112,25 +112,6 @@ let same_importance = function
       let important = is_important first in
       List.for_all (fun d -> is_important d = important) rest
 
-(* If [name] starts with a CSS vendor prefix ([-webkit-] / [-moz-] / [-ms-] /
-   [-o-]) return the unprefixed remainder; otherwise [None]. *)
-let strip_vendor_prefix name =
-  let n = String.length name in
-  let after p =
-    let pn = String.length p in
-    if n > pn && String.starts_with ~prefix:p name then
-      Some (String.sub name pn (n - pn))
-    else None
-  in
-  if n < 4 || not (Char.equal name.[0] '-') then None
-  else
-    match name.[1] with
-    | 'w' -> after "-webkit-"
-    | 'm' -> (
-        match after "-moz-" with Some _ as r -> r | None -> after "-ms-")
-    | 'o' -> after "-o-"
-    | _ -> None
-
 (* The property a name spells, when the reader types one.
    [Properties.read_any_property] is the table [pp_property] inverts, so a name
    resolves to the very constructor the typed matches below test. *)

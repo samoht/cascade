@@ -150,7 +150,7 @@ let theme_guarded ~var_name decl =
 
 let unknown_property ?(important = false) name value =
   let components = Cursor.remaining (Cursor.of_string value) in
-  v ~important (Unknown_property name) components
+  v ~important (Unknown_property (Properties.untyped name)) components
 
 (* Helper to mark a declaration as important *)
 let rec important = function
@@ -341,11 +341,12 @@ let rec value_components = function
 (* Apply AST-level value normalisation so the optimizer holds a canonical AST.
    The pretty-printer is a pure serialiser of the result; this is where semantic
    value folds live (see [Properties.normalize_property_value]). *)
-let rec normalize ?(lossless = false) ?(ctx = Values.default_calc_ctx) =
-  function
+let rec normalize ?(lossless = false) ?(enforce_spec = false)
+    ?(ctx = Values.default_calc_ctx) = function
   | Declaration { property; value; important; _ } as decl ->
       let value' =
-        Properties.normalize_property_value ~lossless ~ctx property value
+        Properties.normalize_property_value ~lossless ~enforce_spec ~ctx
+          property value
       in
       if value' == value then decl
       else
@@ -357,7 +358,7 @@ let rec normalize ?(lossless = false) ?(ctx = Values.default_calc_ctx) =
         then decl
         else v ~important property value'
   | Theme_guarded g as themed ->
-      let decl = normalize ~lossless ~ctx g.decl in
+      let decl = normalize ~lossless ~enforce_spec ~ctx g.decl in
       if decl == g.decl then themed else theme_guarded ~var_name:g.var_name decl
 
 (** Check if a declaration is marked as important *)
@@ -440,8 +441,8 @@ let rec background_image_uses_color p : Properties.background_image -> bool =
   | O_repeating_linear_gradient (_, stops)
   | Radial_gradient (_, stops)
   | Repeating_radial_gradient (_, stops)
-  | Webkit_radial_gradient (_, stops)
-  | Webkit_repeating_radial_gradient (_, stops)
+  | Webkit_radial_gradient (_, _, stops)
+  | Webkit_repeating_radial_gradient (_, _, stops)
   | Moz_radial_gradient (_, stops)
   | Moz_repeating_radial_gradient (_, stops)
   | O_radial_gradient (_, stops)
@@ -607,7 +608,8 @@ let rec property_key decl =
 let same_property d1 d2 =
   match (property_key d1, property_key d2) with
   | Key (Custom_property a), Key (Custom_property b) -> String.equal a b
-  | Key (Unknown_property a), Key (Unknown_property b) -> String.equal a b
+  | Key (Unknown_property a), Key (Unknown_property b) ->
+      String.equal a.written b.written
   | k1, k2 -> k1 == k2
 
 let pp_value = Properties.pp_value
@@ -632,13 +634,16 @@ let later_version a b = if Support.compare_version a b >= 0 then a else b
 (* What one need asks of a release: [Some (Some v)] parses from [v], [Some None]
    is shipped by no release of the data, and [None] is a production the data
    does not name, which counts as parsed. *)
-let combine acc need =
+let combine (acc : Support.release) need : Support.release =
   match (acc, need) with
-  | Option.None, _ -> Option.None
+  | Never, _ -> Never
   | acc, Option.None -> acc
-  | Option.Some _, Option.Some Option.None -> Option.None
-  | Option.Some a, Option.Some (Option.Some v) ->
-      Option.Some (later_version a v)
+  | _, Option.Some Option.None -> Never
+  | From a, Option.Some (Option.Some v) -> From (later_version a v)
+  | Unrecorded, Option.Some (Option.Some _) -> Unrecorded
+
+let unrecorded (acc : Support.release) : Support.release =
+  match acc with Never -> Never | From _ | Unrecorded -> Unrecorded
 
 (* BCD files a keyword a property takes as [css.properties.<property>.<word>]
    and a function as the same key, or as [<word>_function] where a keyword
@@ -679,12 +684,12 @@ let word_need ~release property (kind : Token.kind) =
             of_property name;
           ]
       with
-      | Option.Some _ as need -> need
-      | Option.None -> (
+      | Some _ as need -> need
+      | None -> (
           match List.filter_map release (type_keys name) with
-          | [] -> Option.None
-          | releases -> Option.Some (earliest releases)))
-  | _ -> Option.None
+          | [] -> None
+          | releases -> Some (earliest releases)))
+  | _ -> None
 
 let value_tokens decl =
   let lexer = Lexer.of_string (string_of_value ~minify:true decl) in
@@ -708,6 +713,49 @@ let rec structure_keys decl =
       [ "css.properties.column-height" ]
   | Declaration _ -> []
 
+(* The arguments of the call whose function token heads [tokens], split at its
+   top-level commas with whitespace dropped, and the tokens after its close. *)
+let call_arguments tokens =
+  let rec go depth arg args = function
+    | [] -> (List.rev (List.rev arg :: args), [])
+    | (Token.Close _ as k) :: rest ->
+        if depth = 0 then (List.rev (List.rev arg :: args), rest)
+        else go (depth - 1) (k :: arg) args rest
+    | (Token.Function _ as k) :: rest | (Token.Open _ as k) :: rest ->
+        go (depth + 1) (k :: arg) args rest
+    | Token.Comma :: rest when depth = 0 ->
+        go depth [] (List.rev arg :: args) rest
+    | Token.Whitespace _ :: rest -> go depth arg args rest
+    | k :: rest -> go depth (k :: arg) args rest
+  in
+  go 0 [] [] tokens
+
+let is_none_bound = function
+  | [ Token.Ident word ] -> String.equal (String.lowercase_ascii word) "none"
+  | _ -> false
+
+(* Productions web-features 3.37 has no key for, though a release it records
+   drops them: [clamp()] with a [none] bound (CSS Values 4 sec. 10.2), which
+   Chrome 145 drops and Chrome 151 parses, and a CSS-wide keyword
+   [css.types.global_keywords] does not name, as [revert-rule] (CSS Cascade 5
+   sec. 7.3.6), which Chrome 145 drops and Chrome 151 parses. The dataset counts
+   a production it does not name as parsed, so these are read here. *)
+let rec uses_unrecorded ~release = function
+  | [] -> false
+  | Token.Function name :: rest
+    when String.equal (String.lowercase_ascii name) "clamp" -> (
+      match call_arguments rest with
+      | [ low; _; high ], _ when is_none_bound low || is_none_bound high -> true
+      | _ -> uses_unrecorded ~release rest)
+  | Token.Ident word :: rest ->
+      Properties.is_css_wide_keyword word
+      && Option.is_none
+           (release
+              (String.concat ""
+                 [ "css.types.global_keywords."; String.lowercase_ascii word ]))
+      || uses_unrecorded ~release rest
+  | _ :: rest -> uses_unrecorded ~release rest
+
 (* CSS 2.1 sec. 4.2 has a browser ignore a declaration whose value it does not
    parse. Which productions a declaration uses is read off its property, its
    colours and the words of its value, and a release parses the declaration once
@@ -719,7 +767,7 @@ let first_release_with ~tokens ~floor engine decl =
   let release = Support.parse_release engine in
   let property = String.lowercase_ascii (property_name decl) in
   let acc =
-    combine (Option.Some floor)
+    combine (From floor)
       (release (String.concat "" [ "css.properties."; property ]))
   in
   let acc =
@@ -740,14 +788,17 @@ let first_release_with ~tokens ~floor engine decl =
     let acc =
       List.fold_left (fun acc key -> combine acc (release key)) acc !colour_keys
     in
-    List.fold_left
-      (fun acc kind -> combine acc (word_need ~release property kind))
-      acc tokens
+    let acc =
+      List.fold_left
+        (fun acc kind -> combine acc (word_need ~release property kind))
+        acc tokens
+    in
+    if uses_unrecorded ~release (List.rev tokens) then unrecorded acc else acc
 
-let rec first_release ~floor engine decl =
+let rec first_release ~floor engine decl : Support.release =
   match decl with
   | Theme_guarded { decl; _ } -> first_release ~floor engine decl
-  | Declaration { property = Custom_property _; _ } -> Option.Some floor
+  | Declaration { property = Custom_property _; _ } -> From floor
   | Declaration _ ->
       first_release_with ~tokens:(lazy (value_tokens decl)) ~floor engine decl
 
@@ -910,31 +961,29 @@ let marks_differ later earlier =
 let legacy_vendor_fallback ~later earlier =
   value_is_vendor_prefixed later && marks_differ later earlier
 
-(* Inside one rule a prefixed or legacy keyword also stays before a later
-   standard value, for a browser older than the floors that reads only the
-   prefixed one. *)
-let legacy_pair later earlier =
-  (value_is_vendor_prefixed earlier || value_is_vendor_prefixed later)
-  && marks_differ later earlier
-
 (* The browsers judged for are each engine from its floor to the newest release
    the data records, and a shipped production stays. [earlier] is what a browser
    paints in place of [later] only where it parses [earlier] and drops [later]:
    in an engine, from the release that first parses [earlier] until the one that
    first parses [later], if that comes after it. A browser dropping both, as
    Safari does [user-select:auto] and [user-select:none], paints neither, and
-   one parsing both paints [later]. *)
+   one parsing both paints [later]. A declaration whose first release the data
+   cannot tell is assumed read and dropped wherever that keeps [earlier]. *)
 let fallback_for ~floors ~later earlier =
   legacy_vendor_fallback ~later earlier
   || List.exists
        (fun (engine, floor) ->
-         match first_release ~floor engine earlier with
-         | Option.None -> false
-         | Option.Some reads_earlier -> (
-             match first_release ~floor engine later with
-             | Option.None -> true
-             | Option.Some reads_later ->
-                 Support.compare_version reads_later reads_earlier > 0))
+         match
+           ( first_release ~floor engine earlier,
+             first_release ~floor engine later )
+         with
+         | Never, _ -> false
+         | From reads_earlier, From reads_later ->
+             Support.compare_version reads_later reads_earlier > 0
+         | From _, (Never | Unrecorded) -> true
+         | Unrecorded, From reads_later ->
+             Support.compare_version reads_later floor > 0
+         | Unrecorded, (Never | Unrecorded) -> true)
        (Support.floors floors)
 
 (* Rewrite the value of a custom declaration through [f], which sees its
@@ -972,3 +1021,20 @@ let rec value_size ?(minify = true) ?(inline = false) decl =
    so they do not apply here: nothing licenses building such a value. *)
 let value_has_css_wide_mix decl =
   Properties.value_has_css_wide_mix (string_of_value ~minify:true decl)
+
+(* The reader keeps every declaration holding [revert-rule] as tokens: a
+   property's as the opaque tokens of its name, a custom property's as its own,
+   since the keyword there rolls back the custom property itself (CSS Cascade 5
+   sec. 7.3.6). A typed value never holds it. *)
+let rec rolls_back_rule = function
+  | Theme_guarded { decl; _ } -> rolls_back_rule decl
+  | Declaration { property = Unknown_property _; value; _ } ->
+      Properties.components_hold_revert_rule value
+  | Declaration
+      {
+        property = Custom_property _;
+        value = Custom_value { value = Tokens value; _ };
+        _;
+      } ->
+      Properties.components_hold_revert_rule value
+  | Declaration _ -> false

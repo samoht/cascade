@@ -53,6 +53,29 @@ let css_wide_keywords =
 let is_css_wide_keyword value =
   List.mem (String.lowercase_ascii value) css_wide_keywords
 
+(* CSS Cascade 5 sec. 7.3.6: [revert-rule] rolls a value back past the style
+   rule that holds it. It reaches a property as the whole value, as the fallback
+   of a substitution function, or as a custom property's value. *)
+let rec components_hold_revert_rule components =
+  List.exists component_holds_revert_rule components
+
+and component_holds_revert_rule = function
+  | Component.Preserved { kind = Token.Ident ident; _ } ->
+      String.equal (String.lowercase_ascii ident) "revert-rule"
+  | Component.Preserved _ -> false
+  | Component.Block { node = { value; _ }; _ } ->
+      components_hold_revert_rule value
+  | Component.Func { node = { arguments; _ }; _ } ->
+      components_hold_revert_rule arguments
+  | Component.Flat { node; _ } ->
+      List.exists
+        (fun (token : Token.t) ->
+          match token.kind with
+          | Token.Ident ident ->
+              String.equal (String.lowercase_ascii ident) "revert-rule"
+          | _ -> false)
+        node
+
 (* CSS Cascade 5 sec. 7.3: a CSS-wide keyword must stand alone, so it is invalid
    mixed with other tokens (e.g. [font: initial 16px serif]). True when [value]
    is not itself a lone CSS-wide keyword yet contains one as an identifier. *)
@@ -175,7 +198,9 @@ let collapse_box_shorthand vs =
 let pp_box_shorthand pp ctx vs = Pp.list ~sep:Pp.token_sp pp ctx vs
 
 (* Canonicalise a colour to its shortest spelling. *)
-let normalize_color ?(lossless = false) = Values.normalize_color ~lossless
+let normalize_color ?(lossless = false) ~enforce_spec =
+  Values.normalize_color ~lossless ~enforce_spec
+
 let preserve_if_equal before after = if after == before then before else after
 let map_preserve = List.map_preserve
 
@@ -256,8 +281,8 @@ let color_of_syntax_fallback (v : length var) : color option =
         color
       with
       | color -> Some color
-      | exception Cursor.Parse_error _ -> Option.None)
-  | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> Option.None
+      | exception Cursor.Parse_error _ -> None)
+  | Empty | Empty2 | None | Fallback _ | Var_fallback _ -> None
 
 (* A shadow grammar puts its colour on either side of the length run and never
    inside it: CSS Backgrounds 3 sec. 6.2 writes [inset? && <length>{2,4} &&
@@ -273,21 +298,21 @@ let color_of_syntax_fallback (v : length var) : color option =
 let take_trailing_color_var (lengths : length list) (color : color option) :
     length list * color option =
   match (color, List.rev lengths) with
-  | Option.None, Var v :: (_ :: _ :: _ as before) -> (
+  | None, Var v :: (_ :: _ :: _ as before) -> (
       match color_of_syntax_fallback v with
       | Some fallback ->
           let var : color var =
             {
               name = v.name;
               fallback = Fallback fallback;
-              default = Option.None;
+              default = None;
               layer = v.layer;
               meta = v.meta;
               runtime = v.runtime;
             }
           in
           (List.rev before, Some (Var var : color))
-      | Option.None -> (lengths, color))
+      | None -> (lengths, color))
   | _ -> (lengths, color)
 
 (* Drop a shorthand component that equals its longhand initial: a shorthand
@@ -415,3 +440,10 @@ let equal_contain_intrinsic_size_item (a : contain_intrinsic_size_item) b =
   a = b
 
 let equal_border_style (a : border_style) b = a = b
+
+(* A shorthand resets every longhand it covers before setting the ones written,
+   so a slot holding the longhand's initial value declares what leaving it out
+   declares, and the shorter spelling leaves it out. *)
+let drop_initial_slot : 'a. 'a -> 'a option -> 'a option =
+ fun initial opt ->
+  match opt with Some x when x = initial -> (None : _ option) | _ -> opt

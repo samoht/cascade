@@ -446,12 +446,12 @@ let grid_shorthand_names_both_axes () =
   check_declaration ~expected:"grid-template:10px/20px"
     "grid-template: 10px / 20px";
   check_declaration ~expected:"grid-template:none" "grid-template: none";
-  check_declaration ~expected:"grid-template:\"a\" 10px"
+  check_declaration ~expected:"grid-template:\"a\"10px"
     "grid-template: \"a\" 10px";
   (* CSS Grid 2 sec. 7.4 spells the areas form as [ <line-names>? <string>
      <track-size>? <line-names>? ]+ [ / <explicit-track-list> ]?, and sec. 7.2
      leaves repeat() out of an explicit track list. *)
-  check_declaration ~expected:"grid-template:[x]\"a\" 1fr[y]"
+  check_declaration ~expected:"grid-template:[x]\"a\"1fr[y]"
     "grid-template: [x] \"a\" 1fr [y]";
   neg_cursor read_declaration "grid-template: #next \"sidebar\"";
   neg_cursor read_declaration "grid-template: 45deg, \"-\"";
@@ -1110,7 +1110,7 @@ let spec_platform_property_vectors () =
         "font:italic small-caps 650 condensed 16px/1.5 Brand,serif" );
       ("display: block flex", "display:block flex");
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
-        "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );
+        "grid-template:\"head head\"auto\"nav main\"1fr/12rem 1fr" );
       ( "transition: opacity 1s ease-in .2s allow-discrete",
         "transition:opacity 1s ease-in .2s allow-discrete" );
       ("animation-range: exit entry", "animation-range:exit entry");
@@ -1809,6 +1809,26 @@ let substitution_defers_css_wide_mix_validation () =
     (fun value -> none_cursor read_declaration ("margin:" ^ value))
     [ "1px inherit"; "var() inherit"; "env() inherit"; "attr() inherit" ]
 
+(* CSS Images 4 sec. 3.3: a conic gradient's angle defaults to [0deg] and its
+   position to [center], so a prelude naming both says what omitting it says.
+   Before a [var()] first stop it stays, since the substituted tokens could then
+   be read as the prelude (CSS Variables 1 sec. 3). *)
+let conic_default_prelude () =
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"background-image" ~into input)
+    [
+      ( "conic-gradient(from 0deg at center,blue,red)",
+        "conic-gradient(#00f,red)" );
+      ("conic-gradient(from 0turn,blue,red)", "conic-gradient(#00f,red)");
+      ("conic-gradient(at 50% 50%,blue,red)", "conic-gradient(#00f,red)");
+      ( "conic-gradient(from 0deg at 10% 50%,blue,red)",
+        "conic-gradient(at 10%,#00f,red)" );
+      ( "repeating-conic-gradient(from 0deg,blue,red 10%)",
+        "repeating-conic-gradient(#00f,red 10%)" );
+      ( "conic-gradient(from 0deg at center,var(--a),red)",
+        "conic-gradient(from 0deg at 50%,var(--a),red)" );
+    ]
+
 let suite =
   ( "declaration_spec",
     [
@@ -1876,4 +1896,6 @@ let suite =
       test_case "substitution defers CSS-wide mix validation" `Quick
         substitution_defers_css_wide_mix_validation;
       test_case "property name case" `Quick property_case;
+      test_case "a conic default prelude is no prelude" `Quick
+        conic_default_prelude;
     ] )

@@ -414,7 +414,9 @@ let rec collect_keyed_rules acc path stmts =
 let reported_declaration d =
   let value = Css.declaration_value ~minify:false d in
   let value =
-    if Css.declaration_is_important d then value ^ " !important" else value
+    if Css.declaration_is_important d then
+      String.concat "" [ value; " !important" ]
+    else value
   in
   (Css.declaration_name d, value)
 
@@ -472,11 +474,17 @@ let diff_count_mismatch key ds1 ds2 =
   let n2 = List.length ds2 in
   if n2 > n1 then
     (D.Added
-       { selector = key ^ " (duplicate)"; declarations = List.nth ds2 (n2 - 1) }
+       {
+         selector = String.concat "" [ key; " (duplicate)" ];
+         declarations = List.nth ds2 (n2 - 1);
+       }
       : D.rule_diff)
   else
     (D.Removed
-       { selector = key ^ " (missing)"; declarations = List.nth ds1 (n1 - 1) }
+       {
+         selector = String.concat "" [ key; " (missing)" ];
+         declarations = List.nth ds1 (n1 - 1);
+       }
       : D.rule_diff)
 
 (* Detect declaration-reordering-only differences throughout a stylesheet *)
@@ -712,10 +720,10 @@ let visible_move ~expected ~actual key =
 
 let container_key (info : D.container_info) =
   match info.container_type with
-  | `Media -> Some ("@media " ^ info.condition)
-  | `Supports -> Some ("@supports " ^ info.condition)
-  | `Container -> Some ("@container " ^ info.condition)
-  | `Layer -> Some ("@layer " ^ info.condition)
+  | `Media -> Some (String.concat "" [ "@media "; info.condition ])
+  | `Supports -> Some (String.concat "" [ "@supports "; info.condition ])
+  | `Container -> Some (String.concat "" [ "@container "; info.condition ])
+  | `Layer -> Some (String.concat "" [ "@layer "; info.condition ])
   | `Property | `Nesting | `At_rule -> None
 
 let visible_rule_changes ~expected ~actual changes =
@@ -1170,13 +1178,18 @@ let add_pct buf char_diff_pct =
   if String.contains s '.' then
     match String.split_on_char '.' s with
     | [ i; d ] ->
-        let frac = if String.length d >= 1 then String.sub d 0 1 else d ^ "0" in
+        let frac =
+          if String.length d >= 1 then String.sub d 0 1
+          else String.concat "" [ d; "0" ]
+        in
         add_strings buf [ i; "."; frac ]
     | _ -> Buffer.add_string buf s
   else add_strings buf [ s; ".0" ]
 
 let add_change buf count action singular =
-  let noun = if count = 1 then singular else singular ^ "s" in
+  let noun =
+    if count = 1 then singular else String.concat "" [ singular; "s" ]
+  in
   add_strings buf [ string_of_int count; " "; action; " "; noun ]
 
 let emit_changes buf stats =

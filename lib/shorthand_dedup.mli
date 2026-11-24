@@ -15,18 +15,19 @@ val is_all_declaration : Declaration.declaration -> bool
 (** [is_all_declaration d] is [true] when [d] is the [all] shorthand. *)
 
 val deduplicate_step :
+  enforce_spec:bool ->
   floors:Support.targets ->
   judged:bool ->
   ('a * Declaration.declaration) list ->
   'a * Declaration.declaration ->
   ('a * Declaration.declaration) list
-(** [deduplicate_step ~floors ~judged kept d] adds [d] to the reversed list
-    [kept], dropping the declarations of [kept] that [d] makes dead, or drops
-    [d] when an important declaration of [kept] already covers it. A declaration
-    [d] covers is dead only when every browser at or above [floors] that reads
-    it also reads [d] ({!Declaration.fallback_for}). A run that does not judge
-    for browsers ([judged] false) also keeps one before a CSS Color 4 colour or
-    a runtime substitution. *)
+(** [deduplicate_step ~enforce_spec ~floors ~judged kept d] adds [d] to the
+    reversed list [kept], dropping the declarations of [kept] that [d] makes
+    dead, or drops [d] when an important declaration of [kept] already covers
+    it. A declaration [d] covers is dead only when every browser at or above
+    [floors] that reads it also reads [d] ({!Declaration.fallback_for}). A run
+    that does not judge for browsers ([judged] false) also keeps one before a
+    CSS Color 4 colour or a runtime substitution. *)
 
 val read_by_no_target : Declaration.declaration -> bool
 (** [read_by_no_target decl] is whether no browser a {!Support.targets} names
@@ -51,13 +52,19 @@ val drop_vendor_aliases :
     available. Under {!Ctx.enforce_spec} every declaration is kept. *)
 
 val implied_longhands :
-  Declaration.declaration -> Declaration.declaration list option
-(** [implied_longhands sh] is every longhand the shorthand [sh] writes, each
-    with the value [sh] assigns it, reset-only ones included, at the importance
-    of [sh]. It is [None] unless every such value can be proven:
-    [border:1px solid red] gives [border-width:1px], [border-style:solid],
-    [border-color:red] and [border-image:none], while [border:solid] and any
-    other shorthand give [None]. *)
+  enforce_spec:bool ->
+  Declaration.declaration ->
+  Declaration.declaration list option
+(** [implied_longhands ~enforce_spec sh] is every longhand the shorthand [sh]
+    writes, each with the value [sh] assigns it, the initial value for a slot
+    [sh] omits and reset-only ones included, at the importance of [sh]. It reads
+    [border], a single-layer [background], [flex] and a single [transition]:
+    [border:1px solid] gives [border-width:1px], [border-style:solid],
+    [border-color:currentcolor] and [border-image:none]. The basis [flex:1]
+    omits is [0%], what Chrome computes, and [0] under [enforce_spec], what CSS
+    Flexible Box 1 (ED) sec. 7.1 specifies. It is [None] for any other shorthand
+    and wherever a value cannot be proven: an omitted slot of a shorthand
+    holding a [var()]. *)
 
 val declarations_conflict_with_keys :
   Declaration.declaration ->
@@ -71,7 +78,10 @@ val declarations_conflict_with_keys :
     other writes there. *)
 
 val drop_longhands_after_covering_shorthand :
-  Declaration.declaration list -> Declaration.declaration list
-(** [drop_longhands_after_covering_shorthand decls] drops a longhand that writes
-    the value a preceding covering shorthand of the same importance already
-    assigns it. *)
+  enforce_spec:bool ->
+  Declaration.declaration list ->
+  Declaration.declaration list
+(** [drop_longhands_after_covering_shorthand ~enforce_spec decls] drops a
+    longhand that writes the value a preceding covering shorthand of the same
+    importance already assigns it, an omitted slot read as {!implied_longhands}
+    reads it. *)

@@ -556,7 +556,6 @@ let length_of_value f unit : Values_intf.length option =
   | "px" -> Some (L.Px f)
   | "em" -> Some (L.Em f)
   | "rem" -> Some (L.Rem f)
-  | "%" -> Some (L.Pct f)
   | "vw" -> Some (L.Vw f)
   | "vh" -> Some (L.Vh f)
   | "vmin" -> Some (L.Vmin f)
@@ -628,8 +627,6 @@ let value_of_components_opt components =
   match non_whitespace_components components with
   | [ Component.Preserved { kind = Token.Number_tok number; _ } ] ->
       value_of_number number
-  | [ Component.Preserved { kind = Token.Percentage number; _ } ] ->
-      Some (Length (Values_intf.Pct number.value))
   | [ Component.Preserved { kind = Token.Dimension { number; unit_ }; _ } ] ->
       read_value_with_unit number.value unit_
   | [

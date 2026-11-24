@@ -82,6 +82,7 @@ let rec pp_hue : hue Pp.t =
 let rec pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
+  | Alpha_none -> Pp.string ctx "none"
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_alpha ctx v
@@ -90,7 +91,7 @@ let rec pp_alpha : alpha Pp.t =
 (* Helper to print optional alpha with the correct leading separator *)
 let pp_opt_alpha ctx = function
   | None -> ()
-  | (Num _ | Pct _ | Var _ | Calc _) as a ->
+  | (Alpha_none | Num _ | Pct _ | Var _ | Calc _) as a ->
       Pp.op_char ctx '/';
       pp_alpha ctx a
 
@@ -481,9 +482,9 @@ let color_of_default_string value =
       && String.for_all is_hex hex
     then
       match rgba_of_hex hex with
-      | Some (r, g, b, a) -> Option.Some (Hex { r; g; b; a })
-      | None -> Option.None
-    else Option.None
+      | Some (r, g, b, a) -> Some (Hex { r; g; b; a })
+      | None -> None
+    else None
   else if
     len > 5 && String.starts_with ~prefix:"rgb(" value && value.[len - 1] = ')'
   then
@@ -493,11 +494,11 @@ let color_of_default_string value =
       body |> String.split_on_char ' ' |> List.filter (fun s -> s <> "")
     in
     match List.map int_of_string_opt parts with
-    | [ Option.Some r; Option.Some g; Option.Some b ]
+    | [ Some r; Some g; Some b ]
       when List.for_all (fun n -> 0 <= n && n <= 255) [ r; g; b ] ->
-        Option.Some (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
-    | _ -> Option.None
-  else Option.None
+        Some (Rgb (Channels { r = Int r; g = Int g; b = Int b }))
+    | _ -> None
+  else None
 
 let color_of_var_resolution ctx (v : color var) =
   value_of_var_resolution ctx color_of_default_string v
@@ -604,14 +605,13 @@ and pp_color_attr ctx name fallback =
 
 and pp_color_var (ctx : Pp.ctx) (v : color var) =
   match v with
-  | { fallback = Syntax_fallback value; default = Option.None; _ }
-    when ctx.inline ->
+  | { fallback = Syntax_fallback value; default = None; _ } when ctx.inline ->
       let rendered = string_of_syntax_fallback ctx value in
       Pp.string ctx (first_top_level_comma_segment rendered)
   | _ when Pp.minified ctx -> (
       match color_of_var_resolution ctx v with
-      | Option.Some color -> pp_color ctx color
-      | Option.None -> pp_var pp_color ctx v)
+      | Some color -> pp_color ctx color
+      | None -> pp_var pp_color ctx v)
   | _ -> pp_var pp_color ctx v
 
 and pp_color : color Pp.t = fun ctx color -> pp_color_default ctx color

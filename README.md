@@ -75,13 +75,16 @@ The two assumptions described at the top each have a switch:
 - `--lossless` stops rounding. Colours and repeating decimals from `calc()`
   stay exact, and declarations keep the author's order.
 
-By default the minifier makes the output as small as it can, but merges rules
-with one body only where they print within 128 rules of each other. Servers
-usually send CSS compressed, and a compressor encodes a repeated declaration in
-two or three bytes wherever it sits, but a selector moved away from its
-neighbours stops compressing against them. `--objective=raw` merges them at any
-distance instead, for
-CSS that ships uncompressed such as email HTML; it is noticeably slower. On
+Servers usually send CSS compressed, so by default the minifier makes the
+output as small as it can once compressed. It weighs each rewrite by an
+estimate of the gzip bytes it saves: a compressor encodes a selector or a
+declaration printed shortly before in a few bytes, so lifting a declaration out
+of rules that repeat it saves little, and printing a selector a second time
+costs about as much. It merges rules with one body only where they print within
+128 rules of each other, since a selector moved away from its neighbours stops
+compressing against them. `--objective=raw` weighs rewrites by their raw bytes
+and merges at any distance instead, for CSS that ships uncompressed such as
+email HTML; it is noticeably slower. On
 the SatCSS corpus, `--minify` takes about 2.2 ms per KB of input, so a 200 KB
 stylesheet takes a few hundred milliseconds.
 

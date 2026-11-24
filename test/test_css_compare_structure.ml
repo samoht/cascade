@@ -761,6 +761,19 @@ let canonical_folds_an_adjacent_same_selector_pair () =
     "two writes of one property stay distinct" false
     (equal ".w{color:red}.w{color:blue}" ".w{color:blue}.w{color:red}")
 
+(* CSS Cascade 5 sec. 7.3.6: [revert-rule] rolls back past the rule holding it,
+   so Chrome 153 paints the pair apart red and folded the inherited colour. *)
+let canonical_keeps_a_revert_rule_apart () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a revert-rule rule does not fold into the rule before it" false
+    (equal ".w{color:red}.w{color:revert-rule}"
+       ".w{color:red;color:revert-rule}");
+  Alcotest.(check bool)
+    "the same rules are equal" true
+    (equal ".w{color:red}.w{color:revert-rule}"
+       ".w{color:red}\n.w{color: revert-rule}")
+
 (* CSS Position 3 sec. 3.1 makes [inset] the [top right bottom left] shorthand,
    so the four longhands written in one rule and the same four gathered from two
    rules are one sheet whichever side composes them, and whatever stands between
@@ -825,6 +838,30 @@ let canonical_order_reads_shared_longhands () =
   Alcotest.(check bool)
     "no rule is reported moved" false
     (Astring.String.is_infix ~affix:"moved" r)
+
+(* CSS Box 4 sec. 3.2 and 4.2 and CSS Position 3 sec. 3.1: a box shorthand of
+   one to four values gives top, right, bottom and left, a missing side copying
+   the opposite one, so [padding:1px] writes [1px] to [padding-top] and
+   [inset:1px] writes it to [top]. Either order of the pair computes the same
+   values. [padding:1px 2px] writes [2px] to [padding-left], so there the order
+   decides. *)
+let canonical_order_reads_box_sides () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "padding and an agreeing side commute" true
+    (equal ".i{padding:1px}.d{padding-top:1px}"
+       ".d{padding-top:1px}.i{padding:1px}");
+  Alcotest.(check bool)
+    "margin and an agreeing side commute" true
+    (equal ".i{margin:1px 2px}.d{margin-left:2px}"
+       ".d{margin-left:2px}.i{margin:1px 2px}");
+  Alcotest.(check bool)
+    "inset and an agreeing side commute" true
+    (equal ".i{inset:1px}.d{top:1px}" ".d{top:1px}.i{inset:1px}");
+  Alcotest.(check bool)
+    "a side the shorthand sets otherwise does not" false
+    (equal ".i{padding:1px 2px}.d{padding-left:1px}"
+       ".d{padding-left:1px}.i{padding:1px 2px}")
 
 (* [-moz-transform] and [-webkit-transform] write one slot: Firefox reads both
    as [transform], Chromium and WebKit the second alone. Two rules whose every
@@ -1067,6 +1104,49 @@ let canonical_layer_declaration_forms_converge () =
    features queried, which its negation shares, so both ask one container. Their
    order decides nothing, whatever they write. A condition that merely differs,
    or a negation aimed at another container, keeps the order. *)
+(* CSS Color 5 (ED) sec. 3.3: a color-mix() of one item is that item's colour
+   converted to the interpolation space. Chrome 157 drops it, so under the
+   default targets it paints the declaration before it and differs from the
+   colour; every conforming implementation reads it, so under --enforce-spec the
+   two are one value. *)
+let canonical_one_item_color_mix () =
+  let one = "a{color:red;color:color-mix(in srgb,blue)}" in
+  let colour = "a{color:red;color:color(srgb 0 0 1)}" in
+  Alcotest.(check bool)
+    "the default targets drop a one-item mix" false
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical one colour);
+  Alcotest.(check bool)
+    "under --enforce-spec it is the colour" true
+    (Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true one
+       colour)
+
+(* The basis [flex:1] and [flex:1 2] omit: Chrome 157 computes it as [0%], so
+   the default targets read it so; CSS Flexible Box 1 (ED) sec. 7.1 makes its
+   specified value [0], which --enforce-spec reads. [0%] against an indefinite
+   container sizes the item from its content where [0] does not, so each mode
+   tells the other's reading apart. *)
+let canonical_flex_omitted_basis () =
+  let default a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  let spec a b =
+    Cascade_diff.Css_compare.equal ~mode:`Canonical ~enforce_spec:true a b
+  in
+  let pct = "a{flex-grow:1;flex-shrink:1;flex-basis:0%}" in
+  let zero = "a{flex-grow:1;flex-shrink:1;flex-basis:0}" in
+  Alcotest.(check bool) "default reads 0%" true (default "a{flex:1}" pct);
+  Alcotest.(check bool) "default tells 0 apart" false (default "a{flex:1}" zero);
+  Alcotest.(check bool) "enforce-spec reads 0" true (spec "a{flex:1}" zero);
+  Alcotest.(check bool)
+    "enforce-spec tells 0% apart" false (spec "a{flex:1}" pct);
+  Alcotest.(check bool)
+    "enforce-spec reads 0 after two factors" true
+    (spec "a{flex:1 2}" "a{flex-grow:1;flex-shrink:2;flex-basis:0}");
+  Alcotest.(check bool)
+    "a later basis the shorthand implies, default" true
+    (default "a{flex:1;flex-basis:0%}" "a{flex:1}");
+  Alcotest.(check bool)
+    "a later basis the shorthand implies, enforce-spec" true
+    (spec "a{flex:1;flex-basis:0}" "a{flex:1}")
+
 let canonical_ignores_order_under_exclusive_conditions () =
   let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
   let swapped a b = equal (a ^ b) (b ^ a) in
@@ -1730,10 +1810,14 @@ let suite =
         equal_canonical_nested_media_conjoin;
       Alcotest.test_case "canonical border sides" `Quick
         equal_canonical_border_sides;
+      Alcotest.test_case "canonical keeps a revert-rule apart" `Quick
+        canonical_keeps_a_revert_rule_apart;
       Alcotest.test_case "canonical composes gathered longhands" `Quick
         canonical_composes_gathered_longhands;
       Alcotest.test_case "canonical order reads shared longhands" `Quick
         canonical_order_reads_shared_longhands;
+      Alcotest.test_case "canonical order reads box sides" `Quick
+        canonical_order_reads_box_sides;
       Alcotest.test_case "alias writes of one value agree" `Quick
         canonical_alias_writes_agree;
       Alcotest.test_case "canonical folds a factored vendor-twin group" `Quick
@@ -1748,4 +1832,8 @@ let suite =
         canonical_layer_declaration_forms_converge;
       Alcotest.test_case "canonical ignores order under exclusive conditions"
         `Quick canonical_ignores_order_under_exclusive_conditions;
+      Alcotest.test_case "canonical one-item color-mix" `Quick
+        canonical_one_item_color_mix;
+      Alcotest.test_case "canonical flex omitted basis" `Quick
+        canonical_flex_omitted_basis;
     ] )

@@ -59,7 +59,7 @@ let is_color_function name =
 (* [c] is one component whose syntax fixes it as a colour; fold it to the
    shortest non-keyword spelling, falling back to [fallback ()] when it does not
    actually parse as a complete colour. *)
-let fold_custom_color ~lossless (c : Component.t) ~fallback =
+let fold_custom_color ~lossless ~enforce_spec (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   let cur = Cursor.of_string text in
   match
@@ -68,7 +68,8 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
   | Some col when Cursor.is_done cur -> (
       let canon =
         Pp.to_string ~minify:true Values.pp_color
-          (Values.nonkeyword_color (Values.normalize_color ~lossless col))
+          (Values.nonkeyword_color
+             (Values.normalize_color ~lossless ~enforce_spec col))
       in
       match read_custom_property_value (Cursor.of_string canon) with
       | Tokens cs -> cs
@@ -77,13 +78,15 @@ let fold_custom_color ~lossless (c : Component.t) ~fallback =
 
 let is_math_function = Parser.is_math_function
 
-(* A math function is unconditionally a math expression whose type is fixed by
-   its operands' units, so when it reduces to a single constant it has that
-   value in every [var()] substitution site - fold it inside an opaque
-   custom-property stream like a complete colour. [<number>] and the
-   unit-unambiguous dimensions ([<angle>] / [<time>]) qualify; [<percentage>] is
-   ambiguous (length vs number percentage) so it stays verbatim, as does a
-   function that still references a [var()] (it does not reduce to a leaf). *)
+(* A math function's type is fixed by its operands' units, but its result stands
+   for the call only where no slot tells them apart. CSS Values 4 sec. 10.9
+   rounds a call at an [<integer>] and sec. 10.12 clamps one past a range, where
+   the bare result is invalid ([z-index:var(--v)] with [calc(2.5)] is [3], with
+   [2.5] invalid), and [calc(0)] is no [<length>] where [0] is one. So a
+   [<number>] never folds, a [<time>] folds only when it is not negative (the
+   [[0,inf]] slots), and an [<angle>], which no property bounds, always does.
+   [<percentage>] is ambiguous (length vs number percentage) so it stays
+   verbatim, as does a function that still references a [var()]. *)
 let fold_custom_calc (c : Component.t) ~fallback =
   let text = Parser.string_of_components [ c ] in
   (* Parse the whole token as one typed value and fold only when it reduces to a
@@ -109,18 +112,17 @@ let fold_custom_calc (c : Component.t) ~fallback =
         else None
     | _ -> None
   in
-  let number_reduced = function (Num _ : number) -> true | _ -> false in
   let angle_reduced = function
     | (Deg _ | Rad _ | Turn _ | Grad _ : angle) -> true
     | _ -> false
   in
-  let time_reduced = function (S _ | Ms _ : duration) -> true | _ -> false in
+  let time_reduced = function
+    | (S v | Ms v : duration) -> not (Float.sign_bit v)
+    | _ -> false
+  in
   match
     List.find_map Fun.id
       [
-        try_typed read_number
-          (fun n -> normalize_number n)
-          pp_number number_reduced;
         try_typed read_angle_unit_required
           (fun a -> normalize_angle a)
           pp_angle angle_reduced;
@@ -152,11 +154,14 @@ let drop_function_arguments wrapped =
   Component.Func
     { wrapped with node = { wrapped.Component.node with arguments = [] } }
 
-let rec normalize_shadow_colors ~lossless (shadow : shadow) =
+let rec normalize_shadow_colors ~lossless ~enforce_spec (shadow : shadow) =
   let normalize_body (body : shadow_body) : shadow_body =
     {
       body with
-      color = option_map_preserve (Values.normalize_color ~lossless) body.color;
+      color =
+        option_map_preserve
+          (Values.normalize_color ~lossless ~enforce_spec)
+          body.color;
     }
   in
   match shadow with
@@ -170,7 +175,10 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
         (Inset (Toggle { toggle with body = normalize_body body }) : shadow)
   | List shadows ->
       preserve_if_equal shadow
-        (List (map_preserve (normalize_shadow_colors ~lossless) shadows))
+        (List
+           (map_preserve
+              (normalize_shadow_colors ~lossless ~enforce_spec)
+              shadows))
   | other -> other
 
 (* A complete shadow token stream is self-typing: its length sequence and
@@ -179,20 +187,22 @@ let rec normalize_shadow_colors ~lossless (shadow : shadow) =
    only that typed colour while preserving the authored shadow shape; applying
    the full shadow optimiser here would also drop explicit default lengths from
    an otherwise opaque custom-property token stream. *)
-let canonicalize_custom_shadow_components ~lossless components =
+let canonicalize_custom_shadow_components ~lossless ~enforce_spec components =
   let t = Cursor.of_string (Parser.string_of_components components) in
   match try Some (read_shadow t) with Cursor.Parse_error _ -> None with
   | Some shadow when Cursor.is_done t -> (
-      let shadow = normalize_shadow_colors ~lossless shadow in
+      let shadow = normalize_shadow_colors ~lossless ~enforce_spec shadow in
       let canonical = Pp.to_string ~minify:true pp_shadow shadow in
       match read_custom_property_value (Cursor.of_string canonical) with
       | Tokens components -> components
       | Typed _ -> components)
   | _ -> components
 
-let rec canonicalize_custom_colors_components ~lossless comps =
-  let fold_color c ~fallback = fold_custom_color ~lossless c ~fallback in
-  let inner = canonicalize_custom_colors_components ~lossless in
+let rec canonicalize_custom_colors_components ~lossless ~enforce_spec comps =
+  let fold_color c ~fallback =
+    fold_custom_color ~lossless ~enforce_spec c ~fallback
+  in
+  let inner = canonicalize_custom_colors_components ~lossless ~enforce_spec in
   List.concat_map
     (fun (c : Component.t) ->
       match c with
@@ -577,9 +587,8 @@ let rec canonicalize_time_components comps =
       | Component.Preserved
           ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
           match canonical_time_token number unit_ with
-          | Option.Some kind ->
-              Component.Preserved { token with kind; repr = Option.None }
-          | Option.None -> c)
+          | Some kind -> Component.Preserved { token with kind; repr = None }
+          | None -> c)
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let arguments = canonicalize_time_components func.arguments in
@@ -628,9 +637,8 @@ let rec canonicalize_angle_components comps =
       | Component.Preserved
           ({ kind = Token.Dimension { number; unit_ }; _ } as token) -> (
           match canonical_angle_token number unit_ with
-          | Option.Some kind ->
-              Component.Preserved { token with kind; repr = Option.None }
-          | Option.None -> c)
+          | Some kind -> Component.Preserved { token with kind; repr = None }
+          | None -> c)
       | Component.Func wrapped ->
           let func = wrapped.Component.node in
           let arguments = canonicalize_angle_components func.arguments in
@@ -642,13 +650,17 @@ let rec canonicalize_angle_components comps =
       | Component.Preserved _ | Component.Flat _ -> c)
     comps
 
-let normalize_custom_property_value ?(lossless = false)
+let normalize_custom_property_value ?(lossless = false) ?(enforce_spec = false)
     ?(ctx = Values.default_calc_ctx) :
     custom_property_value -> custom_property_value = function
   | Typed { kind = Length; value } ->
       Typed { kind = Length; value = Values.normalize_length ~ctx value }
   | Typed { kind = Color; value } ->
-      Typed { kind = Color; value = Values.normalize_color ~lossless value }
+      Typed
+        {
+          kind = Color;
+          value = Values.normalize_color ~lossless ~enforce_spec value;
+        }
   | Typed { kind = Number; value } ->
       Typed { kind = Number; value = Values.normalize_number ~ctx value }
   | Typed { kind = Percentage; value } ->
@@ -673,6 +685,7 @@ let normalize_custom_property_value ?(lossless = false)
   | Tokens components ->
       Tokens
         (canonicalize_math_whitespace_components
-           (canonicalize_custom_colors_components ~lossless
-              (canonicalize_custom_shadow_components ~lossless components)))
+           (canonicalize_custom_colors_components ~lossless ~enforce_spec
+              (canonicalize_custom_shadow_components ~lossless ~enforce_spec
+                 components)))
   | Typed _ as other -> other

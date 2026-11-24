@@ -164,13 +164,14 @@ val splits_a_fallback_pair :
     rule in two rules. *)
 
 val rewrite_candidate :
+  objective:Ctx.objective ->
   kind:Rule_rewrite.kind ->
   finalize:(Stylesheet.rule -> Stylesheet.rule) ->
   view ->
   consume:Rule_graph.node_id list ->
   produce:Stylesheet.rule list ->
   Rule_rewrite.candidate option
-(** [rewrite_candidate ~kind ~finalize g ~consume ~produce] is
+(** [rewrite_candidate ~objective ~kind ~finalize g ~consume ~produce] is
     {!Rule_rewrite.v}, unless the rewrite would leave the two halves of a WebKit
     fallback pair in two rules. *)
 

@@ -51,7 +51,6 @@ let pp_int ctx value = Pp.string ctx (string_of_int value)
 let pp_cascade_rule ctx (rule : cascade_rule) =
   let first = ref true in
   Pp.char ctx '{';
-  pp_field ctx ~first "property_name" Pp.string rule.property_name;
   pp_field ctx ~first "important" pp_bool rule.important;
   pp_field ctx ~first "layer" pp_string_option rule.layer;
   pp_field ctx ~first "source_order" pp_int rule.source_order;

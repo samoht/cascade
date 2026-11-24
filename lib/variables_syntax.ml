@@ -45,8 +45,8 @@ let rec var_refs_in_components acc (components : Component.t list) =
           let acc =
             if String.lowercase_ascii name = "var" then
               match first_var_ref_ident (Component.shallow arguments) with
-              | Option.Some n -> n :: acc
-              | Option.None -> acc
+              | Some n -> n :: acc
+              | None -> acc
             else acc
           in
           var_refs_in_components acc arguments
@@ -80,7 +80,7 @@ let rec substitution_fn_in_components (components : Component.t list) =
     (fun (c : Component.t) ->
       match c with
       | Component.Func { node = { name; arguments; _ }; _ } ->
-          if Component.is_substitution_function name then Option.Some name
+          if Component.is_substitution_function name then Some name
           else substitution_fn_in_components arguments
       | Component.Block { node = { value; _ }; _ } ->
           substitution_fn_in_components value
@@ -90,10 +90,10 @@ let rec substitution_fn_in_components (components : Component.t list) =
               match tok.kind with
               | Token.Function name when Component.is_substitution_function name
                 ->
-                  Option.Some name
-              | _ -> Option.None)
+                  Some name
+              | _ -> None)
             node
-      | Component.Preserved _ -> Option.None)
+      | Component.Preserved _ -> None)
     components
 
 let substitution_fn_in_value_string value =
@@ -108,8 +108,8 @@ let rec element_relative_in_components (components : Component.t list) =
       match c with
       | Component.Preserved { Token.kind = Token.Dimension { unit_; _ }; _ }
         when Values.is_element_relative_unit unit_ ->
-          Option.Some unit_
-      | Component.Preserved _ -> Option.None
+          Some unit_
+      | Component.Preserved _ -> None
       | Component.Func { node = { arguments; _ }; _ } ->
           element_relative_in_components arguments
       | Component.Block { node = { value; _ }; _ } ->
@@ -120,8 +120,8 @@ let rec element_relative_in_components (components : Component.t list) =
               match tok.kind with
               | Token.Dimension { unit_; _ }
                 when Values.is_element_relative_unit unit_ ->
-                  Option.Some unit_
-              | _ -> Option.None)
+                  Some unit_
+              | _ -> None)
             node)
     components
 
@@ -164,8 +164,7 @@ let pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
   (* CSS Properties and Values API 1 sec. 3.1: the [syntax] descriptor is a
      [<string>], so its text is written the way every string is. *)
-  Pp.quoted_string ctx
-    (Pp.to_string ~minify:(Pp.minified ctx) pp_syntax_inner syn)
+  Pp.quoted_string ctx (Pp.render ctx pp_syntax_inner syn)
 
 (** Pretty-print a value according to its syntax type *)
 let pp_registered_angle ctx = function
@@ -379,20 +378,23 @@ open Common
 
 let list_map_preserve = List.map_preserve
 
-let rec normalize_value : type a. ?lossless:bool -> a syntax -> a -> a =
- fun ?(lossless = false) syntax value ->
+let rec normalize_value : type a.
+    ?lossless:bool -> ?enforce_spec:bool -> a syntax -> a -> a =
+ fun ?(lossless = false) ?(enforce_spec = false) syntax value ->
   match syntax with
-  | Color -> Values.normalize_color ~lossless value
+  | Color -> Values.normalize_color ~lossless ~enforce_spec value
   | Or (left, right) -> (
       match value with
       | Either.Left v ->
-          let v' = normalize_value ~lossless left v in
+          let v' = normalize_value ~lossless ~enforce_spec left v in
           if v' == v then value else Either.Left v'
       | Either.Right v ->
-          let v' = normalize_value ~lossless right v in
+          let v' = normalize_value ~lossless ~enforce_spec right v in
           if v' == v then value else Either.Right v')
-  | Plus syntax -> list_map_preserve (normalize_value ~lossless syntax) value
-  | Hash syntax -> list_map_preserve (normalize_value ~lossless syntax) value
+  | Plus syntax ->
+      list_map_preserve (normalize_value ~lossless ~enforce_spec syntax) value
+  | Hash syntax ->
+      list_map_preserve (normalize_value ~lossless ~enforce_spec syntax) value
   (* A registered [<length>] or [<length-percentage>] reads a unitless zero as
      the length it names, as a declaration of that type does, so it takes the
      shorter [0] a declaration's zero takes; a zero [<percentage>] keeps its

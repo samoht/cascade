@@ -65,16 +65,14 @@ let rec flat_rule ~in_scope ?(parent : parent option) (rule : rule) :
     statement list =
   let at =
     match parent with
-    | Option.None ->
+    | None ->
         let selector =
           if in_scope then scoped rule.selector else rule.selector
         in
-        Option.Some { selector; printed = rule.selector }
-    | Option.Some p -> compose p rule.selector
+        Some { selector; printed = rule.selector }
+    | Some p -> compose p rule.selector
   in
-  match at with
-  | Option.None -> []
-  | Option.Some at -> flat_rule_with ~in_scope ~at rule
+  match at with None -> [] | Some at -> flat_rule_with ~in_scope ~at rule
 
 and flat_rule_with ~in_scope ~(at : parent) (rule : rule) : statement list =
   let direct =
@@ -142,8 +140,8 @@ and nested_scope (parent : parent) s e block =
     Option.map
       (fun s ->
         match compose parent s with
-        | Option.Some at -> at.printed
-        | Option.None -> Nest.combine parent.selector s)
+        | Some at -> at.printed
+        | None -> Nest.combine parent.selector s)
       s
   in
   Scope

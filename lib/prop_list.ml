@@ -201,19 +201,19 @@ let list_style_slot_is_var (s : list_style_shorthand) =
    [symbolic]. *)
 let normalize_list_style_type (value : list_style_type) : list_style_type =
   match value with
-  | Symbols (Option.Some Symbolic, symbols) -> Symbols (Option.None, symbols)
+  | Symbols (Some Symbolic, symbols) -> Symbols (None, symbols)
   | _ -> value
 
-let normalize_list_style_image ~lossless (value : list_style_image) :
-    list_style_image =
+let normalize_list_style_image ~lossless ~enforce_spec
+    (value : list_style_image) : list_style_image =
   match value with
   | Image i ->
-      let i' = normalize_background_image ~lossless i in
+      let i' = normalize_background_image ~lossless ~enforce_spec i in
       if i' == i then value else Image i'
   | _ -> value
 
-let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
-    list_style_shorthand =
+let normalize_list_style_shorthand ~lossless ~enforce_spec
+    (s : list_style_shorthand) : list_style_shorthand =
   if list_style_slot_is_var s then s
   else
     let type_ =
@@ -227,7 +227,8 @@ let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
     in
     let image =
       drop_default ~is_default:(fun (i : list_style_image) -> i = None) s.image
-      |> option_map_preserve (normalize_list_style_image ~lossless)
+      |> option_map_preserve
+           (normalize_list_style_image ~lossless ~enforce_spec)
     in
     if
       option_is_phys_same type_ s.type_
@@ -236,9 +237,10 @@ let normalize_list_style_shorthand ~lossless (s : list_style_shorthand) :
     then s
     else { type_; position; image }
 
-let normalize_list_style ~lossless : list_style -> list_style = function
+let normalize_list_style ~lossless ~enforce_spec : list_style -> list_style =
+  function
   | Shorthand s as value ->
-      let s' = normalize_list_style_shorthand ~lossless s in
+      let s' = normalize_list_style_shorthand ~lossless ~enforce_spec s in
       if s' == s then value else Shorthand s'
   | value -> value
 
@@ -408,7 +410,7 @@ let rec read_list_style_image t : list_style_image =
    Each slot is recognised by the longhand reader; a single bare [none]
    populates both [type_] and [image] per CSS Lists 3 sec. 3.6. *)
 let try_list_style_slot r read_fn (slot : 'a option ref) =
-  if !slot <> Option.None then false
+  if !slot <> None then false
   else
     let pos = Cursor.save r in
     match read_fn r with
@@ -425,13 +427,12 @@ let try_list_style_slot r read_fn (slot : 'a option ref) =
 let resolve_list_style_nones r nones (type_ : list_style_type option ref)
     (image : list_style_image option ref) =
   let free =
-    (if !type_ = Option.None then 1 else 0)
-    + if !image = Option.None then 1 else 0
+    (if !type_ = None then 1 else 0) + if !image = None then 1 else 0
   in
   if nones > free then Cursor.err_invalid r "too many none in list-style";
   if nones > 0 then begin
-    if !type_ = Option.None then type_ := Some (None : list_style_type);
-    if !image = Option.None then image := Some (None : list_style_image)
+    if !type_ = None then type_ := Some (None : list_style_type);
+    if !image = None then image := Some (None : list_style_image)
   end
 
 let read_list_style_shorthand r : list_style_shorthand =
@@ -463,10 +464,8 @@ let read_list_style_shorthand r : list_style_shorthand =
   if not (Cursor.is_done r) then
     Cursor.err_invalid r "invalid list-style shorthand";
   resolve_list_style_nones r !nones type_ image;
-  if
-    !type_ = Option.None && !position = Option.None && !image = Option.None
-    && !nones = 0
-  then Cursor.err_invalid r "invalid list-style shorthand";
+  if !type_ = None && !position = None && !image = None && !nones = 0 then
+    Cursor.err_invalid r "invalid list-style shorthand";
   { type_ = !type_; position = !position; image = !image }
 
 let rec read_list_style t : list_style =

@@ -127,8 +127,10 @@ let test_property_value_lookup_boundaries () =
   Alcotest.(check (option decl_t))
     "inherited lookup is exact" None
     (Css.Context.inherited_value "background-color" ctx);
+  (* A property name is ASCII case-insensitive (CSS 2.1 sec. 4.1.3), unlike a
+     custom property's. *)
   Alcotest.(check (option decl_t))
-    "initial lookup is exact" None
+    "initial lookup ignores ASCII case" (Some initial)
     (Css.Context.initial_value "Display" ctx)
 
 let test_document_context () =

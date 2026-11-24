@@ -32,7 +32,7 @@ jobs:
       # differs between ubuntu and macos: a property one build implements and
       # the other does not makes the comparison fail on whichever runner is
       # behind, whatever the diff under test says. [CHROME] is the override
-      # test/render/browser.ml reads before it goes looking.
+      # lib/browser/browser.ml reads before it goes looking.
       - name: Install the pinned browser
         run: |
           PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/cascade-browser" \
@@ -66,7 +66,7 @@ jobs:
       # differs between ubuntu and macos: a property one build implements and
       # the other does not makes the comparison fail on whichever runner is
       # behind, whatever the diff under test says. [CHROME] is the override
-      # test/render/browser.ml reads before it goes looking.
+      # lib/browser/browser.ml reads before it goes looking.
       - name: Install the pinned browser
         run: |
           PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/cascade-browser" \

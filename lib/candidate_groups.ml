@@ -26,11 +26,11 @@ let hash_strings strings =
    the whole body and decides that per property, so a rule carrying nested
    content stands on the same terms as any other. *)
 let same_selector_eligible (r : rule) =
-  r.merge_key = Option.None && Merge.listable r.selector
+  r.merge_key = None && Merge.listable r.selector
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
 let identical_body_eligible ~ctx (r : rule) =
-  r.nested = [] && r.merge_key = Option.None && Merge.listable r.selector
+  r.nested = [] && r.merge_key = None && Merge.listable r.selector
   && (Ctx.extend_lists ctx || not (Selector.is_compound_list r.selector))
   && not (List.exists Shorthand.is_all_declaration r.declarations)
 
@@ -74,7 +74,7 @@ let has_selector_list g ids = List.exists (selector_is_list g) ids
 let non_list_selector_ids g ids =
   List.filter (fun id -> not (selector_is_list g id)) ids
 
-let identical_body_candidate ~finalize g ids =
+let identical_body_candidate ~objective ~finalize g ids =
   match ids with
   | [] | [ _ ] -> Option.None
   | ids -> (
@@ -82,8 +82,8 @@ let identical_body_candidate ~finalize g ids =
       match grouped_rule rules with
       | Option.None -> Option.None
       | Option.Some grouped ->
-          rewrite_candidate ~kind:Identical_body ~finalize g ~consume:ids
-            ~produce:[ grouped ])
+          rewrite_candidate ~objective ~kind:Identical_body ~finalize g
+            ~consume:ids ~produce:[ grouped ])
 
 let add_candidate candidates = function
   | Option.None -> ()
@@ -94,17 +94,21 @@ let better_than candidate = function
   | Option.Some baseline -> candidate.saving > baseline.saving
 
 let add_identical_body_group ~ctx ~finalize g ~candidates ids =
+  let objective = Ctx.objective ctx in
   if Ctx.extend_lists ctx && has_selector_list g ids then begin
     let strict =
-      identical_body_candidate ~finalize g (non_list_selector_ids g ids)
+      identical_body_candidate ~objective ~finalize g
+        (non_list_selector_ids g ids)
     in
     add_candidate candidates strict;
-    match identical_body_candidate ~finalize g ids with
-    | Option.Some extended when better_than extended strict ->
-        add_candidate candidates (Option.Some extended)
+    match identical_body_candidate ~objective ~finalize g ids with
+    | Some extended when better_than extended strict ->
+        add_candidate candidates (Some extended)
     | _ -> ()
   end
-  else add_candidate candidates (identical_body_candidate ~finalize g ids)
+  else
+    add_candidate candidates
+      (identical_body_candidate ~objective ~finalize g ids)
 
 (* A hash bucket split into runs of one exact selector key, as
    {!same_body_groups} splits one by body, so two selectors whose hashes collide
@@ -122,9 +126,12 @@ let same_selector_groups g ids =
   |> List.fold_left (fun groups id -> insert id groups) []
   |> List.map (fun (_, ids) -> List.rev ids)
 
-let add_same_selector_group ~stats ~finalize g ~candidates ids =
+let add_same_selector_group ~ctx ~finalize g ~candidates ids =
   let source_order = ordered_ids g ids |> rules_with_ids g in
-  let safe = Commute.nested_merge_is_safe ~stats (List.map snd source_order) in
+  let safe =
+    Commute.nested_merge_is_safe ~stats:(Ctx.stats ctx)
+      (List.map snd source_order)
+  in
   let rules_with_ids = Commute.merge_order source_order in
   let ordered = List.map fst rules_with_ids in
   let rules = List.map snd rules_with_ids in
@@ -137,15 +144,15 @@ let add_same_selector_group ~stats ~finalize g ~candidates ids =
           declarations =
             List.concat_map (fun (r : rule) -> r.declarations) rules;
           nested = List.concat_map (fun (r : rule) -> r.nested) rules;
-          merge_key = Option.None;
+          merge_key = None;
         }
       in
       match
-        rewrite_candidate ~kind:Same_selector ~finalize g ~consume:ordered
-          ~produce:[ merged ]
+        rewrite_candidate ~objective:(Ctx.objective ctx) ~kind:Same_selector
+          ~finalize g ~consume:ordered ~produce:[ merged ]
       with
-      | Option.None -> ()
-      | Option.Some c -> candidates := c :: !candidates)
+      | None -> ()
+      | Some c -> candidates := c :: !candidates)
   | _ -> ()
 
 type grouping = Bodies | Selectors
@@ -173,12 +180,12 @@ let grouping_key core grouping id =
   match grouping with
   | Bodies ->
       if identical_body_eligible ~ctx:(ctx core) rule && rule.declarations <> []
-      then Option.Some (body_bucket_key (view core) id)
-      else Option.None
+      then Some (body_bucket_key (view core) id)
+      else None
   | Selectors ->
       if same_selector_eligible rule then
-        Option.Some (hash_strings (selector_key (view core) id))
-      else Option.None
+        Some (hash_strings (selector_key (view core) id))
+      else None
 
 let touch_group core groups bucket =
   if bucket.group_stamp <> epoch core then begin
@@ -188,26 +195,26 @@ let touch_group core groups bucket =
 
 let remove core groups id =
   match grouping_key core groups.grouping id with
-  | Option.None -> ()
-  | Option.Some key ->
+  | None -> ()
+  | Some key ->
       let bucket = Int_table.find groups.group_buckets key in
       bucket.members <- without id bucket.members;
       touch_group core groups bucket
 
 let touch core groups id =
   match grouping_key core groups.grouping id with
-  | Option.None -> ()
-  | Option.Some key ->
+  | None -> ()
+  | Some key ->
       touch_group core groups (Int_table.find groups.group_buckets key)
 
 let add core groups id =
   match grouping_key core groups.grouping id with
-  | Option.None -> ()
-  | Option.Some key ->
+  | None -> ()
+  | Some key ->
       let bucket =
         match Int_table.find_opt groups.group_buckets key with
-        | Option.Some bucket -> bucket
-        | Option.None ->
+        | Some bucket -> bucket
+        | None ->
             let bucket =
               {
                 group_key = key;
@@ -281,9 +288,7 @@ let group_candidates core grouping runs =
         runs
   | Selectors ->
       List.iter
-        (add_same_selector_group
-           ~stats:(Ctx.stats (ctx core))
-           ~finalize g ~candidates)
+        (add_same_selector_group ~ctx:(ctx core) ~finalize g ~candidates)
         runs);
   List.rev !candidates
 
@@ -302,7 +307,7 @@ let settle core groups (_ : changes) =
   let ranks =
     match groups.grouping with
     | Bodies -> printed_ranks core
-    | Selectors -> Option.None
+    | Selectors -> None
   in
   List.iter
     (fun bucket ->

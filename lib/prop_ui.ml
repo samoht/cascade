@@ -323,7 +323,7 @@ let rec read_nav t : nav =
 (* CSS UI 4 (ED) sec. 3.3 gives outline-style the initial value [none]. *)
 let drop_initial_outline_style (style : outline_style option) :
     outline_style option =
-  match style with Some (None : outline_style) -> Option.None | style -> style
+  match style with Some (None : outline_style) -> None | style -> style
 
 (* CSS UI 4 (ED) sec. 3.2 gives outline-width the values and meaning of
    border-width, so the width slot takes the longhand's fold and its initial
@@ -334,7 +334,7 @@ let drop_initial_outline_style (style : outline_style option) :
    the two spellings meet there. [auto] is not the initial style and stays: a
    lone [auto] and an [auto] beside a width both set outline-style and
    outline-color to [auto]. *)
-let normalize_outline ?(lossless = false) : outline -> outline =
+let normalize_outline ?(lossless = false) ~enforce_spec : outline -> outline =
  fun value ->
   match value with
   | Shorthand s ->
@@ -343,7 +343,9 @@ let normalize_outline ?(lossless = false) : outline -> outline =
           (option_map_preserve Prop_background.normalize_border_width s.width)
       in
       let style = drop_initial_outline_style s.style in
-      let color = option_map_preserve (normalize_color ~lossless) s.color in
+      let color =
+        option_map_preserve (normalize_color ~lossless ~enforce_spec) s.color
+      in
       if width == s.width && style == s.style && color == s.color then value
       else if
         Option.is_none width && Option.is_none style && Option.is_none color
@@ -351,22 +353,26 @@ let normalize_outline ?(lossless = false) : outline -> outline =
       else Shorthand { width; style; color }
   | other -> other
 
-let normalize_caret ?(lossless = false) : caret -> caret =
+let normalize_caret ?(lossless = false) ~enforce_spec : caret -> caret =
  fun value ->
   match value with
   | Caret (color, anim, shape) ->
       preserve_if_equal value
         (Caret
-           (option_map_preserve (normalize_color ~lossless) color, anim, shape))
+           ( option_map_preserve (normalize_color ~lossless ~enforce_spec) color,
+             anim,
+             shape ))
   | other -> other
 
-let normalize_scrollbar_color ?(lossless = false) :
+let normalize_scrollbar_color ?(lossless = false) ~enforce_spec :
     scrollbar_color -> scrollbar_color =
  fun value ->
   match value with
   | Colors (a, b) ->
       preserve_if_equal value
-        (Colors (normalize_color ~lossless a, normalize_color ~lossless b))
+        (Colors
+           ( normalize_color ~lossless ~enforce_spec a,
+             normalize_color ~lossless ~enforce_spec b ))
   | other -> other
 
 let rec pp_appearance : appearance Pp.t =
@@ -1389,10 +1395,10 @@ let read_outline_part ~width ~style ~color t =
     match
       if Option.is_none !width then
         Cursor.option Prop_background.read_border_width t
-      else Option.None
+      else None
     with
     | Some w -> width := Some w
-    | Option.None ->
+    | None ->
         if Option.is_none !color then color := Some (read_auto_color t)
         else Cursor.err_expected t "outline"
 
@@ -1445,5 +1451,5 @@ let read_outline_shorthand t : outline_shorthand =
   match read_outline t with
   | Shorthand s -> s
   | Inherit | Initial | Unset | Revert | Revert_layer | None ->
-      { width = Option.None; style = Option.None; color = Option.None }
+      { width = None; style = None; color = None }
   | Var _ -> Cursor.err_invalid t "outline var shorthand"

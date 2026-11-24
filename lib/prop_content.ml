@@ -62,7 +62,7 @@ let rec pp_content : content Pp.t =
    output. Fold onto [String] once that round-trip is gone, or [content:'x'] and
    [content:"x"] reach one minified text through two nodes, which anything keyed
    on the node reads as two values. *)
-let rec normalize_content ~lossless (c : content) : content =
+let rec normalize_content ~lossless ~enforce_spec (c : content) : content =
   match c with
   | Quoted { value; _ } -> String value
   (* CSS Lists 3 sec. 4.6: an omitted counter style is [decimal]. *)
@@ -70,14 +70,14 @@ let rec normalize_content ~lossless (c : content) : content =
   | Counters { name; separator; style = Some Decimal } ->
       Counters { name; separator; style = None }
   | Image i ->
-      let i' = normalize_background_image ~lossless i in
+      let i' = normalize_background_image ~lossless ~enforce_spec i in
       if i' == i then c else Image i'
   | Content_list items ->
-      let items' = List.map (normalize_content ~lossless) items in
+      let items' = List.map (normalize_content ~lossless ~enforce_spec) items in
       if List.equal ( == ) items items' then c else Content_list items'
   | With_alt { content; alt } ->
-      let content' = normalize_content ~lossless content in
-      let alt' = List.map (normalize_content ~lossless) alt in
+      let content' = normalize_content ~lossless ~enforce_spec content in
+      let alt' = List.map (normalize_content ~lossless ~enforce_spec) alt in
       if content' == content && List.equal ( == ) alt alt' then c
       else With_alt { content = content'; alt = alt' }
   | _ -> c
@@ -88,7 +88,7 @@ let pp_counter_item ctx { name; reversed; value } =
   | None -> ()
   | Some n ->
       Pp.space ctx ();
-      Pp.int ctx n
+      Values.pp_number ctx n
 
 let rec pp_counter_set : counter_set Pp.t =
  fun ctx -> function
@@ -130,7 +130,7 @@ let read_counter_style_arg inner =
     let style = Prop_list.read_counter_style inner in
     Cursor.ws inner;
     Some style)
-  else Option.None
+  else None
 
 let read_content_counter t =
   Cursor.call "counter" t (fun inner ->
@@ -166,8 +166,8 @@ let rec read_content_attr t =
       let name = Cursor.ident ~keep_case:true inner in
       let type_ : Values.attr_type option =
         Cursor.ws inner;
-        if Cursor.is_done inner || Cursor.peek_comma inner then Option.None
-        else Option.Some (Values.read_attr_type inner)
+        if Cursor.is_done inner || Cursor.peek_comma inner then None
+        else Some (Values.read_attr_type inner)
       in
       Cursor.ws inner;
       let fallback : content Values.attr_fallback =
@@ -266,15 +266,15 @@ let read_counter_item ~reversed t =
           Cursor.ws t;
           name)
         t
-    else Option.None
+    else None
   in
   let name, reversed =
     match reversed_name with
-    | Option.Some name -> (name, true)
-    | Option.None -> (read_counter_name t, false)
+    | Some name -> (name, true)
+    | None -> (read_counter_name t, false)
   in
   Cursor.ws t;
-  let value = Cursor.option Values.read_constant_integer t in
+  let value = Cursor.option Values.read_integer_slot t in
   { name; reversed; value }
 
 let rec read_counter_set ~reversed t : counter_set =

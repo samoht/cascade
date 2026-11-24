@@ -31,7 +31,7 @@ CHANGED=$(git diff --cached --name-only --diff-filter=ACM)
 # 0. ASCII only, on the staged content rather than the worktree. The script
 #    owns the filter, so what CI covers and what the commit is held to are the
 #    same set by construction.
-printf '%s\n' "$CHANGED" | "$root/scripts/check_ascii.sh" --staged
+"$root/scripts/check_ascii.sh" --staged
 
 # The fast path below only decides whether dune fmt and merlint are worth
 # running; the ASCII rule above has already seen every staged file.

@@ -385,7 +385,8 @@ val cascade_revert_origin_candidates :
 val declared_values :
   ?property:string -> declaration list -> Stylesheet.declared_value list
 (** [declared_values ?property declarations] returns declared values in source
-    order, optionally filtered to one property. *)
+    order, optionally filtered to one property, which a legacy name alias
+    declares as well (CSS Cascade 5 sec. 3.1). *)
 
 val cascaded_value : Stylesheet.cascade_origin_candidate list -> string option
 (** [cascaded_value candidates] returns the winning cascaded value payload, or
@@ -2272,9 +2273,8 @@ val shape_image_threshold : shape_image_threshold -> declaration
 val shape_margin : length_percentage -> declaration
 (** [shape_margin v] is the [shape-margin] property. *)
 
-val shape_outside : string -> declaration
-(** [shape_outside v] is the [shape-outside] property, held as the authored text
-    of its shape. *)
+val shape_outside : shape_outside -> declaration
+(** [shape_outside v] is the [shape-outside] property. *)
 
 val overflow_clip_margin : overflow_clip_margin -> declaration
 (** [overflow_clip_margin v] is the [overflow-clip-margin] property. *)
@@ -4231,12 +4231,13 @@ val optimize :
     the CSS you control). The default is safe for any page.
 
     [objective] (default [`Transfer]) is the size metric factoring is judged by:
-    under [`Transfer], it minimises output bytes, but merges rules with one body
-    only where they print within 128 rules of each other, because a compressor
-    encodes a repeated declaration in two or three bytes wherever it sits, but a
-    selector moved away from its neighbours stops compressing against them. Pass
-    [`Raw] to merge them at any distance, the right objective when the output
-    ships uncompressed (inline HTML style attributes, email HTML).
+    under [`Transfer], every rewrite is scored by an estimate of the compressed
+    bytes it saves, because a compressor encodes a selector or a declaration
+    printed shortly before in a few bytes, and rules with one body merge only
+    where they print within 128 rules of each other, because a selector moved
+    away from its neighbours stops compressing against them. Pass [`Raw] to
+    score raw bytes and merge them at any distance, the right objective when the
+    output ships uncompressed (inline HTML style attributes, email HTML).
 
     When [prune_unused_custom_props] is [true] (default [false]) custom-property
     bindings referenced by no [var()] anywhere are dropped. Opt-in: it assumes a

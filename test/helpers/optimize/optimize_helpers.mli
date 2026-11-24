@@ -8,9 +8,14 @@ val hex_color : string -> Css.Values.color
 val media_min_width : float -> Css.Media.t
 (** [media_min_width px] is the media condition [(min-width: <px>px)]. *)
 
-val minify : ?targets:Css.Optimize.targets -> Css.t -> string
-(** [minify sheet] is [sheet] optimised for [targets] (default
-    {!Css.Optimize.evergreen_targets}) and printed minified. *)
+val minify :
+  ?objective:Css.Optimize.objective ->
+  ?targets:Css.Optimize.targets ->
+  Css.t ->
+  string
+(** [minify sheet] is [sheet] optimised under [objective] (default [`Transfer])
+    for [targets] (default {!Css.Optimize.evergreen_targets}) and printed
+    minified. *)
 
 val nesting_targets : Css.Optimize.targets
 (** [nesting_targets] are floors from which every target engine parses all of
@@ -28,6 +33,7 @@ val rule_of_statement : Css.statement -> Css.Stylesheet.rule
 
 val optimized_string :
   ?scope:Css.Optimize.scope ->
+  ?objective:Css.Optimize.objective ->
   ?targets:Css.Optimize.targets ->
   ?enforce_spec:bool ->
   string ->
@@ -35,6 +41,11 @@ val optimized_string :
 (** [optimized_string css] reads [css] as a stylesheet, optimises it and prints
     it minified. *)
 
-val minify_str : ?targets:Css.Optimize.targets -> string -> string
-(** [minify_str css] parses [css] leniently, optimises it for [targets] (default
+val minify_str :
+  ?objective:Css.Optimize.objective ->
+  ?targets:Css.Optimize.targets ->
+  string ->
+  string
+(** [minify_str css] parses [css] leniently, optimises it under [objective]
+    (default [`Transfer]) for [targets] (default
     {!Css.Optimize.evergreen_targets}) and prints it minified. *)

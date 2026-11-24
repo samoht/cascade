@@ -252,6 +252,12 @@ let background_initial_slots () =
     ~optimized:"background:red" "background: red scroll";
   check_declaration ~expected:"background:url(a.png)transparent"
     ~optimized:"background:url(a.png)" "background: url(a.png) transparent";
+  (* CSS Color 4 sec. 6.1 makes [transparent] transparent black, [rgb(0 0 0 /
+     0)], so another spelling of that colour is the initial value too. *)
+  check_declaration ~expected:"background:url(a.png)#0000"
+    ~optimized:"background:url(a.png)" "background: url(a.png) #0000";
+  check_declaration ~expected:"background:url(a.png)rgb(0 0 0/0)"
+    ~optimized:"background:url(a.png)" "background: url(a.png) rgb(0 0 0 / 0)";
   (* Controls: a slot that is not at its initial value stands. *)
   check_declaration ~expected:"background:no-repeat red"
     ~optimized:"background:no-repeat red" "background: red no-repeat";

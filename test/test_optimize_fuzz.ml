@@ -31,33 +31,34 @@ let same_selector_merge_past_nested () =
     (canon ".a{color:red;&:hover{padding:2rem}}.a{padding:1rem}");
   (* A declaration directly in a nested conditional group is a nested
      declarations rule (CSS Nesting 1 sec. 5), which every target reads in place
-     only from Chrome 130, Firefox 132 and Safari 18.2. So it is flattened under
-     any targets, before any merge sees it, and each group keeps its place
-     between the two rules: hoisting a later declaration ahead of it would hand
-     the group the win wherever it applies. *)
+     from Chrome 130, Firefox 132 and Safari 18.2, the floors here. So it stays
+     nested, and each group keeps its place between the two rules: hoisting a
+     later declaration ahead of it would hand the group the win wherever it
+     applies. A later declaration it does not meet joins the first rule, and a
+     later group follows the first. Chromium 157 paints each pair alike. *)
   let flat input expected =
     Alcotest.(check string) input expected (canon input)
   in
   flat ".a{color:red;@media (min-width:1px){padding:2rem}}.a{padding:1rem}"
-    ".a{color:red}@media(width>=1px){.a{padding:2rem}}.a{padding:1rem}";
+    ".a{color:red;@media(width>=1px){padding:2rem}}.a{padding:1rem}";
   flat ".a{color:red;@container (min-width:1px){padding:2rem}}.a{padding:1rem}"
-    ".a{color:red}@container(width>=1px){.a{padding:2rem}}.a{padding:1rem}";
+    ".a{color:red;@container(width>=1px){padding:2rem}}.a{padding:1rem}";
   flat ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{color:green}"
-    ".a{padding:1rem}@media(width>=1px){.a{color:#00f}}.a{color:green}";
+    ".a{padding:1rem;@media(width>=1px){color:#00f}}.a{color:green}";
   flat
     ".a{padding:1rem;@media (min-width:1px){color:blue}}.a{margin:1rem;@media \
      (min-width:2px){color:green}}"
-    ".a{padding:1rem}@media(width>=1px){.a{color:#00f}}.a{margin:1rem}@media(width>=2px){.a{color:green}}";
+    ".a{padding:1rem;margin:1rem;@media(width>=1px){color:#00f}@media(width>=2px){color:green}}";
   (* A shorthand and a longhand of its family write a common cascade slot, in
      either order. *)
   flat ".a{color:red;@media (min-width:1px){margin:2rem}}.a{margin-top:1rem}"
-    ".a{color:red}@media(width>=1px){.a{margin:2rem}}.a{margin-top:1rem}";
+    ".a{color:red;@media(width>=1px){margin:2rem}}.a{margin-top:1rem}";
   flat ".a{color:red;@media (min-width:1px){margin-top:2rem}}.a{margin:1rem}"
-    ".a{color:red}@media(width>=1px){.a{margin-top:2rem}}.a{margin:1rem}";
+    ".a{color:red;@media(width>=1px){margin-top:2rem}}.a{margin:1rem}";
   flat
     ".a{padding:1rem;@media (min-width:1px){margin:2rem}}.a{color:red;@media \
      (min-width:2px){margin-top:3rem}}"
-    ".a{padding:1rem}@media(width>=1px){.a{margin:2rem}}.a{color:red}@media(width>=2px){.a{margin-top:3rem}}"
+    ".a{padding:1rem;color:red;@media(width>=1px){margin:2rem}@media(width>=2px){margin-top:3rem}}"
 
 (* Whether a nested body and a later declaration block share a slot reads the
    same whichever of the two is asked about: a custom property overlaps the same
@@ -120,19 +121,17 @@ let nested_declaration_run_dedupes () =
     |> Css.Stylesheet.to_string ~minify:true
     |> String.trim
   in
-  (* The run is a nested declarations rule (CSS Nesting 1 sec. 3.4 and 5),
-     flattened under any targets into a rule of its own behind the nested rule,
-     where the deduplication a rule body gets applies to it. *)
+  (* The run is a nested declarations rule (CSS Nesting 1 sec. 3.4 and 5), kept
+     in place under these floors, where the deduplication a rule body gets
+     applies to it. Chromium 157 paints each pair alike. *)
   Alcotest.(check string)
-    "a repeated declaration inside a run collapses"
-    ".a b{color:red}.a{color:#00f}"
+    "a repeated declaration inside a run collapses" ".a{b{color:red}color:#00f}"
     (canon ".a{& b{color:red}color:blue;color:blue}");
   Alcotest.(check string)
-    "a declaration the run itself overrides goes"
-    ".a b{color:red}.a{color:green}"
+    "a declaration the run itself overrides goes" ".a{b{color:red}color:green}"
     (canon ".a{& b{color:red}color:blue;color:green}");
   Alcotest.(check string)
-    "longhands inside a run compose" ".a b{margin:9px}.a{margin:1px}"
+    "longhands inside a run compose" ".a{b{margin:9px}margin:1px}"
     (canon
        ".a{& \
         b{margin:9px}margin-top:1px;margin-right:1px;margin-bottom:1px;margin-left:1px}")

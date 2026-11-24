@@ -20,16 +20,19 @@ let unindexed decls = List.map snd decls
 let test_declaration_covers_reset_boundaries () =
   Alcotest.(check bool)
     "all covers ordinary property" true
-    (Shorthand.declaration_covers (decl "all:initial") (decl "color:red"));
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "all:initial")
+       (decl "color:red"));
   Alcotest.(check bool)
     "all does not cover direction" false
-    (Shorthand.declaration_covers (decl "all:initial") (decl "direction:ltr"));
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "all:initial")
+       (decl "direction:ltr"));
   Alcotest.(check bool)
     "all does not cover custom properties" false
-    (Shorthand.declaration_covers (decl "all:initial") (decl "--brand:red"));
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "all:initial")
+       (decl "--brand:red"));
   Alcotest.(check bool)
     "border covers side width" true
-    (Shorthand.declaration_covers
+    (Shorthand.declaration_covers ~enforce_spec:false
        (decl "border:1px solid red")
        (decl "border-top-width:2px"))
 
@@ -621,56 +624,45 @@ let test_deduplicate_keeps_legacy_fallbacks () =
     ".a{display:-webkit-box;display:flex;color:red;color:blue}" |> decls
     |> Shorthand.deduplicate_declarations
   in
+  (* Every floor parses [display:flex], so the prefix before it paints nowhere
+     in B (docs/invariants.md, declaration layer). *)
   Alcotest.(check (list string))
-    "vendor fallback is kept but ordinary duplicate is dropped"
-    [ "display:-webkit-box"; "display:flex"; "color:blue" ]
+    "a prefix before a value every floor parses is dropped"
+    [ "display:flex"; "color:blue" ]
     (decl_strings result);
-  (* The prefixed-keyword fallbacks for position / text-align are kept too: old
-     Safari only understands -webkit-sticky / -webkit-match-parent. *)
+  (* So are the prefixed position / text-align keywords before [position:sticky]
+     and [text-align:start]. *)
   let result =
     ".a{position:-webkit-sticky;position:sticky;text-align:-webkit-match-parent;text-align:start}"
     |> decls |> Shorthand.deduplicate_declarations
   in
   Alcotest.(check (list string))
-    "prefixed-keyword position/text-align fallbacks are kept"
-    [
-      "position:-webkit-sticky";
-      "position:sticky";
-      "text-align:-webkit-match-parent";
-      "text-align:start";
-    ]
+    "prefixed-keyword position/text-align fallbacks are dead"
+    [ "position:sticky"; "text-align:start" ]
     (decl_strings result);
-  (* The prefixed intrinsic sizing keywords are kept against the unprefixed
-     form, on a length-percentage and a min-* property. *)
+  (* And the prefixed intrinsic sizing keywords before the unprefixed form, on a
+     length-percentage and a min-* property. *)
   let result =
     ".a{width:-webkit-max-content;width:max-content;min-width:-moz-fit-content;min-width:fit-content}"
     |> decls |> Shorthand.deduplicate_declarations
   in
   Alcotest.(check (list string))
-    "prefixed sizing keyword fallbacks are kept"
-    [
-      "width:-webkit-max-content";
-      "width:max-content";
-      "min-width:-moz-fit-content";
-      "min-width:fit-content";
-    ]
+    "prefixed sizing keyword fallbacks are dead"
+    [ "width:max-content"; "min-width:fit-content" ]
     (decl_strings result)
 
 let test_deduplicate_keeps_shorthand_vendor_image_fallbacks () =
-  (* A vendor-prefixed gradient inside a shorthand is a real fallback for the
-     unprefixed gradient, just like the equivalent longhand. *)
+  (* A vendor-prefixed gradient inside a shorthand is dead before the unprefixed
+     gradient every floor parses, just like the equivalent longhand. *)
   let result =
     ".a{background:-webkit-linear-gradient(top,#111,#222);background:linear-gradient(#333,#444);border-image:-webkit-linear-gradient(top,#111,#222);border-image:linear-gradient(#333,#444);mask:-webkit-linear-gradient(top,#111,#222);mask:linear-gradient(#333,#444)}"
     |> decls |> Shorthand.deduplicate_declarations
   in
   Alcotest.(check (list string))
-    "vendor-prefixed gradient fallbacks inside shorthands are kept"
+    "vendor-prefixed gradient fallbacks inside shorthands are dead"
     [
-      "background:-webkit-linear-gradient(top,#111,#222)";
       "background:linear-gradient(#333,#444)";
-      "border-image:-webkit-linear-gradient(top,#111,#222)";
       "border-image:linear-gradient(#333,#444)";
-      "mask:-webkit-linear-gradient(top,#111,#222)";
       "mask:linear-gradient(#333,#444)";
     ]
     (decl_strings result)
@@ -706,12 +698,12 @@ let test_same_value_ignores_importance () =
 let test_page_break_alias_shadowing () =
   Alcotest.(check bool)
     "the legacy spelling covers the modern one" true
-    (Shorthand.declaration_covers
+    (Shorthand.declaration_covers ~enforce_spec:false
        (decl "page-break-before:always")
        (decl "break-before:page"));
   Alcotest.(check bool)
     "the modern spelling covers the legacy one" true
-    (Shorthand.declaration_covers (decl "break-before:page")
+    (Shorthand.declaration_covers ~enforce_spec:false (decl "break-before:page")
        (decl "page-break-before:always"));
   Alcotest.(check bool)
     "the pair writes one slot" true

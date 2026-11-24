@@ -8,3 +8,7 @@
 (cram
  (applies_to public_modules)
  (deps ../../lib/dune))
+
+(cram
+ (applies_to check_ascii)
+ (deps ../../scripts/check_ascii.sh))

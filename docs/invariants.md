@@ -140,7 +140,9 @@ implementation keeps them.
   reads the bare call back to the same node.
 - **A custom property is single-valued only by `@property` registration.** A
   `calc()` identity that drops an operand (`x * 0`) folds only over an operand
-  with no `var()` or over a `<number>` or `<integer>` registration.
+  with no `var()`, over a `<number>` or `<integer>` registration, or over a
+  `<length>` registration at a position that needs a length (CSS Values 4
+  sec. 10.9), where the product is a zero length.
 - **A registration types its property only where every browser in B applies
   it.** CSS Properties and Values API 1 sec. 2.1 lets `CSS.registerProperty()`
   and a later `@property` replace a registration, so a custom property takes a
@@ -169,11 +171,12 @@ implementation keeps them.
   interpolates two legacy sRGB colours (hex, named, `rgb()`, `hsl()`,
   `hwb()`) in gamma-encoded sRGB and other colours in Oklab, so a colour that
   can be interpolated keeps a spelling of its class. A missing component
-  (`none`) folds to zero only where the colour is not interpolated (sec. 4.4
-  and 13.4). Any colour value can be: a gradient, a `color-mix()` reading it
-  through `currentcolor`, an animation's implicit keyframe, or a transition
-  any sheet, user style or script declares, so the minifier and the
-  comparator keep both in every mode, `--scope=stylesheet` included. A
+  (`none`), the alpha included, folds to zero only where the colour is not
+  interpolated (sec. 4.4 and 13.4). Any colour value can be: a gradient, a
+  `color-mix()` reading it through `currentcolor`, an animation's implicit
+  keyframe, or a transition any sheet, user style or script declares, so the
+  minifier and the comparator keep both in every mode, `--scope=stylesheet`
+  included. A
   `color-mix()` is a colour of its interpolation space (CSS Color 5 sec. 3),
   never a legacy one.
 
@@ -231,6 +234,12 @@ implementation keeps them.
   written after a nested statement writes in its own position (sec. 3.4).
   Two rules are independent only when every write of one is independent of
   every write of the other.
+- **A rule holding `revert-rule` keeps its bounds.** CSS Cascade 5 sec. 7.3.6
+  rolls such a value back as if the style rule holding it were absent, so no
+  rewrite merges that rule with another, moves its declarations into another
+  rule (a parent's included, CSS Nesting 1 sec. 3.4), or lets one of them
+  shadow a write of an earlier rule. The keyword counts whole, as a
+  substitution fallback, and in a custom property's value.
 - **Selectors share a list only when every browser in B parses both or
   neither.** A browser drops a whole list over a selector it does not parse
   (Selectors 4 sec. 3.9), so a list some browser in B parses apart is one
@@ -247,7 +256,12 @@ implementation keeps them.
   and under `--enforce-spec` an author's nesting is flattened, which sec. 4
   and 5 of CSS Nesting 1 make exact. A nested declarations rule (sec. 3.4 and
   5), which releases that parse nesting read in another order until Chrome
-  130, Firefox 132 and Safari 18.2, is flattened under any floors.
+  130, Firefox 132 and Safari 18.2 (BCD `api.CSSNestedDeclarations`), stays
+  only where every browser in B is at or past those releases, and is
+  flattened everywhere else. Where it stays, a nested `&` rule holding only
+  declarations under a parent of one selector naming no pseudo-element is a
+  nested declarations rule too, since the two match the same elements at the
+  same weight (sec. 4 and 5).
 - **A nested selector means what CSS Nesting 1 makes it mean.** `&` matches
   what `:is()` of the parent matches (sec. 4), so a parent branch carrying a
   pseudo-element gives it nothing to match, and a nested declarations rule
@@ -329,7 +343,7 @@ Each row names the tests that check a statement. A browser harness under
 | `var()` components | `declaration` "complex values"; `properties_background` "background-image" |
 | Range | `values_math` "spec math range every family", "spec math infinite range" |
 | Math result types | `values_math` "spec math inverse trig is an angle" |
-| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
+| Registration | `v41011_zero_product_over_var` in `test/test_stylesheet_calc.ml`; `calc_zero_product_registered_number`, `calc_zero_product_registered_length` and `registration_known_only_in_closed_scope` in `test/test_optimize_boundaries.ml`; `runtime_var_keeps_its_calc` in `test/test_context_eval.ml` |
 | Fixed-ratio units | `values_math` "spec math fixed-ratio units" |
 | Zero operands | `values_math` "spec math zero operands" |
 | Signed percentage basis | `values_math` "spec math signed percentage basis" |
@@ -337,10 +351,10 @@ Each row names the tests that check a statement. A browser harness under
 | Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
 | Undecidable channels | `test/test_declaration_identity.ml` "undecidable colour channels stay", "colour channels beside a var()"; `test/test_css_compare_values.ml` "canonical undecidable colour channel"; the `test/fixpoint` `spellings` corpus |
 | Interpolation class | `test/test_css_compare_values.ml` "canonical missing components under interpolation", "under a transition"; no test of the legacy/Oklab class yet |
-| Interpolation class | `values_color` "fold keeps interpolation class"; `test/test_css_compare_values.ml` "interpolation class is a difference", "canonical missing components under interpolation", "under a transition" |
+| Interpolation class | `values_color` "fold keeps interpolation class", "alpha none is missing"; `test/test_css_compare_values.ml` "interpolation class is a difference", "missing alpha is a difference", "canonical missing components under interpolation", "under a transition" |
 | Substitution keeps its place | `declaration_shorthand` "spec variables 3 substitution takes no slot", "background leading var slot"; `test/test_optimize.ml` "var() colour functions preserved"; `test/test_css_compare_values.ml` "canonical shadow colour var fallback alpha" |
 | Substitution never invalid | `values_math` "spec math substitution never invalid" |
-| Fallbacks | `floor_fallbacks_survive`, `prefixed_fallbacks_across_rules` and `legacy_keyword_fallbacks_survive` in `test/test_optimize_declarations.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
+| Fallbacks | `floor_fallbacks_survive`, `prefixed_fallbacks_across_rules` and `legacy_keyword_fallbacks_survive` in `test/test_optimize_declarations.ml`; `test/test_optimize_boundaries.ml` "spec values 10.2 clamp takes a none bound"; `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Shorthand coverage | `optimize_declarations` "shorthand longhand rule order" |
 | Partial shorthands | `stylesheet_scope_reset_held` in `test/test_optimize_boundaries.ml`; `test/test_shorthand_compose.ml` "font composes the whole run"; `optimize_declarations` "border keeps longhands beside a border-image", "border reset reads every block"; `test/test_css_compare_structure.ml` "canonical border sides" |
 | `!important` | `test/test_optimize_boundaries.ml` "spec cascade 6.1 important shorthand blocks normal longhand"; `test/test_optimize_origins.ml` "spec cascade 6.3 later important beats earlier important" |
@@ -349,12 +363,14 @@ Each row names the tests that check a statement. A browser harness under
 | List composition | `shorthand_compose` "layer run is one plain layer"; `shorthand_compose` "timeline and range compose"; `declaration_shorthand` "mask boxes" |
 | Rule order | `test/test_optimize_merge.ml` "spec cascade 6.1 conditional competitors keep source order"; `fuzz/fuzz_rule_order.ml` "independent rules commute" |
 | Nested writes | `optimize_factor` "nested writes keep their order"; `test/test_css_compare_structure.ml` "canonical separates moved nested writes" |
+| `revert-rule` | `test/test_optimize_boundaries.ml` "spec cascade 7.3.6 revert-rule keeps its rule"; `test/test_css_compare_structure.ml` "canonical keeps a revert-rule apart" |
 | Selector lists | `test_compatible_past_the_floors` in `test/test_merge.ml`; `equal_canonical_targets` in `test/test_css_compare_structure.ml` (a list a browser reads apart is one rule, a list no target parses is no rule) |
 | Forgiving `:is()` | `optimize_factor` "is keeps an argument some target drops"; `css_compare_structure` "canonical :is() keeps an argument some target drops" |
 | Nesting | `test_nesting_follows_the_floors`, `test_nested_declarations_are_flattened` in `test/test_nest.ml`; `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis" |
+| Nesting | `test_nesting_follows_the_floors`, `test_nested_declarations_follow_the_floors` in `test/test_nest.ml`; the nested-declarations seeds of `test/render/render_diff.ml`; `test/test_optimize_boundaries.ml` "conditional boundary blocks nesting synthesis" |
 | Nested selectors | `test_nesting_selector_names_no_pseudo_element`, `test_pseudo_element_parent_drops_invalid_compound` in `test/test_flatten.ml`; `test_rules_keep_a_pseudo_element_parent_flat` in `test/test_nest.ml`; `canonical_nested_and_flattened_selectors_are_equal` in `test/test_css_compare_structure.ml`; `test_scope_keeps_the_implied_root`, `test_nested_scope_roots_under_the_parent` in `test/test_flatten.ml`; `test_merge_lone_in_scope`, `test_nesting_selector_is_not_reparented` in `test/test_nest.ml` |
-| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point"; `test/test_css_compare_structure.ml` "canonical name-defining rules move" |
+| At-rule identity | `test/test_optimize_origins.ml` "spec cascade 6.4 keyframes name collisions are layered", "spec cascade 6.4 conditional layer declarations stay nested"; `test/test_optimize_boundaries.ml` "spec cascade 2 import keeps substitution point"; `test/test_css_compare_structure.ml` "canonical name-defining rules move"; `test_distant_media_keeps_a_definition_in_place` in `test/test_block.ml` |
 | Guards and prefixes | `equal_canonical_targets` in `test/test_css_compare_structure.ml` |
 | Nothing untyped dropped | `test/spec/browser/accept_set` (every CSS length unit, `if()` and dashed functions among its values); `test/render/parse_recovery`; `properties_animation` "spec animations 3.11 negative delay"; `values_math` "spec math integer slots"; `declaration_spec` "contain-intrinsic-size keeps a trailing auto"; `test/test_declaration_spec.ml` "a substitution function defers the property", "a value a browser keeps reads"; `test/test_declaration_spec.ml` "mask shorthand keeps a three-value position"; `mask_three_value_position_kept_as_written` in `test/test_optimize_declarations.ml` |
-| Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print" |
+| Modes | `optimize_declarations` "target minify and enforce-spec split"; `optimize_factor` "factoring weighs the flagged print"; `css` "nested colour follows print flags" |
 | Assumptions | Convention only: no test exercises a page that breaks a hypothesis |

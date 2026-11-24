@@ -231,20 +231,8 @@ let run_driver ~node ~chrome ~work ~job =
   let errors = work // "driver.err" in
   write_file script Browser_diff_js.source;
   write_file job_file job;
-  match
-    Browser.run
-      ~env:[ ("CHROME", chrome) ]
-      ~stderr:errors node [ script; job_file; work ]
-  with
-  | exception Unix.Unix_error (e, _, _) ->
-      Error
-        (String.concat ""
-           [ "the browser driver did not start: "; Unix.error_message e ])
-  | lines, Unix.WEXITED 0 -> Ok (parse_output lines)
-  | _, (Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _) ->
-      let text = In_channel.with_open_bin errors In_channel.input_all in
-      Error
-        (String.concat "" [ "the browser driver failed:\n"; String.trim text ])
+  Result.map parse_output
+    (Browser.drive ~node ~chrome ~stderr:errors script [ job_file; work ])
 
 let mkdtemp () =
   let base = Filename.get_temp_dir_name () in

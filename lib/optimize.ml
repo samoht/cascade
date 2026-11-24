@@ -58,6 +58,7 @@ let merge_distant_media = Block.merge_distant_media
 let merge_consecutive_supports = Block.merge_consecutive_supports
 let merge_consecutive_containers = Block.merge_consecutive_containers
 let merge_distant_containers = Block.merge_distant_containers
+let merge_distant_supports = Block.merge_distant_supports
 let merge_consecutive_starting_style = Block.merge_consecutive_starting_style
 let drop_empty_rules = Block.drop_empty_rules
 let merge_named_layers_by_name = Block.merge_named_layers_by_name
@@ -86,9 +87,26 @@ let supports_decision ~ctx ~supports cond =
    with continues the run. Splicing here, while the run is collected, costs the
    guard nothing; unwrapping it after the run was processed would send the
    preceding rules through the local passes once per guard. *)
+(* CSS Cascade 5 sec. 7.3.6 rolls a [revert-rule] value back past the style rule
+   holding it, so that rule is a run of its own: the run passes merge, factor
+   and shadow across rules, and each would change what the keyword rolls back
+   to. *)
+let rolls_back (r : rule) =
+  List.exists Declaration.rolls_back_rule r.declarations
+
+(* [rules] cut so that each rule {!rolls_back} stands alone. *)
+let split_rollbacks rules =
+  let flush runs = function [] -> runs | run -> List.rev run :: runs in
+  let rec go runs run = function
+    | [] -> List.rev (flush runs run)
+    | r :: rest when rolls_back r -> go ([ r ] :: flush runs run) [] rest
+    | r :: rest -> go runs (r :: run) rest
+  in
+  go [] [] rules
+
 let rec collect_rules ~holds (stmt_acc : statement list) (rules_acc : rule list)
     : statement list -> statement list * rule list * statement list = function
-  | (Rule r as stmt) :: rest ->
+  | (Rule r as stmt) :: rest when not (rolls_back r) ->
       collect_rules ~holds (stmt :: stmt_acc) (r :: rules_acc) rest
   | Supports (cond, block) :: rest when holds cond ->
       collect_rules ~holds stmt_acc rules_acc (block @ rest)
@@ -179,7 +197,7 @@ let drop_nesting_prefix (stmt : statement) : statement =
 (* CSS Cascade 6 sec. 2.5.2: an [@scope] body's rules and declarations stand for
    the scoping root, which [&] names there, not for the enclosing rule. *)
 let scope_owner =
-  Option.Some
+  Some
     {
       selector = Selector.Nesting;
       declarations = [];
@@ -245,6 +263,7 @@ and merge_blocks ?factor_cache ~ctx ~enforce_spec ~owner ~supports stmts =
   |> merge_consecutive_media ~optimize_merged_block
   |> merge_distant_media ?owner ~optimize_merged_block
   |> merge_consecutive_supports ~optimize_merged_block
+  |> merge_distant_supports ?owner ~optimize_merged_block
   |> merge_consecutive_containers ~optimize_merged_block
   |> merge_distant_containers ?owner ~optimize_merged_block
   |> merge_consecutive_starting_style ~optimize_merged_block
@@ -282,7 +301,7 @@ and rejoin_runs ?factor_cache ~ctx ~enforce_spec ~owner ~supports ~before merged
   in
   let rec walk acc run joined before = function
     | [] -> List.rev (flush acc run joined)
-    | (Rule r as stmt) :: rest ->
+    | (Rule r as stmt) :: rest when not (rolls_back r) ->
         let skipped, before = find stmt false before in
         let joined =
           joined || match run with [] -> false | _ :: _ -> skipped
@@ -482,7 +501,8 @@ and process_rule_run ?factor_cache ~ctx ~enforce_spec ~owner ~supports acc stmt
     r rest =
   let holds cond = supports_decision ~ctx ~supports cond = `True in
   let plain_stmts, plain_rules, rest =
-    collect_rules ~holds [ stmt ] [ r ] rest
+    if rolls_back r then ([ stmt ], [ r ], rest)
+    else collect_rules ~holds [ stmt ] [ r ] rest
   in
   let optimized =
     rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports plain_rules
@@ -629,6 +649,11 @@ and rule_with_optimized_nested ?factor_cache ~ctx ~enforce_spec ~owner ~supports
     else rule_with_nested live (drop_emptied_blocks live.nested)
   in
   let rule =
+    if Ctx.parses_nested_declarations ctx then
+      Nest.nesting_rules_as_declarations rule
+    else rule
+  in
+  let rule =
     let hoisted = Nest.hoist_declaration_runs rule in
     if hoisted == rule then rule
     else
@@ -661,29 +686,29 @@ and rules_aux ?factor_cache ~ctx ~enforce_spec ~owner ~supports
       (fun held (r : rule) -> Shorthand.held_add held r.declarations)
       Shorthand.held_none with_optimized_nested
   in
-  (* Apply local rule normalization before the DAG factor scheduler decides
-     global selector/declaration grouping. *)
-  let prepared = Rule.normalize ~ctx ~held with_optimized_nested in
-  (* Factoring is greedy and global: extracting one shared declaration subset
-     can leave behind leftovers that are themselves factorable. The local linear
-     optimizations above always run; this incremental gate only decides whether
-     the expensive global factoring fixpoint is likely to buy enough bytes to
-     justify the full indexed scheduler walk. *)
-  let factored =
-    if Ctx.regroup ctx then begin
+  let run rules =
+    (* Apply local rule normalization before the DAG factor scheduler decides
+       global selector/declaration grouping. *)
+    let prepared = Rule.normalize ~ctx ~held rules in
+    (* Factoring is greedy and global: extracting one shared declaration subset
+       can leave behind leftovers that are themselves factorable. The local
+       linear optimizations above always run; this incremental gate only decides
+       whether the expensive global factoring fixpoint is likely to buy enough
+       bytes to justify the full indexed scheduler walk. *)
+    if Ctx.regroup ctx then
       (* The global scheduler reaches a fixed point for the graph it receives,
          but settling its result can merge nodes and expose a new graph. Repeat
          only when that cheap postprocessing changed the result; most sheets
          still pay for one global walk. *)
       factor_rules_until_settled ?factor_cache ~ctx ~held prepared
-    end
     else merge_adjacent_and_mark ~ctx (ref false) prepared
   in
-  (* After factoring so the greedy scheduler sees the unconstrained input (a
-     local pre-merge can lock a pair together and hide a larger group): this
-     only picks up the merges factoring did not make because its preflight
-     skipped the run. *)
-  factored
+  (* Lifting a lone nested rule into its wrapper can leave a rule holding
+     [revert-rule] in the run, which is then a run of its own
+     ({!rolls_back}). *)
+  match split_rollbacks with_optimized_nested with
+  | [ _ ] -> run with_optimized_nested
+  | runs -> List.concat_map run runs
 
 (* CSS Animations 1 sec. 3: [@keyframes name] re-declaration overrides the
    earlier definition in source order. Drop earlier same-name keyframes; the
@@ -1037,7 +1062,7 @@ let try_promote_custom_with (type a) (syntax : a Variables.syntax) components =
   | Variables.Time -> Properties.try_read_custom_time components
   | _ -> None
 
-let promote_registered_custom_decl ~lossless registry decl =
+let promote_registered_custom_decl ~lossless ~enforce_spec registry decl =
   match decl with
   | Declaration
       {
@@ -1056,7 +1081,7 @@ let promote_registered_custom_decl ~lossless registry decl =
                    {
                      value =
                        Properties.normalize_custom_property_value ~lossless
-                         typed;
+                         ~enforce_spec typed;
                      layer;
                      meta;
                    })
@@ -1067,10 +1092,11 @@ let promote_registered_custom_decl ~lossless registry decl =
    (CSS Properties and Values API 1 sec. 2), and Tailwind emits its [@property]
    rules after the [@layer] that uses them, so the registry is read whole before
    any declaration is promoted. *)
-let promote_registered_custom_properties ~lossless registry
+let promote_registered_custom_properties ~lossless ~enforce_spec registry
     (stmts : statement list) =
   let promote_decls =
-    List.map_preserve (promote_registered_custom_decl ~lossless registry)
+    List.map_preserve
+      (promote_registered_custom_decl ~lossless ~enforce_spec registry)
   in
   (* A registration is document-global, so every declaration of that name is
      typed wherever it is written: through the declaration walker rather than a
@@ -1282,13 +1308,18 @@ let single_valued_calc_ctx registry : Values.calc_ctx =
         match (syntax name : Variables.any_syntax option) with
         | Some (Variables.Syntax s) -> syntax_is_number s
         | None -> false);
+    var_is_length =
+      (fun name ->
+        match (syntax name : Variables.any_syntax option) with
+        | Some (Variables.Syntax Variables.Length) -> true
+        | Some (Variables.Syntax _) | None -> false);
     budget = false;
   }
 
-let normalize_live_declarations ~ctx ~lossless decls =
+let normalize_live_declarations ~ctx ~lossless ~enforce_spec decls =
   List.edit_preserve
     (fun decl ->
-      let decl' = Declaration.normalize ~ctx ~lossless decl in
+      let decl' = Declaration.normalize ~ctx ~lossless ~enforce_spec decl in
       if Declaration.is_invalid decl' then List.Drop
       else if decl' == decl then List.Keep
       else List.Replace decl')
@@ -1300,7 +1331,8 @@ let normalize_live_declarations ~ctx ~lossless decls =
    carries an unknown at-rule's body as opaque source text, which has no grammar
    to normalise against, or has its declarations normalised wherever that walk
    finds them. *)
-let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
+let sanitize_statement ~ctx ~lossless ~enforce_spec (s : statement) :
+    statement edit =
   match s with
   | Unknown_at_rule _ -> Keep
   | Property r ->
@@ -1308,7 +1340,9 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
         match r.initial_value with
         | None -> r.initial_value
         | Some value ->
-            let value' = Variables.normalize_value ~lossless r.syntax value in
+            let value' =
+              Variables.normalize_value ~lossless ~enforce_spec r.syntax value
+            in
             if value' == value then r.initial_value else Some value'
       in
       if initial_value == r.initial_value then Keep
@@ -1316,13 +1350,14 @@ let sanitize_statement ~ctx ~lossless (s : statement) : statement edit =
   | _ ->
       let s' =
         map_statement_declarations
-          (normalize_live_declarations ~ctx ~lossless)
+          (normalize_live_declarations ~ctx ~lossless ~enforce_spec)
           s
       in
       if s' == s then Keep else Replace s'
 
-let sanitize_block ~ctx ~lossless (b : statement list) : statement list =
-  edit_statements (sanitize_statement ~ctx ~lossless) b
+let sanitize_block ~ctx ~lossless ~enforce_spec (b : statement list) :
+    statement list =
+  edit_statements (sanitize_statement ~ctx ~lossless ~enforce_spec) b
 
 (* One pass, and optimizing its output again returns it. Each rule run is
    factored once, its candidates and their acceptance reading the rules it
@@ -1401,7 +1436,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let scope = Option.value scope ~default:`Fragment in
   let registry = known_registrations ~scope stylesheet in
   let ctx = single_valued_calc_ctx registry in
-  let stylesheet = sanitize_block ~ctx ~lossless stylesheet in
+  let stylesheet = sanitize_block ~ctx ~lossless ~enforce_spec stylesheet in
   let stylesheet = Stylesheet.drop_inert_at_rules stylesheet in
   (* Under [lossless] the raw body stands as authored: nothing types it, so
      nothing proves the layout inside it carries no meaning to its reader. *)
@@ -1409,7 +1444,8 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
     if lossless then stylesheet else compact_unknown_at_rule_bodies stylesheet
   in
   let stylesheet =
-    promote_registered_custom_properties ~lossless registry stylesheet
+    promote_registered_custom_properties ~lossless ~enforce_spec registry
+      stylesheet
   in
   let stylesheet = Stylesheet.normalize_shadow_color_vars stylesheet in
   let registered = registered_foldable registry in
@@ -1428,6 +1464,7 @@ let stylesheet ?scope ?(targets = evergreen_targets) ?judge
   let stylesheet =
     if flatten_nesting || not (Ctx.parses_nesting ctx) then
       Flatten.block stylesheet
+    else if Ctx.parses_nested_declarations ctx then stylesheet
     else Flatten.rules_with_nested_declarations stylesheet
   in
   let result =

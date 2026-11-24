@@ -127,7 +127,7 @@ let scope_prelude r prelude_components : Selector.t option * Selector.t option =
         (true, String.sub s 1 (String.length s - 2) |> String.trim)
     | s -> (false, s)
   in
-  if prelude = "" then (Option.None, Option.None)
+  if prelude = "" then (None, None)
   else
     let start_cvs, end_cvs = split_at_to [] prelude_components in
     let start_parens, start = strip_parens start_cvs in
@@ -580,14 +580,14 @@ and read_container (r : Cursor.t) : statement =
       when List.mem (String.lowercase_ascii name) [ "none"; "and"; "not"; "or" ]
       ->
         Cursor.restore r snap;
-        Option.None
+        None
     | other -> other
   in
   Cursor.ws r;
   let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition : Container.t option =
-    if Cursor.is_done query then Option.None else Some (Container.read query)
+    if Cursor.is_done query then None else Some (Container.read query)
   in
   (* CSS Containment 3 section 4: [@container] requires a query (with an
      optional [<container-name>] in front). Bare [@container { ... }] is a parse
@@ -721,7 +721,7 @@ and read_nested_container_rule r =
   let query = Cursor.sub r (Cursor.drain_until_block r) in
   let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   let condition : Container.t option =
-    if Cursor.is_done query then Option.None else Some (Container.read query)
+    if Cursor.is_done query then None else Some (Container.read query)
   in
   Container (container_name, condition, content)
 

@@ -89,18 +89,18 @@ let length_of_default_string value : length option =
     Cursor.ws t;
     Cursor.expect_eof t;
     match unit with
-    | Option.Some unit ->
-        Option.Some (length_from_calc_unit (String.lowercase_ascii unit) value)
-    | Option.None when value = 0. -> Option.Some Zero
-    | Option.None -> Option.None
+    | Some unit ->
+        Some (length_from_calc_unit (String.lowercase_ascii unit) value)
+    | None when value = 0. -> Some Zero
+    | None -> None
   with
   | value -> value
   | exception Cursor.Parse_error _ -> None
 
 let fallback_of_var_resolution _parse_default : 'a fallback -> 'a option =
   function
-  | Fallback value -> Option.Some value
-  | Var_fallback _ | None | Empty | Empty2 | Syntax_fallback _ -> Option.None
+  | Fallback value -> Some value
+  | Var_fallback _ | None | Empty | Empty2 | Syntax_fallback _ -> None
 
 (* Var resolution at print time covers only [inline] mode, which reads the
    already-resolved [v.default] from the AST. Theme resolution is a transform
@@ -109,9 +109,9 @@ let value_of_var_resolution ctx parse_default (v : 'a var) : 'a option =
   if ctx.Pp.inline then
     Option.fold
       ~none:(fallback_of_var_resolution parse_default v.fallback)
-      ~some:(fun value -> Option.Some value)
+      ~some:(fun value -> Some value)
       v.default
-  else Option.None
+  else None
 
 let length_of_var_resolution ctx (v : length var) =
   value_of_var_resolution ctx length_of_default_string v
@@ -119,8 +119,8 @@ let length_of_var_resolution ctx (v : length var) =
 let rec resolve_length_calc_vars ctx : length calc -> length calc = function
   | Var v -> (
       match length_of_var_resolution ctx v with
-      | Option.Some value -> Val value
-      | Option.None -> Var v)
+      | Some value -> Val value
+      | None -> Var v)
   | Nested inner -> Nested (resolve_length_calc_vars ctx inner)
   | Parens inner -> Parens (resolve_length_calc_vars ctx inner)
   | Expr (left, op, right) ->
@@ -251,7 +251,7 @@ let eval_length_calc ?(ctx = default_calc_ctx) (c : length calc) : length calc =
   eval_typed_calc ~math_fn:length_calc_math_fn
     ~scale:(fun ~exact op v n -> length_scale ~exact op v n)
     ~combine:length_combine ~round:length_round ~is_zero:length_is_zero
-    ~zero:(Val Zero) ~ctx c
+    ~zero:(Val Zero) ~holds_length:true ~ctx c
 
 type length_unit =
   | Px
@@ -601,17 +601,16 @@ let lp_of_default_string value : length_percentage option =
     Cursor.ws t;
     Cursor.expect_eof t;
     match unit with
-    | Option.Some "%" -> Option.Some (Pct value : length_percentage)
-    | Option.Some unit ->
-        Option.Some
+    | Some "%" -> Some (Pct value : length_percentage)
+    | Some unit ->
+        Some
           (Length (length_from_calc_unit (String.lowercase_ascii unit) value)
             : length_percentage)
-    | Option.None when value = 0. ->
-        Option.Some (Length Zero : length_percentage)
-    | Option.None -> Option.None
+    | None when value = 0. -> Some (Length Zero : length_percentage)
+    | None -> None
   with
   | value -> value
-  | exception Cursor.Parse_error _ -> Option.None
+  | exception Cursor.Parse_error _ -> None
 
 let lp_of_var_resolution ctx (v : length_percentage var) =
   value_of_var_resolution ctx lp_of_default_string v
@@ -620,8 +619,8 @@ let rec resolve_lp_calc_vars ctx :
     length_percentage calc -> length_percentage calc = function
   | Var v -> (
       match lp_of_var_resolution ctx v with
-      | Option.Some value -> Val value
-      | Option.None -> Var v)
+      | Some value -> Val value
+      | None -> Var v)
   | Nested inner -> Nested (resolve_lp_calc_vars ctx inner)
   | Parens inner -> Parens (resolve_lp_calc_vars ctx inner)
   | Expr (left, op, right) ->
@@ -684,7 +683,7 @@ let eval_lp_calc ?(ctx = default_calc_ctx) (c : length_percentage calc) :
   eval_typed_calc ~math_fn:lp_calc_math_fn
     ~scale:(fun ~exact op v n -> lp_scale ~exact op v n)
     ~combine:lp_combine ~round:lp_round ~is_zero:lp_is_zero
-    ~zero:(Val (Length Zero)) ~ctx c
+    ~zero:(Val (Length Zero)) ~holds_length:true ~ctx c
 
 let unit_of_lp : length_percentage -> (length_unit * float) option = function
   | Pct n -> Some (Pct, n)

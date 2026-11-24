@@ -307,7 +307,11 @@ let remaining_longhand_builders () =
   in
   check "shape-image-threshold:.5" (Css.shape_image_threshold (Number 0.5));
   check "shape-margin:1px" (Css.shape_margin (Length (Px 1.)));
-  check "shape-outside:circle(50%)" (Css.shape_outside "circle(50%)");
+  check "shape-outside:circle(50%)"
+    (Css.shape_outside
+       (Shape
+          (Clip_path_circle
+             { radius = Some (Extent_length (Pct 50.)); position = None })));
   check "overflow-clip-margin:content-box 2px"
     (Css.overflow_clip_margin (Clip_margin (Some Content_box, Some (Px 2.))));
   check "overflow-anchor:none" (Css.overflow_anchor None);

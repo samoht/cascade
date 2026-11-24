@@ -528,7 +528,7 @@ let pp_font_feature_value ctx (value : font_feature_value) =
   match value with
   | On -> Pp.string ctx "on"
   | Off -> Pp.string ctx "off"
-  | Index value -> Pp.int ctx value
+  | Index value -> Values.pp_number ctx value
 
 let pp_font_feature_setting ctx ({ tag; value } : font_feature_setting) =
   Pp.quoted_string ctx tag;
@@ -553,7 +553,7 @@ let rec pp_font_feature_settings : font_feature_settings Pp.t =
 let pp_font_variation_setting ctx ({ tag; value } : font_variation_setting) =
   Pp.quoted_string ctx tag;
   Pp.space ctx ();
-  Pp.float ctx value
+  Values.pp_number ctx value
 
 let rec pp_font_variation_settings : font_variation_settings Pp.t =
  fun ctx -> function
@@ -834,10 +834,7 @@ let read_font_variant_emoji_component t : font_variant_emoji =
     t
 
 let font_variant_component acc t =
-  let once what = function
-    | Option.Some _ -> Cursor.err_invalid t what
-    | Option.None -> ()
-  in
+  let once what = function Some _ -> Cursor.err_invalid t what | None -> () in
   Cursor.one_of
     [
       (fun t ->
@@ -886,7 +883,7 @@ let read_font_variant_components t : font_variant =
     else
       match Cursor.option (font_variant_component acc) t with
       | Some acc -> loop acc
-      | Option.None -> acc
+      | None -> acc
   in
   let value = loop empty_font_variant_shorthand in
   if font_variant_is_empty value then
@@ -938,10 +935,12 @@ let rec pp_font_variant : font_variant Pp.t =
   | Var v -> pp_var pp_font_variant ctx v
 
 let read_font_feature_value t : font_feature_value =
-  match Cursor.option Values.read_constant_integer t with
+  match Cursor.option Values.read_integer_slot t with
   | Some value ->
-      if value < 0 then
-        Cursor.err t "font-feature-settings value must be non-negative";
+      (match value with
+      | Num n when n < 0. ->
+          Cursor.err t "font-feature-settings value must be non-negative"
+      | _ -> ());
       Index value
   | None ->
       Cursor.enum "font-feature-settings value"
@@ -991,7 +990,7 @@ let rec read_font_feature_settings t : font_feature_settings =
 let read_font_variation_setting t : font_variation_setting =
   let tag = read_opentype_tag t in
   Cursor.ws t;
-  let value = Values.read_constant_number t in
+  let value = Values.read_number_slot t in
   { tag; value }
 
 let rec read_font_variation_settings t : font_variation_settings =

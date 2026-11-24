@@ -57,10 +57,12 @@ val read_syntax : Cursor.t -> any_syntax
 val read_value : Cursor.t -> 'a syntax -> 'a
 (** [read_value r syntax] reads a value according to the given [syntax]. *)
 
-val normalize_value : ?lossless:bool -> 'a syntax -> 'a -> 'a
-(** [normalize_value ?lossless syntax value] applies optimizer canonicalisation
-    for typed registered custom-property values. [lossless] disables colour
-    approximation. *)
+val normalize_value :
+  ?lossless:bool -> ?enforce_spec:bool -> 'a syntax -> 'a -> 'a
+(** [normalize_value ?lossless ?enforce_spec syntax value] applies optimizer
+    canonicalisation for typed registered custom-property values. [lossless]
+    disables colour approximation; [enforce_spec] (default [false]) also takes
+    the colour folds a target may refuse ({!Values.normalize_color}). *)
 
 (** {1 Meta handling} *)
 

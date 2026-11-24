@@ -172,51 +172,52 @@ let fallback_spec_names = function
 let fallback_spec_by_kind kind =
   List.find_opt (fun spec -> fallback_spec_kind spec = kind) specs
 
-let fallback_spec_by_standard_name name =
-  List.find_opt
-    (fun spec -> String.equal (fst (fallback_spec_names spec)) name)
-    specs
-
 (* How a declaration names its property: typed, or as an unknown property the
    reader kept opaque. *)
-type spelling = Typed of prop_key | Unknown of string | Guarded
+type spelling =
+  | Typed of prop_key
+  | Unknown of Properties.untyped_name
+  | Guarded
 
 let spelling = function
   | Theme_guarded _ -> Guarded
-  | Declaration { property = Unknown_property name; _ } -> Unknown name
+  | Declaration { property = Unknown_property u; _ } -> Unknown u
   | Declaration _ as decl -> Typed (Declaration.property_key decl)
 
-(* A family's spelling: its typed property, if it has one, and its name. Only
-   custom and unknown properties carry a payload and neither has a prefixed
-   spelling, so a family's property is an immediate and pointer equality is its
-   identity. *)
-type spelled = { key : prop_key option; name : string }
+(* A family's spelling: a typed property, written typed or read untyped because
+   its value defeated the typed reader, or a vendor's prefix on a typed property
+   that has no constructor of its own. Only custom and unknown properties carry
+   a payload and neither is a family's, so a family's property is an immediate
+   and pointer equality is its identity. *)
+type spelled = Own of prop_key | Prefixed of Properties.vendor * prop_key
 
-let spells spelled = function
-  | Typed key -> (
-      match spelled.key with Some own -> own == key | None -> false)
-  | Unknown name -> String.equal spelled.name name
-  | Guarded -> false
+let spells spelled spelling =
+  match (spelled, spelling) with
+  | Own own, Typed key -> own == key
+  | Own own, Unknown { own = Some (Prop p); _ } -> own == Key p
+  | ( Prefixed (vendor, key),
+      Unknown { own = None; vendor = Some v; spells = Some (Prop p); _ } ) ->
+      Properties.equal_vendor vendor v && key == Key p
+  | (Own _ | Prefixed _), (Typed _ | Unknown _ | Guarded) -> false
 
 type family = { spec : spec; standard : spelled; prefixed : spelled }
 
 let families =
   List.map
     (fun spec ->
-      let name, webkit_name = fallback_spec_names spec in
       match spec with
       | Typed_fallback { property; webkit_property; _ } ->
           {
             spec;
-            standard = { key = Some (Key property); name };
-            prefixed = { key = Some (Key webkit_property); name = webkit_name };
+            standard = Own (Key property);
+            prefixed = Own (Key webkit_property);
           }
       | Mask_fallback_spec _ ->
           (* [-webkit-mask] has no typed property: it is only ever unknown *)
           {
             spec;
-            standard = { key = Some (Key Properties.Mask); name };
-            prefixed = { key = None; name = webkit_name };
+            standard = Own (Key Properties.Mask);
+            prefixed = Prefixed (Properties.Webkit, Key Properties.Mask);
           })
     specs
 
@@ -313,23 +314,26 @@ let of_declaration targets decl : Declaration.declaration option =
   match decl with
   | Theme_guarded _ -> None
   | Declaration
-      { property = Unknown_property name; value = components; important; _ }
+      { property = Unknown_property untyped; value = components; important; _ }
     -> (
-      match fallback_spec_by_standard_name name with
+      match spec_of_standard decl with
       | Some (Mask_fallback_spec { webkit_name; _ }) -> (
-          let source = Declaration.v (Unknown_property name) components in
+          let source = Declaration.v (Unknown_property untyped) components in
           let rendered = Declaration.string_of_value ~minify:false source in
           match Declaration.parse_declaration "mask" rendered with
           | Some (Declaration { property = Mask; value; _ }) ->
               let source = Declaration.v Mask (webkit_compatible_mask value) in
               opaque_fallback Mask_fallback webkit_name source important
           | Some _ | None ->
-              fallback Mask_fallback (Unknown_property webkit_name) components
-                important)
+              fallback Mask_fallback
+                (Unknown_property (Properties.untyped webkit_name))
+                components important)
       | Some spec when condition_holds spec ->
           let kind = fallback_spec_kind spec in
           let _, webkit_name = fallback_spec_names spec in
-          fallback kind (Unknown_property webkit_name) components important
+          fallback kind
+            (Unknown_property (Properties.untyped webkit_name))
+            components important
       | Some _ | None -> None)
   | Declaration _ -> (
       match spec_of_standard decl with

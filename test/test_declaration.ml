@@ -752,10 +752,12 @@ let with_value_contract () =
    and size are [ellipse cover], the omitted position is [center], and an
    argument that reads as a position or a size is a position. No [at], no single
    radius, no colour space and no interpolation hint. Chromium 153 reads exactly
-   that, a zero radius and a missing comma after the shape included.
-   [-webkit-cross-fade(<image>, <image>, <number> | <percentage>)] is in no
-   specification; Chromium 153 reads it in every [<image>] slot, [none] for
-   either image included, and serialises [50%] as [0.5]. *)
+   that, a zero radius and a missing comma after the shape included, and the
+   comma stays missing, as Firefox drops the gradient without it. Firefox's own
+   laxities are in [webkit_gradient_engines]. [-webkit-cross-fade(<image>,
+   <image>, <number> | <percentage>)] is in no specification; Chromium 153 reads
+   it in every [<image>] slot, [none] for either image included, and serialises
+   [50%] as [0.5]. *)
 let legacy_webkit_images () =
   let radial = "-webkit-radial-gradient" in
   let fn name args = String.concat "" [ name; args ] in
@@ -783,7 +785,7 @@ let legacy_webkit_images () =
         "(10px 20px,30px 40px,red,blue)",
         "(10px 20px,30px 40px,red,#00f)" );
       ("(10px, red, blue)", "(10px,red,blue)", "(10px,red,#00f)");
-      ("(circle red, blue)", "(circle,red,blue)", "(circle,red,#00f)");
+      ("(circle red, blue)", "(circle red,blue)", "(circle red,#00f)");
       ( "(center, 0 20px, red, blue)",
         "(center,0 20px,red,blue)",
         "(center,0 20px,red,#00f)" );
@@ -850,17 +852,412 @@ let legacy_webkit_images () =
       "-webkit-radial-gradient(center, ellipse 10px 20px, red, blue)";
       "-webkit-radial-gradient(center, circle ellipse, red, blue)";
       "-webkit-radial-gradient(center, -10px 20px, red, blue)";
-      "-webkit-radial-gradient(in oklab, red, blue)";
       "-webkit-radial-gradient(left 10px top, circle, red, blue)";
       "-webkit-radial-gradient(top 10px, circle, red, blue)";
       "-webkit-radial-gradient(center circle, red, blue)";
       "-webkit-radial-gradient(center red, blue)";
-      "-webkit-radial-gradient(center, red, 30%, blue)";
+      "-webkit-radial-gradient(10px 20px red, blue)";
       "-webkit-cross-fade(url(a.png), url(b.png))";
       "-webkit-cross-fade(url(a.png) 50%, url(b.png))";
       "-webkit-cross-fade(url(a.png), url(b.png), 50%, 1)";
       "-webkit-cross-fade(initial, url(b.png), 50%)";
       "-webkit-cross-fade(url(a.png), url(b.png), 1px)";
+    ]
+
+(* [-moz-radial-gradient()] and [-moz-repeating-radial-gradient()] date from the
+   same 2011 draft, CSS Image Values 3 (W3C Working Draft, 17 February 2011)
+   sec. 5.2.1, that the Compatibility Standard sec. 3.3.2 gives the [-webkit-]
+   ones, and Firefox 160 reads them with it: the position first, [contain] and
+   [cover], two radii, no [at] and no single radius. Firefox reads them exactly
+   as it reads [-webkit-radial-gradient()]. It takes an interpolation hint
+   between two colour stops, which the draft has not, and requires the comma
+   after the shape and size, which Chromium skips in [-webkit-]. Chromium 157
+   reads neither prefix. No browser reads [-o-radial-gradient()] or
+   [-o-repeating-radial-gradient()] any more, so they read the 2011 grammar
+   alone. *)
+let legacy_moz_o_radial_gradients () =
+  let fn name args = String.concat "" [ name; args ] in
+  let both =
+    [
+      ( "(center, ellipse cover, red, blue)",
+        "(center,ellipse cover,red,blue)",
+        "(red,#00f)" );
+      ( "(center, circle, red, blue)",
+        "(center,circle,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(center, circle contain, red, blue)",
+        "(center,circle contain,red,blue)",
+        "(circle contain,red,#00f)" );
+      ( "(center, closest-side, red, blue)",
+        "(center,contain,red,blue)",
+        "(contain,red,#00f)" );
+      ( "(center, farthest-corner circle, red, blue)",
+        "(center,circle cover,red,blue)",
+        "(circle,red,#00f)" );
+      ( "(10px 20px, 30px 40px, red, blue)",
+        "(10px 20px,30px 40px,red,blue)",
+        "(10px 20px,30px 40px,red,#00f)" );
+      ("(10px, red, blue)", "(10px,red,blue)", "(10px,red,#00f)");
+      ( "(center, 0 20px, red, blue)",
+        "(center,0 20px,red,blue)",
+        "(center,0 20px,red,#00f)" );
+      ( "(center, cover, red, blue 10%)",
+        "(center,cover,red,blue 10%)",
+        "(red,#00f 10%)" );
+    ]
+  in
+  let hinted =
+    [
+      ( "(center, circle, red, 30%, blue)",
+        "(center,circle,red,30%,blue)",
+        "(circle,red,30%,#00f)" );
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun (input, held, into) ->
+          decl_optimizes ~prop:"background-image" ~held:(fn name held)
+            ~into:(fn name into) (fn name input))
+        cases)
+    [
+      ("-moz-radial-gradient", both @ hinted);
+      ("-moz-repeating-radial-gradient", both @ hinted);
+      ("-o-radial-gradient", both);
+      ("-o-repeating-radial-gradient", both);
+    ];
+  let rejected =
+    [
+      "(circle at center, red, blue)";
+      "(at center, red, blue)";
+      "(circle 10px, red, blue)";
+      "(center, circle 10px, red, blue)";
+      "(center, ellipse 10px 20px, red, blue)";
+      "(center, -10px 20px, red, blue)";
+      "(left 10px top, circle, red, blue)";
+      "(top 10px, circle, red, blue)";
+      "(center circle, red, blue)";
+      "(center red, blue)";
+      "(circle red, blue)";
+      "(center, circle red, blue)";
+      "(center 45deg, circle, red, blue)";
+      "(10px 20px 30px, red, blue)";
+      "(red, blue, 10px)";
+      "(red, 10px, 20px, blue)";
+      (* Firefox takes this hint before the first stop, then serialises it as
+         [(10px, red, blue)], which it reads with [10px] as the position. *)
+      "(center, 10px, red, blue)";
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun args ->
+          neg_cursor read_declaration
+            (String.concat "" [ "background-image: "; fn name args ]))
+        cases)
+    [
+      ("-moz-radial-gradient", rejected);
+      ("-moz-repeating-radial-gradient", rejected);
+      ("-o-radial-gradient", "(center, red, 30%, blue)" :: rejected);
+      ("-o-repeating-radial-gradient", "(center, red, 30%, blue)" :: rejected);
+    ]
+
+(* Firefox 160 reads a [<color-interpolation-method>] (CSS Images 4 sec. 3.1) in
+   its [-moz-] gradients, which the 2011 draft has not. In the radial ones it
+   comes first, or after the position or the shape and size it follows, and
+   Firefox serialises it last before the stops: [in oklab center] is [center in
+   oklab], [in oklab 10px 20px, circle] is [10px 20px, circle in oklab]. In the
+   linear ones it sits before or after the direction. A linear direction that
+   starts with [to] makes Firefox read the gradient with the unprefixed grammar,
+   [-moz-linear-gradient(to right, ...)] painting as [linear-gradient(to right,
+   ...)]. Chromium 157 reads none of them, and no browser reads the [-o-] forms,
+   which keep the 2011 grammar. *)
+let moz_gradient_interpolation () =
+  let fn name args = String.concat "" [ name; args ] in
+  let radial =
+    [
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(circle in oklab, red, blue)",
+        "(circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab circle, red, blue)",
+        "(circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab center, red, blue)",
+        "(center in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(center in oklab, red, blue)",
+        "(center in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(center, circle in oklab, red, blue)",
+        "(center,circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab center, circle, red, blue)",
+        "(center,circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(10px 20px in oklab, red, blue)",
+        "(10px 20px in oklab,red,blue)",
+        "(10px 20px in oklab,red,#00f)" );
+      ( "(in oklab 10px 20px, circle, red, blue)",
+        "(10px 20px,circle in oklab,red,blue)",
+        "(10px 20px,circle in oklab,red,#00f)" );
+      ( "(center, ellipse cover in oklab, red, blue)",
+        "(center,ellipse cover in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab contain, red, blue)",
+        "(contain in oklab,red,blue)",
+        "(contain in oklab,red,#00f)" );
+      ( "(in hsl longer hue, red, blue)",
+        "(in hsl longer hue,red,blue)",
+        "(in hsl longer hue,red,#00f)" );
+      ( "(in oklab, red, 30%, blue)",
+        "(in oklab,red,30%,blue)",
+        "(in oklab,red,30%,#00f)" );
+    ]
+  in
+  let linear =
+    [
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(top in oklab, red, blue)",
+        "(top in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab top, red, blue)",
+        "(top in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab left, red, blue)",
+        "(left in oklab,red,blue)",
+        "(left in oklab,red,#00f)" );
+      ( "(left top in oklab, red, blue)",
+        "(top left in oklab,red,blue)",
+        "(top left in oklab,red,#00f)" );
+      ( "(45deg in oklab, red, blue)",
+        "(45deg in oklab,red,blue)",
+        "(45deg in oklab,red,#00f)" );
+      ("(to bottom, red, blue)", "(to bottom,red,blue)", "(to bottom,red,#00f)");
+      ("(to right, red, blue)", "(to right,red,blue)", "(to right,red,#00f)");
+      ( "(to top left, red, blue)",
+        "(to top left,red,blue)",
+        "(to top left,red,#00f)" );
+      ( "(to right in oklab, red, blue)",
+        "(to right in oklab,red,blue)",
+        "(to right in oklab,red,#00f)" );
+      ( "(in oklab to right, red, blue)",
+        "(to right in oklab,red,blue)",
+        "(to right in oklab,red,#00f)" );
+      ( "(to left top in hsl longer hue, red, blue)",
+        "(to top left in hsl longer hue,red,blue)",
+        "(to top left in hsl longer hue,red,#00f)" );
+      ( "(to right, red, 30%, blue)",
+        "(to right,red,30%,blue)",
+        "(to right,red,30%,#00f)" );
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun (input, held, into) ->
+          decl_optimizes ~prop:"background-image" ~held:(fn name held)
+            ~into:(fn name into) (fn name input))
+        cases)
+    [
+      ("-moz-radial-gradient", radial);
+      ("-moz-repeating-radial-gradient", radial);
+      ("-moz-linear-gradient", linear);
+      ("-moz-repeating-linear-gradient", linear);
+    ];
+  let radial_rejected =
+    [
+      "(center, in oklab, red, blue)";
+      "(center, in oklab circle, red, blue)";
+      "(center, circle, in oklab, red, blue)";
+      "(in oklab, circle, red, blue)";
+      "(circle in oklab, center, red, blue)";
+      "(center, in oklab ellipse cover, red, blue)";
+      "(in oklab circle in oklab, red, blue)";
+      "(in oklab, 10px, red, blue)";
+    ]
+  in
+  let linear_rejected =
+    [
+      "(to right, in oklab, red, blue)";
+      "(top, in oklab, red, blue)";
+      "(in oklab in srgb, red, blue)";
+      "(left in oklab top, red, blue)";
+      "(to 90deg, red, blue)";
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun args ->
+          neg_cursor read_declaration
+            (String.concat "" [ "background-image: "; fn name args ]))
+        cases)
+    [
+      ("-moz-radial-gradient", radial_rejected);
+      ("-moz-repeating-radial-gradient", radial_rejected);
+      ("-moz-linear-gradient", linear_rejected);
+      ("-moz-repeating-linear-gradient", linear_rejected);
+      ( "-o-radial-gradient",
+        [ "(in oklab, red, blue)"; "(center, circle in oklab, red, blue)" ] );
+      ( "-o-linear-gradient",
+        [ "(in oklab, red, blue)"; "(to bottom, red, blue)" ] );
+    ]
+
+(* Chromium 157 and Firefox 160 both read the [-webkit-] gradients, each with
+   its own laxities. Chromium skips the comma after a radial shape and size.
+   Firefox takes an interpolation hint between two colour stops, in the linear
+   and the radial ones, and a colour interpolation method in the radial ones
+   where it takes it in [-moz-radial-gradient()]. Both take the method before or
+   after a linear direction, and both paint it. A form one engine reads is kept,
+   and kept with what the other drops: [(circle red, blue)] keeps its missing
+   comma, so Firefox still drops it. A form that mixes the laxities of both is
+   read by neither. *)
+let webkit_gradient_engines () =
+  let fn name args = String.concat "" [ name; args ] in
+  let radial =
+    [
+      ("(red, 30%, blue)", "(red,30%,blue)", "(red,30%,#00f)");
+      ( "(center, circle, red, 30%, blue)",
+        "(center,circle,red,30%,blue)",
+        "(circle,red,30%,#00f)" );
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(in oklab center, circle, red, blue)",
+        "(center,circle in oklab,red,blue)",
+        "(circle in oklab,red,#00f)" );
+      ( "(in oklab, red, 30%, blue)",
+        "(in oklab,red,30%,blue)",
+        "(in oklab,red,30%,#00f)" );
+      ("(circle red, blue)", "(circle red,blue)", "(circle red,#00f)");
+      ( "(ellipse cover red, blue)",
+        "(ellipse cover red,blue)",
+        "(ellipse cover red,#00f)" );
+      ( "(center, circle closest-side red, blue)",
+        "(center,circle contain red,blue)",
+        "(center,circle contain red,#00f)" );
+      ( "(center, 10px 20px red, blue)",
+        "(center,10px 20px red,blue)",
+        "(center,10px 20px red,#00f)" );
+    ]
+  in
+  let linear =
+    [
+      ("(red, 30%, blue)", "(red,30%,blue)", "(red,30%,#00f)");
+      ("(in oklab, red, blue)", "(in oklab,red,blue)", "(in oklab,red,#00f)");
+      ( "(top in oklab, red, blue)",
+        "(top in oklab,red,blue)",
+        "(in oklab,red,#00f)" );
+      ( "(in oklab left, red, blue)",
+        "(left in oklab,red,blue)",
+        "(left in oklab,red,#00f)" );
+      ( "(45deg in oklab, red, blue)",
+        "(45deg in oklab,red,blue)",
+        "(45deg in oklab,red,#00f)" );
+      ( "(in hsl longer hue, red, blue)",
+        "(in hsl longer hue,red,blue)",
+        "(in hsl longer hue,red,#00f)" );
+      ( "(in oklab, red, 30%, blue)",
+        "(in oklab,red,30%,blue)",
+        "(in oklab,red,30%,#00f)" );
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun (input, held, into) ->
+          decl_optimizes ~prop:"background-image" ~held:(fn name held)
+            ~into:(fn name into) (fn name input))
+        cases)
+    [
+      ("-webkit-radial-gradient", radial);
+      ("-webkit-repeating-radial-gradient", radial);
+      ("-webkit-linear-gradient", linear);
+      ("-webkit-repeating-linear-gradient", linear);
+    ];
+  let radial_rejected =
+    [
+      "(circle red, 30%, blue)";
+      "(circle in oklab red, blue)";
+      "(in oklab circle red, blue)";
+      "(center in oklab, circle, red, blue)";
+      "(red, blue, 30%)";
+      "(red, 10%, 20%, blue)";
+    ]
+  in
+  let linear_rejected =
+    [
+      "(to bottom, red, blue)";
+      "(to right in oklab, red, blue)";
+      "(top, in oklab, red, blue)";
+      "(in oklab in srgb, red, blue)";
+      "(left in oklab top, red, blue)";
+    ]
+  in
+  List.iter
+    (fun (name, cases) ->
+      List.iter
+        (fun args ->
+          neg_cursor read_declaration
+            (String.concat "" [ "background-image: "; fn name args ]))
+        cases)
+    [
+      ("-webkit-radial-gradient", radial_rejected);
+      ("-webkit-repeating-radial-gradient", radial_rejected);
+      ("-webkit-linear-gradient", linear_rejected);
+      ("-webkit-repeating-linear-gradient", linear_rejected);
+    ]
+
+(* CSS Images 4 (ED) sec. 3.5.1 Color Stop Lists: [<color-stop-list> =
+   <linear-color-stop> , [ <linear-color-hint>? , <linear-color-stop> ]#?], and
+   [<angular-color-stop-list>] the same with angles, so a hint sits between two
+   colour stops: never first, never last, never next to another hint. Chromium
+   157 and Firefox 160 drop every gradient that places one elsewhere, prefixed
+   ones included. A [var()] may stand for a stop or a hint, so it places
+   nothing. *)
+let gradient_hint_placement () =
+  let misplaced =
+    [
+      ("linear-gradient", "(to top, 10px, red, blue)");
+      ("linear-gradient", "(10px, red, blue)");
+      ("linear-gradient", "(red, blue, 10px)");
+      ("linear-gradient", "(red, 10px)");
+      ("linear-gradient", "(red, 10px, 20px, blue)");
+      ("linear-gradient", "(red, 50%, blue, 20%)");
+      ("repeating-linear-gradient", "(red, blue, 10px)");
+      ("radial-gradient", "(circle, red, blue, 10px)");
+      ("radial-gradient", "(red, 10%, 20%, blue)");
+      ("repeating-radial-gradient", "(red, 10%, 20%, blue)");
+      ("conic-gradient", "(red, blue, 10deg)");
+      ("conic-gradient", "(red, 10deg, 20deg, blue)");
+      ("conic-gradient", "(red, blue, 10%)");
+      ("repeating-conic-gradient", "(red, blue, 10deg)");
+      ("-webkit-linear-gradient", "(red, blue, 30%)");
+      ("-webkit-linear-gradient", "(30%, red, blue)");
+      ("-webkit-linear-gradient", "(red, 10%, 20%, blue)");
+      ("-webkit-repeating-linear-gradient", "(red, blue, 30%)");
+      ("-moz-linear-gradient", "(red, blue, 30%)");
+      ("-moz-linear-gradient", "(red, 10%, 20%, blue)");
+      ("-moz-linear-gradient", "(to right, 10px, red, blue)");
+    ]
+  in
+  List.iter
+    (fun (name, args) ->
+      neg_cursor read_declaration
+        (String.concat "" [ "background-image: "; name; args ]))
+    misplaced;
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"background-image" ~into input)
+    [
+      ("linear-gradient(red, 10px, blue)", "linear-gradient(red,10px,#00f)");
+      ("radial-gradient(red, 10%, blue)", "radial-gradient(red,10%,#00f)");
+      ("conic-gradient(red, 10deg, blue)", "conic-gradient(red,10deg,#00f)");
+      ( "linear-gradient(red, var(--x), blue)",
+        "linear-gradient(red,var(--x),#00f)" );
+      ( "linear-gradient(var(--a), 10px, blue)",
+        "linear-gradient(var(--a),10px,#00f)" );
+      ( "linear-gradient(red, 10px, var(--b))",
+        "linear-gradient(red,10px,var(--b))" );
     ]
 
 (* CSS Images 4 (ED) sec. 3.5.1 places a conic gradient's stops and hints by
@@ -1016,6 +1413,11 @@ let suite =
       test_case "custom properties basic" `Quick custom_properties_basic;
       test_case "vendor prefixes" `Quick vendor_prefixes;
       test_case "legacy webkit images" `Quick legacy_webkit_images;
+      test_case "legacy moz and o radial gradients" `Quick
+        legacy_moz_o_radial_gradients;
+      test_case "moz gradient interpolation" `Quick moz_gradient_interpolation;
+      test_case "webkit gradient engines" `Quick webkit_gradient_engines;
+      test_case "gradient hint placement" `Quick gradient_hint_placement;
       test_case "conic angular stops" `Quick conic_angular_stops;
       test_case "svg and box values" `Quick svg_and_box_values;
       (* Error handling *)

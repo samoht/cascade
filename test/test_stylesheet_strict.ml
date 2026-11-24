@@ -242,7 +242,6 @@ let spec_strict_accepts_valid_stylesheets () =
       ("custom property digit dashed-ident", ".x { font-size: var(--1A202C) }");
       ("valid escape in string", ".x { content: '\\gggg' }");
       ("out-of-range rgb channels clamp", ".x { color: rgb(300, 300, 300) }");
-      ("mixed numeric rgb channels", ".x { color: rgb(50%, 100, 50%) }");
       ( "transparent currentColor color-mix",
         ".x { color: color-mix(in srgb, currentColor 25%, transparent) }" );
       ( "hsl color-mix hue interpolation",
@@ -488,6 +487,10 @@ let spec_strict_rejects_invalid_stylesheets () =
       ("negative transition duration", ".x { transition-duration: -1s }");
       ("font-weight outside range", ".x { font-weight: 0 }");
       ("integer property rejects number", ".x { order: 1.5 }");
+      (* CSS Color 4 sec. 5.1: the legacy rgb() syntax takes three percentages
+         or three numbers; Chromium 153 rejects a mix. *)
+      ( "legacy rgb mixes numbers and percentages",
+        ".x { color: rgb(50%, 100, 50%) }" );
       ("font-family trailing comma", ".x { font-family: Brand, }");
       ("z-index rejects length", ".x { z-index: 1px }");
       ("invalid aspect-ratio", ".x { aspect-ratio: 16 / }");

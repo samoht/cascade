@@ -8,7 +8,7 @@ val pp_background_image : background_image Pp.t
 (** [pp_background_image] prints a [background_image]. *)
 
 val normalize_background_image :
-  ?lossless:bool -> background_image -> background_image
+  ?lossless:bool -> enforce_spec:bool -> background_image -> background_image
 (** [normalize_background_image ?lossless i] is [i] in its canonical spelling,
     gradient stops folded; [lossless] keeps colour channels unrounded. *)
 

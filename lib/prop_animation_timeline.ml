@@ -288,8 +288,7 @@ let normalize_timeline_shorthand : timeline_shorthand -> timeline_shorthand =
  fun value ->
   let drop_initial_axis (item : timeline_shorthand_item) =
     match item.axis with
-    | Some (Block : timeline_axis) | Some Initial ->
-        { item with axis = Option.None }
+    | Some (Block : timeline_axis) | Some Initial -> { item with axis = None }
     | _ -> item
   in
   match value with

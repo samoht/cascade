@@ -111,7 +111,9 @@ let rec math_arg_has_pct : math_arg -> bool = function
 and math_fn_has_pct = function
   | Min_n args | Max_n args | Hypot args -> List.exists math_arg_has_pct args
   | Clamp_n (a, b, c) ->
-      math_arg_has_pct a || math_arg_has_pct b || math_arg_has_pct c
+      Option.fold ~none:false ~some:math_arg_has_pct a
+      || math_arg_has_pct b
+      || Option.fold ~none:false ~some:math_arg_has_pct c
   | Abs_n a | Sign_n a -> math_arg_has_pct a
   | Round_n (_, a, b) | Mod_n (a, b) | Rem_n (a, b) ->
       math_arg_has_pct a || math_arg_has_pct b
@@ -178,6 +180,12 @@ let rec normalize_length ?(strip = true) ?(non_negative = false)
             match infinite_length folded with
             | Some v -> v
             | None -> Calc (map_calc canonical_dimension folded)))
+    (* CSS Values 4 (ED) sec. 10.2: a [none] bound is newer than [clamp()]
+       itself, so the call stays for the browser that drops it rather than
+       folding into a value that browser reads. *)
+    | Clamp (((None : length) as mn), v, mx)
+    | Clamp (mn, v, ((None : length) as mx)) ->
+        Clamp (nf mn, nf v, nf mx)
     | Clamp (mn, v, mx) -> (
         let mn = nf mn and v = nf v and mx = nf mx in
         if mn = v && v = mx then v
@@ -362,7 +370,13 @@ let rec normalize_number ?(ctx = default_calc_ctx) ?(non_negative = false)
     | Sqrt v -> (
         match nf v with Num a when a >= 0. -> Num (Float.sqrt a) | v -> Sqrt v)
     | Abs v -> ( match nf v with Num a -> Num (Float.abs a) | v -> Abs v)
-    | Sign v -> Sign (nf v)
+    (* Sec. 10.6: -1 below zero, +1 above, and a zero keeps its sign. *)
+    | Sign v -> (
+        match nf v with
+        | Num a when a > 0. -> Num 1.
+        | Num a when a < 0. -> Num (-1.)
+        | Num a when Float.equal a 0. -> Num a
+        | v -> Sign v)
     | Sin _ | Num _ | Var _ -> n
   in
   (* Sec. 10.12 clamps a math function past the property's range at
@@ -421,7 +435,7 @@ let eval_pct_calc ?(ctx = default_calc_ctx) (c : percentage calc) :
          in full in both modes, so there is no budget to apply here. *)
     ~combine:pct_combine ~round:Fun.id ~is_zero:pct_is_zero
     ~zero:(Val (Pct 0.) : percentage calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 let normalize_percentage ?(ctx = default_calc_ctx) (p : percentage) : percentage
     =
@@ -480,7 +494,7 @@ let eval_time_calc ?(ctx = default_calc_ctx) (c : duration calc) : duration calc
     ~scale:(fun ~exact op v n -> time_scale ~exact op v n)
     ~combine:time_combine ~round:time_round ~is_zero:time_is_zero
     ~zero:(Val (S 0.) : duration calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 (* The [<time>] counterpart of [negative_length]: a duration a property whose
    range starts at [0s] refuses when it is written as a literal. *)
@@ -593,7 +607,7 @@ let angle_combine op (a : angle) (b : angle) : angle option =
         | _ -> Float.nan
       in
       match f (deg a) (deg b) with
-      | Option.Some r when not (Float.is_nan r) -> Option.some (Deg r)
+      | Some r when not (Float.is_nan r) -> Option.some (Deg r)
       | _ -> Option.none)
   | _ -> Option.none
 
@@ -627,7 +641,7 @@ let eval_angle_calc ?(ctx = default_calc_ctx) (c : angle calc) : angle calc =
   eval_typed_calc ~math_fn:angle_calc_math_fn
     ~scale:(fun ~exact op v n -> angle_scale ~exact op v n)
     ~combine:angle_combine ~round:angle_round ~is_zero:angle_is_zero
-    ~zero:(Val (Deg 0.)) ~ctx c
+    ~zero:(Val (Deg 0.)) ~holds_length:false ~ctx c
 
 (* Canonicalise an [<angle>]: fold the static math functions ([round] / [mod] /
    [rem] on [deg] operands), then pick the shortest of the
@@ -752,7 +766,9 @@ let rec pp_number_percentage : number_percentage Pp.t =
   | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_number_percentage ctx v
-  | Calc c -> pp_calc_with ~bare_call:true pp_number_percentage ctx c
+  | Calc c ->
+      pp_calc_with ~bare_call:true ~bare_number_call:true pp_number_percentage
+        ctx c
 
 (* AST-level [<number-percentage>] canonicalisation: CSS Transforms 2 secs. 5 and
    12.1-12.2 and Filter Effects 1 sec. 6.1 define typed positions where [%] and
@@ -797,7 +813,7 @@ let eval_np_calc ?(ctx = default_calc_ctx) (c : number_percentage calc) :
       (* A [<number>] / [<percentage>] coefficient prints in full. *)
     ~combine:np_combine ~round:Fun.id ~is_zero:np_is_zero
     ~zero:(Val (Num 0.) : number_percentage calc)
-    ~ctx c
+    ~holds_length:false ~ctx c
 
 let rec normalize_number_percentage ?(ctx = default_calc_ctx)
     (np : number_percentage) : number_percentage =
@@ -905,7 +921,7 @@ let rec pp_number : number Pp.t =
      on a leaf that reads back differently without it. [normalize_number] has
      already unwrapped the rest, where the property is in hand. *)
   | Calc c ->
-      pp_calc_with
+      pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_number v))
         pp_number ctx c

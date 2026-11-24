@@ -12,9 +12,13 @@ let render rules =
   String.concat ""
     (List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) rules)
 
+(* The factoring cases below are sized in raw bytes, which the raw objective
+   scores them by. *)
+let raw = Ctx.v ~objective:`Raw `Fragment
+
 let optimize_rules css =
   rules css |> Rule_graph.of_rules
-  |> Rule_scheduler.run ~ctx:Ctx.fragment ~finalize:Fun.id
+  |> Rule_scheduler.run ~ctx:raw ~finalize:Fun.id
   |> fun { Rule_scheduler.graph = g; _ } ->
   Array.to_list
     (Array.map (Rule_graph.node_rule g) (Rule_graph.canonical_order g))
@@ -133,7 +137,7 @@ let factoring_run n =
    returns is refused there, so running the scheduler again on that graph
    commits nothing. *)
 let a_settled_run_is_a_fixed_point () =
-  let ctx = Ctx.fragment and finalize = Fun.id in
+  let ctx = raw and finalize = Fun.id in
   List.iter
     (fun (label, graph) ->
       let { Rule_scheduler.graph = settled_graph; settled; _ } =

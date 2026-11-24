@@ -67,76 +67,6 @@ let read_text_decoration_lines t =
   if duplicates lines then Cursor.err_invalid t "duplicate text-decoration-line";
   lines
 
-(* CSS Shapes 1 sec. 5: [<shape-box>] is [<visual-box> | margin-box], so the
-   three SVG boxes [<geometry-box>] adds are not valid here. *)
-let check_shape_box t (box : clip_geometry_box) =
-  match box with
-  | Margin_box | Border_box | Padding_box | Content_box -> ()
-  | Fill_box | Stroke_box | View_box ->
-      Cursor.err_invalid t "shape-outside takes a <shape-box>"
-
-(* [read_clip_path] reads [<basic-shape> || <geometry-box>], the same double-bar
-   pair shape-outside uses, along with [none], [url()] and the CSS-wide
-   keywords. Shapes 1 sec. 6.1 differs on two points, checked here: the box is a
-   [<shape-box>], and everything outside [<basic-shape>] is an alternative to
-   the pair rather than a member of it. *)
-let check_shape_outside_shape t =
-  let is_basic_shape (shape : clip_path) =
-    match shape with
-    | Clip_path_inset _ | Clip_path_circle _ | Clip_path_ellipse _
-    | Clip_path_polygon _ | Clip_path_path _ | Clip_path_shape _
-    | Clip_path_xywh _ | Clip_path_rect _ ->
-        true
-    (* A shape the [clip_path] reader kept verbatim as spec-invalid: the raw
-       text survives here too rather than costing the whole declaration. *)
-    | Invalid _ -> true
-    | _ -> false
-  in
-  match read_clip_path t with
-  | Clip_path_box box -> check_shape_box t box
-  | Clip_path_with_box { shape; box; _ } when is_basic_shape shape ->
-      check_shape_box t box
-  | Clip_path_with_box _ ->
-      Cursor.err_invalid t "shape-outside pairs a <shape-box> with a shape"
-  | _ -> ()
-
-(* CSS Shapes 1 sec. 6.1: [shape-outside] is [none | [<basic-shape> ||
-   <shape-box>] | <image>]. The value is the raw source text ([Shape_outside :
-   string property]): typing it would mean a sum of the [clip_path] shapes and
-   the whole [background_image] type for [<image>], so the reader validates the
-   grammar and hands the text back verbatim. *)
-let read_shape_outside t =
-  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  let read_shape_image t =
-    ignore (read_background_image t : background_image)
-  in
-  (match Cursor.peek t with
-  | Some
-      (Component.Func
-         { node = { name; terminated = true; arguments = []; _ }; _ })
-    when String.lowercase_ascii_preserve name = "var" ->
-      Cursor.err_invalid t "empty var()"
-  | Some (Component.Func { node = { name; terminated = true; _ }; _ })
-    when String.lowercase_ascii_preserve name = "var" ->
-      let _ : string var =
-        Values.read_var
-          (fun inner -> Cursor.consume_remaining_as_string ~trim:true inner)
-          t
-      in
-      ()
-  | _ ->
-      Cursor.one_of
-        [
-          check_shape_outside_shape;
-          read_shape_image;
-          (fun t ->
-            Cursor.err_invalid t
-              (String.concat "" [ "invalid shape-outside: "; raw ]));
-        ]
-        t);
-  Cursor.expect_eof t;
-  raw
-
 (* Some properties (shape-margin, scroll-padding, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
    reject before delegating to the typed reader. *)
@@ -1478,7 +1408,7 @@ let read_value (type a) (prop : a property) t : declaration =
       Cursor.err_invalid t
         (String.concat ""
            [ "custom property read through regular property: "; name ])
-  | Unknown_property name ->
+  | Unknown_property { written = name; _ } ->
       Cursor.err_invalid t
         (String.concat ""
            [ "unknown property read through typed parser: "; name ])

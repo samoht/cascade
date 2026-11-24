@@ -103,7 +103,18 @@ let attributes () =
   check_overlap "case-insensitive exact attributes can prove disjoint" false
     "[type=\"button\" i]" "[type=text]";
   check_overlap "different attributes stay conservative" true "[type=button]"
-    "[role=textbox]"
+    "[role=textbox]";
+  (* HTML sec. 4.16.2 compares an unflagged value ASCII case-insensitively only
+     for the attributes it lists, [type] among them and no [data-*]; any other
+     value matches as written (Selectors 4 sec. 6.3). An attribute name matches
+     in any case on an HTML element. *)
+  check_overlap "an unlisted attribute's values are case-sensitive" false
+    "[data-x=a]" "[data-x=A]";
+  check_overlap "a listed attribute's values are not" true "[TYPE=a]" "[TYPE=A]";
+  check_overlap "an s value stays disjoint from another case" false
+    {|[data-x="a" s]|} "[data-x=A]";
+  check_overlap "an i value meets every case" true {|[data-x="a" i]|}
+    "[data-x=A]"
 
 let child_context () =
   check_overlap "different immediate parent ids are disjoint" false "#a > .item"
@@ -191,10 +202,11 @@ let child_positions () =
   check_overlap "odd and even nth child are disjoint" false ":nth-child(odd)"
     ":nth-child(even)";
   (* One parity against itself is one set of elements, not two, however the two
-     sides spell it. Selectors 4 sec. 9.3 reads [odd] as [2n+1] and [even] as
-     [2n], so proving these disjoint would let a rewrite cross a dependency the
-     DOM really has: every element either side matches, the other matches
-     too. *)
+     sides spell it. [:nth-child()] (Selectors 4 sec. 13.3.1) takes the An+B
+     notation, and CSS Syntax 3 sec. 6 gives [even] and [odd] "the same meaning
+     as 2n and 2n+1, respectively", so proving these disjoint would let a
+     rewrite cross a dependency the DOM really has: every element either side
+     matches, the other matches too. *)
   check_overlap "one parity spelled two ways may overlap" true ":nth-child(odd)"
     ":nth-child(2n+1)";
   check_overlap "one parity spelled two ways may overlap, even" true

@@ -65,8 +65,8 @@ let indexed_budget = { occurrence_window = 24; max_candidates = 256 }
 let v ~aggressive = if aggressive then Exhaustive else Indexed indexed_budget
 
 let shared = function
-  | Exhaustive -> Option.None
-  | Indexed { max_candidates; _ } -> Option.Some max_candidates
+  | Exhaustive -> None
+  | Indexed { max_candidates; _ } -> Some max_candidates
 
 (* [f] over the first [limit] windows of a bucket of [len] members, each of at
    most [occurrence_window] neighbours, by first member and then by length. *)

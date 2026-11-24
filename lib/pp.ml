@@ -102,6 +102,11 @@ let to_string ?minify ?indent ?inline ?lossless ?enforce_spec
     ?rename_custom_property buf pp a;
   Buffer.contents buf
 
+let render ctx pp a =
+  to_string ~minify:ctx.minify ?indent:ctx.indent ~inline:ctx.inline
+    ~lossless:ctx.lossless ~enforce_spec:ctx.enforce_spec
+    ~rename_custom_property:ctx.rename_custom_property pp a
+
 (* Byte length of [pp a] with no allocation: the counter sink records only the
    running length and last byte, so there is no [Buffer] and no result
    string. *)

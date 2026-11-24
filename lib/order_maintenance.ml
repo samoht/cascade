@@ -25,7 +25,7 @@ let v n =
 
 let mem t x = x < Array.length t.tag && t.tag.(x) >= 0
 let compare t a b = Int.compare t.tag.(a) t.tag.(b)
-let option x = if x = none then Option.None else Option.Some x
+let option x = if x = none then None else Some x
 let first t = option t.first
 let next t x = option t.next.(x)
 let prev t x = option t.prev.(x)

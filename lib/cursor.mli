@@ -294,6 +294,11 @@ val is_reserved_custom_ident : ?reserved:string list -> string -> bool
     it where a grammar spells the same name as an ident or a string, since a
     reserved name has no ident spelling and has to keep its quotes. *)
 
+val is_reserved_keyframes_name : string -> bool
+(** [is_reserved_keyframes_name name] is whether [name] has no ident spelling as
+    a [<keyframes-name>]: CSS Animations 1 sec. 3 adds [none] to what CSS Values
+    4 sec. 4.2 reserves, so such a name keeps its quotes. *)
+
 val number : ?allow_negative:bool -> t -> float
 (** [number t] consumes the next numeric token. *)
 

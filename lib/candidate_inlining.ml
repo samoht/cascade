@@ -15,30 +15,30 @@ let selector_branches (rule : rule) = Edge.selectors rule.selector
 
 let single_selector_branch_key (rule : rule) : string option =
   match selector_branches rule with
-  | [ selector ] -> Option.Some (selector_branch_key selector)
-  | _ -> Option.None
+  | [ selector ] -> Some (selector_branch_key selector)
+  | _ -> None
 
 let selector_branch_size = Size.selector
 
 let remaining_selector_branches ~removed_key keyed =
   List.filter_map
     (fun (key, selector) ->
-      if String.equal key removed_key then Option.None else Option.Some selector)
+      if String.equal key removed_key then None else Some selector)
     keyed
 
 let rule_for_selector_branches rule selectors : rule option =
   match selectors with
-  | [] -> Option.None
+  | [] -> None
   | _ ->
-      Option.Some
+      Some
         {
           rule with
           selector = Merge.selector_list selectors;
           nested = [];
-          merge_key = Option.None;
+          merge_key = None;
         }
 
-let selector_inline_candidate ~finalize g ~receiver_id ~group_id
+let selector_inline_candidate ~objective ~finalize g ~receiver_id ~group_id
     ~remaining_selectors =
   let receiver = node_rule g receiver_id in
   let group = node_rule g group_id in
@@ -48,15 +48,15 @@ let selector_inline_candidate ~finalize g ~receiver_id ~group_id
       declarations =
         Lift.append_unique_decls receiver.declarations group.declarations;
       nested = [];
-      merge_key = Option.None;
+      merge_key = None;
     }
   in
   let produce =
     match rule_for_selector_branches group remaining_selectors with
-    | Option.None -> [ receiver ]
-    | Option.Some group -> [ receiver; group ]
+    | None -> [ receiver ]
+    | Some group -> [ receiver; group ]
   in
-  rewrite_candidate ~kind:Selector_branch_inline ~finalize g
+  rewrite_candidate ~objective ~kind:Selector_branch_inline ~finalize g
     ~consume:[ receiver_id; group_id ] ~produce
 
 type inline_group = {
@@ -72,7 +72,7 @@ type t = {
 }
 
 let receiver_branch (rule : rule) =
-  if rule_eligible rule then single_selector_branch_key rule else Option.None
+  if rule_eligible rule then single_selector_branch_key rule else None
 
 (* The branch keys [rule] can hand to a receiver, each once, with the selector
    list left behind: a branch longer than the declarations it would carry. *)
@@ -102,12 +102,13 @@ let inline_branches g (rule : rule) =
 let pair_up core group remaining receiver =
   if Rule_graph.precedes (graph (view core)) receiver group.group then
     match
-      selector_inline_candidate ~finalize:(finalize core) (view core)
-        ~receiver_id:receiver ~group_id:group.group
-        ~remaining_selectors:remaining
+      selector_inline_candidate
+        ~objective:(Ctx.objective (ctx core))
+        ~finalize:(finalize core) (view core) ~receiver_id:receiver
+        ~group_id:group.group ~remaining_selectors:remaining
     with
-    | Option.None -> ()
-    | Option.Some candidate ->
+    | None -> ()
+    | Some candidate ->
         group.pairs <- (receiver, offer core candidate) :: group.pairs
 
 let table_list table key =
@@ -120,8 +121,8 @@ let set_table_list table key = function
 let remove core inlining id =
   let rule = node_rule (view core) id in
   (match receiver_branch rule with
-  | Option.None -> ()
-  | Option.Some key ->
+  | None -> ()
+  | Some key ->
       set_table_list inlining.receivers key
         (without id (table_list inlining.receivers key));
       List.iter
@@ -138,8 +139,8 @@ let remove core inlining id =
         (table_list inlining.by_branch key));
   let index = Rule_graph.Node_id.to_int id in
   match Int_table.find_opt inlining.inline_groups index with
-  | Option.None -> ()
-  | Option.Some group ->
+  | None -> ()
+  | Some group ->
       List.iter (fun (_, offer) -> withdraw offer) group.pairs;
       List.iter
         (fun (key, _) ->
@@ -153,8 +154,8 @@ let remove core inlining id =
 let add core inlining id =
   let rule = node_rule (view core) id in
   (match receiver_branch rule with
-  | Option.None -> ()
-  | Option.Some key ->
+  | None -> ()
+  | Some key ->
       String_table.push inlining.receivers key id;
       List.iter
         (fun group ->

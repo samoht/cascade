@@ -52,11 +52,16 @@ val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
 val normalize :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
-(** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
-    the optimizer holds a canonical declaration and the pretty-printer stays a
-    pure serialiser. [lossless] disables bounded colour and numeric
-    approximation. *)
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?ctx:Values.calc_ctx ->
+  declaration ->
+  declaration
+(** [normalize ?lossless ?enforce_spec d] applies AST-level semantic value
+    canonicalisation so the optimizer holds a canonical declaration and the
+    pretty-printer stays a pure serialiser. [lossless] disables bounded colour
+    and numeric approximation. [enforce_spec] (default [false]) also takes the
+    folds only a target may refuse, such as a [color-mix()] of one item. *)
 
 val to_string : ?minify:bool -> t -> string
 (** [to_string ~minify d] converts a declaration to CSS source text. *)
@@ -283,6 +288,17 @@ val same_property : declaration -> declaration -> bool
 (** [same_property d1 d2] is [property_key d1 = property_key d2]: the two
     declarations target the same property name. *)
 
+val declares : 'a Properties.property -> declaration -> bool
+(** [declares property decl] is whether [decl] declares [property], reading a
+    legacy name alias as the property it aliases (CSS Cascade 5 sec. 3.1), so a
+    [-webkit-transform] declaration declares the transform property and the
+    converse. *)
+
+val as_property : 'a Properties.property -> declaration -> declaration
+(** [as_property property decl] is [decl] written under [property], with its
+    value and importance, or [decl] itself when it already is, is theme-guarded,
+    or [property] refuses its value. *)
+
 val with_value : declaration -> string -> (declaration, Error.t) result
 (** [with_value decl value] is [decl] carrying [value], read as a value of the
     property [decl] already holds and re-typed where that property accepts it.
@@ -308,16 +324,15 @@ val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 
 val first_release :
-  floor:Support.version ->
-  Support.engine ->
-  declaration ->
-  Support.version option
+  floor:Support.version -> Support.engine -> declaration -> Support.release
 (** [first_release ~floor engine decl] is the first release of [engine] at or
     past [floor] that parses [decl], as the web-features dataset records the
     productions [decl] uses: its property, a colour construct, or a keyword or
-    function of its value. [None] is no release the dataset records. A
-    production the dataset has no key for counts as parsed, and a custom
-    property, or a declaration holding [var()], waits on no value. *)
+    function of its value. A production the dataset has no key for counts as
+    parsed, except those cascade knows a recorded release drops, which make the
+    answer {!Support.constructor-Unrecorded}: a [clamp()] bound of [none] and a
+    CSS-wide keyword the dataset does not name. A custom property, or a
+    declaration holding [var()], waits on no value. *)
 
 val fallback_for :
   floors:Support.targets -> later:declaration -> declaration -> bool
@@ -331,13 +346,6 @@ val fallback_for :
     earlier does not. [false] means every such release that parses [earlier]
     parses [later], so [earlier] is dead wherever [later] covers it. *)
 
-val legacy_pair : declaration -> declaration -> bool
-(** [legacy_pair later earlier] is [true] when [later] and [earlier] set one
-    property and differ in which vendor-prefixed or legacy keywords they use,
-    one of them using some, such as [display:-webkit-box] and [display:flex].
-    Deduplication inside one rule keeps both, in either order, for a browser
-    older than the floors that reads only the prefixed one. *)
-
 val value_size : ?minify:bool -> ?inline:bool -> declaration -> int
 (** [value_size ?minify decl] is the byte length of
     [string_of_value ?minify decl], computed without allocating the string. *)
@@ -348,6 +356,14 @@ val value_has_css_wide_mix : declaration -> bool
     the whole value of a declaration or nothing, so the reader rejects one and a
     browser drops the declaration. This is that rule read off an emission, for
     the composer deciding whether a contraction it built can be written out. *)
+
+val rolls_back_rule : declaration -> bool
+(** [rolls_back_rule decl] is [true] when [decl]'s value holds [revert-rule],
+    whole or as a substitution fallback. CSS Cascade 5 sec. 7.3.6 rolls such a
+    value back to what the property would be without the style rule holding
+    [decl], so the rule's identity is part of its meaning: no rewrite merges
+    that rule with another, moves [decl] into another rule, or lets [decl] cover
+    a declaration of another rule. *)
 
 (* Single-to-list property helpers. These construct typed declarations for
    properties that accept comma-separated lists, while keeping a simple
@@ -1223,7 +1239,7 @@ val shape_image_threshold : shape_image_threshold -> declaration
 val shape_margin : length_percentage -> declaration
 (** [shape_margin v] is the [shape-margin] property. *)
 
-val shape_outside : string -> declaration
+val shape_outside : Properties.shape_outside -> declaration
 (** [shape_outside v] is the [shape-outside] property. *)
 
 val overflow_clip_margin : overflow_clip_margin -> declaration

@@ -1251,6 +1251,34 @@ let typed_var_default_fidelity () =
     ".x{--tw-translate-x:123px;--tw-translate-y:456px;translate:var(--tw-translate-x)var(--tw-translate-y)}"
     (minify stylesheet)
 
+(* CSS Values 4 sec. 10.9 rounds a math function at an [<integer>] slot and sec.
+   10.12 clamps one past a property's range, where the bare result is invalid;
+   sec. 10.9 also types [calc(0)] as a [<number>], never a length. A custom
+   property's stream does not know the slot it substitutes into, so a math
+   function in it stays a call. Chromium 157 computes [z-index:var(--v)] as [3]
+   with [--v:calc(2.5)] and [auto] with [--v:2.5], [line-height] as [0px] with
+   [calc(-1)] and [normal] with [-1], [width] as the box with [calc(0)] and
+   [0px] with [0]. *)
+let custom_math_keeps_its_call () =
+  let normalize css =
+    match Css.of_string ~strict:false css with
+    | Ok parsed -> minify parsed.stylesheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  List.iter
+    (fun value ->
+      let css = Fmt.str ".x{--v:%s}" value in
+      Alcotest.(check string) css css (normalize css))
+    [
+      "calc(2.5)";
+      "calc(0)";
+      "calc(-1)";
+      "round(1.5,1)";
+      "calc(2.25/1.875)";
+      "min(1,2)";
+      "calc(-1s)";
+    ]
+
 let suite =
   ( "stylesheet_vars",
     [
@@ -1267,6 +1295,7 @@ let suite =
         `Quick,
         customprops15_cycle );
       ("fidelity var preserved", `Quick, fidelity_var_preserved);
+      ("custom math keeps its call", `Quick, custom_math_keeps_its_call);
       ( "spec custom-properties 1 2 empty fallback preserved",
         `Quick,
         customprops12_empty_fallback );

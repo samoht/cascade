@@ -201,9 +201,18 @@ and read_implicit_calc_length ~length_only inner =
   validate_calc_type inner `Value expr;
   match expr with Val l -> l | expr -> Calc expr
 
+(* CSS Values 4 (ED) sec. 10.2 takes [none] for either bound of [clamp()], to
+   clamp from the other side only. *)
+and read_clamp_bound ~length_only inner =
+  match Cursor.peek_keyword inner with
+  | Some "none" ->
+      Cursor.skip inner;
+      (None : length)
+  | _ -> read_implicit_calc_length ~length_only inner
+
 and read_clamp_length ?(length_only = false) inner =
   Cursor.ws inner;
-  let min = read_implicit_calc_length ~length_only inner in
+  let min = read_clamp_bound ~length_only inner in
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
@@ -211,7 +220,7 @@ and read_clamp_length ?(length_only = false) inner =
   Cursor.ws inner;
   Cursor.comma inner;
   Cursor.ws inner;
-  let max = read_implicit_calc_length ~length_only inner in
+  let max = read_clamp_bound ~length_only inner in
   Cursor.ws inner;
   Cursor.expect_eof inner;
   Clamp (min, value, max)
@@ -352,7 +361,7 @@ and read_anchor_size_length ~allow_negative ~length_only ~with_keywords inner =
   let name, size = read_anchor_name_and read_anchor_size inner in
   let fallback : length option =
     match (name, size) with
-    | Option.None, Option.None ->
+    | None, None ->
         if Cursor.is_done inner then Option.none
         else Option.some (read_fallback inner)
     | _ ->
@@ -789,12 +798,30 @@ and read_math_number_function t name =
       match List.assoc_opt name number_unary_functions with
       | Some make -> Some (read_unary_number_function name make t)
       | None -> (
+          (* CSS Values 4 secs. 10.4 and 10.5: the other number-answering calls
+             ([cos()], [exp()], [sin()] of radians, ...) read as the calculation
+             [calc()] around them would, which refuses one answering an
+             angle. *)
+          let as_calc t : number =
+            Calc
+              (read_calc ~result_type:`Number
+                 (fun t -> Cursor.err t "expected numeric factor")
+                 t)
+          in
           match List.assoc_opt name angle_number_functions with
-          | Some make -> Some (read_angle_number_function name make t)
+          | Some make ->
+              Some
+                (Cursor.one_of
+                   [ read_angle_number_function name make; as_calc ]
+                   t)
+          | None when looking_at_math_function t -> Some (as_calc t)
           | None -> None))
 
 and read_round_number t =
-  read_round_call (fun s v step -> (Round (s, v, step) : number)) read_number t
+  read_round_call
+    ~default_step:(Num 1. : number)
+    (fun s v step -> (Round (s, v, step) : number))
+    read_number t
 
 and read_binary_number_function name make t =
   read_binary_call name make read_number t

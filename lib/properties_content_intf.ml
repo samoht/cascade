@@ -52,7 +52,7 @@ type counter_item = {
   reversed : bool;
       (** Written [reversed(name)]: CSS Lists 3 sec. 4.1 lets [counter-reset]
           instantiate a reversed counter. *)
-  value : int option;
+  value : number option;
 }
 
 type counter_set =
@@ -634,6 +634,16 @@ type clip_path =
           The pretty-printer round-trips the captured tokens; the
           [Optimize.drop_invalid] pass removes the declaration on every
           serialisation. *)
+
+(** CSS Shapes 1 sec. 6.1 [shape-outside]:
+    [none | [<basic-shape> || <shape-box>] | <image>]. The shape branch reuses
+    {!type-clip_path}, whose reader also gives [none] and the CSS-wide keywords,
+    and the image branch {!Properties_background_intf.type-background_image}. *)
+type shape_outside =
+  | Shape of clip_path
+  | Image of background_image
+  | Var of string var
+      (** A [var()] is held as its text: it may stand for either branch. *)
 
 (** Sec. 2.1 [offset-path]: [none | <offset-path> || <coord-box>], where the
     shape branch reuses {!type-clip_path}. *)

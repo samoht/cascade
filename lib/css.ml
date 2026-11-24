@@ -90,7 +90,6 @@ let collect_cascade_rules ~layer_order stylesheet =
   let add layer decl acc =
     let rule : Context.cascade_rule =
       {
-        property_name = Declaration.property_name decl;
         important = Declaration.is_important decl;
         layer;
         source_order = !source_order;
@@ -220,6 +219,7 @@ let columns_width width = (Width width : columns_value)
 let columns_both width count = (Both (width, count) : columns_value)
 
 let counter_item ?(reversed = false) ?value name : counter_item =
+  let value = Option.map (fun n -> (Num (Float.of_int n) : number)) value in
   { name; reversed; value }
 
 let counter_set items = (Counters items : counter_set)
@@ -568,9 +568,8 @@ let of_string ?(strict = false) ?filename ?(meta = Loc.default_meta_level)
   try
     let source : Source.t option ref = ref Option.None in
     let on_source =
-      if preserve_source then
-        Option.Some (fun captured -> source := Option.Some captured)
-      else Option.None
+      if preserve_source then Some (fun captured -> source := Some captured)
+      else None
     in
     let stylesheet, warnings =
       Stylesheet.parse_stylesheet_partial ~meta ~enforce_spec ?on_source css
@@ -744,14 +743,13 @@ let collect_var_names stylesheet =
    no-theme branch). *)
 let resolve_theme_guards_in_decls ~(theme : Pp.String_set.t option) decls =
   match theme with
-  | Option.None -> decls
-  | Option.Some set ->
+  | None -> decls
+  | Some set ->
       List.filter_map
         (function
           | Declaration.Theme_guarded { var_name; decl; _ } ->
-              if Pp.String_set.mem var_name set then Option.Some decl
-              else Option.None
-          | d -> Option.Some d)
+              if Pp.String_set.mem var_name set then Some decl else None
+          | d -> Some d)
         decls
 
 (* A guard the keep-set rejects has to be dropped wherever the declaration sits,
@@ -834,10 +832,9 @@ let theme_default_declaration (name, value) =
    understands. *)
 let bindable_theme_defaults lookup name =
   match lookup name with
-  | Option.Some value
-    when Option.is_some (theme_default_declaration (name, value)) ->
-      Option.Some value
-  | _ -> Option.None
+  | Some value when Option.is_some (theme_default_declaration (name, value)) ->
+      Some value
+  | _ -> None
 
 (* The fresh root-scope theme block, used when no [:root] / [:host] rule is
    available to merge into. *)
@@ -874,12 +871,12 @@ let referenced_var_names (stmts : Stylesheet.statement list) : string list =
   let opaque = ref [] in
   let note d =
     match Variables.custom_declaration_name d with
-    | Option.Some _ ->
+    | Some _ ->
         opaque :=
           List.rev_append
             (var_names_in_theme_value (declaration_value d))
             !opaque
-    | Option.None -> ()
+    | None -> ()
   in
   Stylesheet.iter_declarations (List.iter note) stmts;
   List.map bare_theme_name (collect_var_names stmts @ !opaque)

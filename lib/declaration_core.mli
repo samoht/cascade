@@ -63,11 +63,16 @@ val value_components : declaration -> Component.t list
 (** [value_components d] is the pretty print of [d]'s value, as components. *)
 
 val normalize :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> declaration -> declaration
-(** [normalize ?lossless d] applies AST-level semantic value canonicalisation so
-    the optimizer holds a canonical declaration and the pretty-printer stays a
-    pure serialiser. [lossless] disables bounded colour and numeric
-    approximation. *)
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?ctx:Values.calc_ctx ->
+  declaration ->
+  declaration
+(** [normalize ?lossless ?enforce_spec d] applies AST-level semantic value
+    canonicalisation so the optimizer holds a canonical declaration and the
+    pretty-printer stays a pure serialiser. [lossless] disables bounded colour
+    and numeric approximation. [enforce_spec] (default [false]) also takes the
+    folds only a target may refuse, such as a [color-mix()] of one item. *)
 
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
@@ -149,16 +154,15 @@ val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 
 val first_release :
-  floor:Support.version ->
-  Support.engine ->
-  declaration ->
-  Support.version option
+  floor:Support.version -> Support.engine -> declaration -> Support.release
 (** [first_release ~floor engine decl] is the first release of [engine] at or
     past [floor] that parses [decl], as the web-features dataset records the
     productions [decl] uses: its property, a colour construct, or a keyword or
-    function of its value. [None] is no release the dataset records. A
-    production the dataset has no key for counts as parsed, and a custom
-    property, or a declaration holding [var()], waits on no value. *)
+    function of its value. A production the dataset has no key for counts as
+    parsed, except those cascade knows a recorded release drops, which make the
+    answer {!Support.constructor-Unrecorded}: a [clamp()] bound of [none] and a
+    CSS-wide keyword the dataset does not name. A custom property, or a
+    declaration holding [var()], waits on no value. *)
 
 val fallback_for :
   floors:Support.targets -> later:declaration -> declaration -> bool
@@ -171,13 +175,6 @@ val fallback_for :
     value of the property is a fallback for a later one using such keywords the
     earlier does not. [false] means every such release that parses [earlier]
     parses [later], so [earlier] is dead wherever [later] covers it. *)
-
-val legacy_pair : declaration -> declaration -> bool
-(** [legacy_pair later earlier] is [true] when [later] and [earlier] set one
-    property and differ in which vendor-prefixed or legacy keywords they use,
-    one of them using some, such as [display:-webkit-box] and [display:flex].
-    Deduplication inside one rule keeps both, in either order, for a browser
-    older than the floors that reads only the prefixed one. *)
 
 val map_custom_value : (string -> string) -> declaration -> declaration
 (** [map_custom_value f d] is [d] with its custom-property value replaced by
@@ -195,3 +192,11 @@ val value_has_css_wide_mix : declaration -> bool
     the whole value of a declaration or nothing, so the reader rejects one and a
     browser drops the declaration. This is that rule read off an emission, for
     the composer deciding whether a contraction it built can be written out. *)
+
+val rolls_back_rule : declaration -> bool
+(** [rolls_back_rule decl] is [true] when [decl]'s value holds [revert-rule],
+    whole or as a substitution fallback. CSS Cascade 5 sec. 7.3.6 rolls such a
+    value back to what the property would be without the style rule holding
+    [decl], so the rule's identity is part of its meaning: no rewrite merges
+    that rule with another, moves [decl] into another rule, or lets [decl] cover
+    a declaration of another rule. *)

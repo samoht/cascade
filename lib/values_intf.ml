@@ -88,10 +88,11 @@ and math_fn =
   | Rem_n of math_arg * math_arg
   | Min_n of math_arg list
   | Max_n of math_arg list
-  | Clamp_n of math_arg * math_arg * math_arg
+  | Clamp_n of math_arg option * math_arg * math_arg option
       (** Sec. 10.2 comparisons whose arguments carry a unit no typed reader of
           the slot spells on its own (a time, an angle, a percentage); they
-          answer the type the arguments share. *)
+          answer the type the arguments share. A bound of [None] is the [none]
+          keyword the Editor's Draft takes for no clamp from that side. *)
 
 (** [sin] / [cos] / [tan] accept an [<angle>] or unitless [<number>] expression
     (treated as radians). Arithmetic over angles ([22deg + 23deg]) and
@@ -499,7 +500,10 @@ type angle =
 
 (** CSS alpha values (for HSL/HWB/etc) *)
 type alpha =
-  | None
+  | None  (** No alpha written: opaque. *)
+  | Alpha_none
+      (** CSS Color 4 sec. 4.4 [none]: zero at rest, the other colour's alpha in
+          an interpolation. *)
   | Num of float
   | Pct of float
   | Var of alpha var

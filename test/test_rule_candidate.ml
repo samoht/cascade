@@ -13,9 +13,13 @@ let render rules =
   String.concat ""
     (List.map (Pp.to_string ~minify:true Stylesheet.pp_rule) rules)
 
+(* The factoring cases below are sized in raw bytes, which the raw objective
+   scores them by. *)
+let raw = Ctx.v ~objective:`Raw `Fragment
+
 let candidates css =
   css |> rules |> Rule_graph.of_rules
-  |> Rule_candidate.enumerate ~ctx:Ctx.fragment ~finalize:Fun.id
+  |> Rule_candidate.enumerate ~ctx:raw ~finalize:Fun.id
 
 let candidates_with_ctx ctx css =
   css |> rules |> Rule_graph.of_rules
@@ -426,10 +430,10 @@ let a_refresh_leaves_what_a_full_enumeration_offers () =
   in
   let fragment = Ctx.fragment
   and aggressive = Ctx.v ~aggressive:true `Fragment in
-  check ~ctx:fragment ~every:1 "indexed" (factoring_run 200);
-  check ~ctx:fragment ~every:3 "indexed, refreshed every third commit"
+  check ~ctx:raw ~every:1 "indexed" (factoring_run 200);
+  check ~ctx:raw ~every:3 "indexed, refreshed every third commit"
     (factoring_run 200);
-  check ~ctx:fragment ~every:1 "exhaustive" (factoring_run 60);
+  check ~ctx:raw ~every:1 "exhaustive" (factoring_run 60);
   check ~ctx:fragment ~every:1 "mixed indexed" (mixed_run 180);
   check ~ctx:fragment ~every:1 "mixed exhaustive" (mixed_run 50);
   check ~ctx:aggressive ~every:1 "aggressive" (mixed_run 60);
@@ -440,11 +444,10 @@ let a_refresh_leaves_what_a_full_enumeration_offers () =
     "#d{display:flex;color:red!important}#d{padding-left:4px}#d{display:flex;color:blue}.e.f{display:block;color:blue}.e.f{color:red;color:red!important}";
   (* The second commit produces a [.cccccccc] rule inside the span of a group it
      crosses. *)
-  check ~commits_at_least:2 ~ctx:fragment ~every:1 "a crossing a rewrite adds"
+  check ~commits_at_least:2 ~ctx:raw ~every:1 "a crossing a rewrite adds"
     "a:hover{padding-left:4px}.g>.h{color:green;padding:0}.cccccccc{display:block;padding-left:4px}.a{margin:1px;padding:0}.cccccccc{padding-left:4px;color:blue}";
   (* The second commit consumes the only rule a group would have crossed. *)
-  check ~commits_at_least:2 ~ctx:fragment ~every:1
-    "a crossing a rewrite removes"
+  check ~commits_at_least:2 ~ctx:raw ~every:1 "a crossing a rewrite removes"
     ".e.f{display:block;margin:0}p{margin:2px;font-weight:700}#d{display:flex;margin-top:3px}p{display:flex;margin:0}p{margin-top:3px;margin:2px}"
 
 (* A candidate set read on the printed rules alone: each consumed rule by where
@@ -514,7 +517,7 @@ let a_rewritten_graph_offers_what_a_fresh_one_does () =
    fraction of what enumerating the new graph does. *)
 let a_refresh_costs_what_the_rewrite_changed () =
   let g = Rule_graph.of_rules (rules (factoring_run 200)) in
-  let ctx = Ctx.fragment in
+  let ctx = raw in
   let state = Rule_candidate.start ~ctx ~finalize:Fun.id g in
   ignore (Rule_candidate.refresh state);
   match best_commit g (Rule_candidate.candidates state) with

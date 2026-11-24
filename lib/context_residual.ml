@@ -145,8 +145,7 @@ module Var_residual = struct
             Option.bind
               (lookup_custom_property ?layer ?layer_order cascade name)
               (fun decl ->
-                if is_css_wide_binding decl then Option.None
-                else read_custom decl)
+                if is_css_wide_binding decl then None else read_custom decl)
           in
           Hashtbl.add parsed_custom name value;
           value
@@ -337,8 +336,9 @@ module Calc_residual = struct
     | Values.Hypot args | Values.Min_n args | Values.Max_n args ->
         List.exists math_arg_contains_var args
     | Values.Clamp_n (a, b, c) ->
-        math_arg_contains_var a || math_arg_contains_var b
-        || math_arg_contains_var c
+        Option.fold ~none:false ~some:math_arg_contains_var a
+        || math_arg_contains_var b
+        || Option.fold ~none:false ~some:math_arg_contains_var c
 
   let rec contains_var : type a. a Values.calc -> bool = function
     | Values.Var _ -> true

@@ -17,9 +17,15 @@ val all_preserved_reorder_declaration : Declaration.declaration -> bool
     or [unicode-bidi], which keep their position after an [all]. *)
 
 val declaration_covers :
-  Declaration.declaration -> Declaration.declaration -> bool
-(** [declaration_covers newer older] is the shorthand/property coverage
-    relation. *)
+  enforce_spec:bool ->
+  Declaration.declaration ->
+  Declaration.declaration ->
+  bool
+(** [declaration_covers ~enforce_spec newer older] is the shorthand/property
+    coverage relation. With [enforce_spec] it also holds where only the
+    specifications have [newer] reset [older], as [background] does
+    [background-blend-mode] (Compositing and Blending 1 sec. 3.4.3), which
+    Chrome and WebKit keep. *)
 
 val declarations_overlap :
   Declaration.declaration -> Declaration.declaration -> bool
@@ -57,23 +63,27 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     keys touched by [d], sorted by {!val-overlap_key_compare} without repeats.
 *)
 
-val declaration_slot_keys : Declaration.declaration -> overlap_key list
-(** [declaration_slot_keys d] is the keys of the slots [d] writes in every
-    engine that reads it, sorted like {!val-declaration_overlap_keys}: the slots
-    its property names, without the physical sides a flow-relative slot may
-    resolve to. It is empty for [all], a custom property, a property the model
-    cannot place and a vendor-prefixed property. *)
+val declaration_slot_keys :
+  enforce_spec:bool -> Declaration.declaration -> overlap_key list
+(** [declaration_slot_keys ~enforce_spec d] is the keys of the slots [d] writes
+    in every engine that reads it, sorted like {!val-declaration_overlap_keys}:
+    the slots its property names, without the physical sides a flow-relative
+    slot may resolve to. With [enforce_spec] the engines are those that follow
+    the specifications, so [background] writes [background-blend-mode]. It is
+    empty for [all], a custom property, a property the model cannot place and a
+    vendor-prefixed property. *)
 
 val property_slot_keys : 'a Properties.property -> overlap_key list
 (** [property_slot_keys p] is {!val-declaration_slot_keys} of a declaration of
-    [p]. *)
+    [p] without [enforce_spec]. *)
 
 val reset_slots :
   Declaration.declaration -> Declaration.declaration list -> overlap_key list
 (** [reset_slots shorthand run] is the slots [shorthand] writes, the
-    [border-image] a [border] resets and the [mask-border] a [mask] resets
-    included, that no declaration of [run] writes: the slots a shorthand
-    composed from [run] sets to their initial value. *)
+    [border-image] a [border] resets, the [mask-border] a [mask] resets and the
+    [background-blend-mode] a [background] may reset included, that no
+    declaration of [run] writes: the slots a shorthand composed from [run] sets
+    to their initial value. *)
 
 val footprint_family : Declaration.declaration -> int option
 (** [footprint_family d] is the rank of the first shorthand family whose

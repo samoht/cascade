@@ -32,6 +32,26 @@ let equal_canonical_undecidable_channel () =
     "a decidable alpha keeps the six-figure bound" true
     (equal ".a{color:rgba(0,0,0,.7)}" ".a{color:rgba(0,0,0,.7000001)}")
 
+(* CSS Cascade 5 sec. 7.3.1: [initial] sets a property to its initial value, and
+   CSS Lists 3 secs. 3.3 and 3.5 give [list-style-image] the initial value
+   [none] and [list-style-position] [outside]. So the keyword and the value are
+   one declaration, alone or as the resets of a [list-style] expansion. *)
+let equal_canonical_list_style_initial () =
+  let equal = Cascade_diff.Css_compare.equal ~mode:`Canonical in
+  Alcotest.(check bool)
+    "list-style-image initial is none" true
+    (equal ".a{list-style-image:initial}" ".a{list-style-image:none}");
+  Alcotest.(check bool)
+    "list-style-position initial is outside" true
+    (equal ".a{list-style-position:initial}" ".a{list-style-position:outside}");
+  Alcotest.(check bool)
+    "list-style none is its expansion with initial resets" true
+    (equal ".a{list-style:none}"
+       ".a{list-style-position:initial;list-style-image:initial;list-style-type:none}");
+  Alcotest.(check bool)
+    "inside is not the initial position" false
+    (equal ".a{list-style-position:initial}" ".a{list-style-position:inside}")
+
 (* SVG 2 sec. 13.5.3: [stroke-width] takes a [<number>] in user units, and a CSS
    pixel is one user unit, so [1] and [1px] draw the same stroke. Tailwind
    writes [stroke-1] unitless and tw writes [1px]. *)
@@ -590,12 +610,12 @@ let canonical_custom_calc_percentage () =
     (Cascade_diff.Css_compare.equal ~mode:`Canonical expected actual)
 
 let canonical_custom_calc_constant_fold () =
-  (* A math function whose operands are all constants reduces to the same number
-     in every substitution site, so [calc(2.25/1.875)] and [1.2] compare equal
-     inside a custom property. A calc that carries units or a var() does not
-     reduce and stays opaque. *)
+  (* A constant [calc()] is not its result in every substitution site: CSS
+     Values 4 sec. 10.9 rounds [calc(2.25/1.875)] at an [<integer>] slot, where
+     a bare [1.2] is invalid, so Chromium 157 computes [z-index:var(--lh)] as
+     [1] under the first and [auto] under the second. *)
   Alcotest.(check bool)
-    "constant number calc folds in a custom property" true
+    "constant number calc stays a call in a custom property" false
     (Cascade_diff.Css_compare.equal ~mode:`Canonical
        ".a { --lh: calc(2.25 / 1.875) }" ".a { --lh: 1.2 }");
   Alcotest.(check bool)
@@ -1096,11 +1116,32 @@ let interpolation_class_is_a_difference () =
   differ "a missing-axis OKLab at zero alpha is not transparent"
     ".a{color:oklab(0% none none/0)}" ".a{color:#0000}"
 
+(* CSS Color 4 sec. 4.4: a missing alpha is zero at rest, so [rgb(0 0 0 / none)]
+   paints nothing where [#000] paints black, and sec. 13.4 gives it the other
+   colour's alpha in an interpolation, where [#0000] keeps zero. A negative
+   chroma clamps to zero at parsed-value time (sec. 9.3). *)
+let missing_alpha_is_a_difference () =
+  let equal a b = Cascade_diff.Css_compare.equal ~mode:`Canonical a b in
+  Alcotest.(check bool)
+    "a missing alpha is not opaque" false
+    (equal ".a{color:rgb(0 0 0/none)}" ".a{color:#000}");
+  Alcotest.(check bool)
+    "nor in a lab-family colour" false
+    (equal ".a{color:oklch(.5 .1 20/none)}" ".a{color:oklch(.5 .1 20)}");
+  Alcotest.(check bool)
+    "nor a zero alpha" false
+    (equal ".a{color:rgb(0 0 0/none)}" ".a{color:#0000}");
+  Alcotest.(check bool)
+    "a negative chroma is zero" true
+    (equal ".a{color:lch(50% -10 0)}" ".a{color:lch(50 0 0)}")
+
 let suite =
   ( "css_compare_values",
     [
       Alcotest.test_case "interpolation class is a difference" `Quick
         interpolation_class_is_a_difference;
+      Alcotest.test_case "missing alpha is a difference" `Quick
+        missing_alpha_is_a_difference;
       Alcotest.test_case "semantically equivalent color-mix values" `Quick
         semantically_equivalent_color_mix_values;
       Alcotest.test_case "semantically equivalent color-mix CSS" `Quick
@@ -1221,4 +1262,6 @@ let suite =
         canonical_numeric_division_follows_precision_mode;
       Alcotest.test_case "canonical undecidable colour channel" `Quick
         equal_canonical_undecidable_channel;
+      Alcotest.test_case "spec lists 3 initial list-style longhands" `Quick
+        equal_canonical_list_style_initial;
     ] )

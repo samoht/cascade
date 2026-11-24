@@ -1059,11 +1059,11 @@ and read_complex t =
 let validate_unforgiving_pseudo t sel =
   if not (Cursor.enforce_spec t) then
     match untargeted sel with
-    | Option.Some name ->
+    | Some name ->
         Error.fail
           (Cursor.error ~sort:Sort.Selector t ~loc:(Cursor.position t)
              (Error.Untargeted_selector (String.concat "" [ ":"; name ])))
-    | Option.None -> ()
+    | None -> ()
 
 let read_selector_list t =
   Cursor.with_context t "list" @@ fun () ->

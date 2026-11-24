@@ -566,7 +566,7 @@ let regrouping_can_be_disabled () =
   in
   let sheet = Css.stylesheet src in
   let out ?regroup () =
-    Css.to_string ~minify:true (Css.optimize ?regroup sheet)
+    Css.to_string ~minify:true (Css.optimize ?regroup ~objective:`Raw sheet)
   in
   Alcotest.(check bool)
     "regrouping on lifts the shared declaration" true
@@ -722,7 +722,8 @@ let test_border_keeps_longhands_beside_a_border_image () =
   let minify_str ?(scope = `Stylesheet) css =
     match Css.of_string ~strict:false css with
     | Ok p ->
-        Css.to_string ~minify:true (Css.optimize ~scope p.stylesheet)
+        Css.to_string ~minify:true
+          (Css.optimize ~scope ~objective:`Raw p.stylesheet)
         |> String.trim
     | Error _ -> Alcotest.fail "parse"
   in
@@ -871,11 +872,29 @@ let prefixed_fallbacks_across_rules () =
         "a{display:-webkit-box;display:-moz-box}" );
     ]
 
+(* docs/invariants.md, declaration layer: a fallback is dead when every browser
+   in B that parses it parses the declaration after it. The data says every
+   floor parses [linear-gradient()], [display:flex] and [position:sticky], so a
+   prefixed value before one paints nowhere in B, whatever reads the prefix.
+   [width:stretch] is one Chrome 111 to 137 drops, so the prefix before it
+   stays. *)
+let prefixed_fallback_before_a_parsed_value () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string) input expected (optimized_string input))
+    [
+      ( "a{background-image:-webkit-linear-gradient(red,blue);background-image:linear-gradient(red,blue)}",
+        "a{background-image:linear-gradient(red,#00f)}" );
+      ("a{display:-webkit-box;display:flex}", "a{display:flex}");
+      ("a{position:-webkit-sticky;position:sticky}", "a{position:sticky}");
+      ( "a{width:-webkit-fill-available;width:stretch}",
+        "a{width:-webkit-fill-available;width:stretch}" );
+    ]
+
 (* The compatibility data has no key for a vendor-prefixed or legacy keyword, so
-   it cannot say that every browser in B reading one value also reads the other
-   (docs/invariants.md, declaration layer). Inside one rule both values stay, in
-   either order, and across two rules an earlier value stays before a later one
-   using such a keyword. *)
+   it cannot say that every browser in B reading an earlier value also reads a
+   later one using such a keyword (docs/invariants.md, declaration layer). The
+   earlier value stays before it, inside one rule and across two. *)
 let legacy_keyword_fallbacks_survive () =
   List.iter
     (fun (input, expected) ->
@@ -883,8 +902,8 @@ let legacy_keyword_fallbacks_survive () =
     [
       ( "a{cursor:grab;cursor:-webkit-grab}",
         "a{cursor:grab;cursor:-webkit-grab}" );
-      ( "a{cursor:-webkit-grab;cursor:grab}",
-        "a{cursor:-webkit-grab;cursor:grab}" );
+      (* Every floor parses [cursor:grab], so the prefix before it is dead. *)
+      ("a{cursor:-webkit-grab;cursor:grab}", "a{cursor:grab}");
       ( ".a{cursor:grab}.a{cursor:-webkit-grab}",
         ".a{cursor:grab;cursor:-webkit-grab}" );
       ( ".a{cursor:grab}.b{color:red}.a{cursor:-webkit-grab}",
@@ -970,11 +989,6 @@ let floor_fallbacks_survive () =
     "a{background-image:url(x.png);background-image:-webkit-cross-fade(url(a.png),url(b.png),.5)}";
   (* web-features records the variadic color-mix() in Firefox 150 alone, so
      every other floor drops the later declaration and paints red. *)
-  (* One item is the variadic grammar too: Firefox reads it from 150, behind
-     the pref that reads three, and Chromium 153 drops it. *)
-  check_modes "a color-mix() of one item"
-    "a{color:red;color:color-mix(in srgb,blue)}"
-    "a{color:red;color:color-mix(in srgb,#00f)}";
   check_modes "a variadic color-mix()"
     "a{color:red;color:color-mix(in srgb,red,blue,green)}"
     "a{color:red;color:color-mix(in srgb,red,#00f,green)}";
@@ -1024,18 +1038,76 @@ let target_minify_enforce_spec_split () =
       (name ^ " enforce-spec") spec
       (optimized_string ~enforce_spec:true input)
   in
-  check_modes "explicit flex zero basis is not one-value shorthand"
-    "a { flex: 1 1 0 }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
+  (* Chrome 157 reads [flex:1] with a [0%] basis, a percentage, so the default
+     targets write the zero basis alone ([0px] is [1 1 0px], sec. 7.1); CSS
+     Flexible Box 1 (ED) sec. 7.1.1 makes [flex:1] [1 1 0], so --enforce-spec
+     writes [flex:1]. *)
+  check_modes "explicit flex zero basis is one-value shorthand only by the spec"
+    "a { flex: 1 1 0 }" ~default:"a{flex:0px}" ~spec:"a{flex:1}";
   check_modes "a lone zero flex basis keeps its unit" "a { flex: 0px }"
     ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "a lone zero flex basis in em keeps a unit" "a { flex: 0em }"
     ~default:"a{flex:0px}" ~spec:"a{flex:0px}";
   check_modes "a zero flex basis after one factor keeps its meaning"
-    "a { flex: 1 0px }" ~default:"a{flex:1 1 0}" ~spec:"a{flex:1 1 0}";
+    "a { flex: 1 0px }" ~default:"a{flex:0px}" ~spec:"a{flex:1}";
+  (* The basis [flex:1] omits is [0%] in Chrome 157, which the default targets
+     read, and [0] under CSS Flexible Box 1 (ED) sec. 7.1, which --enforce-spec
+     reads. A later [flex-basis] writing that basis again is a no-op; one
+     writing the other is not. *)
+  check_modes "a later flex-basis of the omitted 0%" "a{flex:1;flex-basis:0%}"
+    ~default:"a{flex:1}" ~spec:"a{flex:1;flex-basis:0%}";
+  check_modes "a later flex-basis of the omitted 0" "a{flex:1;flex-basis:0}"
+    ~default:"a{flex:1;flex-basis:0}" ~spec:"a{flex:1}";
+  check_modes "flex longhands with a 0% basis"
+    "a{flex-grow:1;flex-shrink:1;flex-basis:0%}" ~default:"a{flex:1}"
+    ~spec:"a{flex:0%}";
+  check_modes "an explicit 0% basis" "a{flex:2 3 0%}" ~default:"a{flex:2 3}"
+    ~spec:"a{flex:2 3 0%}";
+  (* WHATWG Compatibility Standard sec. 3.4.1 makes [-webkit-flex-basis] and
+     [-webkit-flex-grow] legacy name aliases of [flex-basis] and [flex-grow],
+     which CSS Cascade 5 sec. 3.1 makes the same property under a second name:
+     after [flex:1] one restating what the shorthand set is a no-op, as the
+     unprefixed one is. --enforce-spec keeps every vendor prefix. *)
+  check_modes "a later -webkit-flex-basis of the omitted 0%"
+    "a{flex:1;-webkit-flex-basis:0%}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1;-webkit-flex-basis:0%}";
+  check_modes "a later prefixed and unprefixed basis of the omitted 0%"
+    "a{flex:1;-webkit-flex-basis:0%;flex-basis:0%}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1;-webkit-flex-basis:0%;flex-basis:0%}";
+  check_modes "a later -webkit-flex-grow of the grow flex sets"
+    "a{flex:1;-webkit-flex-grow:1}" ~default:"a{flex:1}"
+    ~spec:"a{flex:1;-webkit-flex-grow:1}";
+  check_modes "a later -webkit-flex-basis of another basis"
+    "a{flex:1;-webkit-flex-basis:0}" ~default:"a{flex:1;-webkit-flex-basis:0}"
+    ~spec:"a{flex:1;-webkit-flex-basis:0}";
   check_modes "color-mix keeps the required in oklab in both modes"
     "a { color: color-mix(in oklab, var(--a), var(--b)) }"
     ~default:"a{color:color-mix(in oklab,var(--a),var(--b))}"
     ~spec:"a{color:color-mix(in oklab,var(--a),var(--b))}";
+  (* CSS Color 5 (ED) sec. 3 lets the list of a color-mix() hold one item, and
+     sec. 3.3 makes that item's colour, converted to the interpolation space,
+     the result, its alpha multiplied by what its percentage leaves over (CSS
+     Values 5 (ED) sec. 6.1). Firefox reads it from 150, behind the pref that
+     reads three; Chrome 157 drops it, so the default targets keep it as written
+     with the declaration before it as the fallback. Every conforming
+     implementation reads it, so --enforce-spec folds it to that colour, which
+     Chrome computes for the same mix written as two halves of one colour. *)
+  check_modes "a color-mix() of one item"
+    "a{color:red;color:color-mix(in srgb,blue)}"
+    ~default:"a{color:red;color:color-mix(in srgb,#00f)}"
+    ~spec:"a{color:red;color:color(srgb 0 0 1)}";
+  check_modes "a color-mix() of one item under 100%"
+    "a{color:color-mix(in srgb,blue 40%)}"
+    ~default:"a{color:color-mix(in srgb,#00f 40%)}"
+    ~spec:"a{color:color(srgb 0 0 1/.4)}";
+  check_modes "a color-mix() of one item in another space"
+    "a{color:color-mix(in srgb-linear,red)}"
+    ~default:"a{color:color-mix(in srgb-linear,red)}"
+    ~spec:"a{color:color(srgb-linear 1 0 0)}";
+  check_modes "a color-mix() of one item inside a shadow"
+    "a{box-shadow:0 0 1px color-mix(in srgb,blue)}"
+    ~default:"a{box-shadow:0 0 1px color-mix(in srgb,#00f)}"
+    ~spec:"a{box-shadow:0 0 1px color(srgb 0 0 1)}";
   check_modes "computed oklch lightness keeps its numeric form"
     "a { color: color-mix(in oklch, red 50%, blue 50%) }"
     ~default:"a{color:oklch(.54 .285 326.643)}"
@@ -1307,6 +1379,9 @@ let suite =
       ( "legacy keyword fallbacks survive",
         `Quick,
         legacy_keyword_fallbacks_survive );
+      ( "a prefixed fallback before a parsed value is dead",
+        `Quick,
+        prefixed_fallback_before_a_parsed_value );
       ( "mask three-value position kept as written",
         `Quick,
         mask_three_value_position_kept_as_written );

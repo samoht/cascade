@@ -287,19 +287,30 @@ let test_merge_media_joins_two_spellings_of_one_bound () =
 let merge_distant_media css =
   render (Block.merge_distant_media ~optimize_merged_block:id (block css))
 
+(* Whether [first] and [then_] both occur in [out], in that order. *)
+let before out ~first ~then_ =
+  match
+    ( Astring.String.find_sub ~sub:first out,
+      Astring.String.find_sub ~sub:then_ out )
+  with
+  | Some i, Some j -> i < j
+  | _ -> false
+
 (* An element carrying both classes has one ::before box. With the query true it
    reads [blue] then [green] at one specificity, (0,1,1), and computes green;
    hoisting the later block above the list would hand it blue. The list meets
-   [.b::before] through its [.a::before] branch, so the merge stays refused. *)
+   [.b::before] through its [.a::before] branch, so [.b::before] stays behind
+   the list, whatever else the pass moves. *)
 let test_distant_media_keeps_order_across_a_pseudo_element_list () =
   let css =
     "@media (min-width:1px){.x{color:red}}.a:after,.a:before{color:blue}@media \
      (min-width:1px){.b:before{color:green}}"
   in
-  Alcotest.(check string)
-    "the later block stays behind the list"
-    (render (block css))
-    (merge_distant_media css)
+  let out = merge_distant_media css in
+  Alcotest.(check bool)
+    out true
+    (before out ~first:".a:after,.a:before{color:blue}"
+       ~then_:".b:before{color:green}")
 
 (* CSS Cascade 5 sec. 6.1 ranks specificity before order of appearance. On an
    element matching both, [#y] (1,0,0) beats [.b] (0,1,0) from either position,
@@ -315,23 +326,136 @@ let test_distant_media_crosses_a_more_specific_rule () =
        "@media (min-width:1px){.x{color:red}}#y{color:blue}@media \
         (min-width:1px){.b{color:green}}")
 
-(* A missed optimisation, not a cascade rule. CSS Cascade 6 sec. 3.1 (Cascade
-   Sorting Order) ranks scope proximity after specificity and before order of
-   appearance, and gives a rule without a scoping root infinite proximity. On an
-   element both [@scope (.s) { & .b }] and [.b] match, either specificity or the
-   scoped rule's finite proximity decides, so order never does and the later
-   block could move above the scope body. The pass reads no scoping root (sec.
-   3.5.1, Effects of @scope, makes [&] the root), so it refuses: a pass that
-   learns to weigh the pair may merge here. *)
-let test_distant_media_refuses_to_cross_a_scope_body () =
-  let css =
-    "@media (min-width:1px){.x{color:red}}@media print{@scope (.s){& \
-     .b{color:blue}}}@media (min-width:1px){.b{color:green}}"
+(* CSS Cascade 6 sec. 3.1 (Cascade Sorting Order) ranks scope proximity after
+   specificity and before order of appearance, and gives a rule without a
+   scoping root infinite proximity. On an element both [@scope (.s) { & .b }]
+   and [.b] match, either specificity or the scoped rule's finite proximity
+   decides, so order never does and the later block moves above the scope body.
+   Chromium 157 paints a scoped [.a] over an unscoped [.a] written after it. *)
+let test_distant_media_crosses_a_scope_body () =
+  Alcotest.(check string)
+    "the later block joins the first across the scope body"
+    (render
+       (block
+          "@media (min-width:1px){.x{color:red}.b{color:green}}@media \
+           print{@scope (.s){& .b{color:blue}}}"))
+    (merge_distant_media
+       "@media (min-width:1px){.x{color:red}}@media print{@scope (.s){& \
+        .b{color:blue}}}@media (min-width:1px){.b{color:green}}")
+
+(* A [@keyframes], [@font-face] or [@property] rule and a comment take no part
+   in the order of style rules (docs/invariants.md, At-rules keep their
+   identity), so a block of style rules moves past them. *)
+let test_distant_media_crosses_definitions () =
+  let between =
+    "@keyframes \
+     k{0%{opacity:0}}@font-face{font-family:f;src:url(a.woff)}@property \
+     --p{syntax:\"*\";inherits:false}/*! c */"
   in
   Alcotest.(check string)
-    "the pass does not yet move the later block over the scope body"
-    (render (block css))
-    (merge_distant_media css)
+    "the later block joins the first across the definitions"
+    (render
+       (block
+          (String.concat ""
+             [ "@media print{.x{color:red}.b{color:green}}"; between ])))
+    (merge_distant_media
+       (String.concat ""
+          [
+            "@media print{.x{color:red}}";
+            between;
+            "@media print{.b{color:green}}";
+          ]))
+
+(* Of two [@keyframes] of one name the last wins, so a block that holds one does
+   not move above another of its name: with [print] and [(min-width:1px)] both
+   true, Chromium 157 runs the later keyframes. A [@font-face] does not move
+   past another face of its family either (docs/invariants.md, At-rules keep
+   their identity). *)
+let test_distant_media_keeps_a_definition_in_place () =
+  let in_order css ~first ~then_ =
+    let out = merge_distant_media css in
+    Alcotest.(check bool) out true (before out ~first ~then_)
+  in
+  in_order
+    "@media print{.x{color:red}}@media (min-width:1px){@keyframes \
+     k{0%{opacity:0}}}@media print{@keyframes k{0%{opacity:1}}}"
+    ~first:"k{0%{opacity:0}}" ~then_:"k{0%{opacity:1}}";
+  in_order
+    "@media print{.x{color:red}}@media \
+     (min-width:1px){@font-face{font-family:f;src:url(a.woff)}}@media \
+     print{@font-face{font-family:f;src:url(b.woff)}}"
+    ~first:"url(a.woff)" ~then_:"url(b.woff)"
+
+(* When the later block cannot rise past what it crosses, the earlier one may
+   sink to it: [.p{--b:1}] writes nothing the first block writes, so moving that
+   block below it changes no element's values (CSS Cascade 5 sec. 6.1), and the
+   two blocks are one (CSS Conditional Rules 3 sec. 2). *)
+let test_distant_media_sinks_the_earlier_block () =
+  Alcotest.(check string)
+    "the earlier block joins the later across a rule it does not meet"
+    (render (block ".p{--a:1}.p{--b:1}@media print{.p{--a:2}.p{--b:2}}"))
+    (merge_distant_media
+       ".p{--a:1}@media print{.p{--a:2}}.p{--b:1}@media print{.p{--b:2}}")
+
+(* Two [@supports] blocks of one condition apply together or not at all (CSS
+   Conditional Rules 3 sec. 2), so a later one joins the first across a rule it
+   does not meet, as a later [@media] block does. *)
+let test_distant_supports_merge () =
+  Alcotest.(check string)
+    "the later block joins the first"
+    "@supports(display:grid){.a{color:red}.c{color:#00f}}.b{margin:0}"
+    (render
+       (Css.optimize
+          (block
+             "@supports (display:grid){.a{color:red}}.b{margin:0}@supports \
+              (display:grid){.c{color:blue}}")))
+
+(* [@counter-style], [@page], [@font-palette-values], [@font-feature-values],
+   [@position-try] and [@view-transition] define names or page boxes, none of
+   which a style rule's place in the order bears on, so a block of style rules
+   moves past them as it does past a [@keyframes]. *)
+let test_distant_media_crosses_named_rules () =
+  let between =
+    "@counter-style \
+     c{system:cyclic;symbols:a}@page{margin:1cm}@font-palette-values \
+     --p{font-family:f}@font-feature-values f{@swash{s:1}}@position-try \
+     --t{top:0}@view-transition{navigation:auto}"
+  in
+  Alcotest.(check string)
+    "the later block joins the first across the named rules"
+    (render
+       (block
+          (String.concat ""
+             [ "@media print{.x{color:red}.b{color:green}}"; between ])))
+    (merge_distant_media
+       (String.concat ""
+          [
+            "@media print{.x{color:red}}";
+            between;
+            "@media print{.b{color:green}}";
+          ]))
+
+(* Of two [@position-try] or two [@font-palette-values] rules of one name the
+   later wins, as of two [@keyframes], so a block holding one stays behind
+   another of its name. *)
+let test_distant_media_keeps_a_named_rule_in_place () =
+  let in_order css ~first ~then_ =
+    let out = merge_distant_media css in
+    match
+      ( Astring.String.find_sub ~sub:first out,
+        Astring.String.find_sub ~sub:then_ out )
+    with
+    | Some i, Some j -> Alcotest.(check bool) out true (i < j)
+    | _ -> Alcotest.failf "both rules survive: %s" out
+  in
+  in_order
+    "@media print{.x{color:red}}@media (min-width:1px){@position-try \
+     --t{top:0}}@media print{@position-try --t{top:1px}}"
+    ~first:"top:0" ~then_:"top:1px";
+  in_order
+    "@media print{.x{color:red}}@media (min-width:1px){@font-palette-values \
+     --p{font-family:a}}@media print{@font-palette-values --p{font-family:b}}"
+    ~first:"font-family:a" ~then_:"font-family:b"
 
 (* CSS Nesting 1 sec. 4 (Nesting Selector) gives [&] the largest specificity of
    the enclosing rule's selector, here [.outer .card], (0,2,0), not [.card]
@@ -540,8 +664,20 @@ let suite =
         `Quick test_distant_media_keeps_order_across_a_pseudo_element_list;
       Alcotest.test_case "distant @media crosses a more specific rule" `Quick
         test_distant_media_crosses_a_more_specific_rule;
-      Alcotest.test_case "distant @media refuses to cross a scope body (missed)"
-        `Quick test_distant_media_refuses_to_cross_a_scope_body;
+      Alcotest.test_case "distant @media crosses a scope body" `Quick
+        test_distant_media_crosses_a_scope_body;
+      Alcotest.test_case "distant @media sinks the earlier block" `Quick
+        test_distant_media_sinks_the_earlier_block;
+      Alcotest.test_case "distant @supports merge" `Quick
+        test_distant_supports_merge;
+      Alcotest.test_case "distant @media crosses definitions" `Quick
+        test_distant_media_crosses_definitions;
+      Alcotest.test_case "distant @media crosses named rules" `Quick
+        test_distant_media_crosses_named_rules;
+      Alcotest.test_case "distant @media keeps a named rule in place" `Quick
+        test_distant_media_keeps_a_named_rule_in_place;
+      Alcotest.test_case "distant @media keeps a definition in place" `Quick
+        test_distant_media_keeps_a_definition_in_place;
       Alcotest.test_case "distant @media weighs a nested body by its ancestors"
         `Quick test_distant_media_weighs_a_nested_body_by_its_ancestors;
       Alcotest.test_case "merge distant @media is subquadratic" `Quick

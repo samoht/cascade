@@ -3,12 +3,12 @@ open Common
 open Shorthand_common
 open Shorthand_coverage
 
-let property_covered_by_important kept decl =
+let property_covered_by_important ~enforce_spec kept decl =
   List.exists
     (fun (_, existing) ->
       (not (is_intentionally_duplicated existing))
       && is_important existing
-      && declaration_covers existing decl)
+      && declaration_covers ~enforce_spec existing decl)
     kept
 
 (* Rebuilt through the smart constructors: they recompute the cached
@@ -82,11 +82,10 @@ let same_property_value_declaration new_decl existing =
   && same_value new_decl existing
   && (is_important new_decl || not (is_important existing))
 
-let covered_by_new_declaration ~floors ~judged new_decl existing =
+let covered_by_new_declaration ~enforce_spec ~floors ~judged new_decl existing =
   (not (is_intentionally_duplicated existing))
-  && declaration_covers new_decl existing
+  && declaration_covers ~enforce_spec new_decl existing
   && (is_important new_decl || not (is_important existing))
-  && (not (Declaration.legacy_pair new_decl existing))
   && (not (floor_fallback ~floors new_decl existing))
   && (not (legacy_color_fallback ~judged new_decl existing))
   && not (legacy_runtime_subst_fallback ~judged new_decl existing)
@@ -138,7 +137,7 @@ let under_important_content kept decl =
        (fun (_, old) -> is_important old && superseding_content old decl)
        kept
 
-let deduplicate_step ~floors ~judged kept (idx, decl) =
+let deduplicate_step ~enforce_spec ~floors ~judged kept (idx, decl) =
   if under_important_content kept decl then kept
   else if is_intentionally_duplicated decl then
     let kept =
@@ -150,13 +149,16 @@ let deduplicate_step ~floors ~judged kept (idx, decl) =
         kept
     in
     (idx, decl) :: kept
-  else if (not (is_important decl)) && property_covered_by_important kept decl
+  else if
+    (not (is_important decl))
+    && property_covered_by_important ~enforce_spec kept decl
   then kept
   else
     let kept =
       filter_preserve
         (fun (_, old) ->
-          not (covered_by_new_declaration ~floors ~judged decl old))
+          not
+            (covered_by_new_declaration ~enforce_spec ~floors ~judged decl old))
         kept
     in
     if is_all_declaration decl then add_all_declaration_rev idx decl kept
@@ -547,15 +549,7 @@ let as_aliased_property decl =
   | Declaration.Declaration { property; _ } -> (
       match Properties.legacy_alias property with
       | None -> decl
-      | Some (Prop unprefixed) -> (
-          match
-            Declaration.parse_declaration
-              (Pp.to_string ~minify:false Properties.pp_property unprefixed)
-              (Declaration.string_of_value ~minify:true decl)
-          with
-          | Some d when Declaration.is_important decl -> Declaration.important d
-          | Some d -> d
-          | None -> decl))
+      | Some (Prop unprefixed) -> Declaration.as_property unprefixed decl)
 
 (* [-webkit-text-decoration-color] is not on the sec. 3.4.1 list, so
    {!as_aliased_property} leaves it as written, but every engine that ships the
@@ -578,13 +572,16 @@ let drop_redundant_decoration_color_aliases declarations =
    and MDN's compatibility data records [font-smooth] only under the prefixed
    names the reader types. *)
 let read_by_no_target decl =
-  let name = String.lowercase_ascii (Declaration.property_name decl) in
-  let has p =
-    String.length name > String.length p
-    && String.equal (String.sub name 0 (String.length p)) p
-  in
-  has "-ms-" || has "-o-" || has "-khtml-"
-  || match name with "font-smooth" | "font-smoothing" -> true | _ -> false
+  let (Key property) = Declaration.property_key decl in
+  match (Properties.vendor property, property) with
+  | Some (Properties.Ms | O | Khtml), _ -> true
+  | Some (Properties.Webkit | Moz | Other_vendor), _ -> false
+  | None, Unknown_property { written; _ } -> (
+      (* Neither name has a constructor, so its spelling is all it has. *)
+      match String.lowercase_ascii written with
+      | "font-smooth" | "font-smoothing" -> true
+      | _ -> false)
+  | None, _ -> false
 
 (* Structural vendor-alias drop for an [Unknown_property] [vendor]: we drop
    [vendor] when stripping its vendor prefix yields [twin]'s name and the two
@@ -597,21 +594,20 @@ let read_by_no_target decl =
 let text_vendor_alias_twin vendor twin =
   match (vendor, twin) with
   | ( Declaration
-        { property = Unknown_property vname; value = vv; important = vi; _ },
+        { property = Unknown_property v; value = vv; important = vi; _ },
       Declaration
-        { property = Unknown_property tname; value = tv; important = ti; _ } )
+        { property = Unknown_property t; value = tv; important = ti; _ } )
     when Bool.equal vi ti -> (
-      match strip_vendor_prefix vname with
-      | Some modern -> String.equal tname modern && vv = tv
+      match v.unprefixed with
+      | Some modern -> String.equal t.written modern && vv = tv
       | None -> false)
-  | ( Declaration { property = Unknown_property vname; important = vi; _ },
+  | ( Declaration { property = Unknown_property v; important = vi; _ },
       Declaration { important = ti; _ } )
     when Bool.equal vi ti -> (
-      match strip_vendor_prefix vname with
-      | Some modern
-        when String.equal
-               (String.lowercase_ascii modern)
-               (Declaration.property_name twin) -> (
+      match v.spells with
+      | Some (Prop modern)
+        when Declaration.equal_prop_key (Key modern)
+               (Declaration.property_key twin) -> (
           match
             Declaration.with_value twin
               (Declaration.string_of_value ~minify:true vendor)
@@ -642,7 +638,11 @@ end)
 let greenfield_keys =
   List.fold_left
     (fun keys name ->
-      let keys = Key_set.add (Key (Properties.Unknown_property name)) keys in
+      let keys =
+        Key_set.add
+          (Key (Properties.Unknown_property (Properties.untyped name)))
+          keys
+      in
       match property_of_name name with
       | Some (Properties.Prop property) -> Key_set.add (Key property) keys
       | None -> keys)
@@ -658,8 +658,10 @@ let unprefixed_is_widely_available twin =
   let key =
     match Declaration.property_key twin with
     (* CSS Syntax 3 (ED) sec. 8.1: property names are case-insensitive. *)
-    | Key (Unknown_property name) ->
-        Key (Properties.Unknown_property (String.lowercase_ascii_preserve name))
+    | Key (Unknown_property u) ->
+        Key
+          (Properties.Unknown_property
+             { u with written = String.lowercase_ascii_preserve u.written })
     | key -> key
   in
   not (Key_set.mem key greenfield_keys)
@@ -677,11 +679,11 @@ let drop_vendor_aliases ~ctx (kept : (int * declaration) list) :
        same. *)
     let target_needs decl other =
       match Ctx.judge ctx with
-      | Option.None -> false
-      | Option.Some targets -> (
+      | None -> false
+      | Some targets -> (
           match Webkit_fallback.of_declaration targets other with
-          | Option.Some needed -> Declaration.same_property needed decl
-          | Option.None -> false)
+          | Some needed -> Declaration.same_property needed decl
+          | None -> false)
     in
     let has_dead_prefix (_, decl) =
       List.exists
@@ -703,97 +705,152 @@ let drained_border_image : Properties.border_image =
     mode = None;
   }
 
-(* The slots [border] writes, each [None] where the shorthand leaves it at an
-   initial value no slot spells: its initials (medium / none / currentcolor) are
-   rarely written back. CSS Backgrounds 3 sec. 4.4 also resets [border-image],
-   so the shorthand says what an all-initial [border-image] says. *)
-let border_slots (s : Properties.border_shorthand) =
+(* A slot the shorthand fills is its value; one it omits is the longhand's
+   initial, unless the shorthand holds a [var()]: a substitution can stand for
+   several components, so which ones it omits is only known once it is
+   substituted. *)
+let slot ~substituted f value ~initial =
+  match value with
+  | Some v -> Some (f v)
+  | None -> if substituted then None else Some (f initial)
+
+(* CSS Backgrounds 3 sec. 3.4: [border] sets [border-width], [border-style] and
+   [border-color], each one it omits to its initial: [medium] (sec. 3.3), [none]
+   (sec. 3.2) and [currentcolor] (sec. 3.1). It also resets [border-image], so
+   the shorthand says what an all-initial [border-image] says. *)
+let border_slots ~substituted (s : Properties.border_shorthand) =
   [
-    Option.map border_width s.width;
-    Option.map border_style s.style;
-    Option.map border_color s.color;
+    slot ~substituted border_width s.width ~initial:Medium;
+    slot ~substituted border_style s.style
+      ~initial:(None : Properties.border_style);
+    slot ~substituted border_color s.color ~initial:Values.Current;
     Some (Declaration.v Border_image drained_border_image);
   ]
+
+(* CSS Backgrounds 3 sec. 2.10: a single-layer [background] sets each component
+   it omits to its initial: [transparent] (sec. 2.2), [none] (sec. 2.3), [0% 0%]
+   (sec. 2.6), [auto] (sec. 2.9), [repeat] (sec. 2.4), [scroll] (sec. 2.5),
+   [padding-box] (sec. 2.8) and [border-box] (sec. 2.7). One [<box>] sets both
+   [background-origin] and [background-clip], a pair origin then clip. *)
+let background_slots ~substituted (s : Properties.background_shorthand) =
+  let clip = match s.clip with Some _ -> s.clip | None -> s.origin in
+  [
+    slot ~substituted background_color s.color ~initial:Values.Transparent;
+    slot ~substituted background_image s.image
+      ~initial:(None : Properties.background_image);
+    slot ~substituted
+      (fun p -> background_position [ p ])
+      s.position
+      ~initial:(XY (Pct 0., Pct 0.) : Properties.position_value);
+    slot ~substituted background_size s.size ~initial:Properties.Auto;
+    slot ~substituted background_repeat s.repeat ~initial:Properties.Repeat;
+    slot ~substituted background_attachment s.attachment
+      ~initial:Properties.Scroll;
+    slot ~substituted background_origin s.origin ~initial:Properties.Padding_box;
+    slot ~substituted background_clip clip ~initial:Properties.Border_box;
+  ]
+
+(* CSS Flexible Box 1 sec. 7.1: [flex: initial] is [0 1 auto], [auto] is [1 1
+   auto] and [none] is [0 0 auto], and a grow or shrink factor the shorthand
+   omits is [1]. The basis it omits depends on the mode
+   ({!Prop_flex.omitted_flex_basis}), so a caller that answers for both,
+   [enforce_spec = None], leaves it unknown. *)
+let flex_slots ~enforce_spec ~substituted (value : Properties.flex) =
+  let omitted =
+    Option.map
+      (fun enforce_spec -> Prop_flex.omitted_flex_basis ~enforce_spec)
+      enforce_spec
+  in
+  let grow_shrink_basis g s b =
+    [
+      Some (Declaration.v Flex_grow g);
+      Some (Declaration.v Flex_shrink s);
+      Option.map (Declaration.v Flex_basis) b;
+    ]
+  in
+  let one : Properties.flex_factor = Number 1. in
+  match value with
+  | _ when substituted -> [ None ]
+  | Initial -> grow_shrink_basis (Number 0.) one (Some Auto)
+  | Auto -> grow_shrink_basis one one (Some Auto)
+  | None -> grow_shrink_basis (Number 0.) (Number 0.) (Some Auto)
+  | Basis b -> grow_shrink_basis one one (Some b)
+  | Grow g -> grow_shrink_basis g one omitted
+  | Grow_shrink (g, s) -> grow_shrink_basis g s omitted
+  | Full (g, s, b) -> grow_shrink_basis g s (Some b)
+  | Inherit | Unset | Revert | Revert_layer | Var _ -> [ None ]
+
+(* CSS Transitions 1 sec. 2.5 and CSS Transitions 2 sec. 2.6: a single
+   [transition] sets each component it omits to its initial: [0s] (sec. 2.2),
+   [ease] (sec. 2.3), [0s] (sec. 2.4) and, in Transitions 2 sec. 2.5,
+   [normal]. *)
+let transition_slots ~substituted (s : Properties.transition_shorthand) =
+  [
+    Some (transition_property [ s.property ]);
+    slot ~substituted transition_duration s.duration ~initial:(Values.S 0.);
+    slot ~substituted transition_timing_function s.timing_function
+      ~initial:Properties.Ease;
+    slot ~substituted transition_delay s.delay ~initial:(Values.S 0.);
+    slot ~substituted transition_behavior s.behavior ~initial:Properties.Normal;
+  ]
+
+(* The slots of the shorthand [covering] writes, each [None] where its value
+   cannot be proven; [[None]] for a shorthand none of these read. A comma list
+   of layers or transitions assigns per-item values, so only one item is
+   read. *)
+let shorthand_slots ~enforce_spec covering =
+  let substituted = has_runtime_substitution covering in
+  match unwrap_theme_guard covering with
+  | Declaration { property = Properties.Border; value = Shorthand s; _ } ->
+      border_slots ~substituted s
+  | Declaration { property = Properties.Background; value = [ Shorthand s ]; _ }
+    ->
+      background_slots ~substituted s
+  | Declaration { property = Properties.Flex; value; _ } ->
+      flex_slots ~enforce_spec ~substituted value
+  | Declaration { property = Properties.Transition; value = [ Shorthand s ]; _ }
+    ->
+      transition_slots ~substituted s
+  | _ -> [ None ]
+
+let slot_for_longhand ~enforce_spec covering covered =
+  let covered = unwrap_theme_guard covered in
+  List.find_map
+    (function
+      | Some slot when Declaration.same_property slot covered -> Some slot
+      | _ -> None)
+    (shorthand_slots ~enforce_spec covering)
+
+(* CSS Box 4 sec. 3.2 and 4.2 and CSS Position 3 sec. 3.1: a box shorthand of
+   one to four values gives top, right, bottom and left, a missing right copying
+   top, a missing bottom top and a missing left right. A [var()] can stand for
+   several values, so a list holding one gives no side. *)
+let box_side (values : Values.length list) (side : Shorthand_box.box_side) =
+  if List.exists Values.length_has_runtime_subst values then None
+  else
+    match (values, side) with
+    | [ v ], _ -> Some v
+    | ([ v; _ ] | [ v; _; _ ] | [ v; _; _; _ ]), Top -> Some v
+    | ([ _; v ] | [ _; v; _ ] | [ _; v; _; _ ]), Right -> Some v
+    | [ v; _ ], Bottom | [ _; _; v ], Bottom | [ _; _; v; _ ], Bottom -> Some v
+    | ([ _; v ] | [ _; v; _ ]), Left | [ _; _; _; v ], Left -> Some v
+    | _ -> None
 
 (* The longhand declaration a shorthand assigns to a slot it covers: the slot
    value if set, else that longhand's initial. A later longhand equal to this is
    a redundant no-op. [None] when the shorthand does not cover the longhand or
-   the value cannot be proven. Extend per shorthand; background first. *)
-let implied_longhand covering covered : Declaration.declaration option =
+   the value cannot be proven. *)
+let implied_longhand ~enforce_spec covering covered :
+    Declaration.declaration option =
   match unwrap_theme_guard covering with
-  | Declaration { property = Properties.Background; value; _ } -> (
-      (* Single-layer only; a multi-layer background assigns per-layer values a
-         single longhand rarely matches, so leave those conservative. *)
-      match (value : Properties.background list) with
-      | [ Properties.Shorthand s ] -> (
-          match unwrap_theme_guard covered with
-          | Declaration { property = Properties.Background_size; _ } ->
-              Some
-                (background_size (Option.value s.size ~default:Properties.Auto))
-          | Declaration { property = Properties.Background_repeat; _ } ->
-              Some
-                (background_repeat
-                   (Option.value s.repeat ~default:Properties.Repeat))
-          | Declaration { property = Properties.Background_attachment; _ } ->
-              Some
-                (background_attachment
-                   (Option.value s.attachment ~default:Properties.Scroll))
-          | _ -> None)
-      | _ -> None)
-  | Declaration { property = Properties.Flex; value; _ } -> (
-      (* [flex] always sets grow/shrink/basis; expand the keyword and numeric
-         forms of grow and shrink. The basis is not expanded. *)
-      let grow_shrink =
-        match (value : Properties.flex) with
-        | Initial -> Some (0., 1.)
-        | Auto -> Some (1., 1.)
-        | None -> Some (0., 0.)
-        | Grow (Number g) -> Some (g, 1.)
-        | Basis _ -> Some (1., 1.)
-        | Grow_shrink (Number g, Number s) -> Some (g, s)
-        | Full (Number g, Number s, _) -> Some (g, s)
-        | _ -> Option.none
-      in
-      match (unwrap_theme_guard covered, grow_shrink) with
-      | Declaration { property = Properties.Flex_grow; _ }, Some (g, _) ->
-          Some (flex_grow g)
-      | Declaration { property = Properties.Flex_shrink; _ }, Some (_, s) ->
-          Some (flex_shrink s)
-      | _ -> None)
-  | Declaration { property = Properties.Transition; value; _ } -> (
-      (* Single transition only; a comma list assigns per-item values. *)
-      match (value : Properties.transition list) with
-      | [ Properties.Shorthand s ] -> (
-          match unwrap_theme_guard covered with
-          | Declaration { property = Properties.Transition_duration; _ } ->
-              Some
-                (transition_duration
-                   (Option.value s.duration ~default:(Values.S 0.)))
-          | Declaration { property = Properties.Transition_delay; _ } ->
-              Some
-                (transition_delay (Option.value s.delay ~default:(Values.S 0.)))
-          | Declaration { property = Properties.Transition_timing_function; _ }
-            ->
-              Some
-                (transition_timing_function
-                   (Option.value s.timing_function ~default:Properties.Ease))
-          | Declaration { property = Properties.Transition_behavior; _ } ->
-              Some
-                (transition_behavior
-                   (Option.value s.behavior ~default:Properties.Normal))
-          | _ -> None)
-      | _ -> None)
-  | Declaration { property = Properties.Border; value; _ } -> (
-      match (value : Properties.border) with
-      | Properties.Shorthand s ->
-          let covered = unwrap_theme_guard covered in
-          List.find_map
-            (function
-              | Some slot when Declaration.same_property slot covered ->
-                  Some slot
-              | _ -> None)
-            (border_slots s)
-      | _ -> None)
+  | Declaration
+      {
+        property =
+          ( Properties.Border | Properties.Background | Properties.Flex
+          | Properties.Transition );
+        _;
+      } ->
+      slot_for_longhand ~enforce_spec covering covered
   | Declaration { property = Properties.Animation; value; _ } -> (
       (* Scroll-driven Animations 1 appendix A.3 and CSS Animations 2 sec. 4.12
          make the timeline and the two range ends reset-only sub-properties: the
@@ -810,7 +867,7 @@ let implied_longhand covering covered : Declaration.declaration option =
         | _ -> Option.none
       in
       match timeline with
-      | Option.None -> None
+      | None -> None
       | Some timeline -> (
           match unwrap_theme_guard covered with
           | Declaration { property = Properties.Animation_timeline; _ } ->
@@ -828,6 +885,43 @@ let implied_longhand covering covered : Declaration.declaration option =
                 (Declaration.v Animation_range
                    (Range (Normal, None) : Properties.animation_range))
           | _ -> None))
+  | Declaration { property = Properties.Padding; value; _ } -> (
+      let side s = Option.map (fun v -> Declaration.v s v) in
+      match unwrap_theme_guard covered with
+      | Declaration { property = Properties.Padding_top; _ } ->
+          side Padding_top (box_side value Top)
+      | Declaration { property = Properties.Padding_right; _ } ->
+          side Padding_right (box_side value Right)
+      | Declaration { property = Properties.Padding_bottom; _ } ->
+          side Padding_bottom (box_side value Bottom)
+      | Declaration { property = Properties.Padding_left; _ } ->
+          side Padding_left (box_side value Left)
+      | _ -> None)
+  | Declaration { property = Properties.Margin; value; _ } -> (
+      let side s = Option.map (fun v -> Declaration.v s v) in
+      match unwrap_theme_guard covered with
+      | Declaration { property = Properties.Margin_top; _ } ->
+          side Margin_top (box_side value Top)
+      | Declaration { property = Properties.Margin_right; _ } ->
+          side Margin_right (box_side value Right)
+      | Declaration { property = Properties.Margin_bottom; _ } ->
+          side Margin_bottom (box_side value Bottom)
+      | Declaration { property = Properties.Margin_left; _ } ->
+          side Margin_left (box_side value Left)
+      | _ -> None)
+  | Declaration { property = Properties.Inset; value; _ } -> (
+      (* The physical longhands hold their one length in a list. *)
+      let side s = Option.map (fun v -> Declaration.v s [ v ]) in
+      match unwrap_theme_guard covered with
+      | Declaration { property = Properties.Top; _ } ->
+          side Properties.Top (box_side value Top)
+      | Declaration { property = Properties.Right; _ } ->
+          side Properties.Right (box_side value Right)
+      | Declaration { property = Properties.Bottom; _ } ->
+          side Properties.Bottom (box_side value Bottom)
+      | Declaration { property = Properties.Left; _ } ->
+          side Properties.Left (box_side value Left)
+      | _ -> None)
   | Declaration { property = Properties.Font; value; _ } -> (
       (* [font] resets style/weight/stretch/line-height to [normal] unless set;
          font-variant uses a narrower type in the shorthand, so leave it. *)
@@ -846,16 +940,9 @@ let implied_longhand covering covered : Declaration.declaration option =
       | _ -> None)
   | _ -> None
 
-let implied_longhands covering =
-  let slots =
-    match unwrap_theme_guard covering with
-    | Declaration
-        { property = Properties.Border; value = Properties.Shorthand s; _ } ->
-        border_slots s
-    | _ -> [ None ]
-  in
-  let all_known = List.for_all Option.is_some slots in
-  if not all_known then None
+let implied_longhands ~enforce_spec covering =
+  let slots = shorthand_slots ~enforce_spec:(Some enforce_spec) covering in
+  if not (List.for_all Option.is_some slots) then None
   else
     let slots = List.filter_map Fun.id slots in
     Some
@@ -865,11 +952,13 @@ let implied_longhands covering =
 (* Whether [covering] sets every slot [covered] writes to the value [covered]
    writes there, so the two agree on every longhand they share and either order
    computes the same values. Only what {!implied_longhand} can prove counts. *)
-let implies covering covered =
+let implies ~enforce_spec covering covered =
   (not (Declaration.same_property covering covered))
-  && declaration_covers covering covered
+  && declaration_covers
+       ~enforce_spec:(Option.value enforce_spec ~default:false)
+       covering covered
   &&
-  match implied_longhand covering covered with
+  match implied_longhand ~enforce_spec covering covered with
   | Some implied ->
       (* [implied] is built here from the shorthand's slots and the initials it
          resets the rest to, so it has not been through the normalisation every
@@ -877,7 +966,10 @@ let implies covering covered =
          filled by an initial reads as different from the same value written
          out. *)
       String.equal
-        (string_of_value ~minify:true (Declaration.normalize implied))
+        (string_of_value ~minify:true
+           (Declaration.normalize
+              ~enforce_spec:(Option.value enforce_spec ~default:false)
+              implied))
         (string_of_value ~minify:true covered)
   | None -> false
 
@@ -885,27 +977,41 @@ let implies covering covered =
    shared longhand differently: [border:1px solid red] and [border-width:1px]
    agree on every [border-*-width] they share, so neither order wins anything.
    The footprint test alone reads them as a conflict because the two are spelt
-   differently. *)
+   differently. A conflict stands for both modes, so a slot the two read apart,
+   the basis [flex:1] omits, proves no agreement. *)
 let declarations_conflict_with_keys a a_keys b b_keys =
   Shorthand_coverage.declarations_conflict_with_keys a a_keys b b_keys
-  && not (implies a b || implies b a)
+  && not (implies ~enforce_spec:None a b || implies ~enforce_spec:None b a)
 
 (* CSS Cascade: a shorthand sets every longhand it covers (to its slot value or
    the initial), so a later longhand in the same rule that writes the same value
    at the same importance is redundant and dropped. Guard on equal value, so
-   [background:red;background-size:cover] keeps the override. *)
-let drop_longhands_after_covering_shorthand props =
+   [background:red;background-size:cover] keeps the override. A legacy name
+   alias typed under its property's grammar alone ([types_only_as_alias]) is
+   that property (CSS Cascade 5 sec. 3.1), so it is read as the property, as
+   [-webkit-flex-basis:0%] after [flex:1] is [flex-basis:0%]; --enforce-spec
+   keeps every vendor prefix, as {!drop_vendor_aliases} does. *)
+let drop_longhands_after_covering_shorthand ~enforce_spec props =
   let arr = Array.of_list props in
   let dropped = Array.make (Array.length arr) false in
   let redundant_via j li =
-    Bool.equal (is_important arr.(j)) (is_important li) && implies arr.(j) li
+    Bool.equal (is_important arr.(j)) (is_important li)
+    && implies ~enforce_spec:(Some enforce_spec) arr.(j) li
+  in
+  let as_longhand decl =
+    match decl with
+    | Declaration { property; _ }
+      when (not enforce_spec) && types_only_as_alias property ->
+        as_aliased_property decl
+    | _ -> decl
   in
   Array.iteri
     (fun i li ->
+      let li = as_longhand li in
       let rec nearest j =
         if j < 0 then ()
         else if dropped.(j) then nearest (j - 1)
-        else if declaration_covers arr.(j) li then
+        else if declaration_covers ~enforce_spec arr.(j) li then
           if redundant_via j li then dropped.(i) <- true else ()
         else nearest (j - 1)
       in

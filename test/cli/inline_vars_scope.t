@@ -84,7 +84,8 @@ The winner is only statically decidable when every definition sits on the
 same element. Definitions on different selectors leave it to which element
 is being styled, so the variable stays live instead of folding to whichever
 one the layer order picks: [.x] computes green and [.y] computes blue, and no
-single value stands for both.
+single value stands for both. The raw objective merges what is left by its
+raw bytes, here and below.
 
   $ cat > layer-selectors.css <<EOF
   > @layer a, b;
@@ -94,7 +95,7 @@ single value stands for both.
   > .x { color: var(--c) }
   > .y { color: var(--c) }
   > EOF
-  $ cascade --minify --inline-vars layer-selectors.css 2>&1
+  $ cascade --minify --objective=raw --inline-vars layer-selectors.css 2>&1
   cascade: warning: --c takes different values in different scopes; kept live (cannot inline safely)
   .x{--c:green}.y{--c:blue}.x,.y{color:var(--c)}
 
@@ -121,11 +122,11 @@ for it; the covered ones still fold, on the first pass as on the second.
   > .b { --s: 1px; --g: f(var(--s)); height: var(--g) }
   > .c { --g: f(var(--s, 2px)) }
   > EOF
-  $ cascade --minify --inline-vars same-value-partial.css 2>&1 > same-value-partial.min.css
+  $ cascade --minify --objective=raw --inline-vars same-value-partial.css 2>&1 > same-value-partial.min.css
   cascade: warning: --g takes different values in different scopes; kept live (cannot inline safely)
   $ cat same-value-partial.min.css
   .a,.b{--s:1px;--g:f(1px)}.a{width:var(--g)}.b{height:var(--g)}.c{--g:f(var(--s,2px))}
-  $ cascade --minify --inline-vars same-value-partial.min.css 2>&1
+  $ cascade --minify --objective=raw --inline-vars same-value-partial.min.css 2>&1
   cascade: warning: --g takes different values in different scopes; kept live (cannot inline safely)
   .a,.b{--s:1px;--g:f(1px)}.a{width:var(--g)}.b{height:var(--g)}.c{--g:f(var(--s,2px))}
 

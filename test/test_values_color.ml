@@ -1064,6 +1064,70 @@ let fold_keeps_interpolation_class () =
     ~into:"linear-gradient(color(srgb 1 0 0),color(srgb 0 0 1))"
     "linear-gradient(color(srgb 1 0 0), color(srgb 0 0 1))"
 
+(* CSS Color 4 sec. 4.4: a missing component behaves as zero at rest, the alpha
+   included, so Chromium 153 computes [rgb(0 0 0 / none)] as [rgba(0, 0, 0, 0)]
+   and [hsl(0 100% 50% / none)] as [rgba(255, 0, 0, 0)]: transparent, not
+   opaque. Sec. 13.4 gives it the other colour's alpha in an interpolation, so
+   it stays [none] rather than becoming a zero. *)
+let alpha_none_is_missing () =
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"rgb(0 0 0/none)" "rgb(0 0 0 / none)";
+  optimizes ~into:"hsl(0 100%50%/none)" "hsl(0 100% 50% / none)";
+  optimizes ~into:"oklch(.5 .1 20/none)" "oklch(.5 .1 20 / none)";
+  optimizes ~into:"lab(50 10 10/none)" "lab(50 10 10 / none)";
+  optimizes ~into:"color(srgb 1 0 0/none)" "color(srgb 1 0 0 / none)";
+  (* A mix over a missing alpha keeps its operands. *)
+  optimizes ~into:"color-mix(in srgb,rgb(0 0 0/none),red)"
+    "color-mix(in srgb, rgb(0 0 0 / none), red)"
+
+(* CSS Color 4 sec. 9.3 and 9.4: a negative chroma clamps to zero at
+   parsed-value time. Chromium 153 computes [lch(50% -10 0)] as [lch(50 0 0)]
+   and [oklch(.5 -.1 20)] as [oklch(0.5 0 20)]. *)
+let negative_chroma_clamps () =
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"lch(50 0 0)" "lch(50% -10 0)";
+  optimizes ~into:"oklch(.5 0 20)" "oklch(.5 -.1 20)"
+
+(* CSS Color 4 sec. 5.1 and 7.1: the legacy comma-separated [rgb()] and [hsl()]
+   syntax takes no [none]; only the modern syntax does. Chromium 153 rejects
+   [hsl(none,50%,50%)], [rgb(none,0,0)] and [rgb(0,0,0,none)], so a declaration
+   of them is dropped and an earlier one applies. *)
+let legacy_syntax_takes_no_none () =
+  List.iter (neg_cursor read_color)
+    [
+      "hsl(none,50%,50%)";
+      "hsl(0,none,50%)";
+      "hsla(0,50%,50%,none)";
+      "rgb(none,0,0)";
+      "rgb(0,none,0)";
+      "rgba(0,0,0,none)";
+    ];
+  check_color ~expected:"hsl(none 50%50%)" "hsl(none 50% 50%)";
+  check_color ~expected:"rgb(none 0 0)" "rgb(none 0 0)"
+
+(* CSS Color 4 sec. 5.1 and 7.1: the legacy [rgb()] syntax takes three
+   percentages or three numbers, and the legacy [hsl()] syntax percentages for
+   saturation and lightness and its alpha after a comma. Chromium 153 rejects
+   [rgb(255,0%,0)], [rgb(100%,0,0)], [hsl(0,50,50)] and [hsl(0,50%,50%/.5)], and
+   applies [rgb(255,0,0)], [rgb(100%,0%,0%)], [hsl(0,50%,50%,.5)] and the modern
+   [hsl(0 50 50)]. *)
+let legacy_syntax_keeps_its_grammar () =
+  List.iter (neg_cursor read_color)
+    [
+      "rgb(255,0%,0)";
+      "rgb(100%,0,0)";
+      "rgba(255,0%,0,.5)";
+      "hsl(0,50,50)";
+      "hsl(0,50%,50)";
+      "hsl(0,50%,50%/.5)";
+      "hsla(0,50%,50%/.5)";
+    ];
+  let optimizes ~into input = decl_optimizes ~prop:"color" ~into input in
+  optimizes ~into:"red" "rgb(255,0,0)";
+  optimizes ~into:"red" "rgb(100%,0%,0%)";
+  optimizes ~into:"#bf404080" "hsl(0,50%,50%,.5)";
+  optimizes ~into:"#bf4040" "hsl(0 50 50)"
+
 let suite =
   ( "values_color",
     [
@@ -1101,4 +1165,9 @@ let suite =
         spec_color_invalid_mutation_matrix;
       test_case "fold keeps interpolation class" `Quick
         fold_keeps_interpolation_class;
+      test_case "alpha none is missing" `Quick alpha_none_is_missing;
+      test_case "negative chroma clamps" `Quick negative_chroma_clamps;
+      test_case "legacy syntax takes no none" `Quick legacy_syntax_takes_no_none;
+      test_case "legacy syntax keeps its grammar" `Quick
+        legacy_syntax_keeps_its_grammar;
     ] )

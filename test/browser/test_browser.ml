@@ -156,6 +156,45 @@ let chrome_found_without_home () =
             "a browser installed under PROGRAMFILES" (Some installed)
             (Browser.chrome_binary ())))
 
+(* A stand-in driver: [ok] prints the browser it was handed and its first
+   argument, and the other writes to standard error and fails. *)
+let driver dir ~ok =
+  let name = if ok then "driver-ok" else "driver-broken" in
+  if Sys.win32 then (
+    let path = dir // String.concat "" [ name; ".cmd" ] in
+    write path
+      (if ok then "@echo off\r\necho(%CHROME%\r\necho(%1\r\n"
+       else "@echo off\r\necho broke 1>&2\r\nexit /b 3\r\n");
+    path)
+  else
+    let path = dir // name in
+    write ~mode:0o755 path
+      (if ok then "#!/bin/sh\necho \"$CHROME\"\necho \"$1\"\n"
+       else "#!/bin/sh\necho broke >&2\nexit 3\n");
+    path
+
+(* A driver is handed the browser through CHROME, with no shell between, and a
+   failed one is reported with what it wrote on standard error. *)
+let drive_hands_over_the_browser () =
+  with_dir (fun dir ->
+      let stderr = dir // "driver.err" in
+      let result node =
+        Browser.drive ~node ~chrome:"the-browser" ~stderr "job" []
+      in
+      Alcotest.(check (result (list string) string))
+        "the browser and the job reach the driver"
+        (Ok [ "the-browser"; "job" ])
+        (result (driver dir ~ok:true));
+      Alcotest.(check (result (list string) string))
+        "a failed driver says why" (Error "the browser driver failed:\nbroke")
+        (result (driver dir ~ok:false));
+      match result (dir // "missing") with
+      | Ok _ -> Alcotest.fail "a driver that cannot start answered"
+      | Error e ->
+          Alcotest.(check bool)
+            "a driver that cannot start is an error" true
+            (String.starts_with ~prefix:"the browser driver did not start" e))
+
 (* The version is read off the banner the binary prints, whatever precedes the
    number; a binary that prints nothing has no version. *)
 let version_from_the_banner () =
@@ -191,6 +230,8 @@ let suite =
         env_names_the_binary;
       Alcotest.test_case "Chrome is found without HOME" `Quick
         chrome_found_without_home;
+      Alcotest.test_case "a driver is handed the browser" `Quick
+        drive_hands_over_the_browser;
       Alcotest.test_case "the version is read off the banner" `Quick
         version_from_the_banner;
     ] )

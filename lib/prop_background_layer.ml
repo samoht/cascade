@@ -5,11 +5,8 @@ open Prop_common
 open Prop_image
 
 (* CSS Backgrounds 3 (ED) sec. 2.10: the shorthand resets every longhand it
-   covers before setting the ones written, so a slot holding its own initial
-   value declares what leaving it out declares and the shorter spelling wins. *)
-let drop_initial_slot : 'a. 'a -> 'a option -> 'a option =
- fun initial opt ->
-  match opt with Some x when x = initial -> (None : _ option) | _ -> opt
+   covers before setting the ones written, so {!drop_initial_slot} drops a slot
+   holding its own initial value. *)
 
 (* sec. 2.6 gives background-position the initial value [0% 0%] and reads a lone
    value as the horizontal offset with [center] vertically, so a [Single] names
@@ -34,13 +31,13 @@ let drop_initial_boxes (origin : background_box option)
   let o = Option.value origin ~default:(Padding_box : background_box) in
   let c =
     match (clip, origin) with
-    | Option.Some c, _ -> c
-    | Option.None, Option.Some o -> o
-    | Option.None, Option.None -> (Border_box : background_box)
+    | Some c, _ -> c
+    | None, Some o -> o
+    | None, None -> (Border_box : background_box)
   in
-  if o = Padding_box && c = Border_box then (Option.None, Option.None)
-  else if equal_background_box o c then (Option.Some o, Option.None)
-  else (Option.Some o, Option.Some c)
+  if o = Padding_box && c = Border_box then (None, None)
+  else if equal_background_box o c then (Some o, None)
+  else (Some o, Some c)
 
 (* A layer that fills no slot declares what [background: none] declares, and
    sec. 2.6's initial position is the shortest spelling of it, so that is where
@@ -88,16 +85,22 @@ let background_layer_slots_shared (a : background_shorthand)
   && a.attachment == b.attachment
   && a.clip == b.clip && a.origin == b.origin
 
-let normalize_background_shorthand ?(lossless = false)
+let normalize_background_shorthand ?(lossless = false) ~enforce_spec
     (b : background_shorthand) =
+  (* Sec. 2.2's initial [transparent] is transparent black (CSS Color 4 sec.
+     6.1), so a colour that normalises to [#0000] is that initial too. *)
   let color =
-    option_map_preserve
-      (normalize_color ~lossless)
-      (drop_initial_slot (Transparent : color) b.color)
+    match
+      option_map_preserve
+        (normalize_color ~lossless ~enforce_spec)
+        (drop_initial_slot (Transparent : color) b.color)
+    with
+    | Some (Hex { r = 0; g = 0; b = 0; a = 0 }) -> (None : color option)
+    | color -> color
   in
   let image =
     option_map_preserve
-      (normalize_background_image ~lossless)
+      (normalize_background_image ~lossless ~enforce_spec)
       (drop_initial_slot (None : background_image) b.image)
   in
   let repeat =
@@ -126,11 +129,12 @@ let normalize_background_shorthand ?(lossless = false)
   else if background_layer_slots_shared b b' then b
   else b'
 
-let normalize_background ?(lossless = false) : background -> background =
+let normalize_background ?(lossless = false) ~enforce_spec :
+    background -> background =
  fun value ->
   match value with
   | Shorthand s ->
-      let s' = normalize_background_shorthand ~lossless s in
+      let s' = normalize_background_shorthand ~lossless ~enforce_spec s in
       if s' == s then value else Shorthand s'
   | None -> Shorthand drained_background_layer
   | other -> other
@@ -543,8 +547,8 @@ let read_background_position_axis ~label ~start_edge ~end_edge =
             | Some e ->
                 ignore (Cursor.ident_opt t);
                 after_edge e t
-            | Option.None -> Cursor.err_expected t label)
-        | Option.None -> Offset (Values.read_length_percentage t))
+            | None -> Cursor.err_expected t label)
+        | None -> Offset (Values.read_length_percentage t))
       t
   in
   read

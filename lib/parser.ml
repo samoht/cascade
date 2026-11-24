@@ -27,11 +27,6 @@ let of_string ?unicode_ranges s = of_reader ?unicode_ranges (Reader.of_string s)
    level indented made the output grow as the square of the depth. *)
 let max_nesting_depth = 128
 
-let opening_char : Token.bracket -> char = function
-  | Curly -> '{'
-  | Paren -> '('
-  | Square -> '['
-
 (* The contents of a block whose opener has been read, as a flat run, and the
    token that ended it: the closer matching [closer] outside any block the run
    opens, or EOF. As sec. 5.5.9 and 5.5.10 have it, each block in the run closes
@@ -49,14 +44,14 @@ let consume_flat lexer ~(closer : Token.bracket) =
     | Token.Close b when depth = 0 && Token.equal_bracket b closer ->
         (List.rev acc, tok)
     | Token.Close b
-      when depth > 0 && Buffer.nth open_ (depth - 1) = opening_char b ->
+      when depth > 0 && Buffer.nth open_ (depth - 1) = Token.opening_char b ->
         Buffer.truncate open_ (depth - 1);
         loop (tok :: acc)
     | Token.Open b ->
-        Buffer.add_char open_ (opening_char b);
+        Buffer.add_char open_ (Token.opening_char b);
         loop (tok :: acc)
     | Token.Function _ ->
-        Buffer.add_char open_ (opening_char Paren);
+        Buffer.add_char open_ (Token.opening_char Paren);
         loop (tok :: acc)
     | _ -> loop (tok :: acc)
   in
@@ -440,11 +435,6 @@ let add_minified_token_kind ?(preserve_numeric_sign = false) buf :
       add_dimension_unit buf unit_
   | kind -> add_token_kind buf kind
 
-let closing_char : Token.bracket -> char = function
-  | Curly -> '}'
-  | Paren -> ')'
-  | Square -> ']'
-
 let drop_whitespace = Common.List.drop_while is_whitespace
 let trim_whitespace = Common.List.trim is_whitespace
 
@@ -573,9 +563,9 @@ let rec cv_to_buffer_verbatim buf : Component.t -> unit = function
   | Preserved { repr = Some repr; _ } -> Buffer.add_string buf repr
   | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
+      Buffer.add_char buf (Token.opening_char opening);
       cvs_to_buffer_verbatim buf value;
-      Buffer.add_char buf (closing_char opening)
+      Buffer.add_char buf (Token.closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
@@ -585,7 +575,7 @@ let rec cv_to_buffer_verbatim buf : Component.t -> unit = function
       cvs_to_buffer_verbatim buf (List.map (fun tok -> Preserved tok) node);
       (* The closers of what the input ended inside, as a tree prints one. *)
       List.iter
-        (fun b -> Buffer.add_char buf (closing_char b))
+        (fun b -> Buffer.add_char buf (Token.closing_char b))
         (Component.flat_left_open node)
 
 and cvs_to_buffer_verbatim buf cvs =
@@ -608,9 +598,9 @@ and cvs_to_buffer_verbatim buf cvs =
 let rec cv_to_buffer buf : Component.t -> unit = function
   | Preserved t -> add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
+      Buffer.add_char buf (Token.opening_char opening);
       cvs_to_buffer buf value;
-      Buffer.add_char buf (closing_char opening)
+      Buffer.add_char buf (Token.closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
       (* Always emit the closing [)]: section 5.5.10 still produces the function
          token on EOF, so the round-trip should match the lexer, not the
@@ -667,6 +657,8 @@ let word_like_end : Component.t -> bool = function
         _;
       } ->
       false
+  (* A closed string ends on its quote, which nothing that follows extends. *)
+  | Preserved { kind = String { terminated = true; _ }; _ } -> false
   | Preserved _ -> true
   (* CSS Color 5 sec. 4.2 relative colour needs whitespace between a [var()] (or
      other function) [<color>] arg and the following channel ident: [oklab(from
@@ -692,6 +684,8 @@ let word_like_start : Component.t -> bool = function
       } ->
       false
   | Preserved { kind = Open Square | Open Curly; _ } -> false
+  (* A string opens on its quote, which no token before it takes in. *)
+  | Preserved { kind = String _; _ } -> false
   | Preserved { kind = Open Paren; _ } -> true
   | Preserved _ -> true
   | Func _ -> true
@@ -863,11 +857,11 @@ let rec cv_to_buffer_min ~minify_numbers ~in_math ~preserve_numeric_sign buf =
         add_minified_token_kind ~preserve_numeric_sign buf t.kind
       else add_token_kind buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
+      Buffer.add_char buf (Token.opening_char opening);
       cvs_to_buffer_min ~minify_numbers
         ~in_math:(block_in_math ~in_math opening)
         buf value;
-      Buffer.add_char buf (closing_char opening)
+      Buffer.add_char buf (Token.closing_char opening)
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
@@ -1050,11 +1044,11 @@ let rec cv_to_buffer_custom_min ~fold_ident ~in_math ~opaque
   | Preserved t ->
       add_custom_value_token ~fold_ident ~preserve_numeric_sign buf t.kind
   | Block { node = { opening; value; _ }; _ } ->
-      Buffer.add_char buf (opening_char opening);
+      Buffer.add_char buf (Token.opening_char opening);
       cvs_to_buffer_min_custom ~fold_ident
         ~in_math:(block_in_math ~in_math opening)
         ~opaque buf value;
-      Buffer.add_char buf (closing_char opening)
+      Buffer.add_char buf (Token.closing_char opening)
   | Func { node = { name; arguments; _ }; _ }
     when String.lowercase_ascii name = "url" -> (
       match url_args_as_bare_string arguments with

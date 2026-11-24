@@ -776,3 +776,28 @@ let image_rendering value = v Image_rendering value
 let image_resolution value = v Image_resolution value
 
 (* Alignment constructor helpers (declarations) *)
+
+(* The identity a property cascades under: CSS Cascade 5 sec. 3.1 aliases a
+   legacy name "with an operation on par with case-mapping". *)
+let cascade_key (type a) (property : a Properties.property) =
+  match Properties.legacy_alias property with
+  | Some (Prop aliased) -> Key aliased
+  | None -> Key property
+
+let declares property decl =
+  let (Key own) = property_key decl in
+  equal_prop_key (cascade_key property) (cascade_key own)
+
+let as_property property decl =
+  match decl with
+  | Theme_guarded _ -> decl
+  | Declaration _ when equal_prop_key (Key property) (property_key decl) -> decl
+  | Declaration _ -> (
+      match
+        parse_declaration
+          (Pp.to_string ~minify:false Properties.pp_property property)
+          (string_of_value ~minify:true decl)
+      with
+      | Some d when is_important decl -> important d
+      | Some d -> d
+      | None -> decl)

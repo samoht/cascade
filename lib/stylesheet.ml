@@ -70,11 +70,11 @@ let rec pair_from source c1 c2 i =
 let extract_bang_comments (source : string) : (int * string) list =
   let rec loop acc i =
     match pair_from source '/' '*' i with
-    | Option.None -> List.rev acc
+    | None -> List.rev acc
     | Some start -> (
         let body_start = start + 2 in
         match pair_from source '*' '/' body_start with
-        | Option.None -> List.rev acc
+        | None -> List.rev acc
         | Some end_ ->
             let acc =
               if body_start < end_ && String.unsafe_get source body_start = '!'
@@ -164,13 +164,13 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level)
     interleave_bang_comments preprocessed (List.rev locs) (List.rev sheet)
   in
   (match (on_source, comments) with
-  | Option.Some emit, Option.Some comments ->
+  | Some emit, Some comments ->
       emit
         (Source.v ~original
            ~preprocessed:(Reader.indexed_source reader)
            ~origin:(Reader.origin reader) ~comments:(List.rev !comments)
            (List.rev rules))
-  | Option.None, Option.None -> ()
+  | None, None -> ()
   | _ -> assert false);
   (sheet, out.warnings @ Stylesheet_partial.reading_warnings reading)
 
@@ -203,11 +203,11 @@ let unknown_at_rule ~name ~prelude ?block () =
        statement whose type disagrees with the sheet it prints to. *)
     match fst (parse_stylesheet_partial text) with
     | [ (Unknown_at_rule at as statement) ] when String.equal at.name name ->
-        Option.Some statement
-    | _ | (exception Error.Parse_error _) -> Option.None
+        Some statement
+    | _ | (exception Error.Parse_error _) -> None
   in
   match read_back with
-  | Option.None -> reject "the parts do not read back as one at-rule"
-  | Option.Some statement ->
+  | None -> reject "the parts do not read back as one at-rule"
+  | Some statement ->
       if String.equal (printed statement) text then Ok statement
       else reject "a part carries text that ends the at-rule early"

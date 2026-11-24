@@ -55,8 +55,6 @@ let pp_property_rule : 'a property_rule Pp.t =
    3 settles the arm on output: "the value is serialized as an <ident> unless
    it's a disallowed keyword, in which case it's serialized as a <string>". A
    name that is not a plain ASCII ident takes the string too. *)
-let keyframes_name_reserved name =
-  Cursor.is_reserved_custom_ident ~reserved:[ "none" ] name
 
 let pp_keyframes_name ctx name =
   let len = String.length name in
@@ -80,7 +78,8 @@ let pp_keyframes_name ctx name =
     String.iter (fun c -> if not (is_ident_continue c) then ok := false) name;
     !ok
   in
-  if is_safe_ident && not (keyframes_name_reserved name) then Pp.string ctx name
+  if is_safe_ident && not (Cursor.is_reserved_keyframes_name name) then
+    Pp.string ctx name
   else Pp.quoted_string ctx name
 
 let pp_keyframe_position : Keyframe.position Pp.t =
@@ -303,13 +302,9 @@ let pp_condition_function ctx name rendered =
 let rec pp_conditional : conditional Pp.t =
  fun ctx -> function
   | Media_condition condition ->
-      pp_condition_function ctx "media"
-        (Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless Media.pp
-           condition)
+      pp_condition_function ctx "media" (Pp.render ctx Media.pp condition)
   | Supports_condition_test condition ->
-      pp_condition_function ctx "supports"
-        (Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless
-           Supports.pp condition)
+      pp_condition_function ctx "supports" (Pp.render ctx Supports.pp condition)
   | And (a, b) ->
       pp_conditional ctx a;
       Pp.string ctx " and ";
@@ -480,6 +475,15 @@ let pp_counter_symbols ctx symbols =
          Some symbol)
        Option.None symbols)
 
+(* A validated descriptor keeps its authored text. Minified, it keeps only the
+   whitespace CSS Syntax 3 sec. 9.1 needs between two tokens that would merge,
+   which reads back as the same tokens. *)
+let pp_descriptor_text ctx text =
+  if Pp.minified ctx then
+    Pp.string ctx
+      (Parser.to_string_minified (Cursor.remaining (Cursor.of_string text)))
+  else Pp.string ctx text
+
 let pp_counter_style_descriptor ctx =
   let pp_descriptor name pp_value value =
     Pp.string ctx name;
@@ -492,12 +496,13 @@ let pp_counter_style_descriptor ctx =
   | Symbols symbols -> pp_descriptor "symbols" pp_counter_symbols symbols
   | Suffix suffix -> pp_descriptor "suffix" pp_counter_symbol suffix
   | Prefix prefix -> pp_descriptor "prefix" pp_counter_symbol prefix
-  | Fallback value -> pp_descriptor "fallback" Pp.string value
-  | Range value -> pp_descriptor "range" Pp.string value
-  | Pad value -> pp_descriptor "pad" Pp.string value
-  | Negative value -> pp_descriptor "negative" Pp.string value
-  | Additive_symbols value -> pp_descriptor "additive-symbols" Pp.string value
-  | Speak_as value -> pp_descriptor "speak-as" Pp.string value
+  | Fallback value -> pp_descriptor "fallback" pp_descriptor_text value
+  | Range value -> pp_descriptor "range" pp_descriptor_text value
+  | Pad value -> pp_descriptor "pad" pp_descriptor_text value
+  | Negative value -> pp_descriptor "negative" pp_descriptor_text value
+  | Additive_symbols value ->
+      pp_descriptor "additive-symbols" pp_descriptor_text value
+  | Speak_as value -> pp_descriptor "speak-as" pp_descriptor_text value
 
 let pp_font_palette_base ctx = function
   | Light -> Pp.string ctx "light"
@@ -521,10 +526,7 @@ let pp_font_palette_descriptor : font_palette_descriptor Pp.t =
       Pp.list ~sep:Pp.comma
         (fun ctx (index, color) ->
           Pp.string ctx (Int.to_string index);
-          let rendered =
-            Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
-              Values.pp_color color
-          in
+          let rendered = Pp.render ctx Values.pp_color color in
           if (not (Pp.minified ctx)) || rendered = "" || rendered.[0] <> '#'
           then Pp.space ctx ();
           Pp.string ctx rendered)
@@ -631,10 +633,7 @@ and pp_media_statement ctx condition content =
       (* Per cascade's minify policy (README sec. "Minify policy"), elide
          whitespace at safe token boundaries: a leading [(] needs no space.
          Idents like [screen] still need it. *)
-      let rendered =
-        Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless Media.pp
-          condition
-      in
+      let rendered = Pp.render ctx Media.pp condition in
       if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '('
       then ()
       else Pp.string ctx " ";
@@ -672,10 +671,7 @@ and pp_supports_statement ctx condition content =
      when the condition opens with [(] - any other start ([not],
      [selector(...)], etc.) needs the space to keep token shape. *)
   Pp.string ctx "@supports";
-  let rendered =
-    Pp.to_string ~minify:ctx.Pp.minify ~lossless:ctx.Pp.lossless
-      pp_supports_condition_value condition
-  in
+  let rendered = Pp.render ctx pp_supports_condition_value condition in
   if Pp.minified ctx && String.length rendered > 0 && rendered.[0] = '(' then ()
   else Pp.string ctx " ";
   Pp.string ctx rendered;

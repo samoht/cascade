@@ -43,9 +43,9 @@ and iter_decls_in_statement f = function
   | _ -> ()
 
 let unknown_name_of_decl = function
-  | Declaration.Declaration { property = Properties.Unknown_property name; _ }
-    ->
-      Some name
+  | Declaration.Declaration
+      { property = Properties.Unknown_property { written; _ }; _ } ->
+      Some written
   | _ -> None
 
 let vendor_prefixes = [ "-webkit-"; "-moz-"; "-ms-"; "-o-" ]

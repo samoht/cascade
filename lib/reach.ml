@@ -90,8 +90,8 @@ let missing a b =
       bytes (at + 1) stop (if byte = 0 then acc else bits byte at 0 acc)
   in
   let rec word w acc =
-    if !found > words then Option.None
-    else if w = words then Option.Some (bytes (words * 8) len acc)
+    if !found > words then None
+    else if w = words then Some (bytes (words * 8) len acc)
     else if
       Int64.equal 0L
         (Int64.logand (get64 a (w * 8)) (Int64.lognot (get64 b (w * 8))))

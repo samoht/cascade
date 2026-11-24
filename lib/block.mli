@@ -30,6 +30,15 @@ val merge_consecutive_supports :
   Stylesheet.statement list
 (** Merge adjacent [@supports] blocks with identical conditions. *)
 
+val merge_distant_supports :
+  ?owner:Stylesheet.rule ->
+  ?optimize_merged_block:
+    (Stylesheet.statement list -> Stylesheet.statement list) ->
+  Stylesheet.statement list ->
+  Stylesheet.statement list
+(** Merge a later same-condition [@supports] block into the first occurrence, or
+    the first into it, when the move reorders no conflicting rule. *)
+
 val merge_consecutive_containers :
   ?optimize_merged_block:
     (Stylesheet.statement list -> Stylesheet.statement list) ->

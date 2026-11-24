@@ -8,15 +8,19 @@ open Values_read_calc
 
 (** Read an [hsl()] or [hwb()] percentage, clamped to 0-100%, or [None] for the
     [none] keyword, which CSS Color 4 sec. 4.4 keeps missing: it is zero at rest
-    and takes the other colour's component in an interpolation. *)
-let read_percentage_float t : percentage option =
+    and takes the other colour's component in an interpolation. [legacy] refuses
+    the bare number only the modern syntax takes. *)
+let read_percentage_float ?(legacy = false) t : percentage option =
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
-    Option.None)
+    None)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
-    | Some "%" | None -> Some (Pct (max 0. (min 100. n)))
+    | Some "%" -> Some (Pct (max 0. (min 100. n)))
+    (* CSS Color 4 sec. 7.1: only the modern syntax takes a bare number. *)
+    | None when legacy -> Cursor.err_invalid t "number in legacy hsl() syntax"
+    | None -> Some (Pct (max 0. (min 100. n)))
     | Some unit ->
         Cursor.err_invalid t (String.concat "" [ "percentage unit: "; unit ])
 
@@ -29,7 +33,7 @@ let rec read_alpha t : alpha =
   in
   let read_none t : alpha =
     Cursor.expect_string "none" t;
-    None
+    Alpha_none
   in
   let read_pct t : alpha =
     (* Alpha percentages are clamped to 0-100 per CSS spec *)
@@ -134,7 +138,7 @@ let read_rgb_space_separated t : color =
         Cursor.err t "unexpected tokens after rgb()";
       match alpha with
       | None -> Rgb (Channels { r; g; b })
-      | Num _ | Pct _ | Var _ | Calc _ ->
+      | Alpha_none | Num _ | Pct _ | Var _ | Calc _ ->
           Rgba { rgb = Channels { r; g; b }; a = alpha }))
   else
     let r = read_channel t in
@@ -147,7 +151,7 @@ let read_rgb_space_separated t : color =
     if not (Cursor.is_done t) then Cursor.err t "unexpected tokens after rgb()";
     match alpha with
     | None -> Rgb (Channels { r; g; b })
-    | Num _ | Pct _ | Var _ | Calc _ ->
+    | Alpha_none | Num _ | Pct _ | Var _ | Calc _ ->
         Rgba { rgb = Channels { r; g; b }; a = alpha }
 
 let read_rgb_comma_separated t : color =
@@ -160,6 +164,23 @@ let read_rgb_comma_separated t : color =
   let alpha = if Cursor.comma_opt t then read_alpha t else None in
   Cursor.ws t;
   Cursor.expect_eof t;
+  (* CSS Color 4 sec. 5.1: the legacy syntax takes no [none], and three
+     percentages or three numbers. A [var()] channel is typed at
+     substitution. *)
+  let missing (c : channel) = match c with None -> true | _ -> false in
+  let missing_alpha = match alpha with Alpha_none -> true | _ -> false in
+  if missing r || missing g || missing b || missing_alpha then
+    Cursor.err_invalid t "none in legacy rgb() syntax";
+  let kind (c : channel) =
+    match c with
+    | Pct _ -> Some true
+    | Int _ | Num _ -> Some false
+    | Var _ | None -> Option.None
+  in
+  (match (kind r, kind g, kind b) with
+  | Some x, Some y, Some z when not (Bool.equal x y && Bool.equal y z) ->
+      Cursor.err_invalid t "mixed numbers and percentages in legacy rgb()"
+  | _ -> ());
   match alpha with
   | None -> Rgb (Channels { r; g; b })
   | a -> Rgba { rgb = Channels { r; g; b }; a }
@@ -258,16 +279,18 @@ let read_hsl t : color =
   (* Handle comma or space separator after hue *)
   let comma_separated = Cursor.comma_opt t in
   Cursor.ws t;
-  let s = read_percentage_float t in
+  let s = read_percentage_float ~legacy:comma_separated t in
   Cursor.ws t;
   if comma_separated then Cursor.comma t
   else if Cursor.comma_opt t then
     Cursor.err_invalid t "mixed comma and space separated hsl() syntax";
   Cursor.ws t;
-  let l = read_percentage_float t in
+  let l = read_percentage_float ~legacy:comma_separated t in
   let a =
     Cursor.ws t;
     if comma_separated && Cursor.comma_opt t then read_alpha t
+    else if comma_separated && Cursor.peek_delim t = Some '/' then
+      Cursor.err_invalid t "slash alpha in legacy hsl() syntax"
     else if (not comma_separated) && Cursor.comma_opt t then
       Cursor.err_invalid t "mixed comma and space separated hsl() syntax"
     else if Cursor.peek_delim t = Some '/' then read_optional_alpha t
@@ -275,6 +298,15 @@ let read_hsl t : color =
   in
   Cursor.ws t;
   Cursor.expect_eof t;
+  (* CSS Color 4 sec. 7.1: the legacy syntax takes no [none]. *)
+  (if comma_separated then
+     match (h, s, l, a) with
+     | Hue_none, _, _, _
+     | _, Option.None, _, _
+     | _, _, Option.None, _
+     | _, _, _, Alpha_none ->
+         Cursor.err_invalid t "none in legacy hsl() syntax"
+     | _ -> ());
   Hsl { h; s; l; a }
 
 let read_hwb t : color =
@@ -297,7 +329,7 @@ let read_ok_lightness t : percentage option =
   Cursor.ws t;
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
-    Option.None)
+    None)
   else
     let n, unit = Cursor.number_with_unit t in
     (* CSS Color 4 sec. 9.3/9.4: an out-of-range lightness clamps rather than
@@ -328,12 +360,17 @@ let read_number_or_none ?pct_scale t : float option =
     | Some unit ->
         Cursor.err_invalid t (String.concat "" [ "invalid unit: "; unit ])
 
+(* CSS Color 4 sec. 9.3 and 9.4: a negative chroma clamps to zero at
+   parsed-value time. *)
+let read_chroma ~pct_scale t =
+  Option.map (Float.max 0.) (read_number_or_none ~pct_scale t)
+
 let read_oklch t : color =
   Cursor.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec. *)
   let l = read_ok_lightness t in
   Cursor.ws t;
-  let c = read_number_or_none ~pct_scale:0.004 t in
+  let c = read_chroma ~pct_scale:0.004 t in
   Cursor.ws t;
   let h = read_hue t in
   let alpha = read_optional_alpha t in
@@ -361,7 +398,7 @@ let read_lab t : color =
   let l : percentage option =
     if Cursor.looking_at t "none" then (
       Cursor.expect_string "none" t;
-      Option.None)
+      None)
     else
       let n, unit = Cursor.number_with_unit t in
       Some
@@ -384,7 +421,7 @@ let read_lch t : color =
   let read_l_axis t : percentage option =
     if Cursor.looking_at t "none" then (
       Cursor.expect_string "none" t;
-      Option.None)
+      None)
     else
       (* CSS Color 4 sec. 9.3 lch(): the L channel is [<percentage> | <number>],
          distinguish so [lch(54.321 ...)] doesn't round-trip as [lch(54.321%
@@ -399,7 +436,7 @@ let read_lch t : color =
              Cursor.err_invalid t (String.concat "" [ "lch L unit: "; u ])
           : percentage)
   in
-  let read_c = read_number_or_none ~pct_scale:1.5 in
+  let read_c = read_chroma ~pct_scale:1.5 in
   let l, c, h = Cursor.triple ~sep:Cursor.ws read_l_axis read_c read_hue t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
@@ -577,19 +614,19 @@ let folded_srgb_color origin (alpha : alpha) : color option =
     | Some (r, g, b, a) ->
         let unit byte = Float.of_int byte /. 255. in
         Some ((unit r, unit g, unit b), unit a)
-    | Option.None ->
+    | None ->
         Option.map
           (fun (linear, a) -> (Color_space.rgb_of_linear_rgb linear, a))
           (static_color_to_linear_srgb origin)
   in
   match channels with
-  | None -> Option.None
+  | None -> None
   | Some ((r, g, b), origin_alpha) ->
       let round6 v = Float.round (v *. 1e6) /. 1e6 in
       let alpha : alpha =
         match alpha with None -> alpha_of_unit_float origin_alpha | a -> a
       in
-      Option.Some
+      Some
         (Color
            {
              space = Srgb;
@@ -688,23 +725,23 @@ let try_fold_color_function_static origin t : color option =
         true
     | _ -> false
   in
-  if not (read_keyword "srgb") then Option.None
+  if not (read_keyword "srgb") then None
   else if not (read_keyword "r" && read_keyword "g" && read_keyword "b") then
-    Option.None
+    None
   else
     (* The fold is best effort, so an alpha it cannot read is not an error: sec.
        4.1 puts the origin's [alpha] keyword, and math over it, in that slot,
        and the caller keeps the call as written when this answers [None]. *)
     match Cursor.option read_optional_alpha t with
-    | Option.None -> Option.None
-    | Option.Some alpha ->
+    | None -> None
+    | Some alpha ->
         Cursor.ws t;
-        if Cursor.is_done t then folded_srgb_color origin alpha else Option.None
+        if Cursor.is_done t then folded_srgb_color origin alpha else None
 
 let try_fold_relative_color_static name origin t : color option =
   match name with
   | "color" -> try_fold_color_function_static origin t
-  | _ -> Option.None
+  | _ -> None
 
 (* {1 Undecidable channels}
 

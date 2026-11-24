@@ -15,7 +15,7 @@ depends: [
   "dune" {>= "3.21"}
   "dune-build-info"
   "alcotest" {>= "1.7.0" & with-test}
-  "alcobar" {with-test}
+  "alcobar" {>= "0.5.0" & with-test}
   "astring" {with-test}
   "bytesrw" {with-test}
   "conf-zlib" {with-test}

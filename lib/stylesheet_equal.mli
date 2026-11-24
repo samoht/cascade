@@ -21,6 +21,9 @@ val hash_statement : statement -> int
 (** [hash_statement stmt] is a fingerprint of [stmt] consistent with
     {!equal_statement}. *)
 
+val equal_rule : rule -> rule -> bool
+(** [equal_rule a b] is {!equal_statement} on two rules. *)
+
 val rule_hash : rule -> int
 (** [rule_hash r] folds the cached hash of each declaration of [r] over the hash
     of its selector. *)

@@ -273,36 +273,10 @@ let cascade_accepts job =
 
 type verdict = { parsed : bool; constructed : bool; error : string option }
 
-let read_lines ic =
-  let rec loop acc =
-    match input_line ic with
-    | line -> loop (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  loop []
-
 let run_driver ~node ~chrome ~script ~jobs ~work =
-  let errors = work // "descriptors.err" in
-  let cmd =
-    String.concat " "
-      [
-        String.concat "" [ "CHROME="; Filename.quote chrome ];
-        Filename.quote node;
-        Filename.quote script;
-        Filename.quote jobs;
-        Filename.quote work;
-        String.concat "" [ "2>"; Filename.quote errors ];
-      ]
-  in
-  let ic = Unix.open_process_in cmd in
-  let lines = read_lines ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> Ok lines
-  | _ ->
-      let ic = open_in errors in
-      let text = read_lines ic in
-      close_in ic;
-      Error (String.concat "\n" text)
+  Browser.drive ~node ~chrome
+    ~stderr:(work // "descriptors.err")
+    script [ jobs; work ]
 
 let parse_driver_output lines =
   let table = Hashtbl.create 4096 in
@@ -326,45 +300,6 @@ let parse_driver_output lines =
       | _ -> ())
     lines;
   table
-
-(* ===== Which browser this run answers for ===== *)
-
-(* The support dataset is keyed by version, so the harness says which build it
-   measured rather than assuming the one the default contract names. *)
-let chrome_version chrome =
-  let ic =
-    Unix.open_process_in
-      (String.concat " " [ Filename.quote chrome; "--version"; "2>/dev/null" ])
-  in
-  let lines = read_lines ic in
-  ignore (Unix.close_process_in ic);
-  let leading_int s =
-    let n = String.length s in
-    let rec upto i =
-      if i < n && s.[i] >= '0' && s.[i] <= '9' then upto (i + 1) else i
-    in
-    let stop = upto 0 in
-    if stop = 0 then None else int_of_string_opt (String.sub s 0 stop)
-  in
-  let of_word w =
-    match String.split_on_char '.' w with
-    | major :: minor :: _ -> (
-        match (leading_int major, leading_int minor) with
-        | Some a, Some b -> Some (a, b)
-        | _ -> None)
-    | _ -> None
-  in
-  List.fold_left
-    (fun found line ->
-      match found with
-      | Some _ -> found
-      | None ->
-          List.fold_left
-            (fun found word ->
-              match found with Some _ -> found | None -> of_word word)
-            None
-            (String.split_on_char ' ' line))
-    None lines
 
 (* ===== Reporting ===== *)
 
@@ -485,7 +420,7 @@ let () =
     | None -> Browser.skip "descriptor_set" "no headless browser"
   in
   let version =
-    match chrome_version chrome with
+    match Browser.chrome_version chrome with
     | Some v -> v
     | None ->
         prerr_endline
@@ -530,9 +465,7 @@ let () =
     with
     | Ok lines -> lines
     | Error err ->
-        prerr_endline
-          (String.concat ""
-             [ "descriptor_set: the browser driver failed:\n"; err ]);
+        prerr_endline (String.concat "" [ "descriptor_set: "; err ]);
         exit 1
   in
   let elapsed = Unix.gettimeofday () -. started in

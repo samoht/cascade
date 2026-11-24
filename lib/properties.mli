@@ -33,26 +33,84 @@ val eq_property : 'a property -> 'b property -> ('a, 'b) Type.eq option
     the proof that the two properties value the same type, which the comparison
     on its own cannot express. *)
 
+(** The families shorthand composition reads together. A composer only ever
+    combines, reorders or drops declarations of one family, so a body holding at
+    most one declaration per family composes to itself. Each family is named
+    after its shorthand, or the shorthand its members reset ([Columns] holds the
+    gaps, [Place] the alignment longhands, [White_space] the [text-wrap] ones,
+    [Text_stroke] [-webkit-text-stroke]). *)
+module Family : sig
+  type t =
+    | Animation
+    | Background
+    | Border
+    | Caret
+    | Columns
+    | Contain_intrinsic_size
+    | Container
+    | Flex
+    | Font
+    | Grid
+    | Inset
+    | Interest_delay
+    | List_style
+    | Margin
+    | Mask
+    | Offset
+    | Outline
+    | Overflow
+    | Overscroll_behavior
+    | Padding
+    | Place
+    | Position_try
+    | Scroll_margin
+    | Scroll_padding
+    | Scroll_timeline
+    | Text_box
+    | Text_decoration
+    | Text_emphasis
+    | Text_stroke
+    | Transition
+    | View_timeline
+    | White_space
+end
+
+val composition_family : 'a property -> Family.t option
+(** [composition_family p] is the family shorthand composition reads [p] in,
+    [None] for a property no composer reads. Two declarations a composer
+    combines, reorders or drops one against the other are of one family. *)
+
+val family_rank : Family.t -> int
+(** [family_rank f] is [f]'s position in {!Family.t}, below 32. *)
+
 val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)
 
 val normalize_property_value :
-  ?lossless:bool -> ?ctx:Values.calc_ctx -> 'a property -> 'a -> 'a
-(** [normalize_property_value ?lossless prop value] applies semantic
-    (equivalence) canonicalisation to [value] so the optimizer holds a canonical
-    AST and the pretty-printer stays a pure serialiser. [lossless] disables
-    bounded colour and numeric approximation while keeping exact
-    canonicalisation. *)
+  ?lossless:bool ->
+  ?enforce_spec:bool ->
+  ?ctx:Values.calc_ctx ->
+  'a property ->
+  'a ->
+  'a
+(** [normalize_property_value ?lossless ?enforce_spec prop value] applies
+    semantic (equivalence) canonicalisation to [value] so the optimizer holds a
+    canonical AST and the pretty-printer stays a pure serialiser. [lossless]
+    disables bounded colour and numeric approximation while keeping exact
+    canonicalisation. [enforce_spec] (default [false]) also takes the colour
+    folds a target may refuse ({!Values.normalize_color}). *)
 
 val normalize_custom_property_value :
   ?lossless:bool ->
+  ?enforce_spec:bool ->
   ?ctx:Values.calc_ctx ->
   custom_property_value ->
   custom_property_value
-(** [normalize_custom_property_value v] canonicalises the typed value of a
-    registered custom property (currently the [<color>] syntax) so a promoted
-    custom-property value folds the same way a typed colour property would. *)
+(** [normalize_custom_property_value ?lossless ?enforce_spec v] canonicalises
+    the typed value of a registered custom property (currently the [<color>]
+    syntax) so a promoted custom-property value folds the same way a typed
+    colour property would, under the same [lossless] and [enforce_spec]. *)
 
 val is_invalid_value : 'a property -> 'a -> bool
 (** [is_invalid_value prop value] is [true] when [value] contains an [Invalid]
@@ -770,7 +828,7 @@ val read_css_wide : Cursor.t -> css_wide
 
 val is_css_wide_keyword : string -> bool
 (** [is_css_wide_keyword s] is [true] when [s] (case-insensitively) is one of
-    [initial], [inherit], [unset], [revert], [revert-layer]. *)
+    [initial], [inherit], [unset], [revert], [revert-layer], [revert-rule]. *)
 
 val value_has_css_wide_mix : string -> bool
 (** [value_has_css_wide_mix value] is [true] when [value] is not itself a lone
@@ -782,6 +840,11 @@ val components_have_css_wide_mix : Component.t list -> bool
     {!value_has_css_wide_mix}, but operates on a component list directly so
     callers that already hold one avoid the round-trip through a string buffer.
 *)
+
+val components_hold_revert_rule : Component.t list -> bool
+(** [components_hold_revert_rule cvs] is [true] when [cvs] hold the
+    [revert-rule] keyword (CSS Cascade 5 sec. 7.3.6) at any depth, as a whole
+    value or as a substitution function's fallback. *)
 
 val pp_visibility : visibility Pp.t
 (** [pp_visibility] is the pretty-printer for [visibility]. *)
@@ -2806,6 +2869,19 @@ val pp_clip_path : clip_path Pp.t
 val read_clip_path : Cursor.t -> clip_path
 (** [read_clip_path t] is the [clip_path] parsed from [t]. *)
 
+val pp_shape_outside : shape_outside Pp.t
+(** [pp_shape_outside] is the pretty-printer for [shape_outside]. *)
+
+val read_shape_outside : Cursor.t -> shape_outside
+(** [read_shape_outside t] is the [shape_outside] parsed from [t]: [none], a
+    [<basic-shape>] and [<shape-box>] pair or either alone, an [<image>], a
+    CSS-wide keyword or a [var()] (CSS Shapes 1 sec. 6.1). *)
+
+val normalize_shape_outside :
+  ?lossless:bool -> ?enforce_spec:bool -> shape_outside -> shape_outside
+(** [normalize_shape_outside ?lossless ?enforce_spec v] is [v] in canonical
+    form. *)
+
 val pp_clip_geometry_box : clip_geometry_box Pp.t
 (** [pp_clip_geometry_box] pretty-prints a clip geometry box. *)
 
@@ -2860,6 +2936,11 @@ val shadow :
 val pp_any_property : any_property Pp.t
 (** [pp_any_property] pretty-prints any CSS property. *)
 
+val vendor : 'a property -> vendor option
+(** [vendor property] is the vendor prefix [property]'s name carries (CSS 2.1
+    sec. 4.1.2.1), read off its constructor, or for an untyped name off the
+    prefix {!field-vendor} records. *)
+
 val is_vendor_prefixed : 'a property -> bool
 (** [is_vendor_prefixed property] is [true] iff [property] is a vendor's own
     extension, a name starting with a single [-] (CSS 2.1 sec. 4.1.2.1). The
@@ -2878,6 +2959,15 @@ val legacy_alias : 'a property -> any_property option
 
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
+
+val equal_vendor : vendor -> vendor -> bool
+(** [equal_vendor a b] is whether [a] and [b] are the same vendor. *)
+
+val untyped : string -> untyped_name
+(** [untyped name] is [name] classified as an untyped property name: its vendor
+    prefix, the name after it and the typed property that name spells. A typed
+    name is classified too, for a declaration whose value the typed reader
+    refused, and {!field-own} then names its property. *)
 
 val of_name : string -> any_property
 (** [of_name name] is the property [name] spells, in any case, or

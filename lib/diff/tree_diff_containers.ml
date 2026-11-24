@@ -190,13 +190,14 @@ let property_reorder_diff names2 (i1, name1) =
   if i1 = i2 then None
   else
     let swapped_with =
-      if i1 < List.length names2 then Some ("@property " ^ List.nth names2 i1)
+      if i1 < List.length names2 then
+        Some (String.concat "" [ "@property "; List.nth names2 i1 ])
       else None
     in
     (Some
        (Reordered
           {
-            selector = "@property " ^ name1;
+            selector = String.concat "" [ "@property "; name1 ];
             expected_pos = i1;
             actual_pos = i2;
             swapped_with;
@@ -365,7 +366,9 @@ let container_condition_string name_opt condition =
   let cond_str =
     match condition with Some c -> Css.Container.to_string c | None -> ""
   in
-  match name_opt with Some name -> name ^ " " ^ cond_str | None -> cond_str
+  match name_opt with
+  | Some name -> String.concat "" [ name; " "; cond_str ]
+  | None -> cond_str
 
 let container_key (name_opt, condition, _) =
   (* Use both name and condition as key to distinguish different containers. *)

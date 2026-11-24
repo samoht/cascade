@@ -208,7 +208,15 @@ counts dead. The data has no key for a vendor-prefixed or legacy keyword
 the property before a later one using such a keyword the earlier does not,
 rather than count the key as read; in-rule deduplication also keeps the pair
 in the other order (`Declaration.legacy_pair`). Both compare the prefixed
-words of the two values. `Merge.compatible` lists two selectors only when every engine
+words of the two values. Any other production the dataset names no key for
+counts as parsed, except the ones `Declaration.first_release` knows a recorded
+release drops, a `clamp()` bound of `none` and a CSS-wide keyword the dataset
+does not name (`revert-rule`): their first release is `Support.Unrecorded`, so
+a fallback before them stays and a guard over them is undecided.
+`Merge.compatible` lists two selectors only when every engine
+rather than count the key as read; it compares the prefixed words of the two
+values. A prefixed value before one every floor parses (`display:flex`) is
+dead in B and goes, inside one rule as across two. `Merge.compatible` lists two selectors only when every engine
 ships them in the same release. The projection splits a selector list into
 one rule per branch only when `Merge.listable` says every release reads its
 branches alike (`Rule_order.expand_lists`); any other list stays one rule.
@@ -263,9 +271,10 @@ when an earlier overlapping rule writes a different value. Whether nesting may
 stay is `Ctx.parses_nesting`: every engine of the floors at or past
 `css.selectors.nesting` in the compat data, and never under `--enforce-spec`.
 Otherwise `Optimize.stylesheet` runs `Flatten.block` before the pipeline;
-when it holds, `Flatten.rules_with_nested_declarations` still flattens each
-rule holding a nested declarations rule, which the compat data has no key
-for. The `&` relaxation and synthesis run only when it holds. Nesting synthesis
+when it holds but `Ctx.parses_nested_declarations` does not (every engine of
+the floors at or past `api.CSSNestedDeclarations`),
+`Flatten.rules_with_nested_declarations` still flattens each rule holding a
+nested declarations rule. The `&` relaxation and synthesis run only when it holds. Nesting synthesis
 is adjacent-only, within one cascade context, with an exact selector extension
 under a non-list parent that carries no pseudo-element, leaving no `&` in what
 remains of the child, since sec. 4 has that `&` name `:scope` or the enclosing
@@ -277,6 +286,14 @@ In an `@scope` block `Flatten` composes under the parent with the implied
 root spelled out (`& <parent>`, which sec. 3.5.1 weighs at zero) and prints
 the bare composition when the nested selector starts with its parent
 (`Nest.parent_first`); `Nest.merge_lone` merges there only in that case.
+
+A rule holding `revert-rule` (`Declaration.rolls_back_rule`, which the reader
+makes true by keeping every such declaration as tokens) is a run of its own in
+the optimizer (`Optimize.rolls_back`, read where a run is collected, rejoined
+and split after nested rules are lifted) and a barrier in the projection
+(`Rule_order.element_rules`). `Cover.covered` and the projection's shadowing
+never let such a declaration cover an earlier rule's write, and
+`Nest.hoist_declaration_runs` leaves it in its nested declarations rule.
 
 The rule graph (`lib/rule_graph.ml`) that factoring and merging reorder over
 reads a rule with nested content as parts: its own declarations under its

@@ -4,6 +4,42 @@
 open Common
 open Properties_intf
 
+module Family = struct
+  type t =
+    | Animation
+    | Background
+    | Border
+    | Caret
+    | Columns
+    | Contain_intrinsic_size
+    | Container
+    | Flex
+    | Font
+    | Grid
+    | Inset
+    | Interest_delay
+    | List_style
+    | Margin
+    | Mask
+    | Offset
+    | Outline
+    | Overflow
+    | Overscroll_behavior
+    | Padding
+    | Place
+    | Position_try
+    | Scroll_margin
+    | Scroll_padding
+    | Scroll_timeline
+    | Text_box
+    | Text_decoration
+    | Text_emphasis
+    | Text_stroke
+    | Transition
+    | View_timeline
+    | White_space
+end
+
 (* A dense integer per property constructor, in the order [Properties_intf]
    declares them. It exists so an ordered container keyed on a property
    identity compares two integers rather than walking the runtime
@@ -591,7 +627,7 @@ let compare_property : type a b. a property -> b property -> int =
  fun a b ->
   match (a, b) with
   | Custom_property x, Custom_property y -> String.compare x y
-  | Unknown_property x, Unknown_property y -> String.compare x y
+  | Unknown_property x, Unknown_property y -> String.compare x.written y.written
   | _ -> Int.compare (property_tag a) (property_tag b)
 
 (* A property identity carries the type its value has, so two identities that
@@ -609,7 +645,7 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Custom_property x, Custom_property y ->
       if String.equal x y then Some Equal else None
   | Unknown_property x, Unknown_property y ->
-      if String.equal x y then Some Equal else None
+      if String.equal x.written y.written then Some Equal else None
   | All, All -> Some Equal
   | Background_color, Background_color -> Some Equal
   | Color, Color -> Some Equal
@@ -1180,3 +1216,611 @@ let eq_property : type a b. a property -> b property -> (a, b) Type.eq option =
   | Webkit_transform_style, Webkit_transform_style -> Some Equal
   | _ -> None
 (* PROPERTY_EQ_END *)
+
+(* The family shorthand composition reads a property in, [None] for one no
+   composer reads. The match carries no wildcard, so a new constructor fails
+   this build until it is placed; an [Unknown_property] whose value the typed
+   reader refused is read under the property its name names, as the composers
+   that refuse on such a write read it. *)
+let rec composition_family : type a. a property -> Family.t option = function
+  | Custom_property _ -> None
+  | Unknown_property { own = Some (Prop p); _ } -> composition_family p
+  | Unknown_property { own = None; _ } -> None
+  | All -> None
+  | Background_color -> Some Family.Background
+  | Color -> None
+  | Border_color -> Some Family.Border
+  | Border_style -> Some Family.Border
+  | Border_top_style -> Some Family.Border
+  | Border_right_style -> Some Family.Border
+  | Border_bottom_style -> Some Family.Border
+  | Border_left_style -> Some Family.Border
+  | Border_inline_start_style -> Some Family.Border
+  | Border_inline_end_style -> Some Family.Border
+  | Border_block_start_style -> Some Family.Border
+  | Border_block_end_style -> Some Family.Border
+  | Padding -> Some Family.Padding
+  | Padding_left -> Some Family.Padding
+  | Padding_right -> Some Family.Padding
+  | Padding_bottom -> Some Family.Padding
+  | Padding_top -> Some Family.Padding
+  | Padding_inline -> Some Family.Padding
+  | Padding_inline_start -> Some Family.Padding
+  | Padding_inline_end -> Some Family.Padding
+  | Padding_block -> Some Family.Padding
+  | Padding_block_start -> Some Family.Padding
+  | Padding_block_end -> Some Family.Padding
+  | Margin -> Some Family.Margin
+  | Margin_inline_end -> Some Family.Margin
+  | Margin_inline_start -> Some Family.Margin
+  | Margin_left -> Some Family.Margin
+  | Margin_right -> Some Family.Margin
+  | Margin_top -> Some Family.Margin
+  | Margin_bottom -> Some Family.Margin
+  | Margin_inline -> Some Family.Margin
+  | Margin_block -> Some Family.Margin
+  | Margin_block_start -> Some Family.Margin
+  | Margin_block_end -> Some Family.Margin
+  | Gap -> Some Family.Columns
+  | Column_gap -> Some Family.Columns
+  | Row_gap -> Some Family.Columns
+  | Width -> None
+  | Height -> None
+  | Min_width -> None
+  | Min_height -> None
+  | Max_width -> None
+  | Max_height -> None
+  | Inline_size -> None
+  | Min_inline_size -> None
+  | Max_inline_size -> None
+  | Block_size -> None
+  | Min_block_size -> None
+  | Max_block_size -> None
+  | Font_size -> Some Family.Font
+  | Line_height -> Some Family.Font
+  | Font_weight -> Some Family.Font
+  | Font_style -> Some Family.Font
+  | Text_align -> None
+  | Text_decoration -> Some Family.Text_decoration
+  | Text_decoration_line -> Some Family.Text_decoration
+  | Text_decoration_style -> Some Family.Text_decoration
+  | Text_decoration_color -> Some Family.Text_decoration
+  | Text_underline_offset -> None
+  | Text_decoration_skip -> Some Family.Text_decoration
+  | Text_decoration_skip_self -> Some Family.Text_decoration
+  | Text_decoration_skip_box -> Some Family.Text_decoration
+  | Text_decoration_skip_inset -> Some Family.Text_decoration
+  | Text_decoration_skip_spaces -> Some Family.Text_decoration
+  | Text_emphasis -> Some Family.Text_emphasis
+  | Text_emphasis_style -> Some Family.Text_emphasis
+  | Text_emphasis_color -> Some Family.Text_emphasis
+  | Text_emphasis_position -> Some Family.Text_emphasis
+  | Text_emphasis_skip -> Some Family.Text_emphasis
+  | Text_orientation -> None
+  | Text_transform -> None
+  | Letter_spacing -> None
+  | List_style_type -> Some Family.List_style
+  | List_style_position -> Some Family.List_style
+  | List_style_image -> Some Family.List_style
+  | Display -> None
+  | Position -> None
+  | Visibility -> None
+  | Baseline_source -> None
+  | Alignment_baseline -> None
+  | Baseline_shift -> None
+  | Flex_direction -> Some Family.Flex
+  | Flex_wrap -> Some Family.Flex
+  | Flex_flow -> Some Family.Flex
+  | Flex -> Some Family.Flex
+  | Flex_grow -> Some Family.Flex
+  | Flex_shrink -> Some Family.Flex
+  | Flex_basis -> Some Family.Flex
+  | Order -> None
+  | Align_items -> Some Family.Place
+  | Justify_content -> Some Family.Place
+  | Justify_items -> Some Family.Place
+  | Justify_self -> Some Family.Place
+  | Align_content -> Some Family.Place
+  | Align_self -> Some Family.Place
+  | Place_content -> Some Family.Place
+  | Place_items -> Some Family.Place
+  | Place_self -> Some Family.Place
+  | Grid_template_columns -> Some Family.Grid
+  | Grid_template_rows -> Some Family.Grid
+  | Grid_template_areas -> Some Family.Grid
+  | Grid_template -> Some Family.Grid
+  | Grid -> Some Family.Grid
+  | Grid_area -> Some Family.Grid
+  | Grid_auto_flow -> Some Family.Grid
+  | Grid_auto_columns -> Some Family.Grid
+  | Grid_auto_rows -> Some Family.Grid
+  | Grid_column -> Some Family.Grid
+  | Grid_row -> Some Family.Grid
+  | Grid_column_start -> Some Family.Grid
+  | Grid_column_end -> Some Family.Grid
+  | Grid_row_start -> Some Family.Grid
+  | Grid_row_end -> Some Family.Grid
+  | Border_width -> Some Family.Border
+  | Border_top_width -> Some Family.Border
+  | Border_right_width -> Some Family.Border
+  | Border_bottom_width -> Some Family.Border
+  | Border_left_width -> Some Family.Border
+  | Border_inline_start_width -> Some Family.Border
+  | Border_inline_end_width -> Some Family.Border
+  | Border_block_start_width -> Some Family.Border
+  | Border_block_end_width -> Some Family.Border
+  | Border_inline_width -> Some Family.Border
+  | Border_block_width -> Some Family.Border
+  | Border_image -> Some Family.Border
+  | Border_image_source -> Some Family.Border
+  | Border_image_slice -> Some Family.Border
+  | Border_image_repeat -> Some Family.Border
+  | Border_image_width -> Some Family.Border
+  | Border_image_outset -> Some Family.Border
+  | Border_radius -> Some Family.Border
+  | Border_top_left_radius -> Some Family.Border
+  | Border_top_right_radius -> Some Family.Border
+  | Border_bottom_left_radius -> Some Family.Border
+  | Border_bottom_right_radius -> Some Family.Border
+  | Border_top_color -> Some Family.Border
+  | Border_right_color -> Some Family.Border
+  | Border_bottom_color -> Some Family.Border
+  | Border_left_color -> Some Family.Border
+  | Border_inline_start_color -> Some Family.Border
+  | Border_inline_end_color -> Some Family.Border
+  | Border_block_start_color -> Some Family.Border
+  | Border_block_end_color -> Some Family.Border
+  | Border_inline_color -> Some Family.Border
+  | Border_block_color -> Some Family.Border
+  | Border_inline_style -> Some Family.Border
+  | Border_block_style -> Some Family.Border
+  | Border_start_start_radius -> Some Family.Border
+  | Border_start_end_radius -> Some Family.Border
+  | Border_end_start_radius -> Some Family.Border
+  | Border_end_end_radius -> Some Family.Border
+  | Opacity -> None
+  | Fill_opacity -> None
+  | Stroke_opacity -> None
+  | Stop_opacity -> None
+  | Flood_opacity -> None
+  | Mix_blend_mode -> None
+  | Transform -> None
+  | Translate -> None
+  | Cursor -> None
+  | Interactivity -> None
+  | Caret_animation -> Some Family.Caret
+  | Caret_shape -> Some Family.Caret
+  | Caret -> Some Family.Caret
+  | Interest_delay -> Some Family.Interest_delay
+  | Interest_delay_start -> Some Family.Interest_delay
+  | Interest_delay_end -> Some Family.Interest_delay
+  | Nav_up -> None
+  | Nav_right -> None
+  | Nav_down -> None
+  | Nav_left -> None
+  | Table_layout -> None
+  | Border_collapse -> Some Family.Border
+  | Border_spacing -> Some Family.Border
+  | User_select -> None
+  | Pointer_events -> None
+  | Overflow -> Some Family.Overflow
+  | Inset -> Some Family.Inset
+  | Inset_inline -> Some Family.Inset
+  | Inset_inline_start -> Some Family.Inset
+  | Inset_inline_end -> Some Family.Inset
+  | Inset_block -> Some Family.Inset
+  | Inset_block_start -> Some Family.Inset
+  | Inset_block_end -> Some Family.Inset
+  | Top -> Some Family.Inset
+  | Right -> Some Family.Inset
+  | Bottom -> Some Family.Inset
+  | Left -> Some Family.Inset
+  | Z_index -> None
+  | Outline -> Some Family.Outline
+  | Outline_style -> Some Family.Outline
+  | Outline_width -> Some Family.Outline
+  | Outline_color -> Some Family.Outline
+  | Outline_offset -> Some Family.Outline
+  | Forced_color_adjust -> None
+  | Scroll_snap_type -> None
+  | White_space -> Some Family.White_space
+  | White_space_collapse -> Some Family.White_space
+  | Font_variant_alternates -> Some Family.Font
+  | Font_variant -> Some Family.Font
+  | Border -> Some Family.Border
+  | Border_block -> Some Family.Border
+  | Border_block_start -> Some Family.Border
+  | Border_block_end -> Some Family.Border
+  | Border_inline -> Some Family.Border
+  | Border_inline_start -> Some Family.Border
+  | Border_inline_end -> Some Family.Border
+  | Background -> Some Family.Background
+  | Tab_size -> None
+  | Zoom -> None
+  | Webkit_text_size_adjust -> None
+  | Font_feature_settings -> Some Family.Font
+  | Font_variation_settings -> Some Family.Font
+  | Webkit_tap_highlight_color -> None
+  | Webkit_user_select -> None
+  | Moz_user_select -> None
+  | Ms_user_select -> None
+  | Webkit_text_decoration -> Some Family.Text_decoration
+  | Webkit_text_decoration_color -> Some Family.Text_decoration
+  | Webkit_text_fill_color -> None
+  | Webkit_text_stroke_color -> Some Family.Text_stroke
+  | Webkit_text_stroke -> Some Family.Text_stroke
+  | Webkit_text_stroke_width -> Some Family.Text_stroke
+  | Text_indent -> None
+  | List_style -> Some Family.List_style
+  | Font -> Some Family.Font
+  | Source -> None
+  | Webkit_appearance -> None
+  | Webkit_transform -> None
+  | Moz_transform -> None
+  | Ms_transform -> None
+  | O_transform -> None
+  | Webkit_transition -> Some Family.Transition
+  | Webkit_transition_delay -> Some Family.Transition
+  | Webkit_transition_duration -> Some Family.Transition
+  | Webkit_transition_property -> Some Family.Transition
+  | Webkit_transition_timing_function -> Some Family.Transition
+  | Webkit_animation -> Some Family.Animation
+  | Webkit_animation_delay -> Some Family.Animation
+  | Webkit_animation_duration -> Some Family.Animation
+  | Webkit_animation_direction -> Some Family.Animation
+  | Webkit_animation_iteration_count -> Some Family.Animation
+  | Webkit_animation_name -> Some Family.Animation
+  | Webkit_animation_timing_function -> Some Family.Animation
+  | Webkit_animation_fill_mode -> Some Family.Animation
+  | Webkit_animation_play_state -> Some Family.Animation
+  | Webkit_flex_direction -> Some Family.Flex
+  | Webkit_flex_wrap -> Some Family.Flex
+  | Webkit_flex_flow -> Some Family.Flex
+  | Webkit_justify_content -> Some Family.Place
+  | Webkit_align_items -> Some Family.Place
+  | Webkit_align_content -> Some Family.Place
+  | Webkit_align_self -> Some Family.Place
+  | Webkit_border_radius -> Some Family.Border
+  | Webkit_box_sizing -> None
+  | Moz_box_sizing -> None
+  | Webkit_box_shadow -> None
+  | Webkit_background_size -> Some Family.Background
+  | Webkit_filter -> None
+  | Moz_appearance -> None
+  | Moz_animation -> Some Family.Animation
+  | Moz_animation_delay -> Some Family.Animation
+  | Moz_animation_duration -> Some Family.Animation
+  | Moz_animation_direction -> Some Family.Animation
+  | Moz_animation_iteration_count -> Some Family.Animation
+  | Moz_animation_name -> Some Family.Animation
+  | Moz_animation_timing_function -> Some Family.Animation
+  | Moz_animation_fill_mode -> Some Family.Animation
+  | Moz_animation_play_state -> Some Family.Animation
+  | Moz_transition -> Some Family.Transition
+  | Moz_transition_delay -> Some Family.Transition
+  | Moz_transition_duration -> Some Family.Transition
+  | Moz_transition_property -> Some Family.Transition
+  | Moz_transition_timing_function -> Some Family.Transition
+  | Moz_border_radius -> Some Family.Border
+  | Moz_box_shadow -> None
+  | Ms_filter -> None
+  | O_transition -> Some Family.Transition
+  | Container_type -> Some Family.Container
+  | Container_name -> Some Family.Container
+  | Container -> Some Family.Container
+  | Anchor_name -> None
+  | Position_anchor -> None
+  | Position_try_fallbacks -> Some Family.Position_try
+  | Position_try_order -> Some Family.Position_try
+  | Position_try -> Some Family.Position_try
+  | Position_visibility -> None
+  | Position_area -> None
+  | Shape_outside -> None
+  | Shape_margin -> None
+  | Shape_image_threshold -> None
+  | Overflow_clip_margin -> Some Family.Overflow
+  | Overflow_anchor -> Some Family.Overflow
+  | Scrollbar_width -> None
+  | Scrollbar_color -> None
+  | Scrollbar_gutter -> None
+  | Line_height_step -> Some Family.Font
+  | Font_palette -> Some Family.Font
+  | Font_synthesis -> Some Family.Font
+  | Text_wrap_mode -> Some Family.White_space
+  | Text_wrap_style -> Some Family.White_space
+  | Text_box_trim -> Some Family.Text_box
+  | Text_underline_position -> None
+  | Text_box_edge -> Some Family.Text_box
+  | Text_box -> Some Family.Text_box
+  | Inline_sizing -> None
+  | Line_fit_edge -> None
+  | Interpolate_size -> None
+  | Min_intrinsic_sizing -> None
+  | Ruby_align -> None
+  | Ruby_merge -> None
+  | Ruby_overhang -> None
+  | Ruby_position -> None
+  | Glyph_orientation_vertical -> None
+  | Text_combine_upright -> None
+  | Animation_timeline -> Some Family.Animation
+  | Animation_range -> Some Family.Animation
+  | Animation_range_start -> Some Family.Animation
+  | Animation_range_end -> Some Family.Animation
+  | Scroll_timeline -> Some Family.Scroll_timeline
+  | Scroll_timeline_name -> Some Family.Scroll_timeline
+  | Scroll_timeline_axis -> Some Family.Scroll_timeline
+  | View_transition_name -> None
+  | View_transition_class -> None
+  | Image_orientation -> None
+  | Image_rendering -> None
+  | Image_resolution -> None
+  | Contain_intrinsic_size -> Some Family.Contain_intrinsic_size
+  | Contain_intrinsic_width -> Some Family.Contain_intrinsic_size
+  | Contain_intrinsic_height -> Some Family.Contain_intrinsic_size
+  | Contain_intrinsic_block_size -> Some Family.Contain_intrinsic_size
+  | Contain_intrinsic_inline_size -> Some Family.Contain_intrinsic_size
+  | Margin_trim -> Some Family.Margin
+  | Offset_path -> Some Family.Offset
+  | Offset_distance -> Some Family.Offset
+  | Offset_rotate -> Some Family.Offset
+  | Font_size_adjust -> Some Family.Font
+  | Font_variant_emoji -> Some Family.Font
+  | Text_spacing_trim -> None
+  | Hyphenate_limit_chars -> None
+  | Initial_letter -> None
+  | Initial_letter_align -> None
+  | Initial_letter_wrap -> None
+  | Dominant_baseline -> None
+  | View_timeline_name -> Some Family.View_timeline
+  | View_timeline_axis -> Some Family.View_timeline
+  | View_timeline_inset -> Some Family.View_timeline
+  | View_timeline -> Some Family.View_timeline
+  | Timeline_scope -> None
+  | Perspective -> None
+  | Perspective_origin -> None
+  | Transform_style -> None
+  | Backface_visibility -> None
+  | Object_position -> None
+  | Rotate -> None
+  | Transition_duration -> Some Family.Transition
+  | Transition_timing_function -> Some Family.Transition
+  | Transition_delay -> Some Family.Transition
+  | Transition_property -> Some Family.Transition
+  | Transition_behavior -> Some Family.Transition
+  | Overlay -> None
+  | Will_change -> None
+  | Contain -> None
+  | Isolation -> None
+  | Break_before -> None
+  | Break_after -> None
+  | Break_inside -> None
+  | Page_break_before -> None
+  | Page_break_after -> None
+  | Page_break_inside -> None
+  | Page_size -> None
+  | Columns -> Some Family.Columns
+  | Column_width -> Some Family.Columns
+  | Column_height -> Some Family.Columns
+  | Column_wrap -> Some Family.Columns
+  | Column_count -> Some Family.Columns
+  | Column_rule -> Some Family.Columns
+  | Column_rule_color -> Some Family.Columns
+  | Column_rule_width -> Some Family.Columns
+  | Column_rule_style -> Some Family.Columns
+  | Column_span -> Some Family.Columns
+  | Word_spacing -> None
+  | Background_attachment -> Some Family.Background
+  | Border_top -> Some Family.Border
+  | Border_right -> Some Family.Border
+  | Border_bottom -> Some Family.Border
+  | Border_left -> Some Family.Border
+  | Transform_origin -> None
+  | Transform_box -> None
+  | Text_shadow -> None
+  | Clip_path -> None
+  | Mask -> Some Family.Mask
+  | Mask_border -> Some Family.Mask
+  | Content_visibility -> None
+  | Filter -> None
+  | Background_image -> Some Family.Background
+  | Background_origin -> Some Family.Background
+  | Background_clip -> Some Family.Background
+  | Webkit_background_clip -> Some Family.Background
+  | Animation -> Some Family.Animation
+  | Aspect_ratio -> None
+  | Overflow_x -> Some Family.Overflow
+  | Overflow_y -> Some Family.Overflow
+  | Overflow_block -> Some Family.Overflow
+  | Overflow_inline -> Some Family.Overflow
+  | Vertical_align -> None
+  | Font_family -> Some Family.Font
+  | Background_position -> Some Family.Background
+  | Background_position_x -> Some Family.Background
+  | Background_position_y -> Some Family.Background
+  | Webkit_mask_position_x -> Some Family.Mask
+  | Webkit_mask_position_y -> Some Family.Mask
+  | Background_repeat -> Some Family.Background
+  | Background_size -> Some Family.Background
+  | Webkit_font_smoothing -> Some Family.Font
+  | Moz_osx_font_smoothing -> None
+  | Webkit_line_clamp -> None
+  | Webkit_box_orient -> None
+  | Moz_orient -> None
+  | Text_overflow -> None
+  | Text_wrap -> Some Family.White_space
+  | Word_break -> None
+  | Overflow_wrap -> Some Family.Overflow
+  | Line_break -> None
+  | Hyphens -> None
+  | Webkit_hyphens -> None
+  | Text_rendering -> None
+  | Webkit_touch_callout -> None
+  | Font_stretch -> Some Family.Font
+  | Font_optical_sizing -> Some Family.Font
+  | Font_kerning -> Some Family.Font
+  | Font_language_override -> Some Family.Font
+  | Font_synthesis_style -> Some Family.Font
+  | Font_synthesis_weight -> Some Family.Font
+  | Font_synthesis_small_caps -> Some Family.Font
+  | Font_synthesis_position -> Some Family.Font
+  | Font_variant_ligatures -> Some Family.Font
+  | Caps -> Some Family.Font
+  | Numeric -> Some Family.Font
+  | Font_variant_position -> Some Family.Font
+  | East_asian -> Some Family.Font
+  | Backdrop_filter -> None
+  | Webkit_backdrop_filter -> None
+  | Webkit_mask_image -> Some Family.Mask
+  | Webkit_mask_composite -> Some Family.Mask
+  | Webkit_mask_source_type -> Some Family.Mask
+  | Webkit_mask_size -> Some Family.Mask
+  | Webkit_mask_position -> Some Family.Mask
+  | Webkit_mask_repeat -> Some Family.Mask
+  | Webkit_mask_clip -> Some Family.Mask
+  | Webkit_mask_origin -> Some Family.Mask
+  | Mask_image -> Some Family.Mask
+  | Mask_composite -> Some Family.Mask
+  | Mask_mode -> Some Family.Mask
+  | Mask_size -> Some Family.Mask
+  | Mask_position -> Some Family.Mask
+  | Mask_repeat -> Some Family.Mask
+  | Mask_clip -> Some Family.Mask
+  | Mask_origin -> Some Family.Mask
+  | Mask_type -> Some Family.Mask
+  | Scroll_snap_align -> None
+  | Scroll_snap_stop -> None
+  | Scroll_behavior -> None
+  | Box_sizing -> None
+  | Field_sizing -> None
+  | Caption_side -> None
+  | Resize -> None
+  | Object_fit -> None
+  | Object_view_box -> None
+  | Appearance -> None
+  | Color_scheme -> None
+  | Print_color_adjust -> None
+  | Webkit_print_color_adjust -> None
+  | Box_decoration_break -> None
+  | Webkit_box_decoration_break -> None
+  | Content -> None
+  | Counter_reset -> None
+  | Counter_increment -> None
+  | Quotes -> None
+  | Text_decoration_thickness -> Some Family.Text_decoration
+  | Text_size_adjust -> None
+  | Touch_action -> None
+  | Clip -> None
+  | Clear -> None
+  | Float -> None
+  | Scale -> None
+  | Transition -> Some Family.Transition
+  | Box_shadow -> None
+  | Fill -> None
+  | Stroke -> None
+  | Stroke_width -> None
+  | Fill_rule -> None
+  | Clip_rule -> None
+  | Stroke_linecap -> None
+  | Stroke_linejoin -> None
+  | Stroke_miterlimit -> None
+  | Stroke_dashoffset -> None
+  | Stroke_dasharray -> None
+  | Paint_order -> None
+  | Vector_effect -> None
+  | Stop_color -> None
+  | Flood_color -> None
+  | Lighting_color -> None
+  | Direction -> None
+  | Unicode_bidi -> None
+  | Writing_mode -> None
+  | Text_decoration_skip_ink -> Some Family.Text_decoration
+  | Animation_name -> Some Family.Animation
+  | Animation_duration -> Some Family.Animation
+  | Animation_timing_function -> Some Family.Animation
+  | Animation_delay -> Some Family.Animation
+  | Animation_iteration_count -> Some Family.Animation
+  | Animation_direction -> Some Family.Animation
+  | Animation_fill_mode -> Some Family.Animation
+  | Animation_play_state -> Some Family.Animation
+  | Animation_composition -> Some Family.Animation
+  | Background_blend_mode -> Some Family.Background
+  | Scroll_margin -> Some Family.Scroll_margin
+  | Scroll_margin_top -> Some Family.Scroll_margin
+  | Scroll_margin_right -> Some Family.Scroll_margin
+  | Scroll_margin_bottom -> Some Family.Scroll_margin
+  | Scroll_margin_left -> Some Family.Scroll_margin
+  | Scroll_margin_inline -> Some Family.Scroll_margin
+  | Scroll_margin_inline_start -> Some Family.Scroll_margin
+  | Scroll_margin_inline_end -> Some Family.Scroll_margin
+  | Scroll_margin_block -> Some Family.Scroll_margin
+  | Scroll_margin_block_start -> Some Family.Scroll_margin
+  | Scroll_margin_block_end -> Some Family.Scroll_margin
+  | Scroll_padding -> Some Family.Scroll_padding
+  | Scroll_padding_top -> Some Family.Scroll_padding
+  | Scroll_padding_right -> Some Family.Scroll_padding
+  | Scroll_padding_bottom -> Some Family.Scroll_padding
+  | Scroll_padding_left -> Some Family.Scroll_padding
+  | Scroll_padding_inline -> Some Family.Scroll_padding
+  | Scroll_padding_inline_start -> Some Family.Scroll_padding
+  | Scroll_padding_inline_end -> Some Family.Scroll_padding
+  | Scroll_padding_block -> Some Family.Scroll_padding
+  | Scroll_padding_block_start -> Some Family.Scroll_padding
+  | Scroll_padding_block_end -> Some Family.Scroll_padding
+  | Overscroll_behavior -> Some Family.Overscroll_behavior
+  | Overscroll_behavior_x -> Some Family.Overscroll_behavior
+  | Overscroll_behavior_y -> Some Family.Overscroll_behavior
+  | Overscroll_behavior_block -> Some Family.Overscroll_behavior
+  | Overscroll_behavior_inline -> Some Family.Overscroll_behavior
+  | Accent_color -> None
+  | Caret_color -> Some Family.Caret
+  | Offset_anchor -> Some Family.Offset
+  | Offset_position -> Some Family.Offset
+  | Offset -> Some Family.Offset
+  | Webkit_backface_visibility -> None
+  | Webkit_border_top_left_radius -> Some Family.Border
+  | Webkit_border_top_right_radius -> Some Family.Border
+  | Webkit_border_bottom_right_radius -> Some Family.Border
+  | Webkit_border_bottom_left_radius -> Some Family.Border
+  | Webkit_flex -> Some Family.Flex
+  | Webkit_flex_grow -> Some Family.Flex
+  | Webkit_flex_shrink -> Some Family.Flex
+  | Webkit_flex_basis -> Some Family.Flex
+  | Webkit_order -> None
+  | Webkit_perspective_origin -> None
+  | Webkit_transform_origin -> None
+  | Webkit_transform_style -> None
+
+(* Dense below 32, so a set of families fits in one immediate integer. *)
+let family_rank : Family.t -> int = function
+  | Animation -> 0
+  | Background -> 1
+  | Border -> 2
+  | Caret -> 3
+  | Columns -> 4
+  | Contain_intrinsic_size -> 5
+  | Container -> 6
+  | Flex -> 7
+  | Font -> 8
+  | Grid -> 9
+  | Inset -> 10
+  | Interest_delay -> 11
+  | List_style -> 12
+  | Margin -> 13
+  | Mask -> 14
+  | Offset -> 15
+  | Outline -> 16
+  | Overflow -> 17
+  | Overscroll_behavior -> 18
+  | Padding -> 19
+  | Place -> 20
+  | Position_try -> 21
+  | Scroll_margin -> 22
+  | Scroll_padding -> 23
+  | Scroll_timeline -> 24
+  | Text_box -> 25
+  | Text_decoration -> 26
+  | Text_emphasis -> 27
+  | Text_stroke -> 28
+  | Transition -> 29
+  | View_timeline -> 30
+  | White_space -> 31

@@ -159,16 +159,18 @@ let rec vars_of_background_image (value : Properties.background_image) :
   | Repeating_linear_gradient (direction, stops)
   | Webkit_linear_gradient (direction, stops)
   | Webkit_repeating_linear_gradient (direction, stops)
-  | Moz_linear_gradient (direction, stops)
-  | Moz_repeating_linear_gradient (direction, stops)
+  | Moz_linear_gradient
+      ((Legacy_direction direction | To_direction direction), stops)
+  | Moz_repeating_linear_gradient
+      ((Legacy_direction direction | To_direction direction), stops)
   | O_linear_gradient (direction, stops)
   | O_repeating_linear_gradient (direction, stops) ->
       vars_of_gradient_direction direction
       @ List.concat_map vars_of_gradient_stop stops
   | Radial_gradient (_, stops)
   | Repeating_radial_gradient (_, stops)
-  | Webkit_radial_gradient (_, stops)
-  | Webkit_repeating_radial_gradient (_, stops)
+  | Webkit_radial_gradient (_, _, stops)
+  | Webkit_repeating_radial_gradient (_, _, stops)
   | Moz_radial_gradient (_, stops)
   | Moz_repeating_radial_gradient (_, stops)
   | O_radial_gradient (_, stops)

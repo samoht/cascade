@@ -19,7 +19,10 @@ val pp_shadow : Properties_intf.shadow Pp.t
 (** [pp_shadow] prints a [box-shadow] value. *)
 
 val normalize_shadow :
-  ?lossless:bool -> Properties_intf.shadow -> Properties_intf.shadow
+  ?lossless:bool ->
+  enforce_spec:bool ->
+  Properties_intf.shadow ->
+  Properties_intf.shadow
 (** [normalize_shadow ?lossless v] is [v] in canonical form. *)
 
 val shadow :

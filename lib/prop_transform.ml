@@ -265,9 +265,9 @@ let normalize_rotate ?(ctx = Values.default_calc_ctx) :
     | Z a -> preserve_if_equal value (Z (na a))
     (* CSS Transforms 2 sec. 5, [rotate]: [x], [y] and [z] name the unit vectors
        [1 0 0], [0 1 0] and [0 0 1]. *)
-    | Axis (1., 0., 0., a) -> X (na a)
-    | Axis (0., 1., 0., a) -> Y (na a)
-    | Axis (0., 0., 1., a) -> Z (na a)
+    | Axis (Num 1., Num 0., Num 0., a) -> X (na a)
+    | Axis (Num 0., Num 1., Num 0., a) -> Y (na a)
+    | Axis (Num 0., Num 0., Num 1., a) -> Z (na a)
     | Axis (x, y, z, a) -> preserve_if_equal value (Axis (x, y, z, na a))
     | other -> other
 
@@ -822,7 +822,7 @@ let rec read_offset_rotate t : offset_rotate =
    [pp_number_percentage] picks between [<number>] and [<percentage>] spelling
    and the spacing depends on the choice. *)
 let render_number_percentages ctx vs =
-  List.map (Pp.to_string ~minify:(Pp.minified ctx) pp_number_percentage) vs
+  List.map (Pp.render ctx pp_number_percentage) vs
 
 let pp_number_percentage_separated ctx vs =
   let needs_sep prev next =
@@ -980,16 +980,18 @@ let rec pp_rotate_value : rotate_value Pp.t =
          angle is [token_sp]'s to judge: an angle ending in its unit is an ident
          sequence a [-] continues, so [0deg-1] would be the one dimension
          [0deg-1], while one ending in [)] delimits itself. *)
-      let pp_sep ctx (next : float) =
-        if Pp.minified ctx && next < 0. then () else Pp.space ctx ()
+      let pp_sep ctx (next : Values.number) =
+        match next with
+        | Num n when Pp.minified ctx && n < 0. -> ()
+        | _ -> Pp.space ctx ()
       in
       pp_required_unit_angle ctx a;
       Pp.token_sp ctx ();
-      Pp.float ctx x;
+      Values.pp_number ctx x;
       pp_sep ctx y;
-      Pp.float ctx y;
+      Values.pp_number ctx y;
       pp_sep ctx z;
-      Pp.float ctx z
+      Values.pp_number ctx z
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -1014,11 +1016,11 @@ let read_rotate_z t : rotate_value =
 
 (* Read custom axis: x y z angle. *)
 let read_rotate_axis_angle t : rotate_value =
-  let first = Values.read_constant_number t in
+  let first = Values.read_number_slot t in
   Cursor.ws t;
-  let second = Values.read_constant_number t in
+  let second = Values.read_number_slot t in
   Cursor.ws t;
-  let third = Values.read_constant_number t in
+  let third = Values.read_number_slot t in
   Cursor.ws t;
   let angle = read_angle t in
   Axis (first, second, third, angle)
@@ -1035,11 +1037,11 @@ let read_rotate_angle_axis_tail angle t =
       Cursor.skip t;
       (Z angle : rotate_value)
   | _ ->
-      let first = Values.read_constant_number t in
+      let first = Values.read_number_slot t in
       Cursor.ws t;
-      let second = Values.read_constant_number t in
+      let second = Values.read_number_slot t in
       Cursor.ws t;
-      let third = Values.read_constant_number t in
+      let third = Values.read_number_slot t in
       (Axis (first, second, third, angle) : rotate_value)
 
 (* CSS Transforms 2 sec. 5 [rotate] also accepts angle then axis: [<angle>
@@ -1485,7 +1487,7 @@ let starts_offset_path t =
     (fun t ->
       match Cursor.option read_offset_path t with
       | Some (None | Url _ | Path _ | Ray _ | Shape _ : offset_path) -> true
-      | Some _ | Option.None -> false)
+      | Some _ | None -> false)
     t
 
 (* A [var()] in the leading group could substitute into any of its four slots,
@@ -1520,10 +1522,10 @@ let read_offset_path_tail t =
     else (
       Cursor.ws t;
       match Cursor.option reader t with
-      | Option.Some value ->
-          slot := Option.Some value;
+      | Some value ->
+          slot := Some value;
           true
-      | Option.None -> false)
+      | None -> false)
   in
   let rec loop () =
     if
@@ -1558,8 +1560,8 @@ let read_offset_body t : offset =
   let anchor =
     if Cursor.slash_opt t then (
       Cursor.ws t;
-      Option.Some (read_offset_anchor t))
-    else Option.None
+      Some (read_offset_anchor t))
+    else None
   in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -1604,7 +1606,7 @@ let offset_distance_is_initial : length_percentage -> bool = function
 
 let drop_offset_initial_slot (type a) ~(is_initial : a -> bool)
     (slot : a option) : a option =
-  match slot with Option.Some v when is_initial v -> Option.None | _ -> slot
+  match slot with Some v when is_initial v -> None | _ -> slot
 
 let normalize_offset_anchor_slot anchor =
   option_map_preserve normalize_offset_anchor anchor
@@ -1629,10 +1631,10 @@ let normalize_offset_target ~ctx (target : offset_target) : offset_target =
       | (Normal : offset_position) ->
           With_path
             {
-              position = Option.None;
+              position = None;
               path = (None : offset_path);
-              distance = Option.None;
-              rotate = Option.None;
+              distance = None;
+              rotate = None;
             }
       | position -> Position_only position)
   | With_path group -> (
@@ -1656,7 +1658,7 @@ let normalize_offset_target ~ctx (target : offset_target) : offset_target =
           | _ -> false)
       in
       match (position, path, distance, rotate) with
-      | Option.Some position, (None : offset_path), Option.None, Option.None ->
+      | Some position, (None : offset_path), None, None ->
           Position_only position
       | _ ->
           if

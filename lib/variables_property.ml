@@ -722,7 +722,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_image_slice, _ -> []
   (* [shape-outside] and an unrecognised property are held as raw text and an
      opaque token stream respectively; scan both structurally. *)
-  | Shape_outside, value -> vars_of_value_string value
+  | Shape_outside, Shape c -> vars_of_clip_path c
+  | Shape_outside, Image i -> vars_of_background_image i
+  | Shape_outside, Var v ->
+      vars_of_value_string (Pp.to_string (Values.pp_var Pp.string) v)
   | Unknown_property _, value -> vars_of_token_stream value
   | Custom_property _, Custom_value { value; _ } ->
       vars_of_custom_property_value value

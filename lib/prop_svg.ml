@@ -36,7 +36,7 @@ let paint_order_expand (written : paint_order_keyword list) =
    redundant. *)
 let normalize_vector_effect (value : vector_effect) : vector_effect =
   match value with
-  | Effects (ks, Some Viewport) -> Effects (ks, Option.None)
+  | Effects (ks, Some Viewport) -> Effects (ks, None)
   | _ -> value
 
 let normalize_paint_order (value : paint_order) : paint_order =
@@ -129,13 +129,20 @@ let rec normalize_stroke_miterlimit (value : stroke_miterlimit) :
       | folded -> if folded == c then value else Calc folded)
   | _ -> value
 
-let rec normalize_svg_paint ?(lossless = false) : svg_paint -> svg_paint =
+let rec normalize_svg_paint ?(lossless = false) ~enforce_spec :
+    svg_paint -> svg_paint =
  fun value ->
   match value with
-  | Color c -> preserve_if_equal value (Color (normalize_color ~lossless c))
+  | Color c ->
+      preserve_if_equal value
+        (Color (normalize_color ~lossless ~enforce_spec c))
   | Url (u, fallback) ->
       preserve_if_equal value
-        (Url (u, option_map_preserve (normalize_svg_paint ~lossless) fallback))
+        (Url
+           ( u,
+             option_map_preserve
+               (normalize_svg_paint ~lossless ~enforce_spec)
+               fallback ))
   | other -> other
 
 let pp_vector_effect_keyword : vector_effect_keyword Pp.t =
@@ -160,7 +167,7 @@ let rec pp_vector_effect : vector_effect Pp.t =
       | Some s ->
           Pp.space ctx ();
           pp_vector_effect_space ctx s
-      | Option.None -> ())
+      | None -> ())
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -342,26 +349,26 @@ let vector_effect_keyword_of = function
   | "non-scaling-size" -> Some Non_scaling_size
   | "non-rotation" -> Some Non_rotation
   | "fixed-position" -> Some Fixed_position
-  | _ -> Option.None
+  | _ -> None
 
 let vector_effect_space_of = function
   | "viewport" -> Some (Viewport : vector_effect_space)
   | "screen" -> Some Screen
-  | _ -> Option.None
+  | _ -> None
 
 let read_vector_effect_keyword t : vector_effect_keyword =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
   match vector_effect_keyword_of (String.lowercase_ascii_preserve name) with
   | Some k -> k
-  | Option.None -> err_invalid_value ~loc t "vector-effect" name
+  | None -> err_invalid_value ~loc t "vector-effect" name
 
 let read_vector_effect_space t : vector_effect_space =
   let loc = Cursor.position t in
   let name = Cursor.ident t in
   match vector_effect_space_of (String.lowercase_ascii_preserve name) with
   | Some s -> s
-  | Option.None -> err_invalid_value ~loc t "vector-effect" name
+  | None -> err_invalid_value ~loc t "vector-effect" name
 
 (* [ <effect> ]+ then an optional space keyword, so an ident that names a space
    ends the effect run. *)
@@ -390,7 +397,7 @@ let rec read_vector_effect t : vector_effect =
       let space =
         match Option.map vector_effect_space_of (Cursor.peek_keyword t) with
         | Some (Some _) -> Some (read_vector_effect_space t)
-        | _ -> Option.None
+        | _ -> None
       in
       (Effects (effects, space) : vector_effect))
     t

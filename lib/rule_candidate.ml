@@ -60,8 +60,8 @@ let remembered size finalize =
   let known = Rule_table.create size in
   fun rule ->
     match Rule_table.find_opt known rule with
-    | Option.Some finalized -> finalized
-    | Option.None ->
+    | Some finalized -> finalized
+    | None ->
         let finalized = finalize rule in
         Rule_table.replace known rule finalized;
         finalized
@@ -86,8 +86,8 @@ let v ~ctx ~finalize g =
 
 let refresh t =
   match Candidate_kind.pending t.core with
-  | Option.None -> []
-  | Option.Some changes ->
+  | None -> []
+  | Some changes ->
       settle t changes;
       Candidate_kind.close t.core
 

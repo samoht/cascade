@@ -115,13 +115,14 @@ val closed_world : t -> bool
 
 val objective : t -> objective
 (** Size metric optimizations are judged by. Under [`Transfer] (the default)
-    factoring minimises output bytes, but merges rules with one body only where
-    they print within 128 rules of each other, since a compressor encodes a
-    repeated declaration in a few bytes wherever it sits but a selector moved
-    away from its neighbours stops compressing against them; [`Raw] merges them
-    at any distance, the right objective when the output ships uncompressed
-    (inline [style], email) or for structural comparisons against raw-size
-    oracles. *)
+    every rewrite is scored by an estimate of the compressed bytes it saves: a
+    selector branch or a declaration printed before costs a match of a few
+    bytes, a new one costs its text. Rules with one body merge only where they
+    print within 128 rules of each other, since a selector moved away from its
+    neighbours stops compressing against them, which the estimate does not see.
+    [`Raw] scores raw bytes and merges them at any distance, the right objective
+    when the output ships uncompressed (inline [style], email) or for structural
+    comparisons against raw-size oracles. *)
 
 val enforce_spec : t -> bool
 (** Whether the evergreen-browser target is dropped. Off by default: a vendor-
@@ -151,6 +152,14 @@ val parses_nesting : t -> bool
     Chrome 112 to 119 and Safari 16.5 to 17.1 refuse one whose selector starts
     with an identifier. Always [false] under {!val-enforce_spec}, whose
     conforming implementations include one that predates CSS Nesting. *)
+
+val parses_nested_declarations : t -> bool
+(** [parses_nested_declarations t] is whether every browser the run serves reads
+    a nested declarations rule (CSS Nesting 1 sec. 3.4) in place: it
+    {!parses_nesting} and every engine of {!floors} is at or past the release
+    browser-compat-data gives for [api.CSSNestedDeclarations] (Chrome 130,
+    Firefox 132, Safari 18.2). Earlier releases that parse nesting move a
+    declaration written after a nested rule ahead of every nested rule. *)
 
 val stats : t -> Stats.t
 (** Profiling recorder for the run this context belongs to. *)

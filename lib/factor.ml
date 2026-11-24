@@ -18,7 +18,8 @@ let size_print ctx =
 module Cache_tbl = Hashtbl.Make (struct
   type t = string * rule list
 
-  let equal = ( = )
+  let equal (k1, r1) (k2, r2) =
+    String.equal k1 k2 && List.equal Stylesheet.equal_rule r1 r2
 
   let hash (knobs, rules) =
     List.fold_left
@@ -45,8 +46,9 @@ let ctx_key ctx =
       (match Ctx.objective ctx with `Raw -> "r" | `Transfer -> "t");
     ]
 
-(* The rule list keys the cache directly: poly hash/equal is sound over the
-   immutable AST, so a lookup need not render every rule to CSS. *)
+(* The rule list keys the cache directly, compared through
+   {!Stylesheet.equal_rule}: an interned declaration answers by pointer, and a
+   NaN key finds itself, so a lookup need not render every rule to CSS. *)
 let cache_key ~ctx rules = (ctx_key ctx, rules)
 
 let order_is_original rules graph order =

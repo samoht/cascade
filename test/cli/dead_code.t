@@ -425,7 +425,8 @@ Zero-length unit dropped where unambiguous.
 # Cascading dead code (multi-pass)
 
 
-A combination produces cascading elimination across all levels.
+A combination produces cascading elimination across all levels. The raw
+objective scores the merges that follow by their raw bytes.
 
   $ cat > multi.css <<EOF
   > @media screen { }
@@ -436,7 +437,7 @@ A combination produces cascading elimination across all levels.
   > .e { color: blue } .f { color: blue }
   > @media screen { .g { color: red } } @media screen { .h { color: blue } }
   > EOF
-  $ cascade --minify multi.css
+  $ cascade --minify --objective=raw multi.css
   .a,.d{color:red}.c,.d{padding:10px}.e,.f{color:#00f}@media screen{.g{color:red}.h{color:#00f}}
 
 
@@ -456,15 +457,16 @@ merge cannot change which value wins.
   $ cascade --minify cross.css
   .btn{color:red;padding:10px}.btn:hover{color:#00f}
 
-Different-value duplicates of the same property in the same rule are
-preserved when the earlier value is a different format the cascade
-might fall back on (legacy syntax pattern).
+A different-value duplicate of the same property in the same rule is
+preserved when some target drops the later value and reads the earlier
+one. A prefixed value before one every target reads is dead.
 
   $ cat > legacy.css <<EOF
   > .x { display: -webkit-box; display: flex }
+  > .y { width: -webkit-fill-available; width: stretch }
   > EOF
   $ cascade --minify legacy.css
-  .x{display:-webkit-box;display:flex}
+  .x{display:flex}.y{width:-webkit-fill-available;width:stretch}
 
 Name-defining and descriptor at-rules are not dead just because this
 stylesheet has no visible rule that references them. They affect font

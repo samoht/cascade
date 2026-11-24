@@ -1,17 +1,19 @@
 #!/bin/sh
 # Reject non-ASCII bytes in cascade source.
 #
-# Reads candidate paths from the arguments, or from stdin when there are none,
+# Reads candidate paths from the arguments, or when there are none from stdin,
 # keeps the ones the rule covers and reports every non-ASCII byte in them. With
 # [--staged] the staged content is read instead of the worktree, so the
-# pre-commit hook sees what the commit will contain.
+# pre-commit hook sees what the commit will contain, and with no arguments the
+# staged names come from the index rather than stdin: a run by hand checks the
+# commit it is about, never an empty list.
 #
 # Source stays 7-bit: write "sec." not the section sign, "--" not the em dash,
 # and \u{XXXX} escapes for a glyph a string must emit (e.g. the diff tree
 # connectors). Prose (README.md, CHANGES.md) and the test fixtures are outside
 # the filter, so they keep their non-ASCII content.
 #
-# The pre-commit hook pipes the staged names in; CI pipes [git ls-files] in.
+# The pre-commit hook runs [--staged]; CI pipes [git ls-files] in.
 # Both go through this one filter and this one pattern so the two cannot drift.
 
 set -eu
@@ -34,6 +36,8 @@ fi
 
 if [ "$#" -gt 0 ]; then
     names=$(printf '%s\n' "$@")
+elif [ "$staged" = true ]; then
+    names=$(git diff --cached --name-only --diff-filter=ACM)
 else
     names=$(cat)
 fi

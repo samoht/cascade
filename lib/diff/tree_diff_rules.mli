@@ -17,7 +17,9 @@ val same_declarations : Css.declaration list -> Css.declaration list -> bool
 
 val same_declaration_set : Css.declaration list -> Css.declaration list -> bool
 (** [same_declaration_set d1 d2] is [true] when [d1] and [d2] hold the same
-    declarations, as {!same_declarations} compares them, in any order. *)
+    declarations, as {!same_declarations} compares them, in any order, a
+    shorthand on one side read as the longhands it writes when the other side
+    writes those. *)
 
 val selector_key_of_selector : Css.Selector.t -> Css.Selector.t
 (** [selector_key_of_selector sel] is [sel] with the items of a selector list

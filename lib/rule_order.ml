@@ -11,10 +11,17 @@ open Stylesheet
    of one property on overlapping selectors keep order while a [var()] reader
    (which writes its own property, not the one it reads) moves freely. An
    [@layer] statement pins the layer order at its first occurrence, so it stays
-   a barrier; a named [@layer] block only holds its place among layer blocks. *)
+   a barrier; a named [@layer] block only holds its place among layer blocks. A
+   rule holding [revert-rule] is one too: the keyword rolls back past that rule
+   (CSS Cascade 5 sec. 7.3.6), so the rule's bounds are read. *)
 let rec element_rules (stmt : statement) : rule list option =
   match stmt with
-  | Rule r -> if r.nested = [] then Some [ r ] else None
+  | Rule r ->
+      if
+        r.nested = []
+        && not (List.exists Declaration.rolls_back_rule r.declarations)
+      then Some [ r ]
+      else None
   | Media (_, b) | Supports (_, b) | Container (_, _, b) -> block_rules b
   | Declarations _ | Bang_comment _ | Charset _ | Import _ | Namespace _
   | Property _ | Layer_decl _ | Layer _ | Moz_document _ | Starting_style _
@@ -230,7 +237,7 @@ let composed_declarations ~ctx decls =
 
 (* The body of a conditional block. *)
 let conditional_body : statement -> statement list option = function
-  | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Option.Some b
+  | Media (_, b) | Supports (_, b) | Container (_, _, b) -> Some b
   | Rule _ | Declarations _ | Bang_comment _ | Charset _ | Import _
   | Namespace _ | Property _ | Layer_decl _ | Layer _ | Moz_document _
   | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
@@ -238,7 +245,7 @@ let conditional_body : statement -> statement list option = function
   | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
   | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
   | Unknown_at_rule _ ->
-      Option.None
+      None
 
 let with_conditional_body stmt body =
   match stmt with
@@ -278,7 +285,8 @@ let rec expand_blocks (stmt : statement) : statement list =
    appearance, then the later wins. Dropping it lets a sheet that hoisted the
    declaration into a shared group converge with one that wrote it inline - the
    hoisted copy survives expansion only to be overridden. A later normal write
-   leaves an earlier important one standing. A property whose duplicates the
+   leaves an earlier important one standing, and a later [revert-rule] rolls
+   back to the earlier write rather than over it. A property whose duplicates the
    declaration dedup keeps verbatim ([content], [outline]) is shadowed only
    where that dedup would drop the earlier write in one rule, so a sheet that
    wrote the two in one rule converges with one that wrote them in two. A later
@@ -292,6 +300,7 @@ let shadows ~ctx d l =
          (Shorthand.deduplicate_declarations_with ~ctx ~merge_box:false [ d; l ]))
   else
     (Declaration.is_important l || not (Declaration.is_important d))
+    && (not (Declaration.rolls_back_rule l))
     && not (Declaration.fallback_for ~floors:(Ctx.floors ctx) ~later:l d)
 
 (* One backward pass: [later] holds, per selector, the declarations of each
@@ -646,8 +655,8 @@ let drop_unparsed_rules ~judged (stmts : statement list) : statement list =
    declaration of a prefix no target reads ({!Shorthand.read_by_no_target}):
    every target ignores it, and one the reader cannot type would otherwise touch
    every other declaration. *)
-let canonical_vendor_aliases ~lossless ~judged ~floors (stmts : statement list)
-    : statement list =
+let canonical_vendor_aliases ~lossless ~enforce_spec ~judged ~floors
+    (stmts : statement list) : statement list =
   let as_property d =
     let aliased = Shorthand.as_aliased_property d in
     if
@@ -655,7 +664,7 @@ let canonical_vendor_aliases ~lossless ~judged ~floors (stmts : statement list)
       || Declaration.fallback_for ~floors ~later:aliased d
       || Declaration.fallback_for ~floors ~later:d aliased
     then d
-    else Declaration.normalize ~lossless aliased
+    else Declaration.normalize ~lossless ~enforce_spec aliased
   in
   let unread decls =
     if judged then
@@ -900,7 +909,7 @@ let canonicalize ?(lossless = false) ?(enforce_spec = false) ?judge
            @@ sort_property_runs
                 (canonical_values ~lossless
                    (normalize_custom_values ~lossless
-                      (canonical_vendor_aliases ~lossless
+                      (canonical_vendor_aliases ~lossless ~enforce_spec
                          ~judged:(Option.is_some judge) ~floors:(Ctx.floors ctx)
                          (drop_unparsed_rules ~judged:(Option.is_some judge)
                             (drop_unanswerable_supports stmts)))))))

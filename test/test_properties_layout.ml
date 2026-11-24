@@ -549,10 +549,11 @@ let test_aspect_ratio () =
 let test_flex () =
   check_flex "1";
   check_flex ~expected:"1 1 0" "1 1 0";
-  (* pp holds the 0px basis; optimize strips the unit to 0 (without collapsing 1
-     1 0 -> 1, since flex-basis 0 is not the default 0%). *)
+  (* pp holds the 0px basis. CSS Flexbox 1 sec. 7.1 makes both factors 1 when
+     omitted, so [1 1 0px] is the lone basis [0px], never [1]: flex-basis 0 is
+     not the omitted basis 0%. *)
   check_flex ~expected:"1 1 0px" "1 1 0px";
-  decl_optimizes ~prop:"flex" ~held:"1 1 0px" ~into:"1 1 0" "1 1 0px";
+  decl_optimizes ~prop:"flex" ~held:"1 1 0px" ~into:"0px" "1 1 0px";
   (* CSS Flexbox 1 sec. 7.2 reads a unitless number as a factor wherever one can
      stand, so a zero basis keeps its unit alone and after one factor. Chrome
      153 computes [flex:0px] to [1 1 0px] and [flex:0] to [0 1 0%]; [flex:1 0px]
@@ -561,8 +562,8 @@ let test_flex () =
   decl_optimizes ~prop:"flex" ~held:"0px" ~into:"0px" "0px";
   decl_optimizes ~prop:"flex" ~held:"0em" ~into:"0px" "0em";
   decl_optimizes ~prop:"flex" ~into:"0px" "calc(0px)";
-  decl_optimizes ~prop:"flex" ~into:"1 1 0" "1 0px";
-  decl_optimizes ~prop:"flex" ~held:"1 0em" ~into:"1 1 0" "0em 1";
+  decl_optimizes ~prop:"flex" ~into:"0px" "1 0px";
+  decl_optimizes ~prop:"flex" ~held:"1 0em" ~into:"0px" "0em 1";
   (* A built [Basis Zero] has no spelling of its own, so it prints as the zero
      length it stands for rather than as the grow factor [0]. *)
   List.iter
@@ -588,6 +589,21 @@ let test_flex () =
   check_flex ~expected:"2 10px" "10px 2";
   check_flex ~expected:"1 auto" "auto 1";
   check_flex ~expected:"1 content" "content 1";
+  (* CSS Flexbox 1 sec. 7.1: a grow or shrink factor left out of [flex] is 1, so
+     a lone [<'flex-basis'>] means [1 1 <basis>], and that one-word spelling is
+     the shortest. Chrome 157 and WebKit 26.5 compute [flex:10px], [flex:1 10px]
+     and [flex:content] to [1 1 10px] and [1 1 content]. *)
+  decl_optimizes ~prop:"flex" ~held:"1 10px" ~into:"10px" "1 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 10px" ~into:"10px" "1 1 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 10px" ~into:"10px" "10px 1";
+  decl_optimizes ~prop:"flex" ~held:"1 content" ~into:"content" "1 1 content";
+  decl_optimizes ~prop:"flex" ~held:"1 50%" ~into:"50%" "1 1 50%";
+  (* Controls: a factor other than 1 stays, and so does a [var()] basis, which
+     may substitute factors of its own (CSS Variables 1 sec. 3). *)
+  decl_optimizes ~prop:"flex" ~held:"2 10px" ~into:"2 10px" "2 1 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 0 10px" ~into:"1 0 10px" "1 0 10px";
+  decl_optimizes ~prop:"flex" ~held:"1 1 var(--b)" ~into:"1 1 var(--b)"
+    "1 1 var(--b)";
   (* The basis sits on one side of the [||] or the other, never between the two
      factors, and [none] is the whole value on its own. *)
   neg_cursor ~allow_partial:true read_flex "1 50% 2";
@@ -811,7 +827,7 @@ let test_grid_template () =
   neg_cursor read_grid_template "repeat(2, 1px [auto])";
   (* sec. 7.4: the [<string>] form of grid-template keeps its value as raw text,
      and its bracketed positions are [<line-names>] just the same. *)
-  check_grid_template ~expected:"[a]\"x\" 1px" "[a] \"x\" 1px";
+  check_grid_template ~expected:"[a]\"x\"1px" "[a] \"x\" 1px";
   neg_cursor read_grid_template "[span] \"x\" 1px";
   neg_cursor read_grid_template "\"x\" 1px [auto]";
   (* CSS Grid 2 (ED) sec. 7.2: [<track-list> = [ <line-names>? [ <track-size> |

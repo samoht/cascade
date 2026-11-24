@@ -45,7 +45,9 @@ greenfield() {
     | .[]'
 }
 
-# Every css.* compat key web-features records support for, as
+# Every css.* compat key web-features records support for, and
+# api.CSSNestedDeclarations, whose release is the one that reads a declaration
+# after a nested rule in place (CSS Nesting 1 sec. 3.4), as
 #   key<TAB>chrome<TAB>firefox<TAB>safari<TAB>safari_ios
 # with "-" for an engine that does not implement it. Keys where every engine has
 # it are emitted too: "implemented in these targets" is as much an answer as
@@ -62,7 +64,7 @@ support_rows() {
     [ .features[]
       | (.status.by_compat_key // {})
       | to_entries[]
-      | select(.key | startswith("css."))
+      | select(.key | startswith("css.") or . == "api.CSSNestedDeclarations")
       | { key: .key, s: (.value.support // {}) } ]
     | unique_by(.key)
     | .[]

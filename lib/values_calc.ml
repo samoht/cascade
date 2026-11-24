@@ -30,7 +30,11 @@ let pp_math_const ctx = function
    10.7.2), so an operand spells a NaN with it; the [calc()] wrapper
    {!Pp.nan_value} adds is for the positions outside one. *)
 let pp_calc_number ctx f =
-  if Float.is_nan f then pp_math_const ctx Nan else Pp.float ctx f
+  if Float.is_nan f then pp_math_const ctx Nan
+    (* Sec. 10.9 keeps a zero's sign through the calculation, where it decides
+       [1/-0] and [sign(-0)]. *)
+  else if Float.equal f 0. && Float.sign_bit f then Pp.string ctx "-0"
+  else Pp.float ctx f
 
 let read_math_const t =
   match Cursor.ident_opt t with
@@ -187,7 +191,18 @@ and pp_math_fn ctx fn =
   | Rem_n (a, b) -> call "rem" [ a; b ]
   | Min_n args -> call "min" args
   | Max_n args -> call "max" args
-  | Clamp_n (lo, v, hi) -> call "clamp" [ lo; v; hi ]
+  | Clamp_n (lo, v, hi) ->
+      let bound ctx = function
+        | Some arg -> pp_math_arg ctx arg
+        | None -> Pp.string ctx "none"
+      in
+      Pp.string ctx "clamp(";
+      bound ctx lo;
+      Pp.comma ctx ();
+      pp_math_arg ctx v;
+      Pp.comma ctx ();
+      bound ctx hi;
+      Pp.char ctx ')'
 
 and pp_angle_arg ctx arg =
   match arg with
@@ -298,10 +313,14 @@ and eval_math_fn fn =
   | Rem_n (a, b) -> binary Float.rem a b
   | Min_n args -> fold_args Float.min Float.infinity args
   | Max_n args -> fold_args Float.max Float.neg_infinity args
-  | Clamp_n (lo, v, hi) -> (
+  | Clamp_n (Some lo, v, Some hi) -> (
       match (eval_math_arg lo, eval_math_arg v, eval_math_arg hi) with
       | Some lo, Some v, Some hi -> Some (Float.max lo (Float.min v hi))
       | _ -> None)
+  (* A [none] bound is newer than [clamp()] itself, so the call stays for the
+     browser that drops it rather than folding into a value that browser
+     reads. *)
+  | Clamp_n (None, _, _) | Clamp_n (_, _, None) -> None
 
 (* What a static math function reduces to: a plain coefficient, or one that
    carries a unit. CSS Values 4 sec. 10.7 gives [abs()] and [hypot()] the type
@@ -380,25 +399,25 @@ let same_quantity a b =
    combined. Each maps to that unit and the factor to it. *)
 let canonical_unit unit =
   match String.lowercase_ascii unit with
-  | "px" -> Option.Some ("px", 1.)
-  | "in" -> Option.Some ("px", 96.)
-  | "cm" -> Option.Some ("px", 96. /. 2.54)
-  | "mm" -> Option.Some ("px", 96. /. 25.4)
-  | "q" -> Option.Some ("px", 96. /. 101.6)
-  | "pt" -> Option.Some ("px", 4. /. 3.)
-  | "pc" -> Option.Some ("px", 16.)
-  | "s" -> Option.Some ("s", 1.)
-  | "ms" -> Option.Some ("s", 0.001)
-  | "deg" -> Option.Some ("deg", 1.)
-  | "grad" -> Option.Some ("deg", 0.9)
-  | "rad" -> Option.Some ("deg", 180. /. Float.pi)
-  | "turn" -> Option.Some ("deg", 360.)
-  | "hz" -> Option.Some ("hz", 1.)
-  | "khz" -> Option.Some ("hz", 1000.)
-  | "dppx" | "x" -> Option.Some ("dppx", 1.)
-  | "dpi" -> Option.Some ("dppx", 1. /. 96.)
-  | "dpcm" -> Option.Some ("dppx", 2.54 /. 96.)
-  | _ -> Option.None
+  | "px" -> Some ("px", 1.)
+  | "in" -> Some ("px", 96.)
+  | "cm" -> Some ("px", 96. /. 2.54)
+  | "mm" -> Some ("px", 96. /. 25.4)
+  | "q" -> Some ("px", 96. /. 101.6)
+  | "pt" -> Some ("px", 4. /. 3.)
+  | "pc" -> Some ("px", 16.)
+  | "s" -> Some ("s", 1.)
+  | "ms" -> Some ("s", 0.001)
+  | "deg" -> Some ("deg", 1.)
+  | "grad" -> Some ("deg", 0.9)
+  | "rad" -> Some ("deg", 180. /. Float.pi)
+  | "turn" -> Some ("deg", 360.)
+  | "hz" -> Some ("hz", 1.)
+  | "khz" -> Some ("hz", 1000.)
+  | "dppx" | "x" -> Some ("dppx", 1.)
+  | "dpi" -> Some ("dppx", 1. /. 96.)
+  | "dpcm" -> Some ("dppx", 2.54 /. 96.)
+  | _ -> None
 
 (* The values of results that share a type, in one unit, and how to rebuild a
    result in that unit: their own when they all carry it, the canonical one when
@@ -444,13 +463,13 @@ let compared_results f results =
   else
     let results = List.filter_map Fun.id results in
     match shared_unit_values results with
-    | Option.Some ((v0 :: rest as values), _) ->
+    | Some ((v0 :: rest as values), _) ->
         let picked = List.fold_left f v0 rest in
         List.find_map
           (fun (r, v) ->
             if same_quantity v picked || (Float.is_nan v && Float.is_nan picked)
-            then Option.Some r
-            else Option.None)
+            then Some r
+            else None)
           (List.combine results values)
     | _ -> Option.none
 
@@ -479,8 +498,7 @@ and math_fn_result (fn : math_fn) : math_result option =
          so [hypot()] folds over one unit only. *)
       let results = List.filter_map math_arg_result args in
       match shared_unit_values ~convert:false results with
-      | Option.Some (values, rebuild) when List.compare_lengths results args = 0
-        ->
+      | Some (values, rebuild) when List.compare_lengths results args = 0 ->
           let square acc v = acc +. (v *. v) in
           Option.some (rebuild (Float.sqrt (List.fold_left square 0. values)))
       | _ -> Option.none)
@@ -491,11 +509,12 @@ and math_fn_result (fn : math_fn) : math_result option =
   | Min_n args -> compared_result Float.min args
   | Max_n args -> compared_result Float.max args
   (* Sec. 10.2: clamp(MIN, VAL, MAX) is max(MIN, min(VAL, MAX)). *)
-  | Clamp_n (lo, v, hi) -> (
+  | Clamp_n (Some lo, v, Some hi) -> (
       match compared_result Float.min [ v; hi ] with
       | Some inner ->
           compared_results Float.max [ math_arg_result lo; Some inner ]
       | None -> Option.none)
+  | Clamp_n (None, _, _) | Clamp_n (_, _, None) -> Option.none
   (* Sec. 10.6: the answer turns on whether the argument is zero, and a relative
      unit has a reference that can be -- a zero font-size, a zero viewport, a
      zero container, a percentage of zero -- so the coefficient's sign is not
@@ -526,10 +545,8 @@ and compared_result f args = compared_results f (List.map math_arg_result args)
    with that type, so two units have to match and the result keeps theirs. *)
 and stepped_result f a b =
   match (math_arg_result a, math_arg_result b) with
-  | Option.Some (Scalar a), Option.Some (Scalar b) ->
-      Option.some (Scalar (f a b))
-  | Option.Some (United (a, u)), Option.Some (United (b, v))
-    when String.equal u v ->
+  | Some (Scalar a), Some (Scalar b) -> Option.some (Scalar (f a b))
+  | Some (United (a, u)), Some (United (b, v)) when String.equal u v ->
       Option.some (United (f a b, u))
   | _ -> Option.none
 
@@ -587,8 +604,9 @@ and math_fn_contains_var = function
   | Hypot args | Min_n args | Max_n args ->
       List.exists math_arg_contains_var args
   | Clamp_n (a, b, c) ->
-      math_arg_contains_var a || math_arg_contains_var b
-      || math_arg_contains_var c
+      Option.fold ~none:false ~some:math_arg_contains_var a
+      || math_arg_contains_var b
+      || Option.fold ~none:false ~some:math_arg_contains_var c
 
 let rec calc_contains_var : type a. a calc -> bool = function
   | Var _ -> true
@@ -745,11 +763,13 @@ let fold_zero_numeric_expr : type a.
    reports whether [--n] has a single-component [@property] syntax, so
    [calc(var(--n))] substitutes one term and its redundant grouping may be
    dropped. [var_is_number n] reports a [<number>] or [<integer>] registration,
-   whose [var()] substitutes one number. The default knows nothing, so every
-   such rewrite is a no-op. *)
+   whose [var()] substitutes one number, and [var_is_length n] a [<length>]
+   registration, whose [var()] substitutes one length. The default knows
+   nothing, so every such rewrite is a no-op. *)
 type calc_ctx = {
   var_is_single_valued : string -> bool;
   var_is_number : string -> bool;
+  var_is_length : string -> bool;
   budget : bool;
 }
 
@@ -757,6 +777,7 @@ let default_calc_ctx =
   {
     var_is_single_valued = (fun _ -> false);
     var_is_number = (fun _ -> false);
+    var_is_length = (fun _ -> false);
     budget = false;
   }
 
@@ -951,6 +972,38 @@ let fold_typed_expr : type a.
    differ and are passed in ([math_fn], [scale], [combine], [round], [zero] /
    [is_zero] for the identities). A shape with no [scale] / [combine] returns
    [None] and the [calc()] is kept verbatim. *)
+(* A calculation of type [<number>] whatever its [var()]s substitute: it holds
+   no dimension, no [var()] and no math function, whose type is its
+   arguments'. *)
+let rec number_typed : type a. a calc -> bool = function
+  | Num _ | Math_const _ | Sibling_index | Sibling_count -> true
+  | Nested inner | Parens inner -> number_typed inner
+  | Expr (left, _, right) -> number_typed left && number_typed right
+  | Val _ | Var _ | Math_fn _ -> false
+
+(* A [<length>] registration's [var()] times the number [0] is a zero length.
+   CSS Values 4 sec. 10.9 types a product as its non-number factor, so the
+   product stands for the calculation's own type only where that position needs
+   it: at the top, in a sum there, and beside a number factor. A product at
+   another position is a type error found at computed-value time, which the zero
+   would turn into one found at parse time. *)
+(* Which operands of [left op right], at a position [own] says needs the
+   calculation's own type, need it too. *)
+let operands_own ~own left op right =
+  match op with
+  | Add | Sub -> (own, own)
+  | Mul -> (own && number_typed right, own && number_typed left)
+  | Div -> (own, false)
+
+let zero_length_product ~ctx l r =
+  let length = function
+    | (Var v : _ calc) -> ctx.var_is_length v.name
+    | _ -> false
+  in
+  match (calc_operand_value l, calc_operand_value r) with
+  | x, Num 0. | Num 0., x -> length x
+  | _ -> false
+
 let eval_typed_calc : type a.
     math_fn:(math_fn -> a calc) ->
     scale:(exact:bool -> calc_op -> a -> float -> a option) ->
@@ -958,17 +1011,20 @@ let eval_typed_calc : type a.
     round:(a -> a) ->
     is_zero:(a -> bool) ->
     zero:a calc ->
+    holds_length:bool ->
     ctx:calc_ctx ->
     a calc ->
     a calc =
- fun ~math_fn ~scale ~combine ~round ~is_zero ~zero ~ctx calc ->
+ fun ~math_fn ~scale ~combine ~round ~is_zero ~zero ~holds_length ~ctx calc ->
   (* [reduce] pairs the reduced tree with a flag: its root is a typed value
      Cascade computed rather than one the author wrote. The budget is spent once
      nothing more will fold that root - at the top, or where it is embedded in a
      [calc()] that stays. Rounding an intermediate product instead feeds the
      shortened coefficient back into the next fold and compounds the error:
      [calc(100px * sqrt(2) * sqrt(2))] is still [200px]. *)
-  let rec reduce (calc : a calc) : a calc * bool =
+  (* [own] is set at a position that needs a value of the calculation's own
+     type, as opposed to a number factor's. *)
+  let rec reduce ~own (calc : a calc) : a calc * bool =
     match calc with
     | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf ->
         (leaf, false)
@@ -978,17 +1034,26 @@ let eval_typed_calc : type a.
         match math_fn fn with
         | Val _ as reduced -> (reduced, true)
         | reduced -> (reduced, false))
-    | Nested inner -> wrap (fun r -> Nested r) inner
-    | Parens inner -> wrap (fun r -> Parens r) inner
-    | Expr (left, op, right) ->
-        let computed = calc_is_computed left || calc_is_computed right in
-        fold_typed_expr ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed
-          (reduce left) op (reduce right)
-  and wrap rewrap inner =
-    let reduced, computed = reduce inner in
+    | Nested inner -> wrap ~own (fun r -> Nested r) inner
+    | Parens inner -> wrap ~own (fun r -> Parens r) inner
+    | Expr (left, op, right) -> (
+        let own_left, own_right = operands_own ~own left op right in
+        let lf = reduce ~own:own_left left in
+        let rf = reduce ~own:own_right right in
+        match op with
+        | Mul
+          when own && holds_length && zero_length_product ~ctx (fst lf) (fst rf)
+          ->
+            (zero, false)
+        | _ ->
+            let computed = calc_is_computed left || calc_is_computed right in
+            fold_typed_expr ~ctx ~scale ~combine ~round ~is_zero ~zero ~computed
+              lf op rf)
+  and wrap ~own rewrap inner =
+    let reduced, computed = reduce ~own inner in
     (unwrap_grouping ~ctx ~rewrap reduced, computed)
   in
-  normalize_calc_parens (settle_computed round (reduce calc))
+  normalize_calc_parens (settle_computed round (reduce ~own:true calc))
 
 (* A dimension the author could not have written as a literal. CSS Values 4 sec.
    10.3 keeps a [calc()] valid wherever its range is exceeded and clamps at
@@ -1058,15 +1123,23 @@ let is_typed_math_fn = function
       true
   | _ -> false
 
+(* The math functions answering a [<number>] whatever their arguments (CSS
+   Values 4 secs. 10.4 to 10.6); the inverse trigonometric ones answer an
+   [<angle>] and are not among them. *)
+let is_number_math_fn : math_fn -> bool = function
+  | Sin _ | Cos _ | Tan _ | Sqrt _ | Exp _ | Log _ | Pow _ | Sign_n _ -> true
+  | _ -> false
+
 let pp_calc_with : type a.
     ?unwrap_num:bool ->
     ?unwrap:(a -> bool) ->
     ?pp_unwrapped:a Pp.t ->
     ?bare_call:bool ->
+    ?bare_number_call:bool ->
     a Pp.t ->
     a calc Pp.t =
  fun ?(unwrap_num = true) ?(unwrap = fun _ -> true) ?pp_unwrapped
-     ?(bare_call = false) pp_value ctx calc ->
+     ?(bare_call = false) ?(bare_number_call = false) pp_value ctx calc ->
   match calc with
   (* CSS Values 4 sec. 10.10: a [var()] inside [calc()] is a runtime
      substitution boundary - the substituted tokens go through calc's typed
@@ -1092,7 +1165,13 @@ let pp_calc_with : type a.
      [calc()] around it reads, as the same calculation, so at a slot whose
      reader reads the bare call back to this node one that did not fold is
      written bare, the way the typed length nodes print. *)
-  | Math_fn fn when bare_call && is_typed_math_fn fn -> pp_math_fn ctx fn
+  (* Such a slot folds a static call to the literal it computes, so only one
+     that does not fold reads back bare to this node. *)
+  | Math_fn fn
+    when bare_call
+         && (is_typed_math_fn fn || (bare_number_call && is_number_math_fn fn))
+         && not (bare_number_call && Option.is_some (math_fn_result fn)) ->
+      pp_math_fn ctx fn
   | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 let pp_calc ?unwrap_num ?unwrap ?pp_unwrapped pp_value ctx calc =

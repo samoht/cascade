@@ -641,18 +641,12 @@ let record_border_image_longhand
 let compose_border_image_run ~allow_partial
     (run : (int * Declaration.declaration) list) :
     (int * Declaration.declaration) option =
-  let source : Properties.background_image option ref = ref Option.None in
-  let slice : Properties.border_image_slice_offsets option ref =
-    ref Option.None
-  in
-  let width : Properties.border_image_width_item list option ref =
-    ref Option.None
-  in
-  let outset : Properties.border_image_outset_item list option ref =
-    ref Option.None
-  in
+  let source : Properties.background_image option ref = ref None in
+  let slice : Properties.border_image_slice_offsets option ref = ref None in
+  let width : Properties.border_image_width_item list option ref = ref None in
+  let outset : Properties.border_image_outset_item list option ref = ref None in
   let repeat : Properties.border_image_repeat_keyword list option ref =
-    ref Option.None
+    ref None
   in
   (* A CSS-wide keyword or [var()] in any longhand cannot be folded into the
      [border_image] record, which holds plain component values. *)
@@ -666,7 +660,7 @@ let compose_border_image_run ~allow_partial
       (border_image_run_can_compose run ~allow_partial ~foldable:!foldable
          ~source:!source ~slice:!slice ~width:!width ~outset:!outset
          ~repeat:!repeat)
-  then Option.None
+  then None
   else
     let merged =
       border_image_shorthand run ~source:!source ~slice:!slice ~width:!width

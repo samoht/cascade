@@ -543,7 +543,7 @@ let test_layer_keeps_nested_only_rule () =
         "@layer a{.w,.x{.y{color:red}}}" );
       ( "a rule nesting an at-rule",
         "@layer a{.x{@media print{color:red}}}",
-        "@layer a{@media print{.x{color:red}}}" );
+        "@layer a{.x{@media print{color:red}}}" );
     ]
   in
   List.iter
@@ -581,9 +581,13 @@ let test_tw_conditionals_layer () =
     output
 
 let test_tw_conditionals_split () =
-  (* The optimizer must not collect same-condition blocks across an intervening
-     utility rule: Tailwind's sort order can intentionally interleave base and
-     variant rules to preserve source-order ties. *)
+  (* Tailwind interleaves base and variant rules to settle source-order ties,
+     and the optimizer keeps every tie it settles: a same-condition block joins
+     another across a rule only where no element takes a different value from
+     the move (CSS Cascade 5 sec. 6.1). [.flex] writes the [display:flex] the
+     first [@media] block writes, so that block sinks below it to the second;
+     [.block] writes nothing [.gap] does, so the second [@supports] block rises
+     above it. [.md\:grid] stays after [.flex] and [.grid] before [.block]. *)
   let input =
     Css.Stylesheet.read
       (Cursor.of_string
@@ -596,16 +600,16 @@ let test_tw_conditionals_split () =
   let optimized = Css.Optimize.stylesheet input in
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
-    "default minify keeps non-adjacent supports split"
+    "default minify joins the blocks no tie holds apart"
     "@layer \
-     utilities{@media(width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(width>=48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
+     utilities{.flex{display:flex}@media(width>=48rem){.md\\:flex{display:flex}.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}.block{display:block}}"
     output;
   let spec = Css.Optimize.stylesheet ~enforce_spec:true input in
   let spec_output = Css.Stylesheet.to_string ~minify:true spec |> String.trim in
   Alcotest.(check string)
-    "enforce-spec keeps non-adjacent supports split inside utility layer"
+    "and so does enforce-spec"
     "@layer \
-     utilities{@media(min-width:48rem){.md\\:flex{display:flex}}.flex{display:flex}@media(min-width:48rem){.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}}.block{display:block}@supports(display:grid){.gap{gap:1rem}}}"
+     utilities{.flex{display:flex}@media(min-width:48rem){.md\\:flex{display:flex}.md\\:grid{display:grid}}@supports(display:grid){.grid{display:grid}.gap{gap:1rem}}.block{display:block}}"
     spec_output
 
 let test_supports_author_guard_kept_by_default () =
@@ -1177,7 +1181,7 @@ let suite =
       ( "tailwind conditionals merge inside layer",
         `Quick,
         test_tw_conditionals_layer );
-      ( "tailwind non-adjacent conditionals in layer stay split",
+      ( "tailwind non-adjacent conditionals in layer",
         `Quick,
         test_tw_conditionals_split );
       ( "author supports guards survive the default minify",

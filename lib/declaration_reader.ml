@@ -980,7 +980,8 @@ let read_typed_value_declaration : type a. a property -> Cursor.t -> declaration
      brackets and strings at EOF. Typed readers consume the spec-recovered
      tokens; the declaration survives with the auto-closed shape. *)
   match prop_type with
-  | Unknown_property name -> read_unknown_property_declaration t name
+  | Unknown_property { written = name; _ } ->
+      read_unknown_property_declaration t name
   | Custom_property _ -> read_typed_property_value prop_type t
   | _ ->
       let components = Cursor.lookahead Cursor.drain_to_decl_end t in
@@ -1021,9 +1022,26 @@ let read_regular_property_declaration t : declaration =
   Cursor.ws t;
   let components = Cursor.lookahead Cursor.drain_to_decl_end t in
   validate_regular_property_components t name components;
+  let read_opaque () =
+    Cursor.restore t start;
+    let name = String.lowercase_ascii_preserve (read_property_name t) in
+    Cursor.ws t;
+    if not (Cursor.colon t) then Cursor.err_expected t "':'";
+    Cursor.ws t;
+    read_unknown_property_declaration t name
+  in
   if String.equal name "src" then
     read_font_src_declaration t
       (String.trim (Parser.string_of_components components))
+    (* CSS Cascade 5 sec. 7.3.6 rolls a [revert-rule] value back to what the
+       property would cascade to without the style rule holding it, so its
+       meaning is the rule's identity rather than a value of the property's
+       grammar. Every property takes it (sec. 7.3), as the whole value or as a
+       substitution fallback, and a declaration holding it stays the opaque
+       tokens {!Declaration.rolls_back_rule} reads, which no value fold
+       rewrites; a [<custom-ident>] reader would otherwise take the keyword for
+       a name. *)
+  else if Properties.components_hold_revert_rule components then read_opaque ()
   else
     try read_typed_property_declaration t start
     with Cursor.Parse_error _ as exn ->
@@ -1037,15 +1055,11 @@ let read_regular_property_declaration t : declaration =
       let prop =
         match read_any_property t with
         | prop -> prop
-        | exception Cursor.Parse_error _ -> Prop (Unknown_property name)
+        | exception Cursor.Parse_error _ ->
+            Prop (Unknown_property (Properties.untyped name))
       in
       if not (allows_unknown_fallback prop name raw_value) then raise exn;
-      Cursor.restore t start;
-      let name = String.lowercase_ascii_preserve (read_property_name t) in
-      Cursor.ws t;
-      if not (Cursor.colon t) then Cursor.err_expected t "':'";
-      Cursor.ws t;
-      read_unknown_property_declaration t name
+      read_opaque ()
 
 (* [read_regular_property_declaration] with the name step replaced by the
    property itself. [name] serves the validation and the opaque fallback; the
@@ -1061,6 +1075,8 @@ let read_regular_value_declaration : type a.
   | Source ->
       read_font_src_declaration t
         (String.trim (Parser.string_of_components components))
+  | _ when Properties.components_hold_revert_rule components ->
+      read_unknown_property_declaration t name
   | _ -> (
       try read_typed_value_declaration prop t
       with Cursor.Parse_error _ as exn ->
@@ -1232,7 +1248,7 @@ let rec read_declarations_loop ~refuse t acc =
 
 let read_declarations t =
   Cursor.with_context t "declarations" @@ fun () ->
-  read_declarations_loop ~refuse:(fun _ -> Option.None) t []
+  read_declarations_loop ~refuse:(fun _ -> None) t []
 
 (* CSS Animations 1 sec. 3: in a keyframe "properties qualified with !important
    are invalid and ignored", and "the properties defined by this specification
@@ -1240,14 +1256,14 @@ let read_declarations t =
    The name is read off the declaration, so one kept as an unknown property (a
    [var()] value) is refused as well. *)
 let keyframe_refusal decl =
-  if is_important decl then Option.Some "!important in a keyframe"
+  if is_important decl then Some "!important in a keyframe"
   else
     match property_name decl with
     | ( "animation" | "animation-name" | "animation-duration"
       | "animation-delay" | "animation-iteration-count" | "animation-direction"
       | "animation-fill-mode" | "animation-play-state" ) as name ->
-        Option.Some (String.concat "" [ name; " in a keyframe" ])
-    | _ -> Option.None
+        Some (String.concat "" [ name; " in a keyframe" ])
+    | _ -> None
 
 let read_keyframe_declarations t =
   Cursor.with_context t "declarations" @@ fun () ->
@@ -1351,7 +1367,7 @@ let with_value decl value =
   | Key (Custom_property name) ->
       keep_custom_fields ~from:decl
         (read_custom_value_declaration (tail ()) name)
-  | Key (Unknown_property name) ->
+  | Key (Unknown_property { written = name; _ }) ->
       (* An unknown property is its name, and a substituted value may now be one
          a typed reader accepts, so read the pair back whole: that is the step
          that types [--x: 1px] once [width: var(--x)] has folded. *)
@@ -1362,6 +1378,8 @@ let with_opaque_value decl value =
   let (Key prop) = property_key decl in
   let opaque =
     let name = canonical_prop_name prop in
-    v (Unknown_property name) (Cursor.remaining (Cursor.of_string value))
+    v
+      (Unknown_property (Properties.untyped name))
+      (Cursor.remaining (Cursor.of_string value))
   in
   if is_important decl then important opaque else opaque

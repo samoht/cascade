@@ -97,10 +97,10 @@ let minify_relative_color_numbers body =
     if i >= len then ()
     else if body_is_number_boundary body i && body_starts_number body i then (
       match body_scan_number body i with
-      | Option.Some (rendered, next) ->
+      | Some (rendered, next) ->
           Buffer.add_string buf rendered;
           loop next
-      | Option.None ->
+      | None ->
           Buffer.add_char buf body.[i];
           loop (i + 1))
     else (
@@ -223,7 +223,7 @@ let alpha_value_byte = function
       Some (Float.to_int (Float.round (f *. 255.)))
   | Pct f when f >= 0. && f <= 100. ->
       Some (Float.to_int (Float.round (f *. 255. /. 100.)))
-  | _ -> Option.None
+  | _ -> None
 
 let exact_alpha_value_byte = function
   | (None : alpha) -> Some 255
@@ -289,7 +289,7 @@ let hex_digit c =
   | '0' .. '9' -> Some (Char.code c - Char.code '0')
   | 'a' .. 'f' -> Some (Char.code c - Char.code 'a' + 10)
   | 'A' .. 'F' -> Some (Char.code c - Char.code 'A' + 10)
-  | _ -> Option.None
+  | _ -> None
 
 (* Parse a [Hex.value] string ([RGB], [RGBA], [RRGGBB], [RRGGBBAA]) into (r, g,
    b, a) bytes. Returns [None] for malformed lengths. *)
@@ -303,22 +303,22 @@ let rgba_of_hex s =
   | 3 -> (
       match (single s.[0], single s.[1], single s.[2]) with
       | Some r, Some g, Some b -> Some (r, g, b, 255)
-      | _ -> Option.None)
+      | _ -> None)
   | 4 -> (
       match (single s.[0], single s.[1], single s.[2], single s.[3]) with
       | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
-      | _ -> Option.None)
+      | _ -> None)
   | 6 -> (
       match (pair s.[0] s.[1], pair s.[2] s.[3], pair s.[4] s.[5]) with
       | Some r, Some g, Some b -> Some (r, g, b, 255)
-      | _ -> Option.None)
+      | _ -> None)
   | 8 -> (
       match
         (pair s.[0] s.[1], pair s.[2] s.[3], pair s.[4] s.[5], pair s.[6] s.[7])
       with
       | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
-      | _ -> Option.None)
-  | _ -> Option.None
+      | _ -> None)
+  | _ -> None
 
 (* The numeric value of a channel when it is a plain [Int] or integer-valued
    [Num]/[Pct]. Returns [None] for [Var]/[Calc] inputs which the printer cannot
@@ -333,13 +333,13 @@ let channel_byte_value (c : channel) =
   | _ -> None
 
 (* Classify a channel for static sRGB folding. [Some (Some byte)] is numeric;
-   [Some Option.None] is the [none] keyword (foldable, no byte); the outer
-   [Option.None] is a [Var] which makes the whole colour unfoldable. Conflating
-   the two [None]s would fold [rgb(var(--r) var(--g) var(--b))] to black. *)
+   [Some None] is the [none] keyword (foldable, no byte); the outer [None] is a
+   [Var] which makes the whole colour unfoldable. Conflating the two [None]s
+   would fold [rgb(var(--r) var(--g) var(--b))] to black. *)
 let channel_srgb_slot (c : channel) : int option option =
   match c with
-  | None -> Some Option.None
-  | Var _ -> Option.None
+  | None -> Some None
+  | Var _ -> None
   | _ -> Option.map (fun b -> Some b) (channel_byte_value c)
 
 let exact_channel_byte_value (c : channel) =
@@ -371,18 +371,18 @@ let strip_hash s =
 let hex_opt s : color option =
   match rgba_of_hex (strip_hash s) with
   | Some (r, g, b, a) -> Some (Hex { r; g; b; a })
-  | None -> Option.None
+  | None -> None
 
 let hex s : color =
   match hex_opt s with
   | Some c -> c
-  | Option.None ->
+  | None ->
       invalid_arg (String.concat "" [ "Values.hex: not a hex colour: "; s ])
 
 (* CSS Color 4 sec. 4.4 [none] sentinel: per-channel folding of a static colour
    to sRGB. Each channel is [Some byte] when the colour resolves statically and
-   the channel is a numeric value, [Option.None] when the channel is the [none]
-   keyword. The outer [Option.None] means the whole colour can't be folded (e.g.
+   the channel is a numeric value, [None] when the channel is the [none]
+   keyword. The outer [None] means the whole colour can't be folded (e.g.
    contains [Var] / [Calc] / unsupported space). *)
 let static_color_to_srgb_channels :
     color -> (int option * int option * int option * int option) option =
@@ -392,34 +392,34 @@ let static_color_to_srgb_channels :
   | Rgb (Channels { r; g; b }) -> (
       match (channel_srgb_slot r, channel_srgb_slot g, channel_srgb_slot b) with
       | Some r, Some g, Some b -> Some (r, g, b, Some 255)
-      | _ -> Option.None)
+      | _ -> None)
   | Rgba { rgb = Channels { r; g; b }; a } -> (
       match (channel_srgb_slot r, channel_srgb_slot g, channel_srgb_slot b) with
       | Some r, Some g, Some b -> Some (r, g, b, alpha_value_byte a)
-      | _ -> Option.None)
+      | _ -> None)
   | Hsl { h; s = Some s; l = Some l; a } -> (
       match (deg_of_hue h, float_of_percentage s, float_of_percentage l) with
       | Some hue, Some saturation, Some lightness ->
           let hue = normalize_hue hue in
           let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
           Some (Some r, Some g, Some b, alpha_value_byte a)
-      | _ -> Option.None)
+      | _ -> None)
   | Hwb { h; w = Some w; b = Some b; a } -> (
       match (deg_of_hue h, float_of_percentage w, float_of_percentage b) with
       | Some hue, Some whiteness, Some blackness ->
           let hue = normalize_hue hue in
           let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
           Some (Some r, Some g, Some blue, alpha_value_byte a)
-      | _ -> Option.None)
+      | _ -> None)
   | Named name -> (
       let _, hex = color_name_hex name in
-      if hex = "" then Option.None
+      if hex = "" then None
       else
         match rgba_of_hex hex with
         | Some (r, g, b, a) -> Some (Some r, Some g, Some b, Some a)
         | None -> None)
   | Transparent -> Some (Some 0, Some 0, Some 0, Some 0)
-  | _ -> Option.None
+  | _ -> None
 
 (* Reduce any all-static colour to its sRGB byte channels and alpha. Returns
    [None] for colours that contain a [Var] / [Calc] / [Current] / [none]
@@ -429,7 +429,7 @@ let static_color_to_srgb_bytes c : (int * int * int * int) option =
   | Some (r, g, b, Some a) ->
       let component = function Some v -> v | None -> 0 in
       Some (component r, component g, component b, a)
-  | _ -> Option.None
+  | _ -> None
 
 (* A bare colour keyword ([red], [transparent]) is also a valid [<custom-ident>]
    in a non-colour context, so it must not be introduced when folding a colour
@@ -482,7 +482,7 @@ let static_alpha_value = function
   | (None : alpha) -> Some 1.
   | Num f when f >= 0. && f <= 1. -> Some f
   | Pct f when f >= 0. && f <= 100. -> Some (f /. 100.)
-  | _ -> Option.None
+  | _ -> None
 
 let alpha_of_mixed_value f = if f >= 1. then (None : alpha) else Num f
 
@@ -490,7 +490,7 @@ let mix_optional_float ~w1 ~w2 v1 v2 =
   match (v1, v2) with
   | Some f1, Some f2 -> Some ((f1 *. w1) +. (f2 *. w2))
   | Some f, None | None, Some f -> Some f
-  | None, None -> Option.None
+  | None, None -> None
 
 (* Mix the lightness channel of a lab-family colour. [l_num_max] is the L value
    that 100% denotes: 100. for lab/lch (a bare number is already on the 0-100
@@ -508,7 +508,7 @@ let mix_lightness ~l_num_max ~w1 ~w2 l1 l2 =
       match (to_float p1, to_float p2) with
       | Some f1, Some f2 ->
           Some (Some (Num ((f1 *. w1) +. (f2 *. w2)) : percentage))
-      | _ -> Option.None)
+      | _ -> None)
   | Some p, None | None, Some p -> Some (Some p)
   | None, None -> Some None
 
@@ -516,7 +516,7 @@ let mix_alpha ~w1 ~w2 ~alpha_mult a1 a2 =
   match (static_alpha_value a1, static_alpha_value a2) with
   | Some f1, Some f2 ->
       Some (alpha_of_mixed_value (((f1 *. w1) +. (f2 *. w2)) *. alpha_mult))
-  | _ -> Option.None
+  | _ -> None
 
 (* Mix two hues along the shorter arc (the default interpolation method, the
    only one the typed lab-family fold handles; specified methods bail out to
@@ -530,7 +530,7 @@ let mix_hue_shorter ~w2 h1 h2 =
       | Some f1, Some f2 ->
           Some
             (Unitless (Color_space.interpolate_hue Color_space.Shorter f1 f2 w2))
-      | _ -> Option.None)
+      | _ -> None)
 
 let mix_lab_like_result ~l_num_max ~p1 ~p2 build l1 a1 b1 alpha1 l2 a2 b2 alpha2
     =
@@ -569,7 +569,7 @@ let alpha_opaque : alpha -> bool = function
   | None -> true
   | Num f -> f >= 1.0
   | Pct f -> f >= 100.0
-  | Var _ | Calc _ -> false
+  | Alpha_none | Var _ | Calc _ -> false
 
 let mix_lab_family in_space color1 color2 ~p1 ~p2 =
   match (in_space, color1, color2) with
@@ -768,19 +768,19 @@ let static_srgb_floats (c : color) : ((float * float * float) * float) option =
     | None -> Some 1.
     | Num f -> Some f
     | Pct f -> Some (f /. 100.)
-    | _ -> Option.None
+    | _ -> None
   in
   let channel : channel -> float option = function
     | Int i -> Some (Float.of_int i /. 255.)
     | Num f -> Some (f /. 255.)
     | Pct f -> Some (f /. 100.)
     | None -> Some 0.
-    | Var _ -> Option.None
+    | Var _ -> None
   in
   let channels r g b a =
     match (channel r, channel g, channel b, alpha a) with
     | Some r, Some g, Some b, Some a -> Some ((r, g, b), a)
-    | _ -> Option.None
+    | _ -> None
   in
   let hsl h s l a =
     match
@@ -789,7 +789,7 @@ let static_srgb_floats (c : color) : ((float * float * float) * float) option =
     | Some hue, Some saturation, Some lightness, Some a ->
         let hue = normalize_hue hue in
         Some (hsl_to_rgb_float ~hue ~saturation ~lightness, a)
-    | _ -> Option.None
+    | _ -> None
   in
   let hwb h w bl a =
     match
@@ -805,7 +805,7 @@ let static_srgb_floats (c : color) : ((float * float * float) * float) option =
           let r, g, b = hsl_to_rgb_float ~hue ~saturation:100. ~lightness:50. in
           let scale c = (c *. (1. -. w -. bl)) +. w in
           Some ((scale r, scale g, scale b), a)
-    | _ -> Option.None
+    | _ -> None
   in
   match c with
   | Rgb (Channels { r; g; b }) -> channels r g b None
@@ -817,17 +817,17 @@ let static_srgb_floats (c : color) : ((float * float * float) * float) option =
         | Num f -> Some f
         | Pct f -> Some (f /. 100.)
         | Component_none -> Some 0.
-        | _ -> Option.None
+        | _ -> None
       in
       match (component c1, component c2, component c3, alpha a) with
       | Some r, Some g, Some b, Some a -> Some ((r, g, b), a)
-      | _ -> Option.None)
+      | _ -> None)
   | _ -> (
       match static_color_to_linear_srgb c with
       | Some ((r, g, b), a) ->
           let encode = Color_space.srgb_of_linear in
           Some ((encode r, encode g, encode b), a)
-      | Option.None -> Option.None)
+      | None -> None)
 
 let single_of_float f = Int32.float_of_bits (Int32.bits_of_float f)
 
@@ -861,13 +861,13 @@ let direct_bytes ~single (c : color) =
   let alpha : alpha -> int option = function
     | Num f -> unit_byte f
     | Pct f -> unit_byte (f /. 100.)
-    | _ -> Option.None
+    | _ -> None
   in
   let channel : channel -> int option = function
     | Int i -> Some i
     | Num f -> byte (if single then single_of_float f else f)
     | Pct f -> unit_byte (f /. 100.)
-    | _ -> Option.None
+    | _ -> None
   in
   let rgb : rgb -> int option list = function
     | Channels { r; g; b } -> [ channel r; channel g; channel b ]
@@ -1142,11 +1142,9 @@ let color_mix_percentages (percent1 : percentage option)
   let f1 = Option.bind percent1 float_of_percentage in
   let f2 = Option.bind percent2 float_of_percentage in
   match (percent1, percent2) with
-  | Option.None, Option.None -> Some (50., 50.)
-  | Some _, Option.None ->
-      Option.map (fun p1 -> (p1, Float.max 0. (100. -. p1))) f1
-  | Option.None, Some _ ->
-      Option.map (fun p2 -> (Float.max 0. (100. -. p2), p2)) f2
+  | None, None -> Some (50., 50.)
+  | Some _, None -> Option.map (fun p1 -> (p1, Float.max 0. (100. -. p1))) f1
+  | None, Some _ -> Option.map (fun p2 -> (Float.max 0. (100. -. p2), p2)) f2
   | Some _, Some _ -> (
       match (f1, f2) with Some p1, Some p2 -> Some (p1, p2) | _ -> None)
 
@@ -1224,7 +1222,7 @@ let rec with_alpha (c : color) (a : alpha) : color =
   | Named n -> (
       match rgba_of_hex (snd (color_name_hex n)) with
       | Some (r, g, b, _) -> srgb r g b
-      | Option.None -> c)
+      | None -> c)
   | Rgb rgb | Rgba { rgb; _ } -> Rgba { rgb; a }
   | Hsl { h; s; l; _ } -> Hsl { h; s; l; a }
   | Hwb { h; w; b; _ } -> Hwb { h; w; b; a }

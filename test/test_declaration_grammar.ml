@@ -803,10 +803,8 @@ let shape_outside_grammar () =
       (* <basic-shape> *)
       "shape-outside:circle(50%)";
       "shape-outside:circle()";
-      "shape-outside:circle(50% at 20% 30%)";
       "shape-outside:ellipse(closest-side farthest-side at 10px 20px)";
       "shape-outside:inset(10px round 2px)";
-      "shape-outside:polygon(0 0,100% 0,100% 100%)";
       "shape-outside:xywh(0 0 100% 100%)";
       (* <shape-box> on its own, and either order in the [||] pair *)
       "shape-outside:margin-box";
@@ -817,6 +815,12 @@ let shape_outside_grammar () =
       "shape-outside:url(shape.png)";
       "shape-outside:linear-gradient(red,blue)";
     ];
+  (* A percentage ends its own token, so the minified shape needs no space after
+     one, as in [clip-path]. *)
+  check_declaration ~expected:"shape-outside:circle(50% at 20%30%)"
+    "shape-outside:circle(50% at 20% 30%)";
+  check_declaration ~expected:"shape-outside:polygon(0 0,100%0,100%100%)"
+    "shape-outside:polygon(0 0,100% 0,100% 100%)";
   (* Controls: an unknown keyword is no part of the grammar, [none] and a box
      are alternatives rather than a [||] pair, the box appears once, and
      [<shape-box>] excludes the three SVG boxes [<geometry-box>] adds. *)
@@ -1034,6 +1038,49 @@ let radius_nested_sites radius =
       ("object-view-box:xywh(0 0 1px 1px round ", ")");
     ]
 
+(* CSS Shapes 1 sec. 3.1 makes the [round] clause of [inset()], [rect()] and
+   [xywh()] optional, its radii zero when it is left out, so a zero radius says
+   what omitting the clause says. Chromium 157 serialises [inset(0 round 0)] as
+   [inset(0px)] and [xywh(0 0 1px 1px round 0 0 / 0)] as [xywh(0px 0px 1px
+   1px)]. *)
+let shape_zero_rounding () =
+  List.iter
+    (fun (input, into) -> decl_optimizes_to ~into input)
+    [
+      ("clip-path:inset(0 round 0)", "clip-path:inset(0)");
+      ("clip-path:rect(0 1px 1px 0 round 0)", "clip-path:rect(0 1px 1px 0)");
+      ("clip-path:xywh(0 0 1px 1px round 0)", "clip-path:xywh(0 0 1px 1px)");
+      ("clip-path:inset(0 round 0% 0 / 0)", "clip-path:inset(0)");
+      ("object-view-box:inset(0 round 0)", "object-view-box:inset(0)");
+      ( "object-view-box:rect(0 1px 1px 0 round 0)",
+        "object-view-box:rect(0 1px 1px 0)" );
+      ( "object-view-box:xywh(0 0 1px 1px round 0)",
+        "object-view-box:xywh(0 0 1px 1px)" );
+    ];
+  (* Control: a radius that is not zero stays. *)
+  decl_optimizes_to ~into:"clip-path:inset(0 round 1px)"
+    "clip-path:inset(0 round 1px)"
+
+(* CSS Shapes 1 sec. 6.1 spells [shape-outside] [none | [<basic-shape> ||
+   <shape-box>] | <image>], the box defaulting to [margin-box], so the shape and
+   the image normalise as they do in [clip-path] and [background-image].
+   Chromium 157 serialises [inset(0px round 0) margin-box] as [inset(0px)] and
+   keeps [circle(10px) content-box]. *)
+let shape_outside_normalises () =
+  List.iter
+    (fun (input, into) -> decl_optimizes_to ~into input)
+    [
+      ("shape-outside:inset(0 round 0)", "shape-outside:inset(0)");
+      ("shape-outside:inset(0px round 0) margin-box", "shape-outside:inset(0)");
+      ("shape-outside:margin-box circle(10px)", "shape-outside:circle(10px)");
+      ( "shape-outside:circle(10px) content-box",
+        "shape-outside:circle(10px) content-box" );
+      ("shape-outside:margin-box", "shape-outside:margin-box");
+      ( "shape-outside:linear-gradient(red,blue)",
+        "shape-outside:linear-gradient(red,#00f)" );
+      ("shape-outside:var(--s)", "shape-outside:var(--s)");
+    ]
+
 let border_radius_keyword_radii () =
   List.iter
     (fun radius ->
@@ -1198,6 +1245,9 @@ let suite =
       test_case "list rejects a trailing separator" `Quick
         list_trailing_separator_invalid;
       test_case "border-radius keyword radii" `Quick border_radius_keyword_radii;
+      test_case "a zero shape rounding is no rounding" `Quick
+        shape_zero_rounding;
+      test_case "shape-outside normalises" `Quick shape_outside_normalises;
       test_case "border-radius CSS-wide keywords" `Quick
         border_radius_css_wide_keywords;
     ] )

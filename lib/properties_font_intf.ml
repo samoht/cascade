@@ -298,7 +298,7 @@ type font_variant =
   | Var of font_variant var
 
 (** The optional value paired with an OpenType feature tag. *)
-type font_feature_value = On | Off | Index of int
+type font_feature_value = On | Off | Index of number
 
 type font_feature_setting = { tag : string; value : font_feature_value option }
 (** One OpenType feature tag and its optional value. *)
@@ -314,7 +314,7 @@ type font_feature_settings =
   | Revert_layer
   | Var of font_feature_settings var
 
-type font_variation_setting = { tag : string; value : float }
+type font_variation_setting = { tag : string; value : number }
 (** One OpenType variation axis and its numeric value. *)
 
 (** CSS font-variation-settings values. *)

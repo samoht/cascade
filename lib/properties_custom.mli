@@ -25,15 +25,18 @@ val is_math_function : string -> bool
     insensitively, as CSS function names are. *)
 
 val canonicalize_custom_shadow_components :
-  lossless:bool -> Values.invalid_value -> Values.invalid_value
-(** [canonicalize_custom_shadow_components ~lossless components] is [components]
-    with the colour of a complete shadow canonicalised, the authored shadow
-    shape otherwise kept. *)
+  lossless:bool ->
+  enforce_spec:bool ->
+  Values.invalid_value ->
+  Values.invalid_value
+(** [canonicalize_custom_shadow_components ~lossless ~enforce_spec components]
+    is [components] with the colour of a complete shadow canonicalised, the
+    authored shadow shape otherwise kept. *)
 
 val canonicalize_custom_colors_components :
-  lossless:bool -> Component.t list -> Component.t list
-(** [canonicalize_custom_colors_components ~lossless components] is [components]
-    with every colour it holds folded to its canonical form. *)
+  lossless:bool -> enforce_spec:bool -> Component.t list -> Component.t list
+(** [canonicalize_custom_colors_components ~lossless ~enforce_spec components]
+    is [components] with every colour it holds folded to its canonical form. *)
 
 val try_read_custom_color : custom_value -> custom_property_value option
 (** [try_read_custom_color tokens] parses [tokens] as a [<color>], returning a
@@ -105,9 +108,11 @@ val canonicalize_angle_components : custom_value -> custom_value
 
 val normalize_custom_property_value :
   ?lossless:bool ->
+  ?enforce_spec:bool ->
   ?ctx:Values.calc_ctx ->
   custom_property_value ->
   custom_property_value
-(** [normalize_custom_property_value v] canonicalises the typed value of a
-    registered custom property (currently the [<color>] syntax) so a promoted
-    custom-property value folds the same way a typed colour property would. *)
+(** [normalize_custom_property_value ?lossless ?enforce_spec v] canonicalises
+    the typed value of a registered custom property (currently the [<color>]
+    syntax) so a promoted custom-property value folds the same way a typed
+    colour property would. *)

@@ -11,9 +11,9 @@ the README first; come here to check a detail.
 | Flag | Purpose |
 |---|---|
 | `-m, --minify` | Minify the output. Local linear rewrites always run; the expensive global factoring fixpoint runs only when its preflight predicts useful savings. The top-level pipeline makes one pass at every size, and each step finishes in it what it starts, so minifying the output again returns it. |
-| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) minimises output bytes, but merges rules with one body only where they print within 128 rules of each other, because a compressor encodes a repeated declaration in two or three bytes wherever it sits, but a selector moved away from its neighbours stops compressing against them; `raw` merges them at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
+| `--objective=transfer\|raw` | Size metric `--minify` optimises for. `transfer` (default) weighs each rewrite by an estimate of the compressed bytes it saves (see [How rule merging scales](#how-rule-merging-scales)), and merges rules with one body only where they print within 128 rules of each other, because a selector moved away from its neighbours stops compressing against them; `raw` weighs rewrites by their raw bytes and merges at any distance. `raw` also drives the factoring fixpoint to convergence, the right objective when the output ships uncompressed (inline style attributes, email HTML), at a large multiple of the default's wall clock. Has no effect without `--minify`. |
 | `--lossless` | Disable bounded approximation under `--minify`. Exact rewrites still run, but repeating static numeric arithmetic stays as `calc()`, and static modern colour-space values and `color-mix()` stay functional. Otherwise-independent declarations retain their authored order instead of being sorted for compression. Has no effect without `--minify`. |
-| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family. It also has the parser keep a rule over a pseudo-class no target reads, and holds it to the ident code points CSS Syntax 3 lists; those parts act without `--minify` too. |
+| `--enforce-spec` | Drop the evergreen-browser baseline target. Cascade still serialises to the shortest form the CSS text and the specs prove on their own, so it keeps every vendor-prefixed declaration, the `min-`/`max-` spelling of a media or container feature, the author's `:not(:dir(ltr))` and `input:not(:enabled)`, the number form of an `oklab`/`oklch` axis, and the quotes around a multi-word font family, and it folds a `color-mix()` of one item to its colour, which CSS Color 5 grants and Chrome drops. It also has the parser keep a rule over a pseudo-class no target reads, and holds it to the ident code points CSS Syntax 3 lists; those parts act without `--minify` too. |
 | `--scope=fragment\|stylesheet` | How much surrounding CSS context to assume. `fragment` (default) treats the input as an excerpt; `stylesheet` asserts the input is the whole author CSS graph, allowing Cascade to synthesise shorthands that reset omitted longhands because there are no unseen author declarations to overwrite. |
 | `--closed-world` | Assume you know the exact HTML and that no element ever matches two clashing selectors, so the optimiser may merge rules it would otherwise keep apart. Unsafe: the page can render wrong if such an element appears, including one a script adds at runtime. See [Scope](#scope). Has no effect without `--minify`. |
 | `--flatten-nesting` | Desugar nested rules into flat top-level rules. `--minify` already does for the default targets and under `--enforce-spec`, since Chrome 111 and Safari 16.4 read no nesting; the flag also flattens for library callers whose targets parse it. Has no effect without `--minify`. |
@@ -21,7 +21,7 @@ the README first; come here to check a detail.
 | `--import-root=DIR` | Restrict `--inline-imports` to the canonical root and its descendants. Lexical `..` and symlink escapes are rejected; relative roots are resolved from the current working directory. |
 | `--inline-vars` | Substitute `var(--name)` references with their declared values, then drop unused custom properties. Closed-world: assumes no runtime mutation of the variables it inlines. |
 | `--keep-vars=NAMES` | Comma-separated custom-property names to preserve under `--inline-vars`. |
-| `--profile` | Print to stderr, after the run, the time spent reading, optimising and printing. A table of the global factoring fixpoint follows, one row per iteration with the rules, bytes and time on each side. The committed savings and the preflight's own counters close it. Has no effect without `--minify`. |
+| `--profile` | Print to stderr, after the run, the time spent reading, optimising and printing. A table of the global factoring fixpoint follows, one row per iteration with the rules, bytes and time on each side. The committed savings, in estimated compressed bytes under `--objective=transfer`, and the preflight's own counters close it. Has no effect without `--minify`. |
 | `-q, --quiet` | Print errors only: no parse warning and no note. |
 | `-v, --verbose` | Print every parse warning in full; a warning whose message was already printed for the file is otherwise counted under the first. Twice (`-vv`) also prints the optimiser's step tracing. |
 
@@ -129,7 +129,24 @@ same element and whose equal-importance declarations overlap once shorthands
 are expanded. Independent rules stay unordered.
 
 Candidate rewrites are scheduled through a priority queue, largest saving
-first. Applying one updates the graph; when the queue drains, the candidates
+first. Under `--objective=raw` a saving is the bytes the rewrite removes. Under
+`--objective=transfer` it is an estimate of the compressed bytes, in the way
+LZ77 reads text: each selector branch and each declaration is a token, and the
+consumed rules, in the order they print, are costed against the produced
+rules. A token new to the list costs 2.42 bytes and 0.061 per byte of its
+text. A token printed earlier in the list starts a match, 1.32 bytes and
+0.005 per byte for a declaration, 1.47 and 0.029 per byte for a selector
+branch, and the tokens after it extend the match for their per-byte part
+alone while they repeat, in order, what followed its earlier copy. These are
+least-squares fits of what gzip `-9` saves when one token or one match is
+deleted from the corpus output. So lifting declarations out of rules that
+repeat them saves a match each, and the leftover each member keeps costs a
+match for its selector printed a second time; twenty sprite rules sharing
+three declarations stay as written. The estimate reads the candidate's rules
+alone: a token the rewrite neither creates nor deletes costs the same before
+and after it, wherever else the sheet prints it.
+
+Applying a candidate updates the graph; when the queue drains, the candidates
 of the neighbourhood the commits touched are worked out again, and every
 candidate whose refusal no longer stands is queued again, at every size. The output is a topological order of the final graph, with the first
 source appearance as the tie-break, so rules keep their source order wherever
@@ -167,7 +184,10 @@ consumed rules when the candidate was queued, earliest first; never by a hash
 or the order of a table.
 
 Rules with one body form a bucket too. Under `--objective=transfer` its
-members merge in runs, read in the order they print. A run starts at the first
+members merge in runs, read in the order they print, since the estimate sees a
+selector's text but not its neighbours: a selector moved far from the rules
+it shares text with stops compressing against them, and without the bound the
+corpus output grows by 1.1% under gzip. A run starts at the first
 member no earlier run holds. It takes every member printed within 128 rules of
 that one, counting only the rules that print. A commit anywhere changes how many
 rules print between two members, so every time the queue drains each bucket of
@@ -257,8 +277,9 @@ The default targets are Chrome 111, Firefox 128, Safari 16.4 and iOS Safari
   selector loses its `&` prefix (`& div` to `div`), and adjacent rules may
   nest. A rule holding a declaration after a nested rule, or one directly in a
   nested group rule (a nested declarations rule, CSS Nesting 1 sec. 3.4 and
-  5), is flattened under any targets, since releases before nested
-  declarations rules read it in another order.
+  5), stays from Chrome 130, Firefox 132 and Safari 18.2
+  (`api.CSSNestedDeclarations`) and is flattened under older targets, since
+  releases before nested declarations rules read it in another order.
 - An `oklab` or `oklch` axis takes the percentage spelling where it is
   shorter, `oklch(.7 .304 20)` to `oklch(.7 76% 20)`.
 - A rule whose selector holds, outside `:is()` and `:where()`, a pseudo-class

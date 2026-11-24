@@ -42,3 +42,20 @@ let read_constant_integer t =
   if Cursor.looking_at_func "calc" t || looking_at_math_function t then
     int_of_float (Float.floor (read_constant_number t +. 0.5))
   else Cursor.int t
+
+(* A slot holding a [<number>] takes a math function that does not fold as well,
+   as the calculation it is. *)
+let read_number_slot t : number =
+  if Cursor.looking_at_func "calc" t || looking_at_math_function t then
+    let call = Option.to_list (Cursor.next t) in
+    normalize_number (read_number (Cursor.sub t call))
+  else Num (Cursor.number t)
+
+(* At an [<integer>] a call that folds is rounded as sec. 10.9 rounds it, and a
+   literal must be an integer token. *)
+let read_integer_slot t : number =
+  if Cursor.looking_at_func "calc" t || looking_at_math_function t then
+    match read_number_slot t with
+    | Num f when Float.is_finite f -> Num (Float.floor (f +. 0.5))
+    | n -> n
+  else Num (Float.of_int (Cursor.int t))

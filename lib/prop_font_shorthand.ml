@@ -383,7 +383,7 @@ let rec pp_line_height : line_height Pp.t =
         (Pp.list ~sep:Pp.comma pp_line_height_comparison_arg)
         ctx [ low; value; high ]
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun v -> not (negative_line_height v))
         pp_line_height ctx c
@@ -407,7 +407,7 @@ let rec pp_font_weight : font_weight Pp.t =
      the wrapper comes off only when what is inside is a value on its own. *)
   | Calc c ->
       let in_range n = n >= 1. && n <= 1000. in
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num n -> in_range n | _ -> true)
         ~unwrap:(fun (v : font_weight) ->
           match v with Weight n -> in_range n | _ -> true)
@@ -556,7 +556,8 @@ let rec math_arg_power : math_arg -> int option = function
 
 and math_fn_power : math_fn -> int option = function
   | Min_n args | Max_n args | Hypot args -> List.find_map math_arg_power args
-  | Clamp_n (a, b, c) -> List.find_map math_arg_power [ a; b; c ]
+  | Clamp_n (a, b, c) ->
+      List.find_map math_arg_power (List.filter_map Fun.id [ a; Some b; c ])
   | Abs_n a | Round_n (_, a, _) | Mod_n (a, _) | Rem_n (a, _) ->
       math_arg_power a
   | Sin _ | Cos _ | Tan _ | Asin _ | Acos _ | Atan _ | Atan2 _ | Sqrt _ | Exp _
@@ -571,7 +572,7 @@ let comparison_of_numbers fn =
   let args =
     match fn with
     | Min_n args | Max_n args -> args
-    | Clamp_n (a, b, c) -> [ a; b; c ]
+    | Clamp_n (a, b, c) -> List.filter_map Fun.id [ a; Some b; c ]
     | _ -> []
   in
   List.for_all
@@ -621,10 +622,13 @@ and read_line_height_clamp t : line_height =
    folding to the coefficient it always did. *)
 and line_height_math_calls number =
   (* The number path takes a comparison of numbers only: one over lengths or
-     percentages is the typed [Min]/[Max]/[Clamp] the list readers build. *)
+     percentages is the typed [Min]/[Max]/[Clamp] the list readers build. A
+     [clamp()] with a [none] bound (CSS Values 4 (ED) sec. 10.2) has no typed
+     form there and stays the generic comparison, which keeps the bound. *)
   let number t : line_height =
     match number t with
-    | (Calc (Math_fn ((Min_n _ | Max_n _ | Clamp_n _) as fn)) : line_height)
+    | (Calc (Math_fn ((Min_n _ | Max_n _ | Clamp_n (Some _, _, Some _)) as fn)) :
+        line_height)
       when not (comparison_of_numbers fn) ->
         Cursor.err_invalid t "a comparison of lengths"
     | value -> value
@@ -967,8 +971,8 @@ let line_height_of_math_fn fn : line_height option =
       | "em" -> Some (Em v)
       | "rem" -> Some (Rem v)
       | "%" -> Some (Pct v)
-      | _ -> Option.None)
-  | _ -> Option.None
+      | _ -> None)
+  | _ -> None
 
 let normalize_line_height ?(lossless = false) (lh : line_height) : line_height =
   match lh with

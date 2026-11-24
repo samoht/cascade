@@ -4,9 +4,14 @@ val is_intentionally_duplicated : Declaration.declaration -> bool
 (** Whether a declaration may deliberately coexist with same-property writes. *)
 
 val declaration_covers :
-  Declaration.declaration -> Declaration.declaration -> bool
-(** [declaration_covers newer older] is the shorthand/property coverage
-    relation. *)
+  enforce_spec:bool ->
+  Declaration.declaration ->
+  Declaration.declaration ->
+  bool
+(** [declaration_covers ~enforce_spec newer older] is the shorthand/property
+    coverage relation. With [enforce_spec] it also holds where only the
+    specifications have [newer] reset [older], as [background] does
+    [background-blend-mode]. *)
 
 val declarations_overlap :
   Declaration.declaration -> Declaration.declaration -> bool
@@ -53,13 +58,16 @@ val declaration_overlap_keys : Declaration.declaration -> overlap_key list
     for indexing potential declaration overlaps. {!val-broad_overlap_key} means
     [d] is broad and must be checked against every non-exempt property. *)
 
-val declaration_slot_keys : Declaration.declaration -> overlap_key list
-(** [declaration_slot_keys d] is the keys of the slots [d] writes in every
-    engine that reads it, a subset of {!val-declaration_overlap_keys} sorted the
-    same way: the slots its property names, without the physical sides a
-    flow-relative slot may resolve to. It is empty for [all], a custom property,
-    a property the model cannot place and a vendor-prefixed property, which
-    write slots of their own only in some engines or none the model names. *)
+val declaration_slot_keys :
+  enforce_spec:bool -> Declaration.declaration -> overlap_key list
+(** [declaration_slot_keys ~enforce_spec d] is the keys of the slots [d] writes
+    in every engine that reads it (with [enforce_spec], every engine that
+    follows the specifications), a subset of {!val-declaration_overlap_keys}
+    sorted the same way: the slots its property names, without the physical
+    sides a flow-relative slot may resolve to. It is empty for [all], a custom
+    property, a property the model cannot place and a vendor-prefixed property,
+    which write slots of their own only in some engines or none the model names.
+*)
 
 val footprint_family : Declaration.declaration -> int option
 (** [footprint_family d] is the rank of the first shorthand family whose
@@ -109,13 +117,19 @@ val same_value : Declaration.declaration -> Declaration.declaration -> bool
 (** Same declaration value ignoring importance. *)
 
 val implied_longhands :
-  Declaration.declaration -> Declaration.declaration list option
-(** [implied_longhands sh] is every longhand the shorthand [sh] writes, each
-    with the value [sh] assigns it, reset-only ones included, at the importance
-    of [sh]. It is [None] unless every such value can be proven:
-    [border:1px solid red] gives [border-width:1px], [border-style:solid],
-    [border-color:red] and [border-image:none], while [border:solid] and any
-    other shorthand give [None]. *)
+  enforce_spec:bool ->
+  Declaration.declaration ->
+  Declaration.declaration list option
+(** [implied_longhands ~enforce_spec sh] is every longhand the shorthand [sh]
+    writes, each with the value [sh] assigns it, the initial value for a slot
+    [sh] omits and reset-only ones included, at the importance of [sh]. It reads
+    [border], a single-layer [background], [flex] and a single [transition]:
+    [border:1px solid] gives [border-width:1px], [border-style:solid],
+    [border-color:currentcolor] and [border-image:none]. The basis [flex:1]
+    omits is [0%], what Chrome computes, and [0] under [enforce_spec], what CSS
+    Flexible Box 1 (ED) sec. 7.1 specifies. It is [None] for any other shorthand
+    and wherever a value cannot be proven: an omitted slot of a shorthand
+    holding a [var()]. *)
 
 val declarations_commute :
   Declaration.declaration list -> Declaration.declaration list -> bool

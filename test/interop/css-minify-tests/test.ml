@@ -364,19 +364,6 @@ let normalize_expected ~category ~id expected =
          them canonically. *)
       fixture ~category ~id ~upstream:".nav .item,.footer{color:red}"
         ~cascade:".footer,.nav .item{color:red}" upstream
-  | "nesting", "0006" ->
-      (* A declaration directly in a group rule nested in a style rule is a
-         nested declarations rule (CSS Nesting 1 sec. 5), which Chrome 120 to
-         129, Firefox 117 to 131 and Safari 17.2 to 18.1 read as an [&] rule
-         instead. The compatibility data cascade ships has no key for it, so
-         cascade flattens such a rule under any targets, into the flat rules
-         sec. 5 makes it equal to. *)
-      fixture ~category ~id
-        ~upstream:
-          ".foo{display:grid;@media(width>=768px){grid-auto-flow:column}}"
-        ~cascade:
-          ".foo{display:grid}@media(width>=768px){.foo{grid-auto-flow:column}}"
-        upstream
   | "nesting", "0011" ->
       (* Synthesis of CSS nesting is only a minification win when it preserves
          source-order semantics and is actually shorter. Here the nested form
@@ -685,14 +672,15 @@ let normalize_expected ~category ~id expected =
    [scope:`Stylesheet]: closed over the fixture's CSS text for source-order,
    cascade, dependency, and dead-code reasoning, but still open over runtime
    layout state such as DOM shape, writing mode, direction, user styles, and
-   runtime custom-property mutation. *)
+   runtime custom-property mutation. The fixtures are raw-size oracles, so it
+   optimizes for raw bytes. *)
 let cascade_minify ?targets input =
   match Css.of_string ~strict:false input with
   | Error e -> Error (Cascade.Error.to_string e)
   | Ok parsed -> (
       match
         parsed.stylesheet
-        |> Css.optimize ~scope:`Stylesheet ?targets
+        |> Css.optimize ~scope:`Stylesheet ?targets ~objective:`Raw
         |> Css.to_string ~minify:true
       with
       | s -> Ok s

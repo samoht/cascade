@@ -248,8 +248,8 @@ let take_layer_run ~block ~moved stmts =
 
 let sort_layer_blocks (stmts : statement list) : statement list =
   match layer_ranks stmts with
-  | Option.None -> stmts
-  | Option.Some rank ->
+  | None -> stmts
+  | Some rank ->
       let block (stmt : statement) =
         match stmt with
         | Layer (Some name, body) when List.for_all style_only body ->

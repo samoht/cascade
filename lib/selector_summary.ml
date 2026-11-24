@@ -154,10 +154,19 @@ let flag_rank : Selector.attr_flag option -> int = function
   | None -> 1
   | Some Insensitive -> 2
 
+(* HTML sec. 4.16.2 compares an unflagged value ASCII case-insensitively only
+   for the attributes it lists, and only on an HTML element; any other unflagged
+   value matches as written, as under [s]. *)
+let effective_flag fact =
+  match fact.flag with
+  | None when not (Selector.html_case_insensitive_value (snd fact.key)) ->
+      Some Selector_intf.Sensitive
+  | flag -> flag
+
 let exact_attr_disjoint a b =
   match (exact_value a.matcher, exact_value b.matcher) with
   | Some x, Some y -> (
-      match (a.flag, b.flag) with
+      match (effective_flag a, effective_flag b) with
       | Some Selector_intf.Sensitive, Some Selector_intf.Sensitive -> x <> y
       | _ -> String.lowercase_ascii x <> String.lowercase_ascii y)
   | _ -> false
@@ -177,11 +186,11 @@ let attrs_disjoint a b =
 let exact_attr_implies a b =
   same_attr_key a b
   &&
-  match (exact_value a.matcher, exact_value b.matcher, b.flag) with
+  match (exact_value a.matcher, exact_value b.matcher, effective_flag b) with
   | Some x, Some y, Some Insensitive ->
       String.lowercase_ascii x = String.lowercase_ascii y
-  | Some x, Some y, (None | Some Sensitive) ->
-      String.equal x y && flag_rank a.flag <= flag_rank b.flag
+  | Some x, Some y, ((None | Some Sensitive) as flag) ->
+      String.equal x y && flag_rank (effective_flag a) <= flag_rank flag
   | _ -> false
 
 let attr_negation_disjoint attrs not_attrs =

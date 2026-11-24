@@ -39,7 +39,8 @@ val may_overlap : t -> t -> bool
       compared ASCII case-insensitively since a quirks-mode document matches
       [#A] and [#a] alike;
     - conflicting exact attribute requirements on the same subject attribute,
-      read with their [i] and [s] flags;
+      read with their [i] and [s] flags, an unflagged value compared without
+      case only for an attribute HTML sec. 4.16.2 lists;
     - simple required-token conflicts with [:not(...)] on the subject;
     - simple child-position conflicts such as [:first-child] vs
       [:nth-child(even)];

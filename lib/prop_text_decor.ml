@@ -625,7 +625,7 @@ let text_decoration_slot_is_var (s : text_decoration_shorthand) =
   || (match s.color with Some (Values.Var _) -> true | _ -> false)
   || match s.thickness with Some (Values.Var _) -> true | _ -> false
 
-let normalize_text_decoration ?(lossless = false) :
+let normalize_text_decoration ?(lossless = false) ~enforce_spec :
     text_decoration -> text_decoration =
  fun value ->
   match value with
@@ -639,10 +639,12 @@ let normalize_text_decoration ?(lossless = false) :
       let color =
         drop_default
           ~is_default:(fun (c : Values.color) -> c = Values.Current)
-          (option_map_preserve (normalize_color ~lossless) s.color)
+          (option_map_preserve
+             (normalize_color ~lossless ~enforce_spec)
+             s.color)
       in
       match (s.lines, style, color, s.thickness) with
-      | [], Option.None, Option.None, Option.None -> (None : text_decoration)
+      | [], None, None, None -> (None : text_decoration)
       | _ ->
           if
             option_is_phys_same style s.style
@@ -651,8 +653,8 @@ let normalize_text_decoration ?(lossless = false) :
           else Shorthand { s with style; color })
   | other -> other
 
-let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
-    =
+let normalize_text_emphasis ?(lossless = false) ~enforce_spec :
+    text_emphasis -> text_emphasis =
  fun value ->
   match value with
   | Emphasis (style, color) ->
@@ -660,7 +662,9 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
          longhand's initial - [none] for the style (sec. 3.1) and [currentColor]
          for the colour (sec. 3.3) - so writing one out names what leaving it
          out names. Both cannot go: the value would say nothing. *)
-      let color = option_map_preserve (normalize_color ~lossless) color in
+      let color =
+        option_map_preserve (normalize_color ~lossless ~enforce_spec) color
+      in
       let dropped_style =
         match style with
         | Some (None : text_emphasis_style) -> Option.None
@@ -681,7 +685,8 @@ let normalize_text_emphasis ?(lossless = false) : text_emphasis -> text_emphasis
    box-shadow", and CSS Backgrounds 3 (ED) sec. 6.1 says "Omitted lengths are
    0". The blur is the last length a text shadow carries, so a zero blur is the
    spelled-out form of leaving it off. *)
-let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
+let normalize_text_shadow ?(lossless = false) ~enforce_spec :
+    text_shadow -> text_shadow =
  fun value ->
   match value with
   | Text_shadow s ->
@@ -703,7 +708,10 @@ let normalize_text_shadow ?(lossless = false) : text_shadow -> text_shadow =
                 match s.color with
                 | Some (Var _) -> blur
                 | _ -> drop_default ~is_default:is_zero_length blur);
-             color = option_map_preserve (normalize_color ~lossless) s.color;
+             color =
+               option_map_preserve
+                 (normalize_color ~lossless ~enforce_spec)
+                 s.color;
            })
   | other -> other
 
@@ -949,11 +957,11 @@ let read_shadow_lengths t =
             read_length ~allow_negative ~with_keywords:false ~length_only:true t)
           t
       with
-      | Option.Some l ->
+      | Some l ->
           lengths_rev := l :: !lengths_rev;
           Cursor.ws t;
           loop (n + 1)
-      | Option.None -> ()
+      | None -> ()
   in
   loop 0;
   List.rev !lengths_rev
@@ -973,16 +981,16 @@ let rec read_text_shadow t : text_shadow =
     ~default:(fun t ->
       (* CSS Text Decoration 3 sec. 5: [<color>? && <length>{2,3}]. The && puts
          the colour on either side of the length run but never inside it. *)
-      let color : color option ref = ref (Option.None : color option) in
+      let color : color option ref = ref (None : color option) in
       let try_color () =
         match !color with
-        | Option.Some _ -> ()
-        | Option.None -> (
+        | Some _ -> ()
+        | None -> (
             match Cursor.option (fun t -> read_color t) t with
-            | Option.Some c ->
-                color := Option.Some c;
+            | Some c ->
+                color := Some c;
                 Cursor.ws t
-            | Option.None -> ())
+            | None -> ())
       in
       try_color ();
       let lengths = read_shadow_lengths t in
@@ -990,9 +998,7 @@ let rec read_text_shadow t : text_shadow =
       let lengths, color = take_trailing_color_var lengths !color in
       match lengths with
       | h :: v :: rest ->
-          let blur =
-            match rest with b :: _ -> Option.Some b | _ -> Option.None
-          in
+          let blur = match rest with b :: _ -> Some b | _ -> None in
           (Text_shadow { h_offset = h; v_offset = v; blur; color }
             : text_shadow)
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")

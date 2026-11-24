@@ -6,7 +6,10 @@ val normalize_background_repeat :
 (** [normalize_background_repeat v] is [v] in canonical form. *)
 
 val normalize_background :
-  ?lossless:bool -> Properties_intf.background -> Properties_intf.background
+  ?lossless:bool ->
+  enforce_spec:bool ->
+  Properties_intf.background ->
+  Properties_intf.background
 (** [normalize_background ?lossless v] is [v] in canonical form. *)
 
 val pp_background_attachment : Properties_intf.background_attachment Pp.t

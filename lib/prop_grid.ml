@@ -551,8 +551,8 @@ let rec pp_place_content : place_content Pp.t =
   | Unsafe_end -> Pp.string ctx "unsafe end"
   | Unsafe_stretch -> Pp.string ctx "unsafe stretch"
   | Align_justify (a, j) ->
-      let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_content a in
-      let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_content j in
+      let a_s = Pp.render ctx pp_align_content a in
+      let j_s = Pp.render ctx pp_justify_content j in
       (* A lone value the reader gives a one-word node to is another node;
          {!normalize_place_content} makes that fold. *)
       let can_omit_justify =
@@ -587,8 +587,8 @@ let rec pp_place_items : place_items Pp.t =
   | Center_safe -> Pp.string ctx "safe center"
   | Stretch_stretch -> Pp.string ctx "stretch stretch"
   | Align_justify (a, j) ->
-      let a_s = Pp.to_string ~minify:(Pp.minified ctx) pp_align_items a in
-      let j_s = Pp.to_string ~minify:(Pp.minified ctx) pp_justify_items j in
+      let a_s = Pp.render ctx pp_align_items a in
+      let j_s = Pp.render ctx pp_justify_items j in
       (* CSS Align 3 sec. 7.3: a lone value sets both axes. Where the reader
          gives that value a one-word node, the pair is another node and
          {!normalize_place_items} makes the fold; elsewhere the lone value reads

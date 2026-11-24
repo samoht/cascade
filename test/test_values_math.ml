@@ -1167,6 +1167,120 @@ let spec_math_integer_slots () =
         (String.trim (Css.to_string ~minify:true p.stylesheet))
   | Error e -> Alcotest.failf "%s" (Error.to_string e)
 
+(* CSS Values 4 sec. 10.6 makes [sign(A)] the [<number>] -1, 0 or +1, and sec.
+   10.3 lets [round()] omit its step when A is a [<number>], defaulting it to 1.
+   Both stand at an [<integer>] as any math function does. Chromium 157 computes
+   [counter-increment:a sign(1)] as [a 1], [a sign(-1)] as [a -1], [a
+   round(1.5)] as [a 2] and [z-index:round(1.5)] as [2]; cascade dropped
+   each. *)
+let spec_math_integer_sign_and_round () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("counter-increment", "a sign(1)", "a 1");
+      ("counter-increment", "a sign(-1)", "a -1");
+      ("counter-reset", "a sign(2)", "a 1");
+      ("counter-increment", "a round(1.5)", "a 2");
+      ("z-index", "round(1.5)", "2");
+      ("opacity", "round(.4)", "0");
+    ]
+
+(* CSS Values 4 sec. 10.1 puts a math function wherever its resolved type
+   stands, folded or not, and sec. 10.6 makes [sign(1em)] a [<number>] whose
+   value waits for the font size. Chromium 157 computes [opacity:sign(1em)],
+   [shape-image-threshold:sign(1em)] and [zoom:sign(1em)] as [1]; cascade
+   dropped each, as it dropped [min(.5,sign(1em))], and the call reads back bare
+   as the node [calc()] around it reads. A length still stands nowhere here. *)
+let spec_math_opacity_value_unfolded () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("opacity", "sign(1em)", "sign(1em)");
+      ("opacity", "calc(sign(1em))", "sign(1em)");
+      ("opacity", "min(.5,sign(1em))", "min(.5,sign(1em))");
+      ("shape-image-threshold", "sign(1em)", "sign(1em)");
+      ("zoom", "sign(1em)", "sign(1em)");
+    ];
+  List.iter
+    (fun (prop, value) ->
+      Alcotest.(check string)
+        (Fmt.str "%s:%s is refused" prop value)
+        ""
+        (match
+           Fmt.kstr (Css.of_string ~strict:false) ".x{%s:%s}" prop value
+         with
+        | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
+        | Error e -> Error.to_string e))
+    [ ("opacity", "min(1px,1em)"); ("zoom", "max(1px,1em)") ]
+
+(* CSS Values 4 sec. 10.1 reads a math function wherever [calc()] around it
+   reads, as the same calculation, so an unfolded call needs no wrapper.
+   Chromium 157 serialises each input here as written, without one. *)
+let spec_math_root_prints_bare () =
+  List.iter
+    (fun (prop, input) -> decl_optimizes ~prop ~into:input input)
+    [
+      ("flex-grow", "sign(1em)");
+      ("scale", "sign(1em)");
+      ("z-index", "sign(1em)");
+      ("z-index", "max(1,sign(1em))");
+      ("line-height", "sign(1em)");
+      ("line-height", "min(1,sign(1em))");
+      ("font-weight", "max(400,sign(1em))");
+      ("animation-iteration-count", "sign(1em)");
+    ]
+
+(* CSS Values 4 sec. 10.9 keeps the sign of a zero inside a calculation, so
+   dividing by [-0] gives [-infinity] and [sign(-0)] is [-0]. Chromium 157
+   computes [opacity:calc(1/-0)] as [0] and [calc(1/0)] as [1],
+   [z-index:calc(1/sign(-0))] as [-2147483648] and [margin-left:calc(1px/-0)] as
+   a negative length; cascade printed each zero unsigned. *)
+let spec_math_negative_zero () =
+  List.iter
+    (fun (prop, input) -> decl_optimizes ~prop ~into:input input)
+    [
+      ("opacity", "calc(1/-0)");
+      ("z-index", "calc(1/sign(-0))");
+      ("margin-left", "calc(1px/-0)");
+    ]
+
+(* CSS Values 4 secs. 10.4 and 10.5: [cos()], [tan()], [exp()] and [log()]
+   answer a [<number>], so each stands at a [<ratio>] term. Chromium 157
+   computes [aspect-ratio:cos(0)/2] as [1 / 2] and [exp(0)] as [1 / 1], and
+   drops [asin(1)], an angle; cascade dropped them all. *)
+let spec_math_number_functions_at_a_ratio () =
+  List.iter
+    (fun (input, into) -> decl_optimizes ~prop:"aspect-ratio" ~into input)
+    [
+      ("cos(0)", "1"); ("cos(0)/2", "1/2"); ("exp(0)", "1"); ("tan(0deg)", "0");
+    ];
+  Alcotest.(check string)
+    "aspect-ratio:asin(1) is refused" ""
+    (match Css.of_string ~strict:false ".x{aspect-ratio:asin(1)}" with
+    | Ok p -> String.trim (Css.to_string ~minify:true p.stylesheet)
+    | Error e -> Error.to_string e)
+
+(* CSS Values 4 sec. 10.1 puts a math function wherever its type stands, folded
+   or not; sec. 10.9 rounds one at an [<integer>] once it resolves. Chromium 157
+   keeps each input here as written and computes it once the font size is known:
+   [counter-increment:a sign(1em)] as [a 1], [font-feature-settings] ["liga"
+   sign(1em)] as ["liga"], [font-variation-settings:"wght" calc(400*sign(1em))]
+   as ["wght" 400] and [rotate:1 sign(1em) 0 45deg] as [1 1 0 45deg]. Cascade
+   dropped each. *)
+let spec_math_integer_slots_unfolded () =
+  List.iter
+    (fun (prop, input, into) -> decl_optimizes ~prop ~into input)
+    [
+      ("counter-increment", "a sign(1em)", "a sign(1em)");
+      ("counter-reset", "a calc(2*sign(1em)) b", "a calc(2*sign(1em)) b");
+      ("counter-set", "a sign(1em)", "a sign(1em)");
+      ("font-feature-settings", "\"liga\" sign(1em)", "\"liga\" sign(1em)");
+      ( "font-variation-settings",
+        "\"wght\" calc(400*sign(1em))",
+        "\"wght\" calc(400*sign(1em))" );
+      ("rotate", "1 sign(1em) 0 45deg", "45deg 1 sign(1em) 0");
+    ]
+
 (* CSS Values 4 sec. 10.4 gives [asin()], [acos()], [atan()] and [atan2()] an
    [<angle>], so one standing where an angle cannot is invalid. Cascade typed
    the result as a bare degree count and folded [opacity:asin(0)] to
@@ -1288,6 +1402,16 @@ let suite =
       test_case "spec math var whitespace" `Quick spec_math_var_whitespace;
       test_case "spec math infinite range" `Quick spec_math_infinite_range;
       test_case "spec math integer slots" `Quick spec_math_integer_slots;
+      test_case "spec math sign and round at an integer slot" `Quick
+        spec_math_integer_sign_and_round;
+      test_case "spec math root prints bare" `Quick spec_math_root_prints_bare;
+      test_case "spec math opacity value unfolded" `Quick
+        spec_math_opacity_value_unfolded;
+      test_case "spec math negative zero" `Quick spec_math_negative_zero;
+      test_case "spec math number functions at a ratio" `Quick
+        spec_math_number_functions_at_a_ratio;
+      test_case "spec math integer slots unfolded" `Quick
+        spec_math_integer_slots_unfolded;
       test_case "spec math inverse trig is an angle" `Quick
         spec_math_inverse_trig_is_an_angle;
       test_case "spec math substitution never invalid" `Quick

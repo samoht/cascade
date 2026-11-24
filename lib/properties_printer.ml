@@ -390,7 +390,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Position_try -> pp pp_position_try
   | Position_visibility -> pp pp_position_visibility
   | Position_area -> pp pp_position_area
-  | Shape_outside -> pp Pp.string
+  | Shape_outside -> pp pp_shape_outside
   | Shape_margin -> pp (pp_length_percentage ~always:true)
   | Shape_image_threshold -> pp pp_shape_image_threshold
   | Overflow_clip_margin -> pp pp_overflow_clip_margin

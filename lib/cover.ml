@@ -32,8 +32,9 @@ let written t selector =
 
 (* A later write shadows [decl] only where every browser at or above the floors
    that reads [decl] reads it too; otherwise [decl] is the fallback a floor
-   paints. The question is asked only of a property written again, so a run that
-   shadows nothing never reads a value. *)
+   paints. A later [revert-rule] rolls back to what the earlier rules write (CSS
+   Cascade 5 sec. 7.3.6), so it shadows nothing. The question is asked only of a
+   property written again, so a run that shadows nothing never reads a value. *)
 let covered ~floors (normal, important) decl =
   let prop = Declaration.property_key decl in
   let read_later half =
@@ -41,7 +42,9 @@ let covered ~floors (normal, important) decl =
     | None -> false
     | Some laters ->
         List.exists
-          (fun later -> not (Declaration.fallback_for ~floors ~later decl))
+          (fun later ->
+            (not (Declaration.rolls_back_rule later))
+            && not (Declaration.fallback_for ~floors ~later decl))
           laters
   in
   if Declaration.is_important decl then read_later important

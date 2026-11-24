@@ -526,8 +526,8 @@ let normalize_initial_letter (value : initial_letter) : initial_letter =
   match value with
   | Calc (c, sink) -> (
       match (eval_calc (numeric_initial_letter_calc_leaves c), sink) with
-      | Num n, Option.None when n >= 1. -> Size n
-      | Num n, Option.Some sink when n >= 1. -> Size_sink (n, sink)
+      | Num n, None when n >= 1. -> Size n
+      | Num n, Some sink when n >= 1. -> Size_sink (n, sink)
       | folded, _ -> if folded == c then value else Calc (folded, sink))
   | value -> value
 
@@ -557,8 +557,8 @@ let rec read_initial_letter t : initial_letter =
     let size = Cursor.number t in
     if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1";
     match read_sink t with
-    | Option.None -> (Size size : initial_letter)
-    | Option.Some sink -> Size_sink (size, sink)
+    | None -> (Size size : initial_letter)
+    | Some sink -> Size_sink (size, sink)
   in
   (* CSS Values 4 sec. 10.1 puts a math function wherever the size [<number>]
      stands, [calc()] being one of them rather than the gate to the rest, and

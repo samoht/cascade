@@ -68,13 +68,33 @@ let normalize_border_radius ?(strip = true) : border_radius -> border_radius =
       preserve_if_equal value (Radius { horizontal; vertical })
   | other -> other
 
-let normalize_logical_border_color ?(lossless = false) :
+(* CSS Shapes 1 sec. 3.1 makes the [round] clause of a basic shape optional, its
+   radii zero when it is left out, so a clause whose every radius is zero says
+   what omitting it says. *)
+let normalize_shape_rounding (rounded : border_radius option) =
+  let zero (lp : length_percentage) =
+    match lp with
+    | Length l -> Values.length_is_zero l
+    | Pct f -> Float.equal f 0.
+    | _ -> false
+  in
+  match option_map_preserve (normalize_border_radius ~strip:true) rounded with
+  | Some (Radius { horizontal; vertical })
+    when List.for_all zero horizontal
+         && Option.fold ~none:true ~some:(List.for_all zero) vertical ->
+      Option.None
+  | rounded -> rounded
+
+let normalize_logical_border_color ?(lossless = false) ~enforce_spec :
     logical_border_color -> logical_border_color =
  fun value ->
   match value with
-  | Single c -> preserve_if_equal value (Single (normalize_color ~lossless c))
+  | Single c ->
+      preserve_if_equal value
+        (Single (normalize_color ~lossless ~enforce_spec c))
   | Pair (a, b) ->
-      let a = normalize_color ~lossless a and b = normalize_color ~lossless b in
+      let a = normalize_color ~lossless ~enforce_spec a
+      and b = normalize_color ~lossless ~enforce_spec b in
       if
         (not (is_color_substitution a))
         && (not (is_color_substitution b))
@@ -545,10 +565,7 @@ let pp_border_shorthand : border_shorthand Pp.t =
     style;
   Option.iter
     (fun c ->
-      let rendered =
-        Pp.to_string ~minify:(Pp.minified ctx) ~lossless:ctx.Pp.lossless
-          pp_color c
-      in
+      let rendered = Pp.render ctx pp_color c in
       (* CSS Syntax: a [#hex] hash token is unambiguous after an ident, so
          minified output drops the separating space. *)
       let leads_with_delim =
@@ -758,6 +775,21 @@ and read_math_arg t =
   validate_calc_type t `Value expr;
   expr
 
+(* A [none] bound (CSS Values 4 (ED) sec. 10.2) has no typed [Clamp] form, so it
+   reads as the generic comparison, which keeps it. *)
+and read_border_width_clamp t : border_width =
+  let typed t : border_width =
+    match
+      Cursor.call "clamp" t
+        (Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg)
+    with
+    | [ lower; value; upper ] -> Clamp (lower, value, upper)
+    | _ -> Cursor.err_invalid t "invalid clamp"
+  in
+  Cursor.one_of
+    [ typed; (fun t : border_width -> Calc (read_none_bounded_clamp t)) ]
+    t
+
 and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
   let read_var t : border_width =
     Var (read_var (read_border_width_with ~keywords ~allow_negative) t)
@@ -775,14 +807,6 @@ and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
       (Cursor.call "max" t
          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg))
   in
-  let read_clamp t : border_width =
-    match
-      Cursor.call "clamp" t
-        (Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg)
-    with
-    | [ lower; value; upper ] -> Clamp (lower, value, upper)
-    | _ -> Cursor.err_invalid t "invalid clamp"
-  in
   Cursor.enum_or_calls "border-width"
     (if keywords then
        [
@@ -798,7 +822,8 @@ and read_border_width_with ?(keywords = true) ~allow_negative t : border_width =
      else [])
     ~calls:
       (("var", read_var) :: ("calc", read_calc) :: ("min", read_min)
-     :: ("max", read_max) :: ("clamp", read_clamp)
+     :: ("max", read_max)
+      :: ("clamp", read_border_width_clamp)
       :: Values.typed_math_function_calls read_calc)
     ~default:(read_length_as_border_width ~allow_negative)
     t
@@ -866,11 +891,11 @@ let read_border_shorthand t : border_shorthand =
       else if Cursor.looking_at_func "var" t then (
         let a = !acc in
         acc :=
-          if a.width = Option.None then
+          if a.width = None then
             { a with width = Some (Var (read_var read_border_width t)) }
-          else if a.style = Option.None then
+          else if a.style = None then
             { a with style = Some (Var (read_var read_border_style t)) }
-          else if a.color = Option.None then
+          else if a.color = None then
             { a with color = Some (Var (read_var read_color t)) }
           else Cursor.err_invalid t "too many border components";
         true)
@@ -879,7 +904,7 @@ let read_border_shorthand t : border_shorthand =
         | Some c ->
             acc := Border.merge t !acc c;
             true
-        | Option.None -> false
+        | None -> false
   done;
   let acc = !acc in
   if
@@ -1140,11 +1165,11 @@ let normalize_logical_border_style :
    out declares, and the shorter spelling wins. *)
 let drop_initial_line_width (width : border_width option) : border_width option
     =
-  match width with Some Medium -> Option.None | width -> width
+  match width with Some Medium -> None | width -> width
 
 let drop_initial_line_style (style : border_style option) : border_style option
     =
-  match style with Some (None : border_style) -> Option.None | style -> style
+  match style with Some (None : border_style) -> None | style -> style
 
 (* CSS Multi-column 1 (ED) sec. 4.2 and css-logical-1 sec. 4.5.3 give
    column-rule and the logical borders the same initial colour, and they read
@@ -1152,14 +1177,14 @@ let drop_initial_line_style (style : border_style option) : border_style option
    [auto], which [currentColor] does not name, so [normalize_outline] has no
    colour drop. *)
 let drop_initial_line_color (color : color option) : color option =
-  match color with Some (Current : color) -> Option.None | color -> color
+  match color with Some (Current : color) -> None | color -> color
 
 (* The width slot of the border shorthands is a [<'border-width'>], so it takes
    the same fold as the longhand; the style slot is a [<line-style>] and the
    colour slot a [<color>]. Drained of every slot the shorthand declares nothing
    but initial values, which is what [none] declares, and [none] is the node the
    keyword parses to - so the two spellings meet there. *)
-let normalize_border ?(lossless = false) : border -> border =
+let normalize_border ?(lossless = false) ~enforce_spec : border -> border =
  fun value ->
   match value with
   | Shorthand s ->
@@ -1170,7 +1195,9 @@ let normalize_border ?(lossless = false) : border -> border =
       let style = drop_initial_line_style s.style in
       let color =
         drop_initial_line_color
-          (option_map_preserve (normalize_color ~lossless) s.color)
+          (option_map_preserve
+             (normalize_color ~lossless ~enforce_spec)
+             s.color)
       in
       if width == s.width && style == s.style && color == s.color then value
       else if

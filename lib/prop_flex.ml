@@ -60,42 +60,42 @@ let rec normalize_flex_factor (value : flex_factor) : flex_factor =
    apart, and the rules holding them only join on a second pass. Fold a known
    unit back onto its own variant and leave an unknown one alone. *)
 let flex_basis_of_unit n : string -> flex_basis option = function
-  | "%" -> Option.Some (Pct n : flex_basis)
-  | "px" -> Option.Some (Px n : flex_basis)
-  | "cm" -> Option.Some (Cm n : flex_basis)
-  | "mm" -> Option.Some (Mm n : flex_basis)
-  | "q" -> Option.Some (Q n : flex_basis)
-  | "in" -> Option.Some (In n : flex_basis)
-  | "pt" -> Option.Some (Pt n : flex_basis)
-  | "pc" -> Option.Some (Pc n : flex_basis)
-  | "rem" -> Option.Some (Rem n : flex_basis)
-  | "em" -> Option.Some (Em n : flex_basis)
-  | "ex" -> Option.Some (Ex n : flex_basis)
-  | "cap" -> Option.Some (Cap n : flex_basis)
-  | "ic" -> Option.Some (Ic n : flex_basis)
-  | "ric" -> Option.Some (Ric n : flex_basis)
-  | "rlh" -> Option.Some (Rlh n : flex_basis)
-  | "vw" -> Option.Some (Vw n : flex_basis)
-  | "vh" -> Option.Some (Vh n : flex_basis)
-  | "vmin" -> Option.Some (Vmin n : flex_basis)
-  | "vmax" -> Option.Some (Vmax n : flex_basis)
-  | "vi" -> Option.Some (Vi n : flex_basis)
-  | "vb" -> Option.Some (Vb n : flex_basis)
-  | "dvh" -> Option.Some (Dvh n : flex_basis)
-  | "dvw" -> Option.Some (Dvw n : flex_basis)
-  | "dvmin" -> Option.Some (Dvmin n : flex_basis)
-  | "dvmax" -> Option.Some (Dvmax n : flex_basis)
-  | "lvh" -> Option.Some (Lvh n : flex_basis)
-  | "lvw" -> Option.Some (Lvw n : flex_basis)
-  | "lvmin" -> Option.Some (Lvmin n : flex_basis)
-  | "lvmax" -> Option.Some (Lvmax n : flex_basis)
-  | "svh" -> Option.Some (Svh n : flex_basis)
-  | "svw" -> Option.Some (Svw n : flex_basis)
-  | "svmin" -> Option.Some (Svmin n : flex_basis)
-  | "svmax" -> Option.Some (Svmax n : flex_basis)
-  | "ch" -> Option.Some (Ch n : flex_basis)
-  | "lh" -> Option.Some (Lh n : flex_basis)
-  | _ -> Option.None
+  | "%" -> Some (Pct n : flex_basis)
+  | "px" -> Some (Px n : flex_basis)
+  | "cm" -> Some (Cm n : flex_basis)
+  | "mm" -> Some (Mm n : flex_basis)
+  | "q" -> Some (Q n : flex_basis)
+  | "in" -> Some (In n : flex_basis)
+  | "pt" -> Some (Pt n : flex_basis)
+  | "pc" -> Some (Pc n : flex_basis)
+  | "rem" -> Some (Rem n : flex_basis)
+  | "em" -> Some (Em n : flex_basis)
+  | "ex" -> Some (Ex n : flex_basis)
+  | "cap" -> Some (Cap n : flex_basis)
+  | "ic" -> Some (Ic n : flex_basis)
+  | "ric" -> Some (Ric n : flex_basis)
+  | "rlh" -> Some (Rlh n : flex_basis)
+  | "vw" -> Some (Vw n : flex_basis)
+  | "vh" -> Some (Vh n : flex_basis)
+  | "vmin" -> Some (Vmin n : flex_basis)
+  | "vmax" -> Some (Vmax n : flex_basis)
+  | "vi" -> Some (Vi n : flex_basis)
+  | "vb" -> Some (Vb n : flex_basis)
+  | "dvh" -> Some (Dvh n : flex_basis)
+  | "dvw" -> Some (Dvw n : flex_basis)
+  | "dvmin" -> Some (Dvmin n : flex_basis)
+  | "dvmax" -> Some (Dvmax n : flex_basis)
+  | "lvh" -> Some (Lvh n : flex_basis)
+  | "lvw" -> Some (Lvw n : flex_basis)
+  | "lvmin" -> Some (Lvmin n : flex_basis)
+  | "lvmax" -> Some (Lvmax n : flex_basis)
+  | "svh" -> Some (Svh n : flex_basis)
+  | "svw" -> Some (Svw n : flex_basis)
+  | "svmin" -> Some (Svmin n : flex_basis)
+  | "svmax" -> Some (Svmax n : flex_basis)
+  | "ch" -> Some (Ch n : flex_basis)
+  | "lh" -> Some (Lh n : flex_basis)
+  | _ -> None
 
 (* The unit and coefficient a flex-basis leaf spells, the inverse of
    [flex_basis_of_unit], so a basis can take the typed length fold. *)
@@ -214,11 +214,42 @@ let rec normalize_flex_basis ?(ctx = default_calc_ctx) (value : flex_basis) :
           | folded -> if folded == c then value else Calc folded))
   | Dimension { value = n; unit; _ } -> (
       match flex_basis_of_unit n (String.lowercase_ascii unit) with
-      | Option.Some folded -> normalize_flex_basis ~ctx folded
-      | Option.None -> value)
+      | Some folded -> normalize_flex_basis ~ctx folded
+      | None -> value)
   | _ -> value
 
-let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
+(* Whether a basis written alone in [flex] reads back as that basis. A bare
+   number reads as the grow factor (sec. 7.2), a CSS-wide keyword names the
+   whole value, and a [var()], or a math function that may hold one, may
+   substitute factors or a number of its own (CSS Variables 1 sec. 3). *)
+let basis_stands_alone : flex_basis -> bool = function
+  | Content | Fit_content | Fit_content_arg _ | Max_content | Min_content | Px _
+  | Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _ | Rem _ | Em _ | Ex _ | Cap _ | Ic _
+  | Ric _ | Rlh _ | Pct _ | Vw _ | Vh _ | Vmin _ | Vmax _ | Vi _ | Vb _ | Dvh _
+  | Dvw _ | Dvmin _ | Dvmax _ | Lvh _ | Lvw _ | Lvmin _ | Lvmax _ | Svh _
+  | Svw _ | Svmin _ | Svmax _ | Ch _ | Lh _ | Dimension _ ->
+      true
+  | Auto | Num _ | Zero | Inherit | Initial | Unset | Revert | Revert_layer
+  | Clamp _ | Min _ | Max _ | Round _ | Mod _ | Rem_fn _ | Hypot _ | Abs _
+  | Calc _ | Var _ ->
+      false
+
+(* The [flex-basis] a [flex] of one or two factors omits. CSS Flexible Box 1
+   (ED) sec. 7.1 gives it the specified value [0], a length; Chrome 157 computes
+   it as [0%], which against an indefinite container sizes the item from its
+   content. The default targets read Chrome's, [enforce_spec] the Editor's
+   Draft's. *)
+let omitted_flex_basis ~enforce_spec : flex_basis =
+  if enforce_spec then Zero else Pct 0.
+
+let is_omitted_flex_basis ~enforce_spec (b : flex_basis) =
+  match b with
+  | Zero -> enforce_spec
+  | Pct p -> Float.equal p 0. && not enforce_spec
+  | _ -> false
+
+let normalize_flex ?(ctx = default_calc_ctx) ~enforce_spec (value : flex) : flex
+    =
   match value with
   | Grow f ->
       let f' = normalize_flex_factor f in
@@ -242,28 +273,46 @@ let normalize_flex ?(ctx = default_calc_ctx) (value : flex) : flex =
       (* A [var()] factor may supply no factor at all (CSS Variables 1 sec. 3),
          and a bare [0] after one factor is the shrink (sec. 7.2), so the zero
          basis keeps the unit it was written with. *)
+      let substituted =
+        match (g', s') with
+        | (Var _ : flex_factor), _ | _, Var _ -> true
+        | _ -> false
+      in
       let b' =
-        match (normalize_flex_basis ~ctx b, g', s') with
-        | Zero, (Var _ : flex_factor), _ | Zero, _, Var _ -> b
-        | b', _, _ -> b'
+        match normalize_flex_basis ~ctx b with
+        | Zero when substituted -> b
+        | b' -> b'
+      in
+      (* For the same reason a zero length stays the basis a [var()] factor is
+         written beside. *)
+      let omitted b =
+        is_omitted_flex_basis ~enforce_spec b
+        && not (substituted && enforce_spec)
       in
       (* CSS Flexbox 1 sec. 7.1.1 gives [none] and [auto] as the one-word names
          of [0 0 auto] and [1 1 auto], and the shorter spelling wins. *)
       match (g', s', b') with
       | Number 0., Number 0., (Auto : flex_basis) -> None
       | Number 1., Number 1., Auto -> Auto
-      (* Sec. 7.1.1: an omitted basis is [0%] and an omitted shrink [1], so [g 1
-         0%] is [g] and [g s 0%] is [g s]. A [0] or [0px] basis is a length,
-         another computed value, and stays. *)
-      | _, Number 1., Pct 0. -> Grow g'
-      | _, _, Pct 0. -> Grow_shrink (g', s')
+      (* Sec. 7.1.1: an omitted shrink is [1], and the basis one or two factors
+         omit is {!omitted_flex_basis}, so [g 1 b] is [g] and [g s b] is [g s]
+         for that [b]. The other zero basis is another computed value, written
+         as a lone basis below. *)
+      | _, Number 1., b when omitted b -> Grow g'
+      | _, _, b when omitted b -> Grow_shrink (g', s')
+      (* Sec. 7.1: an omitted grow factor is 1 as well, so a lone basis is [1 1
+         <basis>]. *)
+      | Number 1., Number 1., Zero -> Basis (Px 0.)
+      | Number 1., Number 1., b' when basis_stands_alone b' -> Basis b'
       | _ -> if g' == g && s' == s && b' == b then value else Full (g', s', b'))
   | _ -> value
 
 let rec pp_order : order Pp.t =
  fun ctx -> function
   | Int i -> Pp.int ctx i
-  | Calc c -> pp_calc ~unwrap_num:false pp_order ctx c
+  | Calc c ->
+      Values_calc.pp_calc_with ~unwrap_num:false ~bare_call:true
+        ~bare_number_call:true pp_order ctx c
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -344,7 +393,7 @@ let rec pp_flex_factor : flex_factor Pp.t =
   (* Sec. 7.2 refuses a negative factor written on its own, so the wrapper comes
      off only around a leaf that is a factor by itself. *)
   | Calc c ->
-      pp_calc
+      Values_calc.pp_calc_with ~bare_call:true ~bare_number_call:true
         ~unwrap_num:(match c with Num f -> f >= 0. | _ -> true)
         ~unwrap:(fun (v : flex_factor) ->
           match v with Number f -> f >= 0. | _ -> true)

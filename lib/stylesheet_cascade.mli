@@ -73,7 +73,10 @@ val cascade_revert_origin_candidates :
 val declared_values :
   ?property:string -> Declaration.declaration list -> declared_value list
 (** [declared_values ?property decls] is the declared values of [decls] in
-    source order, only those of [property] when it is given. *)
+    source order, only those of [property] when it is given. [property] is read
+    in any ASCII case, and a legacy name alias declares the property it aliases
+    (CSS Cascade 5 sec. 3.1): [~property:"transform"] keeps a
+    [-webkit-transform] declaration. *)
 
 val cascaded_value : cascade_origin_candidate list -> string option
 (** [cascaded_value cs] is the payload of the winning candidate of [cs]. *)

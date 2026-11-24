@@ -24,24 +24,24 @@ let view_timeline_slot = function Name _ -> 0 | Axis _ -> 1 | Inset _ -> 2
 
 let view_timeline_item parts : Properties.view_timeline_shorthand_item option =
   let pick f = List.find_map f parts in
-  let name = pick (function Name n -> Some n | _ -> Option.None) in
+  let name = pick (function Name n -> Some n | _ -> None) in
   let axis =
     pick (function
-      | Axis (Block : Properties.timeline_axis) | Axis Initial -> Option.None
+      | Axis (Block : Properties.timeline_axis) | Axis Initial -> None
       | Axis a -> Some a
-      | _ -> Option.None)
+      | _ -> None)
   in
   let inset =
     pick (function
-      | Inset (Inset (Auto, Option.None) : Properties.timeline_inset)
-      | Inset Initial ->
-          Option.None
+      | Inset (Inset (Auto, None) : Properties.timeline_inset) | Inset Initial
+        ->
+          None
       | Inset i -> Some i
-      | _ -> Option.None)
+      | _ -> None)
   in
   match (name : Properties.timeline_name option) with
   | Some (Names [ n ]) -> Some { name = n; axis; inset }
-  | _ -> Option.None
+  | _ -> None
 
 let view_timeline_of_run raw =
   let parts = List.filter_map view_timeline_part_of raw in

@@ -11,6 +11,28 @@ include Selector_reader
 include Selector_printer
 open Common
 
+(* HTML sec. 4.16.2: "the name part of the CSS attribute selector must first be
+   converted to ASCII lowercase" before it is compared to an attribute name on
+   an HTML element. *)
+let html_attr_name : attr_name -> string = function
+  | Regular s -> String.lowercase_ascii s
+  | Data s -> String.lowercase_ascii (String.concat "" [ "data-"; s ])
+  | Aria a -> String.lowercase_ascii (Aria.to_string a)
+
+(* The same section lists the attributes whose value an HTML document compares
+   ASCII case-insensitively when the selector carries no flag. *)
+let html_case_insensitive_value name =
+  match html_attr_name name with
+  | "accept" | "accept-charset" | "align" | "alink" | "axis" | "bgcolor"
+  | "charset" | "checked" | "clear" | "codetype" | "color" | "compact"
+  | "declare" | "defer" | "dir" | "direction" | "disabled" | "enctype" | "face"
+  | "frame" | "hreflang" | "http-equiv" | "lang" | "language" | "link" | "media"
+  | "method" | "multiple" | "nohref" | "noresize" | "noshade" | "nowrap"
+  | "readonly" | "rel" | "rev" | "rules" | "scope" | "scrolling" | "selected"
+  | "shape" | "target" | "text" | "type" | "valign" | "valuetype" | "vlink" ->
+      true
+  | _ -> false
+
 let list_map_preserve = List.map_preserve
 let list_same = List.same
 

@@ -78,7 +78,7 @@ let merge_adjacent ~prelude ~same ~build ~optimize_merged_block stmts =
 let merge_consecutive_layers ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
     ~prelude:(function
-      | Layer (Some name, block) -> Option.Some (name, block) | _ -> Option.None)
+      | Layer (Some name, block) -> Some (name, block) | _ -> None)
     ~same:equal_layer_name
     ~build:(fun name block -> Layer (Some name, block))
     ~optimize_merged_block stmts
@@ -91,23 +91,51 @@ let merge_consecutive_layers ?(optimize_merged_block = Fun.id) stmts =
    intervening statement, and it keeps its own gate. *)
 let merge_consecutive_media ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
-    ~prelude:(function
-      | Media (cond, block) -> Option.Some (cond, block) | _ -> Option.None)
+    ~prelude:(function Media (cond, block) -> Some (cond, block) | _ -> None)
     ~same:Media.equal
     ~build:(fun cond block -> Media (cond, block))
     ~optimize_merged_block stmts
 
-(* Only cross statements whose cascade is pure source order: plain rules and
-   conditional groups. Layers, origins, scopes, imports, etc. establish
-   ordering/context that hoisting past would change. *)
+(* Cross statements whose cascade is pure source order, plain rules and
+   conditional groups, and statements that take no part in the order of style
+   rules: a comment, a [@page] rule, and a definition of a name ([@keyframes],
+   [@font-face], [@property], [@counter-style], [@font-palette-values],
+   [@font-feature-values], [@position-try], [@view-transition]), which a block
+   of style rules alone may move past ({!carries_style_only}). A scope body is
+   crossed too: CSS Cascade 6 sec. 3.1 decides a scoped declaration against an
+   unscoped one by specificity or scope proximity, never by order of appearance.
+   Layers, origins, imports, etc. establish ordering/context that hoisting past
+   would change. *)
 let crossable_by_distant_merge = function
   | Rule _ | Declarations _ | Media _ | Supports _ | Container _ -> true
-  | Bang_comment _ | Charset _ | Import _ | Namespace _ | Property _
-  | Layer_decl _ | Layer _ | Moz_document _ | Starting_style _ | When _ | Else _
-  | Supports_condition _ | Origin _ | Scope _ | Keyframes _ | Webkit_keyframes _
+  | Bang_comment _ | Property _ | Keyframes _ | Webkit_keyframes _
   | Moz_keyframes _ | Font_face _ | Counter_style _ | Page _
   | Page_with_margins _ | Font_palette_values _ | Font_feature_values _
-  | View_transition _ | Position_try _ | Viewport _ | Unknown_at_rule _ ->
+  | View_transition _ | Position_try _ | Scope _ ->
+      true
+  | Charset _ | Import _ | Namespace _ | Layer_decl _ | Layer _ | Moz_document _
+  | Starting_style _ | When _ | Else _ | Supports_condition _ | Origin _
+  | Viewport _ | Unknown_at_rule _ ->
+      false
+
+(* A hoisted block moves its statements above the ones it crosses. Style rules
+   and the groups of them move by what they write, which the hoist checks; a
+   definition moves past another of its name, and the last [@keyframes] of a
+   name is the one that runs, so a block holding anything else stays. *)
+let rec carries_style_only = function
+  | Rule r -> List.for_all carries_style_only r.nested
+  | Declarations _ | Bang_comment _ -> true
+  | Media (_, block)
+  | Supports (_, block)
+  | Container (_, _, block)
+  | Starting_style block ->
+      List.for_all carries_style_only block
+  | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _ | Layer _
+  | Moz_document _ | When _ | Else _ | Supports_condition _ | Origin _ | Scope _
+  | Keyframes _ | Webkit_keyframes _ | Moz_keyframes _ | Font_face _
+  | Counter_style _ | Page _ | Page_with_margins _ | Font_palette_values _
+  | Font_feature_values _ | View_transition _ | Position_try _ | Viewport _
+  | Unknown_at_rule _ ->
       false
 
 (* CSS Conditional Rules 5 sec. 2: a conditional group rule applies its contents
@@ -139,6 +167,10 @@ let crossable_by_distant_merge = function
    position a block may not cross, a statement the cascade does not read in
    source order or one whose leaves refuse.
 
+   A block that cannot rise to its partner may still meet it the other way: the
+   partner sinks to the block when nothing kept between them meets what the
+   partner writes, and the block's position is then the partner's.
+
    A block that merged nothing keeps its node; a partner that took blocks in is
    rebuilt over [optimize_merged_block] of its joined body. *)
 type 'k partner = {
@@ -153,6 +185,7 @@ type 'k kept =
   | Plain of statement
   | Block of statement * 'k * statement list
   | Partner of 'k partner
+  | Sunk  (** where a partner stood before it sank *)
 
 type 'k pass = {
   build : 'k -> statement list -> statement;
@@ -171,25 +204,43 @@ let facts pass stmts =
     (List.map (fun r -> Rule_graph.facts r))
     (Nest.leaves ?parent:pass.parent stmts)
 
+(* The statements of a crossed [stmt] an unscoped hoisted declaration can meet
+   in order of appearance: a scope body's, at the top of a sheet, are none (CSS
+   Cascade 6 sec. 3.1). Under a parent the hoisted rules may be scoped
+   themselves, so the body is read, which refuses. *)
+let rec unscoped_parts pass = function
+  | Scope _ when Option.is_none pass.parent -> []
+  | Media (_, block) | Supports (_, block) | Container (_, _, block) ->
+      List.concat_map (unscoped_parts pass) block
+  | stmt -> [ stmt ]
+
+let crossed_facts pass stmt = facts pass (unscoped_parts pass stmt)
+
 let read_kept pass =
   for at = pass.unread to Dynarray.length pass.kept - 1 do
     let stmt, into =
       match Dynarray.get pass.kept at with
-      | Plain stmt -> (stmt, pass.index)
-      | Block (stmt, _, _) -> (stmt, pass.index)
-      | Partner p -> (pass.build p.key (body p), p.leaves)
+      | Plain stmt -> (Some stmt, pass.index)
+      | Block (stmt, _, _) -> (Some stmt, pass.index)
+      | Partner p -> (Some (pass.build p.key (body p)), p.leaves)
+      | Sunk -> (None, pass.index)
     in
-    match facts pass [ stmt ] with
-    | Option.Some rules when crossable_by_distant_merge stmt ->
-        List.iter (Rule_graph.index_facts into ~at) rules
-    | Option.Some _ | Option.None -> pass.blocked <- at
+    match stmt with
+    | None -> ()
+    | Some stmt -> (
+        match crossed_facts pass stmt with
+        | Some rules when crossable_by_distant_merge stmt ->
+            List.iter (Rule_graph.index_facts into ~at) rules
+        | Some _ | None -> pass.blocked <- at)
   done;
   pass.unread <- Dynarray.length pass.kept
 
-let crosses pass ~after h =
+let crosses ?except pass ~after h =
   Rule_graph.conflicts_after pass.index ~after h
   || List.exists
-       (fun q -> Rule_graph.conflicts_after q.leaves ~after h)
+       (fun q ->
+         (match except with Some p -> q != p | None -> true)
+         && Rule_graph.conflicts_after q.leaves ~after h)
        pass.partners
 
 (* Merge [block], under [key], into its partner [p] when nothing kept after [p]
@@ -199,8 +250,8 @@ let merge pass p key block =
   pass.blocked <= p.at
   &&
   match facts pass block with
-  | Option.None -> false
-  | Option.Some hoisted ->
+  | None -> false
+  | Some hoisted ->
       (not (List.exists (crosses pass ~after:p.at) hoisted))
       && begin
         List.iter (Rule_graph.index_facts p.leaves ~at:p.at) hoisted;
@@ -209,11 +260,40 @@ let merge pass p key block =
         true
       end
 
+(* Sink partner [p] to [block], written under [stmt] after everything kept, when
+   nothing kept after [p] meets what [p] writes: [block] then stands where [p]
+   did, and [p]'s body joins it there. *)
+let sink pass ~hoistable p stmt key block =
+  read_kept pass;
+  let moved = body p in
+  pass.blocked < p.at && hoistable moved
+  && List.for_all carries_style_only moved
+  &&
+  match facts pass moved with
+  | None -> false
+  | Some sunk ->
+      (not (List.exists (crosses ~except:p pass ~after:p.at) sunk))
+      && begin
+        let p' =
+          {
+            at = Dynarray.length pass.kept;
+            first = stmt;
+            key;
+            chunks = block :: p.chunks;
+            leaves = Rule_graph.facts_index ();
+          }
+        in
+        Dynarray.set pass.kept p.at Sunk;
+        pass.partners <- p' :: List.filter (fun q -> q != p) pass.partners;
+        Dynarray.add_last pass.kept (Partner p');
+        true
+      end
+
 (* Keep a block of the family, or merge it into its partner; [true] when it has
    one. *)
 let keep_block pass ~equal_prelude ~hoistable stmt key block =
   match List.find_opt (fun p -> equal_prelude p.key key) pass.partners with
-  | Option.None ->
+  | None ->
       let p =
         {
           at = Dynarray.length pass.kept;
@@ -226,9 +306,14 @@ let keep_block pass ~equal_prelude ~hoistable stmt key block =
       pass.partners <- p :: pass.partners;
       Dynarray.add_last pass.kept (Partner p);
       false
-  | Option.Some p ->
-      if not (hoistable block && merge pass p key block) then
-        Dynarray.add_last pass.kept (Block (stmt, key, block));
+  | Some p ->
+      if
+        (not
+           (hoistable block
+           && List.for_all carries_style_only block
+           && merge pass p key block))
+        && not (sink pass ~hoistable p stmt key block)
+      then Dynarray.add_last pass.kept (Block (stmt, key, block));
       true
 
 let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
@@ -259,10 +344,11 @@ let merge_distant ~prelude ~equal_prelude ~build ~hoistable ?owner
   if not partnered then stmts
   else
     Dynarray.to_list pass.kept
-    |> List.map (function
-      | Plain stmt | Block (stmt, _, _) -> stmt
-      | Partner { first; chunks = [ _ ]; _ } -> first
-      | Partner p -> build p.key (optimize_merged_block (body p)))
+    |> List.filter_map (function
+      | Plain stmt | Block (stmt, _, _) -> Option.Some stmt
+      | Partner { first; chunks = [ _ ]; _ } -> Option.Some first
+      | Partner p -> Option.Some (build p.key (optimize_merged_block (body p)))
+      | Sunk -> Option.None)
     |> List.preserve stmts
 
 let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
@@ -273,13 +359,24 @@ let merge_distant_media ?owner ?(optimize_merged_block = Fun.id) stmts =
     ~hoistable:(fun block -> not (has_nested_preference_media block))
     ?owner ~optimize_merged_block stmts
 
+(* CSS Conditional Rules 3 sec. 2: a later [@supports] block joins an earlier
+   one of the same condition on the terms [merge_distant] argues for. *)
+let merge_distant_supports ?owner ?(optimize_merged_block = Fun.id) stmts =
+  merge_distant
+    ~prelude:(function
+      | Supports (cond, block) -> Some (cond, block) | _ -> None)
+    ~equal_prelude:Supports.equal
+    ~build:(fun cond block -> Supports (cond, block))
+    ~hoistable:(fun _ -> true)
+    ?owner ~optimize_merged_block stmts
+
 (* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
    blocks may be merged because the cascade evaluates them identically. Mirror
    the [@media] approach. *)
 let merge_consecutive_supports ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
     ~prelude:(function
-      | Supports (cond, block) -> Option.Some (cond, block) | _ -> Option.None)
+      | Supports (cond, block) -> Some (cond, block) | _ -> None)
     ~same:Supports.equal
     ~build:(fun cond block -> Supports (cond, block))
     ~optimize_merged_block stmts
@@ -297,8 +394,7 @@ let same_container (prev_name, prev_cond) (name, cond) =
 let merge_consecutive_containers ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
     ~prelude:(function
-      | Container (name, cond, block) -> Option.Some ((name, cond), block)
-      | _ -> Option.None)
+      | Container (name, cond, block) -> Some ((name, cond), block) | _ -> None)
     ~same:same_container
     ~build:(fun (name, cond) block -> Container (name, cond, block))
     ~optimize_merged_block stmts
@@ -325,8 +421,7 @@ let merge_distant_containers ?owner ?(optimize_merged_block = Fun.id) stmts =
    passes above compare a condition this rule does not have. *)
 let merge_consecutive_starting_style ?(optimize_merged_block = Fun.id) stmts =
   merge_adjacent
-    ~prelude:(function
-      | Starting_style block -> Option.Some ((), block) | _ -> Option.None)
+    ~prelude:(function Starting_style block -> Some ((), block) | _ -> None)
     ~same:(fun () () -> true)
     ~build:(fun () block -> Starting_style block)
     ~optimize_merged_block stmts
