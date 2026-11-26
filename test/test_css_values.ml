@@ -481,9 +481,26 @@ let option_value_parser_contracts () =
       Alcotest.(check bool) (name ^ " trailing input") false (accepts trailing))
     parsers
 
+(* CSS Values 4 sec. 10.7.2 names [infinity] a degenerate numeric constant, and
+   sec. 10.13 serialises an infinite value as [infinity]; [Calc.infinity] is
+   that constant, so a program writing [calc(infinity * 1px)] gets it back. *)
+let calc_infinity_is_the_constant () =
+  let sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "r")
+          [ padding [ Calc Calc.(infinity * px 1.) ] ];
+      ]
+  in
+  Alcotest.(check string)
+    "infinity prints as the constant"
+    ".r {\n  padding: calc(infinity * 1px);\n}" (to_string sheet)
+
 let suite =
   ( "css_values",
     [
+      Alcotest.test_case "Calc.infinity is the constant" `Quick
+        calc_infinity_is_the_constant;
       Alcotest.test_case "list-style value parsers" `Quick
         list_style_value_parsers;
       Alcotest.test_case "font-family value parser" `Quick
