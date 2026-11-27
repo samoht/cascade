@@ -1423,7 +1423,7 @@ module Calc = struct
    fun ?default ?fallback name -> Var (var_ref ?default ?fallback name)
 
   let float f : 'a calc = Num f
-  let infinity : 'a calc = Num infinity
+  let infinity : 'a calc = Math_const Infinity
   let px n = Val (Px n : length)
   let rem f = Val (Rem f : length)
   let em f = Val (Em f : length)

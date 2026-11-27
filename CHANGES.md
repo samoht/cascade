@@ -1502,6 +1502,9 @@ The new form of a diagnostic is under [Breaking](#command-line).
   `Context.inherited_value`, `Context.initial_value` and
   `Stylesheet.declared_values` find either spelling (CSS Cascade 5 sec. 3.1).
   Property names are read in any ASCII case (#1561).
+- **`Calc.infinity` prints as `infinity`.** `Calc.(infinity * px 1.)` printed
+  `calc(3.40282e38 * 1px)`; it now prints `calc(infinity * 1px)`. `--minify`
+  still writes `3.40282e38px` (#1650).
 
 ## 1.2.1
 
